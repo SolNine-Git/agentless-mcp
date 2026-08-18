@@ -48,8 +48,16 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
     kind_names,
 )
+from agentless_mcp.application.validate_service import (
+    DEFAULT_JOBS,
+    DEFAULT_TIMEOUT_SECONDS,
+    BaselineStatus,
+    ValidateRequest,
+    ValidateService,
+    load_verdicts,
+)
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars
+from agentless_mcp.core import cache, grammars, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
@@ -87,6 +95,7 @@ class CliServices:
     views: ViewService
     symbols: SymbolService
     patches: PatchService
+    validates: ValidateService
     counter: TokenCounter
     extractor: TreeSitterExtractor
 
@@ -120,6 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_refs(subparsers)
     _add_resolve_locs(subparsers)
     _add_patch(subparsers)
+    _add_validate(subparsers)
+    _add_vote(subparsers)
     _add_warmup(subparsers)
     _add_index(subparsers)
     _add_capabilities(subparsers)
@@ -291,6 +302,69 @@ def _patch_input_flag(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="read the patch from FILE (SEARCH/REPLACE text or edits.json); default: stdin",
     )
+
+
+def _add_validate(subparsers: Any) -> None:
+    """Wire ``validate``: baseline, then one bounded test run per candidate.
+
+    ``--test-cmd`` and ``--repro-cmd`` are flags and only flags. There is no
+    config-file lookup, no ``Makefile`` sniffing and no default: the commands
+    this tool executes come from the person or agent invoking it, never from
+    the repository being judged.
+    """
+    parser = subparsers.add_parser("validate", help="run candidate patches against the tests")
+    parser.add_argument(
+        "--candidates",
+        required=True,
+        metavar="DIR",
+        help="directory of candidate patches, one file each (edits.json or SEARCH/REPLACE)",
+    )
+    parser.add_argument(
+        "--repo",
+        metavar="PATH",
+        default=None,
+        help="repository root (default: the git root enclosing the current directory)",
+    )
+    parser.add_argument(
+        "--test-cmd",
+        required=True,
+        metavar="CMD",
+        help="the regression command; must pass on unpatched HEAD or the run is UNVERIFIED",
+    )
+    parser.add_argument(
+        "--repro-cmd",
+        default=None,
+        metavar="CMD",
+        help="the reproduction command; must FAIL on unpatched HEAD to count",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"per-command hard bound in seconds (default: {DEFAULT_TIMEOUT_SECONDS}); "
+        "a command that hits it is a failure, never a pass",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=DEFAULT_JOBS,
+        help=f"candidates to run concurrently, each in its own worktree (default: {DEFAULT_JOBS})",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="FILE",
+        default=None,
+        help="write the verdicts document here instead of stdout",
+    )
+    parser.set_defaults(handler=_cmd_validate)
+
+
+def _add_vote(subparsers: Any) -> None:
+    parser = subparsers.add_parser("vote", help="rank validated candidates by equivalence cluster")
+    parser.add_argument("--verdicts", required=True, metavar="FILE", help="a validate output file")
+    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    parser.set_defaults(handler=_cmd_vote)
 
 
 def _add_warmup(subparsers: Any) -> None:
@@ -534,6 +608,79 @@ def _cmd_patch_normalize(args: argparse.Namespace, services: CliServices) -> int
 
     _patch_receipt(ctx, report.summary_line(), report.result)
     return EXIT_OK if report.ok else EXIT_DOMAIN
+
+
+def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
+    """Validate every candidate and emit the verdicts document.
+
+    Exit ``0`` only when at least one candidate applied, kept an equivalence
+    key and passed the regression suite -- the two decisive ladder tiers. An
+    UNVERIFIED baseline and a run where nothing survived are both ``1``: the
+    caller learned something, and it was not a fix.
+    """
+    ctx = _resolve(args, require_git=True)
+    if ctx is None:
+        return EXIT_USAGE
+
+    if args.timeout <= 0:
+        return fail("--timeout takes a positive number of seconds", EXIT_USAGE)
+    if args.jobs < 1:
+        return fail("--jobs takes a positive integer", EXIT_USAGE)
+
+    report = services.validates.validate(
+        ctx,
+        ValidateRequest(
+            candidates=Path(args.candidates),
+            test_cmd=args.test_cmd,
+            repro_cmd=args.repro_cmd,
+            timeout=args.timeout,
+            jobs=args.jobs,
+        ),
+    )
+
+    document = report.jsonl()
+    if args.output is None:
+        emit(document)
+    else:
+        destination = Path(args.output)
+        try:
+            destination.write_text(document, encoding="utf-8")
+        except OSError as error:
+            return fail(f"cannot write {destination}: {error.strerror}", EXIT_USAGE)
+        note(f"agentless-mcp: verdicts written to {destination}")
+
+    note("\n".join([*envelope.receipt_lines(ctx), f"# {report.summary_line()}"]))
+    for warning in report.warnings():
+        note(f"agentless-mcp: {warning}")
+    return EXIT_OK if report.any_passed else EXIT_DOMAIN
+
+
+def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
+    """Rank a verdicts document by equivalence cluster."""
+    _ = services
+    source = Path(args.verdicts)
+    try:
+        text = source.read_text(encoding="utf-8")
+    except OSError as error:
+        return fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
+
+    loaded = load_verdicts(text)
+    report = vote.rank(loaded.candidates, repro_valid=loaded.repro_valid)
+
+    if args.json:
+        emit(json.dumps(report.as_dict(), indent=2))
+    else:
+        emit(report.text())
+
+    note(f"# agentless-mcp vote over {source}")
+    note(f"# test-cmd: {loaded.test_cmd}")
+    note(f"# {report.summary_line()}")
+    if loaded.baseline is not BaselineStatus.OK:
+        note(
+            "agentless-mcp: this ranking comes from an UNVERIFIED run -- the test command "
+            "did not pass on unpatched HEAD, so no candidate was evaluated."
+        )
+    return EXIT_OK
 
 
 def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:

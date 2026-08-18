@@ -10,7 +10,9 @@ warmup (a single platform bundle download) and every later run is offline.
 """
 
 import os
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -127,6 +129,84 @@ def make_git_repo(tmp_path):
             "fixture",
         )
         return root
+
+    return build
+
+
+# ---------------------------------------------------------------------------
+# The seeded-bug fixture repository the validate/vote suites work against
+# ---------------------------------------------------------------------------
+
+# `add` returns a - b where it should return a + b. Everything the validation
+# phase is tested on is built from this one seeded sign error.
+BUGGY_APP = "def add(a, b):\n    return a - b\n"
+
+# The regression script passes on the buggy code AND on every correct fix,
+# which is what a regression suite is: it says "you broke something", not
+# "you fixed something". `a * b` fails it, which is how the bad candidate is
+# caught.
+REGRESSION_SCRIPT = """\
+from app import add
+
+assert add(1, 0) == 1, f"add(1, 0) == {add(1, 0)}"
+print("regression ok")
+"""
+
+# The reproduction script FAILS on the buggy code and passes once it is
+# fixed. That polarity is the whole contract: a reproduction test that passes
+# on the baseline is reported does_not_reproduce and excluded.
+REPRO_SCRIPT = """\
+from app import add
+
+assert add(2, 3) == 5, f"add(2, 3) == {add(2, 3)}"
+print("reproduction ok")
+"""
+
+SEEDED_BUG_FILES = {
+    "app.py": BUGGY_APP,
+    "check_regression.py": REGRESSION_SCRIPT,
+    "check_repro.py": REPRO_SCRIPT,
+}
+
+
+@pytest.fixture
+def python_cmd():
+    """Build a command string that runs one script with *this* interpreter.
+
+    ``sys.executable`` rather than the string ``python``: a suite that depends
+    on what ``python`` resolves to on PATH is a suite that answers differently
+    on a machine where it resolves to something else, or not at all.
+    """
+
+    def build(script, *arguments):
+        parts = [sys.executable, script, *arguments]
+        return " ".join(shlex.quote(part) for part in parts)
+
+    return build
+
+
+@pytest.fixture
+def seeded_bug_repo(make_git_repo):
+    """A committed git repository carrying the seeded bug and both scripts."""
+
+    def build(name="seeded", overrides=None):
+        files = dict(SEEDED_BUG_FILES)
+        files.update(overrides or {})
+        return make_git_repo(files, name=name)
+
+    return build
+
+
+@pytest.fixture
+def candidates_dir(tmp_path):
+    """Write a mapping of filename -> patch text into a candidates directory."""
+
+    def build(patches, name="candidates"):
+        directory = tmp_path / name
+        directory.mkdir(parents=True, exist_ok=True)
+        for filename, text in patches.items():
+            (directory / filename).write_text(text, encoding="utf-8")
+        return directory
 
     return build
 

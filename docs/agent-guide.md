@@ -229,6 +229,121 @@ immediately saying the lock is held rather than queueing. Any read command
 takes `--no-cache` (`no_cache: true` on `repo_map`, `get_symbols_overview`,
 `find_symbol` and `expand_symbols`) to bypass the index for that call.
 
+### `validate` / `vote` -- does the patch actually work, CLI only
+
+The last stage of the funnel. You sampled several candidate patches; these two
+commands decide which of them survive the repository's own tests, and rank
+what is left. Neither is exposed over MCP.
+
+```
+agentless-mcp validate --candidates ./candidates --repo /srv/app \
+    --test-cmd 'pytest -q tests/unit' \
+    --repro-cmd 'pytest -q tests/test_issue_4711.py' \
+    --timeout 300 --jobs 4 -o verdicts.jsonl
+agentless-mcp vote --verdicts verdicts.jsonl
+```
+
+**The candidates directory.** One file per candidate; the filename stem is the
+candidate's id and the sorted order of the directory is first-appearance
+order, which is the vote's tiebreak between equally popular fixes. Each file
+is either raw SEARCH/REPLACE text or an `edits.json` document -- whatever
+`patch parse` emits. Name them so they sort the way you sampled them
+(`01-...`, `02-...`). Two files sharing a stem are refused.
+
+**The commands come from you, never from the repository.** There is no config
+file, no `Makefile` sniffing, no `package.json` scripts lookup, and no
+default. `--test-cmd` is required. Both commands are split into an argv and
+executed without a shell, so `&&`, `;` and `$(...)` are arguments rather than
+statements: wrap a multi-step command in a script and name the script.
+
+**Every candidate runs in its own throwaway worktree** at HEAD, so your
+checkout is never written to and no candidate can see what the previous one
+left behind. `--jobs N` runs N of them at once; the verdicts document is
+identical either way, because output order is sorted rather than
+completion-ordered.
+
+**`--timeout` is a hard bound and a hang is a FAILURE.** A command that
+outlives it has its whole process group killed (SIGTERM, then SIGKILL), and
+the verdict is `timeout` -- never a pass. Output capture keeps the last 100 KB
+per stream, because the summary is at the end.
+
+#### The two verdicts that invalidate everything else
+
+`validate` runs the baseline first, on unpatched HEAD, and two of its outcomes
+mean the rest of the report is not evidence. Both are printed loudly on
+stderr and carried in the run record.
+
+`UNVERIFIED` -- **the test command did not pass on unpatched HEAD.** The run
+short-circuits: every candidate is reported `not_evaluated` and the exit code
+is 1. A red baseline cannot tell a regression your patch caused from a failure
+that was already there, so no verdict computed against it would mean anything.
+Fix or narrow the test command (a subset that is green today is far more
+useful than a full suite that is not) and run it again.
+
+`does_not_reproduce` -- **the reproduction command PASSED on unpatched HEAD.**
+It therefore does not reproduce the bug, its results say nothing about any
+candidate, and the reproduction rung is removed from the vote ladder. The
+candidates still run against the regression suite.
+
+#### Writing a reproduction test: the revert framing
+
+A reproduction test earns its place by *failing before the fix and passing
+after*. The way to check that you have one is the revert test: **a fix is
+pinned when reverting it makes the test fail again.** If the test still passes
+with the fix reverted, it is testing something else, and `validate` will tell
+you so with `does_not_reproduce` rather than quietly handing every candidate a
+free pass.
+
+Write it against the behaviour in the issue, not against the implementation
+you are about to change -- a test written against your fix passes for your
+fix and for nothing else, which is the failure mode the reproduction rung
+exists to catch.
+
+#### `verdicts.jsonl`
+
+JSON Lines: one `run` record, then one `candidate` record each, in
+first-appearance order.
+
+```
+{"record": "run", "receipt": {...}, "test_cmd": "...", "repro_cmd": "...",
+ "baseline": "ok", "repro_verdict": "reproduces", "repro_valid": true, ...}
+{"record": "candidate", "id": "01-plus", "index": 0,
+ "apply": {"status": "ok", "reasons": []}, "regression": "passed",
+ "reproduction": "passed", "equivalence_key": "8f3a...", "duration": 2.41}
+```
+
+`apply.status` is `ok` or `failed`; a failed apply carries one reason per
+block (`not_found`, `ambiguous`, and so on) and no test is run for it.
+`regression` and `reproduction` are `passed` / `failed` / `timeout` / `error`
+/ `not_evaluated`. Output tails ride along under `tails` only when a run did
+not pass.
+
+`validate` exits `0` when at least one candidate applied and passed the
+regression suite, `1` when nothing did (including every UNVERIFIED run), and
+`2` on a usage or security refusal.
+
+#### `vote` -- the ladder and the clusters
+
+`vote` narrows the candidates to the strongest **non-empty** evidence tier and
+ranks what is left:
+
+| Tier | Meaning |
+|---|---|
+| `regression+reproduction` | fixed the bug and broke nothing (only when the reproduction test is valid) |
+| `regression` | broke nothing; nothing fixed the bug |
+| `applied` | applied cleanly; nothing passed the regression suite |
+
+The tier that answered is printed. Falling through to `applied` is not a
+ranked list of fixes -- it is the report telling you that none of your
+candidates worked.
+
+Survivors are then clustered by AST-equivalence key, so two spellings of the
+same change count as two votes for one fix rather than one vote each.
+Clusters rank by size, ties broken by first appearance, and each cluster names
+a representative (its earliest member) you can hand to `patch apply`.
+Candidates that did not apply, or that applied and changed nothing, are listed
+under `excluded before the ladder` with the reason.
+
 ### `warmup` -- install-time, CLI only
 
 ```

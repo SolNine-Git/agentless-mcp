@@ -23,6 +23,7 @@ from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo
 from agentless_mcp.util import fslimits
@@ -78,6 +79,7 @@ def services(extractor, counter):
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         patches=PatchService(extractor),
+        validates=ValidateService(PatchService(extractor)),
         counter=counter,
         extractor=extractor,
     )

@@ -18,6 +18,7 @@ from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 
 SOURCE = '''\
@@ -60,6 +61,7 @@ def services(extractor, counter):
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         patches=PatchService(extractor),
+        validates=ValidateService(PatchService(extractor)),
         counter=counter,
         extractor=extractor,
     )
@@ -353,3 +355,215 @@ class TestPatchSubprocess:
             "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)
         )
         assert result.returncode == 2
+
+
+# The phase-3 candidate set, three spellings of two distinct fixes plus one
+# that breaks the suite. `01` and `02` are the same change written twice.
+VALIDATE_CANDIDATES = {
+    "01-plus.txt": (
+        "### app.py\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n"
+    ),
+    "02-plus-commented.txt": (
+        "### app.py\n<<<<<<< SEARCH\n    return a - b\n"
+        "=======\n    return a  +  b  # restore the sign\n>>>>>>> REPLACE\n"
+    ),
+    "03-swapped.txt": (
+        "### app.py\n<<<<<<< SEARCH\n    return a - b\n=======\n    return b + a\n>>>>>>> REPLACE\n"
+    ),
+    "04-times.txt": (
+        "### app.py\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a * b\n>>>>>>> REPLACE\n"
+    ),
+}
+
+
+class TestValidateAndVoteSubprocess:
+    """validate -> vote over Bash, on a repository with a seeded sign bug.
+
+    End to end through the console script because the contract an agent uses
+    is a process contract: the verdicts document on stdout or at ``-o``, the
+    receipt and every loud warning on stderr, and an exit code that says
+    whether anything actually passed.
+    """
+
+    def run_cli(self, *arguments):
+        return subprocess.run(
+            [sys.executable, "-m", "agentless_mcp", *arguments],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+
+    def validate(self, repo, candidates, output, python_cmd, *extra):
+        return self.run_cli(
+            "validate",
+            "--candidates",
+            str(candidates),
+            "--repo",
+            str(repo),
+            "--test-cmd",
+            python_cmd("check_regression.py"),
+            "-o",
+            str(output),
+            *extra,
+        )
+
+    def test_validate_then_vote_ranks_the_equivalent_pair_first(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        repo = seeded_bug_repo()
+        verdicts = tmp_path / "verdicts.jsonl"
+
+        validated = self.validate(
+            repo,
+            candidates_dir(VALIDATE_CANDIDATES),
+            verdicts,
+            python_cmd,
+            "--repro-cmd",
+            python_cmd("check_repro.py"),
+        )
+        assert validated.returncode == 0, validated.stderr
+        assert "# agentless-mcp receipt" in validated.stderr
+
+        header = json.loads(verdicts.read_text(encoding="utf-8").splitlines()[0])
+        assert header["repro_valid"] is True
+
+        voted = self.run_cli("vote", "--verdicts", str(verdicts))
+        assert voted.returncode == 0, voted.stderr
+        assert "regression+reproduction" in voted.stdout
+        assert "rank 1  2 candidates" in voted.stdout
+        assert "members: 01-plus, 02-plus-commented" in voted.stdout
+        assert "rank 2  1 candidate" in voted.stdout
+        assert "04-times" not in voted.stdout
+
+    def test_vote_json_carries_the_same_ranking(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        verdicts = tmp_path / "verdicts.jsonl"
+        self.validate(seeded_bug_repo(), candidates_dir(VALIDATE_CANDIDATES), verdicts, python_cmd)
+
+        voted = self.run_cli("vote", "--verdicts", str(verdicts), "--json")
+        document = json.loads(voted.stdout)
+
+        assert document["tier"] == "regression"
+        assert document["winner"] == "01-plus"
+        assert document["clusters"][0]["members"] == ["01-plus", "02-plus-commented"]
+
+    def test_a_red_baseline_exits_one_and_says_unverified(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        repo = seeded_bug_repo(overrides={"check_regression.py": "raise SystemExit(1)\n"})
+        verdicts = tmp_path / "verdicts.jsonl"
+
+        result = self.validate(repo, candidates_dir(VALIDATE_CANDIDATES), verdicts, python_cmd)
+
+        assert result.returncode == EXIT_DOMAIN
+        assert "UNVERIFIED" in result.stderr
+        assert all(
+            json.loads(line)["regression"] == "not_evaluated"
+            for line in verdicts.read_text(encoding="utf-8").splitlines()[1:]
+        )
+
+    def test_a_repro_that_does_not_reproduce_is_reported_loudly(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        result = self.validate(
+            seeded_bug_repo(),
+            candidates_dir(VALIDATE_CANDIDATES),
+            tmp_path / "verdicts.jsonl",
+            python_cmd,
+            "--repro-cmd",
+            python_cmd("check_regression.py"),
+        )
+
+        assert result.returncode == EXIT_OK
+        assert "does_not_reproduce" in result.stderr
+
+    def test_nothing_that_passes_exits_one(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        result = self.validate(
+            seeded_bug_repo(),
+            candidates_dir({"04-times.txt": VALIDATE_CANDIDATES["04-times.txt"]}),
+            tmp_path / "verdicts.jsonl",
+            python_cmd,
+        )
+
+        assert result.returncode == EXIT_DOMAIN
+
+    def test_the_verdicts_go_to_stdout_without_an_output_flag(
+        self, seeded_bug_repo, candidates_dir, python_cmd
+    ):
+        result = self.run_cli(
+            "validate",
+            "--candidates",
+            str(candidates_dir({"01-plus.txt": VALIDATE_CANDIDATES["01-plus.txt"]})),
+            "--repo",
+            str(seeded_bug_repo()),
+            "--test-cmd",
+            python_cmd("check_regression.py"),
+        )
+
+        assert result.returncode == EXIT_OK
+        assert json.loads(result.stdout.splitlines()[0])["record"] == "run"
+
+    def test_a_non_positive_timeout_is_a_usage_error(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        result = self.validate(
+            seeded_bug_repo(),
+            candidates_dir(VALIDATE_CANDIDATES),
+            tmp_path / "verdicts.jsonl",
+            python_cmd,
+            "--timeout",
+            "0",
+        )
+
+        assert result.returncode == EXIT_USAGE
+        assert "--timeout" in result.stderr
+
+    def test_an_empty_verdicts_file_is_a_clear_error(self, tmp_path):
+        empty = tmp_path / "empty.jsonl"
+        empty.write_text("", encoding="utf-8")
+
+        result = self.run_cli("vote", "--verdicts", str(empty))
+
+        assert result.returncode == EXIT_DOMAIN
+        assert "empty" in result.stderr
+
+    def test_a_malformed_verdicts_file_is_a_clear_error(self, tmp_path):
+        broken = tmp_path / "broken.jsonl"
+        broken.write_text("{not json}\n", encoding="utf-8")
+
+        result = self.run_cli("vote", "--verdicts", str(broken))
+
+        assert result.returncode == EXIT_DOMAIN
+        assert "not valid JSON" in result.stderr
+
+    def test_a_missing_verdicts_file_is_a_usage_error(self, tmp_path):
+        result = self.run_cli("vote", "--verdicts", str(tmp_path / "gone.jsonl"))
+
+        assert result.returncode == EXIT_USAGE
+
+    def test_two_jobs_produce_the_same_document_as_one(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        repo = seeded_bug_repo()
+        candidates = candidates_dir(VALIDATE_CANDIDATES)
+
+        serial = tmp_path / "serial.jsonl"
+        parallel = tmp_path / "parallel.jsonl"
+        self.validate(repo, candidates, serial, python_cmd, "--jobs", "1")
+        self.validate(repo, candidates, parallel, python_cmd, "--jobs", "2")
+
+        assert _ids(serial) == _ids(parallel)
+        assert _regressions(serial) == _regressions(parallel)
+
+
+def _ids(path):
+    return [json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines()[1:]]
+
+
+def _regressions(path):
+    lines = path.read_text(encoding="utf-8").splitlines()[1:]
+    return [json.loads(line)["regression"] for line in lines]

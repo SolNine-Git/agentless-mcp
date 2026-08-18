@@ -25,6 +25,7 @@ from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
@@ -36,11 +37,13 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the ``agentless-mcp`` console script."""
     extractor = TreeSitterExtractor()
     counter = Chars4Counter()
+    patches = PatchService(extractor)
     services = CliServices(
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
-        patches=PatchService(extractor),
+        patches=patches,
+        validates=ValidateService(patches),
         counter=counter,
         extractor=extractor,
     )
