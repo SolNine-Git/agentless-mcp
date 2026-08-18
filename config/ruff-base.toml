@@ -1,0 +1,68 @@
+# Machine-wide ruff enforcement baseline. Referenced from each repo via:
+#
+#   [tool.ruff]
+#   extend = "/home/dallasmarlow/Documents/Obsidian/Personal/claude-backup/repo-setup/configs/ruff-base.toml"
+#
+# Contract: repos must NOT define lint.select or lint.ignore (both would
+# clobber this policy wholesale — ruff child settings replace, not merge).
+# Repos add style families with extend-select and local exceptions with
+# extend-ignore / per-file-ignores, each exception carrying a dated note.
+# setup-quality-gates.sh --check verifies this contract.
+#
+# Every rule family here maps to a named CLAUDE.md invariant; the full
+# rationale and the measured evidence behind each choice live in
+# ../WHY.md. Change policy here, never in a repo.
+
+[lint]
+select = [
+    # Correctness floor (undefined names, unused imports, syntax errors).
+    "E4", "E7", "E9",
+    "F",
+
+    # "Errors surface" invariant: never swallow, never discard context.
+    "BLE",    # blind `except Exception` hides the failure class
+    "TRY",    # TRY400 logger.error-in-except discards the traceback
+    "G",      # G201 exc_info=True -> logger.exception; G004 see ignore
+    "LOG",    # logging API misuse
+    "S110",   # try/except/pass is a swallowed error with extra steps
+    "S112",   # try/except/continue, same defect in a loop
+
+    # "External calls fail, hang, or duplicate" invariant.
+    "S113",   # HTTP request without timeout
+
+    # Security-relevant bandit rules that stay high-signal on this stack.
+    "S102", "S104", "S105", "S106", "S107",   # exec, bind-all, hardcoded secrets
+    "S301", "S302", "S306", "S307", "S308",   # pickle/eval/mktemp class
+    "S310", "S314", "S324", "S506", "S602",   # urlopen, xml, weak hash, yaml.load, shell=True
+    "S608",                                    # SQL built by string interpolation
+
+    # "Never silence a linter" critical constraint.
+    "RUF100", # unused noqa comments
+    "PGH003", # blanket `# type: ignore` (must name the error code)
+    "PGH004", # blanket `# noqa` (must name the rule)
+
+    # "Never break a cycle with an inline import" critical constraint.
+    "PLC0415",
+]
+
+ignore = [
+    # G004 (f-string in log call): 362 sites in mcp-local alone and fixing
+    # it properly is a structured-logging design decision, not a lint chore.
+    # Deferred 2026-08-09; revisit when a repo adopts structured logging.
+    "G004",
+    # TRY003 (long message outside exception class) fights the EM pattern
+    # of assigning messages to a variable first; EM already owns that style.
+    "TRY003",
+    # S101: assert is used deliberately (tests, invariant checks). pytest
+    # repos would drown in it; the "config fails at startup" rule is about
+    # runtime validation, which asserts in src are part of.
+    "S101",
+    # S311: non-cryptographic random is legitimate (jitter, sampling).
+    # Crypto contexts are covered by review, not this blunt rule.
+    "S311",
+    # S603/S606/S607: bandit flags every subprocess call even in the safe
+    # argv-list-no-shell form, and S607 fires on portable PATH lookups
+    # ("uv", "systemctl"). The dangerous variant (shell=True) is kept via
+    # S602. Measured 2026-08-09: 19 hits in mcp-local, all the safe form.
+    "S603", "S606", "S607",
+]

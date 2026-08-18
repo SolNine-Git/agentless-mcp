@@ -1,0 +1,113 @@
+# Pre-commit hooks configuration
+# The real gate is `uv run pre-commit run --all-files`.
+# See https://pre-commit.com for more information
+
+repos:
+  # Standard pre-commit hooks for general best practices
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Trim trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      # Ensure files end with a single newline
+      - id: end-of-file-fixer
+      # Check YAML files for parseable syntax
+      - id: check-yaml
+      # Check TOML files for parseable syntax
+      - id: check-toml
+      # Check JSON files for parseable syntax
+      - id: check-json
+      # Check for merge conflict strings
+      - id: check-merge-conflict
+      # Check for files that would conflict on case-insensitive filesystems
+      - id: check-case-conflict
+      # Check for debugger imports and py37+ breakpoint() calls
+      - id: debug-statements
+      # Detect accidentally committed private keys
+      - id: detect-private-key
+      # Check that Python files have valid syntax
+      - id: check-ast
+      # Prevent accidental commits of large files
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      # Check for symlinks that don't point to anything
+      - id: check-symlinks
+
+  # Ruff - linter and formatter (replaces flake8, isort, black)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.3
+    hooks:
+      - id: ruff
+        name: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # Mypy - static type checker, strict mode
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.1
+    hooks:
+      - id: mypy
+        # The hook builds its own isolated env, so the runtime dependencies
+        # whose stubs mypy needs are declared here as well as in pyproject.
+        additional_dependencies:
+          - tree-sitter>=0.25,<0.27
+          - tree-sitter-language-pack==1.14.3
+        args: [--config-file=pyproject.toml]
+        files: ^src/
+
+  # Codespell - common misspellings in text files
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args:
+          - --skip=*.pyc,.git,.mypy_cache,.ruff_cache,.pytest_cache,__pycache__,uv.lock
+          - --ignore-words-list=mcp,readonly,crate
+          - --check-filenames
+          - --check-hidden
+
+  - repo: local
+    hooks:
+      - id: lint-imports
+        name: import-linter (dependency contract)
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        files: \.py$
+      - id: deptry
+        name: deptry (dependency hygiene)
+        entry: uv run deptry .
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|.*\.py)$
+
+  - repo: local
+    hooks:
+      - id: ruff-repo-wide
+        name: ruff (repo-wide sweep, pre-push)
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: pytest-unit
+        name: pytest (unit suite, pre-push)
+        entry: bash -c 'uv run pytest tests/unit -q 2>/dev/null || uv run pytest tests -q'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+# Files to exclude from all hooks
+exclude: |
+  (?x)^(
+      \.git/|
+      \.mypy_cache/|
+      \.ruff_cache/|
+      \.pytest_cache/|
+      __pycache__/|
+      .*\.egg-info/|
+      build/|
+      dist/
+  )$
+
+default_install_hook_types: [pre-commit, pre-push]

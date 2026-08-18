@@ -1,0 +1,257 @@
+[project]
+name = "agentless-mcp"
+version = "0.1.0"
+description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
+readme = "README.md"
+authors = [
+    { name = "Dallas", email = "dmarlow@tuta.io" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    # Unit pin: the language pack ships prebuilt grammars compiled against a
+    # specific tree-sitter ABI, so the core and the pack are ONE dependency
+    # with two names. 16 grammars (cpp/csharp among them) are ABI 15 and fail
+    # silently below tree-sitter 0.25. Bump both together, never one alone.
+    # The pack is pinned exactly (==) because its version selects the release
+    # whose parsers.json manifest and platform bundle we fetch and trust; see
+    # docs/supply-chain-audit.md (2026-08-18).
+    "tree-sitter>=0.25,<0.27",
+    "tree-sitter-language-pack==1.14.3",
+]
+
+[project.scripts]
+agentless-mcp = "agentless_mcp.bootstrap:cli_main"
+agentless-mcp-server = "agentless_mcp.bootstrap:mcp_main"
+
+[project.optional-dependencies]
+# FastMCP sits behind an extra so CLI-only users do not pay for the server
+# stack. Install with: uv sync --extra mcp
+mcp = [
+    "fastmcp>=2.14",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "codespell>=2.4.3",
+    "deptry>=0.25.1",
+    "import-linter>=2.13",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.16.3",
+]
+
+# =============================================================================
+# Lint
+# =============================================================================
+
+[tool.ruff]
+# Repo-relative on purpose: ruff aborts the whole run (exit 2) when an
+# extended file is missing, so pointing at the vault copy would break
+# `ruff check` on every checkout but this machine. The shared policy is
+# VENDORED into config/ruff-base.toml; refresh it from
+# ~/Documents/Obsidian/Personal/claude-backup/repo-setup/configs/ruff-base.toml
+# rather than editing it here.
+extend = "config/ruff-base.toml"
+target-version = "py310"
+line-length = 100
+
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+[tool.ruff.lint]
+# extend-select only: `select` would replace the shared policy in
+# config/ruff-base.toml wholesale rather than union with it.
+extend-select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade (modern Python syntax)
+    "ANN",    # flake8-annotations (type hints)
+    "B",      # flake8-bugbear (bug detection)
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez (timezone awareness)
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg (error message formatting)
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "PIE",    # flake8-pie (misc lints)
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise (exception handling)
+    "RET",    # flake8-return (return statement)
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib (prefer pathlib over os.path)
+    "PL",     # pylint rules
+    "RUF",    # Ruff-specific rules
+]
+
+extend-ignore = [
+    # 2026-08-18, scaffold: Any is used deliberately at the MCP/CLI argument
+    # boundary where the parse step is what produces typed values.
+    "ANN401",
+    # 2026-08-18, scaffold: ISC001 conflicts with ruff-format.
+    "ISC001",
+]
+
+fixable = ["ALL"]
+unfixable = []
+
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+# 2026-08-18, scaffold: tests assert on literals and take fixtures they do
+# not name; annotating pytest test functions buys nothing a fixture type
+# does not already give.
+"tests/**/*.py" = [
+    "ANN",     # annotations not required in tests
+    "ARG",     # unused fixture arguments are the pytest calling convention
+    "PLR2004", # magic values are the point of an assertion
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+# =============================================================================
+# Types
+# =============================================================================
+
+[tool.mypy]
+# The floor from requires-python, not the interpreter this repo develops on:
+# the package must type-check for every version it claims to support.
+python_version = "3.10"
+
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+
+strict = true
+strict_optional = true
+strict_equality = true
+
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unused_configs = true
+warn_return_any = true
+warn_unreachable = true
+
+show_error_codes = true
+show_error_context = true
+show_column_numbers = true
+pretty = true
+
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+no_implicit_reexport = true
+
+# No ignore_missing_imports overrides. Verified 2026-08-18 by type-checking a
+# probe module that imports and calls both runtime dependencies under
+# --strict: tree_sitter and tree_sitter_language_pack each ship py.typed and
+# resolve completely (mypy flagged a genuine attribute error in the probe, so
+# the stubs are load-bearing, not empty). Add an override here only after the
+# same probe shows a module genuinely has no stubs, and date the entry.
+
+# =============================================================================
+# Dependency contract
+# =============================================================================
+
+[tool.importlinter]
+root_packages = ["agentless_mcp"]
+# TYPE_CHECKING-only imports carry no runtime coupling: typing an application
+# signature against a core value object is fine, constructing one is not.
+exclude_type_checking_imports = true
+
+# agentless_mcp.bootstrap and agentless_mcp.__main__ are deliberately outside
+# the layer list. They are the composition root: they wire concrete
+# implementations into the adapters layer, so by construction they sit above
+# every layer and cannot be a member of one. Anything else that lands outside
+# a layer is a gap, not a decision.
+
+[[tool.importlinter.contracts]]
+name = "Layers: adapters -> application -> core -> util"
+type = "layers"
+layers = ["adapters", "application", "core", "util"]
+containers = ["agentless_mcp"]
+
+# The two adapters are alternative front doors onto the same application
+# services. Either importing the other would make the CLI drag in fastmcp
+# (an optional extra) or the server inherit argparse exit-code semantics.
+[[tool.importlinter.contracts]]
+name = "CLI and MCP adapters are independent"
+type = "independence"
+modules = ["agentless_mcp.adapters.cli", "agentless_mcp.adapters.mcp"]
+
+[tool.deptry]
+extend_exclude = ["docs"]
+# src-layout: deptry sees the package installed in .venv and would otherwise
+# report agentless_mcp.__main__'s own `from agentless_mcp.bootstrap import ...`
+# as DEP003 (transitive third-party dependency). Naming it first-party is what
+# lets the gate run over the whole tree (tests included) instead of src only.
+known_first_party = ["agentless_mcp"]
+
+[tool.deptry.per_rule_ignores]
+# DEP002 (declared but not imported). 2026-08-18, Phase 0 scaffold: every
+# module under src/ is a docstring-only placeholder, so nothing is imported
+# yet. tree-sitter/tree-sitter-language-pack land in core.grammars and
+# fastmcp in adapters.mcp.server during Phase 1 -- REMOVE those three
+# entries then, so a genuinely unused runtime dependency is still caught.
+# The lint/type/test tooling is invoked by name (pre-commit, hooks, CI) and
+# never imported, so it stays listed permanently.
+DEP002 = [
+    "tree-sitter",
+    "tree-sitter-language-pack",
+    "fastmcp",
+    "codespell",
+    "deptry",
+    "import-linter",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-timeout",
+    "ruff",
+]
+
+# =============================================================================
+# Tests
+# =============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    # A hung test must FAIL, not park: without a ceiling a deadlock or a
+    # frozen event-loop sleep is indistinguishable from a pass.
+    "--timeout=60",
+]
+
+[tool.codespell]
+skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock"
+ignore-words-list = "mcp,readonly,crate"
