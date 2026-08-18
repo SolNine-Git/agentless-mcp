@@ -16,6 +16,7 @@ import pytest
 from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK, EXIT_USAGE
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.map_service import MapService
+from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 
@@ -58,6 +59,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        patches=PatchService(extractor),
         counter=counter,
         extractor=extractor,
     )
@@ -185,3 +187,169 @@ class TestSubprocess:
 
     def test_an_unknown_subcommand_exits_two(self, repo_path):
         assert self.run_cli("teleport", "--repo", str(repo_path)).returncode == 2
+
+
+PATCH = """\
+```python
+### core.py
+<<<<<<< SEARCH
+    return RATE
+=======
+    return RATE * 2
+>>>>>>> REPLACE
+```
+"""
+
+BAD_PATCH = """\
+### core.py
+<<<<<<< SEARCH
+    return NOTHING_LIKE_THIS
+=======
+    return RATE * 2
+>>>>>>> REPLACE
+"""
+
+BREAKING_PATCH = """\
+### core.py
+<<<<<<< SEARCH
+    return RATE
+=======
+    return RATE * (
+>>>>>>> REPLACE
+"""
+
+
+class TestPatchSubprocess:
+    """The write side over Bash: parse -> check -> apply, exit codes asserted.
+
+    Run through the console script rather than in process because the split
+    that matters here -- diff on stdout, receipt on stderr -- only exists at
+    the process boundary an agent actually pipes.
+    """
+
+    def run_cli(self, *arguments, cwd=None, stdin=None):
+        return subprocess.run(
+            [sys.executable, "-m", "agentless_mcp", *arguments],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=cwd,
+            input=stdin,
+            check=False,
+        )
+
+    @pytest.fixture
+    def git_repo(self, make_git_repo):
+        return make_git_repo({"core.py": SOURCE, "caller.py": CALLER})
+
+    def write_patch(self, tmp_path, text=PATCH):
+        target = tmp_path / "patch.txt"
+        target.write_text(text, encoding="utf-8")
+        return target
+
+    def test_parse_emits_edits_json_on_stdout(self, tmp_path):
+        result = self.run_cli("patch", "parse", "-f", str(self.write_patch(tmp_path)))
+        assert result.returncode == 0
+        document = json.loads(result.stdout)
+        assert document["edits"] == [
+            {
+                "index": 0,
+                "path": "core.py",
+                "search": "    return RATE",
+                "replace": "    return RATE * 2",
+            }
+        ]
+        assert document["errors"] == []
+
+    def test_parse_reads_stdin_when_no_file_is_given(self):
+        result = self.run_cli("patch", "parse", stdin=PATCH)
+        assert result.returncode == 0
+        assert json.loads(result.stdout)["edits"][0]["path"] == "core.py"
+
+    def test_parse_reports_a_malformed_block_and_exits_one(self):
+        malformed = "### a.py\n<<<<<<< SEARCH\nx\n>>>>>>> REPLACE\n"
+        result = self.run_cli("patch", "parse", stdin=malformed)
+        assert result.returncode == 1
+        assert json.loads(result.stdout)["edits"] == []
+        assert "======= divider" in result.stderr
+
+    def test_the_three_commands_pipe_into_each_other(self, git_repo, tmp_path):
+        parsed = self.run_cli("patch", "parse", "-f", str(self.write_patch(tmp_path)))
+        edits = tmp_path / "edits.json"
+        edits.write_text(parsed.stdout, encoding="utf-8")
+
+        checked = self.run_cli("patch", "check", "-f", str(edits), "--repo", str(git_repo))
+        assert checked.returncode == 0
+        assert "core.py: ok (python, errors 0 -> 0)" in checked.stdout
+
+        applied = self.run_cli("patch", "apply", "-f", str(edits), "--repo", str(git_repo))
+        assert applied.returncode == 0
+        assert applied.stdout.startswith("diff --git a/core.py b/core.py")
+        assert "+    return RATE * 2" in applied.stdout
+        assert "# agentless-mcp receipt" in applied.stderr
+
+    def test_apply_leaves_the_checkout_alone(self, git_repo, tmp_path):
+        before = (git_repo / "core.py").read_text(encoding="utf-8")
+        result = self.run_cli(
+            "patch", "apply", "-f", str(self.write_patch(tmp_path)), "--repo", str(git_repo)
+        )
+        assert result.returncode == 0
+        assert (git_repo / "core.py").read_text(encoding="utf-8") == before
+
+    def test_apply_in_place_writes_the_file(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--in-place",
+        )
+        assert result.returncode == 0
+        assert "RATE * 2" in (git_repo / "core.py").read_text(encoding="utf-8")
+
+    def test_apply_in_place_is_refused_on_a_dirty_tree(self, git_repo, tmp_path):
+        (git_repo / "scratch.txt").write_text("wip\n", encoding="utf-8")
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--in-place",
+        )
+        assert result.returncode == 1
+        assert "1 files are modified" in result.stderr
+
+    def test_an_edit_that_does_not_apply_exits_one_with_the_reason(self, git_repo, tmp_path):
+        patch = self.write_patch(tmp_path, BAD_PATCH)
+        result = self.run_cli("patch", "apply", "-f", str(patch), "--repo", str(git_repo))
+        assert result.returncode == 1
+        assert "not_found: core.py block 0: search text not found" in result.stderr
+
+    def test_a_syntax_breaking_patch_fails_the_check(self, git_repo, tmp_path):
+        patch = self.write_patch(tmp_path, BREAKING_PATCH)
+        result = self.run_cli("patch", "check", "-f", str(patch), "--repo", str(git_repo))
+        assert result.returncode == 1
+        assert "BROKEN" in result.stdout
+
+    def test_normalize_emits_a_bare_key_on_stdout(self, git_repo, tmp_path):
+        patch = self.write_patch(tmp_path)
+        result = self.run_cli("patch", "normalize", "-f", str(patch), "--repo", str(git_repo))
+        assert result.returncode == 0
+        assert len(result.stdout.strip()) == 64
+        assert "# agentless-mcp receipt" in result.stderr
+
+    def test_a_path_escape_exits_two(self, git_repo, tmp_path):
+        patch = self.write_patch(tmp_path, PATCH.replace("### core.py", "### ../escape.py"))
+        result = self.run_cli("patch", "check", "-f", str(patch), "--repo", str(git_repo))
+        assert result.returncode == 2
+        assert "outside the root" in result.stderr
+
+    def test_a_missing_patch_file_exits_two(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)
+        )
+        assert result.returncode == 2

@@ -37,6 +37,17 @@ def emit(text: str) -> None:
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
 
 
+def note(text: str) -> None:
+    """Write a receipt or a summary to stderr, leaving stdout to the answer.
+
+    The write subcommands emit a unified diff or an equivalence key on stdout,
+    which a caller pipes straight into ``git apply`` or a comparison. Anything
+    describing the run -- which repository, which HEAD, how many edits landed
+    -- goes here, so that pipeline never has to be told to skip a header.
+    """
+    sys.stderr.write(text if text.endswith("\n") else text + "\n")
+
+
 def fail(message: str, code: int = EXIT_DOMAIN) -> int:
     """Report a failure on stderr and return the exit code to propagate."""
     sys.stderr.write(f"agentless-mcp: {message}\n")

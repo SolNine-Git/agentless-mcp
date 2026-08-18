@@ -15,17 +15,20 @@ a wrong-repository answer nobody asked for.
 
 import argparse
 import json
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from agentless_mcp.adapters.cli.formatting import (
+    EXIT_DOMAIN,
     EXIT_OK,
     EXIT_USAGE,
     emit,
     exit_code_for,
     fail,
+    note,
     warn_about,
 )
 from agentless_mcp.application import envelope, render
@@ -36,6 +39,7 @@ from agentless_mcp.application.map_service import (
     MapRequest,
     MapService,
 )
+from agentless_mcp.application.patch_service import CheckReport, PatchService, load_edits
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo
 from agentless_mcp.application.symbol_service import (
     DEFAULT_EXPAND_LIMIT,
@@ -49,6 +53,7 @@ from agentless_mcp.core import cache, grammars
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
+from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.util.errors import AtlasError
@@ -81,6 +86,7 @@ class CliServices:
     maps: MapService
     views: ViewService
     symbols: SymbolService
+    patches: PatchService
     counter: TokenCounter
     extractor: TreeSitterExtractor
 
@@ -113,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_find_symbol(subparsers)
     _add_refs(subparsers)
     _add_resolve_locs(subparsers)
+    _add_patch(subparsers)
     _add_warmup(subparsers)
     _add_index(subparsers)
     _add_capabilities(subparsers)
@@ -237,6 +244,53 @@ def _add_resolve_locs(subparsers: Any) -> None:
     parser.add_argument("--loc", action="append", default=[], metavar="LOC", required=True)
     parser.add_argument("--context", type=int, default=DEFAULT_CONTEXT_LINES)
     parser.set_defaults(handler=_cmd_resolve_locs)
+
+
+def _add_patch(subparsers: Any) -> None:
+    """Wire the write side: parse, check, apply and normalise SEARCH/REPLACE edits.
+
+    CLI only, by design. These four subcommands are the whole write surface of
+    the package and the MCP server does not expose any of them, so writing to
+    a repository always costs an explicit Bash invocation rather than a tool
+    call an analysed repository's own contents could provoke.
+    """
+    parser = subparsers.add_parser("patch", help="SEARCH/REPLACE patch machinery (write side)")
+    commands = parser.add_subparsers(dest="patch_command", required=True)
+
+    parse = commands.add_parser("parse", help="turn SEARCH/REPLACE text into edits.json")
+    _patch_input_flag(parse)
+    parse.set_defaults(handler=_cmd_patch_parse)
+
+    check = commands.add_parser("check", help="apply in memory and report syntax deltas")
+    _patch_input_flag(check)
+    _repo_flags(check, cache_flag=False)
+    check.set_defaults(handler=_cmd_patch_check)
+
+    apply_parser = commands.add_parser("apply", help="apply in a worktree and emit the diff")
+    _patch_input_flag(apply_parser)
+    _repo_flags(apply_parser, cache_flag=False)
+    apply_parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="write to the checkout instead of a scratch worktree; requires a clean tree",
+    )
+    apply_parser.set_defaults(handler=_cmd_patch_apply)
+
+    normalize = commands.add_parser("normalize", help="AST-equivalence key for the change")
+    _patch_input_flag(normalize)
+    _repo_flags(normalize, cache_flag=False)
+    normalize.set_defaults(handler=_cmd_patch_normalize)
+
+
+def _patch_input_flag(parser: argparse.ArgumentParser) -> None:
+    """Add the patch-input flag every write subcommand shares."""
+    parser.add_argument(
+        "-f",
+        "--file",
+        metavar="FILE",
+        default=None,
+        help="read the patch from FILE (SEARCH/REPLACE text or edits.json); default: stdin",
+    )
 
 
 def _add_warmup(subparsers: Any) -> None:
@@ -412,6 +466,76 @@ def _cmd_resolve_locs(args: argparse.Namespace, services: CliServices) -> int:
     return EXIT_OK
 
 
+def _cmd_patch_parse(args: argparse.Namespace, services: CliServices) -> int:
+    """Parse SEARCH/REPLACE text into the edits.json document on stdout."""
+    text = _patch_text(args)
+    if text is None:
+        return EXIT_USAGE
+
+    result = services.patches.parse(text)
+    emit(json.dumps(result.as_dict(), indent=2))
+    if result.errors:
+        note(f"agentless-mcp: {len(result.errors)} blocks did not parse")
+        for error in result.errors:
+            note(f"  block {error.index} ({error.path or 'no path'}): {error.reason}")
+        return EXIT_DOMAIN
+    return EXIT_OK
+
+
+def _cmd_patch_check(args: argparse.Namespace, services: CliServices) -> int:
+    """Apply edits in memory and report each edited file's syntax delta."""
+    prepared = _patch_call(args, services)
+    if prepared is None:
+        return EXIT_USAGE
+
+    ctx, edits = prepared
+    report = services.patches.check(edits, ctx)
+
+    if args.json:
+        emit(json.dumps(report.as_dict(), indent=2))
+    else:
+        emit("\n".join(_check_lines(report)))
+
+    _patch_receipt(ctx, report.summary_line(), report.result)
+    return EXIT_OK if report.ok else EXIT_DOMAIN
+
+
+def _cmd_patch_apply(args: argparse.Namespace, services: CliServices) -> int:
+    """Apply edits and emit the unified diff on stdout."""
+    prepared = _patch_call(args, services)
+    if prepared is None:
+        return EXIT_USAGE
+
+    ctx, edits = prepared
+    report = services.patches.apply(edits, ctx, in_place=args.in_place)
+
+    if args.json:
+        emit(json.dumps(report.as_dict(), indent=2))
+    elif report.diff:
+        emit(report.diff)
+
+    _patch_receipt(ctx, report.summary_line(), report.result)
+    return EXIT_OK if report.ok else EXIT_DOMAIN
+
+
+def _cmd_patch_normalize(args: argparse.Namespace, services: CliServices) -> int:
+    """Emit the AST-equivalence key of the change the edits describe."""
+    prepared = _patch_call(args, services)
+    if prepared is None:
+        return EXIT_USAGE
+
+    ctx, edits = prepared
+    report = services.patches.normalize(edits, ctx)
+
+    if args.json:
+        emit(json.dumps(report.as_dict(), indent=2))
+    else:
+        emit(report.key)
+
+    _patch_receipt(ctx, report.summary_line(), report.result)
+    return EXIT_OK if report.ok else EXIT_DOMAIN
+
+
 def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:
     _ = services
     report = grammars.warmup(args.languages or None, no_download=args.no_download)
@@ -498,6 +622,68 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _patch_text(args: argparse.Namespace) -> str | None:
+    """Read the patch text from ``--file`` or stdin, or report why not.
+
+    The patch is the caller's own input rather than repository content, so it
+    is read as given: containment applies to the paths *inside* it, which the
+    service checks against the repository root before anything is opened.
+    """
+    if args.file is None or args.file == "-":
+        return sys.stdin.read()
+
+    source = Path(args.file)
+    try:
+        return source.read_text(encoding="utf-8")
+    except OSError as error:
+        fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
+        return None
+
+
+def _patch_call(
+    args: argparse.Namespace, services: CliServices
+) -> tuple[RepoContext, tuple[Edit, ...]] | None:
+    """Resolve the repository and load the edits one write subcommand acts on."""
+    _ = services
+    ctx = _resolve(args, require_git=False)
+    if ctx is None:
+        return None
+
+    text = _patch_text(args)
+    if text is None:
+        return None
+
+    parsed = load_edits(text)
+    for error in parsed.errors:
+        note(f"agentless-mcp: block {error.index} ({error.path or 'no path'}): {error.reason}")
+    return ctx, parsed.edits
+
+
+def _check_lines(report: CheckReport) -> list[str]:
+    """Render a check report as one line per edited file."""
+    lines: list[str] = []
+    for check in report.files:
+        if check.verdict is None:
+            lines.append(f"{check.path}: {check.error}")
+            continue
+        verdict = check.verdict
+        status = "ok" if verdict.ok else "BROKEN"
+        detail = f" -- {verdict.detail}" if verdict.detail else ""
+        lines.append(
+            f"{check.path}: {status} ({verdict.language}, errors "
+            f"{verdict.old_errors} -> {verdict.new_errors}){detail}"
+        )
+    return lines or ["no files were edited"]
+
+
+def _patch_receipt(ctx: RepoContext, summary: str, result: ApplyResult) -> None:
+    """Put the receipt, the summary and every failed edit on stderr."""
+    note("\n".join([*envelope.receipt_lines(ctx), f"# {summary}"]))
+    for outcome in result.failures:
+        edit = outcome.edit
+        note(f"  {outcome.status.value}: {edit.path} block {edit.index}: {outcome.reason}")
 
 
 def _cache_status(ctx: RepoContext, services: CliServices) -> cache.CacheStatus:

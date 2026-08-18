@@ -63,6 +63,33 @@ _ECMASCRIPT_IDENTIFIERS: tuple[str, ...] = (
     "shorthand_property_identifier_pattern",
 )
 
+# Comment node types, for the passes that must ignore comments rather than
+# read them -- patch normalisation in `core.normalize` above all, where a
+# comment-only edit has to hash to the same key as no edit at all. One flat
+# set rather than a per-language column: verified 2026-08-18 by probe-parsing
+# every tier-1 grammar, python/go/c/cpp/lua/ruby/bash and the ECMAScript
+# family spell it `comment` while rust and java split it into `line_comment`
+# and `block_comment`, and no grammar in the table gives any of those three
+# names to something that is not a comment. Nested comment content (lua's
+# `comment_content`) needs no entry: consumers skip a comment's whole subtree.
+COMMENT_NODE_TYPES: frozenset[str] = frozenset({"comment", "line_comment", "block_comment"})
+
+# Block node types whose delimiters are INVISIBLE in a token stream. They live
+# beside the identifier and comment tables because they are the same kind of
+# fact -- what a node type means in one grammar -- and a language added to one
+# table needs considering for the others.
+#
+# `core.normalize` emits an explicit marker around each of these. Every other
+# tier-1 language closes a block with a token that is in the stream already:
+# `}` in the braced languages, `end` in ruby and lua, `fi`/`done` in bash.
+# Python closes one with a DEDENT that tree-sitter keeps hidden, so without a
+# marker a patch that dedents a statement out of an `if` produces a byte-
+# identical stream to one that does not. Measured 2026-08-18: identical keys
+# without the marker, distinct keys with it.
+INDENT_BLOCK_NODE_TYPES: dict[str, tuple[str, ...]] = {
+    "python": ("block",),
+}
+
 
 def _truncate(text: str, limit: int) -> str:
     """Return ``text`` capped at ``limit`` characters, ellipsis included."""
