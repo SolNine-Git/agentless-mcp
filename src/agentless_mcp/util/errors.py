@@ -32,3 +32,12 @@ class LanguageUnavailable(AtlasError):
 
 class RepoResolutionError(AtlasError):
     """A repository root could not be resolved or interrogated."""
+
+
+class CacheLocked(AtlasError):
+    """Another process holds the tag cache's write lock.
+
+    Raised rather than queued: an index run that waits silently behind another
+    one looks like a hang, and the caller can always run it again once the
+    holder finishes.
+    """

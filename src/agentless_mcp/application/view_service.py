@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES, LocResolution, LocTarget, resolve_locs
 from agentless_mcp.core.skeleton import skeletonize
@@ -156,7 +157,7 @@ class ViewService:
 
         total = len(text.split("\n"))
         widened = [(max(1, start - context), min(total, end + context)) for start, end in intervals]
-        symbols = self._symbols(text, language, resolved)
+        symbols = self._symbols(ctx, text, language, resolved)
         rendered = line_wrap_content(text, widened or None, symbols=symbols)
         return FileView(path=resolved, language=language, text=rendered + "\n")
 
@@ -174,7 +175,7 @@ class ViewService:
             raise RepoResolutionError(error)
 
         total = len(text.split("\n"))
-        symbols = self._symbols(text, language, resolved)
+        symbols = self._symbols(ctx, text, language, resolved)
         resolution = resolve_locs(
             list(locs),
             LocTarget(path=resolved, language=language, symbols=tuple(symbols), total_lines=total),
@@ -200,6 +201,7 @@ class ViewService:
             return relative, language, "", f"{relative}: {read.skipped}"
         return relative, language, read.text, ""
 
-    def _symbols(self, text: str, language: str, path: str) -> list[ASTSymbol]:
-        """Extract the symbols a slice uses for its sticky-scroll headers."""
-        return list(self._extractor.extract_from_source(text, language, path))
+    def _symbols(self, ctx: RepoContext, text: str, language: str, path: str) -> list[ASTSymbol]:
+        """Get the symbols a slice uses for its sticky-scroll headers."""
+        source = effective_source(ctx.symbols, self._extractor)
+        return list(source.symbols_for(text, language, path))

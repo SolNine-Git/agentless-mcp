@@ -11,12 +11,16 @@ as a thin stdio MCP server over the same core.
 
 ## Status
 
-Phase 1 read surface, index-free. The CLI and the stdio MCP server are both
-live over one set of application services: repository map, directory tree,
-skeleton, slice, symbol lookup, symbol expansion, fan-in and location
-resolution. Parsing happens on demand — the tag cache is Phase 1.5, and
-`agentless-mcp index` says so rather than pretending. The patch, validation and
-vote machinery (Phases 2 and 3) is not implemented.
+Phase 1 read surface plus the Phase 1.5 tag cache. The CLI and the stdio MCP
+server are both live over one set of application services: repository map,
+directory tree, skeleton, slice, symbol lookup, symbol expansion, fan-in and
+location resolution. Parsing still happens on demand by default;
+`agentless-mcp index` builds a per-repository SQLite tag cache under
+`$XDG_CACHE_HOME/agentless-mcp/` (never inside the analyzed repository) that
+removes the symbol parse for files whose sha256 has not moved. Every answer's
+receipt names the cache generation and whether it is still the repository's
+own, and `--no-cache` / `no_cache: true` forces on-demand parsing. The patch,
+validation and vote machinery (Phases 2 and 3) is not implemented.
 
 Start with [docs/agent-guide.md](docs/agent-guide.md): it is the usage guide
 written for the agent that will call this.

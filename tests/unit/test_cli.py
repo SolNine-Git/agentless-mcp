@@ -59,6 +59,7 @@ def services(extractor, counter):
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         counter=counter,
+        extractor=extractor,
     )
 
 
@@ -96,9 +97,10 @@ class TestInProcess:
         assert invoke(services, repo_path, "skeleton", "../outside.py") == EXIT_USAGE
         assert "outside the root" in capsys.readouterr().err
 
-    def test_index_reports_that_it_is_not_implemented_yet(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "index") == EXIT_USAGE
-        assert "Phase 1.5" in capsys.readouterr().err
+    def test_index_prints_a_summary_line(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "index") == EXIT_OK
+        summary = capsys.readouterr().out.splitlines()[0]
+        assert summary.startswith("indexed 2, reused 0, pruned 0, errors 0: 2 files,")
 
     def test_refs_names_the_calling_symbol(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "refs", "quote") == EXIT_OK

@@ -101,7 +101,7 @@ class MapService:
 
     def build(self, ctx: RepoContext, request: MapRequest) -> MapResult:
         """Rank, score, pack and return the map for one repository."""
-        scan = refs.scan_repo(ctx.root, self._extractor)
+        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         graph = build_graph(scan, index)
 

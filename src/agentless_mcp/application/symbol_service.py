@@ -24,6 +24,7 @@ from typing import Any
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import refs
+from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import (
     ASTSymbol,
@@ -112,7 +113,7 @@ class SymbolService:
         limit: int = DEFAULT_FIND_LIMIT,
     ) -> FindResult:
         """Match a substring or a qualified name across the repository."""
-        scan = refs.scan_repo(ctx.root, self._extractor)
+        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         needle = query.lower()
 
         matches = [
@@ -158,7 +159,7 @@ class SymbolService:
         shared_callers: bool = False,
     ) -> RefsResult:
         """Return the sites that reference ``target``, grouped by file."""
-        scan = refs.scan_repo(ctx.root, self._extractor)
+        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         by_path = scan.by_path()
 
@@ -199,7 +200,9 @@ class SymbolService:
         if language is None:
             return None, f"{parsed.path}: no grammar for this file type"
 
-        symbols = self._extractor.extract_from_source(read.text, language, parsed.path)
+        symbols = effective_source(ctx.symbols, self._extractor).symbols_for(
+            read.text, language, parsed.path
+        )
         match = next((symbol for symbol in symbols if qualname(symbol) == parsed.qualname), None)
         if match is None:
             return None, f"{parsed.path} no longer defines {parsed.qualname}"

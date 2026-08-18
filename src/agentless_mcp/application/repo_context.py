@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentless_mcp.core import gitinfo
+from agentless_mcp.core.cache import SymbolSource
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal
 
 
@@ -38,6 +39,13 @@ class RepoContext:
     the same HEAD and dirty count, so a receipt describes the state the answer
     was actually computed from rather than the state at the moment it was
     printed.
+
+    ``symbols`` is where this call's views get their symbols from -- the tag
+    cache when one is open, on-demand parsing otherwise. It rides on the
+    context rather than on each service because it is per-call repository
+    state exactly like ``head_sha``, and because a service that never learns
+    which of the two it is holding cannot answer differently depending on the
+    answer. ``None`` is the index-free default: no cache was opened at all.
     """
 
     root: Path
@@ -45,6 +53,7 @@ class RepoContext:
     tree_oid: str | None
     dirty_count: int | None
     note: str = ""
+    symbols: SymbolSource | None = None
 
 
 def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> RepoContext:

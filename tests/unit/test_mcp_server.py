@@ -22,6 +22,7 @@ from agentless_mcp.adapters.mcp.server import (
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.core import cache
 from agentless_mcp.util.errors import SecurityRefusal
 
 EXPECTED_TOOLS = {
@@ -54,6 +55,7 @@ def services(extractor, counter):
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         counter=counter,
+        extractor=extractor,
     )
 
 
@@ -181,6 +183,37 @@ class TestRoundTrip:
         server = build_server(ToolHandlers(two_repos, services))
         with pytest.raises(Exception, match="will not guess"):
             self.call(server, "repo_map", {})
+
+    def test_a_cached_repository_is_reported_in_the_receipt(self, services, one_repo, extractor):
+        report = cache.build_index(one_repo, extractor)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
+
+        assert f"cache: g:{report.generation} fresh" in text
+
+    def test_no_cache_bypasses_the_index_for_one_call(self, services, one_repo, extractor):
+        cache.build_index(one_repo, extractor)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = (
+            self.call(server, "repo_map", {"repo_root": str(one_repo), "no_cache": True})
+            .content[0]
+            .text
+        )
+
+        assert "cache: bypassed (--no-cache)" in text
+
+    def test_capabilities_reports_the_cache_path_and_row_counts(
+        self, services, one_repo, extractor
+    ):
+        report = cache.build_index(one_repo, extractor)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
+
+        assert str(report.database) in text
+        assert f"files {report.files}" in text
 
     def test_find_symbol_returns_incident_cards(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))

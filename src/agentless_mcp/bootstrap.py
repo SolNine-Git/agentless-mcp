@@ -40,6 +40,7 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         counter=counter,
+        extractor=extractor,
     )
     return run(argv, services)
 
@@ -63,6 +64,7 @@ def mcp_main(argv: Sequence[str] | None = None) -> int:
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
         counter=counter,
+        extractor=extractor,
     )
     serve = cast("Callable[[Sequence[str] | None, object], int]", module.serve)
     return serve(argv, services)

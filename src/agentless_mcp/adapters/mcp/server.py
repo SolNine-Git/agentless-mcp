@@ -26,7 +26,7 @@ happen in ``warmup``, never inside a tool call.
 import argparse
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -49,7 +49,8 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import grammars
+from agentless_mcp.core import cache, grammars
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.util.errors import SecurityRefusal
@@ -65,12 +66,19 @@ _RANGE_PAIR_LENGTH = 2
 
 @dataclass(frozen=True)
 class ServerServices:
-    """The application services one server process needs, wired by bootstrap."""
+    """The application services one server process needs, wired by bootstrap.
+
+    The extractor is here as well as inside the services because opening a
+    repository's tag cache is the adapter's job: the repository a call names
+    and its ``no_cache`` argument are facts this layer holds and the services
+    deliberately do not.
+    """
 
     maps: MapService
     views: ViewService
     symbols: SymbolService
     counter: TokenCounter
+    extractor: TreeSitterExtractor
 
 
 class ToolHandlers:
@@ -85,8 +93,14 @@ class ToolHandlers:
         """The roots this server was configured with."""
         return self._roots
 
-    def resolve(self, repo_root: str | None, client_roots: Sequence[Path] = ()) -> RepoContext:
-        """Authorise one call's repository against the effective allowlist."""
+    def resolve(
+        self,
+        repo_root: str | None,
+        client_roots: Sequence[Path] = (),
+        *,
+        no_cache: bool = False,
+    ) -> RepoContext:
+        """Authorise one call's repository and open the source it reads from."""
         allowed = list(dict.fromkeys([*self._roots, *client_roots]))
         if not allowed:
             message = (
@@ -97,7 +111,7 @@ class ToolHandlers:
 
         if repo_root is None or not repo_root.strip():
             if len(allowed) == 1:
-                return resolve_repo(allowed[0], allowed)
+                return self._with_source(resolve_repo(allowed[0], allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
             message = (
                 "repo_root is required: this server holds several repositories and will not "
@@ -105,7 +119,17 @@ class ToolHandlers:
             )
             raise SecurityRefusal(message)
 
-        return resolve_repo(repo_root, allowed)
+        return self._with_source(resolve_repo(repo_root, allowed), no_cache=no_cache)
+
+    def _with_source(self, ctx: RepoContext, *, no_cache: bool) -> RepoContext:
+        """Open this call's symbol source: the tag cache, or on-demand parsing."""
+        source = cache.open_source(
+            ctx.root,
+            self._services.extractor,
+            tree_oid=ctx.tree_oid,
+            no_cache=no_cache,
+        )
+        return replace(ctx, symbols=source)
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
         """Render a ranked, budgeted repository map."""
@@ -200,9 +224,15 @@ class ToolHandlers:
     def capabilities(self, ctx: RepoContext) -> str:
         """Report loaded grammars, their versions and the caps in force."""
         capabilities = grammars.loaded_capabilities()
+        status = (
+            ctx.symbols.status()
+            if ctx.symbols is not None
+            else cache.OnDemandSource(self._services.extractor).status()
+        )
         lines = [
             f"pack {grammars.pack_version()}  grammar cache {grammars.cache_dir()}",
-            f"tag cache: {envelope.CACHE_GENERATION} (index-free on-demand parsing)",
+            f"tag cache: {status.receipt}",
+            f"  path {status.path}  files {status.files}  tags {status.tags}",
             f"roots: {', '.join(str(path) for path in self._roots) or 'none configured'}",
             "languages:",
         ]
@@ -246,8 +276,14 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     """Register every read tool on a FastMCP server and return it."""
     mcp: FastMCP[None] = FastMCP(SERVER_NAME)
 
-    async def context_for(context: Context, repo_root: str | None) -> RepoContext:
-        return handlers.resolve(repo_root, await effective_client_roots(context))
+    async def context_for(
+        context: Context,
+        repo_root: str | None,
+        *,
+        no_cache: bool = False,
+    ) -> RepoContext:
+        roots = await effective_client_roots(context)
+        return handlers.resolve(repo_root, roots, no_cache=no_cache)
 
     @mcp.tool(annotations=read_only("Repository map"))
     async def repo_map(
@@ -257,9 +293,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         budget: int | None = None,
         max_files: int = DEFAULT_MAX_FILES,
         granularity: str = GRANULARITY_FUNCTION,
+        no_cache: bool = False,
     ) -> str:
         """Rank the repository's files and render the symbols that fit a budget."""
-        ctx = await context_for(context, repo_root)
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.repo_map(
             ctx,
             MapRequest(
@@ -286,9 +323,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         paths: list[str],
         repo_root: str | None = None,
         docstrings: bool = False,
+        no_cache: bool = False,
     ) -> str:
         """Render the named files as signatures with their bodies elided."""
-        ctx = await context_for(context, repo_root)
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
 
     @mcp.tool(annotations=read_only("Expand symbols"))
@@ -297,9 +335,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         stable_ids: list[str],
         repo_root: str | None = None,
         limit: int = DEFAULT_EXPAND_LIMIT,
+        no_cache: bool = False,
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
-        ctx = await context_for(context, repo_root)
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.expand_symbols(ctx, stable_ids, limit)
 
     @mcp.tool(annotations=read_only("Read slice"))
@@ -324,9 +363,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         repo_root: str | None = None,
         kind: str | None = None,
         limit: int = DEFAULT_FIND_LIMIT,
+        no_cache: bool = False,
     ) -> str:
         """Find symbols by substring or qualified name."""
-        ctx = await context_for(context, repo_root)
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.find_symbol(ctx, name, kind, limit)
 
     @mcp.tool(annotations=read_only("Find referencing symbols"))

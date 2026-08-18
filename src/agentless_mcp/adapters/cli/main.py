@@ -14,8 +14,9 @@ a wrong-repository answer nobody asked for.
 """
 
 import argparse
+import json
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,8 @@ from agentless_mcp.application.symbol_service import (
     kind_names,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import grammars
+from agentless_mcp.core import cache, grammars
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.symbols import parse_stable_id
@@ -61,15 +63,26 @@ from agentless_mcp.util.tokens import TokenCounter
 
 AUTO_BUDGET = "auto"
 
+# How many per-file index failures the summary prints before it stops listing
+# them. The count in the summary line is always complete.
+INDEX_FAILURE_LINES = 10
+
 
 @dataclass(frozen=True)
 class CliServices:
-    """The application services one CLI process needs, wired by bootstrap."""
+    """The application services one CLI process needs, wired by bootstrap.
+
+    The extractor is here as well as inside the services because opening a
+    repository's tag cache is the adapter's job: which repository a call is
+    about, and whether it passed ``--no-cache``, are both facts the adapter
+    already holds and the services deliberately do not.
+    """
 
     maps: MapService
     views: ViewService
     symbols: SymbolService
     counter: TokenCounter
+    extractor: TreeSitterExtractor
 
 
 def run(argv: Sequence[str] | None, services: CliServices) -> int:
@@ -111,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
-def _repo_flags(parser: argparse.ArgumentParser) -> None:
+def _repo_flags(parser: argparse.ArgumentParser, *, cache_flag: bool = True) -> None:
     """Add the flags every repository-scoped subcommand shares."""
     parser.add_argument(
         "--repo",
@@ -120,6 +133,12 @@ def _repo_flags(parser: argparse.ArgumentParser) -> None:
         help="repository root (default: the git root enclosing the current directory)",
     )
     parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    if cache_flag:
+        parser.add_argument(
+            "--no-cache",
+            action="store_true",
+            help="parse on demand and ignore the tag cache for this call",
+        )
 
 
 def _add_map(subparsers: Any) -> None:
@@ -232,8 +251,13 @@ def _add_warmup(subparsers: Any) -> None:
 
 
 def _add_index(subparsers: Any) -> None:
-    parser = subparsers.add_parser("index", help="build the tag cache (Phase 1.5)")
-    _repo_flags(parser)
+    parser = subparsers.add_parser("index", help="build or refresh the tag cache")
+    _repo_flags(parser, cache_flag=False)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-extract every file instead of reusing rows whose sha256 still matches",
+    )
     parser.set_defaults(handler=_cmd_index)
 
 
@@ -249,7 +273,7 @@ def _add_capabilities(subparsers: Any) -> None:
 
 
 def _cmd_map(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -283,7 +307,7 @@ def _cmd_map(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_tree(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -293,7 +317,7 @@ def _cmd_tree(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -306,7 +330,7 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -321,7 +345,7 @@ def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -348,7 +372,7 @@ def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_find_symbol(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -363,7 +387,7 @@ def _cmd_find_symbol(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -378,7 +402,7 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_resolve_locs(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args)
+    ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
 
@@ -404,24 +428,44 @@ def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
-    _ = args, services
-    return fail(
-        "index is not yet implemented: the tag cache lands in Phase 1.5. "
-        "Every read command works index-free today.",
-        EXIT_USAGE,
-    )
-
-
-def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
-    ctx = _context(args, require_git=False)
+    """Build or refresh the tag cache for one repository."""
+    ctx = _resolve(args, require_git=False)
     if ctx is None:
         return EXIT_USAGE
 
+    report = cache.build_index(
+        ctx.root,
+        services.extractor,
+        tree_oid=ctx.tree_oid,
+        head_sha=ctx.head_sha,
+        force=args.force,
+    )
+    if args.json:
+        emit(json.dumps(report.as_dict(), indent=2))
+        return EXIT_OK
+
+    lines = [report.summary_line()]
+    lines.extend(
+        f"  error: {failure.path}: {failure.reason}"
+        for failure in report.failures[:INDEX_FAILURE_LINES]
+    )
+    if report.errors > INDEX_FAILURE_LINES:
+        lines.append(f"  ... {report.errors - INDEX_FAILURE_LINES} more errors not listed")
+    emit("\n".join(lines))
+    return EXIT_OK
+
+
+def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
+    ctx = _context(args, services, require_git=False)
+    if ctx is None:
+        return EXIT_USAGE
+
+    status = _cache_status(ctx, services)
     capabilities = grammars.loaded_capabilities()
     payload: dict[str, Any] = {
         "pack_version": grammars.pack_version(),
         "grammar_cache": grammars.cache_dir(),
-        "cache": envelope.CACHE_GENERATION,
+        "cache": status.as_dict(),
         "languages": [
             {
                 "name": cap.name,
@@ -437,7 +481,8 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
 
     lines = [
         f"pack {payload['pack_version']}  grammar cache {payload['grammar_cache']}",
-        f"tag cache: {envelope.CACHE_GENERATION} (index-free on-demand parsing)",
+        f"tag cache: {status.receipt}",
+        f"  path {status.path}  files {status.files}  tags {status.tags}",
         "languages:",
     ]
     lines.extend(
@@ -455,6 +500,12 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _cache_status(ctx: RepoContext, services: CliServices) -> cache.CacheStatus:
+    """Describe the tag cache behind one call, counting its rows."""
+    source = ctx.symbols if ctx.symbols is not None else cache.OnDemandSource(services.extractor)
+    return source.status()
+
+
 def _caps() -> dict[str, int]:
     """Return the bounds in force, so a caller can see why a view stopped."""
     return {
@@ -467,7 +518,7 @@ def _caps() -> dict[str, int]:
     }
 
 
-def _context(args: argparse.Namespace, *, require_git: bool = True) -> RepoContext | None:
+def _resolve(args: argparse.Namespace, *, require_git: bool) -> RepoContext | None:
     """Resolve the repository this invocation is about, or report why not.
 
     ``allowlist=None`` throughout: in the CLI the root comes from the caller's
@@ -492,6 +543,33 @@ def _context(args: argparse.Namespace, *, require_git: bool = True) -> RepoConte
     ctx = resolve_repo(root, None)
     warn_about(ctx)
     return ctx
+
+
+def _context(
+    args: argparse.Namespace,
+    services: CliServices,
+    *,
+    require_git: bool = True,
+) -> RepoContext | None:
+    """Resolve the repository and open the symbol source this call reads from.
+
+    Opening the cache is an adapter decision, not a service one: it needs the
+    repository's realpath, the generation its git state was snapshotted at,
+    and the caller's ``--no-cache``. Every failure to open one degrades to
+    on-demand parsing with the reason in the receipt, so a read command never
+    fails because of a cache.
+    """
+    ctx = _resolve(args, require_git=require_git)
+    if ctx is None:
+        return None
+
+    source = cache.open_source(
+        ctx.root,
+        services.extractor,
+        tree_oid=ctx.tree_oid,
+        no_cache=args.no_cache,
+    )
+    return replace(ctx, symbols=source)
 
 
 @dataclass(frozen=True)

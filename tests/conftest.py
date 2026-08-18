@@ -9,13 +9,15 @@ If the machine's language-pack cache is cold, this fixture performs one real
 warmup (a single platform bundle download) and every later run is offline.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+import tree_sitter_language_pack as pack
 
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import grammars
+from agentless_mcp.core import cache, grammars
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
 
@@ -26,12 +28,35 @@ TEST_LANGUAGES = ("python", "javascript", "typescript", "go")
 
 @pytest.fixture(scope="session", autouse=True)
 def warm_grammars() -> grammars.WarmupReport:
-    """Warm the grammars the suite needs, once, before any test parses."""
+    """Warm the grammars the suite needs, once, before any test parses.
+
+    The language pack finds its grammars under ``XDG_CACHE_HOME`` and so does
+    the tag cache, and every test moves that variable to a throwaway directory
+    (see :func:`isolated_cache_home`). Pinning the pack to the real directory
+    here, before the first move, is what keeps the two isolations independent:
+    grammars stay where they were downloaded, tag caches never leave tmp.
+    """
+    os.environ.setdefault(grammars.ENV_CACHE_DIR, pack.cache_dir())
     report = grammars.warmup(TEST_LANGUAGES)
     if report.degraded:
         details = ", ".join(f"{cap.name}: {cap.detail}" for cap in report.degraded)
         pytest.fail(f"grammar warmup degraded: {details}")
     return report
+
+
+@pytest.fixture(autouse=True)
+def isolated_cache_home(tmp_path_factory, monkeypatch):
+    """Give every test its own XDG cache home.
+
+    Autouse and unconditional: a test that wrote a tag cache into the
+    developer's real ``~/.cache`` would leave residue that the next run reads
+    back as an index, which is the definition of a non-hermetic suite. Tests
+    that care about the location call ``cache.cache_path(root)``, which
+    resolves through this same variable.
+    """
+    home = tmp_path_factory.mktemp("xdg-cache")
+    monkeypatch.setenv(cache.ENV_CACHE_HOME, str(home))
+    return home
 
 
 @pytest.fixture

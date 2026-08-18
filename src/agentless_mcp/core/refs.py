@@ -28,6 +28,7 @@ from pathlib import Path
 from tree_sitter import Node
 
 from agentless_mcp.core import grammars
+from agentless_mcp.core.cache import SymbolSource, effective_source
 from agentless_mcp.core.extractor import LANGUAGE_CONFIGS, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol
@@ -147,8 +148,16 @@ def scan_repo(
     extractor: TreeSitterExtractor,
     *,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    source: SymbolSource | None = None,
 ) -> RepoScan:
-    """Walk ``root`` once and parse every supported file it holds."""
+    """Walk ``root`` once and parse every supported file it holds.
+
+    ``source`` is where the symbol half of each file comes from: a tag cache
+    when the call opened one, on-demand extraction otherwise. Imports and
+    references are always parsed here, so a cached scan saves one parse per
+    file rather than all three.
+    """
+    symbols = effective_source(source, extractor)
     files: list[FileFacts] = []
     skipped: list[SkippedFile] = []
 
@@ -162,7 +171,7 @@ def scan_repo(
             skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped or "unreadable"))
             continue
 
-        facts = _parse_one(read.text, language, repo_file.path, extractor)
+        facts = _parse_one(read.text, language, repo_file.path, extractor, symbols)
         if isinstance(facts, SkippedFile):
             skipped.append(facts)
         else:
@@ -242,10 +251,11 @@ def _parse_one(
     language: str,
     path: str,
     extractor: TreeSitterExtractor,
+    source: SymbolSource,
 ) -> FileFacts | SkippedFile:
     """Parse one file three ways, degrading that file alone when it cannot be."""
     try:
-        symbols = extractor.extract_from_source(text, language, path)
+        defined = source.symbols_for(text, language, path)
         imports = extractor.extract_imports_from_source(text, language, path)
         refs = collect_refs(text, language, path)
     except LanguageUnavailable as exc:
@@ -255,7 +265,7 @@ def _parse_one(
         path=path,
         language=language,
         line_count=len(text.split("\n")),
-        symbols=tuple(symbols),
+        symbols=tuple(defined),
         imports=tuple(imports),
         refs=tuple(refs),
     )
