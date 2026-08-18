@@ -1,0 +1,24 @@
+package warehouse
+
+import (
+	"fmt"
+	"strings"
+)
+
+const ReportWidth = 72
+
+var Separator = strings.Repeat("-", ReportWidth)
+
+type ReportError struct {
+	Missing []string
+}
+
+func (e *ReportError) Error() string { ... }
+
+func StockValue(inv *Inventory, prices *PriceBook, tier Tier) (float64, error) { ... }
+
+func ReorderReport(inv *Inventory, prices *PriceBook) (string, error) { ... }
+
+func formatRow(item Item, lineTotal float64) string { ... }
+
+func CheckReportInputs(inv *Inventory, prices *PriceBook) error { ... }

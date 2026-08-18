@@ -1,0 +1,41 @@
+package warehouse
+
+import (
+	"fmt"
+	"sort"
+)
+
+const MaxItems = 500
+
+const DefaultWarehouse = "main"
+
+var ReorderThresholds = map[string]int{
+	"fastener":   250,
+	"tool":       5,
+	"consumable": 40,
+}
+
+type Item struct {
+	SKU      string
+	Category string
+	Quantity int
+}
+
+func (i Item) NeedsReorder() (bool, error) { ... }
+
+type Inventory struct {
+	Warehouse string
+	items     map[string]Item
+	history   []string
+}
+
+func NewInventory(warehouse string) *Inventory { ... }
+
+func (inv *Inventory) Add(item Item) error { ... }
+
+func (inv *Inventory) Remove(sku string) (Item, error) { ... }
+
+func (inv *Inventory) ReorderList() ([]Item, error) { ... }
+	sort.Slice(out, func(a, b int) bool { ... }
+
+func (inv *Inventory) AuditTrail() []string { ... }

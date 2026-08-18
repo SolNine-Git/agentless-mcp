@@ -1,0 +1,39 @@
+package warehouse
+
+import (
+	"fmt"
+	"math"
+	"sort"
+)
+
+const BaseMarkup = 1.35
+
+const Currency = "EUR"
+
+type Tier string
+
+const (
+	TierRetail    Tier = "retail"
+	TierTrade     Tier = "trade"
+	TierWholesale Tier = "wholesale"
+)
+
+var discounts = map[Tier]float64{
+	TierRetail:    0.0,
+	TierTrade:     0.10,
+	TierWholesale: 0.22,
+}
+
+type PriceBook struct {
+	costs map[string]float64
+}
+
+func NewPriceBook(costs map[string]float64) (*PriceBook, error) { ... }
+
+func (p *PriceBook) CostOf(sku string) (float64, error) { ... }
+
+func (p *PriceBook) Quote(sku string, tier Tier, quantity int) (float64, error) { ... }
+
+func (p *PriceBook) PriceList(tier Tier) ([][2]interface{}, error) { ... }
+
+func FormatMoney(amount float64) string { ... }

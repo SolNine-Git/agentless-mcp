@@ -11,15 +11,21 @@ as a thin stdio MCP server over the same core.
 
 ## Status
 
-Phase 0 scaffold. The package layout, dependency contract and quality gates are
-in place; every module under `src/agentless_mcp/` is a docstring-only
-placeholder and both console scripts raise `NotImplementedError`. No
-functionality has landed yet.
+Phase 1 read surface, index-free. The CLI and the stdio MCP server are both
+live over one set of application services: repository map, directory tree,
+skeleton, slice, symbol lookup, symbol expansion, fan-in and location
+resolution. Parsing happens on demand — the tag cache is Phase 1.5, and
+`agentless-mcp index` says so rather than pretending. The patch, validation and
+vote machinery (Phases 2 and 3) is not implemented.
+
+Start with [docs/agent-guide.md](docs/agent-guide.md): it is the usage guide
+written for the agent that will call this.
 
 ## Development
 
 ```
-uv sync --all-extras
+uv sync --extra mcp
+uv run agentless-mcp warmup
 uv run pre-commit run --all-files
 uv run pytest
 ```

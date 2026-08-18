@@ -1,1 +1,34 @@
-"""Typed error hierarchy shared by every layer."""
+"""Typed error hierarchy shared by every layer.
+
+Every error carries a message an operator can act on: what was refused or
+exceeded, and what to do about it. Adapters turn these into exit codes and
+tool-level degradation messages; nothing catches-and-drops them.
+"""
+
+
+class AtlasError(Exception):
+    """Base class for every error this package raises deliberately."""
+
+
+class SecurityRefusal(AtlasError):
+    """A path or argument was refused because it escapes the allowed root.
+
+    Carries the resolved form only. Raw arguments are never echoed back:
+    an error message is an output channel like any other.
+    """
+
+
+class WalkBoundExceeded(AtlasError):
+    """A traversal hit one of the configured bounds (depth, files, bytes)."""
+
+
+class LanguageUnavailable(AtlasError):
+    """A grammar is not loadable without a network fetch, or failed to load.
+
+    Raised instead of downloading on the tool path: fetching is a warmup-time
+    decision, never a side effect of answering a query.
+    """
+
+
+class RepoResolutionError(AtlasError):
+    """A repository root could not be resolved or interrogated."""

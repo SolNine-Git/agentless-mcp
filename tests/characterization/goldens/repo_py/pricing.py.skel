@@ -1,0 +1,38 @@
+from decimal import ROUND_HALF_UP, Decimal
+from enum import Enum
+
+BASE_MARKUP = Decimal("1.35")
+CURRENCY = "EUR"
+CENTS = Decimal("0.01")
+
+class Tier(str, Enum):
+
+    RETAIL = "retail"
+    TRADE = "trade"
+    WHOLESALE = "wholesale"
+
+DISCOUNTS = {
+    Tier.RETAIL: Decimal("0.00"),
+    Tier.TRADE: Decimal("0.10"),
+    Tier.WHOLESALE: Decimal("0.22"),
+}
+
+class PriceBook:
+
+    def __init__(self, costs: dict[str, Decimal]) -> None:
+        ...
+
+    def cost_of(self, sku: str) -> Decimal:
+        ...
+
+    def quote(self, sku: str, tier: Tier, quantity: int = 1) -> Decimal:
+        ...
+
+    def price_list(self, tier: Tier) -> list[tuple[str, Decimal]]:
+        ...
+
+    def cheapest(self, tier: Tier) -> str:
+        ...
+
+def format_money(amount: Decimal) -> str:
+    ...

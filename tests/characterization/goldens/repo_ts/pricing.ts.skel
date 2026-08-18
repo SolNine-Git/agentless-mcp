@@ -1,0 +1,36 @@
+import type { Money } from "./types";
+
+export const BASE_MARKUP = 1.35;
+export const CURRENCY = "EUR";
+
+export enum Tier {
+  Retail = "retail",
+  Trade = "trade",
+  Wholesale = "wholesale",
+}
+
+const DISCOUNTS: Record<Tier, number> = {
+  [Tier.Retail]: 0,
+  [Tier.Trade]: 0.1,
+  [Tier.Wholesale]: 0.22,
+};
+
+export class PriceBook {
+  public readonly currency: string = CURRENCY;
+
+  private readonly costs: Map<string, number>;
+
+  constructor(costs: Record<string, number>) { ... }
+
+  costOf(sku: string): number { ... }
+
+  quote(sku: string, tier: Tier, quantity = 1): number { ... }
+
+  priceList(tier: Tier): Array<[string, number]> { ... }
+
+  applyPromotion(sku: string, tier: Tier, promotion: number): number { ... }
+
+  cheapest(tier: Tier): string { ... }
+}
+
+export function formatMoney(money: Money): string { ... }

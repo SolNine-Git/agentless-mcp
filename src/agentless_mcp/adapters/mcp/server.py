@@ -1,1 +1,385 @@
-"""FastMCP stdio server: tool registration, root allowlist, dispatch."""
+"""The stdio MCP server: nine read tools over the same application services.
+
+This adapter owns two things the CLI does not, and nothing else.
+
+**The allowlist.** One server process serves a workspace of repositories, so
+there is no cwd to infer a root from and inferring one would be a
+wrong-repository answer. Every tool therefore takes ``repo_root`` first and it
+is checked, exactly, against the roots the server was started with. Configured
+roots come from repeatable ``--root DIR`` flags and, additively, from the
+client's own MCP ``roots`` capability -- verified present in the installed
+FastMCP as ``Context.list_roots()``. A client that does not implement roots
+answers "List roots not supported"; that is a normal negative, not a failure,
+and the static roots still apply.
+
+**The refusal on ambiguity.** With exactly one allowed root, an omitted
+``repo_root`` defaults to it -- there is nothing to be ambiguous about. With
+several, an omitted or unmatched root is refused with the list of allowed
+roots rather than guessed at.
+
+Everything else is a thin call into the same services the CLI uses. There are
+no write, exec or fetch tools here and there will not be: patch application
+and test execution are CLI-side behind a git worktree, and grammar downloads
+happen in ``warmup``, never inside a tool call.
+"""
+
+import argparse
+import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+from fastmcp import Context, FastMCP
+from mcp.shared.exceptions import McpError
+
+from agentless_mcp.adapters.mcp.annotations import read_only
+from agentless_mcp.application import envelope, render
+from agentless_mcp.application.map_service import (
+    DEFAULT_MAX_FILES,
+    GRANULARITY_FUNCTION,
+    MapRequest,
+    MapService,
+)
+from agentless_mcp.application.repo_context import RepoContext, resolve_repo, resolved_allowlist
+from agentless_mcp.application.symbol_service import (
+    DEFAULT_EXPAND_LIMIT,
+    DEFAULT_FIND_LIMIT,
+    DEFAULT_REFS_LIMIT,
+    SymbolService,
+)
+from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.core import grammars
+from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
+from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
+from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util.tokens import TokenCounter
+
+logger = logging.getLogger(__name__)
+
+SERVER_NAME = "agentless-mcp"
+
+# A line range arrives as a two-element [start, end] list.
+_RANGE_PAIR_LENGTH = 2
+
+
+@dataclass(frozen=True)
+class ServerServices:
+    """The application services one server process needs, wired by bootstrap."""
+
+    maps: MapService
+    views: ViewService
+    symbols: SymbolService
+    counter: TokenCounter
+
+
+class ToolHandlers:
+    """The tool bodies, independent of FastMCP so they can be tested directly."""
+
+    def __init__(self, roots: Sequence[Path], services: ServerServices) -> None:
+        self._roots = tuple(roots)
+        self._services = services
+
+    @property
+    def roots(self) -> tuple[Path, ...]:
+        """The roots this server was configured with."""
+        return self._roots
+
+    def resolve(self, repo_root: str | None, client_roots: Sequence[Path] = ()) -> RepoContext:
+        """Authorise one call's repository against the effective allowlist."""
+        allowed = list(dict.fromkeys([*self._roots, *client_roots]))
+        if not allowed:
+            message = (
+                "no repositories are served: start agentless-mcp-server with at least one "
+                "--root DIR, or connect a client that advertises MCP roots."
+            )
+            raise SecurityRefusal(message)
+
+        if repo_root is None or not repo_root.strip():
+            if len(allowed) == 1:
+                return resolve_repo(allowed[0], allowed)
+            listing = ", ".join(str(path) for path in allowed)
+            message = (
+                "repo_root is required: this server holds several repositories and will not "
+                f"guess between them. Allowed roots: {listing}"
+            )
+            raise SecurityRefusal(message)
+
+        return resolve_repo(repo_root, allowed)
+
+    def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
+        """Render a ranked, budgeted repository map."""
+        result = self._services.maps.build(ctx, request)
+        return envelope.wrap(
+            ctx,
+            self._services.maps.render_text(result),
+            counter=self._services.counter,
+            truncation=envelope.Truncation(
+                shown=result.included, total=result.candidates, unit="symbols"
+            ),
+        )
+
+    def list_dir(self, ctx: RepoContext, depth: int, max_entries: int) -> str:
+        """Render the gitignore-aware directory tree."""
+        view = self._services.views.tree(ctx, depth=depth, max_entries=max_entries)
+        return self._wrap(ctx, view.text)
+
+    def get_symbols_overview(self, ctx: RepoContext, paths: Sequence[str], *, docs: bool) -> str:
+        """Render each named file as signatures with bodies elided."""
+        views = self._services.views.skeleton(ctx, paths, docstrings=docs)
+        body = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
+        return self._wrap(ctx, body)
+
+    def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:
+        """Render full bodies for the named stable ids."""
+        result = self._services.symbols.expand_symbols(ctx, list(stable_ids), limit=limit)
+        body = render.render_symbol_cards(result.cards)
+        if result.unresolved:
+            body += "\n" + "\n".join(
+                f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved
+            )
+        return self._wrap(ctx, body)
+
+    def read_slice(
+        self,
+        ctx: RepoContext,
+        path: str,
+        intervals: Sequence[tuple[int, int]],
+        context_lines: int,
+    ) -> str:
+        """Render numbered lines with sticky-scroll scope headers."""
+        view = self._services.views.read_slice(
+            ctx, path, intervals=intervals, context=context_lines
+        )
+        return self._wrap(ctx, view.text or view.error)
+
+    def find_symbol(self, ctx: RepoContext, name: str, kind: str | None, limit: int) -> str:
+        """Render incident cards for symbols matching ``name``."""
+        result = self._services.symbols.find_symbol(ctx, name, kind=kind, limit=limit)
+        return self._wrap(ctx, render.render_symbol_cards(result.cards))
+
+    def find_referencing_symbols(
+        self,
+        ctx: RepoContext,
+        target: str,
+        limit: int,
+        *,
+        shared_callers: bool,
+    ) -> str:
+        """Render fan-in for ``target``, grouped by file."""
+        result = self._services.symbols.find_referencing_symbols(
+            ctx, target, limit=limit, shared_callers=shared_callers
+        )
+        body = render.render_ref_groups(result.groups, target)
+        if shared_callers:
+            body += "\n" + render.render_shared_callers(result.shared, target)
+        return self._wrap(ctx, body)
+
+    def resolve_locations(
+        self,
+        ctx: RepoContext,
+        path: str,
+        locs: Sequence[str],
+        context_lines: int,
+    ) -> str:
+        """Resolve location strings to stable ids and merged intervals."""
+        view = self._services.views.resolve_locations(ctx, path, locs, context=context_lines)
+        lines = [f"file: {view.path}"]
+        lines.extend(f"matched: {stable}" for stable in view.resolution.stable_ids)
+        lines.append(
+            "intervals: "
+            + (", ".join(f"{start}-{end}" for start, end in view.resolution.intervals) or "none")
+        )
+        lines.extend(
+            f"unrecognized: {entry.loc} -- {entry.reason}" for entry in view.resolution.unrecognized
+        )
+        if view.text:
+            lines.extend(["", view.text.rstrip("\n")])
+        return self._wrap(ctx, "\n".join(lines) + "\n")
+
+    def capabilities(self, ctx: RepoContext) -> str:
+        """Report loaded grammars, their versions and the caps in force."""
+        capabilities = grammars.loaded_capabilities()
+        lines = [
+            f"pack {grammars.pack_version()}  grammar cache {grammars.cache_dir()}",
+            f"tag cache: {envelope.CACHE_GENERATION} (index-free on-demand parsing)",
+            f"roots: {', '.join(str(path) for path in self._roots) or 'none configured'}",
+            "languages:",
+        ]
+        lines.extend(
+            f"  {cap.name:<12} abi={cap.abi_version or '-'} "
+            f"warmed={cap.warmed} probe={cap.probe_ok}"
+            for cap in capabilities
+        )
+        return self._wrap(ctx, "\n".join(lines) + "\n")
+
+    def _wrap(self, ctx: RepoContext, body: str) -> str:
+        """Put the receipt and banner around one tool's answer."""
+        return envelope.wrap(ctx, body, counter=self._services.counter)
+
+
+async def effective_client_roots(context: Context) -> list[Path]:
+    """Return the filesystem roots the connected client advertises.
+
+    Additive to ``--root``: a client that scopes the session to a workspace
+    should not have to repeat that scope on the command line. A client without
+    the capability answers with an McpError, which is a negative result rather
+    than a failure -- it is logged and the static roots stand.
+    """
+    try:
+        roots = await context.list_roots()
+    except McpError as exc:
+        logger.debug("client does not advertise MCP roots (%s); using --root only", exc)
+        return []
+
+    paths: list[Path] = []
+    for root in roots:
+        parsed = urlparse(str(root.uri))
+        if parsed.scheme != "file":
+            logger.info("ignoring non-file MCP root %s", root.uri)
+            continue
+        paths.append(Path(unquote(parsed.path)).resolve())
+    return paths
+
+
+def build_server(handlers: ToolHandlers) -> FastMCP[None]:
+    """Register every read tool on a FastMCP server and return it."""
+    mcp: FastMCP[None] = FastMCP(SERVER_NAME)
+
+    async def context_for(context: Context, repo_root: str | None) -> RepoContext:
+        return handlers.resolve(repo_root, await effective_client_roots(context))
+
+    @mcp.tool(annotations=read_only("Repository map"))
+    async def repo_map(
+        context: Context,
+        repo_root: str | None = None,
+        focus: list[str] | None = None,
+        budget: int | None = None,
+        max_files: int = DEFAULT_MAX_FILES,
+        granularity: str = GRANULARITY_FUNCTION,
+    ) -> str:
+        """Rank the repository's files and render the symbols that fit a budget."""
+        ctx = await context_for(context, repo_root)
+        return handlers.repo_map(
+            ctx,
+            MapRequest(
+                focus=tuple(focus or ()),
+                budget=budget,
+                max_files=max_files,
+                granularity=granularity,
+            ),
+        )
+
+    @mcp.tool(annotations=read_only("Directory tree"))
+    async def list_dir(
+        context: Context,
+        repo_root: str | None = None,
+        depth: int = DEFAULT_RENDER_DEPTH,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
+    ) -> str:
+        """List the repository's files, honouring gitignore."""
+        return handlers.list_dir(await context_for(context, repo_root), depth, max_entries)
+
+    @mcp.tool(annotations=read_only("Symbols overview"))
+    async def get_symbols_overview(
+        context: Context,
+        paths: list[str],
+        repo_root: str | None = None,
+        docstrings: bool = False,
+    ) -> str:
+        """Render the named files as signatures with their bodies elided."""
+        ctx = await context_for(context, repo_root)
+        return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
+
+    @mcp.tool(annotations=read_only("Expand symbols"))
+    async def expand_symbols(
+        context: Context,
+        stable_ids: list[str],
+        repo_root: str | None = None,
+        limit: int = DEFAULT_EXPAND_LIMIT,
+    ) -> str:
+        """Return the full body of each named symbol, line-numbered."""
+        ctx = await context_for(context, repo_root)
+        return handlers.expand_symbols(ctx, stable_ids, limit)
+
+    @mcp.tool(annotations=read_only("Read slice"))
+    async def read_slice(
+        context: Context,
+        path: str,
+        repo_root: str | None = None,
+        lines: list[list[int]] | None = None,
+        context_lines: int = DEFAULT_CONTEXT_LINES,
+    ) -> str:
+        """Return numbered lines for the given 1-based inclusive ranges."""
+        ctx = await context_for(context, repo_root)
+        intervals = [
+            (pair[0], pair[1]) for pair in (lines or []) if len(pair) == _RANGE_PAIR_LENGTH
+        ]
+        return handlers.read_slice(ctx, path, intervals, context_lines)
+
+    @mcp.tool(annotations=read_only("Find symbol"))
+    async def find_symbol(
+        context: Context,
+        name: str,
+        repo_root: str | None = None,
+        kind: str | None = None,
+        limit: int = DEFAULT_FIND_LIMIT,
+    ) -> str:
+        """Find symbols by substring or qualified name."""
+        ctx = await context_for(context, repo_root)
+        return handlers.find_symbol(ctx, name, kind, limit)
+
+    @mcp.tool(annotations=read_only("Find referencing symbols"))
+    async def find_referencing_symbols(
+        context: Context,
+        target: str,
+        repo_root: str | None = None,
+        limit: int = DEFAULT_REFS_LIMIT,
+        shared_callers: bool = False,
+    ) -> str:
+        """Find the symbols that reference a target, grouped by file."""
+        ctx = await context_for(context, repo_root)
+        return handlers.find_referencing_symbols(ctx, target, limit, shared_callers=shared_callers)
+
+    @mcp.tool(annotations=read_only("Resolve locations"))
+    async def resolve_locations(
+        context: Context,
+        path: str,
+        locs: list[str],
+        repo_root: str | None = None,
+        context_lines: int = DEFAULT_CONTEXT_LINES,
+    ) -> str:
+        """Turn class:/function:/line: strings into stable ids and intervals."""
+        ctx = await context_for(context, repo_root)
+        return handlers.resolve_locations(ctx, path, locs, context_lines)
+
+    @mcp.tool(annotations=read_only("Capabilities"))
+    async def capabilities(context: Context, repo_root: str | None = None) -> str:
+        """Report loaded grammars, cache state and the bounds in force."""
+        return handlers.capabilities(await context_for(context, repo_root))
+
+    return mcp
+
+
+def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    """Parse the server's own command line."""
+    parser = argparse.ArgumentParser(
+        prog="agentless-mcp-server",
+        description="Read-only stdio MCP server over the agentless-mcp read surface.",
+    )
+    parser.add_argument(
+        "--root",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="a repository this server may serve; repeatable",
+    )
+    return parser.parse_args(argv)
+
+
+def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
+    """Start the stdio server. Returns only when the transport closes."""
+    args = parse_args(argv)
+    handlers = ToolHandlers(resolved_allowlist(args.root), services)
+    build_server(handlers).run()
+    return 0

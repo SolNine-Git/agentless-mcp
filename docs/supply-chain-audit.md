@@ -29,7 +29,14 @@ escape the cache directory via path traversal.
 
 **Cache location and permissions.** Grammars land in
 `~/.cache/tree-sitter-language-pack/v{version}/libs/`, created `0o700` on Unix.
-The directory is overridable via `TREE_SITTER_LANGUAGE_PACK_CACHE_DIR`.
+Correction (2026-08-18, verified empirically against the shipped
+`_native.abi3.so`): the pack itself reads only `XDG_CACHE_HOME`,
+`TREE_SITTER_LANGUAGE_PACK_MANIFEST_URL`, and `..._TLS_ROOTS`; there is no
+`TREE_SITTER_LANGUAGE_PACK_CACHE_DIR` variable in the pack. Cache-dir override
+is programmatic (`PackConfig(cache_dir=...)`). Our `core/grammars.py` reads
+`TREE_SITTER_LANGUAGE_PACK_CACHE_DIR` itself and applies it through the pack's
+config, so the documented knob works — but it is this tool's behavior, not the
+pack's.
 
 **Fetch granularity.** First use downloads ONE whole platform bundle
 (`.tar.zst`), then extracts per-language libraries from it. It is not a
@@ -65,9 +72,9 @@ the README security section rather than left implicit.
   tool call ever triggers a first fetch.
 - **`AGENTLESS_MCP_NO_DOWNLOAD` air-gap gate.** When set, any attempted fetch is
   an error rather than a network call. Combined with
-  `TREE_SITTER_LANGUAGE_PACK_CACHE_DIR` and
-  `TREE_SITTER_LANGUAGE_PACK_MANIFEST_URL`, this gives a fully offline install
-  path from a pre-seeded cache or an internal mirror.
+  `TREE_SITTER_LANGUAGE_PACK_CACHE_DIR` (implemented by `core/grammars.py`, see
+  correction above) and `TREE_SITTER_LANGUAGE_PACK_MANIFEST_URL`, this gives a
+  fully offline install path from a pre-seeded cache or an internal mirror.
 - **Unit-pinning.** `tree-sitter` and `tree-sitter-language-pack` are pinned as
   one unit (`>=0.25,<0.27` and `==1.14.3`). The prebuilt grammars are compiled
   against a specific ABI — 16 of them, `cpp` and `csharp` among them, are ABI 15

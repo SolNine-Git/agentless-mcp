@@ -1,0 +1,24 @@
+from decimal import Decimal
+
+from inventory import Inventory, Item
+from pricing import PriceBook, Tier, format_money
+
+REPORT_WIDTH = 72
+SEPARATOR = "-" * REPORT_WIDTH
+
+class ReportError(Exception):
+
+def stock_value(inventory: Inventory, prices: PriceBook, tier: Tier) -> Decimal:
+    ...
+
+def reorder_report(inventory: Inventory, prices: PriceBook) -> str:
+    ...
+
+def _format_row(item: Item, line_total: Decimal) -> str:
+    ...
+
+def check_report_inputs(inventory: Inventory, prices: PriceBook) -> None:
+    ...
+
+def summarise(inventory: Inventory, prices: PriceBook) -> dict[str, str]:
+    ...

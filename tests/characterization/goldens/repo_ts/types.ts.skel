@@ -1,0 +1,22 @@
+export interface Money {
+  amount: number;
+  currency: string;
+}
+
+export interface Warehouse {
+  name: string;
+  region: string;
+  active: boolean;
+}
+
+export const REGIONS = ["eu-west", "eu-central", "uk"] as const;
+
+export type Region = (typeof REGIONS)[number];
+
+export function isRegion(value: string): value is Region { ... }
+
+export function describeWarehouse(warehouse: Warehouse): string { ... }
+
+export function parseWarehouse(payload: unknown): Warehouse { ... }
+
+export function addMoney(left: Money, right: Money): Money { ... }

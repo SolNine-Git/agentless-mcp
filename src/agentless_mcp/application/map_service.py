@@ -1,1 +1,286 @@
-"""Repo-map use case: focus seeds, ranking, token-budgeted packing."""
+"""The repository map: rank files, pick symbols, pack to a token budget.
+
+The pipeline is one pass and no state: walk, extract, collect references,
+build the file graph, rank it with personalized PageRank, spread each file's
+rank across the symbols inside it, then pack as many symbols as the budget
+allows and render them code-shaped.
+
+Three defaults come straight from the research the plan records, and each is
+a number rather than a knob-with-no-answer:
+
+* **Function granularity, ten files.** Function-level localization beats both
+  file-level and line-level (45.6% / 42.6% / 43.6%), and the file stage is
+  capped at ten because a longer list stops being a funnel.
+* **A budget that scales with the repository.** ``auto`` is the candidate
+  set's own size divided by six, clamped to 2k-8k tokens. Roughly 6x
+  compression measurably *raises* resolve rate over full context, while 22-50x
+  is worse than either -- so the objective is minimal sufficient context, not
+  the highest ratio available.
+* **Seeds take the whole teleport mass.** ``--focus`` is not a filter, it is
+  the personalization vector: the files a caller names pull rank toward
+  whatever they depend on, which is how a map answers "what else does this
+  touch" rather than "what is big".
+
+Packing is a binary search over the number of included symbols rather than a
+greedy fill, so the answer is the largest prefix of the score ordering that
+fits -- deterministic, and independent of the order files were walked in.
+"""
+
+from dataclasses import dataclass
+from pathlib import PurePosixPath
+from typing import Any
+
+from agentless_mcp.application import render
+from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.core import refs
+from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
+from agentless_mcp.core.symbols import ASTSymbol, symbol_stable_id
+from agentless_mcp.util.tokens import TokenCounter
+
+DEFAULT_MAX_FILES = 10
+GRANULARITY_FUNCTION = "function"
+GRANULARITY_FILE = "file"
+GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE)
+
+# "auto": aim at ~6x compression of the candidate set, then refuse to go
+# below a map that could not say anything or above one that stops being a map.
+AUTO_BUDGET_DIVISOR = 6
+AUTO_BUDGET_MIN = 2_000
+AUTO_BUDGET_MAX = 8_000
+
+
+@dataclass(frozen=True)
+class MapRequest:
+    """What a caller asked the map for."""
+
+    focus: tuple[str, ...] = ()
+    budget: int | None = None
+    max_files: int = DEFAULT_MAX_FILES
+    granularity: str = GRANULARITY_FUNCTION
+
+
+@dataclass(frozen=True)
+class MapResult:
+    """A rendered-ready map plus the numbers that explain its shape."""
+
+    files: tuple[render.MapFile, ...]
+    budget: int
+    included: int
+    candidates: int
+    seeds: tuple[str, ...]
+    skipped: tuple[refs.SkippedFile, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this map."""
+        return {
+            "budget_tokens": self.budget,
+            "symbols_included": self.included,
+            "symbols_available": self.candidates,
+            "seeds": list(self.seeds),
+            "files": [map_file.as_dict() for map_file in self.files],
+            "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
+        }
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    """One symbol competing for a place in the map."""
+
+    score: float
+    path: str
+    symbol: ASTSymbol
+
+
+class MapService:
+    """Builds repository maps. Holds no per-repository state."""
+
+    def __init__(self, extractor: TreeSitterExtractor, counter: TokenCounter) -> None:
+        self._extractor = extractor
+        self._counter = counter
+
+    def build(self, ctx: RepoContext, request: MapRequest) -> MapResult:
+        """Rank, score, pack and return the map for one repository."""
+        scan = refs.scan_repo(ctx.root, self._extractor)
+        index = refs.build_ref_index(scan)
+        graph = build_graph(scan, index)
+
+        seeds = _seed_weights(request.focus, scan, index)
+        rank = personalized_pagerank(graph, seeds or None)
+        chosen = rank_order(rank)[: max(0, request.max_files)]
+
+        by_path = scan.by_path()
+        if request.granularity == GRANULARITY_FILE:
+            files = tuple(
+                render.MapFile(
+                    path=path,
+                    rank=rank.get(path, 0.0),
+                    omitted=len(by_path[path].symbols) if path in by_path else 0,
+                )
+                for path in chosen
+            )
+            return MapResult(
+                files=files,
+                budget=0,
+                included=0,
+                candidates=sum(len(by_path[path].symbols) for path in chosen if path in by_path),
+                seeds=tuple(sorted(seeds)),
+                skipped=scan.skipped,
+            )
+
+        candidates = _score_symbols(chosen, by_path, index, rank)
+        budget = (
+            request.budget if request.budget is not None else self._auto_budget(candidates, rank)
+        )
+        included = self._pack(candidates, rank, budget)
+
+        return MapResult(
+            files=_group(candidates[:included], candidates, rank),
+            budget=budget,
+            included=included,
+            candidates=len(candidates),
+            seeds=tuple(sorted(seeds)),
+            skipped=scan.skipped,
+        )
+
+    def render_text(self, result: MapResult) -> str:
+        """Render a map result as code-shaped text."""
+        return render.render_map(result.files)
+
+    def _auto_budget(self, candidates: list[_Candidate], rank: dict[str, float]) -> int:
+        """Size the budget from the candidate set, clamped to the useful band."""
+        full = render.render_map(_group(candidates, candidates, rank))
+        estimate = self._counter.count(full) // AUTO_BUDGET_DIVISOR
+        return max(AUTO_BUDGET_MIN, min(AUTO_BUDGET_MAX, estimate))
+
+    def _pack(self, candidates: list[_Candidate], rank: dict[str, float], budget: int) -> int:
+        """Return the largest number of symbols whose render fits ``budget``."""
+        if not candidates:
+            return 0
+
+        low, high = 0, len(candidates)
+        while low < high:
+            middle = (low + high + 1) // 2
+            text = render.render_map(_group(candidates[:middle], candidates, rank))
+            if self._counter.count(text) <= budget:
+                low = middle
+            else:
+                high = middle - 1
+        return low
+
+
+def _seed_weights(
+    focus: tuple[str, ...],
+    scan: refs.RepoScan,
+    index: refs.RefIndex,
+) -> dict[str, float]:
+    """Turn ``--focus`` entries into personalization weights over files.
+
+    A focus entry is a path when it names one and a symbol otherwise, and a
+    symbol seeds every file that defines it. An entry matching nothing is not
+    an error -- the map still answers -- but it contributes no mass, so a
+    typo degrades to an unfocused map rather than an empty one.
+    """
+    known = {facts.path for facts in scan.files}
+    weights: dict[str, float] = {}
+
+    for entry in focus:
+        cleaned = entry.strip()
+        if not cleaned:
+            continue
+
+        for path in _paths_for(cleaned, known, index):
+            weights[path] = weights.get(path, 0.0) + 1.0
+
+    return weights
+
+
+def _paths_for(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
+    """Resolve one focus entry to the files it seeds."""
+    normalized = PurePosixPath(entry).as_posix()
+    if normalized in known:
+        return [normalized]
+
+    suffix_matches = sorted(path for path in known if path.endswith(f"/{normalized}"))
+    if suffix_matches:
+        return suffix_matches
+
+    name = entry.rpartition("::")[2] or entry
+    name = name.rpartition(".")[2] or name
+    return [path for path in index.defining_paths(name) if path in known]
+
+
+def _score_symbols(
+    paths: list[str],
+    by_path: dict[str, refs.FileFacts],
+    index: refs.RefIndex,
+    rank: dict[str, float],
+) -> list[_Candidate]:
+    """Spread each file's rank across its symbols by inbound reference weight.
+
+    A file's rank says how much the repository points at the file; the inbound
+    reference count says which symbol inside it the repository is pointing at.
+    Multiplying keeps both: a hot symbol in a cold file still loses to a warm
+    symbol in a hot one, which is the ordering a funnel wants.
+    """
+    candidates: list[_Candidate] = []
+    for path in paths:
+        facts = by_path.get(path)
+        if facts is None:
+            continue
+        file_rank = rank.get(path, 0.0)
+        for symbol in facts.symbols:
+            inbound = sum(1 for ref in index.sites.get(symbol.name, ()) if ref.path != path)
+            candidates.append(
+                _Candidate(score=file_rank * (1.0 + inbound), path=path, symbol=symbol)
+            )
+
+    candidates.sort(key=lambda item: (-item.score, item.path, item.symbol.line_number))
+    return candidates
+
+
+def _group(
+    included: list[_Candidate],
+    candidates: list[_Candidate],
+    rank: dict[str, float],
+) -> tuple[render.MapFile, ...]:
+    """Group the included symbols back into rank-ordered files.
+
+    Every candidate file is listed, including the ones whose symbols all lost
+    the budget: they appear with an empty body and their omitted count. A file
+    that vanishes entirely because it placed no symbols is the
+    bounded-view-mistaken-for-complete failure -- the reader would have no way
+    to know it was ever a candidate. The header costs a line, and the packing
+    search pays for it, because it renders through this same function.
+    """
+    per_file: dict[str, list[_Candidate]] = {}
+    for candidate in included:
+        per_file.setdefault(candidate.path, []).append(candidate)
+
+    totals: dict[str, int] = {}
+    for candidate in candidates:
+        totals[candidate.path] = totals.get(candidate.path, 0) + 1
+
+    order = sorted(totals, key=lambda path: (-rank.get(path, 0.0), path))
+
+    files: list[render.MapFile] = []
+    for path in order:
+        chosen = sorted(per_file.get(path, []), key=lambda item: item.symbol.line_number)
+        entries = tuple(
+            render.MapEntry(
+                line=candidate.symbol.line_number,
+                signature=candidate.symbol.signature,
+                stable_id=symbol_stable_id(candidate.symbol),
+                depth=1 if candidate.symbol.parent_class else 0,
+            )
+            for candidate in chosen
+        )
+        files.append(
+            render.MapFile(
+                path=path,
+                rank=rank.get(path, 0.0),
+                entries=entries,
+                omitted=totals.get(path, 0) - len(entries),
+            )
+        )
+    return tuple(files)

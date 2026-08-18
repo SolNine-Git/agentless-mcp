@@ -28,6 +28,11 @@ agentless-mcp-server = "agentless_mcp.bootstrap:mcp_main"
 # stack. Install with: uv sync --extra mcp
 mcp = [
     "fastmcp>=2.14",
+    # Declared because we import it, not because fastmcp happens to pull it
+    # in: adapters/mcp/server.py catches `mcp.shared.exceptions.McpError` to
+    # tell "this client does not implement roots" from a real failure. A
+    # transitive dependency we import is a contract we do not control.
+    "mcp>=1.29",
 ]
 
 [build-system]
@@ -62,6 +67,12 @@ target-version = "py310"
 line-length = 100
 
 exclude = [
+    # 2026-08-18, Phase 1a: the fixture repositories and their goldens are
+    # DATA, not code. Byte-exact goldens are the contract the skeletonizer is
+    # tested against, so a formatter or an import-order fix rewriting a
+    # fixture would silently invalidate every golden.
+    "tests/characterization/fixtures",
+    "tests/characterization/goldens",
     ".git",
     ".venv",
     "venv",
@@ -119,6 +130,22 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.per-file-ignores]
+# 2026-08-18, Phase 1a: the error names are the package's public vocabulary
+# (SecurityRefusal, WalkBoundExceeded, LanguageUnavailable) and read as the
+# refusal they describe at the raise site. Every one of them subclasses
+# AtlasError and lives in errors.py, so N818's "is this an exception?"
+# question is already answered by the base class and the module name.
+"src/agentless_mcp/util/errors.py" = ["N818"]
+
+# 2026-08-18, Phase 1b: an MCP tool's parameter list IS its wire schema. The
+# client sees exactly these names, types and defaults, so collapsing
+# `repo_map`'s six flat parameters into a nested request object to satisfy an
+# argument-count lint would make the published interface worse in order to
+# make one function signature shorter. The rule stays in force everywhere the
+# signature is an implementation detail -- the CLI's own helpers were
+# refactored rather than exempted.
+"src/agentless_mcp/adapters/mcp/server.py" = ["PLR0913", "PLR0917"]
+
 # 2026-08-18, scaffold: tests assert on literals and take fixtures they do
 # not name; annotating pytest test functions buys nothing a fixture type
 # does not already give.
@@ -211,7 +238,9 @@ type = "independence"
 modules = ["agentless_mcp.adapters.cli", "agentless_mcp.adapters.mcp"]
 
 [tool.deptry]
-extend_exclude = ["docs"]
+# The fixture repositories imitate third-party projects (their imports name
+# modules that do not exist here), so they are data to deptry as well.
+extend_exclude = ["docs", "tests/characterization/fixtures"]
 # src-layout: deptry sees the package installed in .venv and would otherwise
 # report agentless_mcp.__main__'s own `from agentless_mcp.bootstrap import ...`
 # as DEP003 (transitive third-party dependency). Naming it first-party is what
@@ -219,17 +248,13 @@ extend_exclude = ["docs"]
 known_first_party = ["agentless_mcp"]
 
 [tool.deptry.per_rule_ignores]
-# DEP002 (declared but not imported). 2026-08-18, Phase 0 scaffold: every
-# module under src/ is a docstring-only placeholder, so nothing is imported
-# yet. tree-sitter/tree-sitter-language-pack land in core.grammars and
-# fastmcp in adapters.mcp.server during Phase 1 -- REMOVE those three
-# entries then, so a genuinely unused runtime dependency is still caught.
-# The lint/type/test tooling is invoked by name (pre-commit, hooks, CI) and
-# never imported, so it stays listed permanently.
+# DEP002 (declared but not imported). 2026-08-18, Phase 1b: tree-sitter,
+# tree-sitter-language-pack and fastmcp are all imported now (core.grammars,
+# core.extractor, adapters.mcp.server) and their entries are gone, so a
+# genuinely unused runtime dependency is caught again. The lint/type/test
+# tooling is invoked by name (pre-commit, hooks, CI) and never imported, so it
+# stays listed permanently.
 DEP002 = [
-    "tree-sitter",
-    "tree-sitter-language-pack",
-    "fastmcp",
     "codespell",
     "deptry",
     "import-linter",

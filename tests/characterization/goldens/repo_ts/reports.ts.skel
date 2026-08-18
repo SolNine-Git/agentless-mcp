@@ -1,0 +1,18 @@
+import { Inventory, Item } from "./inventory";
+import { PriceBook, Tier, formatMoney } from "./pricing";
+import type { Money } from "./types";
+
+export const REPORT_WIDTH = 72;
+export const SEPARATOR = "-".repeat(REPORT_WIDTH);
+
+export class ReportError extends Error {
+  constructor(message: string) { ... }
+}
+
+export function stockValue(inventory: Inventory, prices: PriceBook, tier: Tier): Money { ... }
+
+export function reorderReport(inventory: Inventory, prices: PriceBook): string { ... }
+
+function formatRow(item: Item, lineTotal: Money): string { ... }
+
+export function summarise(inventory: Inventory, prices: PriceBook): Record<string, string> { ... }

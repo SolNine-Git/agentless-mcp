@@ -1,0 +1,151 @@
+"""Characterization of the Agentless location grammar, ported to symbols.
+
+Each test names the case in ``transfer_arb_locs_to_locs`` it transcribes. The
+implicit cases -- the current-class fallback, the dotted ``class:`` falling
+through to the method branch, the any-class search accepted only when unique
+-- are behaviour that lived in the control flow rather than in any docstring,
+so they are pinned here rather than re-derived.
+"""
+
+from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.locs import LocTarget, resolve_locs
+
+SOURCE = '''\
+"""Module."""
+
+MAX_ITEMS = 500
+
+
+class Invoice:
+    def total(self):
+        return 1
+
+    def render(self):
+        return ""
+
+
+class Receipt:
+    def total(self):
+        return 2
+
+    def stamp(self):
+        return ""
+
+
+def format_money(amount):
+    return str(amount)
+'''
+
+
+def target(path="billing.py"):
+    """Build the LocTarget the tests resolve against."""
+    extractor = TreeSitterExtractor()
+    symbols = extractor.extract_from_source(SOURCE, "python", path)
+    return LocTarget(
+        path=path,
+        language="python",
+        symbols=tuple(symbols),
+        total_lines=len(SOURCE.split("\n")),
+    )
+
+
+class TestClassLocations:
+    def test_a_class_resolves_to_its_span_and_id(self):
+        result = resolve_locs(["class: Invoice"], target())
+        assert result.stable_ids == ("py:billing.py::Invoice",)
+        assert result.spans == ((6, 11),)
+
+    def test_an_unknown_class_is_reported_not_dropped(self):
+        result = resolve_locs(["class: Invoic"], target())
+        assert result.spans == ()
+        assert result.unrecognized[0].loc == "class: Invoic"
+        assert "no class named 'Invoic'" in result.unrecognized[0].reason
+
+    def test_a_dotted_class_location_is_treated_as_a_method(self):
+        """The original's first branch requires no dot, so `class: A.b` falls
+        through to the function branch. Model output uses both spellings."""
+        result = resolve_locs(["class: Invoice.total"], target())
+        assert result.stable_ids == ("py:billing.py::Invoice.total",)
+
+
+class TestFunctionLocations:
+    def test_a_module_function_resolves(self):
+        result = resolve_locs(["function: format_money"], target())
+        assert result.stable_ids == ("py:billing.py::format_money",)
+
+    def test_a_qualified_method_resolves(self):
+        result = resolve_locs(["function: Receipt.stamp"], target())
+        assert result.stable_ids == ("py:billing.py::Receipt.stamp",)
+
+    def test_a_bare_qualified_name_resolves_without_a_prefix(self):
+        result = resolve_locs(["Receipt.stamp"], target())
+        assert result.stable_ids == ("py:billing.py::Receipt.stamp",)
+
+    def test_the_current_class_carries_to_the_next_location(self):
+        """The state that makes a bare `function:` after a `class:` a method."""
+        result = resolve_locs(["class: Receipt", "function: total"], target())
+        assert result.stable_ids == (
+            "py:billing.py::Receipt",
+            "py:billing.py::Receipt.total",
+        )
+
+    def test_without_a_current_class_a_unique_method_name_still_resolves(self):
+        result = resolve_locs(["function: stamp"], target())
+        assert result.stable_ids == ("py:billing.py::Receipt.stamp",)
+
+    def test_an_ambiguous_bare_method_is_reported_not_silently_dropped(self):
+        """The original fell through without a trace when several classes
+        defined the name. An ambiguous location is a question, not a guess."""
+        result = resolve_locs(["function: total"], target())
+        assert result.spans == ()
+        assert "ambiguous" in result.unrecognized[0].reason
+        assert "Invoice" in result.unrecognized[0].reason
+        assert "Receipt" in result.unrecognized[0].reason
+
+    def test_a_method_missing_from_a_known_class_names_the_class(self):
+        result = resolve_locs(["function: Invoice.stamp"], target())
+        assert "class 'Invoice' has no member named 'stamp'" in result.unrecognized[0].reason
+
+
+class TestLineAndVariableLocations:
+    def test_a_line_resolves_to_a_single_line_span(self):
+        result = resolve_locs(["line: 7"], target())
+        assert result.spans == ((7, 7),)
+
+    def test_trailing_text_after_the_number_is_ignored(self):
+        result = resolve_locs(["line: 7 in Invoice.total"], target())
+        assert result.spans == ((7, 7),)
+
+    def test_a_non_numeric_line_is_reported(self):
+        result = resolve_locs(["line: seven"], target())
+        assert "not a line number" in result.unrecognized[0].reason
+
+    def test_a_line_past_the_end_of_the_file_is_reported(self):
+        result = resolve_locs(["line: 9000"], target())
+        assert "outside" in result.unrecognized[0].reason
+
+    def test_a_module_constant_resolves(self):
+        result = resolve_locs(["variable: MAX_ITEMS"], target())
+        assert result.stable_ids == ("py:billing.py::MAX_ITEMS",)
+
+
+class TestIntervalsAndInput:
+    def test_intervals_widen_by_the_context_window_and_merge(self):
+        result = resolve_locs(["line: 7", "line: 10"], target(), context=2)
+        assert result.intervals == ((5, 12),)
+
+    def test_intervals_are_clamped_to_the_file_and_are_one_based(self):
+        result = resolve_locs(["line: 1"], target(), context=10)
+        assert result.intervals == ((1, 11),)
+
+    def test_a_multi_line_block_is_one_location_per_line(self):
+        result = resolve_locs("class: Invoice\nfunction: render", target())
+        assert len(result.stable_ids) == 2
+
+    def test_an_unknown_form_is_reported_with_the_accepted_ones(self):
+        result = resolve_locs(["module: billing"], target())
+        assert "expected class:, function:, line: or variable:" in result.unrecognized[0].reason
+
+    def test_nothing_resolvable_yields_empty_intervals_not_the_whole_file(self):
+        result = resolve_locs(["class: Nope"], target())
+        assert result.intervals == ()

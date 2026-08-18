@@ -1,0 +1,38 @@
+import { PriceBook, Tier } from "./pricing";
+import type { Money } from "./types";
+
+export const MAX_ITEMS = 500;
+export const DEFAULT_WAREHOUSE = "main";
+
+export const REORDER_THRESHOLDS: Record<string, number> = {
+  fastener: 250,
+  tool: 5,
+  consumable: 40,
+};
+
+export interface Item {
+  sku: string;
+  category: string;
+  quantity: number;
+}
+
+export function needsReorder(item: Item): boolean { ... }
+
+export class Inventory {
+  private readonly items: Map<string, Item>;
+
+  private readonly history: string[];
+
+  constructor(public readonly warehouse: string = DEFAULT_WAREHOUSE) { ... }
+
+  add(item: Item): void { ... }
+
+  remove(sku: string): Item { ... }
+
+  reorderList(): Item[] { ... }
+
+  valueAt(prices: PriceBook, tier: Tier): Money { ... }
+
+  auditTrail(): string[] { ... }
+    return this.history.map((entry, index) => { ... }
+}

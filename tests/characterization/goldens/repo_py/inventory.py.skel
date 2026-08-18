@@ -1,0 +1,47 @@
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+MAX_ITEMS = 500
+DEFAULT_WAREHOUSE = "main"
+
+REORDER_THRESHOLDS = {
+    "fastener": 250,
+    "tool": 5,
+    "consumable": 40,
+}
+
+@dataclass(frozen=True)
+class Item:
+
+    sku: str
+    category: str
+    quantity: int
+
+    def needs_reorder(self) -> bool:
+        ...
+
+class Inventory:
+
+    warehouse: str = DEFAULT_WAREHOUSE
+
+    def __init__(self, warehouse: str = DEFAULT_WAREHOUSE) -> None:
+        ...
+
+    def add(self, item: Item) -> None:
+        ...
+
+    def remove(self, sku: str) -> Item:
+        ...
+
+    def reorder_list(self) -> list[Item]:
+        ...
+
+    def audit_trail(self) -> list[str]:
+        ...
+
+def load_inventory(path: Path) -> Inventory:
+    ...
+
+def dump_inventory(inventory: Inventory, path: Path) -> None:
+    ...
