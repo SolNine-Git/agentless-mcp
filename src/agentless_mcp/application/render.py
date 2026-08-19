@@ -106,16 +106,27 @@ class RefSite:
 
 @dataclass(frozen=True)
 class RefGroup:
-    """The references to one symbol from one file."""
+    """The references to one symbol from one file.
+
+    ``tier`` says what kind of evidence connects this file to the target: an
+    import it declares, a definition in the file itself, the fact that the
+    name is unique in the repository, or nothing but the spelling. Fan-in
+    still lists every name match -- a missed caller is the expensive error --
+    but the label is what lets a reader weigh the rows instead of trusting
+    them equally.
+    """
 
     path: str
     sites: tuple[RefSite, ...] = field(default_factory=tuple)
+    tier: str = ""
+    tier_label: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this group."""
         return {
             "path": self.path,
             "count": len(self.sites),
+            "tier": self.tier,
             "sites": [site.as_dict() for site in self.sites],
         }
 
@@ -165,6 +176,276 @@ class SharedCaller:
         }
 
 
+@dataclass(frozen=True)
+class EdgeRow:
+    """One resolved edge, seen from the symbol the card is about."""
+
+    node: str
+    label: str
+    path: str
+    line: int
+    relation: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {
+            "node": self.node,
+            "label": self.label,
+            "path": self.path,
+            "line": self.line,
+            "relation": self.relation,
+        }
+
+
+@dataclass(frozen=True)
+class TierGroup:
+    """The edges of one evidence tier, already capped at the section limit."""
+
+    tier: str
+    tier_label: str
+    rows: tuple[EdgeRow, ...]
+    total: int
+
+    @property
+    def omitted(self) -> int:
+        """How many rows of this tier the limit left out."""
+        return max(0, self.total - len(self.rows))
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this group."""
+        return {
+            "tier": self.tier,
+            "total": self.total,
+            "omitted": self.omitted,
+            "rows": [row.as_dict() for row in self.rows],
+        }
+
+
+@dataclass(frozen=True)
+class ImportRow:
+    """One module-level import edge, in whichever direction it was asked for."""
+
+    path: str
+    line: int
+    module: str
+    other: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {"path": self.path, "line": self.line, "module": self.module, "other": self.other}
+
+
+@dataclass(frozen=True)
+class PathHop:
+    """One step of a resolved path, with the direction the edge really runs."""
+
+    verb: str
+    tier: str
+    tier_label: str
+    arrow: str
+    node: str
+    label: str
+    path: str
+    line: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this hop."""
+        return {
+            "relation": self.verb,
+            "tier": self.tier,
+            "direction": self.arrow,
+            "node": self.node,
+            "label": self.label,
+            "path": self.path,
+            "line": self.line,
+        }
+
+
+@dataclass(frozen=True)
+class CycleRow:
+    """One import cycle as the chain of files that closes it."""
+
+    files: tuple[str, ...]
+
+    @property
+    def chain(self) -> str:
+        """Render the cycle as ``a -> b -> a``."""
+        return " -> ".join([*self.files, self.files[0]])
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this cycle."""
+        return {"length": len(self.files), "files": list(self.files), "chain": self.chain}
+
+
+@dataclass(frozen=True)
+class Explanation:
+    """One symbol's card: where it is defined, what it touches, what touches it."""
+
+    target: str
+    card: SymbolCard | None
+    message: str
+    alternatives: tuple[str, ...]
+    fan_out: tuple[TierGroup, ...]
+    fan_in: tuple[TierGroup, ...]
+    imports_out: tuple[ImportRow, ...]
+    imports_in: tuple[ImportRow, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this explanation."""
+        return {
+            "target": self.target,
+            "symbol": self.card.as_dict() if self.card is not None else None,
+            "message": self.message,
+            "alternatives": list(self.alternatives),
+            "fan_out": [group.as_dict() for group in self.fan_out],
+            "fan_in": [group.as_dict() for group in self.fan_in],
+            "imports": {
+                "declared": [row.as_dict() for row in self.imports_out],
+                "importers": [row.as_dict() for row in self.imports_in],
+            },
+        }
+
+
+@dataclass(frozen=True)
+class PathTrace:
+    """The hops between two symbols, or the reason there are none."""
+
+    source: str
+    target: str
+    source_label: str
+    target_label: str
+    hops: tuple[PathHop, ...]
+    found: bool
+    message: str
+    visited: int
+    exhausted: bool
+    include_ambiguous: bool
+    endpoints_resolved: bool
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this trace."""
+        return {
+            "source": self.source,
+            "target": self.target,
+            "endpoints_resolved": self.endpoints_resolved,
+            "found": self.found,
+            "message": self.message,
+            "hops": [hop.as_dict() for hop in self.hops],
+            "visited": self.visited,
+            "exhausted": self.exhausted,
+            "include_ambiguous": self.include_ambiguous,
+        }
+
+
+@dataclass(frozen=True)
+class CycleReport:
+    """Every import cycle found, already capped at the caller's limit."""
+
+    cycles: tuple[CycleRow, ...]
+    total: int
+    limit: int
+
+    @property
+    def omitted(self) -> int:
+        """How many cycles the limit left out."""
+        return max(0, self.total - len(self.cycles))
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this report."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "cycles": [cycle.as_dict() for cycle in self.cycles],
+        }
+
+
+def render_explanation(explanation: Explanation) -> str:
+    """Render one symbol card with its tiered fan-out, fan-in and imports."""
+    if explanation.card is None:
+        return explanation.message.rstrip("\n") + "\n"
+
+    lines = [_render_card(explanation.card)]
+    lines.extend(f"  also defined at {entry}" for entry in explanation.alternatives)
+    lines.append("")
+    lines.append(_render_tiers("references (fan-out)", explanation.fan_out))
+    lines.append(_render_tiers("referenced by (fan-in)", explanation.fan_in))
+    lines.append(_render_imports(explanation))
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def render_path(trace: PathTrace) -> str:
+    """Render a path hop by hop, each with its relation, tier and file:line."""
+    if not trace.found:
+        return trace.message.rstrip("\n") + "\n"
+
+    hops = "hop" if len(trace.hops) == 1 else "hops"
+    lines = [
+        f"{len(trace.hops)} {hops} from {trace.source} to {trace.target}",
+        f"  start  {trace.source_label}    {trace.source}",
+    ]
+    lines.extend(
+        f"  {number:>3}. {hop.arrow} {hop.verb} ({hop.tier_label})    "
+        f"{hop.label}    {hop.path}:{hop.line}    [{hop.node}]"
+        for number, hop in enumerate(trace.hops, start=1)
+    )
+    if trace.message:
+        lines.append(f"  {trace.message}")
+    return "\n".join(lines) + "\n"
+
+
+def render_cycles(report: CycleReport) -> str:
+    """Render module-level import cycles as arrow chains."""
+    if not report.cycles:
+        return "no import cycles\n"
+
+    cycles = "cycle" if report.total == 1 else "cycles"
+    lines = [f"{report.total} import {cycles}"]
+    for index, cycle in enumerate(report.cycles, start=1):
+        lines.append(f"  {index:>3}. ({len(cycle.files)} files) {cycle.chain}")
+    if report.omitted:
+        lines.append(f"  ... {report.omitted} more cycles not listed")
+    return "\n".join(lines) + "\n"
+
+
+def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
+    """Render one section of an explanation, grouped strongest tier first."""
+    total = sum(group.total for group in groups)
+    if not total:
+        return f"{heading}: none\n"
+
+    lines = [f"{heading}: {total}"]
+    for group in groups:
+        lines.append(f"  {group.tier_label} ({group.total})")
+        lines.extend(
+            f"    {row.relation} {row.label}    {row.path}:{row.line}    [{row.node}]"
+            for row in group.rows
+        )
+        if group.omitted:
+            lines.append(f"    ... {group.omitted} more at this tier")
+    return "\n".join(lines) + "\n"
+
+
+def _render_imports(explanation: Explanation) -> str:
+    """Render the import relationships of the file the symbol lives in."""
+    lines = ["imports"]
+    if explanation.imports_out:
+        lines.extend(
+            f"    declares  {row.module} -> {row.other}    {row.path}:{row.line}"
+            for row in explanation.imports_out
+        )
+    else:
+        lines.append("    declares  none resolved inside this repository")
+    if explanation.imports_in:
+        lines.extend(
+            f"    imported by  {row.path}:{row.line}  as {row.module}"
+            for row in explanation.imports_in
+        )
+    else:
+        lines.append("    imported by  nothing in this repository")
+    return "\n".join(lines) + "\n"
+
+
 def render_map(files: Sequence[MapFile]) -> str:
     """Render ranked files as code-shaped signature blocks."""
     if not files:
@@ -198,7 +479,8 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     total = sum(len(group.sites) for group in groups)
     blocks = [f"{total} references to {target}"]
     for group in groups:
-        lines = [f"{group.path}  ({len(group.sites)} references)"]
+        labelled = f", {group.tier_label}" if group.tier_label else ""
+        lines = [f"{group.path}  ({len(group.sites)} references{labelled})"]
         lines.extend(_render_site(group.path, site) for site in group.sites)
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"

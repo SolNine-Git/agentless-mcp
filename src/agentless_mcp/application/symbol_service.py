@@ -15,6 +15,12 @@ call it" rather than as a list of line numbers.
 ``shared_callers`` is the adjacency pass behind the DRY question: symbols that
 the *same* callers also call. A helper that four of your caller's callers
 already use is the "we already have a utility for this" signal.
+
+Fan-in rows carry an evidence tier from :mod:`agentless_mcp.core.resolve`. The
+over-reporting is deliberate and unchanged -- every name match still appears --
+but each file's group says whether the file imports the target, defines the
+name itself, matched the repository's only definition, or matched nothing but
+the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
 from collections.abc import Iterable
@@ -23,7 +29,7 @@ from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import graph, refs
+from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.symbols import (
@@ -124,7 +130,7 @@ class SymbolService:
         ]
         matches.sort(key=lambda pair: (*_match_rank(pair[1], needle), pair[0].path))
 
-        cards = tuple(_card(symbol) for _, symbol in matches[:limit])
+        cards = tuple(symbol_card(symbol) for _, symbol in matches[:limit])
         return FindResult(query=query, cards=cards, total=len(matches), limit=limit)
 
     def expand_symbols(
@@ -163,12 +169,14 @@ class SymbolService:
         index = refs.build_ref_index(scan)
         by_path = scan.by_path()
 
-        definitions = _definitions_for(target, index)
+        definitions = list(refs.definitions_for(index, target))
         sites = _dedupe(
             site for definition in definitions for site in refs.references_to(index, definition)
         )
 
-        groups = _group_sites(sites[:limit], by_path)
+        resolver = resolve.build_resolver(scan, index)
+        target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
+        groups = _group_sites(sites[:limit], by_path, resolver, target_ids)
         shared = (
             _shared_callers(sites, definitions, index, by_path, ctx.config.stoplist)
             if shared_callers
@@ -215,7 +223,7 @@ class SymbolService:
         start = match.line_number
         end = min(len(lines), match.end_line_number or match.line_number)
         body = "\n".join(f"{number}| {lines[number - 1]}" for number in range(start, end + 1))
-        return _card(match, body=body), ""
+        return symbol_card(match, body=body), ""
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:
@@ -237,8 +245,12 @@ def _match_rank(symbol: ASTSymbol, needle: str) -> tuple[int, str]:
     return (3, lowered)
 
 
-def _card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
-    """Build the incident card for one symbol."""
+def symbol_card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
+    """Build the incident card for one symbol.
+
+    Public because every view that shows a symbol shows the same card: the
+    lookup results here, and the definition site an explanation opens with.
+    """
     return render.SymbolCard(
         stable_id=symbol_stable_id(symbol),
         path=symbol.module_path,
@@ -252,23 +264,6 @@ def _card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
     )
 
 
-def _definitions_for(target: str, index: refs.RefIndex) -> list[refs.Definition]:
-    """Resolve a refs target -- a stable id or a bare name -- to definitions."""
-    try:
-        parsed = parse_stable_id(target)
-    except ValueError:
-        name = target.rpartition(".")[2] or target
-        return list(index.definitions.get(name, ()))
-
-    name = parsed.qualname.rpartition(".")[2] or parsed.qualname
-    scoped = [
-        definition
-        for definition in index.definitions.get(name, ())
-        if definition.path == parsed.path and qualname(definition.symbol) == parsed.qualname
-    ]
-    return scoped or list(index.definitions.get(name, ()))
-
-
 def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
     """Collapse duplicate sites and order them by file then line."""
     unique = {(site.path, site.line, site.name): site for site in sites}
@@ -278,12 +273,16 @@ def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
 def _group_sites(
     sites: list[Ref],
     by_path: dict[str, refs.FileFacts],
+    resolver: resolve.Resolver,
+    target_ids: set[str],
 ) -> tuple[render.RefGroup, ...]:
-    """Group reference sites by file and attribute each to its enclosing symbol."""
+    """Group reference sites by file, attributing and tiering each group."""
     grouped: dict[str, list[render.RefSite]] = {}
+    names: dict[str, str] = {}
     for site in sites:
         facts = by_path.get(site.path)
         symbol = refs.enclosing_symbol(facts, site.line) if facts else None
+        names.setdefault(site.path, site.name)
         grouped.setdefault(site.path, []).append(
             render.RefSite(
                 line=site.line,
@@ -291,7 +290,36 @@ def _group_sites(
                 stable_id=symbol_stable_id(symbol) if symbol else None,
             )
         )
-    return tuple(render.RefGroup(path=path, sites=tuple(grouped[path])) for path in sorted(grouped))
+
+    return tuple(
+        _ref_group(path, tuple(grouped[path]), names[path], resolver, target_ids)
+        for path in sorted(grouped)
+    )
+
+
+def _ref_group(
+    path: str,
+    sites: tuple[render.RefSite, ...],
+    name: str,
+    resolver: resolve.Resolver,
+    target_ids: set[str],
+) -> render.RefGroup:
+    """Label one file's references with the evidence tier behind them.
+
+    The tier is the tier at which *this file* resolves the name -- and it is
+    reported only when the resolution actually lands on the target. A file
+    that defines its own ``quote`` resolves the name to its own definition, so
+    its rows are name-only evidence about somebody else's ``quote`` no matter
+    how strong the local binding is; labelling them ``name-only-ambiguous`` is
+    what tells a reader that the shadowing happened.
+    """
+    resolution = resolver.resolve(name, path)
+    tier = resolve.Tier.AMBIGUOUS
+    if resolution is not None:
+        resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}
+        if resolved_ids & target_ids:
+            tier = resolution.tier
+    return render.RefGroup(path=path, sites=sites, tier=tier.value, tier_label=tier.label)
 
 
 @dataclass

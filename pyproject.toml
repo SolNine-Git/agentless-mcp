@@ -6,7 +6,23 @@ readme = "README.md"
 authors = [
     { name = "Dallas", email = "dmarlow@tuta.io" }
 ]
+# PEP 639: an SPDX expression plus the files themselves. Verified against
+# `uv build` on 2026-08-18 -- the backend accepts both keys and puts LICENSE
+# and NOTICE in the sdist and the wheel's .dist-info/licenses/.
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     # Unit pin: the language pack ships prebuilt grammars compiled against a
     # specific tree-sitter ABI, so the core and the pack are ONE dependency
@@ -18,6 +34,9 @@ dependencies = [
     "tree-sitter>=0.25,<0.27",
     "tree-sitter-language-pack==1.14.3",
 ]
+
+[project.urls]
+Repository = "https://github.com/dmarlow-personal/agentless-mcp"
 
 [project.scripts]
 agentless-mcp = "agentless_mcp.bootstrap:cli_main"

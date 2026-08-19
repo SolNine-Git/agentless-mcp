@@ -20,6 +20,7 @@ from agentless_mcp.adapters.mcp.server import (
     build_server,
     parse_args,
 )
+from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
@@ -34,6 +35,9 @@ EXPECTED_TOOLS = {
     "read_slice",
     "find_symbol",
     "find_referencing_symbols",
+    "explain_symbol",
+    "symbol_path",
+    "import_cycles",
     "resolve_locations",
     "capabilities",
 }
@@ -55,6 +59,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,
     )
@@ -215,6 +220,43 @@ class TestRoundTrip:
 
         assert str(report.database) in text
         assert f"files {report.files}" in text
+
+    def test_explain_symbol_returns_a_tiered_card(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = (
+            self.call(server, "explain_symbol", {"target": "quote", "repo_root": str(one_repo)})
+            .content[0]
+            .text
+        )
+
+        assert "py:core.py::quote" in text
+        assert "referenced by (fan-in)" in text
+        assert "same-file" in text
+
+    def test_symbol_path_returns_hops(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = (
+            self.call(
+                server,
+                "symbol_path",
+                {
+                    "source": "PriceBook.cost_of",
+                    "target": "quote",
+                    "repo_root": str(one_repo),
+                },
+            )
+            .content[0]
+            .text
+        )
+
+        assert "1 hop from" in text
+        assert "py:core.py::quote" in text
+
+    def test_import_cycles_answers_when_there_are_none(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = self.call(server, "import_cycles", {"repo_root": str(one_repo)}).content[0].text
+
+        assert "no import cycles" in text
 
     def test_find_symbol_returns_incident_cards(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))

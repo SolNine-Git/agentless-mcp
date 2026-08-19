@@ -14,6 +14,7 @@ import pytest
 
 from agentless_mcp.adapters.cli.formatting import EXIT_OK, EXIT_USAGE
 from agentless_mcp.adapters.cli.main import CliServices, run
+from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITY_FUNCTION,
@@ -44,6 +45,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),
         counter=counter,

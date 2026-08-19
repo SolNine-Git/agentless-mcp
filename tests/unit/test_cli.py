@@ -15,6 +15,7 @@ import pytest
 
 from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK, EXIT_USAGE
 from agentless_mcp.adapters.cli.main import CliServices, run
+from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
@@ -60,6 +61,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),
         counter=counter,
@@ -123,6 +125,43 @@ class TestInProcess:
     def test_warmup_reports_every_requested_language(self, services, repo_path, capsys):
         assert run(["warmup", "python"], services) == EXIT_OK
         assert "python" in capsys.readouterr().out
+
+    def test_explain_prints_the_card_and_its_tiers(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "explain", "quote") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "py:core.py::quote" in out
+        assert "referenced by (fan-in)" in out
+        assert "resolved-via-import" in out
+
+    def test_explain_on_an_unknown_symbol_is_a_domain_failure(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "explain", "no_such_symbol") == EXIT_DOMAIN
+        assert "no symbol matches no_such_symbol" in capsys.readouterr().out
+
+    def test_path_prints_the_hops(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "path", "run_billing", "quote") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "1 hop from" in out
+        assert "-> references (resolved-via-import)" in out
+
+    def test_path_with_an_unknown_endpoint_is_a_domain_failure(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "path", "quote", "no_such_symbol")
+        assert code == EXIT_DOMAIN
+        assert "no symbol or file matches no_such_symbol" in capsys.readouterr().out
+
+    def test_a_bad_search_bound_is_a_usage_error(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "path", "quote", "run_billing", "--max-visited", "0")
+        assert code == EXIT_USAGE
+        assert "--max-visited" in capsys.readouterr().err
+
+    def test_cycles_reports_an_empty_answer_with_exit_zero(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "cycles") == EXIT_OK
+        assert "no import cycles" in capsys.readouterr().out
+
+    def test_the_new_views_have_a_json_form(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "explain", "quote", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["symbol"]["stable_id"] == "py:core.py::quote"
+        assert document["fan_in"]
 
     def test_exit_codes_are_the_three_documented_values(self):
         assert (EXIT_OK, EXIT_DOMAIN, EXIT_USAGE) == (0, 1, 2)

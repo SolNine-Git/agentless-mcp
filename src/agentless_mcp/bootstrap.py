@@ -30,6 +30,7 @@ from collections.abc import Callable, Sequence
 from typing import cast
 
 from agentless_mcp.adapters.cli.main import CliServices, counter_parser, run
+from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
@@ -115,6 +116,7 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        graphs=GraphService(extractor),
         patches=patches,
         validates=ValidateService(patches),
         counter=counter,
@@ -141,6 +143,7 @@ def mcp_main(argv: Sequence[str] | None = None) -> int:
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor),
+        graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,
     )

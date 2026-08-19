@@ -15,7 +15,7 @@ themselves are covered by the tests that exercise them (``test_envelope``,
 ``test_cache``, ``test_mcp_server``), which format the same templates for
 real.
 
-*It reaches the wire.* The nine descriptions are read back off a live FastMCP
+*It reaches the wire.* Every description is read back off a live FastMCP
 listing, not off the JSON they came from.
 """
 
@@ -28,6 +28,7 @@ import pytest
 from fastmcp import Client
 
 from agentless_mcp.adapters.mcp.server import ServerServices, ToolHandlers, build_server
+from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
@@ -188,6 +189,7 @@ class TestWireDescriptions:
             maps=MapService(extractor, counter),
             views=ViewService(extractor),
             symbols=SymbolService(extractor),
+            graphs=GraphService(extractor),
             counter=counter,
             extractor=extractor,
         )

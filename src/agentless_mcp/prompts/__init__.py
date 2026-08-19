@@ -8,7 +8,7 @@ files beside this module and are loaded once, here, at import time.
 Three files, grouped by consumer:
 
 ``tool_descriptions.json``
-    The nine MCP tool descriptions, keyed by tool name. These are the wire
+    The MCP tool descriptions, keyed by tool name. These are the wire
     descriptions -- ``adapters.mcp.server`` passes each one to
     ``@mcp.tool(description=...)``, so the docstrings on those functions are
     code documentation and nothing more.
@@ -86,6 +86,9 @@ TOOL_NAMES = (
     "read_slice",
     "find_symbol",
     "find_referencing_symbols",
+    "explain_symbol",
+    "symbol_path",
+    "import_cycles",
     "resolve_locations",
     "capabilities",
 )

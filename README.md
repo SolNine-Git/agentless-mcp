@@ -9,14 +9,36 @@ and this tool supplies the parsing, ranking, containment and verification it
 would otherwise improvise. It ships as a CLI any agent can invoke over Bash and
 as a thin stdio MCP server over the same core.
 
+## Install
+
+Today, from git:
+
+```
+uv tool install git+https://github.com/dmarlow-personal/agentless-mcp
+agentless-mcp warmup
+```
+
+Add the `mcp` extra for the stdio server
+(`uv tool install "agentless-mcp[mcp] @ git+..."`). A PyPI release will follow;
+until then the git URL is the install route.
+
 ## Status
 
-Phases 1 through 4 are in. The CLI and the stdio MCP server are both live over
+Phases 1 through 6 are in. The CLI and the stdio MCP server are both live over
 one set of application services: repository map, directory tree, skeleton,
-slice, symbol lookup, symbol expansion, fan-in and location resolution. The
-write side — SEARCH/REPLACE patch parsing, syntax checking, worktree-isolated
-apply, candidate validation and the equivalence-clustered vote — is CLI-only
-and never exposed over MCP.
+slice, symbol lookup, symbol expansion, fan-in, location resolution, and the
+resolved-graph views — `explain` (one symbol's tiered fan-in and fan-out),
+`path` (shortest resolved path between two symbols) and `cycles` (module-level
+import cycles). The write side — SEARCH/REPLACE patch parsing, syntax
+checking, worktree-isolated apply, candidate validation and the
+equivalence-clustered vote — is CLI-only and never exposed over MCP.
+
+Reference resolution is deterministic and model-free: a name is bound to its
+candidate definitions through the file's own imports and its own definitions,
+and every edge carries the discrete evidence tier behind it (same-file,
+resolved-via-import, unique, name-only-ambiguous). The graph is assembled in
+memory on every call from the current tree — nothing about it is stored, and
+there is no watcher.
 
 Parsing happens on demand by default; `agentless-mcp index` builds a
 per-repository SQLite cache under `$XDG_CACHE_HOME/agentless-mcp/` (never
@@ -98,3 +120,14 @@ pinned as a unit and move only through a reviewed bump. Fetching is confined to
 an explicit warmup step, and both the manifest URL and the cache directory are
 overridable for mirrored or air-gapped installs. See
 [docs/supply-chain-audit.md](docs/supply-chain-audit.md) for the full audit.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Parts of this package are derived from
+[Agentless](https://github.com/OpenAutoCoder/Agentless) (MIT, Copyright (c)
+2024 OpenAutoCoder): the line-slice primitives, the location grammar, the
+SEARCH/REPLACE edit format and its parser, and the candidate filter ladder and
+vote key. [NOTICE](NOTICE) names each file and reproduces the upstream
+license.

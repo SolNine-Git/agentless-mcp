@@ -1,0 +1,53 @@
+agentless-mcp
+Copyright (c) 2026 Dallas
+
+This product includes software derived from Agentless
+(https://github.com/OpenAutoCoder/Agentless), which is distributed under the
+MIT License.
+
+The following parts of this package are ports or adaptations of Agentless
+code, rewritten for this package's value objects and error handling but
+keeping the upstream semantics:
+
+  * src/agentless_mcp/core/slices.py
+        line wrapping and interval merging, from Agentless
+        agentless/util/preprocess_data.py
+
+  * src/agentless_mcp/core/locs.py
+        the location grammar and its transfer onto extracted symbols, from
+        Agentless agentless/util/preprocess_data.py
+        (transfer_arb_locs_to_locs)
+
+  * src/agentless_mcp/core/patches.py
+        the SEARCH/REPLACE edit format and its parser, from Agentless
+        agentless/util/postprocess_data.py
+
+  * src/agentless_mcp/core/vote.py
+        the candidate filter ladder and the majority-vote ranking key, from
+        Agentless agentless/repair/rerank.py
+
+Upstream license, reproduced in full:
+
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) 2024 OpenAutoCoder
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------

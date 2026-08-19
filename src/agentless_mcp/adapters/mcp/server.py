@@ -1,4 +1,4 @@
-"""The stdio MCP server: nine read tools over the same application services.
+"""The stdio MCP server: the read tools, over the same application services.
 
 This adapter owns two things the CLI does not, and nothing else.
 
@@ -35,6 +35,11 @@ from mcp.shared.exceptions import McpError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
+from agentless_mcp.application.graph_service import (
+    DEFAULT_CYCLE_LIMIT,
+    DEFAULT_EXPLAIN_LIMIT,
+    GraphService,
+)
 from agentless_mcp.application.map_service import MapRequest, MapService
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo, resolved_allowlist
 from agentless_mcp.application.symbol_service import (
@@ -73,6 +78,7 @@ class ServerServices:
     maps: MapService
     views: ViewService
     symbols: SymbolService
+    graphs: GraphService
     counter: TokenCounter
     extractor: TreeSitterExtractor
 
@@ -198,6 +204,30 @@ class ToolHandlers:
         if shared_callers:
             body += "\n" + render.render_shared_callers(result.shared, target)
         return self._wrap(ctx, body)
+
+    def explain_symbol(self, ctx: RepoContext, target: str, limit: int) -> str:
+        """Render one symbol's definition site with its tiered fan-out and fan-in."""
+        result = self._services.graphs.explain(ctx, target, limit=limit)
+        return self._wrap(ctx, render.render_explanation(result))
+
+    def symbol_path(
+        self,
+        ctx: RepoContext,
+        source: str,
+        target: str,
+        *,
+        include_ambiguous: bool,
+    ) -> str:
+        """Render the shortest resolved path between two symbols."""
+        result = self._services.graphs.path(
+            ctx, source, target, include_ambiguous=include_ambiguous
+        )
+        return self._wrap(ctx, render.render_path(result))
+
+    def import_cycles(self, ctx: RepoContext, limit: int) -> str:
+        """Render every module-level import cycle."""
+        result = self._services.graphs.cycles(ctx, limit=limit)
+        return self._wrap(ctx, render.render_cycles(result))
 
     def resolve_locations(
         self,
@@ -394,6 +424,46 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         """Find the symbols that reference a target, grouped by file."""
         ctx = await context_for(context, repo_root)
         return handlers.find_referencing_symbols(ctx, target, limit, shared_callers=shared_callers)
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["explain_symbol"], annotations=read_only("Explain symbol")
+    )
+    async def explain_symbol(
+        context: Context,
+        target: str,
+        repo_root: str | None = None,
+        limit: int = DEFAULT_EXPLAIN_LIMIT,
+        no_cache: bool = False,
+    ) -> str:
+        """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
+        return handlers.explain_symbol(ctx, target, limit)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["symbol_path"], annotations=read_only("Symbol path"))
+    async def symbol_path(
+        context: Context,
+        source: str,
+        target: str,
+        repo_root: str | None = None,
+        include_ambiguous: bool = False,
+        no_cache: bool = False,
+    ) -> str:
+        """Render the shortest resolved path between two symbols."""
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
+        return handlers.symbol_path(ctx, source, target, include_ambiguous=include_ambiguous)
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["import_cycles"], annotations=read_only("Import cycles")
+    )
+    async def import_cycles(
+        context: Context,
+        repo_root: str | None = None,
+        limit: int = DEFAULT_CYCLE_LIMIT,
+        no_cache: bool = False,
+    ) -> str:
+        """Render every module-level import cycle."""
+        ctx = await context_for(context, repo_root, no_cache=no_cache)
+        return handlers.import_cycles(ctx, limit)
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["resolve_locations"],

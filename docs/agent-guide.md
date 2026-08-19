@@ -177,6 +177,25 @@ Matching is by name, so fan-in is deliberately fuzzy: it over-reports across
 files that share a short name rather than under-reporting, because a missed
 caller is the expensive error.
 
+Every group is now **labelled with the evidence tier behind it**, so the
+over-reporting costs you nothing:
+
+```
+core.py  (1 references, same-file)
+user.py  (2 references, resolved-via-import)
+shadow.py  (2 references, name-only-ambiguous)
+```
+
+| Tier | What it means |
+|---|---|
+| `same-file` | the referencing file defines the target itself |
+| `resolved-via-import` | the referencing file imports the file the target is defined in, by name or as a whole module |
+| `unique` | nothing connects the two files, but the repository defines that name exactly once |
+| `name-only-ambiguous` | the name matched and nothing else did — including the shadowing case, where the file has its own definition of the name and its references bind to that one, not to your target |
+
+Read the top two tiers as callers and the bottom two as candidates. No row is
+ever dropped for having a weak tier; the label is there so you can weigh them.
+
 `--shared-callers` answers the DRY question -- which other symbols do *your*
 callers already use, i.e. "do we already have a utility for this?". Rows are
 ranked, and the ranking is the useful part:
@@ -196,6 +215,114 @@ utility. `score` is that count damped by how common the candidate's name is
 across the repository, the same log damping the map's edge weights use, so a
 name every file mentions cannot out-rank a genuinely shared helper just by
 colliding with more callers. Every row and every caller carries `file:line`.
+
+### `explain` (`explain_symbol`) -- one symbol, in context
+
+```
+agentless-mcp explain Invoice.total --limit 20
+```
+
+The card `find-symbol` gives you plus everything around it: the definition
+site and signature, what the symbol references (fan-out), what references it
+(fan-in), and how its file sits in the import graph. Both fan sections are
+grouped by the same tiers `refs` labels, strongest first, and each section is
+capped per tier with the omitted count printed.
+
+```
+py:reports.py::reorder_report
+  reports.py:29-44  function (python)
+  def reorder_report(inventory: Inventory, prices: PriceBook) -> str
+
+references (fan-out): 8
+  same-file (2)
+    references SEPARATOR    reports.py:9    [py:reports.py::SEPARATOR]
+  resolved-via-import (4)
+    references PriceBook    pricing.py:26    [py:pricing.py::PriceBook]
+  ...
+
+referenced by (fan-in): none
+
+imports
+    declares  pricing -> pricing.py    reports.py:6
+    imported by  nothing in this repository
+```
+
+Use it as the orientation call for one symbol, in place of a `find-symbol`
+plus `refs` pair. `target` is a stable id or a qualified name; when a bare
+name has several definitions the first in path order is explained and the rest
+are listed as `also defined at`. An unknown target is a message and exit 1,
+never an exception.
+
+Fan-out is *resolved* references, not a call list: it includes the classes a
+signature names and the constants a body reads, and it counts one relationship
+per pair however many times the name appears. For the individual call sites
+with their line numbers, use `refs`.
+
+### `path` (`symbol_path`) -- how are these two connected
+
+```
+agentless-mcp path run_billing Invoice.total
+agentless-mcp path py:billing.py::run_billing invoice.py --include-ambiguous
+```
+
+The fewest-hop chain of resolved relationships between two symbols — or
+between a symbol and a file, or two files; any node in the graph is a valid
+endpoint. Answers "could a change here reach that failure there", which no
+single fan-in or fan-out call does.
+
+```
+2 hops from py:reports.py::reorder_report to py:inventory.py::Item.needs_reorder
+  start  reorder_report    py:reports.py::reorder_report
+    1. -> references (unique)    Inventory.reorder_list    inventory.py:87    [py:inventory.py::Inventory.reorder_list]
+    2. -> references (same-file)    Item.needs_reorder    inventory.py:32    [py:inventory.py::Item.needs_reorder]
+```
+
+Edges are walked in both directions — the question is about relatedness, not
+call direction — and each hop is rendered with the direction it really runs:
+`->` is "this hop's origin references the arrival", `<-` is "the arrival
+references the origin".
+
+**Read the tiers on the hops.** A chain is only as good as its weakest link,
+and a `unique` hop is a name that matched the repository's only definition
+without any import connecting the two files — sometimes a real edge, sometimes
+a local variable that happens to share a name with a function elsewhere.
+`name-only-ambiguous` edges are excluded from the search entirely unless you
+pass `--include-ambiguous` (`include_ambiguous: true`), because a path built
+out of guessed bindings reads like a finding and is not one.
+
+Three answers are answers rather than errors: no path (exit 0, with a note
+that ambiguous edges were excluded), an endpoint that names nothing (exit 1,
+naming it), and an endpoint that names several things (exit 1, listing the
+candidate ids so you can pick one). `--max-visited` bounds the search, and
+hitting the bound says so instead of reporting "no path".
+
+### `cycles` (`import_cycles`) -- module-level import knots
+
+```
+agentless-mcp cycles --limit 20
+```
+
+Every import cycle in the repository, by strongly connected component over the
+resolved import edges, each rendered as a chain that closes:
+
+```
+2 import cycles
+    1. (2 files) app/store.py -> app/model.py -> app/store.py
+    2. (3 files) a.py -> b.py -> c.py -> a.py
+```
+
+The chain is a real walk, not the component's members in alphabetical order.
+Reach for it when an import error, a partially initialized module or a
+layering question needs the knots named. No cycles is an ordinary answer and
+exits 0.
+
+One component is one row. Files that are all mutually reachable are a single
+knot however many small loops run inside it, so a repository with a five-file
+tangle reports one five-file cycle rather than every loop within it.
+
+Import edges are resolved best effort: a module string this tool cannot map to
+a file in the repository contributes no edge, so a cycle that runs through a
+dynamic import or an unusual path alias will not appear.
 
 ### `resolve-locs` (`resolve_locations`) -- location strings to intervals
 

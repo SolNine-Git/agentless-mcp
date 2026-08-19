@@ -27,7 +27,7 @@ from pathlib import Path
 from agentless_mcp.core.cache import FileSource, effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol
+from agentless_mcp.core.symbols import ASTSymbol, parse_stable_id, qualname
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.util.errors import LanguageUnavailable
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
@@ -162,6 +162,31 @@ def references_to(index: RefIndex, definition: Definition) -> tuple[Ref, ...]:
         for ref in index.sites.get(symbol.name, ())
         if not (ref.path == definition.path and start <= ref.line <= end)
     )
+
+
+def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
+    """Resolve a lookup target -- a stable id or a bare name -- to definitions.
+
+    One home for what "the symbol the caller meant" means, because fan-in,
+    explanation and path all take the same kind of argument and must agree
+    about it. A stable id narrows to the definition in its own file and falls
+    back to every definition of that name when the file no longer defines it,
+    which is what makes an id from a previous generation degrade to a name
+    lookup instead of to an empty answer.
+    """
+    try:
+        parsed = parse_stable_id(target)
+    except ValueError:
+        name = target.rpartition(".")[2] or target
+        return tuple(index.definitions.get(name, ()))
+
+    name = parsed.qualname.rpartition(".")[2] or parsed.qualname
+    scoped = tuple(
+        definition
+        for definition in index.definitions.get(name, ())
+        if definition.path == parsed.path and qualname(definition.symbol) == parsed.qualname
+    )
+    return scoped or tuple(index.definitions.get(name, ()))
 
 
 def enclosing_symbol(facts: FileFacts, line: int) -> ASTSymbol | None:

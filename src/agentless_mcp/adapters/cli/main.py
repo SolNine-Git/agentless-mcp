@@ -32,6 +32,11 @@ from agentless_mcp.adapters.cli.formatting import (
     warn_about,
 )
 from agentless_mcp.application import envelope, render
+from agentless_mcp.application.graph_service import (
+    DEFAULT_CYCLE_LIMIT,
+    DEFAULT_EXPLAIN_LIMIT,
+    GraphService,
+)
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
@@ -58,7 +63,7 @@ from agentless_mcp.application.validate_service import (
     load_verdicts,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, projectconfig, vote
+from agentless_mcp.core import cache, grammars, projectconfig, resolve, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
@@ -100,6 +105,7 @@ class CliServices:
     maps: MapService
     views: ViewService
     symbols: SymbolService
+    graphs: GraphService
     patches: PatchService
     validates: ValidateService
     counter: TokenCounter
@@ -154,6 +160,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_slice(subparsers)
     _add_find_symbol(subparsers)
     _add_refs(subparsers)
+    _add_explain(subparsers)
+    _add_path(subparsers)
+    _add_cycles(subparsers)
     _add_resolve_locs(subparsers)
     _add_patch(subparsers)
     _add_validate(subparsers)
@@ -284,6 +293,52 @@ def _add_refs(subparsers: Any) -> None:
         help="also list symbols the same callers use (the DRY pass)",
     )
     parser.set_defaults(handler=_cmd_refs)
+
+
+def _add_explain(subparsers: Any) -> None:
+    parser = subparsers.add_parser("explain", help="one symbol card: definition, fan-out, fan-in")
+    _repo_flags(parser)
+    parser.add_argument("target", metavar="NAME_OR_STABLE_ID")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_EXPLAIN_LIMIT,
+        help=f"rows per section, per tier (default: {DEFAULT_EXPLAIN_LIMIT})",
+    )
+    parser.set_defaults(handler=_cmd_explain)
+
+
+def _add_path(subparsers: Any) -> None:
+    parser = subparsers.add_parser("path", help="shortest resolved path between two symbols")
+    _repo_flags(parser)
+    parser.add_argument("source", metavar="FROM")
+    parser.add_argument("target", metavar="TO")
+    parser.add_argument(
+        "--include-ambiguous",
+        action="store_true",
+        help="also walk name-only-ambiguous edges; off by default because a path built "
+        "on a guessed binding reads like a finding and is not one",
+    )
+    parser.add_argument(
+        "--max-visited",
+        type=int,
+        default=resolve.DEFAULT_MAX_VISITED,
+        help=f"node bound on the search (default: {resolve.DEFAULT_MAX_VISITED}); "
+        "hitting it is reported, never silently answered as 'no path'",
+    )
+    parser.set_defaults(handler=_cmd_path)
+
+
+def _add_cycles(subparsers: Any) -> None:
+    parser = subparsers.add_parser("cycles", help="module-level import cycles")
+    _repo_flags(parser)
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_CYCLE_LIMIT,
+        help=f"cycles listed (default: {DEFAULT_CYCLE_LIMIT}); the count is always complete",
+    )
+    parser.set_defaults(handler=_cmd_cycles)
 
 
 def _add_resolve_locs(subparsers: Any) -> None:
@@ -582,6 +637,57 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
     if args.shared_callers:
         text += "\n" + render.render_shared_callers(result.shared, args.target)
     _emit(args, ctx, services, _Answer(text, result.as_dict(), "groups"))
+    return EXIT_OK
+
+
+def _cmd_explain(args: argparse.Namespace, services: CliServices) -> int:
+    """Render one symbol's definition site with its tiered fan-out and fan-in."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+
+    result = services.graphs.explain(ctx, args.target, limit=args.limit)
+    _emit(
+        args,
+        ctx,
+        services,
+        _Answer(render.render_explanation(result), result.as_dict(), "fan_out"),
+    )
+    return EXIT_OK if result.card is not None else EXIT_DOMAIN
+
+
+def _cmd_path(args: argparse.Namespace, services: CliServices) -> int:
+    """Render the shortest resolved path between two symbols.
+
+    An endpoint that does not name anything is a domain failure; a pair with
+    no path between them is an answer, and exits 0 like every other
+    legitimately empty view.
+    """
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+    if args.max_visited < 1:
+        return fail("--max-visited takes a positive integer", EXIT_USAGE)
+
+    result = services.graphs.path(
+        ctx,
+        args.source,
+        args.target,
+        include_ambiguous=args.include_ambiguous,
+        max_visited=args.max_visited,
+    )
+    _emit(args, ctx, services, _Answer(render.render_path(result), result.as_dict(), "hops"))
+    return EXIT_OK if result.endpoints_resolved else EXIT_DOMAIN
+
+
+def _cmd_cycles(args: argparse.Namespace, services: CliServices) -> int:
+    """Render every module-level import cycle; no cycles is a successful answer."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+
+    result = services.graphs.cycles(ctx, limit=args.limit)
+    _emit(args, ctx, services, _Answer(render.render_cycles(result), result.as_dict(), "cycles"))
     return EXIT_OK
 
 
