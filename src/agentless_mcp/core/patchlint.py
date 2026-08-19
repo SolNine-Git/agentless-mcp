@@ -16,7 +16,9 @@ of its own.
     A top-level package the patch imports that is in neither the repository's
     declared dependencies nor :data:`sys.stdlib_module_names`. This is the
     slopsquatting check: a hallucinated package name looks exactly like a real
-    one until something tries to install it.
+    one until something tries to install it. Reading ``pyproject.toml`` needs
+    ``tomllib``, which arrived in 3.11, so on Python 3.10 this one check
+    reports itself not run rather than guessing -- see :func:`_load_toml`.
 
 ``shadowing``
     A ``def`` or ``class`` the patch introduces at a module's top level whose
@@ -420,289 +422,47 @@ class _Fragment:
 if sys.version_info >= (3, 11):
     import tomllib
 
-    def _load_toml(text: str) -> dict[str, Any]:
+    def _load_toml(text: str) -> dict[str, Any] | None:
         """Parse TOML with the standard library parser."""
         return tomllib.loads(text)
 
 else:
 
-    def _load_toml(text: str) -> dict[str, Any]:
-        """Parse the subset of TOML this check needs.
+    def _load_toml(_text: str) -> dict[str, Any] | None:
+        """Report that this interpreter has no TOML parser to read a manifest with.
 
-        ``tomllib`` arrived in 3.11 and this package's floor is 3.10, so the
-        older interpreter gets a scanner rather than a dependency: the plan
-        for this repository put the whole configuration surface on stdlib
-        json precisely to avoid taking one, and adding ``tomli`` for a
-        best-effort advisory would invert that.
+        ``tomllib`` arrived in 3.11 and this package's floor is 3.10, and the
+        two ways to close that gap both cost more than an advisory check is
+        worth. A dependency on ``tomli`` inverts the decision that put this
+        package's whole configuration surface on stdlib json precisely so that
+        reading configuration takes no dependency. A hand-written scanner is a
+        second implementation of TOML, maintained forever, that is confidently
+        wrong about every document shape it does not cover -- which is the
+        failure mode every check in this module exists to refuse.
 
-        What it understands is exactly the shape a dependency declaration
-        has: an array of strings assigned to a key inside ``[project]``,
-        ``[project.optional-dependencies]`` or ``[dependency-groups]``,
-        possibly spanning lines, with comments and string literals told
-        apart the way TOML tells them apart. What it does not understand --
-        inline tables, ``\\u`` escapes -- yields nothing for that key. A
-        value that is not an array is carried through unparsed, so the
-        caller reports the wrong shape rather than an absent key.
-
-        What it refuses, it refuses out loud: an array it never sees the end
-        of, and a line that is not TOML at all. Both raise, so the caller
-        reports a manifest it could not read rather than a repository that
-        declares nothing; a scanner that returns a silently truncated
-        declared set makes every third-party import in the patch look
-        hallucinated.
+        So 3.10 gets neither, and says so. ``None`` means the manifest is
+        unreadable *on this interpreter*, which
+        :func:`parse_pyproject_dependencies` turns into ``parsed=False``: the
+        import check reports that it did not run, rather than reporting a
+        repository that declares nothing and accusing every third-party import
+        in the patch of being hallucinated.
         """
-        return _scan_toml(text)
+        return None
 
 
-_TABLE_HEADER = re.compile(r"^\[\[?([^\]]+)\]\]?\s*$")
-_ASSIGNMENT = re.compile(r'^\s*(?:"([^"]+)"|([A-Za-z0-9_.-]+))\s*=\s*(.*)$')
-_QUOTED_STRING = re.compile(r'"((?:[^"\\]|\\.)*)"|\'([^\']*)\'')
-
-# What opens a TOML string: a basic string, which escapes, and a literal
-# string, which does not.
-_TOML_QUOTES = "\"'"
-
-# What opens a TOML multi-line string. Tracked only so the line check in
-# `_scan_toml` does not refuse a document `tomllib` reads: the lines between
-# the two delimiters are prose, and prose is neither a table header nor an
-# assignment.
-_TOML_MULTILINE = ('"""', "'''")
-
-# The escapes a requirement string can carry. `\u` and `\U` are absent
-# deliberately: nothing that appears in a distribution name needs them, and a
-# half-implemented unescape is worse than a documented gap.
-_TOML_ESCAPES = {
-    "b": "\b",
-    "t": "\t",
-    "n": "\n",
-    "f": "\f",
-    "r": "\r",
-    '"': '"',
-    "\\": "\\",
-}
+# What 3.10 reports in place of a declared set. Phrased as a fact about the
+# interpreter rather than about the repository, because "declares nothing" and
+# "could not be read here" are the two answers `ManifestParse.parsed` exists to
+# keep apart.
+_NO_TOML_PARSER = (
+    f"{PYPROJECT_NAME} not read: reading a dependency manifest needs Python 3.11 "
+    "or newer, so this check did not run"
+)
 
 _PROJECT = "project"
 _OPTIONAL = "optional-dependencies"
 _DEPENDENCIES = "dependencies"
 _DEPENDENCY_GROUPS = "dependency-groups"
-
-
-def _scan_toml(text: str) -> dict[str, Any]:
-    """Scan the dependency-bearing tables of a pyproject document.
-
-    Raises ``ValueError`` on an array that never closes and on a line that is
-    neither blank, a comment, a table header nor an assignment. Both are
-    documents ``tomllib`` refuses, and both would otherwise come back as a
-    repository that declares nothing -- the first by swallowing the rest of
-    the document into a pending array, the second by skipping every line it
-    did not recognise. "Declares nothing" is a fact about the repository;
-    "could not be read" is a fact about this scanner, and the caller has to
-    be able to tell them apart.
-
-    A value that is not an array is recorded as its source text rather than
-    parsed. Nothing downstream reads it -- what the caller does with it is a
-    shape check -- and recording it is what lets ``dependencies = "requests"``
-    be reported as the wrong shape instead of as an absent key.
-    """
-    tables: dict[str, dict[str, object]] = {}
-    table = ""
-    pending_table = ""
-    pending_key = ""
-    pending: list[str] = []
-    depth = 0
-    multiline = ""
-
-    for number, raw in enumerate(text.splitlines(), start=1):
-        if multiline:
-            if multiline in raw:
-                multiline = ""
-            continue
-
-        line, delta = _scan_line(raw)
-        if depth > 0:
-            depth += delta
-            pending.append(line)
-            if depth <= 0:
-                tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(
-                    "\n".join(pending)
-                )
-                pending = []
-            continue
-
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        header = _TABLE_HEADER.match(stripped)
-        if header:
-            table = header.group(1).strip()
-            continue
-
-        multiline = _multiline_opener(line)
-        if multiline:
-            continue
-
-        assignment = _ASSIGNMENT.match(line)
-        if assignment is None:
-            _refuse_unrecognised_line(stripped, number)
-            continue
-
-        pending_table, pending_key = _key_location(table, assignment.group(1), assignment.group(2))
-        rest = assignment.group(3)
-        if not rest.startswith("["):
-            tables.setdefault(pending_table, {})[pending_key] = rest
-            continue
-        depth = _scan_line(rest)[1]
-        pending = [rest]
-        if depth <= 0:
-            tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(rest)
-            pending = []
-
-    if depth > 0:
-        message = f"unterminated array for {pending_key!r} in {PYPROJECT_NAME}"
-        raise ValueError(message)
-    return _shape(tables)
-
-
-def _refuse_unrecognised_line(stripped: str, number: int) -> None:
-    """Raise when a line is not TOML at all, rather than merely unsupported.
-
-    A line carrying an ``=`` is an assignment whose key shape this scanner has
-    no pattern for -- a quoted key holding a dot, say -- and the documented
-    answer to that is to yield nothing for that key. A line carrying none,
-    which is also not a table header, is not a declaration this scanner failed
-    to read: it is a document ``tomllib`` would refuse, and reporting it as a
-    repository that declares nothing is the lie this raise exists to prevent.
-    """
-    if "=" in stripped:
-        return
-    message = f"line {number} of {PYPROJECT_NAME} is not TOML: {stripped[:60]!r}"
-    raise ValueError(message)
-
-
-def _multiline_opener(line: str) -> str:
-    """Return the multi-line string delimiter ``line`` leaves open, or ''.
-
-    Comments are already gone by the time this runs, so a ``\"\"\"`` reaching
-    here is a value opening rather than prose about one.
-    """
-    index = 0
-    while index < len(line):
-        marker = line[index : index + 3]
-        if marker in _TOML_MULTILINE:
-            closed = line.find(marker, index + 3)
-            if closed < 0:
-                return marker
-            index = closed + 3
-            continue
-        index += 1
-    return ""
-
-
-def _key_location(table: str, quoted: str | None, bare: str | None) -> tuple[str, str]:
-    """Return the table and key one assignment writes to.
-
-    A bare key may be dotted -- ``project.dependencies = [...]`` at the top of
-    a document is the same declaration as ``dependencies`` under
-    ``[project]``. A quoted key is one key however many dots it holds.
-    """
-    if quoted is not None:
-        return table, quoted
-    prefix, _, key = (bare or "").rpartition(".")
-    return ".".join(part for part in (table, prefix) if part), key
-
-
-def _scan_line(raw: str) -> tuple[str, int]:
-    """Return ``raw`` with any comment removed, and its net bracket depth.
-
-    Comments and brackets are recognised outside string literals only: a ``#``
-    inside a requirement string does not open a comment, a ``[`` inside one --
-    ``uvicorn[standard]`` -- is not array structure, and a ``[`` inside a
-    comment is neither. Counting them the other way is what let a bracket in
-    a trailing comment swallow the rest of the document.
-    """
-    depth = 0
-    index = 0
-    while index < len(raw):
-        char = raw[index]
-        if char == "#":
-            return raw[:index].rstrip(), depth
-        if char in _TOML_QUOTES:
-            index = _toml_string_end(raw, index)
-            continue
-        if char == "[":
-            depth += 1
-        elif char == "]":
-            depth -= 1
-        index += 1
-    return raw.rstrip(), depth
-
-
-def _toml_string_end(raw: str, start: int) -> int:
-    """Return the index just past the string literal beginning at ``start``.
-
-    A basic string honours backslash escapes; a literal string, per TOML, has
-    none. Neither may span a line, so an unterminated one ends the line.
-    """
-    quote = raw[start]
-    index = start + 1
-    while index < len(raw):
-        if quote == '"' and raw[index] == "\\":
-            index += 2
-            continue
-        if raw[index] == quote:
-            return index + 1
-        index += 1
-    return len(raw)
-
-
-def _quoted_strings(text: str) -> list[str]:
-    """Return every single- or double-quoted string in ``text``, in order."""
-    return [
-        _unescape(double) if double else single for double, single in _QUOTED_STRING.findall(text)
-    ]
-
-
-def _unescape(text: str) -> str:
-    """Resolve the basic-string escapes a requirement specification can carry."""
-    if "\\" not in text:
-        return text
-    out: list[str] = []
-    index = 0
-    while index < len(text):
-        char = text[index]
-        if char == "\\" and index + 1 < len(text):
-            out.append(_TOML_ESCAPES.get(text[index + 1], text[index + 1]))
-            index += 2
-            continue
-        out.append(char)
-        index += 1
-    return "".join(out)
-
-
-def _shape(tables: Mapping[str, Mapping[str, object]]) -> dict[str, Any]:
-    """Reshape scanned tables into the document layout ``tomllib`` returns.
-
-    Values keep whatever shape the scan gave them -- a list of strings for an
-    array, the source text for anything else -- because the caller's next move
-    is a shape check, and a key whose value is the wrong shape has to reach
-    that check rather than be dropped on the way.
-    """
-    scanned = tables.get(_PROJECT, {})
-    project: dict[str, Any] = {
-        key: scanned[key] for key in (_DEPENDENCIES, _OPTIONAL) if key in scanned
-    }
-    optional = tables.get(f"{_PROJECT}.{_OPTIONAL}")
-    if optional:
-        project[_OPTIONAL] = dict(optional)
-
-    document: dict[str, Any] = {}
-    if project:
-        document[_PROJECT] = project
-    groups = tables.get(_DEPENDENCY_GROUPS)
-    if groups:
-        document[_DEPENDENCY_GROUPS] = dict(groups)
-    return document
 
 
 def read_declared_dependencies(root: Path) -> DeclaredDependencies:
@@ -758,7 +518,10 @@ def parse_pyproject_dependencies(text: str) -> ManifestParse:
     would make the check fire on exactly the code it should not.
 
     A document that does not parse comes back ``parsed=False`` with the reason
-    in ``warnings``, never as an empty declaration.
+    in ``warnings``, never as an empty declaration. So does every document on
+    Python 3.10, which has no TOML parser this package may use: see
+    :func:`_load_toml`. The interpreter that cannot read manifests reports one
+    coverage gap, not a repository that declares nothing.
     """
     warnings: list[str] = []
     try:
@@ -769,6 +532,8 @@ def parse_pyproject_dependencies(text: str) -> ManifestParse:
             warnings=(f"{PYPROJECT_NAME} did not parse: {type(exc).__name__}: {exc}",),
             parsed=False,
         )
+    if document is None:
+        return ManifestParse(packages=frozenset(), warnings=(_NO_TOML_PARSER,), parsed=False)
 
     specifications: list[str] = []
     project = document.get(_PROJECT)

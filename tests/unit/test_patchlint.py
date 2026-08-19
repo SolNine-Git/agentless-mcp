@@ -1,9 +1,11 @@
 """The deterministic hallucination checks over a parsed patch."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
+from agentless_mcp.core import patchlint
 from agentless_mcp.core.cache import OnDemandSource
 from agentless_mcp.core.patches import Edit, parse_blocks
 from agentless_mcp.core.patchlint import (
@@ -22,7 +24,6 @@ from agentless_mcp.core.patchlint import (
     _guarded,
     _literal_end,
     _positional_arguments,
-    _scan_toml,
     lint_patch,
     near_misses,
     normalize_distribution,
@@ -64,60 +65,23 @@ dependencies = [
 """
 
 # Not TOML at all: an unterminated table header followed by a line that is not
-# an assignment. Both parsers have to refuse it, because a document nobody can
+# an assignment. The parser has to refuse it, because a document nobody can
 # read reported as a document that declares nothing makes every third-party
 # import in the patch look hallucinated.
 NOT_TOML = "[project\nbroken\n"
 
 # A non-array value for the one key this check reads. `tomllib` hands the
-# wrong shape through so the caller can say so; the scanner has to as well.
+# wrong shape through, so the caller is the one that has to say so.
 NON_ARRAY_DEPENDENCIES = '[project]\ndependencies = "requests"\n'
 
-# What the 3.10 scanner must make of each document shape, spelled out as
-# literals rather than taken from `tomllib`. 3.10 is the only interpreter that
-# runs the scanner and the only one without `tomllib`, so an expectation
-# computed from `tomllib` is an expectation that is never checked where it
-# matters. `TestTomlDifferential` holds the other half: that `tomllib` reads
-# these same documents the same way.
-SCANNER_CASES = [
-    (
-        "a bracket in a trailing comment",
-        '[project]\ndependencies = ["a"]  # [x\n',
-        ["a"],
-    ),
-    (
-        "a bracket in a comment inside the array",
-        '[project]\ndependencies = [\n    # see [1]\n    "a",\n]\n',
-        ["a"],
-    ),
-    (
-        "a quoted phrase in a comment inside the array",
-        '[project]\ndependencies = [\n    # a "quoted" note\n    "a",\n]\n',
-        ["a"],
-    ),
-    (
-        "a trailing comment on a table header",
-        '[project]  # the metadata\ndependencies = ["a"]\n',
-        ["a"],
-    ),
-    ("a dotted key", 'project.dependencies = ["a"]\n', ["a"]),
-    (
-        "an escaped quote in a requirement",
-        '[project]\ndependencies = ["a", "b ; extra == \\"x\\""]\n',
-        ["a", 'b ; extra == "x"'],
-    ),
-    ("a bracket inside an extras marker", '[project]\ndependencies = ["a[std]"]\n', ["a[std]"]),
-    (
-        "a hash inside a requirement string",
-        '[project]\ndependencies = ["a @ https://x/y#egg=a"]\n',
-        ["a @ https://x/y#egg=a"],
-    ),
-    (
-        "a multi-line string above the array",
-        '[project]\ndescription = """\nprose, not structure\n"""\ndependencies = ["a"]\n',
-        ["a"],
-    ),
-]
+# Reading a manifest at all needs `tomllib`, which arrived in 3.11. What 3.10
+# does instead is `TestManifestWithoutATomlParser`'s subject, and it runs
+# everywhere; what is marked here is the far larger set of expectations that
+# can only hold where a manifest is readable.
+requires_tomllib = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="reading a dependency manifest needs Python 3.11 or newer",
+)
 
 APP = """\
 CONSTANT = 1
@@ -256,6 +220,7 @@ class TestDependencyManifests:
     def test_an_unparseable_requirement_yields_no_name(self):
         assert requirement_name("!!!") == ""
 
+    @requires_tomllib
     def test_every_declaration_table_is_read(self):
         parse = parse_pyproject_dependencies(PYPROJECT)
 
@@ -270,6 +235,7 @@ class TestDependencyManifests:
         assert len(parse.warnings) == 1
         assert parse.parsed is False
 
+    @requires_tomllib
     def test_a_non_list_dependencies_key_is_reported_not_guessed(self):
         parse = parse_pyproject_dependencies(NON_ARRAY_DEPENDENCIES)
 
@@ -288,9 +254,11 @@ class TestDependencyManifests:
         assert declared.known is False
         assert declared.packages == frozenset()
 
+    @requires_tomllib
     def test_the_manifest_that_was_read_is_named(self, repo):
         assert read_declared_dependencies(repo).sources == ("pyproject.toml",)
 
+    @requires_tomllib
     def test_requirements_files_join_the_declared_set(self, repo):
         (repo / "requirements-dev.txt").write_text("coverage==7.0\n", encoding="utf-8")
 
@@ -299,6 +267,7 @@ class TestDependencyManifests:
         assert "coverage" in declared.packages
         assert declared.sources == ("pyproject.toml", "requirements-dev.txt")
 
+    @requires_tomllib
     def test_a_manifest_that_did_not_parse_is_not_a_manifest_that_declares_nothing(self, repo):
         (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
 
@@ -331,6 +300,7 @@ class TestMalformedManifest:
         findings = checks(report, CHECK_UNDECLARED_IMPORTS)
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
 
+    @requires_tomllib
     def test_the_parse_failure_reaches_the_report(self, facts, source, repo):
         (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
 
@@ -344,6 +314,7 @@ class TestMalformedManifest:
         assert report.warnings[0].startswith("pyproject.toml did not parse")
         assert report.as_dict()["warnings"] == list(report.warnings)
 
+    @requires_tomllib
     def test_the_gap_names_the_parse_failure_rather_than_a_missing_manifest(
         self, facts, source, repo
     ):
@@ -358,6 +329,7 @@ class TestMalformedManifest:
         gap = checks(report, CHECK_UNDECLARED_IMPORTS)[0]
         assert "did not parse" in gap.evidence
 
+    @requires_tomllib
     def test_a_readable_manifest_carries_no_warnings(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
@@ -503,142 +475,80 @@ class TestLiteralScanner:
         assert _literal_end(text, 0) == end
 
 
-class TestTomlFallback:
-    """The 3.10 scanner, against fixed answers, on every interpreter.
+class TestManifestWithoutATomlParser:
+    """What an interpreter with no TOML parser reports, on every interpreter.
 
-    Reached through a private name on purpose: from 3.11 ``_load_toml``
-    dispatches to ``tomllib`` and the scanner is never executed by the public
-    surface at all, so the only way to hold it to a contract anywhere is to
-    call it directly.
+    ``tomllib`` arrived in 3.11 and this package takes no dependency to fill
+    that gap in, so on 3.10 the manifest is unreadable. The answer that has to
+    hold is a coverage gap: "this interpreter could not read the manifest" is a
+    fact about the interpreter, and reporting it as a repository that declares
+    nothing is what makes every third-party import in the patch look
+    hallucinated.
 
-    Nothing here may skip. Every expectation is a literal rather than
-    something ``tomllib`` computed, because 3.10 -- the one interpreter that
-    runs this scanner in anger -- is also the one interpreter without
-    ``tomllib``, and a test that asks ``tomllib`` for the answer is a test
-    that skips exactly where the answer matters. That the two parsers agree
-    on these same documents is :class:`TestTomlDifferential`'s job, and it is
-    the only part of this that is allowed to skip.
+    Nothing here skips. The gate is stood in for rather than depended on,
+    because 3.10 is the interpreter this behaviour exists for and the one least
+    likely to be the interpreter the suite is running on.
     """
 
-    def test_the_fixture_manifest_scans_to_its_declarations(self):
-        assert _scan_toml(PYPROJECT) == {
-            "project": {
-                "dependencies": [
-                    "tree-sitter>=0.25,<0.27",
-                    "requests ; python_version >= '3.10'",
-                ],
-                "optional-dependencies": {"mcp": ["fastmcp>=2.14"]},
-            },
-            "dependency-groups": {"dev": ["pytest>=9.1.1"]},
-        }
+    @pytest.fixture
+    def no_toml_parser(self, monkeypatch):
+        """Stand in for the 3.10 branch of the ``tomllib`` gate."""
+        monkeypatch.setattr(patchlint, "_load_toml", lambda _text: None)
 
-    def test_a_single_line_array_is_scanned(self):
-        document = _scan_toml('[project]\ndependencies = ["requests", "urllib3"]\n')
+    def test_the_manifest_declares_nothing_knowable_rather_than_nothing(self, no_toml_parser):
+        parse = parse_pyproject_dependencies(PYPROJECT)
 
-        assert document["project"]["dependencies"] == ["requests", "urllib3"]
+        assert parse.parsed is False
+        assert parse.packages == frozenset()
+        assert parse.warnings == (
+            (
+                "pyproject.toml not read: reading a dependency manifest needs Python 3.11 "
+                "or newer, so this check did not run"
+            ),
+        )
 
-    def test_tables_this_check_does_not_read_are_ignored(self):
-        document = _scan_toml('[tool.ruff]\nextend-select = ["E", "F"]\n')
+    def test_a_manifest_that_could_not_be_read_is_not_a_source(self, repo, no_toml_parser):
+        declared = read_declared_dependencies(repo)
 
-        assert document == {}
+        assert declared.known is False
+        assert declared.packages == frozenset()
+        assert len(declared.warnings) == 1
 
-    def test_a_document_without_dependencies_scans_to_nothing(self):
-        assert _scan_toml('[project]\nname = "x"\n') == {}
+    def test_the_import_check_reports_a_gap_rather_than_hallucinations(
+        self, facts, source, no_toml_parser
+    ):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
 
-    def test_this_repositorys_own_manifest_is_read_rather_than_refused(self):
-        """The one manifest here nobody wrote as a test fixture.
+        findings = checks(report, CHECK_UNDECLARED_IMPORTS)
+        assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
+        assert "needs Python 3.11 or newer" in findings[0].evidence
 
-        Named declarations rather than the whole list: the point is that a
-        real document with comments, inline tables, dotted table headers and
-        arrays of arrays reaches all three declaration sites, and pinning the
-        exact dependency list would make this fail on the next version bump.
-        """
-        text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+    def test_the_reason_reaches_the_report(self, facts, source, no_toml_parser):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            source,
+        )
 
-        document = _scan_toml(text)
+        assert len(report.warnings) == 1
+        assert "needs Python 3.11 or newer" in report.warnings[0]
 
-        assert "tree-sitter>=0.25,<0.27" in document["project"]["dependencies"]
-        assert sorted(document["project"]["optional-dependencies"]) == ["mcp", "tokens"]
-        assert list(document["dependency-groups"]) == ["dev"]
+    def test_the_other_checks_still_run(self, facts, source, no_toml_parser):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "def greet(name):\n    return name\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
 
-    @pytest.mark.parametrize(("label", "text", "dependencies"), SCANNER_CASES)
-    def test_the_scanner_reads_the_dependency_array(self, label, text, dependencies):
-        assert _scan_toml(text)["project"]["dependencies"] == dependencies, label
-
-    def test_an_unterminated_array_is_refused_rather_than_scanned_to_nothing(self):
-        with pytest.raises(ValueError, match="unterminated"):
-            _scan_toml('[project]\ndependencies = [\n    "a",\n')
-
-    def test_a_document_that_is_not_toml_is_refused_rather_than_read_as_empty(self):
-        with pytest.raises(ValueError, match="is not TOML"):
-            _scan_toml(NOT_TOML)
-
-    def test_a_value_that_is_not_an_array_survives_to_be_reported(self):
-        """The wrong shape has to reach the caller's shape check.
-
-        Dropping the key here is indistinguishable from the key being absent,
-        and absent is what silences the warning that says the declared set is
-        incomplete.
-        """
-        document = _scan_toml(NON_ARRAY_DEPENDENCIES)
-
-        assert not isinstance(document["project"]["dependencies"], list)
-
-
-class TestTomlDifferential:
-    """The scanner against the parser it stands in for.
-
-    This needs ``tomllib`` present, so it skips on 3.10 -- which is precisely
-    why the scanner's own contract is asserted in :class:`TestTomlFallback`
-    instead of here.
-    """
-
-    def test_the_scanner_agrees_with_tomllib_on_the_fixture(self):
-        tomllib = pytest.importorskip("tomllib")
-        document = tomllib.loads(PYPROJECT)
-
-        assert _scan_toml(PYPROJECT) == {
-            "project": {
-                "dependencies": document["project"]["dependencies"],
-                "optional-dependencies": document["project"]["optional-dependencies"],
-            },
-            "dependency-groups": document["dependency-groups"],
-        }
-
-    def test_the_scanner_agrees_with_tomllib_on_this_repositorys_own_manifest(self):
-        tomllib = pytest.importorskip("tomllib")
-        text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
-        document = tomllib.loads(text)
-
-        assert _scan_toml(text) == {
-            "project": {
-                "dependencies": document["project"]["dependencies"],
-                "optional-dependencies": document["project"]["optional-dependencies"],
-            },
-            "dependency-groups": document["dependency-groups"],
-        }
-
-    @pytest.mark.parametrize(("label", "text", "dependencies"), SCANNER_CASES)
-    def test_tomllib_reads_each_shape_the_way_the_scanner_must(self, label, text, dependencies):
-        tomllib = pytest.importorskip("tomllib")
-
-        assert tomllib.loads(text)["project"]["dependencies"] == dependencies, label
-
-    def test_tomllib_refuses_the_document_the_scanner_refuses(self):
-        tomllib = pytest.importorskip("tomllib")
-
-        with pytest.raises(tomllib.TOMLDecodeError):
-            tomllib.loads(NOT_TOML)
-
-    def test_tomllib_keeps_the_non_array_value_the_scanner_keeps(self):
-        tomllib = pytest.importorskip("tomllib")
-
-        document = tomllib.loads(NON_ARRAY_DEPENDENCIES)
-
-        assert not isinstance(document["project"]["dependencies"], list)
+        assert checks(report, CHECK_SHADOWING)
 
 
 class TestUndeclaredImports:
+    @requires_tomllib
     def test_a_package_nothing_declares_is_reported(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
@@ -651,6 +561,7 @@ class TestUndeclaredImports:
         assert findings[0].severity is Severity.WARNING
         assert "nonexistent_pkg" in findings[0].message
 
+    @requires_tomllib
     def test_the_finding_points_at_the_line_in_the_patched_file(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
@@ -660,6 +571,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS)[0].location == "app.py:1"
 
+    @requires_tomllib
     def test_a_declared_dependency_is_not_reported(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import tree_sitter\n\nCONSTANT = 1")],
@@ -669,6 +581,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_an_optional_dependency_counts_as_declared(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import fastmcp\n\nCONSTANT = 1")],
@@ -678,6 +591,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_a_dependency_group_entry_counts_as_declared(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import pytest\n\nCONSTANT = 1")],
@@ -687,6 +601,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_the_standard_library_is_not_a_missing_dependency(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import json\n\nCONSTANT = 1")],
@@ -696,6 +611,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_a_first_party_module_is_not_a_missing_dependency(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "from helpers import helper\n\nCONSTANT = 1")],
@@ -705,6 +621,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_a_package_the_repository_already_imports_is_treated_as_available(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "import yaml\n\nCONSTANT = 1")],
@@ -714,6 +631,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_a_relative_import_is_never_a_missing_dependency(self, facts, source):
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "from . import siblings\n\nCONSTANT = 1")],
@@ -723,6 +641,7 @@ class TestUndeclaredImports:
 
         assert checks(report, CHECK_UNDECLARED_IMPORTS) == []
 
+    @requires_tomllib
     def test_one_package_is_reported_once_per_file(self, facts, source):
         report = lint_patch(
             [

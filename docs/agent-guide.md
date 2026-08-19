@@ -655,6 +655,13 @@ apply. Silence would be the one dishonest outcome, because you cannot tell
 Python's builtin and signature vocabulary and report `not_checked` for every
 other language rather than judging it by Python's rules.
 
+**`undeclared_imports` needs Python 3.11 or newer.** Reading `pyproject.toml`
+means `tomllib`, which the standard library gained in 3.11, and this package
+takes no dependency to fill that in. On 3.10 the check reports `not_checked`
+with the reason — "reading a dependency manifest needs Python 3.11 or newer" —
+and the other six checks run as usual. Everything else in this package works
+the same on 3.10.
+
 **Both advisories are deliberately timid.** `arity` passes in silence on any
 doubt at all — varargs, keyword arguments, decorators, methods, a call inside
 an f-string, a callee that resolves only by name — because a wrong arity claim
