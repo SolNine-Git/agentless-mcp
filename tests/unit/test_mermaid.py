@@ -5,6 +5,7 @@ import pytest
 from agentless_mcp.core.communities import detect_communities
 from agentless_mcp.core.graph import RefGraph, personalized_pagerank
 from agentless_mcp.core.mermaid import (
+    EDGE_LEGEND,
     ELISION_ID,
     MERMAID_RESERVED_IDS,
     DiagramOptions,
@@ -75,6 +76,81 @@ class TestShape:
         rendered = render_flowchart(graph, {"a.py": 1.0})
 
         assert '"b.py"' in rendered
+
+
+class TestEdgeKinds:
+    def test_import_and_reference_edges_are_told_apart(self):
+        graph = RefGraph(
+            nodes=("a.py", "b.py"),
+            edges={("a.py", "b.py"): 4.0, ("b.py", "a.py"): 1.0},
+        )
+
+        rendered = render_flowchart(
+            graph, uniform_rank(graph), imports=frozenset({("a.py", "b.py")})
+        )
+
+        assert "    n0 --> n1" in rendered
+        assert "    n1 -.-> n0" in rendered
+
+    def test_the_legend_names_the_encoding(self):
+        graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
+
+        rendered = render_flowchart(graph, uniform_rank(graph), imports=frozenset())
+
+        assert f"    {EDGE_LEGEND}" in rendered
+        assert "solid: imports, dashed: references" in rendered
+
+    def test_without_import_information_every_edge_is_solid_and_unlegended(self):
+        graph = RefGraph(
+            nodes=("a.py", "b.py"),
+            edges={("a.py", "b.py"): 1.0, ("b.py", "a.py"): 1.0},
+        )
+
+        rendered = render_flowchart(graph, uniform_rank(graph))
+
+        assert "-.->" not in rendered
+        assert EDGE_LEGEND not in rendered
+        assert rendered.count(" --> ") == 2
+
+    def test_reference_edges_over_the_bound_are_counted_not_drawn(self):
+        graph = chain_graph(6)
+
+        rendered = render_flowchart(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_edges=3),
+            imports=frozenset(),
+        )
+
+        assert "-.->" not in rendered
+        assert "    %% 5 reference edges not drawn (edge bound 3)" in rendered
+
+    def test_import_edges_survive_the_edge_bound(self):
+        graph = chain_graph(6)
+
+        rendered = render_flowchart(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_edges=1),
+            imports=frozenset({("src/m00.py", "src/m01.py")}),
+        )
+
+        assert "    n0 --> n1" in rendered
+        assert "-.->" not in rendered
+        assert "%% 4 reference edges not drawn (edge bound 1)" in rendered
+
+    def test_an_edgeless_diagram_carries_no_legend(self):
+        graph = RefGraph(nodes=("a.py",), edges={})
+
+        rendered = render_flowchart(graph, uniform_rank(graph), imports=frozenset())
+
+        assert EDGE_LEGEND not in rendered
+
+    def test_a_negative_edge_bound_is_refused(self):
+        graph = chain_graph(3)
+
+        with pytest.raises(ValueError, match="max_edges"):
+            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_edges=-1))
 
 
 class TestBounding:

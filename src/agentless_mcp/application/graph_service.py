@@ -35,9 +35,10 @@ neither needs a name bound to a declaration:
     mechanical label per group. A rollup, not a ranking.
 ``diagram``
     The same graph as mermaid text, rank-bounded and optionally grouped by
-    those communities. Returned on demand and never written anywhere: a
-    diagram is presentation for a human, and the facts stay in the flattened
-    views an agent reads.
+    those communities, with declared imports drawn solid and name-reference
+    edges dashed so the picture cannot contradict what ``cycles`` just said.
+    Returned on demand and never written anywhere: a diagram is presentation
+    for a human, and the facts stay in the flattened views an agent reads.
 
 Every one of them is bounded and says what it left out.
 """
@@ -90,11 +91,18 @@ class _Resolved:
 
 @dataclass(frozen=True)
 class _Ranked:
-    """One call's file-level graph and the ranking over it."""
+    """One call's file-level graph, the ranking over it, and its import pairs.
+
+    ``imports`` is the subset of the graph's edges that a declared import
+    accounts for. The file graph itself merges import weight and name-reference
+    weight into one number per edge, so the kind has to be carried alongside
+    it for any view that must not draw a reference as an import.
+    """
 
     index: refs.RefIndex
     graph: graph.RefGraph
     rank: dict[str, float]
+    imports: frozenset[tuple[str, str]]
 
 
 @dataclass(frozen=True)
@@ -216,11 +224,14 @@ class GraphService:
         group_by_communities: bool = False,
         resolution: float | None = None,
     ) -> render.DiagramView:
-        """Render the module-level import and reference graph as mermaid text.
+        """Render the module-level graph as mermaid text, edge kinds distinguished.
 
         On demand and nowhere else: the text is returned, never written, and
         the repository under analysis is read exactly as every other view
-        reads it.
+        reads it. Declared imports draw solid, name-reference edges dashed and
+        only while the diagram stays legible -- drawn identically, a pair of
+        opposite reference edges reads as an import cycle the ``cycles`` view
+        would deny.
         """
         ranked = self._ranked(ctx)
         seed = _diagram_focus(focus, ranked)
@@ -236,7 +247,11 @@ class GraphService:
         options = mermaid.DiagramOptions(max_nodes=max_nodes, focus=seed.node or None)
         drawn = mermaid.selected_nodes(ranked.graph, ranked.rank, options)
         text = mermaid.render_flowchart(
-            ranked.graph, ranked.rank, partition=partition, options=options
+            ranked.graph,
+            ranked.rank,
+            partition=partition,
+            options=options,
+            imports=ranked.imports,
         )
         return render.DiagramView(
             text=text,
@@ -264,7 +279,29 @@ class GraphService:
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         built = graph.build_graph(scan, index, stoplist=ctx.config.stoplist)
-        return _Ranked(index=index, graph=built, rank=graph.personalized_pagerank(built))
+        return _Ranked(
+            index=index,
+            graph=built,
+            rank=graph.personalized_pagerank(built),
+            imports=_import_pairs(scan, built.nodes),
+        )
+
+
+def _import_pairs(scan: refs.RepoScan, nodes: tuple[str, ...]) -> frozenset[tuple[str, str]]:
+    """Return the ``(importer, imported)`` file pairs a declared import connects.
+
+    The same resolution :func:`agentless_mcp.core.graph.build_graph` runs when
+    it weights these edges, re-run here because the built graph keeps only the
+    merged weight and not the kind. Deriving the kind from the weight instead
+    would be a proxy guard: enough name references sum past the import weight.
+    """
+    pairs: set[tuple[str, str]] = set()
+    for facts in scan.files:
+        for statement in facts.imports:
+            imported = graph.resolve_import_target(facts.path, statement, nodes)
+            if imported is not None and imported != facts.path:
+                pairs.add((facts.path, imported))
+    return frozenset(pairs)
 
 
 @dataclass(frozen=True)
@@ -498,10 +535,10 @@ def _unresolved_path(
 def _diagram_focus(focus: str | None, ranked: _Ranked) -> _Focus:
     """Resolve a diagram's focus argument to one module, or say why not.
 
-    The same resolution the map's ``--focus`` uses -- a path, a path suffix or
-    a symbol name -- narrowed to a single module, because a diagram has one
-    centre. A focus naming several modules is answered with the list rather
-    than with whichever one sorts first.
+    The same resolution the map's ``--focus`` uses -- a path, a path suffix, a
+    module stem or a symbol name -- narrowed to a single module, because a
+    diagram has one centre. A focus naming several modules is answered with
+    the list rather than with whichever one sorts first.
     """
     if focus is None or not focus.strip():
         return _Focus(node="", message="")

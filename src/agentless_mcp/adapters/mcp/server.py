@@ -13,9 +13,13 @@ answers "List roots not supported"; that is a normal negative, not a failure,
 and the static roots still apply.
 
 **The refusal on ambiguity.** With exactly one allowed root, an omitted
-``repo_root`` defaults to it -- there is nothing to be ambiguous about. With
-several, an omitted or unmatched root is refused with the list of allowed
-roots rather than guessed at.
+``repo_root`` defaults to it -- there is nothing to be ambiguous about. The
+client's advertised roots select the same way: static roots authorise, and
+when the advertised workspace picks out exactly one allowed root -- equal to
+it, or nested either way round -- an omitted ``repo_root`` defaults to that
+root, receipted like any other answer. With several candidates left, an
+omitted or unmatched root is refused with the list of allowed roots rather
+than guessed at.
 
 Everything else is a thin call into the same services the CLI uses. There are
 no write, exec or fetch tools here and there will not be: patch application
@@ -27,11 +31,14 @@ import argparse
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from importlib import metadata
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
 from mcp.shared.exceptions import McpError
+from pydantic import Field
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
@@ -56,7 +63,7 @@ from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
-from agentless_mcp.prompts import MESSAGES, TOOL_DESCRIPTIONS
+from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from agentless_mcp.util.errors import AtlasError, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -71,6 +78,51 @@ OPERATION_PATH = "path"
 OPERATION_CYCLES = "cycles"
 OPERATION_COMMUNITIES = "communities"
 OPERATION_DIAGRAM = "diagram"
+
+# The one parameter every tool shares. Its description is prompt data like
+# the tool descriptions; pydantic carries it into the published schema, which
+# is the only documentation an arbitrary client is guaranteed to read.
+RepoRoot = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["repo_root"])]
+
+
+def _sole_selection(
+    allowed: Sequence[Path],
+    static: Sequence[Path],
+    client_roots: Sequence[Path],
+) -> Path | None:
+    """Return the one allowed root the client's workspace identifies, if any.
+
+    Static roots authorise; client roots select. An advertised root names a
+    static root when one contains the other (a path contains itself): the
+    workspace open inside a repository, or one directory above it. Static
+    roots are the candidates -- the advertised workspace never competes with
+    the root that contains it -- and only when it names none of them does a
+    single advertised root serve itself, which is the additive case. Zero
+    candidates or several is ordinary ambiguity and selects nothing; the
+    caller refuses with the listing exactly as if nothing were advertised.
+    """
+    if len(allowed) == 1:
+        return allowed[0]
+    candidates = [
+        root
+        for root in static
+        if any(
+            root.is_relative_to(client) or client.is_relative_to(root) for client in client_roots
+        )
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates and len(client_roots) == 1:
+        return client_roots[0]
+    return None
+
+
+def _distribution_version() -> str:
+    """The installed distribution's version, or a placeholder outside one."""
+    try:
+        return metadata.version("agentless-mcp")
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
 
 @dataclass(frozen=True)
@@ -137,8 +189,9 @@ class ToolHandlers:
             raise SecurityRefusal(message)
 
         if repo_root is None or not repo_root.strip():
-            if len(allowed) == 1:
-                return self._with_source(resolve_repo(allowed[0], allowed), no_cache=no_cache)
+            selected = _sole_selection(allowed, self._roots, client_roots)
+            if selected is not None:
+                return self._with_source(resolve_repo(selected, allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
             message = MESSAGES.server_root_required.format(roots=listing)
             raise SecurityRefusal(message)
@@ -273,7 +326,7 @@ class ToolHandlers:
             lines.extend(["", view.text.rstrip("\n")])
         return self._wrap(ctx, "\n".join(lines) + "\n")
 
-    def capabilities(self, ctx: RepoContext) -> str:
+    def capabilities(self, ctx: RepoContext, client_roots: Sequence[Path] = ()) -> str:
         """Report loaded grammars, their versions and the caps in force."""
         capabilities = grammars.loaded_capabilities()
         status = (
@@ -282,10 +335,19 @@ class ToolHandlers:
             else cache.OnDemandSource(self._services.extractor).status()
         )
         lines = [
+            f"agentless-mcp {_distribution_version()}",
             f"pack {grammars.pack_version()}  grammar cache {grammars.cache_dir()}",
             f"tag cache: {status.receipt}",
             f"  path {status.path}  files {status.files}  tags {status.tags}",
+        ]
+        # No usable index and no deliberate bypass: on-demand parsing is a
+        # design default, but the remedy is an explicit CLI step this surface
+        # cannot run, so the one place that reports the cache also names it.
+        if status.enabled and status.generation is None:
+            lines.append(MESSAGES.cache_build_hint.format(repo_root=ctx.root))
+        lines += [
             f"roots: {', '.join(str(path) for path in self._roots) or 'none configured'}",
+            f"client roots: {', '.join(str(path) for path in client_roots) or 'none advertised'}",
             "languages:",
         ]
         lines.extend(
@@ -408,7 +470,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     @mcp.tool(description=TOOL_DESCRIPTIONS["repo_map"], annotations=read_only("Repository map"))
     async def repo_map(
         context: Context,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         focus: list[str] | None = None,
         budget: int | None = None,
         max_files: int | None = None,
@@ -430,7 +492,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     @mcp.tool(description=TOOL_DESCRIPTIONS["list_dir"], annotations=read_only("Directory tree"))
     async def list_dir(
         context: Context,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         depth: int = DEFAULT_RENDER_DEPTH,
         max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> str:
@@ -444,7 +506,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def get_symbols_overview(
         context: Context,
         paths: list[str],
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         docstrings: bool | None = None,
         no_cache: bool = False,
     ) -> str:
@@ -458,7 +520,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def expand_symbols(
         context: Context,
         stable_ids: list[str],
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         limit: int = DEFAULT_EXPAND_LIMIT,
         no_cache: bool = False,
     ) -> str:
@@ -470,7 +532,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def read_slice(
         context: Context,
         path: str,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         lines: list[list[int]] | None = None,
         context_lines: int = DEFAULT_CONTEXT_LINES,
     ) -> str:
@@ -485,7 +547,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def find_symbol(
         context: Context,
         name: str,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         kind: str | None = None,
         limit: int = DEFAULT_FIND_LIMIT,
         no_cache: bool = False,
@@ -501,7 +563,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def find_referencing_symbols(
         context: Context,
         target: str,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         limit: int = DEFAULT_REFS_LIMIT,
         shared_callers: bool = False,
     ) -> str:
@@ -515,7 +577,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def explain_symbol(
         context: Context,
         target: str,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         limit: int = DEFAULT_EXPLAIN_LIMIT,
         no_cache: bool = False,
     ) -> str:
@@ -530,7 +592,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def analyze_structure(
         context: Context,
         operation: str,
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         source: str = "",
         target: str = "",
         include_ambiguous: bool = False,
@@ -566,7 +628,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         path: str,
         locs: list[str],
-        repo_root: str | None = None,
+        repo_root: RepoRoot = None,
         context_lines: int = DEFAULT_CONTEXT_LINES,
     ) -> str:
         """Turn class:/function:/line: strings into stable ids and intervals."""
@@ -574,9 +636,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         return handlers.resolve_locations(ctx, path, locs, context_lines)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["capabilities"], annotations=read_only("Capabilities"))
-    async def capabilities(context: Context, repo_root: str | None = None) -> str:
+    async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
-        return handlers.capabilities(await context_for(context, repo_root))
+        roots = await effective_client_roots(context)
+        return handlers.capabilities(handlers.resolve(repo_root, roots), roots)
 
     return mcp
 

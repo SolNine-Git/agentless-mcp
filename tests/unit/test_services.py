@@ -112,6 +112,28 @@ class TestMapService:
         assert result.unresolved_seeds == ()
         assert result.files[0].path == "ledger.py"
 
+    def test_a_module_stem_focuses_the_map_on_that_file(self, repo, extractor, counter):
+        """`orphan` must seed orphan.py as if the caller had typed orphan.py."""
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("orphan",)))
+        assert result.seeds == ("orphan.py",)
+        assert result.unresolved_seeds == ()
+        assert result.files[0].path == "orphan.py"
+
+    def test_a_stem_matching_two_files_splits_its_vote(self, tmp_path, extractor):
+        for directory in ("a", "b"):
+            (tmp_path / directory).mkdir()
+            (tmp_path / directory / "util.py").write_text(
+                "def helper():\n    return 1\n", encoding="utf-8"
+            )
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        index = refs.build_ref_index(scan)
+        seeding = seed_weights(("util",), scan, index)
+
+        assert seeding.unresolved == ()
+        assert seeding.weights["a/util.py"] == pytest.approx(0.5)
+        assert seeding.weights["b/util.py"] == pytest.approx(0.5)
+
     def test_a_qualified_method_name_narrows_to_its_owner(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         bare = maps.build(repo, MapRequest(focus=("cost_of",)))

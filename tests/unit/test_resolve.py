@@ -98,6 +98,11 @@ def marooned(argument):
     return argument
 """
 
+PARAM_SHADOW = """\
+def shade(only_once, marker: Child = Base):
+    return only_once(marker)
+"""
+
 FILES = {
     "core.py": CORE,
     "user.py": USER,
@@ -110,6 +115,47 @@ FILES = {
     "bases.py": BASES,
     "derived.py": DERIVED,
     "island.py": ISLAND,
+    "param_shadow.py": PARAM_SHADOW,
+}
+
+PKG_INIT = """\
+def name_that_is_a_symbol(value):
+    return value
+"""
+
+PKG_MOD = """\
+def wrapped(value):
+    return value
+"""
+
+SUBMODULE_MAIN = """\
+from pkg import mod
+from pkg import name_that_is_a_symbol
+
+
+def use(value):
+    return mod.wrapped(name_that_is_a_symbol(value))
+"""
+
+ALIASED_MAIN = """\
+from pkg import mod as m
+
+
+def use_alias(value):
+    return m.wrapped(value)
+"""
+
+SUBMODULE_FILES = {
+    "pkg/__init__.py": PKG_INIT,
+    "pkg/mod.py": PKG_MOD,
+    "main.py": SUBMODULE_MAIN,
+    "aliased.py": ALIASED_MAIN,
+}
+
+SUBMODULE_CYCLE = {
+    "pkg/__init__.py": "",
+    "pkg/sub.py": "import loop\n\n\ndef in_sub():\n    return 1\n",
+    "loop.py": "from pkg import sub\n\n\ndef in_loop():\n    return 2\n",
 }
 
 TWO_CYCLE = {
@@ -127,6 +173,7 @@ THREE_CYCLE = {
 def write(root, files):
     """Write a mapping of relative path to text under ``root``."""
     for relative, text in files.items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
         (root / relative).write_text(text, encoding="utf-8")
     return root
 
@@ -206,6 +253,25 @@ class TestTiers:
         assert resolver.resolve("no_such_name_anywhere", "core.py") is None
 
 
+class TestLocalBindings:
+    def test_a_parameter_named_after_a_unique_symbol_produces_no_edge(self, repo):
+        _, graph = repo
+        assert edges_from(graph, "py:param_shadow.py::shade", "only_once") == []
+
+    def test_the_same_name_not_locally_bound_still_resolves(self, repo):
+        _, graph = repo
+        edges = edges_from(graph, "py:stranger.py::stray", "only_once")
+        assert [edge.tier for edge in edges] == [resolve.Tier.UNIQUE]
+        assert edges[0].target.node == "py:core.py::only_once"
+
+    def test_annotation_and_default_names_on_a_parameter_still_resolve(self, repo):
+        _, graph = repo
+        annotation = edges_from(graph, "py:param_shadow.py::shade", "Child")
+        default = edges_from(graph, "py:param_shadow.py::shade", "Base")
+        assert [edge.target.node for edge in annotation] == ["py:bases.py::Child"]
+        assert [edge.target.node for edge in default] == ["py:bases.py::Base"]
+
+
 class TestRelations:
     def test_a_base_class_in_the_same_file_is_an_inherits_edge(self, repo):
         _, graph = repo
@@ -249,6 +315,58 @@ class TestRelations:
 
     def test_a_keyword_in_a_base_list_is_not_a_base(self):
         assert resolve.base_name("metaclass=ABCMeta") == ""
+
+
+class TestSubmoduleImports:
+    """``from pkg import mod`` binds ``mod`` as a module when ``pkg.mod`` is one.
+
+    The submodule file, not the package's ``__init__``, is what the name
+    reaches -- so the import edge, the scope binding and the reference tier
+    all have to land on ``pkg/mod.py``. A name the dotted probe cannot match
+    to a file stays what it always was: a symbol imported from the module.
+    """
+
+    @pytest.fixture
+    def submodule_repo(self, tmp_path, extractor):
+        return resolved(write(tmp_path, SUBMODULE_FILES), extractor)
+
+    def test_a_from_import_of_a_submodule_is_an_import_edge(self, submodule_repo):
+        _, graph = submodule_repo
+        pairs = {(edge.source.node, edge.target.node) for edge in graph.import_edges()}
+        assert ("main.py", "pkg/mod.py") in pairs
+
+    def test_the_submodule_name_binds_to_the_submodule_file(self, submodule_repo):
+        resolver, _ = submodule_repo
+        scope = resolver.scopes["main.py"]
+        assert scope.named["mod"] == frozenset({"pkg/mod.py"})
+        assert "pkg/mod.py" in scope.modules
+
+    def test_a_reference_through_the_submodule_resolves_imported(self, submodule_repo):
+        _, graph = submodule_repo
+        edges = edges_from(graph, "py:main.py::use", "wrapped")
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+        assert edges[0].target.node == "py:pkg/mod.py::wrapped"
+
+    def test_a_from_import_of_a_symbol_still_binds_the_symbol(self, submodule_repo):
+        resolver, graph = submodule_repo
+        scope = resolver.scopes["main.py"]
+        assert scope.named["name_that_is_a_symbol"] == frozenset({"pkg/__init__.py"})
+        edges = edges_from(graph, "py:main.py::use", "name_that_is_a_symbol")
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+        assert edges[0].target.node == "py:pkg/__init__.py::name_that_is_a_symbol"
+
+    def test_an_aliased_submodule_import_keeps_the_edge(self, submodule_repo):
+        resolver, graph = submodule_repo
+        pairs = {(edge.source.node, edge.target.node) for edge in graph.import_edges()}
+        assert ("aliased.py", "pkg/mod.py") in pairs
+        assert resolver.scopes["aliased.py"].named["mod"] == frozenset({"pkg/mod.py"})
+        edges = edges_from(graph, "py:aliased.py::use_alias", "wrapped")
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+    def test_a_cycle_through_a_submodule_import_is_found(self, tmp_path, extractor):
+        _, graph = resolved(write(tmp_path, SUBMODULE_CYCLE), extractor)
+        cycles = resolve.import_cycles(graph)
+        assert [cycle.files for cycle in cycles] == [("loop.py", "pkg/sub.py")]
 
 
 class TestDeterminism:

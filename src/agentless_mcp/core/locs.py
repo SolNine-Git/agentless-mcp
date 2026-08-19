@@ -216,7 +216,12 @@ def _resolve_function(name: str, target: LocTarget, current_class: str) -> _Hit:
         return _pick(functions, wanted, ordinal, target)
 
     if current_class:
-        return _resolve_method(current_class, wanted, target, ordinal)
+        # The current class is an implicit scope, not one the caller named:
+        # on a miss, fall through to the any-class search rather than surface
+        # a reason blaming a class the location never mentioned.
+        hit = _resolve_method(current_class, wanted, target, ordinal)
+        if hit.reason is None:
+            return hit
 
     return _resolve_unqualified_method(wanted, ordinal, target)
 

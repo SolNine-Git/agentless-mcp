@@ -75,6 +75,34 @@ class TestCollectRefs:
         names = {ref.name for ref in collect_refs(source, "typescript", "w.ts")}
         assert {"Widget", "render", "helper"} <= names
 
+    def test_a_parameter_s_occurrences_are_marked_locally_bound(self):
+        refs = collect_refs("def f(quote):\n    return quote\n", "python", "a.py")
+        bound = [ref for ref in refs if ref.name == "quote"]
+        assert [ref.line for ref in bound] == [1, 2]
+        assert all(ref.locally_bound for ref in bound)
+
+    def test_annotation_and_default_names_are_not_locally_bound(self):
+        source = "def f(quote: Book = LEDGER):\n    return quote\n"
+        flags = {
+            (ref.name, ref.line): ref.locally_bound
+            for ref in collect_refs(source, "python", "a.py")
+        }
+        assert flags[("quote", 1)]
+        assert flags[("quote", 2)]
+        assert not flags[("Book", 1)]
+        assert not flags[("LEDGER", 1)]
+
+    def test_splat_and_lambda_parameters_bind_too(self):
+        source = "def f(*args, **kwargs):\n    g = lambda item: item + args + kwargs\n"
+        refs = collect_refs(source, "python", "a.py")
+        assert all(ref.locally_bound for ref in refs if ref.name in {"args", "kwargs", "item"})
+
+    def test_a_use_outside_the_binding_function_is_not_marked(self):
+        source = "def f(quote):\n    return quote\n\n\nTOTAL = quote\n"
+        refs = collect_refs(source, "python", "a.py")
+        outside = next(ref for ref in refs if ref.name == "quote" and ref.line == 5)
+        assert not outside.locally_bound
+
 
 class TestScan:
     def test_the_scan_carries_symbols_imports_and_refs_per_file(self, tmp_path, extractor):
@@ -111,6 +139,17 @@ class TestFanIn:
         sites = references_to(index, definition)
         assert all(not (site.path == "library.py" and 6 <= site.line <= 7) for site in sites)
         assert {site.path for site in sites} == {"library.py", "caller.py"}
+
+    def test_fan_in_still_lists_sites_where_the_name_is_a_parameter(self, tmp_path, extractor):
+        (tmp_path / "library.py").write_text(LIBRARY, encoding="utf-8")
+        (tmp_path / "borrower.py").write_text(
+            "def take(quote):\n    return quote\n", encoding="utf-8"
+        )
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+        definition = next(
+            entry for entry in index.definitions["quote"] if entry.path == "library.py"
+        )
+        assert any(site.path == "borrower.py" for site in references_to(index, definition))
 
     def test_an_unreferenced_symbol_has_no_sites(self, tmp_path, extractor):
         scan = scan_repo(build(tmp_path), extractor)

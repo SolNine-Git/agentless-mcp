@@ -9,6 +9,7 @@ wrapper around them.
 
 import asyncio
 import json
+import re
 
 import pytest
 from fastmcp import Client
@@ -27,6 +28,7 @@ from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
+from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
 from agentless_mcp.util.errors import SecurityRefusal
 
 EXPECTED_TOOLS = {
@@ -121,6 +123,28 @@ class TestAllowlist:
     def test_a_single_client_root_can_be_the_default(self, services, one_repo):
         handlers = ToolHandlers([], services)
         assert handlers.resolve(None, [one_repo]).root == one_repo.resolve()
+
+    def test_a_client_root_selects_among_several_configured_roots(self, services, two_repos):
+        handlers = ToolHandlers(two_repos, services)
+        assert handlers.resolve(None, [two_repos[1]]).root == two_repos[1].resolve()
+
+    def test_a_client_workspace_inside_a_root_selects_that_root(self, services, two_repos):
+        handlers = ToolHandlers(two_repos, services)
+        inner = two_repos[0] / "src"
+        inner.mkdir()
+        assert handlers.resolve(None, [inner]).root == two_repos[0].resolve()
+
+    def test_a_client_root_containing_several_roots_still_refuses(
+        self, services, two_repos, tmp_path
+    ):
+        handlers = ToolHandlers(two_repos, services)
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            handlers.resolve(None, [tmp_path])
+
+    def test_client_roots_naming_two_repositories_still_refuse(self, services, two_repos):
+        handlers = ToolHandlers(two_repos, services)
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            handlers.resolve(None, list(two_repos))
 
 
 def listed_tools(server):
@@ -298,6 +322,29 @@ class TestRoundTrip:
         text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
         assert f"roots: {one_repo.resolve()}" in text
 
+    def test_capabilities_names_the_server_version_and_client_roots(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
+
+        assert re.search(r"^agentless-mcp \S+$", text, flags=re.MULTILINE)
+        # The in-memory client advertises no roots, and the line says so
+        # rather than staying silent about the selection signal.
+        assert "client roots: none advertised" in text
+
+    def test_capabilities_lists_the_advertised_client_roots(self, services, one_repo):
+        handlers = ToolHandlers([one_repo], services)
+        text = handlers.capabilities(handlers.resolve(str(one_repo)), [one_repo])
+        assert f"client roots: {one_repo}" in text
+
+    def test_every_tool_describes_repo_root_in_its_schema(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+        for tool in tools:
+            properties = tool.inputSchema.get("properties", {})
+            assert "repo_root" in properties, tool.name
+            assert (
+                properties["repo_root"].get("description") == PARAMETER_DESCRIPTIONS["repo_root"]
+            ), tool.name
+
 
 class TestProjectConfigOverMcp:
     """What a repository's own `.agentless-mcp.json` can and cannot do here."""
@@ -449,3 +496,29 @@ class TestToolSurface:
 
         assert "symbol_path" not in names
         assert "import_cycles" not in names
+
+
+class TestCapabilitiesCacheHint:
+    """With no index built, capabilities names the command that builds one."""
+
+    def call(self, server, tool, arguments):
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool(tool, arguments)
+
+        return asyncio.run(go())
+
+    def test_an_absent_cache_names_the_index_command(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
+
+        assert f"run agentless-mcp index --repo {one_repo.resolve()} to build it" in text
+
+    def test_a_built_index_carries_no_hint(self, services, one_repo, extractor):
+        cache.build_index(one_repo, extractor)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
+
+        assert "agentless-mcp index --repo" not in text

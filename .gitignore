@@ -5,6 +5,9 @@ __pycache__/
 build/
 dist/
 
+# Secrets (PyPI token lives in .env as PYPI_API_KEY)
+.env
+
 # uv / virtualenv
 .venv/
 venv/

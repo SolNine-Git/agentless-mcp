@@ -19,7 +19,22 @@ reserved words (``end``, ``click``, ``class``) cannot appear there. Labels are
 label and open a directive are simply not in the output. This module emits no
 ``click``, ``style``, ``class`` or ``linkStyle`` line at all, under any input:
 the vocabulary it can produce is ``flowchart``, ``subgraph``, ``end``, node
-declarations and ``-->`` edges.
+declarations, ``-->`` and ``-.->`` edges, and ``%%`` comment lines whose text
+is fixed in this module plus an integer count -- no repository content ever
+reaches a comment.
+
+**Honesty about edge kinds.** The file graph merges two different facts into
+one edge set: declared imports and name-reference coincidences. Drawn with one
+arrow, a pair of reference edges reads as a mutual import -- a cycle the
+``cycles`` view just said does not exist. A caller that knows which pairs are
+declared imports passes them as ``imports``; those render solid, reference-only
+edges render dashed, and a legend comment says so. Reference edges are also
+the hairball: past :data:`DEFAULT_MAX_EDGES` total edges they are left out
+wholesale -- never a sampled subset, which would be a diagram lying about
+which references exist -- and a comment counts what was left out. Import
+edges are always drawn. Without ``imports`` the render is the undifferentiated
+one it always was, because inventing a distinction the caller did not supply
+would be a guess drawn as a fact.
 
 **Determinism.** Node ids follow sorted path order, edges are emitted in id
 order, communities in the order the partition gives them, and no float is ever
@@ -46,6 +61,7 @@ writes into a response body.
 import re
 import string
 from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from agentless_mcp.core.communities import Community, CommunityPartition
@@ -55,6 +71,12 @@ from agentless_mcp.core.graph import RefGraph
 # capacity: past roughly this many nodes a flowchart stops being readable and
 # the ranked text views are the better answer.
 DEFAULT_MAX_NODES = 40
+
+# How many edges a diagram carries before reference edges stop being drawn.
+# The same legibility reasoning as DEFAULT_MAX_NODES: past this many arrows a
+# flowchart is a hairball, and the import edges alone are the load-bearing
+# picture. Import edges are never dropped by this bound.
+DEFAULT_MAX_EDGES = 40
 
 # Hops from the focus seed. Two is the neighbourhood a "what touches this"
 # question means: what it calls, and what those call.
@@ -94,6 +116,11 @@ MERMAID_RESERVED_IDS = frozenset(
 # reader cannot mistake the marker for one of the modules.
 ELISION_ID = "n_elided"
 
+# The legend emitted whenever edges are drawn with kinds. Fixed text: it is
+# the one line that makes the two arrow styles self-describing, and it never
+# carries repository content.
+EDGE_LEGEND = "%% solid: imports, dashed: references"
+
 # Labels are truncated so one pathological filename cannot make a diagram
 # unreadable. The marker is three dots, which the allowlist keeps.
 LABEL_MAX_CHARS = 60
@@ -128,6 +155,7 @@ class DiagramOptions:
     """
 
     max_nodes: int = DEFAULT_MAX_NODES
+    max_edges: int = DEFAULT_MAX_EDGES
     focus: str | None = None
     focus_distance: int = DEFAULT_FOCUS_DISTANCE
     direction: str = DEFAULT_DIRECTION
@@ -139,6 +167,7 @@ def render_flowchart(
     *,
     partition: CommunityPartition | None = None,
     options: DiagramOptions | None = None,
+    imports: AbstractSet[tuple[str, str]] | None = None,
 ) -> str:
     """Render ``graph`` as mermaid flowchart text.
 
@@ -150,6 +179,12 @@ def render_flowchart(
     ``partition`` groups the selected nodes into subgraphs; nodes belonging to
     no community are drawn at the top level after them. ``options.focus``
     restricts the diagram to one module's neighbourhood before bounding.
+
+    ``imports`` is the set of ``(source, target)`` pairs connected by a
+    declared import. When given, those edges render solid, reference-only
+    edges render dashed behind the ``options.max_edges`` legibility bound, and
+    a legend line names the encoding. When ``None`` every edge renders solid,
+    because the caller supplied no kind to distinguish.
     """
     settings = options if options is not None else DiagramOptions()
     _validate(settings)
@@ -157,10 +192,13 @@ def render_flowchart(
     candidates = _candidates(graph, settings)
     selected = set(selected_nodes(graph, rank, settings))
     identifiers = {node: _identifier("n", index) for index, node in enumerate(sorted(selected))}
+    edge_lines = _edge_lines(graph, identifiers, imports, settings.max_edges)
 
     lines = [f"flowchart {settings.direction}"]
+    if imports is not None and edge_lines:
+        lines.append(f"{_INDENT}{EDGE_LEGEND}")
     lines.extend(_node_lines(identifiers, partition))
-    lines.extend(_edge_lines(graph, identifiers))
+    lines.extend(edge_lines)
 
     elided = len(candidates) - len(selected)
     if elided > 0:
@@ -214,6 +252,9 @@ def _validate(settings: DiagramOptions) -> None:
         raise ValueError(message)
     if settings.max_nodes < 1:
         message = "max_nodes must be at least 1"
+        raise ValueError(message)
+    if settings.max_edges < 0:
+        message = "max_edges must not be negative"
         raise ValueError(message)
     if settings.focus_distance < 0:
         message = "focus_distance must not be negative"
@@ -329,22 +370,50 @@ def _declaration(identifier: str, path: str, indent: str) -> str:
     return f'{indent}{identifier}["{safe_label(path)}"]'
 
 
-def _edge_lines(graph: RefGraph, identifiers: Mapping[str, str]) -> list[str]:
+def _edge_lines(
+    graph: RefGraph,
+    identifiers: Mapping[str, str],
+    imports: AbstractSet[tuple[str, str]] | None,
+    max_edges: int,
+) -> list[str]:
     """Render the edges with both endpoints in the diagram, in id order.
 
     Weights are not drawn. They are floats derived from name-collision counts,
     so printing them would put a number nobody can act on into the diagram and
     would make the output depend on float formatting.
+
+    With ``imports`` given, declared imports render ``-->`` and reference-only
+    edges ``-.->``. Reference edges are all-or-nothing against ``max_edges``:
+    a sampled subset would draw "these files reference each other" for some
+    pairs and silence for others with no way to tell elision from absence, so
+    past the bound they are left out wholesale and a comment counts them.
     """
     drawn = sorted(
         {
-            (identifiers[source], identifiers[target])
+            (
+                identifiers[source],
+                identifiers[target],
+                imports is None or (source, target) in imports,
+            )
             for source, target in graph.edges
             if source in identifiers and target in identifiers and source != target
         },
-        key=_identifier_sort_key,
+        key=lambda entry: _identifier_sort_key(entry[:2]),
     )
-    return [f"{_INDENT}{source} --> {target}" for source, target in drawn]
+    if imports is None:
+        return [f"{_INDENT}{source} --> {target}" for source, target, _ in drawn]
+
+    references = sum(1 for _, _, declared in drawn if not declared)
+    fits = len(drawn) <= max_edges
+    lines: list[str] = []
+    for source, target, declared in drawn:
+        if declared:
+            lines.append(f"{_INDENT}{source} --> {target}")
+        elif fits:
+            lines.append(f"{_INDENT}{source} -.-> {target}")
+    if references and not fits:
+        lines.append(f"{_INDENT}%% {references} reference edges not drawn (edge bound {max_edges})")
+    return lines
 
 
 def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:

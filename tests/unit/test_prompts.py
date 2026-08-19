@@ -35,6 +35,8 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.prompts import (
     ENVELOPE,
     MESSAGES,
+    PARAMETER_DESCRIPTIONS,
+    PARAMETER_NAMES,
     TOOL_DESCRIPTIONS,
     TOOL_NAMES,
     EnvelopeText,
@@ -72,6 +74,7 @@ MESSAGE_ARGUMENTS = {
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
     "cache_stale_remediation": {},
+    "cache_build_hint": {"repo_root": "/srv/app"},
     "cache_discarded_no_index": {},
     "cache_discarded_old_schema": {"found": 1, "expected": 2},
     "cache_discarded_other_repo": {"repo_root": "/srv/other"},
@@ -90,6 +93,11 @@ class TestLoadedData:
         assert set(TOOL_DESCRIPTIONS) == set(TOOL_NAMES)
         for name in TOOL_NAMES:
             assert TOOL_DESCRIPTIONS[name].strip(), name
+
+    def test_every_parameter_name_has_a_description(self):
+        assert set(PARAMETER_DESCRIPTIONS) == set(PARAMETER_NAMES)
+        for name in PARAMETER_NAMES:
+            assert PARAMETER_DESCRIPTIONS[name].strip(), name
 
     def test_the_description_mapping_cannot_be_edited(self):
         descriptions: Any = TOOL_DESCRIPTIONS

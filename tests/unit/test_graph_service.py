@@ -349,5 +349,25 @@ class TestDiagram:
         assert view.text == ""
         assert "no module matches nowhere.py" in view.message
 
+    def test_a_bare_module_stem_focuses_the_diagram(self, graphs, repo):
+        view = graphs.diagram(repo, focus="user")
+
+        assert view.focus == "user.py"
+        assert view.message == ""
+        assert "user.py" in view.text
+
+    def test_a_stem_matching_nothing_is_still_reported(self, graphs, repo):
+        view = graphs.diagram(repo, focus="quasar")
+
+        assert view.text == ""
+        assert "no module matches quasar" in view.message
+
+    def test_import_and_reference_edges_are_distinguished(self, graphs, repo):
+        view = graphs.diagram(repo)
+
+        assert "solid: imports, dashed: references" in view.text
+        assert " --> " in view.text
+        assert " -.-> " in view.text
+
     def test_two_renders_of_one_tree_are_byte_identical(self, graphs, repo):
         assert graphs.diagram(repo).text == graphs.diagram(repo).text

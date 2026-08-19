@@ -269,20 +269,25 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     views resolving the same word two ways would be a defect a reader could
     only find by comparing outputs.
 
-    Four shapes, tried in order of how specific they are:
+    Five shapes, tried in order of how specific they are:
 
     1. A repository-relative path, exactly as the scan spells it.
     2. A path suffix -- ``config.go`` for ``config/config.go``.
-    3. A qualified symbol name: ``ServerInfo.Validate``, or the qualified
+    3. A module stem -- the same suffix rule with the extension stripped, so
+       ``envelope`` matches ``application/envelope.py`` exactly as typing
+       ``envelope.py`` would, whatever the extension turns out to be. The
+       most natural spelling of a module wins as a path, which also means a
+       stem that names a file beats a symbol coincidentally sharing the name.
+    4. A qualified symbol name: ``ServerInfo.Validate``, or the qualified
        half of a whole stable id. Narrowing to the definitions that really
        carry that owner is what keeps a receiver-qualified method from
        seeding every file defining any ``Validate``.
-    4. A bare function, method or type name, matched exactly against the
+    5. A bare function, method or type name, matched exactly against the
        extracted symbols the same way ``find_symbol`` matches -- because a
        method name is the most natural seed an issue report yields, and the
        tool description promises symbol names work.
 
-    A path-shaped entry that matches no file stops at step 2. Falling through
+    A path-shaped entry that matches no file stops at step 3. Falling through
     would take the text after its last dot -- a file extension -- and look
     that up as a symbol, which turns a mistyped path into a confident seed on
     an unrelated file.
@@ -295,6 +300,10 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     if suffix_matches:
         return suffix_matches
 
+    stem_matches = sorted(path for path in known if _matches_stem(path, normalized))
+    if stem_matches:
+        return stem_matches
+
     qualified = entry.rpartition("::")[2] or entry
     if "/" in qualified:
         return []
@@ -305,6 +314,18 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     ]
     owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
     return sorted({definition.path for definition in (owned or defining)})
+
+
+def _matches_stem(path: str, entry: str) -> bool:
+    """Say whether ``entry`` is ``path`` with its extension stripped, or a suffix of it.
+
+    ``envelope`` matches ``application/envelope.py``; so does
+    ``application/envelope``. Only the path's final suffix comes off, and dots
+    inside ``entry`` are treated as part of the name -- an entry spelling the
+    file's real extension already had its chance as a literal path suffix.
+    """
+    bare = PurePosixPath(path).with_suffix("").as_posix()
+    return bare == entry or bare.endswith(f"/{entry}")
 
 
 def _score_symbols(

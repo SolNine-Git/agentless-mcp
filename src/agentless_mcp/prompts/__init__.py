@@ -5,13 +5,19 @@ prompts: they are read by a model, they are revised for how well they steer
 one, and revising them should not mean editing Python. They live in the JSON
 files beside this module and are loaded once, here, at import time.
 
-Three files, grouped by consumer:
+Four files, grouped by consumer:
 
 ``tool_descriptions.json``
     The MCP tool descriptions, keyed by tool name. These are the wire
     descriptions -- ``adapters.mcp.server`` passes each one to
     ``@mcp.tool(description=...)``, so the docstrings on those functions are
     code documentation and nothing more.
+
+``parameter_descriptions.json``
+    Wire descriptions for parameters shared across tools, keyed by parameter
+    name. ``adapters.mcp.server`` carries each one into the published schema,
+    where it is the only documentation an arbitrary client is guaranteed to
+    see.
 
 ``envelope.json``
     The receipt lines, the untrusted-content banner and the truncation
@@ -36,6 +42,8 @@ from agentless_mcp.prompts.loader import PromptDataError, load_mapping, load_rec
 __all__ = [
     "ENVELOPE",
     "MESSAGES",
+    "PARAMETER_DESCRIPTIONS",
+    "PARAMETER_NAMES",
     "TOOL_DESCRIPTIONS",
     "TOOL_NAMES",
     "EnvelopeText",
@@ -76,6 +84,7 @@ class MessageText:
     expand_batch_shortened: str
     expand_no_room: str
     cache_stale_remediation: str
+    cache_build_hint: str
     cache_discarded_no_index: str
     cache_discarded_old_schema: str
     cache_discarded_other_repo: str
@@ -105,3 +114,11 @@ MESSAGES: MessageText = load_record(
     "messages.json", MessageText, tuple(field.name for field in fields(MessageText))
 )
 TOOL_DESCRIPTIONS: Mapping[str, str] = load_mapping("tool_descriptions.json", TOOL_NAMES)
+
+# The parameters shared across tools. Keyed apart from the tool descriptions
+# because the manifest there is the tool listing itself.
+PARAMETER_NAMES = ("repo_root",)
+
+PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(
+    "parameter_descriptions.json", PARAMETER_NAMES
+)

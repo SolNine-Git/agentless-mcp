@@ -20,7 +20,7 @@ warmed-state and degradation.
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -340,11 +340,99 @@ class Ref:
     reference pass is a parse like any other and because `core.cache` stores
     these rows -- and a cache that imported the scanner would invert the
     dependency between them.
+
+    ``locally_bound`` is True when an enclosing function's parameter list
+    binds this name at this occurrence: the occurrence spells the local
+    binding (or declares it), not any repository-level definition sharing the
+    name. Recorded rather than dropped, so fan-in keeps every site while the
+    resolver can refuse to point such a use at an unrelated symbol.
     """
 
     path: str
     name: str
     line: int
+    locally_bound: bool = False
+
+
+# Python nodes that open a parameter scope, with the field naming their
+# parameter list. Only Python today: it is the one language whose grammar this
+# module reads deeply enough to tell a parameter name from the annotation and
+# default expressions wrapped around it.
+_PYTHON_SCOPE_FIELDS: dict[str, str] = {
+    "function_definition": "parameters",
+    "lambda": "parameters",
+}
+
+# Parameter forms whose name sits behind a `name` field, with annotation or
+# default expressions as siblings.
+_PYTHON_NAMED_PARAMETERS = ("default_parameter", "typed_default_parameter")
+
+# `*args` / `**kwargs`: the bound name is the wrapped identifier.
+_PYTHON_SPLAT_PATTERNS = ("list_splat_pattern", "dictionary_splat_pattern")
+
+
+@dataclass(frozen=True)
+class _BindingScope:
+    """One function's parameter bindings, as the line span they shadow."""
+
+    start_line: int
+    end_line: int
+    names: frozenset[str]
+
+
+def _python_binding_scopes(root: Node, data: bytes) -> tuple[_BindingScope, ...]:
+    """Collect every Python function's parameter names with its line span."""
+    scopes: list[_BindingScope] = []
+    for node in walk_nodes(root):
+        field = _PYTHON_SCOPE_FIELDS.get(node.type)
+        if field is None:
+            continue
+        params = node.child_by_field_name(field)
+        if params is None:
+            continue
+        names = _python_parameter_names(params, data)
+        if names:
+            scopes.append(
+                _BindingScope(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    names=names,
+                )
+            )
+    return tuple(scopes)
+
+
+def _python_parameter_names(params: Node, data: bytes) -> frozenset[str]:
+    """Extract the names a Python parameter list binds, and nothing else.
+
+    Annotation and default expressions are deliberately left out: `counter:
+    TokenCounter = DEFAULT` binds `counter`, while `TokenCounter` and
+    `DEFAULT` are ordinary references the resolver must still see.
+    """
+    names: set[str] = set()
+    for child in params.named_children:
+        target: Node | None = child
+        if child.type in _PYTHON_NAMED_PARAMETERS:
+            target = child.child_by_field_name("name")
+        if target is not None and target.type == "typed_parameter":
+            annotation = target.child_by_field_name("type")
+            annotation_id = annotation.id if annotation is not None else None
+            target = next(
+                (part for part in target.named_children if part.id != annotation_id),
+                None,
+            )
+        if target is not None and target.type in _PYTHON_SPLAT_PATTERNS:
+            target = next(iter(target.named_children), None)
+        if target is not None and target.type == "identifier":
+            names.add(data[target.start_byte : target.end_byte].decode("utf-8", errors="replace"))
+    return frozenset(names)
+
+
+def _locally_bound(scopes: Sequence[_BindingScope], name: str, line: int) -> bool:
+    """True when a scope containing ``line`` binds ``name`` as a parameter."""
+    return any(
+        scope.start_line <= line <= scope.end_line and name in scope.names for scope in scopes
+    )
 
 
 def identifier_node_types(language: str) -> frozenset[str]:
@@ -370,6 +458,7 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
     tree = parser.parse(data)
+    scopes = _python_binding_scopes(tree.root_node, data) if language == "python" else ()
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -377,7 +466,15 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
             continue
         name = data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
         if name:
-            refs.append(Ref(path=path, name=name, line=node.start_point[0] + 1))
+            line = node.start_point[0] + 1
+            refs.append(
+                Ref(
+                    path=path,
+                    name=name,
+                    line=line,
+                    locally_bound=_locally_bound(scopes, name, line),
+                )
+            )
     return refs
 
 

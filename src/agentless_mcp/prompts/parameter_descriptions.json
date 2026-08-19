@@ -1,0 +1,3 @@
+{
+  "repo_root": "Absolute path of the repository to read. May be omitted when the server holds one repository, or when your client advertises a workspace root that selects exactly one; otherwise it is required, and a refusal lists the roots to choose from."
+}

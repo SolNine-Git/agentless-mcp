@@ -52,6 +52,10 @@ mcp = [
     # tell "this client does not implement roots" from a real failure. A
     # transitive dependency we import is a contract we do not control.
     "mcp>=1.29",
+    # Same rule: adapters/mcp/server.py annotates the shared repo_root
+    # parameter with `pydantic.Field(description=...)` so the description
+    # reaches the published schema.
+    "pydantic>=2",
 ]
 # 2026-08-18, Phase 4: an exact token count for callers who want one. The
 # chars/4 estimator stays the default and is what the token regression pins

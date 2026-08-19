@@ -80,7 +80,10 @@ from agentless_mcp.util.fslimits import read_bounded
 #   content did not change, the extraction did -- so the version bump is the
 #   only thing standing between an existing index and a repository map full
 #   of ids that no longer address anything.
-SCHEMA_VERSION = 3
+# 4 (2026-08-19): refs rows carry ``locally_bound``. v3 rows would rehydrate
+#   every ref unflagged, and the resolver would go back to pointing a
+#   function's own parameter names at unrelated repository symbols.
+SCHEMA_VERSION = 4
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 APPLICATION_DIR = "agentless-mcp"
@@ -355,10 +358,14 @@ class CachedSource:
     def _ref_rows(self, path: str, digest: str) -> list[Ref]:
         """Rebuild one file's identifier references from its rows, in order."""
         cursor = self._connection.execute(
-            "SELECT name, line FROM refs WHERE path = ? AND sha256 = ? ORDER BY ordinal",
+            "SELECT name, line, locally_bound FROM refs "
+            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
-        return [Ref(path=path, name=str(row[0]), line=int(row[1])) for row in cursor.fetchall()]
+        return [
+            Ref(path=path, name=str(row[0]), line=int(row[1]), locally_bound=bool(row[2]))
+            for row in cursor.fetchall()
+        ]
 
 
 def effective_source(
@@ -724,9 +731,17 @@ def _apply_plan(
                 ],
             )
             connection.executemany(
-                "INSERT INTO refs (path, sha256, name, line, ordinal) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO refs (path, sha256, name, line, locally_bound, ordinal) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (entry.path, entry.digest, ref.name, ref.line, ordinal)
+                    (
+                        entry.path,
+                        entry.digest,
+                        ref.name,
+                        ref.line,
+                        int(ref.locally_bound),
+                        ordinal,
+                    )
                     for ordinal, ref in enumerate(entry.refs)
                 ],
             )
@@ -948,6 +963,7 @@ CREATE TABLE IF NOT EXISTS refs (
     sha256 TEXT NOT NULL,
     name TEXT NOT NULL,
     line INTEGER NOT NULL,
+    locally_bound INTEGER NOT NULL,
     ordinal INTEGER NOT NULL,
     PRIMARY KEY (path, sha256, ordinal)
 ) WITHOUT ROWID;

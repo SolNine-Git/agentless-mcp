@@ -106,6 +106,37 @@ class TestFunctionLocations:
         result = resolve_locs(["function: Invoice.stamp"], target())
         assert "class 'Invoice' has no member named 'stamp'" in result.unrecognized[0].reason
 
+    def test_a_missing_name_after_a_class_does_not_blame_that_class(self):
+        """The current-class fallback's miss must not leak a reason blaming a
+        class the location never mentioned."""
+        result = resolve_locs(
+            ["function: format_money", "class: Invoice", "line: 7", "function: does_not_exist"],
+            target(),
+        )
+        assert result.unrecognized[0].loc == "function: does_not_exist"
+        assert "no function or method named 'does_not_exist'" in result.unrecognized[0].reason
+        assert "Invoice" not in result.unrecognized[0].reason
+        assert "Receipt" not in result.unrecognized[0].reason
+
+    def test_a_missing_name_without_a_current_class_is_reported_the_same_way(self):
+        result = resolve_locs(["function: does_not_exist"], target())
+        assert "no function or method named 'does_not_exist'" in result.unrecognized[0].reason
+
+    def test_a_dotted_miss_still_blames_the_class_it_names(self):
+        """A dotted location asks for a member of the named class, so the
+        reason naming that class stays correct even with a current class set."""
+        result = resolve_locs(["class: Invoice", "function: Receipt.nope"], target())
+        assert "class 'Receipt' has no member named 'nope'" in result.unrecognized[0].reason
+
+    def test_a_current_class_miss_falls_through_to_the_unique_method_search(self):
+        """The docstring's chain: module function, then the current class's
+        method, then a method of any class when exactly one defines it."""
+        result = resolve_locs(["class: Invoice", "function: stamp"], target())
+        assert result.stable_ids == (
+            "py:billing.py::Invoice",
+            "py:billing.py::Receipt.stamp",
+        )
+
 
 class TestLineAndVariableLocations:
     def test_a_line_resolves_to_a_single_line_span(self):

@@ -2,7 +2,10 @@
 
 :mod:`agentless_mcp.core.refs` deliberately keeps a reference as a
 ``(file, name, line)`` triple, because binding a name to a declaration needs
-type information this tool does not have. This module goes as far past that as
+type information this tool does not have. The one binding the parse *can* see
+-- an enclosing parameter list -- travels with each reference, and a use it
+marks as locally bound produces no edge at all: a parameter's name references
+nothing outside its function. This module goes as far past that as
 evidence allows and stops there: it uses the imports the file itself declares,
 and the file the name is spelled in, to sort candidate definitions into four
 **discrete tiers**. There is no score, no threshold and no weighting -- a tier
@@ -44,10 +47,11 @@ sha256 gate already guarantees.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from agentless_mcp.core import graph
+from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 
@@ -301,13 +305,18 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
         for statement in facts.imports:
             target = graph.resolve_import_target(facts.path, statement, known)
             statements.append((statement.module, statement.line_number, target or ""))
-            if target is None or target == facts.path:
+            if not statement.names:
+                if target is not None and target != facts.path:
+                    modules.add(target)
                 continue
-            if statement.names:
-                for name in statement.names:
+            for name in statement.names:
+                dotted, submodule = _submodule_import(facts.path, statement, name, known)
+                if submodule is not None and submodule != facts.path:
+                    named.setdefault(name, set()).add(submodule)
+                    modules.add(submodule)
+                    statements.append((dotted, statement.line_number, submodule))
+                elif target is not None and target != facts.path:
                     named.setdefault(name, set()).add(target)
-            else:
-                modules.add(target)
 
         scopes[facts.path] = ImportScope(
             modules=frozenset(modules),
@@ -316,6 +325,27 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
         )
 
     return scopes
+
+
+def _submodule_import(
+    importer: str,
+    statement: ImportStatement,
+    name: str,
+    known: Sequence[str],
+) -> tuple[str, str | None]:
+    """Resolve one from-import name as a submodule file, when it is one.
+
+    Python's ``from pkg import mod`` binds ``mod`` as a module object whenever
+    ``pkg.mod`` is itself a module, so the name's real target is the submodule
+    file, not the package's ``__init__``. Probing ``module + "." + name``
+    against the known files decides which case this is; when it misses, the
+    name is a symbol imported from the module and today's binding stands. The
+    probe misses naturally in the other languages this package parses -- no
+    file matches the dotted candidate there.
+    """
+    dotted = f"{statement.module}.{name}" if statement.module else name
+    probe = replace(statement, module=dotted, names=())
+    return dotted, graph.resolve_import_target(importer, probe, known)
 
 
 def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
@@ -507,6 +537,11 @@ def _reference_edges(
     edges: list[SymbolEdge] = []
 
     for ref in facts.refs:
+        if ref.locally_bound:
+            # A parameter's name inside its own function spells the local
+            # binding; the repository symbols it collides with are not what
+            # it references, at any tier.
+            continue
         if (ref.name, ref.line) in declarations:
             # The identifier in `def quote` is the declaration, not a use of it.
             continue

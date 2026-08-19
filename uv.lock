@@ -25,6 +25,7 @@ dependencies = [
 mcp = [
     { name = "fastmcp" },
     { name = "mcp" },
+    { name = "pydantic" },
 ]
 tokens = [
     { name = "tiktoken" },
@@ -46,6 +47,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.14" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.29" },
+    { name = "pydantic", marker = "extra == 'mcp'", specifier = ">=2" },
     { name = "tiktoken", marker = "extra == 'tokens'", specifier = ">=0.9" },
     { name = "tree-sitter", specifier = ">=0.25,<0.27" },
     { name = "tree-sitter-language-pack", specifier = "==1.14.3" },

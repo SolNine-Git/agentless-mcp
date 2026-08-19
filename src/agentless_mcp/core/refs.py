@@ -2,9 +2,10 @@
 
 The extractor answers "what does this file define" and "where is each name
 used"; this module is what turns those per-file answers into a repository. A
-reference is deliberately a ``(file, name, line)`` triple and nothing more:
-resolving a name to the declaration it really binds to needs type information
-this tool does not have and will not pretend to have.
+reference is deliberately a ``(file, name, line)`` triple plus one binding
+fact the parse can see -- whether an enclosing parameter list binds the name
+locally: resolving a name to the declaration it really binds to needs type
+information this tool does not have and will not pretend to have.
 
 Fan-in is therefore fuzzy by construction: the references to a symbol are the
 sites that spell its name outside its own definition span. That over-reports
