@@ -47,6 +47,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.slices import line_prefix
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -56,7 +57,7 @@ from agentless_mcp.core.symbols import (
     symbol_stable_id,
 )
 from agentless_mcp.prompts import MESSAGES
-from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -97,21 +98,46 @@ _TRUNCATION_MARKER_TOKENS = 32
 
 @dataclass(frozen=True)
 class FindResult:
-    """Symbol matches for one query, already capped at the limit."""
+    """Symbol matches for one query, already capped at the limit.
+
+    ``cards`` is the listing rather than a bare tuple so that the count behind
+    the limit travels with the rows into the renderer. It iterates and indexes
+    as the tuple did.
+    """
 
     query: str
-    cards: tuple[render.SymbolCard, ...]
-    total: int
-    limit: int
+    cards: render.CardListing
+
+    @property
+    def total(self) -> int:
+        """How many symbols matched before the limit was applied."""
+        return self.cards.total
+
+    @property
+    def limit(self) -> int:
+        """The limit this lookup was answered under."""
+        return self.cards.limit
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
-        return {
-            "query": self.query,
-            "total": self.total,
-            "limit": self.limit,
-            "matches": [card.as_dict() for card in self.cards],
-        }
+        return {"query": self.query, **self.cards.as_dict()}
+
+
+def _check_limit(limit: int) -> None:
+    """Refuse a limit that cannot bound a listing.
+
+    ``limit=0`` renders "no references to save_config" for a symbol with
+    fifty-two of them -- a confident false negative, and the most expensive
+    wrong answer this module can give. A negative limit is worse: it slices
+    from the end, expands everything but the last id, and then quotes itself
+    back to the caller as "the per-call limit is -1 symbols". Both are caller
+    bugs, so they are refused by name here, at the boundary both adapters and
+    every library caller cross, rather than clamped into an answer to a
+    different question.
+    """
+    if limit < 1:
+        message = f"limit must be at least 1, got {limit}"
+        raise AtlasError(message)
 
 
 @dataclass(frozen=True)
@@ -141,21 +167,32 @@ class ExpandResult:
 
 @dataclass(frozen=True)
 class RefsResult:
-    """Fan-in for one target: grouped references and optional adjacency."""
+    """Fan-in for one target: grouped references and optional adjacency.
+
+    ``groups`` is the listing rather than a bare tuple, for the reason its
+    docstring gives: the renderer is handed nothing else, and a fan-in that
+    cannot say what it left out is read as a complete caller set.
+    """
 
     target: str
-    groups: tuple[render.RefGroup, ...]
-    total: int
-    limit: int
+    groups: render.RefListing
     shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
+
+    @property
+    def total(self) -> int:
+        """How many reference sites were found before the limit was applied."""
+        return self.groups.total
+
+    @property
+    def limit(self) -> int:
+        """The limit this fan-in was answered under."""
+        return self.groups.limit
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
         return {
             "target": self.target,
-            "total": self.total,
-            "limit": self.limit,
-            "groups": [group.as_dict() for group in self.groups],
+            **self.groups.as_dict(),
             "shared_callers": self.shared.as_dict(),
         }
 
@@ -176,6 +213,7 @@ class SymbolService:
         limit: int = DEFAULT_FIND_LIMIT,
     ) -> FindResult:
         """Match a substring or a qualified name across the repository."""
+        _check_limit(limit)
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         needle = query.lower()
 
@@ -188,7 +226,8 @@ class SymbolService:
         matches.sort(key=lambda pair: (*_match_rank(pair[1], needle), pair[0].path))
 
         cards = tuple(symbol_card(symbol) for _, symbol in matches[:limit])
-        return FindResult(query=query, cards=cards, total=len(matches), limit=limit)
+        listing = render.CardListing(rows=cards, total=len(matches), limit=limit)
+        return FindResult(query=query, cards=listing)
 
     def expand_symbols(
         self,
@@ -200,6 +239,7 @@ class SymbolService:
         seats: int = EXPAND_MAX_SEATS,
     ) -> ExpandResult:
         """Return line-numbered bodies for the named stable ids, fairly budgeted."""
+        _check_limit(limit)
         cards: list[render.SymbolCard] = []
         unresolved: list[tuple[str, str]] = []
 
@@ -233,6 +273,7 @@ class SymbolService:
         shared_callers: bool = False,
     ) -> RefsResult:
         """Return the sites that reference ``target``, grouped by file."""
+        _check_limit(limit)
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         by_path = scan.by_path()
@@ -244,20 +285,19 @@ class SymbolService:
 
         resolver = resolve.build_resolver(scan, index)
         target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
-        groups = _group_sites(sites[:limit], by_path, resolver, target_ids)
+        groups = render.RefListing(
+            rows=_group_sites(sites[:limit], by_path, resolver, target_ids),
+            total=len(sites),
+            limit=limit,
+            files=len({site.path for site in sites}),
+        )
         ranked = (
             _shared_callers(sites, definitions, index, by_path, ctx.config.stoplist)
             if shared_callers
             else ()
         )
         shared = render.SharedCallerListing(rows=ranked[:limit], total=len(ranked), limit=limit)
-        return RefsResult(
-            target=target,
-            groups=groups,
-            total=len(sites),
-            limit=limit,
-            shared=shared,
-        )
+        return RefsResult(target=target, groups=groups, shared=shared)
 
     def _fit_bodies(
         self, cards: list[render.SymbolCard], budget: int
@@ -340,33 +380,55 @@ class SymbolService:
         except ValueError as exc:
             return None, str(exc)
 
-        try:
-            # The id came from a caller, so its path is foreign data even
-            # though this package generated the id in the first place.
-            absolute = contained_path(ctx.root, parsed.path)
-        except SecurityRefusal as exc:
-            return None, str(exc)
+        source, symbols, reason = self._parse_one(ctx, parsed.path)
+        if symbols is None:
+            return None, reason
 
-        read = read_bounded(absolute)
-        if read.text is None:
-            return None, f"{parsed.path}: {read.skipped}"
-
-        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix)
-        if language is None:
-            return None, f"{parsed.path}: no grammar for this file type"
-
-        symbols = effective_source(ctx.symbols, self._extractor).symbols_for(
-            read.text, language, parsed.path
-        )
         match = next((symbol for symbol in symbols if id_qualname(symbol) == parsed.qualname), None)
         if match is None:
             return None, f"{parsed.path} no longer defines {parsed.qualname}"
 
-        lines = read.text.split("\n")
+        lines = source.split("\n")
         start = match.line_number
         end = min(len(lines), match.end_line_number or match.line_number)
-        body = "\n".join(f"{number}| {lines[number - 1]}" for number in range(start, end + 1))
+        body = "\n".join(
+            f"{line_prefix(number)}{lines[number - 1]}" for number in range(start, end + 1)
+        )
         return symbol_card(match, body=body), ""
+
+    def _parse_one(self, ctx: RepoContext, path: str) -> tuple[str, list[ASTSymbol] | None, str]:
+        """Read and parse one file, degrading that file alone when it cannot be.
+
+        Every way one file can fail -- a path that escapes the repository, an
+        unreadable or oversized file, a suffix with no grammar, a grammar that
+        was never warmed -- comes back as a reason for the id that asked for
+        it. That is the convention :func:`agentless_mcp.core.refs._parse_one`
+        sets, and an exception here instead would discard every card the batch
+        had already built while leaving the caller unable to tell which id
+        poisoned the call.
+        """
+        try:
+            # The id came from a caller, so its path is foreign data even
+            # though this package generated the id in the first place.
+            absolute = contained_path(ctx.root, path)
+        except SecurityRefusal as exc:
+            return "", None, str(exc)
+
+        read = read_bounded(absolute)
+        if read.text is None:
+            return "", None, f"{path}: {read.skipped}"
+
+        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix)
+        if language is None:
+            return "", None, f"{path}: no grammar for this file type"
+
+        try:
+            symbols = effective_source(ctx.symbols, self._extractor).symbols_for(
+                read.text, language, path
+            )
+        except LanguageUnavailable as exc:
+            return "", None, f"{path}: {exc}"
+        return read.text, list(symbols), ""
 
 
 def render_expansion(result: ExpandResult) -> str:
@@ -601,6 +663,12 @@ def _shared_callers(
       over the same log damping applied to its own fan-out, so a
       characterization-test builder that calls every method in the codebase
       cannot flood the ranking with ties.
+    * **Locally bound names are not references.** A parameter's name spells
+      its own binding, so counting it would make a caller "share" every
+      symbol in the repository that happens to be spelled like one of its
+      arguments. ``core.refs`` keeps those sites deliberately -- fan-in lists
+      every place a name is spelled -- and leaves the filtering to each
+      consumer that turns a site into a *relationship*, which this is.
 
     Production-defined candidates rank ahead of every test-defined one
     whatever the scores say, because the question is "does a production
@@ -624,7 +692,11 @@ def _shared_callers(
         if facts is None:
             continue
         end = caller.end_line_number or caller.line_number
-        names = {ref.name for ref in facts.refs if caller.line_number <= ref.line <= end}
+        names = {
+            ref.name
+            for ref in facts.refs
+            if caller.line_number <= ref.line <= end and not ref.locally_bound
+        }
         for name in sorted(names):
             for definition in index.definitions.get(name, ()):
                 candidate = symbol_stable_id(definition.symbol)

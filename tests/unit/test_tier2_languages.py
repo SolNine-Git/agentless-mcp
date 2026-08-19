@@ -172,3 +172,37 @@ class TestReferences:
         assert identifier_node_types(language) == frozenset(
             LANGUAGE_CONFIGS[language].identifier_node_types
         )
+
+
+# Deep enough that a walker recursing once per child exceeds the default
+# recursion limit: lua's chained calls nest two grammar nodes per link and
+# bash's command substitutions nest three, so 600 links is well past it.
+_DEEP_CHAIN = 600
+
+DEEP_LUA = (
+    'local mod = require("mod")\n'
+    "local value = client" + "".join(f":step{index}()" for index in range(_DEEP_CHAIN)) + "\n"
+)
+
+DEEP_BASH = "source ./lib.sh\necho " + "$(" * _DEEP_CHAIN + "true" + ")" * _DEEP_CHAIN + "\n"
+
+
+class TestStackSafety:
+    """The two dedicated import walks are iterative, like every other walk here.
+
+    Lua/Ruby `require` and bash `source` each walk the whole tree, so a deeply
+    nested expression anywhere in the file reaches them. A `RecursionError`
+    escaping either one aborts the index for the entire repository.
+    """
+
+    def test_a_deep_lua_call_chain_still_finds_the_require(self, extractor):
+        if "lua" not in grammars.warmed_languages():
+            pytest.skip("grammar for lua is not in the local pack cache: run agentless-mcp warmup")
+        imports = extractor.extract_imports_from_source(DEEP_LUA, "lua", "deep.lua")
+        assert [statement.module for statement in imports] == ["mod"]
+
+    def test_a_deep_bash_substitution_still_finds_the_source(self, extractor):
+        if "bash" not in grammars.warmed_languages():
+            pytest.skip("grammar for bash is not in the local pack cache: run agentless-mcp warmup")
+        imports = extractor.extract_imports_from_source(DEEP_BASH, "bash", "deep.sh")
+        assert [statement.module for statement in imports] == ["./lib.sh"]

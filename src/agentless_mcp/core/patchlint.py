@@ -64,12 +64,14 @@ returns a verdict, and the report has no ``ok`` field to be misread as one.
 The tests decide whether a patch is right; this decides what a reviewer should
 look at first.
 
-**No check raises.** Degraded input -- a file whose text the caller did not
-supply, a language with no dependency manifest, a fragment the grammar cannot
-make sense of -- produces a
+**No check raises on input.** Degraded input -- a file whose text the caller
+did not supply, a language with no dependency manifest, a fragment the grammar
+cannot make sense of -- produces a
 :data:`Severity.NOT_CHECKED` finding naming the reason. Silence is the one
 outcome that would be a lie, because a caller cannot tell "checked and clean"
-from "never ran".
+from "never ran". A defect *in this module* is the other thing that would be a
+lie dressed as coverage, so it propagates: :data:`DEGRADED_ERRORS` names what
+foreign data does and nothing else.
 
 Two boundaries worth naming. The edit's replacement text is a *fragment*, not
 a file: it is dedented before parsing, and an introduced symbol is treated as
@@ -175,14 +177,18 @@ REQUIREMENTS_GLOB = "requirements*.txt"
 # must degrade that check rather than the whole report. Named explicitly
 # instead of catching Exception: an error class not in this list is a defect
 # in this module and must surface as one.
+#
+# Every member is something *foreign data* does, not something this module's
+# own code does wrong. `TypeError`, `KeyError`, `IndexError` and
+# `AttributeError` were members and are deliberately not: those are the four
+# classes a None dereference, an off-by-one or a renamed field raises, and
+# catching them turned a crash into a `not checked` line with no traceback
+# while the other six checks reported a healthy-looking patch around it.
+# `UnicodeDecodeError` is a `ValueError` and is covered by it; a manifest or a
+# fragment that is not text arrives that way.
 DEGRADED_ERRORS: tuple[type[Exception], ...] = (
     AtlasError,
     ValueError,
-    TypeError,
-    KeyError,
-    IndexError,
-    AttributeError,
-    UnicodeDecodeError,
     RecursionError,
     OSError,
 )
@@ -256,9 +262,16 @@ class LintReport:
     """Every finding one patch produced, in a fixed order.
 
     Deliberately without a boolean: this report never says whether to proceed.
+
+    ``warnings`` is what went wrong *reading the repository* rather than what
+    is wrong with the patch -- a dependency manifest that did not parse is the
+    case that matters, because it is also the case that silences a whole
+    check. A caller that renders findings and drops these reports a clean
+    patch against a repository it could not read.
     """
 
     findings: tuple[Finding, ...]
+    warnings: tuple[str, ...] = ()
 
     def of_severity(self, severity: Severity) -> tuple[Finding, ...]:
         """The findings at one severity, in report order."""
@@ -266,7 +279,26 @@ class LintReport:
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
-        return {"findings": [finding.as_dict() for finding in self.findings]}
+        return {
+            "findings": [finding.as_dict() for finding in self.findings],
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass(frozen=True)
+class ManifestParse:
+    """One dependency manifest reduced to what the import check needs.
+
+    ``parsed`` is the field this type exists for. A document the parser could
+    not read declares nothing *knowable*, which is a different answer from a
+    document that declares nothing -- and a caller handed only ``packages``
+    and ``warnings`` cannot tell them apart, which is how an unreadable
+    manifest came to make every third-party import look hallucinated.
+    """
+
+    packages: frozenset[str]
+    warnings: tuple[str, ...]
+    parsed: bool
 
 
 @dataclass(frozen=True)
@@ -406,18 +438,38 @@ else:
         What it understands is exactly the shape a dependency declaration
         has: an array of strings assigned to a key inside ``[project]``,
         ``[project.optional-dependencies]`` or ``[dependency-groups]``,
-        possibly spanning lines. What it does not understand -- inline
-        tables, multi-line basic strings, a ``#`` inside a requirement
-        string -- either yields nothing for that key or, at worst, an extra
-        name in the declared set, which can only make this check quieter
-        and never make it accuse a real dependency.
+        possibly spanning lines, with comments and string literals told
+        apart the way TOML tells them apart. What it does not understand --
+        inline tables, multi-line basic strings, ``\\u`` escapes -- yields
+        nothing for that key. An array it never sees the end of raises, so
+        the caller reports a manifest it could not read rather than a
+        repository that declares nothing; a scanner that returns a silently
+        truncated declared set makes every third-party import in the patch
+        look hallucinated.
         """
         return _scan_toml(text)
 
 
 _TABLE_HEADER = re.compile(r"^\[\[?([^\]]+)\]\]?\s*$")
 _ARRAY_ASSIGNMENT = re.compile(r'^\s*(?:"([^"]+)"|([A-Za-z0-9_.-]+))\s*=\s*\[(.*)$')
-_QUOTED_STRING = re.compile(r'"([^"]*)"|\'([^\']*)\'')
+_QUOTED_STRING = re.compile(r'"((?:[^"\\]|\\.)*)"|\'([^\']*)\'')
+
+# What opens a TOML string: a basic string, which escapes, and a literal
+# string, which does not.
+_TOML_QUOTES = "\"'"
+
+# The escapes a requirement string can carry. `\u` and `\U` are absent
+# deliberately: nothing that appears in a distribution name needs them, and a
+# half-implemented unescape is worse than a documented gap.
+_TOML_ESCAPES = {
+    "b": "\b",
+    "t": "\t",
+    "n": "\n",
+    "f": "\f",
+    "r": "\r",
+    '"': '"',
+    "\\": "\\",
+}
 
 _PROJECT = "project"
 _OPTIONAL = "optional-dependencies"
@@ -426,23 +478,31 @@ _DEPENDENCY_GROUPS = "dependency-groups"
 
 
 def _scan_toml(text: str) -> dict[str, Any]:
-    """Scan the dependency-bearing tables of a pyproject document."""
+    """Scan the dependency-bearing tables of a pyproject document.
+
+    Raises ``ValueError`` on an array that never closes, which is the one
+    failure that would otherwise swallow the rest of the document into a
+    pending array and report an empty declared set as fact.
+    """
     tables: dict[str, dict[str, list[str]]] = {}
     table = ""
+    pending_table = ""
     pending_key = ""
     pending: list[str] = []
     depth = 0
 
     for raw in text.splitlines():
+        line, delta = _scan_line(raw)
         if depth > 0:
-            depth += raw.count("[") - raw.count("]")
-            pending.append(raw)
+            depth += delta
+            pending.append(line)
             if depth <= 0:
-                tables.setdefault(table, {})[pending_key] = _quoted_strings("\n".join(pending))
+                tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(
+                    "\n".join(pending)
+                )
                 pending = []
             continue
 
-        line = raw.split("#", 1)[0].rstrip() if raw.lstrip().startswith("#") else raw.rstrip()
         header = _TABLE_HEADER.match(line.strip())
         if header:
             table = header.group(1).strip()
@@ -450,20 +510,101 @@ def _scan_toml(text: str) -> dict[str, Any]:
 
         assignment = _ARRAY_ASSIGNMENT.match(line)
         if assignment:
-            pending_key = assignment.group(1) or assignment.group(2)
+            pending_table, pending_key = _key_location(
+                table, assignment.group(1), assignment.group(2)
+            )
             rest = assignment.group(3)
-            depth = 1 + rest.count("[") - rest.count("]")
+            depth = 1 + _scan_line(rest)[1]
             pending = [rest]
             if depth <= 0:
-                tables.setdefault(table, {})[pending_key] = _quoted_strings(rest)
+                tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(rest)
                 pending = []
 
+    if depth > 0:
+        message = f"unterminated array for {pending_key!r} in {PYPROJECT_NAME}"
+        raise ValueError(message)
     return _shape(tables)
+
+
+def _key_location(table: str, quoted: str | None, bare: str | None) -> tuple[str, str]:
+    """Return the table and key one assignment writes to.
+
+    A bare key may be dotted -- ``project.dependencies = [...]`` at the top of
+    a document is the same declaration as ``dependencies`` under
+    ``[project]``. A quoted key is one key however many dots it holds.
+    """
+    if quoted is not None:
+        return table, quoted
+    prefix, _, key = (bare or "").rpartition(".")
+    return ".".join(part for part in (table, prefix) if part), key
+
+
+def _scan_line(raw: str) -> tuple[str, int]:
+    """Return ``raw`` with any comment removed, and its net bracket depth.
+
+    Comments and brackets are recognised outside string literals only: a ``#``
+    inside a requirement string does not open a comment, a ``[`` inside one --
+    ``uvicorn[standard]`` -- is not array structure, and a ``[`` inside a
+    comment is neither. Counting them the other way is what let a bracket in
+    a trailing comment swallow the rest of the document.
+    """
+    depth = 0
+    index = 0
+    while index < len(raw):
+        char = raw[index]
+        if char == "#":
+            return raw[:index].rstrip(), depth
+        if char in _TOML_QUOTES:
+            index = _toml_string_end(raw, index)
+            continue
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+        index += 1
+    return raw.rstrip(), depth
+
+
+def _toml_string_end(raw: str, start: int) -> int:
+    """Return the index just past the string literal beginning at ``start``.
+
+    A basic string honours backslash escapes; a literal string, per TOML, has
+    none. Neither may span a line, so an unterminated one ends the line.
+    """
+    quote = raw[start]
+    index = start + 1
+    while index < len(raw):
+        if quote == '"' and raw[index] == "\\":
+            index += 2
+            continue
+        if raw[index] == quote:
+            return index + 1
+        index += 1
+    return len(raw)
 
 
 def _quoted_strings(text: str) -> list[str]:
     """Return every single- or double-quoted string in ``text``, in order."""
-    return [double or single for double, single in _QUOTED_STRING.findall(text)]
+    return [
+        _unescape(double) if double else single for double, single in _QUOTED_STRING.findall(text)
+    ]
+
+
+def _unescape(text: str) -> str:
+    """Resolve the basic-string escapes a requirement specification can carry."""
+    if "\\" not in text:
+        return text
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\\" and index + 1 < len(text):
+            out.append(_TOML_ESCAPES.get(text[index + 1], text[index + 1]))
+            index += 2
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
 
 
 def _shape(tables: Mapping[str, Mapping[str, list[str]]]) -> dict[str, Any]:
@@ -504,10 +645,11 @@ def read_declared_dependencies(root: Path) -> DeclaredDependencies:
         if read.text is None:
             warnings.append(f"{PYPROJECT_NAME} not read: {read.skipped}")
         else:
-            found, problems = parse_pyproject_dependencies(read.text)
-            packages.update(found)
-            warnings.extend(problems)
-            sources.append(PYPROJECT_NAME)
+            parse = parse_pyproject_dependencies(read.text)
+            packages.update(parse.packages)
+            warnings.extend(parse.warnings)
+            if parse.parsed:
+                sources.append(PYPROJECT_NAME)
 
     for requirements in sorted(root.glob(REQUIREMENTS_GLOB)):
         if not requirements.is_file():
@@ -526,7 +668,7 @@ def read_declared_dependencies(root: Path) -> DeclaredDependencies:
     )
 
 
-def parse_pyproject_dependencies(text: str) -> tuple[frozenset[str], tuple[str, ...]]:
+def parse_pyproject_dependencies(text: str) -> ManifestParse:
     """Return the normalised distribution names a pyproject document declares.
 
     ``[project] dependencies``, every list under
@@ -534,12 +676,19 @@ def parse_pyproject_dependencies(text: str) -> tuple[frozenset[str], tuple[str, 
     ``[dependency-groups]``. The groups are included deliberately: a patch to
     a test file importing a dev-only package is declared, and leaving them out
     would make the check fire on exactly the code it should not.
+
+    A document that does not parse comes back ``parsed=False`` with the reason
+    in ``warnings``, never as an empty declaration.
     """
     warnings: list[str] = []
     try:
         document = _load_toml(text)
     except DEGRADED_ERRORS as exc:
-        return frozenset(), (f"{PYPROJECT_NAME} did not parse: {type(exc).__name__}",)
+        return ManifestParse(
+            packages=frozenset(),
+            warnings=(f"{PYPROJECT_NAME} did not parse: {type(exc).__name__}: {exc}",),
+            parsed=False,
+        )
 
     specifications: list[str] = []
     project = document.get(_PROJECT)
@@ -551,7 +700,7 @@ def parse_pyproject_dependencies(text: str) -> tuple[frozenset[str], tuple[str, 
     )
 
     names = {name for name in (requirement_name(item) for item in specifications) if name}
-    return frozenset(names), tuple(warnings)
+    return ManifestParse(packages=frozenset(names), warnings=tuple(warnings), parsed=True)
 
 
 def _string_list(value: object, warnings: list[str], where: str) -> list[str]:
@@ -636,7 +785,9 @@ def lint_patch(
 
     Findings come back in a fixed order -- check, then path, then line, then
     text -- so two runs over the same patch produce the same report and a
-    caller may diff one against another.
+    caller may diff one against another. Whatever the caller could not read
+    about the repository travels with them, on
+    :attr:`LintReport.warnings`.
     """
     fragments, notes = _fragments(edits, facts, source)
     findings = list(notes)
@@ -651,7 +802,10 @@ def lint_patch(
     findings.extend(_guarded(CHECK_DANGLING_CALLERS, lambda: _dangling_callers(fragments, facts)))
     findings.extend(_guarded(CHECK_ARITY, lambda: _arity(fragments, facts)))
     findings.extend(_guarded(CHECK_CYCLE_DELTA, lambda: _cycle_delta(fragments, facts, source)))
-    return LintReport(findings=tuple(sorted(findings, key=_order)))
+    return LintReport(
+        findings=tuple(sorted(findings, key=_order)),
+        warnings=facts.dependencies.warnings,
+    )
 
 
 def _order(finding: Finding) -> tuple[str, str, int, str, str]:
@@ -762,6 +916,13 @@ def _locate(text: str, search: str) -> tuple[int, int]:
     is the same whole-line, ambiguity-refusing rule
     :mod:`agentless_mcp.core.patches` applies -- an anchor that could be one of
     two places is not an anchor.
+
+    **Known gap, stated rather than implied.** The applier resolves ``...``
+    elisions before matching and this does not, so an elided edit anchors
+    nowhere and its findings degrade to a file with no line. The rule belongs
+    to :mod:`agentless_mcp.core.patches` and re-implementing a second copy of
+    it here is what produced the drift; closing this needs that module's
+    elision resolution on its public surface, not another copy.
     """
     if not text or not search:
         return (0, 0)
@@ -808,14 +969,7 @@ def _undeclared_imports(fragments: Sequence[_Fragment], facts: RepoFacts) -> lis
     if not checkable:
         return findings
     if not facts.dependencies.known:
-        findings.append(
-            _gap(
-                CHECK_UNDECLARED_IMPORTS,
-                "",
-                "not checked: the repository has no pyproject.toml or requirements file",
-                "no dependency manifest found",
-            )
-        )
+        findings.append(_no_manifest_gap(facts.dependencies))
         return findings
 
     available = _available_packages(facts)
@@ -833,6 +987,28 @@ def _undeclared_imports(fragments: Sequence[_Fragment], facts: RepoFacts) -> lis
             seen.add((fragment.edit.path, top))
             findings.append(_undeclared_finding(fragment, statement, top))
     return findings
+
+
+def _no_manifest_gap(dependencies: DeclaredDependencies) -> Finding:
+    """Say why the declared set is unknown, distinguishing absent from unreadable.
+
+    A repository with no manifest and a repository whose manifest did not
+    parse both silence this check, and a reader given the same sentence for
+    both would go looking for a file that is right there.
+    """
+    if dependencies.warnings:
+        return _gap(
+            CHECK_UNDECLARED_IMPORTS,
+            "",
+            "not checked: no dependency manifest here could be read",
+            "; ".join(dependencies.warnings),
+        )
+    return _gap(
+        CHECK_UNDECLARED_IMPORTS,
+        "",
+        "not checked: the repository has no pyproject.toml or requirements file",
+        "no dependency manifest found",
+    )
 
 
 def _undeclared_finding(fragment: _Fragment, statement: ImportStatement, top: str) -> Finding:
@@ -1544,9 +1720,19 @@ def _defined_in(name: str, facts: RepoFacts, paths: Sequence[str]) -> bool:
 
 
 def _reference_sites(name: str, facts: RepoFacts, paths: Sequence[str]) -> tuple[str, ...]:
-    """Return the ``file:line`` of every reference to ``name`` in ``paths``."""
+    """Return the ``file:line`` of every reference to ``name`` in ``paths``.
+
+    Locally-bound uses are not references to the removed symbol. A parameter
+    or local variable that happens to share the spelling is what
+    ``Ref.locally_bound`` exists to mark, and counting one here reports a
+    caller this patch did not break -- the expensive direction for a check
+    whose whole job is to say a removal is unsafe.
+    """
     return tuple(
-        f"{path}:{ref.line}" for path in paths for ref in facts.files[path].refs if ref.name == name
+        f"{path}:{ref.line}"
+        for path in paths
+        for ref in facts.files[path].refs
+        if ref.name == name and not ref.locally_bound
     )
 
 

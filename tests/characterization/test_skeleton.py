@@ -141,3 +141,75 @@ class TestSkeletonSemantics:
         assert "export class PriceBook {" in skeleton
         assert "private readonly costs: Map<string, number>;" in skeleton
         assert "quote(sku: string, tier: Tier, quantity = 1): number { ... }" in skeleton
+
+
+# The shapes the shared fixture repositories are blind to. They live in their
+# own directory rather than in `repo_py`/`repo_ts`/`repo_go`, which the map,
+# graph and lint golden suites all scan: a file added there moves goldens that
+# have nothing to do with skeletons.
+SHAPES = FIXTURES / "shapes"
+
+COMMENTS_SKELETON = """\
+TAX_RATE = 0.2
+
+def first_line_comment(amount):
+    ...
+
+def later_line_comment(amount):
+    ...
+
+class Ledger:
+    RATE = 1
+
+    def post(self, item):
+        ...
+"""
+
+NESTED_SKELETON = """\
+from functools import reduce
+
+def make_adder(step):
+    ...
+
+def total(values):
+    ...
+"""
+
+NESTED_GO_SKELETON = """\
+package shapes
+
+import "sort"
+
+func Sorted(values []int) []int { ... }
+"""
+
+
+class TestAnElidedBodyOwnsItsLines:
+    """One sentinel, no source, whatever else the body contains.
+
+    The corpus above has no trailing comments and no nested functions, which
+    is how two defects survived a 99% line-coverage report. A trailing comment
+    on a body line overwrote the sentinel with the real source line and
+    dropped the rest of the body -- so a truncated function was
+    indistinguishable from a complete one-line one. A nested function added a
+    second, over-indented sentinel inside a body already elided, which is not
+    re-parseable source and names a signature the reader cannot see.
+    """
+
+    def test_trailing_comments_never_leak_a_body_line(self):
+        source = (SHAPES / "comments.py").read_text(encoding="utf-8")
+        assert skeletonize(source, "python") == COMMENTS_SKELETON
+
+    def test_a_nested_function_adds_no_second_sentinel(self):
+        source = (SHAPES / "nested.py").read_text(encoding="utf-8")
+        assert skeletonize(source, "python") == NESTED_SKELETON
+
+    def test_a_brace_language_callback_stays_inside_its_elision(self):
+        source = (SHAPES / "nested.go").read_text(encoding="utf-8")
+        assert skeletonize(source, "go") == NESTED_GO_SKELETON
+
+    def test_a_truncated_body_is_never_shown_as_a_whole_one(self):
+        """The failure stated as the property: same signature, same skeleton."""
+        one_line = "def f(x):\n    return compute(x)\n"
+        commented = "def f(x):\n    y = compute(x)  # note\n    return y\n"
+        assert skeletonize(commented, "python") == skeletonize(one_line, "python")

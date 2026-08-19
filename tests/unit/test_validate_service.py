@@ -26,13 +26,18 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.validate_service import (
     ApplyStatus,
     BaselineStatus,
+    CandidateVerdict,
     ReproVerdict,
+    RunHeader,
+    ValidateReport,
     ValidateRequest,
     ValidateService,
     Verdict,
     load_candidates,
     load_verdicts,
 )
+from agentless_mcp.core import vote
+from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.util.errors import AtlasError
 
 PLUS = """\
@@ -521,6 +526,170 @@ class TestVerdictDocument:
         ]
 
 
+def a_run_where_nothing_started(count=3):
+    """Build the report of a run whose test command never started per candidate.
+
+    Every candidate applied cleanly and shares one equivalence key, which is
+    the shape that used to produce a confident winner: a full cluster in the
+    apply-ok tier built out of runs that never happened. Assembled from the
+    value types rather than mocked, because the spawn failure this describes
+    (ENOMEM, a patch that renamed the runner) cannot be provoked from a
+    repository whose baseline just proved the same command starts.
+    """
+    header = RunHeader(
+        receipt={"head": "0" * 8},
+        test_cmd="./run-tests",
+        repro_cmd=None,
+        timeout=60,
+        jobs=1,
+        candidates=count,
+        baseline=BaselineStatus.OK,
+        baseline_detail="the test command passed on unpatched HEAD",
+        repro_verdict=ReproVerdict.NOT_GIVEN,
+    )
+    verdicts = tuple(
+        CandidateVerdict(
+            id=f"c{index}",
+            index=index,
+            apply_status=ApplyStatus.OK,
+            apply_reasons=(),
+            equivalence_key="shared-key",
+            regression=Verdict.ERROR,
+            reproduction=None,
+            duration=0.1,
+            regression_run=RunResult(
+                RunStatus.ERROR, None, 0.0, "", "could not start './run-tests': No such file"
+            ),
+        )
+        for index in range(count)
+    )
+    return ValidateReport(header=header, verdicts=verdicts)
+
+
+class TestNothingWasMeasured:
+    """``error`` is "the command never started", not "the patch broke the tests"."""
+
+    def test_the_report_names_the_candidates_nothing_ran_for(self):
+        report = a_run_where_nothing_started()
+
+        assert report.never_measured == ("c0", "c1", "c2")
+        assert not report.any_passed
+        (warning,) = report.warnings()
+        assert "NOTHING WAS MEASURED for 3 of 3 candidates" in warning
+        assert "c0, c1, c2" in warning
+
+    def test_the_vote_crowns_nobody_from_a_run_where_nothing_ran(self):
+        """Through the real document and the real reader, not a hand-built vote."""
+        loaded = load_verdicts(a_run_where_nothing_started().jsonl())
+        ranked = vote.rank(loaded.candidates, repro_valid=loaded.repro_valid)
+
+        assert [candidate.measured for candidate in loaded.candidates] == [False, False, False]
+        assert ranked.tier == "none"
+        assert ranked.winner is None
+        assert all("nothing was measured" in reason for _, reason in ranked.excluded)
+
+    def test_a_timeout_is_a_measurement_and_still_ranks(self):
+        """A command that ran and outlived its bound produced a result."""
+        assert Verdict.TIMEOUT.measured
+        assert Verdict.FAILED.measured
+        assert not Verdict.ERROR.measured
+        assert not Verdict.NOT_EVALUATED.measured
+
+    def test_an_unverified_baseline_does_not_claim_the_patches_failed(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        repo = seeded_bug_repo(overrides={"check_regression.py": ALWAYS_RED})
+        report = validate(repo, candidates_dir(FOUR_CANDIDATES))
+
+        assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
+
+
+class TestTheRepositoryDoesNotNominateItsOwnJudge:
+    def test_a_config_sourced_command_is_refused_without_the_opt_in(
+        self, seeded_bug_repo, candidates_dir, service, python_cmd
+    ):
+        repo = seeded_bug_repo()
+
+        with pytest.raises(AtlasError, match="came from the repository under analysis"):
+            service.validate(
+                resolve_repo(repo, None),
+                ValidateRequest(
+                    candidates=candidates_dir({"01-plus.txt": PLUS}),
+                    test_cmd=python_cmd("check_regression.py"),
+                    timeout=60,
+                    test_cmd_from_config=True,
+                ),
+            )
+
+    def test_the_opt_in_runs_the_command_it_names(
+        self, seeded_bug_repo, candidates_dir, service, python_cmd
+    ):
+        report = service.validate(
+            resolve_repo(seeded_bug_repo(), None),
+            ValidateRequest(
+                candidates=candidates_dir({"01-plus.txt": PLUS}),
+                test_cmd=python_cmd("check_regression.py"),
+                timeout=60,
+                test_cmd_from_config=True,
+                allow_config_test_cmd=True,
+            ),
+        )
+
+        assert report.header.baseline is BaselineStatus.OK
+        assert report.any_passed
+
+    def test_a_command_from_the_invocation_needs_no_opt_in(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        report = validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}))
+
+        assert report.any_passed
+
+
+# Passes, slowly: long enough that a one-second run budget is spent on the
+# baseline alone, which is what leaves the candidates unevaluated.
+SLOW_GREEN = """\
+import time
+
+time.sleep(2)
+print("slow but green")
+"""
+
+
+class TestRunBudget:
+    def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
+        self, seeded_bug_repo, candidates_dir, validate, python_cmd
+    ):
+        repo = seeded_bug_repo(overrides={"slow.py": SLOW_GREEN})
+        report = validate(
+            repo,
+            candidates_dir(FOUR_CANDIDATES),
+            test_cmd=python_cmd("slow.py"),
+            run_timeout=1,
+        )
+
+        assert report.header.baseline is BaselineStatus.OK
+        assert report.deadline_expired
+        assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
+        assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
+        assert not report.any_passed
+        assert any("DEADLINE" in warning for warning in report.warnings())
+
+    def test_a_budget_that_is_not_positive_is_refused(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        with pytest.raises(AtlasError, match="positive number of seconds"):
+            validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), run_timeout=0)
+
+    def test_a_budget_nobody_spends_changes_nothing(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        report = validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), run_timeout=600)
+
+        assert not report.deadline_expired
+        assert report.any_passed
+
+
 class TestLoadVerdicts:
     def test_an_empty_document_is_refused(self):
         with pytest.raises(AtlasError, match="empty"):
@@ -552,3 +721,70 @@ class TestLoadVerdicts:
 
         with pytest.raises(AtlasError, match=r"no 'apply' object"):
             load_verdicts(text)
+
+
+HEADER = {
+    "record": "run",
+    "baseline": "ok",
+    "repro_valid": False,
+    "test_cmd": "x",
+    "repro_cmd": None,
+}
+
+CANDIDATE = {
+    "record": "candidate",
+    "id": "a",
+    "index": 0,
+    "apply": {"status": "ok", "reasons": []},
+    "regression": "passed",
+    "reproduction": None,
+    "equivalence_key": "k",
+}
+
+
+def document(*, header=None, candidate=None):
+    """Render one header and one candidate record as a verdicts document."""
+    records = [{**HEADER, **(header or {})}, {**CANDIDATE, **(candidate or {})}]
+    return "".join(json.dumps(record) + "\n" for record in records)
+
+
+class TestVerdictValuesAreReadThroughTheirEnums:
+    """A spelling this build does not know is a refusal, never a quiet loss."""
+
+    @pytest.mark.parametrize(
+        ("label", "text", "expected"),
+        [
+            (
+                "a renamed regression value",
+                document(candidate={"regression": "succeeded"}),
+                r"line 2: 'regression' is 'succeeded'",
+            ),
+            (
+                "a renamed apply status",
+                document(candidate={"apply": {"status": "applied", "reasons": []}}),
+                r"line 2: 'status' is 'applied'",
+            ),
+            (
+                "a renamed reproduction value",
+                document(candidate={"reproduction": "passd"}),
+                r"line 2: 'reproduction' is 'passd'",
+            ),
+            (
+                "a baseline value from another vocabulary",
+                document(header={"baseline": "green"}),
+                r"line 1: 'baseline' is 'green'",
+            ),
+        ],
+    )
+    def test_an_unrecognised_value_is_refused_with_its_line(self, label, text, expected):
+        with pytest.raises(AtlasError, match=expected):
+            load_verdicts(text)
+
+    def test_a_recognised_document_still_reads(self):
+        loaded = load_verdicts(document())
+        (candidate,) = loaded.candidates
+
+        assert candidate.applied
+        assert candidate.measured
+        assert candidate.regression_passed
+        assert not candidate.reproduction_passed

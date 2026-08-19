@@ -1,7 +1,12 @@
-"""Tests for interval merging and line rendering."""
+"""Tests for interval merging, line counting and line rendering."""
+
+from dataclasses import replace
+
+import pytest
 
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.slices import line_wrap_content, merge_intervals
+from agentless_mcp.core.slices import line_count, line_wrap_content, merge_intervals
+from agentless_mcp.util.errors import AtlasError
 
 TWELVE_LINES = "\n".join(f"line {index}" for index in range(1, 13))
 
@@ -91,3 +96,67 @@ class TestLineWrapContent:
         rendered = line_wrap_content(SCOPED_SOURCE, [(6, 6), (8, 8)], symbols=symbols)
         assert rendered.count("1|class Widget:") == 1
         assert rendered.count("4|    def render(self) -> str:") == 1
+
+
+class TestLineCount:
+    """A trailing newline terminates the last line; it does not add one."""
+
+    def test_a_newline_terminated_file_counts_its_real_lines(self):
+        assert line_count("a\nb\n") == 2
+
+    def test_a_file_without_a_final_newline_counts_the_same(self):
+        assert line_count("a\nb") == 2
+
+    def test_a_blank_last_line_is_still_a_line(self):
+        assert line_count("a\n\n") == 2
+
+    def test_an_empty_file_has_no_lines(self):
+        assert line_count("") == 0
+
+    def test_the_whole_file_render_has_no_phantom_last_line(self):
+        assert line_wrap_content("a\nb\n") == "1|a\n2|b"
+
+
+class TestAnUnsatisfiableIntervalIsRefused:
+    """ "Nothing was asked for" and "what was asked for cannot be answered"
+    are opposite requests. Answering the second one with the whole file is
+    both the token blow-up the slice API exists to prevent and a false claim
+    about what the returned lines are."""
+
+    def test_no_interval_still_means_the_whole_file(self):
+        assert line_wrap_content(TWELVE_LINES) == line_wrap_content(TWELVE_LINES, [])
+
+    def test_a_transposed_interval_is_refused(self):
+        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+            line_wrap_content(TWELVE_LINES, [(60, 30)])
+
+    def test_a_negative_interval_is_not_read_as_the_whole_file(self):
+        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+            line_wrap_content(TWELVE_LINES, [(-9, -1)])
+
+    def test_an_interval_past_the_end_is_refused(self):
+        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+            line_wrap_content(TWELVE_LINES, [(30, 40)])
+
+    def test_one_satisfiable_interval_is_enough_to_answer(self):
+        rendered = line_wrap_content(TWELVE_LINES, [(2, 3), (30, 40)]).splitlines()
+        assert rendered == ["...", "2|line 2", "3|line 3", "..."]
+
+
+class TestASymbolWithNoEndLine:
+    """An end line of ``None`` means one line, here and in `core.locs` alike.
+
+    It arrives only from a cache row an older build wrote. Reading it as "this
+    symbol encloses everything after it" made one stale row a scope header
+    stuck above every later slice of the file.
+    """
+
+    def test_it_does_not_become_a_header_for_the_rest_of_the_file(self):
+        symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
+        stale = [
+            replace(symbol, end_line_number=None) if symbol.name == "Widget" else symbol
+            for symbol in symbols
+        ]
+        rendered = line_wrap_content(SCOPED_SOURCE, [(7, 7)], symbols=stale)
+        assert "1|class Widget:" not in rendered
+        assert "4|    def render(self) -> str:" in rendered

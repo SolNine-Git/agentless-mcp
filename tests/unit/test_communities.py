@@ -1,5 +1,7 @@
 """Greedy-modularity community detection over the file-level graph."""
 
+import pytest
+
 from agentless_mcp.core.communities import (
     ROOT_LABEL,
     community_label,
@@ -99,15 +101,16 @@ class TestDetection:
 
         assert sizes == sorted(sizes, reverse=True)
 
-    def test_edges_naming_unknown_nodes_are_ignored(self):
-        graph = RefGraph(
-            nodes=("a.py", "b.py"),
-            edges={("a.py", "b.py"): 1.0, ("a.py", "vendor/gone.py"): 99.0},
-        )
-
-        partition = detect_communities(graph)
-
-        assert sorted(partition.index_of()) == ["a.py", "b.py"]
+    def test_edges_naming_unknown_nodes_are_refused_at_construction(self):
+        # This graph used to be constructible, and the detector quietly
+        # dropped the dangling edge. RefGraph now refuses it, so the detector
+        # can never be handed one -- the assertion moved from "the partition
+        # ignored it" to "the graph could not exist".
+        with pytest.raises(ValueError, match=r"vendor/gone\.py"):
+            RefGraph(
+                nodes=("a.py", "b.py"),
+                edges={("a.py", "b.py"): 1.0, ("a.py", "vendor/gone.py"): 99.0},
+            )
 
 
 class TestDeterminism:

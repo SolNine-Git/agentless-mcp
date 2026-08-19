@@ -23,10 +23,9 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
 from typing import ClassVar
 
-from tree_sitter import Language, Node, Parser
+from tree_sitter import Node, Parser
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
@@ -38,6 +37,20 @@ SymbolHandler = Callable[[Node, bytes, str, list[ASTSymbol]], None]
 ImportHandler = Callable[[Node, bytes, str, list[ImportStatement]], None]
 
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedLanguageError(ValueError):
+    """A language name this extractor's registry does not carry.
+
+    Its own class rather than a bare ``ValueError`` so that the extraction
+    entry points can tell "we do not extract this language" -- an ordinary,
+    expected outcome that yields no symbols -- apart from a grammar that
+    refused to load, which `tree_sitter.Parser` also reports as a
+    ``ValueError`` and which is a degradation the caller has to see. Kept a
+    ``ValueError`` subclass because that is what `get_parser` has always
+    raised for an unknown language.
+    """
+
 
 _UPPER_CASE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
@@ -631,46 +644,25 @@ class TreeSitterExtractor:
         """Return the memoized parser for a supported language."""
         return grammars.get_parser(self._grammar_of(language))
 
-    def load_language(self, language: str) -> Language:
-        """Load the tree-sitter Language object for the given language name."""
-        return grammars.get_language(self._grammar_of(language))
-
     def _grammar_of(self, language: str) -> str:
         """Map a supported language name onto its grammar name."""
         spec = self._registry.get(language)
         if spec is None:
             msg = f"Unsupported language: {language}"
-            raise ValueError(msg)
+            raise UnsupportedLanguageError(msg)
         return spec.grammar
 
     # ------------------------------------------------------------------
     # Public symbol extraction API
     # ------------------------------------------------------------------
 
-    def extract_symbols(self, file_path: Path) -> list[ASTSymbol]:
-        """Extract all symbols from a source file."""
-        suffix = file_path.suffix
-        language = self.SUPPORTED_EXTENSIONS.get(suffix)
-        if language is None:
-            return []
-
-        try:
-            source = file_path.read_bytes()
-        except (OSError, PermissionError) as e:
-            logger.warning("Cannot read %s: %s", file_path, e)
-            return []
-
-        module_path = str(file_path)
-        return self.extract_from_source(
-            source.decode("utf-8", errors="replace"), language, module_path
-        )
-
     def extract_from_source(self, source: str, language: str, module_path: str) -> list[ASTSymbol]:
         """Extract symbols from source string.
 
         An unsupported language yields no symbols.  A supported language whose
         grammar is unavailable raises `LanguageUnavailable` from
-        `core.grammars`: that is a degradation the caller has to see, not an
+        `core.grammars`, and one whose grammar will not load raises whatever
+        the loader raised: both are degradations the caller has to see, not an
         empty file.
 
         Every handler's output passes through
@@ -680,7 +672,7 @@ class TreeSitterExtractor:
         """
         try:
             parser = self.get_parser(language)
-        except ValueError as e:
+        except UnsupportedLanguageError as e:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
@@ -696,35 +688,17 @@ class TreeSitterExtractor:
     # Public import extraction API
     # ------------------------------------------------------------------
 
-    def extract_imports(self, file_path: Path) -> list[ImportStatement]:
-        """Extract all import statements from a source file."""
-        suffix = file_path.suffix
-        language = self.SUPPORTED_EXTENSIONS.get(suffix)
-        if language is None:
-            return []
-
-        try:
-            source = file_path.read_bytes()
-        except (OSError, PermissionError) as e:
-            logger.warning("Cannot read %s: %s", file_path, e)
-            return []
-
-        module_path = str(file_path)
-        return self.extract_imports_from_source(
-            source.decode("utf-8", errors="replace"), language, module_path
-        )
-
     def extract_imports_from_source(
         self, source: str, language: str, module_path: str
     ) -> list[ImportStatement]:
         """Extract import statements from source string.
 
-        Same contract as `extract_from_source`: unsupported means empty,
-        unavailable grammar means `LanguageUnavailable`.
+        Same contract as `extract_from_source`: unsupported means empty, and
+        a grammar that is unavailable or will not load raises.
         """
         try:
             parser = self.get_parser(language)
-        except ValueError as e:
+        except UnsupportedLanguageError as e:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
@@ -786,9 +760,17 @@ class TreeSitterExtractor:
         walk: _GenericWalk,
         parent: str,
     ) -> None:
-        """Visit every child of ``node`` at the same nesting level."""
-        for child in node.children:
-            self._visit_generic_node(child, source, walk, parent)
+        """Visit every node beneath ``node``, parents before children.
+
+        An explicit stack rather than recursion, for the reason `walk_nodes`
+        gives: a chain of a few hundred method calls -- routine in a minified
+        bundle or a generated client -- is enough to exhaust the interpreter's
+        stack, and one such file must not abort the repository index.
+        """
+        stack: list[tuple[Node, str]] = [(child, parent) for child in reversed(node.children)]
+        while stack:
+            current, owner = stack.pop()
+            stack.extend(reversed(self._visit_generic_node(current, source, walk, owner)))
 
     def _visit_generic_node(
         self,
@@ -796,8 +778,15 @@ class TreeSitterExtractor:
         source: bytes,
         walk: _GenericWalk,
         parent: str,
-    ) -> None:
-        """Visit a single node and emit a symbol if it matches the config."""
+    ) -> list[tuple[Node, str]]:
+        """Emit a symbol if ``node`` matches, and say where the walk goes next.
+
+        The return value is what keeps the traversal iterative: rather than
+        descending itself, a visit hands back the ``(node, parent)`` pairs
+        still to visit -- a class body under its own name, a wrapper's
+        children under the parent they arrived with, and nothing at all under
+        a matched function.
+        """
         cfg = walk.cfg
         language = walk.language
         module_path = walk.module_path
@@ -824,34 +813,34 @@ class TreeSitterExtractor:
                         is_async=False,
                     )
                 )
-        elif node.type in cfg.class_node_types:
+            return []
+        if node.type in cfg.class_node_types:
             name = self._generic_name(node, source, cfg)
-            if name:
-                symbols.append(
-                    ASTSymbol(
-                        name=name,
-                        kind=SymbolKind.CLASS,
-                        module_path=module_path,
-                        line_number=node.start_point[0] + 1,
-                        end_line_number=node.end_point[0] + 1,
-                        signature=f"class {name}",
-                        docstring="",
-                        parent_class="",
-                        decorators=(),
-                        bases=(),
-                        language=language,
-                        is_public=not name.startswith("_"),
-                        is_async=False,
-                    )
+            if not name:
+                return []
+            symbols.append(
+                ASTSymbol(
+                    name=name,
+                    kind=SymbolKind.CLASS,
+                    module_path=module_path,
+                    line_number=node.start_point[0] + 1,
+                    end_line_number=node.end_point[0] + 1,
+                    signature=f"class {name}",
+                    docstring="",
+                    parent_class="",
+                    decorators=(),
+                    bases=(),
+                    language=language,
+                    is_public=not name.startswith("_"),
+                    is_async=False,
                 )
-                # Recurse into class body for methods
-                body = self._class_body(node, cfg)
-                if body:
-                    self._visit_generic_children(body, source, walk, parent=name)
-        else:
-            # Not a declaration: a wrapper (export_statement, a block, an
-            # expression) that may still hold one.
-            self._visit_generic_children(node, source, walk, parent)
+            )
+            # The class body carries the class as the parent of its methods.
+            body = self._class_body(node, cfg)
+            return [(child, name) for child in body.children] if body else []
+        # Not a declaration: a wrapper (export_statement, a block, an
+        # expression) that may still hold one.
+        return [(child, parent) for child in node.children]
 
     def _generic_signature(self, node: Node, source: bytes, name: str, cfg: LanguageConfig) -> str:
         """Render `fn name(params) -> result` from whatever fields exist.
@@ -951,18 +940,24 @@ class TreeSitterExtractor:
     ) -> None:
         """Generic import extraction driven by LanguageConfig."""
         _ = module_path
-        for node in root.children:
-            self._collect_import_nodes(node, source, imports, cfg)
+        self._collect_import_nodes(root, source, imports, cfg)
 
     def _collect_import_nodes(
         self,
-        node: Node,
+        root: Node,
         source: bytes,
         imports: list[ImportStatement],
         cfg: LanguageConfig,
     ) -> None:
-        """Recursively collect import nodes (some languages nest them in blocks)."""
-        if node.type in cfg.import_node_types:
+        """Collect import nodes anywhere in the tree (Go nests them in blocks).
+
+        Over `walk_nodes` rather than a recursive descent: the whole tree is
+        searched, so a deeply nested expression elsewhere in the file would
+        otherwise exhaust the stack before the walk reached the imports.
+        """
+        for node in walk_nodes(root):
+            if node.type not in cfg.import_node_types:
+                continue
             path = self._extract_import_path(node, source, cfg)
             if path:
                 imports.append(
@@ -975,9 +970,6 @@ class TreeSitterExtractor:
                         resolved_path="",
                     )
                 )
-        # Recurse for block imports (e.g. Go import blocks)
-        for child in node.children:
-            self._collect_import_nodes(child, source, imports, cfg)
 
     def _extract_import_path(
         self,
@@ -1334,32 +1326,39 @@ class TreeSitterExtractor:
         _ = module_path
         self._walk_require(root, source, imports)
 
-    def _walk_require(self, node: Node, source: bytes, imports: list[ImportStatement]) -> None:
-        """Depth-first walk collecting require() calls."""
-        if node.type in ("call", "call_expression", "function_call"):
+    def _walk_require(self, root: Node, source: bytes, imports: list[ImportStatement]) -> None:
+        """Walk the tree collecting require() calls.
+
+        Over `walk_nodes` rather than a recursive descent, for the reason that
+        function gives: a Lua module ending in a long method chain must not
+        turn its own import list into a `RecursionError`.
+        """
+        for node in walk_nodes(root):
+            if node.type not in ("call", "call_expression", "function_call"):
+                continue
             fn_node = node.child_by_field_name("function") or (
                 node.children[0] if node.children else None
             )
-            if fn_node and self._node_text(fn_node, source) == "require":
-                args = node.child_by_field_name("arguments")
-                if args:
-                    for child in args.children:
-                        if child.type in ("string", "string_literal"):
-                            path = self._strip_quotes(self._node_text(child, source))
-                            if path:
-                                imports.append(
-                                    ImportStatement(
-                                        module=path,
-                                        names=(),
-                                        is_relative=path.startswith("."),
-                                        relative_level=0,
-                                        line_number=node.start_point[0] + 1,
-                                        resolved_path="",
-                                    )
-                                )
-                            break
-        for child in node.children:
-            self._walk_require(child, source, imports)
+            if fn_node is None or self._node_text(fn_node, source) != "require":
+                continue
+            args = node.child_by_field_name("arguments")
+            if args is None:
+                continue
+            for child in args.children:
+                if child.type in ("string", "string_literal"):
+                    path = self._strip_quotes(self._node_text(child, source))
+                    if path:
+                        imports.append(
+                            ImportStatement(
+                                module=path,
+                                names=(),
+                                is_relative=path.startswith("."),
+                                relative_level=0,
+                                line_number=node.start_point[0] + 1,
+                                resolved_path="",
+                            )
+                        )
+                    break
 
     # ------------------------------------------------------------------
     # Bash source imports
@@ -1376,26 +1375,32 @@ class TreeSitterExtractor:
         _ = module_path
         self._walk_bash_source(root, source, imports)
 
-    def _walk_bash_source(self, node: Node, source: bytes, imports: list[ImportStatement]) -> None:
-        """Depth-first walk collecting source/dot commands."""
-        if node.type == "command":
+    def _walk_bash_source(self, root: Node, source: bytes, imports: list[ImportStatement]) -> None:
+        """Walk the tree collecting source/dot commands.
+
+        Over `walk_nodes` rather than a recursive descent: nested command
+        substitutions nest the tree as deeply as a script cares to, and one
+        script must not take the repository index down with it.
+        """
+        for node in walk_nodes(root):
+            if node.type != "command":
+                continue
             children = list(node.children)
-            if children:
-                cmd_name = self._node_text(children[0], source)
-                if cmd_name in ("source", ".") and len(children) > 1:
-                    path = self._node_text(children[1], source).strip("'\"")
-                    imports.append(
-                        ImportStatement(
-                            module=path,
-                            names=(),
-                            is_relative=not path.startswith("/"),
-                            relative_level=0,
-                            line_number=node.start_point[0] + 1,
-                            resolved_path="",
-                        )
+            if not children:
+                continue
+            cmd_name = self._node_text(children[0], source)
+            if cmd_name in ("source", ".") and len(children) > 1:
+                path = self._node_text(children[1], source).strip("'\"")
+                imports.append(
+                    ImportStatement(
+                        module=path,
+                        names=(),
+                        is_relative=not path.startswith("/"),
+                        relative_level=0,
+                        line_number=node.start_point[0] + 1,
+                        resolved_path="",
                     )
-        for child in node.children:
-            self._walk_bash_source(child, source, imports)
+                )
 
     # ------------------------------------------------------------------
     # Python extraction (unchanged)

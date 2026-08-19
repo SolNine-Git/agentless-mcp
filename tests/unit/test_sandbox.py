@@ -17,6 +17,7 @@ assertion is about the group, not about the one process we hold a handle to.
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 
@@ -122,6 +123,88 @@ class TestWorktree:
         assert isolated_cache_home in sandbox.scratch_root().parents
 
 
+class TestWorktreeRunsNoRepositoryCode:
+    """Creating a worktree must not execute the analysed repository's code."""
+
+    def hook(self, repo, marker, *, directory=".git/hooks"):
+        """Install a ``post-checkout`` hook that writes ``marker``."""
+        hooks = repo / directory
+        hooks.mkdir(parents=True, exist_ok=True)
+        script = hooks / "post-checkout"
+        script.write_text(
+            f'#!/bin/sh\necho fired > "{marker}"\n',
+            encoding="utf-8",
+        )
+        script.chmod(0o755)
+        return script
+
+    def test_a_hook_that_a_plain_checkout_runs_is_not_run(self, repo, tmp_path):
+        """The control half proves the hook fires at all, so this is not vacuous."""
+        marker = tmp_path / "hook-fired.txt"
+        self.hook(repo, marker)
+
+        control = tmp_path / "control-worktree"
+        git(repo, "worktree", "add", "--detach", str(control), "HEAD")
+        try:
+            assert marker.exists(), "the fixture hook never fired; the test proves nothing"
+        finally:
+            git(repo, "worktree", "remove", "--force", str(control))
+        marker.unlink()
+
+        with sandbox.worktree(repo) as tree:
+            assert (tree / "app.py").exists()
+
+        assert not marker.exists(), "git worktree add ran the repository's post-checkout hook"
+
+    def test_a_configured_hooks_path_is_neutralised_too(self, repo, tmp_path):
+        """A repository can point ``core.hooksPath`` at a directory it ships."""
+        marker = tmp_path / "hook-fired.txt"
+        self.hook(repo, marker, directory="githooks")
+        git(repo, "config", "core.hooksPath", "githooks")
+
+        with sandbox.worktree(repo) as tree:
+            assert (tree / "app.py").exists()
+
+        assert not marker.exists(), "core.hooksPath from the repository decided what ran"
+
+
+class TestWorktreeCreationFailure:
+    """A creation that dies part-way leaves nothing in the analysed repository."""
+
+    def records(self, repo):
+        directory = repo / ".git" / "worktrees"
+        return sorted(entry.name for entry in directory.iterdir()) if directory.is_dir() else []
+
+    def test_a_killed_creation_leaves_no_locked_record_or_scratch(self, repo, monkeypatch):
+        real = sandbox.run_git
+
+        def dies_after_the_record_exists(root, arguments, **keywords):
+            """Create the worktree for real, lock it, then fail like a kill would."""
+            output = real(root, arguments, **keywords)
+            if list(arguments[:2]) != ["worktree", "add"]:
+                return output
+            created = Path(arguments[3])
+            (root / ".git" / "worktrees" / created.name / "locked").write_text(
+                "killed mid-checkout\n", encoding="utf-8"
+            )
+            message = "git worktree add timed out"
+            raise AtlasError(message)
+
+        monkeypatch.setattr(sandbox, "run_git", dies_after_the_record_exists)
+
+        def enter():
+            with sandbox.worktree(repo):
+                pytest.fail("the body must not run when creation failed")
+
+        with pytest.raises(AtlasError, match="timed out"):
+            enter()
+
+        assert self.records(repo) == []
+        assert "wt-" not in git(repo, "worktree", "list")
+        scratch = sandbox.scratch_root()
+        assert not scratch.is_dir() or list(scratch.iterdir()) == []
+
+
 class TestDiff:
     def test_a_written_change_shows_up_as_a_unified_diff(self, repo):
         with sandbox.worktree(repo) as tree:
@@ -176,6 +259,26 @@ import sys
 
 sys.stderr.write("the suite is red\\n")
 raise SystemExit(3)
+"""
+
+# A runaway writer: two megabytes as fast as the disk takes them, then a pause
+# long enough for the runner's wait loop to look at the file, then a report of
+# how large its own stdout still is. The command asks the kernel rather than
+# the test asking it, because the capture file belongs to the runner and is
+# gone by the time the result comes back.
+FLOOD_SCRIPT = """\
+import os
+import sys
+import time
+
+block = "x" * 8192
+for _ in range(256):
+    sys.stdout.write(block)
+sys.stdout.flush()
+time.sleep(2)
+sys.stderr.write(f"held={os.fstat(sys.stdout.fileno()).st_size}\\n")
+sys.stdout.write("tail-marker\\n")
+sys.stdout.flush()
 """
 
 
@@ -273,6 +376,30 @@ class TestRunCommand:
         result = sandbox.run_command(workspace, python_cmd("ok.py"), timeout=30, max_capture=200)
 
         assert result.stdout_tail == "brief\n"
+
+    def test_the_capture_is_bounded_while_it_is_being_written(self, workspace, python_cmd):
+        """``max_capture`` bounds the file on disk, not only the tail read back."""
+        self.write(workspace, "flood.py", FLOOD_SCRIPT)
+        result = sandbox.run_command(
+            workspace, python_cmd("flood.py"), timeout=30, max_capture=1000
+        )
+
+        assert result.status is RunStatus.PASSED
+        held = int(result.stderr_tail.split("held=")[1].split()[0])
+        assert held <= 1000 * sandbox.CAPTURE_SLACK, (
+            f"the command left {held} bytes on disk from a 1000-byte cap"
+        )
+
+    def test_the_tail_after_a_trim_is_output_and_not_padding(self, workspace, python_cmd):
+        """What the child writes after a trim is still reported, without the hole."""
+        self.write(workspace, "flood.py", FLOOD_SCRIPT)
+        result = sandbox.run_command(
+            workspace, python_cmd("flood.py"), timeout=30, max_capture=1000
+        )
+
+        assert "tail-marker" in result.stdout_tail
+        assert "\x00" not in result.stdout_tail
+        assert "earlier bytes dropped" in result.stdout_tail
 
     def test_a_command_that_cannot_be_started_is_an_error(self, workspace):
         result = sandbox.run_command(workspace, "./no-such-binary-9f2c", timeout=30)

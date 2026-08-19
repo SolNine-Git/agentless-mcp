@@ -7,11 +7,15 @@ every bounded section says what it left out, and that the three ways a path
 can fail to be a path are three different messages rather than an exception.
 """
 
+import math
+import re
+
 import pytest
 
 from agentless_mcp.application import render
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.repo_context import resolve_repo
+from agentless_mcp.util.errors import AtlasError
 
 CORE = """\
 def helper(value):
@@ -78,10 +82,63 @@ def repo(tmp_path):
     return build(tmp_path, FILES)
 
 
+# Three callers of `helper` in its own file, so the same-file tier genuinely
+# overflows a limit of one and the elision line has something to report.
+CROWDED = """\
+def helper(value):
+    return value
+
+
+def one(value):
+    return helper(value)
+
+
+def two(value):
+    return helper(value)
+
+
+def three(value):
+    return helper(value)
+"""
+
+# More importers of one module than any section limit under test.
+IMPORTER_FILES = 5
+
+IMPORTER = """\
+from core import helper
+
+
+def use_{index}(value):
+    return helper(value)
+"""
+
+
 @pytest.fixture
 def graphs(extractor):
     """The service under test."""
     return GraphService(extractor)
+
+
+@pytest.fixture
+def crowded(tmp_path):
+    """A repository whose same-file fan-in tier overflows a limit of one."""
+    return build(tmp_path, {"core.py": CROWDED})
+
+
+@pytest.fixture
+def imported(tmp_path):
+    """A repository with more importers of one module than a limit shows."""
+    files = {"core.py": "def helper(value):\n    return value\n"}
+    files.update(
+        {f"user_{index}.py": IMPORTER.format(index=index) for index in range(IMPORTER_FILES)}
+    )
+    return build(tmp_path, files)
+
+
+def elided_in(diagram):
+    """The count the diagram's own elision node carries, or zero."""
+    found = re.search(r'"\.\.\. (\d+) more modules"', diagram)
+    return int(found.group(1)) if found else 0
 
 
 def tiers(groups):
@@ -113,7 +170,7 @@ class TestExplain:
         explained = graphs.explain(repo, "helper")
         assert [row.other for row in explained.imports_in] == ["core.py"]
         assert [row.path for row in explained.imports_in] == ["user.py"]
-        assert explained.imports_out == ()
+        assert list(explained.imports_out) == []
 
     def test_an_unknown_target_is_a_message_not_an_exception(self, graphs, repo):
         explained = graphs.explain(repo, "no_such_symbol")
@@ -127,13 +184,64 @@ class TestExplain:
         assert explained.card.stable_id == "py:alpha.py::shared"
         assert explained.alternatives == ("py:beta.py::shared",)
 
-    def test_a_section_limit_is_reported_rather_than_silent(self, graphs, repo):
-        explained = graphs.explain(repo, "helper", limit=1)
+    def test_a_section_limit_is_reported_rather_than_silent(self, graphs, crowded):
+        """Rewritten: the fixture must actually overflow the limit.
+
+        The disjunction this assertion used to carry (`... or group.omitted
+        == 0`) was satisfied by a fixture whose only tier held one row, so
+        deleting the elision line from the renderer left the test green.
+        """
+        explained = graphs.explain(crowded, "helper", limit=1)
         group = explained.fan_in[0]
-        assert len(group.rows) == 1
-        assert group.total >= 1
+
+        assert (group.tier, group.total, len(group.rows)) == ("same_file", 3, 1)
+        assert group.omitted == 2
+        assert "... 2 more at this tier" in render.render_explanation(explained)
+
+    def test_the_import_section_says_how_many_importers_it_left_out(self, graphs, imported):
+        """The one bounded section in this module that never counted at all."""
+        explained = graphs.explain(imported, "helper", limit=2)
         rendered = render.render_explanation(explained)
-        assert "more at this tier" in rendered or group.omitted == 0
+
+        assert explained.imports_in.total == IMPORTER_FILES
+        assert explained.imports_in.omitted == IMPORTER_FILES - 2
+        assert f"... {IMPORTER_FILES - 2} more importers, not listed" in rendered
+
+    def test_the_import_section_carries_its_count_into_the_json_too(self, graphs, imported):
+        document = graphs.explain(imported, "helper", limit=2).as_dict()
+
+        importers = document["imports"]["importers"]
+        assert importers["total"] == IMPORTER_FILES
+        assert importers["omitted"] == IMPORTER_FILES - 2
+        assert len(importers["rows"]) == 2
+
+    def test_an_unbounded_import_section_announces_nothing(self, graphs, imported):
+        rendered = render.render_explanation(graphs.explain(imported, "helper"))
+        assert "not listed" not in rendered
+
+
+class TestResolutionIsParsedNotCoerced:
+    """`float()` accepts NaN and both infinities; the clustering does not.
+
+    A NaN makes every gain comparison false, so the answer is one singleton
+    community per file and a modularity of NaN -- which `json.dumps` emits as
+    the bare token `NaN`, invalid JSON for a strict parser on the other side.
+    """
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), -5.0, 0.0])
+    def test_communities_refuses_a_resolution_that_is_not_one(self, graphs, repo, value):
+        with pytest.raises(AtlasError, match="resolution must be a finite number"):
+            graphs.communities(repo, resolution=value)
+
+    @pytest.mark.parametrize("value", [float("nan"), -5.0])
+    def test_the_diagram_refuses_the_same_values(self, graphs, repo, value):
+        with pytest.raises(AtlasError, match="resolution must be a finite number"):
+            graphs.diagram(repo, group_by_communities=True, resolution=value)
+
+    def test_a_finite_positive_resolution_is_still_accepted(self, graphs, repo):
+        report = graphs.communities(repo, resolution=0.5)
+        assert report.resolution == 0.5
+        assert not math.isnan(report.modularity)
 
 
 class TestPath:
@@ -336,6 +444,32 @@ class TestDiagram:
 
         assert body.startswith("```mermaid\n")
         assert body.rstrip("\n").endswith("```")
+
+    def test_a_focused_diagram_elides_only_what_the_picture_dropped(self, graphs, repo):
+        """The count and the picture are answers to the same question.
+
+        `elided` used to be computed against every module in the repository
+        while the elision node inside the diagram counts against the focus
+        neighbourhood, so one response said "12 elided" over a picture that
+        had dropped nothing -- and a reader who trusted the number raised
+        `max_nodes` for modules no bound had removed.
+        """
+        view = graphs.diagram(repo, focus="island.py")
+
+        assert view.nodes == 1
+        assert view.elided == 0
+        assert "more modules" not in view.text
+
+    def test_a_focused_diagram_that_does_bound_agrees_with_its_own_marker(self, graphs, repo):
+        view = graphs.diagram(repo, focus="user.py", max_nodes=1)
+
+        assert view.nodes == 1
+        assert view.elided == elided_in(view.text)
+        assert view.elided > 0
+
+    def test_an_unfocused_diagram_still_counts_the_whole_repository(self, graphs, repo):
+        view = graphs.diagram(repo, max_nodes=2)
+        assert view.elided == len(FILES) - 2 == elided_in(view.text)
 
     def test_a_focus_keeps_the_seed_and_its_neighbourhood(self, graphs, repo):
         view = graphs.diagram(repo, focus="user.py", max_nodes=3)

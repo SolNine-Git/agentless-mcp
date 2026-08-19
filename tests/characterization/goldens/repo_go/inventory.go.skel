@@ -36,6 +36,5 @@ func (inv *Inventory) Add(item Item) error { ... }
 func (inv *Inventory) Remove(sku string) (Item, error) { ... }
 
 func (inv *Inventory) ReorderList() ([]Item, error) { ... }
-	sort.Slice(out, func(a, b int) bool { ... }
 
 func (inv *Inventory) AuditTrail() []string { ... }

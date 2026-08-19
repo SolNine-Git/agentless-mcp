@@ -36,10 +36,20 @@ def contained_path(root: Path, candidate: str) -> Path:
 
     The refusal names the resolved form only. The raw argument is never echoed
     back: error text is an output channel like any other.
+
+    Every refusal is a :class:`SecurityRefusal`, including the one for a string
+    the filesystem cannot name at all: this is the boundary the adapters catch
+    on, so an untyped stdlib error escaping it would escape them too.
     """
     resolved_root = root.resolve()
     joined = Path(candidate) if Path(candidate).is_absolute() else resolved_root / candidate
-    resolved = joined.resolve()
+    try:
+        resolved = joined.resolve()
+    except (ValueError, OSError) as exc:
+        # A NUL byte or an otherwise unnameable path: JSON tool arguments can
+        # carry both, and the form is not repeated back.
+        message = "path refused: not a usable filesystem path"
+        raise SecurityRefusal(message) from exc
 
     if not _is_within(resolved, resolved_root):
         message = f"path refused: resolved to {resolved}, which is outside the root {resolved_root}"
@@ -153,7 +163,7 @@ def bounded_walk(
 
         for name in sorted(filenames):
             candidate = current / name
-            if not _file_stays_inside(candidate, resolved_root):
+            if not file_stays_inside(candidate, resolved_root):
                 continue
 
             relative = candidate.relative_to(resolved_root)
@@ -192,8 +202,13 @@ def _claim_directory(directory: Path, seen: set[tuple[int, int]]) -> bool:
     return True
 
 
-def _file_stays_inside(candidate: Path, root: Path) -> bool:
-    """Return True for regular files whose real path is still under ``root``."""
+def file_stays_inside(candidate: Path, root: Path) -> bool:
+    """Return True for regular files whose real path is still under ``root``.
+
+    Public because both traversals need it and one containment rule is the
+    point: :mod:`agentless_mcp.core.treewalk` asks the same question of the
+    paths git lists that :func:`bounded_walk` asks of the ones it finds.
+    """
     if candidate.is_symlink():
         try:
             target = candidate.resolve(strict=True)

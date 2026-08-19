@@ -27,7 +27,7 @@ from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES, LocResolution, LocTarget, resolve_locs
 from agentless_mcp.core.skeleton import skeletonize
-from agentless_mcp.core.slices import line_wrap_content
+from agentless_mcp.core.slices import line_count, line_wrap_content
 from agentless_mcp.core.symbols import ASTSymbol
 from agentless_mcp.core.treewalk import (
     DEFAULT_MAX_ENTRIES,
@@ -38,6 +38,15 @@ from agentless_mcp.core.treewalk import (
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import AtlasError, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
+
+# What a caller is told about a line range that is not one. Shaped like
+# `MESSAGES.slice_range_beyond_file`, because "you asked for lines 60-30" and
+# "you asked for lines past the end" are the same kind of answer: the range is
+# named back, with what a satisfiable one looks like.
+SLICE_RANGE_NOT_A_RANGE = (
+    "unsatisfiable: line range {start}-{end} is not a range in {path}: "
+    "a start of 1 or more, and an end at or after the start"
+)
 
 
 @dataclass(frozen=True)
@@ -98,6 +107,37 @@ class LocationView:
         }
 
 
+def _check_context(context: int) -> None:
+    """Refuse a context window that cannot widen anything.
+
+    A negative context narrows the interval it is applied to, and past the
+    interval's own width it inverts it. The caller asked for lines around a
+    range; there is no answer to "the lines around it, minus fifty".
+    """
+    if context < 0:
+        message = f"context must not be negative, got {context}"
+        raise AtlasError(message)
+
+
+def _satisfiable(start: int, end: int, total: int) -> bool:
+    """True when a range names lines this file can answer with, even in part.
+
+    Three conditions and not one: the range starts at line 1 or later, ends at
+    or after it starts, and starts inside the file. Keeping only the last of
+    them was a guard on a proxy rather than on the invariant -- an inverted or
+    negative range passed it, widened into an interval that clipped to
+    nothing, and was answered with the whole file.
+    """
+    return 1 <= start <= min(end, total)
+
+
+def _unsatisfiable(start: int, end: int, path: str, total: int) -> str:
+    """Say why one requested range cannot be answered, naming the range."""
+    if start > total:
+        return MESSAGES.slice_range_beyond_file.format(start=start, end=end, path=path, total=total)
+    return SLICE_RANGE_NOT_A_RANGE.format(start=start, end=end, path=path)
+
+
 class ViewService:
     """Renders the tree, skeleton, slice and location views of a repository."""
 
@@ -153,25 +193,32 @@ class ViewService:
     ) -> FileView:
         """Render numbered lines for the given intervals, with scope headers.
 
-        An interval whose start lies beyond the file's last line cannot be
-        satisfied even in part, so it is reported per item -- the way
+        An interval this file cannot satisfy is reported per item -- the way
         :meth:`resolve_locations` reports an unrecognized loc -- instead of
         being clipped away, which would leave no intervals and render the
         whole file as if it were the requested slice. An interval that merely
         runs past the end keeps its clamped tail.
+
+        "Satisfiable" is the whole invariant and not a proxy for it: a range
+        starts at line 1 or later, ends at or after it starts, and starts
+        inside the file. Checking only the last of the three let a transposed
+        range, a negative one, or a negative ``context`` widen into an
+        inverted interval that clipped to nothing -- and the primitive
+        underneath answered that with every line of the file, which is exactly
+        the blow-up this method exists to prevent. The service owns the check
+        because both front doors call it and only one of them validates.
         """
+        _check_context(context)
         resolved, language, text, error = self._load(ctx, path)
         if error:
             return FileView(path=path, language=language, text="", error=error)
 
-        total = len(text.split("\n"))
-        satisfiable = [(start, end) for start, end in intervals if start <= total]
+        total = line_count(text)
+        satisfiable = [(start, end) for start, end in intervals if _satisfiable(start, end, total)]
         reports = [
-            MESSAGES.slice_range_beyond_file.format(
-                start=start, end=end, path=resolved, total=total
-            )
+            _unsatisfiable(start, end, resolved, total)
             for start, end in intervals
-            if start > total
+            if not _satisfiable(start, end, total)
         ]
         if intervals and not satisfiable:
             return FileView(path=resolved, language=language, text="\n".join(reports) + "\n")
@@ -180,7 +227,7 @@ class ViewService:
             (max(1, start - context), min(total, end + context)) for start, end in satisfiable
         ]
         symbols = self._symbols(ctx, text, language, resolved)
-        rendered = line_wrap_content(text, widened or None, symbols=symbols)
+        rendered = line_wrap_content(text, widened if intervals else None, symbols=symbols)
         body = "\n".join([*reports, rendered]) if reports else rendered
         return FileView(path=resolved, language=language, text=body + "\n")
 
@@ -193,11 +240,12 @@ class ViewService:
         context: int = DEFAULT_CONTEXT_LINES,
     ) -> LocationView:
         """Resolve ``class:``/``function:``/``line:`` strings against one file."""
+        _check_context(context)
         resolved, language, text, error = self._load(ctx, path)
         if error:
             raise RepoResolutionError(error)
 
-        total = len(text.split("\n"))
+        total = line_count(text)
         symbols = self._symbols(ctx, text, language, resolved)
         resolution = resolve_locs(
             list(locs),

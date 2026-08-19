@@ -1,5 +1,5 @@
 {
-  "server_no_roots": "no repositories are served: start agentless-mcp-server with at least one --root DIR, or connect a client that advertises MCP roots.",
+  "server_no_roots": "no repositories are served: restart agentless-mcp-server with at least one --root DIR. A root advertised by the client can only select among the roots the server was started with; it cannot add one.",
   "server_root_required": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: {roots}",
   "unknown_operation": "analyze_structure has no operation named '{operation}'. Valid operations are: {operations}. Retry with one of those.",
   "path_needs_endpoints": "analyze_structure operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends.",

@@ -17,12 +17,14 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentless_mcp.core import gitinfo
 from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
     bounded_walk,
+    file_stays_inside,
 )
 
 DEFAULT_RENDER_DEPTH = 4
@@ -53,8 +55,15 @@ class RepoFile:
 
 
 def is_git_repo(root: Path) -> bool:
-    """True when ``root`` carries a ``.git`` entry (directory or worktree file)."""
-    return (root / ".git").exists()
+    """True when ``root`` lies inside a git work tree.
+
+    Asked of git rather than of the filesystem: a ``.git`` entry at exactly
+    this path is a correlate, and it is absent for every root git still
+    answers for -- a package inside a monorepo, a linked worktree, a
+    submodule. ``git -C <root> ls-files`` scopes its output to the given
+    directory, so the branch below stays correct wherever the root sits.
+    """
+    return gitinfo.git_root(root) is not None
 
 
 def walk_repo(
@@ -90,8 +99,12 @@ def walk_repo(
     total_bytes = 0
     for relative in sorted(set(relatives)):
         candidate = resolved / relative
-        if not candidate.is_file():
-            # git lists index entries for files deleted in the working tree.
+        if not file_stays_inside(candidate, resolved):
+            # git lists index entries for files deleted in the working tree,
+            # and it lists a tracked symlink whatever it points at. The same
+            # containment rule the bounded walk applies covers both: a link
+            # out of the tree is no more servable here than one found by the
+            # fallback traversal.
             continue
         depth = len(Path(relative).parts) - 1
         if depth > max_depth:

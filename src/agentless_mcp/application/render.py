@@ -15,11 +15,19 @@ Every path is repository-relative with forward slashes, and every row carries
 ``file:line``.
 """
 
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, overload
 
+from agentless_mcp.core.slices import line_prefix
+
 MODULE_LEVEL = "(module level)"
+
+# How wide the line-number column of a row-per-line view is. The prefix
+# itself is `core.slices.line_prefix`, which every line-numbered view in the
+# package renders through.
+LINE_NUMBER_WIDTH = 5
 
 # How many of a candidate's shared callers the text render lists before
 # cutting to a count. The callers are evidence for the overlap number, and a
@@ -32,6 +40,29 @@ SHARED_CALLERS_SHOWN = 5
 # property of the destination, not of the diagram.
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
+
+
+class _Bounded(ABC):
+    """The arithmetic every bounded listing announces its cut with.
+
+    A listing carries the pre-slice ``total`` and says how much of it it
+    ``shown``; ``omitted`` is the difference. It lives here rather than being
+    spelled out on each value object because it is the one number that keeps a
+    bounded view from being read as a complete one, and six copies of it would
+    be six chances to compute it against the wrong denominator.
+    """
+
+    total: int
+
+    @property
+    @abstractmethod
+    def shown(self) -> int:
+        """How much of ``total`` this listing actually carries."""
+
+    @property
+    def omitted(self) -> int:
+        """How much of ``total`` the limit left out."""
+        return max(0, self.total - self.shown)
 
 
 @dataclass(frozen=True)
@@ -154,6 +185,105 @@ class RefGroup:
 
 
 @dataclass(frozen=True)
+class RefListing(_Bounded, Sequence[RefGroup]):
+    """The fan-in groups the limit kept, and the sites and files it left out.
+
+    A ``Sequence`` for the reason :class:`SharedCallerListing` is one: the
+    renderer receives nothing but this object and the target name, so a total
+    that lived anywhere else would be a truncation the text render could not
+    announce -- and a missed caller is the expensive error this view exists to
+    prevent.
+
+    The sites are cut *before* they are grouped, so a file whose every site
+    fell past the limit is absent from the listing altogether. ``files``
+    carries the count before that cut, because "and every reference in 21
+    more files" is what a blast-radius reader has to be told.
+    """
+
+    rows: tuple[RefGroup, ...] = ()
+    total: int = 0
+    limit: int = 0
+    files: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many reference sites the kept groups carry between them."""
+        return sum(len(group.sites) for group in self.rows)
+
+    @property
+    def files_omitted(self) -> int:
+        """How many referencing files the limit cut out whole."""
+        return max(0, self.files - len(self.rows))
+
+    def __len__(self) -> int:
+        """Return how many file groups the listing kept."""
+        return len(self.rows)
+
+    @overload
+    def __getitem__(self, index: int) -> RefGroup: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[RefGroup, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> RefGroup | tuple[RefGroup, ...]:
+        """Return one kept group, or a slice of them."""
+        return self.rows[index]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "files": self.files,
+            "files_omitted": self.files_omitted,
+            "groups": [group.as_dict() for group in self.rows],
+        }
+
+
+@dataclass(frozen=True)
+class CardListing(_Bounded, Sequence[SymbolCard]):
+    """The symbol cards a lookup's limit kept, and how many it left out.
+
+    Same shape and same reason as :class:`RefListing`. An expansion passes a
+    bare tuple of cards instead, because nothing there is cut by a limit
+    silently: every id it could not answer comes back named.
+    """
+
+    rows: tuple[SymbolCard, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many cards the listing kept."""
+        return len(self.rows)
+
+    def __len__(self) -> int:
+        """Return how many cards the listing kept."""
+        return len(self.rows)
+
+    @overload
+    def __getitem__(self, index: int) -> SymbolCard: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[SymbolCard, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> SymbolCard | tuple[SymbolCard, ...]:
+        """Return one kept card, or a slice of them."""
+        return self.rows[index]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "matches": [card.as_dict() for card in self.rows],
+        }
+
+
+@dataclass(frozen=True)
 class CallerRef:
     """One caller shared between the refs target and a candidate symbol."""
 
@@ -206,7 +336,7 @@ class SharedCaller:
 
 
 @dataclass(frozen=True)
-class SharedCallerListing(Sequence[SharedCaller]):
+class SharedCallerListing(_Bounded, Sequence[SharedCaller]):
     """The adjacency rows the limit kept, and how many candidates it left out.
 
     A ``Sequence`` rather than a bare tuple because the renderer receives
@@ -220,9 +350,9 @@ class SharedCallerListing(Sequence[SharedCaller]):
     limit: int = 0
 
     @property
-    def omitted(self) -> int:
-        """How many ranked candidates the limit left out."""
-        return max(0, self.total - len(self.rows))
+    def shown(self) -> int:
+        """How many ranked candidates the listing kept."""
+        return len(self.rows)
 
     def __len__(self) -> int:
         """Return how many rows the listing kept."""
@@ -270,7 +400,7 @@ class EdgeRow:
 
 
 @dataclass(frozen=True)
-class TierGroup:
+class TierGroup(_Bounded):
     """The edges of one evidence tier, already capped at the section limit."""
 
     tier: str
@@ -279,9 +409,9 @@ class TierGroup:
     total: int
 
     @property
-    def omitted(self) -> int:
-        """How many rows of this tier the limit left out."""
-        return max(0, self.total - len(self.rows))
+    def shown(self) -> int:
+        """How many rows of this tier the limit kept."""
+        return len(self.rows)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this group."""
@@ -305,6 +435,49 @@ class ImportRow:
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this row."""
         return {"path": self.path, "line": self.line, "module": self.module, "other": self.other}
+
+
+@dataclass(frozen=True)
+class ImportListing(_Bounded, Sequence[ImportRow]):
+    """One direction of a file's import edges, already capped at the limit.
+
+    The rows used to travel as a bare tuple, so the count behind them was
+    never even computed: twenty importers of a widely-imported module read as
+    the complete set in the text *and* in the JSON, which had no field that
+    could have carried it.
+    """
+
+    rows: tuple[ImportRow, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many import rows the limit kept."""
+        return len(self.rows)
+
+    def __len__(self) -> int:
+        """Return how many rows the listing kept."""
+        return len(self.rows)
+
+    @overload
+    def __getitem__(self, index: int) -> ImportRow: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[ImportRow, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> ImportRow | tuple[ImportRow, ...]:
+        """Return one kept row, or a slice of them."""
+        return self.rows[index]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "rows": [row.as_dict() for row in self.rows],
+        }
 
 
 @dataclass(frozen=True)
@@ -359,8 +532,8 @@ class Explanation:
     alternatives: tuple[str, ...]
     fan_out: tuple[TierGroup, ...]
     fan_in: tuple[TierGroup, ...]
-    imports_out: tuple[ImportRow, ...]
-    imports_in: tuple[ImportRow, ...]
+    imports_out: ImportListing
+    imports_in: ImportListing
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this explanation."""
@@ -372,8 +545,8 @@ class Explanation:
             "fan_out": [group.as_dict() for group in self.fan_out],
             "fan_in": [group.as_dict() for group in self.fan_in],
             "imports": {
-                "declared": [row.as_dict() for row in self.imports_out],
-                "importers": [row.as_dict() for row in self.imports_in],
+                "declared": self.imports_out.as_dict(),
+                "importers": self.imports_in.as_dict(),
             },
         }
 
@@ -410,7 +583,7 @@ class PathTrace:
 
 
 @dataclass(frozen=True)
-class CycleReport:
+class CycleReport(_Bounded):
     """Every import cycle found, already capped at the caller's limit."""
 
     cycles: tuple[CycleRow, ...]
@@ -418,9 +591,9 @@ class CycleReport:
     limit: int
 
     @property
-    def omitted(self) -> int:
-        """How many cycles the limit left out."""
-        return max(0, self.total - len(self.cycles))
+    def shown(self) -> int:
+        """How many cycles the limit kept."""
+        return len(self.cycles)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
@@ -456,7 +629,7 @@ class CommunityRow:
 
 
 @dataclass(frozen=True)
-class CommunityReport:
+class CommunityReport(_Bounded):
     """A whole partition, already capped, with the score behind it."""
 
     communities: tuple[CommunityRow, ...]
@@ -467,9 +640,9 @@ class CommunityReport:
     files: int
 
     @property
-    def omitted(self) -> int:
-        """How many communities the limit left out."""
-        return max(0, self.total - len(self.communities))
+    def shown(self) -> int:
+        """How many communities the limit kept."""
+        return len(self.communities)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
@@ -743,6 +916,8 @@ def _render_imports(explanation: Explanation) -> str:
             f"    declares  {row.module} -> {row.other}    {row.path}:{row.line}"
             for row in explanation.imports_out
         )
+        if explanation.imports_out.omitted:
+            lines.append(f"    ... {explanation.imports_out.omitted} more declared, not listed")
     else:
         lines.append("    declares  none resolved inside this repository")
     if explanation.imports_in:
@@ -750,6 +925,8 @@ def _render_imports(explanation: Explanation) -> str:
             f"    imported by  {row.path}:{row.line}  as {row.module}"
             for row in explanation.imports_in
         )
+        if explanation.imports_in.omitted:
+            lines.append(f"    ... {explanation.imports_in.omitted} more importers, not listed")
     else:
         lines.append("    imported by  nothing in this repository")
     return "\n".join(lines) + "\n"
@@ -764,7 +941,8 @@ def render_map(files: Sequence[MapFile]) -> str:
     for map_file in files:
         lines = [f"{map_file.path}  (rank {map_file.rank:.4f})"]
         lines.extend(
-            f"{entry.line:>5}| {'    ' * entry.depth}{entry.signature}  [{entry.stable_id}]"
+            f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
+            f"{'    ' * entry.depth}{entry.signature}  [{entry.stable_id}]"
             for entry in map_file.entries
         )
         if map_file.omitted:
@@ -774,24 +952,47 @@ def render_map(files: Sequence[MapFile]) -> str:
 
 
 def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:
-    """Render incident cards for symbol lookups and expansions."""
+    """Render incident cards for symbol lookups and expansions.
+
+    A :class:`CardListing` says how many matches its limit left out and gets
+    that line appended; a bare sequence is a caller whose cards were never cut
+    by a limit -- the expansion path, which names every id it could not answer
+    instead. The count is read off the listing rather than taken as a second
+    argument, so it cannot get separated from the rows it describes.
+    """
     if not cards:
         return "no matching symbols\n"
-    return "\n\n".join(_render_card(card) for card in cards) + "\n"
+
+    body = "\n\n".join(_render_card(card) for card in cards) + "\n"
+    if isinstance(cards, CardListing) and cards.omitted:
+        return f"{body}  ... {cards.omitted} more matches not listed (limit {cards.limit})\n"
+    return body
 
 
 def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
-    """Render fan-in: references grouped by the file they were found in."""
+    """Render fan-in: references grouped by the file they were found in.
+
+    The header is the *pre-limit* total when a :class:`RefListing` supplies
+    one. Recomputing it from the groups that survived is what made a fan-in of
+    fifty-two sites answer "10 references to widget" and say nothing else --
+    an agent reads that as the blast radius and ships against it.
+    """
     if not groups:
         return f"no references to {target} outside its own definition\n"
 
-    total = sum(len(group.sites) for group in groups)
+    listed = sum(len(group.sites) for group in groups)
+    total = groups.total if isinstance(groups, RefListing) else listed
     blocks = [f"{total} references to {target}"]
     for group in groups:
         labelled = f", {group.tier_label}" if group.tier_label else ""
         lines = [f"{group.path}  ({len(group.sites)} references{labelled})"]
         lines.extend(_render_site(group.path, site) for site in group.sites)
         blocks.append("\n".join(lines))
+    if isinstance(groups, RefListing) and groups.omitted:
+        note = f"  ... {groups.omitted} more references not listed (limit {groups.limit})"
+        if groups.files_omitted:
+            note += f", including every reference in {groups.files_omitted} more files"
+        blocks.append(note)
     return "\n\n".join(blocks) + "\n"
 
 
@@ -829,14 +1030,6 @@ def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def number_lines(text: str, first_line: int = 1) -> str:
-    """Render ``text`` with ``N| `` prefixes starting at ``first_line``."""
-    lines = text.split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
-    return "\n".join(f"{number}| {line}" for number, line in enumerate(lines, start=first_line))
-
-
 def _render_card(card: SymbolCard) -> str:
     """Render one incident card: id, location line, signature, optional body."""
     owner = f" in class {card.parent_class}" if card.parent_class else ""
@@ -854,4 +1047,5 @@ def _render_card(card: SymbolCard) -> str:
 def _render_site(path: str, site: RefSite) -> str:
     """Render one reference row: file:line plus who encloses it."""
     suffix = f"  [{site.stable_id}]" if site.stable_id else ""
-    return f"{site.line:>5}| {site.enclosing}{suffix}    {path}:{site.line}"
+    prefix = line_prefix(site.line, LINE_NUMBER_WIDTH)
+    return f"{prefix}{site.enclosing}{suffix}    {path}:{site.line}"

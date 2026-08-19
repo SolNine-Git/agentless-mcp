@@ -52,7 +52,7 @@ from enum import Enum
 
 from agentless_mcp.core import graph
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan
+from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 
 # A path search that has looked at this many nodes has stopped answering the
@@ -198,7 +198,7 @@ class Resolver:
             return None
 
         ordered = _ordered(candidates)
-        same_file = tuple(entry for entry in ordered if entry.path == path)
+        same_file = tuple(entry for entry in ordered if _in_module_scope(entry, path))
         if same_file:
             return Resolution(name=name, tier=Tier.SAME_FILE, candidates=same_file)
 
@@ -294,7 +294,7 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
     contributes no evidence, which costs a tier rather than an answer -- the
     reference still resolves as ``unique`` or ``ambiguous``.
     """
-    known = tuple(sorted(facts.path for facts in files))
+    known = frozenset(facts.path for facts in files)
     scopes: dict[str, ImportScope] = {}
 
     for facts in files:
@@ -331,7 +331,7 @@ def _submodule_import(
     importer: str,
     statement: ImportStatement,
     name: str,
-    known: Sequence[str],
+    known: frozenset[str],
 ) -> tuple[str, str | None]:
     """Resolve one from-import name as a submodule file, when it is one.
 
@@ -397,7 +397,7 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
     definitions: dict[str, Definition] = {}
 
     for facts in scan.files:
-        owners = _owners(facts)
+        owners = line_owners(facts)
         for symbol in facts.symbols:
             definitions[symbol_stable_id(symbol)] = Definition(path=facts.path, symbol=symbol)
 
@@ -660,6 +660,19 @@ def _definition_endpoint(definition: Definition) -> Endpoint:
     return _symbol_endpoint(definition.path, definition.symbol)
 
 
+def _in_module_scope(candidate: Definition, path: str) -> bool:
+    """True when ``path``'s own module namespace binds this definition.
+
+    "Defined in this file" is not the same claim as "in this file's module
+    scope", and the tier is documented as the second one: a bare name cannot
+    reach a class member in any language this package parses, so a method must
+    not shadow -- let alone suppress -- the candidate a declared import
+    supplies. A class member is still reachable at a weaker tier, which is
+    where a candidate matched on spelling alone belongs.
+    """
+    return candidate.path == path and not candidate.symbol.parent_class
+
+
 def _ordered(candidates: Sequence[Definition]) -> tuple[Definition, ...]:
     """Order candidate definitions so a tier's candidate list is stable."""
     return tuple(
@@ -668,24 +681,6 @@ def _ordered(candidates: Sequence[Definition]) -> tuple[Definition, ...]:
             key=lambda entry: (entry.path, entry.symbol.line_number, qualname(entry.symbol)),
         )
     )
-
-
-def _owners(facts: FileFacts) -> dict[int, ASTSymbol]:
-    """Map each covered line to the innermost symbol whose span contains it.
-
-    Same rule as :func:`agentless_mcp.core.refs.enclosing_symbol` -- innermost
-    is the containing symbol that starts last -- computed once per file rather
-    than once per reference, because the reference pass produces tens of
-    thousands of lookups against a few hundred spans.
-    """
-    owners: dict[int, ASTSymbol] = {}
-    for symbol in sorted(facts.symbols, key=lambda entry: entry.line_number):
-        end = symbol.end_line_number or symbol.line_number
-        for line in range(symbol.line_number, end + 1):
-            current = owners.get(line)
-            if current is None or current.line_number < symbol.line_number:
-                owners[line] = symbol
-    return owners
 
 
 def _group(

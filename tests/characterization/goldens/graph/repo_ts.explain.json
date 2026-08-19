@@ -81,26 +81,36 @@
   ],
   "fan_in": [],
   "imports": {
-    "declared": [
-      {
-        "path": "reports.ts",
-        "line": 5,
-        "module": "./inventory",
-        "other": "inventory.ts"
-      },
-      {
-        "path": "reports.ts",
-        "line": 6,
-        "module": "./pricing",
-        "other": "pricing.ts"
-      },
-      {
-        "path": "reports.ts",
-        "line": 7,
-        "module": "./types",
-        "other": "types.ts"
-      }
-    ],
-    "importers": []
+    "declared": {
+      "total": 3,
+      "limit": 20,
+      "omitted": 0,
+      "rows": [
+        {
+          "path": "reports.ts",
+          "line": 5,
+          "module": "./inventory",
+          "other": "inventory.ts"
+        },
+        {
+          "path": "reports.ts",
+          "line": 6,
+          "module": "./pricing",
+          "other": "pricing.ts"
+        },
+        {
+          "path": "reports.ts",
+          "line": 7,
+          "module": "./types",
+          "other": "types.ts"
+        }
+      ]
+    },
+    "importers": {
+      "total": 0,
+      "limit": 20,
+      "omitted": 0,
+      "rows": []
+    }
   }
 }

@@ -152,6 +152,41 @@ SUBMODULE_FILES = {
     "aliased.py": ALIASED_MAIN,
 }
 
+# A class member spells a name the module scope does not bind. Python's own
+# scoping never lets `helper(value)` find `Cache.helper`, so neither may the
+# resolver -- and the declared import is the answer it must not discard.
+METHOD_SHADOW = {
+    "core.py": "def helper(value):\n    return value\n",
+    "user.py": (
+        "from core import helper\n"
+        "\n"
+        "\n"
+        "class Cache:\n"
+        "    def helper(self):\n"
+        "        return 0\n"
+        "\n"
+        "\n"
+        "def use(value):\n"
+        "    return helper(value)\n"
+    ),
+}
+
+# The two Python relative-import forms, in a package laid out the usual way.
+RELATIVE_PACKAGE = {
+    "pkg/__init__.py": "",
+    "pkg/helper.py": "def thing():\n    return 1\n",
+    "pkg/sub/__init__.py": "",
+    "pkg/sub/sibling.py": "def near():\n    return 2\n",
+    "pkg/sub/user.py": (
+        "from . import sibling\n"
+        "from ..helper import thing\n"
+        "\n"
+        "\n"
+        "def go():\n"
+        "    return sibling.near() + thing()\n"
+    ),
+}
+
 SUBMODULE_CYCLE = {
     "pkg/__init__.py": "",
     "pkg/sub.py": "import loop\n\n\ndef in_sub():\n    return 1\n",
@@ -367,6 +402,42 @@ class TestSubmoduleImports:
         _, graph = resolved(write(tmp_path, SUBMODULE_CYCLE), extractor)
         cycles = resolve.import_cycles(graph)
         assert [cycle.files for cycle in cycles] == [("loop.py", "pkg/sub.py")]
+
+
+class TestModuleScope:
+    def test_a_method_does_not_shadow_a_declared_import(self, tmp_path, extractor):
+        """``same_file`` means "this file's module scope defines it", not "this file does".
+
+        A bare call cannot reach a class member in any language this package
+        parses, so a method must not outrank -- let alone suppress -- the
+        candidate the file's own import declares.
+        """
+        _, graph = resolved(write(tmp_path, METHOD_SHADOW), extractor)
+        edges = edges_from(graph, "py:user.py::use", "helper")
+
+        assert [edge.target.node for edge in edges] == ["py:core.py::helper"]
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+
+class TestRelativeImports:
+    def test_a_bare_relative_import_binds_the_sibling_submodule(self, tmp_path, extractor):
+        resolver, _ = resolved(write(tmp_path, RELATIVE_PACKAGE), extractor)
+        scope = resolver.scopes["pkg/sub/user.py"]
+
+        assert scope.named["sibling"] == frozenset({"pkg/sub/sibling.py"})
+
+    def test_a_parent_relative_import_binds_the_package_above(self, tmp_path, extractor):
+        resolver, _ = resolved(write(tmp_path, RELATIVE_PACKAGE), extractor)
+        scope = resolver.scopes["pkg/sub/user.py"]
+
+        assert scope.named["thing"] == frozenset({"pkg/helper.py"})
+
+    def test_a_reference_through_a_relative_import_resolves_imported(self, tmp_path, extractor):
+        _, graph = resolved(write(tmp_path, RELATIVE_PACKAGE), extractor)
+        edges = edges_from(graph, "py:pkg/sub/user.py::go", "thing")
+
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+        assert edges[0].target.node == "py:pkg/helper.py::thing"
 
 
 class TestDeterminism:

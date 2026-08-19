@@ -11,7 +11,10 @@ read from. Two rules make that safe:
   ``--root /a --root /b`` serves those two directories and nothing under,
   beside or symlinked from them. Containment would be the wrong test here: a
   repository is a unit of allowlisting, and "somewhere under an allowed root"
-  is how a workspace of seven repositories turns into one.
+  is how a workspace of seven repositories turns into one. The allowlist an
+  adapter hands in is the operator's list: the MCP adapter may narrow it when
+  a call has to pick one root, and nothing may widen it, least of all a value
+  the connected client supplied.
 
 ``allowlist=None`` is CLI mode, where the root is derived from the process's
 own cwd and is therefore already as trusted as the process is. That is a

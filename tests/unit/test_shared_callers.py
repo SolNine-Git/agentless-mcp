@@ -216,6 +216,59 @@ class TestLimit:
         assert listing.total == len(listing)
 
 
+# A repository where two callers of the target both take a parameter spelled
+# like a symbol defined elsewhere. The parameter binds that spelling locally,
+# so the occurrence is not a reference to the global of the same name.
+BOUND_UTIL = """\
+def helper(value):
+    return value
+
+
+def target(sku):
+    return sku
+"""
+
+BOUND_CALLER = """\
+from util import target
+
+
+def call_{index}(helper):
+    return target(helper)
+"""
+
+
+@pytest.fixture
+def locally_bound(tmp_path):
+    """A repository whose callers shadow a global name with a parameter."""
+    (tmp_path / "util.py").write_text(BOUND_UTIL, encoding="utf-8")
+    for index in range(2):
+        (tmp_path / f"caller_{index}.py").write_text(
+            BOUND_CALLER.format(index=index), encoding="utf-8"
+        )
+    return resolve_repo(tmp_path, None)
+
+
+class TestLocallyBoundNamesAreNotShared:
+    """A parameter's own name is a binding, not a call.
+
+    `core.refs` keeps locally bound sites on purpose -- fan-in lists every
+    place a name is spelled -- and leaves the filtering to each consumer that
+    turns a site into a relationship. This adjacency pass was one of the two
+    consumers that never did it, so a caller "shared" every symbol in the
+    repository spelled like one of its arguments.
+    """
+
+    def test_a_parameter_does_not_make_its_namesake_a_shared_caller(self, locally_bound, extractor):
+        assert [row.stable_id for row in rows(locally_bound, extractor, target="target")] == []
+
+    def test_the_fan_in_still_lists_every_site(self, locally_bound, extractor):
+        """The filtering belongs to the relationship, never to the listing."""
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            locally_bound, "helper"
+        )
+        assert result.total > 0
+
+
 # ---------------------------------------------------------------------------
 # Caller fan-out damping: the promiscuous-caller correction
 # ---------------------------------------------------------------------------

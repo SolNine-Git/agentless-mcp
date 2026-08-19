@@ -28,7 +28,8 @@ unchanged tree produce bit-identical rankings.
 """
 
 import math
-from collections.abc import Mapping, Sequence
+import posixpath
+from collections.abc import Collection, Mapping, Sequence, Set
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
@@ -85,6 +86,27 @@ class RefGraph:
     nodes: tuple[str, ...]
     edges: Mapping[tuple[str, str], float]
 
+    def __post_init__(self) -> None:
+        """Refuse a graph the ranking cannot process, at the one place it is built.
+
+        The power iteration walks ``nodes`` and indexes the rank vector by
+        edge endpoint, so an edge naming a node outside the graph is not a
+        degraded input -- it is an input with no meaning. Refusing both ends
+        here is what keeps the two violations one invariant: an unknown source
+        used to vanish from the ranking while an unknown target raised
+        ``KeyError`` from inside the numeric loop.
+        """
+        if len(set(self.nodes)) != len(self.nodes):
+            repeated = sorted({node for node in self.nodes if self.nodes.count(node) > 1})
+            message = f"RefGraph nodes must be distinct: {', '.join(repeated)}"
+            raise ValueError(message)
+
+        known = set(self.nodes)
+        unknown = sorted({end for edge in self.edges for end in edge if end not in known})
+        if unknown:
+            message = f"RefGraph edges name nodes outside the graph: {', '.join(unknown)}"
+            raise ValueError(message)
+
     def adjacency(self) -> dict[str, tuple[tuple[str, float], ...]]:
         """Return outgoing ``(target, weight)`` pairs per node, in path order.
 
@@ -94,7 +116,7 @@ class RefGraph:
         """
         collected: dict[str, list[tuple[str, float]]] = {node: [] for node in self.nodes}
         for (source, target), weight in self.edges.items():
-            collected.setdefault(source, []).append((target, weight))
+            collected[source].append((target, weight))
         return {node: tuple(sorted(pairs)) for node, pairs in collected.items()}
 
 
@@ -134,6 +156,12 @@ def build_graph(
     for facts in scan.files:
         counts: dict[str, int] = {}
         for ref in facts.refs:
+            if ref.locally_bound:
+                # A parameter's name spells its own binding. Letting it buy an
+                # edge would report a relationship to whichever file happens
+                # to define a symbol of that spelling -- which is the one
+                # binding fact the parse can see, and so the one it must obey.
+                continue
             counts[ref.name] = counts.get(ref.name, 0) + 1
 
         for name in sorted(counts):
@@ -147,7 +175,7 @@ def build_graph(
                 edges[key] = edges.get(key, 0.0) + contribution
 
         for statement in facts.imports:
-            imported = resolve_import_target(facts.path, statement, nodes)
+            imported = resolve_import_target(facts.path, statement, known)
             if imported is None or imported == facts.path:
                 continue
             key = (facts.path, imported)
@@ -215,7 +243,7 @@ def rank_order(rank: Mapping[str, float]) -> list[str]:
 def resolve_import_target(
     importer: str,
     statement: ImportStatement,
-    known_paths: Sequence[str],
+    known_paths: Collection[str],
 ) -> str | None:
     """Resolve an import's module string to a file in the repository.
 
@@ -225,21 +253,48 @@ def resolve_import_target(
     Unresolved is therefore a normal outcome -- the name-reference edges still
     connect the two files -- and the resolver never guesses between candidates:
     it takes the shortest match so the answer does not depend on walk order.
+
+    This is the one owner of "module string plus importing file becomes a
+    repository path": the map's import edges, the resolver's import scopes and
+    the patch linter's dependency check all come through here, so a language's
+    relative-import spelling is understood in exactly one place.
+
+    ``known_paths`` is membership-tested per candidate, so a caller that
+    already holds a set -- both repository-sized callers do -- hands it over
+    rather than paying to rebuild one per import statement.
     """
     module = statement.module.strip()
-    if not module:
+    relative = _is_relative(module, statement)
+    if not module and not relative:
         return None
 
-    known = set(known_paths)
+    known = known_paths if isinstance(known_paths, Set) else set(known_paths)
     directory = PurePosixPath(importer).parent
 
     for base in _candidate_bases(module, statement, directory):
         for suffix in _MODULE_SUFFIXES:
-            candidate = f"{base}{suffix}"
+            candidate = f"{base}{suffix}" if base else suffix.removeprefix("/")
             if candidate in known:
                 return candidate
 
+    if relative:
+        # A relative module string is written against the importing file's own
+        # directory; matching it against the tail of an unrelated absolute path
+        # would be the guess this resolver refuses to make.
+        return None
     return _suffix_match(module, known)
+
+
+def _is_relative(module: str, statement: ImportStatement) -> bool:
+    """True when the import is written against the importing file's directory.
+
+    Two spellings arrive here and only one of them keeps its dots. Python's
+    ``from ..pkg import x`` is reported by the extractor as ``module='pkg'``
+    with ``relative_level=2`` -- the dots are stripped before the value ever
+    gets here -- while a JavaScript ``'../pkg'`` carries no level and the dots
+    are all there is to read.
+    """
+    return bool(statement.relative_level) or module.startswith(".")
 
 
 def _candidate_bases(
@@ -248,39 +303,62 @@ def _candidate_bases(
     directory: PurePosixPath,
 ) -> list[str]:
     """Return the path stems an import could name, most specific first."""
+    if statement.relative_level:
+        # Python: the level says how far up, and what remains of the module is
+        # dotted the same way an absolute one is.
+        base = directory
+        for _ in range(statement.relative_level - 1):
+            base = base.parent
+        tail = module.replace(".", "/")
+        return [_normalized(base / tail if tail else base)]
+
     if module.startswith("."):
-        # JavaScript-style "./sibling" and "../up/one", and Python-style
-        # ".module" / "..package.module", which the extractor reports with an
-        # explicit relative_level.
-        if statement.relative_level:
-            base = directory
-            for _ in range(statement.relative_level - 1):
-                base = base.parent
-            tail = module.lstrip(".").replace(".", "/")
-            return [str(base / tail) if tail else str(base)]
-        cleaned = PurePosixPath(module)
-        return [str((directory / cleaned).as_posix()).replace("/./", "/")]
+        # JavaScript-style "./sibling" and "../up/one": the specifier is
+        # already a path, dots and separators included.
+        return [_normalized(directory / module)]
 
     dotted = module.replace(".", "/")
-    return [dotted, str(directory / dotted)]
+    return [dotted, _normalized(directory / dotted)]
 
 
-def _suffix_match(module: str, known: set[str]) -> str | None:
+def _normalized(path: PurePosixPath) -> str:
+    """Collapse ``.`` and ``..`` segments, yielding ``""`` for the repository root.
+
+    ``PurePosixPath`` deliberately never resolves ``..`` -- that would need the
+    filesystem -- so a JavaScript ``'../pricing'`` joins to ``src/a/../pricing``
+    and matches nothing without this step.
+    """
+    collapsed = posixpath.normpath(str(path))
+    return "" if collapsed == "." else collapsed
+
+
+def _suffix_match(module: str, known: Collection[str]) -> str | None:
     """Match a dotted or slashed module against the tail of a known path.
 
     This is what makes ``src/`` layouts and Go module paths resolve at all:
     ``agentless_mcp.core.refs`` never matches from the repository root, but it
     does match the tail of ``src/agentless_mcp/core/refs.py``.
+
+    The tail must land on a path separator. A bare ``endswith`` matches inside
+    a component, so ``core/refs`` would also claim ``src/mycore/refs.py`` --
+    and because the tie-break prefers the shorter path, it would claim it in
+    preference to the file actually named.
     """
     tail = module.replace(".", "/")
     if "/" not in tail:
         return None
 
     matches = sorted(
-        (path for path in known if PurePosixPath(path).with_suffix("").as_posix().endswith(tail)),
+        (path for path in known if _ends_on_boundary(path, tail)),
         key=lambda path: (len(path), path),
     )
     return matches[0] if matches else None
+
+
+def _ends_on_boundary(path: str, tail: str) -> bool:
+    """True when ``path``'s extension-less form ends with a whole ``tail``."""
+    stem = PurePosixPath(path).with_suffix("").as_posix()
+    return stem == tail or stem.endswith("/" + tail)
 
 
 def _reference_weight(name: str, count: int, index: RefIndex, stoplist: frozenset[str]) -> float:

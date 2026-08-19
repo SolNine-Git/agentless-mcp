@@ -15,10 +15,14 @@ none of them are negotiable.
   value outside either is dropped with a warning rather than clamped
   silently. No key is path-typed: a repository cannot name a file for this
   tool to read, which removes the whole class of "config points somewhere
-  else" escapes before it starts.
+  else" escapes before it starts. The file itself is held to the same rule --
+  a ``.agentless-mcp.json`` that resolves outside the repository root is a
+  repository naming a file too, and is refused rather than read.
 * **Unknown keys are a warning, never an error.** A newer file read by an
   older build must not stop the tool from answering; the warning rides in the
-  response envelope where the caller sees it.
+  response envelope where the caller sees it. Bounded like every other value:
+  the warnings ride in every response for this repository, so a file that is
+  nothing but unknown keys must not be able to fill one.
 * **The test command is inert here.** :func:`load` reads it, and nothing in
   the MCP surface can reach it. Only the CLI's ``validate`` uses it, only when
   the invocation passed no ``--test-cmd`` of its own, and it prints the
@@ -34,6 +38,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
+
+from agentless_mcp.util.fslimits import file_stays_inside
 
 CONFIG_FILENAME = ".agentless-mcp.json"
 
@@ -51,6 +57,10 @@ MAX_MAX_FILES = 200
 MAX_STOPLIST_ENTRIES = 200
 MAX_STOPLIST_ENTRY_CHARS = 64
 MAX_TEST_CMD_CHARS = 512
+# Enough to name every key a hand-written file gets wrong. Past that the list
+# stops being a diagnostic and starts being a way to spend the response's
+# token budget on repository-supplied text.
+MAX_UNKNOWN_KEY_WARNINGS = 8
 
 GRANULARITIES = ("function", "file")
 
@@ -139,12 +149,19 @@ def load(repo_root: Path) -> ProjectConfig:
     """Read and validate ``repo_root/.agentless-mcp.json``.
 
     Never raises. A repository with no config file gets :data:`EMPTY`; every
-    other outcome -- unreadable, not JSON, not an object, oversized -- gets an
-    empty configuration carrying the reason as a warning.
+    other outcome -- unreadable, not JSON, not an object, oversized, pointing
+    out of the tree -- gets an empty configuration carrying the reason as a
+    warning.
     """
     path = repo_root / CONFIG_FILENAME
     if not path.is_file():
         return EMPTY
+
+    if not file_stays_inside(path, repo_root.resolve()):
+        # `is_file` and `read_text` both follow links, so without this a
+        # repository names a file outside itself for this tool to read. A
+        # warning rather than a raise: nothing here stops a read command.
+        return _refused(f"{CONFIG_FILENAME} resolves outside the repository root; ignored")
 
     text, refusal = _bounded_text(path)
     if text is None:
@@ -201,8 +218,13 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
     unknown = sorted(key for key in document if key not in KNOWN_KEYS)
     warnings.extend(
         f"unknown key {key!r} in {CONFIG_FILENAME}: ignored (known keys: {', '.join(KNOWN_KEYS)})"
-        for key in unknown
+        for key in unknown[:MAX_UNKNOWN_KEY_WARNINGS]
     )
+    if len(unknown) > MAX_UNKNOWN_KEY_WARNINGS:
+        suppressed = len(unknown) - MAX_UNKNOWN_KEY_WARNINGS
+        warnings.append(
+            f"{suppressed} further unknown keys in {CONFIG_FILENAME}: warnings suppressed"
+        )
 
     return ProjectConfig(
         path=path,

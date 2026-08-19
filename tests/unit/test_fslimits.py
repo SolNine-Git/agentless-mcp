@@ -40,6 +40,12 @@ class TestContainedPath:
         with pytest.raises(SecurityRefusal, match="which is outside the root"):
             contained_path(root, "/etc/passwd")
 
+    def test_a_path_the_filesystem_cannot_name_is_a_typed_refusal(self, root):
+        # A NUL byte reaches this from JSON tool arguments; the refusal has to
+        # stay inside the error hierarchy both adapters catch.
+        with pytest.raises(SecurityRefusal, match="path refused: not a usable filesystem path"):
+            contained_path(root, "a\0b")
+
     def test_symlink_escape_is_refused(self, root, tmp_path):
         secret = tmp_path / "secret.txt"
         secret.write_text("classified\n", encoding="utf-8")

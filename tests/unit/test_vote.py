@@ -26,12 +26,23 @@ REGRESSION = "regression"
 REPRODUCTION = "reproduction"
 
 
-def candidate(name, index, *, key="k1", applied=True, passes=()):
-    """Build one vote input; ``passes`` names the suites this candidate passed."""
+def candidate(name, index, *, key="k1", passes=(), **flags):
+    """Build one vote input; ``passes`` names the suites this candidate passed.
+
+    ``applied`` and ``measured`` are true unless a row says otherwise, and an
+    unrecognised flag is refused rather than ignored: a mistyped ``measured``
+    that silently stayed true would make the test that needs it pass for the
+    wrong reason.
+    """
+    unknown = sorted(set(flags) - {"applied", "measured"})
+    if unknown:
+        message = f"unknown candidate flag(s): {unknown}"
+        raise TypeError(message)
     return VoteCandidate(
         id=name,
         index=index,
-        applied=applied,
+        applied=flags.get("applied", True),
+        measured=flags.get("measured", True),
         equivalence_key=key,
         regression_passed=REGRESSION in passes,
         reproduction_passed=REPRODUCTION in passes,
@@ -118,6 +129,16 @@ class TestLadder:
                 TIER_NONE,
                 [],
             ),
+            (
+                "a candidate whose test command never ran is not in the applied tier",
+                [
+                    candidate("a", 0, measured=False),
+                    candidate("b", 1, key="k2"),
+                ],
+                True,
+                TIER_APPLIED,
+                ["b"],
+            ),
         ],
     )
     def test_the_tier_and_its_survivors(
@@ -135,6 +156,25 @@ class TestLadder:
 
         assert report.tier == TIER_REGRESSION
         assert report.survived == 1
+
+    def test_a_run_where_nothing_was_measured_crowns_nobody(self):
+        """Three candidates whose test command never started rank as nothing.
+
+        The shape the audit reproduced: every candidate applied, every one of
+        them errored before the suite ran, and the ladder answered ``applied``
+        with a winner. A tier that says "nothing passed the regression suite"
+        is a statement about a suite that ran.
+        """
+        report = vote.rank(
+            [candidate(name, index, measured=False) for index, name in enumerate("abc")],
+            repro_valid=False,
+        )
+
+        assert report.tier == TIER_NONE
+        assert report.winner is None
+        assert report.survived == 0
+        assert report.clusters == ()
+        assert all("nothing was measured" in reason for _, reason in report.excluded)
 
     def test_the_exclusion_reason_is_reported(self):
         report = vote.rank(

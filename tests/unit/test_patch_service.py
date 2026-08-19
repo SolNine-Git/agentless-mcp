@@ -10,6 +10,7 @@ move -- rather than on which internal function was called.
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -199,16 +200,84 @@ class TestApply:
         assert "a/app.py" in report.diff
         assert "a/util.py" in report.diff
 
-    def test_a_failed_edit_still_returns_the_partial_diff(self, service, ctx):
+    def test_a_missing_file_is_reported_as_missing_not_as_unreadable(self, service, ctx):
+        """``apply`` names the same cause ``check`` does, for the same file."""
+        text = PATCH.replace("### app.py", "### nowhere.py")
+        report = service.apply(edits_of(text), ctx)
+        assert report.result.outcomes[0].status is EditStatus.NO_SUCH_FILE
+        assert "nowhere.py" in report.result.outcomes[0].reason
+
+    def test_a_failed_edit_writes_nothing_at_all(self, service, ctx):
+        """Half a patch is not a patch: a failed sibling cancels the whole write.
+
+        The edits that *did* match are still in ``new_contents``, so writing
+        them left the tree holding an arbitrary prefix of the patch with
+        ``ok`` false and nothing saying which prefix.
+        """
         text = MULTI_FILE_PATCH.replace('VERSION = "1"', "NOT PRESENT ANYWHERE", 1)
         report = service.apply(edits_of(text), ctx)
         assert not report.ok
-        assert "a/app.py" in report.diff
-        assert "a/util.py" not in report.diff
+        assert report.diff == ""
         assert report.result.failures[0].status is EditStatus.NOT_FOUND
 
 
 class TestApplyInPlace:
+    def test_a_non_utf8_file_is_refused_rather_than_rewritten(self, service, repo):
+        """The lossy analysis read must never become the bytes written back.
+
+        ``read_bounded`` decodes with ``errors="replace"``, which is right for
+        a repository scan and fatal for a round trip: writing the decoded
+        string back turns every undecodable byte into U+FFFD, including in
+        regions no edit named, while the report still says ok.
+        """
+        latin1 = APP.encode("utf-8") + b"# tail \xe9\n"
+        (repo / "app.py").write_bytes(latin1)
+        git(repo, "commit", "-am", "latin-1 tail")
+        dirty = resolve_repo(repo, None)
+
+        report = service.apply(edits_of(PATCH), dirty, in_place=True)
+
+        assert not report.ok
+        assert (repo / "app.py").read_bytes() == latin1
+        assert "UTF-8" in report.result.outcomes[0].reason
+
+    def test_a_write_that_fails_leaves_every_file_as_it_was(self, service, ctx, repo, monkeypatch):
+        """An OSError mid-write must not leave an arbitrary prefix on disk."""
+        real = Path.write_bytes
+
+        def refuse(self, data):
+            if self.name.startswith("util.py"):
+                message = "no space left on device"
+                raise OSError(28, message)
+            return real(self, data)
+
+        monkeypatch.setattr(Path, "write_bytes", refuse)
+
+        with pytest.raises(AtlasError, match=r"util\.py"):
+            service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_crlf_bytes_survive_the_write(self, service, repo):
+        """The writer performs no newline translation, on any platform.
+
+        ``write_text``'s default ``newline=None`` translates every ``\\n`` to
+        ``os.linesep`` on write, so on Windows a patched LF file came back
+        CRLF and a patched CRLF file came back ``\\r\\r\\n``. Bytes in, bytes
+        out: this assertion is the same on every platform, which is the point.
+        """
+        crlf = b'VERSION = "1"\r\nBUILD = 7\r\n'
+        (repo / "util.py").write_bytes(crlf)
+        git(repo, "commit", "-am", "crlf util")
+        dirty = resolve_repo(repo, None)
+        text = "### util.py\n<<<<<<< SEARCH\nBUILD = 7\r\n=======\nBUILD = 8\r\n>>>>>>> REPLACE\n"
+
+        report = service.apply(edits_of(text), dirty, in_place=True)
+
+        assert report.ok, [outcome.reason for outcome in report.result.outcomes]
+        assert (repo / "util.py").read_bytes() == b'VERSION = "1"\r\nBUILD = 8\r\n'
+
     def test_a_dirty_tree_is_refused_with_the_count(self, service, repo):
         (repo / "app.py").write_text(APP + "\n# scratch\n", encoding="utf-8")
         dirty = resolve_repo(repo, None)

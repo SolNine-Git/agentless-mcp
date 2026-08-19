@@ -26,20 +26,26 @@ agent deciding whether to re-index needs the fact and the remediation.
 
 The **banner** marks everything below it as repository data. Rendered source
 is untrusted input: a docstring in an analysed repository that says "ignore
-your instructions" is a string, and the banner is what keeps it one.
+your instructions" is a string, and the banner is what keeps it one. Nothing
+the analysed repository authored is rendered above it -- the warnings its own
+``.agentless-mcp.json`` produced ride below the banner with the truncation
+notes, because the region above it is the tool speaking.
 
 The **ceiling** is a hard 16k-token cap on rendered text. Truncation is always
 marked, with the counts, so a bounded view is never mistaken for a complete
-one -- the failure this package exists to prevent.
+one -- the failure this package exists to prevent. Every block the ceiling
+covers is bounded *before* the body's budget is computed, so no repository
+can spend the whole ceiling on the envelope and leave the answer empty.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.prompts import ENVELOPE
+from agentless_mcp.util.errors import AtlasError
 from agentless_mcp.util.tokens import TokenCounter
 
 # What the receipt says when a call carries no symbol source at all: nothing
@@ -47,6 +53,32 @@ from agentless_mcp.util.tokens import TokenCounter
 CACHE_NONE = "none"
 
 DEFAULT_MAX_TOKENS = 16_000
+
+# Room for the truncation marker itself, so adding it cannot push the reply
+# back over the ceiling it announces.
+_MARKER_TOKEN_ALLOWANCE = 64
+
+# How many of a repository's config warnings the envelope will render. The
+# parser caps them too; this is the half that holds whatever reaches here,
+# because the receipt is on the critical path of every answer and a receipt
+# that grows with repository content is a repository that can empty the body.
+MAX_CONFIG_WARNINGS = 8
+
+# Said in place of the warnings that were left out. The counts are the point:
+# showing some of the warnings without saying so is the silent truncation
+# this module exists to prevent.
+CONFIG_WARNINGS_SUPPRESSED = "{shown} of {total} shown; the rest are suppressed"
+
+# No block but the answer may take more than this share of the ceiling. The
+# receipt above the banner and the config warnings below it are each clamped
+# to it, so a header can never outgrow the answer it introduces.
+_BLOCK_TOKEN_SHARE = 8
+
+# The keys the envelope authors. A payload carrying one of them is a service
+# bug, refused rather than absorbed: silently shadowing the receipt would
+# disable the one field an agent uses to tell a wrong-repository answer from
+# a right one.
+_RESERVED_KEYS = ("receipt", "notice", "truncated")
 
 
 @dataclass(frozen=True)
@@ -64,13 +96,23 @@ def cache_field(ctx: RepoContext) -> str:
 
 
 def receipt_lines(ctx: RepoContext) -> list[str]:
-    """Return the receipt block: the two fixed lines, plus a note when degraded.
+    """Return the whole receipt block: the tool's own lines, then the warnings.
 
-    A repository carrying a ``.agentless-mcp.json`` says so, and every warning
-    the file produced is printed. Defaults taken from repository content have
+    A repository carrying a ``.agentless-mcp.json`` says so, and the warnings
+    the file produced are printed. Defaults taken from repository content have
     to be visible: an answer shaped by a file the caller never read is the
     thing this line exists to prevent.
+
+    The two halves are separable because :func:`wrap` renders them in
+    different regions -- the tool's lines above the untrusted-content banner,
+    the repository's warnings below it -- while a caller with no banner to
+    place them either side of wants the block whole.
     """
+    return [*_tool_lines(ctx), *_warning_lines(_capped_warnings(ctx.config.warnings))]
+
+
+def _tool_lines(ctx: RepoContext) -> list[str]:
+    """Return the receipt lines the tool itself authored: no repository text."""
     head = ctx.head_sha or "nogit"
     dirty = "unknown" if ctx.dirty_count is None else str(ctx.dirty_count)
     lines = [
@@ -81,10 +123,22 @@ def receipt_lines(ctx: RepoContext) -> list[str]:
         lines.append(ENVELOPE.receipt_note.format(note=ctx.note))
     if ctx.config.present:
         lines.append(ENVELOPE.receipt_config.format(path=ctx.config.path))
-    lines.extend(
-        ENVELOPE.receipt_config_warning.format(warning=warning) for warning in ctx.config.warnings
-    )
     return lines
+
+
+def _warning_lines(warnings: Sequence[str]) -> list[str]:
+    """Return one receipt line per config warning."""
+    return [ENVELOPE.receipt_config_warning.format(warning=warning) for warning in warnings]
+
+
+def _capped_warnings(warnings: Sequence[str]) -> list[str]:
+    """Return the first few warnings, plus a count of whatever was left out."""
+    if len(warnings) <= MAX_CONFIG_WARNINGS:
+        return list(warnings)
+    return [
+        *warnings[:MAX_CONFIG_WARNINGS],
+        CONFIG_WARNINGS_SUPPRESSED.format(shown=MAX_CONFIG_WARNINGS, total=len(warnings)),
+    ]
 
 
 def receipt_fields(ctx: RepoContext) -> dict[str, Any]:
@@ -93,7 +147,10 @@ def receipt_fields(ctx: RepoContext) -> dict[str, Any]:
     ``config`` appears only when there was one to report -- a file, or a
     reason one could not be used. The overwhelmingly common case is a
     repository with no config file, and a permanent ``"config": null`` would
-    spend every response's tokens saying so.
+    spend every response's tokens saying so. Its warnings are capped here for
+    the same reason they are capped in the text receipt: this document is
+    emitted whole when it cannot be trimmed, so an uncapped list would be an
+    uncapped answer.
     """
     fields: dict[str, Any] = {
         "repo": str(ctx.root),
@@ -104,7 +161,9 @@ def receipt_fields(ctx: RepoContext) -> dict[str, Any]:
         "note": ctx.note,
     }
     if ctx.config.present or ctx.config.warnings:
-        fields["config"] = ctx.config.as_dict()
+        config = ctx.config.as_dict()
+        config["warnings"] = _capped_warnings(ctx.config.warnings)
+        fields["config"] = config
     return fields
 
 
@@ -123,8 +182,14 @@ def wrap(
     last-resort bound on the rendered text. Both are reported, because a
     reader needs to know that what they are looking at is partial regardless
     of which bound made it so.
+
+    The header and the repository's config warnings are each clamped to a
+    share of ``max_tokens`` before the body's budget is computed, and the
+    body's budget never goes below zero. Between them the reply cannot exceed
+    the ceiling it announces whatever the repository put in its config file.
     """
-    header = "\n".join([*receipt_lines(ctx), ENVELOPE.banner, ""])
+    header = _header(ctx, counter, max_tokens // _BLOCK_TOKEN_SHARE)
+    warnings = _config_warnings(ctx, counter, max_tokens // _BLOCK_TOKEN_SHARE)
     notes: list[str] = []
     if truncation is not None and truncation.shown < truncation.total:
         notes.append(
@@ -133,8 +198,8 @@ def wrap(
             )
         )
 
-    budget = max_tokens - counter.count(header)
-    kept, dropped = _fit(body, counter, budget - _MARKER_TOKEN_ALLOWANCE)
+    budget = max_tokens - counter.count(header) - counter.count(warnings)
+    kept, dropped = _fit(body, counter, max(budget - _MARKER_TOKEN_ALLOWANCE, 0))
     if dropped:
         notes.append(
             ENVELOPE.ceiling_truncation.format(
@@ -142,10 +207,43 @@ def wrap(
             )
         )
 
-    pieces = [header, kept]
+    pieces = [header, kept if kept.endswith("\n") or not kept else kept + "\n", warnings]
     if notes:
         pieces.append("\n".join(notes) + "\n")
     return "".join(pieces)
+
+
+def _header(ctx: RepoContext, counter: TokenCounter, budget: int) -> str:
+    """Render the tool-authored receipt and the banner, clamped to ``budget``.
+
+    The banner is rendered whatever the clamp dropped above it: a bounded
+    answer that lost its untrusted-content marker would be the worse failure
+    of the two.
+    """
+    block = "".join(f"{line}\n" for line in _tool_lines(ctx))
+    kept, _ = _fit(block, counter, budget)
+    return f"{kept}{ENVELOPE.banner}\n"
+
+
+def _config_warnings(ctx: RepoContext, counter: TokenCounter, budget: int) -> str:
+    """Render the repository's own config warnings, bounded by count and size.
+
+    Below the banner, because the warning text is quoted from a file the
+    analysed repository wrote. A warning left out is counted in the line that
+    replaces it, so the block is never quietly shorter than the truth.
+    """
+    total = len(ctx.config.warnings)
+    if not total:
+        return ""
+
+    lines = _warning_lines(ctx.config.warnings[:MAX_CONFIG_WARNINGS])
+    kept, dropped = _fit("".join(f"{line}\n" for line in lines), counter, budget)
+    shown = len(lines) - dropped
+    if shown == total:
+        return kept
+
+    suppressed = CONFIG_WARNINGS_SUPPRESSED.format(shown=shown, total=total)
+    return f"{kept}{ENVELOPE.receipt_config_warning.format(warning=suppressed)}\n"
 
 
 def wrap_json(
@@ -163,7 +261,23 @@ def wrap_json(
     ``items_key`` and recording what was dropped in a ``truncated`` field.
     Without an ``items_key`` an oversized payload is emitted whole with that
     field set: an honest oversized answer beats a silently mangled one.
+
+    The envelope authors ``receipt``, ``notice`` and ``truncated`` and nothing
+    else may: a payload naming one of them is refused rather than merged, so
+    no service can shadow the fields an agent reads to tell a
+    wrong-repository or a partial answer from a complete one.
     """
+    collisions = [key for key in _RESERVED_KEYS if key in payload]
+    if collisions:
+        message = (
+            f"payload keys collide with the envelope's own: {', '.join(collisions)}. "
+            "Rename the field: the envelope owns these keys."
+        )
+        raise AtlasError(message)
+
+    # No key can be overwritten once the collisions above are refused, so the
+    # envelope's own fields stay first, where every reader of this format --
+    # goldens included -- already expects to find them.
     document: dict[str, Any] = {
         "receipt": receipt_fields(ctx),
         "notice": ENVELOPE.notice,
@@ -191,11 +305,6 @@ def wrap_json(
         "total": len(items),
     }
     return _dump(document)
-
-
-# Room for the truncation marker itself, so adding it cannot push the reply
-# back over the ceiling it announces.
-_MARKER_TOKEN_ALLOWANCE = 64
 
 
 def _dump(document: Mapping[str, Any]) -> str:

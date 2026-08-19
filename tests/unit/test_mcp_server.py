@@ -10,17 +10,22 @@ wrapper around them.
 import asyncio
 import json
 import re
+from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from pydantic import TypeAdapter, ValidationError
 
+from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.server import (
     _OPERATIONS,
     ServerServices,
     ToolHandlers,
     build_server,
+    effective_client_roots,
     parse_args,
 )
 from agentless_mcp.application.graph_service import GraphService
@@ -115,14 +120,60 @@ class TestAllowlist:
         with pytest.raises(SecurityRefusal, match="no repositories are served"):
             ToolHandlers([], services).resolve(None)
 
-    def test_client_roots_are_additive_to_the_configured_ones(self, services, two_repos):
-        handlers = ToolHandlers([two_repos[0]], services)
-        resolved = handlers.resolve(str(two_repos[1]), [two_repos[1]])
-        assert resolved.root == two_repos[1].resolve()
+    def test_a_client_root_never_authorises_a_root_that_was_not_configured(
+        self, services, two_repos
+    ):
+        """--root is the confinement boundary: the client may select, not add.
 
-    def test_a_single_client_root_can_be_the_default(self, services, one_repo):
+        A client that could widen the allowlist would be the party deciding
+        what this server serves, which is the operator's decision.
+        """
+        handlers = ToolHandlers([two_repos[0]], services)
+        with pytest.raises(SecurityRefusal, match="not one of this server's roots"):
+            handlers.resolve(str(two_repos[1]), [two_repos[1]])
+
+    def test_a_server_with_no_configured_roots_serves_nothing_a_client_advertises(
+        self, services, one_repo
+    ):
         handlers = ToolHandlers([], services)
-        assert handlers.resolve(None, [one_repo]).root == one_repo.resolve()
+        with pytest.raises(SecurityRefusal, match="no repositories are served"):
+            handlers.resolve(None, [one_repo])
+        with pytest.raises(SecurityRefusal, match="no repositories are served"):
+            handlers.resolve(str(one_repo), [one_repo])
+
+    def test_allow_client_roots_restores_the_additive_reading(self, services, two_repos):
+        """The permissive model stays reachable, but only by asking for it.
+
+        Both halves matter: the flag has to actually widen the allowlist, and
+        the default has to actually refuse the same call. A test that only
+        pinned the first would pass against a server that was permissive all
+        along.
+        """
+        configured, advertised = two_repos
+
+        permissive = ToolHandlers([configured], services, allow_client_roots=True)
+        assert permissive.resolve(str(advertised), [advertised]).root == advertised.resolve()
+
+        default = ToolHandlers([configured], services)
+        with pytest.raises(SecurityRefusal, match="not one of this server's roots"):
+            default.resolve(str(advertised), [advertised])
+
+    def test_allow_client_roots_still_needs_the_client_to_advertise_it(self, services, two_repos):
+        """The flag widens the list with what the client sent, nothing more."""
+        handlers = ToolHandlers([two_repos[0]], services, allow_client_roots=True)
+        with pytest.raises(SecurityRefusal, match="not one of this server's roots"):
+            handlers.resolve(str(two_repos[1]), [])
+
+    def test_a_client_root_matching_no_configured_root_refuses_instead_of_defaulting(
+        self, services, two_repos, tmp_path
+    ):
+        """Zero candidates is ambiguity, not a selection of the odd one out."""
+        handlers = ToolHandlers(two_repos, services)
+        elsewhere = tmp_path / "gamma"
+        elsewhere.mkdir()
+
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            handlers.resolve(None, [elsewhere])
 
     def test_a_client_root_selects_among_several_configured_roots(self, services, two_repos):
         handlers = ToolHandlers(two_repos, services)
@@ -145,6 +196,90 @@ class TestAllowlist:
         handlers = ToolHandlers(two_repos, services)
         with pytest.raises(SecurityRefusal, match="will not guess"):
             handlers.resolve(None, list(two_repos))
+
+
+class StubRoot:
+    """One entry of a client's ``roots/list`` answer."""
+
+    def __init__(self, uri):
+        self.uri = uri
+
+
+class StubClient:
+    """A client that answers ``roots/list`` however the test needs it to."""
+
+    def __init__(self, uris=(), *, error=None, hang=False):
+        self._uris = uris
+        self._error = error
+        self._hang = hang
+
+    async def list_roots(self):
+        if self._hang:
+            await asyncio.Event().wait()
+        if self._error is not None:
+            raise self._error
+        return [StubRoot(uri) for uri in self._uris]
+
+
+def advertised(client):
+    """Run one ``effective_client_roots`` call against a stub client."""
+    return asyncio.run(effective_client_roots(client))
+
+
+class TestAdvertisedRoots:
+    """The parse of the one foreign value that can select a repository."""
+
+    def test_a_local_directory_is_accepted_percent_encoding_and_all(self, tmp_path):
+        workspace = tmp_path / "my repo"
+        workspace.mkdir()
+
+        assert advertised(StubClient([f"file://{quote(str(workspace))}"])) == [workspace.resolve()]
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "file://",
+            "file://host/etc",
+            "http://example.invalid/repo",
+            "file://relative/../path",
+        ],
+    )
+    def test_a_malformed_uri_is_dropped_and_never_becomes_a_path(self, uri):
+        """`file://` used to resolve to the server's own working directory."""
+        roots = advertised(StubClient([uri]))
+
+        assert roots == []
+        assert Path.cwd() not in roots
+
+    def test_the_filesystem_root_parses_but_selects_nothing(self, services, two_repos):
+        """`file:///` is a well-formed directory; what it cannot be is a choice."""
+        assert advertised(StubClient(["file:///"])) == [Path("/")]
+
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            ToolHandlers(two_repos, services).resolve(None, [Path("/")])
+
+    def test_a_uri_naming_no_directory_is_dropped(self, tmp_path):
+        missing = tmp_path / "gone"
+        file_not_a_directory = tmp_path / "a.py"
+        file_not_a_directory.write_text("x = 1\n", encoding="utf-8")
+
+        assert advertised(StubClient([f"file://{missing}", f"file://{file_not_a_directory}"])) == []
+
+    def test_a_client_that_never_answers_does_not_hang_the_call(self, monkeypatch):
+        """Every tool waits behind this round trip, so it is bounded."""
+        monkeypatch.setattr(server_module, "_LIST_ROOTS_TIMEOUT_SECONDS", 0.01)
+
+        assert advertised(StubClient(hang=True)) == []
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("transport closed"),
+            ValidationError.from_exception_data("Root", []),
+        ],
+    )
+    def test_a_failed_roots_query_falls_back_to_the_static_roots(self, error):
+        assert advertised(StubClient(error=error)) == []
 
 
 def listed_tools(server):
@@ -344,6 +479,117 @@ class TestRoundTrip:
             assert (
                 properties["repo_root"].get("description") == PARAMETER_DESCRIPTIONS["repo_root"]
             ), tool.name
+
+
+NUMERIC_TYPES = {"integer", "number"}
+
+
+def numeric_leaves(schema):
+    """Yield the numeric branches of one parameter's published schema."""
+    if schema.get("type") in NUMERIC_TYPES:
+        yield schema
+    for member in schema.get("anyOf", []):
+        yield from numeric_leaves(member)
+
+
+def numeric_items(schema):
+    """Yield the numeric branches of whatever a parameter's arrays contain."""
+    for member in [schema, *schema.get("anyOf", [])]:
+        items = member.get("items")
+        if isinstance(items, dict):
+            yield from numeric_leaves(items)
+            yield from numeric_items(items)
+
+
+class TestWireBounds:
+    """Every number a client can send is bounded by the published schema.
+
+    The schema is the only refusal a model can read before it makes the call,
+    and the services behind it slice with whatever arrives.
+    """
+
+    def call(self, server, tool, arguments):
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool(tool, arguments)
+
+        return asyncio.run(go())
+
+    def test_every_numeric_parameter_publishes_a_lower_and_upper_bound(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+
+        for tool in tools:
+            for name, schema in tool.inputSchema.get("properties", {}).items():
+                where = f"{tool.name}.{name}"
+                for leaf in numeric_leaves(schema):
+                    assert "minimum" in leaf or "exclusiveMinimum" in leaf, where
+                    assert "maximum" in leaf or "exclusiveMaximum" in leaf, where
+                for leaf in numeric_items(schema):
+                    assert "minimum" in leaf or "exclusiveMinimum" in leaf, where
+
+    @pytest.mark.parametrize(
+        ("tool", "arguments"),
+        [
+            ("find_symbol", {"name": "quote", "limit": -3}),
+            ("expand_symbols", {"stable_ids": ["py:core.py::quote"], "limit": 0}),
+            ("list_dir", {"depth": 0}),
+            ("list_dir", {"max_entries": 0}),
+            ("repo_map", {"budget": 0}),
+            ("repo_map", {"max_files": 0}),
+            ("analyze_structure", {"operation": "diagram", "max_nodes": 0}),
+            ("analyze_structure", {"operation": "communities", "resolution": 0.0}),
+            ("analyze_structure", {"operation": "communities", "resolution": 1e9}),
+            ("read_slice", {"path": "core.py", "context_lines": -1}),
+            ("read_slice", {"path": "core.py", "lines": [[0, 3]]}),
+            ("read_slice", {"path": "core.py", "lines": [[1, 2, 3]]}),
+            ("read_slice", {"path": "core.py", "lines": [[7]]}),
+        ],
+    )
+    def test_an_out_of_range_argument_is_refused(self, services, one_repo, tool, arguments):
+        server = build_server(ToolHandlers([one_repo], services))
+
+        with pytest.raises(ToolError):
+            self.call(server, tool, {"repo_root": str(one_repo), **arguments})
+
+    def test_an_inverted_line_range_is_refused_rather_than_rendering_the_file(
+        self, services, one_repo
+    ):
+        """A dropped range leaves none, and no intervals renders the whole file."""
+        server = build_server(ToolHandlers([one_repo], services))
+
+        with pytest.raises(ToolError, match="is not a line range"):
+            self.call(
+                server,
+                "read_slice",
+                {"repo_root": str(one_repo), "path": "core.py", "lines": [[5, 2]]},
+            )
+
+    def test_a_valid_range_still_reads_the_slice(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = (
+            self.call(
+                server,
+                "read_slice",
+                {
+                    "repo_root": str(one_repo),
+                    "path": "core.py",
+                    "lines": [[1, 2]],
+                    "context_lines": 0,
+                },
+            )
+            .content[0]
+            .text
+        )
+
+        assert "1|def quote(sku):" in text
+        assert "class PriceBook" not in text
+
+    @pytest.mark.parametrize("value", [float("inf"), float("nan"), 0.0, -1.0, 1e9])
+    def test_the_resolution_bound_rejects_non_finite_and_out_of_range_values(self, value):
+        """A NaN resolution reached JSON output as a bare `NaN` token."""
+        with pytest.raises(ValidationError):
+            TypeAdapter(server_module.Resolution).validate_python(value)
 
 
 class TestProjectConfigOverMcp:

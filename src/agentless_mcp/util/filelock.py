@@ -41,7 +41,7 @@ _WINDOWS_LOCK_BYTES = 1
 
 
 class LockUnavailableError(Exception):
-    """Raised when another process already holds the lock.
+    """Raised when the lock could not be taken, held elsewhere or unsupported.
 
     Deliberately not one of the package's domain errors: this module is a
     stdlib-leaf utility, and the caller that knows *what* was locked is the
@@ -55,9 +55,11 @@ def exclusive(path: Path, *, flavour: str) -> Iterator[None]:
 
     The lock file is created if it is missing and is never removed: unlinking
     it would let a second process create and lock a *different* file with the
-    same name while the first still holds the old one.
+    same name while the first still holds the old one. Append rather than
+    write for the same reason: truncating happens before the lock is taken, so
+    it is the one write to this file no mutual exclusion covers.
     """
-    handle = path.open("w", encoding="utf-8")
+    handle = path.open("a", encoding="utf-8")
     try:
         _acquire(handle, flavour)
         try:
@@ -82,7 +84,11 @@ def _acquire(handle: IO[str], flavour: str) -> None:
     fcntl = importlib.import_module("fcntl")
     try:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError as exc:
+    except OSError as exc:
+        # `BlockingIOError` is the lock-is-held answer; `ENOLCK` and
+        # `EOPNOTSUPP` from an NFS, FUSE or overlay mount are the this-mount-
+        # cannot-lock answer. Both leave the caller without exclusion, so both
+        # are the refusal rather than a raw errno escaping this leaf.
         raise LockUnavailableError from exc
 
 

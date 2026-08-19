@@ -34,5 +34,4 @@ export class Inventory {
   valueAt(prices: PriceBook, tier: Tier): Money { ... }
 
   auditTrail(): string[] { ... }
-    return this.history.map((entry, index) => { ... }
 }

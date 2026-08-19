@@ -102,20 +102,30 @@
   ],
   "fan_in": [],
   "imports": {
-    "declared": [
-      {
-        "path": "reports.py",
-        "line": 5,
-        "module": "inventory",
-        "other": "inventory.py"
-      },
-      {
-        "path": "reports.py",
-        "line": 6,
-        "module": "pricing",
-        "other": "pricing.py"
-      }
-    ],
-    "importers": []
+    "declared": {
+      "total": 2,
+      "limit": 20,
+      "omitted": 0,
+      "rows": [
+        {
+          "path": "reports.py",
+          "line": 5,
+          "module": "inventory",
+          "other": "inventory.py"
+        },
+        {
+          "path": "reports.py",
+          "line": 6,
+          "module": "pricing",
+          "other": "pricing.py"
+        }
+      ]
+    },
+    "importers": {
+      "total": 0,
+      "limit": 20,
+      "omitted": 0,
+      "rows": []
+    }
   }
 }

@@ -67,7 +67,7 @@ from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, disambiguate, id_q
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
-from agentless_mcp.util.errors import CacheLocked, LanguageUnavailable
+from agentless_mcp.util.errors import AtlasError, CacheLocked
 from agentless_mcp.util.fslimits import read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
@@ -108,6 +108,28 @@ DIRECTORY_MODE = 0o700
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
 REMEDIATION = MESSAGES.cache_stale_remediation
+
+# What one file's extraction may fail with without taking the scan down with
+# it. A repository index is a per-file job: a grammar that will not load, a
+# generated file whose expression nests deeper than the interpreter's stack,
+# a byte sequence no decoder accepts -- each is a fact about that one file and
+# belongs in ``IndexFailure``, not in a traceback out of ``agentless-mcp
+# index``. Named explicitly rather than catching ``Exception``: an error class
+# not in this list is a defect in the extractor and must surface as one.
+# ``core.patchlint`` keeps the same list for the same reason on the same parse
+# path; it is duplicated rather than imported because ``patchlint`` sits above
+# the cache in the module graph and importing it here would invert that.
+EXTRACTION_FAILURES: tuple[type[Exception], ...] = (
+    AtlasError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    AttributeError,
+    UnicodeDecodeError,
+    RecursionError,
+    OSError,
+)
 
 
 @dataclass(frozen=True)
@@ -658,9 +680,12 @@ def _plan_index(
             symbols = extractor.extract_from_source(read.text, language, repo_file.path)
             imports = extractor.extract_imports_from_source(read.text, language, repo_file.path)
             refs = extractor.extract_refs_from_source(read.text, language, repo_file.path)
-        except LanguageUnavailable as exc:
+        except EXTRACTION_FAILURES as exc:
+            # The class name is part of the report: "maximum recursion depth
+            # exceeded" names a defect, a bare KeyError message names nothing.
+            reason = f"{type(exc).__name__}: {exc}"
             seen.discard(repo_file.path)
-            failures.append(IndexFailure(path=repo_file.path, reason=str(exc)))
+            failures.append(IndexFailure(path=repo_file.path, reason=reason))
             continue
 
         writes.append(
@@ -1046,7 +1071,16 @@ def _write_lock(directory: Path, repo_root: Path) -> Iterator[None]:
         with filelock.exclusive(directory / LOCK_NAME, flavour=flavour):
             yield
     except filelock.LockUnavailableError as exc:
-        message = f"another index run holds the lock for {repo_root}"
+        # The lock is unavailable either because another run holds it or
+        # because the filesystem cannot lock at all (ENOLCK/EOPNOTSUPP on some
+        # NFS, FUSE and overlay mounts). Naming only the first sends an
+        # operator hunting for a process that does not exist, so say both and
+        # carry the underlying reason.
+        message = (
+            f"could not take the index lock for {repo_root}: another index "
+            f"run may hold it, or {directory} may be on a filesystem that "
+            f"does not support locking"
+        )
         raise CacheLocked(message) from exc
 
 

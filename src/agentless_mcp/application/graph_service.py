@@ -43,8 +43,9 @@ neither needs a name bound to a declaration:
 Every one of them is bounded and says what it left out.
 """
 
+import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
@@ -53,6 +54,7 @@ from agentless_mcp.application.symbol_service import symbol_card
 from agentless_mcp.core import communities, graph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
+from agentless_mcp.util.errors import AtlasError
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
@@ -194,8 +196,7 @@ class GraphService:
     ) -> render.CommunityReport:
         """Partition the repository's files into communities, largest first."""
         ranked = self._ranked(ctx)
-        setting = communities.DEFAULT_RESOLUTION if resolution is None else float(resolution)
-        partition = communities.detect_communities(ranked.graph, resolution=setting)
+        partition = communities.detect_communities(ranked.graph, resolution=_resolution(resolution))
         return render.CommunityReport(
             communities=tuple(
                 render.CommunityRow(
@@ -238,7 +239,7 @@ class GraphService:
         if seed.message:
             return _empty_diagram(focus or "", seed.message, grouped=group_by_communities)
 
-        setting = communities.DEFAULT_RESOLUTION if resolution is None else float(resolution)
+        setting = _resolution(resolution)
         partition = (
             communities.detect_communities(ranked.graph, resolution=setting)
             if group_by_communities
@@ -256,7 +257,7 @@ class GraphService:
         return render.DiagramView(
             text=text,
             nodes=len(drawn),
-            elided=max(0, len(ranked.graph.nodes) - len(drawn)),
+            elided=_elided(ranked, options, drawn),
             grouped=partition is not None,
             focus=options.focus or "",
             message="",
@@ -389,8 +390,8 @@ def _missing(target: str) -> render.Explanation:
         alternatives=(),
         fan_out=(),
         fan_in=(),
-        imports_out=(),
-        imports_in=(),
+        imports_out=render.ImportListing(),
+        imports_in=render.ImportListing(),
     )
 
 
@@ -433,13 +434,14 @@ def _imports(
     limit: int,
     *,
     declared: bool,
-) -> tuple[render.ImportRow, ...]:
-    """Return the import edges leaving or arriving at one file."""
-    matching = [
-        edge
-        for edge in graph.import_edges()
-        if (edge.source.node == path if declared else edge.target.node == path)
-    ]
+) -> render.ImportListing:
+    """Return the import edges leaving or arriving at one file, bounded and counted.
+
+    The count is taken before the slice. Twenty rows out of thirty importers
+    is the section this module's docstring promises does not exist, and it was
+    the one bounded view here whose total was never computed at all -- so
+    neither the text nor the JSON had anything to be honest with.
+    """
     rows = [
         render.ImportRow(
             path=edge.source.path,
@@ -447,9 +449,47 @@ def _imports(
             module=edge.name,
             other=edge.target.path,
         )
-        for edge in matching
+        for edge in graph.import_edges()
+        if (edge.source.node == path if declared else edge.target.node == path)
     ]
-    return tuple(rows[:limit])
+    return render.ImportListing(rows=tuple(rows[:limit]), total=len(rows), limit=limit)
+
+
+def _resolution(resolution: float | None) -> float:
+    """Parse the modularity resolution knob, or refuse it.
+
+    ``float()`` is a coercion, not a parse: it accepts NaN and both
+    infinities, and a NaN makes every gain comparison in the clustering false,
+    so the answer is one singleton "community" per file and a modularity of
+    NaN -- which `json.dumps` then emits as the bare token ``NaN``, invalid
+    JSON for any strict parser on the other side. A negative resolution
+    reports a modularity of 6.0 against a documented 0-to-1 scale. Both are
+    refused here, at the one place both public methods that take the knob
+    cross.
+    """
+    if resolution is None:
+        return communities.DEFAULT_RESOLUTION
+    setting = float(resolution)
+    if not math.isfinite(setting) or setting <= 0.0:
+        message = f"resolution must be a finite number greater than 0, got {resolution}"
+        raise AtlasError(message)
+    return setting
+
+
+def _elided(ranked: _Ranked, options: mermaid.DiagramOptions, drawn: Sequence[str]) -> int:
+    """Count what this diagram left out, against what it was drawing from.
+
+    A focus restricts the candidate set before the rank bound is applied, and
+    the elision node the picture carries counts against that restricted set.
+    Counting against the whole repository instead made one response say "12
+    elided" over a picture that had dropped nothing, and sent readers to raise
+    `max_nodes` for modules no bound had removed. The candidate set is read
+    back through the same public entry point the render uses, rather than
+    re-deriving the neighbourhood walk here, so the two numbers cannot drift.
+    """
+    unbounded = replace(options, max_nodes=max(1, len(ranked.graph.nodes)))
+    candidates = mermaid.selected_nodes(ranked.graph, ranked.rank, unbounded)
+    return max(0, len(candidates) - len(drawn))
 
 
 def _trace(

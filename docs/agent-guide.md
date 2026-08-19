@@ -139,6 +139,14 @@ an MCP workspace root that identifies exactly one configured root -- the
 receipt names the repository that answered either way. With several
 candidates left, the refusal lists the roots to choose from.
 
+`--root` is the confinement boundary and the client cannot widen it. A root
+the client advertises may only *select* among the directories the server was
+started with; it can never add one, and a server started with no `--root` at
+all serves nothing. `--allow-client-roots` restores the additive reading for
+operators who want it, which is a flag rather than the default because the
+two readings differ in who decides what is servable, and a permissive default
+is a boundary that stops confining without anyone typing anything.
+
 ### `map` (`repo_map`) -- where does this live
 
 ```
@@ -753,11 +761,22 @@ first-appearance order.
  "reproduction": "passed", "equivalence_key": "8f3a...", "duration": 2.41}
 ```
 
-`apply.status` is `ok` or `failed`; a failed apply carries one reason per
-block (`not_found`, `ambiguous`, and so on) and no test is run for it.
+`apply.status` is `ok`, `failed`, or `not_evaluated`; a failed apply carries
+one reason per block (`not_found`, `ambiguous`, `unreadable`, and so on) and
+no test is run for it. `not_evaluated` means the run never reached this
+candidate at all — an unverified baseline, or `--run-timeout` expiring — and
+is deliberately not `failed`, because a report that says a patch failed when
+nothing ran is inventing evidence. Such candidates are excluded from the vote
+ladder rather than ranked, and the run says so.
+
 `regression` and `reproduction` are `passed` / `failed` / `timeout` / `error`
-/ `not_evaluated`. Output tails ride along under `tails` only when a run did
-not pass.
+/ `not_evaluated`. Note that `timeout` counts as measured (the command ran)
+while `error` does not (it never started). Output tails ride along under
+`tails` only when a run did not pass.
+
+The reader refuses any spelling it does not recognise, naming the line and
+the allowed set. A verdicts file written by a different version therefore
+fails loudly instead of silently demoting every candidate to a loss.
 
 `validate` exits `0` when at least one candidate applied and passed the
 regression suite, `1` when nothing did (including every UNVERIFIED run), and

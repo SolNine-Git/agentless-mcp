@@ -18,14 +18,23 @@ analysis would show up in that tree's own status, its own walk and its own
 gitignore decisions, which is the same class of mistake as writing a cache
 into somebody else's repo.
 
-Removal happens in a ``finally``, so a patch that raises mid-apply still
-leaves nothing behind. Cleanup failures are logged with the path rather than
+Removal happens in a ``finally`` that covers the creation as well, so a patch
+that raises mid-apply and a ``worktree add`` that is killed part-way both
+leave nothing behind -- a half-created worktree leaves a record git's own
+``prune`` refuses to touch, which would be a permanent entry in somebody
+else's repository. Cleanup failures are logged with the path rather than
 raised: raising from the ``finally`` would replace whatever the caller was
 already failing with, and losing the real error to report a leftover directory
 is the wrong trade. The log line names the directory an operator can delete.
 
-Every git call is a fixed argv with a timeout and no shell. Nothing derived
-from repository content or from patch text reaches it.
+Every git call is a fixed argv with a timeout and no shell, and the calls that
+touch the analysed repository disable the parts of git that would run *its*
+code: ``core.hooksPath`` and ``core.fsmonitor`` are neutralised on every
+``worktree add``, because checking HEAD out fires that repository's
+``post-checkout`` hook otherwise. The residual is named rather than papered
+over: a ``.gitattributes`` naming a ``filter.*.smudge`` driver still runs it
+on checkout, since disabling filters would hand the tests different file
+contents than the repository's own checkout has.
 
 The test runner takes the opposite kind of input -- a command string the
 *caller* supplied -- and keeps the same posture. It is split with ``shlex``
@@ -87,6 +96,27 @@ TERM_GRACE_SECONDS = 5.0
 # a failing test run puts its summary at the end, and the megabyte of
 # progress output before it is the part nobody reads.
 DEFAULT_MAX_CAPTURE = 100_000
+
+# How far a capture file is allowed to outgrow the cap before the runner drops
+# what it holds. A cap that bounds only what is read back is not a bound at
+# all: the child writes at disk speed for the whole timeout window, and
+# ``--jobs N`` multiplies that by ``2N`` streams. Slack rather than a hard
+# equality because trimming on every poll would throw away the tail that is
+# about to be reported.
+CAPTURE_SLACK = 8
+
+# How often the wait loop looks at the capture files. Short enough that a
+# runaway writer is caught within a fraction of a second's output, long enough
+# that a quiet command costs a handful of wakeups per second.
+CAPTURE_POLL_SECONDS = 0.25
+
+# Options that stop git running the analysed repository's own code. A
+# ``worktree add`` checks HEAD out, and a checkout fires that repository's
+# ``post-checkout`` hook and consults its ``core.fsmonitor`` command -- both
+# of them repository-controlled execution, which is the same hazard ``diff``
+# neutralises ``diff.external`` for. ``/dev/null`` is not a directory, so no
+# hook is ever found under it.
+NO_REPO_CODE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=")
 
 # ``git worktree add`` and ``git worktree prune`` race each other: prune walks
 # the repository's worktree records and can remove one that a concurrent add
@@ -167,6 +197,14 @@ def worktree(root: Path) -> Iterator[Path]:
     Refuses a directory that is not inside a git repository: without HEAD
     there is nothing to detach from, and silently falling back to copying the
     working tree would produce a diff against a base nobody named.
+
+    The creation is inside the ``try``, not before it: ``git worktree add``
+    writes its record into ``.git/worktrees`` before it populates the
+    directory, and a call that is killed, times out or runs out of disk part
+    of the way through leaves that record behind marked ``locked``, which
+    ``git worktree prune`` skips forever. Releasing on the way out of a failed
+    creation is what keeps the promise that nothing is left in somebody else's
+    repository.
     """
     resolved = root.resolve()
     top = gitinfo.git_root(resolved)
@@ -182,9 +220,13 @@ def worktree(root: Path) -> Iterator[Path]:
     scratch.chmod(cache.DIRECTORY_MODE)
 
     path = scratch / f"wt-{uuid.uuid4().hex}"
-    with _WORKTREE_LOCK:
-        run_git(top, ["worktree", "add", "--detach", str(path), "HEAD"])
     try:
+        with _WORKTREE_LOCK:
+            run_git(
+                top,
+                ["worktree", "add", "--detach", str(path), "HEAD"],
+                config=NO_REPO_CODE,
+            )
         yield path / resolved.relative_to(top)
     finally:
         with _WORKTREE_LOCK:
@@ -230,7 +272,9 @@ def run_command(
     * **Output goes to files, not pipes.** A pipe nobody drains fills at
       64 KB and blocks the writer, turning a chatty passing test into a
       timeout. Temporary files decouple the two, and the tail is read back
-      after the process is gone.
+      after the process is gone. The files are bounded while they are being
+      written, not only when they are read: ``max_capture`` is a cap on what
+      the command may leave on disk as well as on what is reported.
     """
     try:
         argv = shlex.split(cmd)
@@ -258,11 +302,8 @@ def run_command(
             elapsed = time.monotonic() - started
             return _spawn_failure(f"could not start {argv[0]!r}: {reason}", elapsed)
 
-        timed_out = False
-        try:
-            process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
+        timed_out = _wait_bounded(process, (out, err), timeout=timeout, capture=max_capture)
+        if timed_out:
             _kill_group(process, flavour)
 
         duration = round(time.monotonic() - started, 3)
@@ -280,6 +321,51 @@ def run_command(
 def _spawn_failure(reason: str, duration: float = 0.0) -> RunResult:
     """Return the result of a command that never ran, with the reason on stderr."""
     return RunResult(RunStatus.ERROR, None, round(duration, 3), "", reason)
+
+
+def _wait_bounded(
+    process: "subprocess.Popen[bytes]",
+    streams: Sequence[IO[bytes]],
+    *,
+    timeout: int,
+    capture: int,
+) -> bool:
+    """Wait for ``process``, keeping its capture files inside the cap.
+
+    Returns True when the time bound expired. The size bound is the other half
+    of the same guarantee: a command is stopped when it outlives ``timeout``,
+    and what it wrote is dropped when it outgrows ``capture`` -- otherwise the
+    cap describes only the tail that is read back, while the command fills
+    ``TMPDIR`` at disk speed for the whole window.
+    """
+    ceiling = max(capture, 1) * CAPTURE_SLACK
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True
+        try:
+            process.wait(timeout=min(CAPTURE_POLL_SECONDS, remaining))
+        except subprocess.TimeoutExpired:
+            for handle in streams:
+                _trim(handle, ceiling)
+        else:
+            return False
+
+
+def _trim(handle: IO[bytes], ceiling: int) -> None:
+    """Drop what a capture file holds once it has outgrown ``ceiling``.
+
+    The child keeps its own file offset, so what it writes next lands past the
+    end of the emptied file and everything between is a hole the filesystem
+    never stores. Only the tail is ever reported, so the discarded bytes were
+    never going to be read -- and :func:`_tail` drops the leading NUL bytes of
+    the hole when its window reaches back into one.
+    """
+    descriptor = handle.fileno()
+    if os.fstat(descriptor).st_size <= ceiling:
+        return
+    os.ftruncate(descriptor, 0)
 
 
 def _group_kwargs(flavour: str) -> dict[str, Any]:
@@ -367,6 +453,11 @@ def _tail(handle: IO[bytes], limit: int) -> str:
     The tail rather than the head, and marked when anything was dropped: the
     end of a test run carries the failure summary, and an unmarked truncation
     would read as the whole story.
+
+    Leading NUL bytes are dropped because the window can reach back into the
+    hole :func:`_trim` leaves behind: the file's length still counts the bytes
+    a runaway command wrote before the trim, and reading zeros back as output
+    would put a wall of NULs in front of the summary.
     """
     end = handle.seek(0, os.SEEK_END)
     if end == 0:
@@ -374,22 +465,26 @@ def _tail(handle: IO[bytes], limit: int) -> str:
 
     start = max(0, end - max(limit, 0))
     handle.seek(start)
-    text = handle.read().decode("utf-8", errors="replace")
+    text = handle.read().lstrip(b"\x00").decode("utf-8", errors="replace")
     if start == 0:
         return text
     return f"[... {start} earlier bytes dropped ...]\n{text}"
 
 
-def run_git(cwd: Path, arguments: Sequence[str]) -> str:
+def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) -> str:
     """Run one bounded git command, raising on anything but success.
 
     Unlike :func:`agentless_mcp.core.gitinfo._run`, a failure here is an
     error, not a note: that module answers "what state is this repository in",
     where unknown is a legitimate answer, and this one performs the write-side
     operations where a failure means the operation did not happen.
+
+    ``config`` carries ``-c key=value`` pairs that go in front of the
+    subcommand, which is how a caller overrides what the analysed repository's
+    own configuration would otherwise decide -- see :data:`NO_REPO_CODE`.
     """
     subcommand = arguments[0] if arguments else "git"
-    command = ["git", "--no-optional-locks", "-C", str(cwd), *arguments]
+    command = ["git", "--no-optional-locks", *config, "-C", str(cwd), *arguments]
     try:
         completed = subprocess.run(
             command,
@@ -417,9 +512,17 @@ def run_git(cwd: Path, arguments: Sequence[str]) -> str:
 
 
 def _release(root: Path, path: Path) -> None:
-    """Remove one scratch worktree and prune the repository's record of it."""
+    """Remove one scratch worktree and prune the repository's record of it.
+
+    ``--force`` twice rather than once: a creation that was killed part-way
+    leaves its record marked ``locked``, and git refuses to remove a locked
+    worktree on a single force. That record is the one ``prune`` skips, so
+    without the second force the failed-creation path cannot clean up after
+    itself. The worktree is this module's own scratch directory either way,
+    so there is nothing a force can destroy that was not already disposable.
+    """
     try:
-        run_git(root, ["worktree", "remove", "--force", str(path)])
+        run_git(root, ["worktree", "remove", "--force", "--force", str(path)])
     except AtlasError as exc:
         logger.warning("git worktree remove failed for %s: %s; removing the directory", path, exc)
         shutil.rmtree(path, ignore_errors=True)

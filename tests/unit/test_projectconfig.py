@@ -98,6 +98,19 @@ class TestAbsentAndMalformed:
         assert run(["map", "--repo", str(root)], services) == EXIT_OK
         assert "config warning" in capsys.readouterr().out
 
+    def test_a_symlinked_config_is_not_read(self, tmp_path):
+        root = tmp_path / "repo"
+        root.mkdir()
+        outside = tmp_path / "elsewhere.json"
+        outside.write_text(json.dumps({"borrowed_key_name": 1}), encoding="utf-8")
+        (root / projectconfig.CONFIG_FILENAME).symlink_to(outside)
+
+        config = projectconfig.load(root)
+
+        assert config.present is False
+        assert any("outside the repository" in warning for warning in config.warnings)
+        assert not any("borrowed_key_name" in warning for warning in config.warnings)
+
 
 class TestSchema:
     def test_known_keys_are_parsed_into_typed_values(self, repo):
@@ -125,6 +138,16 @@ class TestSchema:
         config = projectconfig.load(repo({"map_budget": 3000, "nonsense": 1}))
         assert config.map_budget == 3000
         assert any("unknown key 'nonsense'" in warning for warning in config.warnings)
+
+    def test_a_file_full_of_unknown_keys_produces_bounded_warnings(self, repo):
+        extra = projectconfig.MAX_UNKNOWN_KEY_WARNINGS + 50
+        config = projectconfig.load(repo({f"k{index}": 1 for index in range(extra)}))
+
+        assert len(config.warnings) == projectconfig.MAX_UNKNOWN_KEY_WARNINGS + 1
+        assert (
+            config.warnings[-1]
+            == f"50 further unknown keys in {projectconfig.CONFIG_FILENAME}: warnings suppressed"
+        )
 
     @pytest.mark.parametrize(
         ("key", "value"),

@@ -18,17 +18,18 @@ spans so it is not Python-only:
 
 Everything else is emitted verbatim from the source, so the output still
 reads as code. Original line numbers survive: nothing is renumbered, and
-``number_lines`` renders them as ``N| `` prefixes.
+the ``number_lines`` option renders them as ``N| `` prefixes.
 """
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 
 from tree_sitter import Node
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import BODY_BLOCK_NODE_TYPES, LANGUAGE_CONFIGS
+from agentless_mcp.core.slices import line_prefix
 from agentless_mcp.util.tokens import Chars4Counter, TokenCounter
 
 SENTINEL = "..."
@@ -69,19 +70,50 @@ def function_node_types(language: str) -> frozenset[str]:
 
 @dataclass
 class _Plan:
-    """Which lines to drop and which to replace, keyed by 1-based line number."""
+    """Which lines to drop and which to replace, keyed by 1-based line number.
+
+    Three rules write here -- function bodies, comments and docstrings -- and
+    one of them outranks the other two. ``owned`` is the set of lines an
+    elided body has already claimed, and nothing may write inside it
+    afterwards: "an elided body emits exactly one sentinel and no source" is
+    the invariant the whole module exists for, and last-write-wins let a
+    trailing comment overwrite the sentinel with the real body line (leaving a
+    truncated function that reads as a complete one) and a nested function add
+    a second, over-indented sentinel inside an already-elided body.
+    """
 
     dropped: set[int] = field(default_factory=set)
     replaced: dict[int, str] = field(default_factory=dict)
+    owned: set[int] = field(default_factory=set)
 
     def drop_range(self, first: int, last: int) -> None:
         """Drop every line in the inclusive range."""
         self.dropped.update(range(first, last + 1))
 
     def replace(self, line: int, text: str) -> None:
-        """Replace one line, un-dropping it if an earlier rule dropped it."""
+        """Replace one line, unless an elided body already owns it."""
+        if line in self.owned:
+            return
         self.dropped.discard(line)
         self.replaced[line] = text
+
+    def owns(self, line: int) -> bool:
+        """True when an elided body has already claimed this line."""
+        return line in self.owned
+
+    def elide(self, first: int, last: int, kept: Mapping[int, str]) -> None:
+        """Replace one body's lines with ``kept`` and claim the range.
+
+        One call rather than three, because dropping the range, writing the
+        sentinel and taking ownership are one decision: a later rule that
+        found the range dropped but unowned is exactly how the sentinel used
+        to get overwritten.
+        """
+        self.dropped.update(range(first, last + 1))
+        for line, replacement in kept.items():
+            self.dropped.discard(line)
+            self.replaced[line] = replacement
+        self.owned.update(range(first, last + 1))
 
 
 def skeletonize(
@@ -155,6 +187,13 @@ def _plan_function(node: Node, lines: list[str], plan: _Plan, *, keep_docstring:
 
     body_first = body.start_point[0] + 1
     body_last = body.end_point[0] + 1
+    if plan.owns(body_first):
+        # A nested function inside a body that is already elided. The
+        # enclosing sentinel stands for this one too; a second sentinel at the
+        # inner body's own indentation would sit inside a body the reader
+        # cannot see, and would not re-parse.
+        return
+
     signature_line = lines[body_first - 1]
     body_column = body.start_point[1]
 
@@ -165,24 +204,21 @@ def _plan_function(node: Node, lines: list[str], plan: _Plan, *, keep_docstring:
         # the sentinel where the body was.
         prefix = signature_line[:body_column].rstrip()
         opens_brace = signature_line[body_column : body_column + 1] == "{"
-        plan.drop_range(body_first, body_last)
-        plan.replace(
-            body_first,
-            f"{prefix} {{ {SENTINEL} }}" if opens_brace else f"{prefix} {SENTINEL}",
-        )
+        sentinel = f"{prefix} {{ {SENTINEL} }}" if opens_brace else f"{prefix} {SENTINEL}"
+        plan.elide(body_first, body_last, {body_first: sentinel})
         return
 
-    plan.drop_range(body_first, body_last)
     indent = " " * body_column
     if docstring is not None:
         doc_first = docstring.start_point[0] + 1
         doc_last = docstring.end_point[0] + 1
-        plan.replace(doc_first, indent + _one_line_docstring(docstring, lines))
+        kept = {doc_first: indent + _one_line_docstring(docstring, lines)}
         if body_last > doc_last:
-            plan.replace(body_last, indent + SENTINEL)
+            kept[body_last] = indent + SENTINEL
+        plan.elide(body_first, body_last, kept)
         return
 
-    plan.replace(body_first, indent + SENTINEL)
+    plan.elide(body_first, body_last, {body_first: indent + SENTINEL})
 
 
 def _plan_comment(node: Node, lines: list[str], plan: _Plan) -> None:
@@ -293,10 +329,10 @@ def _render(lines: list[str], plan: _Plan, *, number_lines: bool) -> str:
             if previous_blank:
                 continue
             previous_blank = True
-            rendered.append("" if not number_lines else f"{number}| ")
+            rendered.append(line_prefix(number) if number_lines else "")
             continue
         previous_blank = False
-        rendered.append(f"{number}| {text}" if number_lines else text)
+        rendered.append(f"{line_prefix(number)}{text}" if number_lines else text)
 
     while rendered and not rendered[-1].strip().rstrip("|"):
         rendered.pop()

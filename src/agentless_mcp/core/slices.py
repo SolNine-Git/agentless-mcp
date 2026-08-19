@@ -1,4 +1,4 @@
-"""Line-slice primitives: line wrapping and interval merging.
+"""Line-slice primitives: line wrapping, interval merging and line counting.
 
 Ported from Agentless (``agentless/util/preprocess_data.py``) with three
 changes, each of which the tests pin:
@@ -21,6 +21,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
+from agentless_mcp.util.errors import AtlasError
 
 ELISION = "..."
 
@@ -38,6 +39,45 @@ _SCOPE_KINDS = frozenset(
 )
 
 
+def line_count(text: str) -> int:
+    """Return how many lines ``text`` holds, not counting a final newline.
+
+    One home for the count, because it is stated to agents as the file's
+    *true* line count: ``len(text.split("\\n"))`` reports every
+    newline-terminated file -- which is every source file -- as one line
+    longer than it is, and an agent told a 40-line file has 41 lines asks for
+    a line that does not exist and gets a blank one back.
+    """
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return len(lines)
+
+
+def line_prefix(number: int, width: int = 0) -> str:
+    """Render the ``N| `` prefix one line-numbered source line carries.
+
+    One home for the prefix: a response that spells it two ways in two
+    sections reads as though one of them were the file's own text. ``width``
+    right-aligns the number for the views that render a column of them.
+    """
+    return f"{number:>{width}}| "
+
+
+def span_end(symbol: ASTSymbol) -> int:
+    """Return the last line ``symbol`` covers.
+
+    ``end_line_number`` is ``None`` only for a symbol decoded from a cache row
+    an older build wrote; the extractor always sets it. One line is the single
+    reading of "the end is unknown" everywhere in this package. The
+    alternative -- treating the symbol as enclosing everything after it --
+    turns one stale row into a scope header stuck above every later slice of
+    the file, and the two readings used to disagree between this module and
+    :mod:`agentless_mcp.core.locs`.
+    """
+    return symbol.end_line_number or symbol.line_number
+
+
 @dataclass(frozen=True)
 class _LineFormat:
     """How a single source line is rendered, matching the Agentless prompts."""
@@ -50,7 +90,7 @@ class _LineFormat:
         if self.no_line_number:
             return line
         if self.add_space:
-            return f"{number}| {line} "
+            return f"{line_prefix(number)}{line} "
         return f"{number}|{line}"
 
 
@@ -89,9 +129,11 @@ def line_wrap_content(
     the header line of each enclosing class or function is repeated above a
     slice that starts inside it (sticky scroll), never repeating a header the
     same render already showed.
+
+    A non-empty interval list that clips to nothing raises: see :func:`_clamp`.
     """
     lines = content.split("\n")
-    total = len(lines)
+    total = line_count(content)
 
     line_format = _LineFormat(add_space=add_space, no_line_number=no_line_number)
     intervals = _clamp(context_intervals, total)
@@ -117,17 +159,36 @@ def line_wrap_content(
 
 
 def _clamp(intervals: Sequence[tuple[int, int]] | None, total: int) -> list[tuple[int, int]]:
-    """Merge intervals and clip them to the file, defaulting to the whole file."""
+    """Merge intervals and clip them to the file, or refuse.
+
+    "No interval was asked for" and "every interval asked for is
+    unsatisfiable" are opposite requests and are answered differently. The
+    first is the whole file, which is what a caller passing nothing means. The
+    second used to be answered with the whole file too -- so a transposed
+    range, a negative one, or a span that outlived the file on disk returned
+    every line of it as though that were the slice requested, which is the
+    token blow-up this API exists to prevent and a false belief about what the
+    lines are. It raises instead: the caller asked a question this function
+    cannot answer.
+
+    An ``end`` of ``-1`` used to mean "to the end of the file". No caller ever
+    passed it, and it read a genuinely negative range as a request for
+    everything, so it is gone: a negative end is now what it looks like.
+    """
     if not intervals:
         return [(1, total)]
 
     clipped: list[tuple[int, int]] = []
     for start, end in merge_intervals(intervals):
         low = max(1, start)
-        high = total if end == -1 else min(total, end)
+        high = min(total, end)
         if low <= high:
             clipped.append((low, high))
-    return clipped or [(1, total)]
+    if not clipped:
+        requested = ", ".join(f"{start}-{end}" for start, end in intervals)
+        message = f"no requested line range falls inside the file's {total} lines: {requested}"
+        raise AtlasError(message)
+    return clipped
 
 
 def _scope_header_lines(
@@ -144,7 +205,7 @@ def _scope_header_lines(
             for symbol in symbols
             if symbol.kind in _SCOPE_KINDS
             and symbol.line_number < start
-            and (symbol.end_line_number is None or symbol.end_line_number >= start)
+            and span_end(symbol) >= start
         ),
         key=lambda symbol: symbol.line_number,
     )

@@ -15,6 +15,9 @@ arrive as a bare ``assignment`` and docstrings as a bare ``string``, so
 ``test_uppercase_constant`` and every docstring assertion below fail.
 """
 
+import pytest
+
+from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import SymbolKind
 
@@ -192,6 +195,33 @@ class TestEdgeCases:
         symbols = ext.extract_from_source("IDENTIFICATION DIVISION.", "cobol", "test.cbl")
         assert symbols == []
 
+    def test_unsupported_language_yields_no_imports(self):
+        ext = make_extractor()
+        imports = ext.extract_imports_from_source("IDENTIFICATION DIVISION.", "cobol", "test.cbl")
+        assert imports == []
+
+    def test_a_grammar_that_fails_to_load_is_not_an_unsupported_language(self, monkeypatch):
+        """An ABI-incompatible grammar must surface, not read as an empty file.
+
+        `tree_sitter.Parser` raises `ValueError` for a grammar built against an
+        incompatible ABI, which is the same class `_grammar_of` used to raise
+        for a language that is simply not in the registry. Laundering the first
+        into the second reports a repository of unparsed files as a repository
+        of empty ones.
+        """
+
+        def incompatible(name):
+            message = f"Incompatible Language version for {name}"
+            raise ValueError(message)
+
+        monkeypatch.setattr(grammars, "get_parser", incompatible)
+        ext = make_extractor()
+
+        with pytest.raises(ValueError, match="Incompatible Language version"):
+            ext.extract_from_source("def f(): pass\n", "python", "test.py")
+        with pytest.raises(ValueError, match="Incompatible Language version"):
+            ext.extract_imports_from_source("import os\n", "python", "test.py")
+
     def test_module_path_preserved(self):
         ext = make_extractor()
         symbols = ext.extract_from_source(SAMPLE_PYTHON, "python", "src/foo/bar.py")
@@ -265,3 +295,37 @@ class TestOtherLanguages:
         ext = make_extractor()
         symbols = ext.extract_from_source(source, "javascript", "outer.js")
         assert [s.name for s in symbols] == ["outer"]
+
+
+# A minified bundle or a generated client chains this deeply as a matter of
+# course; measured, the recursive walkers failed at 248 chained calls under the
+# default recursion limit, so 600 is a shape a real repository ships rather
+# than an adversarial one.
+_DEEP_CHAIN = 600
+
+DEEP_JS = (
+    "import defaults from './defaults.js';\n"
+    "const value = client" + "".join(f".step{index}()" for index in range(_DEEP_CHAIN)) + ";\n"
+    "function build(x) { return x; }\n"
+)
+
+
+class TestStackSafety:
+    """Every walk in this module is iterative, and this is what says so.
+
+    `walk_nodes` documents the rule -- a deeply nested expression in a
+    generated file must not turn a repository map into a `RecursionError` --
+    and each test below drives one walker that used to recurse per child. A
+    `RecursionError` escaping any of them aborts the whole repository index,
+    because the scan reaches these through a single per-file call.
+    """
+
+    def test_a_deep_call_chain_still_extracts_symbols(self):
+        ext = make_extractor()
+        symbols = ext.extract_from_source(DEEP_JS, "javascript", "bundle.js")
+        assert [s.name for s in symbols] == ["build"]
+
+    def test_a_deep_call_chain_still_extracts_imports(self):
+        ext = make_extractor()
+        imports = ext.extract_imports_from_source(DEEP_JS, "javascript", "bundle.js")
+        assert [i.module for i in imports] == ["./defaults.js"]

@@ -7,8 +7,11 @@ through to the method branch, the any-class search accepted only when unique
 so they are pinned here rather than re-derived.
 """
 
+from dataclasses import replace
+
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import LocTarget, resolve_locs
+from agentless_mcp.core.slices import line_count
 
 SOURCE = '''\
 """Module."""
@@ -45,7 +48,7 @@ def target(path="billing.py"):
         path=path,
         language="python",
         symbols=tuple(symbols),
-        total_lines=len(SOURCE.split("\n")),
+        total_lines=line_count(SOURCE),
     )
 
 
@@ -180,3 +183,33 @@ class TestIntervalsAndInput:
     def test_nothing_resolvable_yields_empty_intervals_not_the_whole_file(self):
         result = resolve_locs(["class: Nope"], target())
         assert result.intervals == ()
+
+
+class TestSpansThatNoLongerFitTheFile:
+    """A symbol whose line numbers outlived the file on disk.
+
+    Only a cache row written before an edit produces one, and the widened
+    interval used to be clamped at the high end alone -- so a symbol at lines
+    900-910 of a 30-line file became the interval (890, 30), which the
+    renderer answered with all thirty lines as though they were the request.
+    """
+
+    def test_a_span_past_the_end_yields_no_interval(self):
+        stale = replace(target(), total_lines=5)
+        result = resolve_locs(["class: Invoice"], stale, context=0)
+
+        assert result.spans == ((6, 11),)
+        assert result.intervals == ()
+
+    def test_a_symbol_with_no_end_line_spans_its_own_line_only(self):
+        known = target()
+        stale = replace(
+            known,
+            symbols=tuple(
+                replace(symbol, end_line_number=None) if symbol.name == "Invoice" else symbol
+                for symbol in known.symbols
+            ),
+        )
+        result = resolve_locs(["class: Invoice"], stale, context=0)
+
+        assert result.spans == ((6, 6),)

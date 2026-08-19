@@ -66,14 +66,14 @@ from agentless_mcp.application.validate_service import (
     ValidateService,
     load_verdicts,
 )
-from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.application.view_service import LocationView, ViewService
 from agentless_mcp.core import cache, communities, grammars, projectconfig, resolve, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
-from agentless_mcp.core.symbols import parse_stable_id
+from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.util.errors import AtlasError
 from agentless_mcp.util.fslimits import (
@@ -510,11 +510,15 @@ def _add_validate(subparsers: Any) -> None:
     ``--repro-cmd`` is a flag and only a flag. ``--test-cmd`` is a flag with
     exactly one fallback: a ``test_cmd`` in the repository's own
     ``.agentless-mcp.json``, used only when the invocation named none, only
-    here in the CLI -- no MCP tool can reach it -- and always printed in the
-    run header before it is executed. There is still no ``Makefile``
-    sniffing, no ``package.json`` scripts lookup and no built-in default: a
-    command from the repository being judged runs only when a human asked for
-    a validation run in that repository and can see which command it chose.
+    here in the CLI -- no MCP tool can reach it -- and refused unless
+    ``--allow-config-test-cmd`` says otherwise. There is still no ``Makefile``
+    sniffing, no ``package.json`` scripts lookup and no built-in default.
+
+    The opt-in is the gate, not the note printed beside it: this CLI is the
+    front door any agent can reach over Bash, so "a human saw the command"
+    is not a property the code can hold, and the refusal lives in
+    :mod:`agentless_mcp.application.validate_service` where every caller
+    meets it.
     """
     parser = subparsers.add_parser("validate", help="run candidate patches against the tests")
     parser.add_argument(
@@ -534,7 +538,15 @@ def _add_validate(subparsers: Any) -> None:
         default=None,
         metavar="CMD",
         help="the regression command; must pass on unpatched HEAD or the run is UNVERIFIED. "
-        "Falls back to test_cmd in the repository's .agentless-mcp.json, if it has one",
+        "Falls back to test_cmd in the repository's .agentless-mcp.json, if it has one and "
+        "--allow-config-test-cmd was given",
+    )
+    parser.add_argument(
+        "--allow-config-test-cmd",
+        action="store_true",
+        help="allow the test command to come from the analysed repository's "
+        ".agentless-mcp.json; without this the fallback is refused, because the "
+        "repository would be choosing the command that judges it",
     )
     parser.add_argument(
         "--repro-cmd",
@@ -554,6 +566,15 @@ def _add_validate(subparsers: Any) -> None:
         type=int,
         default=DEFAULT_JOBS,
         help=f"candidates to run concurrently, each in its own worktree (default: {DEFAULT_JOBS})",
+    )
+    parser.add_argument(
+        "--run-timeout",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help="bound the whole run, not one command (default: unbounded). A batch is "
+        "repeat_baseline + 1 + candidates x 2 commands, so per-command bounds multiply; "
+        "candidates the deadline never reached are reported not_evaluated",
     )
     parser.add_argument(
         "--repeat-baseline",
@@ -670,7 +691,9 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
     )
     text = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
     _emit(args, ctx, services, _Answer(text, {"files": [v.as_dict() for v in views]}, "files"))
-    return EXIT_OK
+    # A file that could not be read is not an empty answer: `slice` has always
+    # failed on the identical FileView.error, and the two must agree.
+    return EXIT_DOMAIN if views and all(view.error for view in views) else EXIT_OK
 
 
 def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
@@ -680,7 +703,7 @@ def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
 
     result = services.symbols.expand_symbols(ctx, list(args.ids), limit=args.limit)
     _emit(args, ctx, services, _Answer(render_expansion(result), result.as_dict(), "symbols"))
-    return EXIT_OK
+    return EXIT_DOMAIN if result.unresolved and not result.cards else EXIT_OK
 
 
 def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
@@ -689,12 +712,7 @@ def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
         return EXIT_USAGE
 
     if args.symbol:
-        parsed = parse_stable_id(args.symbol)
-        located = services.views.resolve_locations(
-            ctx, parsed.path, [f"function: {parsed.qualname}"], context=args.context
-        )
-        _emit(args, ctx, services, _Answer(located.text or "no such symbol\n", located.as_dict()))
-        return EXIT_OK
+        return _slice_by_symbol(args, ctx, services)
 
     if not args.file:
         return fail("slice needs a FILE or --symbol STABLE_ID", EXIT_USAGE)
@@ -710,6 +728,63 @@ def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
     return EXIT_OK
 
 
+def _slice_by_symbol(args: argparse.Namespace, ctx: RepoContext, services: CliServices) -> int:
+    """Render the source of whatever symbol one stable id names."""
+    try:
+        parsed = parse_stable_id(args.symbol)
+    except ValueError as error:
+        return fail(str(error), EXIT_USAGE)
+
+    located = _locate_symbol(services, ctx, parsed, context=args.context)
+    _emit(args, ctx, services, _Answer(_render_locations(located), located.as_dict()))
+    return EXIT_OK if located.resolution.stable_ids else EXIT_DOMAIN
+
+
+def _locate_symbol(
+    services: CliServices,
+    ctx: RepoContext,
+    parsed: StableId,
+    *,
+    context: int,
+) -> LocationView:
+    """Resolve a stable id by trying each location form its qualname can take.
+
+    An id carries a path and a qualified name but no kind, so the kind has to
+    come from the shape of the name and from what the file actually holds.
+    Hardcoding ``function:`` here is what made every class, dataclass, enum,
+    protocol and constant id -- all of which ``expand``, ``refs`` and
+    ``explain`` accept -- answer "no such symbol". The forms are tried one at
+    a time rather than in one call because ``class:`` sets the current class
+    for the locations after it, and the first that resolves wins.
+
+    When none resolves the caller gets every form that was tried with the
+    reason it missed, which is the difference between "this symbol is not a
+    function" and "this symbol does not exist".
+    """
+    attempts: list[LocationView] = []
+    for loc in _symbol_locs(parsed.qualname):
+        view = services.views.resolve_locations(ctx, parsed.path, [loc], context=context)
+        if view.resolution.stable_ids:
+            return view
+        attempts.append(view)
+
+    last = attempts[-1]
+    misses = tuple(entry for view in attempts for entry in view.resolution.unrecognized)
+    return replace(last, resolution=replace(last.resolution, unrecognized=misses))
+
+
+def _symbol_locs(qualname: str) -> tuple[str, ...]:
+    """Return the location forms a stable id's qualified name may resolve as.
+
+    A dotted name is a member of something and only the function branch reads
+    those; a bare name can be a module-level function, a class of any of the
+    class-like kinds, or a module-level constant.
+    """
+    if "." in qualname:
+        return (f"function: {qualname}",)
+    return (f"function: {qualname}", f"class: {qualname}", f"variable: {qualname}")
+
+
 def _cmd_find_symbol(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
@@ -722,7 +797,7 @@ def _cmd_find_symbol(args: argparse.Namespace, services: CliServices) -> int:
         services,
         _Answer(render.render_symbol_cards(result.cards), result.as_dict(), "matches"),
     )
-    return EXIT_OK
+    return EXIT_OK if result.cards else EXIT_DOMAIN
 
 
 def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
@@ -832,7 +907,11 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     if args.check is not None:
         return _check_diagram(view.text, Path(args.check))
     if args.json:
-        emit(json.dumps(view.as_dict(), indent=2))
+        # The text form is a document fragment on purpose -- it is pasted into
+        # a README -- but the JSON form is read by a machine, and a reader
+        # keyed on `document["receipt"]` must not hit a KeyError on the two
+        # subcommands whose output is most likely to be cached.
+        emit(envelope.wrap_json(ctx, view.as_dict(), counter=services.counter))
     else:
         emit(view.text)
 
@@ -1009,13 +1088,22 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             f"repository's {projectconfig.CONFIG_FILENAME}",
             EXIT_USAGE,
         )
-    if args.test_cmd is None:
+
+    from_config = args.test_cmd is None
+    if from_config:
         # Printed before the run, not after: this command came out of the
         # repository being judged, and the caller has to see which one it is.
+        # The note is not the control -- the service refuses the run unless
+        # --allow-config-test-cmd was given -- it is what makes the refusal,
+        # or the opt-in, name a command.
+        opted_in = (
+            "--allow-config-test-cmd was given, so it will run"
+            if args.allow_config_test_cmd
+            else "pass --test-cmd to name your own, or --allow-config-test-cmd to run this one"
+        )
         note(
             f"agentless-mcp: test command from {ctx.config.path}: {test_cmd}\n"
-            "agentless-mcp: it comes from the repository under analysis; "
-            "pass --test-cmd to override it."
+            f"agentless-mcp: it comes from the repository under analysis; {opted_in}."
         )
 
     report = services.validates.validate(
@@ -1027,6 +1115,9 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             timeout=args.timeout,
             jobs=args.jobs,
             repeat_baseline=args.repeat_baseline,
+            run_timeout=args.run_timeout,
+            test_cmd_from_config=from_config,
+            allow_config_test_cmd=args.allow_config_test_cmd,
         ),
     )
 
@@ -1048,7 +1139,13 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
-    """Rank a verdicts document by equivalence cluster."""
+    """Rank a verdicts document by equivalence cluster.
+
+    Exit ``0`` only for a ranking a caller can act on. A run whose baseline
+    never went green ranked nothing, and a run where no candidate applied
+    cleanly has no tier to rank in; both told the caller something, and
+    neither is a winner.
+    """
     _ = services
     source = Path(args.verdicts)
     try:
@@ -1067,12 +1164,13 @@ def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
     note(f"# agentless-mcp vote over {source}")
     note(f"# test-cmd: {loaded.test_cmd}")
     note(f"# {report.summary_line()}")
-    if loaded.baseline is not BaselineStatus.OK:
+    verified = loaded.baseline is BaselineStatus.OK
+    if not verified:
         note(
             "agentless-mcp: this ranking comes from an UNVERIFIED run -- the test command "
             "did not pass on unpatched HEAD, so no candidate was evaluated."
         )
-    return EXIT_OK
+    return EXIT_OK if verified and report.tier != vote.TIER_NONE else EXIT_DOMAIN
 
 
 def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:
@@ -1121,7 +1219,7 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
         force=args.force,
     )
     if args.json:
-        emit(json.dumps(report.as_dict(), indent=2))
+        emit(envelope.wrap_json(ctx, report.as_dict(), counter=services.counter))
         return EXIT_OK
 
     lines = [report.summary_line()]
@@ -1205,7 +1303,15 @@ def _patch_text(args: argparse.Namespace) -> str | None:
 def _patch_call(
     args: argparse.Namespace, services: CliServices
 ) -> tuple[RepoContext, tuple[Edit, ...]] | None:
-    """Resolve the repository and load the edits one write subcommand acts on."""
+    """Resolve the repository and load the edits one write subcommand acts on.
+
+    A text with any malformed block is refused whole. Noting the errors and
+    handing the surviving edits to the write side is the failure mode
+    :class:`~agentless_mcp.core.patches.ParseResult` exists to prevent: a
+    truncated generation applied its first half and exited 0. ``validate``
+    already refuses on the same condition; this is the same rule, in the one
+    place the other two write commands come through.
+    """
     _ = services
     ctx = _resolve(args, require_git=False)
     if ctx is None:
@@ -1216,8 +1322,16 @@ def _patch_call(
         return None
 
     parsed = load_edits(text)
-    for error in parsed.errors:
-        note(f"agentless-mcp: block {error.index} ({error.path or 'no path'}): {error.reason}")
+    if parsed.errors:
+        blocks = "\n".join(
+            f"  block {error.index} ({error.path or 'no path'}): {error.reason}"
+            for error in parsed.errors
+        )
+        message = (
+            f"{len(parsed.errors)} of {len(parsed.errors) + len(parsed.edits)} blocks "
+            f"did not parse, so none of them was applied:\n{blocks}"
+        )
+        raise AtlasError(message)
     return ctx, parsed.edits
 
 
@@ -1338,17 +1452,37 @@ def _emit(
     services: CliServices,
     answer: _Answer,
 ) -> None:
-    """Emit one answer in whichever form the caller asked for."""
+    """Emit one answer in whichever form the caller asked for.
+
+    What the service left out is reported in both forms. The text form gets
+    the envelope's truncation note; the JSON form gets the same three numbers
+    as a field, because a reader that cannot see the note has no other way to
+    learn the answer is partial.
+    """
     if args.json:
         emit(
             envelope.wrap_json(
-                ctx, answer.payload, counter=services.counter, items_key=answer.items_key
+                ctx,
+                _with_truncation(answer),
+                counter=services.counter,
+                items_key=answer.items_key,
             )
         )
     else:
         emit(
             envelope.wrap(ctx, answer.text, counter=services.counter, truncation=answer.truncation)
         )
+
+
+def _with_truncation(answer: _Answer) -> dict[str, Any]:
+    """Return the payload, carrying what the service left out when it did."""
+    cut = answer.truncation
+    if cut is None or cut.shown >= cut.total:
+        return answer.payload
+    return {
+        **answer.payload,
+        "truncation": {"shown": cut.shown, "total": cut.total, "unit": cut.unit},
+    }
 
 
 def _render_locations(view: Any) -> str:
@@ -1403,6 +1537,8 @@ def _validate_bounds(args: argparse.Namespace) -> str:
         return "--jobs takes a positive integer"
     if args.repeat_baseline < 1:
         return "--repeat-baseline takes a positive integer"
+    if args.run_timeout is not None and args.run_timeout <= 0:
+        return "--run-timeout takes a positive number of seconds"
     return ""
 
 

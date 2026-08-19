@@ -43,7 +43,7 @@ Four deliberate departures from the original:
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from agentless_mcp.core.slices import merge_intervals
+from agentless_mcp.core.slices import merge_intervals, span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -137,13 +137,7 @@ def resolve_locs(
         if hit.stable is not None:
             ids.append(hit.stable)
 
-    intervals = merge_intervals(
-        (
-            max(1, start - context),
-            min(target.total_lines, end + context) if target.total_lines else end + context,
-        )
-        for start, end in spans
-    )
+    intervals = merge_intervals(_widen(spans, target, context))
 
     return LocResolution(
         stable_ids=tuple(dict.fromkeys(ids)),
@@ -151,6 +145,30 @@ def resolve_locs(
         intervals=tuple(intervals),
         unrecognized=tuple(unrecognized),
     )
+
+
+def _widen(
+    spans: Sequence[tuple[int, int]],
+    target: LocTarget,
+    context: int,
+) -> list[tuple[int, int]]:
+    """Widen each span by the context window, clamped to the file at both ends.
+
+    A span whose whole widened range lies past the last line yields no
+    interval at all. That happens when a symbol's line numbers outlived the
+    file on disk -- a cache row written before an edit -- and clamping only
+    the high end used to turn it into a reversed interval, which the renderer
+    then answered with the entire file. The span itself is still reported, so
+    the location is not dropped silently; there is simply nothing to render
+    for it.
+    """
+    widened: list[tuple[int, int]] = []
+    for start, end in spans:
+        low = max(1, start - context)
+        high = min(target.total_lines, end + context) if target.total_lines else end + context
+        if low <= high:
+            widened.append((low, high))
+    return widened
 
 
 def _split(locs: Sequence[str] | str) -> list[str]:
@@ -304,7 +322,7 @@ def _resolve_variable(text: str, target: LocTarget) -> _Hit:
 
 def _span(symbol: ASTSymbol) -> tuple[int, int]:
     """Return the symbol's inclusive 1-based line span."""
-    return (symbol.line_number, symbol.end_line_number or symbol.line_number)
+    return (symbol.line_number, span_end(symbol))
 
 
 def _id(symbol: ASTSymbol, target: LocTarget) -> str:

@@ -75,6 +75,24 @@ class TestWalkRepo:
         with pytest.raises(WalkBoundExceeded, match="raise the file bound"):
             walk_repo(git_repo, max_files=2)
 
+    def test_a_tracked_symlink_escaping_the_root_is_not_listed(self, git_repo, tmp_path):
+        secret = tmp_path / "secret.txt"
+        secret.write_text("classified\n", encoding="utf-8")
+        (git_repo / "leak.py").symlink_to(secret)
+        git(git_repo, "add", "leak.py")
+        git(git_repo, "commit", "--quiet", "-m", "leak")
+
+        paths = [f.path for f in walk_repo(git_repo)]
+        assert "leak.py" not in paths
+
+    def test_a_subdirectory_root_still_honours_the_repository_gitignore(self, git_repo):
+        # `build/` and `*.log` are ignored by the root .gitignore, which the
+        # non-git fallback walk knows nothing about.
+        (git_repo / "pkg" / "trace.log").write_text("noise\n", encoding="utf-8")
+
+        paths = [f.path for f in walk_repo(git_repo / "pkg")]
+        assert paths == ["mod.py"]
+
 
 class TestRenderTree:
     def test_directories_carry_a_trailing_slash(self):

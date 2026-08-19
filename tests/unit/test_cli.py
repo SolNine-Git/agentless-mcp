@@ -189,6 +189,49 @@ class TestInProcess:
         assert "--limit" in capsys.readouterr().err
 
 
+class TestSliceBySymbol:
+    """Every id kind ``expand`` accepts, ``slice --symbol`` has to accept too.
+
+    The handler used to re-encode any id as a ``function:`` location, so a
+    class, a method or a constant answered "no such symbol" -- with exit 0,
+    which reads as "that symbol does not exist".
+    """
+
+    def test_a_function_id_resolves(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "slice", "--symbol", "py:core.py::quote") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "matched: py:core.py::quote" in out
+        assert "def quote(sku):" in out
+
+    def test_a_class_id_resolves(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "slice", "--symbol", "py:core.py::PriceBook") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "matched: py:core.py::PriceBook" in out
+        assert "class PriceBook:" in out
+
+    def test_a_method_id_resolves(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "slice", "--symbol", "py:core.py::PriceBook.cost_of")
+        assert code == EXIT_OK
+        assert "matched: py:core.py::PriceBook.cost_of" in capsys.readouterr().out
+
+    def test_a_constant_id_resolves(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "slice", "--symbol", "py:core.py::RATE") == EXIT_OK
+        assert "matched: py:core.py::RATE" in capsys.readouterr().out
+
+    def test_an_id_naming_nothing_is_a_domain_failure_with_the_reasons(
+        self, services, repo_path, capsys
+    ):
+        code = invoke(services, repo_path, "slice", "--symbol", "py:core.py::nothing")
+        assert code == EXIT_DOMAIN
+        out = capsys.readouterr().out
+        assert "unrecognized: function: nothing" in out
+        assert "unrecognized: class: nothing" in out
+
+    def test_a_malformed_id_is_a_usage_error_not_a_traceback(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "slice", "--symbol", "PriceBook") == EXIT_USAGE
+        assert "not a stable id" in capsys.readouterr().err
+
+
 class TestDiagram:
     """Mermaid on stdout, the receipt and the caveat on stderr."""
 
@@ -316,6 +359,49 @@ class TestLint:
         assert document["candidates"][0]["id"] == "01-candidate"
         assert document["candidates"][0]["findings"]
 
+    def test_a_candidate_with_an_unparsed_block_is_not_half_linted(
+        self, services, repo_path, capsys, tmp_path
+    ):
+        """One posture for one parse: a patch nobody could read is not checked.
+
+        Reporting findings from the blocks that happened to parse is a clean
+        report about half a patch, which is the failure mode ``ParseResult``
+        exists to prevent.
+        """
+        candidate = tmp_path / "01-truncated.txt"
+        candidate.write_text(
+            PATCH_WITH_A_DANGLING_CALL + "### core.py\n<<<<<<< SEARCH\nRATE = 3\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "not_checked" in out
+        assert "not terminated by" in out
+        assert "dangling_references" not in out
+
+    def test_a_manifest_the_linter_could_not_fully_read_is_reported(
+        self, services, repo_path, capsys
+    ):
+        """What could not be read about the repository has to reach the report.
+
+        A manifest that parses but declares its dependencies as a string
+        silences nothing and produces no finding, so the only trace that the
+        declared set is incomplete is the warning the core report carries.
+        """
+        (repo_path / "pyproject.toml").write_text(
+            '[project]\nname = "x"\ndependencies = "requests"\n', encoding="utf-8"
+        )
+        candidate = repo_path / "clean.txt"
+        candidate.write_text(
+            "### core.py\n<<<<<<< SEARCH\nRATE = 3\n=======\nRATE = 4\n>>>>>>> REPLACE\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "dependencies is not a list" in out
+
     def test_a_candidates_path_that_is_neither_is_refused(self, services, repo_path, capsys):
         assert (
             invoke(services, repo_path, "lint", "--candidates", str(repo_path / "nope"))
@@ -324,9 +410,125 @@ class TestLint:
         assert "neither a patch file nor a directory" in capsys.readouterr().err
 
 
+class TestValidateTestCommand:
+    """A command out of the analysed repository runs only when asked for."""
+
+    def test_a_config_test_command_is_refused_without_the_opt_in(
+        self, services, make_git_repo, candidates_dir, capsys
+    ):
+        root = make_git_repo({"core.py": SOURCE, ".agentless-mcp.json": '{"test_cmd": "true"}'})
+        candidates = candidates_dir({"01-candidate.txt": PATCH_WITH_A_DANGLING_CALL})
+
+        code = run(["validate", "--candidates", str(candidates), "--repo", str(root)], services)
+
+        assert code == EXIT_DOMAIN
+        err = capsys.readouterr().err
+        assert "refusing to run" in err
+        assert "--allow-config-test-cmd" in err or "allow_config_test_cmd" in err
+
+    def test_the_opt_in_lets_the_documented_fallback_run(
+        self, services, make_git_repo, candidates_dir, capsys
+    ):
+        """The gate is an opt-in, not a removal: the fallback still works."""
+        root = make_git_repo({"core.py": SOURCE, ".agentless-mcp.json": '{"test_cmd": "true"}'})
+        candidates = candidates_dir({"01-candidate.txt": PATCH_WITH_A_DANGLING_CALL})
+
+        code = run(
+            [
+                "validate",
+                "--candidates",
+                str(candidates),
+                "--repo",
+                str(root),
+                "--allow-config-test-cmd",
+            ],
+            services,
+        )
+
+        assert code == EXIT_OK
+        assert "refusing to run" not in capsys.readouterr().err
+
+    def test_a_non_positive_run_timeout_is_a_usage_error(
+        self, services, make_git_repo, candidates_dir, capsys
+    ):
+        root = make_git_repo({"core.py": SOURCE})
+        candidates = candidates_dir({"01-candidate.txt": PATCH_WITH_A_DANGLING_CALL})
+
+        code = run(
+            [
+                "validate",
+                "--candidates",
+                str(candidates),
+                "--repo",
+                str(root),
+                "--test-cmd",
+                "true",
+                "--run-timeout",
+                "0",
+            ],
+            services,
+        )
+
+        assert code == EXIT_USAGE
+        assert "--run-timeout" in capsys.readouterr().err
+
+
+class TestJsonShape:
+    """``--json`` says everything the text form says, on every subcommand."""
+
+    def test_json_reports_the_truncation_the_text_form_reports(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--budget", "40", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["truncation"]["shown"] < document["truncation"]["total"]
+        assert document["truncation"]["unit"] == "symbols"
+
+    def test_an_untruncated_answer_carries_no_truncation_field(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--json") == EXIT_OK
+        assert "truncation" not in json.loads(capsys.readouterr().out)
+
+    def test_diagram_json_carries_the_receipt(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["receipt"]["repo"] == str(repo_path.resolve())
+        assert document["mermaid"].startswith("flowchart LR")
+
+    def test_index_json_carries_the_receipt(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "index", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["receipt"]["repo"] == str(repo_path.resolve())
+        assert document["files"] == 2
+
+
 class TestExitCodes:
-    def test_exit_codes_are_the_three_documented_values(self):
-        assert (EXIT_OK, EXIT_DOMAIN, EXIT_USAGE) == (0, 1, 2)
+    """The documented table, one representative invocation per row.
+
+    Asserting the constants against themselves cannot fail; what the contract
+    is actually about is which condition gets which code, and that was
+    inconsistent across subcommands answering the same question.
+    """
+
+    @pytest.mark.parametrize(
+        ("name", "arguments", "expected"),
+        [
+            ("map_answers", ("map",), EXIT_OK),
+            ("cycles_are_legitimately_empty", ("cycles",), EXIT_OK),
+            ("skeleton_missing_file", ("skeleton", "gone.py"), EXIT_DOMAIN),
+            ("slice_missing_file", ("slice", "gone.py"), EXIT_DOMAIN),
+            ("expand_unknown_id", ("expand", "py:core.py::nothing"), EXIT_DOMAIN),
+            ("find_symbol_no_match", ("find-symbol", "nothing"), EXIT_DOMAIN),
+            ("slice_unknown_symbol", ("slice", "--symbol", "py:core.py::nothing"), EXIT_DOMAIN),
+            ("explain_unknown_symbol", ("explain", "nothing"), EXIT_DOMAIN),
+            ("path_unknown_endpoint", ("path", "quote", "nothing"), EXIT_DOMAIN),
+            ("skeleton_outside_the_root", ("skeleton", "../outside.py"), EXIT_USAGE),
+            ("slice_bad_range", ("slice", "core.py", "--lines", "9:2"), EXIT_USAGE),
+            ("slice_malformed_id", ("slice", "--symbol", "PriceBook"), EXIT_USAGE),
+            ("map_bad_budget", ("map", "--budget", "lots"), EXIT_USAGE),
+        ],
+    )
+    def test_a_condition_exits_with_its_documented_code(
+        self, services, repo_path, name, arguments, expected
+    ):
+        assert invoke(services, repo_path, *arguments) == expected, name
 
 
 class TestSubprocess:
@@ -550,6 +752,24 @@ class TestPatchSubprocess:
         result = self.run_cli("patch", "check", "-f", str(patch), "--repo", str(git_repo))
         assert result.returncode == 2
         assert "outside the root" in result.stderr
+
+    def test_a_truncated_patch_applies_nothing_and_exits_nonzero(self, git_repo, tmp_path):
+        """Exit 0 with half a patch in the checkout was the shape to kill.
+
+        The first block here is applicable and the second is truncated, which
+        is exactly what a generation that ran out of tokens produces.
+        """
+        truncated = PATCH + "### caller.py\n<<<<<<< SEARCH\nfrom core import quote\n"
+        patch = self.write_patch(tmp_path, truncated)
+
+        result = self.run_cli(
+            "patch", "apply", "-f", str(patch), "--repo", str(git_repo), "--in-place"
+        )
+
+        assert result.returncode != 0
+        assert "did not parse" in result.stderr
+        assert result.stdout == ""
+        assert (git_repo / "core.py").read_text(encoding="utf-8") == SOURCE
 
     def test_a_missing_patch_file_exits_two(self, git_repo, tmp_path):
         result = self.run_cli(

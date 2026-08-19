@@ -35,6 +35,15 @@ Two deliberate departures from the original, both narrowing it:
   candidate that did not apply, or that applied and changed nothing, has no
   equivalence class to vote in and is listed as excluded rather than counted.
 
+**A candidate nobody measured does not rank.** ``measured`` is the caller's
+statement that the regression command actually ran for this candidate. When it
+did not -- it could not be spawned, or the run never reached the candidate at
+all -- the candidate is excluded rather than ranked in the fall-through tier.
+"Applied cleanly, nothing passed the regression suite" is a claim about a
+suite that ran; saying it of a run that never happened is inventing evidence,
+and a crowned winner out of a run where nothing was measured is the worst
+shape that mistake can take.
+
 Pure ranking over already-computed verdicts. Nothing here runs a test, reads a
 file or knows what a repository is.
 """
@@ -68,11 +77,17 @@ class VoteCandidate:
     equal-sized clusters and therefore has to be stable across runs, which is
     why it is carried rather than recomputed from whatever order the verdicts
     happened to be read in.
+
+    ``measured`` and ``regression_passed`` answer different questions, and
+    collapsing them is how "the test command could not be started" turns into
+    "the patch broke the tests". It has no default: a caller who does not know
+    whether anything ran has to say so.
     """
 
     id: str
     index: int
     applied: bool
+    measured: bool
     equivalence_key: str | None
     regression_passed: bool
     reproduction_passed: bool
@@ -233,6 +248,8 @@ def _exclusion(candidate: VoteCandidate) -> str | None:
     """Return why a candidate cannot vote at all, or None when it can."""
     if not candidate.applied:
         return "the patch did not apply"
+    if not candidate.measured:
+        return "the test command never ran for it, so nothing was measured"
     if not candidate.equivalence_key:
         return "the patch applied but changed nothing, so it has no equivalence key"
     return None

@@ -14,7 +14,9 @@ prompt specifies, and an agent writing edits for this tool writes exactly it:
 
 The path header may be fenced (```` ```python ```` and a closing ```` ``` ````
 around the block, any language label) or bare, may be written ``### path`` or
-``path``, and is inherited by a following block that omits it. Filenames are
+``path``, and is inherited by a following block that omits it. A header line that is
+not shaped like a path is prose and is skipped, so a block introduced by a
+sentence names no file rather than naming the sentence. Filenames are
 taken verbatim after stripping: the original wrapped them in quotes and used
 ``eval()`` to unwrap them at apply time, which is remote code execution
 reachable from model output. Neither the quoting nor the ``eval`` is here.
@@ -41,7 +43,8 @@ make the format work at all. Matching is **whole-line**: both the haystack and
 the needle are wrapped in newline sentinels, so a search block can never match
 a fragment of a longer line. And ``...`` **elisions** are honoured: a search
 block of just ``...`` is anchored to a unique unindented line in scope, and a
-leading ``...`` line on either side is dropped.
+leading ``...`` line on either side is dropped. A block that elides *both*
+sides describes no change and is refused at parse time.
 
 Nothing here touches the filesystem. Paths are dictionary keys; reading and
 writing files, and deciding which paths a caller may name at all, belong to
@@ -63,6 +66,12 @@ FENCE = "```"
 # side means "the rest of this side is what matters".
 ELISION = "..."
 ELISION_PREFIX = ELISION + "\n"
+
+# What a header line may look like and still be read as a filename rather than
+# as prose: at most this many whitespace-separated words, and an extension of
+# at most this many characters on the last path component.
+_MAX_PATH_WORDS = 3
+_MAX_EXTENSION = 12
 
 
 @dataclass(frozen=True)
@@ -144,6 +153,7 @@ class EditStatus(str, Enum):
     AMBIGUOUS = "ambiguous"
     OUTSIDE_INTERVALS = "outside_intervals"
     NO_SUCH_FILE = "no_such_file"
+    UNREADABLE = "unreadable"
     NO_ANCHOR = "no_anchor"
 
     def __str__(self) -> str:
@@ -279,18 +289,51 @@ def _marker_reason(count: int) -> str:
 def _filename_in(header: str) -> str | None:
     """Return the file path a block header names, or None when it names none.
 
-    The last non-blank line that is not a code fence wins: with a fenced
+    The last path-shaped line that is not a code fence wins: with a fenced
     block the fence sits between the previous edit and this one's path, and
     with a bare block there is nothing but the path. A leading ``#`` run is
     stripped so the ``### path/to/file.py`` heading the Agentless prompt asks
     for reads as a path.
+
+    Lines that are not path-shaped are skipped rather than returned, so the
+    sentence a model writes above its block ("I will now fix the rounding in
+    src/app.py:") becomes "this block names no file" instead of becoming the
+    filename. Skipping rather than stopping is what lets a real header
+    survive a line of prose written under it.
     """
     for line in reversed(header.splitlines()):
         candidate = line.strip()
         if not candidate or candidate.startswith(FENCE):
             continue
-        return candidate.lstrip("#").strip() or None
+        stripped = candidate.lstrip("#").strip()
+        if stripped and _is_path_shaped(stripped):
+            return stripped
     return None
+
+
+def _is_path_shaped(candidate: str) -> bool:
+    """Return True when ``candidate`` could be a filename rather than prose.
+
+    The format has no quoting, so shape is the only signal there is. One word
+    is always taken as a path -- ``Makefile`` and ``src/app.py`` are both
+    words, and so is ``../../etc/passwd``, which is refused later by
+    containment rather than here. A candidate carrying spaces is taken only
+    when it stays within a few words and its last component ends in an
+    extension, which is what a filename with a space in it looks like and
+    what a sentence about a file does not.
+    """
+    words = candidate.split()
+    if len(words) == 1:
+        return True
+    if len(words) > _MAX_PATH_WORDS or "  " in candidate or "\t" in candidate:
+        return False
+    return _has_extension(candidate.rpartition("/")[2])
+
+
+def _has_extension(name: str) -> bool:
+    """Return True when ``name`` ends in a plain ``.ext`` suffix."""
+    stem, dot, suffix = name.rpartition(".")
+    return bool(dot and stem and suffix.isalnum() and len(suffix) <= _MAX_EXTENSION)
 
 
 @dataclass(frozen=True)
@@ -320,7 +363,17 @@ def _split_body(body: str) -> _Body:
         return _Body("", "", _divider_reason(len(dividers)))
 
     at = dividers[0]
-    return _Body("\n".join(lines[:at]), "\n".join(lines[at + 1 :]), "")
+    search = "\n".join(lines[:at])
+    replace = "\n".join(lines[at + 1 :])
+    if search == ELISION and replace.strip() == ELISION:
+        # `...` is the format's own elision token, so a generation that stalls
+        # mid-block emits it on both sides for free. Applying it anchors the
+        # search side to a unique line and writes the replacement verbatim,
+        # which puts a literal `...` statement into the file and reports the
+        # patch as applied -- and in python `...` parses, so the syntax delta
+        # blesses it too. It is refused here, where the block is still a block.
+        return _Body("", "", "both sides of this block are '...': there is nothing to write")
+    return _Body(search, replace, "")
 
 
 def _divider_reason(count: int) -> str:
@@ -404,7 +457,7 @@ def _apply_one(
 ) -> tuple[EditOutcome, str, list[tuple[int, int]]]:
     """Apply one edit to ``content``, returning the outcome and the new state."""
     padded = _pad(content)
-    search, replace, anchor_reason = _resolve_elisions(edit.search, edit.replace, padded, scopes)
+    search, replace, anchor_reason = resolve_elisions(edit.search, edit.replace, padded, scopes)
     if anchor_reason:
         return (
             EditOutcome(edit=edit, status=EditStatus.NO_ANCHOR, reason=anchor_reason),
@@ -534,13 +587,19 @@ def _line_spans(content: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _resolve_elisions(
+def resolve_elisions(
     search: str,
     replace: str,
     padded: str,
     scopes: Sequence[tuple[int, int]],
 ) -> tuple[str, str, str]:
     """Expand ``...`` elisions, or explain why this one cannot be expanded.
+
+    Public because the elision rule has to have exactly one owner: anything
+    that wants to know which lines an edit really searches for -- applying it
+    here, or locating it in :mod:`agentless_mcp.core.patchlint` -- has to ask
+    the same question of the same code, or an elided edit means two different
+    things depending on who read it.
 
     Ported from the original's ``parse_for_threedots`` with its two crashes
     guarded: an empty replacement side indexed ``replace[0]``, and a search

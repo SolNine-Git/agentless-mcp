@@ -5,21 +5,23 @@ This adapter owns two things the CLI does not, and nothing else.
 **The allowlist.** One server process serves a workspace of repositories, so
 there is no cwd to infer a root from and inferring one would be a
 wrong-repository answer. Every tool therefore takes ``repo_root`` first and it
-is checked, exactly, against the roots the server was started with. Configured
-roots come from repeatable ``--root DIR`` flags and, additively, from the
-client's own MCP ``roots`` capability -- verified present in the installed
-FastMCP as ``Context.list_roots()``. A client that does not implement roots
-answers "List roots not supported"; that is a normal negative, not a failure,
-and the static roots still apply.
+is checked, exactly, against the roots the server was started with. Those come
+from repeatable ``--root DIR`` flags and from nowhere else: the client's own
+MCP ``roots`` capability -- verified present in the installed FastMCP as
+``Context.list_roots()`` -- is read, but an advertised root can only *select*
+among the configured ones, never add one. A server started with no ``--root``
+serves nothing, whatever the client advertises, because otherwise the client
+rather than the operator would be deciding what this process may read. A
+client that does not implement roots answers "List roots not supported"; that
+is a normal negative, not a failure, and the static roots still apply.
 
-**The refusal on ambiguity.** With exactly one allowed root, an omitted
+**The refusal on ambiguity.** With exactly one configured root, an omitted
 ``repo_root`` defaults to it -- there is nothing to be ambiguous about. The
-client's advertised roots select the same way: static roots authorise, and
-when the advertised workspace picks out exactly one allowed root -- equal to
-it, or nested either way round -- an omitted ``repo_root`` defaults to that
-root, receipted like any other answer. With several candidates left, an
-omitted or unmatched root is refused with the list of allowed roots rather
-than guessed at.
+client's advertised roots select the same way: when the advertised workspace
+picks out exactly one configured root -- equal to it, or nested either way
+round -- an omitted ``repo_root`` defaults to that root, receipted like any
+other answer. With several candidates left, or none, an omitted or unmatched
+root is refused with the list of allowed roots rather than guessed at.
 
 Everything else is a thin call into the same services the CLI uses. There are
 no write, exec or fetch tools here and there will not be: patch application
@@ -28,6 +30,7 @@ happen in ``warmup``, never inside a tool call.
 """
 
 import argparse
+import asyncio
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -38,7 +41,7 @@ from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
 from mcp.shared.exceptions import McpError
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
@@ -65,6 +68,7 @@ from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.symbols import stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
+from agentless_mcp.util import fslimits
 from agentless_mcp.util.errors import AtlasError, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -74,6 +78,11 @@ SERVER_NAME = "agentless-mcp"
 
 # A line range arrives as a two-element [start, end] list.
 _RANGE_PAIR_LENGTH = 2
+
+# How long a client gets to answer `roots/list`. It is a capability query
+# answered from memory, so seconds is already generous; the number that
+# matters is that there is one, because every tool call waits behind it.
+_LIST_ROOTS_TIMEOUT_SECONDS = 2.0
 
 OPERATION_PATH = "path"
 OPERATION_CYCLES = "cycles"
@@ -85,25 +94,47 @@ OPERATION_DIAGRAM = "diagram"
 # is the only documentation an arbitrary client is guaranteed to read.
 RepoRoot = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["repo_root"])]
 
+# Wire bounds. Every number a tool takes is bounded in the published schema,
+# because that schema is the only refusal a model can read before it makes
+# the call -- an out-of-range value comes back as a validation error naming
+# the bound rather than as a nonsense answer from a service that sliced with
+# it. Services keep their own checks; this is the gate in front of them.
+MAX_LIMIT = 500
+MAX_CONTEXT_LINES = 200
+MAX_DIAGRAM_NODES = 500
+MAX_RESOLUTION = 100.0
 
-def _sole_selection(
-    allowed: Sequence[Path],
-    static: Sequence[Path],
-    client_roots: Sequence[Path],
-) -> Path | None:
-    """Return the one allowed root the client's workspace identifies, if any.
+Limit = Annotated[int, Field(ge=1, le=MAX_LIMIT)]
+OptionalLimit = Annotated[int, Field(ge=1, le=MAX_LIMIT)] | None
+ContextLines = Annotated[int, Field(ge=0, le=MAX_CONTEXT_LINES)]
+Depth = Annotated[int, Field(ge=1, le=fslimits.DEFAULT_MAX_DEPTH)]
+MaxEntries = Annotated[int, Field(ge=1, le=fslimits.DEFAULT_MAX_FILES)]
+Budget = Annotated[int, Field(ge=projectconfig.MIN_BUDGET, le=projectconfig.MAX_BUDGET)] | None
+MaxFiles = (
+    Annotated[int, Field(ge=projectconfig.MIN_MAX_FILES, le=projectconfig.MAX_MAX_FILES)] | None
+)
+MaxNodes = Annotated[int, Field(ge=1, le=MAX_DIAGRAM_NODES)]
+Resolution = Annotated[float, Field(gt=0, le=MAX_RESOLUTION)] | None
 
-    Static roots authorise; client roots select. An advertised root names a
-    static root when one contains the other (a path contains itself): the
-    workspace open inside a repository, or one directory above it. Static
-    roots are the candidates -- the advertised workspace never competes with
-    the root that contains it -- and only when it names none of them does a
-    single advertised root serve itself, which is the additive case. Zero
-    candidates or several is ordinary ambiguity and selects nothing; the
-    caller refuses with the listing exactly as if nothing were advertised.
+# One slice is [start, end] with 1-based lines, and the schema says so: a
+# three-element or empty range that reached the handler would be dropped, and
+# a read_slice with every range dropped renders the whole file.
+LineRange = Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=2, max_length=2)]
+
+
+def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Path | None:
+    """Return the one configured root the client's workspace identifies, if any.
+
+    Static roots authorise; client roots only select among them. An advertised
+    root names a configured root when one contains the other (a path contains
+    itself): the workspace open inside a repository, or one directory above
+    it. An advertised root that names none of them selects nothing -- it never
+    authorises itself, so there is nothing there to select. Zero candidates or
+    several is ordinary ambiguity; the caller refuses with the listing exactly
+    as if nothing were advertised.
     """
-    if len(allowed) == 1:
-        return allowed[0]
+    if len(static) == 1:
+        return static[0]
     candidates = [
         root
         for root in static
@@ -113,8 +144,6 @@ def _sole_selection(
     ]
     if len(candidates) == 1:
         return candidates[0]
-    if not candidates and len(client_roots) == 1:
-        return client_roots[0]
     return None
 
 
@@ -167,9 +196,16 @@ class ServerServices:
 class ToolHandlers:
     """The tool bodies, independent of FastMCP so they can be tested directly."""
 
-    def __init__(self, roots: Sequence[Path], services: ServerServices) -> None:
+    def __init__(
+        self,
+        roots: Sequence[Path],
+        services: ServerServices,
+        *,
+        allow_client_roots: bool = False,
+    ) -> None:
         self._roots = tuple(roots)
         self._services = services
+        self._allow_client_roots = allow_client_roots
 
     @property
     def roots(self) -> tuple[Path, ...]:
@@ -183,14 +219,28 @@ class ToolHandlers:
         *,
         no_cache: bool = False,
     ) -> RepoContext:
-        """Authorise one call's repository and open the source it reads from."""
-        allowed = list(dict.fromkeys([*self._roots, *client_roots]))
+        """Authorise one call's repository and open the source it reads from.
+
+        The allowlist is the configured roots and only those. What the client
+        advertises is a selection hint, never an authorisation: a client that
+        could widen this list would be the party deciding what the server
+        serves, which is the operator's decision and is spelled ``--root``.
+
+        ``--allow-client-roots`` restores the additive behaviour for operators
+        who want it. It is a flag rather than the default because the two
+        readings differ in who holds the decision, and only one of them can be
+        the quiet one: a permissive default is a confinement boundary that
+        stops confining without anyone typing anything.
+        """
+        allowed = list(self._roots)
+        if self._allow_client_roots:
+            allowed = list(dict.fromkeys([*allowed, *client_roots]))
         if not allowed:
             message = MESSAGES.server_no_roots
             raise SecurityRefusal(message)
 
         if repo_root is None or not repo_root.strip():
-            selected = _sole_selection(allowed, self._roots, client_roots)
+            selected = _sole_selection(allowed, client_roots)
             if selected is not None:
                 return self._with_source(resolve_repo(selected, allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
@@ -441,27 +491,85 @@ _OPERATIONS: dict[str, Callable[[GraphService, RepoContext, StructureRequest], s
 
 
 async def effective_client_roots(context: Context) -> list[Path]:
-    """Return the filesystem roots the connected client advertises.
+    """Return the directories the connected client advertises as its workspace.
 
-    Additive to ``--root``: a client that scopes the session to a workspace
-    should not have to repeat that scope on the command line. A client without
-    the capability answers with an McpError, which is a negative result rather
-    than a failure -- it is logged and the static roots stand.
+    A selection hint, never an authorisation: all these roots can do is pick
+    out one of the configured roots for a call that omitted ``repo_root``.
+
+    Asking is an out-of-process round trip to the client, on the critical path
+    of every tool, so it is bounded: a capability query that has not answered
+    in seconds is not going to, and a client that never answers must not hang
+    the tool that asked on its behalf. Every way the call can fail --
+    unimplemented, timed out, malformed payload, dead transport -- means the
+    same thing here, "no advertised roots", and leaves the static roots
+    standing.
     """
     try:
-        roots = await context.list_roots()
+        roots = await asyncio.wait_for(context.list_roots(), _LIST_ROOTS_TIMEOUT_SECONDS)
     except McpError as exc:
         logger.debug("client does not advertise MCP roots (%s); using --root only", exc)
         return []
+    except (asyncio.TimeoutError, ValidationError, OSError) as exc:
+        logger.warning("MCP roots/list failed (%s); using --root only", exc)
+        return []
 
-    paths: list[Path] = []
-    for root in roots:
-        parsed = urlparse(str(root.uri))
-        if parsed.scheme != "file":
-            logger.info("ignoring non-file MCP root %s", root.uri)
-            continue
-        paths.append(Path(unquote(parsed.path)).resolve())
-    return paths
+    advertised = (_client_root(root.uri) for root in roots)
+    return [path for path in advertised if path is not None]
+
+
+def _client_root(uri: object) -> Path | None:
+    """Parse one advertised root URI into a directory, or refuse it and say so.
+
+    This is the one place foreign data becomes a path in this adapter, so it
+    either yields an existing local directory or nothing. ``urlparse`` alone
+    does not: ``file://`` parses to an empty path that ``Path.resolve`` turns
+    into the server's own working directory, and ``file://host/etc`` parses to
+    a remote authority that is then silently dropped. Both are refusals here,
+    logged with the URI that caused them.
+    """
+    parsed = urlparse(str(uri))
+    if parsed.scheme != "file":
+        logger.warning("ignoring MCP root %s: not a file: URI", uri)
+        return None
+    if parsed.netloc not in ("", "localhost"):
+        logger.warning("ignoring MCP root %s: names a remote authority", uri)
+        return None
+    if not parsed.path:
+        logger.warning("ignoring MCP root %s: no path", uri)
+        return None
+
+    path = Path(unquote(parsed.path))
+    if not path.is_absolute():
+        logger.warning("ignoring MCP root %s: path is not absolute", uri)
+        return None
+
+    resolved = path.resolve()
+    if not resolved.is_dir():
+        logger.warning("ignoring MCP root %s: not an existing directory", uri)
+        return None
+    return resolved
+
+
+def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
+    """Parse the wire's line ranges into intervals, or refuse the whole call.
+
+    Refused rather than filtered: ``read_slice`` renders the whole file when
+    no interval survives, so dropping a malformed range answers a bounded
+    request with the substitute content this tool promises never to return.
+    The schema rejects a range that is not two 1-based line numbers before it
+    reaches here; the shape it cannot express is an end before its start.
+    """
+    intervals: list[tuple[int, int]] = []
+    for pair in ranges:
+        if len(pair) != _RANGE_PAIR_LENGTH or pair[1] < pair[0]:
+            listed = ", ".join(str(number) for number in pair)
+            message = (
+                f"read_slice range [{listed}] is not a line range: each one is "
+                "[start, end], 1-based and inclusive, with end at or after start."
+            )
+            raise AtlasError(message)
+        intervals.append((pair[0], pair[1]))
+    return intervals
 
 
 def build_server(handlers: ToolHandlers) -> FastMCP[None]:
@@ -488,8 +596,8 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         repo_root: RepoRoot = None,
         focus: list[str] | None = None,
-        budget: int | None = None,
-        max_files: int | None = None,
+        budget: Budget = None,
+        max_files: MaxFiles = None,
         granularity: str | None = None,
         no_cache: bool = False,
     ) -> str:
@@ -509,8 +617,8 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     async def list_dir(
         context: Context,
         repo_root: RepoRoot = None,
-        depth: int = DEFAULT_RENDER_DEPTH,
-        max_entries: int = DEFAULT_MAX_ENTRIES,
+        depth: Depth = DEFAULT_RENDER_DEPTH,
+        max_entries: MaxEntries = DEFAULT_MAX_ENTRIES,
     ) -> str:
         """List the repository's files, honouring gitignore."""
         return handlers.list_dir(await context_for(context, repo_root), depth, max_entries)
@@ -537,7 +645,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         stable_ids: list[str],
         repo_root: RepoRoot = None,
-        limit: int = DEFAULT_EXPAND_LIMIT,
+        limit: Limit = DEFAULT_EXPAND_LIMIT,
         no_cache: bool = False,
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
@@ -549,15 +657,12 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         path: str,
         repo_root: RepoRoot = None,
-        lines: list[list[int]] | None = None,
-        context_lines: int = DEFAULT_CONTEXT_LINES,
+        lines: list[LineRange] | None = None,
+        context_lines: ContextLines = DEFAULT_CONTEXT_LINES,
     ) -> str:
         """Return numbered lines for the given 1-based inclusive ranges."""
         ctx = await context_for(context, repo_root)
-        intervals = [
-            (pair[0], pair[1]) for pair in (lines or []) if len(pair) == _RANGE_PAIR_LENGTH
-        ]
-        return handlers.read_slice(ctx, path, intervals, context_lines)
+        return handlers.read_slice(ctx, path, _intervals(lines or []), context_lines)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["find_symbol"], annotations=read_only("Find symbol"))
     async def find_symbol(
@@ -565,7 +670,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         name: str,
         repo_root: RepoRoot = None,
         kind: str | None = None,
-        limit: int = DEFAULT_FIND_LIMIT,
+        limit: Limit = DEFAULT_FIND_LIMIT,
         no_cache: bool = False,
     ) -> str:
         """Find symbols by substring or qualified name."""
@@ -580,7 +685,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         target: str,
         repo_root: RepoRoot = None,
-        limit: int = DEFAULT_REFS_LIMIT,
+        limit: Limit = DEFAULT_REFS_LIMIT,
         shared_callers: bool = False,
     ) -> str:
         """Find the symbols that reference a target, grouped by file."""
@@ -594,7 +699,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         target: str,
         repo_root: RepoRoot = None,
-        limit: int = DEFAULT_EXPLAIN_LIMIT,
+        limit: Limit = DEFAULT_EXPLAIN_LIMIT,
         no_cache: bool = False,
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
@@ -612,10 +717,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         source: str = "",
         target: str = "",
         include_ambiguous: bool = False,
-        limit: int | None = None,
-        resolution: float | None = None,
+        limit: OptionalLimit = None,
+        resolution: Resolution = None,
         focus: str = "",
-        max_nodes: int = DEFAULT_MAX_NODES,
+        max_nodes: MaxNodes = DEFAULT_MAX_NODES,
         group_by_communities: bool = False,
         no_cache: bool = False,
     ) -> str:
@@ -645,7 +750,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         path: str,
         locs: list[str],
         repo_root: RepoRoot = None,
-        context_lines: int = DEFAULT_CONTEXT_LINES,
+        context_lines: ContextLines = DEFAULT_CONTEXT_LINES,
     ) -> str:
         """Turn class:/function:/line: strings into stable ids and intervals."""
         ctx = await context_for(context, repo_root)
@@ -673,12 +778,25 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         metavar="DIR",
         help="a repository this server may serve; repeatable",
     )
+    parser.add_argument(
+        "--allow-client-roots",
+        action="store_true",
+        help=(
+            "let the connected client's advertised MCP roots authorise "
+            "repositories, not merely select among --root directories. This "
+            "hands the client the operator's decision about what is servable"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
     """Start the stdio server. Returns only when the transport closes."""
     args = parse_args(argv)
-    handlers = ToolHandlers(resolved_allowlist(args.root), services)
+    handlers = ToolHandlers(
+        resolved_allowlist(args.root),
+        services,
+        allow_client_roots=args.allow_client_roots,
+    )
     build_server(handlers).run()
     return 0

@@ -14,9 +14,9 @@ from agentless_mcp.application.map_service import (
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import refs
+from agentless_mcp.core import grammars, refs
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
-from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = '''\
@@ -229,7 +229,7 @@ class TestViewService:
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(9000, 9050)], context=0
         )
-        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (10 lines)" in view.text
+        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (9 lines)" in view.text
         assert view.error == ""
         assert "class Ledger:" not in view.text
         assert "1|" not in view.text
@@ -246,7 +246,7 @@ class TestViewService:
             repo, "ledger.py", intervals=[(6, 6), (9000, 9050)], context=0
         )
         assert "6|        return normalise(quote(item))" in view.text
-        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (10 lines)" in view.text
+        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (9 lines)" in view.text
 
     def test_a_slice_with_no_ranges_still_returns_the_whole_file(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py")
@@ -260,6 +260,65 @@ class TestViewService:
         assert view.resolution.stable_ids == ("py:core.py::PriceBook",)
         assert view.resolution.intervals
         assert view.resolution.unrecognized[0].loc == "function: nope"
+
+
+class TestSliceRangesAreValidatedHere:
+    """A range the file cannot satisfy is named, never answered with the file.
+
+    The service owns the check rather than one adapter: the CLI validated
+    these and the MCP surface did not, so every shape below used to come back
+    as the whole file -- the token blow-up the funnel exists to prevent, and a
+    false belief that the lines returned are the ones asked for.
+    """
+
+    def test_a_transposed_range_is_refused_rather_than_rendered_whole(self, repo, extractor):
+        view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(8, 3)], context=0)
+        assert "line range 8-3 is not a range" in view.text
+        assert "1|from core import normalise, quote" not in view.text
+
+    def test_a_range_starting_below_one_is_refused(self, repo, extractor):
+        view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(-5, -1)], context=0)
+        assert "line range -5--1 is not a range" in view.text
+        assert "1|from core import normalise, quote" not in view.text
+
+    def test_a_negative_context_is_refused_by_name(self, repo, extractor):
+        with pytest.raises(AtlasError, match="context must not be negative"):
+            ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(5, 5)], context=-50)
+
+    def test_resolve_locations_refuses_a_negative_context_too(self, repo, extractor):
+        with pytest.raises(AtlasError, match="context must not be negative"):
+            ViewService(extractor).resolve_locations(repo, "core.py", ["line: 10"], context=-50)
+
+    def test_one_bad_range_beside_a_good_one_still_renders_the_good_one(self, repo, extractor):
+        view = ViewService(extractor).read_slice(
+            repo, "ledger.py", intervals=[(6, 6), (8, 3)], context=0
+        )
+        assert "6|        return normalise(quote(item))" in view.text
+        assert "line range 8-3 is not a range" in view.text
+
+
+class TestTheReportedLineCountIsTheFilesOwn:
+    """A trailing newline is a line terminator, not a line.
+
+    Every source file ends in one, so counting it made the "true line count"
+    this package states to agents one too high everywhere: a whole-file slice
+    ended in a blank numbered line that is not in the file, and the line after
+    the last one resolved instead of being refused.
+    """
+
+    def test_a_whole_file_slice_has_no_phantom_last_line(self, repo, extractor):
+        view = ViewService(extractor).read_slice(repo, "ledger.py")
+        assert view.text.rstrip("\n").endswith("9|        return quote(item)")
+        assert "10|" not in view.text
+
+    def test_the_out_of_range_message_states_the_real_count(self, repo, extractor):
+        view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(10, 10)], context=0)
+        assert "is beyond ledger.py (9 lines)" in view.text
+
+    def test_the_line_after_the_last_one_is_refused_not_resolved(self, repo, extractor):
+        view = ViewService(extractor).resolve_locations(repo, "ledger.py", ["line: 10"])
+        assert view.resolution.spans == ()
+        assert "line 10 is outside ledger.py (1-9)" in view.resolution.unrecognized[0].reason
 
 
 class TestSymbolService:
@@ -308,7 +367,7 @@ class TestSymbolService:
         result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
             repo, "nosuchsymbol"
         )
-        assert result.groups == ()
+        assert list(result.groups) == []
         assert result.total == 0
 
     def test_shared_callers_surfaces_a_symbol_the_same_callers_use(self, repo, extractor):
@@ -323,6 +382,131 @@ class TestSymbolService:
             ("run_billing", "billing.py", 4),
             ("Ledger.post", "ledger.py", 5),
         ]
+
+
+# One helper called from six files, so a limit that bites cuts whole files
+# out of the answer -- the shape a blast-radius question is actually asked in.
+WIDE_CALLER = """\
+from core import widget
+
+
+def use_{index}():
+    first = widget()
+    return first + widget()
+"""
+
+WIDE_CALLER_FILES = 6
+WIDE_SITES_PER_FILE = 3
+
+
+@pytest.fixture
+def wide_fan_in(tmp_path):
+    """A repository whose one helper is referenced from every other file."""
+    (tmp_path / "core.py").write_text("def widget():\n    return 1\n", encoding="utf-8")
+    for index in range(WIDE_CALLER_FILES):
+        (tmp_path / f"caller_{index}.py").write_text(
+            WIDE_CALLER.format(index=index), encoding="utf-8"
+        )
+    return resolve_repo(tmp_path, None)
+
+
+class TestABoundedListingSaysWhatItLeftOut:
+    """The rule this package is built on, applied to the two views that broke it.
+
+    A service that slices returns the pre-slice total, and the renderer that
+    receives the sliced sequence receives that total with it. Fan-in used to
+    recompute its header from the rows that survived, so fifty-two reference
+    sites at a limit of ten rendered as "10 references to widget" with no
+    marker -- an agent reads that as the complete caller set.
+    """
+
+    def test_a_truncated_fan_in_names_the_sites_and_files_it_dropped(self, wide_fan_in, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            wide_fan_in, "widget", limit=4
+        )
+        sites = WIDE_CALLER_FILES * WIDE_SITES_PER_FILE
+        rendered = render.render_ref_groups(result.groups, "widget")
+
+        assert result.total == sites
+        assert rendered.startswith(f"{sites} references to widget")
+        assert f"... {sites - 4} more references not listed" in rendered
+        assert "including every reference in 4 more files" in rendered
+
+    def test_the_json_form_carries_the_same_counts_as_the_text(self, wide_fan_in, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            wide_fan_in, "widget", limit=4
+        )
+        document = result.as_dict()
+
+        assert document["total"] == WIDE_CALLER_FILES * WIDE_SITES_PER_FILE
+        assert document["omitted"] == document["total"] - 4
+        assert document["files"] == WIDE_CALLER_FILES
+        assert document["files_omitted"] == WIDE_CALLER_FILES - len(document["groups"])
+
+    def test_an_untruncated_fan_in_says_nothing_about_omissions(self, wide_fan_in, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            wide_fan_in, "widget"
+        )
+        rendered = render.render_ref_groups(result.groups, "widget")
+
+        assert result.groups.omitted == 0
+        assert "not listed" not in rendered
+
+    def test_a_truncated_lookup_names_the_matches_it_dropped(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "", limit=2)
+        rendered = render.render_symbol_cards(result.cards)
+
+        assert result.cards.omitted == result.total - 2
+        assert f"... {result.total - 2} more matches not listed (limit 2)" in rendered
+
+    def test_an_untruncated_lookup_says_nothing_about_omissions(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote")
+        assert "not listed" not in render.render_symbol_cards(result.cards)
+
+
+class TestALimitThatBoundsNothingIsRefused:
+    """`limit=0` used to answer "no references" for a symbol with fifty-two."""
+
+    def test_find_symbol_refuses_a_zero_limit(self, repo, extractor):
+        with pytest.raises(AtlasError, match="limit must be at least 1"):
+            SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", limit=0)
+
+    def test_fan_in_refuses_a_zero_limit(self, repo, extractor):
+        with pytest.raises(AtlasError, match="limit must be at least 1"):
+            SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+                repo, "quote", limit=0
+            )
+
+    def test_expand_refuses_a_negative_limit(self, repo, extractor):
+        with pytest.raises(AtlasError, match="limit must be at least 1"):
+            SymbolService(extractor, Chars4Counter()).expand_symbols(
+                repo, ["py:core.py::quote"], limit=-1
+            )
+
+
+class TestOneFileFailsAlone:
+    def test_an_unwarmed_grammar_degrades_one_id_not_the_batch(self, repo, extractor, monkeypatch):
+        """`core.refs._parse_one` sets the convention; expansion broke it."""
+        (repo.root / "helper.go").write_text(
+            "package main\n\nfunc Helper() int {\n\treturn 1\n}\n", encoding="utf-8"
+        )
+        warmed = grammars.get_parser
+
+        def unwarmed(name):
+            if name == "go":
+                message = "language 'go' not warmed: run agentless-mcp warmup"
+                raise LanguageUnavailable(message)
+            return warmed(name)
+
+        monkeypatch.setattr(grammars, "get_parser", unwarmed)
+
+        result = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            repo, ["py:core.py::quote", "go:helper.go::Helper"]
+        )
+
+        assert [card.stable_id for card in result.cards] == ["py:core.py::quote"]
+        assert result.unresolved[0][0] == "go:helper.go::Helper"
+        assert "warmup" in result.unresolved[0][1]
 
 
 # A real multi-line declaration of the shape that broke the map on a live

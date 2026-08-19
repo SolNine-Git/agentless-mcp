@@ -148,6 +148,44 @@ b
 >>>>>>> REPLACE
 """
 
+ELIDED_BOTH_SIDES = """\
+### src/app.py
+<<<<<<< SEARCH
+...
+=======
+...
+>>>>>>> REPLACE
+"""
+
+ELIDED_REPLACEMENT_ONLY = """\
+### src/app.py
+<<<<<<< SEARCH
+...
+=======
+...
+
+>>>>>>> REPLACE
+"""
+
+PROSE_HEADER = """\
+I will now fix the rounding in src/app.py:
+<<<<<<< SEARCH
+    return total
+=======
+    return round(total, 2)
+>>>>>>> REPLACE
+"""
+
+PROSE_UNDER_A_REAL_HEADER = """\
+### src/app.py
+Here is the fix.
+<<<<<<< SEARCH
+    return total
+=======
+    return round(total, 2)
+>>>>>>> REPLACE
+"""
+
 
 class TestParseCorpus:
     """One row per shape the format shows up in."""
@@ -170,6 +208,11 @@ class TestParseCorpus:
             ),
             ("filename_with_spaces", FILENAME_WITH_SPACES, [("my dir/my file.py", "a")]),
             ("elided_search", ELIDED, [("src/app.py", "...")]),
+            (
+                "prose_under_a_real_header",
+                PROSE_UNDER_A_REAL_HEADER,
+                [("src/app.py", "    return total")],
+            ),
         ],
     )
     def test_well_formed_blocks_parse(self, name, text, expected):
@@ -185,6 +228,9 @@ class TestParseCorpus:
             ("no_search_marker", NO_SEARCH_MARKER, "no <<<<<<< SEARCH marker"),
             ("unterminated", UNTERMINATED, "not terminated by >>>>>>> REPLACE"),
             ("no_path", NO_PATH_ANYWHERE, "names no file"),
+            ("elided_both_sides", ELIDED_BOTH_SIDES, "both sides of this block are"),
+            ("elided_replacement_only", ELIDED_REPLACEMENT_ONLY, "both sides of this block are"),
+            ("prose_header", PROSE_HEADER, "names no file"),
         ],
     )
     def test_malformed_blocks_are_reported_not_dropped(self, name, text, fragment):

@@ -29,10 +29,24 @@ says which was used. In worktree mode it is HEAD, because that is what the
 worktree contains and what the resulting diff is against. In ``in_place`` mode
 it is the working tree, which the clean-tree requirement makes identical to
 HEAD anyway.
+
+Two rules govern the write itself, and both are all-or-nothing:
+
+* **A file whose bytes are not UTF-8 is not edited.** The shared reader
+  decodes lossily on purpose; this service reads strictly, because writing a
+  lossy decode back rewrites every undecodable byte in the file as U+FFFD --
+  in regions no edit named.
+* **A patch that did not fully apply writes nothing.** ``new_contents`` holds
+  every file a *successful* edit touched, so writing it on a failed patch
+  leaves a checkout carrying an arbitrary prefix of the change. The write
+  stages every file first and moves them into place only once all of them are
+  staged, so an ``OSError`` part-way through is an error, not a half-patch.
 """
 
 import json
+import shutil
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -44,14 +58,31 @@ from agentless_mcp.core.normalize import SyntaxVerdict
 from agentless_mcp.core.patches import (
     ApplyResult,
     Edit,
+    EditOutcome,
+    EditStatus,
     ParseResult,
     apply_edits,
     parse_blocks,
 )
 from agentless_mcp.util.errors import AtlasError
-from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.fslimits import BoundedRead, contained_path, read_bounded
 
 EDITS_KEY = "edits"
+
+# What the write side reports for a file it will not decode. `read_bounded`
+# maps every undecodable byte to U+FFFD, so the replacement character is the
+# necessary sign that a decode was lossy -- and a strict decode of the bytes
+# is what decides, which keeps a file that genuinely contains U+FFFD editable.
+NOT_UTF8 = "not UTF-8 text: editing it would rewrite the bytes this tool cannot decode"
+REPLACEMENT_CHAR = "\ufffd"
+
+# The reason for the one unread file that is not a readability problem at all.
+# Written and matched in one place, because "the file is not there" and "the
+# file is there and could not be read" are different answers to the caller.
+NO_SUCH_FILE = "no such file in this repository"
+
+# The suffix a staged write carries until every file in the patch is staged.
+STAGING_SUFFIX = ".agentless-mcp-staged"
 
 
 @dataclass(frozen=True)
@@ -290,6 +321,10 @@ class PatchService:
         Both refusals -- a path outside the root, a dirty tree -- happen
         before a worktree exists, so a patch that is never going to be applied
         does not cost a checkout copy first.
+
+        The write is all or nothing: a patch whose edits did not all land
+        writes no file and returns an empty diff, and a write that fails
+        part-way raises rather than leaving a prefix of the patch on disk.
         """
         scoped = self._canonical(ctx, edits)
         if in_place:
@@ -335,12 +370,19 @@ class PatchService:
         intervals: Mapping[str, Sequence[tuple[int, int]]] | None,
         in_place: bool,
     ) -> ApplyReport:
-        """Apply already-canonicalised ``edits`` against ``base`` and diff it."""
-        sources = self._read(base, edits)
-        result = apply_edits(edits, sources.contents, intervals=intervals)
+        """Apply already-canonicalised ``edits`` against ``base`` and diff it.
 
-        for path, content in result.new_contents.items():
-            contained_path(base, path).write_text(content, encoding="utf-8")
+        Nothing reaches the filesystem unless every edit landed, so the diff
+        of a failed patch is empty rather than being the half of it that
+        happened to match.
+        """
+        sources = self._read(base, edits)
+        result = _with_read_reasons(
+            apply_edits(edits, sources.contents, intervals=intervals), sources.unreadable
+        )
+
+        if result.ok:
+            _write_all(base, result.new_contents)
 
         return ApplyReport(
             diff=sandbox.diff(base),
@@ -397,13 +439,118 @@ class PatchService:
 
             target = contained_path(base, edit.path)
             if not target.is_file():
-                unreadable[edit.path] = "no such file in this repository"
+                unreadable[edit.path] = NO_SUCH_FILE
                 continue
 
-            read = read_bounded(target)
+            read = _read_source(target)
             if read.text is None:
                 unreadable[edit.path] = read.skipped or "unreadable"
                 continue
             contents[edit.path] = read.text
 
         return _Sources(contents=contents, unreadable=unreadable)
+
+
+def _read_source(target: Path) -> BoundedRead:
+    """Read one file the write side may have to write back, or refuse it.
+
+    :func:`~agentless_mcp.util.fslimits.read_bounded` decodes with
+    ``errors="replace"`` deliberately -- a stray byte must not fail a
+    repository scan, and the tag cache's content digest is taken over exactly
+    that decode. The write side cannot use it as-is: the round trip is not
+    lossless, so an edit anywhere in a file would rewrite every undecodable
+    byte in it. The shared reader stays lossy; the decision is made here, by
+    decoding the bytes strictly for the files a patch actually names.
+    """
+    read = read_bounded(target)
+    if read.text is None or REPLACEMENT_CHAR not in read.text:
+        return read
+
+    try:
+        target.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return BoundedRead(path=target, text=None, skipped=NOT_UTF8)
+    except OSError as exc:
+        return BoundedRead(path=target, text=None, skipped=f"unreadable: {_reason(exc)}")
+    return read
+
+
+def _with_read_reasons(result: ApplyResult, unreadable: Mapping[str, str]) -> ApplyResult:
+    """Give every edit to a file that could not be read the reason it was not.
+
+    ``apply_edits`` sees only the contents it was handed, so a file skipped
+    for size, for permissions or for not being UTF-8 comes back as "no such
+    file in this patch's scope" -- false about the caller's own repository,
+    and the one diagnosis whose obvious next move (recreate the file) is
+    destructive. ``check`` reports these per file; this is the same fact on
+    the outcome that names the block.
+    """
+    if not unreadable:
+        return result
+    return replace(
+        result,
+        outcomes=tuple(
+            _unread_outcome(outcome, unreadable[outcome.edit.path])
+            if outcome.edit.path in unreadable
+            else outcome
+            for outcome in result.outcomes
+        ),
+    )
+
+
+def _unread_outcome(outcome: EditOutcome, reason: str) -> EditOutcome:
+    """Restate one outcome as the reason its file was never read."""
+    status = EditStatus.NO_SUCH_FILE if reason == NO_SUCH_FILE else EditStatus.UNREADABLE
+    return replace(outcome, status=status, reason=f"{outcome.edit.path}: {reason}")
+
+
+def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
+    """Write every edited file, or leave the tree exactly as it was.
+
+    Two phases. Each new content is written to a sibling staging file first,
+    and only when all of them are on disk is each moved into place with
+    :meth:`pathlib.Path.replace`. A failure in the first phase has touched no
+    target at all; the replace is atomic, so no target can be left truncated
+    by the second. Bytes are written rather than text because ``write_text``'s
+    default newline handling rewrites every line ending in the file on
+    Windows -- a change to a file no edit asked for -- and the mode is carried
+    across so an executable script does not come back unexecutable.
+    """
+    staged: list[tuple[Path, Path]] = []
+    for path, content in sorted(new_contents.items()):
+        target = contained_path(base, path)
+        staging = target.with_name(target.name + STAGING_SUFFIX)
+        try:
+            staging.write_bytes(content.encode("utf-8"))
+            shutil.copymode(target, staging)
+        except OSError as exc:
+            _discard([*staged, (staging, target)])
+            message = f"patch not applied: cannot write {path}: {_reason(exc)}; nothing was changed"
+            raise AtlasError(message) from exc
+        staged.append((staging, target))
+
+    for position, (staging, target) in enumerate(staged):
+        try:
+            staging.replace(target)
+        except OSError as exc:
+            _discard(staged[position:])
+            written = ", ".join(done.name for _, done in staged[:position]) or "nothing"
+            message = (
+                f"patch partly applied: cannot replace {target.name}: {_reason(exc)}; "
+                f"already written: {written}"
+            )
+            raise AtlasError(message) from exc
+
+
+def _discard(staged: Sequence[tuple[Path, Path]]) -> None:
+    """Remove staging files that will never be moved into place."""
+    for staging, _ in staged:
+        # A staging file that cannot be removed is litter; the failure that
+        # brought us here is the one the caller needs to see.
+        with suppress(OSError):
+            staging.unlink(missing_ok=True)
+
+
+def _reason(exc: OSError) -> str:
+    """Return the readable half of an OS error, however it was raised."""
+    return exc.strerror or str(exc)

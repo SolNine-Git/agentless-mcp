@@ -11,6 +11,8 @@ taken, a second acquisition is refused, and the refusal is a message naming
 the repository rather than a wait.
 """
 
+import errno
+import importlib
 import subprocess
 import sys
 
@@ -92,6 +94,36 @@ class TestFileLock:
             pytest.raises(filelock.LockUnavailableError),
         ):
             take_it_again()
+
+    def test_taking_the_lock_does_not_truncate_the_file(self, tmp_path):
+        flavour = platforms.family(sys.platform)
+        path = tmp_path / "write.lock"
+        path.write_text("held by someone\n", encoding="utf-8")
+
+        with filelock.exclusive(path, flavour=flavour):
+            pass
+
+        assert path.read_text(encoding="utf-8") == "held by someone\n"
+
+    @pytest.mark.skipif(
+        platforms.family(sys.platform) != platforms.POSIX,
+        reason="the fcntl branch only runs on POSIX",
+    )
+    def test_a_filesystem_that_cannot_lock_is_refused_not_leaked(self, tmp_path, monkeypatch):
+        # ENOLCK is what a network or FUSE mount answers with; it must arrive
+        # as the same typed refusal as a lock another process already holds.
+        fcntl = importlib.import_module("fcntl")
+
+        def no_locks(descriptor: int, operation: int) -> None:
+            raise OSError(errno.ENOLCK, "No locks available")
+
+        monkeypatch.setattr(fcntl, "flock", no_locks)
+
+        with (
+            pytest.raises(filelock.LockUnavailableError),
+            filelock.exclusive(tmp_path / "write.lock", flavour=platforms.POSIX),
+        ):
+            pytest.fail("the acquisition should have been refused")
 
     def test_the_lock_is_released_for_the_next_holder(self, tmp_path):
         flavour = platforms.family(sys.platform)

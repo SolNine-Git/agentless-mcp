@@ -18,7 +18,9 @@ ten scans of the same unchanged tree.
 
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
-its parse errors rather than skipped.
+its parse errors rather than skipped -- but it is not *checked*, because the
+write side refuses a partly-parsed patch whole and findings about the blocks
+that did parse would describe a patch that can never be applied.
 """
 
 from collections.abc import Sequence
@@ -122,9 +124,16 @@ def _findings(
 ) -> tuple[render.LintFinding, ...]:
     """Parse one candidate and run every check over the edits it yielded.
 
-    A block that did not parse is reported as a coverage gap in the same list
-    as the findings: a patch half of which was unreadable, linted silently, is
-    a clean report about a patch nobody read.
+    A block that did not parse is reported as a coverage gap rather than
+    skipped: a patch half of which was unreadable, linted silently, is a clean
+    report about a patch nobody read.
+
+    A candidate with *any* malformed block is not checked at all. The write
+    side refuses such a patch whole -- ``validate`` fails the candidate,
+    ``patch apply`` refuses the run -- and findings drawn from the blocks that
+    happened to parse would describe a patch that can never be applied. Lint
+    still exits 0 and still reports every other candidate: the coverage gap is
+    the finding.
     """
     parsed = load_edits(candidate.text)
     gaps = tuple(
@@ -139,8 +148,33 @@ def _findings(
         )
         for error in parsed.errors
     )
+    if gaps:
+        return gaps
     report = patchlint.lint_patch(_canonical(root, parsed.edits), facts, source)
-    return gaps + tuple(_row(finding) for finding in report.findings)
+    unread = tuple(_unread_row(warning) for warning in report.warnings)
+    return unread + tuple(_row(finding) for finding in report.findings)
+
+
+def _unread_row(warning: str) -> render.LintFinding:
+    """Report what could not be read about the *repository* as a coverage gap.
+
+    :attr:`patchlint.LintReport.warnings` is not about the patch: a dependency
+    manifest that did not parse is the case that matters, because it is also
+    the case that silences a whole check. A report that renders findings and
+    drops these is a clean report about a repository nobody could read, which
+    is the same lie as a clean report about a patch nobody read -- so it
+    travels as the coverage gap it is, in the same list, until the view model
+    grows a warnings field of its own.
+    """
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=f"not checked: {warning}",
+        path="",
+        line=0,
+        location="(repository)",
+        evidence=warning,
+    )
 
 
 def _canonical(root: Path, edits: Sequence[Edit]) -> tuple[Edit, ...]:

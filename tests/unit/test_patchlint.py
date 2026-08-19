@@ -19,6 +19,9 @@ from agentless_mcp.core.patchlint import (
     DeclaredDependencies,
     RepoFacts,
     Severity,
+    _guarded,
+    _literal_end,
+    _positional_arguments,
     _scan_toml,
     lint_patch,
     near_misses,
@@ -30,6 +33,7 @@ from agentless_mcp.core.patchlint import (
 )
 from agentless_mcp.core.refs import RepoScan, build_ref_index, scan_repo
 from agentless_mcp.core.resolve import build_resolver
+from agentless_mcp.util.errors import AtlasError
 
 PYPROJECT = """\
 [project]
@@ -48,6 +52,15 @@ mcp = [
 
 [dependency-groups]
 dev = ["pytest>=9.1.1"]
+"""
+
+# The same manifest mid-edit: one `]` short, which is what a developer running
+# `lint` while editing `pyproject.toml` hands this module.
+BROKEN_PYPROJECT = """\
+[project]
+name = "fixture"
+dependencies = [
+    "requests",
 """
 
 APP = """\
@@ -188,22 +201,25 @@ class TestDependencyManifests:
         assert requirement_name("!!!") == ""
 
     def test_every_declaration_table_is_read(self):
-        names, warnings = parse_pyproject_dependencies(PYPROJECT)
+        parse = parse_pyproject_dependencies(PYPROJECT)
 
-        assert names == {"tree-sitter", "requests", "fastmcp", "pytest"}
-        assert warnings == ()
+        assert parse.packages == {"tree-sitter", "requests", "fastmcp", "pytest"}
+        assert parse.warnings == ()
+        assert parse.parsed is True
 
     def test_a_malformed_manifest_declares_nothing_and_says_so(self):
-        names, warnings = parse_pyproject_dependencies("[project\nbroken")
+        parse = parse_pyproject_dependencies("[project\nbroken")
 
-        assert names == frozenset()
-        assert len(warnings) == 1
+        assert parse.packages == frozenset()
+        assert len(parse.warnings) == 1
+        assert parse.parsed is False
 
     def test_a_non_list_dependencies_key_is_reported_not_guessed(self):
-        names, warnings = parse_pyproject_dependencies('[project]\ndependencies = "requests"\n')
+        parse = parse_pyproject_dependencies('[project]\ndependencies = "requests"\n')
 
-        assert names == frozenset()
-        assert warnings == ("dependencies is not a list; ignored",)
+        assert parse.packages == frozenset()
+        assert parse.warnings == ("dependencies is not a list; ignored",)
+        assert parse.parsed is True
 
     def test_requirements_files_are_read(self):
         text = "-r other.txt\n--index-url https://example.invalid\n\n# comment\nrequests==2.0\n"
@@ -226,6 +242,209 @@ class TestDependencyManifests:
 
         assert "coverage" in declared.packages
         assert declared.sources == ("pyproject.toml", "requirements-dev.txt")
+
+    def test_a_manifest_that_did_not_parse_is_not_a_manifest_that_declares_nothing(self, repo):
+        (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
+
+        declared = read_declared_dependencies(repo)
+
+        assert declared.known is False
+        assert declared.sources == ()
+        assert len(declared.warnings) == 1
+        assert declared.warnings[0].startswith("pyproject.toml did not parse")
+
+
+class TestMalformedManifest:
+    """A manifest that did not parse must accuse nothing and say why.
+
+    The failure this pins is the one where ``known`` stayed True over an empty
+    package set, so every third-party import in the patch was reported as a
+    hallucinated dependency and the parse warning that explained it was
+    discarded.
+    """
+
+    def test_no_import_is_accused_of_being_hallucinated(self, facts, source, repo):
+        (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import requests\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        findings = checks(report, CHECK_UNDECLARED_IMPORTS)
+        assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
+
+    def test_the_parse_failure_reaches_the_report(self, facts, source, repo):
+        (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import requests\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        assert len(report.warnings) == 1
+        assert report.warnings[0].startswith("pyproject.toml did not parse")
+        assert report.as_dict()["warnings"] == list(report.warnings)
+
+    def test_the_gap_names_the_parse_failure_rather_than_a_missing_manifest(
+        self, facts, source, repo
+    ):
+        (repo / "pyproject.toml").write_text(BROKEN_PYPROJECT, encoding="utf-8")
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import requests\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        gap = checks(report, CHECK_UNDECLARED_IMPORTS)[0]
+        assert "did not parse" in gap.evidence
+
+    def test_a_readable_manifest_carries_no_warnings(self, facts, source):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            source,
+        )
+
+        assert report.warnings == ()
+
+
+class TestDegradation:
+    """The line between input this module cannot read and a defect inside it.
+
+    ``DEGRADED_ERRORS`` names the first kind. The second must reach the caller
+    as a traceback: a check that turns a ``None`` dereference into a
+    ``not checked`` line leaves six healthy-looking checks around it and no
+    way to tell a coverage note from a crash.
+    """
+
+    def test_a_degraded_error_becomes_exactly_one_gap(self):
+        def unreadable():
+            message = "the fragment is not utf-8"
+            raise AtlasError(message)
+
+        findings = _guarded(CHECK_ARITY, unreadable)
+
+        assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
+        assert "AtlasError" in findings[0].message
+
+    @pytest.mark.parametrize(
+        "error",
+        [AttributeError, TypeError, KeyError, IndexError],
+        ids=lambda error: error.__name__,
+    )
+    def test_a_defect_in_this_module_surfaces_as_one(self, error):
+        def defective():
+            message = "a renamed field"
+            raise error(message)
+
+        with pytest.raises(error):
+            _guarded(CHECK_ARITY, defective)
+
+    def test_a_fragment_the_source_cannot_read_is_reported_as_a_coverage_gap(self, facts):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            _RaisingSource(AtlasError),
+        )
+
+        gaps = checks(report, CHECK_COVERAGE)
+        assert [gap.path for gap in gaps] == ["app.py"]
+        assert gaps[0].severity is Severity.NOT_CHECKED
+
+    def test_a_defect_parsing_a_fragment_surfaces_as_one(self, facts):
+        with pytest.raises(AttributeError):
+            lint_patch(
+                [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+                facts(),
+                _RaisingSource(AttributeError),
+            )
+
+
+class _RaisingSource:
+    """A fragment source whose parse always fails with one error class."""
+
+    MESSAGE = "fragment parse"
+
+    def __init__(self, error):
+        self._error = error
+
+    def symbols_for(self, text, language, path):
+        raise self._error(self.MESSAGE)
+
+    def imports_for(self, text, language, path):
+        raise self._error(self.MESSAGE)
+
+    def refs_for(self, text, language, path):
+        raise self._error(self.MESSAGE)
+
+
+class TestLiteralScanner:
+    """What the bracket-depth scanner treats as text rather than as structure.
+
+    The mechanism that keeps a docstring's brackets, a comment's parentheses
+    and a string's commas out of the argument count. Characterised against
+    Python's own grammar: every row below is what ``ast.parse`` would say
+    about the same call.
+    """
+
+    @pytest.mark.parametrize(
+        ("text", "arguments"),
+        [
+            ('f("a(b", c)', ['"a(b"', "c"]),
+            ("f('it\\'s', x)", ["'it\\'s'", "x"]),
+            ("f(f\"{d['k']}\", x)", ["f\"{d['k']}\"", "x"]),
+            ('f("""a)b""", c)', ['"""a)b"""', "c"]),
+            ('f("""doc (with [brackets]""", b)', ['"""doc (with [brackets]"""', "b"]),
+            ("f('''x''', y)", ["'''x'''", "y"]),
+            ('f("", b)', ['""', "b"]),
+            ("f('''''', b)", ["''''''", "b"]),
+            ('f(a)  # comment with ) and "quote', ["a"]),
+            ("f(x, y)  # )", ["x", "y"]),
+            ('f("#not a comment", b)', ['"#not a comment"', "b"]),
+            ('f(a, "b, c")', ["a", '"b, c"']),
+            ('f(r"\\d+", b)', ['r"\\d+"', "b"]),
+            ('f("a\\"b", c)', ['"a\\"b"', "c"]),
+            ('f(f"{x!r}", b)', ['f"{x!r}"', "b"]),
+            ('f("s" if x else "t", y)', ['"s" if x else "t"', "y"]),
+            ("f(a, \\\n  b)", ["a", "\\\n  b"]),
+            ('f(f"{d["k"]}", b)', ['f"{d["k"]}"', "b"]),
+            ('f(f"{d["k"]}, x")', ['f"{d["k"]}, x"']),
+        ],
+    )
+    def test_the_argument_scan_agrees_with_pythons_grammar(self, text, arguments):
+        assert _positional_arguments(text, text.index("(")) == arguments
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            'f(r"a\\", b)',
+            "f(a,  # note (\n    b,\n)",
+        ],
+    )
+    def test_a_call_this_scanner_cannot_read_is_not_judged(self, text):
+        assert _positional_arguments(text, text.index("(")) is None
+
+    @pytest.mark.parametrize(
+        ("text", "end"),
+        [
+            ('"abc" rest', 5),
+            ("'abc' rest", 5),
+            ('"""a "" b""" rest', 12),
+            ("'''a'''", 7),
+            ('"esc\\"aped" rest', 11),
+            ('"unterminated', 13),
+            ('"stops at\nnewline', 10),
+            ("# a comment\nnext", 11),
+            ("# to the end", 12),
+            ('"""unterminated triple', 22),
+        ],
+    )
+    def test_a_literal_ends_where_python_ends_it(self, text, end):
+        assert _literal_end(text, 0) == end
 
 
 class TestTomlFallback:
@@ -263,6 +482,62 @@ class TestTomlFallback:
 
     def test_a_document_without_dependencies_scans_to_nothing(self):
         assert _scan_toml('[project]\nname = "x"\n') == {}
+
+    def test_the_scanner_agrees_with_tomllib_on_this_repositorys_own_manifest(self):
+        tomllib = pytest.importorskip("tomllib")
+        text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+        document = tomllib.loads(text)
+
+        assert _scan_toml(text) == {
+            "project": {
+                "dependencies": document["project"]["dependencies"],
+                "optional-dependencies": document["project"]["optional-dependencies"],
+            },
+            "dependency-groups": document["dependency-groups"],
+        }
+
+    @pytest.mark.parametrize(
+        ("label", "text"),
+        [
+            (
+                "a bracket in a trailing comment",
+                '[project]\ndependencies = ["a"]  # [x\n',
+            ),
+            (
+                "a bracket in a comment inside the array",
+                '[project]\ndependencies = [\n    # see [1]\n    "a",\n]\n',
+            ),
+            (
+                "a quoted phrase in a comment inside the array",
+                '[project]\ndependencies = [\n    # a "quoted" note\n    "a",\n]\n',
+            ),
+            (
+                "a trailing comment on a table header",
+                '[project]  # the metadata\ndependencies = ["a"]\n',
+            ),
+            ("a dotted key", 'project.dependencies = ["a"]\n'),
+            (
+                "an escaped quote in a requirement",
+                '[project]\ndependencies = ["a", "b ; extra == \\"x\\""]\n',
+            ),
+            ("a bracket inside an extras marker", '[project]\ndependencies = ["a[std]"]\n'),
+            (
+                "a hash inside a requirement string",
+                '[project]\ndependencies = ["a @ https://x/y#egg=a"]\n',
+            ),
+        ],
+    )
+    def test_the_scanner_agrees_with_tomllib(self, label, text):
+        tomllib = pytest.importorskip("tomllib")
+
+        assert (
+            _scan_toml(text)["project"]["dependencies"]
+            == (tomllib.loads(text)["project"]["dependencies"])
+        ), label
+
+    def test_an_unterminated_array_is_refused_rather_than_scanned_to_nothing(self):
+        with pytest.raises(ValueError, match="unterminated"):
+            _scan_toml('[project]\ndependencies = [\n    "a",\n')
 
 
 class TestUndeclaredImports:
@@ -792,6 +1067,35 @@ class TestDanglingCallers:
         assert findings[0].severity is Severity.WARNING
         assert "helper" in findings[0].message
         assert "caller.py:1" in findings[0].evidence
+
+    def test_a_local_of_the_same_name_is_not_a_broken_caller(
+        self, facts, source, tmp_path, extractor
+    ):
+        """A parameter that shares the removed symbol's spelling is not a caller.
+
+        This check exists to say a removal is unsafe, so a false positive is
+        the expensive direction: it tells the author to abandon a rename that
+        breaks nothing. ``Ref.locally_bound`` is what distinguishes the two,
+        and the site collector has to read it.
+        """
+        root = tmp_path / "locals"
+        root.mkdir()
+        (root / "helpers.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+        (root / "shadow.py").write_text("def run(helper):\n    return helper()\n", encoding="utf-8")
+
+        report = lint_patch(
+            [
+                edit(
+                    "helpers.py",
+                    "def helper():\n    return 1",
+                    "def helper_renamed():\n    return 1",
+                )
+            ],
+            facts(root),
+            source,
+        )
+
+        assert checks(report, CHECK_DANGLING_CALLERS) == []
 
     def test_a_symbol_the_patch_keeps_is_not_reported(self, facts, source):
         report = lint_patch(

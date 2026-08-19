@@ -4,4 +4,4 @@
 2 hops from py:reports.py::reorder_report to py:inventory.py::Item.needs_reorder
   start  reorder_report    py:reports.py::reorder_report
     1. -> references (unique)    Inventory.reorder_list    inventory.py:87    [py:inventory.py::Inventory.reorder_list]
-    2. -> references (same-file)    Item.needs_reorder    inventory.py:32    [py:inventory.py::Item.needs_reorder]
+    2. -> references (unique)    Item.needs_reorder    inventory.py:32    [py:inventory.py::Item.needs_reorder]

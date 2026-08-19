@@ -13,6 +13,13 @@ what the code does moves the key. That is what lets the vote cluster
 equivalent samples before counting them, which is the ranking failure TRAE
 reported from naive majority voting.
 
+*Comments* here means commentary. A build constraint, a shebang, a ``# type:``
+annotation, a ``# noqa`` and a ``@ts-expect-error`` all live in a comment node
+and are all read by something -- so they stay in the stream, per
+:data:`_DIRECTIVE`. Dropping them made a candidate that flips ``//go:build
+linux`` to ``windows`` hash identically to the candidate that changes nothing,
+and the vote then credited its samples to the no-op's class.
+
 Two design points, both established by measurement rather than assumption.
 
 *Every* leaf is emitted, not only the named ones. A named-leaf stream carries
@@ -45,6 +52,7 @@ claiming a clean parse nobody performed.
 
 import difflib
 import hashlib
+import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 
@@ -65,6 +73,30 @@ BLOCK_CLOSE = "\x02"
 # order" fixes the order, and naming the path is what makes the order mean
 # something.
 _KEY_SEPARATOR = "\x00"
+
+# The comment marker a directive can open with, in the languages this package
+# parses: `#`, `//`, `/*` and Lua/SQL's `--`.
+_COMMENT_MARKER = re.compile(r"^\s*(?:#|//|/\*|--)\s*")
+
+# Comment bodies that are not commentary. Each of these is read by something
+# -- the compiler, the interpreter, the type checker, a lint gate -- so two
+# files differing only in one of them are not the same file, and clustering
+# them together credits a candidate's votes to a class it does not belong to.
+# Matched after the opening marker is stripped, anchored, and each ends at a
+# boundary a prose comment will not reproduce: `# pragmatic` is prose,
+# `# pragma: no cover` is a directive.
+_DIRECTIVE = re.compile(
+    r"^(?:"
+    r"!"  # a shebang selects the interpreter
+    r"|go:"  # //go:build, //go:embed, //go:generate
+    r"|\+build\b"  # the pre-1.17 Go build constraint
+    r"|type:"  # PEP 484 type comments
+    r"|noqa\b"  # a suppressed diagnostic is still a decision
+    r"|pragma:"  # coverage and compiler pragmas
+    r"|@ts-"  # @ts-expect-error, @ts-ignore, @ts-nocheck
+    r"|eslint-"  # eslint-disable and friends
+    r")"
+)
 
 LanguageOf = Callable[[str], str | None]
 
@@ -201,6 +233,9 @@ def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
             continue
 
         if item.type in COMMENT_NODE_TYPES:
+            directive = _directive_text(item)
+            if directive:
+                yield directive
             continue
 
         if item.child_count == 0:
@@ -214,6 +249,22 @@ def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
             stack.append(BLOCK_CLOSE)
 
         stack.extend(reversed(item.children))
+
+
+def _directive_text(node: Node) -> str:
+    """Return one comment's normalised text when it is a directive, else ''.
+
+    Prose is dropped, which is what makes a re-commenting equivalent to no
+    change. A directive is kept with its whitespace collapsed, so reflowing
+    one is still equivalent and rewriting one is not.
+    """
+    if node.text is None:
+        return ""
+    text = " ".join(node.text.decode("utf-8", errors="replace").split())
+    body = _COMMENT_MARKER.sub("", text, count=1)
+    if not _DIRECTIVE.match(body):
+        return ""
+    return text
 
 
 def _error_count(root: Node) -> int:

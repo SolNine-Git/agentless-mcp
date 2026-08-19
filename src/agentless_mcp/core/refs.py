@@ -32,7 +32,6 @@ from agentless_mcp.core.symbols import (
     ASTSymbol,
     id_qualname,
     parse_stable_id,
-    qualname,
     split_ordinal,
 )
 from agentless_mcp.core.treewalk import walk_repo
@@ -132,7 +131,14 @@ def scan_repo(
 
 
 def build_ref_index(scan: RepoScan) -> RefIndex:
-    """Index a scan by name: where each name is defined and where it is used."""
+    """Index a scan by name: where each name is defined and where it is used.
+
+    Locally bound occurrences stay in ``sites``: a fan-in answer lists every
+    place a name is spelled, and dropping the ones a parameter list binds is
+    exactly the silent under-reporting this module refuses. Consumers that
+    turn a site into a *relationship* -- the map's edge weights, the
+    resolver's tiers -- are the ones that must honour ``locally_bound``.
+    """
     definitions: dict[str, list[Definition]] = {}
     sites: dict[str, list[Ref]] = {}
     referencing: dict[str, set[str]] = {}
@@ -162,7 +168,7 @@ def references_to(index: RefIndex, definition: Definition) -> tuple[Ref, ...]:
     """
     symbol = definition.symbol
     start = symbol.line_number
-    end = symbol.end_line_number if symbol.end_line_number is not None else symbol.line_number
+    end = span_end(symbol)
 
     return tuple(
         ref
@@ -198,29 +204,43 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
     return scoped or tuple(index.definitions.get(name, ()))
 
 
+def span_end(symbol: ASTSymbol) -> int:
+    """Return the last line a symbol covers, its own when the parse gave no end."""
+    return symbol.end_line_number if symbol.end_line_number is not None else symbol.line_number
+
+
 def enclosing_symbol(facts: FileFacts, line: int) -> ASTSymbol | None:
     """Return the innermost symbol whose span contains ``line``.
 
     Innermost by start line: a method inside a class contains fewer lines and
     starts later, so the deepest containing span is always the one that starts
-    last. Attribution for a reference site is that symbol's qualified name.
+    last, and two spans starting on the same line go to the one the file
+    declared first. Attribution for a reference site is that symbol's
+    qualified name.
     """
     containing = [
-        symbol
-        for symbol in facts.symbols
-        if symbol.line_number <= line <= (symbol.end_line_number or symbol.line_number)
+        symbol for symbol in facts.symbols if symbol.line_number <= line <= span_end(symbol)
     ]
     if not containing:
         return None
     return max(containing, key=lambda symbol: symbol.line_number)
 
 
-def symbols_by_qualname(facts: FileFacts) -> dict[str, ASTSymbol]:
-    """Index one file's symbols by qualified name, first definition winning."""
-    indexed: dict[str, ASTSymbol] = {}
+def line_owners(facts: FileFacts) -> dict[int, ASTSymbol]:
+    """Map every covered line to the symbol :func:`enclosing_symbol` would name.
+
+    The same rule as the point query, and deliberately next to it so the two
+    cannot drift: this is the bulk form, for a caller resolving tens of
+    thousands of references against a few hundred spans, where asking line by
+    line would rescan every symbol each time.
+    """
+    owners: dict[int, ASTSymbol] = {}
     for symbol in facts.symbols:
-        indexed.setdefault(qualname(symbol), symbol)
-    return indexed
+        for line in range(symbol.line_number, span_end(symbol) + 1):
+            current = owners.get(line)
+            if current is None or current.line_number < symbol.line_number:
+                owners[line] = symbol
+    return owners
 
 
 def _parse_one(

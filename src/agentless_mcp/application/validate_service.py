@@ -26,11 +26,24 @@ harness starts handing out a different result on every run. At ``jobs>1`` the
 worktrees are genuinely concurrent; the git bookkeeping that creates and
 removes them is serialised inside :mod:`agentless_mcp.core.sandbox`.
 
-**The commands come only from the invocation.** Nothing here reads a test
-command out of the repository under analysis -- no config file lookup, no
-``Makefile`` sniffing, no ``package.json`` scripts. The repository is the
-thing being judged; letting it nominate its own judge is the injection path
-this whole package is shaped to avoid.
+**The commands come from the invocation, and a command out of the repository
+is opt-in.** Nothing here looks a command up: there is no config file lookup,
+no ``Makefile`` sniffing, no ``package.json`` scripts in this module. The
+adapter may read one out of the analysed repository's ``.agentless-mcp.json``,
+and when it does it must say so on the request -- ``test_cmd_from_config``
+with ``allow_config_test_cmd`` -- because the repository is the thing being
+judged, and letting it nominate its own judge is the injection path this
+package is shaped around. Without the opt-in the run is refused here, before
+anything is executed, rather than mitigated by a note the caller may not read.
+The opt-in is the whole of the enforcement: once it is given, the named
+command runs with the caller's privileges and environment like any other.
+
+**A run bounds its own total cost.** ``timeout`` bounds one command;
+``run_timeout``, when given, bounds the run. A batch is
+``repeat_baseline + 1 + candidates x 2`` commands, so per-command bounds
+multiply into hours. Past the deadline the remaining candidates are reported
+``not_evaluated`` rather than skipped silently -- an unevaluated candidate and
+a failed one are different answers.
 
 The output is one JSON Lines document: a ``run`` record carrying the receipt,
 the commands and the baseline outcome, then a ``candidate`` record per
@@ -45,7 +58,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from agentless_mcp.application import envelope
 from agentless_mcp.application.patch_service import PatchService, load_edits
@@ -67,6 +80,10 @@ DEFAULT_REPEAT_BASELINE = 1
 RECORD_KEY = "record"
 RECORD_RUN = "run"
 RECORD_CANDIDATE = "candidate"
+
+# The enums the verdicts reader coerces through: every field that names a
+# member of one is read as that member or refused.
+_Member = TypeVar("_Member", bound=Enum)
 
 
 class BaselineStatus(str, Enum):
@@ -101,10 +118,18 @@ class ReproVerdict(str, Enum):
 
 
 class ApplyStatus(str, Enum):
-    """Whether a candidate's edits landed in its worktree."""
+    """Whether a candidate's edits landed in its worktree.
+
+    ``not_evaluated`` is not ``failed``, for the same reason
+    :class:`Verdict` draws that line: nothing was attempted, so reporting a
+    failure would invent a result the run never produced. It is what a
+    candidate gets when the run stopped before reaching it -- an unverified
+    baseline, or a deadline that expired first.
+    """
 
     OK = "ok"
     FAILED = "failed"
+    NOT_EVALUATED = "not_evaluated"
 
     def __str__(self) -> str:
         """Return the member value, matching ``enum.StrEnum`` semantics."""
@@ -131,6 +156,19 @@ class Verdict(str, Enum):
         """Return the member value, matching ``enum.StrEnum`` semantics."""
         return self.value
 
+    @property
+    def measured(self) -> bool:
+        """True when the command ran and this verdict is what it produced.
+
+        ``error`` is the spawn failure -- the command never started, so a
+        report that treats it as a failing suite is describing a measurement
+        nobody took. ``timeout`` is on the other side of that line: the
+        command ran, and outliving its bound is a result. This is the property
+        the vote ladder excludes on, so it lives with the values rather than
+        being re-derived by every reader.
+        """
+        return self not in (Verdict.ERROR, Verdict.NOT_EVALUATED)
+
     @classmethod
     def of(cls, result: RunResult) -> "Verdict":
         """Map a run result onto its verdict."""
@@ -139,7 +177,17 @@ class Verdict(str, Enum):
 
 @dataclass(frozen=True)
 class ValidateRequest:
-    """One validation run's inputs, all of them from the invocation."""
+    """One validation run's inputs, all of them from the invocation.
+
+    ``test_cmd_from_config`` is the adapter declaring that ``test_cmd`` was
+    read out of the repository under analysis rather than typed by the caller;
+    ``allow_config_test_cmd`` is the caller accepting that. The flag keys on
+    where the command came from, not on which adapter asked, because that is
+    the property the refusal protects.
+
+    ``run_timeout`` bounds the whole run in seconds. ``None`` is the historical
+    behaviour: no aggregate bound at all.
+    """
 
     candidates: Path
     test_cmd: str
@@ -147,6 +195,9 @@ class ValidateRequest:
     timeout: int = DEFAULT_TIMEOUT_SECONDS
     jobs: int = DEFAULT_JOBS
     repeat_baseline: int = DEFAULT_REPEAT_BASELINE
+    run_timeout: int | None = None
+    test_cmd_from_config: bool = False
+    allow_config_test_cmd: bool = False
 
 
 @dataclass(frozen=True)
@@ -184,6 +235,7 @@ class CandidateVerdict:
             id=self.id,
             index=self.index,
             applied=self.apply_status is ApplyStatus.OK,
+            measured=self.regression.measured,
             equivalence_key=self.equivalence_key,
             regression_passed=self.regression is Verdict.PASSED,
             reproduction_passed=self.reproduction is Verdict.PASSED,
@@ -276,10 +328,16 @@ class RunHeader:
 
 @dataclass(frozen=True)
 class ValidateReport:
-    """One validation run: the header, and a verdict per candidate."""
+    """One validation run: the header, and a verdict per candidate.
+
+    ``deadline_expired`` is carried rather than inferred from the verdicts: a
+    candidate the deadline stopped and a candidate an unverified baseline
+    stopped both read ``not_evaluated``, and only the run knows which happened.
+    """
 
     header: RunHeader
     verdicts: tuple[CandidateVerdict, ...]
+    deadline_expired: bool = False
 
     @property
     def any_passed(self) -> bool:
@@ -307,10 +365,25 @@ class ValidateReport:
             f"candidates applied, {passed} passed the regression suite"
         )
 
+    @property
+    def never_measured(self) -> tuple[str, ...]:
+        """The ids of candidates that applied and whose test command never ran.
+
+        Not the same set as "failed the suite": these are the candidates whose
+        regression command could not be started at all -- a spawn failure, a
+        patch that renamed the runner -- so there is no measurement to report
+        either way. They are excluded from the vote ladder for the same reason.
+        """
+        return tuple(
+            verdict.id
+            for verdict in self.verdicts
+            if verdict.apply_status is ApplyStatus.OK and not verdict.regression.measured
+        )
+
     def warnings(self) -> tuple[str, ...]:
         """Return the things a caller must not miss, for stderr.
 
-        Both of these are cases where a report full of plausible-looking
+        Each of these is a case where a report full of plausible-looking
         verdicts means less than it appears to, so they are said out loud on
         the error channel rather than left to be noticed in a JSON field.
         """
@@ -341,6 +414,21 @@ class ValidateReport:
                 "unrunnable: the reproduction command could not be started on unpatched HEAD "
                 f"({detail}). It was excluded from the vote ladder."
             )
+        unmeasured = self.never_measured
+        if unmeasured:
+            lines.append(
+                f"NOTHING WAS MEASURED for {len(unmeasured)} of {len(self.verdicts)} candidates "
+                f"({', '.join(unmeasured)}): the test command could not be started in their "
+                "worktrees, although it started on the baseline. Their patches applied and "
+                "nothing was run against them, so they are excluded from the vote ladder "
+                "rather than reported as breaking the suite."
+            )
+        if self.deadline_expired:
+            lines.append(
+                "DEADLINE: the run's overall time budget expired before every candidate was "
+                "evaluated. The candidates it did not reach are reported not_evaluated -- "
+                "raise the budget, or narrow the candidate set."
+            )
         return tuple(lines)
 
 
@@ -362,7 +450,15 @@ class ValidateService:
         self._patches = patches
 
     def validate(self, ctx: RepoContext, request: ValidateRequest) -> ValidateReport:
-        """Validate every candidate in ``request.candidates`` against ``ctx``."""
+        """Validate every candidate in ``request.candidates`` against ``ctx``.
+
+        Refuses before anything is executed when the command came out of the
+        repository under analysis and the caller did not opt in, and when the
+        run's own bound is not a positive number of seconds.
+        """
+        _refuse_unowned_command(request)
+        deadline = _deadline(request)
+
         candidates = load_candidates(request.candidates)
         header = self._baseline(ctx, request, count=len(candidates))
 
@@ -372,8 +468,16 @@ class ValidateService:
                 verdicts=tuple(_not_evaluated(candidate) for candidate in candidates),
             )
 
-        verdicts = self._evaluate_all(ctx, request, candidates, repro_valid=header.repro_valid)
-        return ValidateReport(header=header, verdicts=verdicts)
+        verdicts = self._evaluate_all(
+            ctx, request, candidates, repro_valid=header.repro_valid, deadline=deadline
+        )
+        return ValidateReport(
+            header=header,
+            verdicts=verdicts,
+            deadline_expired=any(
+                verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in verdicts
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Baseline
@@ -419,6 +523,7 @@ class ValidateService:
         candidates: Sequence[Candidate],
         *,
         repro_valid: bool,
+        deadline: float | None,
     ) -> tuple[CandidateVerdict, ...]:
         """Evaluate every candidate, in parallel when asked, and sort the answers.
 
@@ -426,9 +531,16 @@ class ValidateService:
         document: worker completion order is not an input to the report, and
         a verdict file whose line order depends on scheduling would defeat
         every diff a caller wants to take against a previous run.
+
+        The deadline is checked before a candidate starts rather than while it
+        runs: a run in flight already has ``timeout`` bounding it, and killing
+        a test suite half way through would produce a verdict nobody could act
+        on. What the budget buys is that the *next* one does not start.
         """
 
         def evaluate(candidate: Candidate) -> CandidateVerdict:
+            if deadline is not None and time.monotonic() >= deadline:
+                return _deadline_expired(candidate, request.run_timeout)
             return self._evaluate(ctx, request, candidate, repro_valid=repro_valid)
 
         if request.jobs > 1 and len(candidates) > 1:
@@ -570,9 +682,12 @@ def load_verdicts(text: str) -> LoadedVerdicts:
     """Parse a verdicts document back into typed values, or refuse it.
 
     Strict on purpose, and the only reader of this format. Every field the
-    vote depends on must be present and of the right type: a document whose
+    vote depends on must be present and of the right type, and every field
+    that names an enum member is read through that enum: a document whose
     ``repro_valid`` went missing must not read as ``False`` and quietly demote
-    the ladder by one rung.
+    the ladder by one rung, and neither must a ``regression`` a rename or a
+    version skew spelled differently. A value this reader does not recognise
+    is a refusal naming the line, never a candidate silently reduced to a loss.
     """
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
@@ -592,7 +707,7 @@ def load_verdicts(text: str) -> LoadedVerdicts:
     )
 
     return LoadedVerdicts(
-        baseline=BaselineStatus(_string(header, "baseline", 0)),
+        baseline=_enum(header, "baseline", 0, BaselineStatus),
         repro_valid=_boolean(header, "repro_valid", 0),
         test_cmd=_string(header, "test_cmd", 0),
         repro_cmd=_optional_string(header, "repro_cmd", 0),
@@ -601,7 +716,14 @@ def load_verdicts(text: str) -> LoadedVerdicts:
 
 
 def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
-    """Turn one candidate record into the value the vote ranks."""
+    """Turn one candidate record into the value the vote ranks.
+
+    The three fields that decide a candidate's rung -- the apply status and
+    the two verdicts -- are read through their enums rather than compared to a
+    literal. A spelling this build does not know is a document it cannot rank,
+    and the ladder quietly falling a rung is exactly the failure the strictness
+    exists to prevent.
+    """
     apply_field = record.get("apply")
     if not isinstance(apply_field, dict):
         message = f"line {position + 1}: candidate record has no 'apply' object"
@@ -612,18 +734,17 @@ def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
         message = f"line {position + 1}: 'equivalence_key' must be a string or null"
         raise AtlasError(message)
 
-    reproduction = record.get("reproduction")
-    if reproduction is not None and not isinstance(reproduction, str):
-        message = f"line {position + 1}: 'reproduction' must be a string or null"
-        raise AtlasError(message)
+    regression = _enum(record, "regression", position, Verdict)
+    reproduction = _optional_enum(record, "reproduction", position, Verdict)
 
     return VoteCandidate(
         id=_string(record, "id", position),
         index=_integer(record, "index", position),
-        applied=_string(apply_field, "status", position) == ApplyStatus.OK.value,
+        applied=_enum(apply_field, "status", position, ApplyStatus) is ApplyStatus.OK,
+        measured=regression.measured,
         equivalence_key=key,
-        regression_passed=_string(record, "regression", position) == Verdict.PASSED.value,
-        reproduction_passed=reproduction == Verdict.PASSED.value,
+        regression_passed=regression is Verdict.PASSED,
+        reproduction_passed=reproduction is Verdict.PASSED,
     )
 
 
@@ -669,6 +790,32 @@ def _boolean(record: dict[str, Any], field: str, position: int) -> bool:
     return value
 
 
+def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]) -> _Member:
+    """Read a required string field and coerce it through ``kind``, or refuse it.
+
+    The refusal is an :class:`AtlasError` naming the line, the value and what
+    was allowed, because every other refusal in this reader is: a bare
+    ``ValueError`` out of an enum constructor reaches the caller as a
+    traceback rather than as "your file is wrong at line 1".
+    """
+    value = _string(record, field, position)
+    try:
+        return kind(value)
+    except ValueError as exc:
+        allowed = ", ".join(member.value for member in kind)
+        message = f"line {position + 1}: {field!r} is {value!r}, which is not one of: {allowed}"
+        raise AtlasError(message) from exc
+
+
+def _optional_enum(
+    record: dict[str, Any], field: str, position: int, kind: type[_Member]
+) -> _Member | None:
+    """Read a field that is an enum member's value or explicitly null."""
+    if record.get(field, ...) is None:
+        return None
+    return _enum(record, field, position, kind)
+
+
 def _integer(record: dict[str, Any], field: str, position: int) -> int:
     """Read a required integer field, or refuse the record."""
     value = record.get(field)
@@ -681,6 +828,33 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
+
+def _refuse_unowned_command(request: ValidateRequest) -> None:
+    """Refuse a test command that the analysed repository named, unless opted in.
+
+    The guard keys on where the command came from rather than on which caller
+    is asking: an agent driving the CLI and a human at a terminal reach the
+    same code, and only one of them reads a printed note.
+    """
+    if not request.test_cmd_from_config or request.allow_config_test_cmd:
+        return
+    message = (
+        f"refusing to run {request.test_cmd!r}: it came from the repository under analysis, "
+        "not from the invocation, so the repository would be choosing the command that judges "
+        "it. Pass the command explicitly, or opt in with allow_config_test_cmd."
+    )
+    raise AtlasError(message)
+
+
+def _deadline(request: ValidateRequest) -> float | None:
+    """Return the monotonic instant the run must stop starting work at."""
+    if request.run_timeout is None:
+        return None
+    if request.run_timeout <= 0:
+        message = f"the run timeout must be a positive number of seconds, not {request.run_timeout}"
+        raise AtlasError(message)
+    return time.monotonic() + request.run_timeout
 
 
 @dataclass(frozen=True)
@@ -817,8 +991,22 @@ def _not_evaluated(candidate: Candidate) -> CandidateVerdict:
     return CandidateVerdict(
         id=candidate.id,
         index=candidate.index,
-        apply_status=ApplyStatus.FAILED,
+        apply_status=ApplyStatus.NOT_EVALUATED,
         apply_reasons=("not evaluated: the baseline test run was UNVERIFIED",),
+        equivalence_key=None,
+        regression=Verdict.NOT_EVALUATED,
+        reproduction=None,
+        duration=0.0,
+    )
+
+
+def _deadline_expired(candidate: Candidate, budget: int | None) -> CandidateVerdict:
+    """Return the verdict of a candidate the run's own budget did not reach."""
+    return CandidateVerdict(
+        id=candidate.id,
+        index=candidate.index,
+        apply_status=ApplyStatus.NOT_EVALUATED,
+        apply_reasons=(f"not evaluated: the run's {budget}s budget expired before this candidate",),
         equivalence_key=None,
         regression=Verdict.NOT_EVALUATED,
         reproduction=None,

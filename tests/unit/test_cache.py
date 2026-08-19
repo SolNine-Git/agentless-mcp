@@ -11,7 +11,6 @@ the autouse fixture in ``tests/conftest.py``; nothing here can reach the
 developer's real cache.
 """
 
-import fcntl
 import json
 import sqlite3
 import subprocess
@@ -253,6 +252,32 @@ class TestIncrementalTriad:
         assert report.failures[0].path == "huge.py"
         assert "too big" in report.failures[0].reason
 
+    def test_one_file_that_trips_the_extractor_does_not_abort_the_scan(
+        self, repo, extractor, monkeypatch
+    ):
+        """A per-file extractor defect degrades that file, not the repository.
+
+        ``RecursionError`` stands in for the whole degraded-error class: the
+        scan catches a named tuple of them, so one pathological file becomes an
+        ``IndexFailure`` row and every other file is still indexed.
+        """
+        original = extractor.extract_from_source
+
+        def explode(text, language, path):
+            if path == "billing.py":
+                message = "maximum recursion depth exceeded"
+                raise RecursionError(message)
+            return original(text, language, path)
+
+        monkeypatch.setattr(extractor, "extract_from_source", explode)
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.errors == 1
+        assert report.failures[0].path == "billing.py"
+        assert "recursion" in report.failures[0].reason
+        assert (report.indexed, report.files) == (2, 2)
+
 
 def _refuse_one(name):
     """Wrap read_bounded so exactly one file reports itself unreadable."""
@@ -412,14 +437,24 @@ class TestNonGitRepositories:
 
 
 class TestSingleWriter:
+    """The POSIX half of the write lock.
+
+    ``fcntl`` is imported inside the test rather than at module scope: it does
+    not exist on Windows, and a module-level import would fail collection for
+    this whole file there -- taking every freshness, schema and equivalence
+    test with it, none of which is about locking. The package ships a Windows
+    lock implementation (``util.filelock``), so those tests have to run there.
+    """
+
     def test_a_second_index_run_refuses_while_the_lock_is_held(self, repo, extractor):
+        fcntl = pytest.importorskip("fcntl", reason="POSIX advisory locking")
         first = cache.build_index(repo, extractor)
         lock_path = first.database.parent / cache.LOCK_NAME
         handle = lock_path.open("w", encoding="utf-8")
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         try:
-            with pytest.raises(CacheLocked, match="another index run holds the lock for"):
+            with pytest.raises(CacheLocked, match="could not take the index lock for"):
                 cache.build_index(repo, extractor)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

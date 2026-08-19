@@ -4,6 +4,7 @@ from agentless_mcp.core.extractor import collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
     build_ref_index,
     enclosing_symbol,
+    line_owners,
     references_to,
     scan_repo,
 )
@@ -178,6 +179,22 @@ class TestFanIn:
         scan = scan_repo(build(tmp_path), extractor)
         facts = scan.by_path()["caller.py"]
         assert enclosing_symbol(facts, 1) is None
+
+    def test_the_bulk_owner_map_agrees_with_the_point_query(self, tmp_path, extractor):
+        """One innermost-symbol rule, asked two ways, on every line of a file.
+
+        The resolver builds the whole map once per file and the fan-in views
+        ask line by line; the two must never drift apart about which symbol
+        owns a line, tie-breaks included.
+        """
+        scan = scan_repo(build(tmp_path), extractor)
+        facts = scan.by_path()["library.py"]
+        owners = line_owners(facts)
+
+        assert {line: owners.get(line) for line in range(1, facts.line_count + 1)} == {
+            line: enclosing_symbol(facts, line) for line in range(1, facts.line_count + 1)
+        }
+        assert owners
 
     def test_a_method_wins_over_the_class_that_contains_it(self, tmp_path, extractor):
         scan = scan_repo(build(tmp_path), extractor)

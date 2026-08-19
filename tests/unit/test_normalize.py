@@ -257,6 +257,80 @@ func Run(flag bool) {
 """
 
 
+class TestSemanticComments:
+    """Comment forms a compiler, a type checker or a lint gate reads.
+
+    Dropping every comment node made these hash as no change at all, so a
+    candidate that flips a Go build constraint or strips a ``# type:``
+    annotation was clustered with the candidate that changes nothing and
+    credited its votes.
+    """
+
+    @pytest.mark.parametrize(
+        ("language", "path", "before", "after"),
+        [
+            (
+                "go",
+                "app.go",
+                "//go:build linux\n\npackage app\n",
+                "//go:build windows\n\npackage app\n",
+            ),
+            (
+                "go",
+                "app.go",
+                "// +build linux\n\npackage app\n",
+                "// +build windows\n\npackage app\n",
+            ),
+            (
+                "python",
+                "run.py",
+                "#!/usr/bin/env python3\nx = 1\n",
+                "#!/usr/bin/env python2\nx = 1\n",
+            ),
+            ("python", "app.py", "x = f()  # type: int\n", "x = f()  # type: str\n"),
+            ("python", "app.py", "import os  # noqa: F401\n", "import os\n"),
+            (
+                "typescript",
+                "app.ts",
+                "// @ts-expect-error\nconst x = f();\n",
+                "const x = f();\n",
+            ),
+            (
+                "typescript",
+                "app.ts",
+                "// eslint-disable-next-line no-eval\nconst x = f();\n",
+                "const x = f();\n",
+            ),
+        ],
+        ids=["go-build", "go-plus-build", "shebang", "type-comment", "noqa", "ts-expect", "eslint"],
+    )
+    def test_a_directive_comment_moves_the_key(self, language, path, before, after):
+        assert key_for(path, language, before, after) != key_for(path, language, before, before)
+
+    @pytest.mark.parametrize(
+        ("language", "before", "after"),
+        [
+            ("python", "# a pragmatic choice\nx = 1\n", "# a different note\nx = 1\n"),
+            (
+                "go",
+                "package app\n\n// Total counts.\nconst Total = 1\n",
+                "package app\n\n// Counts.\nconst Total = 1\n",
+            ),
+        ],
+        ids=["python-prose", "go-prose"],
+    )
+    def test_prose_still_normalises_away(self, language, before, after):
+        path = "app.py" if language == "python" else "app.go"
+        assert key_for(path, language, before, after) == key_for(path, language, before, before)
+
+    def test_reflowing_a_directives_whitespace_is_not_a_change(self):
+        spaced = "x = f()  #  type:  int\n"
+        original = "x = f()  # type: int\n"
+        assert key_for("app.py", "python", original, spaced) == key_for(
+            "app.py", "python", original, original
+        )
+
+
 class TestBlockStructure:
     """The adversarial case: same tokens, different blocks."""
 
