@@ -1,0 +1,10 @@
+flowchart LR
+    subgraph s0["repository root"]
+        n0["inventory.py"]
+        n1["pricing.py"]
+        n2["reports.py"]
+    end
+    n0 --> n1
+    n1 --> n0
+    n2 --> n0
+    n2 --> n1

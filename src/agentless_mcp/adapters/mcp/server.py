@@ -25,7 +25,7 @@ happen in ``warmup``, never inside a tool call.
 
 import argparse
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -36,6 +36,7 @@ from mcp.shared.exceptions import McpError
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
 from agentless_mcp.application.graph_service import (
+    DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
     GraphService,
@@ -52,9 +53,10 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
+from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, TOOL_DESCRIPTIONS
-from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util.errors import AtlasError, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,31 @@ SERVER_NAME = "agentless-mcp"
 
 # A line range arrives as a two-element [start, end] list.
 _RANGE_PAIR_LENGTH = 2
+
+OPERATION_PATH = "path"
+OPERATION_CYCLES = "cycles"
+OPERATION_COMMUNITIES = "communities"
+OPERATION_DIAGRAM = "diagram"
+
+
+@dataclass(frozen=True)
+class StructureRequest:
+    """One ``analyze_structure`` call: the operation and every operand.
+
+    A value object rather than eight parameters threaded through the handler,
+    because the wire signature is flat by necessity -- an MCP client reads the
+    parameter list as the schema -- and the handler should not be.
+    """
+
+    operation: str
+    source: str = ""
+    target: str = ""
+    include_ambiguous: bool = False
+    limit: int | None = None
+    resolution: float | None = None
+    focus: str = ""
+    max_nodes: int = DEFAULT_MAX_NODES
+    group_by_communities: bool = False
 
 
 @dataclass(frozen=True)
@@ -210,24 +237,23 @@ class ToolHandlers:
         result = self._services.graphs.explain(ctx, target, limit=limit)
         return self._wrap(ctx, render.render_explanation(result))
 
-    def symbol_path(
-        self,
-        ctx: RepoContext,
-        source: str,
-        target: str,
-        *,
-        include_ambiguous: bool,
-    ) -> str:
-        """Render the shortest resolved path between two symbols."""
-        result = self._services.graphs.path(
-            ctx, source, target, include_ambiguous=include_ambiguous
-        )
-        return self._wrap(ctx, render.render_path(result))
+    def analyze_structure(self, ctx: RepoContext, request: StructureRequest) -> str:
+        """Answer one structural question about the repository as a whole.
 
-    def import_cycles(self, ctx: RepoContext, limit: int) -> str:
-        """Render every module-level import cycle."""
-        result = self._services.graphs.cycles(ctx, limit=limit)
-        return self._wrap(ctx, render.render_cycles(result))
+        Four questions behind one tool, because they are one question shape --
+        "how is this repository put together" -- and a client picking between
+        eleven tools picks better than one picking between fourteen. The
+        operation is validated here rather than by an enum on the wire so that
+        a wrong value is answered with the list of right ones.
+        """
+        handler = _OPERATIONS.get(request.operation)
+        if handler is None:
+            listed = ", ".join(sorted(_OPERATIONS))
+            message = MESSAGES.unknown_operation.format(
+                operation=request.operation, operations=listed
+            )
+            raise AtlasError(message)
+        return self._wrap(ctx, handler(self._services.graphs, ctx, request))
 
     def resolve_locations(
         self,
@@ -276,6 +302,68 @@ class ToolHandlers:
     def _wrap(self, ctx: RepoContext, body: str) -> str:
         """Put the receipt and banner around one tool's answer."""
         return envelope.wrap(ctx, body, counter=self._services.counter)
+
+
+def _operation_path(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
+    """Render the shortest resolved path between two named endpoints."""
+    if not request.source.strip() or not request.target.strip():
+        message = MESSAGES.path_needs_endpoints
+        raise AtlasError(message)
+    trace = graphs.path(
+        ctx, request.source, request.target, include_ambiguous=request.include_ambiguous
+    )
+    return render.render_path(trace)
+
+
+def _operation_cycles(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
+    """Render every module-level import cycle."""
+    limit = _or_default(request.limit, DEFAULT_CYCLE_LIMIT)
+    return render.render_cycles(graphs.cycles(ctx, limit=limit))
+
+
+def _operation_communities(
+    graphs: GraphService, ctx: RepoContext, request: StructureRequest
+) -> str:
+    """Render the file communities, largest first."""
+    report = graphs.communities(
+        ctx,
+        resolution=request.resolution,
+        limit=_or_default(request.limit, DEFAULT_COMMUNITY_LIMIT),
+    )
+    return render.render_communities(report)
+
+
+def _or_default(value: int | None, fallback: int) -> int:
+    """Return the caller's bound, or this view's own when they named none.
+
+    One ``limit`` on the wire serves two listings, and the two views own
+    different defaults. Resolving per operation is what stops the cycle
+    listing's bound from quietly becoming the community listing's.
+    """
+    return fallback if value is None else value
+
+
+def _operation_diagram(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
+    """Render the module graph as fenced mermaid text."""
+    view = graphs.diagram(
+        ctx,
+        focus=request.focus or None,
+        max_nodes=request.max_nodes,
+        group_by_communities=request.group_by_communities,
+        resolution=request.resolution,
+    )
+    return render.render_diagram(view)
+
+
+# The operations `analyze_structure` accepts, and what each one runs. A table
+# rather than a chain of branches so that the tool's own error message and its
+# dispatch cannot disagree about which operations exist.
+_OPERATIONS: dict[str, Callable[[GraphService, RepoContext, StructureRequest], str]] = {
+    OPERATION_PATH: _operation_path,
+    OPERATION_CYCLES: _operation_cycles,
+    OPERATION_COMMUNITIES: _operation_communities,
+    OPERATION_DIAGRAM: _operation_diagram,
+}
 
 
 async def effective_client_roots(context: Context) -> list[Path]:
@@ -439,31 +527,40 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.explain_symbol(ctx, target, limit)
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["symbol_path"], annotations=read_only("Symbol path"))
-    async def symbol_path(
-        context: Context,
-        source: str,
-        target: str,
-        repo_root: str | None = None,
-        include_ambiguous: bool = False,
-        no_cache: bool = False,
-    ) -> str:
-        """Render the shortest resolved path between two symbols."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.symbol_path(ctx, source, target, include_ambiguous=include_ambiguous)
-
     @mcp.tool(
-        description=TOOL_DESCRIPTIONS["import_cycles"], annotations=read_only("Import cycles")
+        description=TOOL_DESCRIPTIONS["analyze_structure"],
+        annotations=read_only("Analyze structure"),
     )
-    async def import_cycles(
+    async def analyze_structure(
         context: Context,
+        operation: str,
         repo_root: str | None = None,
-        limit: int = DEFAULT_CYCLE_LIMIT,
+        source: str = "",
+        target: str = "",
+        include_ambiguous: bool = False,
+        limit: int | None = None,
+        resolution: float | None = None,
+        focus: str = "",
+        max_nodes: int = DEFAULT_MAX_NODES,
+        group_by_communities: bool = False,
         no_cache: bool = False,
     ) -> str:
-        """Render every module-level import cycle."""
+        """Answer one whole-repository structural question: path, cycles, communities, diagram."""
         ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.import_cycles(ctx, limit)
+        return handlers.analyze_structure(
+            ctx,
+            StructureRequest(
+                operation=operation,
+                source=source,
+                target=target,
+                include_ambiguous=include_ambiguous,
+                limit=limit,
+                resolution=resolution,
+                focus=focus,
+                max_nodes=max_nodes,
+                group_by_communities=group_by_communities,
+            ),
+        )
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["resolve_locations"],

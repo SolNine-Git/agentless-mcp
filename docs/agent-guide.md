@@ -85,6 +85,34 @@ rather than shown the wrong body.
 
 ---
 
+## The two surfaces
+
+The CLI has one subcommand per question. The MCP server publishes **eleven
+tools**, and that number is a decision rather than an accident: selection
+accuracy falls as a tool list grows, so the four whole-repository structure
+questions are folded behind one `analyze_structure(operation=...)` instead of
+being four more entries to choose between. The folding is adapter-level only —
+same services, same answers, same wording.
+
+| MCP tool | CLI | Answers |
+|---|---|---|
+| `repo_map` | `map` | where does this live |
+| `list_dir` | `tree` | what exists |
+| `get_symbols_overview` | `skeleton` | what does this file declare |
+| `expand_symbols` | `expand` | what does it actually do |
+| `read_slice` | `slice` | these exact lines |
+| `find_symbol` | `find-symbol` | where is this name |
+| `find_referencing_symbols` | `refs` | who calls it (blast radius) |
+| `explain_symbol` | `explain` | one symbol, in context |
+| `analyze_structure` | `path` / `cycles` / `communities` / `diagram` | how is the repository put together |
+| `resolve_locations` | `resolve-locs` | location strings to intervals |
+| `capabilities` | `capabilities` | what is loaded, what is capped |
+| *(none)* | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
+
+Everything that writes, executes or fetches is CLI-only and always will be: a
+tool an analysed repository's contents could talk an agent into calling must
+not be able to change that repository or run its code.
+
 ## Per-tool usage
 
 CLI names first, MCP tool names in parentheses. Every MCP tool takes
@@ -258,11 +286,15 @@ signature names and the constants a body reads, and it counts one relationship
 per pair however many times the name appears. For the individual call sites
 with their line numbers, use `refs`.
 
-### `path` (`symbol_path`) -- how are these two connected
+### `path` (`analyze_structure operation="path"`) -- how are these two connected
 
 ```
 agentless-mcp path run_billing Invoice.total
 agentless-mcp path py:billing.py::run_billing invoice.py --include-ambiguous
+```
+
+```json
+{"operation": "path", "source": "run_billing", "target": "Invoice.total"}
 ```
 
 The fewest-hop chain of resolved relationships between two symbols — or
@@ -296,10 +328,21 @@ naming it), and an endpoint that names several things (exit 1, listing the
 candidate ids so you can pick one). `--max-visited` bounds the search, and
 hitting the bound says so instead of reporting "no path".
 
-### `cycles` (`import_cycles`) -- module-level import knots
+**Endpoint matching is exact-first.** A name is matched on its last segment,
+so `Resolver.resolve` also matches `ToolHandlers.resolve` and a module-level
+`resolve` — but a definition whose qualified name *is* what you typed outranks
+every one that merely ends with it, and only definitions of equal standing are
+reported as ambiguous. `explain` uses the same order and lists the rest under
+`also defined at`.
+
+### `cycles` (`analyze_structure operation="cycles"`) -- module-level import knots
 
 ```
 agentless-mcp cycles --limit 20
+```
+
+```json
+{"operation": "cycles"}
 ```
 
 Every import cycle in the repository, by strongly connected component over the
@@ -323,6 +366,90 @@ tangle reports one five-file cycle rather than every loop within it.
 Import edges are resolved best effort: a module string this tool cannot map to
 a file in the repository contributes no edge, so a cycle that runs through a
 dynamic import or an unusual path alias will not appear.
+
+### `communities` (`analyze_structure operation="communities"`) -- which files belong together
+
+```
+agentless-mcp communities --resolution 0.5 --limit 20 --members 12
+```
+
+```json
+{"operation": "communities", "resolution": 0.5}
+```
+
+A rollup rather than a ranking: `map` says which files matter, this says which
+files are one thing. Reach for it first in an unfamiliar repository, before
+reading anything.
+
+```
+29 communities over 109 files (modularity 0.262 at resolution 1)
+    1. tests/unit  (15 files)
+       tests/conftest.py
+       tests/unit/test_cache.py
+       ... 12 more files in this community
+```
+
+The partition is single-level greedy modularity over the same file graph the
+map ranks, with three explicit ordering rules behind it, so an unchanged tree
+returns the same communities in the same order every time. **Labels are
+mechanical, never generated**: the label is the deepest directory prefix a
+strict majority of the members share, or `repository root` when no prefix
+reaches a majority. Two communities can therefore carry the same label, which
+is a statement about the directory layout rather than a defect.
+
+`modularity` is how much structure was actually found — roughly 0.3 and up is
+a repository with real module boundaries; near 0 means the detector found
+nothing and split the files arbitrarily, and you should read the partition as
+a weak hint rather than as a design. `--resolution` below 1.0 gives fewer,
+larger communities and above it gives more, smaller ones. Deliberately one
+level, not full Louvain: on a dense reference graph the second level merges
+everything into a handful of blobs without scoring any better.
+
+### `diagram` (`analyze_structure operation="diagram"`) -- the module graph, drawn
+
+```
+agentless-mcp diagram --max-nodes 40 > docs/diagrams/modules.mmd
+agentless-mcp diagram --focus src/app/svc.py --communities
+agentless-mcp diagram --check docs/diagrams/modules.md
+```
+
+```json
+{"operation": "diagram", "focus": "src/app/svc.py", "group_by_communities": true}
+```
+
+Mermaid flowchart text for the module-level graph, rendered on demand. It is
+never a side effect of another call and is never written into the repository
+being analysed — the CLI puts it on stdout and the MCP tool fences it into the
+response body.
+
+**Mermaid is presentation, never data interchange.** Reason over the text
+views; produce a diagram when a human is going to look at it. A picture is a
+supplement to the flattened facts, not a substitute for them.
+
+Four properties worth knowing:
+
+- **Bounded.** `--max-nodes` (default 40) keeps the highest-PageRank modules
+  and adds an explicit `... N more modules` node. A focus seed is always kept.
+- **Deterministic.** Node ids are synthetic (`n0`, `n1`) in sorted path order,
+  edges are emitted in id order, and no float is printed. The same tree renders
+  to the same bytes, which is what makes `--check` meaningful.
+- **Labels are untrusted content.** A path is a filename, and a filename can
+  say anything. Ids never come from repository content, every label is quoted
+  and reduced to an allowlist of characters, and the renderer emits no `click`,
+  `style` or `class` line under any input.
+- **Grouping names whole communities.** `--communities` draws each community as
+  a subgraph. When the node bound elided members, the answer carries a caveat
+  saying so — the title describes the whole community, not just the boxes you
+  can see. On the CLI that caveat is on stderr with the receipt, because stdout
+  is the document.
+
+`--check FILE` regenerates the diagram and compares it byte for byte against
+`FILE` instead of printing: exit 0 when they match, exit 1 with the first
+differing line when they have drifted. A leading ```` ```mermaid ```` fence is
+stripped before comparing, so a diagram committed into a `.md` file can be
+checked exactly as it stands. That is the never-stale story for committed
+diagrams — wire it into pre-commit and a diagram cannot silently describe a
+tree that no longer exists.
 
 ### `resolve-locs` (`resolve_locations`) -- location strings to intervals
 
@@ -376,13 +503,65 @@ indexed 42, reused 517, pruned 3, errors 0: 559 files, 17740 tags, 1204 imports,
 Only one index run per repository at a time: a second concurrent run exits
 immediately saying the lock is held rather than queueing. Any read command
 takes `--no-cache` (`no_cache: true` on `repo_map`, `get_symbols_overview`,
-`find_symbol` and `expand_symbols`) to bypass the index for that call.
+`find_symbol`, `expand_symbols`, `explain_symbol` and `analyze_structure`) to
+bypass the index for that call.
+
+### `lint` -- deterministic hallucination checks, CLI only
+
+```
+agentless-mcp lint --candidates ./candidates
+agentless-mcp lint --candidates ./candidates/01-plus.txt --json
+```
+
+Run this **before** `validate`. It is the mechanical half of a hostile
+first-pass review, it calls no model, and it costs a scan rather than a test
+run — so a candidate that calls a function nobody wrote, or re-implements a
+helper you already have, is named as such instead of burning a worktree to find
+out. `--candidates` takes one patch file or a directory of them, in either
+format `patch parse` accepts; one file is one candidate and its stem is its id,
+the same rule `validate` uses.
+
+**No MCP tool, by design.** Patches are write-side input, like `validate` and
+`vote`.
+
+**Nothing here is a verdict.** The report has no ok field, no finding fails the
+command, and `lint` exits 0 whatever it found. The tests decide whether a patch
+is right; this decides what to look at first.
+
+| Check | Severity | Fires when |
+|---|---|---|
+| `undeclared_imports` | warning | the patch imports a top-level package that is in neither the declared dependencies, nor the standard library, nor already imported somewhere in the repository (the slopsquatting check) |
+| `shadowing` | warning | the patch adds a module-level `def`/`class` whose name already lives in that file, other than the symbol it is replacing |
+| `near_duplicates` | advisory | an introduced function's body normalises to the same token stream as an existing one — "you already have this at file:line" |
+| `dangling_references` | warning | the patch calls a name, or inherits from a base, that nothing in the repository defines, the patch does not define, and which is no builtin or stdlib module; existing names within two edits are offered as near misses |
+| `dangling_callers` | warning | the patch removes or renames a symbol that files it does not touch still reference, listed with `file:line` |
+| `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
+| `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
+
+Two things the table cannot say.
+
+**`not_checked` is a finding.** Every check reports coverage gaps as findings
+at severity `not_checked`, naming the reason: a file in a language this build
+has no grammar for, a repository with no dependency manifest, a file the caller
+supplied no text for, a patch block that did not parse, edits that did not
+apply. Silence would be the one dishonest outcome, because you cannot tell
+"checked and clean" from "never ran". `dangling_references` and `arity` need
+Python's builtin and signature vocabulary and report `not_checked` for every
+other language rather than judging it by Python's rules.
+
+**Both advisories are deliberately timid.** `arity` passes in silence on any
+doubt at all — varargs, keyword arguments, decorators, methods, a call inside
+an f-string, a callee that resolves only by name — because a wrong arity claim
+reads exactly like a real one. `dangling_references` looks at names in call and
+base-class position only; a bare identifier read is almost always a local, and
+a check that reported every local as undefined is a check nobody would read.
 
 ### `validate` / `vote` -- does the patch actually work, CLI only
 
 The last stage of the funnel. You sampled several candidate patches; these two
 commands decide which of them survive the repository's own tests, and rank
-what is left. Neither is exposed over MCP.
+what is left. Neither is exposed over MCP. Run `lint` first: it is far cheaper
+and it names the candidates worth reading before any of them costs a test run.
 
 ```
 agentless-mcp validate --candidates ./candidates --repo /srv/app \

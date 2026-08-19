@@ -63,6 +63,8 @@ ENVELOPE_ARGUMENTS = {
 MESSAGE_ARGUMENTS = {
     "server_no_roots": {},
     "server_root_required": {"roots": "/srv/app, /srv/other"},
+    "unknown_operation": {"operation": "graph", "operations": "cycles, diagram, path"},
+    "path_needs_endpoints": {},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
     "cache_stale_remediation": {},

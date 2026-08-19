@@ -1,4 +1,4 @@
-"""The three views over the resolved symbol graph: explain, path, cycles.
+"""The structural views: explain, path, cycles, communities, diagram.
 
 The graph is assembled **in memory, per call**, from the same repository scan
 every other view is built from. Nothing about it is stored: there is no graph
@@ -8,7 +8,8 @@ at" rather than "the index says so". The per-file sha256 gate behind
 :class:`~agentless_mcp.core.cache.FileSource` is what makes that affordable --
 the parses are reused, the resolution is not.
 
-Three questions, and each is a different shape of the same edge set:
+Five questions over two graphs. The first three are shapes of the same
+symbol-level edge set:
 
 ``explain``
     One symbol, denormalized: where it is defined, what it references, what
@@ -25,20 +26,41 @@ Three questions, and each is a different shape of the same edge set:
     question in this module that is about files rather than symbols, because
     an import cycle is a property of modules.
 
+The last two read the *file*-level graph the map ranks -- "which files mention
+names these files define" -- because both are questions about modules and
+neither needs a name bound to a declaration:
+
+``communities``
+    Which files belong together, by deterministic modularity, with a
+    mechanical label per group. A rollup, not a ranking.
+``diagram``
+    The same graph as mermaid text, rank-bounded and optionally grouped by
+    those communities. Returned on demand and never written anywhere: a
+    diagram is presentation for a human, and the facts stay in the flattened
+    views an agent reads.
+
 Every one of them is bounded and says what it left out.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from agentless_mcp.application import render
+from agentless_mcp.application.map_service import focus_paths
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import symbol_card
-from agentless_mcp.core import refs, resolve
+from agentless_mcp.core import communities, graph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
+DEFAULT_COMMUNITY_LIMIT = 20
+
+# How many member paths one community lists before it elides. A community is
+# usually a directory; past a dozen files the reader wants the label and the
+# count, and `list_dir` is the view that enumerates.
+DEFAULT_MEMBER_LIMIT = 12
 
 # Read as "the source <verb> the target", and its passive for a hop walked
 # backwards. Rendering a reverse hop with the active verb would invert the
@@ -66,6 +88,23 @@ class _Resolved:
     graph: resolve.ResolvedGraph
 
 
+@dataclass(frozen=True)
+class _Ranked:
+    """One call's file-level graph and the ranking over it."""
+
+    index: refs.RefIndex
+    graph: graph.RefGraph
+    rank: dict[str, float]
+
+
+@dataclass(frozen=True)
+class _Focus:
+    """A diagram's seed module, resolved, or the reason it is not one."""
+
+    node: str
+    message: str
+
+
 class GraphService:
     """Answers structural questions from a graph rebuilt on every call."""
 
@@ -85,7 +124,7 @@ class GraphService:
         if not definitions:
             return _missing(target)
 
-        ordered = sorted(definitions, key=lambda entry: (entry.path, entry.symbol.line_number))
+        ordered = rank_candidates(definitions, target)
         chosen = ordered[0]
         node = symbol_stable_id(chosen.symbol)
 
@@ -137,12 +176,95 @@ class GraphService:
             limit=limit,
         )
 
+    def communities(
+        self,
+        ctx: RepoContext,
+        *,
+        resolution: float | None = None,
+        limit: int = DEFAULT_COMMUNITY_LIMIT,
+        members: int = DEFAULT_MEMBER_LIMIT,
+    ) -> render.CommunityReport:
+        """Partition the repository's files into communities, largest first."""
+        ranked = self._ranked(ctx)
+        setting = communities.DEFAULT_RESOLUTION if resolution is None else float(resolution)
+        partition = communities.detect_communities(ranked.graph, resolution=setting)
+        return render.CommunityReport(
+            communities=tuple(
+                render.CommunityRow(
+                    label=community.label,
+                    size=community.size,
+                    members=community.members[:members],
+                    omitted=max(0, community.size - members),
+                    internal_weight=community.internal_weight,
+                    total_weight=community.total_weight,
+                )
+                for community in partition.communities[:limit]
+            ),
+            total=len(partition.communities),
+            limit=limit,
+            modularity=partition.modularity,
+            resolution=partition.resolution,
+            files=len(ranked.graph.nodes),
+        )
+
+    def diagram(
+        self,
+        ctx: RepoContext,
+        *,
+        focus: str | None = None,
+        max_nodes: int = mermaid.DEFAULT_MAX_NODES,
+        group_by_communities: bool = False,
+        resolution: float | None = None,
+    ) -> render.DiagramView:
+        """Render the module-level import and reference graph as mermaid text.
+
+        On demand and nowhere else: the text is returned, never written, and
+        the repository under analysis is read exactly as every other view
+        reads it.
+        """
+        ranked = self._ranked(ctx)
+        seed = _diagram_focus(focus, ranked)
+        if seed.message:
+            return _empty_diagram(focus or "", seed.message, grouped=group_by_communities)
+
+        setting = communities.DEFAULT_RESOLUTION if resolution is None else float(resolution)
+        partition = (
+            communities.detect_communities(ranked.graph, resolution=setting)
+            if group_by_communities
+            else None
+        )
+        options = mermaid.DiagramOptions(max_nodes=max_nodes, focus=seed.node or None)
+        drawn = mermaid.selected_nodes(ranked.graph, ranked.rank, options)
+        text = mermaid.render_flowchart(
+            ranked.graph, ranked.rank, partition=partition, options=options
+        )
+        return render.DiagramView(
+            text=text,
+            nodes=len(drawn),
+            elided=max(0, len(ranked.graph.nodes) - len(drawn)),
+            grouped=partition is not None,
+            focus=options.focus or "",
+            message="",
+        )
+
     def _resolve(self, ctx: RepoContext) -> _Resolved:
         """Scan the repository and resolve every reference it holds."""
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
-        _, graph = resolve.resolve_repo(scan, index)
-        return _Resolved(index=index, graph=graph)
+        _, resolved = resolve.resolve_repo(scan, index)
+        return _Resolved(index=index, graph=resolved)
+
+    def _ranked(self, ctx: RepoContext) -> _Ranked:
+        """Build the file-level graph and its ranking, the map's own two steps.
+
+        Communities and diagrams are both shapes of the *file* graph, not of
+        the symbol graph the other three views read, so they take the cheaper
+        half of the pipeline and skip reference resolution entirely.
+        """
+        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
+        index = refs.build_ref_index(scan)
+        built = graph.build_graph(scan, index, stoplist=ctx.config.stoplist)
+        return _Ranked(index=index, graph=built, rank=graph.personalized_pagerank(built))
 
 
 @dataclass(frozen=True)
@@ -154,13 +276,47 @@ class _Located:
     message: str
 
 
+def rank_candidates(
+    definitions: Sequence[refs.Definition],
+    target: str,
+) -> tuple[refs.Definition, ...]:
+    """Order the definitions a lookup target matched, best match first.
+
+    :func:`agentless_mcp.core.refs.definitions_for` matches on the *last*
+    segment of a qualified name, because that is what makes ``Invoice.total``
+    findable when the caller does not know which class it lives on. The cost is
+    that ``Resolver.resolve`` also matches ``ToolHandlers.resolve`` and a
+    module-level ``resolve``, and a plain path-order sort would then hand back
+    whichever file sorts first -- an exactly-named symbol losing to a
+    coincidence.
+
+    So the order is evidence-first: a definition whose qualified name *is* the
+    text the caller typed outranks one that merely ends with it, and only
+    within a band does ``(path, line)`` decide. Callers that refuse ambiguity
+    look at the first band alone, which is why "several things end in
+    ``.resolve``" stops being an ambiguity the moment one of them is spelled
+    out in full.
+    """
+    return tuple(
+        sorted(
+            definitions,
+            key=lambda entry: (
+                0 if qualname(entry.symbol) == target else 1,
+                entry.path,
+                entry.symbol.line_number,
+            ),
+        )
+    )
+
+
 def _endpoint(resolved: _Resolved, text: str) -> _Located:
     """Resolve one endpoint argument to a graph node, or say why it is not one.
 
     A stable id and a repository-relative path are exact. A bare name is
-    accepted only when it names exactly one symbol: several definitions is a
-    question the caller has to answer, and picking one would put a guess at the
-    end of a path that reads as evidence.
+    accepted only when the best-matching band holds exactly one symbol:
+    several definitions of equal standing is a question the caller has to
+    answer, and picking one would put a guess at the end of a path that reads
+    as evidence.
     """
     if text in resolved.graph.definitions:
         definition = resolved.graph.definitions[text]
@@ -171,11 +327,18 @@ def _endpoint(resolved: _Resolved, text: str) -> _Located:
     candidates = refs.definitions_for(resolved.index, text)
     if not candidates:
         return _Located(node="", label=text, message=f"no symbol or file matches {text}")
-    ids = sorted(symbol_stable_id(entry.symbol) for entry in candidates)
-    if len(ids) > 1:
-        listed = ", ".join(ids)
+
+    ranked = rank_candidates(candidates, text)
+    exact = [entry for entry in ranked if qualname(entry.symbol) == text]
+    best = tuple(exact) if exact else ranked
+    if len(best) > 1:
+        listed = ", ".join(symbol_stable_id(entry.symbol) for entry in best)
         return _Located(node="", label=text, message=f"{text} is ambiguous: {listed}")
-    return _Located(node=ids[0], label=qualname(candidates[0].symbol), message="")
+    return _Located(
+        node=symbol_stable_id(best[0].symbol),
+        label=qualname(best[0].symbol),
+        message="",
+    )
 
 
 def _missing(target: str) -> render.Explanation:
@@ -329,4 +492,37 @@ def _unresolved_path(
         exhausted=False,
         include_ambiguous=include_ambiguous,
         endpoints_resolved=False,
+    )
+
+
+def _diagram_focus(focus: str | None, ranked: _Ranked) -> _Focus:
+    """Resolve a diagram's focus argument to one module, or say why not.
+
+    The same resolution the map's ``--focus`` uses -- a path, a path suffix or
+    a symbol name -- narrowed to a single module, because a diagram has one
+    centre. A focus naming several modules is answered with the list rather
+    than with whichever one sorts first.
+    """
+    if focus is None or not focus.strip():
+        return _Focus(node="", message="")
+
+    entry = focus.strip()
+    matches = focus_paths(entry, set(ranked.graph.nodes), ranked.index)
+    if not matches:
+        return _Focus(node="", message=f"no module matches {entry}")
+    if len(matches) > 1:
+        listed = ", ".join(matches)
+        return _Focus(node="", message=f"{entry} matches several modules: {listed}")
+    return _Focus(node=matches[0], message="")
+
+
+def _empty_diagram(focus: str, message: str, *, grouped: bool) -> render.DiagramView:
+    """Build the answer for a diagram whose focus resolved to nothing."""
+    return render.DiagramView(
+        text="",
+        nodes=0,
+        elided=0,
+        grouped=grouped,
+        focus=focus,
+        message=message,
     )

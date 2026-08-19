@@ -210,14 +210,20 @@ def _seed_weights(
         if not cleaned:
             continue
 
-        for path in _paths_for(cleaned, known, index):
+        for path in focus_paths(cleaned, known, index):
             weights[path] = weights.get(path, 0.0) + 1.0
 
     return weights
 
 
-def _paths_for(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
-    """Resolve one focus entry to the files it seeds."""
+def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
+    """Resolve one focus entry to the files it names.
+
+    Public because "a file path, a path suffix, or a symbol name" is what
+    *every* view means by a focus argument, and the diagram takes one too. Two
+    views resolving the same word two ways would be a defect a reader could
+    only find by comparing outputs.
+    """
     normalized = PurePosixPath(entry).as_posix()
     if normalized in known:
         return [normalized]

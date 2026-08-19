@@ -67,6 +67,8 @@ class MessageText:
 
     server_no_roots: str
     server_root_required: str
+    unknown_operation: str
+    path_needs_endpoints: str
     repo_refused_no_roots: str
     repo_refused_not_allowed: str
     cache_stale_remediation: str
@@ -87,8 +89,7 @@ TOOL_NAMES = (
     "find_symbol",
     "find_referencing_symbols",
     "explain_symbol",
-    "symbol_path",
-    "import_cycles",
+    "analyze_structure",
     "resolve_locations",
     "capabilities",
 )

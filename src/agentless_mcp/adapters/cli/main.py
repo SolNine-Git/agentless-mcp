@@ -33,10 +33,13 @@ from agentless_mcp.adapters.cli.formatting import (
 )
 from agentless_mcp.application import envelope, render
 from agentless_mcp.application.graph_service import (
+    DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
+    DEFAULT_MEMBER_LIMIT,
     GraphService,
 )
+from agentless_mcp.application.lint_service import LintService, load_candidates
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
@@ -63,10 +66,11 @@ from agentless_mcp.application.validate_service import (
     load_verdicts,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, projectconfig, resolve, vote
+from agentless_mcp.core import cache, communities, grammars, projectconfig, resolve, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
+from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
@@ -108,6 +112,7 @@ class CliServices:
     graphs: GraphService
     patches: PatchService
     validates: ValidateService
+    lints: LintService
     counter: TokenCounter
     extractor: TreeSitterExtractor
 
@@ -163,8 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_explain(subparsers)
     _add_path(subparsers)
     _add_cycles(subparsers)
+    _add_communities(subparsers)
+    _add_diagram(subparsers)
     _add_resolve_locs(subparsers)
     _add_patch(subparsers)
+    _add_lint(subparsers)
     _add_validate(subparsers)
     _add_vote(subparsers)
     _add_warmup(subparsers)
@@ -339,6 +347,102 @@ def _add_cycles(subparsers: Any) -> None:
         help=f"cycles listed (default: {DEFAULT_CYCLE_LIMIT}); the count is always complete",
     )
     parser.set_defaults(handler=_cmd_cycles)
+
+
+def _add_communities(subparsers: Any) -> None:
+    parser = subparsers.add_parser("communities", help="which files belong together")
+    _repo_flags(parser)
+    parser.add_argument(
+        "--resolution",
+        type=float,
+        default=None,
+        help=f"modularity resolution (default: {communities.DEFAULT_RESOLUTION:g}); "
+        "lower groups more coarsely, higher splits into more, smaller groups",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_COMMUNITY_LIMIT,
+        help=f"communities listed (default: {DEFAULT_COMMUNITY_LIMIT}); "
+        "the count is always complete",
+    )
+    parser.add_argument(
+        "--members",
+        type=int,
+        default=DEFAULT_MEMBER_LIMIT,
+        help=f"member files listed per community (default: {DEFAULT_MEMBER_LIMIT})",
+    )
+    parser.set_defaults(handler=_cmd_communities)
+
+
+def _add_diagram(subparsers: Any) -> None:
+    """Wire ``diagram``: mermaid on stdout, everything about the run on stderr.
+
+    The answer here is a *document fragment*, so it follows the same split the
+    write subcommands use rather than the read ones: the diagram goes to
+    stdout with no receipt in front of it, ready to be pasted into a file
+    behind a fence of the caller's choosing, and the receipt, the caveat and
+    the elision count go to stderr.
+    """
+    parser = subparsers.add_parser("diagram", help="mermaid flowchart of the module graph")
+    _repo_flags(parser)
+    parser.add_argument(
+        "--focus",
+        metavar="FILE_OR_SYMBOL",
+        default=None,
+        help="draw only this module's neighbourhood, resolved like map --focus",
+    )
+    parser.add_argument(
+        "--max-nodes",
+        type=int,
+        default=DEFAULT_MAX_NODES,
+        help=f"modules drawn (default: {DEFAULT_MAX_NODES}); the rest are announced "
+        "on an explicit elision node",
+    )
+    parser.add_argument(
+        "--communities",
+        action="store_true",
+        help="group the modules into community subgraphs",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=float,
+        default=None,
+        help="modularity resolution used by --communities",
+    )
+    parser.add_argument(
+        "--check",
+        metavar="FILE",
+        default=None,
+        help="regenerate and compare against FILE instead of printing; exit 0 when identical, "
+        "1 when it has drifted. A leading ```mermaid fence is stripped before comparing, so a "
+        "committed .md diagram can be checked as it stands",
+    )
+    parser.set_defaults(handler=_cmd_diagram)
+
+
+def _add_lint(subparsers: Any) -> None:
+    """Wire ``lint``: the deterministic patch checks, CLI only.
+
+    No MCP tool reaches this, like ``validate`` and ``vote`` and for the same
+    reason: a patch is write-side input. And no finding fails the command --
+    the report says what to look at, the tests say what works.
+    """
+    parser = subparsers.add_parser(
+        "lint",
+        help="deterministic hallucination checks over candidate patches (write side)",
+        description="Run the deterministic patch checks and print what they found. "
+        "Advisories, warnings and coverage gaps are all reported and none of them fails "
+        "the command: the exit code is 0 unless the invocation itself was unusable.",
+    )
+    parser.add_argument(
+        "--candidates",
+        required=True,
+        metavar="PATH",
+        help="a patch file, or a directory of them (edits.json or SEARCH/REPLACE text)",
+    )
+    _repo_flags(parser)
+    parser.set_defaults(handler=_cmd_lint)
 
 
 def _add_resolve_locs(subparsers: Any) -> None:
@@ -689,6 +793,120 @@ def _cmd_cycles(args: argparse.Namespace, services: CliServices) -> int:
     result = services.graphs.cycles(ctx, limit=args.limit)
     _emit(args, ctx, services, _Answer(render.render_cycles(result), result.as_dict(), "cycles"))
     return EXIT_OK
+
+
+def _cmd_communities(args: argparse.Namespace, services: CliServices) -> int:
+    """Render the file communities; an empty repository is a successful answer."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+    if args.limit < 0 or args.members < 0:
+        return fail("--limit and --members take non-negative integers", EXIT_USAGE)
+
+    result = services.graphs.communities(
+        ctx, resolution=args.resolution, limit=args.limit, members=args.members
+    )
+    _emit(
+        args,
+        ctx,
+        services,
+        _Answer(render.render_communities(result), result.as_dict(), "communities"),
+    )
+    return EXIT_OK
+
+
+def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
+    """Render the module graph as mermaid, or compare it against a committed one."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+    if args.max_nodes < 1:
+        return fail("--max-nodes takes a positive integer", EXIT_USAGE)
+
+    view = services.graphs.diagram(
+        ctx,
+        focus=args.focus,
+        max_nodes=args.max_nodes,
+        group_by_communities=args.communities,
+        resolution=args.resolution,
+    )
+    if view.message:
+        return fail(view.message)
+
+    if args.check is not None:
+        return _check_diagram(view.text, Path(args.check))
+    if args.json:
+        emit(json.dumps(view.as_dict(), indent=2))
+    else:
+        emit(view.text)
+
+    note("\n".join([*envelope.receipt_lines(ctx), f"# {_diagram_summary(view)}"]))
+    if view.caveat:
+        note(f"agentless-mcp: {view.caveat}")
+    return EXIT_OK
+
+
+def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
+    """Run the deterministic patch checks and print what they found.
+
+    Always exit 0 on a run that happened. A finding is something to look at,
+    not a verdict, and a lint that failed the command would be a gate nobody
+    asked for standing between a candidate and the tests that actually decide.
+    """
+    ctx = _context(args, services, require_git=False)
+    if ctx is None:
+        return EXIT_USAGE
+
+    report = services.lints.lint(ctx, load_candidates(Path(args.candidates)))
+    _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
+    return EXIT_OK
+
+
+def _diagram_summary(view: render.DiagramView) -> str:
+    """Return the one-line summary a diagram's receipt carries."""
+    focus = f" around {view.focus}" if view.focus else ""
+    grouped = ", grouped by community" if view.grouped else ""
+    return f"diagram of {view.nodes} modules{focus}{grouped}; {view.elided} elided"
+
+
+def _check_diagram(rendered: str, target: Path) -> int:
+    """Compare a fresh render against a committed diagram.
+
+    Byte-exact after the fence is stripped, because "the diagram in the
+    repository is the diagram this repository produces" is either true or it
+    is not. What the caller gets on a mismatch is the first line that differs
+    and the two lengths -- enough to see whether the drift is the tree moving
+    or the flags differing, without printing two diagrams.
+    """
+    try:
+        committed = target.read_text(encoding="utf-8")
+    except OSError as error:
+        return fail(f"cannot read {target}: {error.strerror}", EXIT_USAGE)
+
+    stripped = render.strip_fence(committed)
+    if stripped == rendered:
+        note(f"agentless-mcp: {target} matches the current diagram")
+        return EXIT_OK
+
+    note(f"agentless-mcp: {target} has drifted from the current diagram")
+    for line in _drift_summary(stripped, rendered):
+        note(f"  {line}")
+    return EXIT_DOMAIN
+
+
+def _drift_summary(committed: str, rendered: str) -> list[str]:
+    """Return a short description of where two diagrams first disagree."""
+    old = committed.split("\n")
+    new = rendered.split("\n")
+    lines = [f"committed {len(old)} lines, regenerated {len(new)} lines"]
+    for number, (before, after) in enumerate(zip(old, new, strict=False), start=1):
+        if before != after:
+            lines.append(f"first difference at line {number}:")
+            lines.append(f"  committed:   {before}")
+            lines.append(f"  regenerated: {after}")
+            return lines
+    lines.append(f"identical for the first {min(len(old), len(new))} lines, then one is longer")
+    return lines
 
 
 def _cmd_resolve_locs(args: argparse.Namespace, services: CliServices) -> int:

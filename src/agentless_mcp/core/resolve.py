@@ -273,7 +273,16 @@ class Cycle:
 
 
 def build_scopes(scan: RepoScan) -> dict[str, ImportScope]:
+    """Resolve every file's import statements to repository files, once."""
+    return build_file_scopes(scan.files)
+
+
+def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
     """Resolve every file's import statements to repository files, once.
+
+    Takes the file facts rather than a whole scan, because a caller holding a
+    *hypothetical* set of files -- the repository as one patch would leave it
+    -- has no scan to hand over and must not have to invent one.
 
     Import resolution is best effort by construction (see
     :func:`agentless_mcp.core.graph.resolve_import_target`): a module string is
@@ -281,10 +290,10 @@ def build_scopes(scan: RepoScan) -> dict[str, ImportScope]:
     contributes no evidence, which costs a tier rather than an answer -- the
     reference still resolves as ``unique`` or ``ambiguous``.
     """
-    known = tuple(sorted(facts.path for facts in scan.files))
+    known = tuple(sorted(facts.path for facts in files))
     scopes: dict[str, ImportScope] = {}
 
-    for facts in scan.files:
+    for facts in files:
         modules: set[str] = set()
         named: dict[str, set[str]] = {}
         statements: list[tuple[str, int, str]] = []
@@ -314,6 +323,31 @@ def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
     return Resolver(index=index, scopes=build_scopes(scan))
 
 
+def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
+    """Assemble the module-level import edges alone, resolving no references.
+
+    The cycle question is about modules, so it needs one third of
+    :func:`build_graph` and none of its cost. Separating it is what lets a
+    caller build the import graph of a repository *twice* -- once as it is,
+    once as a patch would leave it -- without resolving every identifier in
+    the tree twice to find out whether a knot appeared.
+
+    Only ``path`` and ``imports`` are read off each entry, so a caller may
+    hand over facts whose symbol and reference tables belong to the pre-patch
+    text; the returned graph has no symbol definitions for the same reason.
+    """
+    scopes = build_file_scopes(files)
+    edges: list[SymbolEdge] = []
+    for facts in files:
+        edges.extend(_import_edges(facts, scopes.get(facts.path)))
+
+    return ResolvedGraph(
+        edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
+        definitions={},
+        files=tuple(sorted(facts.path for facts in files)),
+    )
+
+
 def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
     """Resolve every reference, import and base class in ``scan`` into edges.
 
@@ -339,7 +373,7 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
 
         edges.extend(_reference_edges(facts, owners, resolver))
         edges.extend(_inherit_edges(facts, resolver))
-        edges.extend(_import_edges(facts, resolver))
+        edges.extend(_import_edges(facts, resolver.scopes.get(facts.path)))
 
     return ResolvedGraph(
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
@@ -531,9 +565,8 @@ def _add(
             edges.append(edge)
 
 
-def _import_edges(facts: FileFacts, resolver: Resolver) -> list[SymbolEdge]:
+def _import_edges(facts: FileFacts, scope: ImportScope | None) -> list[SymbolEdge]:
     """Turn one file's resolved imports into module-level edges."""
-    scope = resolver.scopes.get(facts.path)
     if scope is None:
         return []
 

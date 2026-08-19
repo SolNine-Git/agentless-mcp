@@ -69,6 +69,8 @@ def build_outputs(repo: str) -> dict[str, str]:
     explained = graphs.explain(ctx, target)
     traced = graphs.path(ctx, source_symbol, target_symbol)
     cycles = graphs.cycles(ctx)
+    grouped = graphs.communities(ctx)
+    drawn = graphs.diagram(ctx, group_by_communities=True)
 
     return {
         "explain.txt": normalise(
@@ -81,6 +83,14 @@ def build_outputs(repo: str) -> dict[str, str]:
         "cycles.txt": normalise(
             envelope.wrap(ctx, render.render_cycles(cycles), counter=counter), ctx
         ),
+        "communities.txt": normalise(
+            envelope.wrap(ctx, render.render_communities(grouped), counter=counter), ctx
+        ),
+        # The diagram alone travels without an envelope, because that is how
+        # both adapters emit it: the CLI writes it into a document and the MCP
+        # tool fences it into a body. A receipt in front of it would be text
+        # nobody could paste anywhere.
+        "diagram.mmd": normalise(drawn.text, ctx),
     }
 
 
@@ -97,8 +107,18 @@ def regenerate() -> None:
             golden_path(repo, name).write_text(text, encoding="utf-8")
 
 
+GOLDEN_NAMES = (
+    "explain.txt",
+    "explain.json",
+    "path.txt",
+    "cycles.txt",
+    "communities.txt",
+    "diagram.mmd",
+)
+
+
 @pytest.mark.parametrize("repo", REPOS)
-@pytest.mark.parametrize("name", ["explain.txt", "explain.json", "path.txt", "cycles.txt"])
+@pytest.mark.parametrize("name", GOLDEN_NAMES)
 def test_the_rendered_view_matches_its_golden(repo, name):
     produced = build_outputs(repo)[name]
     assert produced == golden_path(repo, name).read_text(encoding="utf-8")

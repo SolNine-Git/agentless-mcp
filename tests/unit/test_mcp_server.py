@@ -12,9 +12,11 @@ import json
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.server import (
+    _OPERATIONS,
     ServerServices,
     ToolHandlers,
     build_server,
@@ -36,8 +38,7 @@ EXPECTED_TOOLS = {
     "find_symbol",
     "find_referencing_symbols",
     "explain_symbol",
-    "symbol_path",
-    "import_cycles",
+    "analyze_structure",
     "resolve_locations",
     "capabilities",
 }
@@ -233,13 +234,14 @@ class TestRoundTrip:
         assert "referenced by (fan-in)" in text
         assert "same-file" in text
 
-    def test_symbol_path_returns_hops(self, services, one_repo):
+    def test_analyze_structure_path_returns_hops(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
         text = (
             self.call(
                 server,
-                "symbol_path",
+                "analyze_structure",
                 {
+                    "operation": "path",
                     "source": "PriceBook.cost_of",
                     "target": "quote",
                     "repo_root": str(one_repo),
@@ -252,9 +254,17 @@ class TestRoundTrip:
         assert "1 hop from" in text
         assert "py:core.py::quote" in text
 
-    def test_import_cycles_answers_when_there_are_none(self, services, one_repo):
+    def test_analyze_structure_cycles_answers_when_there_are_none(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
-        text = self.call(server, "import_cycles", {"repo_root": str(one_repo)}).content[0].text
+        text = (
+            self.call(
+                server,
+                "analyze_structure",
+                {"operation": "cycles", "repo_root": str(one_repo)},
+            )
+            .content[0]
+            .text
+        )
 
         assert "no import cycles" in text
 
@@ -362,3 +372,80 @@ class TestServerArguments:
 
     def test_no_roots_parses_to_an_empty_list(self):
         assert parse_args([]).root == []
+
+
+class TestAnalyzeStructure:
+    """The consolidated structural tool: one question shape, four operations."""
+
+    def call(self, server, name, arguments):
+        """Call one tool through a real client session."""
+
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool(name, arguments)
+
+        return asyncio.run(go())
+
+    def answer(self, services, one_repo, arguments):
+        """Call analyze_structure on the fixture repository."""
+        server = build_server(ToolHandlers([one_repo], services))
+        return (
+            self.call(server, "analyze_structure", {"repo_root": str(one_repo), **arguments})
+            .content[0]
+            .text
+        )
+
+    def test_the_communities_operation_rolls_the_files_up(self, services, one_repo):
+        text = self.answer(services, one_repo, {"operation": "communities"})
+
+        assert "communities over" in text or "community over" in text
+        assert "core.py" in text
+
+    def test_the_diagram_operation_returns_fenced_mermaid(self, services, one_repo):
+        text = self.answer(services, one_repo, {"operation": "diagram"})
+
+        assert "```mermaid" in text
+        assert "flowchart LR" in text
+
+    def test_the_diagram_operation_groups_when_asked(self, services, one_repo):
+        text = self.answer(
+            services, one_repo, {"operation": "diagram", "group_by_communities": True}
+        )
+
+        assert "subgraph" in text
+
+    def test_an_unknown_operation_lists_the_ones_that_exist(self, services, one_repo):
+        with pytest.raises(ToolError) as raised:
+            self.answer(services, one_repo, {"operation": "graph"})
+
+        message = str(raised.value)
+        assert "no operation named 'graph'" in message
+        for operation in ("path", "cycles", "communities", "diagram"):
+            assert operation in message
+
+    def test_the_path_operation_needs_both_endpoints(self, services, one_repo):
+        with pytest.raises(ToolError) as raised:
+            self.answer(services, one_repo, {"operation": "path", "source": "quote"})
+
+        assert "needs both source and target" in str(raised.value)
+
+    def test_every_operation_is_dispatched_by_the_table(self):
+        assert set(_OPERATIONS) == {"path", "cycles", "communities", "diagram"}
+
+
+class TestToolSurface:
+    """The listing is capped at eleven, and the cap is read off a live server."""
+
+    def test_the_published_listing_is_exactly_eleven_tools(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+
+        assert len(tools) == 11
+        assert {tool.name for tool in tools} == EXPECTED_TOOLS
+
+    def test_the_folded_tools_are_no_longer_published(self, services, one_repo):
+        names = {
+            tool.name for tool in listed_tools(build_server(ToolHandlers([one_repo], services)))
+        }
+
+        assert "symbol_path" not in names
+        assert "import_cycles" not in names

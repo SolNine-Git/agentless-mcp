@@ -1,0 +1,16 @@
+flowchart LR
+    subgraph s0["repository root"]
+        n0["inventory.ts"]
+        n1["pricing.ts"]
+        n2["reports.ts"]
+        n3["types.ts"]
+    end
+    n0 --> n1
+    n0 --> n2
+    n0 --> n3
+    n1 --> n0
+    n1 --> n2
+    n1 --> n3
+    n2 --> n0
+    n2 --> n1
+    n2 --> n3

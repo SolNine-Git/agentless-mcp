@@ -21,6 +21,7 @@ import pytest
 from agentless_mcp.adapters.cli.formatting import EXIT_OK
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
@@ -82,6 +83,7 @@ def services(extractor, counter):
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),
+        lints=LintService(extractor),
         counter=counter,
         extractor=extractor,
     )

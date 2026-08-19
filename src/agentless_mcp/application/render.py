@@ -21,6 +21,12 @@ from typing import Any
 
 MODULE_LEVEL = "(module level)"
 
+# The markdown fence a diagram travels in when it is going into a response
+# body. Declared here rather than in `core.mermaid` because fencing is a
+# property of the destination, not of the diagram.
+FENCE = "```"
+MERMAID_FENCE = FENCE + "mermaid"
+
 
 @dataclass(frozen=True)
 class MapEntry:
@@ -358,6 +364,243 @@ class CycleReport:
             "omitted": self.omitted,
             "cycles": [cycle.as_dict() for cycle in self.cycles],
         }
+
+
+@dataclass(frozen=True)
+class CommunityRow:
+    """One community of files: its mechanical label and the members shown."""
+
+    label: str
+    size: int
+    members: tuple[str, ...]
+    omitted: int
+    internal_weight: float
+    total_weight: float
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this community."""
+        return {
+            "label": self.label,
+            "size": self.size,
+            "members": list(self.members),
+            "omitted": self.omitted,
+            "internal_weight": round(self.internal_weight, 6),
+            "total_weight": round(self.total_weight, 6),
+        }
+
+
+@dataclass(frozen=True)
+class CommunityReport:
+    """A whole partition, already capped, with the score behind it."""
+
+    communities: tuple[CommunityRow, ...]
+    total: int
+    limit: int
+    modularity: float
+    resolution: float
+    files: int
+
+    @property
+    def omitted(self) -> int:
+        """How many communities the limit left out."""
+        return max(0, self.total - len(self.communities))
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this report."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "modularity": round(self.modularity, 6),
+            "resolution": self.resolution,
+            "files": self.files,
+            "communities": [community.as_dict() for community in self.communities],
+        }
+
+
+@dataclass(frozen=True)
+class DiagramView:
+    """Rendered mermaid text, plus what the render left out.
+
+    ``text`` is bare mermaid with no fence: the CLI writes it into a document
+    the caller fences, and the MCP tool fences it into a response body.
+    ``message`` is non-empty only when there is no diagram to show.
+    """
+
+    text: str
+    nodes: int
+    elided: int
+    grouped: bool
+    focus: str
+    message: str
+
+    @property
+    def caveat(self) -> str:
+        """The qualification a grouped, bounded diagram has to carry.
+
+        A subgraph is titled after its whole community, and the rank bound
+        drops members out of the picture without changing that title. Left
+        unsaid, a reader counts the boxes inside a group and believes the
+        count.
+        """
+        if not self.grouped or self.elided <= 0:
+            return ""
+        return (
+            "note: subgraph titles name whole communities, including the "
+            f"{self.elided} module(s) the rank bound left out of this diagram"
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this diagram."""
+        return {
+            "mermaid": self.text,
+            "nodes": self.nodes,
+            "elided": self.elided,
+            "grouped": self.grouped,
+            "focus": self.focus,
+            "message": self.message,
+            "caveat": self.caveat,
+        }
+
+
+@dataclass(frozen=True)
+class LintFinding:
+    """One patch-lint finding, denormalized the way every other row is."""
+
+    check: str
+    severity: str
+    message: str
+    path: str
+    line: int
+    location: str
+    evidence: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this finding."""
+        return {
+            "check": self.check,
+            "severity": self.severity,
+            "message": self.message,
+            "path": self.path,
+            "line": self.line,
+            "location": self.location,
+            "evidence": self.evidence,
+        }
+
+
+@dataclass(frozen=True)
+class LintCandidate:
+    """Every finding one candidate patch produced."""
+
+    id: str
+    findings: tuple[LintFinding, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this candidate's report."""
+        return {"id": self.id, "findings": [finding.as_dict() for finding in self.findings]}
+
+
+@dataclass(frozen=True)
+class LintReportView:
+    """The lint report over one or more candidate patches.
+
+    Deliberately without a verdict field, matching
+    :class:`agentless_mcp.core.patchlint.LintReport`: this view says what to
+    look at, never whether to proceed.
+    """
+
+    candidates: tuple[LintCandidate, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this report."""
+        return {"candidates": [candidate.as_dict() for candidate in self.candidates]}
+
+
+def render_communities(report: CommunityReport) -> str:
+    """Render a community partition, largest group first."""
+    if not report.communities:
+        return "no communities: nothing in this repository parsed into files\n"
+
+    groups = "community" if report.total == 1 else "communities"
+    lines = [
+        (
+            f"{report.total} {groups} over {report.files} files "
+            f"(modularity {report.modularity:.3f} at resolution {report.resolution:g})"
+        )
+    ]
+    for index, community in enumerate(report.communities, start=1):
+        files = "file" if community.size == 1 else "files"
+        lines.append(f"  {index:>3}. {community.label}  ({community.size} {files})")
+        lines.extend(f"       {member}" for member in community.members)
+        if community.omitted:
+            lines.append(f"       ... {community.omitted} more files in this community")
+    if report.omitted:
+        lines.append(f"  ... {report.omitted} more communities not listed")
+    return "\n".join(lines) + "\n"
+
+
+def render_diagram(view: DiagramView) -> str:
+    """Render a diagram for a response body: fenced, with its caveat below.
+
+    The fence is added here rather than in
+    :mod:`agentless_mcp.core.mermaid` because it is a property of where the
+    text is going. The CLI writes ``view.text`` straight out so a caller can
+    paste it into a document and choose their own fence.
+    """
+    if not view.text:
+        return (view.message or "no diagram").rstrip("\n") + "\n"
+
+    body = f"{MERMAID_FENCE}\n{view.text.rstrip(chr(10))}\n{FENCE}\n"
+    return body if not view.caveat else f"{body}\n{view.caveat}\n"
+
+
+def strip_fence(text: str) -> str:
+    """Return the diagram inside a markdown fence, or ``text`` unchanged.
+
+    The inverse of what :func:`render_diagram` adds, so that a diagram
+    committed into a document -- fenced, as a document needs it -- can be
+    compared byte for byte against a fresh render. Only a fence that opens the
+    document and closes it is removed: anything else is a file with a diagram
+    somewhere inside it, which is not what a drift check is comparing.
+    """
+    lines = text.split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines or not lines[0].startswith(FENCE):
+        return text
+
+    closing = len(lines) - 1
+    while closing > 0 and not lines[closing].strip():
+        closing -= 1
+    if closing == 0 or lines[closing].strip() != FENCE:
+        return text
+    return "\n".join(lines[1:closing]) + "\n"
+
+
+def render_lint(report: LintReportView) -> str:
+    """Render lint findings, grouped by candidate and ordered as they arrived."""
+    blocks: list[str] = []
+    for candidate in report.candidates:
+        counts = _severity_counts(candidate.findings)
+        lines = [f"{candidate.id}: {counts}"]
+        lines.extend(
+            f"  [{finding.severity}] {finding.check}  {finding.location}\n"
+            f"      {finding.message}\n"
+            f"      evidence: {finding.evidence}"
+            for finding in candidate.findings
+        )
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + "\n" if blocks else "no candidates to lint\n"
+
+
+def _severity_counts(findings: Sequence[LintFinding]) -> str:
+    """Summarise one candidate's findings by severity, in a fixed order."""
+    tally: dict[str, int] = {}
+    for finding in findings:
+        tally[finding.severity] = tally.get(finding.severity, 0) + 1
+    if not tally:
+        return "no findings"
+    return ", ".join(f"{tally[severity]} {severity}" for severity in sorted(tally))
 
 
 def render_explanation(explanation: Explanation) -> str:

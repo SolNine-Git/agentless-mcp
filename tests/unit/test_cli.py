@@ -16,6 +16,7 @@ import pytest
 from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK, EXIT_USAGE
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
@@ -64,6 +65,7 @@ def services(extractor, counter):
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),
+        lints=LintService(extractor),
         counter=counter,
         extractor=extractor,
     )
@@ -163,6 +165,159 @@ class TestInProcess:
         assert document["symbol"]["stable_id"] == "py:core.py::quote"
         assert document["fan_in"]
 
+    def test_communities_rolls_the_files_up(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "communities") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "core.py" in out
+        assert "caller.py" in out
+
+    def test_communities_has_a_json_form(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "communities", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["files"] == 2
+        assert document["communities"]
+
+    def test_a_negative_community_bound_is_a_usage_error(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_USAGE
+        assert "--limit" in capsys.readouterr().err
+
+
+class TestDiagram:
+    """Mermaid on stdout, the receipt and the caveat on stderr."""
+
+    def test_the_diagram_is_bare_mermaid_on_stdout(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram") == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out.startswith("flowchart LR")
+        assert "```" not in captured.out
+        assert "agentless-mcp receipt" in captured.err
+
+    def test_a_bad_node_bound_is_a_usage_error(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_USAGE
+        assert "--max-nodes" in capsys.readouterr().err
+
+    def test_a_focus_naming_nothing_is_a_domain_failure(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram", "--focus", "nope.py") == EXIT_DOMAIN
+        assert "no module matches nope.py" in capsys.readouterr().err
+
+    def test_check_passes_on_an_unfenced_diagram(self, services, repo_path, capsys, tmp_path):
+        assert invoke(services, repo_path, "diagram") == EXIT_OK
+        committed = tmp_path / "diagram.txt"
+        committed.write_text(capsys.readouterr().out, encoding="utf-8")
+
+        assert invoke(services, repo_path, "diagram", "--check", str(committed)) == EXIT_OK
+        assert "matches the current diagram" in capsys.readouterr().err
+
+    def test_check_strips_a_leading_mermaid_fence(self, services, repo_path, capsys, tmp_path):
+        assert invoke(services, repo_path, "diagram") == EXIT_OK
+        committed = tmp_path / "diagram.md"
+        committed.write_text("```mermaid\n" + capsys.readouterr().out + "```\n", encoding="utf-8")
+
+        assert invoke(services, repo_path, "diagram", "--check", str(committed)) == EXIT_OK
+        assert "matches the current diagram" in capsys.readouterr().err
+
+    def test_check_reports_drift_with_the_first_difference(self, services, repo_path, capsys):
+        drifted = repo_path / "stale.md"
+        drifted.write_text('flowchart LR\n    n0["gone.py"]\n', encoding="utf-8")
+
+        assert invoke(services, repo_path, "diagram", "--check", str(drifted)) == EXIT_DOMAIN
+        err = capsys.readouterr().err
+        assert "has drifted" in err
+        assert "first difference at line 2" in err
+
+    def test_check_writes_nothing_to_stdout(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram") == EXIT_OK
+        rendered = capsys.readouterr().out
+        committed = repo_path / "kept.mmd"
+        committed.write_text(rendered, encoding="utf-8")
+
+        invoke(services, repo_path, "diagram", "--check", str(committed))
+        assert capsys.readouterr().out == ""
+
+    def test_an_unreadable_check_target_is_a_usage_error(self, services, repo_path, capsys):
+        assert (
+            invoke(services, repo_path, "diagram", "--check", str(repo_path / "absent.md"))
+            == EXIT_USAGE
+        )
+        assert "cannot read" in capsys.readouterr().err
+
+
+PATCH_WITH_A_DANGLING_CALL = """\
+### core.py
+<<<<<<< SEARCH
+def quote(sku):
+    return RATE
+=======
+def quote(sku):
+    return compute_rate(sku)
+>>>>>>> REPLACE
+"""
+
+
+class TestLint:
+    """The write-side checks: findings are reported, nothing is a verdict."""
+
+    def test_a_dangling_call_is_reported(self, services, repo_path, capsys, tmp_path):
+        candidate = tmp_path / "01-candidate.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "01-candidate" in out
+        assert "dangling_references" in out
+        assert "compute_rate" in out
+
+    def test_a_finding_never_fails_the_command(self, services, repo_path, tmp_path):
+        candidate = tmp_path / "01-candidate.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+
+    def test_a_directory_lints_every_candidate_in_sorted_order(
+        self, services, repo_path, capsys, tmp_path
+    ):
+        directory = tmp_path / "candidates"
+        directory.mkdir()
+        (directory / "02-second.txt").write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+        (directory / "01-first.txt").write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(directory)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert out.index("01-first") < out.index("02-second")
+
+    def test_a_clean_patch_reports_only_the_coverage_gaps(self, services, repo_path, capsys):
+        candidate = repo_path / "clean.txt"
+        candidate.write_text(
+            "### core.py\n<<<<<<< SEARCH\nRATE = 3\n=======\nRATE = 4\n>>>>>>> REPLACE\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "clean: 1 not_checked" in out
+        assert "no pyproject.toml" in out
+        assert "[warning]" not in out
+
+    def test_lint_has_a_json_form(self, services, repo_path, capsys, tmp_path):
+        candidate = tmp_path / "01-candidate.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        assert (
+            invoke(services, repo_path, "lint", "--candidates", str(candidate), "--json") == EXIT_OK
+        )
+        document = json.loads(capsys.readouterr().out)
+        assert document["candidates"][0]["id"] == "01-candidate"
+        assert document["candidates"][0]["findings"]
+
+    def test_a_candidates_path_that_is_neither_is_refused(self, services, repo_path, capsys):
+        assert (
+            invoke(services, repo_path, "lint", "--candidates", str(repo_path / "nope"))
+            == EXIT_DOMAIN
+        )
+        assert "neither a patch file nor a directory" in capsys.readouterr().err
+
+
+class TestExitCodes:
     def test_exit_codes_are_the_three_documented_values(self):
         assert (EXIT_OK, EXIT_DOMAIN, EXIT_USAGE) == (0, 1, 2)
 

@@ -205,3 +205,149 @@ class TestCycles:
         assert report.total == 2
         assert report.omitted == 1
         assert "1 more cycles not listed" in render.render_cycles(report)
+
+
+# The three-way collision a live smoke run exposed: one class method spelled
+# exactly as the caller asks, one method of the same short name on another
+# class, and a module-level function of that name. `definitions_for` matches
+# all three on the trailing segment, and the exactly-named one has to win.
+COLLIDING_FILES = {
+    "resolver.py": ("class Resolver:\n    def resolve(self, name):\n        return name\n"),
+    "handlers.py": ("class ToolHandlers:\n    def resolve(self, root):\n        return root\n"),
+    "projectconfig.py": "def resolve(explicit, configured, fallback):\n    return explicit\n",
+}
+
+# The same three plus a second module-level `resolve`, so that the bare name
+# has two definitions of equal standing and nothing to prefer between them.
+TWICE_NAMED_FILES = {**COLLIDING_FILES, "other.py": "def resolve(value):\n    return value\n"}
+
+
+@pytest.fixture
+def colliding(tmp_path):
+    """A repository where three definitions end in `.resolve`."""
+    return build(tmp_path, COLLIDING_FILES)
+
+
+class TestEndpointRanking:
+    def test_an_exact_qualified_name_outranks_a_trailing_match(self, graphs, colliding):
+        explained = graphs.explain(colliding, "Resolver.resolve")
+
+        assert explained.card is not None
+        assert explained.card.stable_id == "py:resolver.py::Resolver.resolve"
+
+    def test_the_other_definitions_are_offered_as_alternatives(self, graphs, colliding):
+        explained = graphs.explain(colliding, "Resolver.resolve")
+
+        assert explained.alternatives == (
+            "py:handlers.py::ToolHandlers.resolve",
+            "py:projectconfig.py::resolve",
+        )
+
+    def test_a_path_endpoint_takes_the_exactly_named_definition(self, graphs, colliding):
+        trace = graphs.path(colliding, "Resolver.resolve", "ToolHandlers.resolve")
+
+        assert trace.endpoints_resolved
+        assert trace.source == "py:resolver.py::Resolver.resolve"
+        assert trace.target == "py:handlers.py::ToolHandlers.resolve"
+
+    def test_a_bare_name_takes_the_definition_that_is_spelled_that_way(self, graphs, colliding):
+        trace = graphs.path(colliding, "resolve", "Resolver.resolve")
+
+        assert trace.endpoints_resolved
+        assert trace.source == "py:projectconfig.py::resolve"
+
+    def test_two_definitions_of_equal_standing_are_still_refused(self, graphs, tmp_path):
+        trace = graphs.path(build(tmp_path, TWICE_NAMED_FILES), "resolve", "Resolver.resolve")
+
+        assert not trace.endpoints_resolved
+        assert "is ambiguous" in trace.message
+        assert "py:other.py::resolve" in trace.message
+        assert "py:projectconfig.py::resolve" in trace.message
+        assert "Resolver.resolve" not in trace.message
+
+    def test_a_trailing_match_still_answers_when_it_is_the_only_one(self, graphs, colliding):
+        explained = graphs.explain(colliding, "ToolHandlers.resolve")
+
+        assert explained.card is not None
+        assert explained.card.stable_id == "py:handlers.py::ToolHandlers.resolve"
+
+
+class TestCommunities:
+    def test_every_file_lands_in_exactly_one_community(self, graphs, repo):
+        report = graphs.communities(repo)
+
+        placed = [member for row in report.communities for member in row.members]
+        assert sorted(placed) == sorted(FILES)
+        assert len(placed) == len(set(placed))
+
+    def test_the_score_and_the_resolution_are_reported(self, graphs, repo):
+        report = graphs.communities(repo)
+
+        assert report.resolution == 1.0
+        assert 0.0 <= report.modularity <= 1.0
+        assert report.files == len(FILES)
+
+    def test_the_limit_caps_the_listing_and_says_so(self, graphs, repo):
+        report = graphs.communities(repo, limit=1)
+
+        assert len(report.communities) == 1
+        assert report.omitted == report.total - 1
+        assert "more communities not listed" in render.render_communities(report)
+
+    def test_the_member_bound_is_announced_per_community(self, graphs, repo):
+        report = graphs.communities(repo, members=1)
+
+        listed = render.render_communities(report)
+        assert any(row.omitted for row in report.communities)
+        assert "more files in this community" in listed
+
+    def test_two_runs_over_one_tree_agree(self, graphs, repo):
+        assert graphs.communities(repo).as_dict() == graphs.communities(repo).as_dict()
+
+
+class TestDiagram:
+    def test_the_diagram_is_bare_mermaid_with_no_fence(self, graphs, repo):
+        view = graphs.diagram(repo)
+
+        assert view.text.startswith("flowchart ")
+        assert "```" not in view.text
+
+    def test_the_node_bound_is_counted_and_announced(self, graphs, repo):
+        view = graphs.diagram(repo, max_nodes=2)
+
+        assert view.nodes == 2
+        assert view.elided == len(FILES) - 2
+        assert "more modules" in view.text
+
+    def test_an_unbounded_diagram_carries_no_caveat(self, graphs, repo):
+        view = graphs.diagram(repo, group_by_communities=True)
+
+        assert view.elided == 0
+        assert view.caveat == ""
+
+    def test_a_grouped_bounded_diagram_says_titles_cover_elided_members(self, graphs, repo):
+        view = graphs.diagram(repo, max_nodes=2, group_by_communities=True)
+
+        assert "whole communities" in view.caveat
+        assert view.caveat in render.render_diagram(view)
+
+    def test_the_response_body_fences_the_diagram(self, graphs, repo):
+        body = render.render_diagram(graphs.diagram(repo))
+
+        assert body.startswith("```mermaid\n")
+        assert body.rstrip("\n").endswith("```")
+
+    def test_a_focus_keeps_the_seed_and_its_neighbourhood(self, graphs, repo):
+        view = graphs.diagram(repo, focus="user.py", max_nodes=3)
+
+        assert view.focus == "user.py"
+        assert "user.py" in view.text
+
+    def test_a_focus_naming_nothing_is_a_message_not_an_exception(self, graphs, repo):
+        view = graphs.diagram(repo, focus="nowhere.py")
+
+        assert view.text == ""
+        assert "no module matches nowhere.py" in view.message
+
+    def test_two_renders_of_one_tree_are_byte_identical(self, graphs, repo):
+        assert graphs.diagram(repo).text == graphs.diagram(repo).text
