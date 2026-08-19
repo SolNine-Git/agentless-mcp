@@ -34,6 +34,13 @@ mcp = [
     # transitive dependency we import is a contract we do not control.
     "mcp>=1.29",
 ]
+# 2026-08-18, Phase 4: an exact token count for callers who want one. The
+# chars/4 estimator stays the default and is what the token regression pins
+# measure, so installing this extra changes nothing until
+# `--token-counter tiktoken` is passed. Loaded at the composition root only.
+tokens = [
+    "tiktoken>=0.9",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.28,<0.10.0"]
@@ -255,6 +262,12 @@ known_first_party = ["agentless_mcp"]
 # tooling is invoked by name (pre-commit, hooks, CI) and never imported, so it
 # stays listed permanently.
 DEP002 = [
+    # 2026-08-18, Phase 4: tiktoken is imported through importlib at the
+    # composition root, deliberately -- a static import would make an optional
+    # package a hard one for every install and would fail at import time
+    # without the extra. deptry cannot see a dynamic import, so the entry
+    # stands for as long as the counter is opt-in.
+    "tiktoken",
     "codespell",
     "deptry",
     "import-linter",

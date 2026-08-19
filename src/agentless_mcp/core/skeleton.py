@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from tree_sitter import Node
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import LANGUAGE_CONFIGS
+from agentless_mcp.core.extractor import BODY_BLOCK_NODE_TYPES, LANGUAGE_CONFIGS
 from agentless_mcp.util.tokens import Chars4Counter, TokenCounter
 
 SENTINEL = "..."
@@ -37,16 +37,8 @@ DOCSTRING_MAX_CHARS = 200
 # Node types whose body is a block worth eliding. Keyed on what the node IS
 # (a braced or indented statement block), not on the parent's name, so a
 # language whose functions are spelled differently still hits the same rule.
-_BLOCK_TYPES = frozenset(
-    {
-        "block",
-        "statement_block",
-        "compound_statement",
-        "body_statement",
-        "do_block",
-        "function_body",
-    }
-)
+# The table lives with the other node-type tables in `core.extractor`.
+_BLOCK_TYPES = BODY_BLOCK_NODE_TYPES
 
 # Function-like node types the LanguageConfig table does not already carry:
 # the languages whose extraction is done by a dedicated handler, plus the

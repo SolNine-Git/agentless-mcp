@@ -121,19 +121,47 @@ class RefGroup:
 
 
 @dataclass(frozen=True)
+class CallerRef:
+    """One caller shared between the refs target and a candidate symbol."""
+
+    qualname: str
+    path: str
+    line: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this caller."""
+        return {"qualname": self.qualname, "path": self.path, "line": self.line}
+
+
+@dataclass(frozen=True)
 class SharedCaller:
-    """A symbol that shares callers with the target of a refs query."""
+    """A symbol that shares callers with the target of a refs query.
+
+    ``overlap`` counts the shared callers and ``shared_files`` the distinct
+    files they live in; ``score`` is the second damped by how common the
+    candidate's name is across the repository. The ranking reads off
+    ``score``, so the row carries all three rather than a number a reader
+    would have to take on trust.
+    """
 
     stable_id: str
+    path: str
+    line: int
     overlap: int
-    callers: tuple[str, ...]
+    shared_files: int
+    score: float
+    callers: tuple[CallerRef, ...]
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this adjacency row."""
         return {
             "stable_id": self.stable_id,
+            "path": self.path,
+            "line": self.line,
             "overlap": self.overlap,
-            "shared_callers": list(self.callers),
+            "shared_files": self.shared_files,
+            "score": round(self.score, 6),
+            "shared_callers": [caller.as_dict() for caller in self.callers],
         }
 
 
@@ -177,14 +205,26 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
 
 
 def render_shared_callers(rows: Sequence[SharedCaller], target: str) -> str:
-    """Render the adjacency view: symbols called by the same callers."""
+    """Render the adjacency view: symbols called by the same callers.
+
+    Ranked strongest first, and every line -- the candidate and each caller --
+    carries its own ``file:line``, so the DRY question is answered with
+    somewhere to go rather than with a list of names.
+    """
     if not rows:
         return f"no symbols share callers with {target}\n"
 
     lines = [f"symbols sharing callers with {target}"]
-    lines.extend(
-        f"  {row.stable_id}  ({row.overlap} shared: {', '.join(row.callers)})" for row in rows
-    )
+    for row in rows:
+        files = "file" if row.shared_files == 1 else "files"
+        lines.append(
+            f"  {row.stable_id}    {row.path}:{row.line}  "
+            f"({row.overlap} shared callers in {row.shared_files} {files}, "
+            f"score {row.score:.3f})"
+        )
+        lines.extend(
+            f"      {caller.qualname}    {caller.path}:{caller.line}" for caller in row.callers
+        )
     return "\n".join(lines) + "\n"
 
 

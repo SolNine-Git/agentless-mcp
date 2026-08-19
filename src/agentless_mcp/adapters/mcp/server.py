@@ -35,12 +35,7 @@ from mcp.shared.exceptions import McpError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
-from agentless_mcp.application.map_service import (
-    DEFAULT_MAX_FILES,
-    GRANULARITY_FUNCTION,
-    MapRequest,
-    MapService,
-)
+from agentless_mcp.application.map_service import MapRequest, MapService
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo, resolved_allowlist
 from agentless_mcp.application.symbol_service import (
     DEFAULT_EXPAND_LIMIT,
@@ -49,7 +44,7 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars
+from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
@@ -132,7 +127,14 @@ class ToolHandlers:
         return replace(ctx, symbols=source)
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
-        """Render a ranked, budgeted repository map."""
+        """Render a ranked, budgeted repository map.
+
+        An omitted ``budget`` means auto-size unless the repository's
+        ``.agentless-mcp.json`` names one; the map service resolves the other
+        two settings, so both adapters get the same precedence.
+        """
+        if request.budget is None and ctx.config.map_budget is not None:
+            request = replace(request, budget=ctx.config.map_budget)
         result = self._services.maps.build(ctx, request)
         return envelope.wrap(
             ctx,
@@ -148,9 +150,12 @@ class ToolHandlers:
         view = self._services.views.tree(ctx, depth=depth, max_entries=max_entries)
         return self._wrap(ctx, view.text)
 
-    def get_symbols_overview(self, ctx: RepoContext, paths: Sequence[str], *, docs: bool) -> str:
+    def get_symbols_overview(
+        self, ctx: RepoContext, paths: Sequence[str], *, docs: bool | None
+    ) -> str:
         """Render each named file as signatures with bodies elided."""
-        views = self._services.views.skeleton(ctx, paths, docstrings=docs)
+        keep = projectconfig.resolve(docs, ctx.config.docstrings, False)
+        views = self._services.views.skeleton(ctx, paths, docstrings=keep)
         body = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
         return self._wrap(ctx, body)
 
@@ -291,11 +296,16 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         repo_root: str | None = None,
         focus: list[str] | None = None,
         budget: int | None = None,
-        max_files: int = DEFAULT_MAX_FILES,
-        granularity: str = GRANULARITY_FUNCTION,
+        max_files: int | None = None,
+        granularity: str | None = None,
         no_cache: bool = False,
     ) -> str:
-        """Rank the repository's files and render the symbols that fit a budget."""
+        """Rank the repository's files and render the symbols that fit a budget.
+
+        Omitted arguments fall back to the repository's own
+        `.agentless-mcp.json`, then to the built-in defaults: budget auto,
+        max_files 10, granularity function.
+        """
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.repo_map(
             ctx,
@@ -322,7 +332,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         paths: list[str],
         repo_root: str | None = None,
-        docstrings: bool = False,
+        docstrings: bool | None = None,
         no_cache: bool = False,
     ) -> str:
         """Render the named files as signatures with their bodies elided."""

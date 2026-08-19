@@ -1,10 +1,9 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
+from agentless_mcp.core.extractor import collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
     build_ref_index,
-    collect_refs,
     enclosing_symbol,
-    identifier_node_types,
     references_to,
     scan_repo,
 )

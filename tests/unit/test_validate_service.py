@@ -104,19 +104,50 @@ def service(extractor):
 def validate(service, python_cmd):
     """Run one validation against a repository, with the fixture commands."""
 
-    def call(repo, candidates, *, repro=None, timeout=60, jobs=1):
+    def call(repo, candidates, *, repro=None, timeout=60, test_cmd=None, **request):
         return service.validate(
             resolve_repo(repo, None),
             ValidateRequest(
                 candidates=candidates,
-                test_cmd=python_cmd("check_regression.py"),
+                test_cmd=test_cmd or python_cmd("check_regression.py"),
                 repro_cmd=None if repro is None else python_cmd(repro),
                 timeout=timeout,
-                jobs=jobs,
+                **request,
             ),
         )
 
     return call
+
+
+# A test command that passes and fails alternately, keyed on a counter file
+# whose path it is given rather than on the clock or on a random number: a
+# flaky baseline has to be reproducible for a test to say anything about it.
+# The counter lives outside the repository on purpose -- every baseline run
+# gets a fresh worktree of HEAD, so state kept inside one would reset between
+# runs and the command would never actually disagree with itself.
+ALTERNATING = """\
+import sys
+from pathlib import Path
+
+counter = Path(sys.argv[1])
+runs = int(counter.read_text()) if counter.exists() else 0
+counter.write_text(str(runs + 1))
+
+print(f"run {runs}")
+raise SystemExit(runs % 2)
+"""
+
+
+@pytest.fixture
+def alternating_cmd(seeded_bug_repo, python_cmd, tmp_path):
+    """A repository whose test command passes, fails, passes, fails."""
+
+    def build():
+        counter = tmp_path / "baseline-runs.txt"
+        repo = seeded_bug_repo(overrides={"flip.py": ALTERNATING})
+        return repo, python_cmd("flip.py", str(counter)), counter
+
+    return build
 
 
 def by_id(report):
@@ -220,6 +251,105 @@ class TestBaseline:
 
         assert report.header.repro_verdict is ReproVerdict.NOT_GIVEN
         assert report.warnings() == ()
+
+
+class TestRepeatBaseline:
+    """``--repeat-baseline N``: three outcomes, and the mixed one is the point."""
+
+    def test_a_deterministic_green_baseline_repeated_still_proceeds(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        report = validate(
+            seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), repeat_baseline=3
+        )
+
+        assert report.header.baseline is BaselineStatus.OK
+        assert report.header.repeat_baseline == 3
+        assert report.header.baseline_failures == 0
+        assert not report.header.flaky_baseline
+        assert "all 3 baseline runs" in report.header.baseline_detail
+        assert report.any_passed
+
+    def test_a_deterministic_red_baseline_repeated_is_broken_not_flaky(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        repo = seeded_bug_repo(overrides={"check_regression.py": ALWAYS_RED})
+        report = validate(repo, candidates_dir(FOUR_CANDIDATES), repeat_baseline=3)
+
+        assert report.header.baseline is BaselineStatus.UNVERIFIED
+        assert report.header.baseline_failures == 3
+        assert not report.header.flaky_baseline
+        assert "exited 1" in report.header.baseline_detail
+        assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
+
+    def test_a_disagreeing_baseline_is_unverified_and_names_the_count(
+        self, alternating_cmd, candidates_dir, validate
+    ):
+        repo, command, _ = alternating_cmd()
+        report = validate(
+            repo, candidates_dir(FOUR_CANDIDATES), test_cmd=command, repeat_baseline=4
+        )
+
+        assert report.header.baseline is BaselineStatus.UNVERIFIED
+        assert report.header.flaky_baseline
+        assert report.header.baseline_failures == 2
+        assert "FLAKY BASELINE" in report.header.baseline_detail
+        assert "2 failed and 2 passed" in report.header.baseline_detail
+        assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
+        assert not report.any_passed
+
+    def test_the_flaky_warning_says_what_to_do_about_it(
+        self, alternating_cmd, candidates_dir, validate
+    ):
+        repo, command, _ = alternating_cmd()
+        report = validate(
+            repo, candidates_dir({"01-plus.txt": PLUS}), test_cmd=command, repeat_baseline=2
+        )
+
+        (warning,) = report.warnings()
+        assert "UNVERIFIED" in warning
+        assert "answers differently" in warning
+
+    def test_the_run_record_carries_the_repeat_count(
+        self, seeded_bug_repo, candidates_dir, validate
+    ):
+        report = validate(
+            seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), repeat_baseline=2
+        )
+        record = json.loads(report.jsonl().splitlines()[0])
+
+        assert record["repeat_baseline"] == 2
+        assert record["baseline_failures"] == 0
+        assert record["flaky_baseline"] is False
+
+    def test_the_default_runs_the_baseline_exactly_once(
+        self, alternating_cmd, candidates_dir, validate
+    ):
+        repo, command, counter = alternating_cmd()
+        # A candidate that cannot apply costs no test run, so the counter ends
+        # up holding the number of BASELINE runs and nothing else.
+        report = validate(repo, candidates_dir({"01-noop.txt": "not a patch"}), test_cmd=command)
+
+        # The default is one run, and the alternating command passes on its
+        # first: the flag existing must not have changed what happens without
+        # it. The counter is what proves the command ran once, not twice.
+        assert report.header.repeat_baseline == 1
+        assert report.header.baseline is BaselineStatus.OK
+        assert not report.header.flaky_baseline
+        assert counter.read_text() == "1"
+
+    def test_the_baseline_runs_exactly_as_many_times_as_asked(
+        self, alternating_cmd, candidates_dir, validate
+    ):
+        repo, command, counter = alternating_cmd()
+        validate(
+            repo,
+            candidates_dir({"01-noop.txt": "not a patch"}),
+            test_cmd=command,
+            repeat_baseline=3,
+        )
+
+        assert counter.read_text() == "3"
 
 
 class TestCandidates:

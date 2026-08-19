@@ -205,8 +205,13 @@ class TestSymbolService:
             repo, "quote", shared_callers=True
         )
         assert [row.stable_id for row in result.shared] == ["py:core.py::normalise"]
-        assert result.shared[0].overlap == 2
-        assert result.shared[0].callers == ("Ledger.post", "run_billing")
+        row = result.shared[0]
+        assert (row.path, row.line) == ("core.py", 10)
+        assert (row.overlap, row.shared_files) == (2, 2)
+        assert [(caller.qualname, caller.path, caller.line) for caller in row.callers] == [
+            ("run_billing", "billing.py", 4),
+            ("Ledger.post", "ledger.py", 5),
+        ]
 
 
 # A real multi-line declaration of the shape that broke the map on a live

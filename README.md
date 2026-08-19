@@ -11,16 +11,27 @@ as a thin stdio MCP server over the same core.
 
 ## Status
 
-Phase 1 read surface plus the Phase 1.5 tag cache. The CLI and the stdio MCP
-server are both live over one set of application services: repository map,
-directory tree, skeleton, slice, symbol lookup, symbol expansion, fan-in and
-location resolution. Parsing still happens on demand by default;
-`agentless-mcp index` builds a per-repository SQLite tag cache under
-`$XDG_CACHE_HOME/agentless-mcp/` (never inside the analyzed repository) that
-removes the symbol parse for files whose sha256 has not moved. Every answer's
-receipt names the cache generation and whether it is still the repository's
-own, and `--no-cache` / `no_cache: true` forces on-demand parsing. The patch,
-validation and vote machinery (Phases 2 and 3) is not implemented.
+Phases 1 through 4 are in. The CLI and the stdio MCP server are both live over
+one set of application services: repository map, directory tree, skeleton,
+slice, symbol lookup, symbol expansion, fan-in and location resolution. The
+write side — SEARCH/REPLACE patch parsing, syntax checking, worktree-isolated
+apply, candidate validation and the equivalence-clustered vote — is CLI-only
+and never exposed over MCP.
+
+Parsing happens on demand by default; `agentless-mcp index` builds a
+per-repository SQLite cache under `$XDG_CACHE_HOME/agentless-mcp/` (never
+inside the analyzed repository) holding symbols, imports and references for
+files whose sha256 has not moved. Every answer's receipt names the cache
+generation and whether it is still the repository's own, and `--no-cache` /
+`no_cache: true` forces on-demand parsing.
+
+A repository may declare its own defaults in an optional `.agentless-mcp.json`
+at its root (map budget, max files, granularity, docstrings, stoplist
+additions, and a `test_cmd` that only the CLI's `validate` will use, only when
+the invocation named none of its own, and only after printing it). The file is
+repository content: every value is schema-checked and bounded, no key is
+path-typed, and unknown keys are warnings in the response envelope rather than
+errors.
 
 Start with [docs/agent-guide.md](docs/agent-guide.md): it is the usage guide
 written for the agent that will call this.
@@ -37,6 +48,38 @@ uv run pytest
 `uv run pre-commit run --all-files` is the gate — it is a strict superset of
 running ruff by hand (it adds ruff-format, mypy strict, codespell,
 import-linter and deptry).
+
+## Windows support
+
+Linux and macOS are the supported platforms: they are what the test suite runs
+on, and every guarantee below is asserted there. Windows is **documented best
+effort** — the POSIX-only calls have Windows paths, there is no Windows CI, and
+nothing here has been executed on Windows.
+
+Covered:
+
+- The whole read surface. Map, tree, skeleton, slice, symbol lookup, fan-in and
+  location resolution are pure parsing and path arithmetic, and paths go
+  through `pathlib` with repository-relative results normalized to forward
+  slashes.
+- The tag cache, including its single-writer discipline. The index lock is
+  `fcntl.flock` on POSIX and `msvcrt.locking` on Windows, selected in
+  `util/filelock.py`; both are non-blocking, so a second concurrent index run
+  is refused rather than queued on either platform.
+- Patch parsing, syntax checking and the equivalence key.
+
+Not covered, and the difference is real:
+
+- **The timeout guarantee is weaker.** On POSIX a timed-out test command has
+  its whole process group killed (SIGTERM, then SIGKILL), so anything it
+  spawned dies with it. On Windows the child is created with
+  `CREATE_NEW_PROCESS_GROUP` and then `terminate()`/`kill()` is sent to the
+  leader only: **grandchildren can survive a timeout**. If your test command
+  starts a server, expect to clean it up yourself.
+- **No Windows CI.** The platform dispatch is unit-tested on Linux; the
+  Windows system calls themselves are not exercised anywhere.
+- Anything depending on `git worktree` behaves as the local git does; it has
+  not been exercised on Windows filesystems.
 
 ## Security
 

@@ -67,7 +67,13 @@ def cache_field(ctx: RepoContext) -> str:
 
 
 def receipt_lines(ctx: RepoContext) -> list[str]:
-    """Return the receipt block: the two fixed lines, plus a note when degraded."""
+    """Return the receipt block: the two fixed lines, plus a note when degraded.
+
+    A repository carrying a ``.agentless-mcp.json`` says so, and every warning
+    the file produced is printed. Defaults taken from repository content have
+    to be visible: an answer shaped by a file the caller never read is the
+    thing this line exists to prevent.
+    """
     head = ctx.head_sha or "nogit"
     dirty = "unknown" if ctx.dirty_count is None else str(ctx.dirty_count)
     lines = [
@@ -76,12 +82,21 @@ def receipt_lines(ctx: RepoContext) -> list[str]:
     ]
     if ctx.note:
         lines.append(f"# note: {ctx.note}")
+    if ctx.config.present:
+        lines.append(f"# config: {ctx.config.path}")
+    lines.extend(f"# config warning: {warning}" for warning in ctx.config.warnings)
     return lines
 
 
 def receipt_fields(ctx: RepoContext) -> dict[str, Any]:
-    """Return the same receipt as structured fields, for JSON responses."""
-    return {
+    """Return the same receipt as structured fields, for JSON responses.
+
+    ``config`` appears only when there was one to report -- a file, or a
+    reason one could not be used. The overwhelmingly common case is a
+    repository with no config file, and a permanent ``"config": null`` would
+    spend every response's tokens saying so.
+    """
+    fields: dict[str, Any] = {
         "repo": str(ctx.root),
         "head": ctx.head_sha,
         "tree": ctx.tree_oid,
@@ -89,6 +104,9 @@ def receipt_fields(ctx: RepoContext) -> dict[str, Any]:
         "cache": cache_field(ctx),
         "note": ctx.note,
     }
+    if ctx.config.present or ctx.config.warnings:
+        fields["config"] = ctx.config.as_dict()
+    return fields
 
 
 def wrap(

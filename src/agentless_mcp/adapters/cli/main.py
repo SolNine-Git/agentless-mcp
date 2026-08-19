@@ -50,6 +50,7 @@ from agentless_mcp.application.symbol_service import (
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
+    DEFAULT_REPEAT_BASELINE,
     DEFAULT_TIMEOUT_SECONDS,
     BaselineStatus,
     ValidateRequest,
@@ -57,7 +58,7 @@ from agentless_mcp.application.validate_service import (
     load_verdicts,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, vote
+from agentless_mcp.core import cache, grammars, projectconfig, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
@@ -72,7 +73,12 @@ from agentless_mcp.util.fslimits import (
 from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_FILES as WALK_MAX_FILES,
 )
-from agentless_mcp.util.tokens import TokenCounter
+from agentless_mcp.util.tokens import (
+    COUNTER_CHARS4,
+    COUNTER_TIKTOKEN,
+    TOKEN_COUNTERS,
+    TokenCounter,
+)
 
 AUTO_BUDGET = "auto"
 
@@ -112,11 +118,32 @@ def run(argv: Sequence[str] | None, services: CliServices) -> int:
         return fail(str(error), exit_code_for(error))
 
 
+def counter_parser() -> argparse.ArgumentParser:
+    """Return the parser owning ``--token-counter``, declared once.
+
+    Which token counter a process uses is a composition-root decision -- the
+    counter is constructed before any subcommand runs -- but the flag that
+    selects it is still command-line syntax and belongs here. Declaring it in
+    one place and giving it to both readers is what keeps the two from
+    drifting into accepting different spellings.
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--token-counter",
+        choices=TOKEN_COUNTERS,
+        default=None,
+        help=f"how token budgets are estimated (default: {COUNTER_CHARS4}). "
+        f"'{COUNTER_TIKTOKEN}' needs the 'tokens' extra and shifts every budget",
+    )
+    return parser
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the full subcommand tree."""
     parser = argparse.ArgumentParser(
         prog="agentless-mcp",
         description="Model-free tree-sitter repo map, localization and slice machinery.",
+        parents=[counter_parser()],
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -169,13 +196,25 @@ def _add_map(subparsers: Any) -> None:
         metavar="FILE_OR_SYMBOL",
         help="seed the ranking with a file or symbol; repeatable",
     )
+    # No argparse defaults on the three keys `.agentless-mcp.json` can set:
+    # the precedence rule is explicit argument > project config > built-in
+    # default, and a default filled in by argparse is indistinguishable from
+    # one the caller typed.
     parser.add_argument(
         "--budget",
-        default=AUTO_BUDGET,
-        help=f"token budget for the map body, or '{AUTO_BUDGET}' to size it from the repository",
+        default=None,
+        help=f"token budget for the map body, or '{AUTO_BUDGET}' to size it from the repository "
+        f"(default: {AUTO_BUDGET})",
     )
-    parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
-    parser.add_argument("--granularity", choices=GRANULARITIES, default=GRANULARITY_FUNCTION)
+    parser.add_argument(
+        "--max-files", type=int, default=None, help=f"(default: {DEFAULT_MAX_FILES})"
+    )
+    parser.add_argument(
+        "--granularity",
+        choices=GRANULARITIES,
+        default=None,
+        help=f"(default: {GRANULARITY_FUNCTION})",
+    )
     parser.set_defaults(handler=_cmd_map)
 
 
@@ -194,6 +233,7 @@ def _add_skeleton(subparsers: Any) -> None:
     parser.add_argument(
         "--docstrings",
         action="store_true",
+        default=None,
         help="keep docstrings, truncated (off by default: tokens and injection surface)",
     )
     parser.add_argument("--numbers", action="store_true", help="prefix lines with N|")
@@ -307,10 +347,14 @@ def _patch_input_flag(parser: argparse.ArgumentParser) -> None:
 def _add_validate(subparsers: Any) -> None:
     """Wire ``validate``: baseline, then one bounded test run per candidate.
 
-    ``--test-cmd`` and ``--repro-cmd`` are flags and only flags. There is no
-    config-file lookup, no ``Makefile`` sniffing and no default: the commands
-    this tool executes come from the person or agent invoking it, never from
-    the repository being judged.
+    ``--repro-cmd`` is a flag and only a flag. ``--test-cmd`` is a flag with
+    exactly one fallback: a ``test_cmd`` in the repository's own
+    ``.agentless-mcp.json``, used only when the invocation named none, only
+    here in the CLI -- no MCP tool can reach it -- and always printed in the
+    run header before it is executed. There is still no ``Makefile``
+    sniffing, no ``package.json`` scripts lookup and no built-in default: a
+    command from the repository being judged runs only when a human asked for
+    a validation run in that repository and can see which command it chose.
     """
     parser = subparsers.add_parser("validate", help="run candidate patches against the tests")
     parser.add_argument(
@@ -327,9 +371,10 @@ def _add_validate(subparsers: Any) -> None:
     )
     parser.add_argument(
         "--test-cmd",
-        required=True,
+        default=None,
         metavar="CMD",
-        help="the regression command; must pass on unpatched HEAD or the run is UNVERIFIED",
+        help="the regression command; must pass on unpatched HEAD or the run is UNVERIFIED. "
+        "Falls back to test_cmd in the repository's .agentless-mcp.json, if it has one",
     )
     parser.add_argument(
         "--repro-cmd",
@@ -349,6 +394,14 @@ def _add_validate(subparsers: Any) -> None:
         type=int,
         default=DEFAULT_JOBS,
         help=f"candidates to run concurrently, each in its own worktree (default: {DEFAULT_JOBS})",
+    )
+    parser.add_argument(
+        "--repeat-baseline",
+        type=int,
+        default=DEFAULT_REPEAT_BASELINE,
+        metavar="N",
+        help=f"run the baseline N times before any candidate (default: {DEFAULT_REPEAT_BASELINE}); "
+        "runs that disagree make the whole validation UNVERIFIED",
     )
     parser.add_argument(
         "-o",
@@ -405,9 +458,9 @@ def _cmd_map(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    budget = None if args.budget == AUTO_BUDGET else _positive_int(args.budget)
-    if args.budget != AUTO_BUDGET and budget is None:
-        return fail(f"--budget takes a positive integer or '{AUTO_BUDGET}'", EXIT_USAGE)
+    budget, refusal = _map_budget(args.budget, ctx)
+    if refusal:
+        return fail(refusal, EXIT_USAGE)
 
     result = services.maps.build(
         ctx,
@@ -450,7 +503,10 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
         return EXIT_USAGE
 
     views = services.views.skeleton(
-        ctx, args.files, docstrings=args.docstrings, numbered=args.numbers
+        ctx,
+        args.files,
+        docstrings=projectconfig.resolve(args.docstrings, ctx.config.docstrings, False),
+        numbered=args.numbers,
     )
     text = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
     _emit(args, ctx, services, _Answer(text, {"files": [v.as_dict() for v in views]}, "files"))
@@ -622,19 +678,35 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    if args.timeout <= 0:
-        return fail("--timeout takes a positive number of seconds", EXIT_USAGE)
-    if args.jobs < 1:
-        return fail("--jobs takes a positive integer", EXIT_USAGE)
+    bounds = _validate_bounds(args)
+    if bounds:
+        return fail(bounds, EXIT_USAGE)
+
+    test_cmd = args.test_cmd if args.test_cmd is not None else ctx.config.test_cmd
+    if test_cmd is None:
+        return fail(
+            "validate needs a test command: pass --test-cmd, or set test_cmd in the "
+            f"repository's {projectconfig.CONFIG_FILENAME}",
+            EXIT_USAGE,
+        )
+    if args.test_cmd is None:
+        # Printed before the run, not after: this command came out of the
+        # repository being judged, and the caller has to see which one it is.
+        note(
+            f"agentless-mcp: test command from {ctx.config.path}: {test_cmd}\n"
+            "agentless-mcp: it comes from the repository under analysis; "
+            "pass --test-cmd to override it."
+        )
 
     report = services.validates.validate(
         ctx,
         ValidateRequest(
             candidates=Path(args.candidates),
-            test_cmd=args.test_cmd,
+            test_cmd=test_cmd,
             repro_cmd=args.repro_cmd,
             timeout=args.timeout,
             jobs=args.jobs,
+            repeat_baseline=args.repeat_baseline,
         ),
     )
 
@@ -684,17 +756,34 @@ def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:
+    """Fetch and probe grammars, failing on anything the caller counts on.
+
+    A language the caller named explicitly is one they need, so any
+    degradation among those is a failure. In the default sweep the tier
+    decides: a tier-1 grammar that will not load breaks the languages this
+    package promises, while a tier-2 one costs that language alone and is
+    reported as a warning -- which is what "degrade per language" has to mean
+    at the exit code as well as inside the extractor.
+    """
     _ = services
-    report = grammars.warmup(args.languages or None, no_download=args.no_download)
+    requested = list(args.languages)
+    report = grammars.warmup(requested or None, no_download=args.no_download)
     lines = [f"pack {report.pack_version}  cache {report.cache_dir}"]
     lines.extend(
-        f"  {cap.name:<12} abi={cap.abi_version or '-'} warmed={cap.warmed} "
+        f"  {cap.name:<12} tier={cap.tier} abi={cap.abi_version or '-'} warmed={cap.warmed} "
         f"probe={cap.probe_ok} {cap.detail}".rstrip()
         for cap in report.languages
     )
     emit("\n".join(lines))
+
+    fatal = report.degraded if requested else report.degraded_tier1
+    if fatal:
+        return fail(f"{len(fatal)} grammars degraded; see the rows above")
     if report.degraded:
-        return fail(f"{len(report.degraded)} grammars degraded; see the rows above")
+        note(
+            f"agentless-mcp: {len(report.degraded)} tier-2 grammars degraded; "
+            "those languages are unavailable, the rest are unaffected"
+        )
     return EXIT_OK
 
 
@@ -740,6 +829,7 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
         "languages": [
             {
                 "name": cap.name,
+                "tier": cap.tier,
                 "abi": cap.abi_version,
                 "warmed": cap.warmed,
                 "probe_ok": cap.probe_ok,
@@ -747,6 +837,8 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
             }
             for cap in capabilities
         ],
+        "extensions": dict(sorted(TreeSitterExtractor.SUPPORTED_EXTENSIONS.items())),
+        "config": ctx.config.as_dict(),
         "caps": _caps(),
     }
 
@@ -757,7 +849,8 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
         "languages:",
     ]
     lines.extend(
-        f"  {cap.name:<12} abi={cap.abi_version or '-'} warmed={cap.warmed} probe={cap.probe_ok}"
+        f"  {cap.name:<12} tier={cap.tier} abi={cap.abi_version or '-'} "
+        f"warmed={cap.warmed} probe={cap.probe_ok}"
         for cap in capabilities
     )
     lines.append("caps:")
@@ -980,3 +1073,32 @@ def _positive_int(value: str) -> int | None:
     except ValueError:
         return None
     return parsed if parsed > 0 else None
+
+
+def _validate_bounds(args: argparse.Namespace) -> str:
+    """Return why ``validate``'s numeric flags are unusable, or an empty string."""
+    if args.timeout <= 0:
+        return "--timeout takes a positive number of seconds"
+    if args.jobs < 1:
+        return "--jobs takes a positive integer"
+    if args.repeat_baseline < 1:
+        return "--repeat-baseline takes a positive integer"
+    return ""
+
+
+def _map_budget(raw: str | None, ctx: RepoContext) -> tuple[int | None, str]:
+    """Resolve ``--budget``: a number, ``auto``, or the reason it is neither.
+
+    ``None`` for the budget means auto-size, which is why this cannot go
+    through :func:`_first`: "the caller said auto" and "nobody said anything"
+    are the same value there and must not be the same decision here.
+    """
+    if raw is None:
+        return (None if ctx.config.map_budget is None else ctx.config.map_budget), ""
+    if raw == AUTO_BUDGET:
+        return None, ""
+
+    parsed = _positive_int(raw)
+    if parsed is None:
+        return None, f"--budget takes a positive integer or '{AUTO_BUDGET}'"
+    return parsed, ""

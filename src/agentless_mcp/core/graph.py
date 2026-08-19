@@ -67,6 +67,9 @@ _MODULE_SUFFIXES: tuple[str, ...] = (
     ".cpp",
     ".hpp",
     ".sh",
+    ".php",
+    ".kt",
+    ".swift",
     "/__init__.py",
     "/index.ts",
     "/index.tsx",
@@ -95,14 +98,34 @@ class RefGraph:
         return {node: tuple(sorted(pairs)) for node, pairs in collected.items()}
 
 
-def name_multiplier(name: str) -> float:
-    """Return the per-name weight multiplier: noise names count for less."""
-    if len(name) <= NOISE_NAME_LENGTH:
+def name_multiplier(name: str, stoplist: frozenset[str] = frozenset()) -> float:
+    """Return the per-name weight multiplier: noise names count for less.
+
+    ``stoplist`` is the caller's own list of names that collide in *their*
+    repository -- a project-config knob, because no built-in list can know
+    that a codebase spells its own ubiquitous helper ``ctx``. Listed names are
+    damped exactly like short ones and for the same reason: dropping them
+    outright would make a file whose only link is such a name unreachable.
+    """
+    if len(name) <= NOISE_NAME_LENGTH or name in stoplist:
         return NOISE_NAME_MULTIPLIER
     return 1.0
 
 
-def build_graph(scan: RepoScan, index: RefIndex) -> RefGraph:
+def common_name_damping(spread: int) -> float:
+    """Return the divisor for a name referenced in ``spread`` files.
+
+    One home for the aider treatment of common names, because two views ask
+    the same question: the map's edge weights, and the shared-caller
+    adjacency, which would otherwise rank a name every file mentions above a
+    genuinely shared utility.
+    """
+    return 1.0 + math.log(1.0 + max(0, spread))
+
+
+def build_graph(
+    scan: RepoScan, index: RefIndex, *, stoplist: frozenset[str] = frozenset()
+) -> RefGraph:
     """Build the file-level reference graph for one scan."""
     nodes = tuple(sorted(facts.path for facts in scan.files))
     known = set(nodes)
@@ -114,7 +137,7 @@ def build_graph(scan: RepoScan, index: RefIndex) -> RefGraph:
             counts[ref.name] = counts.get(ref.name, 0) + 1
 
         for name in sorted(counts):
-            contribution = _reference_weight(name, counts[name], index)
+            contribution = _reference_weight(name, counts[name], index, stoplist)
             if contribution <= 0.0:
                 continue
             for target in index.defining_paths(name):
@@ -260,11 +283,10 @@ def _suffix_match(module: str, known: set[str]) -> str | None:
     return matches[0] if matches else None
 
 
-def _reference_weight(name: str, count: int, index: RefIndex) -> float:
+def _reference_weight(name: str, count: int, index: RefIndex, stoplist: frozenset[str]) -> float:
     """Weight one file's references to ``name``, damped by how common it is."""
     spread = index.files_referencing.get(name, 1)
-    damping = 1.0 + math.log(1.0 + spread)
-    return count * name_multiplier(name) / damping
+    return count * name_multiplier(name, stoplist) / common_name_damping(spread)
 
 
 def _personalization(nodes: Sequence[str], seeds: Mapping[str, float] | None) -> dict[str, float]:

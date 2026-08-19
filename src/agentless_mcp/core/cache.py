@@ -11,12 +11,13 @@ Never inside the analysed repository: the posture towards a target repo is
 strictly read-only, and a workspace of seven repositories must not grow seven
 gitignore entries.
 
-**What is stored.** Extracted symbols, never parse trees -- the 30GB-resident
-failure mode of tree-holding indexers is a design constraint here, not an
-incident to react to. Imports and identifier references are *not* cached, so a
-whole-repository scan still parses each file for those; the cache removes one
-of the three parses a scan performs, and every single-file view (expand,
-slice, find) gets its symbols without parsing at all.
+**What is stored.** Extracted facts -- symbols, import statements and
+identifier references -- never parse trees; the 30GB-resident failure mode of
+tree-holding indexers is a design constraint here, not an incident to react
+to. All three are keyed the same way and gated by the same digest, so a fresh
+index removes every parse a repository scan would perform and every
+single-file view (expand, slice, find) gets its symbols without parsing at
+all.
 
 **Freshness has two layers, and only one of them is load-bearing.**
 
@@ -35,22 +36,23 @@ slice, find) gets its symbols without parsing at all.
   answer is wrong. It is reported in the receipt with the remediation, never
   silently.
 
-**One writer.** An index run holds an ``flock`` on ``write.lock`` next to the
-database for its whole duration and writes inside one ``BEGIN IMMEDIATE``
+**One writer.** An index run holds an exclusive lock on ``write.lock`` next to
+the database for its whole duration and writes inside one ``BEGIN IMMEDIATE``
 transaction. A second concurrent run fails immediately with
 :class:`~agentless_mcp.util.errors.CacheLocked` naming the repository rather
 than queueing behind the first. Readers never block: the database runs in WAL
 mode, and a reader that finds no database, a corrupt one or one written by an
-older schema simply reports ``cache: none`` and parses on demand.
-
-``fcntl`` makes the writer POSIX-only; Windows support is Phase 4 in the plan.
+older schema simply reports ``cache: none`` and parses on demand. The lock
+primitive itself lives in :mod:`agentless_mcp.util.filelock`, which is where
+the POSIX and Windows implementations of "exclusive or refuse" are chosen
+between.
 """
 
-import fcntl
 import hashlib
 import json
 import os
 import sqlite3
+import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -59,16 +61,19 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
 from agentless_mcp.core.treewalk import walk_repo
+from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.errors import CacheLocked, LanguageUnavailable
 from agentless_mcp.util.fslimits import read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
 # policy: the file is derived data, so a schema change costs one re-index and
 # never a migration script.
-SCHEMA_VERSION = 1
+# 2 (2026-08-18, Phase 4): imports and refs tables added beside tags.
+SCHEMA_VERSION = 2
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 APPLICATION_DIR = "agentless-mcp"
@@ -141,12 +146,12 @@ class CacheStatus:
         }
 
 
-class SymbolSource(Protocol):
-    """Where a view gets a file's symbols from.
+class FileSource(Protocol):
+    """Where a view gets one file's parsed facts from.
 
     The seam that keeps the cache invisible above :mod:`agentless_mcp.core`:
-    a service asks for the symbols of a text it already holds and never learns
-    whether they were parsed or read back from SQLite.
+    a service asks for the symbols, imports or references of a text it already
+    holds and never learns whether they were parsed or read back from SQLite.
     """
 
     @property
@@ -156,6 +161,14 @@ class SymbolSource(Protocol):
 
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Return the symbols ``text`` defines, as the extractor would."""
+        ...
+
+    def imports_for(self, text: str, language: str, path: str) -> list[ImportStatement]:
+        """Return the imports ``text`` declares, as the extractor would."""
+        ...
+
+    def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
+        """Return the identifier occurrences in ``text``, as the extractor would."""
         ...
 
     def status(self) -> CacheStatus:
@@ -179,9 +192,27 @@ class OnDemandSource:
         """Extract symbols from ``text`` with no cache involved."""
         return self._extractor.extract_from_source(text, language, path)
 
+    def imports_for(self, text: str, language: str, path: str) -> list[ImportStatement]:
+        """Extract imports from ``text`` with no cache involved."""
+        return self._extractor.extract_imports_from_source(text, language, path)
+
+    def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
+        """Extract identifier references from ``text`` with no cache involved."""
+        return self._extractor.extract_refs_from_source(text, language, path)
+
     def status(self) -> CacheStatus:
         """Describe why there is no cache behind this source."""
         return self._status
+
+
+@dataclass(frozen=True)
+class _RowCounts:
+    """How many rows of each kind one database holds."""
+
+    files: int
+    tags: int
+    imports: int
+    refs: int
 
 
 @dataclass(frozen=True)
@@ -239,24 +270,36 @@ class CachedSource:
         answers from its live content while the rest of the repository is
         still served from the index.
         """
-        entry = self._state.entries.get(path)
-        if entry is None or entry.grammar_version != self._state.grammar_version:
+        digest = self._fresh_digest(text, path)
+        if digest is None:
             return self._extractor.extract_from_source(text, language, path)
-        if entry.digest != content_digest(text):
-            return self._extractor.extract_from_source(text, language, path)
-        return self._rows(path, entry.digest)
+        return self._symbol_rows(path, digest)
+
+    def imports_for(self, text: str, language: str, path: str) -> list[ImportStatement]:
+        """Return cached imports when the row still describes ``text``."""
+        digest = self._fresh_digest(text, path)
+        if digest is None:
+            return self._extractor.extract_imports_from_source(text, language, path)
+        return self._import_rows(path, digest)
+
+    def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
+        """Return cached identifier references when the row still describes ``text``."""
+        digest = self._fresh_digest(text, path)
+        if digest is None:
+            return self._extractor.extract_refs_from_source(text, language, path)
+        return self._ref_rows(path, digest)
 
     def status(self) -> CacheStatus:
         """Describe the cache, counting its rows."""
-        files, tags = _row_counts(self._connection)
+        counts = _row_counts(self._connection)
         return CacheStatus(
             path=self._state.database,
             generation=self._state.generation,
             repo_generation=self._state.repo_generation,
             fresh=self._state.generation == self._state.repo_generation,
             enabled=True,
-            files=files,
-            tags=tags,
+            files=counts.files,
+            tags=counts.tags,
             note="",
         )
 
@@ -264,7 +307,20 @@ class CachedSource:
         """Release the read connection."""
         self._connection.close()
 
-    def _rows(self, path: str, digest: str) -> list[ASTSymbol]:
+    def _fresh_digest(self, text: str, path: str) -> str | None:
+        """Return the digest to read rows at, or None when they cannot be used.
+
+        One gate for all three row kinds: the file must be indexed, indexed by
+        the grammar pack that is installed now, and indexed from exactly this
+        content. Anything else and the caller parses.
+        """
+        entry = self._state.entries.get(path)
+        if entry is None or entry.grammar_version != self._state.grammar_version:
+            return None
+        digest = content_digest(text)
+        return digest if entry.digest == digest else None
+
+    def _symbol_rows(self, path: str, digest: str) -> list[ASTSymbol]:
         """Rebuild one file's symbols from its tag rows, in extraction order."""
         cursor = self._connection.execute(
             "SELECT name, kind, start_line, end_line, signature, parent, docstring, "
@@ -274,17 +330,28 @@ class CachedSource:
         )
         return [_symbol_from_row(row, path) for row in cursor.fetchall()]
 
-    def _counts(self) -> tuple[int, int]:
-        """Return the number of indexed files and tag rows."""
-        files = self._connection.execute("SELECT COUNT(*) FROM files").fetchone()
-        tags = self._connection.execute("SELECT COUNT(*) FROM tags").fetchone()
-        return int(files[0]), int(tags[0])
+    def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
+        """Rebuild one file's import statements from its rows, in extraction order."""
+        cursor = self._connection.execute(
+            "SELECT module, names, is_relative, relative_level, line, resolved_path "
+            "FROM imports WHERE path = ? AND sha256 = ? ORDER BY ordinal",
+            (path, digest),
+        )
+        return [_import_from_row(row) for row in cursor.fetchall()]
+
+    def _ref_rows(self, path: str, digest: str) -> list[Ref]:
+        """Rebuild one file's identifier references from its rows, in order."""
+        cursor = self._connection.execute(
+            "SELECT name, line FROM refs WHERE path = ? AND sha256 = ? ORDER BY ordinal",
+            (path, digest),
+        )
+        return [Ref(path=path, name=str(row[0]), line=int(row[1])) for row in cursor.fetchall()]
 
 
 def effective_source(
-    source: SymbolSource | None,
+    source: FileSource | None,
     extractor: TreeSitterExtractor,
-) -> SymbolSource:
+) -> FileSource:
     """Return ``source``, or an on-demand source when a call carries none.
 
     Callers that never opened a cache -- the test suite, an embedding library
@@ -358,7 +425,7 @@ def open_source(
     *,
     tree_oid: str | None,
     no_cache: bool = False,
-) -> SymbolSource:
+) -> FileSource:
     """Open the tag cache for ``root``, degrading to on-demand parsing.
 
     Every failure mode -- no database, a database from an older schema, a
@@ -425,6 +492,8 @@ class IndexReport:
     pruned: int
     files: int
     tags: int
+    imports: int
+    refs: int
     failures: tuple[IndexFailure, ...]
 
     @property
@@ -436,7 +505,8 @@ class IndexReport:
         """Return the one-line summary the CLI prints."""
         return (
             f"indexed {self.indexed}, reused {self.reused}, pruned {self.pruned}, "
-            f"errors {self.errors}: {self.files} files, {self.tags} tags "
+            f"errors {self.errors}: {self.files} files, {self.tags} tags, "
+            f"{self.imports} imports, {self.refs} refs "
             f"at g:{self.generation} in {self.database}"
         )
 
@@ -451,19 +521,23 @@ class IndexReport:
             "errors": self.errors,
             "files": self.files,
             "tags": self.tags,
+            "imports": self.imports,
+            "refs": self.refs,
             "failures": [{"path": entry.path, "reason": entry.reason} for entry in self.failures],
         }
 
 
 @dataclass(frozen=True)
 class _FileTags:
-    """One file's recorded state: its digest, its size and its symbols."""
+    """One file's recorded state: its digest, its size and everything parsed out of it."""
 
     path: str
     digest: str
     size: int
     language: str
     symbols: tuple[ASTSymbol, ...]
+    imports: tuple[ImportStatement, ...]
+    refs: tuple[Ref, ...]
 
 
 @dataclass(frozen=True)
@@ -510,7 +584,7 @@ def build_index(
                 head_sha=head_sha,
             )
             _apply_plan(connection, plan, meta, previous)
-            files, tags = _row_counts(connection)
+            counts = _row_counts(connection)
         finally:
             connection.close()
 
@@ -521,8 +595,10 @@ def build_index(
         indexed=len(plan.writes),
         reused=len(plan.reused),
         pruned=pruned,
-        files=files,
-        tags=tags,
+        files=counts.files,
+        tags=counts.tags,
+        imports=counts.imports,
+        refs=counts.refs,
         failures=plan.failures,
     )
 
@@ -560,6 +636,8 @@ def _plan_index(
 
         try:
             symbols = extractor.extract_from_source(read.text, language, repo_file.path)
+            imports = extractor.extract_imports_from_source(read.text, language, repo_file.path)
+            refs = extractor.extract_refs_from_source(read.text, language, repo_file.path)
         except LanguageUnavailable as exc:
             seen.discard(repo_file.path)
             failures.append(IndexFailure(path=repo_file.path, reason=str(exc)))
@@ -572,6 +650,8 @@ def _plan_index(
                 size=repo_file.size,
                 language=language,
                 symbols=tuple(symbols),
+                imports=tuple(imports),
+                refs=tuple(refs),
             )
         )
 
@@ -597,7 +677,12 @@ def _apply_plan(
     connection.execute("BEGIN IMMEDIATE")
     try:
         for path in (*vanished, *touched):
+            # Spelled out rather than looped over a table-name list: a query
+            # built by interpolating a name is the shape of an injection even
+            # when today's names are constants.
             connection.execute("DELETE FROM tags WHERE path = ?", (path,))
+            connection.execute("DELETE FROM imports WHERE path = ?", (path,))
+            connection.execute("DELETE FROM refs WHERE path = ?", (path,))
             connection.execute("DELETE FROM files WHERE path = ?", (path,))
 
         for entry in plan.writes:
@@ -614,6 +699,22 @@ def _apply_plan(
                 [
                     _tag_row(entry.path, entry.digest, ordinal, symbol)
                     for ordinal, symbol in enumerate(entry.symbols)
+                ],
+            )
+            connection.executemany(
+                "INSERT INTO imports (path, sha256, module, names, is_relative, "
+                "relative_level, line, resolved_path, ordinal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    _import_row(entry.path, entry.digest, ordinal, statement)
+                    for ordinal, statement in enumerate(entry.imports)
+                ],
+            )
+            connection.executemany(
+                "INSERT INTO refs (path, sha256, name, line, ordinal) VALUES (?, ?, ?, ?, ?)",
+                [
+                    (entry.path, entry.digest, ref.name, ref.line, ordinal)
+                    for ordinal, ref in enumerate(entry.refs)
                 ],
             )
 
@@ -660,6 +761,35 @@ def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[A
         int(symbol.is_public),
         int(symbol.is_async),
         ordinal,
+    )
+
+
+def _import_row(
+    path: str, digest: str, ordinal: int, statement: ImportStatement
+) -> tuple[Any, ...]:
+    """Flatten one import statement into its row."""
+    return (
+        path,
+        digest,
+        statement.module,
+        json.dumps(list(statement.names)),
+        int(statement.is_relative),
+        statement.relative_level,
+        statement.line_number,
+        statement.resolved_path,
+        ordinal,
+    )
+
+
+def _import_from_row(row: Sequence[Any]) -> ImportStatement:
+    """Rebuild one import statement from its row, converting explicitly."""
+    return ImportStatement(
+        module=str(row[0]),
+        names=tuple(str(item) for item in json.loads(str(row[1]))),
+        is_relative=bool(row[2]),
+        relative_level=int(row[3]),
+        line_number=int(row[4]),
+        resolved_path=str(row[5]),
     )
 
 
@@ -733,11 +863,21 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
 
     stale = meta is not None and meta.schema_version != SCHEMA_VERSION
     if stale:
-        for table in ("tags", "files", "meta"):
-            connection.execute(f"DROP TABLE IF EXISTS {table}")
+        connection.executescript(_DROP_SCHEMA)
 
     connection.executescript(_SCHEMA)
 
+
+# A version bump drops every table this package owns and rebuilds them. The
+# list is exhaustive on purpose: a table left behind by an older schema would
+# be read by the new code as if the new code had written it.
+_DROP_SCHEMA = """
+DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS imports;
+DROP TABLE IF EXISTS refs;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS meta;
+"""
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -774,7 +914,32 @@ CREATE TABLE IF NOT EXISTS tags (
     is_async INTEGER NOT NULL,
     ordinal INTEGER NOT NULL
 );
+-- References are by far the largest table (tens of thousands of rows per
+-- repository against hundreds of symbols), and every read of them is
+-- "one file, one digest, in order". A WITHOUT ROWID table keyed on exactly
+-- that clusters the rows the way they are read and removes the separate
+-- (path, sha256) index, which measured the same size as the table it indexed.
+CREATE TABLE IF NOT EXISTS imports (
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    module TEXT NOT NULL,
+    names TEXT NOT NULL,
+    is_relative INTEGER NOT NULL,
+    relative_level INTEGER NOT NULL,
+    line INTEGER NOT NULL,
+    resolved_path TEXT NOT NULL,
+    ordinal INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS refs (
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    name TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (path, sha256, ordinal)
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS tags_path_sha256 ON tags (path, sha256);
+CREATE INDEX IF NOT EXISTS imports_path_sha256 ON imports (path, sha256);
 """
 
 
@@ -824,30 +989,37 @@ def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
     }
 
 
-def _row_counts(connection: sqlite3.Connection) -> tuple[int, int]:
-    """Return the number of indexed files and tag rows."""
-    files = connection.execute("SELECT COUNT(*) FROM files").fetchone()
-    tags = connection.execute("SELECT COUNT(*) FROM tags").fetchone()
-    return int(files[0]), int(tags[0])
+def _row_counts(connection: sqlite3.Connection) -> _RowCounts:
+    """Return how many rows of each kind the database holds."""
+    return _RowCounts(
+        files=_count(connection, "SELECT COUNT(*) FROM files"),
+        tags=_count(connection, "SELECT COUNT(*) FROM tags"),
+        imports=_count(connection, "SELECT COUNT(*) FROM imports"),
+        refs=_count(connection, "SELECT COUNT(*) FROM refs"),
+    )
+
+
+def _count(connection: sqlite3.Connection, query: str) -> int:
+    """Run one COUNT(*) query and return its number."""
+    row = connection.execute(query).fetchone()
+    return int(row[0])
 
 
 @contextmanager
 def _write_lock(directory: Path, repo_root: Path) -> Iterator[None]:
-    """Hold the index write lock, or refuse immediately."""
-    lock_path = directory / LOCK_NAME
-    handle = lock_path.open("w", encoding="utf-8")
+    """Hold the index write lock, or refuse immediately.
+
+    The platform-specific half lives in :mod:`agentless_mcp.util.filelock`;
+    what belongs here is the message, because this is the layer that knows
+    which repository the caller was trying to index.
+    """
+    flavour = platforms.family(sys.platform)
     try:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            message = f"another index run holds the lock for {repo_root}"
-            raise CacheLocked(message) from exc
-        try:
+        with filelock.exclusive(directory / LOCK_NAME, flavour=flavour):
             yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    finally:
-        handle.close()
+    except filelock.LockUnavailableError as exc:
+        message = f"another index run holds the lock for {repo_root}"
+        raise CacheLocked(message) from exc
 
 
 def _manifest_digest(root: Path) -> str:

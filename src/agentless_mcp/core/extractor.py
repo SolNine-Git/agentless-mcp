@@ -52,6 +52,15 @@ _MIN_QUOTED_LITERAL_CHARS = 2
 # with richer name node types override this in their LanguageConfig entry.
 DEFAULT_IDENTIFIER_NODE_TYPES: tuple[str, ...] = ("identifier",)
 
+# The child node types a declaration's name is looked for in when the
+# grammar's `name` field does not resolve.
+DEFAULT_NAME_NODE_TYPES: tuple[str, ...] = (
+    "identifier",
+    "type_identifier",
+    "property_identifier",
+    "word",
+)
+
 # The ECMAScript family (js/ts/tsx) shares one set: property and shorthand
 # property names are how a member reference is spelled, so leaving them out
 # would make `this.total` invisible to the reference pass.
@@ -90,6 +99,23 @@ INDENT_BLOCK_NODE_TYPES: dict[str, tuple[str, ...]] = {
     "python": ("block",),
 }
 
+# Node types that ARE a statement block: the body of a function, whatever the
+# language calls it. One flat set for the same reason as the comment table --
+# a node type means the same thing wherever it appears, and no grammar in the
+# table gives one of these names to something that is not a block. Read by
+# `core.skeleton` to decide what to elide and here to decide where a
+# declaration's header ends.
+BODY_BLOCK_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "block",
+        "statement_block",
+        "compound_statement",
+        "body_statement",
+        "do_block",
+        "function_body",
+    }
+)
+
 
 def _truncate(text: str, limit: int) -> str:
     """Return ``text`` capped at ``limit`` characters, ellipsis included."""
@@ -106,6 +132,14 @@ class LanguageConfig:
     Used by _extract_generic_symbols() and _extract_generic_imports() to
     traverse AST nodes without language-specific code.  Languages that need
     richer extraction (Python, Rust) bypass this and use dedicated methods.
+
+    The four fields below `identifier_node_types` exist because not every
+    grammar in the pack names its fields.  tree-sitter-kotlin exposes no
+    `name`, `parameters` or `body` field at all, and tree-sitter-swift gives
+    the return type the same field name as the function name, so a table that
+    could only address fields would silently extract nothing for them.  Each
+    field is a fallback consulted only when the field lookup finds nothing, so
+    a language that does name its fields is unaffected.
     """
 
     function_node_types: tuple[str, ...]
@@ -122,6 +156,17 @@ class LanguageConfig:
     # pass in `core.refs`. The default covers the languages whose grammars
     # spell every name `identifier`; the entries below override it.
     identifier_node_types: tuple[str, ...] = DEFAULT_IDENTIFIER_NODE_TYPES
+    # Child node types that carry a declaration's name when `name_field` does
+    # not resolve.
+    name_node_types: tuple[str, ...] = DEFAULT_NAME_NODE_TYPES
+    # Child node types holding a class's members when the class node has no
+    # `body` field (kotlin: `class_body`).
+    class_body_node_types: tuple[str, ...] = ()
+    # Render a function's signature from its own header text -- everything
+    # from the declaration's first byte to the start of its body -- instead of
+    # from `fn <name>(<parameters>)`. For grammars with no `parameters` field,
+    # where the composed form would claim every function takes none.
+    signature_from_header: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -215,10 +260,132 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_field="name",
         identifier_node_types=("identifier", "constant"),
     ),
+    # -- tier 2 (2026-08-18, Phase 4): node types read off the pack's own
+    # parse trees rather than from documentation, one probe per language.
+    "php": LanguageConfig(
+        function_node_types=("function_definition", "method_declaration"),
+        class_node_types=(
+            "class_declaration",
+            "interface_declaration",
+            "trait_declaration",
+            "enum_declaration",
+        ),
+        import_node_types=("namespace_use_declaration",),
+        name_field="name",
+        # `use App\Money\Currency;` nests the path one level down, in the
+        # `qualified_name` inside the use clause.
+        import_path_node_type="qualified_name",
+        # A php `name` node is the leaf under every identifier, `$var`
+        # included: `variable_name` wraps `$` and a `name`, and the reference
+        # pass only reads leaves.
+        identifier_node_types=("name",),
+    ),
+    "kotlin": LanguageConfig(
+        function_node_types=("function_declaration",),
+        class_node_types=("class_declaration", "object_declaration"),
+        import_node_types=("import_header",),
+        # tree-sitter-kotlin names no fields at all, so every lookup below is
+        # the child-type fallback.
+        name_field=None,
+        import_path_node_type="identifier",
+        identifier_node_types=("simple_identifier", "type_identifier"),
+        name_node_types=("simple_identifier", "type_identifier"),
+        class_body_node_types=("class_body",),
+        signature_from_header=True,
+    ),
+    "swift": LanguageConfig(
+        function_node_types=(
+            "function_declaration",
+            "protocol_function_declaration",
+            "init_declaration",
+        ),
+        class_node_types=("class_declaration", "protocol_declaration"),
+        import_node_types=("import_declaration",),
+        name_field="name",
+        import_path_node_type="identifier",
+        identifier_node_types=("simple_identifier", "type_identifier"),
+        # Parameters are direct children of the declaration with no wrapper
+        # node, and the return type reuses the `name` field, so a composed
+        # signature would read `fn applyTax()` for a two-parameter function.
+        signature_from_header=True,
+    ),
 }
 
 # C and C++ are handled by dedicated methods due to their nested declarator
 # structure (function name lives in declarator.declarator, not a direct field).
+
+# Identifier node types for the languages whose extraction is done by a
+# dedicated handler, so they have no LanguageConfig entry to carry them.
+_EXTRA_IDENTIFIER_NODE_TYPES: dict[str, tuple[str, ...]] = {
+    "python": ("identifier",),
+    "rust": ("identifier", "type_identifier", "field_identifier"),
+    "c": ("identifier", "type_identifier", "field_identifier"),
+    "cpp": ("identifier", "type_identifier", "field_identifier", "namespace_identifier"),
+}
+
+
+@dataclass(frozen=True)
+class Ref:
+    """One identifier occurrence: which file spelled which name, and where.
+
+    Lives beside the node-type table rather than in `core.refs` because the
+    reference pass is a parse like any other and because `core.cache` stores
+    these rows -- and a cache that imported the scanner would invert the
+    dependency between them.
+    """
+
+    path: str
+    name: str
+    line: int
+
+
+def identifier_node_types(language: str) -> frozenset[str]:
+    """Return the leaf node types that name something in ``language``."""
+    config = LANGUAGE_CONFIGS.get(language)
+    if config is not None:
+        return frozenset(config.identifier_node_types)
+    return frozenset(_EXTRA_IDENTIFIER_NODE_TYPES.get(language, DEFAULT_IDENTIFIER_NODE_TYPES))
+
+
+def collect_refs(source: str, language: str, path: str) -> list[Ref]:
+    """Return every identifier occurrence in ``source``.
+
+    Raises :class:`~agentless_mcp.util.errors.LanguageUnavailable` when the
+    grammar is not warmed: a reference pass that quietly returned nothing
+    would read as "this symbol is unused", which is the most expensive wrong
+    answer this tool could give.
+    """
+    wanted = identifier_node_types(language)
+    if not wanted:
+        return []
+
+    parser = grammars.get_parser(language)
+    data = source.encode("utf-8")
+    tree = parser.parse(data)
+
+    refs: list[Ref] = []
+    for node in walk_nodes(tree.root_node):
+        if node.type not in wanted or node.child_count:
+            continue
+        name = data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+        if name:
+            refs.append(Ref(path=path, name=name, line=node.start_point[0] + 1))
+    return refs
+
+
+def walk_nodes(root: Node) -> list[Node]:
+    """Return every node in the tree, parents before children.
+
+    Iterative rather than recursive: a deeply nested expression in a generated
+    file must not turn a repository map into a RecursionError.
+    """
+    found: list[Node] = []
+    stack: list[Node] = [root]
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        stack.extend(reversed(node.children))
+    return found
 
 
 @dataclass(frozen=True)
@@ -287,6 +454,11 @@ class TreeSitterExtractor:
         # JVM / Ruby (generic extractor)
         ".java": "java",
         ".rb": "ruby",
+        # Tier 2 (generic extractor)
+        ".php": "php",
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        ".swift": "swift",
     }
 
     def __init__(self) -> None:
@@ -341,6 +513,9 @@ class TreeSitterExtractor:
             "tsx": _LanguageSpec("tsx", generic_symbols("tsx"), generic_imports("tsx")),
             "go": _LanguageSpec("go", generic_symbols("go"), generic_imports("go")),
             "java": _LanguageSpec("java", generic_symbols("java"), generic_imports("java")),
+            "php": _LanguageSpec("php", generic_symbols("php"), generic_imports("php")),
+            "kotlin": _LanguageSpec("kotlin", generic_symbols("kotlin"), generic_imports("kotlin")),
+            "swift": _LanguageSpec("swift", generic_symbols("swift"), generic_imports("swift")),
         }
 
     # ------------------------------------------------------------------
@@ -452,6 +627,19 @@ class TreeSitterExtractor:
         return imports
 
     # ------------------------------------------------------------------
+    # Public reference extraction API
+    # ------------------------------------------------------------------
+
+    def extract_refs_from_source(self, source: str, language: str, path: str) -> list[Ref]:
+        """Extract every identifier occurrence from source string.
+
+        The third of the three parses a repository scan performs, exposed on
+        the extractor so that the tag cache -- which stores all three -- has
+        one object to ask.
+        """
+        return collect_refs(source, language, path)
+
+    # ------------------------------------------------------------------
     # Generic symbol / import extraction (table-driven)
     # ------------------------------------------------------------------
 
@@ -505,7 +693,7 @@ class TreeSitterExtractor:
         module_path = walk.module_path
         symbols = walk.symbols
         if node.type in cfg.function_node_types:
-            name = self._generic_name(node, source, cfg.name_field)
+            name = self._generic_name(node, source, cfg)
             if name:
                 kind = SymbolKind.METHOD if parent else SymbolKind.FUNCTION
                 symbols.append(
@@ -515,7 +703,7 @@ class TreeSitterExtractor:
                         module_path=module_path,
                         line_number=node.start_point[0] + 1,
                         end_line_number=node.end_point[0] + 1,
-                        signature=self._generic_signature(node, source, name),
+                        signature=self._generic_signature(node, source, name, cfg),
                         docstring="",
                         parent_class=parent,
                         decorators=(),
@@ -526,7 +714,7 @@ class TreeSitterExtractor:
                     )
                 )
         elif node.type in cfg.class_node_types:
-            name = self._generic_name(node, source, cfg.name_field)
+            name = self._generic_name(node, source, cfg)
             if name:
                 symbols.append(
                     ASTSymbol(
@@ -546,7 +734,7 @@ class TreeSitterExtractor:
                     )
                 )
                 # Recurse into class body for methods
-                body = node.child_by_field_name("body")
+                body = self._class_body(node, cfg)
                 if body:
                     self._visit_generic_children(body, source, walk, parent=name)
         else:
@@ -554,14 +742,21 @@ class TreeSitterExtractor:
             # expression) that may still hold one.
             self._visit_generic_children(node, source, walk, parent)
 
-    def _generic_signature(self, node: Node, source: bytes, name: str) -> str:
+    def _generic_signature(self, node: Node, source: bytes, name: str, cfg: LanguageConfig) -> str:
         """Render `fn name(params) -> result` from whatever fields exist.
 
         A bare `fn name` tells a reader nothing about arity or types, and the
         map is read as code. Parameter and result text comes straight from the
         source; collapsing it onto one line and capping its length is
         `ASTSymbol`'s job, so every handler gets the same treatment.
+
+        Languages whose grammar exposes no `parameters` field take the header
+        form instead: the composed one would print `fn f()` for a function
+        with three parameters, which is worse than saying nothing.
         """
+        if cfg.signature_from_header:
+            return self._header_text(node, source)
+
         params_node = node.child_by_field_name("parameters")
         params = self._node_text(params_node, source) if params_node else "()"
 
@@ -573,15 +768,45 @@ class TreeSitterExtractor:
 
         return f"fn {name}{params}{result}"
 
-    def _generic_name(self, node: Node, source: bytes, name_field: str | None) -> str:
+    def _header_text(self, node: Node, source: bytes) -> str:
+        """Return a declaration's own text up to the start of its body.
+
+        Verbatim source, so a reader sees the language's own spelling of the
+        signature -- `fun applyTax(amount: Double): Double` rather than a
+        composed approximation of it. `ASTSymbol` collapses and caps it.
+
+        The body is found by field where the grammar names one and by node
+        type where it does not, which is the whole reason this path exists: a
+        grammar with no `body` field has no `parameters` field either, and
+        taking the node's whole text would put the function's body in its
+        signature.
+        """
+        body = node.child_by_field_name("body") or next(
+            (child for child in node.children if child.type in BODY_BLOCK_NODE_TYPES), None
+        )
+        end = body.start_byte if body is not None else node.end_byte
+        return source[node.start_byte : end].decode("utf-8", errors="replace").strip()
+
+    def _class_body(self, node: Node, cfg: LanguageConfig) -> Node | None:
+        """Return the node holding a class's members, field-named or not."""
+        body = node.child_by_field_name("body")
+        if body is not None:
+            return body
+        if not cfg.class_body_node_types:
+            return None
+        return next(
+            (child for child in node.children if child.type in cfg.class_body_node_types), None
+        )
+
+    def _generic_name(self, node: Node, source: bytes, cfg: LanguageConfig) -> str:
         """Extract the identifier name from a node using the configured field."""
-        if name_field:
-            name_node = node.child_by_field_name(name_field)
+        if cfg.name_field:
+            name_node = node.child_by_field_name(cfg.name_field)
             if name_node:
                 return self._node_text(name_node, source)
-        # Fallback: first named identifier child
+        # Fallback: first child whose type names things in this language.
         for child in node.children:
-            if child.type in ("identifier", "type_identifier", "property_identifier", "word"):
+            if child.type in cfg.name_node_types:
                 return self._node_text(child, source)
         return ""
 

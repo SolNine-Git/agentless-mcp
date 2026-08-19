@@ -37,6 +37,14 @@ a test suite that spawns a server and hangs must leave nothing running.
 The bound is hard, and a command that hits it is a **failure**. A hung test
 run is the case this machinery exists to catch, and the one place where
 "we did not find out" must never render as green.
+
+Process-group control is where the platforms genuinely differ. POSIX gets the
+full guarantee: a new session, then SIGTERM and SIGKILL to the whole group, so
+grandchildren die with their parent. Windows gets a documented best effort --
+a new process group at spawn, then ``terminate()`` and ``kill()`` on the
+leader -- and that difference is stated in the README rather than papered
+over, because a caller who believes stray children are impossible on a
+platform where they are not has been told something false.
 """
 
 import logging
@@ -45,6 +53,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -57,6 +66,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from agentless_mcp.core import cache, gitinfo
+from agentless_mcp.util import platforms
 from agentless_mcp.util.errors import AtlasError, RepoResolutionError
 
 logger = logging.getLogger(__name__)
@@ -212,19 +222,15 @@ def run_command(
 
     * **No shell.** ``shlex.split`` produces an argv and ``Popen`` receives
       it. There is no interpretation of metacharacters at any point.
-    * **Own session.** ``start_new_session=True`` makes the child a process
-      group leader, so the timeout path can signal the group and reach the
-      grandchildren a test runner spawned. Killing only the direct child
-      leaves the server it started holding a port.
+    * **Own process group.** ``start_new_session=True`` on POSIX makes the
+      child a process group leader, so the timeout path can signal the group
+      and reach the grandchildren a test runner spawned. Killing only the
+      direct child leaves the server it started holding a port. Windows gets
+      ``CREATE_NEW_PROCESS_GROUP``, which is the closest thing it has.
     * **Output goes to files, not pipes.** A pipe nobody drains fills at
       64 KB and blocks the writer, turning a chatty passing test into a
       timeout. Temporary files decouple the two, and the tail is read back
       after the process is gone.
-
-    Unix-only signalling, matching the plan's Windows-in-phase-4 line: the
-    process-group kill has no faithful Windows equivalent and a best-effort
-    one would silently leave orphans behind on the platform where this
-    guarantee matters least and is hardest to see.
     """
     try:
         argv = shlex.split(cmd)
@@ -233,6 +239,7 @@ def run_command(
     if not argv:
         return _spawn_failure("command is empty")
 
+    flavour = platforms.family(sys.platform)
     started = time.monotonic()
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
@@ -244,7 +251,7 @@ def run_command(
                 stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=err,
-                start_new_session=True,
+                **_group_kwargs(flavour),
             )
         except OSError as exc:
             reason = exc.strerror or str(exc)
@@ -256,7 +263,7 @@ def run_command(
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
-            _kill_group(process)
+            _kill_group(process, flavour)
 
         duration = round(time.monotonic() - started, 3)
         stdout_tail = _tail(out, max_capture)
@@ -275,16 +282,36 @@ def _spawn_failure(reason: str, duration: float = 0.0) -> RunResult:
     return RunResult(RunStatus.ERROR, None, round(duration, 3), "", reason)
 
 
-def _kill_group(process: "subprocess.Popen[bytes]") -> None:
-    """End the timed-out command's whole process group, politely then not.
+def _group_kwargs(flavour: str) -> dict[str, Any]:
+    """Return the Popen arguments that give the child its own process group.
 
-    The group id is the child's pid because it was started in a new session,
-    so this never has to ask the kernel for a pgid that may already be gone.
-    SIGKILL is sent unconditionally after the grace period rather than only
-    when the leader is still alive: the leader exiting on SIGTERM says nothing
-    about the children it spawned, and those are the orphans that outlive a
-    run and hold a port for the next one.
+    ``CREATE_NEW_PROCESS_GROUP`` is read with ``getattr`` because the constant
+    does not exist off Windows; the zero default is never used there, since
+    the flavour decides which branch runs.
     """
+    if flavour == platforms.WINDOWS:
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {"start_new_session": True}
+
+
+def _kill_group(process: "subprocess.Popen[bytes]", flavour: str) -> None:
+    """End the timed-out command, politely then not.
+
+    On POSIX the group id is the child's pid because it was started in a new
+    session, so this never has to ask the kernel for a pgid that may already
+    be gone. SIGKILL is sent unconditionally after the grace period rather
+    than only when the leader is still alive: the leader exiting on SIGTERM
+    says nothing about the children it spawned, and those are the orphans that
+    outlive a run and hold a port for the next one.
+
+    On Windows only the leader is signalled. That is the best effort the
+    platform gives without a job object, and it is stated as such rather than
+    presented as the same guarantee.
+    """
+    if flavour == platforms.WINDOWS:
+        _kill_leader(process)
+        return
+
     group = process.pid
     _signal_group(group, signal.SIGTERM)
     try:
@@ -300,6 +327,28 @@ def _kill_group(process: "subprocess.Popen[bytes]") -> None:
             "process group %d is still present after SIGKILL; it may be stuck in the kernel",
             group,
         )
+
+
+def _kill_leader(process: "subprocess.Popen[bytes]") -> None:
+    """End the timed-out command's leader process, politely then not.
+
+    The Windows path. Anything the command spawned survives it, which is why
+    the README says the timeout guarantee there is best effort: without a job
+    object there is nothing to signal a whole tree with.
+    """
+    process.terminate()
+    try:
+        process.wait(timeout=TERM_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        logger.info("process %d ignored terminate(); escalating to kill()", process.pid)
+    else:
+        return
+
+    process.kill()
+    try:
+        process.wait(timeout=TERM_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        logger.exception("process %d is still present after kill()", process.pid)
 
 
 def _signal_group(group: int, number: int) -> None:

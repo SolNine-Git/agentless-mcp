@@ -1,11 +1,10 @@
-"""Identifier-reference pass and the repository scan that feeds every view.
+"""The repository scan and the name index every view is built from.
 
-The extractor answers "what does this file define". This module answers the
-other half -- "where is that name used" -- by walking each parsed tree and
-collecting every identifier-class leaf. A reference is deliberately a
-``(file, name, line)`` triple and nothing more: resolving a name to the
-declaration it really binds to needs type information this tool does not have
-and will not pretend to have.
+The extractor answers "what does this file define" and "where is each name
+used"; this module is what turns those per-file answers into a repository. A
+reference is deliberately a ``(file, name, line)`` triple and nothing more:
+resolving a name to the declaration it really binds to needs type information
+this tool does not have and will not pretend to have.
 
 Fan-in is therefore fuzzy by construction: the references to a symbol are the
 sites that spell its name outside its own definition span. That over-reports
@@ -15,7 +14,7 @@ there exist to absorb -- and it never silently under-reports, which is the
 failure mode that matters for a blast-radius question.
 
 :func:`scan_repo` is the one traversal every service shares: walk the
-repository once, parse each supported file once, and hand back symbols,
+repository once, read each supported file once, and hand back symbols,
 imports and references together. Files that cannot be read, are too large, or
 whose grammar is not warmed are reported in ``skipped`` with the reason --
 never dropped into an answer that then looks complete.
@@ -25,43 +24,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Node
-
-from agentless_mcp.core import grammars
-from agentless_mcp.core.cache import SymbolSource, effective_source
-from agentless_mcp.core.extractor import LANGUAGE_CONFIGS, TreeSitterExtractor
+from agentless_mcp.core.cache import FileSource, effective_source
+from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.util.errors import LanguageUnavailable
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
-
-# Identifier node types for the languages whose extraction is done by a
-# dedicated handler, so they have no LanguageConfig entry to carry them. Same
-# split as `skeleton._EXTRA_FUNCTION_NODE_TYPES`, for the same reason.
-_EXTRA_IDENTIFIER_NODE_TYPES: dict[str, tuple[str, ...]] = {
-    "python": ("identifier",),
-    "rust": ("identifier", "type_identifier", "field_identifier"),
-    "c": ("identifier", "type_identifier", "field_identifier"),
-    "cpp": ("identifier", "type_identifier", "field_identifier", "namespace_identifier"),
-}
-
-
-def identifier_node_types(language: str) -> frozenset[str]:
-    """Return the leaf node types that name something in ``language``."""
-    config = LANGUAGE_CONFIGS.get(language)
-    if config is not None:
-        return frozenset(config.identifier_node_types)
-    return frozenset(_EXTRA_IDENTIFIER_NODE_TYPES.get(language, ("identifier",)))
-
-
-@dataclass(frozen=True)
-class Ref:
-    """One identifier occurrence: which file spelled which name, and where."""
-
-    path: str
-    name: str
-    line: int
 
 
 @dataclass(frozen=True)
@@ -118,46 +87,21 @@ class RefIndex:
         return tuple(sorted({definition.path for definition in self.definitions.get(name, ())}))
 
 
-def collect_refs(source: str, language: str, path: str) -> list[Ref]:
-    """Return every identifier occurrence in ``source``.
-
-    Raises :class:`LanguageUnavailable` when the grammar is not warmed: a
-    reference pass that quietly returns nothing would read as "this symbol is
-    unused", which is the most expensive wrong answer this tool could give.
-    """
-    wanted = identifier_node_types(language)
-    if not wanted:
-        return []
-
-    parser = grammars.get_parser(language)
-    data = source.encode("utf-8")
-    tree = parser.parse(data)
-
-    refs: list[Ref] = []
-    for node in _walk(tree.root_node):
-        if node.type not in wanted or node.child_count:
-            continue
-        name = data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-        if name:
-            refs.append(Ref(path=path, name=name, line=node.start_point[0] + 1))
-    return refs
-
-
 def scan_repo(
     root: Path,
     extractor: TreeSitterExtractor,
     *,
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
-    source: SymbolSource | None = None,
+    source: FileSource | None = None,
 ) -> RepoScan:
     """Walk ``root`` once and parse every supported file it holds.
 
-    ``source`` is where the symbol half of each file comes from: a tag cache
-    when the call opened one, on-demand extraction otherwise. Imports and
-    references are always parsed here, so a cached scan saves one parse per
-    file rather than all three.
+    ``source`` is where each file's facts come from: a tag cache when the call
+    opened one and the file's digest still matches, on-demand extraction
+    otherwise. Symbols, imports and references all travel that seam, so a
+    fresh index removes all three parses rather than one of them.
     """
-    symbols = effective_source(source, extractor)
+    facts_source = effective_source(source, extractor)
     files: list[FileFacts] = []
     skipped: list[SkippedFile] = []
 
@@ -171,7 +115,7 @@ def scan_repo(
             skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped or "unreadable"))
             continue
 
-        facts = _parse_one(read.text, language, repo_file.path, extractor, symbols)
+        facts = _parse_one(read.text, language, repo_file.path, facts_source)
         if isinstance(facts, SkippedFile):
             skipped.append(facts)
         else:
@@ -250,14 +194,13 @@ def _parse_one(
     text: str,
     language: str,
     path: str,
-    extractor: TreeSitterExtractor,
-    source: SymbolSource,
+    source: FileSource,
 ) -> FileFacts | SkippedFile:
-    """Parse one file three ways, degrading that file alone when it cannot be."""
+    """Take one file's three fact sets, degrading that file alone when it cannot be."""
     try:
         defined = source.symbols_for(text, language, path)
-        imports = extractor.extract_imports_from_source(text, language, path)
-        refs = collect_refs(text, language, path)
+        imports = source.imports_for(text, language, path)
+        refs = source.refs_for(text, language, path)
     except LanguageUnavailable as exc:
         return SkippedFile(path=path, reason=str(exc))
 
@@ -269,18 +212,3 @@ def _parse_one(
         imports=tuple(imports),
         refs=tuple(refs),
     )
-
-
-def _walk(root: Node) -> list[Node]:
-    """Return every node in the tree, parents before children.
-
-    Iterative rather than recursive: a deeply nested expression in a generated
-    file must not turn a repository map into a RecursionError.
-    """
-    found: list[Node] = []
-    stack: list[Node] = [root]
-    while stack:
-        node = stack.pop()
-        found.append(node)
-        stack.extend(reversed(node.children))
-    return found

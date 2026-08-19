@@ -25,7 +25,7 @@ from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, gitinfo
+from agentless_mcp.core import cache, gitinfo, refs
 from agentless_mcp.util import fslimits
 from agentless_mcp.util.errors import CacheLocked
 
@@ -96,6 +96,33 @@ def spy(extractor, monkeypatch):
         return original(text, language, path)
 
     monkeypatch.setattr(extractor, "extract_from_source", record)
+    return parsed
+
+
+@pytest.fixture
+def parse_spy(extractor, monkeypatch):
+    """Record every parse the extractor performs, by kind and by path.
+
+    All three kinds, not just symbols: the cache stores symbols, imports and
+    references now, so "one file touched, one re-parse" has to be provable for
+    each of them separately. A cache that quietly re-parsed every file for its
+    references would still pass a symbols-only spy.
+    """
+    parsed: dict[str, list[str]] = {"symbols": [], "imports": [], "refs": []}
+
+    for kind, name in (
+        ("symbols", "extract_from_source"),
+        ("imports", "extract_imports_from_source"),
+        ("refs", "extract_refs_from_source"),
+    ):
+        original = getattr(extractor, name)
+
+        def record(text, language, path, _original=original, _kind=kind):
+            parsed[_kind].append(path)
+            return _original(text, language, path)
+
+        monkeypatch.setattr(extractor, name, record)
+
     return parsed
 
 
@@ -403,7 +430,8 @@ class TestCommandLine:
         summary = capsys.readouterr().out.splitlines()[0]
 
         assert summary.startswith("indexed 3, reused 0, pruned 0, errors 0: 3 files, ")
-        assert " tags at g:nogit:" in summary
+        assert " imports, " in summary
+        assert " refs at g:nogit:" in summary
 
     def test_a_second_index_run_reports_reuse(self, repo, services, capsys):
         invoke(services, repo, "index")
@@ -512,6 +540,111 @@ class TestEquivalence:
 
         del cached["receipt"]["cache"], uncached["receipt"]["cache"]
         assert cached == uncached
+
+
+class TestRefsAndImportsRows:
+    """The Phase 4 half of the cache: imports and references, same gate."""
+
+    def test_an_index_records_rows_of_all_three_kinds(self, repo, extractor):
+        report = cache.build_index(repo, extractor)
+
+        assert report.tags > 0
+        assert report.imports > 0
+        assert report.refs > 0
+
+    def test_a_fresh_index_serves_every_kind_without_parsing(self, repo, extractor, parse_spy):
+        cache.build_index(repo, extractor)
+        for kind in parse_spy:
+            parse_spy[kind].clear()
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        refs.scan_repo(repo, extractor, source=source)
+
+        assert parse_spy == {"symbols": [], "imports": [], "refs": []}
+
+    def test_touching_one_file_reparses_exactly_that_file_for_every_kind(
+        self, repo, extractor, parse_spy
+    ):
+        cache.build_index(repo, extractor)
+        (repo / "core.py").write_text(CORE + "\n\ndef discount(sku):\n    return 1\n", "utf-8")
+        for kind in parse_spy:
+            parse_spy[kind].clear()
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        refs.scan_repo(repo, extractor, source=source)
+
+        assert parse_spy == {
+            "symbols": ["core.py"],
+            "imports": ["core.py"],
+            "refs": ["core.py"],
+        }
+
+    def test_cached_imports_match_the_parsed_ones(self, repo, extractor):
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        cached = source.imports_for(BILLING, "python", "billing.py")
+        parsed = extractor.extract_imports_from_source(BILLING, "python", "billing.py")
+
+        assert cached == parsed
+        assert cached  # the fixture does import something
+
+    def test_cached_refs_match_the_parsed_ones(self, repo, extractor):
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        cached = source.refs_for(CORE, "python", "core.py")
+        parsed = extractor.extract_refs_from_source(CORE, "python", "core.py")
+
+        assert cached == parsed
+        assert cached
+
+    def test_an_edited_file_falls_back_to_parsing_for_every_kind(self, repo, extractor):
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        changed = CORE + "\n\ndef rebate(sku):\n    return 2\n"
+
+        assert "rebate" in {
+            symbol.name for symbol in source.symbols_for(changed, "python", "core.py")
+        }
+        assert "rebate" in {ref.name for ref in source.refs_for(changed, "python", "core.py")}
+        assert source.imports_for(changed, "python", "core.py") == (
+            extractor.extract_imports_from_source(changed, "python", "core.py")
+        )
+
+    def test_a_pruned_file_leaves_no_rows_behind(self, repo, extractor):
+        first = cache.build_index(repo, extractor)
+        (repo / "billing.py").unlink()
+
+        second = cache.build_index(repo, extractor)
+
+        assert second.pruned == 1
+        queries = (
+            "SELECT COUNT(*) FROM tags WHERE path = ?",
+            "SELECT COUNT(*) FROM imports WHERE path = ?",
+            "SELECT COUNT(*) FROM refs WHERE path = ?",
+            "SELECT COUNT(*) FROM files WHERE path = ?",
+        )
+        with sqlite3.connect(second.database) as connection:
+            for query in queries:
+                assert connection.execute(query, ("billing.py",)).fetchone()[0] == 0
+        assert first.files == 3
+
+
+class TestRefsEquivalence:
+    @pytest.mark.parametrize("repo_name", FIXTURE_REPOS)
+    def test_refs_are_identical_cached_and_uncached(
+        self, repo_name, fixtures_dir, services, capsys
+    ):
+        root = fixtures_dir / repo_name
+        assert invoke(services, root, "index") == EXIT_OK
+        capsys.readouterr()
+
+        assert invoke(services, root, "refs", "money", "--shared-callers") == EXIT_OK
+        cached = capsys.readouterr().out
+        assert invoke(services, root, "refs", "money", "--shared-callers", "--no-cache") == EXIT_OK
+
+        assert body(cached) == body(capsys.readouterr().out)
 
 
 def _receipt(output: str) -> str:

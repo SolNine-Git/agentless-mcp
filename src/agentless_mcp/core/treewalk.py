@@ -41,7 +41,14 @@ class RepoFile:
 
     @property
     def parts(self) -> tuple[str, ...]:
-        """The path split into components."""
+        """The path split into components.
+
+        A forward-slash split on every platform, and correct on every
+        platform: this path is always repository-relative in posix form --
+        either ``as_posix()`` of a resolved relative path, or a line of
+        ``git ls-files``, which emits forward slashes on Windows too. The
+        native separator never reaches this field.
+        """
         return tuple(self.path.split("/"))
 
 

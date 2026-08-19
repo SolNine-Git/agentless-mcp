@@ -18,14 +18,14 @@ already use is the "we already have a utility for this" signal.
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import refs
+from agentless_mcp.core import graph, refs
 from agentless_mcp.core.cache import effective_source
-from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -169,7 +169,11 @@ class SymbolService:
         )
 
         groups = _group_sites(sites[:limit], by_path)
-        shared = _shared_callers(sites, definitions, index, by_path) if shared_callers else ()
+        shared = (
+            _shared_callers(sites, definitions, index, by_path, ctx.config.stoplist)
+            if shared_callers
+            else ()
+        )
         return RefsResult(
             target=target,
             groups=groups,
@@ -265,14 +269,14 @@ def _definitions_for(target: str, index: refs.RefIndex) -> list[refs.Definition]
     return scoped or list(index.definitions.get(name, ()))
 
 
-def _dedupe(sites: Iterable[refs.Ref]) -> list[refs.Ref]:
+def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
     """Collapse duplicate sites and order them by file then line."""
     unique = {(site.path, site.line, site.name): site for site in sites}
     return [unique[key] for key in sorted(unique)]
 
 
 def _group_sites(
-    sites: list[refs.Ref],
+    sites: list[Ref],
     by_path: dict[str, refs.FileFacts],
 ) -> tuple[render.RefGroup, ...]:
     """Group reference sites by file and attribute each to its enclosing symbol."""
@@ -290,18 +294,79 @@ def _group_sites(
     return tuple(render.RefGroup(path=path, sites=tuple(grouped[path])) for path in sorted(grouped))
 
 
+@dataclass
+class _Adjacency:
+    """One candidate symbol and the target's callers that also reference it."""
+
+    definition: refs.Definition
+    callers: dict[str, ASTSymbol] = field(default_factory=dict[str, ASTSymbol])
+
+    def add(self, caller: ASTSymbol) -> None:
+        """Record one shared caller, keyed so it counts once."""
+        self.callers[symbol_stable_id(caller)] = caller
+
+    def row(
+        self, stable: str, index: refs.RefIndex, stoplist: frozenset[str]
+    ) -> render.SharedCaller:
+        """Render this candidate as a ranked adjacency row."""
+        symbol = self.definition.symbol
+        files = {caller.module_path for caller in self.callers.values()}
+        spread = index.files_referencing.get(symbol.name, 1)
+        score = (
+            len(files)
+            * graph.name_multiplier(symbol.name, stoplist)
+            / graph.common_name_damping(spread)
+        )
+        callers = sorted(
+            (
+                render.CallerRef(
+                    qualname=qualname(caller),
+                    path=caller.module_path,
+                    line=caller.line_number,
+                )
+                for caller in self.callers.values()
+            ),
+            key=lambda caller: (caller.path, caller.line),
+        )
+        return render.SharedCaller(
+            stable_id=stable,
+            path=self.definition.path,
+            line=symbol.line_number,
+            overlap=len(self.callers),
+            shared_files=len(files),
+            score=score,
+            callers=tuple(callers),
+        )
+
+
 def _shared_callers(
-    sites: list[refs.Ref],
+    sites: list[Ref],
     definitions: list[refs.Definition],
     index: refs.RefIndex,
     by_path: dict[str, refs.FileFacts],
+    stoplist: frozenset[str],
 ) -> tuple[render.SharedCaller, ...]:
     """Rank symbols by how many of the target's callers also reference them.
 
     The caller set is computed once from the target's own reference sites;
     every other symbol is then scored by how much of that set it shares. A
     symbol four of your five callers already use is the DRY signal worth
-    surfacing, and the ordering says so without any threshold.
+    surfacing.
+
+    Two corrections make that ranking usable on a real repository, and both
+    are the treatment :mod:`agentless_mcp.core.graph` already applies to the
+    same problem:
+
+    * **Files, not sites.** Four callers in one module are one team's habit;
+      four callers across four modules are a utility. The score counts
+      distinct files, so a cluster of callers inside one file cannot outvote
+      genuine spread.
+    * **Common names are damped.** Fan-in is name-matched, so a candidate
+      named ``get`` or ``id`` shares callers with everything. Dividing by
+      :func:`~agentless_mcp.core.graph.common_name_damping` of the name's
+      repository-wide spread, and applying the stoplist multiplier, is what
+      keeps an incidentally shared common name below a genuinely shared
+      helper it out-counts.
     """
     target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
 
@@ -312,32 +377,26 @@ def _shared_callers(
         if symbol is not None:
             callers[symbol_stable_id(symbol)] = symbol
 
-    overlap: dict[str, set[str]] = {}
-    for caller_id, caller in callers.items():
+    shared: dict[str, _Adjacency] = {}
+    for caller_id, caller in sorted(callers.items()):
         facts = by_path.get(caller.module_path)
         if facts is None:
             continue
         end = caller.end_line_number or caller.line_number
         names = {ref.name for ref in facts.refs if caller.line_number <= ref.line <= end}
-        for name in names:
+        for name in sorted(names):
             for definition in index.definitions.get(name, ()):
                 candidate = symbol_stable_id(definition.symbol)
                 if candidate in target_ids or candidate == caller_id:
                     continue
-                overlap.setdefault(candidate, set()).add(qualname(caller))
+                shared.setdefault(candidate, _Adjacency(definition)).add(caller)
 
-    rows = sorted(
-        (
-            render.SharedCaller(
-                stable_id=candidate,
-                overlap=len(names),
-                callers=tuple(sorted(names)),
-            )
-            for candidate, names in overlap.items()
-            if len(names) > 1
-        ),
-        key=lambda row: (-row.overlap, row.stable_id),
-    )
+    rows = [
+        entry.row(candidate, index, stoplist)
+        for candidate, entry in shared.items()
+        if len(entry.callers) > 1
+    ]
+    rows.sort(key=lambda row: (-row.score, -row.shared_files, row.stable_id))
     return tuple(rows)
 
 

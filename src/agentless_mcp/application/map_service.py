@@ -32,7 +32,7 @@ from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import refs
+from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
 from agentless_mcp.core.symbols import ASTSymbol, symbol_stable_id
@@ -52,12 +52,24 @@ AUTO_BUDGET_MAX = 8_000
 
 @dataclass(frozen=True)
 class MapRequest:
-    """What a caller asked the map for."""
+    """What a caller asked the map for, before the defaults are filled in.
+
+    ``None`` means "the caller did not say", which is a different fact from
+    any particular value and the one the precedence rule needs: an explicit
+    argument beats the repository's ``.agentless-mcp.json``, which beats the
+    built-in default. Resolving that here rather than in each adapter is what
+    keeps the CLI and the MCP server from answering the same question two
+    ways.
+
+    ``budget`` is the exception: ``None`` means auto-size, which is a real
+    answer rather than an absent one, so the adapters resolve it before
+    building the request.
+    """
 
     focus: tuple[str, ...] = ()
     budget: int | None = None
-    max_files: int = DEFAULT_MAX_FILES
-    granularity: str = GRANULARITY_FUNCTION
+    max_files: int | None = None
+    granularity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -101,16 +113,25 @@ class MapService:
 
     def build(self, ctx: RepoContext, request: MapRequest) -> MapResult:
         """Rank, score, pack and return the map for one repository."""
+        max_files = projectconfig.resolve(
+            request.max_files, ctx.config.max_files, DEFAULT_MAX_FILES
+        )
+        granularity = projectconfig.resolve(
+            request.granularity, ctx.config.granularity, GRANULARITY_FUNCTION
+        )
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
-        graph = build_graph(scan, index)
+        # The stoplist is a property of the repository rather than of the
+        # request: it says which names collide in *this* codebase, which the
+        # codebase is better placed to know than the caller.
+        graph = build_graph(scan, index, stoplist=ctx.config.stoplist)
 
         seeds = _seed_weights(request.focus, scan, index)
         rank = personalized_pagerank(graph, seeds or None)
-        chosen = rank_order(rank)[: max(0, request.max_files)]
+        chosen = rank_order(rank)[: max(0, max_files)]
 
         by_path = scan.by_path()
-        if request.granularity == GRANULARITY_FILE:
+        if granularity == GRANULARITY_FILE:
             files = tuple(
                 render.MapFile(
                     path=path,

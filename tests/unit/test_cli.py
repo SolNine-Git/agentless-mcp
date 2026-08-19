@@ -522,6 +522,39 @@ class TestValidateAndVoteSubprocess:
         assert result.returncode == EXIT_USAGE
         assert "--timeout" in result.stderr
 
+    def test_a_non_positive_repeat_baseline_is_a_usage_error(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        result = self.validate(
+            seeded_bug_repo(),
+            candidates_dir(VALIDATE_CANDIDATES),
+            tmp_path / "verdicts.jsonl",
+            python_cmd,
+            "--repeat-baseline",
+            "0",
+        )
+
+        assert result.returncode == EXIT_USAGE
+        assert "--repeat-baseline" in result.stderr
+
+    def test_a_repeated_baseline_is_recorded_in_the_run_record(
+        self, seeded_bug_repo, candidates_dir, python_cmd, tmp_path
+    ):
+        destination = tmp_path / "verdicts.jsonl"
+        result = self.validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": VALIDATE_CANDIDATES["01-plus.txt"]}),
+            destination,
+            python_cmd,
+            "--repeat-baseline",
+            "2",
+        )
+
+        assert result.returncode == EXIT_OK
+        header = json.loads(destination.read_text(encoding="utf-8").splitlines()[0])
+        assert header["repeat_baseline"] == 2
+        assert header["flaky_baseline"] is False
+
     def test_an_empty_verdicts_file_is_a_clear_error(self, tmp_path):
         empty = tmp_path / "empty.jsonl"
         empty.write_text("", encoding="utf-8")

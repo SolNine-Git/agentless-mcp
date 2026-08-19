@@ -36,7 +36,8 @@ from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
 ENV_NO_DOWNLOAD = "AGENTLESS_MCP_NO_DOWNLOAD"
 ENV_CACHE_DIR = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
 
-# Tier-1 languages: the twelve the extractor's registry dispatches on.
+# Tier-1 languages: the twelve ported from the mcp-local extractor, each with
+# a hand-checked node-type table and characterization coverage.
 TIER1_LANGUAGES: tuple[str, ...] = (
     "bash",
     "c",
@@ -51,6 +52,24 @@ TIER1_LANGUAGES: tuple[str, ...] = (
     "tsx",
     "typescript",
 )
+
+# Tier 2 (2026-08-18, Phase 4): the long tail, wired from the pack's own parse
+# trees. Same extraction path and the same probe gate as tier 1; the tier says
+# how much evidence stands behind the node-type table, and it is what lets a
+# broken tier-2 grammar degrade without failing a warmup that tier 1 passed.
+TIER2_LANGUAGES: tuple[str, ...] = (
+    "kotlin",
+    "php",
+    "swift",
+)
+
+ALL_LANGUAGES: tuple[str, ...] = tuple(sorted((*TIER1_LANGUAGES, *TIER2_LANGUAGES)))
+
+
+def is_tier1(language: str) -> bool:
+    """True when ``language`` is one this package promises full support for."""
+    return language in TIER1_LANGUAGES
+
 
 # One line of unambiguous source per language. A grammar that cannot parse
 # this without an ERROR node is broken for our purposes, whatever the loader
@@ -68,6 +87,9 @@ _PROBE_SAMPLES: dict[str, str] = {
     "rust": "fn main() {}\n",
     "tsx": "const x = 1;\n",
     "typescript": "const x: number = 1;\n",
+    "kotlin": "val x = 1\n",
+    "php": "<?php\n$x = 1;\n",
+    "swift": "let x = 1\n",
 }
 
 
@@ -82,6 +104,11 @@ class LanguageCapability:
     probe_ok: bool
     detail: str = ""
 
+    @property
+    def tier(self) -> int:
+        """Which support tier this language is in."""
+        return 1 if is_tier1(self.name) else 2
+
 
 @dataclass(frozen=True)
 class WarmupReport:
@@ -95,6 +122,16 @@ class WarmupReport:
     def degraded(self) -> tuple[LanguageCapability, ...]:
         """Languages that did not end up warmed and probe-clean."""
         return tuple(c for c in self.languages if not (c.warmed and c.probe_ok))
+
+    @property
+    def degraded_tier1(self) -> tuple[LanguageCapability, ...]:
+        """The degraded languages this package promises full support for.
+
+        The distinction the tier exists for: a tier-2 grammar that will not
+        load costs that one language, and must not be able to fail a warmup
+        that every tier-1 language passed.
+        """
+        return tuple(c for c in self.degraded if c.tier == 1)
 
     @property
     def ok(self) -> bool:
@@ -175,7 +212,7 @@ def warmup(
     which is a configuration decision the caller must see, not a degraded row
     they might page past.
     """
-    names = tuple(languages) if languages is not None else TIER1_LANGUAGES
+    names = tuple(languages) if languages is not None else ALL_LANGUAGES
     blocked = no_download or no_download_requested()
     directory = _configured_cache_dir()
     version = pack_version()
@@ -186,7 +223,7 @@ def warmup(
 
 def loaded_capabilities(languages: Sequence[str] | None = None) -> list[LanguageCapability]:
     """Report what is available now. Never fetches, never raises."""
-    names = tuple(languages) if languages is not None else TIER1_LANGUAGES
+    names = tuple(languages) if languages is not None else ALL_LANGUAGES
     version = pack_version()
     warmed = warmed_languages()
 

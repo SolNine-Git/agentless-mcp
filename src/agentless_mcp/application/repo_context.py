@@ -26,8 +26,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentless_mcp.core import gitinfo
-from agentless_mcp.core.cache import SymbolSource
+from agentless_mcp.core import gitinfo, projectconfig
+from agentless_mcp.core.cache import FileSource
+from agentless_mcp.core.projectconfig import ProjectConfig
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal
 
 
@@ -53,11 +54,19 @@ class RepoContext:
     tree_oid: str | None
     dirty_count: int | None
     note: str = ""
-    symbols: SymbolSource | None = None
+    symbols: FileSource | None = None
+    config: ProjectConfig = projectconfig.EMPTY
 
 
 def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> RepoContext:
-    """Resolve ``raw_root``, authorise it, and snapshot its git state."""
+    """Resolve ``raw_root``, authorise it, and snapshot its state.
+
+    The project config is read here, with the git snapshot, because both are
+    facts about the repository at the moment the call started and both belong
+    to every view the call renders. Reading it cannot fail the call: an absent,
+    malformed or oversized file produces an empty configuration whose warnings
+    ride in the response envelope.
+    """
     resolved = Path(raw_root).expanduser().resolve()
 
     if allowlist is not None:
@@ -74,6 +83,7 @@ def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> Repo
         tree_oid=snapshot.tree_oid,
         dirty_count=snapshot.dirty_count,
         note=snapshot.note,
+        config=projectconfig.load(resolved),
     )
 
 

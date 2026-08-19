@@ -110,6 +110,9 @@ LANGUAGE_PREFIXES: dict[str, str] = {
     "cpp": "cpp",
     "lua": "lua",
     "bash": "sh",
+    "php": "php",
+    "kotlin": "kt",
+    "swift": "swift",
 }
 
 _QUALNAME_SEPARATOR = "::"

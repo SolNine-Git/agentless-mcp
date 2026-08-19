@@ -4,9 +4,21 @@ The package never imports a tokenizer: a model-free tool has no model whose
 vocabulary it could match. Budgets are therefore expressed against an
 estimator behind this protocol, so a caller that does have a tokenizer can
 supply one without touching the budget logic.
+
+The names of the selectable counters live here with the protocol, and the
+implementations that need a third-party package live at the composition root
+in :mod:`agentless_mcp.bootstrap`. Nothing below the adapters may import an
+optional dependency, and the estimator below is what "no optional dependency"
+means in practice: chars/4 is the default, it is what the token regression
+pins measure, and installing an extra must not silently move them.
 """
 
 from typing import Protocol, runtime_checkable
+
+COUNTER_CHARS4 = "chars4"
+COUNTER_TIKTOKEN = "tiktoken"
+
+TOKEN_COUNTERS = (COUNTER_CHARS4, COUNTER_TIKTOKEN)
 
 
 @runtime_checkable

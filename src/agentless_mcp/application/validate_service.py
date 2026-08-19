@@ -59,6 +59,11 @@ from agentless_mcp.util.errors import AtlasError
 DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_JOBS = 1
 
+# One baseline run by default: repeating it costs a full test run per repeat
+# and buys nothing on a suite that is not flaky. Raising it is how a caller
+# who suspects flakiness finds out before the candidates inherit the doubt.
+DEFAULT_REPEAT_BASELINE = 1
+
 RECORD_KEY = "record"
 RECORD_RUN = "run"
 RECORD_CANDIDATE = "candidate"
@@ -141,6 +146,7 @@ class ValidateRequest:
     repro_cmd: str | None = None
     timeout: int = DEFAULT_TIMEOUT_SECONDS
     jobs: int = DEFAULT_JOBS
+    repeat_baseline: int = DEFAULT_REPEAT_BASELINE
 
 
 @dataclass(frozen=True)
@@ -231,11 +237,18 @@ class RunHeader:
     repro_verdict: ReproVerdict
     baseline_run: RunResult | None = None
     repro_baseline_run: RunResult | None = None
+    repeat_baseline: int = DEFAULT_REPEAT_BASELINE
+    baseline_failures: int = 0
 
     @property
     def repro_valid(self) -> bool:
         """True only when the reproduction command failed on unpatched HEAD."""
         return self.repro_verdict is ReproVerdict.REPRODUCES
+
+    @property
+    def flaky_baseline(self) -> bool:
+        """True when the baseline runs disagreed with each other."""
+        return 0 < self.baseline_failures < self.repeat_baseline
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON Lines record for this run."""
@@ -249,6 +262,9 @@ class RunHeader:
             "candidates": self.candidates,
             "baseline": self.baseline.value,
             "baseline_detail": self.baseline_detail,
+            "repeat_baseline": self.repeat_baseline,
+            "baseline_failures": self.baseline_failures,
+            "flaky_baseline": self.flaky_baseline,
             "repro_verdict": self.repro_verdict.value,
             "repro_valid": self.repro_valid,
             "baseline_run": None if self.baseline_run is None else self.baseline_run.as_dict(),
@@ -299,7 +315,14 @@ class ValidateReport:
         the error channel rather than left to be noticed in a JSON field.
         """
         lines: list[str] = []
-        if self.header.baseline is BaselineStatus.UNVERIFIED:
+        if self.header.flaky_baseline:
+            lines.append(
+                f"UNVERIFIED: {self.header.baseline_detail}. No candidate was evaluated -- "
+                "a baseline that answers differently on identical input cannot tell a "
+                "regression your patch caused from its own noise. Find the flaky test and "
+                "exclude it, or narrow the command to a subset that is deterministic."
+            )
+        elif self.header.baseline is BaselineStatus.UNVERIFIED:
             lines.append(
                 "UNVERIFIED: the test command did not pass on unpatched HEAD "
                 f"({self.header.baseline_detail}). No candidate was evaluated -- "
@@ -357,48 +380,33 @@ class ValidateService:
     # ------------------------------------------------------------------
 
     def _baseline(self, ctx: RepoContext, request: ValidateRequest, *, count: int) -> RunHeader:
-        """Run the test command, and the reproduction command, on unpatched HEAD."""
-        fields = envelope.receipt_fields(ctx)
+        """Run the test command, and the reproduction command, on unpatched HEAD.
 
-        with sandbox.worktree(ctx.root) as tree:
-            test_run = sandbox.run_command(tree, request.test_cmd, timeout=request.timeout)
-            if not test_run.passed:
-                return RunHeader(
-                    receipt=fields,
-                    test_cmd=request.test_cmd,
-                    repro_cmd=request.repro_cmd,
-                    timeout=request.timeout,
-                    jobs=request.jobs,
-                    candidates=count,
-                    baseline=BaselineStatus.UNVERIFIED,
-                    baseline_detail=_baseline_detail(test_run),
-                    repro_verdict=(
-                        ReproVerdict.NOT_GIVEN
-                        if request.repro_cmd is None
-                        else ReproVerdict.NOT_EVALUATED
-                    ),
-                    baseline_run=test_run,
-                )
+        With ``repeat_baseline`` above one the test command runs that many
+        times in that many fresh worktrees, and **any disagreement between
+        those runs is UNVERIFIED**. A suite that passes twice and fails once
+        cannot tell a regression from its own flakiness, so every candidate
+        verdict computed against it would be a coin flip wearing a verdict's
+        clothes. Reporting the disagreement is the only honest outcome, and
+        the count is named so the caller can see how bad it is.
+        """
+        repeats = max(1, request.repeat_baseline)
+        runs: list[RunResult] = []
+        for _ in range(repeats):
+            with sandbox.worktree(ctx.root) as tree:
+                runs.append(sandbox.run_command(tree, request.test_cmd, timeout=request.timeout))
 
-            repro_run = (
-                None
-                if request.repro_cmd is None
-                else sandbox.run_command(tree, request.repro_cmd, timeout=request.timeout)
-            )
+        failures = [run for run in runs if not run.passed]
+        outcome = _baseline_outcome(runs, failures, repeats)
+        if outcome.status is BaselineStatus.UNVERIFIED:
+            return _header(ctx, request, count, outcome, repro_run=None)
 
-        return RunHeader(
-            receipt=fields,
-            test_cmd=request.test_cmd,
-            repro_cmd=request.repro_cmd,
-            timeout=request.timeout,
-            jobs=request.jobs,
-            candidates=count,
-            baseline=BaselineStatus.OK,
-            baseline_detail="the test command passed on unpatched HEAD",
-            repro_verdict=_repro_verdict(repro_run),
-            baseline_run=test_run,
-            repro_baseline_run=repro_run,
-        )
+        repro_run = None
+        if request.repro_cmd is not None:
+            with sandbox.worktree(ctx.root) as tree:
+                repro_run = sandbox.run_command(tree, request.repro_cmd, timeout=request.timeout)
+
+        return _header(ctx, request, count, outcome, repro_run=repro_run)
 
     # ------------------------------------------------------------------
     # Candidates
@@ -673,6 +681,88 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _BaselineOutcome:
+    """What the baseline runs, taken together, established."""
+
+    status: BaselineStatus
+    detail: str
+    representative: RunResult
+    repeats: int
+    failures: int
+
+
+def _baseline_outcome(
+    runs: Sequence[RunResult], failures: Sequence[RunResult], repeats: int
+) -> _BaselineOutcome:
+    """Decide what a set of baseline runs means.
+
+    Three outcomes and no fourth: they all passed, they all failed, or they
+    disagreed. The last is the reason this function exists -- a mixed result
+    is not "mostly green", it is an instrument that gives a different reading
+    each time it is used, and it invalidates the run exactly as a red baseline
+    does.
+    """
+    if not failures:
+        detail = (
+            "the test command passed on unpatched HEAD"
+            if repeats == 1
+            else f"the test command passed on unpatched HEAD in all {repeats} baseline runs"
+        )
+        return _BaselineOutcome(BaselineStatus.OK, detail, runs[-1], repeats, 0)
+
+    if len(failures) < repeats:
+        detail = (
+            f"FLAKY BASELINE: the test command disagreed across {repeats} runs on unpatched "
+            f"HEAD -- {len(failures)} failed and {repeats - len(failures)} passed, with nothing "
+            "changing between them"
+        )
+        return _BaselineOutcome(
+            BaselineStatus.UNVERIFIED, detail, failures[0], repeats, len(failures)
+        )
+
+    return _BaselineOutcome(
+        BaselineStatus.UNVERIFIED,
+        _baseline_detail(failures[0]),
+        failures[0],
+        repeats,
+        len(failures),
+    )
+
+
+def _header(
+    ctx: RepoContext,
+    request: ValidateRequest,
+    count: int,
+    outcome: _BaselineOutcome,
+    *,
+    repro_run: RunResult | None,
+) -> RunHeader:
+    """Build the run record from the baseline outcome and the request."""
+    if outcome.status is BaselineStatus.UNVERIFIED:
+        repro_verdict = (
+            ReproVerdict.NOT_GIVEN if request.repro_cmd is None else ReproVerdict.NOT_EVALUATED
+        )
+    else:
+        repro_verdict = _repro_verdict(repro_run)
+
+    return RunHeader(
+        receipt=envelope.receipt_fields(ctx),
+        test_cmd=request.test_cmd,
+        repro_cmd=request.repro_cmd,
+        timeout=request.timeout,
+        jobs=request.jobs,
+        candidates=count,
+        baseline=outcome.status,
+        baseline_detail=outcome.detail,
+        repro_verdict=repro_verdict,
+        baseline_run=outcome.representative,
+        repro_baseline_run=repro_run,
+        repeat_baseline=outcome.repeats,
+        baseline_failures=outcome.failures,
+    )
 
 
 def _repro_verdict(run: RunResult | None) -> ReproVerdict:

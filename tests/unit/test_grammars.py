@@ -91,7 +91,15 @@ class TestCapabilities:
         assert capability.probe_ok is False
         assert capability.detail == "not warmed: run agentless-mcp warmup go"
 
-    def test_default_capability_list_is_tier_one(self, monkeypatch):
+    def test_default_capability_list_covers_both_tiers(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
         names = [cap.name for cap in grammars.loaded_capabilities()]
-        assert names == list(grammars.TIER1_LANGUAGES)
+        assert names == list(grammars.ALL_LANGUAGES)
+
+    def test_every_language_is_labelled_with_its_tier(self, monkeypatch):
+        monkeypatch.setattr(pack, "downloaded_languages", list)
+        tiers = {cap.name: cap.tier for cap in grammars.loaded_capabilities()}
+        assert tiers["python"] == 1
+        assert tiers["kotlin"] == 2
+        assert {tiers[name] for name in grammars.TIER1_LANGUAGES} == {1}
+        assert {tiers[name] for name in grammars.TIER2_LANGUAGES} == {2}

@@ -175,8 +175,27 @@ and they are what an error-path review or a blast-radius question needs.
 
 Matching is by name, so fan-in is deliberately fuzzy: it over-reports across
 files that share a short name rather than under-reporting, because a missed
-caller is the expensive error. `--shared-callers` answers the DRY question --
-which other symbols do *your* callers already use.
+caller is the expensive error.
+
+`--shared-callers` answers the DRY question -- which other symbols do *your*
+callers already use, i.e. "do we already have a utility for this?". Rows are
+ranked, and the ranking is the useful part:
+
+```
+symbols sharing callers with quote
+  py:util.py::format_currency    util.py:9  (2 shared callers in 2 files, score 0.838)
+      run_billing    billing.py:5
+      post    ledger.py:5
+  py:util.py::log    util.py:4  (3 shared callers in 3 files, score 0.711)
+      ...
+```
+
+`shared_files` counts the distinct files the shared callers live in -- four
+callers in one module is one team's habit, four across four modules is a
+utility. `score` is that count damped by how common the candidate's name is
+across the repository, the same log damping the map's edge weights use, so a
+name every file mentions cannot out-rank a genuinely shared helper just by
+colliding with more callers. Every row and every caller carries `file:line`.
 
 ### `resolve-locs` (`resolve_locations`) -- location strings to intervals
 
@@ -203,9 +222,12 @@ typo is visible instead of quietly shrinking the answer.
 
 ### `capabilities` (`capabilities`) -- what is loaded, what is capped
 
-Grammar versions and warm state per language, the tag-cache generation, and
-every bound in force (walk depth, file count, per-file bytes, output tokens).
-Check it when a view stops short and you want to know which bound did it.
+Grammar versions, support tier and warm state per language, the file
+extensions each language claims, the tag-cache generation, the project config
+in force, and every bound (walk depth, file count, per-file bytes, output
+tokens). Check it when a view stops short and you want to know which bound did
+it, or when a file was skipped and you want to know whether its grammar is
+warmed.
 
 ### `index` -- build the tag cache, CLI only
 
@@ -215,13 +237,13 @@ agentless-mcp index --repo /srv/app       # a named repository
 agentless-mcp index --force               # re-extract even unchanged files
 ```
 
-Optional. Every read command works without it; indexing removes the symbol
-parse for files whose sha256 has not changed since the last run. The database
-lives under `$XDG_CACHE_HOME/agentless-mcp/`, never inside the repository
-being analyzed, and one line reports what happened:
+Optional. Every read command works without it; indexing removes the symbol,
+import and reference parses for files whose sha256 has not changed since the
+last run. The database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never
+inside the repository being analyzed, and one line reports what happened:
 
 ```
-indexed 42, reused 517, pruned 3, errors 0: 559 files, 17740 tags at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
+indexed 42, reused 517, pruned 3, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
 ```
 
 Only one index run per repository at a time: a second concurrent run exits
@@ -250,11 +272,22 @@ is either raw SEARCH/REPLACE text or an `edits.json` document -- whatever
 `patch parse` emits. Name them so they sort the way you sampled them
 (`01-...`, `02-...`). Two files sharing a stem are refused.
 
-**The commands come from you, never from the repository.** There is no config
-file, no `Makefile` sniffing, no `package.json` scripts lookup, and no
-default. `--test-cmd` is required. Both commands are split into an argv and
-executed without a shell, so `&&`, `;` and `$(...)` are arguments rather than
-statements: wrap a multi-step command in a script and name the script.
+**The commands come from you.** There is no `Makefile` sniffing, no
+`package.json` scripts lookup and no built-in default. `--test-cmd` has
+exactly one fallback: a `test_cmd` in the repository's own
+`.agentless-mcp.json`, used only when you passed none, only in the CLI (no MCP
+tool can reach it), and printed on stderr before it runs. Both commands are
+split into an argv and executed without a shell, so `&&`, `;` and `$(...)` are
+arguments rather than statements: wrap a multi-step command in a script and
+name the script.
+
+**`--repeat-baseline N`** runs the baseline N times before any candidate
+(default 1). If the runs disagree -- any mix of pass and fail with nothing
+changing between them -- the whole validation is `UNVERIFIED` with a flaky
+message naming how many failed, and no candidate is evaluated. A suite that
+answers differently on identical input cannot tell a regression your patch
+caused from its own noise. All N failing is the ordinary broken-baseline case;
+all N passing proceeds. Candidates still run once each.
 
 **Every candidate runs in its own throwaway worktree** at HEAD, so your
 checkout is never written to and no candidate can see what the previous one
@@ -273,12 +306,16 @@ per stream, because the summary is at the end.
 mean the rest of the report is not evidence. Both are printed loudly on
 stderr and carried in the run record.
 
-`UNVERIFIED` -- **the test command did not pass on unpatched HEAD.** The run
+`UNVERIFIED` -- **the test command did not pass on unpatched HEAD**, or, with
+`--repeat-baseline N`, **did not answer the same way every time.** The run
 short-circuits: every candidate is reported `not_evaluated` and the exit code
 is 1. A red baseline cannot tell a regression your patch caused from a failure
-that was already there, so no verdict computed against it would mean anything.
-Fix or narrow the test command (a subset that is green today is far more
-useful than a full suite that is not) and run it again.
+that was already there, and a flaky one cannot tell it from noise, so no
+verdict computed against either would mean anything. Fix or narrow the test
+command (a subset that is green today is far more useful than a full suite
+that is not) and run it again. The run record carries `repeat_baseline`,
+`baseline_failures` and `flaky_baseline` so the two cases are told apart
+mechanically.
 
 `does_not_reproduce` -- **the reproduction command PASSED on unpatched HEAD.**
 It therefore does not reproduce the bug, its results say nothing about any
@@ -347,13 +384,74 @@ under `excluded before the ladder` with the reason.
 ### `warmup` -- install-time, CLI only
 
 ```
-agentless-mcp warmup                      # tier-1 languages
+agentless-mcp warmup                      # every supported language
 agentless-mcp warmup python go --no-download
 ```
 
 The only command that fetches grammars. Fetching never happens inside a tool
 call; a grammar that is not warmed degrades that one language with a message
 naming this command.
+
+Languages come in two tiers, and `capabilities` prints the tier of each:
+
+| Tier | Languages |
+|---|---|
+| 1 | bash, c, cpp, go, java, javascript, lua, python, ruby, rust, tsx, typescript |
+| 2 | kotlin, php, swift |
+
+The tier says how much evidence stands behind the node-type table, not how the
+language is processed -- both tiers run the same extraction, skeleton and
+reference passes, and both are probe-parsed at load. What the tier changes is
+failure handling: a degraded tier-2 grammar costs that one language and
+`warmup` still exits 0 with a warning, while a degraded tier-1 grammar fails
+the command. Naming a language explicitly makes any degradation of *that*
+language a failure, whatever its tier.
+
+Tier-2 caveats worth knowing: kotlin and swift signatures are rendered from
+the declaration's own header text (their grammars expose no parameter field),
+kotlin interfaces and swift protocols/structs are reported as `class`, and a
+swift initializer is reported as the method `init`.
+
+## Project defaults: `.agentless-mcp.json`
+
+A repository may declare its own defaults in `.agentless-mcp.json` at its
+root. Every key is optional:
+
+```json
+{
+  "map_budget": 6000,
+  "max_files": 8,
+  "granularity": "function",
+  "docstrings": false,
+  "stoplist": ["ctx", "helper", "handle"],
+  "test_cmd": "pytest -q tests/unit"
+}
+```
+
+Precedence is **explicit argument > project config > built-in default**, in
+that order and nowhere else. The receipt names the file when one was read and
+prints a `config warning:` line for anything in it that was ignored, so a
+default you did not pass is never invisible.
+
+`stoplist` names identifiers that collide everywhere in *this* codebase; they
+are damped in the map's ranking and in `--shared-callers` exactly like
+one- and two-character names, never dropped.
+
+The file is repository content and is treated as such: values are
+schema-checked and bounded, no key takes a path, unknown keys are warnings
+rather than errors, and a malformed file degrades to "no config" with the
+reason in the receipt instead of failing the call. `test_cmd` is inert
+everywhere except the CLI's `validate`, which uses it only when the invocation
+passed no `--test-cmd` and prints the resolved command on stderr before
+running it.
+
+## Token counting
+
+Budgets are estimated at one token per four characters by default. That is
+deliberately crude, deliberately reproducible, and what every budget in this
+tool was tuned against. With the `tokens` extra installed,
+`--token-counter tiktoken` swaps in a real tokenizer -- which will move every
+budget, so it is opt-in twice over (install the extra, then pass the flag).
 
 ---
 
