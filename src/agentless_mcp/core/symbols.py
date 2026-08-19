@@ -12,10 +12,25 @@ this is the module that owns what a symbol is. The form is
 re-index (nothing in it is a row id or a line number), and round-trips: every
 id printed by a map or a skeleton parses back into the file and qualified name
 that ``expand_symbols`` needs.
+
+An id has to be *unique* for any of that to hold, and a qualified name alone
+does not guarantee it. Two C++ overloads, two Ruby methods reopened in one
+file, two same-name functions in sibling TypeScript namespaces: each pair
+spells one qualified name in one file, so each pair would spell one id, and
+`expand_symbols` would hand back the first of them twice. Where the grammar
+carries the missing context the extractor uses it -- a Go method's receiver
+becomes its parent, so ``ServerInfo.Validate`` and ``AWSConf.Validate`` are
+distinct names rather than one name twice. Where it does not,
+:func:`disambiguate` is the backstop: within one file, the second and later
+symbols sharing a qualified name carry a ``#2``, ``#3`` ordinal in source
+order, and :func:`split_ordinal` takes it back off. The ordinal lives on the
+*id*, not on :func:`qualname`, so the name a reader sees stays the name the
+source spells.
 """
 
 import re
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from enum import Enum
 
 # A signature is an index row, not a rendering of the declaration. Every
@@ -80,6 +95,11 @@ class ASTSymbol:
     language: str
     is_public: bool
     is_async: bool
+    # How many earlier symbols in the same file already carry this qualified
+    # name. Zero for all but a collision, and assigned by
+    # :func:`disambiguate` rather than by any extraction handler, so a
+    # language added later inherits unique ids without knowing they exist.
+    duplicate_index: int = 0
 
     def __post_init__(self) -> None:
         """Normalise the signature to one line of at most the cap.
@@ -116,6 +136,12 @@ LANGUAGE_PREFIXES: dict[str, str] = {
 }
 
 _QUALNAME_SEPARATOR = "::"
+
+# The collision ordinal an id carries when a qualified name is not unique
+# inside its file. `#` is not a name character in any grammar in the table, so
+# a real qualified name can never be mistaken for one that carries an ordinal.
+_ORDINAL_MARKER = "#"
+_ORDINAL_SUFFIX = re.compile(r"#(\d+)$")
 
 
 def normalise_signature(signature: str) -> str:
@@ -156,6 +182,71 @@ def qualname(symbol: ASTSymbol) -> str:
     return symbol.name
 
 
+def id_qualname(symbol: ASTSymbol) -> str:
+    """Return the qualified name an id addresses ``symbol`` by.
+
+    :func:`qualname` for everything unique in its file, and that name plus a
+    ``#2``/``#3`` ordinal for the second and later symbols that share it. The
+    two functions are deliberately different: a card shows the name the source
+    spells, an id has to name one symbol.
+    """
+    return apply_ordinal(qualname(symbol), symbol.duplicate_index)
+
+
+def apply_ordinal(base: str, duplicate_index: int) -> str:
+    """Add the collision ordinal to a qualified name, if it needs one."""
+    if duplicate_index <= 0:
+        return base
+    return f"{base}{_ORDINAL_MARKER}{duplicate_index + 1}"
+
+
+def split_ordinal(qualified_name: str) -> tuple[str, int]:
+    """Split a qualified name into its base and its collision ordinal.
+
+    The inverse of :func:`apply_ordinal`, and the one place a consumer of an
+    id is allowed to know the ordinal spelling. A name with no ordinal comes
+    back unchanged with index 0, so callers can apply it unconditionally.
+    """
+    match = _ORDINAL_SUFFIX.search(qualified_name)
+    if match is None:
+        return qualified_name, 0
+    return qualified_name[: match.start()], max(0, int(match.group(1)) - 1)
+
+
+def disambiguate(symbols: Sequence[ASTSymbol]) -> list[ASTSymbol]:
+    """Give every symbol extracted from one file a distinct qualified name.
+
+    The backstop under stable-id uniqueness. Receiver types, impl blocks and
+    class bodies supply the missing context wherever a grammar exposes it, but
+    overloads, reopened classes and namespaced siblings still collide, and no
+    per-language table can promise otherwise for a language added tomorrow.
+    So the rule is applied once, over whatever an extraction handler produced:
+    the first symbol with a qualified name keeps it, later ones carry an
+    ordinal.
+
+    Order is by line, then by extraction order, so the ordinals follow the
+    source rather than the traversal -- inserting a method above another one
+    moves the ordinals the same way a reader would expect, and a handler that
+    changes its traversal order does not silently renumber a repository's ids.
+    The returned list preserves the input's order; only the ordinals are new.
+    """
+    counts: dict[tuple[str, str], int] = {}
+    indices: dict[int, int] = {}
+    for position, symbol in sorted(
+        enumerate(symbols), key=lambda pair: (pair[1].line_number, pair[0])
+    ):
+        key = (symbol.parent_class, symbol.name)
+        seen = counts.get(key, 0)
+        counts[key] = seen + 1
+        if seen:
+            indices[position] = seen
+
+    return [
+        replace(symbol, duplicate_index=indices[position]) if position in indices else symbol
+        for position, symbol in enumerate(symbols)
+    ]
+
+
 def stable_id(language: str, path: str, qualified_name: str) -> str:
     """Build a stable id from its three parts."""
     return f"{language_prefix(language)}:{path}{_QUALNAME_SEPARATOR}{qualified_name}"
@@ -167,7 +258,7 @@ def symbol_stable_id(symbol: ASTSymbol) -> str:
     ``module_path`` is the repository-relative path the scan passed in, so the
     id is portable across checkouts of the same repository.
     """
-    return stable_id(symbol.language, symbol.module_path, qualname(symbol))
+    return stable_id(symbol.language, symbol.module_path, id_qualname(symbol))
 
 
 def parse_stable_id(text: str) -> StableId:

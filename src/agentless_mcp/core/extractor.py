@@ -30,7 +30,7 @@ from tree_sitter import Language, Node, Parser
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
+from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, disambiguate
 
 # Handlers normalised for the registry: both take the parsed root, the source
 # bytes, the module path, and the accumulator list they append to.
@@ -167,6 +167,13 @@ class LanguageConfig:
     # from `fn <name>(<parameters>)`. For grammars with no `parameters` field,
     # where the composed form would claim every function takes none.
     signature_from_header: bool = False
+    # Field on a function node naming the type the function is a method of,
+    # for languages that declare methods outside the type's own body. Go is
+    # the case in the table: `func (c *Config) Validate()` is a top-level
+    # declaration, so without the receiver every `Validate` in a file is the
+    # same qualified name and the same stable id. The field is the grammar's
+    # own, so the owner is read rather than guessed.
+    receiver_field: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +234,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
             "field_identifier",
             "package_identifier",
         ),
+        receiver_field="receiver",
     ),
     "lua": LanguageConfig(
         # tree-sitter-lua emits `function_declaration` for `local function foo()`
@@ -567,6 +575,11 @@ class TreeSitterExtractor:
         grammar is unavailable raises `LanguageUnavailable` from
         `core.grammars`: that is a degradation the caller has to see, not an
         empty file.
+
+        Every handler's output passes through
+        `core.symbols.disambiguate` before it leaves this method, so
+        stable-id uniqueness inside a file is a property of extraction rather
+        than something each of the six handlers has to remember.
         """
         try:
             parser = self.get_parser(language)
@@ -580,7 +593,7 @@ class TreeSitterExtractor:
         # get_parser succeeded, so the language is registered.
         symbols: list[ASTSymbol] = []
         self._registry[language].extract_symbols(tree.root_node, source_bytes, module_path, symbols)
-        return symbols
+        return disambiguate(symbols)
 
     # ------------------------------------------------------------------
     # Public import extraction API
@@ -695,7 +708,8 @@ class TreeSitterExtractor:
         if node.type in cfg.function_node_types:
             name = self._generic_name(node, source, cfg)
             if name:
-                kind = SymbolKind.METHOD if parent else SymbolKind.FUNCTION
+                owner = parent or self._receiver_owner(node, source, cfg)
+                kind = SymbolKind.METHOD if owner else SymbolKind.FUNCTION
                 symbols.append(
                     ASTSymbol(
                         name=name,
@@ -705,7 +719,7 @@ class TreeSitterExtractor:
                         end_line_number=node.end_point[0] + 1,
                         signature=self._generic_signature(node, source, name, cfg),
                         docstring="",
-                        parent_class=parent,
+                        parent_class=owner,
                         decorators=(),
                         bases=(),
                         language=language,
@@ -786,6 +800,26 @@ class TreeSitterExtractor:
         )
         end = body.start_byte if body is not None else node.end_byte
         return source[node.start_byte : end].decode("utf-8", errors="replace").strip()
+
+    def _receiver_owner(self, node: Node, source: bytes, cfg: LanguageConfig) -> str:
+        """Return the type a method is declared on, from the grammar's receiver.
+
+        The receiver subtree is a parameter list, so the type is found by node
+        type rather than by position: ``(c *Config)`` nests the name under a
+        `pointer_type` and ``(s *Stack[T])`` under a `generic_type`, and in
+        both the first `type_identifier` in the subtree is the owner. Reading
+        the whole receiver's text instead would put the receiver variable and
+        its pointer star in every method's parent name.
+        """
+        if cfg.receiver_field is None:
+            return ""
+        receiver = node.child_by_field_name(cfg.receiver_field)
+        if receiver is None:
+            return ""
+        owner = next(
+            (child for child in walk_nodes(receiver) if child.type == "type_identifier"), None
+        )
+        return self._node_text(owner, source) if owner is not None else ""
 
     def _class_body(self, node: Node, cfg: LanguageConfig) -> Node | None:
         """Return the node holding a class's members, field-named or not."""

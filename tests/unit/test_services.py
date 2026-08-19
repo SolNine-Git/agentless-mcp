@@ -9,12 +9,15 @@ from agentless_mcp.application.map_service import (
     GRANULARITY_FILE,
     MapRequest,
     MapService,
+    seed_weights,
 )
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.core import refs
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
 from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = '''\
 """Core."""
@@ -102,6 +105,56 @@ class TestMapService:
             f.path for f in maps.build(repo, MapRequest()).files
         ]
 
+    def test_a_method_name_seeds_the_file_that_defines_it(self, repo, extractor, counter):
+        """The seed shape an issue report actually yields."""
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("reconcile",)))
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+        assert result.files[0].path == "ledger.py"
+
+    def test_a_qualified_method_name_narrows_to_its_owner(self, repo, extractor, counter):
+        maps = MapService(extractor, counter)
+        bare = maps.build(repo, MapRequest(focus=("cost_of",)))
+        qualified = maps.build(repo, MapRequest(focus=("PriceBook.cost_of",)))
+        assert bare.seeds == qualified.seeds == ("core.py",)
+
+    def test_an_unresolved_seed_is_named_rather_than_dropped(self, repo, extractor, counter):
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(focus=("lonely", "rotate_age", "  ")))
+        assert result.seeds == ("orphan.py",)
+        assert result.unresolved_seeds == ("rotate_age",)
+        assert "rotate_age" in maps.render_text(result).splitlines()[0]
+        assert result.as_dict()["seeds"] == ["orphan.py"]
+        assert result.as_dict()["unresolved_seeds"] == ["rotate_age"]
+
+    def test_a_fully_resolved_focus_adds_no_note(self, repo, extractor, counter):
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(focus=("lonely",)))
+        assert result.unresolved_seeds == ()
+        assert not maps.render_text(result).startswith("# note:")
+
+    def test_a_mistyped_path_does_not_resolve_through_its_extension(self, repo, extractor, counter):
+        """`lib/nope.py` must not seed on a symbol that happens to be named `py`."""
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("lib/nope.py",)))
+        assert result.seeds == ()
+        assert result.unresolved_seeds == ("lib/nope.py",)
+
+    def test_one_focus_entry_casts_one_vote_however_many_files_it_matched(
+        self, tmp_path, extractor
+    ):
+        """A common name matching three files must not outweigh a named file."""
+        for name in ("a.py", "b.py", "c.py", "d.py"):
+            (tmp_path / name).write_text("def handle():\n    return 1\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        index = refs.build_ref_index(scan)
+        seeding = seed_weights(("handle", "d.py"), scan, index)
+
+        assert seeding.unresolved == ()
+        assert seeding.weights["d.py"] == pytest.approx(1.25)
+        assert seeding.weights["a.py"] == pytest.approx(0.25)
+        assert sum(seeding.weights.values()) == pytest.approx(2.0)
+
     def test_max_files_caps_the_file_stage(self, repo, extractor, counter):
         result = MapService(extractor, counter).build(repo, MapRequest(max_files=2))
         assert len(result.files) <= 2
@@ -161,47 +214,55 @@ class TestViewService:
 
 class TestSymbolService:
     def test_find_symbol_ranks_an_exact_name_first(self, repo, extractor):
-        result = SymbolService(extractor).find_symbol(repo, "quote")
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote")
         assert result.cards[0].stable_id == "py:core.py::quote"
 
     def test_find_symbol_filters_by_kind(self, repo, extractor):
-        result = SymbolService(extractor).find_symbol(repo, "o", kind="method")
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "o", kind="method")
         assert {card.kind for card in result.cards} == {"method"}
 
     def test_find_symbol_reports_the_total_behind_the_limit(self, repo, extractor):
-        result = SymbolService(extractor).find_symbol(repo, "", limit=2)
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "", limit=2)
         assert len(result.cards) == 2
         assert result.total > 2
 
     def test_expand_reports_an_id_whose_symbol_is_gone(self, repo, extractor):
-        result = SymbolService(extractor).expand_symbols(repo, ["py:core.py::vanished"])
+        result = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            repo, ["py:core.py::vanished"]
+        )
         assert result.cards == ()
         assert "no longer defines" in result.unresolved[0][1]
 
     def test_expand_refuses_an_id_pointing_out_of_the_repository(self, repo, extractor):
-        result = SymbolService(extractor).expand_symbols(repo, ["py:../../etc/passwd::x"])
+        result = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            repo, ["py:../../etc/passwd::x"]
+        )
         assert result.cards == ()
         assert "refused" in result.unresolved[0][1]
 
     def test_refs_group_by_file_and_name_the_calling_symbol(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "quote")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(repo, "quote")
         callers = {(group.path, site.enclosing) for group in result.groups for site in group.sites}
         assert ("billing.py", "run_billing") in callers
         assert ("ledger.py", "Ledger.post") in callers
         assert ("core.py", "PriceBook.cost_of") in callers
 
     def test_refs_accept_a_stable_id_as_the_target(self, repo, extractor):
-        by_name = SymbolService(extractor).find_referencing_symbols(repo, "quote")
-        by_id = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::quote")
+        by_name = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(repo, "quote")
+        by_id = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::quote"
+        )
         assert by_id.total == by_name.total
 
     def test_refs_of_an_unknown_name_are_empty_not_an_error(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "nosuchsymbol")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "nosuchsymbol"
+        )
         assert result.groups == ()
         assert result.total == 0
 
     def test_shared_callers_surfaces_a_symbol_the_same_callers_use(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
             repo, "quote", shared_callers=True
         )
         assert [row.stable_id for row in result.shared] == ["py:core.py::normalise"]
@@ -284,13 +345,17 @@ class TestSignaturesStayOneLine:
         assert len(search.signature) <= SIGNATURE_MAX_CHARS
 
     def test_an_over_long_signature_is_marked_as_cut(self, wide_repo, extractor):
-        card = SymbolService(extractor).find_symbol(wide_repo, "build_a_storage_client").cards[0]
+        card = (
+            SymbolService(extractor, Chars4Counter())
+            .find_symbol(wide_repo, "build_a_storage_client")
+            .cards[0]
+        )
         assert len(card.signature) == SIGNATURE_MAX_CHARS
         assert card.signature.endswith("...")
         assert "\n" not in card.signature
 
     def test_find_symbol_cards_stay_one_line(self, wide_repo, extractor):
-        result = SymbolService(extractor).find_symbol(wide_repo, "search")
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(wide_repo, "search")
         card = result.cards[0]
         assert "\n" not in card.signature
         assert len(card.signature) <= SIGNATURE_MAX_CHARS
@@ -299,7 +364,7 @@ class TestSignaturesStayOneLine:
     def test_expand_still_shows_the_real_multi_line_source(self, wide_repo, extractor):
         """Capping the signature must not cap the body: expand is the escalation."""
         card = (
-            SymbolService(extractor)
+            SymbolService(extractor, Chars4Counter())
             .expand_symbols(wide_repo, ["py:storage.py::VectorStoreProtocol.search"])
             .cards[0]
         )

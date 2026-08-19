@@ -12,6 +12,7 @@
   "symbols_included": 29,
   "symbols_available": 29,
   "seeds": [],
+  "unresolved_seeds": [],
   "files": [
     {
       "path": "types.ts",

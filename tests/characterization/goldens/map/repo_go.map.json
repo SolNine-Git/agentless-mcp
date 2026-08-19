@@ -12,6 +12,7 @@
   "symbols_included": 16,
   "symbols_available": 16,
   "seeds": [],
+  "unresolved_seeds": [],
   "files": [
     {
       "path": "pricing.go",
@@ -26,20 +27,20 @@
         {
           "line": 50,
           "signature": "fn CostOf(sku string) -> (float64, error)",
-          "stable_id": "go:pricing.go::CostOf",
-          "depth": 0
+          "stable_id": "go:pricing.go::PriceBook.CostOf",
+          "depth": 1
         },
         {
           "line": 59,
           "signature": "fn Quote(sku string, tier Tier, quantity int) -> (float64, error)",
-          "stable_id": "go:pricing.go::Quote",
-          "depth": 0
+          "stable_id": "go:pricing.go::PriceBook.Quote",
+          "depth": 1
         },
         {
           "line": 73,
           "signature": "fn PriceList(tier Tier) -> ([][2]interface{}, error)",
-          "stable_id": "go:pricing.go::PriceList",
-          "depth": 0
+          "stable_id": "go:pricing.go::PriceBook.PriceList",
+          "depth": 1
         },
         {
           "line": 92,
@@ -57,8 +58,8 @@
         {
           "line": 31,
           "signature": "fn NeedsReorder() -> (bool, error)",
-          "stable_id": "go:inventory.go::NeedsReorder",
-          "depth": 0
+          "stable_id": "go:inventory.go::Item.NeedsReorder",
+          "depth": 1
         },
         {
           "line": 51,
@@ -69,26 +70,26 @@
         {
           "line": 63,
           "signature": "fn Add(item Item) -> error",
-          "stable_id": "go:inventory.go::Add",
-          "depth": 0
+          "stable_id": "go:inventory.go::Inventory.Add",
+          "depth": 1
         },
         {
           "line": 83,
           "signature": "fn Remove(sku string) -> (Item, error)",
-          "stable_id": "go:inventory.go::Remove",
-          "depth": 0
+          "stable_id": "go:inventory.go::Inventory.Remove",
+          "depth": 1
         },
         {
           "line": 94,
           "signature": "fn ReorderList() -> ([]Item, error)",
-          "stable_id": "go:inventory.go::ReorderList",
-          "depth": 0
+          "stable_id": "go:inventory.go::Inventory.ReorderList",
+          "depth": 1
         },
         {
           "line": 110,
           "signature": "fn AuditTrail() -> []string",
-          "stable_id": "go:inventory.go::AuditTrail",
-          "depth": 0
+          "stable_id": "go:inventory.go::Inventory.AuditTrail",
+          "depth": 1
         }
       ],
       "omitted": 0
@@ -100,8 +101,8 @@
         {
           "line": 21,
           "signature": "fn Error() -> string",
-          "stable_id": "go:reports.go::Error",
-          "depth": 0
+          "stable_id": "go:reports.go::ReportError.Error",
+          "depth": 1
         },
         {
           "line": 30,

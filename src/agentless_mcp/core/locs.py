@@ -44,7 +44,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from agentless_mcp.core.slices import merge_intervals
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname, stable_id
+from agentless_mcp.core.symbols import (
+    ASTSymbol,
+    SymbolKind,
+    id_qualname,
+    split_ordinal,
+    stable_id,
+)
 
 DEFAULT_CONTEXT_LINES = 10
 
@@ -187,26 +193,35 @@ def _resolve_class(name: str, target: LocTarget) -> _Hit:
 
 
 def _resolve_function(name: str, target: LocTarget, current_class: str) -> _Hit:
-    """Resolve a function, a qualified method, or a bare method name."""
-    if "." in name:
-        class_name, _, method_name = name.rpartition(".")
-        return _resolve_method(class_name, method_name, target)
+    """Resolve a function, a qualified method, or a bare method name.
+
+    A trailing ``#2``/``#3`` is the collision ordinal a stable id carries when
+    a file spells one qualified name twice (see
+    :func:`~agentless_mcp.core.symbols.split_ordinal`). It is split off here,
+    at the one door every function-shaped location comes through, so that a
+    location taken straight from an id addresses the symbol that id names
+    rather than the first symbol sharing its name.
+    """
+    wanted, ordinal = split_ordinal(name)
+    if "." in wanted:
+        class_name, _, method_name = wanted.rpartition(".")
+        return _resolve_method(class_name, method_name, target, ordinal)
 
     functions = [
         symbol
         for symbol in target.symbols
-        if symbol.kind == SymbolKind.FUNCTION and symbol.name == name
+        if symbol.kind == SymbolKind.FUNCTION and symbol.name == wanted
     ]
     if functions:
-        return _Hit(span=_span(functions[0]), stable=_id(functions[0], target))
+        return _pick(functions, wanted, ordinal, target)
 
     if current_class:
-        return _resolve_method(current_class, name, target)
+        return _resolve_method(current_class, wanted, target, ordinal)
 
-    return _resolve_unqualified_method(name, target)
+    return _resolve_unqualified_method(wanted, ordinal, target)
 
 
-def _resolve_method(class_name: str, method_name: str, target: LocTarget) -> _Hit:
+def _resolve_method(class_name: str, method_name: str, target: LocTarget, ordinal: int) -> _Hit:
     """Resolve ``Class.method`` against the class's own methods."""
     if not any(
         symbol.kind in CLASS_KINDS and symbol.name == class_name for symbol in target.symbols
@@ -220,10 +235,10 @@ def _resolve_method(class_name: str, method_name: str, target: LocTarget) -> _Hi
     ]
     if not methods:
         return _Hit(reason=f"class {class_name!r} has no member named {method_name!r}")
-    return _Hit(span=_span(methods[0]), stable=_id(methods[0], target))
+    return _pick(methods, f"{class_name}.{method_name}", ordinal, target)
 
 
-def _resolve_unqualified_method(name: str, target: LocTarget) -> _Hit:
+def _resolve_unqualified_method(name: str, ordinal: int, target: LocTarget) -> _Hit:
     """Resolve a bare method name, but only when exactly one class defines it.
 
     The original accepted the single-match case and fell through silently when
@@ -236,7 +251,18 @@ def _resolve_unqualified_method(name: str, target: LocTarget) -> _Hit:
     if len(methods) > 1:
         owners = ", ".join(sorted({symbol.parent_class for symbol in methods}))
         return _Hit(reason=f"{name!r} is ambiguous: defined in {owners}")
-    return _Hit(span=_span(methods[0]), stable=_id(methods[0], target))
+    return _pick(methods, name, ordinal, target)
+
+
+def _pick(matches: list[ASTSymbol], name: str, ordinal: int, target: LocTarget) -> _Hit:
+    """Choose the ordinal-th of several same-named matches, or say it is absent."""
+    chosen = next((symbol for symbol in matches if symbol.duplicate_index == ordinal), None)
+    if chosen is None:
+        return _Hit(
+            reason=f"{target.path} defines {len(matches)} symbols named {name!r}, "
+            f"so there is no number {ordinal + 1}"
+        )
+    return _Hit(span=_span(chosen), stable=_id(chosen, target))
 
 
 def _resolve_line(text: str, target: LocTarget) -> _Hit:
@@ -278,4 +304,4 @@ def _span(symbol: ASTSymbol) -> tuple[int, int]:
 
 def _id(symbol: ASTSymbol, target: LocTarget) -> str:
     """Build the stable id of a matched symbol under the target's path."""
-    return stable_id(target.language, target.path, qualname(symbol))
+    return stable_id(target.language, target.path, id_qualname(symbol))

@@ -71,6 +71,10 @@ class MessageText:
     path_needs_endpoints: str
     repo_refused_no_roots: str
     repo_refused_not_allowed: str
+    map_unresolved_seeds: str
+    expand_body_truncated: str
+    expand_batch_shortened: str
+    expand_no_room: str
     cache_stale_remediation: str
     cache_discarded_no_index: str
     cache_discarded_old_schema: str

@@ -63,7 +63,7 @@ from typing import Any, Protocol
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
+from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, disambiguate, id_qualname
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
@@ -74,7 +74,13 @@ from agentless_mcp.util.fslimits import read_bounded
 # policy: the file is derived data, so a schema change costs one re-index and
 # never a migration script.
 # 2 (2026-08-18, Phase 4): imports and refs tables added beside tags.
-SCHEMA_VERSION = 2
+# 3 (2026-08-19, Phase 8): Go methods carry their receiver type as their
+#   parent, so the qualified names and stable ids stored in v2 rows are wrong
+#   for every Go file. The per-file sha256 gate cannot catch this one -- the
+#   content did not change, the extraction did -- so the version bump is the
+#   only thing standing between an existing index and a repository map full
+#   of ids that no longer address anything.
+SCHEMA_VERSION = 3
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 APPLICATION_DIR = "agentless-mcp"
@@ -322,14 +328,20 @@ class CachedSource:
         return digest if entry.digest == digest else None
 
     def _symbol_rows(self, path: str, digest: str) -> list[ASTSymbol]:
-        """Rebuild one file's symbols from its tag rows, in extraction order."""
+        """Rebuild one file's symbols from its tag rows, in extraction order.
+
+        The collision ordinal is recomputed rather than stored: it is a pure
+        function of one file's symbol list, the rows come back in the order
+        the extractor produced them, and deriving it here is what guarantees a
+        cached answer and an on-demand one carry the same stable ids.
+        """
         cursor = self._connection.execute(
             "SELECT name, kind, start_line, end_line, signature, parent, docstring, "
             "decorators, bases, language, is_public, is_async "
             "FROM tags WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
-        return [_symbol_from_row(row, path) for row in cursor.fetchall()]
+        return disambiguate([_symbol_from_row(row, path) for row in cursor.fetchall()])
 
     def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
         """Rebuild one file's import statements from its rows, in extraction order."""
@@ -754,7 +766,7 @@ def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[A
         symbol.end_line_number,
         symbol.signature,
         symbol.parent_class,
-        qualname(symbol),
+        id_qualname(symbol),
         symbol.docstring,
         json.dumps(list(symbol.decorators)),
         json.dumps(list(symbol.bases)),

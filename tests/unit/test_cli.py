@@ -61,7 +61,7 @@ def services(extractor, counter):
     return CliServices(
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
-        symbols=SymbolService(extractor),
+        symbols=SymbolService(extractor, counter),
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),

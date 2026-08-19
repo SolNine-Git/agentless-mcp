@@ -55,6 +55,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_REFS_LIMIT,
     SymbolService,
     kind_names,
+    render_expansion,
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
@@ -678,12 +679,7 @@ def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
         return EXIT_USAGE
 
     result = services.symbols.expand_symbols(ctx, list(args.ids), limit=args.limit)
-    text = render.render_symbol_cards(result.cards)
-    if result.unresolved:
-        text += "\n" + "\n".join(
-            f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved
-        )
-    _emit(args, ctx, services, _Answer(text, result.as_dict(), "symbols"))
+    _emit(args, ctx, services, _Answer(render_expansion(result), result.as_dict(), "symbols"))
     return EXIT_OK
 
 

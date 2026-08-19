@@ -6,6 +6,17 @@ handful of symbols the evidence points at. ``find_symbol`` and the map are
 the cheap half; ``expand_symbols`` is the escalation, capped at ten bodies so
 it stays an escalation rather than a second way to read the repository.
 
+The expansion is fair when it cannot be complete. A batch of ten bodies can
+exceed the output ceiling on its first symbol, and the honest failure is not
+"here is symbol one, the ceiling ate the rest" -- a caller who asked about ten
+symbols learns nothing from one of them and cannot tell which nine went
+missing. So the budget is spent max-min fair: bodies small enough to fit an
+equal share are kept whole, their leftover goes back to the pool, and the
+bodies still over budget are cut to head lines with the count they were cut
+at. Every requested id comes back with its location, its signature and at
+least the first lines of its body, every cut is marked on the card that was
+cut, and a summary line names how many were shortened and why.
+
 ``find_referencing_symbols`` is the asymmetric half of navigation. Callees
 come free from reading a body; callers do not, and they are what an error-path
 review or a blast-radius question actually needs. Each reference is attributed
@@ -24,7 +35,7 @@ the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from agentless_mcp.application import render
@@ -35,16 +46,49 @@ from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
+    id_qualname,
     parse_stable_id,
     qualname,
     symbol_stable_id,
 )
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_FIND_LIMIT = 20
 DEFAULT_REFS_LIMIT = 50
 DEFAULT_EXPAND_LIMIT = 10
+
+# What the rendered cards of one expansion may cost. Under the envelope's
+# 16k-token ceiling by a margin that covers the receipt, the banner, and the
+# few percent JSON escaping adds to the same bodies -- because the service
+# budget only does its job if it binds *before* the ceiling does. A batch
+# trimmed by the ceiling loses whole symbols; a batch trimmed here loses the
+# tails of the longest ones.
+EXPAND_BUDGET_TOKENS = 12_000
+
+# How many cards one call may seat at all, however small each one is cut. A
+# separate bound from the budget, and deliberately a constant rather than
+# something derived from it: the budget governs how the *bodies* are cut, this
+# governs how many card *headers* the response can carry, and the headers are
+# charged against the envelope's 16k ceiling, which no caller-supplied budget
+# moves.
+#
+# Sized against the JSON form, not the text one. A card's eight JSON keys cost
+# roughly what its whole text rendering does (measured 2026-08-19 on a real
+# 60-card expansion: 8.1k text tokens, 11.3k JSON), so a seat count read off
+# the text render lets through more cards than the ceiling can then carry --
+# and the envelope trims that overflow by dropping whole symbols, which is
+# precisely the failure the fair split exists to prevent. 40 is four times the
+# documented per-call limit and was verified to leave the wrapped JSON clear
+# of the ceiling at 40, 60 and 192 requested ids.
+EXPAND_MAX_SEATS = 40
+
+# Room kept back on each shortened card for the marker that says it was
+# shortened, so announcing the cut cannot be what pushes a card past its
+# share.
+_TRUNCATION_MARKER_TOKENS = 32
 
 
 @dataclass(frozen=True)
@@ -72,10 +116,18 @@ class ExpandResult:
 
     cards: tuple[render.SymbolCard, ...]
     unresolved: tuple[tuple[str, str], ...]
+    budget: int = EXPAND_BUDGET_TOKENS
+
+    @property
+    def shortened(self) -> int:
+        """How many of the returned bodies were cut to fit the budget."""
+        return sum(1 for card in self.cards if card.body_shown < card.body_total)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this expansion."""
         return {
+            "budget_tokens": self.budget,
+            "shortened": self.shortened,
             "symbols": [card.as_dict() for card in self.cards],
             "unresolved": [
                 {"stable_id": entry, "reason": reason} for entry, reason in self.unresolved
@@ -107,8 +159,9 @@ class RefsResult:
 class SymbolService:
     """Finds, expands and traces symbols. Holds no per-repository state."""
 
-    def __init__(self, extractor: TreeSitterExtractor) -> None:
+    def __init__(self, extractor: TreeSitterExtractor, counter: TokenCounter) -> None:
         self._extractor = extractor
+        self._counter = counter
 
     def find_symbol(
         self,
@@ -139,8 +192,10 @@ class SymbolService:
         stable_ids: list[str],
         *,
         limit: int = DEFAULT_EXPAND_LIMIT,
+        budget: int = EXPAND_BUDGET_TOKENS,
+        seats: int = EXPAND_MAX_SEATS,
     ) -> ExpandResult:
-        """Return line-numbered full bodies for the named stable ids."""
+        """Return line-numbered bodies for the named stable ids, fairly budgeted."""
         cards: list[render.SymbolCard] = []
         unresolved: list[tuple[str, str]] = []
 
@@ -154,7 +209,16 @@ class SymbolService:
         for raw in stable_ids[limit:]:
             unresolved.append((raw, f"not expanded: the per-call limit is {limit} symbols"))
 
-        return ExpandResult(cards=tuple(cards), unresolved=tuple(unresolved))
+        if len(cards) > seats:
+            reason = MESSAGES.expand_no_room.format(requested=len(cards), seats=seats)
+            unresolved.extend((card.stable_id, reason) for card in cards[seats:])
+            cards = cards[:seats]
+
+        return ExpandResult(
+            cards=self._fit_bodies(cards, budget),
+            unresolved=tuple(unresolved),
+            budget=budget,
+        )
 
     def find_referencing_symbols(
         self,
@@ -190,6 +254,80 @@ class SymbolService:
             shared=shared,
         )
 
+    def _fit_bodies(
+        self, cards: list[render.SymbolCard], budget: int
+    ) -> tuple[render.SymbolCard, ...]:
+        """Spend ``budget`` across the cards max-min fair, cutting only what must be.
+
+        The allocation is the classic water-filling one, and it is what makes
+        the degradation fair rather than positional. Every round divides what
+        is left of the budget equally among the cards still competing; the
+        cards that already fit their share are settled at full length and give
+        their unspent tokens back; the rest go round again on a larger share.
+        The loop ends when a round settles nobody, and every card still
+        competing then gets exactly the same allowance -- so a thousand-line
+        class and a five-line method are cut to the same size, and no card is
+        cut at all while another is still whole and larger.
+        """
+        if not cards:
+            return ()
+
+        costs = {
+            index: self._counter.count(render.render_symbol_cards([card]))
+            for index, card in enumerate(cards)
+        }
+        pending = set(costs)
+        remaining = budget
+
+        while pending:
+            share = remaining // len(pending)
+            settled = {index for index in pending if costs[index] <= share}
+            if not settled:
+                break
+            remaining -= sum(costs[index] for index in settled)
+            pending -= settled
+
+        if not pending:
+            return tuple(cards)
+
+        share = max(0, remaining // len(pending))
+        return tuple(
+            self._shorten(card, share) if index in pending else card
+            for index, card in enumerate(cards)
+        )
+
+    def _shorten(self, card: render.SymbolCard, share: int) -> render.SymbolCard:
+        """Cut one card's body to its share, marked with what was left out.
+
+        At least one body line survives whatever the share is: a card with a
+        location and no source at all is the "an id that got no content"
+        failure in a smaller form, and one line is what makes the card still
+        point somewhere.
+        """
+        lines = card.body.split("\n")
+        header = self._counter.count(render.render_symbol_cards([replace(card, body="")]))
+        room = share - header - _TRUNCATION_MARKER_TOKENS
+
+        # Binary search over the line count rather than a walk, so a
+        # thousand-line body costs ten counts and not a thousand -- the
+        # counter is a protocol and the installed one may be a real tokenizer.
+        low, high = 1, len(lines)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if self._counter.count("\n".join(lines[:middle])) <= room:
+                low = middle
+            else:
+                high = middle - 1
+        kept = low
+
+        marker = MESSAGES.expand_body_truncated.format(shown=kept, total=len(lines))
+        return replace(
+            card,
+            body="\n".join([*lines[:kept], marker]),
+            body_shown=kept,
+            body_total=len(lines),
+        )
+
     def _expand_one(self, ctx: RepoContext, raw: str) -> tuple[render.SymbolCard | None, str]:
         """Resolve one stable id to a card carrying the symbol's whole body."""
         try:
@@ -215,7 +353,7 @@ class SymbolService:
         symbols = effective_source(ctx.symbols, self._extractor).symbols_for(
             read.text, language, parsed.path
         )
-        match = next((symbol for symbol in symbols if qualname(symbol) == parsed.qualname), None)
+        match = next((symbol for symbol in symbols if id_qualname(symbol) == parsed.qualname), None)
         if match is None:
             return None, f"{parsed.path} no longer defines {parsed.qualname}"
 
@@ -224,6 +362,24 @@ class SymbolService:
         end = min(len(lines), match.end_line_number or match.line_number)
         body = "\n".join(f"{number}| {lines[number - 1]}" for number in range(start, end + 1))
         return symbol_card(match, body=body), ""
+
+
+def render_expansion(result: ExpandResult) -> str:
+    """Render an expansion: the cards, what was shortened, and what missed.
+
+    One home for the three pieces because both adapters print all three, and
+    an adapter that printed the cards without the shortening summary would be
+    the silent-truncation defect back in a different file.
+    """
+    blocks = [render.render_symbol_cards(result.cards)]
+    if result.shortened:
+        blocks.append(
+            MESSAGES.expand_batch_shortened.format(
+                shortened=result.shortened, total=len(result.cards), budget=result.budget
+            )
+        )
+    blocks.extend(f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved)
+    return "\n".join(blocks)
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:
@@ -250,7 +406,11 @@ def symbol_card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
 
     Public because every view that shows a symbol shows the same card: the
     lookup results here, and the definition site an explanation opens with.
+
+    A card starts out whole: shown and total both count the body handed in, so
+    only :meth:`SymbolService._shorten` can ever make them disagree.
     """
+    lines = len(body.split("\n")) if body else 0
     return render.SymbolCard(
         stable_id=symbol_stable_id(symbol),
         path=symbol.module_path,
@@ -261,6 +421,8 @@ def symbol_card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
         signature=symbol.signature,
         parent_class=symbol.parent_class,
         body=body,
+        body_shown=lines,
+        body_total=lines,
     )
 
 

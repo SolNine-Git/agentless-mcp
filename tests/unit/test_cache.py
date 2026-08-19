@@ -28,6 +28,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, refs
+from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import fslimits
 from agentless_mcp.util.errors import CacheLocked
 
@@ -79,7 +80,7 @@ def services(extractor, counter):
     return CliServices(
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
-        symbols=SymbolService(extractor),
+        symbols=SymbolService(extractor, counter),
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),
@@ -602,6 +603,26 @@ class TestRefsAndImportsRows:
 
         assert cached == parsed
         assert cached
+
+    def test_cached_rows_rebuild_the_same_collision_ordinals(self, repo, extractor):
+        """The ordinal is derived, not stored, so both paths have to agree.
+
+        A cached id that dropped the ``#2`` would address the first of two
+        same-named symbols, which is the collision defect back one layer down.
+        """
+        source_text = "def handle():\n    return 1\n\n\ndef handle():\n    return 2\n"
+        (repo / "handlers.py").write_text(source_text, encoding="utf-8")
+        cache.build_index(repo, extractor)
+        opened = cache.open_source(repo, extractor, tree_oid=None)
+
+        cached = opened.symbols_for(source_text, "python", "handlers.py")
+        parsed = extractor.extract_from_source(source_text, "python", "handlers.py")
+
+        assert [symbol_stable_id(symbol) for symbol in cached] == [
+            "py:handlers.py::handle",
+            "py:handlers.py::handle#2",
+        ]
+        assert cached == parsed
 
     def test_an_edited_file_falls_back_to_parsing_for_every_kind(self, repo, extractor):
         cache.build_index(repo, extractor)

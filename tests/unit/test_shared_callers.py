@@ -23,6 +23,7 @@ import pytest
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.core import projectconfig
+from agentless_mcp.util.tokens import Chars4Counter
 
 # How many files mention `log` and nothing else. Enough that its spread across
 # the repository is unmistakable rather than marginal.
@@ -101,7 +102,9 @@ def repo(tmp_path):
 def rows(repo, extractor, target="quote"):
     """Return the adjacency rows for one target, ranked."""
     return (
-        SymbolService(extractor).find_referencing_symbols(repo, target, shared_callers=True).shared
+        SymbolService(extractor, Chars4Counter())
+        .find_referencing_symbols(repo, target, shared_callers=True)
+        .shared
     )
 
 

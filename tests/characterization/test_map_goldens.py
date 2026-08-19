@@ -41,10 +41,17 @@ REPOS = ("repo_py", "repo_ts", "repo_go")
 # Measured 2026-08-18 with the chars/4 estimator on the committed fixtures.
 # A drift outside +/-5% means the map's shape changed; decide whether that was
 # intended before touching these numbers.
+#
+# repo_go re-pinned 357 -> 388 on 2026-08-19 (Phase 8), deliberately: Go
+# methods now carry their receiver type, so each method's id grew by the
+# receiver name and each method line gained the one-level indent every other
+# language's methods already had. That is 8.7% of this fixture's map and it
+# buys stable-id uniqueness -- `Validate` on four receivers used to be one id
+# four times. Nothing else in the map's shape moved.
 TOKEN_PINS = {
     "repo_py": 711,
     "repo_ts": 630,
-    "repo_go": 357,
+    "repo_go": 388,
 }
 TOKEN_TOLERANCE = 0.05
 

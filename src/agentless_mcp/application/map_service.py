@@ -35,7 +35,8 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
-from agentless_mcp.core.symbols import ASTSymbol, symbol_stable_id
+from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_MAX_FILES = 10
@@ -82,6 +83,7 @@ class MapResult:
     candidates: int
     seeds: tuple[str, ...]
     skipped: tuple[refs.SkippedFile, ...]
+    unresolved_seeds: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this map."""
@@ -90,6 +92,7 @@ class MapResult:
             "symbols_included": self.included,
             "symbols_available": self.candidates,
             "seeds": list(self.seeds),
+            "unresolved_seeds": list(self.unresolved_seeds),
             "files": [map_file.as_dict() for map_file in self.files],
             "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
         }
@@ -126,7 +129,8 @@ class MapService:
         # codebase is better placed to know than the caller.
         graph = build_graph(scan, index, stoplist=ctx.config.stoplist)
 
-        seeds = _seed_weights(request.focus, scan, index)
+        seeding = seed_weights(request.focus, scan, index)
+        seeds = seeding.weights
         rank = personalized_pagerank(graph, seeds or None)
         chosen = rank_order(rank)[: max(0, max_files)]
 
@@ -147,6 +151,7 @@ class MapService:
                 candidates=sum(len(by_path[path].symbols) for path in chosen if path in by_path),
                 seeds=tuple(sorted(seeds)),
                 skipped=scan.skipped,
+                unresolved_seeds=seeding.unresolved,
             )
 
         candidates = _score_symbols(chosen, by_path, index, rank)
@@ -162,11 +167,21 @@ class MapService:
             candidates=len(candidates),
             seeds=tuple(sorted(seeds)),
             skipped=scan.skipped,
+            unresolved_seeds=seeding.unresolved,
         )
 
     def render_text(self, result: MapResult) -> str:
-        """Render a map result as code-shaped text."""
-        return render.render_map(result.files)
+        """Render a map result as code-shaped text.
+
+        Unresolved seeds are named at the top rather than at the bottom: the
+        note changes how the ranking below it should be read, and a reader who
+        stops at the first interesting filename has to have seen it.
+        """
+        body = render.render_map(result.files)
+        if not result.unresolved_seeds:
+            return body
+        listed = ", ".join(result.unresolved_seeds)
+        return MESSAGES.map_unresolved_seeds.format(seeds=listed) + "\n\n" + body
 
     def _auto_budget(self, candidates: list[_Candidate], rank: dict[str, float]) -> int:
         """Size the budget from the candidate set, clamped to the useful band."""
@@ -190,30 +205,60 @@ class MapService:
         return low
 
 
-def _seed_weights(
+@dataclass(frozen=True)
+class Seeding:
+    """What a request's ``--focus`` arguments resolved to, and what they did not.
+
+    Both halves travel together because reporting one without the other is
+    the defect this type exists to close: a map that answers with an empty
+    personalization vector and says nothing about it reads as an unfocused
+    map somebody asked for.
+    """
+
+    weights: dict[str, float]
+    unresolved: tuple[str, ...]
+
+
+def seed_weights(
     focus: tuple[str, ...],
     scan: refs.RepoScan,
     index: refs.RefIndex,
-) -> dict[str, float]:
+) -> Seeding:
     """Turn ``--focus`` entries into personalization weights over files.
 
     A focus entry is a path when it names one and a symbol otherwise, and a
-    symbol seeds every file that defines it. An entry matching nothing is not
-    an error -- the map still answers -- but it contributes no mass, so a
-    typo degrades to an unfocused map rather than an empty one.
+    symbol seeds every file that defines it. Two rules make that fair:
+
+    * **One entry, one vote.** An entry's mass is split across the files it
+      resolved to rather than added once per file, so ``--focus Validate``
+      naming twenty files cannot drown out ``--focus config/config.go``. The
+      seed vector then says "these entries", not "whichever entry happened to
+      be spelled with a common name".
+    * **Nothing is lost quietly.** An entry matching no file and no symbol is
+      still not an error -- the map answers unfocused rather than empty -- but
+      it comes back in ``unresolved`` and every renderer says so. A seed
+      silently dropped is a caller believing the map was focused when it was
+      not.
     """
     known = {facts.path for facts in scan.files}
     weights: dict[str, float] = {}
+    unresolved: list[str] = []
 
     for entry in focus:
         cleaned = entry.strip()
         if not cleaned:
             continue
 
-        for path in focus_paths(cleaned, known, index):
-            weights[path] = weights.get(path, 0.0) + 1.0
+        paths = focus_paths(cleaned, known, index)
+        if not paths:
+            unresolved.append(cleaned)
+            continue
 
-    return weights
+        share = 1.0 / len(paths)
+        for path in paths:
+            weights[path] = weights.get(path, 0.0) + share
+
+    return Seeding(weights=weights, unresolved=tuple(dict.fromkeys(unresolved)))
 
 
 def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
@@ -223,6 +268,24 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     *every* view means by a focus argument, and the diagram takes one too. Two
     views resolving the same word two ways would be a defect a reader could
     only find by comparing outputs.
+
+    Four shapes, tried in order of how specific they are:
+
+    1. A repository-relative path, exactly as the scan spells it.
+    2. A path suffix -- ``config.go`` for ``config/config.go``.
+    3. A qualified symbol name: ``ServerInfo.Validate``, or the qualified
+       half of a whole stable id. Narrowing to the definitions that really
+       carry that owner is what keeps a receiver-qualified method from
+       seeding every file defining any ``Validate``.
+    4. A bare function, method or type name, matched exactly against the
+       extracted symbols the same way ``find_symbol`` matches -- because a
+       method name is the most natural seed an issue report yields, and the
+       tool description promises symbol names work.
+
+    A path-shaped entry that matches no file stops at step 2. Falling through
+    would take the text after its last dot -- a file extension -- and look
+    that up as a symbol, which turns a mistyped path into a confident seed on
+    an unrelated file.
     """
     normalized = PurePosixPath(entry).as_posix()
     if normalized in known:
@@ -232,9 +295,16 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     if suffix_matches:
         return suffix_matches
 
-    name = entry.rpartition("::")[2] or entry
-    name = name.rpartition(".")[2] or name
-    return [path for path in index.defining_paths(name) if path in known]
+    qualified = entry.rpartition("::")[2] or entry
+    if "/" in qualified:
+        return []
+
+    name = qualified.rpartition(".")[2] or qualified
+    defining = [
+        definition for definition in index.definitions.get(name, ()) if definition.path in known
+    ]
+    owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
+    return sorted({definition.path for definition in (owned or defining)})
 
 
 def _score_symbols(

@@ -48,6 +48,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_FIND_LIMIT,
     DEFAULT_REFS_LIMIT,
     SymbolService,
+    render_expansion,
 )
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig
@@ -188,14 +189,9 @@ class ToolHandlers:
         return self._wrap(ctx, body)
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:
-        """Render full bodies for the named stable ids."""
+        """Render bodies for the named stable ids, marking whatever was shortened."""
         result = self._services.symbols.expand_symbols(ctx, list(stable_ids), limit=limit)
-        body = render.render_symbol_cards(result.cards)
-        if result.unresolved:
-            body += "\n" + "\n".join(
-                f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved
-            )
-        return self._wrap(ctx, body)
+        return self._wrap(ctx, render_expansion(result))
 
     def read_slice(
         self,

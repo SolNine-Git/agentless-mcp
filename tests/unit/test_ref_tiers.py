@@ -12,6 +12,7 @@ import pytest
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = """\
 def helper(value):
@@ -69,33 +70,47 @@ def tier_by_path(result):
 
 class TestTierLabels:
     def test_the_defining_file_is_labelled_same_file(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         assert tier_by_path(result)["core.py"] == "same_file"
 
     def test_an_importing_file_is_labelled_resolved_via_import(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         assert tier_by_path(result)["user.py"] == "imported"
 
     def test_a_shadowing_file_is_labelled_name_only(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         assert tier_by_path(result)["shadow.py"] == "ambiguous"
 
     def test_a_shadowing_file_is_still_reported(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         assert "shadow.py" in tier_by_path(result)
 
     def test_the_repository_s_only_definition_is_labelled_unique(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::only_once")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::only_once"
+        )
         assert tier_by_path(result)["stranger.py"] == "unique"
 
     def test_the_label_reaches_the_rendered_rows(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         rendered = render.render_ref_groups(result.groups, "helper")
         assert "user.py  (2 references, resolved-via-import)" in rendered
         assert "name-only-ambiguous" in rendered
 
     def test_the_json_form_carries_the_tier(self, repo, extractor):
-        result = SymbolService(extractor).find_referencing_symbols(repo, "py:core.py::helper")
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::helper"
+        )
         document = result.as_dict()
         assert {group["tier"] for group in document["groups"]} == {
             "same_file",

@@ -59,7 +59,7 @@ def services(extractor, counter):
     return ServerServices(
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
-        symbols=SymbolService(extractor),
+        symbols=SymbolService(extractor, counter),
         graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,

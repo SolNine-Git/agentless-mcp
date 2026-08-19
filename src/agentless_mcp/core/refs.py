@@ -27,7 +27,13 @@ from pathlib import Path
 from agentless_mcp.core.cache import FileSource, effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, parse_stable_id, qualname
+from agentless_mcp.core.symbols import (
+    ASTSymbol,
+    id_qualname,
+    parse_stable_id,
+    qualname,
+    split_ordinal,
+)
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.util.errors import LanguageUnavailable
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
@@ -177,14 +183,16 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
     try:
         parsed = parse_stable_id(target)
     except ValueError:
-        name = target.rpartition(".")[2] or target
+        base, _ = split_ordinal(target)
+        name = base.rpartition(".")[2] or base
         return tuple(index.definitions.get(name, ()))
 
-    name = parsed.qualname.rpartition(".")[2] or parsed.qualname
+    base, _ = split_ordinal(parsed.qualname)
+    name = base.rpartition(".")[2] or base
     scoped = tuple(
         definition
         for definition in index.definitions.get(name, ())
-        if definition.path == parsed.path and qualname(definition.symbol) == parsed.qualname
+        if definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
     )
     return scoped or tuple(index.definitions.get(name, ()))
 
@@ -210,8 +218,7 @@ def symbols_by_qualname(facts: FileFacts) -> dict[str, ASTSymbol]:
     """Index one file's symbols by qualified name, first definition winning."""
     indexed: dict[str, ASTSymbol] = {}
     for symbol in facts.symbols:
-        key = f"{symbol.parent_class}.{symbol.name}" if symbol.parent_class else symbol.name
-        indexed.setdefault(key, symbol)
+        indexed.setdefault(qualname(symbol), symbol)
     return indexed
 
 

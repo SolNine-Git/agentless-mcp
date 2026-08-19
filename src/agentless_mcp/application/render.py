@@ -68,7 +68,13 @@ class MapFile:
 
 @dataclass(frozen=True)
 class SymbolCard:
-    """A denormalized symbol record: everything a reader needs, in one place."""
+    """A denormalized symbol record: everything a reader needs, in one place.
+
+    ``body_shown`` and ``body_total`` are the line counts behind a body that
+    was cut to fit a budget. They are line counts of the *symbol*, not of the
+    rendered text, and they appear in JSON only when they disagree -- a card
+    that says nothing about truncation is a card that was not truncated.
+    """
 
     stable_id: str
     path: str
@@ -79,6 +85,8 @@ class SymbolCard:
     signature: str
     parent_class: str = ""
     body: str = ""
+    body_shown: int = 0
+    body_total: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this card."""
@@ -94,6 +102,8 @@ class SymbolCard:
         }
         if self.body:
             record["body"] = self.body
+        if self.body_shown < self.body_total:
+            record["body_truncated"] = {"lines_shown": self.body_shown, "lines": self.body_total}
         return record
 
 

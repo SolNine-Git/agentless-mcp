@@ -83,6 +83,22 @@ they survive a re-index; they do *not* survive a rename, which is the correct
 behaviour -- a renamed symbol is a different symbol and you should be told so
 rather than shown the wrong body.
 
+An id names exactly one symbol. Where the grammar carries the owner, the
+qualified name does the work: a Go method is `go:config/config.go::ServerInfo.Validate`,
+not `go:config/config.go::Validate`, so the `Validate` on each of a file's
+receivers is a distinct id. Where it does not -- C++ overloads, a Ruby class
+reopened in the same file, same-name functions in sibling namespaces -- the
+second and later symbols sharing a name carry a source-order ordinal:
+
+```
+rb:lib/log.rb::Logger.write        the first
+rb:lib/log.rb::Logger.write#2      the second
+```
+
+Both forms are accepted anywhere an id is: `expand`, `refs`, `slice --symbol`,
+`explain`. Nothing else prints the `#2`; it exists so that addressing one of
+several same-named symbols is possible at all.
+
 ---
 
 ## The two surfaces
@@ -128,8 +144,24 @@ agentless-mcp map --focus src/billing/invoice.py --focus quote --max-files 10
 Ranks every file by personalized PageRank over the reference graph, then
 spends a token budget on the highest-scoring symbols inside the top files.
 `--focus` is not a filter: seeds take the entire teleport mass, so the ranking
-flows outward from what you named to whatever it depends on. Seeds may be file
-paths or symbol names.
+flows outward from what you named to whatever it depends on.
+
+A seed resolves in four shapes, most specific first: a repository-relative
+path (`src/billing/invoice.py`), a path suffix (`invoice.py`), a qualified
+symbol name (`Invoice.total`, or the qualified half of a whole stable id), or
+a bare function, method, class or type name (`quote`) matched exactly against
+the extracted symbols. A name defined in several files seeds all of them.
+
+Each `--focus` argument carries one vote, split across the files it resolved
+to -- so `--focus Validate` matching twenty files cannot outweigh
+`--focus config/config.go`.
+
+A seed that resolves to nothing does not fail the call and does not vanish: it
+comes back in `unresolved_seeds` in the JSON and in a `# note:` line above the
+map in the text. If you see that note, the ranking below it is *not* focused
+the way you asked, and the usual cause is that the name you took from an issue
+is a parameter, an attribute or a DSL keyword rather than a declared symbol.
+`find-symbol` will tell you which.
 
 `--budget auto` (the default) sizes the budget from the repository itself and
 clamps it to 2k-8k tokens. Pass an integer to pin it.
@@ -167,6 +199,31 @@ Full, line-numbered bodies for up to ten named symbols. This is the second of
 the two calls: skeleton-level evidence picks the ids, and expanding only those
 adds the body detail where it pays. Ids that no longer resolve come back in an
 `unresolved` list with the reason -- never silently dropped.
+
+**When the batch does not fit.** Ten bodies can exceed the output ceiling on
+the first one, so the expansion budget is spent *max-min fair* rather than
+first-come-first-served:
+
+* Every body small enough for an equal share of the budget is returned whole,
+  and the tokens it did not spend go back into the pool for the rest. That
+  repeats until a round settles nobody, so short bodies are never cut while a
+  longer one is still whole.
+* The bodies still over budget then share what is left equally. Each is cut to
+  its leading lines and carries its own marker:
+  `... 109 of 769 lines shown: the batch did not fit the output ceiling.`
+* Every requested id therefore comes back with its location, its signature and
+  at least the head of its body. An id that got no content at all is a bug.
+* A summary line under the cards names how many bodies were shortened and the
+  budget they were shortened to; the JSON says the same in `shortened` and
+  `budget_tokens`, and each cut card carries
+  `body_truncated: {lines_shown, lines}`.
+
+The remedy is always the same and the messages say so: expand fewer ids per
+call, or expand one id on its own for the whole body.
+
+Raising `--limit` past 40 does not raise what one response can carry: ids past
+the fortieth come back in `unresolved` saying so, rather than crowding the
+others out of the answer.
 
 ### `slice` (`read_slice`) -- line-level, last
 
