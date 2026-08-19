@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/dmarlow-personal/agentless-mcp"
+Repository = "https://github.com/SolNine-Git/agentless-mcp"
 
 [project.scripts]
 agentless-mcp = "agentless_mcp.bootstrap:cli_main"

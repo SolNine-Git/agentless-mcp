@@ -14,7 +14,7 @@ as a thin stdio MCP server over the same core.
 Today, from git:
 
 ```
-uv tool install git+https://github.com/dmarlow-personal/agentless-mcp
+uv tool install git+https://github.com/SolNine-Git/agentless-mcp
 agentless-mcp warmup
 ```
 
