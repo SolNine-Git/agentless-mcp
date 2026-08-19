@@ -71,6 +71,9 @@ repos:
     rev: v2.4.3
     hooks:
       - id: codespell
+        # The audit record quotes evidence verbatim, including strings that
+        # are misspelled on purpose. Correcting it would edit the transcript.
+        exclude: ^\.audit/
         args:
           - --skip=*.pyc,.git,.mypy_cache,.ruff_cache,.pytest_cache,__pycache__,uv.lock
           - --ignore-words-list=mcp,readonly,crate

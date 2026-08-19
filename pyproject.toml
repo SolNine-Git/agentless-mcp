@@ -320,5 +320,11 @@ addopts = [
 ]
 
 [tool.codespell]
-skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock"
+# .audit is skipped rather than corrected: it is a review record that quotes
+# evidence verbatim, including undecodable byte literals and misspelled enum
+# values that tests supply precisely because they are not real spellings.
+# Spell-checking a transcript means editing what was measured. The
+# pre-commit hook needs its own exclude for this, since it passes filenames
+# explicitly and those override skip patterns.
+skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit"
 ignore-words-list = "mcp,readonly,crate"
