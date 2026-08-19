@@ -1,8 +1,8 @@
 {
   "server_no_roots": "no repositories are served: start agentless-mcp-server with at least one --root DIR, or connect a client that advertises MCP roots.",
-  "server_root_required": "repo_root is required: this server holds several repositories and will not guess between them. Allowed roots: {roots}",
+  "server_root_required": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: {roots}",
   "repo_refused_no_roots": "repository refused: this server was started with no roots, so it serves no repositories. Restart it with at least one --root DIR.",
-  "repo_refused_not_allowed": "repository refused: the requested root is not one of this server's roots. Allowed roots: {roots}",
+  "repo_refused_not_allowed": "repository refused: the requested root is not one of this server's roots. Retry with repo_root set to one of: {roots}",
   "cache_stale_remediation": "rerun agentless-mcp index or pass --no-cache",
   "cache_discarded_no_index": "cache discarded: no index has been built",
   "cache_discarded_old_schema": "cache discarded: schema {found} predates {expected}, rerun agentless-mcp index",

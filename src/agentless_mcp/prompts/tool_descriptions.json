@@ -1,11 +1,11 @@
 {
-  "repo_map": "Rank the repository's files and render the symbols that fit a budget.\n\nOmitted arguments fall back to the repository's own\n`.agentless-mcp.json`, then to the built-in defaults: budget auto,\nmax_files 10, granularity function.",
-  "list_dir": "List the repository's files, honouring gitignore.",
-  "get_symbols_overview": "Render the named files as signatures with their bodies elided.",
-  "expand_symbols": "Return the full body of each named symbol, line-numbered.",
-  "read_slice": "Return numbered lines for the given 1-based inclusive ranges.",
-  "find_symbol": "Find symbols by substring or qualified name.",
-  "find_referencing_symbols": "Find the symbols that reference a target, grouped by file.",
-  "resolve_locations": "Turn class:/function:/line: strings into stable ids and intervals.",
-  "capabilities": "Report loaded grammars, cache state and the bounds in force."
+  "repo_map": "Rank the repository's files by relevance and render a token-budgeted skeleton of what matters. Start here; pass focus (files or symbol names) to seed the ranking toward a bug or feature. budget is in tokens (auto-sized by default); granularity is 'function' (default) or 'file'. Omitted arguments fall back to the repository's .agentless-mcp.json, then to built-in defaults (max_files 10).",
+  "list_dir": "List the repository's files as a tree, honouring gitignore. For orientation when you need paths rather than symbols; depth and max_entries are capped.",
+  "get_symbols_overview": "Render the named files as signatures with bodies elided -- the cheap first look at what a file declares. Escalate to expand_symbols for the few symbols you need rather than re-reading whole files.",
+  "expand_symbols": "Return the full, line-numbered body of each named symbol. stable_ids come from repo_map, get_symbols_overview, find_symbol, or resolve_locations output (form: py:src/app/svc.py::Invoice.total). The escalation step after a skeleton view.",
+  "read_slice": "Return numbered lines for 1-based inclusive [start, end] ranges in one file, with enclosing-scope headers. Line-level is the last resort; prefer expand_symbols when a symbol boundary fits.",
+  "find_symbol": "Find symbols by substring or qualified name, optionally filtered by kind. Each hit carries file:line and a stable id usable with expand_symbols.",
+  "find_referencing_symbols": "Find the symbols that reference a target, grouped by file -- fan-in for blast radius and error-path review. Set shared_callers to instead rank symbols whose callers overlap the target's (the 'does a utility for this already exist' check).",
+  "resolve_locations": "Turn location strings (class:Invoice, function:Invoice.total, line:42) into merged line intervals and stable ids for one file. Unrecognized locations are reported individually, never dropped silently.",
+  "capabilities": "Report loaded grammars and versions, cache state, and the caps in force. Call this when a language seems unsupported or results look stale."
 }

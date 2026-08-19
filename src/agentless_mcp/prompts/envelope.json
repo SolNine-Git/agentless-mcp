@@ -9,5 +9,5 @@
   "service_truncation": "... {shown} of {total} {unit} shown (narrow the request or raise the budget for the rest)",
   "ceiling_truncation": "... output truncated at the {max_tokens}-token ceiling: {dropped} of {total} lines dropped",
   "json_ceiling_untrimmable": "payload exceeds the {max_tokens}-token ceiling and cannot be trimmed",
-  "json_ceiling_trimmed": "payload exceeds the {max_tokens}-token ceiling"
+  "json_ceiling_trimmed": "payload exceeds the {max_tokens}-token ceiling; narrow the request or raise the budget"
 }
