@@ -29,6 +29,7 @@ from pathlib import Path
 from agentless_mcp.core import gitinfo, projectconfig
 from agentless_mcp.core.cache import FileSource
 from agentless_mcp.core.projectconfig import ProjectConfig
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal
 
 
@@ -99,15 +100,9 @@ def _authorise(resolved: Path, allowlist: Sequence[Path]) -> None:
         return
 
     if not allowed:
-        message = (
-            "repository refused: this server was started with no roots, so it serves "
-            "no repositories. Restart it with at least one --root DIR."
-        )
+        message = MESSAGES.repo_refused_no_roots
         raise SecurityRefusal(message)
 
     listing = ", ".join(str(path) for path in allowed)
-    message = (
-        "repository refused: the requested root is not one of this server's roots. "
-        f"Allowed roots: {listing}"
-    )
+    message = MESSAGES.repo_refused_not_allowed.format(roots=listing)
     raise SecurityRefusal(message)

@@ -48,6 +48,7 @@ from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
+from agentless_mcp.prompts import MESSAGES, TOOL_DESCRIPTIONS
 from agentless_mcp.util.errors import SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -98,20 +99,14 @@ class ToolHandlers:
         """Authorise one call's repository and open the source it reads from."""
         allowed = list(dict.fromkeys([*self._roots, *client_roots]))
         if not allowed:
-            message = (
-                "no repositories are served: start agentless-mcp-server with at least one "
-                "--root DIR, or connect a client that advertises MCP roots."
-            )
+            message = MESSAGES.server_no_roots
             raise SecurityRefusal(message)
 
         if repo_root is None or not repo_root.strip():
             if len(allowed) == 1:
                 return self._with_source(resolve_repo(allowed[0], allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
-            message = (
-                "repo_root is required: this server holds several repositories and will not "
-                f"guess between them. Allowed roots: {listing}"
-            )
+            message = MESSAGES.server_root_required.format(roots=listing)
             raise SecurityRefusal(message)
 
         return self._with_source(resolve_repo(repo_root, allowed), no_cache=no_cache)
@@ -278,7 +273,13 @@ async def effective_client_roots(context: Context) -> list[Path]:
 
 
 def build_server(handlers: ToolHandlers) -> FastMCP[None]:
-    """Register every read tool on a FastMCP server and return it."""
+    """Register every read tool on a FastMCP server and return it.
+
+    Each tool's wire description is passed explicitly from
+    ``agentless_mcp.prompts``: the text a model reads is prompt data, revised
+    on its own terms, and FastMCP would otherwise publish whatever the
+    docstring happened to say. The docstrings below are code documentation.
+    """
     mcp: FastMCP[None] = FastMCP(SERVER_NAME)
 
     async def context_for(
@@ -290,7 +291,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         roots = await effective_client_roots(context)
         return handlers.resolve(repo_root, roots, no_cache=no_cache)
 
-    @mcp.tool(annotations=read_only("Repository map"))
+    @mcp.tool(description=TOOL_DESCRIPTIONS["repo_map"], annotations=read_only("Repository map"))
     async def repo_map(
         context: Context,
         repo_root: str | None = None,
@@ -300,12 +301,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         granularity: str | None = None,
         no_cache: bool = False,
     ) -> str:
-        """Rank the repository's files and render the symbols that fit a budget.
-
-        Omitted arguments fall back to the repository's own
-        `.agentless-mcp.json`, then to the built-in defaults: budget auto,
-        max_files 10, granularity function.
-        """
+        """Rank the repository's files and render the symbols that fit a budget."""
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.repo_map(
             ctx,
@@ -317,7 +313,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
             ),
         )
 
-    @mcp.tool(annotations=read_only("Directory tree"))
+    @mcp.tool(description=TOOL_DESCRIPTIONS["list_dir"], annotations=read_only("Directory tree"))
     async def list_dir(
         context: Context,
         repo_root: str | None = None,
@@ -327,7 +323,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         """List the repository's files, honouring gitignore."""
         return handlers.list_dir(await context_for(context, repo_root), depth, max_entries)
 
-    @mcp.tool(annotations=read_only("Symbols overview"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["get_symbols_overview"],
+        annotations=read_only("Symbols overview"),
+    )
     async def get_symbols_overview(
         context: Context,
         paths: list[str],
@@ -339,7 +338,9 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
 
-    @mcp.tool(annotations=read_only("Expand symbols"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["expand_symbols"], annotations=read_only("Expand symbols")
+    )
     async def expand_symbols(
         context: Context,
         stable_ids: list[str],
@@ -351,7 +352,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.expand_symbols(ctx, stable_ids, limit)
 
-    @mcp.tool(annotations=read_only("Read slice"))
+    @mcp.tool(description=TOOL_DESCRIPTIONS["read_slice"], annotations=read_only("Read slice"))
     async def read_slice(
         context: Context,
         path: str,
@@ -366,7 +367,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ]
         return handlers.read_slice(ctx, path, intervals, context_lines)
 
-    @mcp.tool(annotations=read_only("Find symbol"))
+    @mcp.tool(description=TOOL_DESCRIPTIONS["find_symbol"], annotations=read_only("Find symbol"))
     async def find_symbol(
         context: Context,
         name: str,
@@ -379,7 +380,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root, no_cache=no_cache)
         return handlers.find_symbol(ctx, name, kind, limit)
 
-    @mcp.tool(annotations=read_only("Find referencing symbols"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
+        annotations=read_only("Find referencing symbols"),
+    )
     async def find_referencing_symbols(
         context: Context,
         target: str,
@@ -391,7 +395,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root)
         return handlers.find_referencing_symbols(ctx, target, limit, shared_callers=shared_callers)
 
-    @mcp.tool(annotations=read_only("Resolve locations"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["resolve_locations"],
+        annotations=read_only("Resolve locations"),
+    )
     async def resolve_locations(
         context: Context,
         path: str,
@@ -403,7 +410,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         ctx = await context_for(context, repo_root)
         return handlers.resolve_locations(ctx, path, locs, context_lines)
 
-    @mcp.tool(annotations=read_only("Capabilities"))
+    @mcp.tool(description=TOOL_DESCRIPTIONS["capabilities"], annotations=read_only("Capabilities"))
     async def capabilities(context: Context, repo_root: str | None = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
         return handlers.capabilities(await context_for(context, repo_root))

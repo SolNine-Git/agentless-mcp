@@ -65,6 +65,7 @@ from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
 from agentless_mcp.core.treewalk import walk_repo
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.errors import CacheLocked, LanguageUnavailable
 from agentless_mcp.util.fslimits import read_bounded
@@ -97,7 +98,7 @@ DIRECTORY_MODE = 0o700
 
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
-REMEDIATION = "rerun agentless-mcp index or pass --no-cache"
+REMEDIATION = MESSAGES.cache_stale_remediation
 
 
 @dataclass(frozen=True)
@@ -967,14 +968,13 @@ def _read_meta(connection: sqlite3.Connection) -> _Meta | None:
 def _rejection(meta: _Meta | None, repo_root: Path) -> str:
     """Return why this database must not be used, or an empty string."""
     if meta is None:
-        return "cache discarded: no index has been built"
+        return MESSAGES.cache_discarded_no_index
     if meta.schema_version != SCHEMA_VERSION:
-        return (
-            f"cache discarded: schema {meta.schema_version} predates {SCHEMA_VERSION}, "
-            "rerun agentless-mcp index"
+        return MESSAGES.cache_discarded_old_schema.format(
+            found=meta.schema_version, expected=SCHEMA_VERSION
         )
     if meta.repo_root != str(repo_root):
-        return f"cache discarded: it was built for {meta.repo_root}"
+        return MESSAGES.cache_discarded_other_repo.format(repo_root=meta.repo_root)
     return ""
 
 

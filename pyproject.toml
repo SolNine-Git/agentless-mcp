@@ -230,10 +230,16 @@ exclude_type_checking_imports = true
 # every layer and cannot be a member of one. Anything else that lands outside
 # a layer is a gap, not a decision.
 
+# agentless_mcp.prompts sits below core and above util because it is the most
+# stable module in the package: it imports nothing but the standard library
+# and holds only the agent-facing text, so every layer that renders a string
+# for an agent -- the MCP adapter's tool descriptions, the application's
+# envelope, core's cache-staleness remediation -- can depend on it without
+# inverting anything.
 [[tool.importlinter.contracts]]
-name = "Layers: adapters -> application -> core -> util"
+name = "Layers: adapters -> application -> core -> prompts -> util"
 type = "layers"
-layers = ["adapters", "application", "core", "util"]
+layers = ["adapters", "application", "core", "prompts", "util"]
 containers = ["agentless_mcp"]
 
 # The two adapters are alternative front doors onto the same application

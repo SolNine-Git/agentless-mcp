@@ -1,0 +1,11 @@
+{
+  "repo_map": "Rank the repository's files and render the symbols that fit a budget.\n\nOmitted arguments fall back to the repository's own\n`.agentless-mcp.json`, then to the built-in defaults: budget auto,\nmax_files 10, granularity function.",
+  "list_dir": "List the repository's files, honouring gitignore.",
+  "get_symbols_overview": "Render the named files as signatures with their bodies elided.",
+  "expand_symbols": "Return the full body of each named symbol, line-numbered.",
+  "read_slice": "Return numbered lines for the given 1-based inclusive ranges.",
+  "find_symbol": "Find symbols by substring or qualified name.",
+  "find_referencing_symbols": "Find the symbols that reference a target, grouped by file.",
+  "resolve_locations": "Turn class:/function:/line: strings into stable ids and intervals.",
+  "capabilities": "Report loaded grammars, cache state and the bounds in force."
+}
