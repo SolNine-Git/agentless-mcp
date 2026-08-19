@@ -283,24 +283,26 @@ class GraphService:
             index=index,
             graph=built,
             rank=graph.personalized_pagerank(built),
-            imports=_import_pairs(scan, built.nodes),
+            imports=_import_pairs(scan),
         )
 
 
-def _import_pairs(scan: refs.RepoScan, nodes: tuple[str, ...]) -> frozenset[tuple[str, str]]:
+def _import_pairs(scan: refs.RepoScan) -> frozenset[tuple[str, str]]:
     """Return the ``(importer, imported)`` file pairs a declared import connects.
 
-    The same resolution :func:`agentless_mcp.core.graph.build_graph` runs when
-    it weights these edges, re-run here because the built graph keeps only the
-    merged weight and not the kind. Deriving the kind from the weight instead
-    would be a proxy guard: enough name references sum past the import weight.
+    Read off :func:`agentless_mcp.core.resolve.build_file_scopes`, the one
+    owner of import resolution, so the diagram's solid edges cannot disagree
+    with explain, path and cycles -- in particular the submodule form
+    ``from pkg import mod``, which only the scopes resolve to the module file.
+    The built graph cannot answer this because it keeps only the merged edge
+    weight and not the kind, and deriving the kind from the weight would be a
+    proxy guard: enough name references sum past the import weight.
     """
     pairs: set[tuple[str, str]] = set()
-    for facts in scan.files:
-        for statement in facts.imports:
-            imported = graph.resolve_import_target(facts.path, statement, nodes)
-            if imported is not None and imported != facts.path:
-                pairs.add((facts.path, imported))
+    for path, scope in resolve.build_file_scopes(scan.files).items():
+        for _module, _line, target in scope.statements:
+            if target and target != path:
+                pairs.add((path, target))
     return frozenset(pairs)
 
 

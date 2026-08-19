@@ -371,3 +371,26 @@ class TestDiagram:
 
     def test_two_renders_of_one_tree_are_byte_identical(self, graphs, repo):
         assert graphs.diagram(repo).text == graphs.diagram(repo).text
+
+    def test_a_submodule_import_draws_a_solid_edge(self, graphs, tmp_path):
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "pkg" / "mod.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "main.py").write_text(
+            "from pkg import mod\n\n\ndef run():\n    return mod.helper()\n",
+            encoding="utf-8",
+        )
+        repo = resolve_repo(tmp_path, None)
+
+        text = graphs.diagram(repo).text
+        lines = {line.strip() for line in text.splitlines()}
+        nodes = {
+            line.split("[")[0]: line.split('"')[1]
+            for line in lines
+            if line.startswith("n") and '["' in line
+        }
+        main = next(node for node, label in nodes.items() if label == "main.py")
+        mod = next(node for node, label in nodes.items() if label == "pkg/mod.py")
+
+        assert f"{main} --> {mod}" in lines
+        assert f"{main} -.-> {mod}" not in lines
