@@ -440,23 +440,33 @@ else:
         ``[project.optional-dependencies]`` or ``[dependency-groups]``,
         possibly spanning lines, with comments and string literals told
         apart the way TOML tells them apart. What it does not understand --
-        inline tables, multi-line basic strings, ``\\u`` escapes -- yields
-        nothing for that key. An array it never sees the end of raises, so
-        the caller reports a manifest it could not read rather than a
-        repository that declares nothing; a scanner that returns a silently
-        truncated declared set makes every third-party import in the patch
-        look hallucinated.
+        inline tables, ``\\u`` escapes -- yields nothing for that key. A
+        value that is not an array is carried through unparsed, so the
+        caller reports the wrong shape rather than an absent key.
+
+        What it refuses, it refuses out loud: an array it never sees the end
+        of, and a line that is not TOML at all. Both raise, so the caller
+        reports a manifest it could not read rather than a repository that
+        declares nothing; a scanner that returns a silently truncated
+        declared set makes every third-party import in the patch look
+        hallucinated.
         """
         return _scan_toml(text)
 
 
 _TABLE_HEADER = re.compile(r"^\[\[?([^\]]+)\]\]?\s*$")
-_ARRAY_ASSIGNMENT = re.compile(r'^\s*(?:"([^"]+)"|([A-Za-z0-9_.-]+))\s*=\s*\[(.*)$')
+_ASSIGNMENT = re.compile(r'^\s*(?:"([^"]+)"|([A-Za-z0-9_.-]+))\s*=\s*(.*)$')
 _QUOTED_STRING = re.compile(r'"((?:[^"\\]|\\.)*)"|\'([^\']*)\'')
 
 # What opens a TOML string: a basic string, which escapes, and a literal
 # string, which does not.
 _TOML_QUOTES = "\"'"
+
+# What opens a TOML multi-line string. Tracked only so the line check in
+# `_scan_toml` does not refuse a document `tomllib` reads: the lines between
+# the two delimiters are prose, and prose is neither a table header nor an
+# assignment.
+_TOML_MULTILINE = ('"""', "'''")
 
 # The escapes a requirement string can carry. `\u` and `\U` are absent
 # deliberately: nothing that appears in a distribution name needs them, and a
@@ -480,18 +490,34 @@ _DEPENDENCY_GROUPS = "dependency-groups"
 def _scan_toml(text: str) -> dict[str, Any]:
     """Scan the dependency-bearing tables of a pyproject document.
 
-    Raises ``ValueError`` on an array that never closes, which is the one
-    failure that would otherwise swallow the rest of the document into a
-    pending array and report an empty declared set as fact.
+    Raises ``ValueError`` on an array that never closes and on a line that is
+    neither blank, a comment, a table header nor an assignment. Both are
+    documents ``tomllib`` refuses, and both would otherwise come back as a
+    repository that declares nothing -- the first by swallowing the rest of
+    the document into a pending array, the second by skipping every line it
+    did not recognise. "Declares nothing" is a fact about the repository;
+    "could not be read" is a fact about this scanner, and the caller has to
+    be able to tell them apart.
+
+    A value that is not an array is recorded as its source text rather than
+    parsed. Nothing downstream reads it -- what the caller does with it is a
+    shape check -- and recording it is what lets ``dependencies = "requests"``
+    be reported as the wrong shape instead of as an absent key.
     """
-    tables: dict[str, dict[str, list[str]]] = {}
+    tables: dict[str, dict[str, object]] = {}
     table = ""
     pending_table = ""
     pending_key = ""
     pending: list[str] = []
     depth = 0
+    multiline = ""
 
-    for raw in text.splitlines():
+    for number, raw in enumerate(text.splitlines(), start=1):
+        if multiline:
+            if multiline in raw:
+                multiline = ""
+            continue
+
         line, delta = _scan_line(raw)
         if depth > 0:
             depth += delta
@@ -503,27 +529,74 @@ def _scan_toml(text: str) -> dict[str, Any]:
                 pending = []
             continue
 
-        header = _TABLE_HEADER.match(line.strip())
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        header = _TABLE_HEADER.match(stripped)
         if header:
             table = header.group(1).strip()
             continue
 
-        assignment = _ARRAY_ASSIGNMENT.match(line)
-        if assignment:
-            pending_table, pending_key = _key_location(
-                table, assignment.group(1), assignment.group(2)
-            )
-            rest = assignment.group(3)
-            depth = 1 + _scan_line(rest)[1]
-            pending = [rest]
-            if depth <= 0:
-                tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(rest)
-                pending = []
+        multiline = _multiline_opener(line)
+        if multiline:
+            continue
+
+        assignment = _ASSIGNMENT.match(line)
+        if assignment is None:
+            _refuse_unrecognised_line(stripped, number)
+            continue
+
+        pending_table, pending_key = _key_location(table, assignment.group(1), assignment.group(2))
+        rest = assignment.group(3)
+        if not rest.startswith("["):
+            tables.setdefault(pending_table, {})[pending_key] = rest
+            continue
+        depth = _scan_line(rest)[1]
+        pending = [rest]
+        if depth <= 0:
+            tables.setdefault(pending_table, {})[pending_key] = _quoted_strings(rest)
+            pending = []
 
     if depth > 0:
         message = f"unterminated array for {pending_key!r} in {PYPROJECT_NAME}"
         raise ValueError(message)
     return _shape(tables)
+
+
+def _refuse_unrecognised_line(stripped: str, number: int) -> None:
+    """Raise when a line is not TOML at all, rather than merely unsupported.
+
+    A line carrying an ``=`` is an assignment whose key shape this scanner has
+    no pattern for -- a quoted key holding a dot, say -- and the documented
+    answer to that is to yield nothing for that key. A line carrying none,
+    which is also not a table header, is not a declaration this scanner failed
+    to read: it is a document ``tomllib`` would refuse, and reporting it as a
+    repository that declares nothing is the lie this raise exists to prevent.
+    """
+    if "=" in stripped:
+        return
+    message = f"line {number} of {PYPROJECT_NAME} is not TOML: {stripped[:60]!r}"
+    raise ValueError(message)
+
+
+def _multiline_opener(line: str) -> str:
+    """Return the multi-line string delimiter ``line`` leaves open, or ''.
+
+    Comments are already gone by the time this runs, so a ``\"\"\"`` reaching
+    here is a value opening rather than prose about one.
+    """
+    index = 0
+    while index < len(line):
+        marker = line[index : index + 3]
+        if marker in _TOML_MULTILINE:
+            closed = line.find(marker, index + 3)
+            if closed < 0:
+                return marker
+            index = closed + 3
+            continue
+        index += 1
+    return ""
 
 
 def _key_location(table: str, quoted: str | None, bare: str | None) -> tuple[str, str]:
@@ -607,21 +680,28 @@ def _unescape(text: str) -> str:
     return "".join(out)
 
 
-def _shape(tables: Mapping[str, Mapping[str, list[str]]]) -> dict[str, Any]:
-    """Reshape scanned tables into the document layout ``tomllib`` returns."""
-    project: dict[str, Any] = {}
-    if _DEPENDENCIES in tables.get(_PROJECT, {}):
-        project[_DEPENDENCIES] = list(tables[_PROJECT][_DEPENDENCIES])
+def _shape(tables: Mapping[str, Mapping[str, object]]) -> dict[str, Any]:
+    """Reshape scanned tables into the document layout ``tomllib`` returns.
+
+    Values keep whatever shape the scan gave them -- a list of strings for an
+    array, the source text for anything else -- because the caller's next move
+    is a shape check, and a key whose value is the wrong shape has to reach
+    that check rather than be dropped on the way.
+    """
+    scanned = tables.get(_PROJECT, {})
+    project: dict[str, Any] = {
+        key: scanned[key] for key in (_DEPENDENCIES, _OPTIONAL) if key in scanned
+    }
     optional = tables.get(f"{_PROJECT}.{_OPTIONAL}")
     if optional:
-        project[_OPTIONAL] = {key: list(value) for key, value in optional.items()}
+        project[_OPTIONAL] = dict(optional)
 
     document: dict[str, Any] = {}
     if project:
         document[_PROJECT] = project
     groups = tables.get(_DEPENDENCY_GROUPS)
     if groups:
-        document[_DEPENDENCY_GROUPS] = {key: list(value) for key, value in groups.items()}
+        document[_DEPENDENCY_GROUPS] = dict(groups)
     return document
 
 

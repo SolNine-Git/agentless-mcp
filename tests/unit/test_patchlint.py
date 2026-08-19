@@ -63,6 +63,62 @@ dependencies = [
     "requests",
 """
 
+# Not TOML at all: an unterminated table header followed by a line that is not
+# an assignment. Both parsers have to refuse it, because a document nobody can
+# read reported as a document that declares nothing makes every third-party
+# import in the patch look hallucinated.
+NOT_TOML = "[project\nbroken\n"
+
+# A non-array value for the one key this check reads. `tomllib` hands the
+# wrong shape through so the caller can say so; the scanner has to as well.
+NON_ARRAY_DEPENDENCIES = '[project]\ndependencies = "requests"\n'
+
+# What the 3.10 scanner must make of each document shape, spelled out as
+# literals rather than taken from `tomllib`. 3.10 is the only interpreter that
+# runs the scanner and the only one without `tomllib`, so an expectation
+# computed from `tomllib` is an expectation that is never checked where it
+# matters. `TestTomlDifferential` holds the other half: that `tomllib` reads
+# these same documents the same way.
+SCANNER_CASES = [
+    (
+        "a bracket in a trailing comment",
+        '[project]\ndependencies = ["a"]  # [x\n',
+        ["a"],
+    ),
+    (
+        "a bracket in a comment inside the array",
+        '[project]\ndependencies = [\n    # see [1]\n    "a",\n]\n',
+        ["a"],
+    ),
+    (
+        "a quoted phrase in a comment inside the array",
+        '[project]\ndependencies = [\n    # a "quoted" note\n    "a",\n]\n',
+        ["a"],
+    ),
+    (
+        "a trailing comment on a table header",
+        '[project]  # the metadata\ndependencies = ["a"]\n',
+        ["a"],
+    ),
+    ("a dotted key", 'project.dependencies = ["a"]\n', ["a"]),
+    (
+        "an escaped quote in a requirement",
+        '[project]\ndependencies = ["a", "b ; extra == \\"x\\""]\n',
+        ["a", 'b ; extra == "x"'],
+    ),
+    ("a bracket inside an extras marker", '[project]\ndependencies = ["a[std]"]\n', ["a[std]"]),
+    (
+        "a hash inside a requirement string",
+        '[project]\ndependencies = ["a @ https://x/y#egg=a"]\n',
+        ["a @ https://x/y#egg=a"],
+    ),
+    (
+        "a multi-line string above the array",
+        '[project]\ndescription = """\nprose, not structure\n"""\ndependencies = ["a"]\n',
+        ["a"],
+    ),
+]
+
 APP = """\
 CONSTANT = 1
 
@@ -208,14 +264,14 @@ class TestDependencyManifests:
         assert parse.parsed is True
 
     def test_a_malformed_manifest_declares_nothing_and_says_so(self):
-        parse = parse_pyproject_dependencies("[project\nbroken")
+        parse = parse_pyproject_dependencies(NOT_TOML)
 
         assert parse.packages == frozenset()
         assert len(parse.warnings) == 1
         assert parse.parsed is False
 
     def test_a_non_list_dependencies_key_is_reported_not_guessed(self):
-        parse = parse_pyproject_dependencies('[project]\ndependencies = "requests"\n')
+        parse = parse_pyproject_dependencies(NON_ARRAY_DEPENDENCIES)
 
         assert parse.packages == frozenset()
         assert parse.warnings == ("dependencies is not a list; ignored",)
@@ -448,26 +504,32 @@ class TestLiteralScanner:
 
 
 class TestTomlFallback:
-    """The 3.10 scanner.
+    """The 3.10 scanner, against fixed answers, on every interpreter.
 
-    Reached through a private name on purpose: on any interpreter this suite
-    actually runs on, ``_load_toml`` dispatches to ``tomllib`` and the
-    fallback would otherwise never be executed at all. Testing it against
-    ``tomllib``'s own answer is what makes "documented minimal fallback" a
-    claim with a gate behind it rather than a comment.
+    Reached through a private name on purpose: from 3.11 ``_load_toml``
+    dispatches to ``tomllib`` and the scanner is never executed by the public
+    surface at all, so the only way to hold it to a contract anywhere is to
+    call it directly.
+
+    Nothing here may skip. Every expectation is a literal rather than
+    something ``tomllib`` computed, because 3.10 -- the one interpreter that
+    runs this scanner in anger -- is also the one interpreter without
+    ``tomllib``, and a test that asks ``tomllib`` for the answer is a test
+    that skips exactly where the answer matters. That the two parsers agree
+    on these same documents is :class:`TestTomlDifferential`'s job, and it is
+    the only part of this that is allowed to skip.
     """
 
-    def test_the_scanner_agrees_with_tomllib_on_the_fixture(self):
-        tomllib = pytest.importorskip("tomllib")
-
+    def test_the_fixture_manifest_scans_to_its_declarations(self):
         assert _scan_toml(PYPROJECT) == {
             "project": {
-                "dependencies": tomllib.loads(PYPROJECT)["project"]["dependencies"],
-                "optional-dependencies": tomllib.loads(PYPROJECT)["project"][
-                    "optional-dependencies"
+                "dependencies": [
+                    "tree-sitter>=0.25,<0.27",
+                    "requests ; python_version >= '3.10'",
                 ],
+                "optional-dependencies": {"mcp": ["fastmcp>=2.14"]},
             },
-            "dependency-groups": tomllib.loads(PYPROJECT)["dependency-groups"],
+            "dependency-groups": {"dev": ["pytest>=9.1.1"]},
         }
 
     def test_a_single_line_array_is_scanned(self):
@@ -483,6 +545,66 @@ class TestTomlFallback:
     def test_a_document_without_dependencies_scans_to_nothing(self):
         assert _scan_toml('[project]\nname = "x"\n') == {}
 
+    def test_this_repositorys_own_manifest_is_read_rather_than_refused(self):
+        """The one manifest here nobody wrote as a test fixture.
+
+        Named declarations rather than the whole list: the point is that a
+        real document with comments, inline tables, dotted table headers and
+        arrays of arrays reaches all three declaration sites, and pinning the
+        exact dependency list would make this fail on the next version bump.
+        """
+        text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+
+        document = _scan_toml(text)
+
+        assert "tree-sitter>=0.25,<0.27" in document["project"]["dependencies"]
+        assert sorted(document["project"]["optional-dependencies"]) == ["mcp", "tokens"]
+        assert list(document["dependency-groups"]) == ["dev"]
+
+    @pytest.mark.parametrize(("label", "text", "dependencies"), SCANNER_CASES)
+    def test_the_scanner_reads_the_dependency_array(self, label, text, dependencies):
+        assert _scan_toml(text)["project"]["dependencies"] == dependencies, label
+
+    def test_an_unterminated_array_is_refused_rather_than_scanned_to_nothing(self):
+        with pytest.raises(ValueError, match="unterminated"):
+            _scan_toml('[project]\ndependencies = [\n    "a",\n')
+
+    def test_a_document_that_is_not_toml_is_refused_rather_than_read_as_empty(self):
+        with pytest.raises(ValueError, match="is not TOML"):
+            _scan_toml(NOT_TOML)
+
+    def test_a_value_that_is_not_an_array_survives_to_be_reported(self):
+        """The wrong shape has to reach the caller's shape check.
+
+        Dropping the key here is indistinguishable from the key being absent,
+        and absent is what silences the warning that says the declared set is
+        incomplete.
+        """
+        document = _scan_toml(NON_ARRAY_DEPENDENCIES)
+
+        assert not isinstance(document["project"]["dependencies"], list)
+
+
+class TestTomlDifferential:
+    """The scanner against the parser it stands in for.
+
+    This needs ``tomllib`` present, so it skips on 3.10 -- which is precisely
+    why the scanner's own contract is asserted in :class:`TestTomlFallback`
+    instead of here.
+    """
+
+    def test_the_scanner_agrees_with_tomllib_on_the_fixture(self):
+        tomllib = pytest.importorskip("tomllib")
+        document = tomllib.loads(PYPROJECT)
+
+        assert _scan_toml(PYPROJECT) == {
+            "project": {
+                "dependencies": document["project"]["dependencies"],
+                "optional-dependencies": document["project"]["optional-dependencies"],
+            },
+            "dependency-groups": document["dependency-groups"],
+        }
+
     def test_the_scanner_agrees_with_tomllib_on_this_repositorys_own_manifest(self):
         tomllib = pytest.importorskip("tomllib")
         text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
@@ -496,48 +618,24 @@ class TestTomlFallback:
             "dependency-groups": document["dependency-groups"],
         }
 
-    @pytest.mark.parametrize(
-        ("label", "text"),
-        [
-            (
-                "a bracket in a trailing comment",
-                '[project]\ndependencies = ["a"]  # [x\n',
-            ),
-            (
-                "a bracket in a comment inside the array",
-                '[project]\ndependencies = [\n    # see [1]\n    "a",\n]\n',
-            ),
-            (
-                "a quoted phrase in a comment inside the array",
-                '[project]\ndependencies = [\n    # a "quoted" note\n    "a",\n]\n',
-            ),
-            (
-                "a trailing comment on a table header",
-                '[project]  # the metadata\ndependencies = ["a"]\n',
-            ),
-            ("a dotted key", 'project.dependencies = ["a"]\n'),
-            (
-                "an escaped quote in a requirement",
-                '[project]\ndependencies = ["a", "b ; extra == \\"x\\""]\n',
-            ),
-            ("a bracket inside an extras marker", '[project]\ndependencies = ["a[std]"]\n'),
-            (
-                "a hash inside a requirement string",
-                '[project]\ndependencies = ["a @ https://x/y#egg=a"]\n',
-            ),
-        ],
-    )
-    def test_the_scanner_agrees_with_tomllib(self, label, text):
+    @pytest.mark.parametrize(("label", "text", "dependencies"), SCANNER_CASES)
+    def test_tomllib_reads_each_shape_the_way_the_scanner_must(self, label, text, dependencies):
         tomllib = pytest.importorskip("tomllib")
 
-        assert (
-            _scan_toml(text)["project"]["dependencies"]
-            == (tomllib.loads(text)["project"]["dependencies"])
-        ), label
+        assert tomllib.loads(text)["project"]["dependencies"] == dependencies, label
 
-    def test_an_unterminated_array_is_refused_rather_than_scanned_to_nothing(self):
-        with pytest.raises(ValueError, match="unterminated"):
-            _scan_toml('[project]\ndependencies = [\n    "a",\n')
+    def test_tomllib_refuses_the_document_the_scanner_refuses(self):
+        tomllib = pytest.importorskip("tomllib")
+
+        with pytest.raises(tomllib.TOMLDecodeError):
+            tomllib.loads(NOT_TOML)
+
+    def test_tomllib_keeps_the_non_array_value_the_scanner_keeps(self):
+        tomllib = pytest.importorskip("tomllib")
+
+        document = tomllib.loads(NON_ARRAY_DEPENDENCIES)
+
+        assert not isinstance(document["project"]["dependencies"], list)
 
 
 class TestUndeclaredImports:

@@ -22,6 +22,19 @@ from typing import Any, overload
 
 from agentless_mcp.core.slices import line_prefix
 
+
+def _no_negative_zero(value: float) -> float:
+    """Return ``value`` with a rounded-away negative zero flattened to zero.
+
+    A modularity that is mathematically zero comes out of the summation as a
+    tiny negative float whose sign is accumulation noise, and the exact noise
+    differs between interpreters. Formatted, that is the difference between
+    ``0.000`` and ``-0.000`` in a byte-exact golden -- a diff that says the
+    partition changed when only the floating-point rounding did.
+    """
+    return value + 0.0 if value == 0 else value
+
+
 MODULE_LEVEL = "(module level)"
 
 # How wide the line-number column of a row-per-line view is. The prefix
@@ -650,7 +663,7 @@ class CommunityReport(_Bounded):
             "total": self.total,
             "limit": self.limit,
             "omitted": self.omitted,
-            "modularity": round(self.modularity, 6),
+            "modularity": _no_negative_zero(round(self.modularity, 6)),
             "resolution": self.resolution,
             "files": self.files,
             "communities": [community.as_dict() for community in self.communities],
@@ -764,7 +777,8 @@ def render_communities(report: CommunityReport) -> str:
     lines = [
         (
             f"{report.total} {groups} over {report.files} files "
-            f"(modularity {report.modularity:.3f} at resolution {report.resolution:g})"
+            f"(modularity {_no_negative_zero(round(report.modularity, 3)):.3f} "
+            f"at resolution {report.resolution:g})"
         )
     ]
     for index, community in enumerate(report.communities, start=1):

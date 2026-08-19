@@ -282,6 +282,24 @@ class TestAdvertisedRoots:
         assert advertised(StubClient(error=error)) == []
 
 
+def described_as(schema):
+    """Return a property's description from wherever the schema carries it.
+
+    An optional annotated parameter renders as a bare property with a
+    description on some interpreters and as an ``anyOf`` wrapping one on
+    others -- pydantic composes ``Optional[Annotated[...]]`` differently on
+    3.10 than on 3.13. Both publish the text to a client, so asserting the
+    nesting rather than the description tests the pydantic version.
+    """
+    if "description" in schema:
+        return schema["description"]
+    for branch in schema.get("anyOf", ()):
+        found = described_as(branch)
+        if found is not None:
+            return found
+    return None
+
+
 def listed_tools(server):
     """List the tools as a client sees them, annotations included."""
 
@@ -476,9 +494,9 @@ class TestRoundTrip:
         for tool in tools:
             properties = tool.inputSchema.get("properties", {})
             assert "repo_root" in properties, tool.name
-            assert (
-                properties["repo_root"].get("description") == PARAMETER_DESCRIPTIONS["repo_root"]
-            ), tool.name
+            assert described_as(properties["repo_root"]) == PARAMETER_DESCRIPTIONS["repo_root"], (
+                tool.name
+            )
 
 
 NUMERIC_TYPES = {"integer", "number"}
