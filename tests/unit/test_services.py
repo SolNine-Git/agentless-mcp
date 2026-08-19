@@ -225,6 +225,34 @@ class TestViewService:
         assert "class Ledger:" in view.text
         assert "def post(self, item):" in view.text
 
+    def test_a_slice_beyond_the_file_is_reported_not_rendered(self, repo, extractor):
+        view = ViewService(extractor).read_slice(
+            repo, "ledger.py", intervals=[(9000, 9050)], context=0
+        )
+        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (10 lines)" in view.text
+        assert view.error == ""
+        assert "class Ledger:" not in view.text
+        assert "1|" not in view.text
+
+    def test_a_slice_running_past_the_end_keeps_its_clamped_tail(self, repo, extractor):
+        view = ViewService(extractor).read_slice(
+            repo, "ledger.py", intervals=[(9, 9000)], context=0
+        )
+        assert "9|        return quote(item)" in view.text
+        assert "unsatisfiable" not in view.text
+
+    def test_a_bad_interval_does_not_hide_the_good_ones(self, repo, extractor):
+        view = ViewService(extractor).read_slice(
+            repo, "ledger.py", intervals=[(6, 6), (9000, 9050)], context=0
+        )
+        assert "6|        return normalise(quote(item))" in view.text
+        assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (10 lines)" in view.text
+
+    def test_a_slice_with_no_ranges_still_returns_the_whole_file(self, repo, extractor):
+        view = ViewService(extractor).read_slice(repo, "ledger.py")
+        assert "1|from core import normalise, quote" in view.text
+        assert "9|        return quote(item)" in view.text
+
     def test_resolve_locations_returns_ids_intervals_and_reasons(self, repo, extractor):
         view = ViewService(extractor).resolve_locations(
             repo, "core.py", ["class: PriceBook", "function: nope"]

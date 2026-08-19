@@ -25,7 +25,11 @@ call it" rather than as a list of line numbers.
 
 ``shared_callers`` is the adjacency pass behind the DRY question: symbols that
 the *same* callers also call. A helper that four of your caller's callers
-already use is the "we already have a utility for this" signal.
+already use is the "we already have a utility for this" signal. The listing is
+bounded by the same ``limit`` as the references, ranked with production-defined
+candidates ahead of test-defined ones, and each shared caller's vote is damped
+by that caller's own fan-out -- a function that calls half the repository says
+almost nothing about which of its callees belong together.
 
 Fan-in rows carry an evidence tier from :mod:`agentless_mcp.core.resolve`. The
 over-reporting is deliberate and unchanged -- every name match still appears --
@@ -143,7 +147,7 @@ class RefsResult:
     groups: tuple[render.RefGroup, ...]
     total: int
     limit: int
-    shared: tuple[render.SharedCaller, ...] = ()
+    shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
@@ -152,7 +156,7 @@ class RefsResult:
             "total": self.total,
             "limit": self.limit,
             "groups": [group.as_dict() for group in self.groups],
-            "shared_callers": [row.as_dict() for row in self.shared],
+            "shared_callers": self.shared.as_dict(),
         }
 
 
@@ -241,11 +245,12 @@ class SymbolService:
         resolver = resolve.build_resolver(scan, index)
         target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
         groups = _group_sites(sites[:limit], by_path, resolver, target_ids)
-        shared = (
+        ranked = (
             _shared_callers(sites, definitions, index, by_path, ctx.config.stoplist)
             if shared_callers
             else ()
         )
+        shared = render.SharedCallerListing(rows=ranked[:limit], total=len(ranked), limit=limit)
         return RefsResult(
             target=target,
             groups=groups,
@@ -486,24 +491,42 @@ def _ref_group(
 
 @dataclass
 class _Adjacency:
-    """One candidate symbol and the target's callers that also reference it."""
+    """One candidate symbol and the target's callers that also reference it.
+
+    Each caller is stored with its own fan-out -- how many distinct names its
+    body references -- because that is what its vote is damped by when the
+    row is scored.
+    """
 
     definition: refs.Definition
-    callers: dict[str, ASTSymbol] = field(default_factory=dict[str, ASTSymbol])
+    callers: dict[str, tuple[ASTSymbol, int]] = field(
+        default_factory=dict[str, tuple[ASTSymbol, int]]
+    )
 
-    def add(self, caller: ASTSymbol) -> None:
-        """Record one shared caller, keyed so it counts once."""
-        self.callers[symbol_stable_id(caller)] = caller
+    def add(self, caller: ASTSymbol, out_degree: int) -> None:
+        """Record one shared caller and its fan-out, keyed so it counts once."""
+        self.callers[symbol_stable_id(caller)] = (caller, out_degree)
 
     def row(
         self, stable: str, index: refs.RefIndex, stoplist: frozenset[str]
     ) -> render.SharedCaller:
         """Render this candidate as a ranked adjacency row."""
         symbol = self.definition.symbol
-        files = {caller.module_path for caller in self.callers.values()}
+
+        # Files vote, not sites, and each file votes with its most focused
+        # caller: a caller's vote is one over the same log damping the
+        # candidate's name spread gets, so a builder that references every
+        # name in the repository contributes almost nothing while a two-line
+        # caller contributes nearly a full vote.
+        weight_by_file: dict[str, float] = {}
+        for caller, out_degree in self.callers.values():
+            weight = 1.0 / graph.common_name_damping(out_degree)
+            path = caller.module_path
+            weight_by_file[path] = max(weight_by_file.get(path, 0.0), weight)
+
         spread = index.files_referencing.get(symbol.name, 1)
         score = (
-            len(files)
+            sum(weight_by_file.values())
             * graph.name_multiplier(symbol.name, stoplist)
             / graph.common_name_damping(spread)
         )
@@ -514,7 +537,7 @@ class _Adjacency:
                     path=caller.module_path,
                     line=caller.line_number,
                 )
-                for caller in self.callers.values()
+                for caller, _ in self.callers.values()
             ),
             key=lambda caller: (caller.path, caller.line),
         )
@@ -523,10 +546,25 @@ class _Adjacency:
             path=self.definition.path,
             line=symbol.line_number,
             overlap=len(self.callers),
-            shared_files=len(files),
+            shared_files=len(weight_by_file),
             score=score,
             callers=tuple(callers),
+            in_tests=_defined_in_tests(self.definition.path),
         )
+
+
+def _defined_in_tests(path: str) -> bool:
+    """True when ``path`` sits under a test tree.
+
+    A path heuristic, because the scan carries no structural notion of a test
+    tree -- and deliberately scoped to whole path segments named ``test`` or
+    ``tests`` plus ``conftest`` modules, so that ``latest/`` or ``contest.py``
+    cannot match. Paths are repository-relative with forward slashes.
+    """
+    segments = path.split("/")
+    if any(segment in ("test", "tests") for segment in segments[:-1]):
+        return True
+    return segments[-1].rsplit(".", 1)[0] == "conftest"
 
 
 def _shared_callers(
@@ -543,8 +581,8 @@ def _shared_callers(
     symbol four of your five callers already use is the DRY signal worth
     surfacing.
 
-    Two corrections make that ranking usable on a real repository, and both
-    are the treatment :mod:`agentless_mcp.core.graph` already applies to the
+    Three corrections make that ranking usable on a real repository, and each
+    is the treatment :mod:`agentless_mcp.core.graph` already applies to the
     same problem:
 
     * **Files, not sites.** Four callers in one module are one team's habit;
@@ -557,6 +595,19 @@ def _shared_callers(
       repository-wide spread, and applying the stoplist multiplier, is what
       keeps an incidentally shared common name below a genuinely shared
       helper it out-counts.
+    * **Promiscuous callers are damped.** A caller that references half the
+      repository shares callers with everything it touches, and carries
+      almost no similarity information doing it. Each caller's vote is one
+      over the same log damping applied to its own fan-out, so a
+      characterization-test builder that calls every method in the codebase
+      cannot flood the ranking with ties.
+
+    Production-defined candidates rank ahead of every test-defined one
+    whatever the scores say, because the question is "does a production
+    utility for this already exist"; the test rows are still listed --
+    hiding them would misreport the repository -- just after, and marked.
+    Every ranked row is returned; the caller's limit decides how many the
+    listing keeps and counts the rest.
     """
     target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
 
@@ -579,14 +630,14 @@ def _shared_callers(
                 candidate = symbol_stable_id(definition.symbol)
                 if candidate in target_ids or candidate == caller_id:
                     continue
-                shared.setdefault(candidate, _Adjacency(definition)).add(caller)
+                shared.setdefault(candidate, _Adjacency(definition)).add(caller, len(names))
 
     rows = [
         entry.row(candidate, index, stoplist)
         for candidate, entry in shared.items()
         if len(entry.callers) > 1
     ]
-    rows.sort(key=lambda row: (-row.score, -row.shared_files, row.stable_id))
+    rows.sort(key=lambda row: (row.in_tests, -row.score, -row.shared_files, row.stable_id))
     return tuple(rows)
 
 

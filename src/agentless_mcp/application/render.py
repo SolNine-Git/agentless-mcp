@@ -17,9 +17,15 @@ Every path is repository-relative with forward slashes, and every row carries
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 MODULE_LEVEL = "(module level)"
+
+# How many of a candidate's shared callers the text render lists before
+# cutting to a count. The callers are evidence for the overlap number, and a
+# handful proves it; the full list is what let one adjacency listing approach
+# the response ceiling on its own. The JSON form still carries every caller.
+SHARED_CALLERS_SHOWN = 5
 
 # The markdown fence a diagram travels in when it is going into a response
 # body. Declared here rather than in `core.mermaid` because fencing is a
@@ -166,9 +172,14 @@ class SharedCaller:
 
     ``overlap`` counts the shared callers and ``shared_files`` the distinct
     files they live in; ``score`` is the second damped by how common the
-    candidate's name is across the repository. The ranking reads off
-    ``score``, so the row carries all three rather than a number a reader
-    would have to take on trust.
+    candidate's name is across the repository and by how promiscuous each
+    shared caller is. The ranking reads off ``score``, so the row carries all
+    three rather than a number a reader would have to take on trust.
+
+    ``in_tests`` says the candidate is defined under a test tree. The row is
+    still shown -- hiding it would misreport the repository -- but the ranking
+    seats it below every production candidate, because the question the view
+    answers is "is there a production utility for this already".
     """
 
     stable_id: str
@@ -178,6 +189,7 @@ class SharedCaller:
     shared_files: int
     score: float
     callers: tuple[CallerRef, ...]
+    in_tests: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this adjacency row."""
@@ -188,7 +200,51 @@ class SharedCaller:
             "overlap": self.overlap,
             "shared_files": self.shared_files,
             "score": round(self.score, 6),
+            "defined_in_tests": self.in_tests,
             "shared_callers": [caller.as_dict() for caller in self.callers],
+        }
+
+
+@dataclass(frozen=True)
+class SharedCallerListing(Sequence[SharedCaller]):
+    """The adjacency rows the limit kept, and how many candidates it left out.
+
+    A ``Sequence`` rather than a bare tuple because the renderer receives
+    nothing but this object and the target name, and an omitted count that
+    lived anywhere else would be a truncation the text render could not
+    announce. Iteration and indexing behave exactly as the tuple did.
+    """
+
+    rows: tuple[SharedCaller, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def omitted(self) -> int:
+        """How many ranked candidates the limit left out."""
+        return max(0, self.total - len(self.rows))
+
+    def __len__(self) -> int:
+        """Return how many rows the listing kept."""
+        return len(self.rows)
+
+    @overload
+    def __getitem__(self, index: int) -> SharedCaller: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[SharedCaller, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> SharedCaller | tuple[SharedCaller, ...]:
+        """Return one kept row, or a slice of them."""
+        return self.rows[index]
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "rows": [row.as_dict() for row in self.rows],
         }
 
 
@@ -739,27 +795,37 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
-def render_shared_callers(rows: Sequence[SharedCaller], target: str) -> str:
+def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
     """Render the adjacency view: symbols called by the same callers.
 
-    Ranked strongest first, and every line -- the candidate and each caller --
+    Ranked strongest first with production-defined candidates ahead of every
+    test-defined one, and every line -- the candidate and each caller --
     carries its own ``file:line``, so the DRY question is answered with
-    somewhere to go rather than with a list of names.
+    somewhere to go rather than with a list of names. Each candidate lists at
+    most :data:`SHARED_CALLERS_SHOWN` callers before cutting to a count, and
+    candidates past the listing's limit are counted rather than shown.
     """
-    if not rows:
+    if not listing.rows:
         return f"no symbols share callers with {target}\n"
 
     lines = [f"symbols sharing callers with {target}"]
-    for row in rows:
+    tests_heading_shown = False
+    for row in listing.rows:
+        if row.in_tests and not tests_heading_shown:
+            lines.append("  defined in tests (ranked below all production candidates):")
+            tests_heading_shown = True
         files = "file" if row.shared_files == 1 else "files"
         lines.append(
             f"  {row.stable_id}    {row.path}:{row.line}  "
             f"({row.overlap} shared callers in {row.shared_files} {files}, "
             f"score {row.score:.3f})"
         )
-        lines.extend(
-            f"      {caller.qualname}    {caller.path}:{caller.line}" for caller in row.callers
-        )
+        shown = row.callers[:SHARED_CALLERS_SHOWN]
+        lines.extend(f"      {caller.qualname}    {caller.path}:{caller.line}" for caller in shown)
+        if len(row.callers) > len(shown):
+            lines.append(f"      ... {len(row.callers) - len(shown)} more callers not listed")
+    if listing.omitted:
+        lines.append(f"  ... {listing.omitted} more candidates not listed")
     return "\n".join(lines) + "\n"
 
 

@@ -9,6 +9,8 @@
   "expand_body_truncated": "... {shown} of {total} lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body.",
   "expand_batch_shortened": "note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
   "expand_no_room": "not expanded: {requested} ids exceed the {seats} one call can answer; retry with at most that many.",
+  "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",
+  "slice_range_beyond_file": "unsatisfiable: line range {start}-{end} is beyond {path} ({total} lines)",
   "cache_stale_remediation": "rerun agentless-mcp index or pass --no-cache",
   "cache_build_hint": "tag cache is empty: parsing is on demand; run agentless-mcp index --repo {repo_root} to build it",
   "cache_discarded_no_index": "cache discarded: no index has been built",

@@ -522,3 +522,48 @@ class TestCapabilitiesCacheHint:
         text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
 
         assert "agentless-mcp index --repo" not in text
+
+
+class TestOverviewStableIds:
+    """The overview names, per file, the id pattern expand_symbols accepts."""
+
+    def call(self, server, tool, arguments):
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool(tool, arguments)
+
+        return asyncio.run(go())
+
+    def test_each_file_block_opens_with_its_id_pattern(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = (
+            self.call(
+                server,
+                "get_symbols_overview",
+                {"paths": ["core.py"], "repo_root": str(one_repo)},
+            )
+            .content[0]
+            .text
+        )
+
+        assert "### core.py" in text
+        # The prefix and separator come from core.symbols.stable_id, so the
+        # line matches the ids the other tools mint for this file.
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "nested symbols qualify as Class.method" in text
+
+    def test_an_unparseable_file_gets_its_error_and_no_ids_line(self, services, one_repo):
+        (one_repo / "notes.md").write_text("# hi\n", encoding="utf-8")
+        server = build_server(ToolHandlers([one_repo], services))
+        text = (
+            self.call(
+                server,
+                "get_symbols_overview",
+                {"paths": ["notes.md"], "repo_root": str(one_repo)},
+            )
+            .content[0]
+            .text
+        )
+
+        assert "no grammar" in text
+        assert "stable ids:" not in text

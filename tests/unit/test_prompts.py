@@ -73,6 +73,8 @@ MESSAGE_ARGUMENTS = {
     "expand_body_truncated": {"shown": 12, "total": 340},
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
+    "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
+    "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
     "cache_stale_remediation": {},
     "cache_build_hint": {"repo_root": "/srv/app"},
     "cache_discarded_no_index": {},

@@ -83,6 +83,8 @@ class MessageText:
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str
+    overview_stable_ids: str
+    slice_range_beyond_file: str
     cache_stale_remediation: str
     cache_build_hint: str
     cache_discarded_no_index: str

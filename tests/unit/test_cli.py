@@ -99,6 +99,13 @@ class TestInProcess:
     def test_a_malformed_line_range_is_a_usage_error(self, services, repo_path):
         assert invoke(services, repo_path, "slice", "core.py", "--lines", "9:2") == EXIT_USAGE
 
+    def test_slice_reports_a_range_beyond_the_file(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "slice", "core.py", "--lines", "9000:9050")
+        assert code == EXIT_OK
+        out = capsys.readouterr().out
+        assert "unsatisfiable: line range 9000-9050 is beyond core.py" in out
+        assert "def quote(sku):" not in out
+
     def test_a_path_outside_the_repository_is_refused_with_exit_two(
         self, services, repo_path, capsys
     ):

@@ -133,7 +133,11 @@ not be able to change that repository or run its code.
 
 CLI names first, MCP tool names in parentheses. Every MCP tool takes
 `repo_root` as its first argument; the CLI defaults it to the git root
-enclosing the current directory, or takes `--repo PATH`.
+enclosing the current directory, or takes `--repo PATH`. `repo_root` may be
+omitted when the server holds one repository, or when the client advertises
+an MCP workspace root that identifies exactly one configured root -- the
+receipt names the repository that answered either way. With several
+candidates left, the refusal lists the roots to choose from.
 
 ### `map` (`repo_map`) -- where does this live
 
@@ -146,11 +150,13 @@ spends a token budget on the highest-scoring symbols inside the top files.
 `--focus` is not a filter: seeds take the entire teleport mass, so the ranking
 flows outward from what you named to whatever it depends on.
 
-A seed resolves in four shapes, most specific first: a repository-relative
-path (`src/billing/invoice.py`), a path suffix (`invoice.py`), a qualified
-symbol name (`Invoice.total`, or the qualified half of a whole stable id), or
-a bare function, method, class or type name (`quote`) matched exactly against
-the extracted symbols. A name defined in several files seeds all of them.
+A seed resolves in five shapes, most specific first: a repository-relative
+path (`src/billing/invoice.py`), a path suffix (`invoice.py`), a bare module
+stem (`invoice` for `invoice.py`, matched as an extensionless suffix), a
+qualified symbol name (`Invoice.total`, or the qualified half of a whole
+stable id), or a bare function, method, class or type name (`quote`) matched
+exactly against the extracted symbols. A name defined in several files seeds
+all of them.
 
 Each `--focus` argument carries one vote, split across the files it resolved
 to -- so `--focus Validate` matching twenty files cannot outweigh
@@ -188,6 +194,12 @@ agentless-mcp skeleton src/app/svc.py src/app/model.py
 Signatures, class attributes, constants and imports; bodies replaced by `...`;
 comments and docstrings stripped. Original line numbers are preserved, so a
 line you see here is a line you can slice.
+
+The MCP tool opens each file's block with a `stable ids:` line naming the id
+pattern for that file -- e.g. `py:src/app/svc.py::<QualifiedName>`, with the
+prefix derived from the file's language; nested symbols qualify as
+`Class.method`. Escalating to `expand_symbols` is therefore a read off the
+overview, not a separate id lookup.
 
 ### `expand` (`expand_symbols`) -- the escalation
 
@@ -237,6 +249,12 @@ Ranges are 1-based inclusive, repeatable and merged. Every gap is marked with
 that starts inside one (sticky scroll), so a slice never reads as if it were
 top-level code.
 
+A range whose start lies beyond the file is refused per item --
+`unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (242 lines)` --
+never answered with the whole file as if it were the requested slice. A range
+that starts inside the file and runs past the end is clamped to the last
+line, and good ranges in the same call still render alongside the report.
+
 ### `find-symbol` (`find_symbol`) -- name lookup
 
 ```
@@ -283,23 +301,37 @@ ever dropped for having a weak tier; the label is there so you can weigh them.
 
 `--shared-callers` answers the DRY question -- which other symbols do *your*
 callers already use, i.e. "do we already have a utility for this?". Rows are
-ranked, and the ranking is the useful part:
+ranked, and the ranking is the useful part. The same `--limit` that bounds
+the reference groups bounds this listing too: at most that many candidates
+are shown, each with at most five of its shared callers, and everything past
+either cap is printed as a `... N more not listed` count rather than
+silently dropped:
 
 ```
 symbols sharing callers with quote
-  py:util.py::format_currency    util.py:9  (2 shared callers in 2 files, score 0.838)
+  py:util.py::format_currency    util.py:9  (2 shared callers in 2 files, score 0.278)
       run_billing    billing.py:5
       post    ledger.py:5
-  py:util.py::log    util.py:4  (3 shared callers in 3 files, score 0.711)
+  py:util.py::log    util.py:4  (3 shared callers in 3 files, score 0.234)
       ...
 ```
 
 `shared_files` counts the distinct files the shared callers live in -- four
 callers in one module is one team's habit, four across four modules is a
-utility. `score` is that count damped by how common the candidate's name is
-across the repository, the same log damping the map's edge weights use, so a
-name every file mentions cannot out-rank a genuinely shared helper just by
-colliding with more callers. Every row and every caller carries `file:line`.
+utility. `score` starts from that spread and applies two log dampings, both
+the same treatment the map's edge weights use. The candidate's name is damped
+by how many files mention it, so a name every file mentions cannot out-rank a
+genuinely shared helper just by colliding with more callers. And each shared
+caller's vote is damped by that caller's own fan-out, so a test builder that
+calls half the codebase contributes almost nothing while a two-line caller
+contributes nearly a full vote -- shared callers with small fan-out are the
+informative ones.
+
+Candidates defined under a test tree (a `test`/`tests` path segment, or a
+`conftest` module) are never hidden, but they rank below every production
+candidate whatever their score, grouped under a `defined in tests` heading --
+the question is whether a *production* utility already exists. Every row and
+every caller carries `file:line`.
 
 ### `explain` (`explain_symbol`) -- one symbol, in context
 
@@ -483,8 +515,14 @@ response body.
 views; produce a diagram when a human is going to look at it. A picture is a
 supplement to the flattened facts, not a substitute for them.
 
-Four properties worth knowing:
+Five properties worth knowing:
 
+- **Edge kinds are told apart.** Solid arrows are declared imports; dashed
+  arrows are name references. The encoding is named in a fixed
+  `%% solid: imports, dashed: references` comment, so the picture cannot
+  imply an import cycle the `cycles` operation denies. Reference edges past
+  the edge bound (default 40) are elided wholesale -- never sampled -- and
+  counted in a comment; import edges are never dropped by that bound.
 - **Bounded.** `--max-nodes` (default 40) keeps the highest-PageRank modules
   and adds an explicit `... N more modules` node. A focus seed is always kept.
 - **Deterministic.** Node ids are synthetic (`n0`, `n1`) in sorted path order,
@@ -533,12 +571,15 @@ typo is visible instead of quietly shrinking the answer.
 
 ### `capabilities` (`capabilities`) -- what is loaded, what is capped
 
-Grammar versions, support tier and warm state per language, the file
-extensions each language claims, the tag-cache generation, the project config
+The server's own version, grammar versions, support tier and warm state per
+language, the file extensions each language claims, the tag-cache generation,
+the configured roots and the roots the client advertised, the project config
 in force, and every bound (walk depth, file count, per-file bytes, output
-tokens). Check it when a view stops short and you want to know which bound did
-it, or when a file was skipped and you want to know whether its grammar is
-warmed.
+tokens). An absent tag cache is reported with the exact
+`agentless-mcp index --repo PATH` command that builds it. Check it when a
+view stops short and you want to know which bound did it, when a file was
+skipped and you want to know whether its grammar is warmed, or when root
+selection did not do what you expected.
 
 ### `index` -- build the tag cache, CLI only
 

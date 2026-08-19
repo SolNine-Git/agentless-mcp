@@ -62,6 +62,7 @@ from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
+from agentless_mcp.core.symbols import stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from agentless_mcp.util.errors import AtlasError, SecurityRefusal
@@ -235,11 +236,26 @@ class ToolHandlers:
     def get_symbols_overview(
         self, ctx: RepoContext, paths: Sequence[str], *, docs: bool | None
     ) -> str:
-        """Render each named file as signatures with bodies elided."""
+        """Render each named file as signatures with bodies elided.
+
+        Each file's block opens with the stable-id pattern for that file, so
+        the ids expand_symbols takes can be read straight off the overview
+        without churning the skeleton renderer line by line. The pattern is
+        derived from the same helper that mints real ids, so a language whose
+        prefix differs from its name stays truthful.
+        """
         keep = projectconfig.resolve(docs, ctx.config.docstrings, False)
         views = self._services.views.skeleton(ctx, paths, docstrings=keep)
-        body = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
-        return self._wrap(ctx, body)
+        blocks = []
+        for view in views:
+            if view.error:
+                blocks.append(f"### {view.path}\n{view.error}")
+                continue
+            ids_line = MESSAGES.overview_stable_ids.format(
+                pattern=stable_id(view.language, view.path, "<QualifiedName>")
+            )
+            blocks.append(f"### {view.path}\n{ids_line}\n{view.text}")
+        return self._wrap(ctx, "\n".join(blocks))
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:
         """Render bodies for the named stable ids, marking whatever was shortened."""

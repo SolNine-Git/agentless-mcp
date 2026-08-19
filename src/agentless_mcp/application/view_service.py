@@ -35,6 +35,7 @@ from agentless_mcp.core.treewalk import (
     render_tree,
     walk_repo,
 )
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import AtlasError, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
@@ -150,16 +151,38 @@ class ViewService:
         intervals: Sequence[tuple[int, int]] = (),
         context: int = DEFAULT_CONTEXT_LINES,
     ) -> FileView:
-        """Render numbered lines for the given intervals, with scope headers."""
+        """Render numbered lines for the given intervals, with scope headers.
+
+        An interval whose start lies beyond the file's last line cannot be
+        satisfied even in part, so it is reported per item -- the way
+        :meth:`resolve_locations` reports an unrecognized loc -- instead of
+        being clipped away, which would leave no intervals and render the
+        whole file as if it were the requested slice. An interval that merely
+        runs past the end keeps its clamped tail.
+        """
         resolved, language, text, error = self._load(ctx, path)
         if error:
             return FileView(path=path, language=language, text="", error=error)
 
         total = len(text.split("\n"))
-        widened = [(max(1, start - context), min(total, end + context)) for start, end in intervals]
+        satisfiable = [(start, end) for start, end in intervals if start <= total]
+        reports = [
+            MESSAGES.slice_range_beyond_file.format(
+                start=start, end=end, path=resolved, total=total
+            )
+            for start, end in intervals
+            if start > total
+        ]
+        if intervals and not satisfiable:
+            return FileView(path=resolved, language=language, text="\n".join(reports) + "\n")
+
+        widened = [
+            (max(1, start - context), min(total, end + context)) for start, end in satisfiable
+        ]
         symbols = self._symbols(ctx, text, language, resolved)
         rendered = line_wrap_content(text, widened or None, symbols=symbols)
-        return FileView(path=resolved, language=language, text=rendered + "\n")
+        body = "\n".join([*reports, rendered]) if reports else rendered
+        return FileView(path=resolved, language=language, text=body + "\n")
 
     def resolve_locations(
         self,
