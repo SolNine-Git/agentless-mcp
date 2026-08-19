@@ -5,6 +5,7 @@ tmp_path, so nothing here depends on the developer's git config or on a
 repository that happens to exist on the machine.
 """
 
+import os
 import subprocess
 
 import pytest
@@ -16,13 +17,24 @@ GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@test"]
 
 
 def git(repo, *args):
-    """Run git in ``repo`` with a pinned identity and no ambient config."""
+    """Run git in ``repo`` with a pinned identity and no ambient config.
+
+    ``HOME`` and ``GIT_CONFIG_NOSYSTEM`` are what provide the isolation: they
+    are what stop the developer's own git config reaching this repository.
+    ``PATH`` is inherited rather than pinned because it only locates the
+    binary -- a hardcoded POSIX ``PATH`` isolates nothing and finds no git at
+    all on Windows, which the package supports and CI now exercises.
+    """
     completed = subprocess.run(
         ["git", *GIT_IDENTITY, "-C", str(repo), *args],
         capture_output=True,
         check=True,
         timeout=30,
-        env={"HOME": str(repo.parent), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"},
+        env={
+            "HOME": str(repo.parent),
+            "PATH": os.environ.get("PATH", ""),
+            "GIT_CONFIG_NOSYSTEM": "1",
+        },
     )
     return completed.stdout.decode()
 
