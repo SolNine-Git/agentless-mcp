@@ -11,18 +11,16 @@ calling agent supplies all reasoning.
 
 ## Install
 
-Today, from git:
+From PyPI:
 
 ```
-uv tool install git+https://github.com/SolNine-Git/agentless-mcp@v0.3.0
+uv tool install agentless-mcp
 agentless-mcp warmup
 ```
 
 Add the `mcp` extra for the stdio server
-(`uv tool install "agentless-mcp[mcp] @
-git+https://github.com/SolNine-Git/agentless-mcp@v0.3.0"`). The tag makes an
-upgrade reviewable; unpinned installs from the repository's current HEAD are
-not supported. A PyPI release will follow.
+(`uv tool install "agentless-mcp[mcp]"`). Pin the package version when an
+upgrade must be reviewable.
 
 An optional, portable agent skill is provided at
 [`docs/skills/agentless-mcp/SKILL.md`](docs/skills/agentless-mcp/SKILL.md).
