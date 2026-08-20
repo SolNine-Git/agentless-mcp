@@ -1569,7 +1569,7 @@ def _reference_sites(name: str, facts: RepoFacts, paths: Sequence[str]) -> tuple
 
     Locally-bound uses are not references to the removed symbol. A parameter
     or local variable that happens to share the spelling is what
-    ``Ref.locally_bound`` exists to mark, and counting one here reports a
+    ``Ref.role`` exists to mark, and counting one here reports a
     caller this patch did not break -- the expensive direction for a check
     whose whole job is to say a removal is unsafe.
     """
@@ -1577,7 +1577,7 @@ def _reference_sites(name: str, facts: RepoFacts, paths: Sequence[str]) -> tuple
         f"{path}:{ref.line}"
         for path in paths
         for ref in facts.files[path].refs
-        if ref.name == name and not ref.locally_bound
+        if ref.name == name and ref.is_reference
     )
 
 

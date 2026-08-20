@@ -5,8 +5,10 @@ import math
 import pytest
 
 from agentless_mcp.core.graph import (
+    AMBIGUOUS_MATCH_MULTIPLIER,
     IMPORT_EDGE_WEIGHT,
     NOISE_NAME_MULTIPLIER,
+    UNIQUE_MATCH_MULTIPLIER,
     RefGraph,
     build_graph,
     name_multiplier,
@@ -200,6 +202,33 @@ class TestBuildGraph:
         graph = build_graph(scan, build_ref_index(scan))
         assert ("solo.py", "solo.py") not in graph.edges
 
+    def test_name_only_edges_are_discounted_by_resolution_tier(self, tmp_path, extractor):
+        (tmp_path / "unique.py").write_text("def solitary():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "left.py").write_text("def crowded():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "right.py").write_text("def crowded():\n    return 2\n", encoding="utf-8")
+        (tmp_path / "consumer.py").write_text(
+            "def use():\n    return solitary() + crowded()\n",
+            encoding="utf-8",
+        )
+
+        graph = graph_of(tmp_path, extractor)
+        unique = graph.edges[("consumer.py", "unique.py")]
+        ambiguous = graph.edges[("consumer.py", "left.py")]
+
+        expected_ratio = UNIQUE_MATCH_MULTIPLIER / AMBIGUOUS_MATCH_MULTIPLIER
+        assert math.isclose(unique / ambiguous, expected_ratio)
+
+    def test_same_file_definition_shadows_name_matches_in_other_files(self, tmp_path, extractor):
+        (tmp_path / "local.py").write_text(
+            "def helper():\n    return 1\n\n\ndef use():\n    return helper()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "other.py").write_text("def helper():\n    return 2\n", encoding="utf-8")
+
+        graph = graph_of(tmp_path, extractor)
+
+        assert ("local.py", "other.py") not in graph.edges
+
     def test_a_locally_bound_name_buys_no_edge_to_an_unrelated_file(self, tmp_path, extractor):
         """A parameter spells its own binding, not a symbol in another file.
 
@@ -210,6 +239,31 @@ class TestBuildGraph:
         (tmp_path / "library.py").write_text("def payload():\n    return 1\n", encoding="utf-8")
         (tmp_path / "consumer.py").write_text(
             "def go(payload):\n    return payload\n", encoding="utf-8"
+        )
+
+        graph = graph_of(tmp_path, extractor)
+
+        assert ("consumer.py", "library.py") not in graph.edges
+
+    def test_a_local_assignment_does_not_create_a_unique_edge(self, tmp_path, extractor):
+        (tmp_path / "library.py").write_text("def counter():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "consumer.py").write_text(
+            "def go():\n    counter = 0\n    return counter\n",
+            encoding="utf-8",
+        )
+
+        graph = graph_of(tmp_path, extractor)
+
+        assert ("consumer.py", "library.py") not in graph.edges
+
+    def test_keyword_and_attribute_names_buy_no_bare_edges(self, tmp_path, extractor):
+        (tmp_path / "library.py").write_text(
+            "def graphs():\n    return 1\n\n\ndef write():\n    return 2\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "consumer.py").write_text(
+            "def go(call, stream, value):\n    return call(graphs=value, stderr=stream.write)\n",
+            encoding="utf-8",
         )
 
         graph = graph_of(tmp_path, extractor)

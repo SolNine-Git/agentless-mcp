@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import grammars, skeleton
+from agentless_mcp.core import grammars, graph, refs, skeleton
 from agentless_mcp.core.extractor import (
     LANGUAGE_CONFIGS,
     TreeSitterExtractor,
@@ -33,6 +33,8 @@ FIXTURE_FILES = {
     "php": "pricing.php",
     "kotlin": "Pricing.kt",
     "swift": "Pricing.swift",
+    "scala": "Pricing.scala",
+    "csharp": "Pricing.cs",
     "ruby": "pricing.rb",
     "lua": "pricing.lua",
     "bash": "pricing.sh",
@@ -46,12 +48,22 @@ EXPECTED = {
     "php": ("apply_tax", "Invoice", "Invoice.price"),
     "kotlin": ("applyTax", "Invoice", "Invoice.price"),
     "swift": ("applyTax", "Invoice", "Invoice.price"),
+    "scala": ("applyTax", "Invoice", "Invoice.price"),
+    "csharp": ("ApplyTax", "Invoice", "Invoice.Price"),
     "ruby": ("apply_tax", "Invoice", "Invoice.price"),
     "lua": ("apply_tax", "Invoice", None),
     "bash": ("apply_tax", None, None),
 }
 
 LANGUAGES = tuple(FIXTURE_FILES)
+
+SURFACE_FIXTURES = {
+    "json": ("config.json", {"service", "port", "enabled"}),
+    "toml": ("config.toml", {"service", "port", "enabled"}),
+    "yaml": ("config.yaml", {"service", "port", "enabled"}),
+    "hcl": ("main.tf", {"logs", "bucket", "network", "source"}),
+    "sql": ("schema.sql", {"teams", "users", "id", "team_id", "active_users"}),
+}
 
 
 def source_for(language: str) -> tuple[str, str]:
@@ -63,6 +75,15 @@ def source_for(language: str) -> tuple[str, str]:
 @pytest.fixture(params=LANGUAGES)
 def language(request):
     """Each tier-2 language in turn, skipped when its grammar is not warmed."""
+    name = request.param
+    if name not in grammars.warmed_languages():
+        pytest.skip(f"grammar for {name} is not in the local pack cache: run agentless-mcp warmup")
+    return name
+
+
+@pytest.fixture(params=tuple(SURFACE_FIXTURES))
+def surface_language(request):
+    """Each deterministic non-code surface, skipped when not warmed."""
     name = request.param
     if name not in grammars.warmed_languages():
         pytest.skip(f"grammar for {name} is not in the local pack cache: run agentless-mcp warmup")
@@ -140,6 +161,59 @@ class TestSymbolExtraction:
             for statement in extractor.extract_imports_from_source(text, language, path)
         }
         assert modules, f"{language} extracted no imports from {path}"
+
+
+class TestDeterministicNonCodeSurfaces:
+    def test_config_definitions_feed_the_same_cross_file_graph(self, tmp_path, extractor):
+        if "json" not in grammars.warmed_languages():
+            pytest.skip("grammar for json is not in the local pack cache")
+        (tmp_path / "config.json").write_text('{"service": {"port": 8080}}\n', encoding="utf-8")
+        (tmp_path / "app.py").write_text("def configured():\n    return port\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        built = graph.build_graph(scan, refs.build_ref_index(scan))
+
+        assert ("app.py", "config.json") in built.edges
+
+    def test_expected_nodes_feed_the_symbol_graph(self, surface_language, extractor):
+        filename, expected = SURFACE_FIXTURES[surface_language]
+        text = (FIXTURES / filename).read_text(encoding="utf-8")
+
+        symbols = extractor.extract_from_source(text, surface_language, filename)
+
+        assert expected <= {symbol.name for symbol in symbols}
+        assert all(symbol.language == surface_language for symbol in symbols)
+
+    def test_references_come_from_parsed_name_nodes(self, surface_language):
+        filename, expected = SURFACE_FIXTURES[surface_language]
+        text = (FIXTURES / filename).read_text(encoding="utf-8")
+
+        names = {ref.name for ref in collect_refs(text, surface_language, filename)}
+
+        assert names & expected
+
+    def test_nested_config_keys_carry_their_owner(self, surface_language, extractor):
+        if surface_language not in {"json", "toml", "yaml"}:
+            pytest.skip("only structured config files have the service.port shape")
+        filename, _ = SURFACE_FIXTURES[surface_language]
+        text = (FIXTURES / filename).read_text(encoding="utf-8")
+
+        symbols = extractor.extract_from_source(text, surface_language, filename)
+        port = next(symbol for symbol in symbols if symbol.name == "port")
+
+        assert port.parent_class == "service"
+
+    def test_sql_columns_link_to_their_table(self, surface_language, extractor):
+        if surface_language != "sql":
+            pytest.skip("SQL is the schema surface")
+        filename, _ = SURFACE_FIXTURES[surface_language]
+        text = (FIXTURES / filename).read_text(encoding="utf-8")
+
+        symbols = extractor.extract_from_source(text, surface_language, filename)
+
+        assert any(
+            symbol.name == "team_id" and symbol.parent_class == "users" for symbol in symbols
+        )
 
 
 class TestSkeleton:

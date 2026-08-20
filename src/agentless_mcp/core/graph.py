@@ -1,4 +1,4 @@
-"""File-level reference graph and personalized PageRank over it.
+"""File-level relevance graph and personalized PageRank over it.
 
 The map primitive is a ranking, and the ranking is a random walk over "file A
 mentions a name file B defines". Three deliberate weightings shape it:
@@ -11,6 +11,10 @@ mentions a name file B defines". Three deliberate weightings shape it:
   (``i``, ``x``, ``ok``) collide across every file in a repository, so they
   contribute at a tenth weight rather than being dropped -- dropping them
   would make a file whose only link is a short name unreachable.
+* **Weak evidence discounted by tier.** A sole repository-wide definition is
+  worth a quarter of a declared relationship; a name with several candidate
+  definitions contributes a twentieth to each. These remain useful retrieval
+  hints without being allowed to dominate architectural groupings.
 * **Import edges weighted 3x.** An import is a declared dependency rather
   than a coincidence of spelling, so it is worth several accidental name
   matches.
@@ -30,7 +34,7 @@ unchanged tree produce bit-identical rankings.
 import math
 import posixpath
 from collections.abc import Collection, Mapping, Sequence, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
 from agentless_mcp.core.imports import ImportStatement
@@ -42,6 +46,11 @@ DEFAULT_MAX_ITERATIONS = 100
 
 # An import is a declared edge, not an inferred one.
 IMPORT_EDGE_WEIGHT = 3.0
+
+# Name-only matches are retrieval evidence, not binding evidence. The map
+# keeps that recall but discounts it before PageRank and community detection.
+UNIQUE_MATCH_MULTIPLIER = 0.25
+AMBIGUOUS_MATCH_MULTIPLIER = 0.05
 
 # Names this short collide everywhere; a tenth weight keeps the edge without
 # letting loop counters decide what a repository is about.
@@ -156,30 +165,38 @@ def build_graph(
     for facts in scan.files:
         counts: dict[str, int] = {}
         for ref in facts.refs:
-            if ref.locally_bound:
-                # A parameter's name spells its own binding. Letting it buy an
-                # edge would report a relationship to whichever file happens
-                # to define a symbol of that spelling -- which is the one
-                # binding fact the parse can see, and so the one it must obey.
+            if not ref.is_reference:
+                # Bindings, declaration names, labels, and attribute members
+                # spell no bare repository relationship.
                 continue
             counts[ref.name] = counts.get(ref.name, 0) + 1
 
         for name in sorted(counts):
-            contribution = _reference_weight(name, counts[name], index, stoplist)
+            targets = index.defining_paths(name)
+            if facts.path in targets:
+                # A same-file definition shadows repository-wide name matches.
+                continue
+            contribution = _reference_weight(
+                name,
+                counts[name],
+                index,
+                stoplist,
+                candidate_count=len(targets),
+            )
             if contribution <= 0.0:
                 continue
-            for target in index.defining_paths(name):
+            for target in targets:
                 if target == facts.path or target not in known:
                     continue
                 key = (facts.path, target)
                 edges[key] = edges.get(key, 0.0) + contribution
 
         for statement in facts.imports:
-            imported = resolve_import_target(facts.path, statement, known)
-            if imported is None or imported == facts.path:
-                continue
-            key = (facts.path, imported)
-            edges[key] = edges.get(key, 0.0) + IMPORT_EDGE_WEIGHT
+            for target in _resolved_import_targets(facts.path, statement, known):
+                if target == facts.path:
+                    continue
+                key = (facts.path, target)
+                edges[key] = edges.get(key, 0.0) + IMPORT_EDGE_WEIGHT
 
     return RefGraph(nodes=nodes, edges=edges)
 
@@ -285,6 +302,38 @@ def resolve_import_target(
     return _suffix_match(module, known)
 
 
+def resolve_imported_submodule(
+    importer: str,
+    statement: ImportStatement,
+    name: str,
+    known_paths: Collection[str],
+) -> str | None:
+    """Resolve ``from package import name`` when ``name`` is a module."""
+    dotted = f"{statement.module}.{name}" if statement.module else name
+    probe = replace(statement, module=dotted, names=())
+    return resolve_import_target(importer, probe, known_paths)
+
+
+def _resolved_import_targets(
+    importer: str,
+    statement: ImportStatement,
+    known_paths: Collection[str],
+) -> frozenset[str]:
+    """Return the repository files one import statement declares."""
+    targets = {
+        target
+        for target in (
+            resolve_import_target(importer, statement, known_paths),
+            *(
+                resolve_imported_submodule(importer, statement, name, known_paths)
+                for name in statement.names
+            ),
+        )
+        if target is not None
+    }
+    return frozenset(targets)
+
+
 def _is_relative(module: str, statement: ImportStatement) -> bool:
     """True when the import is written against the importing file's directory.
 
@@ -361,10 +410,20 @@ def _ends_on_boundary(path: str, tail: str) -> bool:
     return stem == tail or stem.endswith("/" + tail)
 
 
-def _reference_weight(name: str, count: int, index: RefIndex, stoplist: frozenset[str]) -> float:
+def _reference_weight(
+    name: str,
+    count: int,
+    index: RefIndex,
+    stoplist: frozenset[str],
+    *,
+    candidate_count: int,
+) -> float:
     """Weight one file's references to ``name``, damped by how common it is."""
+    if candidate_count < 1:
+        return 0.0
     spread = index.files_referencing.get(name, 1)
-    return count * name_multiplier(name, stoplist) / common_name_damping(spread)
+    evidence = UNIQUE_MATCH_MULTIPLIER if candidate_count == 1 else AMBIGUOUS_MATCH_MULTIPLIER
+    return count * name_multiplier(name, stoplist) * evidence / common_name_damping(spread)
 
 
 def _personalization(nodes: Sequence[str], seeds: Mapping[str, float] | None) -> dict[str, float]:

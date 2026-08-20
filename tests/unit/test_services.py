@@ -79,6 +79,25 @@ def repo(tmp_path):
 
 
 class TestMapService:
+    def test_rationale_nodes_are_rendered_below_their_symbol(self, tmp_path, extractor, counter):
+        (tmp_path / "planner.py").write_text(
+            "def choose(value):\n"
+            "    # WHY: stable ordering is part of the contract\n"
+            "    return value\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        maps = MapService(extractor, counter)
+
+        result = maps.build(ctx, MapRequest(focus=("choose",)))
+        text = maps.render_text(result)
+        entry = result.files[0].entries[0]
+
+        assert entry.rationales[0].parent_id == entry.stable_id
+        assert entry.rationales[0].kind == "why"
+        assert "# WHY: stable ordering is part of the contract" in text
+        assert "::rationale@2 -> py:planner.py::choose" in text
+
     def test_the_most_referenced_file_ranks_first(self, repo, extractor, counter):
         result = MapService(extractor, counter).build(repo, MapRequest())
         assert result.files[0].path == "core.py"

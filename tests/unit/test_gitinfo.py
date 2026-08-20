@@ -2,7 +2,7 @@
 
 import subprocess
 
-from agentless_mcp.core import gitinfo
+from agentless_mcp.core import gitinfo, sandbox, treewalk
 
 SAMPLE = {"a.py": "x = 1\n", "sub/b.py": "y = 2\n"}
 
@@ -107,5 +107,25 @@ class TestDegradation:
 
         assert len(calls) >= 4, "expected rev-parse x3 plus status"
         for command, timeout in calls:
-            assert command[:2] == ["git", "--no-optional-locks"]
+            assert command[: 1 + len(gitinfo.HARDENING_PREFIX)] == [
+                "git",
+                *gitinfo.HARDENING_PREFIX,
+            ]
             assert timeout == gitinfo.GIT_TIMEOUT_SECONDS
+
+    def test_every_package_git_argv_has_the_same_hardening_prefix(self, monkeypatch, tmp_path):
+        calls = []
+
+        def record(command, **_kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+        monkeypatch.setattr(subprocess, "run", record)
+
+        gitinfo.head_sha(tmp_path)
+        treewalk._git_listed_paths(tmp_path)
+        sandbox.run_git(tmp_path, ["status", "--porcelain"])
+
+        expected = ["git", *gitinfo.HARDENING_PREFIX]
+        assert len(calls) == 3
+        assert all(command[: len(expected)] == expected for command in calls)

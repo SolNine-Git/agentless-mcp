@@ -22,6 +22,7 @@ from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.core import cache
 
 SOURCE = '''\
 """Core."""
@@ -292,6 +293,43 @@ class TestDiagram:
         assert "cannot read" in capsys.readouterr().err
 
 
+class TestHtml:
+    def test_html_is_written_to_stdout_by_default(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "html") == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out.startswith("<!doctype html>")
+        assert 'id="search"' in captured.out
+        assert "agentless-mcp receipt" in captured.err
+
+    def test_html_can_be_written_only_under_the_xdg_cache(
+        self,
+        services,
+        repo_path,
+        capsys,
+    ):
+        assert invoke(services, repo_path, "html", "--cache-file", "repo-graph.html") == EXIT_OK
+        captured = capsys.readouterr()
+        target = cache.cache_path(repo_path).parent / "exports" / "repo-graph.html"
+        assert captured.out == ""
+        assert target.read_text(encoding="utf-8").startswith("<!doctype html>")
+        assert str(target) in captured.err
+
+    def test_html_refuses_a_path_as_a_cache_name(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "html", "--cache-file", "../repo-graph.html")
+
+        assert code == EXIT_USAGE
+        assert "simple .html name" in capsys.readouterr().err
+
+    def test_html_bounds_are_validated_at_the_cli_boundary(
+        self,
+        services,
+        repo_path,
+        capsys,
+    ):
+        assert invoke(services, repo_path, "html", "--max-nodes", "0") == EXIT_USAGE
+        assert "--max-nodes" in capsys.readouterr().err
+
+
 PATCH_WITH_A_DANGLING_CALL = """\
 ### core.py
 <<<<<<< SEARCH
@@ -434,7 +472,7 @@ class TestValidateTestCommand:
         assert code == EXIT_DOMAIN
         err = capsys.readouterr().err
         assert "refusing to run" in err
-        assert "--allow-config-test-cmd" in err or "allow_config_test_cmd" in err
+        assert "--allow-repo-test-cmd" in err
 
     def test_the_opt_in_lets_the_documented_fallback_run(
         self, services, make_git_repo, candidates_dir, capsys
@@ -450,13 +488,35 @@ class TestValidateTestCommand:
                 str(candidates),
                 "--repo",
                 str(root),
-                "--allow-config-test-cmd",
+                "--allow-repo-test-cmd",
             ],
             services,
         )
 
         assert code == EXIT_OK
         assert "refusing to run" not in capsys.readouterr().err
+
+    def test_an_invalid_environment_name_is_refused_at_the_cli_boundary(
+        self, services, make_git_repo, candidates_dir
+    ):
+        root = make_git_repo({"core.py": SOURCE})
+        candidates = candidates_dir({"01-candidate.txt": PATCH_WITH_A_DANGLING_CALL})
+
+        with pytest.raises(SystemExit, match="2"):
+            run(
+                [
+                    "validate",
+                    "--candidates",
+                    str(candidates),
+                    "--repo",
+                    str(root),
+                    "--test-cmd",
+                    "true",
+                    "--pass-env",
+                    "CLOUD_KEY=value",
+                ],
+                services,
+            )
 
     def test_a_non_positive_run_timeout_is_a_usage_error(
         self, services, make_git_repo, candidates_dir, capsys

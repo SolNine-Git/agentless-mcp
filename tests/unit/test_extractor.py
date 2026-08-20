@@ -19,7 +19,7 @@ import pytest
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.symbols import SymbolKind
+from agentless_mcp.core.symbols import SymbolKind, rationale_stable_id
 
 SAMPLE_PYTHON = '''\
 """Module docstring."""
@@ -56,6 +56,39 @@ class Dog(Animal):
 
 def make_extractor():
     return TreeSitterExtractor()
+
+
+class TestRationaleExtraction:
+    def test_comment_markers_and_citations_attach_to_the_innermost_symbol(self):
+        source = """\
+class Planner:
+    def choose(self, value):
+        decoy = "TODO: this string is not a comment"
+        # WHY: preserve stable ordering; see ADR-004
+        # RFC 2119 requires this branch.
+        return value
+"""
+
+        symbols = make_extractor().extract_from_source(source, "python", "planner.py")
+        method = next(symbol for symbol in symbols if symbol.name == "choose")
+        owner = next(symbol for symbol in symbols if symbol.name == "Planner")
+
+        assert [(node.kind, node.text, node.citations) for node in method.rationales] == [
+            ("why", "preserve stable ordering; see ADR-004", ("ADR-004",)),
+            ("citation", "RFC 2119 requires this branch.", ("RFC 2119",)),
+        ]
+        assert owner.rationales == ()
+        assert rationale_stable_id(method, method.rationales[0]) == (
+            "py:planner.py::Planner.choose::rationale@4"
+        )
+
+    def test_comment_text_is_bounded_before_it_leaves_extraction(self):
+        source = "def choose():\n    # NOTE: " + "x" * 500 + "\n    return 1\n"
+
+        (symbol,) = make_extractor().extract_from_source(source, "python", "planner.py")
+
+        assert len(symbol.rationales[0].text) == 240
+        assert symbol.rationales[0].text.endswith("...")
 
 
 class TestFunctionExtraction:

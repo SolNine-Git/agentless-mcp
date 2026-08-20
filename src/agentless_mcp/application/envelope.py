@@ -4,7 +4,7 @@ Three things wrap every answer this package produces.
 
 The **receipt** says which repository, at which commit, with how many dirty
 files, from which cache generation. It exists so an agent working across a
-workspace of repositories can tell a wrong-repository answer and a stale answer
+workspace of repositories can tell a wrong-repository answer and a generation mismatch
 from a right one, instead of discovering either through a failed patch. The
 two receipt lines are a fixed format, pinned by tests:
 
@@ -17,12 +17,12 @@ tag cache open it names the generation the index was built at and whether that
 is still the repository's own generation:
 
     cache: g:1a2b3c4d fresh
-    cache: g:1a2b3c4d stale (repo g:5e6f7a8b) - rerun agentless-mcp index ...
+    cache: g:1a2b3c4d generation mismatch (repo g:5e6f7a8b); changed files parse live ...
 
-A stale index is served, not refused: every row it hands back is checked
-against the sha256 of the file the view is about, so staleness costs
-re-extraction rather than correctness. The receipt says so anyway, because an
-agent deciding whether to re-index needs the fact and the remediation.
+A mismatched generation is served, not refused: every row it hands back is
+checked against the sha256 of the file the view is about, so changed files
+cost re-extraction rather than correctness. The receipt says so because an
+agent deciding whether to re-index needs the performance signal.
 
 The **banner** marks everything below it as repository data. Rendered source
 is untrusted input: a docstring in an analysed repository that says "ignore

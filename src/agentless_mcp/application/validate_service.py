@@ -30,13 +30,14 @@ removes them is serialised inside :mod:`agentless_mcp.core.sandbox`.
 is opt-in.** Nothing here looks a command up: there is no config file lookup,
 no ``Makefile`` sniffing, no ``package.json`` scripts in this module. The
 adapter may read one out of the analysed repository's ``.agentless-mcp.json``,
-and when it does it must say so on the request -- ``test_cmd_from_config``
-with ``allow_config_test_cmd`` -- because the repository is the thing being
+and when it does it must say so on the request -- ``test_cmd_from_repo``
+with ``allow_repo_test_cmd`` -- because the repository is the thing being
 judged, and letting it nominate its own judge is the injection path this
 package is shaped around. Without the opt-in the run is refused here, before
 anything is executed, rather than mitigated by a note the caller may not read.
-The opt-in is the whole of the enforcement: once it is given, the named
-command runs with the caller's privileges and environment like any other.
+The opt-in is the command-provenance enforcement. Separately, every command
+runs with an allowlisted environment; ``passthrough_env`` names any additional
+parent variables the caller deliberately exposes.
 
 **A run bounds its own total cost.** ``timeout`` bounds one command;
 ``run_timeout``, when given, bounds the run. A batch is
@@ -179,9 +180,9 @@ class Verdict(str, Enum):
 class ValidateRequest:
     """One validation run's inputs, all of them from the invocation.
 
-    ``test_cmd_from_config`` is the adapter declaring that ``test_cmd`` was
+    ``test_cmd_from_repo`` is the adapter declaring that ``test_cmd`` was
     read out of the repository under analysis rather than typed by the caller;
-    ``allow_config_test_cmd`` is the caller accepting that. The flag keys on
+    ``allow_repo_test_cmd`` is the caller accepting that. The flag keys on
     where the command came from, not on which adapter asked, because that is
     the property the refusal protects.
 
@@ -196,8 +197,9 @@ class ValidateRequest:
     jobs: int = DEFAULT_JOBS
     repeat_baseline: int = DEFAULT_REPEAT_BASELINE
     run_timeout: int | None = None
-    test_cmd_from_config: bool = False
-    allow_config_test_cmd: bool = False
+    passthrough_env: tuple[str, ...] = ()
+    test_cmd_from_repo: bool = False
+    allow_repo_test_cmd: bool = False
 
 
 @dataclass(frozen=True)
@@ -498,7 +500,14 @@ class ValidateService:
         runs: list[RunResult] = []
         for _ in range(repeats):
             with sandbox.worktree(ctx.root) as tree:
-                runs.append(sandbox.run_command(tree, request.test_cmd, timeout=request.timeout))
+                runs.append(
+                    sandbox.run_command(
+                        tree,
+                        request.test_cmd,
+                        timeout=request.timeout,
+                        passthrough_env=request.passthrough_env,
+                    )
+                )
 
         failures = [run for run in runs if not run.passed]
         outcome = _baseline_outcome(runs, failures, repeats)
@@ -508,7 +517,12 @@ class ValidateService:
         repro_run = None
         if request.repro_cmd is not None:
             with sandbox.worktree(ctx.root) as tree:
-                repro_run = sandbox.run_command(tree, request.repro_cmd, timeout=request.timeout)
+                repro_run = sandbox.run_command(
+                    tree,
+                    request.repro_cmd,
+                    timeout=request.timeout,
+                    passthrough_env=request.passthrough_env,
+                )
 
         return _header(ctx, request, count, outcome, repro_run=repro_run)
 
@@ -600,9 +614,19 @@ class ValidateService:
             # guard, kept in every tier.
             key = normalized.key if normalized.result.new_contents else None
 
-            regression_run = sandbox.run_command(tree, request.test_cmd, timeout=request.timeout)
+            regression_run = sandbox.run_command(
+                tree,
+                request.test_cmd,
+                timeout=request.timeout,
+                passthrough_env=request.passthrough_env,
+            )
             reproduction_run = (
-                sandbox.run_command(tree, request.repro_cmd, timeout=request.timeout)
+                sandbox.run_command(
+                    tree,
+                    request.repro_cmd,
+                    timeout=request.timeout,
+                    passthrough_env=request.passthrough_env,
+                )
                 if repro_valid and request.repro_cmd is not None
                 else None
             )
@@ -837,12 +861,12 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
     is asking: an agent driving the CLI and a human at a terminal reach the
     same code, and only one of them reads a printed note.
     """
-    if not request.test_cmd_from_config or request.allow_config_test_cmd:
+    if not request.test_cmd_from_repo or request.allow_repo_test_cmd:
         return
     message = (
         f"refusing to run {request.test_cmd!r}: it came from the repository under analysis, "
         "not from the invocation, so the repository would be choosing the command that judges "
-        "it. Pass the command explicitly, or opt in with allow_config_test_cmd."
+        "it. Pass the command explicitly, or opt in with --allow-repo-test-cmd."
     )
     raise AtlasError(message)
 

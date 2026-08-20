@@ -32,6 +32,7 @@ from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.application.symbol_service import rationale_nodes
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
@@ -390,6 +391,7 @@ def _group(
                 signature=candidate.symbol.signature,
                 stable_id=symbol_stable_id(candidate.symbol),
                 depth=1 if candidate.symbol.parent_class else 0,
+                rationales=rationale_nodes(candidate.symbol),
             )
             for candidate in chosen
         )

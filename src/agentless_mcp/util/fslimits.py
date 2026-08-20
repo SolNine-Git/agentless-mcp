@@ -95,22 +95,32 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
     repository must not fail a whole traversal, but it must also never pass
     silently as an empty file.
     """
+    if max_bytes < 0:
+        message = "max_bytes must not be negative"
+        raise ValueError(message)
     try:
-        size = path.stat().st_size
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
     except OSError as exc:
         return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
 
-    if size > max_bytes:
+    try:
+        with os.fdopen(descriptor, "rb") as handle:
+            initial_size = os.fstat(handle.fileno()).st_size
+            data = handle.read(max_bytes + 1)
+            final_size = os.fstat(handle.fileno()).st_size
+    except OSError as exc:
+        return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
+
+    if len(data) > max_bytes:
+        observed_size = max(initial_size, final_size, len(data))
         return BoundedRead(
             path=path,
             text=None,
-            skipped=f"skipped: {size} bytes exceeds the per-file cap of {max_bytes} bytes",
+            skipped=(
+                f"skipped: {observed_size} bytes exceeds the per-file cap of {max_bytes} bytes"
+            ),
         )
-
-    try:
-        data = path.read_bytes()
-    except OSError as exc:
-        return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
 
     return BoundedRead(path=path, text=data.decode("utf-8", errors="replace"), skipped=None)
 

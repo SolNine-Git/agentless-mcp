@@ -53,6 +53,7 @@ SHARED_CALLERS_SHOWN = 5
 # property of the destination, not of the diagram.
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
+WEAK_MODULARITY_THRESHOLD = 0.3
 
 
 class _Bounded(ABC):
@@ -79,6 +80,29 @@ class _Bounded(ABC):
 
 
 @dataclass(frozen=True)
+class RationaleNode:
+    """One rationale comment and the symbol node it is linked to."""
+
+    stable_id: str
+    parent_id: str
+    line: int
+    kind: str
+    text: str
+    citations: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this rationale node."""
+        return {
+            "stable_id": self.stable_id,
+            "parent_id": self.parent_id,
+            "line": self.line,
+            "kind": self.kind,
+            "text": self.text,
+            "citations": list(self.citations),
+        }
+
+
+@dataclass(frozen=True)
 class MapEntry:
     """One symbol line in a repository map."""
 
@@ -86,15 +110,19 @@ class MapEntry:
     signature: str
     stable_id: str
     depth: int = 0
+    rationales: tuple[RationaleNode, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this entry."""
-        return {
+        record: dict[str, Any] = {
             "line": self.line,
             "signature": self.signature,
             "stable_id": self.stable_id,
             "depth": self.depth,
         }
+        if self.rationales:
+            record["rationales"] = [rationale.as_dict() for rationale in self.rationales]
+        return record
 
 
 @dataclass(frozen=True)
@@ -543,6 +571,7 @@ class Explanation:
     card: SymbolCard | None
     message: str
     alternatives: tuple[str, ...]
+    rationales: tuple[RationaleNode, ...]
     fan_out: tuple[TierGroup, ...]
     fan_in: tuple[TierGroup, ...]
     imports_out: ImportListing
@@ -550,7 +579,7 @@ class Explanation:
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this explanation."""
-        return {
+        record: dict[str, Any] = {
             "target": self.target,
             "symbol": self.card.as_dict() if self.card is not None else None,
             "message": self.message,
@@ -562,6 +591,9 @@ class Explanation:
                 "importers": self.imports_in.as_dict(),
             },
         }
+        if self.rationales:
+            record["rationales"] = [rationale.as_dict() for rationale in self.rationales]
+        return record
 
 
 @dataclass(frozen=True)
@@ -577,6 +609,7 @@ class PathTrace:
     message: str
     visited: int
     exhausted: bool
+    include_unique: bool
     include_ambiguous: bool
     endpoints_resolved: bool
 
@@ -591,6 +624,7 @@ class PathTrace:
             "hops": [hop.as_dict() for hop in self.hops],
             "visited": self.visited,
             "exhausted": self.exhausted,
+            "include_unique": self.include_unique,
             "include_ambiguous": self.include_ambiguous,
         }
 
@@ -657,6 +691,11 @@ class CommunityReport(_Bounded):
         """How many communities the limit kept."""
         return len(self.communities)
 
+    @property
+    def weak_partition(self) -> bool:
+        """Whether the modularity is too weak for an architectural claim."""
+        return self.modularity < WEAK_MODULARITY_THRESHOLD
+
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
         return {
@@ -664,6 +703,7 @@ class CommunityReport(_Bounded):
             "limit": self.limit,
             "omitted": self.omitted,
             "modularity": _no_negative_zero(round(self.modularity, 6)),
+            "weak_partition": self.weak_partition,
             "resolution": self.resolution,
             "files": self.files,
             "communities": [community.as_dict() for community in self.communities],
@@ -781,6 +821,8 @@ def render_communities(report: CommunityReport) -> str:
             f"at resolution {report.resolution:g})"
         )
     ]
+    if report.weak_partition:
+        lines.append("  note: weak partition; use these communities as a hint, not a boundary")
     for index, community in enumerate(report.communities, start=1):
         files = "file" if community.size == 1 else "files"
         lines.append(f"  {index:>3}. {community.label}  ({community.size} {files})")
@@ -863,6 +905,14 @@ def render_explanation(explanation: Explanation) -> str:
 
     lines = [_render_card(explanation.card)]
     lines.extend(f"  also defined at {entry}" for entry in explanation.alternatives)
+    if explanation.rationales:
+        lines.append("")
+        lines.append("rationale")
+        lines.extend(
+            f"  {node.kind.upper()}  {node.text}    "
+            f"{explanation.card.path}:{node.line}  [{node.stable_id} -> {node.parent_id}]"
+            for node in explanation.rationales
+        )
     lines.append("")
     lines.append(_render_tiers("references (fan-out)", explanation.fan_out))
     lines.append(_render_tiers("referenced by (fan-in)", explanation.fan_in))
@@ -954,11 +1004,17 @@ def render_map(files: Sequence[MapFile]) -> str:
     blocks: list[str] = []
     for map_file in files:
         lines = [f"{map_file.path}  (rank {map_file.rank:.4f})"]
-        lines.extend(
-            f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
-            f"{'    ' * entry.depth}{entry.signature}  [{entry.stable_id}]"
-            for entry in map_file.entries
-        )
+        for entry in map_file.entries:
+            lines.append(
+                f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
+                f"{'    ' * entry.depth}{entry.signature}  [{entry.stable_id}]"
+            )
+            lines.extend(
+                f"{line_prefix(node.line, LINE_NUMBER_WIDTH)}"
+                f"{'    ' * (entry.depth + 1)}# {node.kind.upper()}: {node.text}  "
+                f"[{node.stable_id} -> {node.parent_id}]"
+                for node in entry.rationales
+            )
         if map_file.omitted:
             lines.append(f"      ... {map_file.omitted} more symbols in this file")
         blocks.append("\n".join(lines))

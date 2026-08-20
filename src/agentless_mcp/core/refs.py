@@ -133,11 +133,10 @@ def scan_repo(
 def build_ref_index(scan: RepoScan) -> RefIndex:
     """Index a scan by name: where each name is defined and where it is used.
 
-    Locally bound occurrences stay in ``sites``: a fan-in answer lists every
-    place a name is spelled, and dropping the ones a parameter list binds is
-    exactly the silent under-reporting this module refuses. Consumers that
-    turn a site into a *relationship* -- the map's edge weights, the
-    resolver's tiers -- are the ones that must honour ``locally_bound``.
+    Non-reference occurrences stay in ``sites``: a literal lookup lists every
+    place a name is spelled, while consumers that turn a site into a
+    *relationship* -- the map's edge weights and the resolver's tiers -- must
+    honour the identifier role.
     """
     definitions: dict[str, list[Definition]] = {}
     sites: dict[str, list[Ref]] = {}
@@ -150,7 +149,8 @@ def build_ref_index(scan: RepoScan) -> RefIndex:
             )
         for ref in facts.refs:
             sites.setdefault(ref.name, []).append(ref)
-            referencing.setdefault(ref.name, set()).add(ref.path)
+            if ref.is_reference:
+                referencing.setdefault(ref.name, set()).add(ref.path)
 
     return RefIndex(
         definitions={name: tuple(values) for name, values in definitions.items()},

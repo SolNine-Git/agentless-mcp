@@ -43,6 +43,13 @@ and executed as an argv, never through a shell, so a command carrying ``;`` or
 session, so the whole process group can be killed when the bound expires:
 a test suite that spawns a server and hangs must leave nothing running.
 
+The child receives an explicit environment containing only ``PATH``, ``HOME``,
+``LANG`` and ``TMPDIR`` when those names exist in the parent. A caller may opt
+individual additional names in, but there is no bulk inheritance. This keeps
+ambient credentials out of ordinary validation runs; it is credential
+containment, not process sandboxing, because the command still runs with the
+caller's user identity and can read anything that identity can read.
+
 The bound is hard, and a command that hits it is a **failure**. A hung test
 run is the case this machinery exists to catch, and the one place where
 "we did not find out" must never render as green.
@@ -116,7 +123,12 @@ CAPTURE_POLL_SECONDS = 0.25
 # of them repository-controlled execution, which is the same hazard ``diff``
 # neutralises ``diff.external`` for. ``/dev/null`` is not a directory, so no
 # hook is ever found under it.
-NO_REPO_CODE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=")
+NO_REPO_CODE = ("-c", "core.hooksPath=/dev/null")
+
+# Deliberately small. These are process-operability values rather than
+# credentials, and absent values stay absent instead of being invented. Any
+# additional variable must be named explicitly by the validate invocation.
+TEST_ENV_ALLOWLIST: tuple[str, ...] = ("PATH", "HOME", "LANG", "TMPDIR")
 
 # ``git worktree add`` and ``git worktree prune`` race each other: prune walks
 # the repository's worktree records and can remove one that a concurrent add
@@ -250,6 +262,7 @@ def run_command(
     *,
     timeout: int,
     max_capture: int = DEFAULT_MAX_CAPTURE,
+    passthrough_env: Sequence[str] = (),
 ) -> RunResult:
     """Run one caller-supplied command in ``cwd`` under a hard time bound.
 
@@ -260,7 +273,7 @@ def run_command(
     accidentally treat "we never found out" as a pass, which is the whole
     point of the type.
 
-    Three properties are load-bearing rather than incidental:
+    Four properties are load-bearing rather than incidental:
 
     * **No shell.** ``shlex.split`` produces an argv and ``Popen`` receives
       it. There is no interpretation of metacharacters at any point.
@@ -275,6 +288,10 @@ def run_command(
       after the process is gone. The files are bounded while they are being
       written, not only when they are read: ``max_capture`` is a cap on what
       the command may leave on disk as well as on what is reported.
+    * **Environment is allowlisted.** The child receives only
+      :data:`TEST_ENV_ALLOWLIST` plus names the caller explicitly passes
+      through. This contains ambient credentials; it does not sandbox the
+      process or constrain what the caller's user can read from disk.
     """
     try:
         argv = shlex.split(cmd)
@@ -292,6 +309,7 @@ def run_command(
             process = subprocess.Popen(
                 argv,
                 cwd=cwd,
+                env=_test_environment(passthrough_env),
                 stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=err,
@@ -316,6 +334,12 @@ def run_command(
     code = process.returncode
     status = RunStatus.PASSED if code == 0 else RunStatus.FAILED
     return RunResult(status, code, duration, stdout_tail, stderr_tail)
+
+
+def _test_environment(passthrough: Sequence[str]) -> dict[str, str]:
+    """Return the exact parent variables one test command may inherit."""
+    names = (*TEST_ENV_ALLOWLIST, *passthrough)
+    return {name: os.environ[name] for name in names if name in os.environ}
 
 
 def _spawn_failure(reason: str, duration: float = 0.0) -> RunResult:
@@ -484,7 +508,7 @@ def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) 
     own configuration would otherwise decide -- see :data:`NO_REPO_CODE`.
     """
     subcommand = arguments[0] if arguments else "git"
-    command = ["git", "--no-optional-locks", *config, "-C", str(cwd), *arguments]
+    command = ["git", *gitinfo.HARDENING_PREFIX, *config, "-C", str(cwd), *arguments]
     try:
         completed = subprocess.run(
             command,

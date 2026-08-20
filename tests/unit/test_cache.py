@@ -312,7 +312,7 @@ class TestFreshness:
 
         assert source.receipt == "bypassed (--no-cache)"
 
-    def test_a_commit_makes_the_receipt_stale_and_names_both_generations(
+    def test_a_commit_reports_a_generation_mismatch_and_names_both_generations(
         self, make_git_repo, extractor, services, capsys
     ):
         root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
@@ -325,10 +325,12 @@ class TestFreshness:
         receipt = _receipt(capsys.readouterr().out)
 
         assert indexed.generation != live
-        assert f"cache: g:{indexed.generation} stale (repo g:{live})" in receipt
-        assert "rerun agentless-mcp index or pass --no-cache" in receipt
+        assert f"cache: g:{indexed.generation} generation mismatch (repo g:{live})" in receipt
+        assert "changed files parse live; reindex for performance" in receipt
 
-    def test_a_stale_index_still_answers_from_live_content(self, make_git_repo, extractor):
+    def test_a_mismatched_generation_still_answers_from_live_content(
+        self, make_git_repo, extractor
+    ):
         root = make_git_repo({"core.py": CORE})
         cache.build_index(root, extractor, tree_oid=_tree_oid(root))
         changed = CORE + "\n\ndef rebate(sku):\n    return 2\n"
@@ -338,8 +340,9 @@ class TestFreshness:
         source = cache.open_source(root, extractor, tree_oid=_tree_oid(root))
         names = [symbol.name for symbol in source.symbols_for(changed, "python", "core.py")]
 
-        assert "stale" in source.receipt
+        assert "generation mismatch" in source.receipt
         assert "rebate" in names
+        assert source.status().as_dict()["generation_matches"] is False
 
 
 class TestDirtyWorktree:
@@ -433,7 +436,7 @@ class TestNonGitRepositories:
 
         source = cache.open_source(repo, extractor, tree_oid=None)
 
-        assert "stale" in source.receipt
+        assert "generation mismatch" in source.receipt
 
 
 class TestSingleWriter:
@@ -658,6 +661,18 @@ class TestRefsAndImportsRows:
             "py:handlers.py::handle#2",
         ]
         assert cached == parsed
+
+    def test_cached_rows_rebuild_the_same_rationale_nodes(self, repo, extractor):
+        source_text = "def handle():\n    # NOTE: ordering follows RFC 2119\n    return 1\n"
+        (repo / "handlers.py").write_text(source_text, encoding="utf-8")
+        cache.build_index(repo, extractor)
+        opened = cache.open_source(repo, extractor, tree_oid=None)
+
+        cached = opened.symbols_for(source_text, "python", "handlers.py")
+        parsed = extractor.extract_from_source(source_text, "python", "handlers.py")
+
+        assert cached == parsed
+        assert cached[0].rationales[0].citations == ("RFC 2119",)
 
     def test_an_edited_file_falls_back_to_parsing_for_every_kind(self, repo, extractor):
         cache.build_index(repo, extractor)

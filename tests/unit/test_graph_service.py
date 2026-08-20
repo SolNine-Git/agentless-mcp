@@ -9,11 +9,12 @@ can fail to be a path are three different messages rather than an exception.
 
 import math
 import re
+from dataclasses import replace
 
 import pytest
 
 from agentless_mcp.application import render
-from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.graph_service import GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.util.errors import AtlasError
 
@@ -147,6 +148,27 @@ def tiers(groups):
 
 
 class TestExplain:
+    def test_rationale_nodes_are_linked_to_the_explained_symbol(self, tmp_path, graphs):
+        ctx = build(
+            tmp_path,
+            {
+                "planner.py": (
+                    "def choose(value):\n"
+                    "    # HACK: upstream sends an empty sentinel; see ADR-009\n"
+                    "    return value\n"
+                )
+            },
+        )
+
+        explanation = graphs.explain(ctx, "choose")
+        text = render.render_explanation(explanation)
+        (node,) = explanation.rationales
+
+        assert node.parent_id == "py:planner.py::choose"
+        assert node.citations == ("ADR-009",)
+        assert explanation.as_dict()["rationales"][0]["kind"] == "hack"
+        assert "HACK  upstream sends an empty sentinel" in text
+
     def test_the_card_names_the_definition_site(self, graphs, repo):
         explained = graphs.explain(repo, "helper")
         assert explained.card is not None
@@ -273,10 +295,35 @@ class TestPath:
 
     def test_ambiguous_edges_join_the_search_only_when_asked(self, graphs, repo):
         excluded = graphs.path(repo, "ask", "py:alpha.py::shared")
-        included = graphs.path(repo, "ask", "py:alpha.py::shared", include_ambiguous=True)
+        included = graphs.path(
+            repo,
+            "ask",
+            "py:alpha.py::shared",
+            PathOptions(include_ambiguous=True),
+        )
         assert not excluded.found
         assert included.found
         assert included.hops[0].tier == "ambiguous"
+
+    def test_unique_edges_join_the_search_only_when_asked(self, graphs, tmp_path):
+        repo = build(
+            tmp_path,
+            {
+                "target.py": "def only_once():\n    return 1\n",
+                "caller.py": "def ask():\n    return only_once()\n",
+            },
+        )
+        excluded = graphs.path(repo, "ask", "only_once")
+        included = graphs.path(
+            repo,
+            "ask",
+            "only_once",
+            PathOptions(include_unique=True),
+        )
+
+        assert not excluded.found
+        assert included.found
+        assert included.as_dict()["include_unique"] is True
 
     def test_a_file_is_a_usable_endpoint(self, graphs, repo):
         trace = graphs.path(repo, "user.py", "core.py")
@@ -284,7 +331,7 @@ class TestPath:
         assert trace.hops[0].node == "core.py"
 
     def test_the_search_bound_names_itself(self, graphs, repo):
-        trace = graphs.path(repo, "use", "caller", max_visited=1)
+        trace = graphs.path(repo, "use", "caller", PathOptions(max_visited=1))
         assert not trace.found
         assert trace.exhausted
         assert "search bound" in trace.message
@@ -394,6 +441,14 @@ class TestCommunities:
         assert report.resolution == 1.0
         assert 0.0 <= report.modularity <= 1.0
         assert report.files == len(FILES)
+
+    def test_a_weak_partition_is_labeled_as_a_hint(self, graphs, repo):
+        report = replace(graphs.communities(repo), modularity=0.253)
+
+        assert report.as_dict()["weak_partition"] is True
+        assert "weak partition; use these communities as a hint" in render.render_communities(
+            report
+        )
 
     def test_the_limit_caps_the_listing_and_says_so(self, graphs, repo):
         report = graphs.communities(repo, limit=1)
@@ -528,3 +583,20 @@ class TestDiagram:
 
         assert f"{main} --> {mod}" in lines
         assert f"{main} -.-> {mod}" not in lines
+
+
+class TestHtml:
+    def test_html_is_a_searchable_community_coloured_view(self, graphs, repo):
+        exported = graphs.html(repo)
+
+        assert exported.nodes == len(FILES)
+        assert exported.communities > 0
+        assert 'id="search"' in exported.text
+        assert "function colour(community)" in exported.text
+
+    def test_html_bounds_nodes_and_edges(self, graphs, repo):
+        exported = graphs.html(repo, max_nodes=2, max_edges=1)
+
+        assert exported.nodes == 2
+        assert exported.edges <= 1
+        assert exported.elided_nodes == len(FILES) - 2

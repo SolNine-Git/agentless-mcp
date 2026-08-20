@@ -4,6 +4,8 @@ Each one asserts the specific message the refusal carries: a bound that
 refuses with a vague message is a bound an operator cannot act on.
 """
 
+import os
+
 import pytest
 
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
@@ -129,6 +131,24 @@ class TestReadBounded:
         result = read_bounded(big, max_bytes=1000)
         assert result.text is None
         assert result.skipped == "skipped: 5000 bytes exceeds the per-file cap of 1000 bytes"
+
+    def test_file_growth_cannot_bypass_the_read_cap(self, root, monkeypatch):
+        growing = root / "growing.py"
+        growing.write_bytes(b"x" * 100)
+        real_fstat = os.fstat
+
+        def stale_size(descriptor):
+            observed = real_fstat(descriptor)
+            values = list(observed)
+            values[6] = 4
+            return os.stat_result(values)
+
+        monkeypatch.setattr(os, "fstat", stale_size)
+
+        result = read_bounded(growing, max_bytes=4)
+
+        assert result.text is None
+        assert result.skipped == "skipped: 5 bytes exceeds the per-file cap of 4 bytes"
 
     def test_missing_file_is_reported_not_raised(self, root):
         result = read_bounded(root / "gone.py")

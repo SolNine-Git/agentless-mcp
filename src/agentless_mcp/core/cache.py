@@ -32,9 +32,9 @@ all.
   git tree OID (or, outside git, a ``nogit:`` digest over the sorted
   ``(path, size, mtime_ns)`` manifest) the index was built from. Comparing it
   to the live one tells a caller whether the index is worth what it cost --
-  a stale generation means many files will re-extract on demand, not that the
-  answer is wrong. It is reported in the receipt with the remediation, never
-  silently.
+  a generation mismatch means changed files re-extract on demand, not that
+  the answer is wrong. It is reported in the receipt as a performance
+  condition, never as stale output.
 
 **One writer.** An index run holds an exclusive lock on ``write.lock`` next to
 the database for its whole duration and writes inside one ``BEGIN IMMEDIATE``
@@ -61,9 +61,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.extractor import IdentifierRole, Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, disambiguate, id_qualname
+from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate, id_qualname
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
@@ -83,7 +83,16 @@ from agentless_mcp.util.fslimits import read_bounded
 # 4 (2026-08-19): refs rows carry ``locally_bound``. v3 rows would rehydrate
 #   every ref unflagged, and the resolver would go back to pointing a
 #   function's own parameter names at unrelated repository symbols.
-SCHEMA_VERSION = 4
+# 5 (2026-08-19): tag rows carry rationale nodes extracted from comments.
+#   A v4 cache would otherwise make an indexed map disagree with an on-demand
+#   map for unchanged files, which the content digest cannot detect.
+# 6 (2026-08-19): reference rows carry an identifier role rather than a
+#   parameter-only boolean. Reusing v5 rows would promote assignments,
+#   attributes and keyword labels back into graph edges.
+# 7 (2026-08-19): module-attribute rows carry their syntactic qualifier, so
+#   ``core.helper`` can resolve through ``core`` without treating
+#   ``sys.stderr`` as repository-wide name evidence.
+SCHEMA_VERSION = 7
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 APPLICATION_DIR = "agentless-mcp"
@@ -153,15 +162,23 @@ class CacheStatus:
     note: str
 
     @property
+    def generation_matches(self) -> bool:
+        """Whether the index and repository generation stamps agree."""
+        return self.fresh
+
+    @property
     def receipt(self) -> str:
         """Return the ``cache:`` field of the response receipt."""
         if not self.enabled:
             return RECEIPT_BYPASSED
         if self.generation is None:
             return f"{RECEIPT_NONE} ({self.note})" if self.note else RECEIPT_NONE
-        if self.fresh:
+        if self.generation_matches:
             return f"g:{self.generation} fresh"
-        return f"g:{self.generation} stale (repo g:{self.repo_generation}) - {REMEDIATION}"
+        return (
+            f"g:{self.generation} generation mismatch (repo g:{self.repo_generation}); "
+            f"{REMEDIATION}"
+        )
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this status."""
@@ -171,6 +188,7 @@ class CacheStatus:
             "generation": self.generation,
             "repo_generation": self.repo_generation,
             "fresh": self.fresh,
+            "generation_matches": self.generation_matches,
             "enabled": self.enabled,
             "files": self.files,
             "tags": self.tags,
@@ -207,6 +225,10 @@ class FileSource(Protocol):
         """Describe this source, including row counts when it has any."""
         ...
 
+    def close(self) -> None:
+        """Release resources held by this source."""
+        ...
+
 
 class OnDemandSource:
     """Parses every file it is asked about. The default and the fallback."""
@@ -235,6 +257,9 @@ class OnDemandSource:
     def status(self) -> CacheStatus:
         """Describe why there is no cache behind this source."""
         return self._status
+
+    def close(self) -> None:
+        """Release resources; on-demand parsing owns none."""
 
 
 @dataclass(frozen=True)
@@ -362,7 +387,7 @@ class CachedSource:
         """
         cursor = self._connection.execute(
             "SELECT name, kind, start_line, end_line, signature, parent, docstring, "
-            "decorators, bases, language, is_public, is_async "
+            "decorators, bases, language, is_public, is_async, rationales "
             "FROM tags WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
@@ -380,12 +405,18 @@ class CachedSource:
     def _ref_rows(self, path: str, digest: str) -> list[Ref]:
         """Rebuild one file's identifier references from its rows, in order."""
         cursor = self._connection.execute(
-            "SELECT name, line, locally_bound FROM refs "
+            "SELECT name, line, role, qualifier FROM refs "
             "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
         return [
-            Ref(path=path, name=str(row[0]), line=int(row[1]), locally_bound=bool(row[2]))
+            Ref(
+                path=path,
+                name=str(row[0]),
+                line=int(row[1]),
+                role=IdentifierRole(str(row[2])),
+                qualifier=str(row[3]),
+            )
             for row in cursor.fetchall()
         ]
 
@@ -739,8 +770,8 @@ def _apply_plan(
             connection.executemany(
                 "INSERT INTO tags (path, sha256, name, kind, is_def, start_line, end_line, "
                 "signature, parent, qualname, docstring, decorators, bases, language, "
-                "is_public, is_async, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "is_public, is_async, rationales, ordinal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     _tag_row(entry.path, entry.digest, ordinal, symbol)
                     for ordinal, symbol in enumerate(entry.symbols)
@@ -756,15 +787,16 @@ def _apply_plan(
                 ],
             )
             connection.executemany(
-                "INSERT INTO refs (path, sha256, name, line, locally_bound, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO refs (path, sha256, name, line, role, qualifier, ordinal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         entry.path,
                         entry.digest,
                         ref.name,
                         ref.line,
-                        int(ref.locally_bound),
+                        ref.role.value,
+                        ref.qualifier,
                         ordinal,
                     )
                     for ordinal, ref in enumerate(entry.refs)
@@ -813,6 +845,18 @@ def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[A
         symbol.language,
         int(symbol.is_public),
         int(symbol.is_async),
+        json.dumps(
+            [
+                {
+                    "kind": rationale.kind,
+                    "text": rationale.text,
+                    "line": rationale.line_number,
+                    "citations": list(rationale.citations),
+                    "duplicate_index": rationale.duplicate_index,
+                }
+                for rationale in symbol.rationales
+            ]
+        ),
         ordinal,
     )
 
@@ -868,7 +912,36 @@ def _symbol_from_row(row: Sequence[Any], path: str) -> ASTSymbol:
         language=str(row[9]),
         is_public=bool(row[10]),
         is_async=bool(row[11]),
+        rationales=_rationales_from_row(row[12]),
     )
+
+
+def _rationales_from_row(raw: Any) -> tuple[Rationale, ...]:
+    """Parse cached rationale JSON into bounded domain values."""
+    document = json.loads(str(raw))
+    if not isinstance(document, list):
+        message = "cached rationales must be a JSON array"
+        raise TypeError(message)
+
+    rationales: list[Rationale] = []
+    for item in document:
+        if not isinstance(item, dict):
+            message = "each cached rationale must be a JSON object"
+            raise TypeError(message)
+        citations = item["citations"]
+        if not isinstance(citations, list):
+            message = "cached rationale citations must be a JSON array"
+            raise TypeError(message)
+        rationales.append(
+            Rationale(
+                kind=str(item["kind"]),
+                text=str(item["text"]),
+                line_number=int(item["line"]),
+                citations=tuple(str(citation) for citation in citations),
+                duplicate_index=int(item["duplicate_index"]),
+            )
+        )
+    return tuple(rationales)
 
 
 def _connect(database: Path) -> sqlite3.Connection:
@@ -965,6 +1038,7 @@ CREATE TABLE IF NOT EXISTS tags (
     language TEXT NOT NULL,
     is_public INTEGER NOT NULL,
     is_async INTEGER NOT NULL,
+    rationales TEXT NOT NULL,
     ordinal INTEGER NOT NULL
 );
 -- References are by far the largest table (tens of thousands of rows per
@@ -988,7 +1062,8 @@ CREATE TABLE IF NOT EXISTS refs (
     sha256 TEXT NOT NULL,
     name TEXT NOT NULL,
     line INTEGER NOT NULL,
-    locally_bound INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    qualifier TEXT NOT NULL,
     ordinal INTEGER NOT NULL,
     PRIMARY KEY (path, sha256, ordinal)
 ) WITHOUT ROWID;

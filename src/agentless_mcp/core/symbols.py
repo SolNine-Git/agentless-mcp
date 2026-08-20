@@ -47,6 +47,17 @@ SIGNATURE_MAX_CHARS = 80
 _WHITESPACE_RUN = re.compile(r"\s+")
 
 
+@dataclass(frozen=True, slots=True)
+class Rationale:
+    """One design-rationale comment attached to its enclosing symbol."""
+
+    kind: str
+    text: str
+    line_number: int
+    citations: tuple[str, ...] = ()
+    duplicate_index: int = 0
+
+
 class SymbolKind(str, Enum):
     """Classification of extracted AST symbols.
 
@@ -95,6 +106,7 @@ class ASTSymbol:
     language: str
     is_public: bool
     is_async: bool
+    rationales: tuple[Rationale, ...] = ()
     # How many earlier symbols in the same file already carry this qualified
     # name. Zero for all but a collision, and assigned by
     # :func:`disambiguate` rather than by any extraction handler, so a
@@ -133,6 +145,13 @@ LANGUAGE_PREFIXES: dict[str, str] = {
     "php": "php",
     "kotlin": "kt",
     "swift": "swift",
+    "scala": "scala",
+    "csharp": "cs",
+    "json": "json",
+    "toml": "toml",
+    "yaml": "yaml",
+    "hcl": "hcl",
+    "sql": "sql",
 }
 
 _QUALNAME_SEPARATOR = "::"
@@ -259,6 +278,14 @@ def symbol_stable_id(symbol: ASTSymbol) -> str:
     id is portable across checkouts of the same repository.
     """
     return stable_id(symbol.language, symbol.module_path, id_qualname(symbol))
+
+
+def rationale_stable_id(symbol: ASTSymbol, rationale: Rationale) -> str:
+    """Build a stable id for one rationale node below ``symbol``."""
+    suffix = f"{rationale.line_number}"
+    if rationale.duplicate_index:
+        suffix += f"#{rationale.duplicate_index + 1}"
+    return f"{symbol_stable_id(symbol)}::rationale@{suffix}"
 
 
 def parse_stable_id(text: str) -> StableId:

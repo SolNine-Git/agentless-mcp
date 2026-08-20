@@ -1,6 +1,6 @@
 [project]
 name = "agentless-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
 readme = "README.md"
 authors = [
@@ -89,9 +89,8 @@ dev = [
 # Repo-relative on purpose: ruff aborts the whole run (exit 2) when an
 # extended file is missing, so pointing at the vault copy would break
 # `ruff check` on every checkout but this machine. The shared policy is
-# VENDORED into config/ruff-base.toml; refresh it from
-# ~/Documents/Obsidian/Personal/claude-backup/repo-setup/configs/ruff-base.toml
-# rather than editing it here.
+# vendored into config/ruff-base.toml from the shared policy source; refresh
+# that copy through the policy-maintenance workflow rather than editing it here.
 extend = "config/ruff-base.toml"
 target-version = "py310"
 line-length = 100

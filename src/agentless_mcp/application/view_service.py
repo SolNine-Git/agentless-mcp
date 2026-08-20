@@ -148,11 +148,17 @@ class ViewService:
         self,
         ctx: RepoContext,
         *,
+        path: str | None = None,
         depth: int = DEFAULT_RENDER_DEPTH,
         max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> TreeView:
         """Render the gitignore-aware directory tree."""
-        files = walk_repo(ctx.root)
+        selected = ctx.root if path is None else contained_path(ctx.root, path)
+        if not selected.is_dir():
+            relative = selected.relative_to(ctx.root).as_posix()
+            message = f"not a directory in this repository: {relative}"
+            raise RepoResolutionError(message)
+        files = walk_repo(selected)
         return TreeView(
             text=render_tree(files, depth=depth, max_entries=max_entries),
             file_count=len(files),

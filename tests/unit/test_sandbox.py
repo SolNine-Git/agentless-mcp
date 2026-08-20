@@ -334,6 +334,28 @@ class TestRunCommand:
 
         assert result.stdout_tail.strip() == str(workspace.resolve())
 
+    def test_parent_environment_is_absent_unless_explicitly_passed_through(
+        self, workspace, python_cmd, monkeypatch
+    ):
+        marker = "AGENTLESS_MCP_TEST_SECRET"
+        monkeypatch.setenv(marker, "contained-value")
+        self.write(
+            workspace,
+            "environment.py",
+            f"import os\nprint(os.environ.get({marker!r}, 'absent'))\n",
+        )
+
+        scrubbed = sandbox.run_command(workspace, python_cmd("environment.py"), timeout=30)
+        passed = sandbox.run_command(
+            workspace,
+            python_cmd("environment.py"),
+            timeout=30,
+            passthrough_env=(marker,),
+        )
+
+        assert scrubbed.stdout_tail.strip() == "absent"
+        assert passed.stdout_tail.strip() == "contained-value"
+
     def test_a_hang_is_a_timeout_not_a_pass(self, workspace, python_cmd):
         marker = workspace / "pgid.txt"
         self.write(workspace, "hang.py", HANG_SCRIPT)

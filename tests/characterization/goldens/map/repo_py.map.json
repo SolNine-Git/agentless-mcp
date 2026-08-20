@@ -16,7 +16,7 @@
   "files": [
     {
       "path": "pricing.py",
-      "rank": 0.47645,
+      "rank": 0.378066,
       "symbols": [
         {
           "line": 6,
@@ -95,7 +95,7 @@
     },
     {
       "path": "inventory.py",
-      "rank": 0.47355,
+      "rank": 0.362193,
       "symbols": [
         {
           "line": 12,
@@ -180,7 +180,7 @@
     },
     {
       "path": "reports.py",
-      "rank": 0.05,
+      "rank": 0.25974,
       "symbols": [
         {
           "line": 8,

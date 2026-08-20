@@ -617,7 +617,7 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
                     candidates=candidates_dir({"01-plus.txt": PLUS}),
                     test_cmd=python_cmd("check_regression.py"),
                     timeout=60,
-                    test_cmd_from_config=True,
+                    test_cmd_from_repo=True,
                 ),
             )
 
@@ -630,8 +630,8 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
                 candidates=candidates_dir({"01-plus.txt": PLUS}),
                 test_cmd=python_cmd("check_regression.py"),
                 timeout=60,
-                test_cmd_from_config=True,
-                allow_config_test_cmd=True,
+                test_cmd_from_repo=True,
+                allow_repo_test_cmd=True,
             ),
         )
 

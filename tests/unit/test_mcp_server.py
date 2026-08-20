@@ -10,6 +10,7 @@ wrapper around them.
 import asyncio
 import json
 import re
+import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
@@ -388,6 +389,37 @@ class TestRoundTrip:
 
         assert "cache: bypassed (--no-cache)" in text
 
+    def test_cached_calls_release_connections_after_success_and_failure(
+        self,
+        services,
+        one_repo,
+        extractor,
+        monkeypatch,
+    ):
+        cache.build_index(one_repo, extractor)
+        closed = []
+        close = cache.CachedSource.close
+
+        def record(source):
+            closed.append(source)
+            close(source)
+
+        monkeypatch.setattr(cache.CachedSource, "close", record)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        self.call(server, "repo_map", {"repo_root": str(one_repo)})
+        with pytest.raises(ToolError, match="requires non-empty lines"):
+            self.call(
+                server,
+                "read_slice",
+                {"repo_root": str(one_repo), "path": "core.py"},
+            )
+
+        assert len(closed) == 2
+        for source in closed:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+                source.status()
+
     def test_capabilities_reports_the_cache_path_and_row_counts(
         self, services, one_repo, extractor
     ):
@@ -498,6 +530,15 @@ class TestRoundTrip:
                 tool.name
             )
 
+    def test_every_public_parameter_has_a_schema_description(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+
+        for tool in tools:
+            for name, schema in tool.inputSchema.get("properties", {}).items():
+                description = described_as(schema)
+                assert description is not None, f"{tool.name}.{name}"
+                assert description.strip(), f"{tool.name}.{name}"
+
 
 NUMERIC_TYPES = {"integer", "number"}
 
@@ -517,6 +558,14 @@ def numeric_items(schema):
         if isinstance(items, dict):
             yield from numeric_leaves(items)
             yield from numeric_items(items)
+
+
+def enum_values(schema):
+    """Collect enum values through nullable schema branches."""
+    values = set(schema.get("enum", ()))
+    for member in schema.get("anyOf", ()):
+        values.update(enum_values(member))
+    return values
 
 
 class TestWireBounds:
@@ -544,6 +593,24 @@ class TestWireBounds:
                     assert "maximum" in leaf or "exclusiveMaximum" in leaf, where
                 for leaf in numeric_items(schema):
                     assert "minimum" in leaf or "exclusiveMinimum" in leaf, where
+
+    def test_closed_vocabularies_are_published_as_enums(self, services, one_repo):
+        listed = listed_tools(build_server(ToolHandlers([one_repo], services)))
+        tools = {tool.name: tool for tool in listed}
+
+        assert enum_values(tools["repo_map"].inputSchema["properties"]["granularity"]) == {
+            "file",
+            "function",
+        }
+        assert enum_values(tools["find_symbol"].inputSchema["properties"]["kind"]) == {
+            kind.value for kind in server_module.SymbolKind
+        }
+        assert enum_values(tools["analyze_structure"].inputSchema["properties"]["operation"]) == {
+            "path",
+            "cycles",
+            "communities",
+            "diagram",
+        }
 
     @pytest.mark.parametrize(
         ("tool", "arguments"),
@@ -603,6 +670,32 @@ class TestWireBounds:
         assert "1|def quote(sku):" in text
         assert "class PriceBook" not in text
 
+    def test_a_slice_requires_ranges_or_explicit_whole_file(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        arguments = {"repo_root": str(one_repo), "path": "core.py"}
+
+        with pytest.raises(ToolError, match="requires non-empty lines"):
+            self.call(server, "read_slice", arguments)
+
+        text = self.call(server, "read_slice", {**arguments, "whole_file": True}).content[0].text
+        assert "1|def quote(sku):" in text
+        assert "class PriceBook" in text
+
+    def test_a_slice_refuses_ranges_together_with_whole_file(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+
+        with pytest.raises(ToolError, match="not both"):
+            self.call(
+                server,
+                "read_slice",
+                {
+                    "repo_root": str(one_repo),
+                    "path": "core.py",
+                    "lines": [[1, 2]],
+                    "whole_file": True,
+                },
+            )
+
     @pytest.mark.parametrize("value", [float("inf"), float("nan"), 0.0, -1.0, 1e9])
     def test_the_resolution_bound_rejects_non_finite_and_out_of_range_values(self, value):
         """A NaN resolution reached JSON output as a bare `NaN` token."""
@@ -653,6 +746,35 @@ class TestProjectConfigOverMcp:
 
         assert f"# config: {one_repo / projectconfig.CONFIG_FILENAME}" in text
         assert "config warning: unknown key 'nonsense'" in text
+
+    def test_list_dir_can_render_one_repository_subtree(self, services, one_repo):
+        (one_repo / "src").mkdir()
+        (one_repo / "src" / "inside.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (one_repo / "outside.py").write_text("VALUE = 2\n", encoding="utf-8")
+        server = build_server(ToolHandlers([one_repo], services))
+
+        text = (
+            self.call(
+                server,
+                "list_dir",
+                {"repo_root": str(one_repo), "path": "src"},
+            )
+            .content[0]
+            .text
+        )
+
+        assert "inside.py" in text
+        assert "outside.py" not in text
+
+    def test_list_dir_subtree_must_remain_under_the_repository(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+
+        with pytest.raises(ToolError, match="outside the root"):
+            self.call(
+                server,
+                "list_dir",
+                {"repo_root": str(one_repo), "path": ".."},
+            )
 
     def test_a_configured_test_command_reaches_no_tool(self, services, one_repo):
         # The key parses, and nothing on this surface can act on it: there is
@@ -730,7 +852,7 @@ class TestAnalyzeStructure:
             self.answer(services, one_repo, {"operation": "graph"})
 
         message = str(raised.value)
-        assert "no operation named 'graph'" in message
+        assert "Input should be" in message
         for operation in ("path", "cycles", "communities", "diagram"):
             assert operation in message
 

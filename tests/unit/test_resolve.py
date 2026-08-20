@@ -145,6 +145,14 @@ def use_alias(value):
     return m.wrapped(value)
 """
 
+ALIASED_MODULE = """\
+import core as c
+
+
+def use_alias(value):
+    return c.only_once(value)
+"""
+
 SUBMODULE_FILES = {
     "pkg/__init__.py": PKG_INIT,
     "pkg/mod.py": PKG_MOD,
@@ -257,6 +265,29 @@ class TestTiers:
         assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
         assert edges[0].target.node == "py:core.py::only_once"
 
+    def test_an_aliased_whole_module_import_resolves_imported(self, tmp_path, extractor):
+        _, graph = resolved(
+            write(tmp_path, {"core.py": CORE, "aliased_module.py": ALIASED_MODULE}),
+            extractor,
+        )
+
+        edges = edges_from(graph, "py:aliased_module.py::use_alias", "only_once")
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+    def test_nested_attribute_name_does_not_resolve_as_a_bare_symbol(self, tmp_path, extractor):
+        _, graph = resolved(
+            write(
+                tmp_path,
+                {
+                    "runtime.py": 'import sys\n\n\ndef emit():\n    sys.stderr.write("x")\n',
+                    "unrelated.py": "def write(value):\n    return value\n",
+                },
+            ),
+            extractor,
+        )
+
+        assert edges_from(graph, "py:runtime.py::emit", "write") == []
+
     def test_the_repository_s_only_definition_resolves_unique(self, repo):
         _, graph = repo
         edges = edges_from(graph, "py:stranger.py::stray", "only_once")
@@ -338,11 +369,10 @@ class TestRelations:
         assert ("user.py", "core.py") in pairs
         assert ("derived.py", "bases.py") in pairs
 
-    def test_a_module_level_reference_is_attributed_to_its_file(self, repo):
+    def test_an_import_declaration_is_not_a_symbol_reference(self, repo):
         _, graph = repo
         edges = edges_from(graph, "user.py", "helper")
-        assert edges
-        assert all(not edge.source.is_symbol for edge in edges)
+        assert edges == []
 
     @pytest.mark.parametrize("text", ["Generic[T]", " enum.Enum ", "Base"])
     def test_base_expressions_reduce_to_a_lookup_name(self, text):
@@ -474,11 +504,32 @@ class TestPaths:
         _, graph = repo
         excluded = resolve.shortest_path(graph, "py:gamma.py::ask", "py:alpha.py::shared")
         included = resolve.shortest_path(
-            graph, "py:gamma.py::ask", "py:alpha.py::shared", include_ambiguous=True
+            graph,
+            "py:gamma.py::ask",
+            "py:alpha.py::shared",
+            edge_policy=resolve.PathEdgePolicy(include_ambiguous=True),
         )
         assert not excluded.found
         assert included.found
         assert [hop.arrival.node for hop in included.hops] == ["py:alpha.py::shared"]
+
+    def test_unique_edges_are_excluded_by_default(self, repo):
+        _, graph = repo
+        excluded = resolve.shortest_path(
+            graph,
+            "py:stranger.py::stray",
+            "py:core.py::only_once",
+        )
+        included = resolve.shortest_path(
+            graph,
+            "py:stranger.py::stray",
+            "py:core.py::only_once",
+            edge_policy=resolve.PathEdgePolicy(include_unique=True),
+        )
+
+        assert not excluded.found
+        assert included.found
+        assert included.hops[0].edge.tier is resolve.Tier.UNIQUE
 
     def test_a_path_is_walked_in_both_directions(self, repo):
         _, graph = repo

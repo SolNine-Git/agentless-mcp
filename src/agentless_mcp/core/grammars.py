@@ -58,9 +58,16 @@ TIER1_LANGUAGES: tuple[str, ...] = (
 # how much evidence stands behind the node-type table, and it is what lets a
 # broken tier-2 grammar degrade without failing a warmup that tier 1 passed.
 TIER2_LANGUAGES: tuple[str, ...] = (
+    "csharp",
+    "hcl",
+    "json",
     "kotlin",
     "php",
+    "scala",
+    "sql",
     "swift",
+    "toml",
+    "yaml",
 )
 
 ALL_LANGUAGES: tuple[str, ...] = tuple(sorted((*TIER1_LANGUAGES, *TIER2_LANGUAGES)))
@@ -78,18 +85,25 @@ _PROBE_SAMPLES: dict[str, str] = {
     "bash": "x=1\n",
     "c": "int main(void) { return 0; }\n",
     "cpp": "int main(void) { return 0; }\n",
+    "csharp": "class Probe {}\n",
     "go": "package main\n",
+    "hcl": 'resource "null_resource" "probe" {}\n',
     "java": "class A {}\n",
     "javascript": "const x = 1;\n",
+    "json": '{"x": 1}\n',
     "lua": "local x = 1\n",
     "python": "x = 1\n",
     "ruby": "x = 1\n",
+    "scala": "object Probe {}\n",
     "rust": "fn main() {}\n",
     "tsx": "const x = 1;\n",
     "typescript": "const x: number = 1;\n",
     "kotlin": "val x = 1\n",
     "php": "<?php\n$x = 1;\n",
+    "sql": "CREATE TABLE probe (id INTEGER);\n",
     "swift": "let x = 1\n",
+    "toml": "x = 1\n",
+    "yaml": "x: 1\n",
 }
 
 

@@ -1083,7 +1083,7 @@ class TestDanglingCallers:
         assert len(findings) == 1
         assert findings[0].severity is Severity.WARNING
         assert "helper" in findings[0].message
-        assert "caller.py:1" in findings[0].evidence
+        assert "caller.py:5" in findings[0].evidence
 
     def test_a_local_of_the_same_name_is_not_a_broken_caller(
         self, facts, source, tmp_path, extractor
@@ -1092,7 +1092,7 @@ class TestDanglingCallers:
 
         This check exists to say a removal is unsafe, so a false positive is
         the expensive direction: it tells the author to abandon a rename that
-        breaks nothing. ``Ref.locally_bound`` is what distinguishes the two,
+        breaks nothing. ``Ref.role`` is what distinguishes the two,
         and the site collector has to read it.
         """
         root = tmp_path / "locals"
@@ -1139,7 +1139,7 @@ class TestDanglingCallers:
         assert checks(report, CHECK_DANGLING_CALLERS) == []
 
     def test_the_site_listing_is_capped_and_the_count_stays_exact(self, facts, source, repo):
-        for index in range(4):
+        for index in range(8):
             (repo / f"user{index}.py").write_text(
                 "from helpers import helper\n\n\ndef run():\n    return helper()\n",
                 encoding="utf-8",
@@ -1158,9 +1158,9 @@ class TestDanglingCallers:
         )
 
         finding = checks(report, CHECK_DANGLING_CALLERS)[0]
-        assert "10 reference(s)" in finding.message
+        assert "9 reference(s)" in finding.message
         assert finding.evidence.count(":") == MAX_CALLER_SITES
-        assert "and 5 more" in finding.evidence
+        assert "and 4 more" in finding.evidence
 
     def test_a_file_with_no_symbol_table_is_reported_not_checked(self, facts, source):
         report = lint_patch(

@@ -16,7 +16,7 @@
   "files": [
     {
       "path": "types.ts",
-      "rank": 0.398691,
+      "rank": 0.447278,
       "symbols": [
         {
           "line": 5,
@@ -59,7 +59,7 @@
     },
     {
       "path": "pricing.ts",
-      "rank": 0.259156,
+      "rank": 0.247611,
       "symbols": [
         {
           "line": 22,
@@ -114,7 +114,7 @@
     },
     {
       "path": "inventory.ts",
-      "rank": 0.19216,
+      "rank": 0.172564,
       "symbols": [
         {
           "line": 19,
@@ -175,7 +175,7 @@
     },
     {
       "path": "reports.ts",
-      "rank": 0.149993,
+      "rank": 0.132547,
       "symbols": [
         {
           "line": 12,

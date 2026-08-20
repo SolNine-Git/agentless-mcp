@@ -15,6 +15,12 @@ rather than claiming a clean tree nobody checked.
 ``--no-optional-locks`` is passed on every invocation: reading the state of a
 repository must not take a lock or refresh an index in a tree we are only ever
 allowed to read.
+
+Repository-local configuration is untrusted input. Every git invocation in
+the package therefore carries the same fixed configuration prefix: file
+system monitors and external diff drivers are disabled, and pager output is
+forced through ``cat``. The prefix is public within the core so the walker and
+write-side sandbox cannot drift from the receipt code.
 """
 
 import subprocess
@@ -30,6 +36,21 @@ GIT_TIMEOUT_SECONDS = 5.0
 # Short SHAs are for humans reading a receipt; eight hex digits stay unique
 # well past the size of repository this tool is aimed at.
 SHORT_SHA_LENGTH = 8
+
+# Keep this prefix identical on every git argv in the package. In particular,
+# ``diff.external`` and ``core.fsmonitor`` can name executables in repository
+# configuration, while a pager can turn a non-interactive read into an
+# unbounded process. Values are fixed here; repository content never reaches
+# this tuple.
+HARDENING_PREFIX: tuple[str, ...] = (
+    "--no-optional-locks",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.pager=cat",
+    "-c",
+    "diff.external=",
+)
 
 
 @dataclass(frozen=True)
@@ -121,7 +142,7 @@ def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
 def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
     """Run one bounded git command; every failure becomes a note, never a raise."""
     subcommand = arguments[0] if arguments else "git"
-    command = ["git", "--no-optional-locks", "-C", str(cwd), *arguments]
+    command = ["git", *HARDENING_PREFIX, "-C", str(cwd), *arguments]
     try:
         # Fixed argv, no shell. `cwd` is an already-resolved path and the rest
         # of the argv is a literal, so nothing from the analysed repository

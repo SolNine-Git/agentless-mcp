@@ -1,4 +1,4 @@
-"""The structural views: explain, path, cycles, communities, diagram.
+"""The structural views: explain, path, cycles, communities, diagram, HTML.
 
 The graph is assembled **in memory, per call**, from the same repository scan
 every other view is built from. Nothing about it is stored: there is no graph
@@ -18,9 +18,9 @@ symbol-level edge set:
 ``path``
     How two symbols are connected at all. Edges are walked as undirected --
     "how do these relate" is not a question about call direction -- and each
-    hop is rendered with the direction the edge really runs. Ambiguous edges
-    are excluded by default: a path built out of guessed bindings reads like a
-    finding and is not one.
+    hop is rendered with the direction the edge really runs. Unique and
+    ambiguous name-only edges are excluded by default: a path built out of
+    retrieval evidence reads like an architecture finding and is not one.
 ``cycles``
     Module-level import cycles, by strongly connected component. The one
     question in this module that is about files rather than symbols, because
@@ -39,6 +39,10 @@ neither needs a name bound to a declaration:
     edges dashed so the picture cannot contradict what ``cycles`` just said.
     Returned on demand and never written anywhere: a diagram is presentation
     for a human, and the facts stay in the flattened views an agent reads.
+``html``
+    A larger self-contained view of the same bounded graph with clickable
+    nodes, community colours, and path search. The service only returns the
+    document; the CLI decides between stdout and the XDG cache.
 
 Every one of them is bounded and says what it left out.
 """
@@ -50,8 +54,8 @@ from dataclasses import dataclass, replace
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import symbol_card
-from agentless_mcp.core import communities, graph, mermaid, refs, resolve
+from agentless_mcp.application.symbol_service import rationale_nodes, symbol_card
+from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
 from agentless_mcp.util.errors import AtlasError
@@ -64,6 +68,18 @@ DEFAULT_COMMUNITY_LIMIT = 20
 # usually a directory; past a dozen files the reader wants the label and the
 # count, and `list_dir` is the view that enumerates.
 DEFAULT_MEMBER_LIMIT = 12
+
+
+@dataclass(frozen=True)
+class PathOptions:
+    """Bounds and evidence tiers accepted by a path query."""
+
+    include_unique: bool = False
+    include_ambiguous: bool = False
+    max_visited: int = resolve.DEFAULT_MAX_VISITED
+
+
+DEFAULT_PATH_OPTIONS = PathOptions()
 
 # Read as "the source <verb> the target", and its passive for a hop walked
 # backwards. Rendering a reverse hop with the active verb would invert the
@@ -143,6 +159,7 @@ class GraphService:
             card=symbol_card(chosen.symbol),
             message="",
             alternatives=tuple(symbol_stable_id(entry.symbol) for entry in ordered[1:]),
+            rationales=rationale_nodes(chosen.symbol),
             fan_out=_tier_groups(resolved.graph.outgoing().get(node, ()), limit, outgoing=True),
             fan_in=_tier_groups(resolved.graph.incoming().get(node, ()), limit, outgoing=False),
             imports_out=_imports(resolved.graph, chosen.path, limit, declared=True),
@@ -154,9 +171,7 @@ class GraphService:
         ctx: RepoContext,
         source: str,
         target: str,
-        *,
-        include_ambiguous: bool = False,
-        max_visited: int = resolve.DEFAULT_MAX_VISITED,
+        options: PathOptions = DEFAULT_PATH_OPTIONS,
     ) -> render.PathTrace:
         """Find the fewest-hop connection between two symbols or files."""
         resolved = self._resolve(ctx)
@@ -164,17 +179,30 @@ class GraphService:
         finish = _endpoint(resolved, target)
         if start.message or finish.message:
             return _unresolved_path(
-                source, target, start, finish, include_ambiguous=include_ambiguous
+                source,
+                target,
+                start,
+                finish,
+                options,
             )
 
         found = resolve.shortest_path(
             resolved.graph,
             start.node,
             finish.node,
-            include_ambiguous=include_ambiguous,
-            max_visited=max_visited,
+            edge_policy=resolve.PathEdgePolicy(
+                include_unique=options.include_unique,
+                include_ambiguous=options.include_ambiguous,
+            ),
+            max_visited=options.max_visited,
         )
-        return _trace(start, finish, found, include_ambiguous=include_ambiguous)
+        return _trace(
+            start,
+            finish,
+            found,
+            include_unique=options.include_unique,
+            include_ambiguous=options.include_ambiguous,
+        )
 
     def cycles(self, ctx: RepoContext, *, limit: int = DEFAULT_CYCLE_LIMIT) -> render.CycleReport:
         """Report every module-level import cycle, in a deterministic order."""
@@ -261,6 +289,28 @@ class GraphService:
             grouped=partition is not None,
             focus=options.focus or "",
             message="",
+        )
+
+    def html(
+        self,
+        ctx: RepoContext,
+        *,
+        max_nodes: int = htmlgraph.DEFAULT_MAX_NODES,
+        max_edges: int = htmlgraph.DEFAULT_MAX_EDGES,
+        resolution: float | None = None,
+    ) -> htmlgraph.HtmlExport:
+        """Render an interactive module graph without persisting graph state."""
+        ranked = self._ranked(ctx)
+        partition = communities.detect_communities(
+            ranked.graph,
+            resolution=_resolution(resolution),
+        )
+        return htmlgraph.render_html(
+            ranked.graph,
+            ranked.rank,
+            partition,
+            imports=ranked.imports,
+            options=htmlgraph.HtmlOptions(max_nodes=max_nodes, max_edges=max_edges),
         )
 
     def _resolve(self, ctx: RepoContext) -> _Resolved:
@@ -388,6 +438,7 @@ def _missing(target: str) -> render.Explanation:
         card=None,
         message=f"no symbol matches {target}",
         alternatives=(),
+        rationales=(),
         fan_out=(),
         fan_in=(),
         imports_out=render.ImportListing(),
@@ -497,6 +548,7 @@ def _trace(
     finish: _Located,
     found: resolve.PathResult,
     *,
+    include_unique: bool,
     include_ambiguous: bool,
 ) -> render.PathTrace:
     """Turn a core path result into the view the adapters render."""
@@ -520,15 +572,25 @@ def _trace(
         target_label=finish.label,
         hops=hops,
         found=found.found,
-        message=_path_message(found, include_ambiguous=include_ambiguous),
+        message=_path_message(
+            found,
+            include_unique=include_unique,
+            include_ambiguous=include_ambiguous,
+        ),
         visited=found.visited,
         exhausted=found.exhausted,
+        include_unique=include_unique,
         include_ambiguous=include_ambiguous,
         endpoints_resolved=True,
     )
 
 
-def _path_message(found: resolve.PathResult, *, include_ambiguous: bool) -> str:
+def _path_message(
+    found: resolve.PathResult,
+    *,
+    include_unique: bool,
+    include_ambiguous: bool,
+) -> str:
     """Say what happened when a path search did not answer with hops.
 
     "Nothing connects these" and "I stopped looking" are different facts and
@@ -541,11 +603,12 @@ def _path_message(found: resolve.PathResult, *, include_ambiguous: bool) -> str:
             f"no path from {found.source} to {found.target} within the search bound "
             f"({found.visited} nodes visited); raise the bound or pick a nearer endpoint"
         )
-    hint = (
-        ""
-        if include_ambiguous
-        else "; name-only-ambiguous edges were excluded, retry including them to widen the search"
-    )
+    excluded: list[str] = []
+    if not include_unique:
+        excluded.append("unique")
+    if not include_ambiguous:
+        excluded.append("name-only-ambiguous")
+    hint = f"; {' and '.join(excluded)} edges were excluded" if excluded else ""
     return f"no path from {found.source} to {found.target} over resolved edges{hint}"
 
 
@@ -554,8 +617,7 @@ def _unresolved_path(
     target: str,
     start: _Located,
     finish: _Located,
-    *,
-    include_ambiguous: bool,
+    options: PathOptions,
 ) -> render.PathTrace:
     """Build the answer for a path whose endpoints could not be resolved."""
     reasons = [entry.message for entry in (start, finish) if entry.message]
@@ -569,7 +631,8 @@ def _unresolved_path(
         message="; ".join(reasons),
         visited=0,
         exhausted=False,
-        include_ambiguous=include_ambiguous,
+        include_unique=options.include_unique,
+        include_ambiguous=options.include_ambiguous,
         endpoints_resolved=False,
     )
 

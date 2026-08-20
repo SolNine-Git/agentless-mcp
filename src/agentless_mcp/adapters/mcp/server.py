@@ -32,11 +32,12 @@ happen in ``warmup``, never inside a tool call.
 import argparse
 import asyncio
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from importlib import metadata
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
@@ -50,6 +51,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
     GraphService,
+    PathOptions,
 )
 from agentless_mcp.application.map_service import MapRequest, MapService
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo, resolved_allowlist
@@ -65,7 +67,7 @@ from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
-from agentless_mcp.core.symbols import stable_id
+from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from agentless_mcp.util import fslimits
@@ -93,6 +95,46 @@ OPERATION_DIAGRAM = "diagram"
 # the tool descriptions; pydantic carries it into the published schema, which
 # is the only documentation an arbitrary client is guaranteed to read.
 RepoRoot = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["repo_root"])]
+MapFocus = Annotated[list[str] | None, Field(description=PARAMETER_DESCRIPTIONS["map_focus"])]
+Granularity = Annotated[
+    Literal["function", "file"] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["map_granularity"]),
+]
+NoCache = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["no_cache"])]
+TreePath = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["tree_path"])]
+OverviewPaths = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["overview_paths"])]
+Docstrings = Annotated[bool | None, Field(description=PARAMETER_DESCRIPTIONS["docstrings"])]
+StableIds = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["stable_ids"])]
+FilePath = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["file_path"])]
+WholeFile = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["whole_file"])]
+FindName = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["find_name"])]
+SymbolKindParameter = Annotated[
+    SymbolKind | None,
+    Field(description=PARAMETER_DESCRIPTIONS["symbol_kind"]),
+]
+ReferenceTarget = Annotated[
+    str,
+    Field(description=PARAMETER_DESCRIPTIONS["reference_target"]),
+]
+SharedCallers = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["shared_callers"])]
+ExplainTarget = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["explain_target"])]
+StructureOperation = Annotated[
+    Literal["path", "cycles", "communities", "diagram"],
+    Field(description=PARAMETER_DESCRIPTIONS["structure_operation"]),
+]
+PathSource = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["path_source"])]
+PathTarget = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["path_target"])]
+IncludeUnique = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["include_unique"])]
+IncludeAmbiguous = Annotated[
+    bool,
+    Field(description=PARAMETER_DESCRIPTIONS["include_ambiguous"]),
+]
+DiagramFocus = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["diagram_focus"])]
+GroupByCommunities = Annotated[
+    bool,
+    Field(description=PARAMETER_DESCRIPTIONS["group_by_communities"]),
+]
+Locations = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["locations"])]
 
 # Wire bounds. Every number a tool takes is bounded in the published schema,
 # because that schema is the only refusal a model can read before it makes
@@ -104,22 +146,91 @@ MAX_CONTEXT_LINES = 200
 MAX_DIAGRAM_NODES = 500
 MAX_RESOLUTION = 100.0
 
-Limit = Annotated[int, Field(ge=1, le=MAX_LIMIT)]
-OptionalLimit = Annotated[int, Field(ge=1, le=MAX_LIMIT)] | None
-ContextLines = Annotated[int, Field(ge=0, le=MAX_CONTEXT_LINES)]
-Depth = Annotated[int, Field(ge=1, le=fslimits.DEFAULT_MAX_DEPTH)]
-MaxEntries = Annotated[int, Field(ge=1, le=fslimits.DEFAULT_MAX_FILES)]
-Budget = Annotated[int, Field(ge=projectconfig.MIN_BUDGET, le=projectconfig.MAX_BUDGET)] | None
-MaxFiles = (
-    Annotated[int, Field(ge=projectconfig.MIN_MAX_FILES, le=projectconfig.MAX_MAX_FILES)] | None
-)
-MaxNodes = Annotated[int, Field(ge=1, le=MAX_DIAGRAM_NODES)]
-Resolution = Annotated[float, Field(gt=0, le=MAX_RESOLUTION)] | None
+ExpandLimit = Annotated[
+    int,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["expand_limit"]),
+]
+FindLimit = Annotated[
+    int,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["find_limit"]),
+]
+ReferenceLimit = Annotated[
+    int,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["reference_limit"]),
+]
+ExplainLimit = Annotated[
+    int,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["explain_limit"]),
+]
+StructureLimit = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["structure_limit"]),
+]
+ContextLines = Annotated[
+    int,
+    Field(
+        ge=0,
+        le=MAX_CONTEXT_LINES,
+        description=PARAMETER_DESCRIPTIONS["context_lines"],
+    ),
+]
+Depth = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=fslimits.DEFAULT_MAX_DEPTH,
+        description=PARAMETER_DESCRIPTIONS["tree_depth"],
+    ),
+]
+MaxEntries = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=fslimits.DEFAULT_MAX_FILES,
+        description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
+    ),
+]
+Budget = Annotated[
+    int | None,
+    Field(
+        ge=projectconfig.MIN_BUDGET,
+        le=projectconfig.MAX_BUDGET,
+        description=PARAMETER_DESCRIPTIONS["map_budget"],
+    ),
+]
+MaxFiles = Annotated[
+    int | None,
+    Field(
+        ge=projectconfig.MIN_MAX_FILES,
+        le=projectconfig.MAX_MAX_FILES,
+        description=PARAMETER_DESCRIPTIONS["map_max_files"],
+    ),
+]
+MaxNodes = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=MAX_DIAGRAM_NODES,
+        description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"],
+    ),
+]
+Resolution = Annotated[
+    float | None,
+    Field(
+        gt=0,
+        le=MAX_RESOLUTION,
+        description=PARAMETER_DESCRIPTIONS["community_resolution"],
+    ),
+]
 
 # One slice is [start, end] with 1-based lines, and the schema says so: a
 # three-element or empty range that reached the handler would be dropped, and
 # a read_slice with every range dropped renders the whole file.
 LineRange = Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=2, max_length=2)]
+LineRanges = Annotated[
+    list[LineRange] | None,
+    Field(min_length=1, description=PARAMETER_DESCRIPTIONS["slice_lines"]),
+]
 
 
 def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Path | None:
@@ -167,6 +278,7 @@ class StructureRequest:
     operation: str
     source: str = ""
     target: str = ""
+    include_unique: bool = False
     include_ambiguous: bool = False
     limit: int | None = None
     resolution: float | None = None
@@ -278,9 +390,20 @@ class ToolHandlers:
             ),
         )
 
-    def list_dir(self, ctx: RepoContext, depth: int, max_entries: int) -> str:
+    def list_dir(
+        self,
+        ctx: RepoContext,
+        path: str | None,
+        depth: int,
+        max_entries: int,
+    ) -> str:
         """Render the gitignore-aware directory tree."""
-        view = self._services.views.tree(ctx, depth=depth, max_entries=max_entries)
+        view = self._services.views.tree(
+            ctx,
+            path=path,
+            depth=depth,
+            max_entries=max_entries,
+        )
         return self._wrap(ctx, view.text)
 
     def get_symbols_overview(
@@ -434,7 +557,13 @@ def _operation_path(graphs: GraphService, ctx: RepoContext, request: StructureRe
         message = MESSAGES.path_needs_endpoints
         raise AtlasError(message)
     trace = graphs.path(
-        ctx, request.source, request.target, include_ambiguous=request.include_ambiguous
+        ctx,
+        request.source,
+        request.target,
+        PathOptions(
+            include_unique=request.include_unique,
+            include_ambiguous=request.include_ambiguous,
+        ),
     )
     return render.render_path(trace)
 
@@ -572,6 +701,20 @@ def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
     return intervals
 
 
+def _slice_intervals(
+    ranges: Sequence[Sequence[int]] | None,
+    whole_file: bool,
+) -> list[tuple[int, int]]:
+    """Parse an explicit bounded slice or an explicit whole-file request."""
+    if ranges is not None and whole_file:
+        message = "read_slice accepts lines or whole_file=true, not both"
+        raise AtlasError(message)
+    if ranges is None and not whole_file:
+        message = "read_slice requires non-empty lines or explicit whole_file=true"
+        raise AtlasError(message)
+    return [] if ranges is None else _intervals(ranges)
+
+
 def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     """Register every read tool on a FastMCP server and return it.
 
@@ -582,46 +725,53 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     """
     mcp: FastMCP[None] = FastMCP(SERVER_NAME)
 
+    @asynccontextmanager
     async def context_for(
         context: Context,
         repo_root: str | None,
         *,
         no_cache: bool = False,
-    ) -> RepoContext:
+    ) -> AsyncIterator[RepoContext]:
         roots = await effective_client_roots(context)
-        return handlers.resolve(repo_root, roots, no_cache=no_cache)
+        ctx = handlers.resolve(repo_root, roots, no_cache=no_cache)
+        try:
+            yield ctx
+        finally:
+            ctx.close()
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["repo_map"], annotations=read_only("Repository map"))
     async def repo_map(
         context: Context,
         repo_root: RepoRoot = None,
-        focus: list[str] | None = None,
+        focus: MapFocus = None,
         budget: Budget = None,
         max_files: MaxFiles = None,
-        granularity: str | None = None,
-        no_cache: bool = False,
+        granularity: Granularity = None,
+        no_cache: NoCache = False,
     ) -> str:
         """Rank the repository's files and render the symbols that fit a budget."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.repo_map(
-            ctx,
-            MapRequest(
-                focus=tuple(focus or ()),
-                budget=budget,
-                max_files=max_files,
-                granularity=granularity,
-            ),
-        )
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.repo_map(
+                ctx,
+                MapRequest(
+                    focus=tuple(focus or ()),
+                    budget=budget,
+                    max_files=max_files,
+                    granularity=granularity,
+                ),
+            )
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["list_dir"], annotations=read_only("Directory tree"))
     async def list_dir(
         context: Context,
         repo_root: RepoRoot = None,
+        path: TreePath = None,
         depth: Depth = DEFAULT_RENDER_DEPTH,
         max_entries: MaxEntries = DEFAULT_MAX_ENTRIES,
     ) -> str:
         """List the repository's files, honouring gitignore."""
-        return handlers.list_dir(await context_for(context, repo_root), depth, max_entries)
+        async with context_for(context, repo_root) as ctx:
+            return handlers.list_dir(ctx, path, depth, max_entries)
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["get_symbols_overview"],
@@ -629,53 +779,59 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     )
     async def get_symbols_overview(
         context: Context,
-        paths: list[str],
+        paths: OverviewPaths,
         repo_root: RepoRoot = None,
-        docstrings: bool | None = None,
-        no_cache: bool = False,
+        docstrings: Docstrings = None,
+        no_cache: NoCache = False,
     ) -> str:
         """Render the named files as signatures with their bodies elided."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["expand_symbols"], annotations=read_only("Expand symbols")
     )
     async def expand_symbols(
         context: Context,
-        stable_ids: list[str],
+        stable_ids: StableIds,
         repo_root: RepoRoot = None,
-        limit: Limit = DEFAULT_EXPAND_LIMIT,
-        no_cache: bool = False,
+        limit: ExpandLimit = DEFAULT_EXPAND_LIMIT,
+        no_cache: NoCache = False,
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.expand_symbols(ctx, stable_ids, limit)
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.expand_symbols(ctx, stable_ids, limit)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["read_slice"], annotations=read_only("Read slice"))
     async def read_slice(
         context: Context,
-        path: str,
+        path: FilePath,
         repo_root: RepoRoot = None,
-        lines: list[LineRange] | None = None,
+        lines: LineRanges = None,
         context_lines: ContextLines = DEFAULT_CONTEXT_LINES,
+        whole_file: WholeFile = False,
     ) -> str:
         """Return numbered lines for the given 1-based inclusive ranges."""
-        ctx = await context_for(context, repo_root)
-        return handlers.read_slice(ctx, path, _intervals(lines or []), context_lines)
+        async with context_for(context, repo_root) as ctx:
+            return handlers.read_slice(
+                ctx,
+                path,
+                _slice_intervals(lines, whole_file),
+                context_lines,
+            )
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["find_symbol"], annotations=read_only("Find symbol"))
     async def find_symbol(
         context: Context,
-        name: str,
+        name: FindName,
         repo_root: RepoRoot = None,
-        kind: str | None = None,
-        limit: Limit = DEFAULT_FIND_LIMIT,
-        no_cache: bool = False,
+        kind: SymbolKindParameter = None,
+        limit: FindLimit = DEFAULT_FIND_LIMIT,
+        no_cache: NoCache = False,
     ) -> str:
         """Find symbols by substring or qualified name."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.find_symbol(ctx, name, kind, limit)
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.find_symbol(ctx, name, kind, limit)
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
@@ -683,28 +839,30 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     )
     async def find_referencing_symbols(
         context: Context,
-        target: str,
+        target: ReferenceTarget,
         repo_root: RepoRoot = None,
-        limit: Limit = DEFAULT_REFS_LIMIT,
-        shared_callers: bool = False,
+        limit: ReferenceLimit = DEFAULT_REFS_LIMIT,
+        shared_callers: SharedCallers = False,
     ) -> str:
         """Find the symbols that reference a target, grouped by file."""
-        ctx = await context_for(context, repo_root)
-        return handlers.find_referencing_symbols(ctx, target, limit, shared_callers=shared_callers)
+        async with context_for(context, repo_root) as ctx:
+            return handlers.find_referencing_symbols(
+                ctx, target, limit, shared_callers=shared_callers
+            )
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["explain_symbol"], annotations=read_only("Explain symbol")
     )
     async def explain_symbol(
         context: Context,
-        target: str,
+        target: ExplainTarget,
         repo_root: RepoRoot = None,
-        limit: Limit = DEFAULT_EXPLAIN_LIMIT,
-        no_cache: bool = False,
+        limit: ExplainLimit = DEFAULT_EXPLAIN_LIMIT,
+        no_cache: NoCache = False,
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.explain_symbol(ctx, target, limit)
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.explain_symbol(ctx, target, limit)
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["analyze_structure"],
@@ -712,34 +870,36 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     )
     async def analyze_structure(
         context: Context,
-        operation: str,
+        operation: StructureOperation,
         repo_root: RepoRoot = None,
-        source: str = "",
-        target: str = "",
-        include_ambiguous: bool = False,
-        limit: OptionalLimit = None,
+        source: PathSource = "",
+        target: PathTarget = "",
+        include_unique: IncludeUnique = False,
+        include_ambiguous: IncludeAmbiguous = False,
+        limit: StructureLimit = None,
         resolution: Resolution = None,
-        focus: str = "",
+        focus: DiagramFocus = "",
         max_nodes: MaxNodes = DEFAULT_MAX_NODES,
-        group_by_communities: bool = False,
-        no_cache: bool = False,
+        group_by_communities: GroupByCommunities = False,
+        no_cache: NoCache = False,
     ) -> str:
         """Answer one whole-repository structural question: path, cycles, communities, diagram."""
-        ctx = await context_for(context, repo_root, no_cache=no_cache)
-        return handlers.analyze_structure(
-            ctx,
-            StructureRequest(
-                operation=operation,
-                source=source,
-                target=target,
-                include_ambiguous=include_ambiguous,
-                limit=limit,
-                resolution=resolution,
-                focus=focus,
-                max_nodes=max_nodes,
-                group_by_communities=group_by_communities,
-            ),
-        )
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            return handlers.analyze_structure(
+                ctx,
+                StructureRequest(
+                    operation=operation,
+                    source=source,
+                    target=target,
+                    include_unique=include_unique,
+                    include_ambiguous=include_ambiguous,
+                    limit=limit,
+                    resolution=resolution,
+                    focus=focus,
+                    max_nodes=max_nodes,
+                    group_by_communities=group_by_communities,
+                ),
+            )
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["resolve_locations"],
@@ -747,20 +907,24 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     )
     async def resolve_locations(
         context: Context,
-        path: str,
-        locs: list[str],
+        path: FilePath,
+        locs: Locations,
         repo_root: RepoRoot = None,
         context_lines: ContextLines = DEFAULT_CONTEXT_LINES,
     ) -> str:
         """Turn class:/function:/line: strings into stable ids and intervals."""
-        ctx = await context_for(context, repo_root)
-        return handlers.resolve_locations(ctx, path, locs, context_lines)
+        async with context_for(context, repo_root) as ctx:
+            return handlers.resolve_locations(ctx, path, locs, context_lines)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["capabilities"], annotations=read_only("Capabilities"))
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)
-        return handlers.capabilities(handlers.resolve(repo_root, roots), roots)
+        ctx = handlers.resolve(repo_root, roots)
+        try:
+            return handlers.capabilities(ctx, roots)
+        finally:
+            ctx.close()
 
     return mcp
 

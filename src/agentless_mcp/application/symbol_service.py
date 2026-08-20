@@ -54,6 +54,7 @@ from agentless_mcp.core.symbols import (
     id_qualname,
     parse_stable_id,
     qualname,
+    rationale_stable_id,
     symbol_stable_id,
 )
 from agentless_mcp.prompts import MESSAGES
@@ -493,6 +494,22 @@ def symbol_card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
     )
 
 
+def rationale_nodes(symbol: ASTSymbol) -> tuple[render.RationaleNode, ...]:
+    """Build the rationale nodes linked to one symbol."""
+    parent_id = symbol_stable_id(symbol)
+    return tuple(
+        render.RationaleNode(
+            stable_id=rationale_stable_id(symbol, rationale),
+            parent_id=parent_id,
+            line=rationale.line_number,
+            kind=rationale.kind,
+            text=rationale.text,
+            citations=rationale.citations,
+        )
+        for rationale in symbol.rationales
+    )
+
+
 def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
     """Collapse duplicate sites and order them by file then line."""
     unique = {(site.path, site.line, site.name): site for site in sites}
@@ -695,7 +712,7 @@ def _shared_callers(
         names = {
             ref.name
             for ref in facts.refs
-            if caller.line_number <= ref.line <= end and not ref.locally_bound
+            if caller.line_number <= ref.line <= end and ref.is_reference
         }
         for name in sorted(names):
             for definition in index.definitions.get(name, ()):

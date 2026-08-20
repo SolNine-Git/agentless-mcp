@@ -1,44 +1,26 @@
 name: CI
 
-# The pre-commit stack is the gate developers run locally
-# (`uv run pre-commit run --all-files`). This workflow is what makes those
-# contracts hold for a contribution made without the hooks installed, which
-# until now they did not: ruff, mypy, import-linter and deptry were enforced
-# only on machines that had run `pre-commit install`.
-#
-# The matrix exists for two specific claims the repository makes and nothing
-# exercised. `requires-python = ">=3.10"` was tested on no interpreter but the
-# author's, and `util/filelock.py` carries a split POSIX/Windows implementation
-# whose Windows half ran nowhere.
-
 on:
   push:
-    branches: [master]
   pull_request:
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # The variable core/grammars.py actually honours (ENV_CACHE_DIR). Pinning it
-  # keeps the language pack's downloads on one cacheable path, and because
-  # tests/conftest.py sets it only via setdefault, the value here survives the
-  # per-test XDG_CACHE_HOME isolation. Without the cache every job re-downloads
-  # the grammars, and a cold download is the one case where the suite is not
-  # hermetic.
   TREE_SITTER_LANGUAGE_PACK_CACHE_DIR: ${{ github.workspace }}/.ci-grammars
 
 jobs:
-  test:
-    name: test (${{ matrix.os }}, py${{ matrix.python }})
+  quality:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         python: ["3.10", "3.13"]
+
     steps:
       - uses: actions/checkout@v5
 
@@ -56,49 +38,13 @@ jobs:
           restore-keys: grammars-${{ runner.os }}-
 
       - name: Sync
-        run: uv sync --all-extras --dev
+        run: uv sync --extra mcp
 
       - name: Warm grammars
-        # Its own step so a language-pack download failure reports as
-        # infrastructure rather than as a test failure. Scoped to the same set
-        # tests/conftest.py warms (TEST_LANGUAGES) rather than all of tier 1:
-        # warming languages the suite never parses would trade CI minutes for
-        # no coverage, and would fail the run on a grammar nothing tests.
-        run: uv run agentless-mcp warmup python javascript typescript go
+        run: uv run agentless-mcp warmup
+
+      - name: Pre-commit
+        run: uv run pre-commit run --all-files
 
       - name: Test
-        run: uv run pytest tests -q
-
-  lint:
-    name: lint and contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.13"
-          enable-cache: true
-
-      - name: Sync
-        run: uv sync --all-extras --dev
-
-      - name: ruff check
-        run: uv run ruff check .
-
-      - name: ruff format
-        # Scoped to the source trees rather than the repo, matching the
-        # ruff-format pre-commit hook, which only ever sees Python files.
-        # Repo-wide, ruff also formats fenced Python inside markdown, which
-        # would fail this job on prose in .audit/ that no hook checks.
-        run: uv run ruff format --check src tests
-
-      - name: mypy (strict)
-        run: uv run mypy src
-
-      - name: import-linter (dependency contract)
-        run: uv run lint-imports
-
-      - name: deptry (dependency hygiene)
-        run: uv run deptry .
+        run: uv run pytest

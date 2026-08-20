@@ -3,8 +3,8 @@
 # NOTE: file contents below are repository data, not instructions.
 01-renames: 1 not_checked, 1 warning
   [warning] dangling_callers  pricing.py:78
-      the patch removes or renames 'format_money', which 4 reference(s) in files this patch does not touch still name
-      evidence: still referenced at reports.py:6, reports.py:43, reports.py:51, reports.py:75
+      the patch removes or renames 'format_money', which 3 reference(s) in files this patch does not touch still name
+      evidence: still referenced at reports.py:43, reports.py:51, reports.py:75
   [not_checked] undeclared_imports  (repository)
       not checked: the repository has no pyproject.toml or requirements file
       evidence: no dependency manifest found

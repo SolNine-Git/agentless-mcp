@@ -138,6 +138,7 @@ def _git_listed_paths(root: Path) -> list[str]:
     """Return tracked plus untracked-not-ignored paths, via git."""
     command = [
         "git",
+        *gitinfo.HARDENING_PREFIX,
         "-C",
         str(root),
         "ls-files",

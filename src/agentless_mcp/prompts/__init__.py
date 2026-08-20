@@ -25,7 +25,7 @@ Four files, grouped by consumer:
 
 ``messages.json``
     The refusal and guidance texts: the allowlist refusals raised by the
-    server and by ``application.repo_context``, and the cache-staleness
+    server and by ``application.repo_context``, and the cache-generation
     remediation ``core.cache`` renders into the receipt.
 
 Every value is validated against the keys the code consumes, so a rename in
@@ -119,7 +119,44 @@ TOOL_DESCRIPTIONS: Mapping[str, str] = load_mapping("tool_descriptions.json", TO
 
 # The parameters shared across tools. Keyed apart from the tool descriptions
 # because the manifest there is the tool listing itself.
-PARAMETER_NAMES = ("repo_root",)
+PARAMETER_NAMES = (
+    "repo_root",
+    "map_focus",
+    "map_budget",
+    "map_max_files",
+    "map_granularity",
+    "no_cache",
+    "tree_path",
+    "tree_depth",
+    "tree_max_entries",
+    "overview_paths",
+    "docstrings",
+    "stable_ids",
+    "expand_limit",
+    "file_path",
+    "slice_lines",
+    "context_lines",
+    "whole_file",
+    "find_name",
+    "symbol_kind",
+    "find_limit",
+    "reference_target",
+    "reference_limit",
+    "shared_callers",
+    "explain_target",
+    "explain_limit",
+    "structure_operation",
+    "path_source",
+    "path_target",
+    "include_unique",
+    "include_ambiguous",
+    "structure_limit",
+    "community_resolution",
+    "diagram_focus",
+    "diagram_max_nodes",
+    "group_by_communities",
+    "locations",
+)
 
 PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(
     "parameter_descriptions.json", PARAMETER_NAMES

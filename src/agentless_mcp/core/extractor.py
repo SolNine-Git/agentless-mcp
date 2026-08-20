@@ -20,8 +20,9 @@ warmed-state and degradation.
 
 import logging
 import re
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from enum import Enum
 from functools import partial
 from typing import ClassVar
 
@@ -29,7 +30,7 @@ from tree_sitter import Node, Parser
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, disambiguate
+from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
 
 # Handlers normalised for the registry: both take the parsed root, the source
 # bytes, the module path, and the accumulator list they append to.
@@ -60,6 +61,15 @@ _MAX_VALUE_CHARS = 80
 _MAX_TYPE_ALIAS_CHARS = 120
 # The shortest string literal that still has a quote at each end.
 _MIN_QUOTED_LITERAL_CHARS = 2
+
+# Rationale comments are structural source facts, not generated summaries.
+# Only comment nodes reach these expressions, so a string containing
+# ``TODO:`` is never promoted into the graph. Text is capped before it enters
+# the cache or any response.
+_RATIONALE_MARKER = re.compile(r"\b(NOTE|WHY|HACK|TODO)\s*:\s*(.*)")
+_RATIONALE_CITATION = re.compile(r"\b(?:ADR|RFC)(?:[-\s#:]*)(\d+)\b", re.IGNORECASE)
+_MAX_RATIONALE_CHARS = 240
+_QUOTED_TEXT_MIN_CHARS = 2
 
 # Every grammar in the table spells a plain name `identifier`; the languages
 # with richer name node types override this in their LanguageConfig entry.
@@ -330,6 +340,47 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # signature would read `fn applyTax()` for a two-parameter function.
         signature_from_header=True,
     ),
+    "scala": LanguageConfig(
+        function_node_types=("function_definition", "function_declaration"),
+        class_node_types=(
+            "class_definition",
+            "trait_definition",
+            "object_definition",
+            "enum_definition",
+        ),
+        import_node_types=("import_declaration",),
+        import_path_node_type="identifier",
+        identifier_node_types=("identifier", "type_identifier"),
+        class_body_node_types=("template_body",),
+        signature_from_header=True,
+    ),
+    "csharp": LanguageConfig(
+        function_node_types=(
+            "method_declaration",
+            "constructor_declaration",
+            "local_function_statement",
+        ),
+        class_node_types=(
+            "class_declaration",
+            "interface_declaration",
+            "struct_declaration",
+            "record_declaration",
+            "enum_declaration",
+        ),
+        import_node_types=("using_directive",),
+        import_path_node_type="identifier",
+        identifier_node_types=("identifier",),
+        class_body_node_types=("declaration_list",),
+        signature_from_header=True,
+    ),
+    # Deterministic non-code surfaces use dedicated symbol handlers below;
+    # these rows own their reference node types and keep the registry's trust
+    # metadata in the same table as every other tier-2 language.
+    "json": LanguageConfig((), (), (), identifier_node_types=("string_content",)),
+    "toml": LanguageConfig((), (), (), identifier_node_types=("bare_key", "quoted_key")),
+    "yaml": LanguageConfig((), (), (), identifier_node_types=("string_scalar",)),
+    "hcl": LanguageConfig((), (), (), identifier_node_types=("identifier", "template_literal")),
+    "sql": LanguageConfig((), (), (), identifier_node_types=("identifier",)),
 }
 
 # C and C++ are handled by dedicated methods due to their nested declarator
@@ -345,6 +396,20 @@ _EXTRA_IDENTIFIER_NODE_TYPES: dict[str, tuple[str, ...]] = {
 }
 
 
+class IdentifierRole(str, Enum):
+    """The syntactic meaning of one identifier occurrence."""
+
+    REFERENCE = "reference"
+    LOCAL = "local"
+    BINDING = "binding"
+    DECLARATION = "declaration"
+    IMPORT = "import"
+    ATTRIBUTE = "attribute"
+    MODULE_QUALIFIER = "module_qualifier"
+    MODULE_ATTRIBUTE = "module_attribute"
+    KEYWORD = "keyword"
+
+
 @dataclass(frozen=True)
 class Ref:
     """One identifier occurrence: which file spelled which name, and where.
@@ -354,26 +419,45 @@ class Ref:
     these rows -- and a cache that imported the scanner would invert the
     dependency between them.
 
-    ``locally_bound`` is True when an enclosing function's parameter list
-    binds this name at this occurrence: the occurrence spells the local
-    binding (or declares it), not any repository-level definition sharing the
-    name. Recorded rather than dropped, so fan-in keeps every site while the
-    resolver can refuse to point such a use at an unrelated symbol.
+    ``role`` records whether the occurrence is a reference at all. Keeping
+    every occurrence lets literal fan-in list sites without allowing an
+    assignment target, keyword label, or attribute member to fabricate a
+    structural relationship.
     """
 
     path: str
     name: str
     line: int
-    locally_bound: bool = False
+    role: IdentifierRole = IdentifierRole.REFERENCE
+    qualifier: str = ""
+
+    @property
+    def is_reference(self) -> bool:
+        """Whether this is an unqualified repository-symbol reference."""
+        return self.role is IdentifierRole.REFERENCE
+
+    @property
+    def is_resolvable(self) -> bool:
+        """Whether the evidence graph has enough syntax to attempt binding."""
+        return self.role in {IdentifierRole.REFERENCE, IdentifierRole.MODULE_ATTRIBUTE}
 
 
-# Python nodes that open a parameter scope, with the field naming their
-# parameter list. Only Python today: it is the one language whose grammar this
-# module reads deeply enough to tell a parameter name from the annotation and
-# default expressions wrapped around it.
+# Python nodes that open a lexical scope, with the field naming parameters
+# where one exists. Comprehensions have their own target bindings; class scope
+# is deliberately skipped when resolving names inside a nested method because
+# Python methods do not close over their class namespace.
 _PYTHON_SCOPE_FIELDS: dict[str, str] = {
     "function_definition": "parameters",
     "lambda": "parameters",
+}
+_PYTHON_SCOPE_TYPES: dict[str, str] = {
+    "function_definition": "function",
+    "lambda": "function",
+    "class_definition": "class",
+    "list_comprehension": "comprehension",
+    "set_comprehension": "comprehension",
+    "dictionary_comprehension": "comprehension",
+    "generator_expression": "comprehension",
 }
 
 # Parameter forms whose name sits behind a `name` field, with annotation or
@@ -386,43 +470,37 @@ _PYTHON_SPLAT_PATTERNS = ("list_splat_pattern", "dictionary_splat_pattern")
 
 @dataclass(frozen=True)
 class _BindingScope:
-    """One function's parameter bindings, as the line span they shadow."""
+    """One Python lexical scope and the names that cannot bind elsewhere."""
 
-    start_line: int
-    end_line: int
-    names: frozenset[str]
-
-
-def _python_binding_scopes(root: Node, data: bytes) -> tuple[_BindingScope, ...]:
-    """Collect every Python function's parameter names with its line span."""
-    scopes: list[_BindingScope] = []
-    for node in walk_nodes(root):
-        field = _PYTHON_SCOPE_FIELDS.get(node.type)
-        if field is None:
-            continue
-        params = node.child_by_field_name(field)
-        if params is None:
-            continue
-        names = _python_parameter_names(params, data)
-        if names:
-            scopes.append(
-                _BindingScope(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    names=names,
-                )
-            )
-    return tuple(scopes)
+    start_byte: int
+    end_byte: int
+    kind: str
+    bindings: frozenset[str]
+    globals: frozenset[str]
+    imports: Mapping[str, str]
 
 
-def _python_parameter_names(params: Node, data: bytes) -> frozenset[str]:
-    """Extract the names a Python parameter list binds, and nothing else.
+@dataclass
+class _ScopeBuilder:
+    """Mutable collection state used only while one Python tree is classified."""
+
+    node_id: int
+    start_byte: int
+    end_byte: int
+    kind: str
+    bindings: set[str]
+    globals: set[str]
+    imports: dict[str, str]
+
+
+def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
+    """Extract the identifier nodes a Python parameter list binds.
 
     Annotation and default expressions are deliberately left out: `counter:
     TokenCounter = DEFAULT` binds `counter`, while `TokenCounter` and
     `DEFAULT` are ordinary references the resolver must still see.
     """
-    names: set[str] = set()
+    nodes: list[Node] = []
     for child in params.named_children:
         target: Node | None = child
         if child.type in _PYTHON_NAMED_PARAMETERS:
@@ -437,15 +515,255 @@ def _python_parameter_names(params: Node, data: bytes) -> frozenset[str]:
         if target is not None and target.type in _PYTHON_SPLAT_PATTERNS:
             target = next(iter(target.named_children), None)
         if target is not None and target.type == "identifier":
-            names.add(data[target.start_byte : target.end_byte].decode("utf-8", errors="replace"))
-    return frozenset(names)
+            nodes.append(target)
+    return tuple(nodes)
 
 
-def _locally_bound(scopes: Sequence[_BindingScope], name: str, line: int) -> bool:
-    """True when a scope containing ``line`` binds ``name`` as a parameter."""
-    return any(
-        scope.start_line <= line <= scope.end_line and name in scope.names for scope in scopes
+def _python_roles(
+    root: Node,
+    data: bytes,
+) -> tuple[dict[int, IdentifierRole], dict[int, str], tuple[_BindingScope, ...]]:
+    """Classify Python identifiers and collect lexical bindings in two passes."""
+    nodes = walk_nodes(root)
+    builders = [_scope_builder(root, "module")]
+    builders.extend(
+        _scope_builder(node, kind)
+        for node in nodes
+        if (kind := _PYTHON_SCOPE_TYPES.get(node.type)) is not None
     )
+    by_node = {scope.node_id: scope for scope in builders}
+    roles: dict[int, IdentifierRole] = {}
+    qualifiers: dict[int, str] = {}
+
+    for node in nodes:
+        if node.type in {"import_statement", "import_from_statement"}:
+            for identifier in _descendant_identifiers(node):
+                roles[identifier.id] = IdentifierRole.IMPORT
+            _nearest_scope(node, builders).imports.update(_import_bindings(node, data))
+
+    for node in nodes:
+        field = _PYTHON_SCOPE_FIELDS.get(node.type)
+        if field is not None:
+            params = node.child_by_field_name(field)
+            if params is not None:
+                bound = _python_parameter_nodes(params)
+                _mark_bindings(bound, roles)
+                scope = by_node[node.id]
+                scope.bindings.update(_node_text(identifier, data) for identifier in bound)
+
+        target = _binding_target(node)
+        if target is not None:
+            bound = _binding_identifiers(target)
+            _mark_bindings(bound, roles)
+            scope = _nearest_scope(node, builders)
+            names = {_node_text(identifier, data) for identifier in bound}
+            if scope.kind == "module":
+                names = {name for name in names if _UPPER_CASE_RE.fullmatch(name) is None}
+            scope.bindings.update(names)
+
+        if node.type in {"global_statement", "nonlocal_statement"}:
+            declarations = tuple(_descendant_identifiers(node))
+            _mark_bindings(declarations, roles)
+            scope = _nearest_scope(node, builders)
+            names = {_node_text(identifier, data) for identifier in declarations}
+            if node.type == "global_statement":
+                scope.globals.update(names)
+            else:
+                scope.bindings.update(names)
+
+    for node in nodes:
+        _mark_non_reference_roles(node, roles, qualifiers, builders, data)
+
+    scopes = tuple(
+        sorted(
+            (
+                _BindingScope(
+                    start_byte=scope.start_byte,
+                    end_byte=scope.end_byte,
+                    kind=scope.kind,
+                    bindings=frozenset(scope.bindings),
+                    globals=frozenset(scope.globals),
+                    imports=dict(scope.imports),
+                )
+                for scope in builders
+            ),
+            key=lambda scope: (scope.end_byte - scope.start_byte, scope.start_byte),
+        )
+    )
+    return roles, qualifiers, scopes
+
+
+def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
+    """Build the byte boundary where one scope's bindings apply."""
+    body = node.child_by_field_name("body") if kind in {"function", "class"} else None
+    boundary = body if body is not None else node
+    return _ScopeBuilder(
+        node_id=node.id,
+        start_byte=boundary.start_byte,
+        end_byte=boundary.end_byte,
+        kind=kind,
+        bindings=set(),
+        globals=set(),
+        imports={},
+    )
+
+
+def _nearest_scope(node: Node, scopes: Sequence[_ScopeBuilder]) -> _ScopeBuilder:
+    """Return the innermost lexical scope containing ``node``."""
+    candidates = [
+        scope
+        for scope in scopes
+        if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
+    ]
+    return min(candidates, key=lambda scope: scope.end_byte - scope.start_byte)
+
+
+def _mark_non_reference_roles(
+    node: Node,
+    roles: dict[int, IdentifierRole],
+    qualifiers: dict[int, str],
+    scopes: Sequence[_ScopeBuilder],
+    data: bytes,
+) -> None:
+    """Mark declaration, member, and label identifiers from named fields."""
+    if node.type == "attribute":
+        attribute = node.child_by_field_name("attribute")
+        if attribute is not None:
+            object_node = node.child_by_field_name("object")
+            imported_module = (
+                _visible_import(_node_text(object_node, data), node, scopes)
+                if object_node is not None and object_node.type == "identifier"
+                else None
+            )
+            role = (
+                IdentifierRole.MODULE_ATTRIBUTE
+                if imported_module is not None
+                else IdentifierRole.ATTRIBUTE
+            )
+            roles.setdefault(attribute.id, role)
+            if imported_module is not None and object_node is not None:
+                roles.setdefault(object_node.id, IdentifierRole.MODULE_QUALIFIER)
+                qualifiers[attribute.id] = imported_module
+    if node.type == "keyword_argument":
+        name = node.child_by_field_name("name")
+        if name is not None:
+            roles.setdefault(name.id, IdentifierRole.KEYWORD)
+    if node.type in {"function_definition", "class_definition"}:
+        name = node.child_by_field_name("name")
+        if name is not None:
+            roles.setdefault(name.id, IdentifierRole.DECLARATION)
+
+
+def _import_bindings(node: Node, data: bytes) -> dict[str, str]:
+    """Map the local names one import introduces to their source names."""
+    bindings: dict[str, str] = {}
+    for index, child in enumerate(node.children):
+        if node.field_name_for_child(index) != "name":
+            continue
+        alias = child.child_by_field_name("alias")
+        source_node = child.child_by_field_name("name") if alias is not None else child
+        if source_node is None:
+            continue
+        identifiers = _descendant_identifiers(source_node)
+        if not identifiers:
+            continue
+        selected = identifiers[0] if node.type == "import_statement" else identifiers[-1]
+        imported = _node_text(selected, data)
+        if alias is not None:
+            bindings[_node_text(alias, data)] = imported
+            continue
+        bindings[imported] = imported
+    return bindings
+
+
+def _visible_import(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> str | None:
+    """Return the source name behind a visible local import binding."""
+    candidates = sorted(
+        (
+            scope
+            for scope in scopes
+            if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
+        ),
+        key=lambda scope: scope.end_byte - scope.start_byte,
+    )
+    inside_function = False
+    for scope in candidates:
+        if scope.kind == "function":
+            inside_function = True
+        if scope.kind == "class" and inside_function:
+            continue
+        if name in scope.globals:
+            continue
+        if name in scope.bindings:
+            return None
+        if name in scope.imports:
+            return scope.imports[name]
+    return None
+
+
+def _binding_target(node: Node) -> Node | None:
+    """Return the subtree a binding construct assigns, when it has one."""
+    fields = {
+        "assignment": "left",
+        "augmented_assignment": "left",
+        "named_expression": "name",
+        "for_statement": "left",
+        "for_in_clause": "left",
+        "as_pattern": "alias",
+    }
+    field = fields.get(node.type)
+    return node.child_by_field_name(field) if field is not None else None
+
+
+def _binding_identifiers(target: Node) -> tuple[Node, ...]:
+    """Return names actually bound by a target, excluding member/subscript parts."""
+    if target.type in {"attribute", "subscript"}:
+        return ()
+    if target.type == "identifier":
+        return (target,)
+    return tuple(
+        identifier for child in target.named_children for identifier in _binding_identifiers(child)
+    )
+
+
+def _descendant_identifiers(node: Node) -> tuple[Node, ...]:
+    """Return every Python identifier below ``node`` in source order."""
+    return tuple(entry for entry in walk_nodes(node) if entry.type == "identifier")
+
+
+def _mark_bindings(nodes: Sequence[Node], roles: dict[int, IdentifierRole]) -> None:
+    for node in nodes:
+        roles.setdefault(node.id, IdentifierRole.BINDING)
+
+
+def _node_text(node: Node, data: bytes) -> str:
+    return data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+
+
+def _python_role(
+    node: Node,
+    name: str,
+    explicit: dict[int, IdentifierRole],
+    scopes: Sequence[_BindingScope],
+) -> IdentifierRole:
+    """Return the explicit syntactic role or the nearest lexical binding."""
+    direct = explicit.get(node.id)
+    if direct is not None:
+        return direct
+
+    inside_function = False
+    for scope in scopes:
+        if not (scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte):
+            continue
+        if scope.kind == "function":
+            inside_function = True
+        if scope.kind == "class" and inside_function:
+            continue
+        if name in scope.globals:
+            return IdentifierRole.REFERENCE
+        if name in scope.bindings:
+            return IdentifierRole.LOCAL
+    return IdentifierRole.REFERENCE
 
 
 def identifier_node_types(language: str) -> frozenset[str]:
@@ -471,13 +789,17 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
     tree = parser.parse(data)
-    scopes = _python_binding_scopes(tree.root_node, data) if language == "python" else ()
+    explicit: dict[int, IdentifierRole] = {}
+    qualifiers: dict[int, str] = {}
+    scopes: tuple[_BindingScope, ...] = ()
+    if language == "python":
+        explicit, qualifiers, scopes = _python_roles(tree.root_node, data)
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
         if node.type not in wanted or node.child_count:
             continue
-        name = data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+        name = _node_text(node, data)
         if name:
             line = node.start_point[0] + 1
             refs.append(
@@ -485,7 +807,12 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
                     path=path,
                     name=name,
                     line=line,
-                    locally_bound=_locally_bound(scopes, name, line),
+                    role=(
+                        _python_role(node, name, explicit, scopes)
+                        if language == "python"
+                        else IdentifierRole.REFERENCE
+                    ),
+                    qualifier=qualifiers.get(node.id, ""),
                 )
             )
     return refs
@@ -506,6 +833,78 @@ def walk_nodes(root: Node) -> list[Node]:
     return found
 
 
+def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
+    """Extract rationale markers and ADR/RFC citations from comment nodes."""
+    found: list[Rationale] = []
+    for node in walk_nodes(root):
+        if node.type not in COMMENT_NODE_TYPES:
+            continue
+        comment = source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+        for offset, raw_line in enumerate(comment.splitlines()):
+            line = _comment_text(raw_line)
+            marker = _RATIONALE_MARKER.search(line)
+            citations = tuple(
+                match.group(0).strip() for match in _RATIONALE_CITATION.finditer(line)
+            )
+            if marker is None and not citations:
+                continue
+            kind = marker.group(1).lower() if marker is not None else "citation"
+            text = marker.group(2).strip() if marker is not None else line
+            if not text:
+                text = ", ".join(citations)
+            found.append(
+                Rationale(
+                    kind=kind,
+                    text=_truncate(text, _MAX_RATIONALE_CHARS),
+                    line_number=node.start_point[0] + offset + 1,
+                    citations=citations,
+                )
+            )
+    return tuple(found)
+
+
+def _comment_text(raw: str) -> str:
+    """Remove common comment delimiters from one tree-sitter comment line."""
+    text = raw.strip()
+    for prefix in ("<!--", "//", "/*", "#", "*"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :].lstrip()
+            break
+    for suffix in ("-->", "*/"):
+        if text.endswith(suffix):
+            text = text[: -len(suffix)].rstrip()
+            break
+    return text
+
+
+def _attach_rationales(
+    symbols: list[ASTSymbol], rationales: tuple[Rationale, ...]
+) -> list[ASTSymbol]:
+    """Attach each rationale to the innermost symbol whose span contains it."""
+    attached: dict[int, list[Rationale]] = {}
+    for rationale in rationales:
+        containing = [
+            (position, symbol)
+            for position, symbol in enumerate(symbols)
+            if symbol.line_number
+            <= rationale.line_number
+            <= (symbol.end_line_number or symbol.line_number)
+        ]
+        if not containing:
+            continue
+        position, _ = max(containing, key=lambda pair: pair[1].line_number)
+        siblings = attached.setdefault(position, [])
+        duplicate_index = sum(
+            1 for existing in siblings if existing.line_number == rationale.line_number
+        )
+        siblings.append(replace(rationale, duplicate_index=duplicate_index))
+
+    return [
+        replace(symbol, rationales=tuple(attached[position])) if position in attached else symbol
+        for position, symbol in enumerate(symbols)
+    ]
+
+
 @dataclass(frozen=True)
 class _GenericBinding:
     """The per-language half of the generic traversal, bound at registry time."""
@@ -522,6 +921,17 @@ class _GenericWalk:
     language: str
     module_path: str
     symbols: list[ASTSymbol]
+
+
+@dataclass(frozen=True)
+class _SurfaceDeclaration:
+    """One parsed non-code declaration before common symbol fields are added."""
+
+    name: str
+    kind: SymbolKind
+    node: Node
+    signature: str
+    parent: str = ""
 
 
 @dataclass(frozen=True)
@@ -577,6 +987,16 @@ class TreeSitterExtractor:
         ".kt": "kotlin",
         ".kts": "kotlin",
         ".swift": "swift",
+        ".scala": "scala",
+        ".cs": "csharp",
+        # Deterministic non-code surfaces (tier 2).
+        ".json": "json",
+        ".toml": "toml",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".tf": "hcl",
+        ".hcl": "hcl",
+        ".sql": "sql",
     }
 
     def __init__(self) -> None:
@@ -634,6 +1054,19 @@ class TreeSitterExtractor:
             "php": _LanguageSpec("php", generic_symbols("php"), generic_imports("php")),
             "kotlin": _LanguageSpec("kotlin", generic_symbols("kotlin"), generic_imports("kotlin")),
             "swift": _LanguageSpec("swift", generic_symbols("swift"), generic_imports("swift")),
+            "scala": _LanguageSpec("scala", generic_symbols("scala"), generic_imports("scala")),
+            "csharp": _LanguageSpec("csharp", generic_symbols("csharp"), generic_imports("csharp")),
+            "json": _LanguageSpec(
+                "json", partial(self._extract_data_symbols, language="json"), self._no_imports
+            ),
+            "toml": _LanguageSpec(
+                "toml", partial(self._extract_data_symbols, language="toml"), self._no_imports
+            ),
+            "yaml": _LanguageSpec(
+                "yaml", partial(self._extract_data_symbols, language="yaml"), self._no_imports
+            ),
+            "hcl": _LanguageSpec("hcl", self._extract_hcl_symbols, self._no_imports),
+            "sql": _LanguageSpec("sql", self._extract_sql_symbols, self._no_imports),
         }
 
     # ------------------------------------------------------------------
@@ -682,7 +1115,9 @@ class TreeSitterExtractor:
         # get_parser succeeded, so the language is registered.
         symbols: list[ASTSymbol] = []
         self._registry[language].extract_symbols(tree.root_node, source_bytes, module_path, symbols)
-        return disambiguate(symbols)
+        defined = disambiguate(symbols)
+        rationales = _extract_rationales(tree.root_node, source_bytes)
+        return _attach_rationales(defined, rationales)
 
     # ------------------------------------------------------------------
     # Public import extraction API
@@ -1192,6 +1627,288 @@ class TreeSitterExtractor:
             bases=(),
             language="lua",
             is_public=not name.startswith("_"),
+            is_async=False,
+        )
+
+    # ------------------------------------------------------------------
+    # Deterministic non-code surfaces (dedicated)
+    # ------------------------------------------------------------------
+
+    def _extract_data_symbols(
+        self,
+        root: Node,
+        source: bytes,
+        module_path: str,
+        symbols: list[ASTSymbol],
+        language: str,
+    ) -> None:
+        """Extract object/table keys from JSON, TOML and YAML."""
+        pair_type = {
+            "json": "pair",
+            "toml": "pair",
+            "yaml": "block_mapping_pair",
+        }[language]
+
+        if language == "toml":
+            for node in walk_nodes(root):
+                if node.type != "table":
+                    continue
+                key = self._data_key(node, source, language)
+                if key:
+                    parent, name = self._split_qualified_key(key)
+                    symbols.append(
+                        self._surface_symbol(
+                            _SurfaceDeclaration(
+                                name=name,
+                                kind=SymbolKind.CLASS,
+                                node=node,
+                                signature=f"table {key}",
+                                parent=parent,
+                            ),
+                            module_path,
+                            language,
+                        )
+                    )
+
+        for node in walk_nodes(root):
+            if node.type != pair_type:
+                continue
+            key = self._data_key(node, source, language)
+            if not key:
+                continue
+            owner = self._data_owner(node, source, language)
+            value = node.child_by_field_name("value")
+            has_nested_pair = value is not None and self._has_nested_pair(value)
+            is_container = value is not None and value.type in {
+                "object",
+                "array",
+                "block_node",
+                "flow_node",
+            }
+            kind = SymbolKind.CLASS if is_container and has_nested_pair else SymbolKind.CONSTANT
+            signature = self._node_text(node, source).replace("\n", " ")
+            symbols.append(
+                self._surface_symbol(
+                    _SurfaceDeclaration(
+                        name=key,
+                        kind=kind,
+                        node=node,
+                        signature=signature,
+                        parent=owner,
+                    ),
+                    module_path,
+                    language,
+                )
+            )
+
+    def _extract_hcl_symbols(
+        self, root: Node, source: bytes, module_path: str, symbols: list[ASTSymbol]
+    ) -> None:
+        """Extract Terraform/HCL blocks and their attributes."""
+        for node in walk_nodes(root):
+            if node.type == "block":
+                owner, name, signature = self._hcl_block_identity(node, source)
+                if name:
+                    symbols.append(
+                        self._surface_symbol(
+                            _SurfaceDeclaration(
+                                name=name,
+                                kind=SymbolKind.CLASS,
+                                node=node,
+                                signature=signature,
+                                parent=owner,
+                            ),
+                            module_path,
+                            "hcl",
+                        )
+                    )
+                continue
+            if node.type != "attribute":
+                continue
+            name_node = next(
+                (child for child in node.named_children if child.type == "identifier"), None
+            )
+            if name_node is None:
+                continue
+            name = self._node_text(name_node, source)
+            owner = self._hcl_owner(node, source)
+            symbols.append(
+                self._surface_symbol(
+                    _SurfaceDeclaration(
+                        name=name,
+                        kind=SymbolKind.CONSTANT,
+                        node=node,
+                        signature=self._node_text(node, source).replace("\n", " "),
+                        parent=owner,
+                    ),
+                    module_path,
+                    "hcl",
+                )
+            )
+
+    def _extract_sql_symbols(
+        self, root: Node, source: bytes, module_path: str, symbols: list[ASTSymbol]
+    ) -> None:
+        """Extract SQL tables, views and columns from CREATE statements."""
+        for node in walk_nodes(root):
+            if node.type not in {"create_table", "create_view"}:
+                continue
+            name = self._sql_object_name(node, source)
+            if not name:
+                continue
+            kind = SymbolKind.CLASS if node.type == "create_table" else SymbolKind.TYPE_ALIAS
+            signature = self._node_text(node, source).replace("\n", " ")
+            symbols.append(
+                self._surface_symbol(
+                    _SurfaceDeclaration(
+                        name=name,
+                        kind=kind,
+                        node=node,
+                        signature=signature,
+                    ),
+                    module_path,
+                    "sql",
+                )
+            )
+            if node.type != "create_table":
+                continue
+            for child in walk_nodes(node):
+                if child.type != "column_definition":
+                    continue
+                name_node = child.child_by_field_name("name")
+                if name_node is None:
+                    continue
+                column = self._node_text(name_node, source)
+                symbols.append(
+                    self._surface_symbol(
+                        _SurfaceDeclaration(
+                            name=column,
+                            kind=SymbolKind.CONSTANT,
+                            node=child,
+                            signature=self._node_text(child, source),
+                            parent=name,
+                        ),
+                        module_path,
+                        "sql",
+                    )
+                )
+
+    @staticmethod
+    def _no_imports(
+        _root: Node, _source: bytes, _module_path: str, _imports: list[ImportStatement]
+    ) -> None:
+        """The deterministic non-code surfaces have no module import syntax."""
+
+    @staticmethod
+    def _has_nested_pair(node: Node) -> bool:
+        """True when ``node`` contains another config mapping pair."""
+        return any(
+            child.type in {"pair", "block_mapping_pair"}
+            for child in walk_nodes(node)
+            if child.id != node.id
+        )
+
+    def _data_key(self, node: Node, source: bytes, language: str) -> str:
+        """Return the key one config pair or TOML table declares."""
+        key_node = node.child_by_field_name("key")
+        if key_node is None:
+            key_node = next(
+                (
+                    child
+                    for child in node.named_children
+                    if child.type in {"bare_key", "quoted_key", "dotted_key"}
+                ),
+                None,
+            )
+        if key_node is None:
+            return ""
+        return self._clean_surface_name(self._node_text(key_node, source), language)
+
+    def _data_owner(self, node: Node, source: bytes, language: str) -> str:
+        """Return the dotted key path enclosing one config pair."""
+        owners: list[str] = []
+        parent = node.parent
+        while parent is not None:
+            if parent.type in {"pair", "block_mapping_pair", "table"}:
+                key = self._data_key(parent, source, language)
+                if key:
+                    owners.append(key)
+            parent = parent.parent
+        return ".".join(reversed(owners))
+
+    def _hcl_block_identity(self, node: Node, source: bytes) -> tuple[str, str, str]:
+        """Return ``(owner, name, header)`` for one HCL block."""
+        parts = [
+            self._clean_surface_name(self._node_text(child, source), "hcl")
+            for child in node.named_children
+            if child.type in {"identifier", "string_lit"}
+        ]
+        if not parts:
+            return "", "", ""
+        name = parts[-1]
+        owner = ".".join(parts[:-1])
+        header = self._node_text(node, source).partition("{")[0].strip()
+        return owner, name, header
+
+    def _hcl_owner(self, node: Node, source: bytes) -> str:
+        """Return the qualified identity of the nearest enclosing HCL block."""
+        parent = node.parent
+        while parent is not None:
+            if parent.type == "block":
+                owner, name, _ = self._hcl_block_identity(parent, source)
+                return ".".join(part for part in (owner, name) if part)
+            parent = parent.parent
+        return ""
+
+    def _sql_object_name(self, node: Node, source: bytes) -> str:
+        """Return the directly declared table or view name."""
+        reference = next(
+            (child for child in node.named_children if child.type == "object_reference"), None
+        )
+        if reference is None:
+            return ""
+        name = reference.child_by_field_name("name")
+        return self._node_text(name or reference, source)
+
+    @staticmethod
+    def _clean_surface_name(text: str, language: str) -> str:
+        """Normalize a parsed config key or HCL label without guessing."""
+        cleaned = text.strip()
+        if (
+            language in {"json", "hcl", "toml"}
+            and len(cleaned) >= _QUOTED_TEXT_MIN_CHARS
+            and cleaned[0] == cleaned[-1]
+            and cleaned[0] in {'"', "'"}
+        ):
+            return cleaned[1:-1]
+        return cleaned
+
+    @staticmethod
+    def _split_qualified_key(key: str) -> tuple[str, str]:
+        """Split a dotted TOML table key into owner and local name."""
+        owner, separator, name = key.rpartition(".")
+        return (owner, name) if separator else ("", key)
+
+    @staticmethod
+    def _surface_symbol(
+        declaration: _SurfaceDeclaration,
+        module_path: str,
+        language: str,
+    ) -> ASTSymbol:
+        """Build one symbol from a deterministic non-code syntax node."""
+        return ASTSymbol(
+            name=declaration.name,
+            kind=declaration.kind,
+            module_path=module_path,
+            line_number=declaration.node.start_point[0] + 1,
+            end_line_number=declaration.node.end_point[0] + 1,
+            signature=declaration.signature,
+            docstring="",
+            parent_class=declaration.parent,
+            decorators=(),
+            bases=(),
+            language=language,
+            is_public=True,
             is_async=False,
         )
 

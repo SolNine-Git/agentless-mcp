@@ -15,7 +15,10 @@ a wrong-repository answer nobody asked for.
 
 import argparse
 import json
+import os
+import re
 import sys
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -38,6 +41,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_EXPLAIN_LIMIT,
     DEFAULT_MEMBER_LIMIT,
     GraphService,
+    PathOptions,
 )
 from agentless_mcp.application.lint_service import LintService, load_candidates
 from agentless_mcp.application.map_service import (
@@ -67,7 +71,7 @@ from agentless_mcp.application.validate_service import (
     load_verdicts,
 )
 from agentless_mcp.application.view_service import LocationView, ViewService
-from agentless_mcp.core import cache, communities, grammars, projectconfig, resolve, vote
+from agentless_mcp.core import cache, communities, grammars, htmlgraph, projectconfig, resolve, vote
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
@@ -95,6 +99,15 @@ AUTO_BUDGET = "auto"
 # How many per-file index failures the summary prints before it stops listing
 # them. The count in the summary line is always complete.
 INDEX_FAILURE_LINES = 10
+
+# Environment names accepted by ``--pass-env``. Shell assignment syntax and
+# unbounded lists are refused at the CLI boundary; the validated names are the
+# only foreign values that reach the subprocess environment builder.
+ENVIRONMENT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+MAX_PASSTHROUGH_ENV = 32
+
+HTML_CACHE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.html\Z")
+MAX_HTML_CACHE_NAME = 128
 
 
 @dataclass(frozen=True)
@@ -171,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_cycles(subparsers)
     _add_communities(subparsers)
     _add_diagram(subparsers)
+    _add_html(subparsers)
     _add_resolve_locs(subparsers)
     _add_patch(subparsers)
     _add_lint(subparsers)
@@ -187,7 +201,12 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 
-def _repo_flags(parser: argparse.ArgumentParser, *, cache_flag: bool = True) -> None:
+def _repo_flags(
+    parser: argparse.ArgumentParser,
+    *,
+    cache_flag: bool = True,
+    json_flag: bool = True,
+) -> None:
     """Add the flags every repository-scoped subcommand shares."""
     parser.add_argument(
         "--repo",
@@ -195,7 +214,8 @@ def _repo_flags(parser: argparse.ArgumentParser, *, cache_flag: bool = True) -> 
         default=None,
         help="repository root (default: the git root enclosing the current directory)",
     )
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    if json_flag:
+        parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
     if cache_flag:
         parser.add_argument(
             "--no-cache",
@@ -323,6 +343,12 @@ def _add_path(subparsers: Any) -> None:
     parser.add_argument("source", metavar="FROM")
     parser.add_argument("target", metavar="TO")
     parser.add_argument(
+        "--include-unique",
+        action="store_true",
+        help="also walk repository-wide unique-name edges; off by default because uniqueness "
+        "is retrieval evidence, not binding evidence",
+    )
+    parser.add_argument(
         "--include-ambiguous",
         action="store_true",
         help="also walk name-only-ambiguous edges; off by default because a path built "
@@ -422,6 +448,39 @@ def _add_diagram(subparsers: Any) -> None:
     parser.set_defaults(handler=_cmd_diagram)
 
 
+def _add_html(subparsers: Any) -> None:
+    """Wire the optional human graph export; it is deliberately not an MCP tool."""
+    parser = subparsers.add_parser("html", help="interactive HTML export of the module graph")
+    _repo_flags(parser, json_flag=False)
+    parser.add_argument(
+        "--max-nodes",
+        type=int,
+        default=htmlgraph.DEFAULT_MAX_NODES,
+        help=f"modules included (default: {htmlgraph.DEFAULT_MAX_NODES}, "
+        f"maximum: {htmlgraph.MAX_NODES})",
+    )
+    parser.add_argument(
+        "--max-edges",
+        type=int,
+        default=htmlgraph.DEFAULT_MAX_EDGES,
+        help=f"edges included (default: {htmlgraph.DEFAULT_MAX_EDGES}, "
+        f"maximum: {htmlgraph.MAX_EDGES})",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=float,
+        default=None,
+        help="modularity resolution used for community colours",
+    )
+    parser.add_argument(
+        "--cache-file",
+        metavar="NAME.html",
+        default=None,
+        help="write under this repository's XDG cache entry instead of stdout",
+    )
+    parser.set_defaults(handler=_cmd_html)
+
+
 def _add_lint(subparsers: Any) -> None:
     """Wire ``lint``: the deterministic patch checks, CLI only.
 
@@ -511,7 +570,7 @@ def _add_validate(subparsers: Any) -> None:
     exactly one fallback: a ``test_cmd`` in the repository's own
     ``.agentless-mcp.json``, used only when the invocation named none, only
     here in the CLI -- no MCP tool can reach it -- and refused unless
-    ``--allow-config-test-cmd`` says otherwise. There is still no ``Makefile``
+    ``--allow-repo-test-cmd`` says otherwise. There is still no ``Makefile``
     sniffing, no ``package.json`` scripts lookup and no built-in default.
 
     The opt-in is the gate, not the note printed beside it: this CLI is the
@@ -539,14 +598,23 @@ def _add_validate(subparsers: Any) -> None:
         metavar="CMD",
         help="the regression command; must pass on unpatched HEAD or the run is UNVERIFIED. "
         "Falls back to test_cmd in the repository's .agentless-mcp.json, if it has one and "
-        "--allow-config-test-cmd was given",
+        "--allow-repo-test-cmd was given",
     )
     parser.add_argument(
-        "--allow-config-test-cmd",
+        "--allow-repo-test-cmd",
         action="store_true",
         help="allow the test command to come from the analysed repository's "
         ".agentless-mcp.json; without this the fallback is refused, because the "
         "repository would be choosing the command that judges it",
+    )
+    parser.add_argument(
+        "--pass-env",
+        action="append",
+        default=[],
+        type=_environment_name,
+        metavar="NAME",
+        help="pass one additional parent environment variable to test commands; repeatable. "
+        "By default only PATH, HOME, LANG and TMPDIR are inherited",
     )
     parser.add_argument(
         "--repro-cmd",
@@ -848,8 +916,11 @@ def _cmd_path(args: argparse.Namespace, services: CliServices) -> int:
         ctx,
         args.source,
         args.target,
-        include_ambiguous=args.include_ambiguous,
-        max_visited=args.max_visited,
+        PathOptions(
+            include_unique=args.include_unique,
+            include_ambiguous=args.include_ambiguous,
+            max_visited=args.max_visited,
+        ),
     )
     _emit(args, ctx, services, _Answer(render.render_path(result), result.as_dict(), "hops"))
     return EXIT_OK if result.endpoints_resolved else EXIT_DOMAIN
@@ -919,6 +990,90 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     if view.caveat:
         note(f"agentless-mcp: {view.caveat}")
     return EXIT_OK
+
+
+def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
+    """Render HTML to stdout or one explicitly named XDG-cache file."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+    if not 1 <= args.max_nodes <= htmlgraph.MAX_NODES:
+        return fail(
+            f"--max-nodes takes an integer from 1 through {htmlgraph.MAX_NODES}",
+            EXIT_USAGE,
+        )
+    if not 0 <= args.max_edges <= htmlgraph.MAX_EDGES:
+        return fail(
+            f"--max-edges takes an integer from 0 through {htmlgraph.MAX_EDGES}",
+            EXIT_USAGE,
+        )
+    cache_name = _html_cache_name(args.cache_file)
+    if args.cache_file is not None and cache_name is None:
+        return fail(
+            f"--cache-file must be a simple .html name of at most {MAX_HTML_CACHE_NAME} characters",
+            EXIT_USAGE,
+        )
+
+    exported = services.graphs.html(
+        ctx,
+        max_nodes=args.max_nodes,
+        max_edges=args.max_edges,
+        resolution=args.resolution,
+    )
+    if cache_name is None:
+        emit(exported.text)
+    else:
+        target = cache.cache_path(ctx.root).parent / "exports" / cache_name
+        try:
+            _write_html_export(target, exported.text)
+        except OSError as error:
+            return fail(f"cannot write HTML export: {error}", EXIT_DOMAIN)
+        note(f"agentless-mcp: wrote {target}")
+
+    note(
+        "\n".join(
+            [
+                *envelope.receipt_lines(ctx),
+                (
+                    f"# HTML graph of {exported.nodes} modules and {exported.edges} edges; "
+                    f"{exported.elided_nodes} modules and {exported.elided_edges} edges elided"
+                ),
+            ]
+        )
+    )
+    return EXIT_OK
+
+
+def _html_cache_name(raw: str | None) -> str | None:
+    """Parse a cache-only output name; paths never cross this boundary."""
+    if raw is None:
+        return None
+    if len(raw) > MAX_HTML_CACHE_NAME or HTML_CACHE_NAME.fullmatch(raw) is None:
+        return None
+    return raw
+
+
+def _write_html_export(target: Path, document: str) -> None:
+    """Atomically replace one cache export without following a target symlink."""
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as stream:
+            stream.write(document)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary = Path(stream.name)
+        temporary.chmod(0o600)
+        temporary.replace(target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
@@ -1094,12 +1249,12 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
         # Printed before the run, not after: this command came out of the
         # repository being judged, and the caller has to see which one it is.
         # The note is not the control -- the service refuses the run unless
-        # --allow-config-test-cmd was given -- it is what makes the refusal,
+        # --allow-repo-test-cmd was given -- it is what makes the refusal,
         # or the opt-in, name a command.
         opted_in = (
-            "--allow-config-test-cmd was given, so it will run"
-            if args.allow_config_test_cmd
-            else "pass --test-cmd to name your own, or --allow-config-test-cmd to run this one"
+            "--allow-repo-test-cmd was given, so it will run"
+            if args.allow_repo_test_cmd
+            else "pass --test-cmd to name your own, or --allow-repo-test-cmd to run this one"
         )
         note(
             f"agentless-mcp: test command from {ctx.config.path}: {test_cmd}\n"
@@ -1116,8 +1271,9 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             jobs=args.jobs,
             repeat_baseline=args.repeat_baseline,
             run_timeout=args.run_timeout,
-            test_cmd_from_config=from_config,
-            allow_config_test_cmd=args.allow_config_test_cmd,
+            passthrough_env=tuple(dict.fromkeys(args.pass_env)),
+            test_cmd_from_repo=from_config,
+            allow_repo_test_cmd=args.allow_repo_test_cmd,
         ),
     )
 
@@ -1539,7 +1695,17 @@ def _validate_bounds(args: argparse.Namespace) -> str:
         return "--repeat-baseline takes a positive integer"
     if args.run_timeout is not None and args.run_timeout <= 0:
         return "--run-timeout takes a positive number of seconds"
+    if len(args.pass_env) > MAX_PASSTHROUGH_ENV:
+        return f"--pass-env may be repeated at most {MAX_PASSTHROUGH_ENV} times"
     return ""
+
+
+def _environment_name(raw: str) -> str:
+    """Parse one bounded environment variable name from the CLI."""
+    if not ENVIRONMENT_NAME.fullmatch(raw):
+        message = f"environment variable names must match {ENVIRONMENT_NAME.pattern!r}"
+        raise argparse.ArgumentTypeError(message)
+    return raw
 
 
 def _map_budget(raw: str | None, ctx: RepoContext) -> tuple[int | None, str]:

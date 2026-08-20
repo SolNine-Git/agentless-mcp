@@ -1,26 +1,45 @@
 # agentless-mcp
 
-`agentless-mcp` is model-free structural machinery for coding agents: an
-on-demand tree-sitter repo map at any zoom level (directory tree, skeleton,
-line slice), symbol and reference lookup for bug localization, and
-deterministic patch parsing, syntax-checking and candidate validation. It
-never calls a language model — the calling agent supplies all the reasoning,
-and this tool supplies the parsing, ranking, containment and verification it
-would otherwise improvise. It ships as a CLI any agent can invoke over Bash and
-as a thin stdio MCP server over the same core.
+`agentless-mcp` is model-free structural machinery for coding agents, built
+around evidence-tiered reference edges. Every name match is labelled
+`same-file`, `resolved-via-import`, `unique`, or `name-only-ambiguous`, so a
+caller can distinguish a local binding from a guess instead of receiving one
+flat list that reads like ground truth. The same core provides a tree-sitter
+repo map at any zoom level, symbol and reference lookup, resolved-graph views,
+and deterministic patch validation. It never calls a language model; the
+calling agent supplies all reasoning.
 
 ## Install
 
 Today, from git:
 
 ```
-uv tool install git+https://github.com/SolNine-Git/agentless-mcp
+uv tool install git+https://github.com/SolNine-Git/agentless-mcp@v0.3.0
 agentless-mcp warmup
 ```
 
 Add the `mcp` extra for the stdio server
-(`uv tool install "agentless-mcp[mcp] @ git+..."`). A PyPI release will follow;
-until then the git URL is the install route.
+(`uv tool install "agentless-mcp[mcp] @
+git+https://github.com/SolNine-Git/agentless-mcp@v0.3.0"`). The tag makes an
+upgrade reviewable; unpinned installs from the repository's current HEAD are
+not supported. A PyPI release will follow.
+
+An optional, portable agent skill is provided at
+[`docs/skills/agentless-mcp/SKILL.md`](docs/skills/agentless-mcp/SKILL.md).
+Nothing installs it automatically. Copy its containing `agentless-mcp`
+directory into the user skill root for the client you use:
+
+| Client | User skill root |
+|---|---|
+| Claude Code | `~/.claude/skills/` |
+| Codex | `~/.codex/skills/` |
+| Cursor | `~/.cursor/skills/` |
+| Gemini CLI | `~/.gemini/skills/` |
+| OpenCode | `~/.config/opencode/skills/` |
+
+The skill is a soft routing nudge, not a hook: it recommends literal search
+when the string or file is known and the structural tools when location,
+fan-in, blast radius, or a cross-file change surface is the question.
 
 ## Status
 
@@ -29,34 +48,68 @@ one set of application services: repository map, directory tree, skeleton,
 slice, symbol lookup, symbol expansion, fan-in, location resolution, and the
 resolved-graph views — `explain` (one symbol's tiered fan-in and fan-out),
 `path` (shortest resolved path between two symbols) and `cycles` (module-level
-import cycles). The write side — SEARCH/REPLACE patch parsing, syntax
+import cycles), plus an on-demand searchable HTML graph export. The write
+side — SEARCH/REPLACE patch parsing, syntax
 checking, worktree-isolated apply, candidate validation and the
 equivalence-clustered vote — is CLI-only and never exposed over MCP.
 
-Reference resolution is deterministic and model-free: a name is bound to its
-candidate definitions through the file's own imports and its own definitions,
-and every edge carries the discrete evidence tier behind it (same-file,
-resolved-via-import, unique, name-only-ambiguous). The graph is assembled in
-memory on every call from the current tree — nothing about it is stored, and
-there is no watcher.
+Parsing happens on demand by default. `agentless-mcp index` builds an optional
+per-repository SQLite cache under `$XDG_CACHE_HOME/agentless-mcp/`, never
+inside the analyzed repository. Structural facts are keyed by each file's
+SHA-256, so changed files are re-parsed while unchanged files are reused. A
+`tree_oid` generation stamp and the receipt on every answer state whether the
+cache still belongs to the repository generation being read. This is
+incremental invalidation with generation state in the response envelope, not a
+commit-hook snapshot: it remains correct while concurrent agents work on a
+dirty tree, when a commit-refreshed artifact would be stale for the entire
+work session. `--no-cache` / `no_cache: true` bypasses it.
 
-Parsing happens on demand by default; `agentless-mcp index` builds a
-per-repository SQLite cache under `$XDG_CACHE_HOME/agentless-mcp/` (never
-inside the analyzed repository) holding symbols, imports and references for
-files whose sha256 has not moved. Every answer's receipt names the cache
-generation and whether it is still the repository's own, and `--no-cache` /
-`no_cache: true` forces on-demand parsing.
+The design rule is: **cache only what a hash can invalidate; recompute
+everything else at read time or do not store it.** That is why the package has
+no model-authored semantic layer. Incorrect generated prose is not merely
+stale; it is unfalsifiable from the source hash if it was wrong when written.
+The capability gradient also runs backwards when a cheaper model authors
+premises a stronger model later consumes as fact, and the blast radius spans
+every agent and future session that re-reads the premise.
 
 A repository may declare its own defaults in an optional `.agentless-mcp.json`
 at its root (map budget, max files, granularity, docstrings, stoplist
 additions, and a `test_cmd` that only the CLI's `validate` will use, only when
-the invocation named none of its own, and only after printing it). The file is
+the invocation names none of its own and passes `--allow-repo-test-cmd`, and
+only after printing it). The file is
 repository content: every value is schema-checked and bounded, no key is
 path-typed, and unknown keys are warnings in the response envelope rather than
 errors.
 
+## Language servers and adjacent graph tools
+
+This is not a language server. Name-plus-import binding is softer than
+type-aware resolution, especially for TypeScript barrel files, re-exports and
+duck-typed method calls; the evidence tiers expose that limit instead of
+hiding it. In exchange, the machinery works on code that does not build, uses
+one interface across every supported language, needs no server lifecycle or
+project build, and can read many repositories in one process.
+
+[Graphify](https://github.com/Graphify-Labs/graphify) covers a much broader
+surface: roughly forty code languages plus SQL, configs, documents, PDFs and
+media, with an interactive `graph.html` and a human-readable report. Its code
+graph is also deterministic tree-sitter extraction without model calls, so
+model-freeness is not a differentiator there. `agentless-mcp` instead focuses
+on freshness during concurrent uncommitted work, four-way binding evidence,
+and never writing artifacts into the analyzed repository. The tools are
+complements, not interchangeable replacements.
+
+The CLI-only write side is multi-agent arbitration. When several independent
+agents propose fixes, SEARCH/REPLACE parsing, AST-equivalence keys, bounded
+validation and equivalence-clustered voting answer whether candidates are the
+same fix and which surviving class has the most support. It is not the primary
+workflow for a single interactive agent, and none of it is exposed through
+MCP.
+
 Start with [docs/agent-guide.md](docs/agent-guide.md): it is the usage guide
-written for the agent that will call this.
+written for the agent that will call this. The 60-task navigation results,
+selection counts, spread, and denominator caveats are in
+[docs/evidence.md](docs/evidence.md).
 
 ## Development
 
@@ -110,14 +163,32 @@ path-confined**: the MCP surface exposes read tools only, patch application and
 test execution are CLI-side and default to an isolated git worktree, and no
 cache or scratch state is written inside the repository under analysis.
 
+Read-only and path-confined does not mean secret-blind. The map and tree honor
+gitignore, but directed tools such as `read_slice` and
+`get_symbols_overview` accept an explicit path inside the root. They can
+therefore surface ignored `.env` files, `.git/config`, credentials and any
+other file the calling user can read. Treat repository output as sensitive and
+apply the same access controls you would to an agent's ordinary file-read tool.
+
+`validate` test commands receive an explicit environment containing only
+`PATH`, `HOME`, `LANG` and `TMPDIR` when those variables exist. Additional
+names require a separate `--pass-env NAME` flag for each variable. This limits
+accidental credential inheritance; it is not a sandbox. The command still runs
+as the calling user and can read files available to that user. A `test_cmd`
+from `.agentless-mcp.json` is also refused unless
+`--allow-repo-test-cmd` is present.
+
 One supply-chain caveat is worth stating up front. Grammars come from
 `tree-sitter-language-pack`, which downloads a prebuilt platform bundle on first
 use. Those bundles are SHA-256 verified against a release manifest, and a
 mismatch is a hard failure — but the manifest itself (`parsers.json`) is
 HTTPS-trusted rather than cryptographically signed. We accept that risk under
 exact release-version pinning: `tree-sitter` and `tree-sitter-language-pack` are
-pinned as a unit and move only through a reviewed bump. Fetching is confined to
-an explicit warmup step, and both the manifest URL and the cache directory are
+pinned as a unit and move only through a reviewed bump. The recommended
+operational posture is to pre-seed the grammar cache once with
+`agentless-mcp warmup`, review that exposure, then set
+`AGENTLESS_MCP_NO_DOWNLOAD=1` for normal operation. Fetching is confined to an
+explicit warmup step, and both the manifest URL and the cache directory are
 overridable for mirrored or air-gapped installs. See
 [docs/supply-chain-audit.md](docs/supply-chain-audit.md) for the full audit.
 

@@ -2,10 +2,10 @@
 
 :mod:`agentless_mcp.core.refs` deliberately keeps a reference as a
 ``(file, name, line)`` triple, because binding a name to a declaration needs
-type information this tool does not have. The one binding the parse *can* see
--- an enclosing parameter list -- travels with each reference, and a use it
-marks as locally bound produces no edge at all: a parameter's name references
-nothing outside its function. This module goes as far past that as
+type information this tool does not have. Syntactic roles and lexical bindings
+travel with each reference, and assignments, parameters, loop targets,
+imports, labels, and unrelated attribute members produce no bare symbol edge.
+This module goes as far past that as
 evidence allows and stops there: it uses the imports the file itself declares,
 and the file the name is spelled in, to sort candidate definitions into four
 **discrete tiers**. There is no score, no threshold and no weighting -- a tier
@@ -47,11 +47,11 @@ sha256 gate already guarantees.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 
 from agentless_mcp.core import graph
-from agentless_mcp.core.imports import ImportStatement
+from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 
@@ -69,6 +69,17 @@ _SMALLEST_CYCLE = 2
 # module can look up.
 _SUBSCRIPT_OPEN = "["
 _KEYWORD_BASE = "="
+
+
+@dataclass(frozen=True)
+class PathEdgePolicy:
+    """Select which non-binding evidence tiers a path may traverse."""
+
+    include_unique: bool = False
+    include_ambiguous: bool = False
+
+
+DEFAULT_PATH_EDGE_POLICY = PathEdgePolicy()
 
 
 class Tier(str, Enum):
@@ -176,6 +187,7 @@ class ImportScope:
     """
 
     modules: frozenset[str]
+    module_bindings: Mapping[str, frozenset[str]]
     named: Mapping[str, frozenset[str]]
     statements: tuple[tuple[str, int, str], ...]
 
@@ -211,6 +223,26 @@ class Resolver:
         if len(ordered) == 1:
             return Resolution(name=name, tier=Tier.UNIQUE, candidates=ordered)
         return Resolution(name=name, tier=Tier.AMBIGUOUS, candidates=ordered)
+
+    def resolve_module_attribute(
+        self,
+        name: str,
+        path: str,
+        qualifier: str,
+    ) -> Resolution | None:
+        """Resolve ``qualifier.name`` only through that repository module."""
+        scope = self.scopes.get(path)
+        if scope is None:
+            return None
+        targets = scope.module_bindings.get(qualifier, frozenset())
+        candidates = tuple(
+            entry
+            for entry in _ordered(self.index.definitions.get(name, ()))
+            if entry.path in targets
+        )
+        if not candidates:
+            return None
+        return Resolution(name=name, tier=Tier.IMPORTED, candidates=candidates)
 
 
 @dataclass(frozen=True)
@@ -299,6 +331,7 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
 
     for facts in files:
         modules: set[str] = set()
+        module_bindings: dict[str, set[str]] = {}
         named: dict[str, set[str]] = {}
         statements: list[tuple[str, int, str]] = []
 
@@ -308,44 +341,34 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
             if not statement.names:
                 if target is not None and target != facts.path:
                     modules.add(target)
+                    binding = statement.module.split(".", maxsplit=1)[0]
+                    if binding:
+                        module_bindings.setdefault(binding, set()).add(target)
                 continue
             for name in statement.names:
-                dotted, submodule = _submodule_import(facts.path, statement, name, known)
+                dotted = f"{statement.module}.{name}" if statement.module else name
+                submodule = graph.resolve_imported_submodule(
+                    facts.path,
+                    statement,
+                    name,
+                    known,
+                )
                 if submodule is not None and submodule != facts.path:
                     named.setdefault(name, set()).add(submodule)
                     modules.add(submodule)
+                    module_bindings.setdefault(name, set()).add(submodule)
                     statements.append((dotted, statement.line_number, submodule))
                 elif target is not None and target != facts.path:
                     named.setdefault(name, set()).add(target)
 
         scopes[facts.path] = ImportScope(
             modules=frozenset(modules),
+            module_bindings={name: frozenset(paths) for name, paths in module_bindings.items()},
             named={name: frozenset(paths) for name, paths in named.items()},
             statements=tuple(statements),
         )
 
     return scopes
-
-
-def _submodule_import(
-    importer: str,
-    statement: ImportStatement,
-    name: str,
-    known: frozenset[str],
-) -> tuple[str, str | None]:
-    """Resolve one from-import name as a submodule file, when it is one.
-
-    Python's ``from pkg import mod`` binds ``mod`` as a module object whenever
-    ``pkg.mod`` is itself a module, so the name's real target is the submodule
-    file, not the package's ``__init__``. Probing ``module + "." + name``
-    against the known files decides which case this is; when it misses, the
-    name is a symbol imported from the module and today's binding stands. The
-    probe misses naturally in the other languages this package parses -- no
-    file matches the dotted candidate there.
-    """
-    dotted = f"{statement.module}.{name}" if statement.module else name
-    probe = replace(statement, module=dotted, names=())
-    return dotted, graph.resolve_import_target(importer, probe, known)
 
 
 def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
@@ -423,22 +446,26 @@ def shortest_path(
     source: str,
     target: str,
     *,
-    include_ambiguous: bool = False,
+    edge_policy: PathEdgePolicy = DEFAULT_PATH_EDGE_POLICY,
     max_visited: int = DEFAULT_MAX_VISITED,
 ) -> PathResult:
     """Find the fewest-hop path between two nodes, edges treated as undirected.
 
     Undirected on purpose: "how are these two related" is not a question about
     call direction, and a caller reading the hops is shown each edge's real
-    direction anyway. ``ambiguous`` edges are excluded unless asked for --
-    a path built on a guessed binding is worse than no path, because it reads
-    like a finding.
+    direction anyway. ``unique`` and ``ambiguous`` edges are excluded unless
+    asked for: repository-wide name uniqueness is useful retrieval evidence,
+    but it is not binding evidence strong enough for a path that reads like an
+    architecture claim.
 
     The search is bounded by ``max_visited`` and reports whether it hit that
     bound, so "no path" and "stopped looking" are never the same answer.
     """
     usable = [
-        edge for edge in resolved.edges if include_ambiguous or edge.tier is not Tier.AMBIGUOUS
+        edge
+        for edge in resolved.edges
+        if (edge_policy.include_unique or edge.tier is not Tier.UNIQUE)
+        and (edge_policy.include_ambiguous or edge.tier is not Tier.AMBIGUOUS)
     ]
     adjacency = _undirected(usable)
 
@@ -537,15 +564,18 @@ def _reference_edges(
     edges: list[SymbolEdge] = []
 
     for ref in facts.refs:
-        if ref.locally_bound:
-            # A parameter's name inside its own function spells the local
-            # binding; the repository symbols it collides with are not what
-            # it references, at any tier.
+        if not ref.is_resolvable:
+            # A syntactic binding, label, declaration, or attribute member is
+            # not a bare repository reference at any evidence tier.
             continue
         if (ref.name, ref.line) in declarations:
             # The identifier in `def quote` is the declaration, not a use of it.
             continue
-        resolution = resolver.resolve(ref.name, facts.path)
+        resolution = (
+            resolver.resolve_module_attribute(ref.name, facts.path, ref.qualifier)
+            if ref.role is IdentifierRole.MODULE_ATTRIBUTE
+            else resolver.resolve(ref.name, facts.path)
+        )
         if resolution is None:
             continue
 

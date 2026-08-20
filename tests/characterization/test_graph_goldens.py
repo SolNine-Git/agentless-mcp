@@ -33,10 +33,10 @@ GOLDENS = Path(__file__).parent / "goldens" / "graph"
 PLACEHOLDER = "<REPO>"
 
 # One case per repository: the symbol explained, and the pair a path is traced
-# between. Chosen to exercise every tier the fixtures can produce -- the Python
-# case has same-file, imported and unique fan-out at once.
+# between. Chosen to exercise the precise tiers the default path accepts; weak
+# name-only tiers have separate opt-in unit coverage.
 CASES = {
-    "repo_py": ("reorder_report", "reorder_report", "Item.needs_reorder"),
+    "repo_py": ("reorder_report", "reorder_report", "format_money"),
     "repo_ts": ("reorderReport", "reorderReport", "formatMoney"),
 }
 

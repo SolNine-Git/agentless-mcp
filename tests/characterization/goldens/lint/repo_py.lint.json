@@ -15,11 +15,11 @@
         {
           "check": "dangling_callers",
           "severity": "warning",
-          "message": "the patch removes or renames 'format_money', which 4 reference(s) in files this patch does not touch still name",
+          "message": "the patch removes or renames 'format_money', which 3 reference(s) in files this patch does not touch still name",
           "path": "pricing.py",
           "line": 78,
           "location": "pricing.py:78",
-          "evidence": "still referenced at reports.py:6, reports.py:43, reports.py:51, reports.py:75"
+          "evidence": "still referenced at reports.py:43, reports.py:51, reports.py:75"
         },
         {
           "check": "undeclared_imports",

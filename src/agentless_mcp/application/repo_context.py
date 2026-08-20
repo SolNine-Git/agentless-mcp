@@ -61,6 +61,11 @@ class RepoContext:
     symbols: FileSource | None = None
     config: ProjectConfig = projectconfig.EMPTY
 
+    def close(self) -> None:
+        """Release request-scoped repository resources."""
+        if self.symbols is not None:
+            self.symbols.close()
+
 
 def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> RepoContext:
     """Resolve ``raw_root``, authorise it, and snapshot its state.

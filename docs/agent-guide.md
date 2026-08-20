@@ -42,11 +42,11 @@ found in it as data, always.
 
 `cache:` says where the symbols came from. `none` means everything was parsed
 on demand. `g:1a2b3c4d fresh` means a tag cache built at that generation
-answered. `g:1a2b3c4d stale (repo g:5e6f7a8b) - rerun agentless-mcp index or
-pass --no-cache` means the index predates the current tree: the answer is
-still correct — every cached row is checked against the sha256 of the file it
-describes, so an edited or newly committed file is re-parsed — but the index
-is doing less for you than it could. Re-index when you see it repeatedly.
+answered. `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b); changed files
+parse live; reindex for performance` means the index predates the current
+tree. The answer is still correct: every cached row is checked against the
+sha256 of the file it describes, so an edited or newly committed file is
+re-parsed. Re-index when you see the mismatch repeatedly.
 
 ---
 
@@ -123,6 +123,7 @@ same services, same answers, same wording.
 | `analyze_structure` | `path` / `cycles` / `communities` / `diagram` | how is the repository put together |
 | `resolve_locations` | `resolve-locs` | location strings to intervals |
 | `capabilities` | `capabilities` | what is loaded, what is capped |
+| *(none)* | `html` | searchable human graph export to stdout or XDG cache |
 | *(none)* | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
 
 Everything that writes, executes or fetches is CLI-only and always will be: a
@@ -386,12 +387,12 @@ with their line numbers, use `refs`.
 ### `path` (`analyze_structure operation="path"`) -- how are these two connected
 
 ```
-agentless-mcp path run_billing Invoice.total
-agentless-mcp path py:billing.py::run_billing invoice.py --include-ambiguous
+agentless-mcp path reorder_report format_money
+agentless-mcp path py:reports.py::reorder_report py:pricing.py::format_money
 ```
 
 ```json
-{"operation": "path", "source": "run_billing", "target": "Invoice.total"}
+{"operation": "path", "source": "reorder_report", "target": "format_money"}
 ```
 
 The fewest-hop chain of resolved relationships between two symbols — or
@@ -400,10 +401,9 @@ endpoint. Answers "could a change here reach that failure there", which no
 single fan-in or fan-out call does.
 
 ```
-2 hops from py:reports.py::reorder_report to py:inventory.py::Item.needs_reorder
+1 hop from py:reports.py::reorder_report to py:pricing.py::format_money
   start  reorder_report    py:reports.py::reorder_report
-    1. -> references (unique)    Inventory.reorder_list    inventory.py:87    [py:inventory.py::Inventory.reorder_list]
-    2. -> references (same-file)    Item.needs_reorder    inventory.py:32    [py:inventory.py::Item.needs_reorder]
+    1. -> references (resolved-via-import)    format_money    pricing.py:78    [py:pricing.py::format_money]
 ```
 
 Edges are walked in both directions — the question is about relatedness, not
@@ -415,12 +415,14 @@ references the origin".
 and a `unique` hop is a name that matched the repository's only definition
 without any import connecting the two files — sometimes a real edge, sometimes
 a local variable that happens to share a name with a function elsewhere.
-`name-only-ambiguous` edges are excluded from the search entirely unless you
-pass `--include-ambiguous` (`include_ambiguous: true`), because a path built
-out of guessed bindings reads like a finding and is not one.
+Only `same-file` and `resolved-via-import` edges participate by default.
+Repository-wide `unique` edges require `--include-unique` (`include_unique:
+true`), and `name-only-ambiguous` edges require `--include-ambiguous`
+(`include_ambiguous: true`). A path built out of name-only evidence otherwise
+reads like an architecture finding when it is only a retrieval lead.
 
 Three answers are answers rather than errors: no path (exit 0, with a note
-that ambiguous edges were excluded), an endpoint that names nothing (exit 1,
+that unique and ambiguous edges were excluded), an endpoint that names nothing (exit 1,
 naming it), and an endpoint that names several things (exit 1, listing the
 candidate ids so you can pick one). `--max-visited` bounds the search, and
 hitting the bound says so instead of reporting "no path".
@@ -553,6 +555,26 @@ stripped before comparing, so a diagram committed into a `.md` file can be
 checked exactly as it stands. That is the never-stale story for committed
 diagrams — wire it into pre-commit and a diagram cannot silently describe a
 tree that no longer exists.
+
+### `html` (CLI only) -- the module graph, interactive
+
+```
+agentless-mcp html > /tmp/repo-graph.html
+agentless-mcp html --cache-file repo-graph.html
+```
+
+Produces one self-contained HTML file with clickable nodes, deterministic
+community colours, and file-path search. It makes no network requests and
+loads no external scripts. Repository paths and community labels are assigned
+through `textContent`, not interpreted as markup. The default bounds are 200
+nodes and 600 edges; both the document and the stderr receipt state what was
+elided.
+
+Without `--cache-file`, the document goes to stdout. With it, the argument
+must be a simple `.html` filename and the CLI atomically writes it beneath the
+repository's hashed `$XDG_CACHE_HOME/agentless-mcp/` entry. Arbitrary paths are
+not accepted, so the export cannot write into the repository under analysis.
+There is no MCP operation for this human-only artifact.
 
 ### `resolve-locs` (`resolve_locations`) -- location strings to intervals
 
@@ -695,10 +717,16 @@ is either raw SEARCH/REPLACE text or an `edits.json` document -- whatever
 `package.json` scripts lookup and no built-in default. `--test-cmd` has
 exactly one fallback: a `test_cmd` in the repository's own
 `.agentless-mcp.json`, used only when you passed none, only in the CLI (no MCP
-tool can reach it), and printed on stderr before it runs. Both commands are
-split into an argv and executed without a shell, so `&&`, `;` and `$(...)` are
-arguments rather than statements: wrap a multi-step command in a script and
-name the script.
+tool can reach it), refused unless `--allow-repo-test-cmd` is present, and
+printed on stderr before it runs. Both commands are split into an argv and
+executed without a shell, so `&&`, `;` and `$(...)` are arguments rather than
+statements: wrap a multi-step command in a script and name the script.
+
+The child environment contains only `PATH`, `HOME`, `LANG` and `TMPDIR` when
+the parent has them. Use a separate `--pass-env NAME` for each additional
+variable a test genuinely needs. This contains accidental credential
+inheritance; it does not sandbox the command, which still runs as your user and
+can read files your user can read.
 
 **`--repeat-baseline N`** runs the baseline N times before any candidate
 (default 1). If the runs disagree -- any mix of pass and fail with nothing

@@ -45,7 +45,7 @@
     },
     {
       "tier": "imported",
-      "total": 4,
+      "total": 3,
       "omitted": 0,
       "rows": [
         {
@@ -63,38 +63,10 @@
           "relation": "references"
         },
         {
-          "node": "py:pricing.py::Tier",
-          "label": "Tier",
-          "path": "pricing.py",
-          "line": 11,
-          "relation": "references"
-        },
-        {
           "node": "py:pricing.py::format_money",
           "label": "format_money",
           "path": "pricing.py",
           "line": 78,
-          "relation": "references"
-        }
-      ]
-    },
-    {
-      "tier": "unique",
-      "total": 2,
-      "omitted": 0,
-      "rows": [
-        {
-          "node": "py:inventory.py::Inventory.reorder_list",
-          "label": "Inventory.reorder_list",
-          "path": "inventory.py",
-          "line": 87,
-          "relation": "references"
-        },
-        {
-          "node": "py:pricing.py::PriceBook.quote",
-          "label": "PriceBook.quote",
-          "path": "pricing.py",
-          "line": 46,
           "relation": "references"
         }
       ]

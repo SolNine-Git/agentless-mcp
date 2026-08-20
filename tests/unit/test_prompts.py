@@ -195,6 +195,14 @@ class TestEagerValidation:
 
 
 class TestWireDescriptions:
+    def test_map_description_carries_the_selection_rule(self):
+        description = TOOL_DESCRIPTIONS["repo_map"]
+
+        assert "use grep when the literal string or file is already known" in description
+        assert "target location is unknown" in description
+        assert "fan-in or blast radius" in description
+        assert "change surface spans files" in description
+
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path
     ):

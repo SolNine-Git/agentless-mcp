@@ -1,6 +1,6 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
-from agentless_mcp.core.extractor import collect_refs, identifier_node_types
+from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
     build_ref_index,
     enclosing_symbol,
@@ -76,33 +76,124 @@ class TestCollectRefs:
         names = {ref.name for ref in collect_refs(source, "typescript", "w.ts")}
         assert {"Widget", "render", "helper"} <= names
 
-    def test_a_parameter_s_occurrences_are_marked_locally_bound(self):
+    def test_a_parameter_s_occurrences_are_marked_local(self):
         refs = collect_refs("def f(quote):\n    return quote\n", "python", "a.py")
         bound = [ref for ref in refs if ref.name == "quote"]
         assert [ref.line for ref in bound] == [1, 2]
-        assert all(ref.locally_bound for ref in bound)
+        assert [ref.role for ref in bound] == [IdentifierRole.BINDING, IdentifierRole.LOCAL]
 
-    def test_annotation_and_default_names_are_not_locally_bound(self):
+    def test_annotation_and_default_names_remain_references(self):
         source = "def f(quote: Book = LEDGER):\n    return quote\n"
-        flags = {
-            (ref.name, ref.line): ref.locally_bound
-            for ref in collect_refs(source, "python", "a.py")
-        }
-        assert flags[("quote", 1)]
-        assert flags[("quote", 2)]
-        assert not flags[("Book", 1)]
-        assert not flags[("LEDGER", 1)]
+        roles = {(ref.name, ref.line): ref.role for ref in collect_refs(source, "python", "a.py")}
+        assert roles[("quote", 1)] is IdentifierRole.BINDING
+        assert roles[("quote", 2)] is IdentifierRole.LOCAL
+        assert roles[("Book", 1)] is IdentifierRole.REFERENCE
+        assert roles[("LEDGER", 1)] is IdentifierRole.REFERENCE
 
     def test_splat_and_lambda_parameters_bind_too(self):
         source = "def f(*args, **kwargs):\n    g = lambda item: item + args + kwargs\n"
         refs = collect_refs(source, "python", "a.py")
-        assert all(ref.locally_bound for ref in refs if ref.name in {"args", "kwargs", "item"})
+        assert all(not ref.is_reference for ref in refs if ref.name in {"args", "kwargs", "item"})
 
     def test_a_use_outside_the_binding_function_is_not_marked(self):
         source = "def f(quote):\n    return quote\n\n\nTOTAL = quote\n"
         refs = collect_refs(source, "python", "a.py")
         outside = next(ref for ref in refs if ref.name == "quote" and ref.line == 5)
-        assert not outside.locally_bound
+        assert outside.role is IdentifierRole.REFERENCE
+
+    def test_assignment_and_loop_bindings_do_not_become_references(self):
+        source = (
+            "def f(rows):\n"
+            "    counter = 0\n"
+            "    for item in rows:\n"
+            "        counter += item\n"
+            "    return counter\n"
+        )
+        refs = collect_refs(source, "python", "a.py")
+
+        assert all(not ref.is_reference for ref in refs if ref.name in {"counter", "item"})
+
+    def test_keyword_and_attribute_names_have_non_reference_roles(self):
+        refs = collect_refs(
+            "def f(stream, value):\n    return call(graphs=value, stderr=stream.write)\n",
+            "python",
+            "a.py",
+        )
+        roles = {(ref.name, ref.line): ref.role for ref in refs}
+
+        assert roles[("graphs", 2)] is IdentifierRole.KEYWORD
+        assert roles[("stderr", 2)] is IdentifierRole.KEYWORD
+        assert roles[("write", 2)] is IdentifierRole.ATTRIBUTE
+        assert roles[("call", 2)] is IdentifierRole.REFERENCE
+
+    def test_only_a_direct_imported_module_member_is_resolvable(self):
+        refs = collect_refs(
+            'import sys\nsys.stderr.write("x")\n',
+            "python",
+            "a.py",
+        )
+        by_name = {ref.name: ref for ref in refs if ref.line == 2}
+
+        assert by_name["sys"].role is IdentifierRole.MODULE_QUALIFIER
+        assert by_name["stderr"].role is IdentifierRole.MODULE_ATTRIBUTE
+        assert by_name["stderr"].qualifier == "sys"
+        assert by_name["write"].role is IdentifierRole.ATTRIBUTE
+        assert not by_name["write"].is_resolvable
+
+    def test_an_import_alias_preserves_the_source_qualifier(self):
+        refs = collect_refs(
+            "import core as c\nc.only_once()\n",
+            "python",
+            "a.py",
+        )
+        by_name = {ref.name: ref for ref in refs if ref.line == 2}
+
+        assert by_name["c"].role is IdentifierRole.MODULE_QUALIFIER
+        assert by_name["only_once"].role is IdentifierRole.MODULE_ATTRIBUTE
+        assert by_name["only_once"].qualifier == "core"
+
+    def test_a_local_binding_shadows_an_imported_module(self):
+        refs = collect_refs(
+            "import core\n\n\ndef use(core):\n    return core.only_once()\n",
+            "python",
+            "a.py",
+        )
+        by_name = {ref.name: ref for ref in refs if ref.line == 5}
+
+        assert by_name["core"].role is IdentifierRole.LOCAL
+        assert by_name["only_once"].role is IdentifierRole.ATTRIBUTE
+
+    def test_import_syntax_is_not_a_reference_but_imported_use_is(self):
+        refs = collect_refs(
+            "from library import helper as alias\n\n\ndef f():\n    return alias()\n",
+            "python",
+            "a.py",
+        )
+        aliases = [ref for ref in refs if ref.name == "alias"]
+
+        assert [ref.role for ref in aliases] == [IdentifierRole.IMPORT, IdentifierRole.REFERENCE]
+
+    def test_with_exception_and_comprehension_targets_are_local(self):
+        source = (
+            "def f(source):\n"
+            "    with open('x') as handle:\n"
+            "        values = [entry for entry in source]\n"
+            "    try:\n"
+            "        return handle, values\n"
+            "    except Error as exc:\n"
+            "        return exc\n"
+        )
+        refs = collect_refs(source, "python", "a.py")
+
+        assert all(
+            not ref.is_reference for ref in refs if ref.name in {"handle", "values", "entry", "exc"}
+        )
+
+    def test_global_declaration_keeps_uses_resolvable(self):
+        source = "def f():\n    global counter\n    return counter\n"
+        counters = [ref for ref in collect_refs(source, "python", "a.py") if ref.name == "counter"]
+
+        assert [ref.role for ref in counters] == [IdentifierRole.BINDING, IdentifierRole.REFERENCE]
 
 
 class TestScan:
