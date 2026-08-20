@@ -35,6 +35,10 @@ from agentless_mcp.adapters.cli.formatting import (
     warn_about,
 )
 from agentless_mcp.application import envelope, render
+from agentless_mcp.application.capability_service import (
+    build_capability_report,
+    render_capability_report,
+)
 from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
@@ -80,13 +84,6 @@ from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.util.errors import AtlasError
-from agentless_mcp.util.fslimits import (
-    DEFAULT_MAX_DEPTH,
-    DEFAULT_MAX_FILE_BYTES,
-)
-from agentless_mcp.util.fslimits import (
-    DEFAULT_MAX_FILES as WALK_MAX_FILES,
-)
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
@@ -319,7 +316,7 @@ def _add_refs(subparsers: Any) -> None:
     parser.add_argument(
         "--shared-callers",
         action="store_true",
-        help="also list symbols the same callers use (the DRY pass)",
+        help="instead rank symbols the same callers use (the DRY pass)",
     )
     parser.set_defaults(handler=_cmd_refs)
 
@@ -876,9 +873,11 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
     result = services.symbols.find_referencing_symbols(
         ctx, args.target, limit=args.limit, shared_callers=args.shared_callers
     )
-    text = render.render_ref_groups(result.groups, args.target)
-    if args.shared_callers:
-        text += "\n" + render.render_shared_callers(result.shared, args.target)
+    text = (
+        render.render_shared_callers(result.shared, args.target)
+        if args.shared_callers
+        else render.render_ref_groups(result.groups, args.target)
+    )
     _emit(args, ctx, services, _Answer(text, result.as_dict(), "groups"))
     return EXIT_OK
 
@@ -1394,42 +1393,13 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    status = _cache_status(ctx, services)
-    capabilities = grammars.loaded_capabilities()
-    payload: dict[str, Any] = {
-        "pack_version": grammars.pack_version(),
-        "grammar_cache": grammars.cache_dir(),
-        "cache": status.as_dict(),
-        "languages": [
-            {
-                "name": cap.name,
-                "tier": cap.tier,
-                "abi": cap.abi_version,
-                "warmed": cap.warmed,
-                "probe_ok": cap.probe_ok,
-                "detail": cap.detail,
-            }
-            for cap in capabilities
-        ],
-        "extensions": dict(sorted(TreeSitterExtractor.SUPPORTED_EXTENSIONS.items())),
-        "config": ctx.config.as_dict(),
-        "caps": _caps(),
-    }
-
-    lines = [
-        f"pack {payload['pack_version']}  grammar cache {payload['grammar_cache']}",
-        f"tag cache: {status.receipt}",
-        f"  path {status.path}  files {status.files}  tags {status.tags}",
-        "languages:",
-    ]
-    lines.extend(
-        f"  {cap.name:<12} tier={cap.tier} abi={cap.abi_version or '-'} "
-        f"warmed={cap.warmed} probe={cap.probe_ok}"
-        for cap in capabilities
+    report = build_capability_report(ctx, services.extractor)
+    _emit(
+        args,
+        ctx,
+        services,
+        _Answer(render_capability_report(report), report.as_dict(), "languages"),
     )
-    lines.append("caps:")
-    lines.extend(f"  {name} = {value}" for name, value in _caps().items())
-    _emit(args, ctx, services, _Answer("\n".join(lines) + "\n", payload, "languages"))
     return EXIT_OK
 
 
@@ -1514,24 +1484,6 @@ def _patch_receipt(ctx: RepoContext, summary: str, result: ApplyResult) -> None:
     for outcome in result.failures:
         edit = outcome.edit
         note(f"  {outcome.status.value}: {edit.path} block {edit.index}: {outcome.reason}")
-
-
-def _cache_status(ctx: RepoContext, services: CliServices) -> cache.CacheStatus:
-    """Describe the tag cache behind one call, counting its rows."""
-    source = ctx.symbols if ctx.symbols is not None else cache.OnDemandSource(services.extractor)
-    return source.status()
-
-
-def _caps() -> dict[str, int]:
-    """Return the bounds in force, so a caller can see why a view stopped."""
-    return {
-        "max_walk_depth": DEFAULT_MAX_DEPTH,
-        "max_walk_files": WALK_MAX_FILES,
-        "max_file_bytes": DEFAULT_MAX_FILE_BYTES,
-        "max_output_tokens": envelope.DEFAULT_MAX_TOKENS,
-        "max_map_files": DEFAULT_MAX_FILES,
-        "max_expand_symbols": DEFAULT_EXPAND_LIMIT,
-    }
 
 
 def _resolve(args: argparse.Namespace, *, require_git: bool) -> RepoContext | None:

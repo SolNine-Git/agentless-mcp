@@ -35,7 +35,6 @@ import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
-from importlib import metadata
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import unquote, urlparse
@@ -46,6 +45,10 @@ from pydantic import Field, ValidationError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.application import envelope, render
+from agentless_mcp.application.capability_service import (
+    build_capability_report,
+    render_capability_report,
+)
 from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
@@ -63,7 +66,7 @@ from agentless_mcp.application.symbol_service import (
     render_expansion,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, projectconfig
+from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
@@ -256,14 +259,6 @@ def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Pat
     if len(candidates) == 1:
         return candidates[0]
     return None
-
-
-def _distribution_version() -> str:
-    """The installed distribution's version, or a placeholder outside one."""
-    try:
-        return metadata.version("agentless-mcp")
-    except metadata.PackageNotFoundError:
-        return "unknown"
 
 
 @dataclass(frozen=True)
@@ -465,9 +460,11 @@ class ToolHandlers:
         result = self._services.symbols.find_referencing_symbols(
             ctx, target, limit=limit, shared_callers=shared_callers
         )
-        body = render.render_ref_groups(result.groups, target)
-        if shared_callers:
-            body += "\n" + render.render_shared_callers(result.shared, target)
+        body = (
+            render.render_shared_callers(result.shared, target)
+            if shared_callers
+            else render.render_ref_groups(result.groups, target)
+        )
         return self._wrap(ctx, body)
 
     def explain_symbol(self, ctx: RepoContext, target: str, limit: int) -> str:
@@ -516,35 +513,14 @@ class ToolHandlers:
         return self._wrap(ctx, "\n".join(lines) + "\n")
 
     def capabilities(self, ctx: RepoContext, client_roots: Sequence[Path] = ()) -> str:
-        """Report loaded grammars, their versions and the caps in force."""
-        capabilities = grammars.loaded_capabilities()
-        status = (
-            ctx.symbols.status()
-            if ctx.symbols is not None
-            else cache.OnDemandSource(self._services.extractor).status()
+        """Report the complete application-owned capability contract."""
+        report = build_capability_report(
+            ctx,
+            self._services.extractor,
+            configured_roots=self._roots,
+            client_roots=client_roots,
         )
-        lines = [
-            f"agentless-mcp {_distribution_version()}",
-            f"pack {grammars.pack_version()}  grammar cache {grammars.cache_dir()}",
-            f"tag cache: {status.receipt}",
-            f"  path {status.path}  files {status.files}  tags {status.tags}",
-        ]
-        # No usable index and no deliberate bypass: on-demand parsing is a
-        # design default, but the remedy is an explicit CLI step this surface
-        # cannot run, so the one place that reports the cache also names it.
-        if status.enabled and status.generation is None:
-            lines.append(MESSAGES.cache_build_hint.format(repo_root=ctx.root))
-        lines += [
-            f"roots: {', '.join(str(path) for path in self._roots) or 'none configured'}",
-            f"client roots: {', '.join(str(path) for path in client_roots) or 'none advertised'}",
-            "languages:",
-        ]
-        lines.extend(
-            f"  {cap.name:<12} abi={cap.abi_version or '-'} "
-            f"warmed={cap.warmed} probe={cap.probe_ok}"
-            for cap in capabilities
-        )
-        return self._wrap(ctx, "\n".join(lines) + "\n")
+        return self._wrap(ctx, render_capability_report(report))
 
     def _wrap(self, ctx: RepoContext, body: str) -> str:
         """Put the receipt and banner around one tool's answer."""
@@ -739,7 +715,11 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         finally:
             ctx.close()
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["repo_map"], annotations=read_only("Repository map"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["repo_map"],
+        output_schema=None,
+        annotations=read_only("Repository map"),
+    )
     async def repo_map(
         context: Context,
         repo_root: RepoRoot = None,
@@ -761,7 +741,11 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
                 ),
             )
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["list_dir"], annotations=read_only("Directory tree"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["list_dir"],
+        output_schema=None,
+        annotations=read_only("Directory tree"),
+    )
     async def list_dir(
         context: Context,
         repo_root: RepoRoot = None,
@@ -775,6 +759,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["get_symbols_overview"],
+        output_schema=None,
         annotations=read_only("Symbols overview"),
     )
     async def get_symbols_overview(
@@ -789,7 +774,9 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
             return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
 
     @mcp.tool(
-        description=TOOL_DESCRIPTIONS["expand_symbols"], annotations=read_only("Expand symbols")
+        description=TOOL_DESCRIPTIONS["expand_symbols"],
+        output_schema=None,
+        annotations=read_only("Expand symbols"),
     )
     async def expand_symbols(
         context: Context,
@@ -802,7 +789,11 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             return handlers.expand_symbols(ctx, stable_ids, limit)
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["read_slice"], annotations=read_only("Read slice"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["read_slice"],
+        output_schema=None,
+        annotations=read_only("Read slice"),
+    )
     async def read_slice(
         context: Context,
         path: FilePath,
@@ -820,7 +811,11 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
                 context_lines,
             )
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["find_symbol"], annotations=read_only("Find symbol"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["find_symbol"],
+        output_schema=None,
+        annotations=read_only("Find symbol"),
+    )
     async def find_symbol(
         context: Context,
         name: FindName,
@@ -835,6 +830,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
+        output_schema=None,
         annotations=read_only("Find referencing symbols"),
     )
     async def find_referencing_symbols(
@@ -851,7 +847,9 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
             )
 
     @mcp.tool(
-        description=TOOL_DESCRIPTIONS["explain_symbol"], annotations=read_only("Explain symbol")
+        description=TOOL_DESCRIPTIONS["explain_symbol"],
+        output_schema=None,
+        annotations=read_only("Explain symbol"),
     )
     async def explain_symbol(
         context: Context,
@@ -866,6 +864,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["analyze_structure"],
+        output_schema=None,
         annotations=read_only("Analyze structure"),
     )
     async def analyze_structure(
@@ -903,6 +902,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["resolve_locations"],
+        output_schema=None,
         annotations=read_only("Resolve locations"),
     )
     async def resolve_locations(
@@ -916,7 +916,11 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         async with context_for(context, repo_root) as ctx:
             return handlers.resolve_locations(ctx, path, locs, context_lines)
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["capabilities"], annotations=read_only("Capabilities"))
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["capabilities"],
+        output_schema=None,
+        annotations=read_only("Capabilities"),
+    )
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)

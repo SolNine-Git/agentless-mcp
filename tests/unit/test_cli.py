@@ -122,6 +122,26 @@ class TestInProcess:
         assert invoke(services, repo_path, "refs", "quote") == EXIT_OK
         assert "run_billing" in capsys.readouterr().out
 
+    def test_shared_callers_replace_the_fan_in_listing(self, services, repo_path, capsys):
+        (repo_path / "core.py").write_text(
+            "def quote(value):\n    return value\n\ndef normalise(value):\n    return value\n",
+            encoding="utf-8",
+        )
+        (repo_path / "caller.py").write_text(
+            "from core import normalise, quote\n\n"
+            "def first(value):\n"
+            "    return normalise(quote(value))\n\n"
+            "def second(value):\n"
+            "    return normalise(quote(value))\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "refs", "quote", "--shared-callers") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "symbols sharing callers with quote" in out
+        assert "normalise" in out
+        assert "references to quote" not in out
+
     def test_expand_prints_a_numbered_body(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "expand", "py:core.py::quote") == EXIT_OK
         out = capsys.readouterr().out

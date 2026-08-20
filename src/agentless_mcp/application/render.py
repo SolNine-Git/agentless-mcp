@@ -4,15 +4,16 @@ Two research constraints decide everything in this module. Flattened,
 code-shaped text beats structured dumps for localization, so a map is rendered
 as numbered signature lines under a filename rather than as a table. And
 denormalized "incident cards" carrying names, not opaque handles, measurably
-beat id-only encodings -- so every card repeats the file, the line span and
-the enclosing class instead of making the reader join them back together.
+beat id-only encodings. Stable ids already carry the repository-relative path,
+so text locations append only ``@line`` or ``@start-end`` rather than spelling
+that path twice.
 
 The view models live here rather than in the services because this module owns
 the output vocabulary: a service decides *what* is worth showing, this decides
 what it looks like. Nothing here reads the filesystem or parses anything.
 
-Every path is repository-relative with forward slashes, and every row carries
-``file:line``.
+Every path is repository-relative with forward slashes, and every navigable
+row carries a stable id plus an exact line or span.
 """
 
 from abc import ABC, abstractmethod
@@ -910,7 +911,7 @@ def render_explanation(explanation: Explanation) -> str:
         lines.append("rationale")
         lines.extend(
             f"  {node.kind.upper()}  {node.text}    "
-            f"{explanation.card.path}:{node.line}  [{node.stable_id} -> {node.parent_id}]"
+            f"[{node.stable_id} -> {node.parent_id}] @{node.line}"
             for node in explanation.rationales
         )
     lines.append("")
@@ -932,7 +933,7 @@ def render_path(trace: PathTrace) -> str:
     ]
     lines.extend(
         f"  {number:>3}. {hop.arrow} {hop.verb} ({hop.tier_label})    "
-        f"{hop.label}    {hop.path}:{hop.line}    [{hop.node}]"
+        f"{hop.label}    [{hop.node}] @{hop.line}"
         for number, hop in enumerate(trace.hops, start=1)
     )
     if trace.message:
@@ -964,8 +965,7 @@ def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
     for group in groups:
         lines.append(f"  {group.tier_label} ({group.total})")
         lines.extend(
-            f"    {row.relation} {row.label}    {row.path}:{row.line}    [{row.node}]"
-            for row in group.rows
+            f"    {row.relation} {row.label}    [{row.node}] @{row.line}" for row in group.rows
         )
         if group.omitted:
             lines.append(f"    ... {group.omitted} more at this tier")
@@ -1056,7 +1056,7 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     for group in groups:
         labelled = f", {group.tier_label}" if group.tier_label else ""
         lines = [f"{group.path}  ({len(group.sites)} references{labelled})"]
-        lines.extend(_render_site(group.path, site) for site in group.sites)
+        lines.extend(_render_site(site) for site in group.sites)
         blocks.append("\n".join(lines))
     if isinstance(groups, RefListing) and groups.omitted:
         note = f"  ... {groups.omitted} more references not listed (limit {groups.limit})"
@@ -1087,7 +1087,7 @@ def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
             tests_heading_shown = True
         files = "file" if row.shared_files == 1 else "files"
         lines.append(
-            f"  {row.stable_id}    {row.path}:{row.line}  "
+            f"  [{row.stable_id}] @{row.line}  "
             f"({row.overlap} shared callers in {row.shared_files} {files}, "
             f"score {row.score:.3f})"
         )
@@ -1101,11 +1101,16 @@ def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
 
 
 def _render_card(card: SymbolCard) -> str:
-    """Render one incident card: id, location line, signature, optional body."""
+    """Render one incident card without repeating the path inside its stable id."""
     owner = f" in class {card.parent_class}" if card.parent_class else ""
+    span = (
+        str(card.start_line)
+        if card.start_line == card.end_line
+        else f"{card.start_line}-{card.end_line}"
+    )
     lines = [
-        card.stable_id,
-        f"  {card.path}:{card.start_line}-{card.end_line}  {card.kind}{owner} ({card.language})",
+        f"[{card.stable_id}] @{span}",
+        f"  {card.kind}{owner} ({card.language})",
     ]
     if card.body:
         lines.extend(f"  {line}" for line in card.body.split("\n"))
@@ -1114,8 +1119,8 @@ def _render_card(card: SymbolCard) -> str:
     return "\n".join(lines)
 
 
-def _render_site(path: str, site: RefSite) -> str:
-    """Render one reference row: file:line plus who encloses it."""
+def _render_site(site: RefSite) -> str:
+    """Render one reference row beneath the file header that locates it."""
     suffix = f"  [{site.stable_id}]" if site.stable_id else ""
     prefix = line_prefix(site.line, LINE_NUMBER_WIDTH)
-    return f"{prefix}{site.enclosing}{suffix}    {path}:{site.line}"
+    return f"{prefix}{site.enclosing}{suffix}"

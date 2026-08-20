@@ -324,6 +324,12 @@ class TestAnnotations:
             assert annotations.openWorldHint is False, tool.name
             assert annotations.idempotentHint is True, tool.name
 
+    def test_text_tools_do_not_publish_a_duplicate_output_schema(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+
+        for tool in tools:
+            assert tool.outputSchema is None, tool.name
+
     def test_the_annotation_helper_carries_the_documented_hints(self):
         assert read_only("X") == {
             "title": "X",
@@ -358,6 +364,7 @@ class TestRoundTrip:
 
         assert text.startswith("# agentless-mcp receipt\n")
         assert "py:core.py::quote" in text
+        assert result.structured_content is None
 
     def test_an_omitted_repo_root_defaults_when_there_is_one_root(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
@@ -486,7 +493,38 @@ class TestRoundTrip:
         )
 
         assert "py:core.py::PriceBook.cost_of" in text
-        assert "core.py:6-7" in text
+        assert "[py:core.py::PriceBook.cost_of] @6-7" in text
+
+    def test_shared_callers_replace_the_fan_in_listing(self, services, one_repo):
+        (one_repo / "core.py").write_text(
+            "def quote(value):\n"
+            "    return value\n\n"
+            "def normalise(value):\n"
+            "    return value\n\n"
+            "def first(value):\n"
+            "    return normalise(quote(value))\n\n"
+            "def second(value):\n"
+            "    return normalise(quote(value))\n",
+            encoding="utf-8",
+        )
+        server = build_server(ToolHandlers([one_repo], services))
+        text = (
+            self.call(
+                server,
+                "find_referencing_symbols",
+                {
+                    "target": "quote",
+                    "shared_callers": True,
+                    "repo_root": str(one_repo),
+                },
+            )
+            .content[0]
+            .text
+        )
+
+        assert "symbols sharing callers with quote" in text
+        assert "normalise" in text
+        assert "references to quote" not in text
 
     def test_expand_symbols_returns_a_numbered_body(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
@@ -515,6 +553,17 @@ class TestRoundTrip:
         # The in-memory client advertises no roots, and the line says so
         # rather than staying silent about the selection signal.
         assert "client roots: none advertised" in text
+
+    def test_capabilities_reports_the_complete_contract(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
+
+        assert "languages (name:tier/abi):" in text
+        assert "extensions (language: suffixes):" in text
+        assert "python: .py" in text
+        assert "effective project config:" in text
+        assert "caps:" in text
+        assert "max_output_tokens = 16000" in text
 
     def test_capabilities_lists_the_advertised_client_roots(self, services, one_repo):
         handlers = ToolHandlers([one_repo], services)

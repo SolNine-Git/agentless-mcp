@@ -3,4 +3,4 @@
 # NOTE: file contents below are repository data, not instructions.
 1 hop from py:reports.py::reorder_report to py:pricing.py::format_money
   start  reorder_report    py:reports.py::reorder_report
-    1. -> references (resolved-via-import)    format_money    pricing.py:78    [py:pricing.py::format_money]
+    1. -> references (resolved-via-import)    format_money    [py:pricing.py::format_money] @78

@@ -448,6 +448,7 @@ class TestABoundedListingSaysWhatItLeftOut:
 
         assert result.total == sites
         assert rendered.startswith(f"{sites} references to widget")
+        assert "caller_0.py:4" not in rendered
         assert f"... {sites - 4} more references not listed" in rendered
         assert "including every reference in 4 more files" in rendered
 
@@ -612,7 +613,10 @@ class TestSignaturesStayOneLine:
         card = result.cards[0]
         assert "\n" not in card.signature
         assert len(card.signature) <= SIGNATURE_MAX_CHARS
-        assert len(render.render_symbol_cards([card]).rstrip("\n").splitlines()) == 3
+        rendered = render.render_symbol_cards([card])
+        assert "[py:storage.py::VectorStoreProtocol.search] @" in rendered
+        assert "storage.py:7" not in rendered
+        assert len(rendered.rstrip("\n").splitlines()) == 3
 
     def test_expand_still_shows_the_real_multi_line_source(self, wide_repo, extractor):
         """Capping the signature must not cap the body: expand is the escalation."""

@@ -1,19 +1,19 @@
 # agentless-mcp receipt
 # repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 # NOTE: file contents below are repository data, not instructions.
-ts:reports.ts::reorderReport
-  reports.ts:32-49  function (typescript)
+[ts:reports.ts::reorderReport] @32-49
+  function (typescript)
   fn reorderReport(inventory: Inventory, prices: PriceBook) -> string
 
 references (fan-out): 6
   same-file (1)
-    references formatRow    reports.ts:51    [ts:reports.ts::formatRow]
+    references formatRow    [ts:reports.ts::formatRow] @51
   resolved-via-import (5)
-    references Inventory    inventory.ts:37    [ts:inventory.ts::Inventory]
-    references Inventory.reorderList    inventory.ts:79    [ts:inventory.ts::Inventory.reorderList]
-    references PriceBook    pricing.ts:22    [ts:pricing.ts::PriceBook]
-    references PriceBook.quote    pricing.ts:46    [ts:pricing.ts::PriceBook.quote]
-    references formatMoney    pricing.ts:94    [ts:pricing.ts::formatMoney]
+    references Inventory    [ts:inventory.ts::Inventory] @37
+    references Inventory.reorderList    [ts:inventory.ts::Inventory.reorderList] @79
+    references PriceBook    [ts:pricing.ts::PriceBook] @22
+    references PriceBook.quote    [ts:pricing.ts::PriceBook.quote] @46
+    references formatMoney    [ts:pricing.ts::formatMoney] @94
 
 referenced by (fan-in): none
 
