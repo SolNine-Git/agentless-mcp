@@ -59,6 +59,7 @@ repos:
         additional_dependencies:
           - tree-sitter>=0.25,<0.27
           - tree-sitter-language-pack==1.14.3
+          - tomli>=2
           # 2026-08-18, Phase 1b: adapters/mcp imports fastmcp, so the hook's
           # isolated env needs it or mypy reports a missing stub for a module
           # that is present in the project env.

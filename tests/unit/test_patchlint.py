@@ -1,6 +1,5 @@
 """The deterministic hallucination checks over a parsed patch."""
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -74,13 +73,12 @@ NOT_TOML = "[project\nbroken\n"
 # wrong shape through, so the caller is the one that has to say so.
 NON_ARRAY_DEPENDENCIES = '[project]\ndependencies = "requests"\n'
 
-# Reading a manifest at all needs `tomllib`, which arrived in 3.11. What 3.10
-# does instead is `TestManifestWithoutATomlParser`'s subject, and it runs
-# everywhere; what is marked here is the far larger set of expectations that
-# can only hold where a manifest is readable.
+# Reading a manifest uses `tomllib` on 3.11+ and the declared `tomli` fallback
+# on 3.10. The marker name remains for the parser-focused cases, but those
+# cases now run on every supported interpreter.
 requires_tomllib = pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="reading a dependency manifest needs Python 3.11 or newer",
+    False,
+    reason="the supported interpreter has a TOML parser",
 )
 
 APP = """\
@@ -475,24 +473,20 @@ class TestLiteralScanner:
         assert _literal_end(text, 0) == end
 
 
-class TestManifestWithoutATomlParser:
-    """What an interpreter with no TOML parser reports, on every interpreter.
+class TestManifestParserUnavailable:
+    """What an explicitly unavailable TOML parser reports.
 
-    ``tomllib`` arrived in 3.11 and this package takes no dependency to fill
-    that gap in, so on 3.10 the manifest is unreadable. The answer that has to
-    hold is a coverage gap: "this interpreter could not read the manifest" is a
-    fact about the interpreter, and reporting it as a repository that declares
-    nothing is what makes every third-party import in the patch look
-    hallucinated.
+    The normal runtime has a parser on every supported Python version. These
+    tests keep the degraded-input contract explicit by simulating an
+    unavailable parser.
 
-    Nothing here skips. The gate is stood in for rather than depended on,
-    because 3.10 is the interpreter this behaviour exists for and the one least
-    likely to be the interpreter the suite is running on.
+    Nothing here skips: the degraded path is stood in for rather than depended
+    on, so the contract remains tested on every supported interpreter.
     """
 
     @pytest.fixture
     def no_toml_parser(self, monkeypatch):
-        """Stand in for the 3.10 branch of the ``tomllib`` gate."""
+        """Stand in for a runtime where no TOML parser is available."""
         monkeypatch.setattr(patchlint, "_load_toml", lambda _text: None)
 
     def test_the_manifest_declares_nothing_knowable_rather_than_nothing(self, no_toml_parser):
@@ -501,10 +495,7 @@ class TestManifestWithoutATomlParser:
         assert parse.parsed is False
         assert parse.packages == frozenset()
         assert parse.warnings == (
-            (
-                "pyproject.toml not read: reading a dependency manifest needs Python 3.11 "
-                "or newer, so this check did not run"
-            ),
+            ("pyproject.toml not read: no TOML parser is available, so this check did not run"),
         )
 
     def test_a_manifest_that_could_not_be_read_is_not_a_source(self, repo, no_toml_parser):
@@ -525,7 +516,7 @@ class TestManifestWithoutATomlParser:
 
         findings = checks(report, CHECK_UNDECLARED_IMPORTS)
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
-        assert "needs Python 3.11 or newer" in findings[0].evidence
+        assert "no TOML parser is available" in findings[0].evidence
 
     def test_the_reason_reaches_the_report(self, facts, source, no_toml_parser):
         report = lint_patch(
@@ -535,7 +526,7 @@ class TestManifestWithoutATomlParser:
         )
 
         assert len(report.warnings) == 1
-        assert "needs Python 3.11 or newer" in report.warnings[0]
+        assert "no TOML parser is available" in report.warnings[0]
 
     def test_the_other_checks_still_run(self, facts, source, no_toml_parser):
         report = lint_patch(

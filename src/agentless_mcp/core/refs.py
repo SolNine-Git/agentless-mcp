@@ -28,6 +28,7 @@ from pathlib import Path
 from agentless_mcp.core.cache import FileSource, effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
+from agentless_mcp.core.projectconfig import CONFIG_FILENAME
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     id_qualname,
@@ -112,6 +113,9 @@ def scan_repo(
     skipped: list[SkippedFile] = []
 
     for repo_file in walk_repo(root):
+        if repo_file.path == CONFIG_FILENAME:
+            continue
+
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(Path(repo_file.path).suffix)
         if language is None:
             continue

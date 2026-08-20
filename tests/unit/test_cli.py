@@ -461,10 +461,9 @@ class TestLint:
         silences nothing and produces no finding, so the only trace that the
         declared set is incomplete is the warning the core report carries.
 
-        Before 3.11 there is no manifest parser at all -- ``tomllib`` is what
-        reads one and it arrived in 3.11 -- so the warning that reaches the
-        report there says that instead. Either way the point is the same: the
-        report says what it could not read about the repository.
+        ``tomllib`` reads the manifest on 3.11+ and the declared ``tomli``
+        fallback reads it on 3.10, so the malformed shape warning is stable
+        across the supported interpreters.
         """
         (repo_path / "pyproject.toml").write_text(
             '[project]\nname = "x"\ndependencies = "requests"\n', encoding="utf-8"
@@ -477,12 +476,7 @@ class TestLint:
 
         assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
         out = capsys.readouterr().out
-        expected = (
-            "dependencies is not a list"
-            if sys.version_info >= (3, 11)
-            else "needs Python 3.11 or newer"
-        )
-        assert expected in out
+        assert "dependencies is not a list" in out
 
     def test_a_candidates_path_that_is_neither_is_refused(self, services, repo_path, capsys):
         assert (

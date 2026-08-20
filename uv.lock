@@ -17,6 +17,7 @@ name = "agentless-mcp"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
 ]
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.29" },
     { name = "pydantic", marker = "extra == 'mcp'", specifier = ">=2" },
     { name = "tiktoken", marker = "extra == 'tokens'", specifier = ">=0.9" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
     { name = "tree-sitter", specifier = ">=0.25,<0.27" },
     { name = "tree-sitter-language-pack", specifier = "==1.14.3" },
 ]

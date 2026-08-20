@@ -17,8 +17,8 @@ of its own.
     declared dependencies nor :data:`sys.stdlib_module_names`. This is the
     slopsquatting check: a hallucinated package name looks exactly like a real
     one until something tries to install it. Reading ``pyproject.toml`` needs
-    ``tomllib``, which arrived in 3.11, so on Python 3.10 this one check
-    reports itself not run rather than guessing -- see :func:`_load_toml`.
+    ``tomllib`` arrived in 3.11; Python 3.10 uses the conditional ``tomli``
+    dependency instead -- see :func:`_load_toml`.
 
 ``shadowing``
     A ``def`` or ``class`` the patch introduces at a module's top level whose
@@ -99,6 +99,7 @@ extractor's own reference and import rows and run for every language it parses.
 
 import builtins
 import hashlib
+import importlib
 import keyword
 import re
 import sys
@@ -108,7 +109,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from agentless_mcp.core import resolve
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
@@ -419,44 +420,33 @@ class _Fragment:
 # Declared dependencies
 # ---------------------------------------------------------------------------
 
+
+class _TomlParser(Protocol):
+    """The shared ``loads`` surface of tomllib and tomli."""
+
+    def loads(self, text: str) -> dict[str, Any]:
+        """Parse one TOML document."""
+
+
 if sys.version_info >= (3, 11):
-    import tomllib
-
-    def _load_toml(text: str) -> dict[str, Any] | None:
-        """Parse TOML with the standard library parser."""
-        return tomllib.loads(text)
-
+    _toml = cast(_TomlParser, importlib.import_module("tomllib"))
 else:
+    import tomli
 
-    def _load_toml(_text: str) -> dict[str, Any] | None:
-        """Report that this interpreter has no TOML parser to read a manifest with.
-
-        ``tomllib`` arrived in 3.11 and this package's floor is 3.10, and the
-        two ways to close that gap both cost more than an advisory check is
-        worth. A dependency on ``tomli`` inverts the decision that put this
-        package's whole configuration surface on stdlib json precisely so that
-        reading configuration takes no dependency. A hand-written scanner is a
-        second implementation of TOML, maintained forever, that is confidently
-        wrong about every document shape it does not cover -- which is the
-        failure mode every check in this module exists to refuse.
-
-        So 3.10 gets neither, and says so. ``None`` means the manifest is
-        unreadable *on this interpreter*, which
-        :func:`parse_pyproject_dependencies` turns into ``parsed=False``: the
-        import check reports that it did not run, rather than reporting a
-        repository that declares nothing and accusing every third-party import
-        in the patch of being hallucinated.
-        """
-        return None
+    _toml = cast(_TomlParser, tomli)
 
 
-# What 3.10 reports in place of a declared set. Phrased as a fact about the
-# interpreter rather than about the repository, because "declares nothing" and
-# "could not be read here" are the two answers `ManifestParse.parsed` exists to
-# keep apart.
+def _load_toml(text: str) -> dict[str, Any] | None:
+    """Parse TOML with the stdlib parser or the Python 3.10 fallback."""
+    return _toml.loads(text)
+
+
+# What a deliberately unavailable parser reports in place of a declared set.
+# Phrased as a fact about the interpreter rather than about the repository,
+# because "declares nothing" and "could not be read here" are the two answers
+# `ManifestParse.parsed` exists to keep apart.
 _NO_TOML_PARSER = (
-    f"{PYPROJECT_NAME} not read: reading a dependency manifest needs Python 3.11 "
-    "or newer, so this check did not run"
+    f"{PYPROJECT_NAME} not read: no TOML parser is available, so this check did not run"
 )
 
 _PROJECT = "project"
@@ -518,10 +508,8 @@ def parse_pyproject_dependencies(text: str) -> ManifestParse:
     would make the check fire on exactly the code it should not.
 
     A document that does not parse comes back ``parsed=False`` with the reason
-    in ``warnings``, never as an empty declaration. So does every document on
-    Python 3.10, which has no TOML parser this package may use: see
-    :func:`_load_toml`. The interpreter that cannot read manifests reports one
-    coverage gap, not a repository that declares nothing.
+    in ``warnings``, never as an empty declaration. An unavailable parser also
+    reports one coverage gap, not a repository that declares nothing.
     """
     warnings: list[str] = []
     try:
