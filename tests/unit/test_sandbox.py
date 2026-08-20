@@ -244,7 +244,7 @@ stubborn = (
 )
 child = subprocess.Popen([sys.executable, "-c", stubborn])
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
-    handle.write(f"{os.getpgrp()}\\n")
+    handle.write(f"{os.getpgrp()} {child.pid}\\n")
     handle.flush()
 time.sleep(600)
 """
@@ -282,18 +282,22 @@ sys.stdout.flush()
 """
 
 
-def group_is_gone(group, deadline=15.0):
-    """Poll until no process remains in ``group``, or give up.
+def process_is_gone(pid, deadline=15.0):
+    """Poll until ``pid`` has exited, or give up.
 
-    A poll rather than a single probe: SIGKILL delivery and the reaping of an
-    orphan by init are both asynchronous, so a one-shot check would be a race
-    that fails on a loaded machine and passes on an idle one.
+    The child PID is more precise than probing a numeric process-group ID after
+    cleanup: BSD can reuse that ID for a process owned by another user and
+    report ``EPERM`` even though the original child is gone.
     """
     stop = time.monotonic() + deadline
     while time.monotonic() < stop:
         try:
-            os.killpg(group, 0)
+            os.kill(pid, 0)
         except ProcessLookupError:
+            return True
+        except PermissionError:
+            # This script never changes identity, so a foreign owner means
+            # the original PID was already reaped and reused.
             return True
         time.sleep(0.05)
     return False
@@ -379,8 +383,8 @@ class TestRunCommand:
         result = sandbox.run_command(workspace, python_cmd("hang.py", str(marker)), timeout=2)
 
         assert result.status is RunStatus.TIMEOUT
-        group = int(marker.read_text(encoding="utf-8").strip())
-        assert group_is_gone(group), f"process group {group} outlived the run"
+        _group, child = (int(value) for value in marker.read_text(encoding="utf-8").split())
+        assert process_is_gone(child), f"child process {child} outlived the run"
 
     def test_the_capture_keeps_the_tail(self, workspace, python_cmd):
         self.write(workspace, "chatty.py", CHATTY_SCRIPT)
