@@ -88,6 +88,8 @@ pwned
 >>>>>>> REPLACE
 """
 
+GIT_IDENTITY = ("-c", "user.email=tests@example.invalid", "-c", "user.name=agentless-mcp tests")
+
 
 @pytest.fixture
 def repo(make_git_repo):
@@ -110,7 +112,7 @@ def service(extractor):
 def git(root, *arguments):
     """Run one git command and return its stdout."""
     return subprocess.run(
-        ["git", "-C", str(root), *arguments],
+        ["git", *GIT_IDENTITY, "-C", str(root), *arguments],
         check=True,
         capture_output=True,
         timeout=30,
