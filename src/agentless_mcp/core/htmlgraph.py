@@ -90,7 +90,7 @@ def render_html(
     represented = sorted({membership[path] for path in selected if path in membership})
     labels = {str(position): partition.communities[position].label for position in represented}
     elided_nodes = max(0, len(graph.nodes) - len(nodes))
-    elided_edges = max(0, len(candidates) - len(edges))
+    elided_edges = max(0, len(graph.edges) - len(edges))
     payload = {
         "nodes": nodes,
         "edges": edges,

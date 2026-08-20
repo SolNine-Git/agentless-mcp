@@ -298,18 +298,23 @@ def wrap_json(
 
     kept = _fit_items(document, items, items_key or "", counter, max_tokens)
     document[items_key or ""] = items[:kept]
-    document["truncated"] = {
-        "reason": ENVELOPE.json_ceiling_trimmed.format(max_tokens=max_tokens),
-        "token_ceiling": max_tokens,
-        "shown": kept,
-        "total": len(items),
-    }
+    document["truncated"] = _json_truncation(max_tokens, kept, len(items))
     return _dump(document)
 
 
 def _dump(document: Mapping[str, Any]) -> str:
     """Render one JSON document, stably ordered and newline-terminated."""
     return json.dumps(document, indent=2) + "\n"
+
+
+def _json_truncation(max_tokens: int, shown: int, total: int) -> dict[str, Any]:
+    """Return the metadata that must fit beside every trimmed JSON list."""
+    return {
+        "reason": ENVELOPE.json_ceiling_trimmed.format(max_tokens=max_tokens),
+        "token_ceiling": max_tokens,
+        "shown": shown,
+        "total": total,
+    }
 
 
 def _fit(body: str, counter: TokenCounter, budget: int) -> tuple[str, int]:
@@ -343,6 +348,7 @@ def _fit_items(
         middle = (low + high + 1) // 2
         probe = dict(document)
         probe[items_key] = items[:middle]
+        probe["truncated"] = _json_truncation(max_tokens, middle, len(items))
         if counter.count(_dump(probe)) <= max_tokens:
             low = middle
         else:

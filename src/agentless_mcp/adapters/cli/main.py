@@ -20,6 +20,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,7 @@ class CliServices:
     lints: LintService
     counter: TokenCounter
     extractor: TreeSitterExtractor
+    resources: ExitStack | None = None
 
 
 def run(argv: Sequence[str] | None, services: CliServices) -> int:
@@ -134,10 +136,12 @@ def run(argv: Sequence[str] | None, services: CliServices) -> int:
     args = parser.parse_args(argv)
 
     handler: Callable[[argparse.Namespace, CliServices], int] = args.handler
-    try:
-        return handler(args, services)
-    except AtlasError as error:
-        return fail(str(error), exit_code_for(error))
+    with ExitStack() as resources:
+        invocation = replace(services, resources=resources)
+        try:
+            return handler(args, invocation)
+        except AtlasError as error:
+            return fail(str(error), exit_code_for(error))
 
 
 def counter_parser() -> argparse.ArgumentParser:
@@ -1537,7 +1541,10 @@ def _context(
         tree_oid=ctx.tree_oid,
         no_cache=args.no_cache,
     )
-    return replace(ctx, symbols=source)
+    resolved = replace(ctx, symbols=source)
+    if services.resources is not None:
+        services.resources.callback(resolved.close)
+    return resolved
 
 
 @dataclass(frozen=True)

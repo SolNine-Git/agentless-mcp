@@ -260,7 +260,7 @@ def run_command(
     cwd: Path,
     cmd: str,
     *,
-    timeout: int,
+    timeout: float,
     max_capture: int = DEFAULT_MAX_CAPTURE,
     passthrough_env: Sequence[str] = (),
 ) -> RunResult:
@@ -351,7 +351,7 @@ def _wait_bounded(
     process: "subprocess.Popen[bytes]",
     streams: Sequence[IO[bytes]],
     *,
-    timeout: int,
+    timeout: float,
     capture: int,
 ) -> bool:
     """Wait for ``process``, keeping its capture files inside the cap.

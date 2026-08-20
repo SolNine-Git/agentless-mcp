@@ -130,10 +130,11 @@ Everything that writes, executes or fetches is CLI-only and always will be: a
 tool an analysed repository's contents could talk an agent into calling must
 not be able to change that repository or run its code.
 
-MCP responses are text-native. Starting in v0.3, the answer is returned once
-in `content[0].text`; the redundant `structuredContent.result` copy emitted by
-earlier FastMCP registration is no longer published. Clients that read the
-duplicate field must migrate to the standard text content before upgrading.
+MCP responses are text-native: new clients should read `content[0].text`.
+Existing clients may continue reading the compatibility copy in
+`structuredContent.result`; both fields carry the same text. Removing the
+duplicate requires a future versioned protocol boundary rather than changing
+the response contract of the existing tools in place.
 
 ## Per-tool usage
 

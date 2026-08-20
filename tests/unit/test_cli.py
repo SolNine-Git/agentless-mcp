@@ -19,6 +19,7 @@ from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
+from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
@@ -83,6 +84,19 @@ class TestInProcess:
         out = capsys.readouterr().out
         assert out.startswith("# agentless-mcp receipt\n")
         assert "py:core.py::quote" in out
+
+    def test_a_repository_context_is_closed_after_dispatch(self, services, repo_path, monkeypatch):
+        real = RepoContext.close
+        closed = []
+
+        def close(ctx):
+            closed.append(ctx.root)
+            real(ctx)
+
+        monkeypatch.setattr(RepoContext, "close", close)
+
+        assert invoke(services, repo_path, "map") == EXIT_OK
+        assert closed == [repo_path.resolve()]
 
     def test_json_mode_emits_a_receipt_bearing_document(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "map", "--json") == EXIT_OK

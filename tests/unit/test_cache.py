@@ -14,6 +14,7 @@ developer's real cache.
 import json
 import sqlite3
 import subprocess
+from contextlib import closing
 
 import pytest
 
@@ -57,6 +58,24 @@ def run_billing(items):
 # Parsed, supported, and defines nothing: the case that must still be recorded
 # with its digest so the next run skips it instead of re-parsing it forever.
 EMPTY = "# nothing here yet\n"
+
+
+@pytest.fixture(autouse=True)
+def close_open_sources(monkeypatch):
+    """Make every source opened by this module request-scoped and explicit."""
+    opened = []
+    real = cache.open_source
+
+    def tracked(*args, **kwargs):
+        source = real(*args, **kwargs)
+        opened.append(source)
+        return source
+
+    monkeypatch.setattr(cache, "open_source", tracked)
+    yield
+    for source in reversed(opened):
+        source.close()
+
 
 FIXTURE_REPOS = ("repo_py", "repo_ts", "repo_go")
 SKELETON_FILES = {"repo_py": "pricing.py", "repo_ts": "pricing.ts", "repo_go": "pricing.go"}
@@ -206,7 +225,7 @@ class TestIncrementalTriad:
 
         second = cache.build_index(repo, extractor)
 
-        with sqlite3.connect(first.database) as connection:
+        with closing(sqlite3.connect(first.database)) as connection:
             recorded = connection.execute(
                 "SELECT COUNT(*) FROM files WHERE path = ?", ("empty.py",)
             ).fetchone()
@@ -226,7 +245,7 @@ class TestIncrementalTriad:
 
         assert report.pruned == 1
         assert report.files == 2
-        with sqlite3.connect(report.database) as connection:
+        with closing(sqlite3.connect(report.database)) as connection:
             rows = connection.execute(
                 "SELECT COUNT(*) FROM tags WHERE path = ?", ("billing.py",)
             ).fetchone()
@@ -277,6 +296,21 @@ class TestIncrementalTriad:
         assert report.failures[0].path == "billing.py"
         assert "recursion" in report.failures[0].reason
         assert (report.indexed, report.files) == (2, 2)
+
+    @pytest.mark.parametrize(
+        "error",
+        [AttributeError, TypeError, KeyError, IndexError],
+        ids=lambda error: error.__name__,
+    )
+    def test_an_extractor_programming_defect_surfaces(self, repo, extractor, monkeypatch, error):
+        def defective(_text, _language, _path):
+            message = "a renamed field"
+            raise error(message)
+
+        monkeypatch.setattr(extractor, "extract_from_source", defective)
+
+        with pytest.raises(error, match="renamed field"):
+            cache.build_index(repo, extractor)
 
 
 def _refuse_one(name):
@@ -464,7 +498,10 @@ class TestSingleWriter:
             handle.close()
 
         source = cache.open_source(repo, extractor, tree_oid=None)
-        assert source.status().files == 3
+        try:
+            assert source.status().files == 3
+        finally:
+            source.close()
 
 
 class TestCommandLine:
@@ -700,7 +737,7 @@ class TestRefsAndImportsRows:
             "SELECT COUNT(*) FROM refs WHERE path = ?",
             "SELECT COUNT(*) FROM files WHERE path = ?",
         )
-        with sqlite3.connect(second.database) as connection:
+        with closing(sqlite3.connect(second.database)) as connection:
             for query in queries:
                 assert connection.execute(query, ("billing.py",)).fetchone()[0] == 0
         assert first.files == 3

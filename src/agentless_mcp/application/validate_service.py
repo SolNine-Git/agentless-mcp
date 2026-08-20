@@ -56,7 +56,7 @@ import json
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, TypeVar
@@ -427,9 +427,9 @@ class ValidateReport:
             )
         if self.deadline_expired:
             lines.append(
-                "DEADLINE: the run's overall time budget expired before every candidate was "
-                "evaluated. The candidates it did not reach are reported not_evaluated -- "
-                "raise the budget, or narrow the candidate set."
+                "DEADLINE: the run's overall time budget expired before evaluation completed. "
+                "Work it did not reach is reported not_evaluated -- raise the budget, or narrow "
+                "the candidate set."
             )
         return tuple(lines)
 
@@ -462,7 +462,18 @@ class ValidateService:
         deadline = _deadline(request)
 
         candidates = load_candidates(request.candidates)
-        header = self._baseline(ctx, request, count=len(candidates))
+        header, baseline_deadline_expired = self._baseline(
+            ctx, request, count=len(candidates), deadline=deadline
+        )
+
+        if baseline_deadline_expired:
+            return ValidateReport(
+                header=header,
+                verdicts=tuple(
+                    _deadline_expired(candidate, request.run_timeout) for candidate in candidates
+                ),
+                deadline_expired=True,
+            )
 
         if header.baseline is BaselineStatus.UNVERIFIED:
             return ValidateReport(
@@ -470,22 +481,27 @@ class ValidateService:
                 verdicts=tuple(_not_evaluated(candidate) for candidate in candidates),
             )
 
-        verdicts = self._evaluate_all(
+        verdicts, candidate_deadline_expired = self._evaluate_all(
             ctx, request, candidates, repro_valid=header.repro_valid, deadline=deadline
         )
         return ValidateReport(
             header=header,
             verdicts=verdicts,
-            deadline_expired=any(
-                verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in verdicts
-            ),
+            deadline_expired=candidate_deadline_expired,
         )
 
     # ------------------------------------------------------------------
     # Baseline
     # ------------------------------------------------------------------
 
-    def _baseline(self, ctx: RepoContext, request: ValidateRequest, *, count: int) -> RunHeader:
+    def _baseline(
+        self,
+        ctx: RepoContext,
+        request: ValidateRequest,
+        *,
+        count: int,
+        deadline: float | None,
+    ) -> tuple[RunHeader, bool]:
         """Run the test command, and the reproduction command, on unpatched HEAD.
 
         With ``repeat_baseline`` above one the test command runs that many
@@ -499,32 +515,46 @@ class ValidateService:
         repeats = max(1, request.repeat_baseline)
         runs: list[RunResult] = []
         for _ in range(repeats):
+            command_timeout = _command_timeout(request.timeout, deadline)
+            if command_timeout is None:
+                outcome = _expired_baseline(runs, repeats, request.run_timeout)
+                return _header(ctx, request, count, outcome, repro_run=None), True
             with sandbox.worktree(ctx.root) as tree:
                 runs.append(
                     sandbox.run_command(
                         tree,
                         request.test_cmd,
-                        timeout=request.timeout,
+                        timeout=command_timeout,
                         passthrough_env=request.passthrough_env,
                     )
                 )
 
+            if _deadline_reached(deadline) and len(runs) < repeats:
+                outcome = _expired_baseline(runs, repeats, request.run_timeout)
+                return _header(ctx, request, count, outcome, repro_run=None), True
+
         failures = [run for run in runs if not run.passed]
         outcome = _baseline_outcome(runs, failures, repeats)
         if outcome.status is BaselineStatus.UNVERIFIED:
-            return _header(ctx, request, count, outcome, repro_run=None)
+            expired = _deadline_reached(deadline)
+            return _header(ctx, request, count, outcome, repro_run=None), expired
 
         repro_run = None
         if request.repro_cmd is not None:
+            command_timeout = _command_timeout(request.timeout, deadline)
+            if command_timeout is None:
+                expired_outcome = replace(outcome, deadline_expired=True)
+                return _header(ctx, request, count, expired_outcome, repro_run=None), True
             with sandbox.worktree(ctx.root) as tree:
                 repro_run = sandbox.run_command(
                     tree,
                     request.repro_cmd,
-                    timeout=request.timeout,
+                    timeout=command_timeout,
                     passthrough_env=request.passthrough_env,
                 )
 
-        return _header(ctx, request, count, outcome, repro_run=repro_run)
+        expired = _deadline_reached(deadline)
+        return _header(ctx, request, count, outcome, repro_run=repro_run), expired
 
     # ------------------------------------------------------------------
     # Candidates
@@ -538,7 +568,7 @@ class ValidateService:
         *,
         repro_valid: bool,
         deadline: float | None,
-    ) -> tuple[CandidateVerdict, ...]:
+    ) -> tuple[tuple[CandidateVerdict, ...], bool]:
         """Evaluate every candidate, in parallel when asked, and sort the answers.
 
         The sort is what makes ``--jobs 2`` and ``--jobs 1`` produce the same
@@ -546,24 +576,27 @@ class ValidateService:
         a verdict file whose line order depends on scheduling would defeat
         every diff a caller wants to take against a previous run.
 
-        The deadline is checked before a candidate starts rather than while it
-        runs: a run in flight already has ``timeout`` bounding it, and killing
-        a test suite half way through would produce a verdict nobody could act
-        on. What the budget buys is that the *next* one does not start.
+        Every command receives the smaller of its own bound and the aggregate
+        budget left. Work already in flight therefore stops at the same
+        deadline, while queued candidates become ``not_evaluated``.
         """
 
-        def evaluate(candidate: Candidate) -> CandidateVerdict:
-            if deadline is not None and time.monotonic() >= deadline:
-                return _deadline_expired(candidate, request.run_timeout)
-            return self._evaluate(ctx, request, candidate, repro_valid=repro_valid)
+        def evaluate(candidate: Candidate) -> tuple[CandidateVerdict, bool]:
+            if _deadline_reached(deadline):
+                return _deadline_expired(candidate, request.run_timeout), True
+            verdict = self._evaluate(
+                ctx, request, candidate, repro_valid=repro_valid, deadline=deadline
+            )
+            return verdict, _deadline_reached(deadline)
 
         if request.jobs > 1 and len(candidates) > 1:
             with ThreadPoolExecutor(max_workers=request.jobs) as pool:
-                verdicts = list(pool.map(evaluate, candidates))
+                evaluations = list(pool.map(evaluate, candidates))
         else:
-            verdicts = [evaluate(candidate) for candidate in candidates]
+            evaluations = [evaluate(candidate) for candidate in candidates]
 
-        return tuple(sorted(verdicts, key=lambda verdict: verdict.index))
+        verdicts = tuple(sorted((item[0] for item in evaluations), key=lambda item: item.index))
+        return verdicts, any(item[1] for item in evaluations)
 
     def _evaluate(
         self,
@@ -572,9 +605,10 @@ class ValidateService:
         candidate: Candidate,
         *,
         repro_valid: bool,
+        deadline: float | None,
     ) -> CandidateVerdict:
         """Apply one candidate in its own worktree and run the tests there."""
-        started = time.monotonic()
+        started = _monotonic()
         with sandbox.worktree(ctx.root) as tree:
             # The worktree is the repository this candidate is judged in, so
             # it is the root every path in the patch is contained against. A
@@ -614,35 +648,47 @@ class ValidateService:
             # guard, kept in every tier.
             key = normalized.key if normalized.result.new_contents else None
 
-            regression_run = sandbox.run_command(
-                tree,
-                request.test_cmd,
-                timeout=request.timeout,
-                passthrough_env=request.passthrough_env,
-            )
-            reproduction_run = (
-                sandbox.run_command(
+            command_timeout = _command_timeout(request.timeout, deadline)
+
+            def measure() -> CandidateVerdict:
+                if command_timeout is None:
+                    return _deadline_expired(candidate, request.run_timeout)
+                regression_run = sandbox.run_command(
                     tree,
-                    request.repro_cmd,
-                    timeout=request.timeout,
+                    request.test_cmd,
+                    timeout=command_timeout,
                     passthrough_env=request.passthrough_env,
                 )
-                if repro_valid and request.repro_cmd is not None
-                else None
-            )
 
-        return CandidateVerdict(
-            id=candidate.id,
-            index=candidate.index,
-            apply_status=ApplyStatus.OK,
-            apply_reasons=(),
-            equivalence_key=key,
-            regression=Verdict.of(regression_run),
-            reproduction=None if reproduction_run is None else Verdict.of(reproduction_run),
-            duration=round(time.monotonic() - started, 3),
-            regression_run=regression_run,
-            reproduction_run=reproduction_run,
-        )
+                reproduction_run = None
+                reproduction_verdict = None
+                if repro_valid and request.repro_cmd is not None:
+                    repro_timeout = _command_timeout(request.timeout, deadline)
+                    if repro_timeout is None:
+                        reproduction_verdict = Verdict.NOT_EVALUATED
+                    else:
+                        reproduction_run = sandbox.run_command(
+                            tree,
+                            request.repro_cmd,
+                            timeout=repro_timeout,
+                            passthrough_env=request.passthrough_env,
+                        )
+                        reproduction_verdict = Verdict.of(reproduction_run)
+
+                return CandidateVerdict(
+                    id=candidate.id,
+                    index=candidate.index,
+                    apply_status=ApplyStatus.OK,
+                    apply_reasons=(),
+                    equivalence_key=key,
+                    regression=Verdict.of(regression_run),
+                    reproduction=reproduction_verdict,
+                    duration=round(_monotonic() - started, 3),
+                    regression_run=regression_run,
+                    reproduction_run=reproduction_run,
+                )
+
+            return measure()
 
 
 # ---------------------------------------------------------------------------
@@ -872,13 +918,33 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
 
 
 def _deadline(request: ValidateRequest) -> float | None:
-    """Return the monotonic instant the run must stop starting work at."""
+    """Return the monotonic instant by which the whole run must finish."""
     if request.run_timeout is None:
         return None
     if request.run_timeout <= 0:
         message = f"the run timeout must be a positive number of seconds, not {request.run_timeout}"
         raise AtlasError(message)
-    return time.monotonic() + request.run_timeout
+    return _monotonic() + request.run_timeout
+
+
+def _monotonic() -> float:
+    """Return monotonic time behind the validation test seam."""
+    return time.monotonic()
+
+
+def _deadline_reached(deadline: float | None) -> bool:
+    """Return whether an aggregate deadline has expired."""
+    return deadline is not None and _monotonic() >= deadline
+
+
+def _command_timeout(per_command: int, deadline: float | None) -> float | None:
+    """Return the command's own bound clamped to the aggregate time left."""
+    if deadline is None:
+        return float(per_command)
+    remaining = deadline - _monotonic()
+    if remaining <= 0:
+        return None
+    return min(float(per_command), remaining)
 
 
 @dataclass(frozen=True)
@@ -890,6 +956,35 @@ class _BaselineOutcome:
     representative: RunResult
     repeats: int
     failures: int
+    deadline_expired: bool = False
+
+
+def _expired_baseline(
+    runs: Sequence[RunResult], repeats: int, budget: int | None
+) -> _BaselineOutcome:
+    """Describe an incomplete baseline after the aggregate budget expired."""
+    representative = (
+        runs[-1]
+        if runs
+        else RunResult(
+            RunStatus.TIMEOUT,
+            None,
+            0.0,
+            "",
+            "the aggregate run budget expired before the baseline command started",
+        )
+    )
+    detail = (
+        f"the run's {budget}s budget expired after {len(runs)} of {repeats} required baseline runs"
+    )
+    return _BaselineOutcome(
+        BaselineStatus.UNVERIFIED,
+        detail,
+        representative,
+        repeats,
+        repeats,
+        True,
+    )
 
 
 def _baseline_outcome(
@@ -939,7 +1034,7 @@ def _header(
     repro_run: RunResult | None,
 ) -> RunHeader:
     """Build the run record from the baseline outcome and the request."""
-    if outcome.status is BaselineStatus.UNVERIFIED:
+    if outcome.status is BaselineStatus.UNVERIFIED or outcome.deadline_expired:
         repro_verdict = (
             ReproVerdict.NOT_GIVEN if request.repro_cmd is None else ReproVerdict.NOT_EVALUATED
         )
@@ -1006,7 +1101,7 @@ def _apply_failed(candidate: Candidate, reasons: Sequence[str], started: float) 
         equivalence_key=None,
         regression=Verdict.NOT_EVALUATED,
         reproduction=None,
-        duration=round(time.monotonic() - started, 3),
+        duration=round(_monotonic() - started, 3),
     )
 
 

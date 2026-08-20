@@ -63,7 +63,7 @@ def test_node_and_edge_bounds_are_reported():
     assert exported.nodes == 2
     assert exported.edges == 1
     assert exported.elided_nodes == 1
-    assert exported.elided_edges == 1
+    assert exported.elided_edges == 2
 
 
 def test_two_exports_of_one_graph_are_byte_identical():

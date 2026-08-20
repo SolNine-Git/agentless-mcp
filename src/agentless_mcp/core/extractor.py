@@ -542,6 +542,8 @@ def _python_roles(
             _nearest_scope(node, builders).imports.update(_import_bindings(node, data))
 
     for node in nodes:
+        _bind_python_declaration(node, builders, data)
+
         field = _PYTHON_SCOPE_FIELDS.get(node.type)
         if field is not None:
             params = node.child_by_field_name(field)
@@ -591,6 +593,18 @@ def _python_roles(
         )
     )
     return roles, qualifiers, scopes
+
+
+def _bind_python_declaration(node: Node, scopes: Sequence[_ScopeBuilder], data: bytes) -> None:
+    """Bind a nested function or class name in its enclosing lexical scope."""
+    if node.type not in {"function_definition", "class_definition"}:
+        return
+    name = node.child_by_field_name("name")
+    if name is None:
+        return
+    scope = _nearest_scope(name, scopes)
+    if scope.kind != "module":
+        scope.bindings.add(_node_text(name, data))
 
 
 def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:

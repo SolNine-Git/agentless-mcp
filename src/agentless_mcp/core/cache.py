@@ -131,10 +131,6 @@ REMEDIATION = MESSAGES.cache_stale_remediation
 EXTRACTION_FAILURES: tuple[type[Exception], ...] = (
     AtlasError,
     ValueError,
-    TypeError,
-    KeyError,
-    IndexError,
-    AttributeError,
     UnicodeDecodeError,
     RecursionError,
     OSError,
@@ -957,8 +953,12 @@ def _connect(database: Path) -> sqlite3.Connection:
         isolation_level=None,
         check_same_thread=False,
     )
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA synchronous=NORMAL")
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
+    except BaseException:
+        connection.close()
+        raise
     return connection
 
 

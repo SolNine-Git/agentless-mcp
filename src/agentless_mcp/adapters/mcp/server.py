@@ -632,26 +632,35 @@ def _client_root(uri: object) -> Path | None:
     a remote authority that is then silently dropped. Both are refusals here,
     logged with the URI that caused them.
     """
+    try:
+        return _resolved_client_root(uri)
+    except (OSError, ValueError) as exc:
+        logger.warning("ignoring MCP root %s: %s", uri, exc)
+        return None
+
+
+def _resolved_client_root(uri: object) -> Path:
+    """Convert one valid local file URI into an existing resolved directory."""
     parsed = urlparse(str(uri))
     if parsed.scheme != "file":
-        logger.warning("ignoring MCP root %s: not a file: URI", uri)
-        return None
+        message = "not a file: URI"
+        raise ValueError(message)
     if parsed.netloc not in ("", "localhost"):
-        logger.warning("ignoring MCP root %s: names a remote authority", uri)
-        return None
+        message = "names a remote authority"
+        raise ValueError(message)
     if not parsed.path:
-        logger.warning("ignoring MCP root %s: no path", uri)
-        return None
+        message = "has no path"
+        raise ValueError(message)
 
     path = Path(unquote(parsed.path))
     if not path.is_absolute():
-        logger.warning("ignoring MCP root %s: path is not absolute", uri)
-        return None
+        message = "path is not absolute"
+        raise ValueError(message)
 
     resolved = path.resolve()
     if not resolved.is_dir():
-        logger.warning("ignoring MCP root %s: not an existing directory", uri)
-        return None
+        message = "not an existing directory"
+        raise ValueError(message)
     return resolved
 
 
@@ -717,7 +726,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["repo_map"],
-        output_schema=None,
         annotations=read_only("Repository map"),
     )
     async def repo_map(
@@ -743,7 +751,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["list_dir"],
-        output_schema=None,
         annotations=read_only("Directory tree"),
     )
     async def list_dir(
@@ -759,7 +766,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["get_symbols_overview"],
-        output_schema=None,
         annotations=read_only("Symbols overview"),
     )
     async def get_symbols_overview(
@@ -775,7 +781,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["expand_symbols"],
-        output_schema=None,
         annotations=read_only("Expand symbols"),
     )
     async def expand_symbols(
@@ -791,7 +796,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["read_slice"],
-        output_schema=None,
         annotations=read_only("Read slice"),
     )
     async def read_slice(
@@ -813,7 +817,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_symbol"],
-        output_schema=None,
         annotations=read_only("Find symbol"),
     )
     async def find_symbol(
@@ -830,7 +833,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
-        output_schema=None,
         annotations=read_only("Find referencing symbols"),
     )
     async def find_referencing_symbols(
@@ -848,7 +850,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["explain_symbol"],
-        output_schema=None,
         annotations=read_only("Explain symbol"),
     )
     async def explain_symbol(
@@ -864,7 +865,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["analyze_structure"],
-        output_schema=None,
         annotations=read_only("Analyze structure"),
     )
     async def analyze_structure(
@@ -902,7 +902,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["resolve_locations"],
-        output_schema=None,
         annotations=read_only("Resolve locations"),
     )
     async def resolve_locations(
@@ -918,7 +917,6 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["capabilities"],
-        output_schema=None,
         annotations=read_only("Capabilities"),
     )
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:

@@ -44,8 +44,11 @@ Two rules govern the write itself, and both are all-or-nothing:
 """
 
 import json
+import os
 import shutil
-from collections.abc import Mapping, Sequence
+import stat
+import tempfile
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -83,6 +86,11 @@ NO_SUCH_FILE = "no such file in this repository"
 
 # The suffix a staged write carries until every file in the patch is staged.
 STAGING_SUFFIX = ".agentless-mcp-staged"
+
+# The suffix on an original file while its replacement is being committed.
+# Both paths begin with a random component created exclusively by ``mkstemp``;
+# the suffix is diagnostic only and is never used to discover a file later.
+BACKUP_SUFFIX = ".agentless-mcp-backup"
 
 
 @dataclass(frozen=True)
@@ -507,48 +515,138 @@ def _unread_outcome(outcome: EditOutcome, reason: str) -> EditOutcome:
 def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
     """Write every edited file, or leave the tree exactly as it was.
 
-    Two phases. Each new content is written to a sibling staging file first,
-    and only when all of them are on disk is each moved into place with
-    :meth:`pathlib.Path.replace`. A failure in the first phase has touched no
-    target at all; the replace is atomic, so no target can be left truncated
-    by the second. Bytes are written rather than text because ``write_text``'s
-    default newline handling rewrites every line ending in the file on
-    Windows -- a change to a file no edit asked for -- and the mode is carried
-    across so an executable script does not come back unexecutable.
+    Three phases. Each new content is written through an exclusively-created,
+    unpredictable sibling first. Backup names are then reserved the same way.
+    Finally each original is moved to its backup before its staging file is
+    moved into place. A later replacement failure restores completed targets
+    from those backups in reverse order.
+
+    Bytes are written rather than text because text-mode newline handling
+    rewrites line endings on Windows. The target's mode is applied to the open
+    staging descriptor where the platform supports it, so an executable script
+    does not come back unexecutable and no path is reopened for the write.
     """
     staged: list[tuple[Path, Path]] = []
     for path, content in sorted(new_contents.items()):
         target = contained_path(base, path)
-        staging = target.with_name(target.name + STAGING_SUFFIX)
         try:
-            staging.write_bytes(content.encode("utf-8"))
-            shutil.copymode(target, staging)
+            staging = _stage_file(target, content)
         except OSError as exc:
-            _discard([*staged, (staging, target)])
+            _discard(path for path, _ in staged)
             message = f"patch not applied: cannot write {path}: {_reason(exc)}; nothing was changed"
             raise AtlasError(message) from exc
         staged.append((staging, target))
 
-    for position, (staging, target) in enumerate(staged):
+    backups: list[tuple[Path, Path]] = []
+    try:
+        for _, target in staged:
+            backups.append((_reserve_sibling(target, BACKUP_SUFFIX), target))
+    except OSError as exc:
+        _discard(path for path, _ in staged)
+        _discard(path for path, _ in backups)
+        message = (
+            f"patch not applied: cannot reserve rollback files: {_reason(exc)}; nothing changed"
+        )
+        raise AtlasError(message) from exc
+
+    completed: list[tuple[Path, Path]] = []
+    for position, ((staging, target), (backup, _)) in enumerate(zip(staged, backups, strict=True)):
         try:
+            target.replace(backup)
+            completed.append((backup, target))
             staging.replace(target)
         except OSError as exc:
-            _discard(staged[position:])
-            written = ", ".join(done.name for _, done in staged[:position]) or "nothing"
-            message = (
-                f"patch partly applied: cannot replace {target.name}: {_reason(exc)}; "
-                f"already written: {written}"
-            )
+            rollback_failures = _rollback(completed)
+            _discard(path for path, _ in staged[position:])
+            completed_backups = {path for path, _ in completed}
+            _discard(path for path, _ in backups if path not in completed_backups)
+            if rollback_failures:
+                failed = ", ".join(str(path) for path in rollback_failures)
+                message = (
+                    f"patch partly applied: cannot replace {target.name}: {_reason(exc)}; "
+                    f"rollback failed; originals retained at: {failed}"
+                )
+            else:
+                message = (
+                    f"patch not applied: cannot replace {target.name}: {_reason(exc)}; "
+                    "every original was restored"
+                )
             raise AtlasError(message) from exc
 
+    _discard(path for path, _ in backups)
 
-def _discard(staged: Sequence[tuple[Path, Path]]) -> None:
-    """Remove staging files that will never be moved into place."""
-    for staging, _ in staged:
+
+def _stage_file(target: Path, content: str) -> Path:
+    """Write ``content`` to a new sibling owned by this invocation."""
+    encoded = content.encode("utf-8")
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=STAGING_SUFFIX, dir=target.parent
+    )
+    staging = Path(raw_path)
+    try:
+        mode = stat.S_IMODE(target.stat().st_mode)
+        fchmod = getattr(os, "fchmod", None)
+        if fchmod is not None:
+            fchmod(descriptor, mode)
+
+        _write_descriptor(descriptor, encoded, target.name)
+
+        if fchmod is None:
+            os.close(descriptor)
+            descriptor = -1
+            shutil.copymode(target, staging)
+        else:
+            os.close(descriptor)
+            descriptor = -1
+    except BaseException:
+        if descriptor >= 0:
+            with suppress(OSError):
+                os.close(descriptor)
+        with suppress(OSError):
+            staging.unlink(missing_ok=True)
+        raise
+
+    return staging
+
+
+def _write_descriptor(descriptor: int, content: bytes, target_name: str) -> None:
+    """Write all bytes to an already-owned descriptor or raise."""
+    remaining = memoryview(content)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written == 0:
+            message = f"write returned zero bytes for {target_name}"
+            raise OSError(message)
+        remaining = remaining[written:]
+
+
+def _reserve_sibling(target: Path, suffix: str) -> Path:
+    """Atomically reserve and return one unpredictable sibling path."""
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=suffix, dir=target.parent
+    )
+    os.close(descriptor)
+    return Path(raw_path)
+
+
+def _rollback(completed: Sequence[tuple[Path, Path]]) -> list[Path]:
+    """Restore completed replacements and return backups that could not move."""
+    failures: list[Path] = []
+    for backup, target in reversed(completed):
+        try:
+            backup.replace(target)
+        except OSError:
+            failures.append(backup)
+    return failures
+
+
+def _discard(paths: Iterable[Path]) -> None:
+    """Remove temporary files that will never be moved into place."""
+    for path in paths:
         # A staging file that cannot be removed is litter; the failure that
         # brought us here is the one the caller needs to see.
         with suppress(OSError):
-            staging.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
 
 
 def _reason(exc: OSError) -> str:

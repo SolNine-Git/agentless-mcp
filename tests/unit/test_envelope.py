@@ -151,19 +151,19 @@ class TestJson:
 
     def test_an_oversized_payload_drops_whole_items_and_says_so(self, counter, pinned_context):
         items = [{"path": f"file{number}.py", "text": "x" * 200} for number in range(500)]
-        document = json.loads(
-            envelope.wrap_json(
-                pinned_context(ROOT),
-                {"files": items},
-                counter=counter,
-                max_tokens=1_000,
-                items_key="files",
-            )
+        rendered = envelope.wrap_json(
+            pinned_context(ROOT),
+            {"files": items},
+            counter=counter,
+            max_tokens=1_000,
+            items_key="files",
         )
+        document = json.loads(rendered)
 
         assert len(document["files"]) < len(items)
         assert document["truncated"]["total"] == 500
         assert document["truncated"]["shown"] == len(document["files"])
+        assert counter.count(rendered) <= 1_000
 
     @pytest.mark.parametrize("key", ["receipt", "notice", "truncated"])
     def test_a_payload_key_cannot_shadow_an_envelope_field(self, counter, pinned_context, key):

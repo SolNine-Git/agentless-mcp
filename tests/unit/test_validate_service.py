@@ -21,6 +21,7 @@ import json
 
 import pytest
 
+from agentless_mcp.application import validate_service as validate_module
 from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.validate_service import (
@@ -646,34 +647,76 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
         assert report.any_passed
 
 
-# Passes, slowly: long enough that a one-second run budget is spent on the
-# baseline alone, which is what leaves the candidates unevaluated.
-SLOW_GREEN = """\
-import time
-
-time.sleep(2)
-print("slow but green")
-"""
-
-
 class TestRunBudget:
     def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
-        self, seeded_bug_repo, candidates_dir, validate, python_cmd
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
     ):
-        repo = seeded_bug_repo(overrides={"slow.py": SLOW_GREEN})
+        moments = iter((0.0, 0.0, 1.0, 1.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        seen_timeouts = []
+
+        def timed_out(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = passthrough_env
+            seen_timeouts.append(timeout)
+            return RunResult(RunStatus.TIMEOUT, None, timeout, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", timed_out)
         report = validate(
-            repo,
+            seeded_bug_repo(),
             candidates_dir(FOUR_CANDIDATES),
-            test_cmd=python_cmd("slow.py"),
             run_timeout=1,
         )
 
-        assert report.header.baseline is BaselineStatus.OK
+        assert seen_timeouts == [1.0]
+        assert report.header.baseline is BaselineStatus.UNVERIFIED
         assert report.deadline_expired
         assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
         assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
         assert not report.any_passed
         assert any("DEADLINE" in warning for warning in report.warnings())
+
+    def test_every_command_is_clamped_to_the_aggregate_time_left(
+        self, seeded_bug_repo, candidates_dir, validate, python_cmd, monkeypatch
+    ):
+        moments = iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 6.0, 8.0, 9.0, 9.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        repro_cmd = python_cmd("repro.py")
+        seen_timeouts = []
+
+        def completed(_cwd, cmd, *, timeout, passthrough_env):
+            _ = passthrough_env
+            seen_timeouts.append(timeout)
+            status = RunStatus.FAILED if cmd == repro_cmd else RunStatus.PASSED
+            code = 1 if status is RunStatus.FAILED else 0
+            return RunResult(status, code, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", completed)
+
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS}),
+            repro="repro.py",
+            timeout=60,
+            run_timeout=10,
+        )
+
+        assert seen_timeouts == [9.0, 7.0, 4.0, 2.0]
+        assert not report.deadline_expired
+        assert report.any_passed
 
     def test_a_budget_that_is_not_positive_is_refused(
         self, seeded_bug_repo, candidates_dir, validate

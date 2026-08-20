@@ -101,6 +101,23 @@ class TestCollectRefs:
         outside = next(ref for ref in refs if ref.name == "quote" and ref.line == 5)
         assert outside.role is IdentifierRole.REFERENCE
 
+    def test_nested_declarations_bind_in_the_enclosing_function(self):
+        source = (
+            "def outer():\n"
+            "    def inner():\n"
+            "        return 1\n"
+            "    class Local:\n"
+            "        pass\n"
+            "    return inner(), Local()\n"
+        )
+        refs = collect_refs(source, "python", "a.py")
+        roles = {(ref.name, ref.line): ref.role for ref in refs}
+
+        assert roles[("inner", 2)] is IdentifierRole.DECLARATION
+        assert roles[("inner", 6)] is IdentifierRole.LOCAL
+        assert roles[("Local", 4)] is IdentifierRole.DECLARATION
+        assert roles[("Local", 6)] is IdentifierRole.LOCAL
+
     def test_assignment_and_loop_bindings_do_not_become_references(self):
         source = (
             "def f(rows):\n"

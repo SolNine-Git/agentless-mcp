@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from agentless_mcp.application import patch_service
 from agentless_mcp.application.patch_service import PatchService, load_edits
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import sandbox
@@ -243,18 +244,58 @@ class TestApplyInPlace:
 
     def test_a_write_that_fails_leaves_every_file_as_it_was(self, service, ctx, repo, monkeypatch):
         """An OSError mid-write must not leave an arbitrary prefix on disk."""
-        real = Path.write_bytes
+        real = patch_service._stage_file
 
-        def refuse(self, data):
-            if self.name.startswith("util.py"):
+        def refuse(target, content):
+            if target.name == "util.py":
                 message = "no space left on device"
                 raise OSError(28, message)
-            return real(self, data)
+            return real(target, content)
 
-        monkeypatch.setattr(Path, "write_bytes", refuse)
+        monkeypatch.setattr(patch_service, "_stage_file", refuse)
 
         with pytest.raises(AtlasError, match=r"util\.py"):
             service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_an_existing_staging_sibling_is_not_touched(self, repo):
+        sibling = repo / f"app.py{patch_service.STAGING_SUFFIX}"
+        sibling.write_text("user-owned\n", encoding="utf-8")
+
+        patch_service._write_all(repo, {"app.py": APP.replace("left + right", "left - right")})
+
+        assert sibling.read_text(encoding="utf-8") == "user-owned\n"
+
+    def test_an_existing_staging_symlink_is_not_followed(self, repo):
+        outside = repo.parent / "outside.txt"
+        outside.write_text("outside\n", encoding="utf-8")
+        sibling = repo / f"app.py{patch_service.STAGING_SUFFIX}"
+        sibling.symlink_to(outside)
+
+        patch_service._write_all(repo, {"app.py": APP.replace("left + right", "left - right")})
+
+        assert outside.read_text(encoding="utf-8") == "outside\n"
+        assert sibling.is_symlink()
+
+    def test_a_replace_failure_restores_every_original(self, repo, monkeypatch):
+        real = Path.replace
+        replacements = 0
+
+        def fail_second_staging(staging, target):
+            nonlocal replacements
+            if staging.name.endswith(patch_service.STAGING_SUFFIX):
+                replacements += 1
+                if replacements == 2:
+                    message = "simulated replace failure"
+                    raise OSError(message)
+            return real(staging, target)
+
+        monkeypatch.setattr(Path, "replace", fail_second_staging)
+
+        with pytest.raises(AtlasError, match="every original was restored"):
+            patch_service._write_all(repo, {"app.py": "new app\n", "util.py": "new util\n"})
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
         assert (repo / "util.py").read_text(encoding="utf-8") == UTIL

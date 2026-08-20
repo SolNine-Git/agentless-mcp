@@ -243,6 +243,8 @@ class TestAdvertisedRoots:
             "file://host/etc",
             "http://example.invalid/repo",
             "file://relative/../path",
+            "file:///tmp/%00",
+            "file://[::1",
         ],
     )
     def test_a_malformed_uri_is_dropped_and_never_becomes_a_path(self, uri):
@@ -324,11 +326,12 @@ class TestAnnotations:
             assert annotations.openWorldHint is False, tool.name
             assert annotations.idempotentHint is True, tool.name
 
-    def test_text_tools_do_not_publish_a_duplicate_output_schema(self, services, one_repo):
+    def test_text_tools_keep_the_compatible_result_schema(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
 
         for tool in tools:
-            assert tool.outputSchema is None, tool.name
+            assert tool.outputSchema is not None, tool.name
+            assert tool.outputSchema["properties"]["result"]["type"] == "string", tool.name
 
     def test_the_annotation_helper_carries_the_documented_hints(self):
         assert read_only("X") == {
@@ -364,7 +367,7 @@ class TestRoundTrip:
 
         assert text.startswith("# agentless-mcp receipt\n")
         assert "py:core.py::quote" in text
-        assert result.structured_content is None
+        assert result.structured_content == {"result": text}
 
     def test_an_omitted_repo_root_defaults_when_there_is_one_root(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
