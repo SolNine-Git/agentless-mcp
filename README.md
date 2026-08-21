@@ -24,6 +24,10 @@ grammar:
 agentless-mcp warmup
 ```
 
+`agentless-mcp guide` prints the full agent usage guide, which ships with the
+package; `agentless-mcp guide --section NAME` prints one section, and an
+unknown name lists them all.
+
 ## CLI
 
 Most commands analyze the repository containing the current directory. Use
@@ -70,6 +74,7 @@ agentless-mcp patch parse --file change.patch
 agentless-mcp patch check --file change.patch --repo /path/to/repo
 agentless-mcp patch apply --file change.patch --repo /path/to/repo
 agentless-mcp lint --candidates ./candidates --repo /path/to/repo
+agentless-mcp lint --diff change.patch --repo /path/to/base-checkout
 agentless-mcp validate --candidates ./candidates --repo /path/to/repo \
   --test-cmd 'pytest -q'
 agentless-mcp vote --verdicts verdicts.jsonl
@@ -78,6 +83,25 @@ agentless-mcp vote --verdicts verdicts.jsonl
 Patch candidates can use SEARCH/REPLACE text or the package's `edits.json`
 format. `validate` runs candidates against the repository tests, and `vote`
 ranks the candidates that pass.
+
+`lint --diff` runs the same checks over a branch's or a pull request's unified
+diff, so a change that already exists does not have to be hand-converted first.
+The checks compare the diff against `--repo` as it stands, which means **`--repo`
+must be a checkout of the diff's base, not a tree with the diff already
+applied** — otherwise every symbol the diff adds is already in the file and the
+report would describe the change against itself. The usual shape is a second
+worktree at the merge-base:
+
+```sh
+git diff main...HEAD > change.patch
+git worktree add /tmp/base $(git merge-base main HEAD)
+agentless-mcp lint --diff change.patch --repo /tmp/base
+```
+
+Pointing `--repo` at the branch instead is not silently wrong: each affected
+file is reported as a `not_checked` coverage gap naming the remedy. Binary files
+and mode-only changes are reported the same way, and a construct one edit cannot
+express — a rename, a `-U0` diff with no context — is refused with the reason.
 
 ### Cache and capabilities
 

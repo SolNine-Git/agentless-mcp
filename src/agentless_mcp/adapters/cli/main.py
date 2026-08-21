@@ -48,7 +48,7 @@ from agentless_mcp.application.graph_service import (
     GraphService,
     PathOptions,
 )
-from agentless_mcp.application.lint_service import LintService, load_candidates
+from agentless_mcp.application.lint_service import LintService, load_candidates, load_diff
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
@@ -76,7 +76,16 @@ from agentless_mcp.application.validate_service import (
     load_verdicts,
 )
 from agentless_mcp.application.view_service import LocationView, ViewService
-from agentless_mcp.core import cache, communities, grammars, htmlgraph, projectconfig, resolve, vote
+from agentless_mcp.core import (
+    cache,
+    communities,
+    grammars,
+    guide,
+    htmlgraph,
+    projectconfig,
+    resolve,
+    vote,
+)
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
@@ -194,6 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_warmup(subparsers)
     _add_index(subparsers)
     _add_capabilities(subparsers)
+    _add_guide(subparsers)
     return parser
 
 
@@ -496,11 +506,18 @@ def _add_lint(subparsers: Any) -> None:
         "Advisories, warnings and coverage gaps are all reported and none of them fails "
         "the command: the exit code is 0 unless the invocation itself was unusable.",
     )
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
         "--candidates",
-        required=True,
         metavar="PATH",
         help="a patch file, or a directory of them (edits.json or SEARCH/REPLACE text)",
+    )
+    source.add_argument(
+        "--diff",
+        metavar="FILE",
+        help="a unified diff to check instead (git diff, or a format-patch body); "
+        "the checks compare it against --repo as it stands, so --repo must be a checkout "
+        "of the diff's BASE, not a tree with the diff already applied",
     )
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_lint)
@@ -696,6 +713,20 @@ def _add_capabilities(subparsers: Any) -> None:
     parser = subparsers.add_parser("capabilities", help="grammars, versions and caps in force")
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_capabilities)
+
+
+def _add_guide(subparsers: Any) -> None:
+    # No _repo_flags: the guide ships with the package and says nothing about
+    # any repository, so --repo, --json and --no-cache would all be lies.
+    parser = subparsers.add_parser("guide", help="print the packaged agent usage guide")
+    parser.add_argument(
+        "--section",
+        metavar="NAME",
+        default=None,
+        help="print one section: a tool name ('refs', 'map', 'communities') or "
+        "the heading lowercased and hyphenated. An unknown name lists them all",
+    )
+    parser.set_defaults(handler=_cmd_guide)
 
 
 # ---------------------------------------------------------------------------
@@ -1090,7 +1121,12 @@ def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    report = services.lints.lint(ctx, load_candidates(Path(args.candidates)))
+    candidates = (
+        (load_diff(Path(args.diff)),)
+        if args.diff is not None
+        else load_candidates(Path(args.candidates))
+    )
+    report = services.lints.lint(ctx, candidates)
     _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
     return EXIT_OK
 
@@ -1404,6 +1440,28 @@ def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:
         services,
         _Answer(render_capability_report(report), report.as_dict(), "languages"),
     )
+    return EXIT_OK
+
+
+def _cmd_guide(args: argparse.Namespace, services: CliServices) -> int:
+    """Print the packaged guide, or one section of it.
+
+    No receipt and no ``_emit``: those describe a repository, and this answer
+    describes the tool. A guide missing from the package raises rather than
+    printing nothing, because an empty guide reads as "there is nothing to say"
+    when it means the install is broken.
+    """
+    _ = services
+    if args.section is None:
+        emit(guide.guide_text())
+        return EXIT_OK
+
+    text = guide.section_text(args.section)
+    if text is None:
+        names = ", ".join(guide.section_names())
+        return fail(f"no guide section named {args.section!r}. Sections are: {names}", EXIT_USAGE)
+
+    emit(text)
     return EXIT_OK
 
 

@@ -7,6 +7,7 @@ exit code, and ``mcp_main`` is loadable without importing fastmcp at module
 scope (the optional-extra contract).
 """
 
+from importlib import resources
 from pathlib import Path
 
 import agentless_mcp
@@ -37,3 +38,16 @@ def test_mcp_entry_point_does_not_import_fastmcp_at_module_scope():
     assert "import fastmcp" not in source
     assert "from fastmcp" not in source
     assert bootstrap.SERVER_MODULE == "agentless_mcp.adapters.mcp.server"
+
+
+def test_the_agent_guide_ships_as_package_data():
+    """An install-only user has no checkout, so the guide must be in the wheel.
+
+    Anchored on ``agentless_mcp`` rather than ``agentless_mcp.docs``: the docs
+    directory holds data and carries no ``__init__``, and ``files()`` only
+    handles a namespace package reliably from 3.12.
+    """
+    resource = resources.files("agentless_mcp") / "docs" / "agent-guide.md"
+
+    assert resource.is_file()
+    assert resource.read_text(encoding="utf-8").startswith("# agentless-mcp: agent usage guide")

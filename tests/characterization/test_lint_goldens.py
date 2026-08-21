@@ -21,6 +21,7 @@ from pathlib import Path
 
 from agentless_mcp.application import envelope, render
 from agentless_mcp.application.lint_service import LintCandidateInput, LintService
+from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
@@ -90,8 +91,8 @@ def build_outputs() -> dict[str, str]:
     report = LintService(TreeSitterExtractor()).lint(
         ctx,
         [
-            LintCandidateInput(id="01-renames", text=RENAMING_CANDIDATE),
-            LintCandidateInput(id="02-calls", text=CALLING_CANDIDATE),
+            LintCandidateInput(id="01-renames", parsed=load_edits(RENAMING_CANDIDATE)),
+            LintCandidateInput(id="02-calls", parsed=load_edits(CALLING_CANDIDATE)),
         ],
     )
     return {
