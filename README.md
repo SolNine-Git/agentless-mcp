@@ -3,7 +3,7 @@
 `agentless-mcp` provides tree-sitter-based code navigation, repository
 structure analysis, and patch validation for local repositories. It exposes
 the same functionality through a command-line interface and a read-only
-stdio MCP server.
+MCP server.
 
 ## Install
 
@@ -11,7 +11,10 @@ stdio MCP server.
 uv tool install agentless-mcp
 ```
 
-Install the MCP server support when needed:
+That installs two console scripts. `agentless-mcp` is the CLI, for a human or
+for an agent driving it over a shell. `agentless-mcp-server` is the MCP
+server, which an MCP client launches for you rather than something you run in
+a terminal; it needs the `mcp` extra, so install that when you want the server:
 
 ```sh
 uv tool install "agentless-mcp[mcp]"
@@ -117,12 +120,65 @@ Use `--no-cache` on repository-scoped commands to bypass the cache.
 
 ## MCP server
 
-The server communicates over stdio and exposes read-only repository tools.
-Start it with one or more explicitly allowed repository roots:
+The server exposes read-only repository tools. It talks over stdio by
+default, which is what a client that launches the server as a child expects.
+For a single-user machine, register it once and let the client's advertised
+workspace authorize repositories: whatever repository you open a session in
+is served on the first tool call, with nothing to enable per repo.
 
 ```sh
-agentless-mcp-server --root /path/to/repo
+claude mcp add --scope user agentless -- agentless-mcp-server --allow-client-roots
 ```
+
+For a locked-down server, omit `--allow-client-roots` and pass an explicit
+allowlist instead; then only the listed repositories are servable, and a
+client-advertised root can only select among them, never add one:
+
+```sh
+agentless-mcp-server --root /path/to/repo --root /path/to/other
+```
+
+`--roots-from FILE` reads that same list from a file, one path per line.
+The file is re-read whenever it changes on disk, so appending a line enrolls
+a repository on the next call without a restart, and the refusal an agent
+sees for an unlisted repository names the file to append to. Blank lines and
+whole-line `#` comments are skipped, and the flag is repeatable and combines
+with `--root`:
+
+```sh
+cat > ~/.config/agentless-mcp/roots <<'EOF'
+# one repository path per line
+/path/to/repo
+/path/to/other
+EOF
+claude mcp add --scope user agentless -- \
+  agentless-mcp-server --roots-from ~/.config/agentless-mcp/roots
+```
+
+### Serving over HTTP
+
+A client that cannot spawn a child process gets the same tools over FastMCP's
+streamable-http transport, from one long-lived server that several clients
+share. The endpoint is `http://HOST:PORT/mcp`:
+
+```sh
+agentless-mcp-server --transport http --port 8766 \
+  --roots-from ~/.config/agentless-mcp/roots
+```
+
+The bind address is loopback-only and is checked, not merely defaulted: this
+server authenticates nobody, so the `--root` allowlist decides which
+repositories are readable and says nothing about who may read them. On a
+routable address that is unauthenticated read access to every enrolled
+repository, so a non-loopback `--host` is refused before the socket opens.
+Put an authenticating proxy in front if you need it off-host.
+
+`--host` and `--port` apply to the HTTP transport only; passing either under
+stdio is refused rather than ignored, because there is no socket to bind.
+
+Every tool takes `repo_root` first. It may be omitted only when the server
+holds one repository, or when the client advertises a root that selects
+exactly one; otherwise the refusal lists the roots to choose from.
 
 The MCP tools are:
 

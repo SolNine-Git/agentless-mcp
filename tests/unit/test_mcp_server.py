@@ -8,12 +8,15 @@ wrapper around them.
 """
 
 import asyncio
+import importlib.metadata
+import ipaddress
 import json
 import re
 import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
+import fastmcp
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
@@ -23,14 +26,22 @@ from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.server import (
     _OPERATIONS,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+    DISTRIBUTION_NAME,
+    TRANSPORT_HTTP,
+    TRANSPORT_STDIO,
     ServerServices,
     ToolHandlers,
     build_server,
     effective_client_roots,
+    http_binding,
     parse_args,
+    server_version,
 )
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
+from agentless_mcp.application.repo_context import resolved_allowlist
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
@@ -857,6 +868,373 @@ class TestServerArguments:
 
     def test_no_roots_parses_to_an_empty_list(self):
         assert parse_args([]).root == []
+
+
+class TestTransportSelection:
+    """The transport is the operator's choice and stdio is what they get by default.
+
+    Every registered client launches this process as a child, so a default
+    that changed would break them all; --transport http is the addition, never
+    the new default.
+    """
+
+    def refuse(self, capsys, argv):
+        with pytest.raises(SystemExit) as caught:
+            parse_args(argv)
+        assert caught.value.code == 2
+        return capsys.readouterr().err
+
+    def test_stdio_is_the_default_transport(self):
+        assert parse_args([]).transport == TRANSPORT_STDIO
+
+    def test_http_is_selectable(self):
+        assert parse_args(["--transport", TRANSPORT_HTTP]).transport == TRANSPORT_HTTP
+
+    def test_an_unknown_transport_is_refused(self, capsys):
+        assert "received argv" in self.refuse(capsys, ["--transport", "carrier-pigeon"])
+
+    def test_http_defaults_to_the_loopback_binding(self):
+        args = parse_args(["--transport", TRANSPORT_HTTP])
+        assert args.host is None
+        assert args.port is None
+        assert http_binding(args) == (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+
+    def test_an_explicit_binding_beats_the_default(self):
+        args = parse_args(["--transport", TRANSPORT_HTTP, "--host", "127.0.0.2", "--port", "8766"])
+        assert http_binding(args) == ("127.0.0.2", 8766)
+
+    def test_localhost_resolves_to_loopback_and_is_accepted(self):
+        args = parse_args(["--transport", TRANSPORT_HTTP, "--host", "localhost"])
+        assert http_binding(args) == ("localhost", DEFAULT_HTTP_PORT)
+
+    # The wildcard addresses are derived rather than spelled: a bind-all literal
+    # in the source is the very thing a security lint looks for, and the point
+    # here is that this server refuses them, not that it contains them.
+    @pytest.mark.parametrize(
+        "host",
+        [
+            str(ipaddress.IPv4Address(0)),
+            str(ipaddress.IPv6Address(0)),
+            "192.0.2.10",  # TEST-NET-1: routable, and reserved for documentation
+        ],
+    )
+    def test_a_non_loopback_bind_is_refused_at_startup(self, capsys, host):
+        # This server authenticates nobody, so a routable bind publishes the
+        # source of every enrolled repository. It must fail before it listens,
+        # not read as a working server to whoever finds the port.
+        err = self.refuse(capsys, ["--transport", TRANSPORT_HTTP, "--host", host])
+        assert "loopback" in err
+
+    def test_a_host_that_resolves_to_nothing_is_refused_rather_than_bound(self, capsys):
+        err = self.refuse(capsys, ["--transport", TRANSPORT_HTTP, "--host", "no-such-host.invalid"])
+        assert "loopback" in err
+
+    def test_a_binding_flag_under_stdio_is_refused_rather_than_ignored(self, capsys):
+        # The operator who passes --port believes they got a listener. Saying so
+        # at startup costs a line; finding out costs a debugging session.
+        err = self.refuse(capsys, ["--port", "8766"])
+        assert "--port" in err
+        assert TRANSPORT_HTTP in err
+
+    def test_both_binding_flags_are_named_together(self, capsys):
+        err = self.refuse(capsys, ["--host", "127.0.0.1", "--port", "8766"])
+        assert "--host and --port" in err
+
+    def test_stdio_without_binding_flags_says_nothing(self, capsys):
+        assert parse_args(["--root", "/a"]).transport == TRANSPORT_STDIO
+        assert capsys.readouterr().err == ""
+
+
+class TestArgvDiagnostics:
+    """Issue #3: an argv mistake must not read to the operator as a dead socket.
+
+    An MCP client shows only "CONNECTION_CLOSED" when the server exits 2 during
+    argument parsing, so the received argv is the diagnostic.
+    """
+
+    def parse_failure(self, capsys, argv):
+        with pytest.raises(SystemExit) as caught:
+            parse_args(argv)
+        assert caught.value.code == 2
+        return capsys.readouterr().err
+
+    def test_an_unsplit_argv_string_names_its_own_cause(self, capsys):
+        err = self.parse_failure(capsys, [" --root /a --root /b"])
+        assert "received argv" in err
+        assert repr(" --root /a --root /b") in err
+        assert "unsplit shell string" in err
+        assert "client registration" in err
+
+    def test_a_single_unsplit_root_is_caught_too(self, capsys):
+        # One repository is the shape a first-time operator registers, and it
+        # carries only one flag token.
+        assert "unsplit shell string" in self.parse_failure(capsys, [" --root /a"])
+
+    def test_a_glued_flag_and_spaced_path_is_caught(self, capsys):
+        # '--root /tmp/My Repo' as ONE element is not a legitimate argument:
+        # this parser takes no positionals, so the flag was never split off.
+        assert "unsplit shell string" in self.parse_failure(capsys, ["--root /tmp/My Repo"])
+
+    def test_a_spaced_root_path_parses_and_says_nothing(self, capsys):
+        # The legitimate shape: the path is one element, the flag is another.
+        assert parse_args(["--root", "/tmp/My Repo"]).root == ["/tmp/My Repo"]
+        assert capsys.readouterr().err == ""
+
+    def test_any_other_parse_failure_still_echoes_the_argv(self, capsys):
+        err = self.parse_failure(capsys, ["--nope"])
+        assert "received argv" in err
+        assert "--nope" in err
+        assert "unsplit shell string" not in err
+
+    def test_help_exits_zero_without_a_diagnostic(self, capsys):
+        with pytest.raises(SystemExit) as caught:
+            parse_args(["--help"])
+        assert caught.value.code == 0
+        assert "received argv" not in capsys.readouterr().err
+
+    def test_an_unlexable_element_does_not_crash_the_diagnostic(self, capsys):
+        # shlex cannot lex an unbalanced quote; that must not turn exit 2 into a
+        # traceback, and it is not evidence of an unsplit string either.
+        err = self.parse_failure(capsys, ["--root '/a"])
+        assert "received argv" in err
+        assert "unsplit shell string" not in err
+
+    def test_an_omitted_argv_echoes_what_argparse_actually_read(self, capsys, monkeypatch):
+        monkeypatch.setattr(server_module.sys, "argv", ["agentless-mcp-server", "--nope"])
+        with pytest.raises(SystemExit):
+            parse_args(None)
+        assert "received argv: ['--nope']" in capsys.readouterr().err
+
+
+class TestRootsFile:
+    """Issue #4: 30 repositories must not mean 30 flags in a shell one-liner."""
+
+    def write(self, tmp_path, text, name="roots.txt"):
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def served(self, args, services):
+        """The allowlist a server started with this argv would enforce."""
+        handlers = ToolHandlers(
+            resolved_allowlist(args.root), services, roots_files=args.roots_from
+        )
+        return list(handlers.roots)
+
+    def test_entries_match_the_equivalent_root_flags(self, tmp_path, services):
+        listed = self.write(tmp_path, "/a\n/b\n")
+        assert self.served(parse_args(["--roots-from", listed]), services) == self.served(
+            parse_args(["--root", "/a", "--root", "/b"]), services
+        )
+
+    def test_blank_lines_and_comments_are_skipped(self, tmp_path):
+        listed = self.write(tmp_path, "# repos\n\n/a\n   \n  # indented\n/b\n")
+        assert parse_args(["--roots-from", listed]).roots_from[0].roots == [Path("/a"), Path("/b")]
+
+    def test_a_hash_inside_a_path_is_not_a_comment(self, tmp_path):
+        # '#' is legal in a directory name, so only whole-line comments count.
+        listed = self.write(tmp_path, "/a#1\n/b # not a comment\n")
+        assert parse_args(["--roots-from", listed]).roots_from[0].roots == [
+            Path("/a#1"),
+            Path("/b # not a comment"),
+        ]
+
+    def test_it_combines_with_root_flags(self, tmp_path, services):
+        # The flags come first and the file entries follow; argparse keeps the
+        # two sources in separate lists, so there is no interleaved order to
+        # preserve. Order is presentational: authorisation is by membership.
+        listed = self.write(tmp_path, "/b\n")
+        args = parse_args(["--root", "/a", "--roots-from", listed, "--root", "/c"])
+        assert self.served(args, services) == self.served(
+            parse_args(["--root", "/a", "--root", "/c", "--root", "/b"]), services
+        )
+        assert set(self.served(args, services)) == {Path("/a"), Path("/b"), Path("/c")}
+
+    def test_a_root_repeated_across_both_sources_stays_one_root(self, tmp_path, services):
+        # Otherwise a server holding one repository would refuse to default to
+        # it, reporting the ambiguity of two.
+        listed = self.write(tmp_path, "/a\n")
+        args = parse_args(["--root", "/a", "--roots-from", listed])
+        assert self.served(args, services) == [Path("/a")]
+
+    def test_the_flag_is_repeatable(self, tmp_path, services):
+        first = self.write(tmp_path, "/a\n", name="one.txt")
+        second = self.write(tmp_path, "/b\n", name="two.txt")
+        args = parse_args(["--roots-from", first, "--roots-from", second])
+        assert self.served(args, services) == self.served(
+            parse_args(["--root", "/a", "--root", "/b"]), services
+        )
+
+    def test_an_empty_file_serves_nothing_rather_than_failing(self, tmp_path, services):
+        # The same state as passing no --root at all, which the server already
+        # refuses at call time with a message naming the cause.
+        listed = self.write(tmp_path, "# only\n")
+        assert self.served(parse_args(["--roots-from", listed]), services) == []
+
+    def test_a_byte_order_mark_does_not_corrupt_the_first_root(self, tmp_path):
+        # A BOM left on the first entry turns an absolute path into a relative
+        # one, which resolves against the working directory into a root that can
+        # never match.
+        path = tmp_path / "bom.txt"
+        path.write_bytes(b"\xef\xbb\xbf/a\n/b\n")
+        roots = parse_args(["--roots-from", str(path)]).roots_from[0].roots
+        assert roots == [Path("/a"), Path("/b")]
+        assert roots[0].is_absolute()
+
+    def test_crlf_line_endings_leave_no_carriage_return(self, tmp_path):
+        listed = self.write(tmp_path, "/a\r\n/b\r\n")
+        assert parse_args(["--roots-from", listed]).roots_from[0].roots == [Path("/a"), Path("/b")]
+
+    def test_a_missing_file_is_a_startup_failure_naming_the_path(self, tmp_path, capsys):
+        missing = str(tmp_path / "absent.txt")
+        with pytest.raises(SystemExit) as caught:
+            parse_args(["--roots-from", missing])
+        assert caught.value.code == 2
+        err = capsys.readouterr().err
+        assert missing in err
+        assert "cannot read roots file" in err
+
+    def test_a_directory_is_a_startup_failure_naming_the_path(self, tmp_path, capsys):
+        with pytest.raises(SystemExit):
+            parse_args(["--roots-from", str(tmp_path)])
+        assert str(tmp_path) in capsys.readouterr().err
+
+    def test_undecodable_bytes_report_the_reason_not_a_generic_refusal(self, tmp_path, capsys):
+        # UnicodeDecodeError is a ValueError, which argparse would otherwise
+        # swallow in favour of "invalid roots_file value".
+        path = tmp_path / "binary.txt"
+        path.write_bytes(b"/a\n\xff\xfe\n")
+        with pytest.raises(SystemExit):
+            parse_args(["--roots-from", str(path)])
+        err = capsys.readouterr().err
+        assert "not valid UTF-8" in err
+        assert str(path) in err
+        assert "invalid roots_file value" not in err
+
+
+class TestRootsFileReread:
+    """The roots file is the allowlist's editable half: edits apply on the next call.
+
+    Enrolment and revocation both ride on the re-read, and an unreadable file
+    refuses loudly rather than serving the last copy it managed to load.
+    """
+
+    def handlers_for(self, services, listed, static=()):
+        args = parse_args(["--roots-from", str(listed)])
+        return ToolHandlers(list(static), services, roots_files=args.roots_from)
+
+    def listing(self, tmp_path, roots):
+        listed = tmp_path / "roots.txt"
+        listed.write_text("".join(f"{root}\n" for root in roots), encoding="utf-8")
+        return listed
+
+    def test_an_appended_repository_is_served_without_a_restart(
+        self, services, two_repos, tmp_path
+    ):
+        first, second = two_repos
+        listed = self.listing(tmp_path, [first])
+        handlers = self.handlers_for(services, listed)
+        with pytest.raises(SecurityRefusal, match="not one of this server's roots"):
+            handlers.resolve(str(second))
+
+        with listed.open("a", encoding="utf-8") as handle:
+            handle.write(f"{second}\n")
+        assert handlers.resolve(str(second)).root == second.resolve()
+
+    def test_a_removed_repository_is_revoked_without_a_restart(self, services, two_repos, tmp_path):
+        first, second = two_repos
+        listed = self.listing(tmp_path, [first, second])
+        handlers = self.handlers_for(services, listed)
+        assert handlers.resolve(str(second)).root == second.resolve()
+
+        listed.write_text(f"{first}\n", encoding="utf-8")
+        with pytest.raises(SecurityRefusal, match="not one of this server's roots"):
+            handlers.resolve(str(second))
+
+    def test_a_file_that_disappears_refuses_loudly_rather_than_serving_stale(
+        self, services, two_repos, tmp_path
+    ):
+        first, _ = two_repos
+        listed = self.listing(tmp_path, [first])
+        handlers = self.handlers_for(services, listed)
+        assert handlers.resolve(str(first)).root == first.resolve()
+
+        listed.unlink()
+        with pytest.raises(SecurityRefusal) as caught:
+            handlers.resolve(str(first))
+        assert str(listed) in str(caught.value)
+        assert "cannot be read" in str(caught.value)
+
+    def test_static_flag_roots_survive_edits_to_the_file(self, services, two_repos, tmp_path):
+        # The flags are the fixed half of the allowlist; emptying the file
+        # must not revoke them.
+        first, second = two_repos
+        listed = self.listing(tmp_path, [second])
+        handlers = self.handlers_for(services, listed, static=[first])
+
+        listed.write_text("# emptied\n", encoding="utf-8")
+        assert handlers.resolve(str(first)).root == first.resolve()
+        with pytest.raises(SecurityRefusal):
+            handlers.resolve(str(second))
+
+
+class TestRefusalHint:
+    """A refusal is the one message read at the moment enrolment matters."""
+
+    def test_an_unlisted_repository_refusal_names_the_file_to_append_to(
+        self, services, two_repos, tmp_path
+    ):
+        first, second = two_repos
+        listed = tmp_path / "roots.txt"
+        listed.write_text(f"{first}\n", encoding="utf-8")
+        args = parse_args(["--roots-from", str(listed)])
+        handlers = ToolHandlers([], services, roots_files=args.roots_from)
+
+        with pytest.raises(SecurityRefusal) as caught:
+            handlers.resolve(str(second))
+        message = str(caught.value)
+        assert str(listed) in message
+        assert "append" in message
+        assert "no restart" in message
+
+    def test_the_ambiguity_refusal_carries_the_hint_too(self, services, two_repos, tmp_path):
+        listed = tmp_path / "roots.txt"
+        listed.write_text("".join(f"{root}\n" for root in two_repos), encoding="utf-8")
+        args = parse_args(["--roots-from", str(listed)])
+        handlers = ToolHandlers([], services, roots_files=args.roots_from)
+
+        with pytest.raises(SecurityRefusal, match="will not guess") as caught:
+            handlers.resolve(None)
+        assert str(listed) in str(caught.value)
+
+    def test_without_a_roots_file_the_refusal_carries_no_hint(self, services, two_repos, tmp_path):
+        # There is nothing to append to, so pointing at a file would be a lie.
+        handlers = ToolHandlers(two_repos, services)
+        outside = tmp_path / "gamma"
+        outside.mkdir()
+        with pytest.raises(SecurityRefusal) as caught:
+            handlers.resolve(str(outside))
+        assert "append" not in str(caught.value)
+
+
+class TestHandshakeVersion:
+    """Issue #3 defect 2: the handshake must report this package, not FastMCP."""
+
+    def test_the_server_advertises_the_installed_distribution_version(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        assert server.version == importlib.metadata.version(DISTRIBUTION_NAME)
+
+    def test_the_version_is_not_fastmcps_own(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services))
+        assert server.version != fastmcp.__version__
+
+    def test_missing_metadata_is_announced_rather_than_blank(self, capsys, monkeypatch):
+        def absent(name):
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        monkeypatch.setattr(server_module, "distribution_version", absent)
+        assert server_version() == server_module.UNKNOWN_VERSION
+        assert DISTRIBUTION_NAME in capsys.readouterr().err
 
 
 class TestAnalyzeStructure:

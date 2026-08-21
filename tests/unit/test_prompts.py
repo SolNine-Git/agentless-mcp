@@ -69,6 +69,8 @@ MESSAGE_ARGUMENTS = {
     "path_needs_endpoints": {},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
+    "roots_file_hint": {"file": "/srv/agentless-roots.txt"},
+    "roots_file_unreadable": {"file": "/srv/agentless-roots.txt", "error": "No such file"},
     "map_unresolved_seeds": {"seeds": "rotate_age, shift_age"},
     "expand_body_truncated": {"shown": 12, "total": 340},
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
@@ -139,6 +141,28 @@ class TestTemplates:
     def test_no_tool_description_carries_a_format_field(self):
         for name, description in TOOL_DESCRIPTIONS.items():
             assert fields_of(description) == set(), name
+
+    @pytest.mark.parametrize("name", ["server_no_roots", "repo_refused_no_roots"])
+    def test_a_no_roots_refusal_names_both_ways_to_configure_a_root(self, name):
+        """Issue #4: naming only --root sends the operator to a 30-flag command."""
+        template = getattr(MESSAGES, name)
+        assert "--root DIR" in template
+        assert "--roots-from FILE" in template
+
+    @pytest.mark.parametrize("name", ["server_no_roots", "repo_refused_no_roots"])
+    def test_a_no_roots_refusal_does_not_demand_a_restart(self, name):
+        """``roots_file_hint`` is appended to these when a roots file exists.
+
+        It says the file is re-read with no restart needed, so a "restart the
+        server" imperative in the static half would contradict the hint in the
+        same refusal.
+        """
+        assert "restart" not in getattr(MESSAGES, name).lower()
+
+    def test_the_re_read_fact_has_exactly_one_home(self):
+        """Stated in roots_file_hint alone, so the two never drift apart."""
+        carriers = [name for name in vars(MESSAGES) if "re-read" in getattr(MESSAGES, name)]
+        assert carriers == ["roots_file_hint"]
 
 
 class TestEagerValidation:

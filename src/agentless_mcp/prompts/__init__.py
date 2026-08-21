@@ -79,6 +79,8 @@ class MessageText:
     path_needs_endpoints: str
     repo_refused_no_roots: str
     repo_refused_not_allowed: str
+    roots_file_hint: str
+    roots_file_unreadable: str
     map_unresolved_seeds: str
     expand_body_truncated: str
     expand_batch_shortened: str
