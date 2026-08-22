@@ -318,6 +318,11 @@ addopts = [
     # frozen event-loop sleep is indistinguishable from a pass.
     "--timeout=60",
 ]
+markers = [
+    # Registered so `-m e2e` / `-m 'not e2e'` select them and an
+    # unregistered-marker warning cannot appear.
+    "e2e: spawns a real server subprocess and speaks MCP over a shipped transport",
+]
 
 [tool.codespell]
 # .audit is skipped rather than corrected: it is a review record that quotes
