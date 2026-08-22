@@ -82,6 +82,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_REFS_LIMIT,
     SymbolService,
     render_expansion,
+    render_find,
 )
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
@@ -192,7 +193,10 @@ IncludeAmbiguous = Annotated[
     bool,
     Field(description=PARAMETER_DESCRIPTIONS["include_ambiguous"]),
 ]
-DiagramFocus = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["diagram_focus"])]
+DiagramFocus = Annotated[
+    str | list[str],
+    Field(description=PARAMETER_DESCRIPTIONS["diagram_focus"]),
+]
 GroupByCommunities = Annotated[
     bool,
     Field(description=PARAMETER_DESCRIPTIONS["group_by_communities"]),
@@ -587,7 +591,7 @@ class ToolHandlers:
     def find_symbol(self, ctx: RepoContext, name: str, kind: str | None, limit: int) -> str:
         """Render incident cards for symbols matching ``name``."""
         result = self._services.symbols.find_symbol(ctx, name, kind=kind, limit=limit)
-        return self._wrap(ctx, render.render_symbol_cards(result.cards))
+        return self._wrap(ctx, render_find(result))
 
     def find_referencing_symbols(
         self,
@@ -827,6 +831,20 @@ def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
     return intervals
 
 
+def _sole_focus(focus: str | list[str]) -> str:
+    """Reduce a diagram focus to the single seed the operation supports.
+
+    ``repo_map.focus`` is a list, so a client bridging the two tools can turn
+    a correct string into a one-element list here; rejecting that shape reads
+    to the caller as its own typing mistake. A diagram has one centre, so a
+    list is accepted and only its first entry is used -- the published
+    parameter description says so.
+    """
+    if isinstance(focus, str):
+        return focus
+    return focus[0] if focus else ""
+
+
 def _slice_intervals(
     ranges: Sequence[Sequence[int]] | None,
     whole_file: bool,
@@ -1038,7 +1056,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
                     include_ambiguous=include_ambiguous,
                     limit=limit,
                     resolution=resolution,
-                    focus=focus,
+                    focus=_sole_focus(focus),
                     max_nodes=max_nodes,
                     group_by_communities=group_by_communities,
                 ),

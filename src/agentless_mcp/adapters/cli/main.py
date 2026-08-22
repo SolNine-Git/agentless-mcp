@@ -65,6 +65,7 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
     kind_names,
     render_expansion,
+    render_find,
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
@@ -84,6 +85,7 @@ from agentless_mcp.core import (
     htmlgraph,
     projectconfig,
     resolve,
+    sandbox,
     vote,
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
@@ -645,7 +647,8 @@ def _add_validate(subparsers: Any) -> None:
         type=int,
         default=DEFAULT_TIMEOUT_SECONDS,
         help=f"per-command hard bound in seconds (default: {DEFAULT_TIMEOUT_SECONDS}); "
-        "a command that hits it is a failure, never a pass",
+        "a command that hits it is a failure, never a pass; killing a stubborn command "
+        f"adds at most {sandbox.TERM_GRACE_SECONDS + sandbox.KILL_REAP_SECONDS:g}s of cleanup",
     )
     parser.add_argument(
         "--jobs",
@@ -895,7 +898,7 @@ def _cmd_find_symbol(args: argparse.Namespace, services: CliServices) -> int:
         args,
         ctx,
         services,
-        _Answer(render.render_symbol_cards(result.cards), result.as_dict(), "matches"),
+        _Answer(render_find(result), result.as_dict(), "matches"),
     )
     return EXIT_OK if result.cards else EXIT_DOMAIN
 
@@ -1401,7 +1404,13 @@ def _cmd_warmup(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
-    """Build or refresh the tag cache for one repository."""
+    """Build or refresh the tag cache for one repository.
+
+    A per-file error exits 1: the index was only partially built, and a
+    ``warmup && index`` gate that saw 0 would proceed with every later query
+    silently under-covering the errored files. The report still prints
+    whole -- partial is an answer, but it is not a success.
+    """
     ctx = _resolve(args, require_git=False)
     if ctx is None:
         return EXIT_USAGE
@@ -1415,7 +1424,7 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
     )
     if args.json:
         emit(envelope.wrap_json(ctx, report.as_dict(), counter=services.counter))
-        return EXIT_OK
+        return EXIT_OK if report.errors == 0 else EXIT_DOMAIN
 
     lines = [report.summary_line()]
     lines.extend(
@@ -1425,7 +1434,7 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
     if report.errors > INDEX_FAILURE_LINES:
         lines.append(f"  ... {report.errors - INDEX_FAILURE_LINES} more errors not listed")
     emit("\n".join(lines))
-    return EXIT_OK
+    return EXIT_OK if report.errors == 0 else EXIT_DOMAIN
 
 
 def _cmd_capabilities(args: argparse.Namespace, services: CliServices) -> int:

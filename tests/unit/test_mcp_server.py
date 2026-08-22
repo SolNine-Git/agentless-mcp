@@ -62,6 +62,23 @@ EXPECTED_TOOLS = {
     "capabilities",
 }
 
+# One well-typed argument set per published tool, over the one_repo fixture.
+# The conformance test in TestToolSurface requires this table to cover the
+# live listing exactly, so a new tool must land with an entry here.
+WELL_TYPED_CALLS = {
+    "repo_map": {},
+    "list_dir": {},
+    "get_symbols_overview": {"paths": ["core.py"]},
+    "expand_symbols": {"stable_ids": ["py:core.py::quote"]},
+    "read_slice": {"path": "core.py", "lines": [[1, 2]]},
+    "find_symbol": {"name": "quote"},
+    "find_referencing_symbols": {"target": "quote"},
+    "explain_symbol": {"target": "quote"},
+    "analyze_structure": {"operation": "cycles"},
+    "resolve_locations": {"path": "core.py", "locs": ["function:quote"]},
+    "capabilities": {},
+}
+
 SOURCE = """\
 def quote(sku):
     return 1
@@ -508,6 +525,27 @@ class TestRoundTrip:
 
         assert "py:core.py::PriceBook.cost_of" in text
         assert "[py:core.py::PriceBook.cost_of] @6-7" in text
+
+    def test_an_over_cap_file_is_a_warning_in_find_symbol_and_map(self, services, one_repo):
+        """A skipped file must never read as affirmative absence over MCP."""
+        filler = ("# " + "x" * 77 + "\n") * 13_000
+        (one_repo / "huge.py").write_text(
+            filler + "def at_end():\n    return 1\n", encoding="utf-8"
+        )
+        server = build_server(ToolHandlers([one_repo], services))
+
+        found = (
+            self.call(server, "find_symbol", {"name": "at_end", "repo_root": str(one_repo)})
+            .content[0]
+            .text
+        )
+        assert "no matching symbols" in found
+        assert "# warning: 1 files were skipped" in found
+        assert "huge.py" in found
+
+        mapped = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
+        assert "# warning: 1 files were skipped" in mapped
+        assert "huge.py" in mapped
 
     def test_shared_callers_replace_the_fan_in_listing(self, services, one_repo):
         (one_repo / "core.py").write_text(
@@ -1277,6 +1315,33 @@ class TestAnalyzeStructure:
 
         assert "subgraph" in text
 
+    def test_the_diagram_focus_accepts_a_string(self, services, one_repo):
+        text = self.answer(services, one_repo, {"operation": "diagram", "focus": "core.py"})
+
+        assert "```mermaid" in text
+        assert "core" in text
+
+    def test_a_one_element_focus_list_answers_as_the_string_does(self, services, one_repo):
+        """``repo_map.focus`` is a list, so a bridging client may send one here."""
+        stringly = self.answer(services, one_repo, {"operation": "diagram", "focus": "core.py"})
+        listed = self.answer(services, one_repo, {"operation": "diagram", "focus": ["core.py"]})
+
+        assert listed == stringly
+
+    def test_a_multi_entry_focus_uses_the_first_entry(self, services, one_repo):
+        first = self.answer(services, one_repo, {"operation": "diagram", "focus": "core.py"})
+        several = self.answer(
+            services, one_repo, {"operation": "diagram", "focus": ["core.py", "absent.py"]}
+        )
+
+        assert several == first
+
+    def test_an_empty_focus_list_reads_as_no_focus(self, services, one_repo):
+        unfocused = self.answer(services, one_repo, {"operation": "diagram"})
+        emptied = self.answer(services, one_repo, {"operation": "diagram", "focus": []})
+
+        assert emptied == unfocused
+
     def test_an_unknown_operation_lists_the_ones_that_exist(self, services, one_repo):
         with pytest.raises(ToolError) as raised:
             self.answer(services, one_repo, {"operation": "graph"})
@@ -1312,6 +1377,31 @@ class TestToolSurface:
 
         assert "symbol_path" not in names
         assert "import_cycles" not in names
+
+    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo):
+        """tools/list round-trips into one successful tools/call per tool.
+
+        The per-tool tests above assert content; this gate asserts the whole
+        published surface stays callable through schema validation, and its
+        argument table must cover exactly the live listing -- publishing a
+        new tool without a conformance entry fails here first.
+        """
+        server = build_server(ToolHandlers([one_repo], services))
+        tools = listed_tools(server)
+        assert {tool.name for tool in tools} == set(WELL_TYPED_CALLS)
+
+        async def go():
+            async with Client(server) as client:
+                return {
+                    tool.name: await client.call_tool(
+                        tool.name,
+                        {"repo_root": str(one_repo), **WELL_TYPED_CALLS[tool.name]},
+                    )
+                    for tool in tools
+                }
+
+        for name, result in asyncio.run(go()).items():
+            assert result.content[0].text.strip(), name
 
 
 class TestCapabilitiesCacheHint:

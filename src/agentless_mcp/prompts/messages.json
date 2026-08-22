@@ -8,6 +8,7 @@
   "roots_file_hint": "To serve another repository, append its absolute path as a line in {file}; the file is re-read on the next call, no restart needed.",
   "roots_file_unreadable": "roots file {file} cannot be read: {error}. Refusing rather than serving the stale copy; restore the file, or restart the server without --roots-from.",
   "map_unresolved_seeds": "# note: these focus seeds matched no file and no symbol in this repository, so the ranking below is not focused on them: {seeds}. Check the spelling, or seed with a file path from the tree.",
+  "scan_skipped_files": "# warning: {count} files were skipped and are absent from this answer: {listed}. A symbol in a skipped file reads as missing here even though it may exist in the repository.",
   "expand_body_truncated": "... {shown} of {total} lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body.",
   "expand_batch_shortened": "note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
   "expand_no_room": "not expanded: {requested} ids exceed the {seats} one call can answer; retry with at most that many.",

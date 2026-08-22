@@ -82,6 +82,7 @@ class MessageText:
     roots_file_hint: str
     roots_file_unreadable: str
     map_unresolved_seeds: str
+    scan_skipped_files: str
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str

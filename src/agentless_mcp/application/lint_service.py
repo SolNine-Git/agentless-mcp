@@ -199,6 +199,22 @@ def _findings(
     if gaps:
         return notes + gaps
 
+    if not parsed.edits:
+        # A candidate that parsed cleanly to zero edits -- an empty
+        # ``edits.json``, or a diff whose every section was a note -- checks
+        # nothing, and "no findings" about it would be a clean report about a
+        # patch that does nothing. Same phrase ``validate`` fails it with.
+        empty = render.LintFinding(
+            check=patchlint.CHECK_COVERAGE,
+            severity=patchlint.Severity.NOT_CHECKED.value,
+            message="not checked: the candidate contains no edits",
+            path="",
+            line=0,
+            location="(repository)",
+            evidence="0 edits",
+        )
+        return (*notes, empty)
+
     edits = _canonical(root, parsed.edits)
     misoriented = unidiff.orientation(edits, facts.texts)
     if misoriented:

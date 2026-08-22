@@ -787,9 +787,11 @@ identical either way, because output order is sorted rather than
 completion-ordered.
 
 **`--timeout` is a hard bound and a hang is a FAILURE.** A command that
-outlives it has its whole process group killed (SIGTERM, then SIGKILL), and
-the verdict is `timeout` -- never a pass. Output capture keeps the last 100 KB
-per stream, because the summary is at the end.
+outlives it has its whole process group killed (SIGTERM, a 5s grace, then
+SIGKILL and a 1s reap wait), and the verdict is `timeout` -- never a pass.
+The wall-clock worst case per command is therefore `--timeout` + 6s; budget
+`--run-timeout` against that figure, not the bare `--timeout`. Output capture
+keeps the last 100 KB per stream, because the summary is at the end.
 
 #### The two verdicts that invalidate everything else
 

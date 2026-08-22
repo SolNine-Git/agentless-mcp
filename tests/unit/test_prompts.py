@@ -72,6 +72,10 @@ MESSAGE_ARGUMENTS = {
     "roots_file_hint": {"file": "/srv/agentless-roots.txt"},
     "roots_file_unreadable": {"file": "/srv/agentless-roots.txt", "error": "No such file"},
     "map_unresolved_seeds": {"seeds": "rotate_age, shift_age"},
+    "scan_skipped_files": {
+        "count": 2,
+        "listed": "huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes)",
+    },
     "expand_body_truncated": {"shown": 12, "total": 340},
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
