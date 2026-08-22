@@ -653,8 +653,14 @@ last run. The database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never
 inside the repository being analyzed, and one line reports what happened:
 
 ```
-indexed 42, reused 517, pruned 3, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
+indexed 42, reused 517, pruned 3, skipped 0, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
 ```
+
+An error is a file the run could not record (unreadable, over the size cap, a
+parse crash) and any error exits 1. A skip is a known language whose grammar
+is not warmed: the file is recorded with its digest, listed as a `warning:`
+line, and does not affect the exit code -- run `agentless-mcp warmup` for that
+language and re-index to pick those files up.
 
 Only one index run per repository at a time: a second concurrent run exits
 immediately saying the lock is held rather than queueing. Any read command

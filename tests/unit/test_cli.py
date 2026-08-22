@@ -141,7 +141,7 @@ class TestInProcess:
     def test_index_prints_a_summary_line(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "index") == EXIT_OK
         summary = capsys.readouterr().out.splitlines()[0]
-        assert summary.startswith("indexed 2, reused 0, pruned 0, errors 0: 2 files,")
+        assert summary.startswith("indexed 2, reused 0, pruned 0, skipped 0, errors 0: 2 files,")
 
     def test_index_with_a_failing_file_exits_non_zero(self, services, repo_path, capsys):
         write_over_cap_file(repo_path)
@@ -159,6 +159,34 @@ class TestInProcess:
         assert invoke(services, repo_path, "index", "--json") == EXIT_DOMAIN
         document = json.loads(capsys.readouterr().out)
         assert document["errors"] == 1
+
+    def test_index_reports_an_unwarmed_language_as_a_warning_and_exits_zero(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        (repo_path / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        assert invoke(services, repo_path, "index") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "skipped 1, errors 0" in out.splitlines()[0]
+        assert "  warning: helper.go: language 'go' not warmed" in out
+        assert "  error:" not in out
+
+    def test_index_json_counts_an_unwarmed_language_as_skipped(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        (repo_path / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        assert invoke(services, repo_path, "index", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["errors"] == 0
+        assert document["skipped"] == 1
+        assert document["skipped_files"] == [
+            {"path": "helper.go", "reason": "language 'go' not warmed: run agentless-mcp warmup"}
+        ]
 
     def test_refs_names_the_calling_symbol(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "refs", "quote") == EXIT_OK
