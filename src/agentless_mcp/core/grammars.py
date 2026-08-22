@@ -19,13 +19,26 @@ cache directory, so it is the warmed-state probe -- no marker file of our
 own is needed. The pack does NOT read ``TREE_SITTER_LANGUAGE_PACK_CACHE_DIR``
 (only ``XDG_CACHE_HOME`` and its own ``PackConfig``), so this module reads
 that variable itself and applies it through ``configure()``.
+
+Verified 2026-08-22, issue #19: the wheel ships no grammar binaries. The
+first ``prefetch`` against a cold cache downloads the whole platform bundle
+(``bundles/<platform>-<sha256>.tar.zst`` beside the libs directory, digest
+in the name, sha-256 verified by the pack) plus ``manifest.json``; every
+later warm -- any language, networking disabled -- is a local extraction
+from that cached bundle, ~3s for all 22. The background warm below
+therefore fetches at most once per cache directory, and on a machine whose
+cache already holds the bundle it never fetches at all.
 """
 
+import logging
 import os
+import threading
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cache, lru_cache
 from importlib import metadata
+from pathlib import Path
 
 import tree_sitter_language_pack as pack
 from tree_sitter import Language, Parser
@@ -33,8 +46,17 @@ from tree_sitter_language_pack import PackConfig
 
 from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
 
+logger = logging.getLogger(__name__)
+
 ENV_NO_DOWNLOAD = "AGENTLESS_MCP_NO_DOWNLOAD"
 ENV_CACHE_DIR = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
+ENV_NO_AUTO_WARM = "AGENTLESS_MCP_NO_AUTO_WARM"
+
+# The background warm stops starting new languages once this much time has
+# passed. Local extraction of the full supported set measures ~3s from a cold
+# cache; the bound exists for the fetch path a future pack version could
+# reintroduce, so a dead network cannot hold a one-shot CLI exit open.
+AUTO_WARM_DEADLINE_SECONDS = 30.0
 
 # Tier-1 languages: the twelve ported from the mcp-local extractor, each with
 # a hand-checked node-type table and characterization coverage.
@@ -177,10 +199,159 @@ def no_download_requested() -> bool:
     return os.environ.get(ENV_NO_DOWNLOAD, "") not in ("", "0", "false", "False")
 
 
+def auto_warm_disabled() -> bool:
+    """True when the environment opts out of the startup background warm."""
+    return os.environ.get(ENV_NO_AUTO_WARM, "") not in ("", "0", "false", "False")
+
+
+@dataclass
+class _AutoWarmState:
+    """One background warm per process: its thread handle and deadline.
+
+    The handle outlives the thread so a second start is a no-op and the
+    "warm in progress" probe stays a liveness check.
+    """
+
+    thread: threading.Thread | None = None
+    deadline: float = 0.0
+
+
+_AUTO_WARM = _AutoWarmState()
+
+
+def auto_warm_in_progress() -> bool:
+    """True while the startup background warm is still running."""
+    thread = _AUTO_WARM.thread
+    return thread is not None and thread.is_alive()
+
+
+def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread | None:
+    """Start one background thread warming cold grammars; never blocks or raises.
+
+    The whole supported set rather than a needs-probe of the repository:
+    computing which extensions a repository holds means walking it at
+    startup, and the pack fetches one whole platform bundle rather than
+    per-language files (module docstring, 2026-08-22), so narrowing the set
+    saves no network -- it only leaves languages cold. Warming everything
+    matches the explicit warmup's default sweep, and a fresh install needs
+    tier 1 warmed too.
+
+    ``AGENTLESS_MCP_NO_DOWNLOAD`` has absolute priority: when it is set,
+    nothing starts and today's behavior is exactly preserved. Returns the
+    thread when one is running, ``None`` when there is nothing to do.
+    """
+    if auto_warm_disabled() or no_download_requested():
+        return None
+    if _AUTO_WARM.thread is not None:
+        return _AUTO_WARM.thread
+
+    try:
+        warmed = warmed_languages()
+    except (pack.Error, RuntimeError, OSError) as error:
+        logger.warning("background grammar warm skipped: cache probe failed: %s", error)
+        return None
+    cold = tuple(name for name in (languages or ALL_LANGUAGES) if name not in warmed)
+    if not cold:
+        return None
+
+    # Daemon so a closing transport is never held open by a warm; the one-shot
+    # CLI pairs the start with wait_for_auto_warm so extraction is not killed
+    # mid-write by interpreter shutdown.
+    thread = threading.Thread(
+        target=_auto_warm, args=(cold,), name="grammar-auto-warm", daemon=True
+    )
+    _AUTO_WARM.deadline = time.monotonic() + AUTO_WARM_DEADLINE_SECONDS
+    _AUTO_WARM.thread = thread
+    thread.start()
+    return thread
+
+
+def wait_for_auto_warm() -> None:
+    """Block until the background warm finishes or its deadline passes.
+
+    For one-shot CLI processes: without this, interpreter shutdown would kill
+    the daemon thread partway through a cache write. The bound is the same
+    deadline the thread honours, so a hung fetch cannot hold the exit open.
+    """
+    thread = _AUTO_WARM.thread
+    if thread is None:
+        return
+    remaining = _AUTO_WARM.deadline - time.monotonic()
+    if remaining > 0:
+        thread.join(remaining)
+
+
+def _auto_warm(names: Sequence[str]) -> None:
+    """Warm ``names`` one at a time; one log line, never an exception out."""
+    started = time.monotonic()
+    warmed: list[str] = []
+    degraded: list[str] = []
+    stopped = ""
+    bundles_before = _bundle_archives()
+    try:
+        for name in names:
+            if time.monotonic() >= _AUTO_WARM.deadline:
+                stopped = (
+                    f"; deadline of {AUTO_WARM_DEADLINE_SECONDS:.0f}s reached, the rest stay cold"
+                )
+                break
+            report = warmup([name])
+            (warmed if report.ok else degraded).append(name)
+    except (AtlasError, pack.Error, RuntimeError, OSError) as error:
+        # The contract is one log line and today's labeled-skip behavior,
+        # never a crashed process or a traceback mid-session.
+        logger.warning("background grammar warm failed: %s", error)
+        return
+
+    fetched = sorted(_bundle_archives() - bundles_before)
+    notes = ""
+    if fetched:
+        notes = f"; fetched {', '.join(fetched)} (sha-256 in name, verified by the pack)"
+    if degraded:
+        notes += f"; degraded: {', '.join(degraded)} (those languages stay labeled skips)"
+    logger.info(
+        "background grammar warm: warmed %s in %.1fs (pack %s, cache %s)%s%s",
+        ", ".join(warmed) if warmed else "nothing",
+        time.monotonic() - started,
+        pack_version(),
+        cache_dir(),
+        notes,
+        stopped,
+    )
+
+
+def _bundle_archives() -> frozenset[str]:
+    """Names of downloaded bundle archives, digest and all.
+
+    The pack stores ``bundles/`` and ``manifest.json`` in the parent of the
+    libs directory that ``cache_dir()`` names, in both the default and the
+    overridden layout (verified 2026-08-22), so the scan starts one level up.
+    """
+    try:
+        return frozenset(path.name for path in Path(cache_dir()).parent.rglob("*.tar.zst"))
+    except OSError:
+        return frozenset()
+
+
 def warmed_languages() -> frozenset[str]:
     """Return the languages loadable from the local cache without a fetch."""
     _configured_cache_dir()
     return frozenset(pack.downloaded_languages())
+
+
+def unavailable_reason(name: str) -> str:
+    """The labeled-skip reason for a grammar that is not warmed.
+
+    One home for the wording so the index report and a live scan describe the
+    file identically. While the startup background warm is still running the
+    remediation is to wait, not to run a second warm into the same cache.
+    """
+    if auto_warm_in_progress():
+        return (
+            f"language '{name}' not warmed: a background warm is in progress, "
+            "retry shortly or run agentless-mcp warmup"
+        )
+    return f"language '{name}' not warmed: run agentless-mcp warmup"
 
 
 def get_language(name: str) -> Language:
@@ -197,8 +368,7 @@ def get_language(name: str) -> Language:
         raise LanguageUnavailable(message)
 
     if name not in warmed_languages():
-        message = f"language '{name}' not warmed: run agentless-mcp warmup"
-        raise LanguageUnavailable(message)
+        raise LanguageUnavailable(unavailable_reason(name))
 
     try:
         return pack.get_language(name)

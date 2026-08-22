@@ -20,8 +20,10 @@ a terminal; it needs the `mcp` extra, so install that when you want the server:
 uv tool install "agentless-mcp[mcp]"
 ```
 
-Before analyzing a language for the first time, download and verify its
-grammar:
+Both entry points warm cold grammars in the background at startup (one
+digest-verified bundle fetch at most; `--no-auto-warm` or
+`AGENTLESS_MCP_NO_AUTO_WARM` opts out, `AGENTLESS_MCP_NO_DOWNLOAD` forbids
+all fetching). To warm explicitly and fail loudly instead:
 
 ```sh
 agentless-mcp warmup
@@ -180,21 +182,36 @@ Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects
 exactly one; otherwise the refusal lists the roots to choose from.
 
-The MCP tools are:
+The MCP tools are five intent-shaped surfaces; three of them fold their
+questions behind an `operation` parameter:
 
-| Tool | Purpose |
-| --- | --- |
-| `repo_map` | Rank relevant files and symbols within a token budget |
-| `list_dir` | List the repository tree |
-| `get_symbols_overview` | Show declarations without symbol bodies |
-| `expand_symbols` | Return full symbol bodies |
-| `read_slice` | Read selected source lines |
-| `find_symbol` | Find symbols by name |
-| `find_referencing_symbols` | Find references and callers |
-| `explain_symbol` | Show a symbol with its relationships |
-| `analyze_structure` | Query paths, cycles, communities, or diagrams |
-| `resolve_locations` | Resolve class, function, and line locations |
-| `capabilities` | Report loaded grammars and cache state |
+| Tool | Operations | Purpose |
+| --- | --- | --- |
+| `orient` | `map`, `communities`, `cycles`, `diagram`, `path` | Where does this live, how is the repository put together |
+| `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
+| `find_referencing_symbols` | | Find references and callers (blast radius) |
+| `read` | `slice`, `dir` | Read selected source lines; list the repository tree |
+| `capabilities` | | Report loaded grammars and cache state |
+
+One worked call per surface:
+
+```
+orient(operation="map", focus=["src/app.py", "quote"])
+symbols(operation="expand", stable_ids=["py:src/app.py::App.run"])
+find_referencing_symbols(target="App.run")
+read(operation="slice", path="src/app.py", lines=[[40, 80]])
+capabilities()
+```
+
+A wrong `operation` is answered with the valid list, and a parameter foreign
+to the selected operation is refused with a message naming what that
+operation accepts and requires.
+
+This v2 surface is the default. For the transition, `--surface v1` publishes
+the previous per-question tools (`repo_map`, `expand_symbols`, and the rest)
+and `--surface both` publishes the union; v1 remains for one release. The
+mapping between the surfaces is in
+`agentless-mcp guide --section the-two-surfaces`.
 
 The MCP server does not apply patches or execute repository commands.
 

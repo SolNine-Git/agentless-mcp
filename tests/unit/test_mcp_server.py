@@ -29,16 +29,20 @@ from agentless_mcp.adapters.mcp.server import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DISTRIBUTION_NAME,
+    SURFACE_BOTH,
+    SURFACE_V1,
+    SURFACE_V2,
+    SURFACES,
     TRANSPORT_HTTP,
     TRANSPORT_STDIO,
     ServerServices,
     ToolHandlers,
-    build_server,
     effective_client_roots,
     http_binding,
     parse_args,
     server_version,
 )
+from agentless_mcp.adapters.mcp.server import build_server as build_surface_server
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.repo_context import resolved_allowlist
@@ -47,6 +51,17 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
 from agentless_mcp.util.errors import SecurityRefusal
+
+
+def build_server(handlers):
+    """The v1 server these tests were written against.
+
+    The published default is v2; every test in this module that is about the
+    v1 tools builds it explicitly, and the surface-parametrized tests below
+    plus tests/unit/test_mcp_surface_v2.py cover the other modes.
+    """
+    return build_surface_server(handlers, surface=SURFACE_V1)
+
 
 EXPECTED_TOOLS = {
     "repo_map",
@@ -63,7 +78,7 @@ EXPECTED_TOOLS = {
 }
 
 # One well-typed argument set per published tool, over the one_repo fixture.
-# The conformance test in TestToolSurface requires this table to cover the
+# The conformance test in TestToolSurface requires these tables to cover the
 # live listing exactly, so a new tool must land with an entry here.
 WELL_TYPED_CALLS = {
     "repo_map": {},
@@ -77,6 +92,23 @@ WELL_TYPED_CALLS = {
     "analyze_structure": {"operation": "cycles"},
     "resolve_locations": {"path": "core.py", "locs": ["function:quote"]},
     "capabilities": {},
+}
+
+WELL_TYPED_CALLS_V2 = {
+    "orient": {"operation": "map"},
+    "symbols": {"operation": "find", "name": "quote"},
+    "read": {"operation": "dir"},
+    "find_referencing_symbols": {"target": "quote"},
+    "capabilities": {},
+}
+
+# What each --surface mode publishes, and one well-typed call for everything
+# it publishes. find_referencing_symbols and capabilities are shared by the
+# two surfaces, so `both` is the fourteen-name union rather than sixteen.
+SURFACE_CALLS = {
+    SURFACE_V1: WELL_TYPED_CALLS,
+    SURFACE_V2: WELL_TYPED_CALLS_V2,
+    SURFACE_BOTH: {**WELL_TYPED_CALLS, **WELL_TYPED_CALLS_V2},
 }
 
 SOURCE = """\
@@ -1342,6 +1374,13 @@ class TestAnalyzeStructure:
 
         assert emptied == unfocused
 
+    def test_a_null_focus_reads_as_no_focus(self, services, one_repo):
+        """``repo_map.focus`` is nullable, so the shared shape admits null here too."""
+        unfocused = self.answer(services, one_repo, {"operation": "diagram"})
+        nulled = self.answer(services, one_repo, {"operation": "diagram", "focus": None})
+
+        assert nulled == unfocused
+
     def test_an_unknown_operation_lists_the_ones_that_exist(self, services, one_repo):
         with pytest.raises(ToolError) as raised:
             self.answer(services, one_repo, {"operation": "graph"})
@@ -1361,6 +1400,64 @@ class TestAnalyzeStructure:
         assert set(_OPERATIONS) == {"path", "cycles", "communities", "diagram"}
 
 
+class TestMapFocusShapes:
+    """Issue #13's counterpart on repo_map: focus takes a string or a list."""
+
+    def answer(self, services, one_repo, arguments):
+        """Call repo_map on the fixture repository."""
+        server = build_server(ToolHandlers([one_repo], services))
+
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool("repo_map", {"repo_root": str(one_repo), **arguments})
+
+        return asyncio.run(go()).content[0].text
+
+    def test_a_bare_string_focus_answers_as_its_one_element_list_does(self, services, one_repo):
+        """``analyze_structure.focus`` is a string, so a bridging client may send one here."""
+        stringly = self.answer(services, one_repo, {"focus": "core.py"})
+        listed = self.answer(services, one_repo, {"focus": ["core.py"]})
+
+        assert stringly == listed
+
+    def test_an_empty_string_focus_reads_as_no_focus(self, services, one_repo):
+        unfocused = self.answer(services, one_repo, {})
+        emptied = self.answer(services, one_repo, {"focus": ""})
+
+        assert emptied == unfocused
+
+    def test_a_null_focus_reads_as_no_focus(self, services, one_repo):
+        unfocused = self.answer(services, one_repo, {})
+        nulled = self.answer(services, one_repo, {"focus": None})
+
+        assert nulled == unfocused
+
+
+def value_shape(schema):
+    """One parameter's published value shape, prose and nullability stripped.
+
+    Requiredness and nullability stay per-tool policy -- a tool with a
+    natural fallback defaults its parameter, one without requires it -- but
+    a value a client learned to send from one tool's schema must validate
+    identically on every tool publishing the same parameter name, bounds
+    included (#13's coercion class).
+    """
+    branches = schema.get("anyOf")
+    if branches is not None:
+        kept = [value_shape(branch) for branch in branches if branch.get("type") != "null"]
+        if len(kept) == 1:
+            return kept[0]
+        return {"anyOf": sorted(kept, key=lambda shape: json.dumps(shape, sort_keys=True))}
+    shape = {
+        key: value
+        for key, value in schema.items()
+        if key not in ("description", "title", "default")
+    }
+    if isinstance(shape.get("items"), dict):
+        shape["items"] = value_shape(shape["items"])
+    return shape
+
+
 class TestToolSurface:
     """The listing is capped at eleven, and the cap is read off a live server."""
 
@@ -1378,30 +1475,85 @@ class TestToolSurface:
         assert "symbol_path" not in names
         assert "import_cycles" not in names
 
-    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo):
+    @pytest.mark.parametrize("surface", SURFACES)
+    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo, surface):
         """tools/list round-trips into one successful tools/call per tool.
 
         The per-tool tests above assert content; this gate asserts the whole
-        published surface stays callable through schema validation, and its
-        argument table must cover exactly the live listing -- publishing a
-        new tool without a conformance entry fails here first.
+        published surface stays callable through schema validation in every
+        --surface mode, and each mode's argument table must cover exactly the
+        live listing -- publishing a new tool without a conformance entry
+        fails here first.
         """
-        server = build_server(ToolHandlers([one_repo], services))
+        calls = SURFACE_CALLS[surface]
+        server = build_surface_server(ToolHandlers([one_repo], services), surface=surface)
         tools = listed_tools(server)
-        assert {tool.name for tool in tools} == set(WELL_TYPED_CALLS)
+        assert {tool.name for tool in tools} == set(calls)
 
         async def go():
             async with Client(server) as client:
                 return {
                     tool.name: await client.call_tool(
                         tool.name,
-                        {"repo_root": str(one_repo), **WELL_TYPED_CALLS[tool.name]},
+                        {"repo_root": str(one_repo), **calls[tool.name]},
                     )
                     for tool in tools
                 }
 
         for name, result in asyncio.run(go()).items():
             assert result.content[0].text.strip(), name
+
+    @pytest.mark.parametrize("surface", SURFACES)
+    def test_shared_parameter_names_publish_one_value_shape_everywhere(
+        self, services, one_repo, surface
+    ):
+        """The regression gate behind issue #13: a name never changes shape between tools.
+
+        ``repo_map.focus`` was ``list[str]`` while ``analyze_structure.focus``
+        was ``str``, and a client bridge's coercion put an agent in a retry
+        loop. Introspect the published listing in every --surface mode and
+        require every parameter name to carry one value shape across all the
+        tools that publish it.
+        """
+        tools = listed_tools(
+            build_surface_server(ToolHandlers([one_repo], services), surface=surface)
+        )
+
+        shapes = {}
+        for tool in tools:
+            for name, schema in tool.inputSchema.get("properties", {}).items():
+                shape = value_shape(schema)
+                if name == "operation":
+                    # The operation vocabulary is each tool's own closed set:
+                    # v1's analyze_structure publishes it as a wire enum, the
+                    # v2 tools as a plain string rejected server-side with the
+                    # valid list. Like requiredness, the value set is per-tool
+                    # policy; the value type must still agree.
+                    shape.pop("enum", None)
+                    shape.pop("const", None)
+                shapes.setdefault(name, {})[tool.name] = shape
+
+        for name, by_tool in shapes.items():
+            rendered = {json.dumps(shape, sort_keys=True) for shape in by_tool.values()}
+            assert len(rendered) == 1, f"{name} varies across {sorted(by_tool)}: {rendered}"
+
+    def test_a_null_limit_answers_as_an_omitted_limit_does(self, services, one_repo):
+        """The nullable limit shape reads as the tool's default, not a refusal."""
+        server = build_server(ToolHandlers([one_repo], services))
+
+        async def go():
+            async with Client(server) as client:
+                omitted = await client.call_tool(
+                    "find_symbol", {"repo_root": str(one_repo), "name": "quote"}
+                )
+                nulled = await client.call_tool(
+                    "find_symbol",
+                    {"repo_root": str(one_repo), "name": "quote", "limit": None},
+                )
+                return omitted, nulled
+
+        omitted, nulled = asyncio.run(go())
+        assert nulled.content[0].text == omitted.content[0].text
 
 
 class TestCapabilitiesCacheHint:
@@ -1473,3 +1625,34 @@ class TestOverviewStableIds:
 
         assert "no grammar" in text
         assert "stable ids:" not in text
+
+
+class TestAutoWarmStartup:
+    """Issue #19: serve starts the background warm; the opt-out flag holds."""
+
+    class StubTransport:
+        def run(self, **kwargs):
+            _ = kwargs
+
+    @pytest.fixture
+    def warm_calls(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            server_module.grammars, "start_auto_warm", lambda *a, **k: calls.append("start")
+        )
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport()
+        )
+        return calls
+
+    def test_serve_starts_the_background_warm(self, services, tmp_path, warm_calls):
+        assert server_module.serve(["--root", str(tmp_path)], services) == 0
+        assert warm_calls == ["start"]
+
+    def test_the_flag_keeps_the_warm_off(self, services, tmp_path, warm_calls):
+        assert server_module.serve(["--no-auto-warm", "--root", str(tmp_path)], services) == 0
+        assert warm_calls == []
+
+    def test_the_flag_parses_and_defaults_off(self):
+        assert parse_args(["--no-auto-warm"]).no_auto_warm is True
+        assert parse_args([]).no_auto_warm is False

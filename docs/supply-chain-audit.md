@@ -67,9 +67,19 @@ the README security section rather than left implicit.
 
 ## Implications for the build
 
-- **Warmup-only fetching.** Grammar downloads happen in an explicit `warmup`
-  command run at install time, where a failure is visible and actionable. No
-  tool call ever triggers a first fetch.
+- **No tool call ever triggers a fetch.** Fetches happen only at explicit
+  `warmup` or as the documented, disable-able background warm at process
+  start, always digest-verified. (Amended 2026-08-22, issue #19: the original
+  invariant here was warmup-only fetching. The background warm at server and
+  CLI startup reuses the same warmup machinery -- same bundle, same digest
+  check inside the pack -- runs in one background thread with a bounded
+  deadline, and is disabled by `--no-auto-warm` on either entry point, by
+  `AGENTLESS_MCP_NO_AUTO_WARM`, or absolutely by `AGENTLESS_MCP_NO_DOWNLOAD`.
+  Verified while landing that change: the pack stores `manifest.json` and
+  `bundles/<platform>-<sha256>.tar.zst` beside the libs directory, and once
+  they are cached every warm -- any language -- is a local extraction with no
+  network at all, so the background warm fetches at most once per cache
+  directory.)
 - **`AGENTLESS_MCP_NO_DOWNLOAD` air-gap gate.** When set, any attempted fetch is
   an error rather than a network call. Combined with
   `TREE_SITTER_LANGUAGE_PACK_CACHE_DIR` (implemented by `core/grammars.py`, see

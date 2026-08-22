@@ -47,8 +47,8 @@ import logging
 import shlex
 import socket
 import sys
-from collections.abc import AsyncIterator, Callable, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
@@ -85,7 +85,7 @@ from agentless_mcp.application.symbol_service import (
     render_find,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, projectconfig
+from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
@@ -150,6 +150,18 @@ _RANGE_PAIR_LENGTH = 2
 # matters is that there is one, because every tool call waits behind it.
 _LIST_ROOTS_TIMEOUT_SECONDS = 2.0
 
+# The tool surfaces this server can publish. v2 -- five intent-shaped tools --
+# is the default; v1 keeps the original eleven for un-migrated operators, and
+# both publishes the union for a transition window (find_referencing_symbols
+# and capabilities are shared by the two surfaces, so the union is fourteen
+# names, not sixteen). The flag is server-level: one process publishes one
+# surface, whatever repositories it serves.
+SURFACE_V1: Literal["v1"] = "v1"
+SURFACE_V2: Literal["v2"] = "v2"
+SURFACE_BOTH: Literal["both"] = "both"
+SURFACES = (SURFACE_V1, SURFACE_V2, SURFACE_BOTH)
+Surface = Literal["v1", "v2", "both"]
+
 OPERATION_PATH = "path"
 OPERATION_CYCLES = "cycles"
 OPERATION_COMMUNITIES = "communities"
@@ -159,7 +171,10 @@ OPERATION_DIAGRAM = "diagram"
 # the tool descriptions; pydantic carries it into the published schema, which
 # is the only documentation an arbitrary client is guaranteed to read.
 RepoRoot = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["repo_root"])]
-MapFocus = Annotated[list[str] | None, Field(description=PARAMETER_DESCRIPTIONS["map_focus"])]
+MapFocus = Annotated[
+    str | list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["map_focus"]),
+]
 Granularity = Annotated[
     Literal["function", "file"] | None,
     Field(description=PARAMETER_DESCRIPTIONS["map_granularity"]),
@@ -194,7 +209,7 @@ IncludeAmbiguous = Annotated[
     Field(description=PARAMETER_DESCRIPTIONS["include_ambiguous"]),
 ]
 DiagramFocus = Annotated[
-    str | list[str],
+    str | list[str] | None,
     Field(description=PARAMETER_DESCRIPTIONS["diagram_focus"]),
 ]
 GroupByCommunities = Annotated[
@@ -213,20 +228,24 @@ MAX_CONTEXT_LINES = 200
 MAX_DIAGRAM_NODES = 500
 MAX_RESOLUTION = 100.0
 
+# ``limit`` is nullable on every tool that carries it because it is nullable
+# on analyze_structure, whose default depends on the operation. A client that
+# learns "limit may be null" from one schema and reuses it on another must not
+# be refused for it (#13's coercion class); null reads as the tool's default.
 ExpandLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["expand_limit"]),
 ]
 FindLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["find_limit"]),
 ]
 ReferenceLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["reference_limit"]),
 ]
 ExplainLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["explain_limit"]),
 ]
 StructureLimit = Annotated[
@@ -297,6 +316,84 @@ LineRange = Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=2, max
 LineRanges = Annotated[
     list[LineRange] | None,
     Field(min_length=1, description=PARAMETER_DESCRIPTIONS["slice_lines"]),
+]
+
+# The v2 surface's parameter types. operation is a plain string on purpose:
+# requiredness there depends on the selected operation, which a flat schema
+# cannot express, so the operation vocabulary and the per-operation parameter
+# sets are enforced at runtime where the refusal can name the fix (see
+# _checked_operation). Every per-operation parameter is therefore nullable at
+# the schema layer -- None reads as "omitted" -- while its value shape and
+# bounds stay identical to the v1 tool publishing the same name, which is what
+# the shared-shape gate in the tests holds across surfaces.
+OrientOperation = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["orient_operation"])]
+SymbolsOperation = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["symbols_operation"])]
+ReadOperation = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["read_operation"])]
+OrientFocus = Annotated[
+    str | list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["orient_focus"]),
+]
+OrientLimit = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["orient_limit"]),
+]
+SymbolsLimit = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["symbols_limit"]),
+]
+ReadPath = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["read_path"])]
+OptionalSource = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["path_source"])]
+OptionalTarget = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["path_target"])]
+OptionalIncludeUnique = Annotated[
+    bool | None,
+    Field(description=PARAMETER_DESCRIPTIONS["include_unique"]),
+]
+OptionalIncludeAmbiguous = Annotated[
+    bool | None,
+    Field(description=PARAMETER_DESCRIPTIONS["include_ambiguous"]),
+]
+OptionalGroupByCommunities = Annotated[
+    bool | None,
+    Field(description=PARAMETER_DESCRIPTIONS["group_by_communities"]),
+]
+OptionalMaxNodes = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_DIAGRAM_NODES, description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"]),
+]
+OptionalFindName = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["find_name"])]
+OptionalOverviewPaths = Annotated[
+    list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["overview_paths"]),
+]
+OptionalStableIds = Annotated[
+    list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["stable_ids"]),
+]
+OptionalExplainTarget = Annotated[
+    str | None,
+    Field(description=PARAMETER_DESCRIPTIONS["explain_target"]),
+]
+OptionalFilePath = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["file_path"])]
+OptionalLocations = Annotated[
+    list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["locations"]),
+]
+OptionalContextLines = Annotated[
+    int | None,
+    Field(ge=0, le=MAX_CONTEXT_LINES, description=PARAMETER_DESCRIPTIONS["context_lines"]),
+]
+OptionalWholeFile = Annotated[bool | None, Field(description=PARAMETER_DESCRIPTIONS["whole_file"])]
+OptionalDepth = Annotated[
+    int | None,
+    Field(ge=1, le=fslimits.DEFAULT_MAX_DEPTH, description=PARAMETER_DESCRIPTIONS["tree_depth"]),
+]
+OptionalMaxEntries = Annotated[
+    int | None,
+    Field(
+        ge=1,
+        le=fslimits.DEFAULT_MAX_FILES,
+        description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
+    ),
 ]
 
 
@@ -622,15 +719,18 @@ class ToolHandlers:
 
         Four questions behind one tool, because they are one question shape --
         "how is this repository put together" -- and a client picking between
-        eleven tools picks better than one picking between fourteen. The
-        operation is validated here rather than by an enum on the wire so that
-        a wrong value is answered with the list of right ones.
+        eleven tools picks better than one picking between fourteen. Over the
+        v1 wire the published enum on ``operation`` rejects an unknown value
+        before this branch can; it stays as the backstop for direct handler
+        callers, and it keeps the dispatch and the message from disagreeing
+        about which operations exist. The v2 ``orient`` surface publishes no
+        enum and validates the operation itself before routing here.
         """
         handler = _OPERATIONS.get(request.operation)
         if handler is None:
             listed = ", ".join(sorted(_OPERATIONS))
             message = MESSAGES.unknown_operation.format(
-                operation=request.operation, operations=listed
+                tool="analyze_structure", operation=request.operation, operations=listed
             )
             raise AtlasError(message)
         return self._wrap(ctx, handler(self._services.graphs, ctx, request))
@@ -809,21 +909,26 @@ def _resolved_client_root(uri: object) -> Path:
     return resolved
 
 
-def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
+def _intervals(
+    ranges: Sequence[Sequence[int]], *, tool: str = "read_slice"
+) -> list[tuple[int, int]]:
     """Parse the wire's line ranges into intervals, or refuse the whole call.
 
-    Refused rather than filtered: ``read_slice`` renders the whole file when
-    no interval survives, so dropping a malformed range answers a bounded
+    Refused rather than filtered: the slice renders the whole file when no
+    interval survives, so dropping a malformed range answers a bounded
     request with the substitute content this tool promises never to return.
     The schema rejects a range that is not two 1-based line numbers before it
     reaches here; the shape it cannot express is an end before its start.
+    ``tool`` names the refusing surface -- ``read_slice`` on v1, the ``read``
+    tool's slice operation on v2 -- so the message blames the call the agent
+    actually made.
     """
     intervals: list[tuple[int, int]] = []
     for pair in ranges:
         if len(pair) != _RANGE_PAIR_LENGTH or pair[1] < pair[0]:
             listed = ", ".join(str(number) for number in pair)
             message = (
-                f"read_slice range [{listed}] is not a line range: each one is "
+                f"{tool} range [{listed}] is not a line range: each one is "
                 "[start, end], 1-based and inclusive, with end at or after start."
             )
             raise AtlasError(message)
@@ -831,7 +936,7 @@ def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
     return intervals
 
 
-def _sole_focus(focus: str | list[str]) -> str:
+def _sole_focus(focus: str | list[str] | None) -> str:
     """Reduce a diagram focus to the single seed the operation supports.
 
     ``repo_map.focus`` is a list, so a client bridging the two tools can turn
@@ -840,32 +945,60 @@ def _sole_focus(focus: str | list[str]) -> str:
     list is accepted and only its first entry is used -- the published
     parameter description says so.
     """
+    if focus is None:
+        return ""
     if isinstance(focus, str):
         return focus
     return focus[0] if focus else ""
 
 
+def _focus_entries(focus: str | list[str] | None) -> tuple[str, ...]:
+    """Normalize a map focus to the seed tuple ``MapRequest`` carries.
+
+    The mirror of ``_sole_focus``: ``analyze_structure.focus`` takes a bare
+    string, so a client bridging the two tools can send one here, and it
+    reads as a one-element list (#13's coercion class). An empty string is
+    no focus, exactly as an empty list is.
+    """
+    if focus is None:
+        return ()
+    if isinstance(focus, str):
+        return (focus,) if focus else ()
+    return tuple(focus)
+
+
 def _slice_intervals(
     ranges: Sequence[Sequence[int]] | None,
     whole_file: bool,
+    *,
+    tool: str = "read_slice",
 ) -> list[tuple[int, int]]:
     """Parse an explicit bounded slice or an explicit whole-file request."""
     if ranges is not None and whole_file:
-        message = "read_slice accepts lines or whole_file=true, not both"
+        message = f"{tool} accepts lines or whole_file=true, not both"
         raise AtlasError(message)
     if ranges is None and not whole_file:
-        message = "read_slice requires non-empty lines or explicit whole_file=true"
+        message = f"{tool} requires non-empty lines or explicit whole_file=true"
         raise AtlasError(message)
-    return [] if ranges is None else _intervals(ranges)
+    return [] if ranges is None else _intervals(ranges, tool=tool)
 
 
-def build_server(handlers: ToolHandlers) -> FastMCP[None]:
-    """Register every read tool on a FastMCP server and return it.
+# What a registrar needs to open one call's repository: the context_for
+# closure build_server makes over its handlers.
+RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
+
+
+def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastMCP[None]:
+    """Register the selected tool surface on a FastMCP server and return it.
 
     Each tool's wire description is passed explicitly from
     ``agentless_mcp.prompts``: the text a model reads is prompt data, revised
     on its own terms, and FastMCP would otherwise publish whatever the
-    docstring happened to say. The docstrings below are code documentation.
+    docstring happened to say. The docstrings in the registrars are code
+    documentation. ``find_referencing_symbols`` and ``capabilities`` belong to
+    every surface: the expensive fan-in call keeps its own decision point and
+    cost warning on v2 deliberately, and the capability report is the same
+    contract either way.
     """
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
@@ -886,6 +1019,19 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         finally:
             ctx.close()
 
+    _register_shared(mcp, handlers, context_for)
+    if surface in (SURFACE_V1, SURFACE_BOTH):
+        _register_v1(mcp, handlers, context_for)
+    if surface in (SURFACE_V2, SURFACE_BOTH):
+        _register_v2(mcp, handlers, context_for)
+    return mcp
+
+
+def _register_v1(
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+) -> None:
+    """Register the v1-only tools: one tool per question, nine of them."""
+
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["repo_map"],
         annotations=read_only("Repository map"),
@@ -904,7 +1050,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
             return handlers.repo_map(
                 ctx,
                 MapRequest(
-                    focus=tuple(focus or ()),
+                    focus=_focus_entries(focus),
                     budget=budget,
                     max_files=max_files,
                     granularity=granularity,
@@ -949,12 +1095,14 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         stable_ids: StableIds,
         repo_root: RepoRoot = None,
-        limit: ExpandLimit = DEFAULT_EXPAND_LIMIT,
+        limit: ExpandLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.expand_symbols(ctx, stable_ids, limit)
+            return handlers.expand_symbols(
+                ctx, stable_ids, _or_default(limit, DEFAULT_EXPAND_LIMIT)
+            )
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["read_slice"],
@@ -986,29 +1134,12 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         name: FindName,
         repo_root: RepoRoot = None,
         kind: SymbolKindParameter = None,
-        limit: FindLimit = DEFAULT_FIND_LIMIT,
+        limit: FindLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Find symbols by substring or qualified name."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.find_symbol(ctx, name, kind, limit)
-
-    @mcp.tool(
-        description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
-        annotations=read_only("Find referencing symbols"),
-    )
-    async def find_referencing_symbols(
-        context: Context,
-        target: ReferenceTarget,
-        repo_root: RepoRoot = None,
-        limit: ReferenceLimit = DEFAULT_REFS_LIMIT,
-        shared_callers: SharedCallers = False,
-    ) -> str:
-        """Find the symbols that reference a target, grouped by file."""
-        async with context_for(context, repo_root) as ctx:
-            return handlers.find_referencing_symbols(
-                ctx, target, limit, shared_callers=shared_callers
-            )
+            return handlers.find_symbol(ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT))
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["explain_symbol"],
@@ -1018,12 +1149,12 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         target: ExplainTarget,
         repo_root: RepoRoot = None,
-        limit: ExplainLimit = DEFAULT_EXPLAIN_LIMIT,
+        limit: ExplainLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.explain_symbol(ctx, target, limit)
+            return handlers.explain_symbol(ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT))
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["analyze_structure"],
@@ -1039,7 +1170,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         include_ambiguous: IncludeAmbiguous = False,
         limit: StructureLimit = None,
         resolution: Resolution = None,
-        focus: DiagramFocus = "",
+        focus: DiagramFocus = None,
         max_nodes: MaxNodes = DEFAULT_MAX_NODES,
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
@@ -1077,6 +1208,38 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         async with context_for(context, repo_root) as ctx:
             return handlers.resolve_locations(ctx, path, locs, context_lines)
 
+
+def _register_shared(
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+) -> None:
+    """Register the tools every surface publishes, unchanged between them.
+
+    ``find_referencing_symbols`` stays its own tool on v2 deliberately: the
+    expensive fan-in call keeps its own decision point, name and cost warning
+    rather than hiding behind an operation value. ``capabilities`` is the same
+    contract on both surfaces.
+    """
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
+        annotations=read_only("Find referencing symbols"),
+    )
+    async def find_referencing_symbols(
+        context: Context,
+        target: ReferenceTarget,
+        repo_root: RepoRoot = None,
+        limit: ReferenceLimit = None,
+        shared_callers: SharedCallers = False,
+    ) -> str:
+        """Find the symbols that reference a target, grouped by file."""
+        async with context_for(context, repo_root) as ctx:
+            return handlers.find_referencing_symbols(
+                ctx,
+                target,
+                _or_default(limit, DEFAULT_REFS_LIMIT),
+                shared_callers=shared_callers,
+            )
+
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["capabilities"],
         annotations=read_only("Capabilities"),
@@ -1090,7 +1253,298 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         finally:
             ctx.close()
 
-    return mcp
+
+@dataclass(frozen=True)
+class OperationSpec:
+    """One v2 operation: the parameters it accepts and the subset it requires.
+
+    The universal parameters -- repo_root, operation, and no_cache where the
+    tool carries it -- belong to every operation and are not listed.
+    """
+
+    accepted: tuple[str, ...]
+    required: tuple[str, ...] = ()
+
+
+# The v2 operation tables. Tables rather than branch chains for the same
+# reason as _OPERATIONS: the rejection message and the dispatch must never
+# disagree about which operations exist or what each one takes.
+OPERATION_MAP = "map"
+OPERATION_FIND = "find"
+OPERATION_OVERVIEW = "overview"
+OPERATION_EXPAND = "expand"
+OPERATION_EXPLAIN = "explain"
+OPERATION_LOCATE = "locate"
+OPERATION_SLICE = "slice"
+OPERATION_DIR = "dir"
+
+ORIENT_OPERATIONS: dict[str, OperationSpec] = {
+    OPERATION_MAP: OperationSpec(accepted=("focus", "budget", "limit", "granularity")),
+    OPERATION_COMMUNITIES: OperationSpec(accepted=("resolution", "limit")),
+    OPERATION_CYCLES: OperationSpec(accepted=("limit",)),
+    OPERATION_DIAGRAM: OperationSpec(
+        accepted=("focus", "max_nodes", "group_by_communities", "resolution")
+    ),
+    OPERATION_PATH: OperationSpec(
+        accepted=("source", "target", "include_unique", "include_ambiguous"),
+        required=("source", "target"),
+    ),
+}
+
+SYMBOLS_OPERATIONS: dict[str, OperationSpec] = {
+    OPERATION_FIND: OperationSpec(accepted=("name", "kind", "limit"), required=("name",)),
+    OPERATION_OVERVIEW: OperationSpec(accepted=("paths", "docstrings"), required=("paths",)),
+    OPERATION_EXPAND: OperationSpec(accepted=("stable_ids", "limit"), required=("stable_ids",)),
+    OPERATION_EXPLAIN: OperationSpec(accepted=("target", "limit"), required=("target",)),
+    OPERATION_LOCATE: OperationSpec(
+        accepted=("path", "locations", "context_lines"), required=("path", "locations")
+    ),
+}
+
+READ_OPERATIONS: dict[str, OperationSpec] = {
+    OPERATION_SLICE: OperationSpec(
+        accepted=("path", "lines", "context_lines", "whole_file"), required=("path",)
+    ),
+    OPERATION_DIR: OperationSpec(accepted=("path", "depth", "max_entries")),
+}
+
+
+def _omitted(value: object) -> bool:
+    """Was this per-operation parameter left unset? A blank string counts too."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _checked_operation(
+    tool: str,
+    operation: str,
+    specs: Mapping[str, OperationSpec],
+    provided: Mapping[str, object],
+) -> None:
+    """Validate one v2 call's operation and parameter set, or refuse it by name.
+
+    The v2 tools publish ``operation`` as a plain string -- no wire enum -- so
+    this is the one gate, and every refusal names the fix: an unknown
+    operation is answered with the valid list, a parameter foreign to the
+    selected operation and a missing required parameter are each answered with
+    the operation, what it accepts and what it requires. Never a schema
+    validation dump. ``provided`` maps every per-operation parameter to its
+    wire value, where ``None`` reads as omitted.
+    """
+    spec = specs.get(operation)
+    if spec is None:
+        message = MESSAGES.unknown_operation.format(
+            tool=tool, operation=operation, operations=", ".join(sorted(specs))
+        )
+        raise AtlasError(message)
+    accepted = ", ".join(spec.accepted)
+    required = ", ".join(spec.required) or "none"
+    stray = sorted(
+        name for name, value in provided.items() if value is not None and name not in spec.accepted
+    )
+    if stray:
+        message = MESSAGES.op_rejects_parameters.format(
+            tool=tool,
+            operation=operation,
+            stray=", ".join(stray),
+            accepted=accepted,
+            required=required,
+        )
+        raise AtlasError(message)
+    missing = [name for name in spec.required if _omitted(provided.get(name))]
+    if missing:
+        message = MESSAGES.op_requires_parameters.format(
+            tool=tool,
+            operation=operation,
+            missing=", ".join(missing),
+            accepted=accepted,
+            required=required,
+        )
+        raise AtlasError(message)
+
+
+def _register_v2(
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+) -> None:
+    """Register the v2 surface: three consolidated intent-shaped tools.
+
+    Adapter-layer routing only: every operation reaches exactly the handler
+    its v1 counterpart tool calls, with the same defaults, so a v2 answer is
+    byte-identical to its v1 counterpart's. Each tool validates the operation
+    and its parameter set through ``_checked_operation`` before resolving the
+    repository, so a malformed call is refused without opening anything.
+    """
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["orient"],
+        annotations=read_only("Orient"),
+    )
+    async def orient(
+        context: Context,
+        operation: OrientOperation,
+        repo_root: RepoRoot = None,
+        focus: OrientFocus = None,
+        budget: Budget = None,
+        granularity: Granularity = None,
+        resolution: Resolution = None,
+        limit: OrientLimit = None,
+        source: OptionalSource = None,
+        target: OptionalTarget = None,
+        include_unique: OptionalIncludeUnique = None,
+        include_ambiguous: OptionalIncludeAmbiguous = None,
+        max_nodes: OptionalMaxNodes = None,
+        group_by_communities: OptionalGroupByCommunities = None,
+        no_cache: NoCache = False,
+    ) -> str:
+        """Route one orientation operation to the map or graph services."""
+        _checked_operation(
+            "orient",
+            operation,
+            ORIENT_OPERATIONS,
+            {
+                "focus": focus,
+                "budget": budget,
+                "granularity": granularity,
+                "resolution": resolution,
+                "limit": limit,
+                "source": source,
+                "target": target,
+                "include_unique": include_unique,
+                "include_ambiguous": include_ambiguous,
+                "max_nodes": max_nodes,
+                "group_by_communities": group_by_communities,
+            },
+        )
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            if operation == OPERATION_MAP:
+                return handlers.repo_map(
+                    ctx,
+                    MapRequest(
+                        focus=_focus_entries(focus),
+                        budget=budget,
+                        max_files=limit,
+                        granularity=granularity,
+                    ),
+                )
+            return handlers.analyze_structure(
+                ctx,
+                StructureRequest(
+                    operation=operation,
+                    source=source or "",
+                    target=target or "",
+                    include_unique=bool(include_unique),
+                    include_ambiguous=bool(include_ambiguous),
+                    limit=limit,
+                    resolution=resolution,
+                    focus=_sole_focus(focus),
+                    max_nodes=_or_default(max_nodes, DEFAULT_MAX_NODES),
+                    group_by_communities=bool(group_by_communities),
+                ),
+            )
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["symbols"],
+        annotations=read_only("Symbols"),
+    )
+    async def symbols(
+        context: Context,
+        operation: SymbolsOperation,
+        repo_root: RepoRoot = None,
+        name: OptionalFindName = None,
+        kind: SymbolKindParameter = None,
+        limit: SymbolsLimit = None,
+        paths: OptionalOverviewPaths = None,
+        docstrings: Docstrings = None,
+        stable_ids: OptionalStableIds = None,
+        target: OptionalExplainTarget = None,
+        path: OptionalFilePath = None,
+        locations: OptionalLocations = None,
+        context_lines: OptionalContextLines = None,
+        no_cache: NoCache = False,
+    ) -> str:
+        """Route one symbol operation to the symbol, view, or graph services."""
+        _checked_operation(
+            "symbols",
+            operation,
+            SYMBOLS_OPERATIONS,
+            {
+                "name": name,
+                "kind": kind,
+                "limit": limit,
+                "paths": paths,
+                "docstrings": docstrings,
+                "stable_ids": stable_ids,
+                "target": target,
+                "path": path,
+                "locations": locations,
+                "context_lines": context_lines,
+            },
+        )
+        async with context_for(context, repo_root, no_cache=no_cache) as ctx:
+            if operation == OPERATION_FIND:
+                return handlers.find_symbol(
+                    ctx, name or "", kind, _or_default(limit, DEFAULT_FIND_LIMIT)
+                )
+            if operation == OPERATION_OVERVIEW:
+                return handlers.get_symbols_overview(ctx, paths or [], docs=docstrings)
+            if operation == OPERATION_EXPAND:
+                return handlers.expand_symbols(
+                    ctx, stable_ids or [], _or_default(limit, DEFAULT_EXPAND_LIMIT)
+                )
+            if operation == OPERATION_EXPLAIN:
+                return handlers.explain_symbol(
+                    ctx, target or "", _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
+                )
+            return handlers.resolve_locations(
+                ctx,
+                path or "",
+                locations or [],
+                _or_default(context_lines, DEFAULT_CONTEXT_LINES),
+            )
+
+    @mcp.tool(
+        description=TOOL_DESCRIPTIONS["read"],
+        annotations=read_only("Read"),
+    )
+    async def read(
+        context: Context,
+        operation: ReadOperation,
+        repo_root: RepoRoot = None,
+        path: ReadPath = None,
+        lines: LineRanges = None,
+        context_lines: OptionalContextLines = None,
+        whole_file: OptionalWholeFile = None,
+        depth: OptionalDepth = None,
+        max_entries: OptionalMaxEntries = None,
+    ) -> str:
+        """Route one contents operation to the view services."""
+        _checked_operation(
+            "read",
+            operation,
+            READ_OPERATIONS,
+            {
+                "path": path,
+                "lines": lines,
+                "context_lines": context_lines,
+                "whole_file": whole_file,
+                "depth": depth,
+                "max_entries": max_entries,
+            },
+        )
+        async with context_for(context, repo_root) as ctx:
+            if operation == OPERATION_SLICE:
+                intervals = _slice_intervals(lines, bool(whole_file), tool="read operation 'slice'")
+                return handlers.read_slice(
+                    ctx,
+                    path or "",
+                    intervals,
+                    _or_default(context_lines, DEFAULT_CONTEXT_LINES),
+                )
+            return handlers.list_dir(
+                ctx,
+                path,
+                _or_default(depth, DEFAULT_RENDER_DEPTH),
+                _or_default(max_entries, DEFAULT_MAX_ENTRIES),
+            )
 
 
 def roots_file(raw: str) -> RootsFile:
@@ -1259,6 +1713,24 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-auto-warm",
+        action="store_true",
+        help="do not warm cold grammars in the background at startup; grammars "
+        f"then warm only through agentless-mcp warmup ({grammars.ENV_NO_AUTO_WARM} "
+        "in the environment does the same)",
+    )
+    parser.add_argument(
+        "--surface",
+        choices=SURFACES,
+        default=SURFACE_V2,
+        help=(
+            "which tool surface to publish: v2 (the default) is the five "
+            "consolidated intent-shaped tools, v1 is the original eleven for "
+            "un-migrated operators, both publishes the union for a transition "
+            "window"
+        ),
+    )
+    parser.add_argument(
         "--transport",
         choices=TRANSPORTS,
         default=TRANSPORT_STDIO,
@@ -1309,7 +1781,13 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         allow_client_roots=args.allow_client_roots,
         roots_files=args.roots_from,
     )
-    server = build_server(handlers)
+    server = build_server(handlers, surface=args.surface)
+    # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the
+    # process must serve immediately; until the warm lands, answers carry the
+    # labeled skips with the warm-in-progress reason. AGENTLESS_MCP_NO_DOWNLOAD
+    # keeps absolute priority inside start_auto_warm.
+    if not args.no_auto_warm:
+        grammars.start_auto_warm()
     if args.transport == TRANSPORT_HTTP:
         host, port = http_binding(args)
         server.run(transport=TRANSPORT_HTTP, host=host, port=port)

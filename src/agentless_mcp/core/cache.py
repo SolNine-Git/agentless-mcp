@@ -754,8 +754,9 @@ def _plan_index(
         if language not in warmed:
             # A skip, not a failure: the same wording get_language raises with,
             # so the index report and a live scan describe the file identically.
-            reason = f"language '{language}' not warmed: run agentless-mcp warmup"
-            skips.append(IndexSkip(path=repo_file.path, reason=reason))
+            skips.append(
+                IndexSkip(path=repo_file.path, reason=grammars.unavailable_reason(language))
+            )
             if not force and entry == _FileEntry(digest, unwarmed_version):
                 continue
             writes.append(

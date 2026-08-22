@@ -39,6 +39,11 @@ def warm_grammars() -> grammars.WarmupReport:
     grammars stay where they were downloaded, tag caches never leave tmp.
     """
     os.environ.setdefault(grammars.ENV_CACHE_DIR, pack.cache_dir())
+    # Grammar access happens exactly once, here: without this, every run()
+    # call and every spawned console script would start its own background
+    # warm of the full language set into the shared cache. Tests that cover
+    # the auto-warm itself clear the variable and stub the warm seam.
+    os.environ.setdefault(grammars.ENV_NO_AUTO_WARM, "1")
     report = grammars.warmup(TEST_LANGUAGES)
     if report.degraded:
         details = ", ".join(f"{cap.name}: {cap.detail}" for cap in report.degraded)
