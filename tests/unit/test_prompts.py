@@ -27,7 +27,12 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
-from agentless_mcp.adapters.mcp.server import ServerServices, ToolHandlers, build_server
+from agentless_mcp.adapters.mcp.server import (
+    SURFACE_BOTH,
+    ServerServices,
+    ToolHandlers,
+    build_server,
+)
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
@@ -65,7 +70,25 @@ ENVELOPE_ARGUMENTS = {
 MESSAGE_ARGUMENTS = {
     "server_no_roots": {},
     "server_root_required": {"roots": "/srv/app, /srv/other"},
-    "unknown_operation": {"operation": "graph", "operations": "cycles, diagram, path"},
+    "unknown_operation": {
+        "tool": "analyze_structure",
+        "operation": "graph",
+        "operations": "cycles, diagram, path",
+    },
+    "op_rejects_parameters": {
+        "tool": "orient",
+        "operation": "map",
+        "stray": "source, target",
+        "accepted": "focus, budget, max_files, granularity",
+        "required": "none",
+    },
+    "op_requires_parameters": {
+        "tool": "orient",
+        "operation": "path",
+        "missing": "target",
+        "accepted": "source, target, include_unique, include_ambiguous",
+        "required": "source, target",
+    },
     "path_needs_endpoints": {},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
@@ -234,6 +257,9 @@ class TestWireDescriptions:
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path
     ):
+        # Built with surface=both: the union of the two surfaces is exactly
+        # the TOOL_NAMES manifest, so a description without a tool or a tool
+        # without a description fails here whichever surface it belongs to.
         root = tmp_path / "alpha"
         root.mkdir()
         (root / "core.py").write_text("def quote(sku):\n    return 1\n", encoding="utf-8")
@@ -245,7 +271,7 @@ class TestWireDescriptions:
             counter=counter,
             extractor=extractor,
         )
-        server = build_server(ToolHandlers([root], services))
+        server = build_server(ToolHandlers([root], services), surface=SURFACE_BOTH)
 
         async def go():
             async with Client(server) as client:

@@ -76,6 +76,8 @@ class MessageText:
     server_no_roots: str
     server_root_required: str
     unknown_operation: str
+    op_rejects_parameters: str
+    op_requires_parameters: str
     path_needs_endpoints: str
     repo_refused_no_roots: str
     repo_refused_not_allowed: str
@@ -95,7 +97,9 @@ class MessageText:
     cache_discarded_other_repo: str
 
 
-# The tools this server registers. Also the manifest for
+# Every tool this server can register, across both published surfaces: the
+# v1 tools first, then the v2 consolidated ones (``find_referencing_symbols``
+# and ``capabilities`` are shared by both surfaces). Also the manifest for
 # ``tool_descriptions.json``: a tool without a description, or a description
 # without a tool, is a startup failure rather than a silent gap.
 TOOL_NAMES = (
@@ -110,6 +114,9 @@ TOOL_NAMES = (
     "analyze_structure",
     "resolve_locations",
     "capabilities",
+    "orient",
+    "symbols",
+    "read",
 )
 
 ENVELOPE: EnvelopeText = load_record(
@@ -159,6 +166,12 @@ PARAMETER_NAMES = (
     "diagram_max_nodes",
     "group_by_communities",
     "locations",
+    "orient_operation",
+    "symbols_operation",
+    "read_operation",
+    "orient_focus",
+    "symbols_limit",
+    "read_path",
 )
 
 PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(

@@ -29,16 +29,20 @@ from agentless_mcp.adapters.mcp.server import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DISTRIBUTION_NAME,
+    SURFACE_BOTH,
+    SURFACE_V1,
+    SURFACE_V2,
+    SURFACES,
     TRANSPORT_HTTP,
     TRANSPORT_STDIO,
     ServerServices,
     ToolHandlers,
-    build_server,
     effective_client_roots,
     http_binding,
     parse_args,
     server_version,
 )
+from agentless_mcp.adapters.mcp.server import build_server as build_surface_server
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.repo_context import resolved_allowlist
@@ -47,6 +51,17 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
 from agentless_mcp.util.errors import SecurityRefusal
+
+
+def build_server(handlers):
+    """The v1 server these tests were written against.
+
+    The published default is v2; every test in this module that is about the
+    v1 tools builds it explicitly, and the surface-parametrized tests below
+    plus tests/unit/test_mcp_surface_v2.py cover the other modes.
+    """
+    return build_surface_server(handlers, surface=SURFACE_V1)
+
 
 EXPECTED_TOOLS = {
     "repo_map",
@@ -63,7 +78,7 @@ EXPECTED_TOOLS = {
 }
 
 # One well-typed argument set per published tool, over the one_repo fixture.
-# The conformance test in TestToolSurface requires this table to cover the
+# The conformance test in TestToolSurface requires these tables to cover the
 # live listing exactly, so a new tool must land with an entry here.
 WELL_TYPED_CALLS = {
     "repo_map": {},
@@ -77,6 +92,23 @@ WELL_TYPED_CALLS = {
     "analyze_structure": {"operation": "cycles"},
     "resolve_locations": {"path": "core.py", "locs": ["function:quote"]},
     "capabilities": {},
+}
+
+WELL_TYPED_CALLS_V2 = {
+    "orient": {"operation": "map"},
+    "symbols": {"operation": "find", "name": "quote"},
+    "read": {"operation": "dir"},
+    "find_referencing_symbols": {"target": "quote"},
+    "capabilities": {},
+}
+
+# What each --surface mode publishes, and one well-typed call for everything
+# it publishes. find_referencing_symbols and capabilities are shared by the
+# two surfaces, so `both` is the fourteen-name union rather than sixteen.
+SURFACE_CALLS = {
+    SURFACE_V1: WELL_TYPED_CALLS,
+    SURFACE_V2: WELL_TYPED_CALLS_V2,
+    SURFACE_BOTH: {**WELL_TYPED_CALLS, **WELL_TYPED_CALLS_V2},
 }
 
 SOURCE = """\
@@ -1443,24 +1475,27 @@ class TestToolSurface:
         assert "symbol_path" not in names
         assert "import_cycles" not in names
 
-    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo):
+    @pytest.mark.parametrize("surface", SURFACES)
+    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo, surface):
         """tools/list round-trips into one successful tools/call per tool.
 
         The per-tool tests above assert content; this gate asserts the whole
-        published surface stays callable through schema validation, and its
-        argument table must cover exactly the live listing -- publishing a
-        new tool without a conformance entry fails here first.
+        published surface stays callable through schema validation in every
+        --surface mode, and each mode's argument table must cover exactly the
+        live listing -- publishing a new tool without a conformance entry
+        fails here first.
         """
-        server = build_server(ToolHandlers([one_repo], services))
+        calls = SURFACE_CALLS[surface]
+        server = build_surface_server(ToolHandlers([one_repo], services), surface=surface)
         tools = listed_tools(server)
-        assert {tool.name for tool in tools} == set(WELL_TYPED_CALLS)
+        assert {tool.name for tool in tools} == set(calls)
 
         async def go():
             async with Client(server) as client:
                 return {
                     tool.name: await client.call_tool(
                         tool.name,
-                        {"repo_root": str(one_repo), **WELL_TYPED_CALLS[tool.name]},
+                        {"repo_root": str(one_repo), **calls[tool.name]},
                     )
                     for tool in tools
                 }
@@ -1468,20 +1503,35 @@ class TestToolSurface:
         for name, result in asyncio.run(go()).items():
             assert result.content[0].text.strip(), name
 
-    def test_shared_parameter_names_publish_one_value_shape_everywhere(self, services, one_repo):
+    @pytest.mark.parametrize("surface", SURFACES)
+    def test_shared_parameter_names_publish_one_value_shape_everywhere(
+        self, services, one_repo, surface
+    ):
         """The regression gate behind issue #13: a name never changes shape between tools.
 
         ``repo_map.focus`` was ``list[str]`` while ``analyze_structure.focus``
         was ``str``, and a client bridge's coercion put an agent in a retry
-        loop. Introspect the published listing and require every parameter
-        name to carry one value shape across all the tools that publish it.
+        loop. Introspect the published listing in every --surface mode and
+        require every parameter name to carry one value shape across all the
+        tools that publish it.
         """
-        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+        tools = listed_tools(
+            build_surface_server(ToolHandlers([one_repo], services), surface=surface)
+        )
 
         shapes = {}
         for tool in tools:
             for name, schema in tool.inputSchema.get("properties", {}).items():
-                shapes.setdefault(name, {})[tool.name] = value_shape(schema)
+                shape = value_shape(schema)
+                if name == "operation":
+                    # The operation vocabulary is each tool's own closed set:
+                    # v1's analyze_structure publishes it as a wire enum, the
+                    # v2 tools as a plain string rejected server-side with the
+                    # valid list. Like requiredness, the value set is per-tool
+                    # policy; the value type must still agree.
+                    shape.pop("enum", None)
+                    shape.pop("const", None)
+                shapes.setdefault(name, {})[tool.name] = shape
 
         for name, by_tool in shapes.items():
             rendered = {json.dumps(shape, sort_keys=True) for shape in by_tool.values()}
@@ -1590,7 +1640,9 @@ class TestAutoWarmStartup:
         monkeypatch.setattr(
             server_module.grammars, "start_auto_warm", lambda *a, **k: calls.append("start")
         )
-        monkeypatch.setattr(server_module, "build_server", lambda handlers: self.StubTransport())
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport()
+        )
         return calls
 
     def test_serve_starts_the_background_warm(self, services, tmp_path, warm_calls):
