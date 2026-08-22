@@ -378,6 +378,7 @@ def _wait_bounded(
     ``TMPDIR`` at disk speed for the whole window.
     """
     ceiling = max(capture, 1) * CAPTURE_SLACK
+    holes = [0] * len(streams)
     deadline = time.monotonic() + timeout
     while True:
         remaining = deadline - time.monotonic()
@@ -386,25 +387,35 @@ def _wait_bounded(
         try:
             process.wait(timeout=min(CAPTURE_POLL_SECONDS, remaining))
         except subprocess.TimeoutExpired:
-            for handle in streams:
-                _trim(handle, ceiling)
+            for index, handle in enumerate(streams):
+                holes[index] = _trim(handle, ceiling, holes[index])
         else:
             return False
 
 
-def _trim(handle: IO[bytes], ceiling: int) -> None:
-    """Drop what a capture file holds once it has outgrown ``ceiling``.
+def _trim(handle: IO[bytes], ceiling: int, hole: int) -> int:
+    """Drop what a capture file holds once its live bytes outgrow ``ceiling``.
 
     The child keeps its own file offset, so what it writes next lands past the
     end of the emptied file and everything between is a hole the filesystem
     never stores. Only the tail is ever reported, so the discarded bytes were
     never going to be read -- and :func:`_tail` drops the leading NUL bytes of
     the hole when its window reaches back into one.
+
+    ``hole`` is the file size at the previous trim -- the offset where live
+    bytes begin -- and the returned value carries it to the next poll. The
+    comparison must subtract it, because ``st_size`` still counts the hole:
+    judged on raw size, a once-trimmed file stays over the ceiling forever and
+    every later poll truncates it again, so a poll tick landing between the
+    child's final write and its observed exit silently discards the very tail
+    the runner is about to report.
     """
     descriptor = handle.fileno()
-    if os.fstat(descriptor).st_size <= ceiling:
-        return
+    size = os.fstat(descriptor).st_size
+    if size - hole <= ceiling:
+        return hole
     os.ftruncate(descriptor, 0)
+    return size
 
 
 def _group_kwargs(flavour: str) -> dict[str, Any]:
