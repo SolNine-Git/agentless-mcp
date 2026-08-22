@@ -154,6 +154,28 @@ operators who want it, which is a flag rather than the default because the
 two readings differ in who decides what is servable, and a permissive default
 is a boundary that stops confining without anyone typing anything.
 
+`--roots-from FILE` is the same allowlist written one path per line, and it
+is the operator-editable half: the server re-reads the file whenever it
+changes on disk, so an appended line enrolls a repository on the next call
+and a removed line revokes one, without a restart. When a call is refused
+and a roots file is configured, the refusal names the file to append to --
+that message is the enrollment path, not a dead end. A roots file that stops
+being readable after startup refuses loudly rather than serving the last
+copy it managed to load.
+
+### Claude Code specifics
+
+Two client-side settings decide whether agents actually reach these tools.
+First, allowlist the read tools in `~/.claude/settings.json` permissions
+(`mcp__agentless__repo_map`, `mcp__agentless__expand_symbols`, and the rest)
+so calls run without permission prompts; friction at the prompt is what
+sends a model back to Grep. Second, subagents receive MCP tools as deferred
+schemas: a dispatch prompt that expects structural navigation must tell the
+worker to issue one
+`ToolSearch(query="select:mcp__agentless__repo_map,mcp__agentless__expand_symbols,mcp__agentless__find_referencing_symbols")`
+before its first call -- a worker not told this defaults to Grep, because
+Grep is loaded from the start.
+
 ### `map` (`repo_map`) -- where does this live
 
 ```
@@ -645,6 +667,7 @@ bypass the index for that call.
 ```
 agentless-mcp lint --candidates ./candidates
 agentless-mcp lint --candidates ./candidates/01-plus.txt --json
+agentless-mcp lint --diff change.patch --repo /tmp/base
 ```
 
 Run this **before** `validate`. It is the mechanical half of a hostile
@@ -654,6 +677,21 @@ helper you already have, is named as such instead of burning a worktree to find
 out. `--candidates` takes one patch file or a directory of them, in either
 format `patch parse` accepts; one file is one candidate and its stem is its id,
 the same rule `validate` uses.
+
+**`--diff` is the review case: a branch or a pull request that already exists.**
+It takes a unified diff — `git diff`, or a `format-patch` body — and maps one
+hunk to one edit, so nobody has to hand-convert a diff into SEARCH/REPLACE
+blocks to check it. Exactly one of `--candidates` and `--diff` is required. The
+thing to get right is which tree you point at: the checks compare the diff
+against `--repo` as it stands, so **`--repo` must be a checkout of the diff's
+base**, typically a `git worktree add` of the merge-base. Linting a branch
+against itself would find every symbol the diff adds already in the file and
+report each one as `shadowing`, so that case is detected instead: each affected
+file becomes a `not_checked` gap that names the remedy. Binary files and
+mode-only changes are reported the same way rather than dropped, and a construct
+one edit cannot express — a rename, a `-U0` diff with no context lines, a
+combined merge diff — is refused with its reason and the candidate is not
+half-checked.
 
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
 `vote`.

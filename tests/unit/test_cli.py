@@ -23,7 +23,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache
+from agentless_mcp.core import cache, guide
 
 SOURCE = '''\
 """Core."""
@@ -484,6 +484,152 @@ class TestLint:
             == EXIT_DOMAIN
         )
         assert "neither a patch file nor a directory" in capsys.readouterr().err
+
+
+class TestLintOverADiff:
+    """The review case: a branch's diff, linted against the branch's base."""
+
+    def test_a_git_produced_diff_runs_the_same_checks(
+        self, services, make_git_repo, tmp_path, capsys
+    ):
+        base = make_git_repo(
+            {
+                "core.py": SOURCE,
+                "caller.py": CALLER,
+                # undeclared_imports needs a manifest to compare against;
+                # without one it reports a coverage gap instead of running.
+                "pyproject.toml": '[project]\nname = "fixture"\nversion = "0"\ndependencies = []\n',
+            },
+            name="base",
+        )
+        # A diff of the working tree against HEAD, produced by git itself, so
+        # the reader is pinned against real output rather than a hand-written
+        # approximation of it.
+        (base / "core.py").write_text(
+            SOURCE.replace("    return RATE", "    return compute_rate(sku)").replace(
+                '"""Core."""', '"""Core."""\n\nimport yaml'
+            ),
+            encoding="utf-8",
+        )
+        diff = tmp_path / "change.patch"
+        diff.write_text(_git_diff(base), encoding="utf-8")
+
+        # --repo is the *base*, which is what the checks compare against, so
+        # the branch's own edit has to be put back first.
+        _git_restore(base)
+
+        assert invoke(services, base, "lint", "--diff", str(diff)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "change" in out
+        assert "dangling_references" in out
+        assert "compute_rate" in out
+        assert "undeclared_imports" in out
+        assert "yaml" in out
+
+    def test_a_diff_already_applied_to_the_repo_is_a_stated_gap_with_a_remedy(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        # The pre-image says `return RATE`; repo_path already says exactly that
+        # *post*-image, so this diff is the branch's own, linted against the
+        # branch instead of its base.
+        diff = tmp_path / "applied.patch"
+        diff.write_text(
+            "--- a/core.py\n+++ b/core.py\n@@ -6,2 +6,2 @@\n"
+            "-def quote(sku):\n-    return SOMETHING_ELSE\n"
+            "+def quote(sku):\n+    return RATE\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--diff", str(diff)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "not_checked" in out
+        assert "already applied to --repo" in out
+        assert "point --repo at a checkout of the diff's base" in out
+
+    def test_a_misoriented_diff_is_not_half_checked(self, services, repo_path, tmp_path, capsys):
+        diff = tmp_path / "applied.patch"
+        diff.write_text(
+            "--- a/core.py\n+++ b/core.py\n@@ -6,2 +6,2 @@\n"
+            "-def quote(sku):\n-    return SOMETHING_ELSE\n"
+            "+def quote(sku):\n+    return RATE\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--diff", str(diff)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "shadowing" not in out
+        assert "near_duplicates" not in out
+
+    def test_a_binary_file_is_reported_without_stopping_the_code_checks(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        diff = tmp_path / "mixed.patch"
+        diff.write_text(
+            "diff --git a/logo.png b/logo.png\n"
+            "index 1234567..89abcde 100644\n"
+            "Binary files a/logo.png and b/logo.png differ\n"
+            "diff --git a/core.py b/core.py\n"
+            "--- a/core.py\n+++ b/core.py\n@@ -7,1 +7,1 @@\n"
+            "-    return RATE\n+    return compute_rate(sku)\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--diff", str(diff)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "logo.png" in out
+        assert "binary, so there is no text to check" in out
+        assert "dangling_references" in out
+
+    def test_a_diff_this_reader_refuses_never_fails_the_command(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        diff = tmp_path / "rename.patch"
+        diff.write_text(
+            "diff --git a/core.py b/renamed.py\n"
+            "similarity index 90%\nrename from core.py\nrename to renamed.py\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--diff", str(diff)) == EXIT_OK
+        assert "renames or copies" in capsys.readouterr().out
+
+    def test_a_diff_file_that_does_not_exist_is_refused(self, services, repo_path, capsys):
+        assert (
+            invoke(services, repo_path, "lint", "--diff", str(repo_path / "nope.patch"))
+            == EXIT_DOMAIN
+        )
+        assert "cannot read diff" in capsys.readouterr().err
+
+    def test_naming_neither_input_is_a_usage_error(self, services, repo_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint")
+        assert raised.value.code == EXIT_USAGE
+
+    def test_naming_both_inputs_is_a_usage_error(self, services, repo_path, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--diff", "d.patch")
+        assert raised.value.code == EXIT_USAGE
+
+
+def _git_diff(root):
+    """Return ``git diff`` for a fixture repository, as git itself writes it."""
+    return subprocess.run(
+        ["git", "-C", str(root), "diff", "--no-color", "--no-ext-diff"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).stdout
+
+
+def _git_restore(root):
+    """Put a fixture repository's working tree back to its one commit."""
+    subprocess.run(
+        ["git", "-C", str(root), "checkout", "--", "."],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 class TestValidateTestCommand:
@@ -1119,3 +1265,52 @@ def _ids(path):
 def _regressions(path):
     lines = path.read_text(encoding="utf-8").splitlines()[1:]
     return [json.loads(line)["regression"] for line in lines]
+
+
+class TestGuide:
+    """``agentless-mcp guide`` -- the packaged guide, reachable without a checkout."""
+
+    def test_it_prints_the_whole_guide_on_stdout(self, services, capsys):
+        assert run(["guide"], services) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out.startswith("# agentless-mcp: agent usage guide\n")
+        # emit() newline-terminates once; the guide already ends in one, so
+        # stdout is the packaged file byte for byte.
+        assert captured.out == guide.guide_text()
+        assert captured.err == ""
+
+    def test_a_named_section_prints_that_section_alone(self, services, capsys):
+        assert run(["guide", "--section", "refs"], services) == EXIT_OK
+        captured = capsys.readouterr()
+        assert captured.out == guide.section_text("refs") + "\n"
+
+    def test_an_unknown_section_exits_two_and_lists_the_valid_names(self, services, capsys):
+        assert run(["guide", "--section", "nope"], services) == EXIT_USAGE
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "'nope'" in captured.err
+        for name in ("map", "refs", "communities"):
+            assert name in captured.err
+
+    def test_a_broken_install_raises_rather_than_printing_an_empty_guide(
+        self, services, monkeypatch
+    ):
+        """``run`` catches AtlasError only, so this propagates as a traceback."""
+        absent = "agent-guide.md"
+
+        def missing(*_args, **_kwargs):
+            raise FileNotFoundError(absent)
+
+        monkeypatch.setattr(guide, "_resource_text", missing)
+        guide._sections.cache_clear()
+        try:
+            with pytest.raises(FileNotFoundError):
+                run(["guide"], services)
+        finally:
+            guide._sections.cache_clear()
+
+    def test_it_takes_no_repository_flags(self, services, repo_path):
+        """The guide describes the tool, not a repository, so --repo is a usage error."""
+        with pytest.raises(SystemExit) as exit_info:
+            run(["guide", "--repo", str(repo_path)], services)
+        assert exit_info.value.code == EXIT_USAGE

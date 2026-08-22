@@ -1,4 +1,11 @@
-"""The stdio MCP server: the read tools, over the same application services.
+"""The MCP server: the read tools, over the same application services.
+
+The transport is the operator's choice and stdio is the default, because the
+client that launches this process as a child is the shape every registered
+client uses. ``--transport http`` serves the same tools over FastMCP's
+streamable-http transport instead, for a client that cannot spawn a child --
+one long-lived server several clients share. The tools, the allowlist and the
+refusals are identical either way: only the pipe changes.
 
 This adapter owns two things the CLI does not, and nothing else.
 
@@ -6,10 +13,14 @@ This adapter owns two things the CLI does not, and nothing else.
 there is no cwd to infer a root from and inferring one would be a
 wrong-repository answer. Every tool therefore takes ``repo_root`` first and it
 is checked, exactly, against the roots the server was started with. Those come
-from repeatable ``--root DIR`` flags and from nowhere else: the client's own
+from repeatable ``--root DIR`` flags, and from ``--roots-from FILE`` which is
+that same list written one path per line, and from nowhere else. The flags are
+fixed for the process lifetime; the file is the operator's editable half of the
+allowlist, re-read whenever it changes on disk, so appending a line enrols a
+repository on the next call without a restart. The client's own
 MCP ``roots`` capability -- verified present in the installed FastMCP as
 ``Context.list_roots()`` -- is read, but an advertised root can only *select*
-among the configured ones, never add one. A server started with no ``--root``
+among the configured ones, never add one. A server started with no configured root
 serves nothing, whatever the client advertises, because otherwise the client
 rather than the operator would be deciding what this process may read. A
 client that does not implement roots answers "List roots not supported"; that
@@ -31,10 +42,17 @@ happen in ``warmup``, never inside a tool call.
 
 import argparse
 import asyncio
+import ipaddress
 import logging
+import shlex
+import socket
+import sys
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as distribution_version
+from itertools import chain
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import unquote, urlparse
@@ -80,6 +98,48 @@ from agentless_mcp.util.tokens import TokenCounter
 logger = logging.getLogger(__name__)
 
 SERVER_NAME = "agentless-mcp"
+
+# The distribution name from pyproject, which the installed metadata is the only
+# source of truth for. It equals SERVER_NAME today by coincidence, not by rule.
+DISTRIBUTION_NAME = "agentless-mcp"
+
+# Announced in the initialize handshake when the metadata is absent, which
+# happens only in a source tree that was never installed. Not an empty string:
+# a blank version reads as a server that answered rather than one that could
+# not look itself up.
+UNKNOWN_VERSION = "0+unknown"
+
+
+def server_version() -> str:
+    """The version the initialize handshake advertises for this server."""
+    try:
+        return distribution_version(DISTRIBUTION_NAME)
+    except PackageNotFoundError:
+        sys.stderr.write(
+            f"agentless-mcp-server: no installed metadata for {DISTRIBUTION_NAME}, so the "
+            f"initialize handshake will report version {UNKNOWN_VERSION}. This is a source "
+            "tree that was never installed; install it to report a real version.\n"
+        )
+        return UNKNOWN_VERSION
+
+
+# The transports this server will start. stdio is the default because a client
+# that spawns the server as a child is the shape every registered client uses,
+# and because it is the only one that needs no port, no binding decision and no
+# second process to outlive the client.
+# Annotated as literals because FastMCP types its own transport parameter as a
+# Literal: a bare str here would type-check at the constant and fail at the call.
+TRANSPORT_STDIO: Literal["stdio"] = "stdio"
+TRANSPORT_HTTP: Literal["http"] = "http"
+TRANSPORTS = (TRANSPORT_STDIO, TRANSPORT_HTTP)
+
+# Where --transport http listens when the operator names no address. Loopback,
+# and enforced rather than merely defaulted -- see _check_transport. The port is
+# FastMCP's own default: deferring to the framework's documented number keeps
+# this package from carrying one deployment's port allocation, and every
+# deployment that cares passes --port anyway.
+DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_PORT = 8000
 
 # A line range arrives as a two-element [start, end] list.
 _RANGE_PAIR_LENGTH = 2
@@ -261,6 +321,60 @@ def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Pat
     return None
 
 
+def _root_lines(text: str) -> list[Path]:
+    """The paths one roots file's text lists, blank and #-comment lines skipped."""
+    # Whole-line comments only: a repository path may itself contain '#'.
+    return [
+        Path(stripped)
+        for line in text.splitlines()
+        if (stripped := line.strip()) and not stripped.startswith("#")
+    ]
+
+
+@dataclass
+class RootsFile:
+    """One ``--roots-from`` file and the roots it held when last read.
+
+    The file is the operator-editable half of the allowlist: ``current()``
+    re-reads it when its modification time changes, so an appended line enrols
+    a repository on the next call and a removed line revokes one, without a
+    restart. A file that stops being readable after startup is refused loudly
+    on every call that needs it, never served from the stale copy: silence
+    here would leave the operator editing a file the server had quietly
+    stopped watching. Startup validation still happens in ``roots_file``, so
+    a bad path fails the process before it ever answers a call.
+    """
+
+    path: Path
+    roots: list[Path]
+    stat_key: tuple[int, int]
+
+    def current(self) -> list[Path]:
+        """This file's roots as of now, re-read if the file changed on disk.
+
+        Change is keyed on (mtime_ns, size) rather than mtime alone: a
+        rewrite landing within the filesystem's timestamp granularity almost
+        always changes the byte count too, and both fields come from the one
+        stat the freshness check already pays for.
+        """
+        try:
+            stat_result = self.path.stat()
+        except OSError as exc:
+            message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
+            raise SecurityRefusal(message) from exc
+        key = (stat_result.st_mtime_ns, stat_result.st_size)
+        if key == self.stat_key:
+            return self.roots
+        try:
+            text = self.path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError) as exc:
+            message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
+            raise SecurityRefusal(message) from exc
+        self.roots = resolved_allowlist(_root_lines(text))
+        self.stat_key = key
+        return self.roots
+
+
 @dataclass(frozen=True)
 class StructureRequest:
     """One ``analyze_structure`` call: the operation and every operand.
@@ -309,15 +423,39 @@ class ToolHandlers:
         services: ServerServices,
         *,
         allow_client_roots: bool = False,
+        roots_files: Sequence[RootsFile] = (),
     ) -> None:
         self._roots = tuple(roots)
         self._services = services
         self._allow_client_roots = allow_client_roots
+        self._roots_files = tuple(roots_files)
 
     @property
     def roots(self) -> tuple[Path, ...]:
-        """The roots this server was configured with."""
-        return self._roots
+        """The roots this server serves right now: the flags, then the files.
+
+        Reading this re-reads any ``--roots-from`` file whose mtime changed,
+        which is the property doing IO on purpose: every caller wants the
+        allowlist as of this call, and a cached copy is exactly the stale
+        answer the re-read exists to prevent. Deduplicated because a roots
+        file overlapping a ``--root`` flag is an ordinary thing to write, and
+        a repeated root would leave a server holding one repository refusing
+        to default to it, as though it held two.
+        """
+        merged = [*self._roots, *chain.from_iterable(f.current() for f in self._roots_files)]
+        return tuple(dict.fromkeys(merged))
+
+    def _hinted(self, message: str) -> str:
+        """Append the enrolment hint when an operator-editable roots file exists.
+
+        The refusal is the one message an agent is guaranteed to read at the
+        exact moment enrolment matters, so it carries the remediation: which
+        file to append to, and that no restart is needed.
+        """
+        if not self._roots_files:
+            return message
+        listing = ", ".join(str(entry.path) for entry in self._roots_files)
+        return f"{message} {MESSAGES.roots_file_hint.format(file=listing)}"
 
     def resolve(
         self,
@@ -339,12 +477,12 @@ class ToolHandlers:
         the quiet one: a permissive default is a confinement boundary that
         stops confining without anyone typing anything.
         """
-        allowed = list(self._roots)
+        allowed = list(self.roots)
         if self._allow_client_roots:
             allowed = list(dict.fromkeys([*allowed, *client_roots]))
         if not allowed:
             message = MESSAGES.server_no_roots
-            raise SecurityRefusal(message)
+            raise SecurityRefusal(self._hinted(message))
 
         if repo_root is None or not repo_root.strip():
             selected = _sole_selection(allowed, client_roots)
@@ -352,9 +490,12 @@ class ToolHandlers:
                 return self._with_source(resolve_repo(selected, allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
             message = MESSAGES.server_root_required.format(roots=listing)
-            raise SecurityRefusal(message)
+            raise SecurityRefusal(self._hinted(message))
 
-        return self._with_source(resolve_repo(repo_root, allowed), no_cache=no_cache)
+        try:
+            return self._with_source(resolve_repo(repo_root, allowed), no_cache=no_cache)
+        except SecurityRefusal as refusal:
+            raise SecurityRefusal(self._hinted(str(refusal))) from refusal
 
     def _with_source(self, ctx: RepoContext, *, no_cache: bool) -> RepoContext:
         """Open this call's symbol source: the tag cache, or on-demand parsing."""
@@ -517,7 +658,7 @@ class ToolHandlers:
         report = build_capability_report(
             ctx,
             self._services.extractor,
-            configured_roots=self._roots,
+            configured_roots=self.roots,
             client_roots=client_roots,
         )
         return self._wrap(ctx, render_capability_report(report))
@@ -708,7 +849,10 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     on its own terms, and FastMCP would otherwise publish whatever the
     docstring happened to say. The docstrings below are code documentation.
     """
-    mcp: FastMCP[None] = FastMCP(SERVER_NAME)
+    # Without an explicit version FastMCP advertises its own in the initialize
+    # handshake, which tells a client the version of the framework rather than
+    # of this server.
+    mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version())
 
     @asynccontextmanager
     async def context_for(
@@ -931,11 +1075,142 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
     return mcp
 
 
+def roots_file(raw: str) -> RootsFile:
+    """Read one ``--roots-from`` file, or refuse it by name at startup.
+
+    Foreign input, parsed here and nowhere else. ``utf-8-sig`` rather than
+    ``utf-8`` because a BOM would otherwise survive into the first entry, where
+    it turns an absolute path into a relative one and yields a root that
+    silently never matches. ``OSError`` and ``UnicodeDecodeError`` are converted
+    explicitly: ``UnicodeDecodeError`` is a ``ValueError``, which argparse
+    swallows in favour of a generic "invalid value" message that loses the
+    reason. The stat comes before the read so a write landing between the two
+    leaves a recorded mtime older than the content, which costs one redundant
+    re-read on the next call rather than a stale answer.
+    """
+    path = Path(raw)
+    try:
+        stat_result = path.stat()
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        message = f"cannot read roots file {raw}: {exc}"
+        raise argparse.ArgumentTypeError(message) from exc
+    except UnicodeDecodeError as exc:
+        message = f"roots file {raw} is not valid UTF-8: {exc}"
+        raise argparse.ArgumentTypeError(message) from exc
+
+    return RootsFile(
+        path=path,
+        roots=resolved_allowlist(_root_lines(text)),
+        stat_key=(stat_result.st_mtime_ns, stat_result.st_size),
+    )
+
+
+def _looks_unsplit(element: str) -> bool:
+    """Is this one argv element an option flag glued to its own value(s)?
+
+    The server's parser declares no positional arguments, so an element whose
+    first token lexes as an option and which lexes into more than one token
+    cannot be anything but a shell string that was never word-split. Unbalanced
+    quotes make the element unlexable, which is not evidence either way, and
+    raising here would replace argparse's exit 2 with a traceback.
+    """
+    try:
+        tokens = shlex.split(element)
+    except ValueError:
+        return False
+    return len(tokens) > 1 and tokens[0].startswith("-")
+
+
+def _report_argv(argv: Sequence[str]) -> None:
+    """Describe the argv argparse just rejected, on stderr, for a captured log."""
+    sys.stderr.write(f"agentless-mcp-server: received argv: {list(argv)!r}\n")
+    for index, element in enumerate(argv):
+        if not _looks_unsplit(element):
+            continue
+        sys.stderr.write(
+            f"agentless-mcp-server: argv element {index} looks like an unsplit "
+            "shell string; check quoting in the client registration. Pass each "
+            'token as its own argv element (e.g. "--root", "/a", "--root", '
+            '"/b"), or use --roots-from FILE.\n'
+        )
+
+
+def _loopback_only(host: str) -> bool:
+    """Does every address ``host`` resolves to sit on the loopback interface?
+
+    Resolution rather than a string comparison: ``localhost``, ``127.0.0.1``,
+    ``::1`` and a hosts-file alias are all the same decision, and a name that
+    resolves to a routable address is that decision's opposite however
+    local it looks. A name that resolves to nothing is not loopback either --
+    the caller reports it as a refusal rather than binding something else.
+    """
+    try:
+        candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return False
+    if not candidates:
+        return False
+    return all(ipaddress.ip_address(info[4][0]).is_loopback for info in candidates)
+
+
+def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Refuse a transport/binding combination at startup rather than at first use.
+
+    Two refusals, both about a flag that would otherwise be silently ignored
+    or silently obeyed:
+
+    ``--host``/``--port`` under stdio have no meaning -- there is no socket --
+    and an operator who passes them believes they got a listener. Saying so at
+    startup costs one line; discovering it costs a debugging session against a
+    port nothing is on.
+
+    A non-loopback bind is refused outright because this server authenticates
+    nobody. Its entire access-control story is the ``--root`` allowlist, which
+    decides *which repositories* are readable and says nothing about *who* may
+    read them. On a routable address that is not an allowlist at all: it is
+    unauthenticated read access to the source of every enrolled repository.
+    Anything wider than loopback therefore needs an authenticating proxy in
+    front, which is a deployment decision this process cannot make for itself.
+    """
+    if args.transport == TRANSPORT_STDIO:
+        passed = (("--host", args.host), ("--port", args.port))
+        given = [flag for flag, value in passed if value is not None]
+        if given:
+            parser.error(
+                f"{' and '.join(given)} apply to --transport {TRANSPORT_HTTP} and the "
+                f"transport is {TRANSPORT_STDIO}, which has no socket to bind. Pass "
+                f"--transport {TRANSPORT_HTTP} to serve over HTTP, or drop the flag."
+            )
+        return
+    host = args.host if args.host is not None else DEFAULT_HTTP_HOST
+    if not _loopback_only(host):
+        parser.error(
+            f"--host {host!r} is not a loopback address. This server authenticates no "
+            "one: the --root allowlist decides which repositories are readable, not who "
+            "may read them, so binding it where the network can reach it publishes every "
+            f"enrolled repository. Bind {DEFAULT_HTTP_HOST} and put an authenticating "
+            "proxy in front if you need it off-host."
+        )
+
+
+def http_binding(args: argparse.Namespace) -> tuple[str, int]:
+    """The address the HTTP transport listens on, defaults filled in.
+
+    One place resolves the ``None`` sentinels that let ``_check_transport``
+    tell "the operator passed this" from "the operator said nothing", so the
+    listener and the refusal can never disagree about what the default is.
+    """
+    host = args.host if args.host is not None else DEFAULT_HTTP_HOST
+    port = args.port if args.port is not None else DEFAULT_HTTP_PORT
+    return host, port
+
+
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     """Parse the server's own command line."""
     parser = argparse.ArgumentParser(
         prog="agentless-mcp-server",
-        description="Read-only stdio MCP server over the agentless-mcp read surface.",
+        description="Read-only MCP server over the agentless-mcp read surface.",
     )
     parser.add_argument(
         "--root",
@@ -943,6 +1218,18 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=[],
         metavar="DIR",
         help="a repository this server may serve; repeatable",
+    )
+    parser.add_argument(
+        "--roots-from",
+        action="append",
+        default=[],
+        metavar="FILE",
+        type=roots_file,
+        help=(
+            "a file of repository paths, one per line, added to --root; blank "
+            "lines and #-comment lines are skipped and relative paths resolve "
+            "against the working directory, as --root does; repeatable"
+        ),
     )
     parser.add_argument(
         "--allow-client-roots",
@@ -953,16 +1240,61 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             "hands the client the operator's decision about what is servable"
         ),
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--transport",
+        choices=TRANSPORTS,
+        default=TRANSPORT_STDIO,
+        help=(
+            "how the server talks to its client: stdio (the default) for a "
+            "client that launches this process, http for one long-lived server "
+            "several clients share over FastMCP's streamable-http transport"
+        ),
+    )
+    parser.add_argument(
+        "--host",
+        default=None,
+        metavar="ADDR",
+        help=(
+            f"address --transport {TRANSPORT_HTTP} binds; loopback only, "
+            f"default {DEFAULT_HTTP_HOST}"
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        default=None,
+        type=int,
+        metavar="N",
+        help=f"port --transport {TRANSPORT_HTTP} binds; default {DEFAULT_HTTP_PORT}",
+    )
+    try:
+        args = parser.parse_args(argv)
+        # Inside the try on purpose: parser.error leaves by the same SystemExit
+        # door argparse itself uses, so a transport refusal gets the argv
+        # diagnostic below rather than reading to the operator as a dead socket.
+        _check_transport(parser, args)
+    except SystemExit as exc:
+        # Under an MCP client the exit-2 usage error is invisible and the whole
+        # session reads as a closed connection, so the argv itself is the
+        # diagnostic. --help and --version leave by the same door with code 0.
+        if exc.code not in (0, None):
+            _report_argv(list(sys.argv[1:] if argv is None else argv))
+        raise
+    return args
 
 
 def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
-    """Start the stdio server. Returns only when the transport closes."""
+    """Start the server. Returns only when the transport closes."""
     args = parse_args(argv)
     handlers = ToolHandlers(
         resolved_allowlist(args.root),
         services,
         allow_client_roots=args.allow_client_roots,
+        roots_files=args.roots_from,
     )
-    build_server(handlers).run()
+    server = build_server(handlers)
+    if args.transport == TRANSPORT_HTTP:
+        host, port = http_binding(args)
+        server.run(transport=TRANSPORT_HTTP, host=host, port=port)
+    else:
+        server.run()
     return 0

@@ -74,7 +74,7 @@ best effort rather than a tested support target.
 
 ### M1. `--timeout` is not the documented hard wall-clock bound
 
-**References:** `docs/agent-guide.md:751-754`,
+**References:** `src/agentless_mcp/docs/agent-guide.md:773-776`,
 `src/agentless_mcp/core/sandbox.py:97-100,259-327,407-439`, and
 `tests/unit/test_sandbox.py:359-373`.
 
@@ -108,7 +108,7 @@ not the timeout verdict or POSIX descendant cleanup.
 
 ### M2. An unavailable grammar can become a confident symbol-lookup false negative
 
-**References:** `docs/agent-guide.md:855-870`,
+**References:** `src/agentless_mcp/docs/agent-guide.md:877-892`,
 `src/agentless_mcp/core/refs.py:96-130,247-258`,
 `src/agentless_mcp/application/symbol_service.py:208-231`,
 `src/agentless_mcp/application/map_service.py:82-98,168-185`, and

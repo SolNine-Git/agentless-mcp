@@ -30,19 +30,33 @@ from pathlib import Path
 from agentless_mcp.application import render
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import cache, patchlint, refs, resolve
+from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.patches import Edit
+from agentless_mcp.core.patches import BlockError, Edit, ParseResult
 from agentless_mcp.util.errors import AtlasError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 
 @dataclass(frozen=True)
 class LintCandidateInput:
-    """One patch to lint: an id for the report, and the text it was read from."""
+    """One patch to lint: an id for the report, and the edits it parsed to.
+
+    The edits arrive parsed rather than as the text they came from, because
+    there is more than one way in -- SEARCH/REPLACE blocks, an ``edits.json``,
+    a unified diff -- and exactly one of them should be a parse. Handing the
+    service raw text would put that decision below the boundary, where a second
+    format would become a branch inside the checks instead of a loader beside
+    them.
+
+    ``notes`` is what the input held that has nothing to check: a binary file
+    in a diff, a mode-only change. They are reported beside the findings, never
+    instead of them, because a section that vanishes is a clean report about a
+    patch nobody fully read.
+    """
 
     id: str
-    text: str
+    parsed: ParseResult
+    notes: tuple[unidiff.DiffNote, ...] = ()
 
 
 class LintService:
@@ -109,11 +123,36 @@ def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
 
 def _candidate(path: Path) -> LintCandidateInput:
     """Read one candidate patch file."""
+    return LintCandidateInput(id=path.stem, parsed=load_edits(_text(path, "candidate")))
+
+
+def load_diff(target: Path) -> LintCandidateInput:
+    """Read one unified diff -- a branch's or a pull request's -- as a candidate.
+
+    The review case the SEARCH/REPLACE input cannot serve: the change already
+    exists and nobody should have to hand-convert it to lint it. One diff is one
+    candidate, and its stem is its id, the same rule
+    :func:`load_candidates` uses.
+
+    **What the checks then assume, and it is not what the flow suggests.** They
+    compare the diff against the repository as it stands, so the repository has
+    to be a checkout of the diff's *base*. A branch with the diff already
+    applied is the case that fails quietly rather than loudly --
+    :func:`agentless_mcp.core.unidiff.orientation` is what turns it into a
+    stated coverage gap, and it runs in :meth:`LintService.lint` because only
+    there is the tree's own text available to compare against.
+    """
+    parsed = unidiff.parse_unified_diff(_text(target, "diff"))
+    return LintCandidateInput(id=target.stem, parsed=parsed.result, notes=parsed.notes)
+
+
+def _text(path: Path, what: str) -> str:
+    """Read one input file through the bounded reader, or refuse it."""
     read = read_bounded(path)
     if read.text is None:
-        message = f"cannot read candidate {path.name}: {read.skipped}"
+        message = f"cannot read {what} {path.name}: {read.skipped}"
         raise AtlasError(message)
-    return LintCandidateInput(id=path.stem, text=read.text)
+    return read.text
 
 
 def _findings(
@@ -134,8 +173,17 @@ def _findings(
     happened to parse would describe a patch that can never be applied. Lint
     still exits 0 and still reports every other candidate: the coverage gap is
     the finding.
+
+    A candidate whose pre-image is not in this tree is suppressed the same way
+    and for the same reason. The checks compare a patch against the repository
+    as it stands, so a diff already applied to it would be compared against
+    itself: every top-level symbol it adds is already in the file, and
+    ``shadowing`` would report each one as a name defined twice. That is a
+    wrong answer rather than a missing one, which is why it costs the whole
+    candidate rather than a line.
     """
-    parsed = load_edits(candidate.text)
+    parsed = candidate.parsed
+    notes = tuple(_note_row(note) for note in candidate.notes)
     gaps = tuple(
         render.LintFinding(
             check=patchlint.CHECK_COVERAGE,
@@ -149,10 +197,49 @@ def _findings(
         for error in parsed.errors
     )
     if gaps:
-        return gaps
-    report = patchlint.lint_patch(_canonical(root, parsed.edits), facts, source)
+        return notes + gaps
+
+    edits = _canonical(root, parsed.edits)
+    misoriented = unidiff.orientation(edits, facts.texts)
+    if misoriented:
+        return notes + tuple(_misoriented_row(problem) for problem in misoriented)
+
+    report = patchlint.lint_patch(edits, facts, source)
     unread = tuple(_unread_row(warning) for warning in report.warnings)
-    return unread + tuple(_row(finding) for finding in report.findings)
+    return notes + unread + tuple(_row(finding) for finding in report.findings)
+
+
+def _note_row(note: unidiff.DiffNote) -> render.LintFinding:
+    """Report one part of the input that parsed but has nothing to check."""
+    where = note.path or "(repository)"
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=f"not checked: {where}: {note.reason}",
+        path=note.path,
+        line=0,
+        location=where,
+        evidence=note.reason,
+    )
+
+
+def _misoriented_row(problem: BlockError) -> render.LintFinding:
+    """Report one edit whose pre-image is not in the tree being linted.
+
+    Not phrased as a parse failure, because nothing failed to parse: the diff
+    was read exactly right and the repository is the wrong one. The reason it
+    carries names the remedy as well as the diagnosis, so a reader is not sent
+    back to the guide to find out what to do about it.
+    """
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=f"not checked: {problem.reason}",
+        path=problem.path or "",
+        line=0,
+        location=problem.path or "(repository)",
+        evidence=f"block {problem.index}",
+    )
 
 
 def _unread_row(warning: str) -> render.LintFinding:
