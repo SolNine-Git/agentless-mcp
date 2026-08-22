@@ -186,6 +186,15 @@ Here is the fix.
 >>>>>>> REPLACE
 """
 
+BEGIN_PATCH_DIALECT = """\
+*** Begin Patch
+*** Update File: src/app.py
+@@ def total():
+-    return total
++    return round(total, 2)
+*** End Patch
+"""
+
 
 class TestParseCorpus:
     """One row per shape the format shows up in."""
@@ -253,6 +262,26 @@ class TestParseCorpus:
         text = BARE.replace("### src/app.py", "```typescript\n### src/app.py")
         (edit,) = parse_blocks(text).edits
         assert edit.path == "src/app.py"
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("empty", ""),
+            ("prose", "Here is my fix; apply it carefully.\n"),
+            ("begin_patch", BEGIN_PATCH_DIALECT),
+        ],
+    )
+    def test_text_with_no_blocks_at_all_is_an_error_not_zero_edits(self, name, text):
+        result = parse_blocks(text)
+        assert result.edits == (), name
+        assert len(result.errors) == 1, name
+        assert not result.ok, name
+        assert "no SEARCH/REPLACE blocks found" in result.errors[0].reason, name
+
+    def test_begin_patch_text_is_named_and_redirected(self):
+        (error,) = parse_blocks(BEGIN_PATCH_DIALECT).errors
+        assert "*** Begin Patch" in error.reason
+        assert "rewrite each hunk as a SEARCH/REPLACE block" in error.reason
 
 
 SOURCE = "alpha\nbravo\ncharlie\n"

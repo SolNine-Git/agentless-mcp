@@ -550,6 +550,29 @@ class IndexFailure:
     reason: str
 
 
+# The grammar-version stamp recorded for a file whose language is known but
+# whose grammar is not warmed. It can never equal an installed pack version,
+# so the row is reused for as long as the language stays unwarmed and misses
+# every digest gate -- the next index run after a warmup re-extracts the file,
+# and a read in the meantime parses on demand instead of trusting empty rows.
+UNWARMED_STAMP_PREFIX = "unwarmed:"
+
+
+@dataclass(frozen=True)
+class IndexSkip:
+    """One file recorded without facts because its grammar is not warmed.
+
+    The same skip the read-path scan reports, downgraded from the error class
+    on purpose: a fresh install has only the tier-1 grammars warmed, and a
+    repository's own config files must not fail ``index`` over a grammar the
+    operator was never asked to fetch. The file is recorded with its digest so
+    the next run reuses the row instead of re-attempting it.
+    """
+
+    path: str
+    reason: str
+
+
 @dataclass(frozen=True)
 class IndexReport:
     """What one index run did, in the numbers its summary line prints."""
@@ -564,18 +587,24 @@ class IndexReport:
     imports: int
     refs: int
     failures: tuple[IndexFailure, ...]
+    skipped_files: tuple[IndexSkip, ...]
 
     @property
     def errors(self) -> int:
         """How many files could not be recorded."""
         return len(self.failures)
 
+    @property
+    def skipped(self) -> int:
+        """How many known-language files were recorded without facts."""
+        return len(self.skipped_files)
+
     def summary_line(self) -> str:
         """Return the one-line summary the CLI prints."""
         return (
             f"indexed {self.indexed}, reused {self.reused}, pruned {self.pruned}, "
-            f"errors {self.errors}: {self.files} files, {self.tags} tags, "
-            f"{self.imports} imports, {self.refs} refs "
+            f"skipped {self.skipped}, errors {self.errors}: {self.files} files, "
+            f"{self.tags} tags, {self.imports} imports, {self.refs} refs "
             f"at g:{self.generation} in {self.database}"
         )
 
@@ -592,13 +621,22 @@ class IndexReport:
             "tags": self.tags,
             "imports": self.imports,
             "refs": self.refs,
+            "skipped": self.skipped,
             "failures": [{"path": entry.path, "reason": entry.reason} for entry in self.failures],
+            "skipped_files": [
+                {"path": entry.path, "reason": entry.reason} for entry in self.skipped_files
+            ],
         }
 
 
 @dataclass(frozen=True)
 class _FileTags:
-    """One file's recorded state: its digest, its size and everything parsed out of it."""
+    """One file's recorded state: its digest, its size and everything parsed out of it.
+
+    ``grammar_version`` is per file rather than per run because an unwarmed
+    file is stamped :data:`UNWARMED_STAMP_PREFIX` plus the pack version, which
+    is what makes its empty row expire the moment the grammar is warmed.
+    """
 
     path: str
     digest: str
@@ -607,6 +645,12 @@ class _FileTags:
     symbols: tuple[ASTSymbol, ...]
     imports: tuple[ImportStatement, ...]
     refs: tuple[Ref, ...]
+    grammar_version: str
+
+    @property
+    def unwarmed(self) -> bool:
+        """Whether this row records a skip rather than extracted facts."""
+        return self.grammar_version.startswith(UNWARMED_STAMP_PREFIX)
 
 
 @dataclass(frozen=True)
@@ -617,6 +661,7 @@ class _IndexPlan:
     reused: tuple[str, ...]
     seen: frozenset[str]
     failures: tuple[IndexFailure, ...]
+    skips: tuple[IndexSkip, ...]
 
 
 def build_index(
@@ -634,7 +679,9 @@ def build_index(
     replays the decisions. Files whose ``(path, sha256)`` is unchanged since
     the last run keep their rows and are never re-extracted -- including the
     ones that define no symbols at all, which are recorded with their digest
-    precisely so they are skipped next time.
+    precisely so they are skipped next time. A known language whose grammar is
+    not warmed is recorded the same way -- digest kept, facts absent -- and
+    reported in ``skipped_files`` rather than in ``failures``.
     """
     resolved = root.resolve()
     database = cache_path(resolved)
@@ -661,7 +708,7 @@ def build_index(
     return IndexReport(
         database=database,
         generation=generation,
-        indexed=len(plan.writes),
+        indexed=sum(1 for entry in plan.writes if not entry.unwarmed),
         reused=len(plan.reused),
         pruned=pruned,
         files=counts.files,
@@ -669,6 +716,7 @@ def build_index(
         imports=counts.imports,
         refs=counts.refs,
         failures=plan.failures,
+        skipped_files=plan.skips,
     )
 
 
@@ -679,12 +727,15 @@ def _plan_index(
     previous: dict[str, _FileEntry],
     force: bool,
 ) -> _IndexPlan:
-    """Walk the repository and decide, per file, reuse or re-extract."""
+    """Walk the repository and decide, per file, reuse, skip or re-extract."""
     grammar_version = grammars.pack_version()
+    unwarmed_version = UNWARMED_STAMP_PREFIX + grammar_version
+    warmed = grammars.warmed_languages()
     writes: list[_FileTags] = []
     reused: list[str] = []
     seen: set[str] = set()
     failures: list[IndexFailure] = []
+    skips: list[IndexSkip] = []
 
     for repo_file in walk_repo(root):
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(Path(repo_file.path).suffix)
@@ -699,6 +750,28 @@ def _plan_index(
         seen.add(repo_file.path)
         digest = content_digest(read.text)
         entry = previous.get(repo_file.path)
+
+        if language not in warmed:
+            # A skip, not a failure: the same wording get_language raises with,
+            # so the index report and a live scan describe the file identically.
+            reason = f"language '{language}' not warmed: run agentless-mcp warmup"
+            skips.append(IndexSkip(path=repo_file.path, reason=reason))
+            if not force and entry == _FileEntry(digest, unwarmed_version):
+                continue
+            writes.append(
+                _FileTags(
+                    path=repo_file.path,
+                    digest=digest,
+                    size=repo_file.size,
+                    language=language,
+                    symbols=(),
+                    imports=(),
+                    refs=(),
+                    grammar_version=unwarmed_version,
+                )
+            )
+            continue
+
         if not force and entry is not None and entry == _FileEntry(digest, grammar_version):
             reused.append(repo_file.path)
             continue
@@ -724,6 +797,7 @@ def _plan_index(
                 symbols=tuple(symbols),
                 imports=tuple(imports),
                 refs=tuple(refs),
+                grammar_version=grammar_version,
             )
         )
 
@@ -732,6 +806,7 @@ def _plan_index(
         reused=tuple(reused),
         seen=frozenset(seen),
         failures=tuple(failures),
+        skips=tuple(skips),
     )
 
 
@@ -742,7 +817,6 @@ def _apply_plan(
     previous: dict[str, _FileEntry],
 ) -> None:
     """Write the whole plan in one transaction, or none of it."""
-    grammar_version = grammars.pack_version()
     vanished = [path for path in previous if path not in plan.seen]
     touched = [entry.path for entry in plan.writes]
 
@@ -761,7 +835,7 @@ def _apply_plan(
             connection.execute(
                 "INSERT INTO files (path, sha256, size, lang, grammar_version) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (entry.path, entry.digest, entry.size, entry.language, grammar_version),
+                (entry.path, entry.digest, entry.size, entry.language, entry.grammar_version),
             )
             connection.executemany(
                 "INSERT INTO tags (path, sha256, name, kind, is_def, start_line, end_line, "

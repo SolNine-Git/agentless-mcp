@@ -297,6 +297,56 @@ class TestIncrementalTriad:
         assert "recursion" in report.failures[0].reason
         assert (report.indexed, report.files) == (2, 2)
 
+    def test_an_unwarmed_language_is_a_skip_and_not_an_error(
+        self, repo, extractor, spy, monkeypatch
+    ):
+        (repo / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.errors == 0
+        assert report.skipped == 1
+        assert report.skipped_files[0].path == "helper.go"
+        assert "not warmed" in report.skipped_files[0].reason
+        assert (report.indexed, report.files) == (3, 4)
+        assert "helper.go" not in spy
+
+    def test_an_unwarmed_file_is_recorded_and_not_re_attempted(
+        self, repo, extractor, spy, monkeypatch
+    ):
+        (repo / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+        first = cache.build_index(repo, extractor)
+        spy.clear()
+
+        second = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(first.database)) as connection:
+            stamped = connection.execute(
+                "SELECT grammar_version FROM files WHERE path = ?", ("helper.go",)
+            ).fetchone()
+        assert stamped[0].startswith(cache.UNWARMED_STAMP_PREFIX)
+        assert (second.indexed, second.reused, second.skipped) == (0, 3, 1)
+        assert spy == []
+
+    def test_warming_the_grammar_heals_a_skipped_file_without_force(
+        self, repo, extractor, spy, monkeypatch
+    ):
+        (repo / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        with pytest.MonkeyPatch.context() as cold:
+            cold.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+            cache.build_index(repo, extractor)
+        spy.clear()
+
+        report = cache.build_index(repo, extractor)
+
+        assert spy == ["helper.go"]
+        assert (report.indexed, report.skipped) == (1, 0)
+
     @pytest.mark.parametrize(
         "error",
         [AttributeError, TypeError, KeyError, IndexError],
@@ -509,7 +559,7 @@ class TestCommandLine:
         assert invoke(services, repo, "index") == EXIT_OK
         summary = capsys.readouterr().out.splitlines()[0]
 
-        assert summary.startswith("indexed 3, reused 0, pruned 0, errors 0: 3 files, ")
+        assert summary.startswith("indexed 3, reused 0, pruned 0, skipped 0, errors 0: 3 files, ")
         assert " imports, " in summary
         assert " refs at g:nogit:" in summary
 
@@ -518,14 +568,18 @@ class TestCommandLine:
         capsys.readouterr()
 
         assert invoke(services, repo, "index") == EXIT_OK
-        assert capsys.readouterr().out.startswith("indexed 0, reused 3, pruned 0, errors 0:")
+        assert capsys.readouterr().out.startswith(
+            "indexed 0, reused 3, pruned 0, skipped 0, errors 0:"
+        )
 
     def test_force_reports_every_file_as_indexed(self, repo, services, capsys):
         invoke(services, repo, "index")
         capsys.readouterr()
 
         assert invoke(services, repo, "index", "--force") == EXIT_OK
-        assert capsys.readouterr().out.startswith("indexed 3, reused 0, pruned 0, errors 0:")
+        assert capsys.readouterr().out.startswith(
+            "indexed 3, reused 0, pruned 0, skipped 0, errors 0:"
+        )
 
     def test_index_json_carries_the_same_numbers(self, repo, services, capsys):
         assert invoke(services, repo, "index", "--json") == EXIT_OK

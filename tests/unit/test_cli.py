@@ -78,6 +78,17 @@ def invoke(services, repo_path, *arguments):
     return run([*arguments, "--repo", str(repo_path)], services)
 
 
+def write_over_cap_file(repo_path):
+    """Drop a generated python file just over the 1MB per-file cap.
+
+    Generated rather than committed so no megabyte fixture lives in the repo.
+    The symbol at the end is what a scan that silently dropped the file would
+    misreport as absent from the repository.
+    """
+    filler = ("# " + "x" * 77 + "\n") * 13_000
+    (repo_path / "huge.py").write_text(filler + "def at_end():\n    return 1\n", encoding="utf-8")
+
+
 class TestInProcess:
     def test_map_answers_with_a_receipt(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "map") == EXIT_OK
@@ -130,11 +141,84 @@ class TestInProcess:
     def test_index_prints_a_summary_line(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "index") == EXIT_OK
         summary = capsys.readouterr().out.splitlines()[0]
-        assert summary.startswith("indexed 2, reused 0, pruned 0, errors 0: 2 files,")
+        assert summary.startswith("indexed 2, reused 0, pruned 0, skipped 0, errors 0: 2 files,")
+
+    def test_index_with_a_failing_file_exits_non_zero(self, services, repo_path, capsys):
+        write_over_cap_file(repo_path)
+
+        assert invoke(services, repo_path, "index") == EXIT_DOMAIN
+        out = capsys.readouterr().out
+        assert "errors 1" in out.splitlines()[0]
+        assert "  error: huge.py:" in out
+
+    def test_index_with_a_failing_file_exits_non_zero_in_json_mode_too(
+        self, services, repo_path, capsys
+    ):
+        write_over_cap_file(repo_path)
+
+        assert invoke(services, repo_path, "index", "--json") == EXIT_DOMAIN
+        document = json.loads(capsys.readouterr().out)
+        assert document["errors"] == 1
+
+    def test_index_reports_an_unwarmed_language_as_a_warning_and_exits_zero(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        (repo_path / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        assert invoke(services, repo_path, "index") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "skipped 1, errors 0" in out.splitlines()[0]
+        assert "  warning: helper.go: language 'go' not warmed" in out
+        assert "  error:" not in out
+
+    def test_index_json_counts_an_unwarmed_language_as_skipped(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        (repo_path / "helper.go").write_text("package main\n", encoding="utf-8")
+        warmed = cache.grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        assert invoke(services, repo_path, "index", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["errors"] == 0
+        assert document["skipped"] == 1
+        assert document["skipped_files"] == [
+            {"path": "helper.go", "reason": "language 'go' not warmed: run agentless-mcp warmup"}
+        ]
 
     def test_refs_names_the_calling_symbol(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "refs", "quote") == EXIT_OK
         assert "run_billing" in capsys.readouterr().out
+
+    def test_an_over_cap_file_is_a_warning_in_map_text(self, services, repo_path, capsys):
+        write_over_cap_file(repo_path)
+
+        assert invoke(services, repo_path, "map") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "# warning: 1 files were skipped" in out
+        assert "huge.py" in out
+        assert "exceeds the per-file cap" in out
+
+    def test_an_over_cap_file_is_a_warning_in_find_symbol_text(self, services, repo_path, capsys):
+        write_over_cap_file(repo_path)
+
+        assert invoke(services, repo_path, "find-symbol", "at_end") == EXIT_DOMAIN
+        out = capsys.readouterr().out
+        assert "no matching symbols" in out
+        assert "# warning: 1 files were skipped" in out
+        assert "huge.py" in out
+
+    def test_find_symbol_json_carries_the_skipped_files(self, services, repo_path, capsys):
+        write_over_cap_file(repo_path)
+
+        assert invoke(services, repo_path, "find-symbol", "at_end", "--json") == EXIT_DOMAIN
+        document = json.loads(capsys.readouterr().out)
+        assert document["matches"] == []
+        (entry,) = document["skipped"]
+        assert entry["path"] == "huge.py"
+        assert "exceeds the per-file cap" in entry["reason"]
 
     def test_shared_callers_replace_the_fan_in_listing(self, services, repo_path, capsys):
         (repo_path / "core.py").write_text(
@@ -451,6 +535,33 @@ class TestLint:
         assert "not_checked" in out
         assert "not terminated by" in out
         assert "dangling_references" not in out
+
+    def test_a_block_less_candidate_is_a_finding_not_a_clean_report(
+        self, services, repo_path, capsys, tmp_path
+    ):
+        """The ``*** Begin Patch`` no-op: block-less text must not lint green."""
+        candidate = tmp_path / "01-begin-patch.txt"
+        candidate.write_text(
+            "*** Begin Patch\n*** Update File: core.py\n-RATE = 3\n+RATE = 4\n*** End Patch\n",
+            encoding="utf-8",
+        )
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "not_checked" in out
+        assert "no SEARCH/REPLACE blocks found" in out
+        assert "no findings" not in out
+
+    def test_a_zero_edit_candidate_is_a_finding_not_a_clean_report(
+        self, services, repo_path, capsys, tmp_path
+    ):
+        candidate = tmp_path / "01-empty.txt"
+        candidate.write_text('{"edits": []}', encoding="utf-8")
+
+        assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "the candidate contains no edits" in out
+        assert "no findings" not in out
 
     def test_a_manifest_the_linter_could_not_fully_read_is_reported(
         self, services, repo_path, capsys

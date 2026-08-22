@@ -249,6 +249,17 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 time.sleep(600)
 """
 
+# A leader that ignores SIGTERM outright, so cleanup pays the full grace
+# before SIGKILL -- the worst case the documented wall-clock bound is made of:
+# timeout + TERM_GRACE_SECONDS + KILL_REAP_SECONDS.
+STUBBORN_LEADER_SCRIPT = """\
+import signal
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+time.sleep(600)
+"""
+
 CHATTY_SCRIPT = """\
 for number in range(2000):
     print(f"line {number:05d}")
@@ -374,7 +385,23 @@ class TestRunCommand:
         # the signal, and reading it as a status is how a hang becomes an
         # ordinary failure.
         assert result.exit_code is None
-        assert elapsed < 1 + sandbox.TERM_GRACE_SECONDS * 2 + 10
+        assert elapsed < 1 + sandbox.TERM_GRACE_SECONDS + sandbox.KILL_REAP_SECONDS + 10
+
+    def test_a_sigterm_ignoring_command_stays_inside_the_documented_bound(
+        self, workspace, python_cmd
+    ):
+        self.write(workspace, "stubborn.py", STUBBORN_LEADER_SCRIPT)
+
+        started = time.monotonic()
+        result = sandbox.run_command(workspace, python_cmd("stubborn.py"), timeout=1)
+        elapsed = time.monotonic() - started
+
+        assert result.status is RunStatus.TIMEOUT
+        # The documented worst case: the timeout, the full SIGTERM grace this
+        # command insists on consuming, then the short reap wait after SIGKILL.
+        # The margin covers interpreter start-up on a slow runner; it is well
+        # under the second full grace the old cleanup could burn.
+        assert elapsed < 1 + sandbox.TERM_GRACE_SECONDS + sandbox.KILL_REAP_SECONDS + 3
 
     def test_the_whole_process_group_is_dead_afterwards(self, workspace, python_cmd):
         marker = workspace / "pgid.txt"

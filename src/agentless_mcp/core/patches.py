@@ -61,6 +61,11 @@ DIVIDER = "======="
 REPLACE_MARKER = ">>>>>>> REPLACE"
 FENCE = "```"
 
+# The opening line of the other SEARCH/REPLACE dialect in circulation -- the
+# canonical Agentless / SWE-bench ``*** Begin Patch`` form. It is recognised
+# only to be named in the zero-block refusal, never parsed.
+BEGIN_PATCH_MARKER = "*** Begin Patch"
+
 # The elision marker and the prefix form that is stripped from either side of
 # a block. `...` alone means "find me an anchor"; `...\n` at the start of a
 # side means "the rest of this side is what matters".
@@ -232,6 +237,11 @@ def parse_blocks(text: str) -> ParseResult:
     of that header is the file path. A block with no path of its own inherits
     the last one seen, which is how several consecutive edits to one file are
     written.
+
+    Text containing no block at all is an error, not an empty success: "I
+    found nothing to parse" and "this parsed to zero edits" are different
+    answers, and the first read as the second is how ``*** Begin Patch`` text
+    sailed through parse and lint as a silent no-op.
     """
     segments = text.split(REPLACE_MARKER)
     edits: list[Edit] = []
@@ -276,7 +286,24 @@ def parse_blocks(text: str) -> ParseResult:
             )
         )
 
+    if not edits and not errors:
+        errors.append(BlockError(0, None, _no_blocks_reason(text)))
+
     return ParseResult(edits=tuple(edits), errors=tuple(errors))
+
+
+def _no_blocks_reason(text: str) -> str:
+    """Say why marker-less text is refused, naming the dialect when it shows."""
+    reason = (
+        f"no SEARCH/REPLACE blocks found: expected {SEARCH_MARKER}, "
+        f"{DIVIDER} and {REPLACE_MARKER} markers"
+    )
+    if BEGIN_PATCH_MARKER in text:
+        return (
+            f"{reason}; this looks like {BEGIN_PATCH_MARKER} text -- "
+            "rewrite each hunk as a SEARCH/REPLACE block"
+        )
+    return reason
 
 
 def _marker_reason(count: int) -> str:

@@ -174,15 +174,22 @@ class MapService:
     def render_text(self, result: MapResult) -> str:
         """Render a map result as code-shaped text.
 
-        Unresolved seeds are named at the top rather than at the bottom: the
-        note changes how the ranking below it should be read, and a reader who
-        stops at the first interesting filename has to have seen it.
+        Unresolved seeds and skipped files are named at the top rather than at
+        the bottom: both notes change how the ranking below them should be
+        read, and a reader who stops at the first interesting filename has to
+        have seen them.
         """
         body = render.render_map(result.files)
-        if not result.unresolved_seeds:
+        notes: list[str] = []
+        if result.unresolved_seeds:
+            listed = ", ".join(result.unresolved_seeds)
+            notes.append(MESSAGES.map_unresolved_seeds.format(seeds=listed))
+        warning = render.render_skipped_files(result.skipped)
+        if warning:
+            notes.append(warning)
+        if not notes:
             return body
-        listed = ", ".join(result.unresolved_seeds)
-        return MESSAGES.map_unresolved_seeds.format(seeds=listed) + "\n\n" + body
+        return "\n".join(notes) + "\n\n" + body
 
     def _auto_budget(self, candidates: list[_Candidate], rank: dict[str, float]) -> int:
         """Size the budget from the candidate set, clamped to the useful band."""

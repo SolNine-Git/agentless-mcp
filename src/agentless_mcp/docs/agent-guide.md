@@ -653,8 +653,14 @@ last run. The database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never
 inside the repository being analyzed, and one line reports what happened:
 
 ```
-indexed 42, reused 517, pruned 3, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
+indexed 42, reused 517, pruned 3, skipped 0, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
 ```
+
+An error is a file the run could not record (unreadable, over the size cap, a
+parse crash) and any error exits 1. A skip is a known language whose grammar
+is not warmed: the file is recorded with its digest, listed as a `warning:`
+line, and does not affect the exit code -- run `agentless-mcp warmup` for that
+language and re-index to pick those files up.
 
 Only one index run per repository at a time: a second concurrent run exits
 immediately saying the lock is held rather than queueing. Any read command
@@ -787,9 +793,11 @@ identical either way, because output order is sorted rather than
 completion-ordered.
 
 **`--timeout` is a hard bound and a hang is a FAILURE.** A command that
-outlives it has its whole process group killed (SIGTERM, then SIGKILL), and
-the verdict is `timeout` -- never a pass. Output capture keeps the last 100 KB
-per stream, because the summary is at the end.
+outlives it has its whole process group killed (SIGTERM, a 5s grace, then
+SIGKILL and a 1s reap wait), and the verdict is `timeout` -- never a pass.
+The wall-clock worst case per command is therefore `--timeout` + 6s; budget
+`--run-timeout` against that figure, not the bare `--timeout`. Output capture
+keeps the last 100 KB per stream, because the summary is at the end.
 
 #### The two verdicts that invalidate everything else
 

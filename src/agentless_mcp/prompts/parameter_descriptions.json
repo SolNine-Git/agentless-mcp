@@ -31,7 +31,7 @@
   "include_ambiguous": "Allow name-only ambiguous edges in a path. Off by default because each spelling has several candidate definitions.",
   "structure_limit": "Maximum cycles or communities returned, depending on the selected operation.",
   "community_resolution": "Positive modularity resolution for communities or community-grouped diagrams; larger values generally produce smaller communities.",
-  "diagram_focus": "Optional file path, path suffix, module name, or symbol name at the centre of a diagram operation.",
+  "diagram_focus": "Optional file path, path suffix, module name, or symbol name at the centre of a diagram operation. A single string or a list of strings is accepted; a diagram has one centre, so only the first list entry is used.",
   "diagram_max_nodes": "Maximum real repository nodes drawn in a diagram before an elision node is added.",
   "group_by_communities": "Group diagram nodes into deterministic community subgraphs.",
   "locations": "Location selectors such as class:Name, function:name, or line:N to resolve within the named file."

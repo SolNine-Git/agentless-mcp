@@ -52,7 +52,10 @@ caller's user identity and can read anything that identity can read.
 
 The bound is hard, and a command that hits it is a **failure**. A hung test
 run is the case this machinery exists to catch, and the one place where
-"we did not find out" must never render as green.
+"we did not find out" must never render as green. Hard means bounded, not
+instantaneous: ending a stubborn command costs at most the SIGTERM grace plus
+a short reap wait after SIGKILL, so the wall-clock worst case is the timeout
+plus ``TERM_GRACE_SECONDS`` plus ``KILL_REAP_SECONDS``.
 
 Process-group control is where the platforms genuinely differ. POSIX gets the
 full guarantee: a new session, then SIGTERM and SIGKILL to the whole group, so
@@ -98,6 +101,14 @@ WORKTREE_DIR = "worktrees"
 # enough for a test runner to flush its own summary, short enough that the
 # caller's timeout stays a bound they can reason about.
 TERM_GRACE_SECONDS = 5.0
+
+# How long the runner waits to reap the leader after SIGKILL. Not a second
+# grace: SIGKILL cannot be caught or ignored, so this wait exists only to
+# collect the exit status rather than leave a zombie, and to keep the capture
+# files from being read while a writer could still exist. A leader still
+# present when it expires is stuck in the kernel, and waiting a full grace
+# would not unstick it -- it would only stretch the caller's timeout.
+KILL_REAP_SECONDS = 1.0
 
 # The default cap on captured output, per stream. The tail is what is kept:
 # a failing test run puts its summary at the end, and the megabyte of
@@ -282,6 +293,10 @@ def run_command(
       and reach the grandchildren a test runner spawned. Killing only the
       direct child leaves the server it started holding a port. Windows gets
       ``CREATE_NEW_PROCESS_GROUP``, which is the closest thing it has.
+      Termination is bounded too: a command that ignores SIGTERM costs at most
+      ``timeout`` + :data:`TERM_GRACE_SECONDS` + :data:`KILL_REAP_SECONDS` of
+      wall clock, because the wait after SIGKILL is a short reaping guard, not
+      a second grace.
     * **Output goes to files, not pipes.** A pipe nobody drains fills at
       64 KB and blocks the writer, turning a chatty passing test into a
       timeout. Temporary files decouple the two, and the tail is read back
@@ -414,6 +429,11 @@ def _kill_group(process: "subprocess.Popen[bytes]", flavour: str) -> None:
     says nothing about the children it spawned, and those are the orphans that
     outlive a run and hold a port for the next one.
 
+    The wait after SIGKILL is a reaping guard, not a second grace -- nothing
+    can ignore SIGKILL, so :data:`KILL_REAP_SECONDS` is all it gets. That keeps
+    cleanup bounded: a command that ignores SIGTERM costs at most
+    :data:`TERM_GRACE_SECONDS` + :data:`KILL_REAP_SECONDS` beyond its timeout.
+
     On Windows only the leader is signalled. That is the best effort the
     platform gives without a job object, and it is stated as such rather than
     presented as the same guarantee.
@@ -431,7 +451,7 @@ def _kill_group(process: "subprocess.Popen[bytes]", flavour: str) -> None:
 
     _signal_group(group, signal.SIGKILL)
     try:
-        process.wait(timeout=TERM_GRACE_SECONDS)
+        process.wait(timeout=KILL_REAP_SECONDS)
     except subprocess.TimeoutExpired:
         logger.exception(
             "process group %d is still present after SIGKILL; it may be stuck in the kernel",
@@ -456,7 +476,7 @@ def _kill_leader(process: "subprocess.Popen[bytes]") -> None:
 
     process.kill()
     try:
-        process.wait(timeout=TERM_GRACE_SECONDS)
+        process.wait(timeout=KILL_REAP_SECONDS)
     except subprocess.TimeoutExpired:
         logger.exception("process %d is still present after kill()", process.pid)
 

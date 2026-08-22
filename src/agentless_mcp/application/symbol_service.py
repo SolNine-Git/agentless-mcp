@@ -104,10 +104,16 @@ class FindResult:
     ``cards`` is the listing rather than a bare tuple so that the count behind
     the limit travels with the rows into the renderer. It iterates and indexes
     as the tuple did.
+
+    ``skipped`` is what the scan could not read -- files over the size cap, in
+    a language whose grammar is not warmed, or unreadable. It travels with the
+    matches because "no matching symbols" over a partial scan is a different
+    answer from the same words over a complete one.
     """
 
     query: str
     cards: render.CardListing
+    skipped: tuple[refs.SkippedFile, ...] = ()
 
     @property
     def total(self) -> int:
@@ -121,7 +127,11 @@ class FindResult:
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
-        return {"query": self.query, **self.cards.as_dict()}
+        return {
+            "query": self.query,
+            **self.cards.as_dict(),
+            "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
+        }
 
 
 def _check_limit(limit: int) -> None:
@@ -228,7 +238,7 @@ class SymbolService:
 
         cards = tuple(symbol_card(symbol) for _, symbol in matches[:limit])
         listing = render.CardListing(rows=cards, total=len(matches), limit=limit)
-        return FindResult(query=query, cards=listing)
+        return FindResult(query=query, cards=listing, skipped=scan.skipped)
 
     def expand_symbols(
         self,
@@ -448,6 +458,22 @@ def render_expansion(result: ExpandResult) -> str:
         )
     blocks.extend(f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved)
     return "\n".join(blocks)
+
+
+def render_find(result: FindResult) -> str:
+    """Render a lookup: any skipped-file warning, then the cards.
+
+    One home for both pieces, for the same reason :func:`render_expansion` is
+    one: an adapter that printed the cards without the warning would hand
+    "no matching symbols" to a reader whose file was never scanned. The
+    warning comes first because it changes how the listing below it -- and
+    especially an empty one -- must be read.
+    """
+    body = render.render_symbol_cards(result.cards)
+    warning = render.render_skipped_files(result.skipped)
+    if not warning:
+        return body
+    return warning + "\n\n" + body
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:

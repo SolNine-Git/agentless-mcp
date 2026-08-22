@@ -21,7 +21,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, overload
 
+from agentless_mcp.core.refs import SkippedFile
 from agentless_mcp.core.slices import line_prefix
+from agentless_mcp.prompts import MESSAGES
 
 
 def _no_negative_zero(value: float) -> float:
@@ -48,6 +50,11 @@ LINE_NUMBER_WIDTH = 5
 # handful proves it; the full list is what let one adjacency listing approach
 # the response ceiling on its own. The JSON form still carries every caller.
 SHARED_CALLERS_SHOWN = 5
+
+# How many skipped files the warning line names before cutting to a count,
+# for the same reason: the warning is evidence that the scan was partial, not
+# an inventory. The JSON forms still carry every entry.
+SKIPPED_FILES_SHOWN = 5
 
 # The markdown fence a diagram travels in when it is going into a response
 # body. Declared here rather than in `core.mermaid` because fencing is a
@@ -994,6 +1001,26 @@ def _render_imports(explanation: Explanation) -> str:
     else:
         lines.append("    imported by  nothing in this repository")
     return "\n".join(lines) + "\n"
+
+
+def render_skipped_files(skipped: Sequence[SkippedFile]) -> str:
+    """Render a scan's skipped files as one warning line, or nothing.
+
+    A skipped file is invisible to the ranking and the matching, so an answer
+    built over it reads as affirmative absence -- "no matching symbols" about
+    a repository whose relevant file was never parsed. The warning rides at
+    the top of the body, like the map's unresolved-seeds note, because it
+    changes how everything below it must be read. Each path carries its skip
+    reason, which already names the remedy (raise the cap, run warmup); the
+    JSON forms carry every entry, this line caps the listing.
+    """
+    if not skipped:
+        return ""
+    shown = skipped[:SKIPPED_FILES_SHOWN]
+    listed = "; ".join(f"{entry.path} ({entry.reason})" for entry in shown)
+    if len(skipped) > len(shown):
+        listed += f"; ... {len(skipped) - len(shown)} more"
+    return MESSAGES.scan_skipped_files.format(count=len(skipped), listed=listed)
 
 
 def render_map(files: Sequence[MapFile]) -> str:
