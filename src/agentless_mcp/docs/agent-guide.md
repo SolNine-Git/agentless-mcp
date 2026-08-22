@@ -126,9 +126,12 @@ same services, same answers, same wording.
 | *(none)* | `html` | searchable human graph export to stdout or XDG cache |
 | *(none)* | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
 
-Everything that writes, executes or fetches is CLI-only and always will be: a
-tool an analysed repository's contents could talk an agent into calling must
-not be able to change that repository or run its code.
+Everything that writes or executes is CLI-only and always will be: a tool an
+analysed repository's contents could talk an agent into calling must not be
+able to change that repository or run its code. No tool call ever fetches
+anything either; grammar fetches happen only at explicit `warmup` or in the
+disable-able, digest-verified background warm both entry points start at
+process launch.
 
 MCP responses are text-native: new clients should read `content[0].text`.
 Existing clients may continue reading the compatibility copy in
@@ -898,9 +901,12 @@ agentless-mcp warmup                      # every supported language
 agentless-mcp warmup python go --no-download
 ```
 
-The only command that fetches grammars. Fetching never happens inside a tool
-call; a grammar that is not warmed degrades that one language with a message
-naming this command.
+The explicit, fails-loudly way to fetch grammars. Both entry points also
+start a background warm of any cold grammars at process launch (opt out with
+`--no-auto-warm` or `AGENTLESS_MCP_NO_AUTO_WARM`; `AGENTLESS_MCP_NO_DOWNLOAD`
+forbids all fetching), so a fresh install usually warms itself. Fetching
+never happens inside a tool call; a grammar that is not warmed degrades that
+one language with a message naming this command.
 
 Languages come in two tiers, and `capabilities` prints the tier of each:
 

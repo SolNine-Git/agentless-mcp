@@ -85,7 +85,7 @@ from agentless_mcp.application.symbol_service import (
     render_find,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, projectconfig
+from agentless_mcp.core import cache, grammars, projectconfig
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
@@ -159,7 +159,10 @@ OPERATION_DIAGRAM = "diagram"
 # the tool descriptions; pydantic carries it into the published schema, which
 # is the only documentation an arbitrary client is guaranteed to read.
 RepoRoot = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["repo_root"])]
-MapFocus = Annotated[list[str] | None, Field(description=PARAMETER_DESCRIPTIONS["map_focus"])]
+MapFocus = Annotated[
+    str | list[str] | None,
+    Field(description=PARAMETER_DESCRIPTIONS["map_focus"]),
+]
 Granularity = Annotated[
     Literal["function", "file"] | None,
     Field(description=PARAMETER_DESCRIPTIONS["map_granularity"]),
@@ -194,7 +197,7 @@ IncludeAmbiguous = Annotated[
     Field(description=PARAMETER_DESCRIPTIONS["include_ambiguous"]),
 ]
 DiagramFocus = Annotated[
-    str | list[str],
+    str | list[str] | None,
     Field(description=PARAMETER_DESCRIPTIONS["diagram_focus"]),
 ]
 GroupByCommunities = Annotated[
@@ -213,20 +216,24 @@ MAX_CONTEXT_LINES = 200
 MAX_DIAGRAM_NODES = 500
 MAX_RESOLUTION = 100.0
 
+# ``limit`` is nullable on every tool that carries it because it is nullable
+# on analyze_structure, whose default depends on the operation. A client that
+# learns "limit may be null" from one schema and reuses it on another must not
+# be refused for it (#13's coercion class); null reads as the tool's default.
 ExpandLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["expand_limit"]),
 ]
 FindLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["find_limit"]),
 ]
 ReferenceLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["reference_limit"]),
 ]
 ExplainLimit = Annotated[
-    int,
+    int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["explain_limit"]),
 ]
 StructureLimit = Annotated[
@@ -831,7 +838,7 @@ def _intervals(ranges: Sequence[Sequence[int]]) -> list[tuple[int, int]]:
     return intervals
 
 
-def _sole_focus(focus: str | list[str]) -> str:
+def _sole_focus(focus: str | list[str] | None) -> str:
     """Reduce a diagram focus to the single seed the operation supports.
 
     ``repo_map.focus`` is a list, so a client bridging the two tools can turn
@@ -840,9 +847,26 @@ def _sole_focus(focus: str | list[str]) -> str:
     list is accepted and only its first entry is used -- the published
     parameter description says so.
     """
+    if focus is None:
+        return ""
     if isinstance(focus, str):
         return focus
     return focus[0] if focus else ""
+
+
+def _focus_entries(focus: str | list[str] | None) -> tuple[str, ...]:
+    """Normalize a map focus to the seed tuple ``MapRequest`` carries.
+
+    The mirror of ``_sole_focus``: ``analyze_structure.focus`` takes a bare
+    string, so a client bridging the two tools can send one here, and it
+    reads as a one-element list (#13's coercion class). An empty string is
+    no focus, exactly as an empty list is.
+    """
+    if focus is None:
+        return ()
+    if isinstance(focus, str):
+        return (focus,) if focus else ()
+    return tuple(focus)
 
 
 def _slice_intervals(
@@ -904,7 +928,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
             return handlers.repo_map(
                 ctx,
                 MapRequest(
-                    focus=tuple(focus or ()),
+                    focus=_focus_entries(focus),
                     budget=budget,
                     max_files=max_files,
                     granularity=granularity,
@@ -949,12 +973,14 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         stable_ids: StableIds,
         repo_root: RepoRoot = None,
-        limit: ExpandLimit = DEFAULT_EXPAND_LIMIT,
+        limit: ExpandLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.expand_symbols(ctx, stable_ids, limit)
+            return handlers.expand_symbols(
+                ctx, stable_ids, _or_default(limit, DEFAULT_EXPAND_LIMIT)
+            )
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["read_slice"],
@@ -986,12 +1012,12 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         name: FindName,
         repo_root: RepoRoot = None,
         kind: SymbolKindParameter = None,
-        limit: FindLimit = DEFAULT_FIND_LIMIT,
+        limit: FindLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Find symbols by substring or qualified name."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.find_symbol(ctx, name, kind, limit)
+            return handlers.find_symbol(ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT))
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
@@ -1001,13 +1027,16 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         target: ReferenceTarget,
         repo_root: RepoRoot = None,
-        limit: ReferenceLimit = DEFAULT_REFS_LIMIT,
+        limit: ReferenceLimit = None,
         shared_callers: SharedCallers = False,
     ) -> str:
         """Find the symbols that reference a target, grouped by file."""
         async with context_for(context, repo_root) as ctx:
             return handlers.find_referencing_symbols(
-                ctx, target, limit, shared_callers=shared_callers
+                ctx,
+                target,
+                _or_default(limit, DEFAULT_REFS_LIMIT),
+                shared_callers=shared_callers,
             )
 
     @mcp.tool(
@@ -1018,12 +1047,12 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         context: Context,
         target: ExplainTarget,
         repo_root: RepoRoot = None,
-        limit: ExplainLimit = DEFAULT_EXPLAIN_LIMIT,
+        limit: ExplainLimit = None,
         no_cache: NoCache = False,
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.explain_symbol(ctx, target, limit)
+            return handlers.explain_symbol(ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT))
 
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["analyze_structure"],
@@ -1039,7 +1068,7 @@ def build_server(handlers: ToolHandlers) -> FastMCP[None]:
         include_ambiguous: IncludeAmbiguous = False,
         limit: StructureLimit = None,
         resolution: Resolution = None,
-        focus: DiagramFocus = "",
+        focus: DiagramFocus = None,
         max_nodes: MaxNodes = DEFAULT_MAX_NODES,
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
@@ -1259,6 +1288,13 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-auto-warm",
+        action="store_true",
+        help="do not warm cold grammars in the background at startup; grammars "
+        f"then warm only through agentless-mcp warmup ({grammars.ENV_NO_AUTO_WARM} "
+        "in the environment does the same)",
+    )
+    parser.add_argument(
         "--transport",
         choices=TRANSPORTS,
         default=TRANSPORT_STDIO,
@@ -1310,6 +1346,12 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         roots_files=args.roots_from,
     )
     server = build_server(handlers)
+    # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the
+    # process must serve immediately; until the warm lands, answers carry the
+    # labeled skips with the warm-in-progress reason. AGENTLESS_MCP_NO_DOWNLOAD
+    # keeps absolute priority inside start_auto_warm.
+    if not args.no_auto_warm:
+        grammars.start_auto_warm()
     if args.transport == TRANSPORT_HTTP:
         host, port = http_binding(args)
         server.run(transport=TRANSPORT_HTTP, host=host, port=port)

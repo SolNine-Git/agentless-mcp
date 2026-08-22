@@ -23,7 +23,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, guide
+from agentless_mcp.core import cache, grammars, guide
 
 SOURCE = '''\
 """Core."""
@@ -1425,3 +1425,28 @@ class TestGuide:
         with pytest.raises(SystemExit) as exit_info:
             run(["guide", "--repo", str(repo_path)], services)
         assert exit_info.value.code == EXIT_USAGE
+
+
+class TestAutoWarmStartup:
+    """Issue #19: subcommands start the background warm; the opt-outs hold."""
+
+    @pytest.fixture
+    def warm_calls(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(grammars, "start_auto_warm", lambda *a, **k: calls.append("start"))
+        return calls
+
+    def test_a_subcommand_starts_the_background_warm(self, services, repo_path, warm_calls):
+        assert invoke(services, repo_path, "tree") == EXIT_OK
+        assert warm_calls == ["start"]
+
+    def test_the_flag_keeps_the_warm_off(self, services, repo_path, warm_calls):
+        assert run(["--no-auto-warm", "tree", "--repo", str(repo_path)], services) == EXIT_OK
+        assert warm_calls == []
+
+    def test_the_warmup_command_never_races_its_own_background_warm(
+        self, services, repo_path, warm_calls
+    ):
+        _ = repo_path
+        assert run(["warmup", "python"], services) == EXIT_OK
+        assert warm_calls == []

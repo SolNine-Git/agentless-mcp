@@ -420,7 +420,9 @@ The strongest genuinely enforced guarantees are:
   allowlist, bounded output capture, and timeout-as-failure classification;
 - cached structural rows are gated by file SHA-256;
 - answers carry repository/generation receipts and output caps;
-- grammar downloads occur only through explicit warmup and can be disabled.
+- grammar fetches happen only at explicit warmup or in the disable-able,
+  digest-verified background warm at process start, never inside a tool
+  call, and `AGENTLESS_MCP_NO_DOWNLOAD` forbids them entirely.
 
 Claims that remain documentation- or evidence-dependent are the absolute
 quality of the four reference tiers, community partitions as architecture,

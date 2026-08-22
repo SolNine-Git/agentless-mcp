@@ -20,8 +20,10 @@ a terminal; it needs the `mcp` extra, so install that when you want the server:
 uv tool install "agentless-mcp[mcp]"
 ```
 
-Before analyzing a language for the first time, download and verify its
-grammar:
+Both entry points warm cold grammars in the background at startup (one
+digest-verified bundle fetch at most; `--no-auto-warm` or
+`AGENTLESS_MCP_NO_AUTO_WARM` opts out, `AGENTLESS_MCP_NO_DOWNLOAD` forbids
+all fetching). To warm explicitly and fail loudly instead:
 
 ```sh
 agentless-mcp warmup

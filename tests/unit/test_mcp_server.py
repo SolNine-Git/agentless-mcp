@@ -1342,6 +1342,13 @@ class TestAnalyzeStructure:
 
         assert emptied == unfocused
 
+    def test_a_null_focus_reads_as_no_focus(self, services, one_repo):
+        """``repo_map.focus`` is nullable, so the shared shape admits null here too."""
+        unfocused = self.answer(services, one_repo, {"operation": "diagram"})
+        nulled = self.answer(services, one_repo, {"operation": "diagram", "focus": None})
+
+        assert nulled == unfocused
+
     def test_an_unknown_operation_lists_the_ones_that_exist(self, services, one_repo):
         with pytest.raises(ToolError) as raised:
             self.answer(services, one_repo, {"operation": "graph"})
@@ -1359,6 +1366,64 @@ class TestAnalyzeStructure:
 
     def test_every_operation_is_dispatched_by_the_table(self):
         assert set(_OPERATIONS) == {"path", "cycles", "communities", "diagram"}
+
+
+class TestMapFocusShapes:
+    """Issue #13's counterpart on repo_map: focus takes a string or a list."""
+
+    def answer(self, services, one_repo, arguments):
+        """Call repo_map on the fixture repository."""
+        server = build_server(ToolHandlers([one_repo], services))
+
+        async def go():
+            async with Client(server) as client:
+                return await client.call_tool("repo_map", {"repo_root": str(one_repo), **arguments})
+
+        return asyncio.run(go()).content[0].text
+
+    def test_a_bare_string_focus_answers_as_its_one_element_list_does(self, services, one_repo):
+        """``analyze_structure.focus`` is a string, so a bridging client may send one here."""
+        stringly = self.answer(services, one_repo, {"focus": "core.py"})
+        listed = self.answer(services, one_repo, {"focus": ["core.py"]})
+
+        assert stringly == listed
+
+    def test_an_empty_string_focus_reads_as_no_focus(self, services, one_repo):
+        unfocused = self.answer(services, one_repo, {})
+        emptied = self.answer(services, one_repo, {"focus": ""})
+
+        assert emptied == unfocused
+
+    def test_a_null_focus_reads_as_no_focus(self, services, one_repo):
+        unfocused = self.answer(services, one_repo, {})
+        nulled = self.answer(services, one_repo, {"focus": None})
+
+        assert nulled == unfocused
+
+
+def value_shape(schema):
+    """One parameter's published value shape, prose and nullability stripped.
+
+    Requiredness and nullability stay per-tool policy -- a tool with a
+    natural fallback defaults its parameter, one without requires it -- but
+    a value a client learned to send from one tool's schema must validate
+    identically on every tool publishing the same parameter name, bounds
+    included (#13's coercion class).
+    """
+    branches = schema.get("anyOf")
+    if branches is not None:
+        kept = [value_shape(branch) for branch in branches if branch.get("type") != "null"]
+        if len(kept) == 1:
+            return kept[0]
+        return {"anyOf": sorted(kept, key=lambda shape: json.dumps(shape, sort_keys=True))}
+    shape = {
+        key: value
+        for key, value in schema.items()
+        if key not in ("description", "title", "default")
+    }
+    if isinstance(shape.get("items"), dict):
+        shape["items"] = value_shape(shape["items"])
+    return shape
 
 
 class TestToolSurface:
@@ -1402,6 +1467,43 @@ class TestToolSurface:
 
         for name, result in asyncio.run(go()).items():
             assert result.content[0].text.strip(), name
+
+    def test_shared_parameter_names_publish_one_value_shape_everywhere(self, services, one_repo):
+        """The regression gate behind issue #13: a name never changes shape between tools.
+
+        ``repo_map.focus`` was ``list[str]`` while ``analyze_structure.focus``
+        was ``str``, and a client bridge's coercion put an agent in a retry
+        loop. Introspect the published listing and require every parameter
+        name to carry one value shape across all the tools that publish it.
+        """
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
+
+        shapes = {}
+        for tool in tools:
+            for name, schema in tool.inputSchema.get("properties", {}).items():
+                shapes.setdefault(name, {})[tool.name] = value_shape(schema)
+
+        for name, by_tool in shapes.items():
+            rendered = {json.dumps(shape, sort_keys=True) for shape in by_tool.values()}
+            assert len(rendered) == 1, f"{name} varies across {sorted(by_tool)}: {rendered}"
+
+    def test_a_null_limit_answers_as_an_omitted_limit_does(self, services, one_repo):
+        """The nullable limit shape reads as the tool's default, not a refusal."""
+        server = build_server(ToolHandlers([one_repo], services))
+
+        async def go():
+            async with Client(server) as client:
+                omitted = await client.call_tool(
+                    "find_symbol", {"repo_root": str(one_repo), "name": "quote"}
+                )
+                nulled = await client.call_tool(
+                    "find_symbol",
+                    {"repo_root": str(one_repo), "name": "quote", "limit": None},
+                )
+                return omitted, nulled
+
+        omitted, nulled = asyncio.run(go())
+        assert nulled.content[0].text == omitted.content[0].text
 
 
 class TestCapabilitiesCacheHint:
@@ -1473,3 +1575,32 @@ class TestOverviewStableIds:
 
         assert "no grammar" in text
         assert "stable ids:" not in text
+
+
+class TestAutoWarmStartup:
+    """Issue #19: serve starts the background warm; the opt-out flag holds."""
+
+    class StubTransport:
+        def run(self, **kwargs):
+            _ = kwargs
+
+    @pytest.fixture
+    def warm_calls(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            server_module.grammars, "start_auto_warm", lambda *a, **k: calls.append("start")
+        )
+        monkeypatch.setattr(server_module, "build_server", lambda handlers: self.StubTransport())
+        return calls
+
+    def test_serve_starts_the_background_warm(self, services, tmp_path, warm_calls):
+        assert server_module.serve(["--root", str(tmp_path)], services) == 0
+        assert warm_calls == ["start"]
+
+    def test_the_flag_keeps_the_warm_off(self, services, tmp_path, warm_calls):
+        assert server_module.serve(["--no-auto-warm", "--root", str(tmp_path)], services) == 0
+        assert warm_calls == []
+
+    def test_the_flag_parses_and_defaults_off(self):
+        assert parse_args(["--no-auto-warm"]).no_auto_warm is True
+        assert parse_args([]).no_auto_warm is False

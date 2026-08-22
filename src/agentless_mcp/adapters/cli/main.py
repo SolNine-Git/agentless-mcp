@@ -147,12 +147,24 @@ def run(argv: Sequence[str] | None, services: CliServices) -> int:
     args = parser.parse_args(argv)
 
     handler: Callable[[argparse.Namespace, CliServices], int] = args.handler
-    with ExitStack() as resources:
-        invocation = replace(services, resources=resources)
-        try:
-            return handler(args, invocation)
-        except AtlasError as error:
-            return fail(str(error), exit_code_for(error))
+    # The warmup command owns the cache while it runs, so it never races a
+    # background warm of the same directory; every other subcommand starts
+    # one and serves immediately with today's labeled skips until it lands.
+    warm = None
+    if not args.no_auto_warm and handler is not _cmd_warmup:
+        warm = grammars.start_auto_warm()
+    try:
+        with ExitStack() as resources:
+            invocation = replace(services, resources=resources)
+            try:
+                return handler(args, invocation)
+            except AtlasError as error:
+                return fail(str(error), exit_code_for(error))
+    finally:
+        # One-shot process: exiting mid-extraction would kill the daemon
+        # thread inside a cache write. Bounded by the warm's own deadline.
+        if warm is not None:
+            grammars.wait_for_auto_warm()
 
 
 def counter_parser() -> argparse.ArgumentParser:
@@ -181,6 +193,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="agentless-mcp",
         description="Model-free tree-sitter repo map, localization and slice machinery.",
         parents=[counter_parser()],
+    )
+    parser.add_argument(
+        "--no-auto-warm",
+        action="store_true",
+        help="do not warm cold grammars in the background at startup; grammars "
+        f"then warm only through an explicit warmup ({grammars.ENV_NO_AUTO_WARM} "
+        "in the environment does the same)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
