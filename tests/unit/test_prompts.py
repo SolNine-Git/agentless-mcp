@@ -79,7 +79,7 @@ MESSAGE_ARGUMENTS = {
         "tool": "orient",
         "operation": "map",
         "stray": "source, target",
-        "accepted": "focus, budget, max_files, granularity",
+        "accepted": "focus, budget, limit, granularity",
         "required": "none",
     },
     "op_requires_parameters": {

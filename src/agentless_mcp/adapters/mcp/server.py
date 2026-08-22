@@ -333,6 +333,10 @@ OrientFocus = Annotated[
     str | list[str] | None,
     Field(description=PARAMETER_DESCRIPTIONS["orient_focus"]),
 ]
+OrientLimit = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["orient_limit"]),
+]
 SymbolsLimit = Annotated[
     int | None,
     Field(ge=1, le=MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["symbols_limit"]),
@@ -1275,7 +1279,7 @@ OPERATION_SLICE = "slice"
 OPERATION_DIR = "dir"
 
 ORIENT_OPERATIONS: dict[str, OperationSpec] = {
-    OPERATION_MAP: OperationSpec(accepted=("focus", "budget", "max_files", "granularity")),
+    OPERATION_MAP: OperationSpec(accepted=("focus", "budget", "limit", "granularity")),
     OPERATION_COMMUNITIES: OperationSpec(accepted=("resolution", "limit")),
     OPERATION_CYCLES: OperationSpec(accepted=("limit",)),
     OPERATION_DIAGRAM: OperationSpec(
@@ -1293,7 +1297,7 @@ SYMBOLS_OPERATIONS: dict[str, OperationSpec] = {
     OPERATION_EXPAND: OperationSpec(accepted=("stable_ids", "limit"), required=("stable_ids",)),
     OPERATION_EXPLAIN: OperationSpec(accepted=("target", "limit"), required=("target",)),
     OPERATION_LOCATE: OperationSpec(
-        accepted=("path", "locs", "context_lines"), required=("path", "locs")
+        accepted=("path", "locations", "context_lines"), required=("path", "locations")
     ),
 }
 
@@ -1380,10 +1384,9 @@ def _register_v2(
         repo_root: RepoRoot = None,
         focus: OrientFocus = None,
         budget: Budget = None,
-        max_files: MaxFiles = None,
         granularity: Granularity = None,
         resolution: Resolution = None,
-        limit: StructureLimit = None,
+        limit: OrientLimit = None,
         source: OptionalSource = None,
         target: OptionalTarget = None,
         include_unique: OptionalIncludeUnique = None,
@@ -1400,7 +1403,6 @@ def _register_v2(
             {
                 "focus": focus,
                 "budget": budget,
-                "max_files": max_files,
                 "granularity": granularity,
                 "resolution": resolution,
                 "limit": limit,
@@ -1419,7 +1421,7 @@ def _register_v2(
                     MapRequest(
                         focus=_focus_entries(focus),
                         budget=budget,
-                        max_files=max_files,
+                        max_files=limit,
                         granularity=granularity,
                     ),
                 )
@@ -1455,7 +1457,7 @@ def _register_v2(
         stable_ids: OptionalStableIds = None,
         target: OptionalExplainTarget = None,
         path: OptionalFilePath = None,
-        locs: OptionalLocations = None,
+        locations: OptionalLocations = None,
         context_lines: OptionalContextLines = None,
         no_cache: NoCache = False,
     ) -> str:
@@ -1473,7 +1475,7 @@ def _register_v2(
                 "stable_ids": stable_ids,
                 "target": target,
                 "path": path,
-                "locs": locs,
+                "locations": locations,
                 "context_lines": context_lines,
             },
         )
@@ -1495,7 +1497,7 @@ def _register_v2(
             return handlers.resolve_locations(
                 ctx,
                 path or "",
-                locs or [],
+                locations or [],
                 _or_default(context_lines, DEFAULT_CONTEXT_LINES),
             )
 

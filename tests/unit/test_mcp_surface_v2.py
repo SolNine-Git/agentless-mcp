@@ -101,7 +101,7 @@ PARITY_PAIRS = [
     ("orient", {"operation": "map"}, "repo_map", {}),
     (
         "orient",
-        {"operation": "map", "focus": "quote", "budget": 2000, "max_files": 1},
+        {"operation": "map", "focus": "quote", "budget": 2000, "limit": 1},
         "repo_map",
         {"focus": "quote", "budget": 2000, "max_files": 1},
     ),
@@ -211,7 +211,7 @@ PARITY_PAIRS = [
     ),
     (
         "symbols",
-        {"operation": "locate", "path": "core.py", "locs": ["function:quote"]},
+        {"operation": "locate", "path": "core.py", "locations": ["function:quote"]},
         "resolve_locations",
         {"path": "core.py", "locs": ["function:quote"]},
     ),
@@ -220,7 +220,7 @@ PARITY_PAIRS = [
         {
             "operation": "locate",
             "path": "core.py",
-            "locs": ["class:PriceBook"],
+            "locations": ["class:PriceBook"],
             "context_lines": 1,
         },
         "resolve_locations",
@@ -373,7 +373,7 @@ REJECTIONS = [
         {"operation": "map", "source": "quote"},
         [
             "orient operation 'map' does not accept: source",
-            "accepts: focus, budget, max_files, granularity",
+            "accepts: focus, budget, limit, granularity",
             "required: none",
         ],
     ),
@@ -418,7 +418,7 @@ REJECTIONS = [
     (
         "symbols",
         {"operation": "locate", "path": "core.py"},
-        ["symbols operation 'locate' is missing: locs", "required: path, locs"],
+        ["symbols operation 'locate' is missing: locations", "required: path, locations"],
     ),
     (
         "read",

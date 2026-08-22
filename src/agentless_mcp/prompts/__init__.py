@@ -170,6 +170,7 @@ PARAMETER_NAMES = (
     "symbols_operation",
     "read_operation",
     "orient_focus",
+    "orient_limit",
     "symbols_limit",
     "read_path",
 )

@@ -16,9 +16,9 @@ Two calls answer most localization questions. A third is the escalation, not
 the default.
 
 ```
-1.  map --focus <what the issue mentions>        # where does this live
-2.  expand <stable_id> <stable_id> ...           # what does it actually do
-3.  slice FILE --lines A:B                       # only when a body is not enough
+1.  orient(operation="map", focus=[...])              # where does this live       (CLI: map)
+2.  symbols(operation="expand", stable_ids=[...])     # what does it actually do   (CLI: expand)
+3.  read(operation="slice", path=..., lines=[[A,B]])  # only when a body is not enough (CLI: slice)
 ```
 
 Budget for a full issue context: **~4.5k-8.7k prompt tokens**. That band is
@@ -78,7 +78,8 @@ py:src/app/svc.py::Invoice.total
 ```
 
 Ids round-trip: anything a map or a skeleton prints can be handed straight to
-`expand` / `expand_symbols`. They contain no row ids and no line numbers, so
+`expand` (`symbols` operation `expand`). They contain no row ids and no line
+numbers, so
 they survive a re-index; they do *not* survive a rename, which is the correct
 behaviour -- a renamed symbol is a different symbol and you should be told so
 rather than shown the wrong body.
@@ -103,28 +104,52 @@ several same-named symbols is possible at all.
 
 ## The two surfaces
 
-The CLI has one subcommand per question. The MCP server publishes **eleven
+The CLI has one subcommand per question. The MCP server publishes **five
 tools**, and that number is a decision rather than an accident: selection
-accuracy falls as a tool list grows, so the four whole-repository structure
-questions are folded behind one `analyze_structure(operation=...)` instead of
-being four more entries to choose between. The folding is adapter-level only —
-same services, same answers, same wording.
+accuracy falls as a tool list grows, so the questions are folded behind an
+`operation` parameter by intent -- orientation, symbols, contents -- instead
+of being eleven entries to choose between. The folding is adapter-level only:
+same services, same answers, same wording. `find_referencing_symbols` stays
+its own tool deliberately, so the expensive fan-in call keeps its own
+decision point and cost warning. The escalation chain is `orient` to locate,
+then `symbols` for declarations and bodies, then `read` for exact lines.
 
-| MCP tool | CLI | Answers |
-|---|---|---|
-| `repo_map` | `map` | where does this live |
-| `list_dir` | `tree` | what exists |
-| `get_symbols_overview` | `skeleton` | what does this file declare |
-| `expand_symbols` | `expand` | what does it actually do |
-| `read_slice` | `slice` | these exact lines |
-| `find_symbol` | `find-symbol` | where is this name |
-| `find_referencing_symbols` | `refs` | who calls it (blast radius) |
-| `explain_symbol` | `explain` | one symbol, in context |
-| `analyze_structure` | `path` / `cycles` / `communities` / `diagram` | how is the repository put together |
-| `resolve_locations` | `resolve-locs` | location strings to intervals |
-| `capabilities` | `capabilities` | what is loaded, what is capped |
-| *(none)* | `html` | searchable human graph export to stdout or XDG cache |
-| *(none)* | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
+| MCP tool | Operations | CLI | Answers |
+|---|---|---|---|
+| `orient` | `map`, `communities`, `cycles`, `diagram`, `path` | `map` / `communities` / `cycles` / `diagram` / `path` | where does this live, how is the repository put together |
+| `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | `find-symbol` / `skeleton` / `expand` / `explain` / `resolve-locs` | what is this symbol, what does it declare, what does it do |
+| `find_referencing_symbols` | *(none)* | `refs` | who calls it (blast radius) |
+| `read` | `slice`, `dir` | `slice` / `tree` | these exact lines, what exists |
+| `capabilities` | *(none)* | `capabilities` | what is loaded, what is capped |
+| *(no MCP tool)* | | `html` | searchable human graph export to stdout or XDG cache |
+| *(no MCP tool)* | | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
+
+`operation` is a plain string on the wire, not an enum: a wrong value is
+answered with the valid list, and a parameter foreign to the selected
+operation is refused with one message naming what that operation accepts and
+requires -- never a schema validation dump.
+
+**Previous surface.** These five are the v2 surface, the default. A server
+started with `--surface v1` publishes the original per-question tools for
+un-migrated operators, and `--surface both` publishes the union, for one
+release. The mapping, for readers migrating:
+
+| v1 tool (behind `--surface v1`) | v2 call |
+|---|---|
+| `repo_map` | `orient` operation `map` |
+| `list_dir` | `read` operation `dir` |
+| `get_symbols_overview` | `symbols` operation `overview` |
+| `expand_symbols` | `symbols` operation `expand` |
+| `read_slice` | `read` operation `slice` |
+| `find_symbol` | `symbols` operation `find` |
+| `explain_symbol` | `symbols` operation `explain` |
+| `analyze_structure` | `orient` operations `path` / `cycles` / `communities` / `diagram` |
+| `resolve_locations` | `symbols` operation `locate` |
+
+`find_referencing_symbols` and `capabilities` are the same tools on both
+surfaces. Every v2 operation routes to exactly the handler its v1 counterpart
+called, with the same defaults, so a v2 answer is byte-identical to its v1
+counterpart's.
 
 Everything that writes or executes is CLI-only and always will be: a tool an
 analysed repository's contents could talk an agent into calling must not be
@@ -141,8 +166,8 @@ the response contract of the existing tools in place.
 
 ## Per-tool usage
 
-CLI names first, MCP tool names in parentheses. Every MCP tool takes
-`repo_root` as its first argument; the CLI defaults it to the git root
+CLI names first, the v2 MCP call in parentheses. Every MCP tool takes
+`repo_root`; the CLI defaults it to the git root
 enclosing the current directory, or takes `--repo PATH`. `repo_root` may be
 omitted when the server holds one repository, or when the client advertises
 an MCP workspace root that identifies exactly one configured root -- the
@@ -169,17 +194,19 @@ copy it managed to load.
 ### Claude Code specifics
 
 Two client-side settings decide whether agents actually reach these tools.
-First, allowlist the read tools in `~/.claude/settings.json` permissions
-(`mcp__agentless__repo_map`, `mcp__agentless__expand_symbols`, and the rest)
-so calls run without permission prompts; friction at the prompt is what
-sends a model back to Grep. Second, subagents receive MCP tools as deferred
-schemas: a dispatch prompt that expects structural navigation must tell the
-worker to issue one
-`ToolSearch(query="select:mcp__agentless__repo_map,mcp__agentless__expand_symbols,mcp__agentless__find_referencing_symbols")`
-before its first call -- a worker not told this defaults to Grep, because
-Grep is loaded from the start.
+First, allowlist the five read tools in `~/.claude/settings.json` permissions
+(`mcp__agentless__orient`, `mcp__agentless__symbols`,
+`mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
+`mcp__agentless__capabilities`) so calls run without permission prompts;
+friction at the prompt is what sends a model back to Grep. Second, subagents
+receive MCP tools as deferred schemas: a dispatch prompt that expects
+structural navigation must tell the worker to issue one
+`ToolSearch(query="select:mcp__agentless__orient,mcp__agentless__symbols,mcp__agentless__find_referencing_symbols")`
+before its first call -- add `mcp__agentless__read` when the procedure uses
+slices or listings. A worker not told this defaults to Grep, because Grep is
+loaded from the start.
 
-### `map` (`repo_map`) -- where does this live
+### `map` (`orient` operation `map`) -- where does this live
 
 ```
 agentless-mcp map --focus src/billing/invoice.py --focus quote --max-files 10
@@ -215,7 +242,7 @@ clamps it to 2k-8k tokens. Pass an integer to pin it.
 Output is one block per file: `NN| signature  [stable_id]`, plus a count of
 the symbols that did not fit.
 
-### `tree` (`list_dir`) -- what exists
+### `tree` (`read` operation `dir`) -- what exists
 
 ```
 agentless-mcp tree --depth 4 --max-entries 500
@@ -225,7 +252,7 @@ Gitignore-aware, via `git ls-files` where the directory is a repository. Both
 truncations -- depth elision and the entry cap -- are marked in the output;
 a bounded view is never presented as a complete one.
 
-### `skeleton` (`get_symbols_overview`) -- what does this file declare
+### `skeleton` (`symbols` operation `overview`) -- what does this file declare
 
 ```
 agentless-mcp skeleton src/app/svc.py src/app/model.py
@@ -235,13 +262,13 @@ Signatures, class attributes, constants and imports; bodies replaced by `...`;
 comments and docstrings stripped. Original line numbers are preserved, so a
 line you see here is a line you can slice.
 
-The MCP tool opens each file's block with a `stable ids:` line naming the id
+The MCP operation opens each file's block with a `stable ids:` line naming the id
 pattern for that file -- e.g. `py:src/app/svc.py::<QualifiedName>`, with the
 prefix derived from the file's language; nested symbols qualify as
-`Class.method`. Escalating to `expand_symbols` is therefore a read off the
-overview, not a separate id lookup.
+`Class.method`. Escalating to `expand` is therefore a read off the overview,
+not a separate id lookup.
 
-### `expand` (`expand_symbols`) -- the escalation
+### `expand` (`symbols` operation `expand`) -- the escalation
 
 ```
 agentless-mcp expand py:src/app/svc.py::Invoice.total py:src/app/svc.py::quote
@@ -277,7 +304,7 @@ Raising `--limit` past 40 does not raise what one response can carry: ids past
 the fortieth come back in `unresolved` saying so, rather than crowding the
 others out of the answer.
 
-### `slice` (`read_slice`) -- line-level, last
+### `slice` (`read` operation `slice`) -- line-level, last
 
 ```
 agentless-mcp slice src/app/svc.py --lines 40:70 --lines 120:135 --context 10
@@ -295,7 +322,7 @@ never answered with the whole file as if it were the requested slice. A range
 that starts inside the file and runs past the end is clamped to the last
 line, and good ranges in the same call still render alongside the report.
 
-### `find-symbol` (`find_symbol`) -- name lookup
+### `find-symbol` (`symbols` operation `find`) -- name lookup
 
 ```
 agentless-mcp find-symbol quote --kind method --limit 20
@@ -373,7 +400,7 @@ candidate whatever their score, grouped under a `defined in tests` heading --
 the question is whether a *production* utility already exists. Every row and
 every caller carries `file:line`.
 
-### `explain` (`explain_symbol`) -- one symbol, in context
+### `explain` (`symbols` operation `explain`) -- one symbol, in context
 
 ```
 agentless-mcp explain Invoice.total --limit 20
@@ -415,7 +442,7 @@ signature names and the constants a body reads, and it counts one relationship
 per pair however many times the name appears. For the individual call sites
 with their line numbers, use `refs`.
 
-### `path` (`analyze_structure operation="path"`) -- how are these two connected
+### `path` (`orient` operation `path`) -- how are these two connected
 
 ```
 agentless-mcp path reorder_report format_money
@@ -465,7 +492,7 @@ every one that merely ends with it, and only definitions of equal standing are
 reported as ambiguous. `explain` uses the same order and lists the rest under
 `also defined at`.
 
-### `cycles` (`analyze_structure operation="cycles"`) -- module-level import knots
+### `cycles` (`orient` operation `cycles`) -- module-level import knots
 
 ```
 agentless-mcp cycles --limit 20
@@ -497,7 +524,7 @@ Import edges are resolved best effort: a module string this tool cannot map to
 a file in the repository contributes no edge, so a cycle that runs through a
 dynamic import or an unusual path alias will not appear.
 
-### `communities` (`analyze_structure operation="communities"`) -- which files belong together
+### `communities` (`orient` operation `communities`) -- which files belong together
 
 ```
 agentless-mcp communities --resolution 0.5 --limit 20 --members 12
@@ -535,7 +562,7 @@ larger communities and above it gives more, smaller ones. Deliberately one
 level, not full Louvain: on a dense reference graph the second level merges
 everything into a handful of blobs without scoring any better.
 
-### `diagram` (`analyze_structure operation="diagram"`) -- the module graph, drawn
+### `diagram` (`orient` operation `diagram`) -- the module graph, drawn
 
 ```
 agentless-mcp diagram --max-nodes 40 > docs/diagrams/modules.mmd
@@ -607,7 +634,7 @@ repository's hashed `$XDG_CACHE_HOME/agentless-mcp/` entry. Arbitrary paths are
 not accepted, so the export cannot write into the repository under analysis.
 There is no MCP operation for this human-only artifact.
 
-### `resolve-locs` (`resolve_locations`) -- location strings to intervals
+### `resolve-locs` (`symbols` operation `locate`) -- location strings to intervals
 
 ```
 agentless-mcp resolve-locs src/app/svc.py --loc "class: Invoice" --loc "function: total"
@@ -667,9 +694,8 @@ language and re-index to pick those files up.
 
 Only one index run per repository at a time: a second concurrent run exits
 immediately saying the lock is held rather than queueing. Any read command
-takes `--no-cache` (`no_cache: true` on `repo_map`, `get_symbols_overview`,
-`find_symbol`, `expand_symbols`, `explain_symbol` and `analyze_structure`) to
-bypass the index for that call.
+takes `--no-cache` (`no_cache: true` on the `orient` and `symbols` MCP tools)
+to bypass the index for that call.
 
 ### `lint` -- deterministic hallucination checks, CLI only
 
