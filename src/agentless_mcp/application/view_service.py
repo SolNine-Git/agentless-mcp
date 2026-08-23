@@ -182,7 +182,7 @@ class ViewService:
         for raw in paths:
             resolved, language, text, error = self._load(ctx, raw)
             if error:
-                views.append(FileView(path=raw, language=language, text="", error=error))
+                views.append(FileView(path=resolved, language=language, text="", error=error))
                 continue
             try:
                 rendered = skeletonize(text, language, docstrings=docstrings, number_lines=numbered)
@@ -220,7 +220,7 @@ class ViewService:
         _check_context(context)
         resolved, language, text, error = self._load(ctx, path)
         if error:
-            return FileView(path=path, language=language, text="", error=error)
+            return FileView(path=resolved, language=language, text="", error=error)
 
         total = line_count(text)
         satisfiable = [(start, end) for start, end in intervals if _satisfiable(start, end, total)]

@@ -47,7 +47,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
-from agentless_mcp.core.slices import line_prefix
+from agentless_mcp.core.slices import line_count, line_prefix
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -397,7 +397,7 @@ class SymbolService:
 
         lines = source.split("\n")
         start = match.line_number
-        end = min(len(lines), match.end_line_number or match.line_number)
+        end = min(line_count(source), match.end_line_number or match.line_number)
         body = "\n".join(
             f"{line_prefix(number)}{lines[number - 1]}" for number in range(start, end + 1)
         )
