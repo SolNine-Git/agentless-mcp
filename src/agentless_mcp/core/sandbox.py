@@ -61,9 +61,9 @@ Process-group control is where the platforms genuinely differ. POSIX gets the
 full guarantee: a new session, then SIGTERM and SIGKILL to the whole group, so
 grandchildren die with their parent. Windows gets a documented best effort --
 a new process group at spawn, then ``terminate()`` and ``kill()`` on the
-leader -- and that difference is stated in the README rather than papered
-over, because a caller who believes stray children are impossible on a
-platform where they are not has been told something false.
+leader -- and that difference is stated in ``docs/functional-assessment.md``
+rather than papered over, because a caller who believes stray children are
+impossible on a platform where they are not has been told something false.
 """
 
 import logging
@@ -253,7 +253,10 @@ def worktree(root: Path) -> Iterator[Path]:
         )
         raise RepoResolutionError(message)
 
-    scratch.mkdir(parents=True, exist_ok=True)
+    # `mode=` on the create, as `core/cache.py` does, so the directory is
+    # never briefly at the umask's mode. The chmod stays for the directory an
+    # earlier run already made.
+    scratch.mkdir(parents=True, exist_ok=True, mode=cache.DIRECTORY_MODE)
     scratch.chmod(cache.DIRECTORY_MODE)
 
     path = scratch / f"wt-{uuid.uuid4().hex}"
@@ -501,8 +504,8 @@ def _kill_leader(process: "subprocess.Popen[bytes]") -> None:
     """End the timed-out command's leader process, politely then not.
 
     The Windows path. Anything the command spawned survives it, which is why
-    the README says the timeout guarantee there is best effort: without a job
-    object there is nothing to signal a whole tree with.
+    ``docs/functional-assessment.md`` says the timeout guarantee there is best
+    effort: without a job object there is nothing to signal a whole tree with.
     """
     process.terminate()
     try:

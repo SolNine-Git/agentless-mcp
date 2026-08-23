@@ -433,7 +433,12 @@ class TestRunCommand:
         result = sandbox.run_command(workspace, python_cmd("hang.py", str(marker)), timeout=2)
 
         assert result.status is RunStatus.TIMEOUT
-        _group, child = (int(value) for value in marker.read_text(encoding="utf-8").split())
+        # Checked before unpacking: on a loaded runner the script may not
+        # reach its write inside the bound, and an unpack of a short list
+        # fails with a ValueError that names none of that.
+        recorded = marker.read_text(encoding="utf-8").split()
+        assert len(recorded) == 2, f"hang.py recorded {recorded!r}, not a pgid and a child pid"
+        _group, child = (int(value) for value in recorded)
         assert process_is_gone(child), f"child process {child} outlived the run"
 
     def test_an_interrupted_run_still_ends_the_process_group(
