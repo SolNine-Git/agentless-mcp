@@ -90,7 +90,11 @@ _MODULE_SUFFIXES: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class RefGraph:
-    """A weighted directed graph over repository-relative file paths."""
+    """A weighted directed graph over repository-relative file paths.
+
+    Frozen for immutability rather than for hashing: ``edges`` is a mapping,
+    so ``hash()`` on a graph raises. Nothing in this package hashes one.
+    """
 
     nodes: tuple[str, ...]
     edges: Mapping[tuple[str, str], float]
@@ -432,7 +436,10 @@ def _reference_weight(
     """Weight one file's references to ``name``, damped by how common it is."""
     if candidate_count < 1:
         return 0.0
-    spread = index.files_referencing.get(name, 1)
+    # Indexed rather than defaulted: `build_graph` counts the same reference
+    # sites `build_ref_index` counts, so every name reaching here is a key. A
+    # default would read a mismatched scan and index as "referenced once".
+    spread = index.files_referencing[name]
     evidence = UNIQUE_MATCH_MULTIPLIER if candidate_count == 1 else AMBIGUOUS_MATCH_MULTIPLIER
     return count * name_multiplier(name, stoplist) * evidence / common_name_damping(spread)
 

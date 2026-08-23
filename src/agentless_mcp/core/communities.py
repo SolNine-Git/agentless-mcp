@@ -14,20 +14,21 @@ carrying the two competing self-loop conventions through the modularity
 arithmetic would buy nothing.
 
 The aggregation step is deliberately not here, and that is a measurement
-rather than a preference. A reference graph is dense -- this package's own is
-102 files and 1417 edges, average degree 28 -- and on a dense graph the second
-Louvain level does exactly what a rollup must not do. Measured 2026-08-18 by
-running one level, collapsing the graph onto it and running a second level: at
-resolution 1.0 the second level merged 29 communities into 10 whose three
-largest held 44, 33 and 18 of the 102 files, and scored no better on the
-original graph (Q 0.272 -> 0.271); at resolution 0.5 it put 95 of 102 files in
-one community. One level at resolution 1.0 gives Q = 0.272 over 29
+rather than a preference. A reference graph is dense, and on a dense graph the
+second Louvain level does exactly what a rollup must not do. Measured
+2026-08-18 over this package's own tree of 102 files and 1417 edges, average
+degree 28, by running one level, collapsing the graph onto it and running a
+second level: at resolution 1.0 the second level merged 29 communities into 10
+whose three largest held 44, 33 and 18 of the 102 files, and scored no better
+on the original graph (Q 0.272 -> 0.271); at resolution 0.5 it put 95 of 102
+files in one community. One level at resolution 1.0 gave Q = 0.272 over 29
 communities, largest 16, labelled ``src/agentless_mcp``, ``tests/unit``,
-``tests/characterization/fixtures``. Q = 0.272 is modest, and it is the honest
-score of a graph where every file shares identifier names with most others;
-the partition is neither a blob nor all singletons, and its labels are the
-directory structure. Callers wanting a coarser rollup should lower
-``resolution`` (0.5 gives Q = 0.458 over 18 communities), not add a level.
+``tests/characterization/fixtures``. That score is modest, and it is the
+honest score of a graph where every file shares identifier names with most
+others; the partition is neither a blob nor all singletons, and its labels are
+the directory structure. Callers wanting a coarser rollup should lower
+``resolution`` (0.5 gave Q = 0.458 over 18 communities on that tree), not add
+a level.
 
 **Determinism is a property of three explicit rules**, and every one of them is
 an ordering decision that would otherwise be taken by dictionary iteration:
