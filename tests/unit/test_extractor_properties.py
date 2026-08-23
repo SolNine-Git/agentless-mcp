@@ -156,17 +156,14 @@ class TestAsyncDetection:
 
 
 class TestConditionalImports:
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H3: _extract_python_symbols and its import twin iterate root children "
-            "only, so an import nested in `if TYPE_CHECKING:` never reaches the graph. "
-            "Measured: the source below yields one import, `typing`, and none for `foo` -- "
-            "and a type-checking block is where a repository puts exactly the imports that "
-            "would otherwise be cycles."
-        ),
-    )
     def test_a_type_checking_import_reaches_the_import_graph(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        The Python import walk iterated root children only, so the source
+        below yielded one import, `typing`, and none for `foo` -- and a
+        type-checking block is where a repository puts exactly the imports
+        that would otherwise be cycles.
+        """
         source = "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from foo import Bar\n"
         statements = extractor.extract_imports_from_source(source, "python", "a.py")
         modules = [statement.module for statement in statements]

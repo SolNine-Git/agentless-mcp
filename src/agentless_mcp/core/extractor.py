@@ -20,7 +20,7 @@ warmed-state and degradation.
 
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -864,6 +864,28 @@ def walk_nodes(root: Node) -> list[Node]:
     return found
 
 
+def declarations_under(root: Node, declaration_types: frozenset[str]) -> Iterator[Node]:
+    """Yield each declaration beneath ``root``, descending through wrappers.
+
+    One traversal rule, stated once and shared by every handler that has a set
+    of declaration node types: a node that is not itself a declaration is a
+    wrapper that may still hold one, and a declaration ends the descent
+    because what it contains belongs to it. Include guards, C++ namespaces,
+    Rust `mod` bodies and `if TYPE_CHECKING:` blocks are all the same shape,
+    and a loop over the root's direct children reaches inside none of them.
+
+    Iterative for the reason :func:`walk_nodes` gives: a deep chain of nodes
+    must not exhaust the interpreter's stack and abort a repository index.
+    """
+    stack: list[Node] = list(reversed(root.children))
+    while stack:
+        node = stack.pop()
+        if node.type in declaration_types:
+            yield node
+            continue
+        stack.extend(reversed(node.children))
+
+
 def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
     """Extract rationale markers and ADR/RFC citations from comment nodes."""
     found: list[Rationale] = []
@@ -979,6 +1001,35 @@ class _LanguageSpec:
     grammar: str
     extract_symbols: SymbolHandler
     extract_imports: ImportHandler
+
+
+# The node types each dedicated handler treats as a declaration. They are
+# what `declarations_under` stops the descent at, so a type listed here also
+# says "what is inside this belongs to it" -- which is why a C++
+# `class_specifier` is listed and a `namespace_definition` is not.
+C_TAGGED_TYPES = frozenset({"struct_specifier", "class_specifier", "enum_specifier"})
+C_DECLARATION_TYPES = frozenset({"function_definition"}) | C_TAGGED_TYPES
+RUST_ITEM_TYPES = frozenset(
+    {
+        "function_item",
+        "struct_item",
+        "enum_item",
+        "trait_item",
+        "impl_item",
+        "const_item",
+        "type_item",
+    }
+)
+PYTHON_DECLARATION_TYPES = frozenset(
+    {
+        "function_definition",
+        "class_definition",
+        "expression_statement",
+        "assignment",
+        "type_alias_statement",
+        "decorated_definition",
+    }
+)
 
 
 class TreeSitterExtractor:
@@ -1985,8 +2036,14 @@ class TreeSitterExtractor:
         symbols: list[ASTSymbol],
         language: str,
     ) -> None:
-        """Extract function and struct symbols from C/C++ AST."""
-        for node in root.children:
+        """Extract function and tagged-type symbols from a C/C++ AST.
+
+        Over `declarations_under`, so an include guard and a C++ namespace are
+        descended through rather than treated as the end of the file: an
+        `#ifndef` wraps a whole header in one `preproc_ifdef`, which is the
+        normal shape of a C header and used to hide every symbol in it.
+        """
+        for node in declarations_under(root, C_DECLARATION_TYPES):
             if node.type == "function_definition":
                 name = self._c_function_name(node, source)
                 if name:
@@ -2007,7 +2064,7 @@ class TreeSitterExtractor:
                             is_async=False,
                         )
                     )
-            elif node.type in ("struct_specifier", "class_specifier", "enum_specifier"):
+            else:
                 name_node = node.child_by_field_name("name")
                 if name_node:
                     name = self._node_text(name_node, source)
@@ -2065,9 +2122,14 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract #include directives as import statements."""
+        """Extract #include directives as import statements.
+
+        Over the whole tree, the same as the generic import walk: an include
+        inside a guard is one level deeper than the root, and a header that
+        contributed no edges to the import graph was the result.
+        """
         _ = module_path
-        for node in root.children:
+        for node in walk_nodes(root):
             if node.type == "preproc_include":
                 for child in node.children:
                     if child.type in ("string_literal", "system_lib_string"):
@@ -2195,8 +2257,13 @@ class TreeSitterExtractor:
         module_path: str,
         symbols: list[ASTSymbol],
     ) -> None:
-        """Extract symbols from a Python AST."""
-        for child in root.children:
+        """Extract symbols from a Python AST.
+
+        Over `declarations_under`, so a definition guarded by `if
+        TYPE_CHECKING:` or by a version check is a symbol of the module that
+        makes it, not one hidden by the block it sits in.
+        """
+        for child in declarations_under(root, PYTHON_DECLARATION_TYPES):
             if child.type == "function_definition":
                 symbols.append(self._extract_function(child, source, module_path, parent_class=""))
             elif child.type == "class_definition":
@@ -2441,8 +2508,13 @@ class TreeSitterExtractor:
         module_path: str,
         symbols: list[ASTSymbol],
     ) -> None:
-        """Extract symbols from a Rust AST (top-level items only)."""
-        for child in root.children:
+        """Extract symbols from a Rust AST.
+
+        Over `declarations_under`, so a `mod` body contributes its items --
+        including `#[cfg(test)] mod tests`, which is how a Rust crate writes
+        its tests and which used to be invisible to the symbol map entirely.
+        """
+        for child in declarations_under(root, RUST_ITEM_TYPES):
             self._visit_rust_item(child, source, module_path, symbols, parent_class="")
 
     def _visit_rust_item(
@@ -2639,9 +2711,13 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract use declarations from a Rust AST."""
+        """Extract use declarations from a Rust AST.
+
+        Over the whole tree, so a `use super::*;` inside a `mod` block reaches
+        the import graph.
+        """
         _ = module_path
-        for child in root.children:
+        for child in walk_nodes(root):
             if child.type == "use_declaration":
                 self._extract_rust_use(child, source, imports)
 
@@ -2680,9 +2756,14 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract import statements from a Python AST."""
+        """Extract import statements from a Python AST.
+
+        Over the whole tree, the same as the generic import walk: an import
+        under `if TYPE_CHECKING:` is exactly the one a repository puts there
+        to avoid a cycle, and it never reached the import graph.
+        """
         _ = module_path
-        for child in root.children:
+        for child in walk_nodes(root):
             if child.type == "import_statement":
                 self._extract_bare_import(child, source, imports)
             elif child.type == "import_from_statement":

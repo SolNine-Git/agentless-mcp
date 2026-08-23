@@ -106,17 +106,15 @@ class TestRustTopLevelItems:
 
 
 class TestRustGaps:
-    """Two Rust properties that do not hold today."""
+    """Rust properties that root-children-only traversal used to break."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H4: _extract_rust_symbols iterates root children only, so a mod_item's "
-            "contents are never visited. Measured: pricing.rs yields 8 symbols and "
-            "round_half_up is not among them. Fixed by stage 6c."
-        ),
-    )
     def test_a_function_inside_a_module_is_extracted(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        `_extract_rust_symbols` iterated the root's direct children, so a
+        `mod_item`'s contents were never visited and pricing.rs yielded 8
+        symbols with `round_half_up` not among them.
+        """
         assert "round_half_up" in named(symbols_for(extractor, "rust"))
 
     @pytest.mark.xfail(
@@ -134,16 +132,13 @@ class TestRustGaps:
         assert price.is_async
         assert price.signature.startswith("async fn ")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H4, the case that costs most: `#[cfg(test)] mod tests { use super::*; }` "
-            "is how every Rust crate writes its tests. Measured: the block below yields "
-            "zero symbols and zero imports, so a Rust repository's test module is invisible "
-            "to both the symbol map and the import graph. Fixed by stage 6c."
-        ),
-    )
     def test_a_cfg_test_module_contributes_its_items(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        `#[cfg(test)] mod tests { use super::*; }` is how every Rust crate
+        writes its tests, and the block below used to yield zero symbols and
+        zero imports -- invisible to both the symbol map and the import graph.
+        """
         source = "#[cfg(test)]\nmod tests {\n    use super::*;\n    pub fn helper() {}\n}\n"
         extracted = extractor.extract_from_source(source, "rust", "a.rs")
         imported = extractor.extract_imports_from_source(source, "rust", "a.rs")
@@ -179,29 +174,21 @@ class TestCTranslationUnit:
 class TestCHeaderGuard:
     """The include guard is the normal shape of a C header, and it hides everything."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H1: _extract_c_symbols iterates root children only. `#ifndef` wraps the "
-            "whole translation unit in one preproc_ifdef, so a guarded header's symbols "
-            "are all one level too deep. Measured: pricing.h yields 0 symbols. Nearly "
-            "every C header in a real repository is guarded. Fixed by stage 6c."
-        ),
-    )
     def test_a_guarded_header_yields_its_declarations(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        `#ifndef` wraps a whole translation unit in one `preproc_ifdef`, so a
+        guarded header's symbols sit one level too deep for a root-children
+        walk. pricing.h used to yield 0 symbols, and nearly every C header in
+        a real repository is guarded.
+        """
         found = named(symbols_for(extractor, "c_header"))
         assert "Money" in found
         assert "apply_tax_inline" in found
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H1, import half: the same root-children-only walk in _extract_c_imports. "
-            "Measured: pricing.h yields 0 imports, so a guarded header contributes no "
-            "edges to the import graph either. Fixed by stage 6c."
-        ),
-    )
     def test_a_guarded_header_yields_its_includes(self, extractor):
+        # The import half of the same defect: a guarded header contributed no
+        # edges to the import graph either.
         assert [statement.module for statement in imports_for(extractor, "c_header")] == ["money.h"]
 
 
@@ -213,16 +200,13 @@ class TestCppNamespace:
         assert found["Ledger"].signature == "class Ledger"
         assert found["top_level_total"].kind is SymbolKind.FUNCTION
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H1: a C++ namespace_definition is a root child whose members are one "
-            "level deeper, and _extract_c_symbols never descends. Measured: pricing.cpp "
-            "yields 2 symbols, and Invoice and billing::apply_tax are not among them. "
-            "Fixed by stage 6c."
-        ),
-    )
     def test_a_declaration_inside_a_namespace_is_extracted(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        A C++ `namespace_definition` is a root child whose members are one
+        level deeper, and the C handler never descended: pricing.cpp used to
+        yield 2 symbols, with neither Invoice nor apply_tax among them.
+        """
         found = named(symbols_for(extractor, "cpp"))
         assert "Invoice" in found
         assert "apply_tax" in found
