@@ -9,8 +9,15 @@ Seven checks ship here. Three are resolution-independent -- they need the
 patch's parsed edits and the repository's already-extracted symbol and import
 tables, and nothing more. Four read
 :mod:`agentless_mcp.core.resolve`, through the resolver the caller hands over
-on :class:`RepoFacts`; this module never opens a cache, a repository or a file
-of its own.
+on :class:`RepoFacts`. No check opens a cache, a repository or a source file:
+every check reads the facts and text the caller supplies.
+
+One function here does open files, and naming it is better than a claim the
+next reader can disprove. :func:`read_declared_dependencies` reads the
+manifests at a repository root through the bounded reader. It belongs beside
+:meth:`agentless_mcp.application.lint_service.LintService._facts`, which owns
+reading the repository, and it has not moved there yet. The ``parse_*``
+functions beside it take text and are pure.
 
 ``undeclared_imports``
     A top-level package the patch imports that is in neither the repository's
@@ -80,19 +87,25 @@ a file: it is dedented before parsing, and an introduced symbol is treated as
 module-level only when its line began at column 1 in the original block, so a
 method added to a class is never mistaken for a top-level definition. And a
 distribution name is not an import name (``PyYAML`` provides ``yaml``), which
-would make the import check noisy; the escape hatch is mechanical rather than
-a hand-maintained alias table -- a top-level package already imported somewhere
+would make the import check noisy. The escape hatch is mechanical rather than
+a hand-maintained alias table: a top-level package already imported somewhere
 in the repository is treated as available, because the evidence that it
-installs is that the repository already runs.
+installs is that the repository already runs, and a declared distribution
+installed in *this* environment states the import names it provides. What a
+distribution that is not installed here provides is unknown, and the check
+says so beside its findings rather than dropping them.
 
 Two more boundaries belong to the resolution-dependent half. **Only names in
 call position and declared base classes are candidates for
-``dangling_references``.** A bare identifier read is almost always a local, and
-this module cannot see a function's scopes; a check that reported every local
-variable as undefined would be a check nobody reads, and turning it off would
-be the same outcome with worse manners. **The builtin, keyword and binder
-tables are Python's**, so both name-level checks report ``not_checked`` for a
-language whose tables are absent rather than judging it by Python's. The two
+``dangling_references``.** A bare identifier read is almost always a local,
+and a check that reported every local variable as undefined would be a check
+nobody reads. Which occurrences are local is not decided here: the extractor's
+scope pass already labels every identifier, and this reads that label rather
+than a second opinion. **The builtin and keyword tables are Python's**, so
+both name-level checks report ``not_checked`` for a language whose tables are
+absent rather than judging it by Python's. They are also the running
+interpreter's, which the report says whenever that is not the interpreter the
+repository targets. The two
 graph-shaped checks -- ``dangling_callers`` and ``cycle_delta`` -- read the
 extractor's own reference and import rows and run for every language it parses.
 """
@@ -100,6 +113,7 @@ extractor's own reference and import rows and run for every language it parses.
 import builtins
 import hashlib
 import importlib
+import importlib.metadata
 import keyword
 import re
 import sys
@@ -108,15 +122,16 @@ from bisect import bisect_right
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Protocol, cast
 
 from agentless_mcp.core import resolve
-from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.extractor import IdentifierRole, Ref, TreeSitterExtractor
 from agentless_mcp.core.graph import resolve_import_target
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.normalize import normalized_stream
-from agentless_mcp.core.patches import Edit, apply_edits
+from agentless_mcp.core.patches import Edit, apply_edits, resolve_elisions
 from agentless_mcp.core.refs import Definition, FileFacts
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
 from agentless_mcp.util.errors import AgentlessError
@@ -146,6 +161,17 @@ DEPENDENCY_LANGUAGES = frozenset({"python"})
 RESOLUTION_LANGUAGES = frozenset({"python"})
 
 # Names that are always defined and are nobody's missing helper.
+#
+# Built from the interpreter this process runs on, which is not necessarily the
+# one the repository targets: `ExceptionGroup` is a builtin from 3.11 and
+# `tomllib` a stdlib module from 3.11. There is no table of another version's
+# vocabulary to consult, so the disagreement is reported rather than guessed
+# at -- see `_interpreter_gaps`.
+#
+# `core.extractor._PYTHON_ALWAYS_BOUND` answers a different question with a
+# smaller set. A bare `json` with no import is a NameError, so the reference
+# classifier there leaves `sys.stdlib_module_names` out on purpose. Here the
+# name arrives from a patch that may have imported it.
 _ALWAYS_BOUND: frozenset[str] = frozenset(
     set(dir(builtins)) | set(keyword.kwlist) | set(sys.stdlib_module_names) | {"self", "cls"}
 )
@@ -198,6 +224,12 @@ DEGRADED_ERRORS: tuple[type[Exception], ...] = (
 
 _DISTRIBUTION_SEPARATORS = re.compile(r"[-_.]+")
 _REQUIREMENT_NAME = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+# The lowest interpreter a `requires-python` specifier admits. Only the `>=`
+# clause is read: that is what the key states in practice, and a full PEP 440
+# specifier parser here would be a second implementation of somebody else's
+# rule for one advisory sentence.
+_PYTHON_FLOOR = re.compile(r">=\s*(\d+)\.(\d+)")
 
 
 class Severity(str, Enum):
@@ -276,10 +308,6 @@ class LintReport:
     findings: tuple[Finding, ...]
     warnings: tuple[str, ...] = ()
 
-    def of_severity(self, severity: Severity) -> tuple[Finding, ...]:
-        """The findings at one severity, in report order."""
-        return tuple(finding for finding in self.findings if finding.severity is severity)
-
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
         return {
@@ -297,11 +325,18 @@ class ManifestParse:
     document that declares nothing -- and a caller handed only ``packages``
     and ``warnings`` cannot tell them apart, which is how an unreadable
     manifest came to make every third-party import look hallucinated.
+
+    ``requires_python`` is the raw ``[project] requires-python`` specifier, or
+    empty when the manifest states none. It travels with the packages because
+    the same two checks that read the declared set also read the interpreter's
+    builtin and standard-library tables, and those describe the interpreter
+    this process runs on rather than the one the repository targets.
     """
 
     packages: frozenset[str]
     warnings: tuple[str, ...]
     parsed: bool
+    requires_python: str = ""
 
 
 @dataclass(frozen=True)
@@ -313,11 +348,15 @@ class DeclaredDependencies:
     different situation from a manifest that declares nothing: the first means
     the check cannot run, the second means every third-party import is
     genuinely undeclared.
+
+    ``requires_python`` is the interpreter floor the manifest states, empty
+    when it states none. See :func:`_interpreter_gaps` for what reads it.
     """
 
     packages: frozenset[str]
     sources: tuple[str, ...]
     warnings: tuple[str, ...]
+    requires_python: str = ""
 
     @property
     def known(self) -> bool:
@@ -340,13 +379,23 @@ class RepoFacts:
     caller and passed in. It arrives as a value rather than being constructed
     here for the same reason the rest of this does: a check that built its own
     view of the repository could disagree with the one the caller is reporting
-    against, and this module must not be able to open anything.
+    against, and no check may open anything.
+
+    ``bodies`` is derived rather than supplied, and cached because it is
+    derived from the whole repository while a lint run judges one candidate.
+    A caller linting several candidates against one repository builds these
+    facts once, so the index is built once too.
     """
 
     files: Mapping[str, FileFacts]
     texts: Mapping[str, str]
     dependencies: DeclaredDependencies
     resolver: resolve.Resolver
+
+    @cached_property
+    def bodies(self) -> "Mapping[str, tuple[_Site, ...]]":
+        """Every readable function body in the repository, indexed by its key."""
+        return _existing_bodies(self)
 
 
 class FragmentSource(Protocol):
@@ -405,6 +454,7 @@ class _Fragment:
     search_span: tuple[int, int]
     introduced: tuple[ASTSymbol, ...]
     replaced_names: frozenset[str]
+    replaced_qualnames: frozenset[str]
     imports: tuple[ImportStatement, ...]
     refs: tuple[Ref, ...]
     calls: tuple[_CallSite, ...]
@@ -414,6 +464,53 @@ class _Fragment:
         if self.base_line <= 0 or fragment_line <= 0:
             return 0
         return self.base_line + fragment_line - 1
+
+
+@dataclass(frozen=True)
+class _PatchNames:
+    """What the whole patch defines and removes, rather than one edit of it.
+
+    Splitting one change across two SEARCH/REPLACE blocks in the same file is
+    the ordinary shape of model output, and it is the input these checks exist
+    to read. Judged one fragment at a time against the pre-patch repository,
+    the second block's use of the first block's definition reads as a
+    hallucination, and a definition the patch moves reads as both a removal
+    and a redefinition.
+
+    ``introduced`` pools every edit's new names, because a name any edit
+    defines is a name the patch defines. ``removed_by_path`` pools per file
+    instead: a definition moved from one module to another really does leave
+    the first module's importers pointing at nothing.
+    """
+
+    introduced: frozenset[str]
+    removed_by_path: Mapping[str, frozenset[str]]
+    replaced_by_path: Mapping[str, frozenset[str]]
+
+    def removed_in(self, path: str) -> frozenset[str]:
+        """The names this patch takes out of one file and does not put back."""
+        return self.removed_by_path.get(path, frozenset())
+
+    def replaced_in(self, path: str) -> frozenset[str]:
+        """The names this patch's search text held for one file."""
+        return self.replaced_by_path.get(path, frozenset())
+
+
+def _patch_names(fragments: Sequence[_Fragment]) -> _PatchNames:
+    """Pool what every fragment defines and replaces into one patch-wide view."""
+    added: dict[str, set[str]] = {}
+    replaced: dict[str, set[str]] = {}
+    for fragment in fragments:
+        path = fragment.edit.path
+        added.setdefault(path, set()).update(symbol.name for symbol in fragment.introduced)
+        replaced.setdefault(path, set()).update(fragment.replaced_names)
+    return _PatchNames(
+        introduced=frozenset(name for names in added.values() for name in names),
+        removed_by_path={
+            path: frozenset(names - added.get(path, set())) for path, names in replaced.items()
+        },
+        replaced_by_path={path: frozenset(names) for path, names in replaced.items()},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -436,20 +533,18 @@ else:
     _toml = cast(_TomlParser, tomli)
 
 
-def _load_toml(text: str) -> dict[str, Any] | None:
-    """Parse TOML with the stdlib parser or the Python 3.10 fallback."""
+def _load_toml(text: str) -> dict[str, Any]:
+    """Parse TOML with the stdlib parser or the Python 3.10 fallback.
+
+    Never reports "no parser": ``_toml`` is bound unconditionally above, and
+    ``tomli`` is a hard conditional dependency, so an interpreter with neither
+    fails at import rather than reaching here.
+    """
     return _toml.loads(text)
 
 
-# What a deliberately unavailable parser reports in place of a declared set.
-# Phrased as a fact about the interpreter rather than about the repository,
-# because "declares nothing" and "could not be read here" are the two answers
-# `ManifestParse.parsed` exists to keep apart.
-_NO_TOML_PARSER = (
-    f"{PYPROJECT_NAME} not read: no TOML parser is available, so this check did not run"
-)
-
 _PROJECT = "project"
+_REQUIRES_PYTHON = "requires-python"
 _OPTIONAL = "optional-dependencies"
 _DEPENDENCIES = "dependencies"
 _DEPENDENCY_GROUPS = "dependency-groups"
@@ -468,6 +563,7 @@ def read_declared_dependencies(root: Path) -> DeclaredDependencies:
     packages: set[str] = set()
     sources: list[str] = []
     warnings: list[str] = []
+    requires_python = ""
 
     pyproject = root / PYPROJECT_NAME
     if pyproject.is_file():
@@ -478,6 +574,7 @@ def read_declared_dependencies(root: Path) -> DeclaredDependencies:
             parse = parse_pyproject_dependencies(read.text)
             packages.update(parse.packages)
             warnings.extend(parse.warnings)
+            requires_python = parse.requires_python
             if parse.parsed:
                 sources.append(PYPROJECT_NAME)
 
@@ -495,6 +592,7 @@ def read_declared_dependencies(root: Path) -> DeclaredDependencies:
         packages=frozenset(packages),
         sources=tuple(sources),
         warnings=tuple(warnings),
+        requires_python=requires_python,
     )
 
 
@@ -508,8 +606,7 @@ def parse_pyproject_dependencies(text: str) -> ManifestParse:
     would make the check fire on exactly the code it should not.
 
     A document that does not parse comes back ``parsed=False`` with the reason
-    in ``warnings``, never as an empty declaration. An unavailable parser also
-    reports one coverage gap, not a repository that declares nothing.
+    in ``warnings``, never as an empty declaration.
     """
     warnings: list[str] = []
     try:
@@ -520,20 +617,29 @@ def parse_pyproject_dependencies(text: str) -> ManifestParse:
             warnings=(f"{PYPROJECT_NAME} did not parse: {type(exc).__name__}: {exc}",),
             parsed=False,
         )
-    if document is None:
-        return ManifestParse(packages=frozenset(), warnings=(_NO_TOML_PARSER,), parsed=False)
 
     specifications: list[str] = []
+    floor = ""
     project = document.get(_PROJECT)
     if isinstance(project, dict):
         specifications.extend(_string_list(project.get(_DEPENDENCIES), warnings, "dependencies"))
         specifications.extend(_string_lists(project.get(_OPTIONAL), warnings, _OPTIONAL))
+        stated = project.get(_REQUIRES_PYTHON)
+        if isinstance(stated, str):
+            floor = stated
+        elif stated is not None:
+            warnings.append(f"{_REQUIRES_PYTHON} is not a string; ignored")
     specifications.extend(
         _string_lists(document.get(_DEPENDENCY_GROUPS), warnings, _DEPENDENCY_GROUPS)
     )
 
     names = {name for name in (requirement_name(item) for item in specifications) if name}
-    return ManifestParse(packages=frozenset(names), warnings=tuple(warnings), parsed=True)
+    return ManifestParse(
+        packages=frozenset(names),
+        warnings=tuple(warnings),
+        parsed=True,
+        requires_python=floor,
+    )
 
 
 def _string_list(value: object, warnings: list[str], where: str) -> list[str]:
@@ -594,6 +700,19 @@ def requirement_name(specification: str) -> str:
     return normalize_distribution(match.group(1))
 
 
+def python_floor(specifier: str) -> tuple[int, int] | None:
+    """Return the lowest interpreter ``requires-python`` admits, or None.
+
+    None means the specifier states no floor this can read, which is the same
+    answer as no specifier at all: nothing to compare the running interpreter
+    against.
+    """
+    match = _PYTHON_FLOOR.search(specifier)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
 def normalize_distribution(name: str) -> str:
     """Normalise a distribution or module name per PEP 503.
 
@@ -623,16 +742,20 @@ def lint_patch(
     :attr:`LintReport.warnings`.
     """
     fragments, notes = _fragments(edits, facts, source)
+    patch = _patch_names(fragments)
     findings = list(notes)
+    findings.extend(_interpreter_gaps(fragments, facts))
     findings.extend(
         _guarded(CHECK_UNDECLARED_IMPORTS, lambda: _undeclared_imports(fragments, facts))
     )
-    findings.extend(_guarded(CHECK_SHADOWING, lambda: _shadowing(fragments, facts)))
+    findings.extend(_guarded(CHECK_SHADOWING, lambda: _shadowing(fragments, facts, patch)))
     findings.extend(_guarded(CHECK_NEAR_DUPLICATES, lambda: _near_duplicates(fragments, facts)))
     findings.extend(
-        _guarded(CHECK_DANGLING_REFERENCES, lambda: _dangling_references(fragments, facts))
+        _guarded(CHECK_DANGLING_REFERENCES, lambda: _dangling_references(fragments, facts, patch))
     )
-    findings.extend(_guarded(CHECK_DANGLING_CALLERS, lambda: _dangling_callers(fragments, facts)))
+    findings.extend(
+        _guarded(CHECK_DANGLING_CALLERS, lambda: _dangling_callers(fragments, facts, patch))
+    )
     findings.extend(_guarded(CHECK_ARITY, lambda: _arity(fragments, facts)))
     findings.extend(_guarded(CHECK_CYCLE_DELTA, lambda: _cycle_delta(fragments, facts, source)))
     return LintReport(
@@ -671,6 +794,42 @@ def _gap(check: str, path: str, message: str, evidence: str) -> Finding:
         line=0,
         evidence=evidence,
     )
+
+
+def _interpreter_gaps(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding]:
+    """Report a version-dependent table that came from the wrong interpreter.
+
+    ``dir(builtins)`` and :data:`sys.stdlib_module_names` describe the
+    interpreter this process runs on, not the one the repository targets.
+    ``tomllib`` and ``ExceptionGroup`` both arrived in 3.11, so a newer
+    interpreter passes a name the declared floor does not have, and an older
+    one accuses a name the repository may legitimately use.
+
+    Nothing here resolves another version's vocabulary, because the running
+    interpreter does not carry one. Stating the disagreement is the honest
+    answer; reading the tables and saying nothing is the guard keyed on a
+    proxy that produced both directions of the error.
+
+    Reported once, under :data:`CHECK_COVERAGE`, because it is neither
+    check's fault and both read the same tables.
+    """
+    if not any(fragment.language in RESOLUTION_LANGUAGES for fragment in fragments):
+        return []
+    declared = facts.dependencies.requires_python
+    floor = python_floor(declared)
+    if floor is None or floor == sys.version_info[:2]:
+        return []
+    running = f"{sys.version_info.major}.{sys.version_info.minor}"
+    return [
+        _gap(
+            CHECK_COVERAGE,
+            "",
+            f"partially checked: undeclared_imports and dangling_references read Python "
+            f"{running}'s builtin and standard-library tables, and this repository requires "
+            f"{declared}",
+            f"requires-python {declared}; tables read from Python {running}",
+        )
+    ]
 
 
 def _fragments(
@@ -720,26 +879,50 @@ def _fragment(
     source: FragmentSource,
 ) -> _Fragment:
     """Parse one edit's two sides into the fragment the checks read."""
-    replace_text = textwrap.dedent(edit.replace)
-    search_text = textwrap.dedent(edit.search)
-    span = _locate(facts.texts.get(edit.path, ""), edit.search)
+    search, replace = _resolved(edit, facts.texts.get(edit.path, ""))
+    replace_text = textwrap.dedent(replace)
+    search_text = textwrap.dedent(search)
+    span = _locate(facts.texts.get(edit.path, ""), search)
     introduced = tuple(source.symbols_for(replace_text, language, edit.path))
     references = tuple(source.refs_for(replace_text, language, edit.path))
+    replaced = tuple(source.symbols_for(search_text, language, edit.path))
     return _Fragment(
         edit=edit,
         language=language,
         replace_text=replace_text,
-        replace_columns=tuple(edit.replace.split("\n")),
+        replace_columns=tuple(replace.split("\n")),
         base_line=span[0],
         search_span=span,
         introduced=introduced,
-        replaced_names=frozenset(
-            symbol.name for symbol in source.symbols_for(search_text, language, edit.path)
-        ),
+        replaced_names=frozenset(symbol.name for symbol in replaced),
+        replaced_qualnames=frozenset(qualname(symbol) for symbol in replaced),
         imports=tuple(source.imports_for(replace_text, language, edit.path)),
         refs=references,
         calls=_call_sites(replace_text, references, introduced),
     )
+
+
+def _resolved(edit: Edit, text: str) -> tuple[str, str]:
+    """Return this edit's two sides with any ``...`` elision expanded.
+
+    The applier expands elisions before it matches. A linter matching the
+    block as written anchored nowhere, so every finding about an elided edit
+    came back pointing at a file with no line. The rule has one owner --
+    :func:`agentless_mcp.core.patches.resolve_elisions` -- and this is the
+    second caller its docstring names.
+
+    The scope it wants is the whole file, which is what the applier passes
+    when the caller named no line ranges. An elision this cannot expand comes
+    back as written and anchors nowhere: the same answer as before, reached
+    without a second copy of the rule.
+    """
+    padded = "\n" + text + "\n"
+    search, replace, reason = resolve_elisions(
+        edit.search, edit.replace, padded, ((0, len(padded)),)
+    )
+    if reason:
+        return edit.search, edit.replace
+    return search, replace
 
 
 def _locate(text: str, search: str) -> tuple[int, int]:
@@ -748,14 +931,9 @@ def _locate(text: str, search: str) -> tuple[int, int]:
     ``(0, 0)`` when the search text is absent or occurs more than once, which
     is the same whole-line, ambiguity-refusing rule
     :mod:`agentless_mcp.core.patches` applies -- an anchor that could be one of
-    two places is not an anchor.
-
-    **Known gap, stated rather than implied.** The applier resolves ``...``
-    elisions before matching and this does not, so an elided edit anchors
-    nowhere and its findings degrade to a file with no line. The rule belongs
-    to :mod:`agentless_mcp.core.patches` and re-implementing a second copy of
-    it here is what produced the drift; closing this needs that module's
-    elision resolution on its public surface, not another copy.
+    two places is not an anchor. The elision rule is applied by
+    :func:`_resolved` before this runs, so what arrives here is the text the
+    applier will match.
     """
     if not text or not search:
         return (0, 0)
@@ -805,9 +983,13 @@ def _undeclared_imports(fragments: Sequence[_Fragment], facts: RepoFacts) -> lis
         findings.append(_no_manifest_gap(facts.dependencies))
         return findings
 
-    available = _available_packages(facts)
+    # Read once per candidate: it walks every distribution on `sys.path`, and
+    # both the mapping and the gap below are answers about the same reading.
+    provided = _provided_modules()
+    available = _available_packages(facts, provided)
     known_paths = sorted(facts.files)
     seen: set[tuple[str, str]] = set()
+    accused: list[Finding] = []
     for fragment in checkable:
         for statement in fragment.imports:
             top = _top_level_package(statement)
@@ -818,7 +1000,11 @@ def _undeclared_imports(fragments: Sequence[_Fragment], facts: RepoFacts) -> lis
             if (fragment.edit.path, top) in seen:
                 continue
             seen.add((fragment.edit.path, top))
-            findings.append(_undeclared_finding(fragment, statement, top))
+            accused.append(_undeclared_finding(fragment, statement, top))
+
+    if accused:
+        findings.extend(_unmapped_gap(facts.dependencies, provided))
+    findings.extend(accused)
     return findings
 
 
@@ -875,13 +1061,16 @@ def _top_level_package(statement: ImportStatement) -> str:
     return top
 
 
-def _available_packages(facts: RepoFacts) -> frozenset[str]:
+def _available_packages(facts: RepoFacts, provided: Mapping[str, list[str]]) -> frozenset[str]:
     """Every package name the repository has evidence of being able to import.
 
-    The declared distributions, plus every top-level package already imported
-    somewhere in the repository. The second half is what absorbs the
-    distribution-name/import-name mismatch (``PyYAML`` provides ``yaml``)
-    without a hand-maintained alias table that would drift.
+    Three sources, none of them a hand-maintained alias table. The declared
+    distributions. Every top-level package already imported somewhere in the
+    repository, which is the evidence that it installs, because the repository
+    runs. And, for a declared distribution installed in the environment this
+    process runs in, the import names its metadata says it provides -- which
+    is what tells this that ``PyYAML`` provides ``yaml`` before any file in
+    the repository has imported it.
     """
     imported = {
         normalize_distribution(top)
@@ -890,10 +1079,69 @@ def _available_packages(facts: RepoFacts) -> frozenset[str]:
         for top in (_top_level_package(statement),)
         if top
     }
-    return frozenset(facts.dependencies.packages | imported)
+    declared = {
+        normalize_distribution(module)
+        for module, distributions in provided.items()
+        if any(
+            normalize_distribution(name) in facts.dependencies.packages for name in distributions
+        )
+    }
+    return frozenset(facts.dependencies.packages | imported | declared)
 
 
-def _shadowing(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding]:
+def _provided_modules() -> Mapping[str, list[str]]:
+    """Return this environment's import-name to distribution-name mapping.
+
+    A distribution's import name is metadata, not a naming convention, so this
+    is the only mechanical way to learn that ``opencv-python`` provides
+    ``cv2``. It describes the environment this process runs in rather than the
+    repository's, so what it cannot answer is stated rather than assumed --
+    see :func:`_unmapped_gap`.
+    """
+    return importlib.metadata.packages_distributions()
+
+
+def _unmapped_gap(
+    dependencies: DeclaredDependencies,
+    provided: Mapping[str, list[str]],
+) -> list[Finding]:
+    """Say which declared distributions this environment could not map.
+
+    An installed distribution states the import names it provides, so
+    ``PyYAML`` is known to provide ``yaml``. One that is not installed here
+    states nothing, and an import name it would have supplied looks exactly
+    like one nothing supplies.
+
+    Reported once beside the findings rather than in place of them. Turning
+    every accusation into a gap would disable the whole check whenever a
+    single declared extra is missing from the environment ``lint`` runs in,
+    which is the ordinary case; a reader who sees the names below can weigh
+    them against the names here.
+    """
+    installed = {normalize_distribution(name) for names in provided.values() for name in names}
+    unmapped = sorted(dependencies.packages - installed)
+    if not unmapped:
+        return []
+    listed = ", ".join(unmapped[:MAX_DUPLICATE_SITES])
+    elided = len(unmapped) - MAX_DUPLICATE_SITES
+    more = "" if elided <= 0 else f" and {elided} more"
+    return [
+        _gap(
+            CHECK_UNDECLARED_IMPORTS,
+            "",
+            f"partially checked: {len(unmapped)} declared distribution(s) are not installed "
+            "in this environment, so the import names they provide are unknown and an import "
+            "below may be one of them",
+            f"not installed here: {listed}{more}",
+        )
+    ]
+
+
+def _shadowing(
+    fragments: Sequence[_Fragment],
+    facts: RepoFacts,
+    patch: _PatchNames,
+) -> list[Finding]:
     """Report module-level definitions the patch adds over an existing name."""
     findings: list[Finding] = []
     missing = sorted({fragment.edit.path for fragment in fragments} - set(facts.files))
@@ -909,8 +1157,12 @@ def _shadowing(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding
 
     for fragment in fragments:
         existing = _module_level_symbols(facts.files.get(fragment.edit.path))
+        # Any edit to this file may hold the definition being replaced: a
+        # patch that moves a function deletes it in one block and writes it in
+        # another, and the pre-patch symbol table still holds the deleted one.
+        replaced = patch.replaced_in(fragment.edit.path)
         for symbol in fragment.introduced:
-            if symbol.name in fragment.replaced_names or not _is_module_level(fragment, symbol):
+            if symbol.name in replaced or not _is_module_level(fragment, symbol):
                 continue
             previous = existing.get(symbol.name)
             if previous is None:
@@ -969,7 +1221,7 @@ def _near_duplicates(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[F
             )
         )
 
-    index = _existing_bodies(facts)
+    index = facts.bodies
     for fragment in fragments:
         lines = fragment.replace_text.split("\n")
         for symbol in fragment.introduced:
@@ -990,13 +1242,18 @@ _BODY_KINDS = frozenset({SymbolKind.FUNCTION, SymbolKind.METHOD})
 
 
 def _is_the_replaced_site(fragment: _Fragment, site: _Site) -> bool:
-    """True when this existing definition is the one the patch is replacing."""
+    """True when this existing definition is the one the patch is replacing.
+
+    Matched on the qualified name, not its tail. ``ThisClass.run`` and
+    ``OtherClass.run`` are two definitions, and comparing the tail alone let a
+    patch that rewrites one hide a genuine duplicate of the other.
+    """
     if site.path != fragment.edit.path:
         return False
     start, end = fragment.search_span
     if start > 0 and start <= site.line <= end:
         return True
-    return site.name.split(".")[-1] in fragment.replaced_names
+    return site.name in fragment.replaced_qualnames
 
 
 def _duplicate_finding(fragment: _Fragment, symbol: ASTSymbol, sites: Sequence[_Site]) -> Finding:
@@ -1078,11 +1335,6 @@ _COMMENT = "#"
 # comment. Negative so that no structural comparison can ever match it.
 _INSIDE_STRING = -1
 
-_ASSIGNED = re.compile(r"^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?::[^=]+)?=(?!=)")
-_LOOP_TARGET = re.compile(r"\bfor\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\b")
-_ALIAS_TARGET = re.compile(r"\bas\s+([A-Za-z_]\w*)")
-_WALRUS_TARGET = re.compile(r"([A-Za-z_]\w*)\s*:=")
-
 _ARITY_TIERS = frozenset({resolve.Tier.SAME_FILE, resolve.Tier.IMPORTED})
 
 _VERB_CALLS = "calls"
@@ -1120,8 +1372,15 @@ def _call_sites(
     declaration is excluded on the same ``(name, line)`` rule
     :func:`agentless_mcp.core.resolve.build_graph` uses: ``def quote(`` names
     the function, it does not call it.
+
+    Only occurrences the grammar called *references* count. The extractor has
+    already resolved scope, and it labels a call through a local variable
+    ``local`` and its binder ``binding``. Reading every row instead made
+    ``for index, (key, value) in ...`` followed by ``value(key)`` report
+    ``value`` as a helper nothing defines -- a confident warning about an
+    ordinary loop.
     """
-    coded = {(ref.name, ref.line) for ref in references}
+    coded = {(ref.name, ref.line) for ref in references if ref.is_reference}
     declared = {(symbol.name, symbol.line_number) for symbol in introduced}
     starts = _line_starts(text)
 
@@ -1189,7 +1448,11 @@ def _literal_end(text: str, start: int) -> int:
         end = text.find("\n", start)
         return len(text) if end < 0 else end
 
-    marker = text[start : start + 3]
+    triple = text[start : start + 3]
+    marker = triple if triple in _TRIPLE_QUOTES else text[start]
+    if _opens_fstring(text, start):
+        return _fstring_end(text, start, marker)
+
     if marker in _TRIPLE_QUOTES:
         found = text.find(marker, start + 3)
         return len(text) if found < 0 else found + 3
@@ -1202,6 +1465,63 @@ def _literal_end(text: str, start: int) -> int:
             index += 2
             continue
         if char in (quote, "\n"):
+            return index + 1
+        index += 1
+    return len(text)
+
+
+# The letters a string literal's prefix may hold. Only `f` changes how the
+# literal is scanned; the rest are here so that `rb"..."` is recognised as one
+# prefix rather than as an identifier ending in `b`.
+_STRING_PREFIXES = "rRbBuUfF"
+
+
+def _opens_fstring(text: str, start: int) -> bool:
+    """True when the literal opening at ``start`` carries an ``f`` prefix."""
+    index = start - 1
+    prefix = ""
+    while index >= 0 and text[index] in _STRING_PREFIXES:
+        prefix = text[index] + prefix
+        index -= 1
+    if index >= 0 and (text[index].isalnum() or text[index] == "_"):
+        return False
+    return "f" in prefix.lower()
+
+
+def _fstring_end(text: str, start: int, marker: str) -> int:
+    """Return the index just past the f-string opening at ``start``.
+
+    PEP 701 lets a replacement field hold a string quoted the same way as the
+    f-string around it: ``f"{d["key"]}"`` is valid from Python 3.12. Reading
+    that inner quote as the terminator hands the rest of the line back with
+    its string and code polarity inverted, and the argument count that comes
+    out then disagrees with ``ast``.
+
+    So the brace depth is tracked. Inside a replacement field a quote opens a
+    literal of its own, scanned by :func:`_literal_end`; only a quote at depth
+    zero closes the f-string.
+    """
+    depth = 0
+    index = start + len(marker)
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            index += 2
+            continue
+        if depth == 0 and text.startswith(marker, index):
+            return index + len(marker)
+        if char in {"{", "}"}:
+            # A doubled brace is an escaped literal one, not a field.
+            if text[index + 1 : index + 2] == char:
+                index += 2
+                continue
+            depth = depth + 1 if char == "{" else max(0, depth - 1)
+            index += 1
+            continue
+        if depth > 0 and char in _QUOTES:
+            index = _literal_end(text, index)
+            continue
+        if char == "\n" and marker not in _TRIPLE_QUOTES:
             return index + 1
         index += 1
     return len(text)
@@ -1284,6 +1604,12 @@ def _parameter_shape(signature: str) -> _Shape | None:
     any list carrying a star -- ``*args``, ``**kwargs`` and the bare ``*`` that
     makes what follows keyword-only are three different rules and none of them
     is worth encoding for an advisory.
+
+    The positional-only ``/`` is the fourth marker in that list and is dropped
+    rather than refused: unlike the stars it changes nothing about how many
+    positional arguments fit, only about how they may be spelled. Counting it
+    as a parameter reported ``target(1, 2, 3)`` against ``def target(a, b, /,
+    c)`` as one argument short.
     """
     flattened = signature.strip()
     if flattened.endswith("..."):
@@ -1299,13 +1625,19 @@ def _parameter_shape(signature: str) -> _Shape | None:
     if not inner.strip():
         return _Shape(required=0, total=0)
 
-    parameters = [part.strip() for part in _split_top_level(inner)]
+    listed = [part.strip() for part in _split_top_level(inner)]
+    parameters = [part for part in listed if part != _POSITIONAL_ONLY]
     if any(not parameter or parameter.startswith("*") for parameter in parameters):
         return None
     return _Shape(
         required=sum(1 for parameter in parameters if not _names_keyword_argument(parameter)),
         total=len(parameters),
     )
+
+
+# The marker that ends a signature's positional-only parameters. A parameter
+# list may not hold a bare `/` for any other reason.
+_POSITIONAL_ONLY = "/"
 
 
 # ---------------------------------------------------------------------------
@@ -1327,7 +1659,11 @@ def _language_gaps(check: str, fragments: Sequence[_Fragment], what: str) -> lis
     ]
 
 
-def _dangling_references(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding]:
+def _dangling_references(
+    fragments: Sequence[_Fragment],
+    facts: RepoFacts,
+    patch: _PatchNames,
+) -> list[Finding]:
     """Report names the patch uses that resolve to nothing at all."""
     findings = _language_gaps(CHECK_DANGLING_REFERENCES, fragments, "builtin and keyword table")
     known = _defined_names(facts)
@@ -1335,7 +1671,7 @@ def _dangling_references(fragments: Sequence[_Fragment], facts: RepoFacts) -> li
     for fragment in fragments:
         if fragment.language not in RESOLUTION_LANGUAGES:
             continue
-        bound = _bound_names(fragment)
+        bound = _bound_names(fragment, patch)
         seen: set[str] = set()
         for usage in _usages(fragment):
             if usage.name in seen or usage.name in _ALWAYS_BOUND or usage.name in bound:
@@ -1358,17 +1694,22 @@ def _usages(fragment: _Fragment) -> list[_Usage]:
     return usages
 
 
-def _bound_names(fragment: _Fragment) -> frozenset[str]:
-    """Return every name the fragment binds for itself.
+def _bound_names(fragment: _Fragment, patch: _PatchNames) -> frozenset[str]:
+    """Return every name this patch binds before the fragment uses it.
 
-    Definitions it introduces, their parameters, what it imports, and the
-    targets of its assignments, loops, ``as`` clauses and walrus operators.
+    Four sources. Every definition the *whole patch* introduces, because a
+    helper one edit adds is a helper the next edit may call. This fragment's
+    own signatures and imports. And every occurrence the extractor labelled a
+    binding or a declaration, which is where an assignment, an unpacked loop
+    target, a ``with ... as`` clause, a walrus and a nested ``def`` all come
+    from -- the grammar has already resolved those, and a second answer here
+    written in regular expressions disagreed with it on ordinary Python.
+
     Deliberately generous: a name wrongly counted as bound costs one missed
     finding, and a name wrongly counted as free costs a reader a false one.
     """
-    bound: set[str] = set()
+    bound: set[str] = set(patch.introduced)
     for symbol in fragment.introduced:
-        bound.add(symbol.name)
         if symbol.kind in _BODY_KINDS:
             # Only a callable's parentheses hold parameters. A class's hold its
             # bases, which are uses of names rather than bindings of them --
@@ -1379,20 +1720,17 @@ def _bound_names(fragment: _Fragment) -> frozenset[str]:
         top = statement.module.strip().split(".", 1)[0].split("/", 1)[0]
         if top:
             bound.add(top)
-    for line in fragment.replace_text.split("\n"):
-        bound.update(_bound_in_line(line))
+    bound.update(ref.name for ref in fragment.refs if ref.role in _BINDING_ROLES)
     return frozenset(bound)
 
 
-def _bound_in_line(line: str) -> set[str]:
-    """Return the names one line binds by assignment, loop, alias or walrus."""
-    names: set[str] = set()
-    for pattern in (_ASSIGNED, _LOOP_TARGET):
-        for match in pattern.finditer(line):
-            names.update(part.strip() for part in match.group(1).split(","))
-    for pattern in (_ALIAS_TARGET, _WALRUS_TARGET):
-        names.update(match.group(1) for match in pattern.finditer(line))
-    return {name for name in names if name}
+# The occurrence roles that put a name in scope. `BINDING` covers assignment,
+# unpacking, ``as`` clauses, walrus and parameters; `DECLARATION` covers a
+# ``def`` or ``class``, including a nested one the symbol table does not carry;
+# `IMPORT` covers what an import statement names.
+_BINDING_ROLES = frozenset(
+    {IdentifierRole.BINDING, IdentifierRole.DECLARATION, IdentifierRole.IMPORT}
+)
 
 
 def _signature_names(signature: str) -> set[str]:
@@ -1507,7 +1845,11 @@ def _dangling_reference_finding(
 # ---------------------------------------------------------------------------
 
 
-def _dangling_callers(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding]:
+def _dangling_callers(
+    fragments: Sequence[_Fragment],
+    facts: RepoFacts,
+    patch: _PatchNames,
+) -> list[Finding]:
     """Report symbols the patch removes that untouched files still reference."""
     findings = _unscanned_gaps(CHECK_DANGLING_CALLERS, fragments, facts)
     touched = {fragment.edit.path for fragment in fragments}
@@ -1515,7 +1857,10 @@ def _dangling_callers(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[
 
     reported: set[str] = set()
     for fragment in fragments:
-        removed = fragment.replaced_names - {symbol.name for symbol in fragment.introduced}
+        # A name another edit to the same file writes back is not removed.
+        # Per file rather than patch-wide: a definition moved to a different
+        # module still leaves this module's importers pointing at nothing.
+        removed = fragment.replaced_names & patch.removed_in(fragment.edit.path)
         for name in sorted(removed):
             if name in reported or _defined_in(name, facts, untouched):
                 continue
@@ -1586,8 +1931,15 @@ def _dangling_caller_finding(fragment: _Fragment, name: str, sites: Sequence[str
 
 
 def _arity(fragments: Sequence[_Fragment], facts: RepoFacts) -> list[Finding]:
-    """Report calls in new code that cannot fit the signature they resolve to."""
+    """Report calls in new code that cannot fit the signature they resolve to.
+
+    A file the scan did not supply a symbol table for is a stated gap, not a
+    silent pass. Resolution at the ``same_file`` and ``imported`` tiers reads
+    that file's own imports, so without it this check is disabled rather than
+    clean -- and every new file a patch creates is in exactly that position.
+    """
     findings = _language_gaps(CHECK_ARITY, fragments, "signature grammar")
+    findings.extend(_unscanned_gaps(CHECK_ARITY, fragments, facts))
     for fragment in fragments:
         if fragment.language not in RESOLUTION_LANGUAGES:
             continue
