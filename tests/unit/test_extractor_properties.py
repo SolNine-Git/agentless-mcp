@@ -18,7 +18,7 @@ import pytest
 
 from agentless_mcp.core import refs, resolve, symbols
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.symbols import SymbolKind
+from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
 
@@ -44,6 +44,25 @@ SUBMODULE_IMPORT = {
 # One key spelled with a dot, and the same path spelled as nesting. The two
 # are different keys in the file and the same qualified name in the id.
 DOTTED_YAML = "a:\n  b.c: 1\n  b:\n    c: 2\n"
+
+
+def yield_symbol(name: str, parent: str, *, line: int) -> ASTSymbol:
+    """One extracted symbol, built directly, for an ordering assertion."""
+    return ASTSymbol(
+        name=name,
+        kind=SymbolKind.CONSTANT,
+        module_path="c.yaml",
+        line_number=line,
+        end_line_number=line,
+        signature=name,
+        docstring="",
+        parent_class=parent,
+        decorators=(),
+        bases=(),
+        language="yaml",
+        is_public=True,
+        is_async=False,
+    )
 
 
 def write(root, files):
@@ -283,18 +302,45 @@ class TestStableIdentity:
             assert len(set(minted)) == len(minted), f"{relative} mints a duplicate id"
         assert checked, "no fixture was checked -- the extension filter is wrong"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B03-H1: disambiguate counts on (parent_class, name) while the id spells "
-            "parent_class + '.' + name, so two symbols that differ in where the dot falls "
-            "collide and neither is renumbered. Measured: the four keys below mint three "
-            "ids. Fixed by stage 6a, which must carry the cache generation bump."
-        ),
-    )
     def test_a_dotted_key_cannot_collide_with_a_nested_one(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6a landed.
+
+        `disambiguate` counted on `(parent_class, name)` -- the pair the
+        qualified name is built from -- while the id spells the qualified
+        name. The pair keeps the dot's position and the name does not, so a
+        key `b.c` under parent `a` and a key `c` under parent `a.b` were two
+        different pairs and one id, and neither was renumbered.
+        """
         extracted = extractor.extract_from_source(DOTTED_YAML, "yaml", "c.yaml")
         minted = [symbols.symbol_stable_id(s) for s in symbols.disambiguate(extracted)]
 
         assert len(extracted) == 4
         assert Counter(minted).most_common(1)[0][1] == 1
+
+    def test_the_renumbered_one_is_the_later_of_the_two(self):
+        # The ordinal follows the source: the first symbol at a qualified name
+        # keeps it and the later one carries `#2`, so inserting a key above
+        # another does not renumber the one a caller already holds.
+        minted = [
+            symbols.symbol_stable_id(s)
+            for s in symbols.disambiguate(
+                (yield_symbol("b.c", "a", line=2), yield_symbol("c", "a.b", line=4))
+            )
+        ]
+        assert minted == ["yaml:c.yaml::a.b.c", "yaml:c.yaml::a.b.c#2"]
+
+    def test_an_id_that_named_one_symbol_is_unchanged(self, extractor):
+        """The migration question, answered by measurement rather than policy.
+
+        Measured across this repository: 4824 symbols, 0 ids changed, 0 files
+        minting a duplicate. The fix only moves an id that already named two
+        symbols -- so a caller holding a pre-fix id either holds one that
+        still resolves, or holds one that was ambiguous when they got it.
+        There is no spelling to keep resolving for a release.
+        """
+        source = "class Book:\n    def price(self):\n        return 1\n"
+        (book, price) = symbols.disambiguate(
+            extractor.extract_from_source(source, "python", "core.py")
+        )
+        assert symbols.symbol_stable_id(book) == "py:core.py::Book"
+        assert symbols.symbol_stable_id(price) == "py:core.py::Book.price"

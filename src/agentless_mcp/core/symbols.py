@@ -248,13 +248,22 @@ def disambiguate(symbols: Sequence[ASTSymbol]) -> list[ASTSymbol]:
     moves the ordinals the same way a reader would expect, and a handler that
     changes its traversal order does not silently renumber a repository's ids.
     The returned list preserves the input's order; only the ordinals are new.
+
+    Counted on the qualified name, which is what the id spells. Counting on
+    ``(parent_class, name)`` -- the pair the qualified name is *built from* --
+    is not the same test, because the pair keeps the dot's position and the
+    qualified name does not: a key ``b.c`` under parent ``a`` and a key ``c``
+    under parent ``a.b`` are two different pairs and one qualified name.
+    Reproduced on four YAML keys, which minted three ids and renumbered
+    neither, so two symbols in one file answered to the same id and a caller
+    holding it reached whichever the lookup found first.
     """
-    counts: dict[tuple[str, str], int] = {}
+    counts: dict[str, int] = {}
     indices: dict[int, int] = {}
     for position, symbol in sorted(
         enumerate(symbols), key=lambda pair: (pair[1].line_number, pair[0])
     ):
-        key = (symbol.parent_class, symbol.name)
+        key = qualname(symbol)
         seen = counts.get(key, 0)
         counts[key] = seen + 1
         if seen:
