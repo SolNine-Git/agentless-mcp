@@ -257,6 +257,8 @@ def _edit_from(entry: object, position: int) -> Edit:
             raise AtlasError(message)
         values[field] = value
 
+    # `index` labels the block in reports and nothing keys on it, so an entry
+    # that omits it takes its position in the list rather than being refused.
     index = entry.get("index", position)
     if not isinstance(index, int):
         message = f"edit {position} has a non-integer 'index'"
@@ -400,7 +402,13 @@ class PatchService:
         )
 
     def _require_clean(self, ctx: RepoContext) -> None:
-        """Refuse an in-place apply unless the working tree is provably clean."""
+        """Refuse an in-place apply unless the working tree is provably clean.
+
+        The count is the snapshot ``resolve_repo`` took when the call started,
+        not a fresh read. A write landing in the window between the two can
+        only widen the diff this call reports: every edit is still matched
+        against the file as it stands, so a late write is never overwritten.
+        """
         if ctx.dirty_count == 0:
             return
         if ctx.dirty_count is None:

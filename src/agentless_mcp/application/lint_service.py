@@ -101,11 +101,15 @@ class LintService:
 
 
 def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
-    """Read one patch file, or every patch file in a directory.
+    """Read one patch file, or every file in a directory of them.
 
     The same two shapes ``patch parse`` accepts, and the same id rule
     ``validate`` uses: one file is one candidate and its stem is its id, so a
     lint report and a verdicts document name the same candidate the same way.
+
+    A directory holds candidate patches and nothing else. There is no
+    extension filter, so a stray README or editor swap file becomes a
+    candidate and is reported with the parse errors it produces.
     """
     resolved = target.expanduser().resolve()
     if resolved.is_dir():
