@@ -46,6 +46,7 @@ from typing import Any
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.prompts import ENVELOPE
 from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import TokenCounter
 
 # What the receipt says when a call carries no symbol source at all: nothing
@@ -112,23 +113,48 @@ def receipt_lines(ctx: RepoContext) -> list[str]:
 
 
 def _tool_lines(ctx: RepoContext) -> list[str]:
-    """Return the receipt lines the tool itself authored: no repository text."""
+    """Return the receipt lines the tool itself authored: no repository text.
+
+    "No repository text" is the claim; :func:`one_line` is what makes it true.
+    Three of the values interpolated here reach us from outside -- the root can
+    be a client-advertised directory, the note and the config path come from the
+    analysed repository -- and the receipt sits ABOVE the banner that tells an
+    agent where trusted framing stops. A newline in any of them forges a second
+    ``# NOTE:`` line, which is worse than forging a data row below the banner
+    because it can carry free-form directive prose.
+
+    Held here rather than upstream on purpose. ``gitinfo`` and ``projectconfig``
+    happen to keep their values single-line today (``splitlines()[0]`` and
+    ``{key!r}``), but neither documents that as an envelope precondition, so
+    neither can be relied on to keep doing it.
+    """
     head = ctx.head_sha or "nogit"
     dirty = "unknown" if ctx.dirty_count is None else str(ctx.dirty_count)
     lines = [
         ENVELOPE.receipt_header,
-        ENVELOPE.receipt_line.format(root=ctx.root, head=head, dirty=dirty, cache=cache_field(ctx)),
+        ENVELOPE.receipt_line.format(
+            root=one_line(str(ctx.root)),
+            head=one_line(head),
+            dirty=dirty,
+            cache=one_line(cache_field(ctx)),
+        ),
     ]
     if ctx.note:
-        lines.append(ENVELOPE.receipt_note.format(note=ctx.note))
+        lines.append(ENVELOPE.receipt_note.format(note=one_line(ctx.note)))
     if ctx.config.present:
-        lines.append(ENVELOPE.receipt_config.format(path=ctx.config.path))
+        lines.append(ENVELOPE.receipt_config.format(path=one_line(str(ctx.config.path))))
     return lines
 
 
 def _warning_lines(warnings: Sequence[str]) -> list[str]:
-    """Return one receipt line per config warning."""
-    return [ENVELOPE.receipt_config_warning.format(warning=warning) for warning in warnings]
+    """Return one receipt line per config warning.
+
+    A warning quotes a key from the analysed repository's config, so it is
+    repository text on a receipt line and gets the same treatment.
+    """
+    return [
+        ENVELOPE.receipt_config_warning.format(warning=one_line(warning)) for warning in warnings
+    ]
 
 
 def _capped_warnings(warnings: Sequence[str]) -> list[str]:

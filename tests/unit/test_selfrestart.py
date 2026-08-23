@@ -60,13 +60,54 @@ class TestFingerprint:
         monkeypatch.setattr(selfrestart, "distribution", missing)
         assert selfrestart.install_fingerprint("x") is None
 
-    def test_a_missing_record_file_is_still_a_fingerprint(self, monkeypatch):
-        # read_text returns None for a file the dist-info does not carry; the
-        # version alone must still fingerprint rather than read as absent.
+    def test_an_unreadable_record_reads_as_absent_not_as_a_change(self, monkeypatch):
+        # This replaces a test that asserted the opposite ("the version alone
+        # must still fingerprint"). That assertion was the defect: read_text
+        # suppresses FileNotFoundError and returns None, so the old `or ""`
+        # fingerprinted an ABSENT record as sha256(b"") -- a present, different
+        # value. A wheel writes RECORD last, so `uv tool install --upgrade`
+        # opens exactly this window, and the monitor restarted against a
+        # half-written install. The module docstring has always said absence
+        # never triggers; the code now agrees with it.
         monkeypatch.setattr(
             selfrestart, "distribution", lambda name: _FakeDistribution("1.0", None)
         )
-        assert selfrestart.install_fingerprint("x") is not None
+        assert selfrestart.install_fingerprint("x") is None
+
+    def test_an_absent_record_is_not_mistaken_for_a_different_install(self, monkeypatch):
+        # The regression stated as the operator sees it: the fingerprint taken
+        # mid-upgrade must not compare unequal to the one taken before it.
+        monkeypatch.setattr(
+            selfrestart, "distribution", lambda name: _FakeDistribution("1.0", "a.py,,\n")
+        )
+        before = selfrestart.install_fingerprint("x")
+
+        monkeypatch.setattr(
+            selfrestart, "distribution", lambda name: _FakeDistribution("1.0", None)
+        )
+        mid_upgrade = selfrestart.install_fingerprint("x")
+
+        assert before is not None
+        assert mid_upgrade is None
+        assert mid_upgrade != before or mid_upgrade is None
+
+    def test_a_half_removed_dist_info_does_not_kill_the_watcher(self, monkeypatch):
+        # `distribution()` matches on the directory name, so it still resolves
+        # after METADATA is unlinked; `.version` then feeds None to
+        # email.message_from_string and raises TypeError -- not an OSError.
+        # Uncaught, that ends the daemon thread for the life of the process and
+        # drift detection stops with only a stderr traceback.
+        class HalfRemoved:
+            def read_text(self, name: str) -> str | None:
+                return None
+
+            @property
+            def version(self) -> str:
+                message = "expected string or bytes-like object, got 'NoneType'"
+                raise TypeError(message)
+
+        monkeypatch.setattr(selfrestart, "distribution", lambda name: HalfRemoved())
+        assert selfrestart.install_fingerprint("x") is None
 
 
 class TestMonitor:

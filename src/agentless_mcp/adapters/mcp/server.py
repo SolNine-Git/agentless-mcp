@@ -93,7 +93,7 @@ from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
 from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
-from agentless_mcp.util import fslimits
+from agentless_mcp.util import fslimits, textsafe
 from agentless_mcp.util.errors import AtlasError, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -922,7 +922,18 @@ def _resolved_client_root(uri: object) -> Path:
         message = "has no path"
         raise ValueError(message)
 
-    path = Path(unquote(parsed.path))
+    decoded = unquote(parsed.path)
+    # Checked on the DECODED form, before the path is built: `%0A` survives
+    # percent-decoding as a real newline, and a root carrying one reaches the
+    # receipt, which is the tool's own framing above the trust banner. Refused
+    # rather than escaped -- at an entry point a control character in a
+    # directory name is invalid input, and rejecting says so; escaping here
+    # would double up against the escape the receipt already applies.
+    if textsafe.has_line_break(decoded):
+        message = "path contains a control character"
+        raise ValueError(message)
+
+    path = Path(decoded)
     if not path.is_absolute():
         message = "path is not absolute"
         raise ValueError(message)

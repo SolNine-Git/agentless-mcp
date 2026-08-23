@@ -105,9 +105,25 @@ def install_fingerprint(distribution_name: str) -> str | None:
     """
     try:
         installed = distribution(distribution_name)
-        record = installed.read_text("RECORD") or ""
+        record = installed.read_text("RECORD")
         version = installed.version
-    except (PackageNotFoundError, OSError):
+    # TypeError joins the tuple because a half-removed dist-info raises it
+    # rather than an OSError: `distribution()` matches on the directory name,
+    # so it still resolves after METADATA is unlinked, and `.version` then
+    # feeds None to email.message_from_string. Without this the watcher thread
+    # dies for the life of the process and drift detection stops silently.
+    except (PackageNotFoundError, OSError, TypeError) as exc:
+        logger.debug("install fingerprint for %s is unreadable: %r", distribution_name, exc)
+        return None
+    # NOT `or ""`. read_text suppresses FileNotFoundError and returns None, so
+    # coalescing turns "RECORD is absent" into sha256(b"") -- a present,
+    # different, perfectly valid fingerprint. That is the exact case the
+    # docstring above rules out, and a wheel writes RECORD last, so an ordinary
+    # `uv tool install --upgrade` lands in that window. The result was a
+    # restart fired against a half-written install, with no supervisor on POSIX
+    # to bring the process back.
+    if record is None:
+        logger.debug("install fingerprint for %s: RECORD not readable yet", distribution_name)
         return None
     digest = hashlib.sha256(record.encode("utf-8")).hexdigest()[:16]
     return f"{version}:{digest}"
