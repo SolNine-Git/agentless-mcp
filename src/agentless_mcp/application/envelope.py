@@ -314,7 +314,9 @@ def wrap_json(
         return rendered
 
     items = document.get(items_key) if items_key else None
-    if not isinstance(items, list):
+    # `items_key is None` is what narrows it to `str` below; a caller passing
+    # no key already reaches this branch through the `items` above.
+    if items_key is None or not isinstance(items, list):
         document["truncated"] = {
             "reason": ENVELOPE.json_ceiling_untrimmable.format(max_tokens=max_tokens),
             "token_ceiling": max_tokens,
@@ -322,8 +324,8 @@ def wrap_json(
         }
         return _dump(document)
 
-    kept = _fit_items(document, items, items_key or "", counter, max_tokens)
-    document[items_key or ""] = items[:kept]
+    kept = _fit_items(document, items, items_key, counter, max_tokens)
+    document[items_key] = items[:kept]
     document["truncated"] = _json_truncation(max_tokens, kept, len(items))
     return _dump(document)
 
