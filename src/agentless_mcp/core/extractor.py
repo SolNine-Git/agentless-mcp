@@ -1103,7 +1103,13 @@ class _LanguageSpec:
 # says "what is inside this belongs to it" -- which is why a C++
 # `class_specifier` is listed and a `namespace_definition` is not.
 C_TAGGED_TYPES = frozenset({"struct_specifier", "class_specifier", "enum_specifier"})
-C_DECLARATION_TYPES = frozenset({"function_definition"}) | C_TAGGED_TYPES
+# `function_declarator` is the prototype: `double apply_tax(double, double);`
+# parses as a `declaration` whose declarator is one. A header of prototypes is
+# the normal shape of a C header, so without it the declarations a translation
+# unit resolves against are the ones with no symbol. The declarator rather
+# than the declaration, because a `declaration` may instead hold a tagged type
+# the walk still has to descend into.
+C_DECLARATION_TYPES = frozenset({"function_definition", "function_declarator"}) | C_TAGGED_TYPES
 RUST_ITEM_TYPES = frozenset(
     {
         "function_item",
@@ -2256,9 +2262,11 @@ class TreeSitterExtractor:
         normal shape of a C header and used to hide every symbol in it.
         """
         for node in declarations_under(root, C_DECLARATION_TYPES):
-            if node.type == "function_definition":
+            if node.type in ("function_definition", "function_declarator"):
                 name = self._c_function_name(node, source)
-                if name:
+                # A function-pointer declarator resolves to `(*fp)` rather
+                # than to a name, and a symbol map is read as code.
+                if name.isidentifier():
                     symbols.append(
                         ASTSymbol(
                             name=name,

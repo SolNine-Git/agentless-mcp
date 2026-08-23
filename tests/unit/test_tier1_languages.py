@@ -189,6 +189,32 @@ class TestCHeaderGuard:
         assert [statement.module for statement in imports_for(extractor, "c_header")] == ["money.h"]
 
 
+class TestCPrototypes:
+    """A header of prototypes is the normal shape of a C header."""
+
+    def test_a_prototype_yields_a_function_symbol(self, extractor):
+        # A prototype is a `declaration`, not a `function_definition`, so the
+        # declarations a translation unit resolves against used to be the ones
+        # with no symbol at all.
+        source = "double apply_tax(double a, double r);\ndouble *scaled(double a);\n"
+        found = named(extractor.extract_from_source(source, "c", "money.h"))
+        assert found["apply_tax"].kind is SymbolKind.FUNCTION
+        assert found["scaled"].kind is SymbolKind.FUNCTION
+
+    def test_a_function_pointer_variable_is_not_a_function(self, extractor):
+        # `int (*fp)(void);` declares a variable. Its declarator resolves to
+        # `(*fp)`, which is not a name, and a symbol map is read as code.
+        source = "int (*fp)(void);\n"
+        assert extractor.extract_from_source(source, "c", "money.h") == []
+
+    def test_a_tagged_type_inside_a_declaration_still_arrives(self, extractor):
+        # The prototype match is on the declarator rather than on the
+        # declaration, so a `declaration` holding a tagged type is still
+        # descended into.
+        source = "struct Money { double amount; } m;\n"
+        assert "Money" in named(extractor.extract_from_source(source, "c", "money.h"))
+
+
 class TestCppNamespace:
     def test_a_declaration_outside_any_namespace_is_extracted(self, extractor):
         # The positive control: the same file's root-level members do arrive,
