@@ -523,3 +523,88 @@ class TestAnEmptySearchCannotWrite:
         assert not result.ok
         assert result.outcomes[0].status is EditStatus.APPLIED
         assert result.outcomes[1].status is EditStatus.NO_ANCHOR
+
+
+class TestAOneWordPathHeader:
+    """Path inheritance makes a wrong header worse than a missing one.
+
+    Every single word counted as a path, so a one-word line of prose became
+    the filename and the block under it was attributed to that name instead
+    of inheriting the correct one. Skipping the prose line is what the
+    docstring always claimed and now what the parser does.
+    """
+
+    ONE_WORD_PROSE = (
+        "### src/a.py\n"
+        "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        "Done!\n"
+        "<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n"
+    )
+
+    def test_prose_between_blocks_does_not_capture_the_inherited_path(self):
+        result = parse_blocks(self.ONE_WORD_PROSE)
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+    @pytest.mark.parametrize("word", ["Done!", "Next:", "Also,", "Fixed."])
+    def test_a_word_ending_in_sentence_punctuation_is_prose(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (error,) = parse_blocks(text).errors
+        assert error.path is None
+        assert "names no file" in error.reason
+
+    @pytest.mark.parametrize(
+        "word", ["Makefile", ".gitignore", "src/app.py", "../pkg/mod.rs", "/etc/passwd"]
+    )
+    def test_a_word_spelled_like_a_filename_is_still_a_path(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.path == word
+
+
+class TestCrlfIsDiagnosed:
+    """A CRLF patch against an LF checkout is a line-ending problem.
+
+    Every content line carried a trailing carriage return into the needle, so
+    every block reported "search text not found" -- which reads as a wrong
+    search string. ``core.unidiff`` already refuses a structural carriage
+    return and says why; this parser now gives the same cause one diagnosis.
+    """
+
+    CRLF = "### a.py\r\n<<<<<<< SEARCH\r\nreturn 1\r\n=======\r\nreturn 2\r\n>>>>>>> REPLACE\r\n"
+
+    def test_a_crlf_block_is_refused_by_line_endings_not_by_a_failed_search(self):
+        result = parse_blocks(self.CRLF)
+        assert result.edits == ()
+        (error,) = result.errors
+        assert error.path == "a.py"
+        assert "CRLF line endings" in error.reason
+
+    def test_a_carriage_return_inside_content_is_kept(self):
+        text = "### a.py\n<<<<<<< SEARCH\nreturn 1\r\n=======\nreturn 2\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.search == "return 1\r"
+
+
+class TestABareElisionSaysWhereItLanded:
+    """`...` alone expresses no location, so the outcome has to name one.
+
+    The anchor is chosen from the file rather than from anything the author
+    wrote, and reporting only `applied` made the caller accept a placement it
+    could not see.
+    """
+
+    DOC_FIRST = '"""Doc."""\n\nimport os\n\n\ndef main():\n    return os.getcwd()\n'
+
+    def test_the_anchor_line_is_reported_on_the_applied_outcome(self):
+        result = apply_edits(
+            [edit("a.py", "...", "def helper():\n    return 2")],
+            {"a.py": self.DOC_FIRST},
+        )
+        (outcome,) = result.outcomes
+        assert outcome.status is EditStatus.APPLIED
+        assert outcome.reason == 'inserted above line 1: \'"""Doc."""\''
+
+    def test_an_ordinary_edit_still_reports_no_reason(self):
+        result = apply_edits([edit("a.py", "import os", "import sys")], {"a.py": self.DOC_FIRST})
+        assert result.outcomes[0].reason == ""

@@ -32,7 +32,9 @@ Four deliberate departures from the original:
   in the ambiguous-method case. Here every location that does not resolve
   comes back in :attr:`LocResolution.unrecognized` with a reason.
 * Intervals are 1-based and clamped to ``[1, total_lines]``. The original
-  clamped the low end to 0, which is not a line.
+  clamped the low end to 0, which is not a line. A ``total_lines`` of
+  ``None`` is the single reading of "the count is unknown", and it is the
+  only one that leaves the high end unclamped.
 * Matched symbols come back as stable ids as well as spans, so the caller can
   hand them straight to ``expand_symbols``.
 * ``line:`` and ``variable:`` are dispatched before the dotted-name
@@ -73,12 +75,19 @@ _VARIABLE_PREFIX = "variable:"
 
 @dataclass(frozen=True)
 class LocTarget:
-    """The one file a set of locations is resolved against."""
+    """The one file a set of locations is resolved against.
+
+    ``total_lines`` is ``None`` when the count is unknown, which is the only
+    reading that disables the bounds check. Zero is a known count -- an empty
+    ``__init__.py`` has it -- and a truthiness guard read it as "unknown", so
+    ``line: 9999`` against an empty file came back resolved and the render
+    that followed raised on an interval no line satisfies.
+    """
 
     path: str
     language: str
     symbols: tuple[ASTSymbol, ...]
-    total_lines: int
+    total_lines: int | None
 
 
 @dataclass(frozen=True)
@@ -170,7 +179,9 @@ def _widen(
     widened: list[tuple[int, int]] = []
     for start, end in spans:
         low = max(1, start - context)
-        high = min(target.total_lines, end + context) if target.total_lines else end + context
+        high = (
+            end + context if target.total_lines is None else min(target.total_lines, end + context)
+        )
         if low <= high:
             widened.append((low, high))
     return widened
@@ -303,7 +314,7 @@ def _resolve_line(text: str, target: LocTarget) -> _Hit:
     except ValueError:
         return _Hit(reason=f"{head[0]!r} is not a line number")
 
-    if number < 1 or (target.total_lines and number > target.total_lines):
+    if number < 1 or (target.total_lines is not None and number > target.total_lines):
         return _Hit(reason=f"line {number} is outside {target.path} (1-{target.total_lines})")
     return _Hit(span=(number, number))
 

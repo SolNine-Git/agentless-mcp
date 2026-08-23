@@ -12,13 +12,23 @@ changes, each of which the tests pin:
 * Sticky-scroll scope headers come from extracted symbols instead of the
   ``startswith("class ")`` string heuristic, which only ever worked on
   Python and mislabelled any line that happened to start that way.
+* The two prompt-format options the original carried (``add_space`` and
+  ``no_line_number``) are gone. They were Agentless prompt knobs that no
+  caller here ever set, and the dataclass existed only to route between them.
+
+One thing this module still spells two ways, stated rather than implied: a
+slice renders ``7|    total += part`` and the skeleton view, through
+:func:`line_prefix`, renders ``7|     total += part`` for the same line of the
+same file. ``line_prefix`` is meant to be the one home for the prefix, so the
+slice render belongs on it -- but that moves the rendered text of every
+``read slice`` response, and the expectations for it live in the view service,
+the MCP server and the CLI. It is a coordinated change, not a local one.
 
 Intervals are 1-based and inclusive at both ends, matching the file:line
 convention used everywhere else in this package.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
 from agentless_mcp.util.errors import AgentlessError
@@ -78,22 +88,6 @@ def span_end(symbol: ASTSymbol) -> int:
     return symbol.end_line_number or symbol.line_number
 
 
-@dataclass(frozen=True)
-class _LineFormat:
-    """How a single source line is rendered, matching the Agentless prompts."""
-
-    add_space: bool
-    no_line_number: bool
-
-    def render(self, number: int, line: str) -> str:
-        """Format one source line."""
-        if self.no_line_number:
-            return line
-        if self.add_space:
-            return f"{line_prefix(number)}{line} "
-        return f"{number}|{line}"
-
-
 def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
     """Merge overlapping 1-based inclusive intervals, sorted by start.
 
@@ -118,8 +112,6 @@ def line_wrap_content(
     content: str,
     context_intervals: Sequence[tuple[int, int]] | None = None,
     *,
-    add_space: bool = False,
-    no_line_number: bool = False,
     symbols: Sequence[ASTSymbol] | None = None,
 ) -> str:
     """Render ``content`` as numbered lines, restricted to ``context_intervals``.
@@ -138,9 +130,12 @@ def line_wrap_content(
     lines = content.split("\n")
     total = line_count(content)
 
-    line_format = _LineFormat(add_space=add_space, no_line_number=no_line_number)
     intervals = _clamp(context_intervals, total)
     rendered: list[str] = []
+    # Every line this render has already emitted, header or content alike. It
+    # held only the headers, so a slice whose enclosing class had already been
+    # rendered as ordinary content printed that class line a second time and
+    # the numbers ran backwards.
     shown_scopes: set[int] = set()
     covered_to = 0
 
@@ -149,10 +144,11 @@ def line_wrap_content(
             rendered.append(ELISION)
 
         if symbols is not None:
-            rendered.extend(_scope_header_lines(lines, symbols, start, shown_scopes, line_format))
+            rendered.extend(_scope_header_lines(lines, symbols, start, shown_scopes))
 
         for number in range(start, end + 1):
-            rendered.append(line_format.render(number, lines[number - 1]))
+            rendered.append(f"{number}|{lines[number - 1]}")
+        shown_scopes.update(range(start, end + 1))
         covered_to = max(covered_to, end)
 
     if covered_to < total:
@@ -199,7 +195,6 @@ def _scope_header_lines(
     symbols: Sequence[ASTSymbol],
     start: int,
     shown_scopes: set[int],
-    line_format: _LineFormat,
 ) -> list[str]:
     """Return the header line of every symbol whose body contains ``start``."""
     enclosing = sorted(
@@ -220,7 +215,7 @@ def _scope_header_lines(
         if header in shown_scopes or header > len(lines):
             continue
         shown_scopes.add(header)
-        headers.append(line_format.render(header, lines[header - 1]))
+        headers.append(f"{header}|{lines[header - 1]}")
         last_header = header
 
     if last_header is not None and last_header < start - 1:

@@ -73,11 +73,14 @@ class TestLineWrapContent:
         assert not rendered.endswith("...")
         assert rendered.splitlines()[-1] == "12|line 12"
 
-    def test_add_space_format(self):
-        assert line_wrap_content("a", add_space=True) == "1| a "
-
-    def test_no_line_number_format(self):
-        assert line_wrap_content("a\nb", no_line_number=True) == "a\nb"
+    def test_the_removed_prompt_options_left_one_render_path(self):
+        """``add_space`` and ``no_line_number`` were Agentless prompt knobs
+        that no caller here ever set, and the dataclass existed only to route
+        between them. One spelling is left. It is not yet ``line_prefix``'s:
+        see this module's docstring."""
+        assert line_wrap_content("a") == "1|a"
+        with pytest.raises(TypeError):
+            line_wrap_content("a", add_space=True)
 
     def test_scope_headers_come_from_symbols(self):
         symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
@@ -96,6 +99,23 @@ class TestLineWrapContent:
         rendered = line_wrap_content(SCOPED_SOURCE, [(6, 6), (8, 8)], symbols=symbols)
         assert rendered.count("1|class Widget:") == 1
         assert rendered.count("4|    def render(self) -> str:") == 1
+
+    def test_a_header_the_render_already_showed_as_content_is_not_repeated(self):
+        """Regression: ``shown_scopes`` recorded only the headers this render
+        wrote, so an interval covering the class line and a later interval
+        inside that class printed the class line twice and the numbers ran
+        backwards."""
+        symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
+        rendered = line_wrap_content(SCOPED_SOURCE, [(1, 2), (7, 7)], symbols=symbols).splitlines()
+        assert rendered == [
+            "1|class Widget:",
+            '2|    """A widget."""',
+            "...",
+            "4|    def render(self) -> str:",
+            "...",
+            "7|            total += part",
+            "...",
+        ]
 
 
 class TestLineCount:

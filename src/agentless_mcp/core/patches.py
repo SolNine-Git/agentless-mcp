@@ -16,7 +16,9 @@ The path header may be fenced (```` ```python ```` and a closing ```` ``` ````
 around the block, any language label) or bare, may be written ``### path`` or
 ``path``, and is inherited by a following block that omits it. A header line that is
 not shaped like a path is prose and is skipped, so a block introduced by a
-sentence names no file rather than naming the sentence. Filenames are
+sentence names no file rather than naming the sentence -- a single word has
+to be spelled like a filename to count, because every single word counting
+made ``Done!`` a path and handed it to the block below. Filenames are
 taken verbatim after stripping: the original wrapped them in quotes and used
 ``eval()`` to unwrap them at apply time, which is remote code execution
 reachable from model output. Neither the quoting nor the ``eval`` is here.
@@ -51,6 +53,8 @@ writing files, and deciding which paths a caller may name at all, belong to
 :mod:`agentless_mcp.application.patch_service`.
 """
 
+import re
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -77,6 +81,15 @@ ELISION_PREFIX = ELISION + "\n"
 # at most this many characters on the last path component.
 _MAX_PATH_WORDS = 3
 _MAX_EXTENSION = 12
+
+# What a single word has to look like to be read as a path: filename
+# characters throughout, and a last character that is not the punctuation a
+# sentence ends on. `Makefile`, `.gitignore`, `src/app.py`, `../pkg/mod.rs`
+# and `/etc/passwd` are paths; `Done!`, `Next:`, `Also,` and `Fixed.` are
+# prose. It is a shape test and not a guarantee -- a bare English word that
+# is also a legal filename still passes, and `apply_edits` answers that one
+# with `no_such_file` rather than writing to it.
+_PATH_WORD = re.compile(r"[A-Za-z0-9_.~/+@:\\-]*[A-Za-z0-9_~/+-]")
 
 
 @dataclass(frozen=True)
@@ -341,17 +354,23 @@ def _filename_in(header: str) -> str | None:
 def _is_path_shaped(candidate: str) -> bool:
     """Return True when ``candidate`` could be a filename rather than prose.
 
-    The format has no quoting, so shape is the only signal there is. One word
-    is always taken as a path -- ``Makefile`` and ``src/app.py`` are both
-    words, and so is ``../../etc/passwd``, which is refused later by
-    containment rather than here. A candidate carrying spaces is taken only
-    when it stays within a few words and its last component ends in an
-    extension, which is what a filename with a space in it looks like and
-    what a sentence about a file does not.
+    The format has no quoting, so shape is the only signal there is. A single
+    word is taken as a path when it is *spelled* like one: ``Makefile`` and
+    ``src/app.py`` are, and so is ``../../etc/passwd``, which is refused later
+    by containment rather than here. Every single word used to qualify, so a
+    one-word line of prose (``Done!``) became the path, and path inheritance
+    then attached the block under it to that name -- which is worse than a
+    missing header, because the block that would have inherited the correct
+    path no longer does. A word rejected here is skipped rather than
+    remembered, so the real header above it still wins.
+
+    A candidate carrying spaces is taken only when it stays within a few words
+    and its last component ends in an extension, which is what a filename with
+    a space in it looks like and what a sentence about a file does not.
     """
     words = candidate.split()
     if len(words) == 1:
-        return True
+        return bool(_PATH_WORD.fullmatch(candidate))
     if len(words) > _MAX_PATH_WORDS or "  " in candidate or "\t" in candidate:
         return False
     return _has_extension(candidate.rpartition("/")[2])
@@ -375,6 +394,10 @@ class _Body:
 def _split_body(body: str) -> _Body:
     """Split the text after ``<<<<<<< SEARCH`` into its two sides."""
     lines = body.split("\n")
+    crlf = _crlf_reason(lines)
+    if crlf:
+        return _Body("", "", crlf)
+
     if lines[0].strip():
         return _Body("", "", "text follows the <<<<<<< SEARCH marker on its own line")
 
@@ -401,6 +424,28 @@ def _split_body(body: str) -> _Body:
         # blesses it too. It is refused here, where the block is still a block.
         return _Body("", "", "both sides of this block are '...': there is nothing to write")
     return _Body(search, replace, "")
+
+
+def _crlf_reason(lines: Sequence[str]) -> str:
+    """Explain a block whose structural lines end in a carriage return, else ''.
+
+    A carriage return on the ``<<<<<<< SEARCH`` line or on the ``=======``
+    divider means the patch text itself is CRLF, so every content line carries
+    one too and the needle can never match an LF checkout. Left undiagnosed
+    this surfaced as ``search text not found`` on every block, which reads as
+    a wrong search string and sends the author looking in the wrong place.
+
+    :mod:`agentless_mcp.core.unidiff` refuses a structural carriage return for
+    exactly this reason and keeps one inside content verbatim; the same rule
+    applies here, so one cause has one diagnosis in both parsers.
+    """
+    structural = [lines[0], *(line for line in lines if line.rstrip() == DIVIDER)]
+    if not any(line.endswith("\r") for line in structural):
+        return ""
+    return (
+        "a structural line ends with a carriage return, so this patch text has CRLF line "
+        "endings; convert it to LF and rerun"
+    )
 
 
 def _divider_reason(count: int) -> str:
@@ -563,10 +608,34 @@ def _apply_one(
     updated = padded[:at] + replacement + padded[end:]
     delta = len(replacement) - len(needle)
     return (
-        EditOutcome(edit=edit, status=EditStatus.APPLIED, reason="", matches=1),
+        EditOutcome(
+            edit=edit,
+            status=EditStatus.APPLIED,
+            reason=_placement(edit, search, padded, at),
+            matches=1,
+        ),
         _unpad(updated),
         _shift(scopes, end, delta),
     )
+
+
+def _placement(edit: Edit, search: str, padded: str, at: int) -> str:
+    """Say where a bare ``...`` edit landed; say nothing for a located one.
+
+    A block whose search side is only ``...`` expresses no location at all:
+    :func:`_find_anchor` picks the first unindented unique line in scope, and
+    with no scope that is a property of the file rather than anything the
+    author wrote. Reporting `applied` and nothing else made the caller accept
+    a placement it could not see, so the line the insert went above is named
+    here. Every other edit says where it goes by quoting it, and repeating
+    that back adds nothing.
+    """
+    if edit.search != ELISION:
+        return ""
+    # `at` is the offset of the newline that opens the matched line, so the
+    # newlines before it are exactly the lines before it.
+    number = padded.count("\n", 0, at) + 1
+    return f"inserted above line {number}: {search!r}"
 
 
 def _pad(text: str) -> str:
@@ -650,11 +719,12 @@ def resolve_elisions(
 ) -> tuple[str, str, str]:
     """Expand ``...`` elisions, or explain why this one cannot be expanded.
 
-    Public because the elision rule has to have exactly one owner: anything
-    that wants to know which lines an edit really searches for -- applying it
-    here, or locating it in :mod:`agentless_mcp.core.patchlint` -- has to ask
-    the same question of the same code, or an elided edit means two different
-    things depending on who read it.
+    Public so that the elision rule *can* have exactly one owner. It does not
+    have one yet: :func:`agentless_mcp.core.patchlint._locate` matches the
+    search text as written and never calls this, so an elided edit anchors in
+    the applier and anchors nowhere in the linter. That function's own
+    docstring names the gap. This one exists to be called by it, not to claim
+    it already is.
 
     Ported from the original's ``parse_for_threedots`` with its two crashes
     guarded: an empty replacement side indexed ``replace[0]``, and a search
@@ -692,11 +762,20 @@ def _find_anchor(padded: str, scopes: Sequence[tuple[int, int]]) -> str | None:
     Scopes are consulted in order and the first qualifying line wins, so an
     elided edit lands in the first region it was pointed at rather than
     wherever the file happens to have a unique line.
+
+    Uniqueness is counted once, over the whole file, instead of running a
+    full-file scan per candidate. Same answer: a padded line matches padded
+    text exactly where that whole line occurs, and consecutive identical
+    lines -- the overlap case :func:`_find_all` exists for -- are two entries
+    in the count either way. The early return bounded the old scan in the
+    common case, but a file whose leading lines are all indented or all
+    duplicated read the whole file once per line.
     """
+    occurrences = Counter(padded.split("\n"))
     for start, end in scopes:
         for line in padded[start:end].split("\n"):
             if not line or line[0].isspace():
                 continue
-            if sum(1 for _ in _find_all(padded, _pad(line))) == 1:
+            if occurrences[line] == 1:
                 return line
     return None
