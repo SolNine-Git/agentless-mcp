@@ -64,7 +64,7 @@ class TiktokenCounter:
 
     __slots__ = ("_encoding",)
 
-    def __init__(self, encoding_name: str = TIKTOKEN_ENCODING) -> None:
+    def __init__(self) -> None:
         try:
             tiktoken = importlib.import_module("tiktoken")
         except ImportError as exc:
@@ -74,7 +74,7 @@ class TiktokenCounter:
                 "pip install 'agentless-mcp[tokens]'."
             )
             raise AtlasError(message) from exc
-        self._encoding = tiktoken.get_encoding(encoding_name)
+        self._encoding = tiktoken.get_encoding(TIKTOKEN_ENCODING)
 
     def count(self, text: str) -> int:
         """Return the number of tokens ``text`` encodes to."""
@@ -141,6 +141,11 @@ def mcp_main(argv: Sequence[str] | None = None) -> int:
 
     extractor = TreeSitterExtractor()
     counter = Chars4Counter()
+    # module is Any to mypy, so neither these field names nor the cast below is
+    # type-checked -- the dynamic import that gates the optional extra is what
+    # hides the signatures. tests/unit/test_transport_e2e.py spawns the installed
+    # console script, so a renamed field or a changed serve signature fails there
+    # at startup instead of passing silently.
     services = module.ServerServices(
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
