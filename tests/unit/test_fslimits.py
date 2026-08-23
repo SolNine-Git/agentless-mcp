@@ -8,7 +8,12 @@ import os
 
 import pytest
 
-from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
+from agentless_mcp.util.errors import (
+    AtlasError,
+    RepoResolutionError,
+    SecurityRefusal,
+    WalkBoundExceeded,
+)
 from agentless_mcp.util.fslimits import bounded_walk, contained_path, read_bounded
 
 
@@ -132,9 +137,13 @@ class TestReadBounded:
         assert result.text is None
         assert result.skipped == "skipped: 5000 bytes exceeds the per-file cap of 1000 bytes"
 
-    def test_file_growth_cannot_bypass_the_read_cap(self, root, monkeypatch):
-        growing = root / "growing.py"
-        growing.write_bytes(b"x" * 100)
+    def test_a_stale_stat_cannot_bypass_the_read_cap(self, root, monkeypatch):
+        # Named for what it asserts. `st_size` is made to under-report, and
+        # the reported size comes from the bytes actually read rather than
+        # from the stat -- so a file whose size the filesystem answers wrongly
+        # is still capped.
+        understated = root / "understated.py"
+        understated.write_bytes(b"x" * 100)
         real_fstat = os.fstat
 
         def stale_size(descriptor):
@@ -145,10 +154,19 @@ class TestReadBounded:
 
         monkeypatch.setattr(os, "fstat", stale_size)
 
-        result = read_bounded(growing, max_bytes=4)
+        result = read_bounded(understated, max_bytes=4)
 
         assert result.text is None
         assert result.skipped == "skipped: 5 bytes exceeds the per-file cap of 4 bytes"
+
+    def test_a_negative_cap_is_refused_as_the_package_error(self, root):
+        # The one bound in this module a caller could get wrong. It raised a
+        # bare ValueError, which is not what the adapters catch on.
+        readable = root / "small.py"
+        readable.write_text("x", encoding="utf-8")
+
+        with pytest.raises(AtlasError, match="max_bytes must be at least 0"):
+            read_bounded(readable, max_bytes=-1)
 
     def test_missing_file_is_reported_not_raised(self, root):
         result = read_bounded(root / "gone.py")

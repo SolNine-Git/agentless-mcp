@@ -35,6 +35,13 @@ class Chars4Counter:
 
     Deliberately crude and deliberately pinned by tests. Its job is to make
     budgets reproducible, not to match any particular vocabulary.
+
+    Floor division means any text shorter than four characters costs nothing,
+    so a non-empty string can be free against a budget. That is safe for the
+    consumers there are: ``map_service._pack`` is a bisection over a finite
+    candidate list, which terminates whatever a candidate costs, and
+    ``_auto_budget`` clamps its estimate into a fixed band. A consumer that
+    loops until the cost rises would need a positive floor, and there is none.
     """
 
     __slots__ = ()

@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentless_mcp.util.bounds import at_least
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
 
 DEFAULT_MAX_DEPTH = 20
@@ -107,9 +108,7 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
     repository must not fail a whole traversal, but it must also never pass
     silently as an empty file.
     """
-    if max_bytes < 0:
-        message = "max_bytes must not be negative"
-        raise ValueError(message)
+    at_least(max_bytes, 0, "max_bytes")
     try:
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
@@ -118,6 +117,9 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
 
     try:
         with os.fdopen(descriptor, "rb") as handle:
+            # Both stats are taken on every read even though only the skip
+            # branch reports them: one has to happen before the read and the
+            # other after it, so neither can be deferred into the branch.
             initial_size = os.fstat(handle.fileno()).st_size
             data = handle.read(max_bytes + 1)
             final_size = os.fstat(handle.fileno()).st_size
@@ -181,6 +183,12 @@ def bounded_walk(
             dirnames[:] = []
             continue
 
+        # `os.walk(followlinks=False)` already refuses to descend a symlinked
+        # directory, so this filter is redundant and costs one lstat per
+        # entry. Kept deliberately: this function is the security bound, and
+        # the bound does not rest on one caller's keyword argument staying
+        # right. The sort is not redundant -- it is what makes two walks of an
+        # unchanged tree render identically.
         dirnames[:] = sorted(name for name in dirnames if not (current / name).is_symlink())
 
         for name in sorted(filenames):
