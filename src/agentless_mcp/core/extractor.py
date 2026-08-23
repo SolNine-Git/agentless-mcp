@@ -20,7 +20,7 @@ warmed-state and degradation.
 
 import logging
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -548,7 +548,7 @@ class _BindingScope:
     kind: str
     bindings: frozenset[str]
     globals: frozenset[str]
-    imports: Mapping[str, str]
+    imports: frozenset[str]
 
 
 @dataclass
@@ -561,7 +561,7 @@ class _ScopeBuilder:
     kind: str
     bindings: set[str]
     globals: set[str]
-    imports: dict[str, str]
+    imports: set[str]
 
 
 def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
@@ -610,7 +610,7 @@ def _python_roles(
         if node.type in {"import_statement", "import_from_statement"}:
             for identifier in _descendant_identifiers(node):
                 roles[identifier.id] = IdentifierRole.IMPORT
-            _nearest_scope(node, builders).imports.update(_import_bindings(node, data))
+            _nearest_scope(node, builders).imports.update(_imported_module_names(node, data))
 
     for node in nodes:
         _bind_python_declaration(node, builders, data)
@@ -656,7 +656,7 @@ def _python_roles(
                     kind=scope.kind,
                     bindings=frozenset(scope.bindings),
                     globals=frozenset(scope.globals),
-                    imports=dict(scope.imports),
+                    imports=frozenset(scope.imports),
                 )
                 for scope in builders
             ),
@@ -689,7 +689,7 @@ def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
         kind=kind,
         bindings=set(),
         globals=set(),
-        imports={},
+        imports=set(),
     )
 
 
@@ -715,20 +715,20 @@ def _mark_non_reference_roles(
         attribute = node.child_by_field_name("attribute")
         if attribute is not None:
             object_node = node.child_by_field_name("object")
-            imported_module = (
-                _visible_import(_node_text(object_node, data), node, scopes)
+            qualifier = (
+                _node_text(object_node, data)
                 if object_node is not None and object_node.type == "identifier"
                 else None
             )
-            role = (
-                IdentifierRole.MODULE_ATTRIBUTE
-                if imported_module is not None
-                else IdentifierRole.ATTRIBUTE
-            )
+            imported = qualifier is not None and _binds_imported_module(qualifier, node, scopes)
+            role = IdentifierRole.MODULE_ATTRIBUTE if imported else IdentifierRole.ATTRIBUTE
             roles.setdefault(attribute.id, role)
-            if imported_module is not None and object_node is not None:
+            if imported and object_node is not None and qualifier is not None:
                 roles.setdefault(object_node.id, IdentifierRole.MODULE_QUALIFIER)
-                qualifiers[attribute.id] = imported_module
+                # The name the source spells, which is what `core/resolve`
+                # keys a module binding on. `import a.b as ab` is written
+                # `ab.f()` here, and `a` is a name this file never binds.
+                qualifiers[attribute.id] = qualifier
     if node.type == "keyword_argument":
         name = node.child_by_field_name("name")
         if name is not None:
@@ -739,30 +739,34 @@ def _mark_non_reference_roles(
             roles.setdefault(name.id, IdentifierRole.DECLARATION)
 
 
-def _import_bindings(node: Node, data: bytes) -> dict[str, str]:
-    """Map the local names one import introduces to their source names."""
-    bindings: dict[str, str] = {}
+def _imported_module_names(node: Node, data: bytes) -> set[str]:
+    """Return the local names one import statement introduces.
+
+    Names, not a mapping to the module behind them: the only consumer is the
+    qualifier a module attribute carries, and a reference spells the local
+    name. `import a.b as ab` introduces `ab`, `import a.b` introduces `a`, and
+    `from pkg import mod` introduces `mod`.
+    """
+    names: set[str] = set()
     for index, child in enumerate(node.children):
         if node.field_name_for_child(index) != "name":
             continue
         alias = child.child_by_field_name("alias")
-        source_node = child.child_by_field_name("name") if alias is not None else child
-        if source_node is None:
+        if alias is not None:
+            names.add(_node_text(alias, data))
             continue
-        identifiers = _descendant_identifiers(source_node)
+        identifiers = _descendant_identifiers(child)
         if not identifiers:
             continue
+        # `import a.b` binds the package `a`; `from pkg import mod` binds
+        # `mod`, the last segment.
         selected = identifiers[0] if node.type == "import_statement" else identifiers[-1]
-        imported = _node_text(selected, data)
-        if alias is not None:
-            bindings[_node_text(alias, data)] = imported
-            continue
-        bindings[imported] = imported
-    return bindings
+        names.add(_node_text(selected, data))
+    return names
 
 
-def _visible_import(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> str | None:
-    """Return the source name behind a visible local import binding."""
+def _binds_imported_module(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> bool:
+    """True when ``name`` is an imported module object visible at ``node``."""
     candidates = sorted(
         (
             scope
@@ -780,10 +784,10 @@ def _visible_import(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> s
         if name in scope.globals:
             continue
         if name in scope.bindings:
-            return None
+            return False
         if name in scope.imports:
-            return scope.imports[name]
-    return None
+            return True
+    return False
 
 
 def _binding_target(node: Node) -> Node | None:
@@ -1729,16 +1733,26 @@ class TreeSitterExtractor:
             if path_node:
                 return self._strip_quotes(self._node_text(path_node, source))
 
-        # Walk children looking for the expected string node type
+        # Walk children looking for the expected string node type. Every
+        # match under one parent is joined with a dot, because a grammar that
+        # spells a dotted path as a run of sibling identifiers -- scala's
+        # `import pricing.Money`, csharp's `using App.Money` -- otherwise
+        # reports only its first segment, and the import resolves to a package
+        # rather than to the file that defines the name.
         target_type = cfg.import_path_node_type or "string"
+        direct = [child for child in node.children if child.type == target_type]
+        if direct:
+            return self._joined_path(direct, source)
+        # One level of nesting (e.g. import_statement > string_fragment).
         for child in node.children:
-            if child.type == target_type:
-                return self._strip_quotes(self._node_text(child, source))
-            # One level of nesting (e.g. import_statement > string_fragment)
-            for grandchild in child.children:
-                if grandchild.type == target_type:
-                    return self._strip_quotes(self._node_text(grandchild, source))
+            nested = [grandchild for grandchild in child.children if grandchild.type == target_type]
+            if nested:
+                return self._joined_path(nested, source)
         return ""
+
+    def _joined_path(self, nodes: list[Node], source: bytes) -> str:
+        """Join one run of path segments into a dotted module string."""
+        return ".".join(self._strip_quotes(self._node_text(node, source)) for node in nodes)
 
     # ------------------------------------------------------------------
     # Lua (dedicated — assigned functions and module tables)
@@ -2981,6 +2995,7 @@ class TreeSitterExtractor:
                 )
             elif child.type == "aliased_import":
                 name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
                 if name_node:
                     module_name = self._node_text(name_node, source)
                     imports.append(
@@ -2991,6 +3006,10 @@ class TreeSitterExtractor:
                             relative_level=0,
                             line_number=node.start_point[0] + 1,
                             resolved_path="",
+                            # `import a.b as ab` binds `ab` to the submodule,
+                            # not `a` to the package. Dropping the alias lost
+                            # both halves of that.
+                            alias=self._node_text(alias_node, source) if alias_node else "",
                         )
                     )
 
@@ -3003,12 +3022,13 @@ class TreeSitterExtractor:
         """Extract 'from foo import bar' statements."""
         module_node = node.child_by_field_name("module_name")
         module_name, relative_level = self._resolve_from_module(node, module_node, source)
-        names = self._collect_import_names(node, module_node, source)
+        names, local_names = self._collect_import_names(node, module_node, source)
 
         imports.append(
             ImportStatement(
                 module=module_name,
                 names=tuple(names),
+                local_names=tuple(local_names),
                 is_relative=relative_level > 0,
                 relative_level=relative_level,
                 line_number=node.start_point[0] + 1,
@@ -3050,19 +3070,34 @@ class TreeSitterExtractor:
 
     def _collect_import_names(
         self, node: Node, module_node: Node | None, source: bytes
-    ) -> list[str]:
-        """Collect imported names from a 'from' import node."""
+    ) -> tuple[list[str], list[str]]:
+        """Collect the members a 'from' import names and the names they bind.
+
+        Two lists rather than one, positionally paired: `from pkg import mod
+        as m` needs `mod` to resolve the member and `m` to record what this
+        file can spell. Recording only the first left `m` bound to nothing.
+        """
         names: list[str] = []
+        local_names: list[str] = []
         for child in node.children:
             if child.type == "dotted_name" and child != module_node:
-                names.append(self._node_text(child, source))
+                text = self._node_text(child, source)
+                names.append(text)
+                local_names.append(text)
             elif child.type == "aliased_import":
                 name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
                 if name_node:
                     names.append(self._node_text(name_node, source))
+                    local_names.append(
+                        self._node_text(alias_node, source)
+                        if alias_node
+                        else self._node_text(name_node, source)
+                    )
             elif child.type == "wildcard_import":
                 names.append("*")
-        return names
+                local_names.append("*")
+        return names, local_names
 
     # ------------------------------------------------------------------
     # Docstring / decorator helpers (Python-specific)

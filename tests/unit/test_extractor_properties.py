@@ -86,44 +86,49 @@ def named(collection):
 class TestDottedImportBinding:
     """What name a dotted `import` introduces, and what file it points at."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H5: build_file_scopes binds `module.split('.')[0]` to the target of the "
-            "whole dotted path. Measured: `import a.b` binds `a` to a/b.py. Python binds "
-            "the package, so a.in_init() is attributed to the file that does not define it."
-        ),
-    )
     def test_import_a_dot_b_binds_the_package_not_the_submodule(self, tmp_path, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        `build_file_scopes` bound `module.split(".")[0]` to the target of the
+        whole dotted path, so `import a.b` bound `a` to a/b.py -- and
+        `a.in_init()` was attributed to the one file that does not define it.
+        """
         scope = scopes_for(write(tmp_path, DOTTED_PACKAGE), extractor)["user.py"]
         assert scope.module_bindings["a"] == frozenset({"a/__init__.py"})
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H5: the Python extractor records `import a.b as ab` with names=(), so the "
-            "alias is lost entirely. Measured: the binding introduced is `a`, a name the "
-            "file never binds, and `ab` -- the name it does bind -- has none."
-        ),
-    )
     def test_an_aliased_dotted_import_binds_the_alias_alone(self, tmp_path, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        The extractor dropped the alias, so the binding introduced was `a` --
+        a name the file never binds -- and `ab`, the name it does bind, had
+        none.
+        """
         scope = scopes_for(write(tmp_path, DOTTED_PACKAGE), extractor)["aliased.py"]
         assert scope.module_bindings["ab"] == frozenset({"a/b.py"})
         assert "a" not in scope.module_bindings
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H5: _extract_import_path keeps the first dotted segment for the generic "
-            "walker's languages. Measured on the committed Scala fixture: "
-            "`import pricing.Money` records module='pricing', so the import resolves to a "
-            "package rather than to the file that defines Money."
-        ),
-    )
     def test_a_dotted_module_string_is_not_truncated_to_its_first_segment(self, extractor):
+        # `_extract_import_path` kept only the first of a run of sibling
+        # identifiers, so `import pricing.Money` recorded module='pricing' and
+        # the import resolved to a package rather than to the file that
+        # defines Money. C#'s `using App.Money` had the same shape.
         source = (FIXTURES / "tier2" / "Pricing.scala").read_text(encoding="utf-8")
         statements = extractor.extract_imports_from_source(source, "scala", "P.scala")
         assert "pricing.Money" in [statement.module for statement in statements]
+
+    def test_a_csharp_using_directive_keeps_its_whole_path(self, extractor):
+        # The same run-of-siblings shape as Scala, one level deeper: the path
+        # is under a `qualified_name`, and only its first segment survived.
+        statements = extractor.extract_imports_from_source("using App.Money;\n", "csharp", "C.cs")
+        assert [statement.module for statement in statements] == ["App.Money"]
+
+    def test_a_from_import_alias_binds_the_alias(self, tmp_path, extractor):
+        # `from pkg import mod as m` binds one name here and it is `m`.
+        # Resolution still needs `mod`, which is why the statement carries
+        # both.
+        source = "from pkg import mod as m\n\n\ndef use(v):\n    return m.wrapped(v)\n"
+        (statement,) = extractor.extract_imports_from_source(source, "python", "a.py")
+        assert statement.bound_names() == (("mod", "m"),)
 
 
 class TestAsyncDetection:

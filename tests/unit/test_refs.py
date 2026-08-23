@@ -157,7 +157,16 @@ class TestCollectRefs:
         assert by_name["write"].role is IdentifierRole.ATTRIBUTE
         assert not by_name["write"].is_resolvable
 
-    def test_an_import_alias_preserves_the_source_qualifier(self):
+    def test_an_import_alias_records_the_name_the_source_spells(self):
+        """The qualifier was the source module; since stage 6c it is the alias.
+
+        `core` and `c` were interchangeable only while both sides of the
+        lookup agreed to key on the module's first segment. They stop being
+        interchangeable at `import a.b as ab`, where the first segment names
+        the package and the alias names the submodule -- so the qualifier is
+        now what a reference in this file actually writes, and
+        `core/resolve` keys its module bindings on the same name.
+        """
         refs = collect_refs(
             "import core as c\nc.only_once()\n",
             "python",
@@ -167,7 +176,7 @@ class TestCollectRefs:
 
         assert by_name["c"].role is IdentifierRole.MODULE_QUALIFIER
         assert by_name["only_once"].role is IdentifierRole.MODULE_ATTRIBUTE
-        assert by_name["only_once"].qualifier == "core"
+        assert by_name["only_once"].qualifier == "c"
 
     def test_a_local_binding_shadows_an_imported_module(self):
         refs = collect_refs(

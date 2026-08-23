@@ -101,7 +101,13 @@ from agentless_mcp.util.fslimits import read_bounded
 #   name, and every TypeScript named import back as one that binds nothing --
 #   which is precisely the whole-module over-promotion this version exists to
 #   end, reintroduced by a warm cache.
-SCHEMA_VERSION = 8
+# 9 (2026-08-23): import rows carry the local name an import binds -- ``alias``
+#   for a module object, ``local_names`` for the members of a ``from`` import
+#   -- and reference rows carry the qualifier as the name the source spells
+#   rather than the module behind it. Reusing v8 rows would key every module
+#   binding on a name the importing file does not bind, so `import a.b as ab`
+#   would resolve `ab.f()` through `a` and attribute it to the package.
+SCHEMA_VERSION = 9
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
@@ -465,7 +471,8 @@ class CachedSource:
         """Rebuild one file's import statements from its rows, in extraction order."""
         cursor = self._connection.execute(
             "SELECT module, names, is_relative, relative_level, line, resolved_path, "
-            "binds_all FROM imports WHERE path = ? AND sha256 = ? ORDER BY ordinal",
+            "binds_all, alias, local_names FROM imports "
+            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
         return [_import_from_row(row) for row in cursor.fetchall()]
@@ -1126,8 +1133,8 @@ def _apply_plan(
             )
             connection.executemany(
                 "INSERT INTO imports (path, sha256, module, names, is_relative, "
-                "relative_level, line, resolved_path, binds_all, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "relative_level, line, resolved_path, binds_all, alias, local_names, "
+                "ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     _import_row(entry.path, entry.digest, ordinal, statement)
                     for ordinal, statement in enumerate(entry.imports)
@@ -1222,6 +1229,8 @@ def _import_row(
         statement.line_number,
         statement.resolved_path,
         int(statement.binds_all),
+        statement.alias,
+        json.dumps(list(statement.local_names)),
         ordinal,
     )
 
@@ -1236,6 +1245,8 @@ def _import_from_row(row: Sequence[Any]) -> ImportStatement:
         line_number=int(row[4]),
         resolved_path=str(row[5]),
         binds_all=bool(row[6]),
+        alias=str(row[7]),
+        local_names=tuple(str(item) for item in json.loads(str(row[8]))),
     )
 
 
@@ -1409,6 +1420,8 @@ CREATE TABLE IF NOT EXISTS imports (
     line INTEGER NOT NULL,
     resolved_path TEXT NOT NULL,
     binds_all INTEGER NOT NULL,
+    alias TEXT NOT NULL,
+    local_names TEXT NOT NULL,
     ordinal INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS refs (

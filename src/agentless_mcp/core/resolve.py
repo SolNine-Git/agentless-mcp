@@ -47,11 +47,12 @@ sha256 gate already guarantees.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
+from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 
@@ -332,6 +333,34 @@ def build_scopes(scan: RepoScan) -> dict[str, ImportScope]:
     return build_file_scopes(scan.files)
 
 
+def _bind_module_object(
+    facts: FileFacts,
+    statement: ImportStatement,
+    known: frozenset[str],
+    module_bindings: dict[str, set[str]],
+) -> None:
+    """Record the local name a module-object import binds, and what it names.
+
+    The name and its target are one question, and `import a.b` answers both
+    differently from `import a.b as ab`. Unaliased, Python binds `a` -- the
+    *package* -- so `a.in_init()` is a call into `a/__init__.py` and not into
+    the submodule the statement happens to name. Aliased, it binds `ab` to the
+    submodule, and `a` is a name the file never binds at all.
+
+    So the target is resolved from the module the local name refers to, not
+    from the statement's own dotted path. Attributing `a.in_init()` to
+    `a/b.py` names the one file that does not define it.
+    """
+    referenced = statement.module if statement.alias else statement.module.split(".")[0]
+    binding = statement.alias or referenced
+    if not binding:
+        return
+    target = graph.resolve_import_target(facts.path, replace(statement, module=referenced), known)
+    if target is None or target == facts.path:
+        return
+    module_bindings.setdefault(binding, set()).add(target)
+
+
 def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
     """Resolve every file's import statements to repository files, once.
 
@@ -366,17 +395,14 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
                 # them really is evidence of this import.
                 wholesale.add(bound)
             if not statement.names:
-                if bound is not None:
-                    binding = statement.module.split(".", maxsplit=1)[0]
-                    if binding:
-                        module_bindings.setdefault(binding, set()).add(bound)
+                _bind_module_object(facts, statement, known, module_bindings)
                 continue
-            for name in statement.names:
-                dotted = f"{statement.module}.{name}" if statement.module else name
+            for member, local in statement.bound_names():
+                dotted = f"{statement.module}.{member}" if statement.module else member
                 submodule = graph.resolve_imported_submodule(
                     facts.path,
                     statement,
-                    name,
+                    member,
                     known,
                 )
                 if submodule is not None and submodule != facts.path:
@@ -385,11 +411,15 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
                     # file, which is why the submodule is no longer added to
                     # the wholesale set: a bare reference to something
                     # `pkg/mod.py` defines is a NameError here.
-                    named.setdefault(name, set()).add(submodule)
-                    module_bindings.setdefault(name, set()).add(submodule)
+                    #
+                    # Keyed on the local name: `from pkg import mod as m`
+                    # spells `m` here, and `mod` is a name this file never
+                    # binds.
+                    named.setdefault(local, set()).add(submodule)
+                    module_bindings.setdefault(local, set()).add(submodule)
                     statements.append((dotted, statement.line_number, submodule))
                 elif bound is not None:
-                    named.setdefault(name, set()).add(bound)
+                    named.setdefault(local, set()).add(bound)
 
         scopes[facts.path] = ImportScope(
             wholesale=frozenset(wholesale),

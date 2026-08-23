@@ -435,7 +435,10 @@ class TestSubmoduleImports:
         resolver, graph = submodule_repo
         pairs = {(edge.source.node, edge.target.node) for edge in graph.import_edges()}
         assert ("aliased.py", "pkg/mod.py") in pairs
-        assert resolver.scopes["aliased.py"].named["mod"] == frozenset({"pkg/mod.py"})
+        # `m`, not `mod`: `from pkg import mod as m` binds one name in this
+        # file and it is the alias. Keyed on `mod` before stage 6c, which is a
+        # name aliased.py never binds.
+        assert resolver.scopes["aliased.py"].named["m"] == frozenset({"pkg/mod.py"})
         edges = edges_from(graph, "py:aliased.py::use_alias", "wrapped")
         assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
 
