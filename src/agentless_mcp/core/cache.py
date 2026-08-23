@@ -66,12 +66,12 @@ from typing import Any, Protocol
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import IdentifierRole, Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate, id_qualname
+from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.errors import AgentlessError, CacheLocked
-from agentless_mcp.util.fslimits import read_bounded
+from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
 # policy: the file is derived data, so a schema change costs one re-index and
@@ -107,7 +107,24 @@ from agentless_mcp.util.fslimits import read_bounded
 #   rather than the module behind it. Reusing v8 rows would key every module
 #   binding on a name the importing file does not bind, so `import a.b as ab`
 #   would resolve `ab.f()` through `a` and attribute it to the package.
-SCHEMA_VERSION = 9
+# 10 (2026-08-23): the ``tags.qualname``, ``tags.is_def``, ``files.size`` and
+#   ``files.lang`` columns are gone. Every one of them was written on every row
+#   and selected by nothing. A v9 database still declares them ``NOT NULL``, so
+#   this build's shorter INSERT would fail on the first file of every index run
+#   and leave the repository with no usable cache rather than with a smaller
+#   one. The bump drops the tables instead.
+#
+#   The same bump covers the extractor changes that landed beside it, because
+#   row reuse keys on the content digest and the grammar version, so an
+#   unchanged file would otherwise serve rows this build no longer agrees
+#   with. Reference rows carry a new ``builtin`` role, and a walrus target and
+#   a class-body comprehension name changed role; tag rows carry a keyword the
+#   source actually writes in the signature (``interface``, ``type``,
+#   ``struct``) and an owner on a nested class, which changes its stable id. A
+#   v9 reference row read by this build is fine; a ``builtin`` row read by an
+#   OLDER build raises at ``IdentifierRole(...)``, which is the other half of
+#   why one bump has to cover both.
+SCHEMA_VERSION = 10
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
@@ -178,16 +195,11 @@ class CacheStatus:
     path: Path | None
     generation: str | None
     repo_generation: str | None
-    fresh: bool
+    generation_matches: bool
     enabled: bool
     files: int
     tags: int
     note: str
-
-    @property
-    def generation_matches(self) -> bool:
-        """Whether the index and repository generation stamps agree."""
-        return self.fresh
 
     @property
     def receipt(self) -> str:
@@ -219,7 +231,6 @@ class CacheStatus:
             "path": str(self.path) if self.path is not None else None,
             "generation": self.generation,
             "repo_generation": self.repo_generation,
-            "fresh": self.fresh,
             "generation_matches": self.generation_matches,
             "enabled": self.enabled,
             "files": self.files,
@@ -424,7 +435,7 @@ class CachedSource:
             path=self._state.database,
             generation=self._state.generation,
             repo_generation=self._state.repo_generation,
-            fresh=self._state.generation == self._state.repo_generation,
+            generation_matches=self._state.generation == self._state.repo_generation,
             enabled=True,
             files=counts.files,
             tags=counts.tags,
@@ -565,6 +576,28 @@ def cache_path(repo_root: Path) -> Path:
     return cache_root() / key / DATABASE_NAME
 
 
+def _ensure_cache_directory(directory: Path) -> None:
+    """Create one repository's cache directory, owner-only at both levels.
+
+    ``mkdir(mode=...)`` sets the mode of the leaf and of nothing else, so a
+    ``parents=True`` call left ``<cache home>/agentless-mcp`` at whatever the
+    umask allowed, and ``exist_ok=True`` never re-applied the mode to a
+    directory an earlier version had already created. Both are chmodded after
+    the fact so :data:`DIRECTORY_MODE` describes an upgraded install and not
+    only a fresh one. The database file itself stays at SQLite's own mode:
+    an owner-only directory is what makes it unreachable.
+
+    A filesystem that will not carry the mode is reported and not fatal --
+    indexing a repository is still the useful thing to do on it.
+    """
+    directory.mkdir(parents=True, exist_ok=True, mode=DIRECTORY_MODE)
+    for path in (directory.parent, directory):
+        try:
+            path.chmod(DIRECTORY_MODE)
+        except OSError as exc:
+            logger.warning("could not restrict %s to owner-only: %r", path, exc)
+
+
 def content_digest(text: str) -> str:
     """Return the sha256 a file's symbols are keyed on.
 
@@ -632,11 +665,30 @@ def open_source(
         return OnDemandSource(extractor, _bypassed_status(database))
     if not database.exists():
         return OnDemandSource(extractor, _absent_status(database))
+    return _open_indexed(database, resolved, extractor, tree_oid=tree_oid)
 
+
+def _open_indexed(
+    database: Path,
+    repo_root: Path,
+    extractor: TreeSitterExtractor,
+    *,
+    tree_oid: str | None,
+) -> FileSource:
+    """Open an existing database, or say in the receipt why it is not consulted."""
+    # Two ways to fail, two answers. ``sqlite3.DatabaseError`` proper is the
+    # unusable file -- "file is not a database", a malformed disk image -- and
+    # that file is derived data that failed, so it goes. ``OperationalError``
+    # is the environment around the file: a disk I/O error, a database that
+    # will not open, a lock wait that timed out. None of those says anything
+    # about what the index holds, so this call parses live and leaves the file
+    # for the next one. Unlinking on them deleted healthy indexes.
     try:
         connection = _connect(database)
+    except sqlite3.OperationalError as exc:
+        return OnDemandSource(extractor, _absent_status(database, f"cache unreadable: {exc}"))
     except sqlite3.DatabaseError as exc:
-        _discard_unlocked(database, resolved)
+        _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, f"cache discarded: {exc}"))
 
     try:
@@ -650,16 +702,19 @@ def open_source(
         # pins both to the same view. WAL is what makes this free: readers do
         # not block the writer, so the index keeps running underneath.
         connection.execute("BEGIN")
-        opened = _read_index(connection, resolved)
+        opened = _read_index(connection, repo_root)
+    except sqlite3.OperationalError as exc:
+        connection.close()
+        return OnDemandSource(extractor, _absent_status(database, f"cache unreadable: {exc}"))
     except sqlite3.DatabaseError as exc:
         connection.close()
-        _discard_unlocked(database, resolved)
+        _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, f"cache discarded: {exc}"))
 
     meta = opened.meta
     if meta is None:
         connection.close()
-        _discard_unlocked(database, resolved)
+        _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, opened.note))
 
     return CachedSource(
@@ -669,7 +724,7 @@ def open_source(
             database=database,
             entries=opened.entries,
             generation=meta.generation,
-            repo_generation=repo_generation(resolved, tree_oid),
+            repo_generation=repo_generation(repo_root, tree_oid),
             grammar_version=grammars.pack_version(),
         ),
     )
@@ -693,13 +748,16 @@ UNWARMED_STAMP_PREFIX = "unwarmed:"
 
 @dataclass(frozen=True)
 class IndexSkip:
-    """One file recorded without facts because its grammar is not warmed.
+    """One file the run declined to extract facts from, and why.
 
-    The same skip the read-path scan reports, downgraded from the error class
-    on purpose: a fresh install has only the tier-1 grammars warmed, and a
-    repository's own config files must not fail ``index`` over a grammar the
-    operator was never asked to fetch. The file is recorded with its digest so
-    the next run reuses the row instead of re-attempting it.
+    Two reasons reach it: the file's grammar is not warmed, or the file is
+    over the per-file read cap. Both are decisions, so both are downgraded
+    from the error class on purpose. A fresh install has only the tier-1
+    grammars warmed, and a repository's own config files must not fail
+    ``index`` over a grammar the operator was never asked to fetch; an
+    oversized file was never going to be read at all. An unwarmed file is
+    recorded with its digest so the next run reuses the row instead of
+    re-attempting it. An oversized one has no digest to record.
     """
 
     path: str
@@ -764,7 +822,7 @@ class IndexReport:
 
 @dataclass(frozen=True)
 class _FileTags:
-    """One file's recorded state: its digest, its size and everything parsed out of it.
+    """One file's recorded state: its digest and everything parsed out of it.
 
     ``grammar_version`` is per file rather than per run because an unwarmed
     file is stamped :data:`UNWARMED_STAMP_PREFIX` plus the pack version, which
@@ -773,8 +831,6 @@ class _FileTags:
 
     path: str
     digest: str
-    size: int
-    language: str
     symbols: tuple[ASTSymbol, ...]
     imports: tuple[ImportStatement, ...]
     refs: tuple[Ref, ...]
@@ -793,6 +849,7 @@ class _IndexPlan:
     writes: tuple[_FileTags, ...]
     reused: tuple[str, ...]
     seen: frozenset[str]
+    present: frozenset[str]
     failures: tuple[IndexFailure, ...]
     skips: tuple[IndexSkip, ...]
 
@@ -800,6 +857,13 @@ class _IndexPlan:
 def auto_index_disabled() -> bool:
     """True when the environment opts out of the background index refresh."""
     return os.environ.get(ENV_NO_AUTO_INDEX, "") not in ("", "0", "false", "False")
+
+
+# The generation recorded for an attempt that never got far enough to read
+# one. It cannot equal a git tree oid or a ``nogit:`` stamp, so the record
+# reads as "this process already tried and stopped" rather than as a
+# generation the index is at.
+GENERATION_UNAVAILABLE = "unavailable"
 
 
 @dataclass
@@ -810,9 +874,12 @@ class _AutoIndexRun:
     same generation -- success or failure, one attempt per generation per
     process, exactly the auto-warm policy. A new commit changes the
     generation and re-arms the trigger.
+
+    ``thread`` is None for an attempt that stopped before it started one. The
+    record is still what stops the attempt from being repeated.
     """
 
-    thread: threading.Thread
+    thread: threading.Thread | None
     generation: str
 
 
@@ -829,7 +896,21 @@ def auto_index_in_progress(database: Path | None) -> bool:
         return False
     with _AUTO_INDEX_LOCK:
         run = _AUTO_INDEX_RUNS.get(database)
-    return run is not None and run.thread.is_alive()
+    return run is not None and run.thread is not None and run.thread.is_alive()
+
+
+def _record_attempt(database: Path, generation: str) -> None:
+    """Record that this process tried to refresh ``database`` and stopped.
+
+    No thread, because none started. A live run is never overwritten: a
+    caller that failed while another one was already indexing must not erase
+    the record of the run that is doing the work.
+    """
+    with _AUTO_INDEX_LOCK:
+        current = _AUTO_INDEX_RUNS.get(database)
+        if current is not None and current.thread is not None and current.thread.is_alive():
+            return
+        _AUTO_INDEX_RUNS[database] = _AutoIndexRun(thread=None, generation=generation)
 
 
 def start_auto_index(
@@ -860,29 +941,58 @@ def start_auto_index(
 
     with _AUTO_INDEX_LOCK:
         run = _AUTO_INDEX_RUNS.get(database)
-    if run is not None and run.thread.is_alive():
+    if run is not None and run.thread is not None and run.thread.is_alive():
         return run.thread
+    if run is not None and run.generation == GENERATION_UNAVAILABLE:
+        # This process already failed to read what generation this repository
+        # is at. Nothing about the repository can re-arm a trigger whose stamp
+        # cannot be read, and the attempt is the expensive half, so it is not
+        # made again until the process restarts.
+        return None
 
-    # Outside the git tree oid this walks the repository's stat manifest --
-    # the same cost ``open_source`` already pays on every cached call.
+    # Outside the git tree oid this walks the repository's stat manifest.
+    generation = GENERATION_UNAVAILABLE
     try:
         generation = repo_generation(resolved, tree_oid)
         done = (run is not None and run.generation == generation) or _index_current(
             database, resolved, generation
         )
     except (AgentlessError, OSError) as error:
+        # Registered before returning, exactly as a failure inside the thread
+        # is. Without the record this walked the repository again and logged
+        # this line again on every MCP call -- the per-call retry storm the
+        # one-attempt-per-generation rule exists to prevent, on the one path
+        # that was not covered by it.
+        _record_attempt(database, generation)
         logger.warning("background index refresh for %s skipped: %s", resolved, error)
         return None
     if done:
         return None
 
+    return _start_refresh(resolved, extractor, generation, tree_oid, head_sha)
+
+
+def _start_refresh(
+    root: Path,
+    extractor: TreeSitterExtractor,
+    generation: str,
+    tree_oid: str | None,
+    head_sha: str | None,
+) -> threading.Thread | None:
+    """Register and start this generation's refresh, unless a racer got there first.
+
+    Any record already holding this generation was written by a racing caller:
+    the record ``start_auto_index`` read before it computed the generation was
+    tested against it there, and a match returns before this runs.
+    """
+    database = cache_path(root)
     with _AUTO_INDEX_LOCK:
         raced = _AUTO_INDEX_RUNS.get(database)
-        if raced is not None and raced is not run and raced.generation == generation:
+        if raced is not None and raced.generation == generation:
             return raced.thread
         thread = threading.Thread(
             target=_auto_index,
-            args=(resolved, extractor, tree_oid, head_sha),
+            args=(root, extractor, tree_oid, head_sha),
             name="tag-auto-index",
             daemon=True,
         )
@@ -913,10 +1023,13 @@ def _auto_index(
     try:
         report = build_index(root, extractor, tree_oid=tree_oid, head_sha=head_sha)
     except CacheLocked:
-        # Another process is refreshing the same database. Its result serves
-        # this one too; a queue here would re-run work already done.
+        # Another index run is refreshing the same database. Another index
+        # run rather than another process: ``flock`` is per open file
+        # description, so a second thread of this process is refused the same
+        # way and reads the same line. Its result serves this one too; a queue
+        # here would re-run work already done.
         logger.info(
-            "background index refresh for %s skipped: another process holds the index lock",
+            "background index refresh for %s skipped: another index run holds the index lock",
             root,
         )
         return
@@ -975,7 +1088,7 @@ def build_index(
     """
     resolved = root.resolve()
     database = cache_path(resolved)
-    database.parent.mkdir(parents=True, exist_ok=True, mode=DIRECTORY_MODE)
+    _ensure_cache_directory(database.parent)
 
     with _write_lock(database.parent, resolved):
         connection = _open_for_write(database)
@@ -994,7 +1107,13 @@ def build_index(
         finally:
             connection.close()
 
-    pruned = len([path for path in previous if path not in plan.seen])
+    # Counted from the paths that left the repository, not from the
+    # complement of ``plan.seen``. A file whose extraction failed is dropped
+    # from ``seen`` so its rows go, and an unreadable one never enters it, but
+    # both are still in the tree: counting them here put one file in both
+    # ``errors`` and ``pruned`` on the same summary line and made ``pruned``
+    # stop meaning "files that left the repository".
+    pruned = len([path for path in previous if path not in plan.present])
     return IndexReport(
         database=database,
         generation=generation,
@@ -1024,6 +1143,7 @@ def _plan_index(
     writes: list[_FileTags] = []
     reused: list[str] = []
     seen: set[str] = set()
+    present: set[str] = set()
     failures: list[IndexFailure] = []
     skips: list[IndexSkip] = []
 
@@ -1032,7 +1152,29 @@ def _plan_index(
         if language is None:
             continue
 
-        read = read_bounded(root / repo_file.path)
+        present.add(repo_file.path)
+
+        if repo_file.size > DEFAULT_MAX_FILE_BYTES:
+            # Declining to read a file is a skip, not a failure to read one.
+            # Decided from the walk's own stat rather than from the wording of
+            # ``read_bounded``'s skip reason: the invariant is "this file is
+            # over the cap", and a message is not a category. Deciding it
+            # first also means the bytes are never pulled in to be dropped.
+            skips.append(
+                IndexSkip(
+                    path=repo_file.path,
+                    reason=(
+                        f"skipped: {repo_file.size} bytes exceeds the per-file "
+                        f"cap of {DEFAULT_MAX_FILE_BYTES} bytes"
+                    ),
+                )
+            )
+            continue
+
+        # The same cap the stat above was compared against, passed rather than
+        # defaulted: the two deciding the same number is what keeps a
+        # cap-exceeded read out of ``failures``.
+        read = read_bounded(root / repo_file.path, DEFAULT_MAX_FILE_BYTES)
         if read.text is None:
             failures.append(IndexFailure(path=repo_file.path, reason=read.skipped or "unreadable"))
             continue
@@ -1053,8 +1195,6 @@ def _plan_index(
                 _FileTags(
                     path=repo_file.path,
                     digest=digest,
-                    size=repo_file.size,
-                    language=language,
                     symbols=(),
                     imports=(),
                     refs=(),
@@ -1083,8 +1223,6 @@ def _plan_index(
             _FileTags(
                 path=repo_file.path,
                 digest=digest,
-                size=repo_file.size,
-                language=language,
                 symbols=tuple(symbols),
                 imports=tuple(imports),
                 refs=tuple(refs),
@@ -1096,6 +1234,7 @@ def _plan_index(
         writes=tuple(writes),
         reused=tuple(reused),
         seen=frozenset(seen),
+        present=frozenset(present),
         failures=tuple(failures),
         skips=tuple(skips),
     )
@@ -1124,15 +1263,14 @@ def _apply_plan(
 
         for entry in plan.writes:
             connection.execute(
-                "INSERT INTO files (path, sha256, size, lang, grammar_version) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (entry.path, entry.digest, entry.size, entry.language, entry.grammar_version),
+                "INSERT INTO files (path, sha256, grammar_version) VALUES (?, ?, ?)",
+                (entry.path, entry.digest, entry.grammar_version),
             )
             connection.executemany(
-                "INSERT INTO tags (path, sha256, name, kind, is_def, start_line, end_line, "
-                "signature, parent, qualname, docstring, decorators, bases, language, "
+                "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, "
+                "signature, parent, docstring, decorators, bases, language, "
                 "is_public, is_async, rationales, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     _tag_row(entry.path, entry.digest, ordinal, symbol)
                     for ordinal, symbol in enumerate(entry.symbols)
@@ -1183,23 +1321,16 @@ def _apply_plan(
 
 
 def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
-    """Flatten one symbol into its tag row.
-
-    ``is_def`` is 1 on every row today: the cache holds definitions only, and
-    the column exists so that a reference-carrying row can be added later
-    without a schema break for the readers that filter on it.
-    """
+    """Flatten one symbol into its tag row."""
     return (
         path,
         digest,
         symbol.name,
         symbol.kind.value,
-        1,
         symbol.line_number,
         symbol.end_line_number,
         symbol.signature,
         symbol.parent_class,
-        id_qualname(symbol),
         symbol.docstring,
         json.dumps(list(symbol.decorators)),
         json.dumps(list(symbol.bases)),
@@ -1385,11 +1516,13 @@ CREATE TABLE IF NOT EXISTS meta (
     head_sha TEXT,
     created_at TEXT NOT NULL
 );
+-- Every column here is read back. A column the indexer fills on every file
+-- and no reader ever selects is storage and write time spent on nothing, and
+-- the migration policy -- bump and rebuild -- makes adding one back free on
+-- the day a reader wants it.
 CREATE TABLE IF NOT EXISTS files (
     path TEXT PRIMARY KEY,
     sha256 TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    lang TEXT NOT NULL,
     grammar_version TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tags (
@@ -1397,12 +1530,10 @@ CREATE TABLE IF NOT EXISTS tags (
     sha256 TEXT NOT NULL,
     name TEXT NOT NULL,
     kind TEXT NOT NULL,
-    is_def INTEGER NOT NULL,
     start_line INTEGER NOT NULL,
     end_line INTEGER,
     signature TEXT NOT NULL,
     parent TEXT NOT NULL,
-    qualname TEXT NOT NULL,
     docstring TEXT NOT NULL,
     decorators TEXT NOT NULL,
     bases TEXT NOT NULL,
@@ -1446,17 +1577,32 @@ CREATE INDEX IF NOT EXISTS imports_path_sha256 ON imports (path, sha256);
 """
 
 
+def _has_table(connection: sqlite3.Connection, name: str) -> bool:
+    """Whether this database declares ``name`` as a table."""
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+    ).fetchone()
+    return row is not None
+
+
 def _read_meta(connection: sqlite3.Connection) -> _Meta | None:
-    """Return the meta row, or None when there is not one to read."""
-    try:
-        row = connection.execute(
-            "SELECT schema_version, repo_root, generation_tree_oid, head_sha FROM meta WHERE id = 1"
-        ).fetchone()
-    except sqlite3.OperationalError:
-        # No meta table: an empty database file, or one from before the table
-        # existed. Both mean "no usable index", which is not an error.
+    """Return the meta row, or None when there is not one to read.
+
+    "There is no meta table" is asked directly rather than inferred from an
+    ``OperationalError`` around the SELECT. That class does cover the case
+    meant here -- an empty database file, or one from before the table
+    existed -- but it also covers a disk I/O error, a database file that
+    will not open and a lock wait that timed out. Reading any of those as
+    "no usable index" made a healthy index look absent, and the read path
+    answers an absent index by unlinking the file. They raise instead, and
+    the caller degrades without deleting anything.
+    """
+    if not _has_table(connection, "meta"):
         return None
 
+    row = connection.execute(
+        "SELECT schema_version, repo_root, generation_tree_oid, head_sha FROM meta WHERE id = 1"
+    ).fetchone()
     if row is None:
         return None
     return _Meta(
@@ -1556,7 +1702,7 @@ def _absent_status(database: Path | None, note: str = "") -> CacheStatus:
         path=database,
         generation=None,
         repo_generation=None,
-        fresh=False,
+        generation_matches=False,
         enabled=True,
         files=0,
         tags=0,
@@ -1570,7 +1716,7 @@ def _bypassed_status(database: Path) -> CacheStatus:
         path=database,
         generation=None,
         repo_generation=None,
-        fresh=False,
+        generation_matches=False,
         enabled=False,
         files=0,
         tags=0,

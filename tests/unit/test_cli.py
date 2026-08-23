@@ -143,22 +143,58 @@ class TestInProcess:
         summary = capsys.readouterr().out.splitlines()[0]
         assert summary.startswith("indexed 2, reused 0, pruned 0, skipped 0, errors 0: 2 files,")
 
-    def test_index_with_a_failing_file_exits_non_zero(self, services, repo_path, capsys):
+    def test_index_reports_an_over_cap_file_as_a_skip_and_exits_zero(
+        self, services, repo_path, capsys
+    ):
+        """Both of these asserted the opposite until the B07 sweep.
+
+        `read_bounded`'s own docstring settles it: "one oversized or
+        unreadable file in a repository must not fail a whole traversal, but
+        it must also never pass silently as an empty file". Declining to read
+        a file is a skip. `index` was the one caller disagreeing, so a
+        repository whose only problem was a file over the cap exited
+        EXIT_DOMAIN and reported it under `error:`.
+        """
         write_over_cap_file(repo_path)
 
-        assert invoke(services, repo_path, "index") == EXIT_DOMAIN
+        assert invoke(services, repo_path, "index") == EXIT_OK
         out = capsys.readouterr().out
-        assert "errors 1" in out.splitlines()[0]
-        assert "  error: huge.py:" in out
+        assert "skipped 1, errors 0" in out.splitlines()[0]
+        assert "  warning: huge.py: skipped:" in out
+        assert "  error:" not in out
 
-    def test_index_with_a_failing_file_exits_non_zero_in_json_mode_too(
+    def test_index_reports_an_over_cap_file_as_a_skip_in_json_mode_too(
         self, services, repo_path, capsys
     ):
         write_over_cap_file(repo_path)
 
-        assert invoke(services, repo_path, "index", "--json") == EXIT_DOMAIN
+        assert invoke(services, repo_path, "index", "--json") == EXIT_OK
         document = json.loads(capsys.readouterr().out)
-        assert document["errors"] == 1
+        assert document["errors"] == 0
+        assert document["skipped"] == 1
+        assert [entry["path"] for entry in document["skipped_files"]] == ["huge.py"]
+
+    def test_index_still_exits_non_zero_when_a_file_cannot_be_extracted(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        """The error class did not go away with the over-cap file.
+
+        That file was the only thing the two tests above ever put in it, so
+        without this one nothing would gate the failure path or its exit code.
+        """
+
+        def refuse(text, language, path):
+            if path == "core.py":
+                message = "deliberate extraction failure"
+                raise ValueError(message)
+            return []
+
+        monkeypatch.setattr(services.extractor, "extract_from_source", refuse)
+
+        assert invoke(services, repo_path, "index") == EXIT_DOMAIN
+        out = capsys.readouterr().out
+        assert "errors 1" in out.splitlines()[0]
+        assert "  error: core.py: ValueError: deliberate extraction failure" in out
 
     def test_index_reports_an_unwarmed_language_as_a_warning_and_exits_zero(
         self, services, repo_path, capsys, monkeypatch

@@ -14,7 +14,9 @@ developer's real cache.
 import json
 import logging
 import sqlite3
+import stat
 import subprocess
+import sys
 import threading
 import time
 from contextlib import closing
@@ -195,6 +197,22 @@ class TestLocation:
         assert isolated_cache_home in report.database.parents
         assert not any(repo.rglob("*.db"))
 
+    @pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX directory modes")
+    def test_both_cache_directory_levels_are_owner_only(self, repo, extractor):
+        """The claim has to hold on an upgraded install, not only a fresh one.
+
+        ``mkdir(mode=...)`` sets the leaf and nothing else, and never
+        re-applies the mode to a directory that already exists.
+        """
+        application = cache.cache_root()
+        application.mkdir(parents=True, exist_ok=True)
+        application.chmod(0o755)
+
+        database = cache.build_index(repo, extractor).database
+
+        assert stat.S_IMODE(application.stat().st_mode) == cache.DIRECTORY_MODE
+        assert stat.S_IMODE(database.parent.stat().st_mode) == cache.DIRECTORY_MODE
+
     def test_two_repositories_get_two_databases(self, repo, tmp_path):
         other = tmp_path / "other"
         other.mkdir()
@@ -265,15 +283,57 @@ class TestIncrementalTriad:
         assert (report.indexed, report.reused) == (3, 0)
 
     def test_an_unreadable_file_is_reported_and_not_recorded(self, repo, extractor, monkeypatch):
-        oversize = repo / "huge.py"
-        oversize.write_text(CORE, encoding="utf-8")
-        monkeypatch.setattr(cache, "read_bounded", _refuse_one("huge.py"))
+        (repo / "locked.py").write_text(CORE, encoding="utf-8")
+        monkeypatch.setattr(cache, "read_bounded", _refuse_one("locked.py"))
 
         report = cache.build_index(repo, extractor)
 
         assert report.errors == 1
-        assert report.failures[0].path == "huge.py"
-        assert "too big" in report.failures[0].reason
+        assert report.failures[0].path == "locked.py"
+        assert "unreadable" in report.failures[0].reason
+
+    def test_a_file_over_the_read_cap_is_a_skip_and_not_an_error(self, repo, extractor):
+        """Declining to read a file is a decision, not a failure to read one.
+
+        The reason the report carried already began "skipped:", so ``index``
+        exited non-zero and named a file nobody had asked it to read.
+        """
+        oversize = repo / "huge.py"
+        oversize.write_text("x = 1\n" * 200_000, encoding="utf-8")
+        assert oversize.stat().st_size > fslimits.DEFAULT_MAX_FILE_BYTES
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.errors == 0
+        assert report.skipped == 1
+        assert report.skipped_files[0].path == "huge.py"
+        assert "per-file cap" in report.skipped_files[0].reason
+
+    def test_a_file_the_extractor_trips_on_is_not_counted_as_pruned(
+        self, repo, extractor, monkeypatch
+    ):
+        """``pruned`` means "files that left the repository" and nothing else.
+
+        It was the complement of the paths the run recorded, and a failed
+        extraction is removed from those, so one file was reported as both an
+        error and a prune on the same summary line.
+        """
+        cache.build_index(repo, extractor)
+        original = extractor.extract_from_source
+
+        def explode(text, language, path):
+            if path == "billing.py":
+                message = "maximum recursion depth exceeded"
+                raise RecursionError(message)
+            return original(text, language, path)
+
+        monkeypatch.setattr(extractor, "extract_from_source", explode)
+        (repo / "billing.py").write_text(BILLING + "\nEXTRA = 1\n", encoding="utf-8")
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.errors == 1
+        assert report.pruned == 0
 
     def test_one_file_that_trips_the_extractor_does_not_abort_the_scan(
         self, repo, extractor, monkeypatch
@@ -373,7 +433,9 @@ def _refuse_one(name):
 
     def read(path, *arguments, **keywords):
         if path.name == name:
-            return fslimits.BoundedRead(path=path, text=None, skipped="skipped: too big")
+            return fslimits.BoundedRead(
+                path=path, text=None, skipped="unreadable: Permission denied"
+            )
         return original(path, *arguments, **keywords)
 
     return read
@@ -392,6 +454,15 @@ class TestFreshness:
         source = cache.open_source(repo, extractor, tree_oid=None)
 
         assert source.receipt == f"g:{report.generation} fresh"
+
+    def test_the_status_names_the_generation_comparison_once(self, repo, extractor):
+        """One fact, one key. ``fresh`` and ``generation_matches`` were both it."""
+        cache.build_index(repo, extractor)
+
+        document = cache.open_source(repo, extractor, tree_oid=None).status().as_dict()
+
+        assert document["generation_matches"] is True
+        assert "fresh" not in document
 
     def test_no_cache_reports_that_it_was_bypassed(self, repo, extractor):
         cache.build_index(repo, extractor)
@@ -477,6 +548,18 @@ class TestSchemaVersion:
         assert cache.open_source(repo, extractor, tree_oid=None).receipt == (
             f"g:{rebuilt.generation} fresh"
         )
+
+    def test_the_schema_holds_no_write_only_columns(self, repo, extractor):
+        """A column written on every row and selected by nobody is not stored."""
+        report = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(report.database)) as connection:
+            files = {row[1] for row in connection.execute("PRAGMA table_info(files)")}
+            tags = {row[1] for row in connection.execute("PRAGMA table_info(tags)")}
+
+        assert files == {"path", "sha256", "grammar_version"}
+        assert "qualname" not in tags
+        assert "is_def" not in tags
 
     def test_a_corrupt_database_is_discarded_by_both_readers_and_writers(self, repo, extractor):
         database = cache.build_index(repo, extractor).database
@@ -902,6 +985,30 @@ class TestAutoIndex:
         monkeypatch.setattr(cache, "build_index", self._must_not_index)
         assert cache.start_auto_index(repo, extractor) is None
 
+    def test_a_generation_that_cannot_be_read_is_attempted_once(
+        self, repo, extractor, monkeypatch, auto_index_isolated, caplog
+    ):
+        """The failure that stops before a thread is registered like any other.
+
+        The walk this path pays for is a stat per file in the repository, and
+        it ran again, and warned again, on every MCP call.
+        """
+        walks: list[Path] = []
+
+        def refuse(root, tree_oid):
+            walks.append(root)
+            message = "the tree cannot be walked"
+            raise OSError(message)
+
+        monkeypatch.setattr(cache, "repo_generation", refuse)
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
+            assert cache.start_auto_index(repo, extractor) is None
+            assert cache.start_auto_index(repo, extractor) is None
+
+        assert len(walks) == 1
+        assert caplog.text.count("background index refresh") == 1
+        assert cache.auto_index_in_progress(cache.cache_path(repo)) is False
+
     def test_a_new_generation_rearms_the_trigger(self, repo, extractor, auto_index_isolated):
         first = cache.start_auto_index(repo, extractor)
         assert first is not None
@@ -923,7 +1030,10 @@ class TestAutoIndex:
             cache._write_lock(database.parent, repo),
         ):
             cache._auto_index(repo, extractor, None, None)
-        assert "another process holds the index lock" in caplog.text
+        # "index run" rather than "process": the lock is per open file
+        # description, so the second thread of this process is refused
+        # identically and reads the same line.
+        assert "another index run holds the index lock" in caplog.text
         assert "failed" not in caplog.text
 
     def test_the_receipt_names_the_refresh_while_it_runs(
@@ -1159,6 +1269,37 @@ class TestDiscardingIsNotUnlocked:
         cache.open_source(repo, extractor, tree_oid=None)
 
         assert not database.exists()
+
+
+class TestATransientReadErrorKeepsTheDatabase:
+    """An unreadable database is not the same fact as an absent one.
+
+    ``OperationalError`` covers a disk I/O error, a file that will not open
+    and a lock wait that timed out as well as a missing table. Reading any of
+    them as "no index" unlinked a healthy database, because the read path
+    answers an absent index by deleting the file.
+    """
+
+    def test_an_operational_error_degrades_without_deleting(self, repo, extractor, monkeypatch):
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo)
+
+        def refuse(connection, repo_root):
+            message = "disk I/O error"
+            raise sqlite3.OperationalError(message)
+
+        monkeypatch.setattr(cache, "_read_index", refuse)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        assert "cache unreadable" in source.receipt
+        assert database.exists()
+
+    def test_a_database_with_no_meta_table_still_reads_as_absent(self, tmp_path):
+        database = tmp_path / "tags.db"
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute("CREATE TABLE unrelated (x INTEGER)")
+
+            assert cache._read_meta(connection) is None
 
 
 class TestRelativeCacheHomeIsIgnored:
