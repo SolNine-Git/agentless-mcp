@@ -1,6 +1,8 @@
 """The reference graph and the personalized PageRank over it."""
 
 import math
+from dataclasses import replace
+from types import MappingProxyType
 
 import pytest
 
@@ -9,6 +11,7 @@ from agentless_mcp.core.graph import (
     IMPORT_EDGE_WEIGHT,
     NOISE_NAME_MULTIPLIER,
     UNIQUE_MATCH_MULTIPLIER,
+    PathIndex,
     RefGraph,
     build_graph,
     name_multiplier,
@@ -69,6 +72,29 @@ def js_import(module):
     )
 
 
+class TestGraphIsAValue:
+    def test_the_caller_cannot_mutate_a_built_graph(self):
+        """A validating constructor promises the value cannot become invalid.
+
+        The edge map used to be stored by reference, so one write through the
+        mapping the caller still held added an edge naming a node
+        ``__post_init__`` had just refused -- and the ranking met it as a
+        ``KeyError`` from inside the numeric loop.
+        """
+        edges = {("a.py", "b.py"): 1.0}
+        graph = RefGraph(nodes=("a.py", "b.py"), edges=edges)
+
+        edges[("a.py", "vendor/gone.py")] = 99.0
+
+        assert ("a.py", "vendor/gone.py") not in graph.edges
+        assert personalized_pagerank(graph)
+
+    def test_the_mapping_the_graph_hands_out_is_read_only(self):
+        graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
+
+        assert isinstance(graph.edges, MappingProxyType)
+
+
 class TestPageRank:
     def test_an_empty_graph_ranks_nothing(self):
         assert personalized_pagerank(RefGraph(nodes=(), edges={})) == {}
@@ -121,6 +147,23 @@ class TestPageRank:
     def test_a_seed_outside_the_graph_falls_back_to_uniform(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={})
         assert personalized_pagerank(graph, {"gone.py": 1.0}) == personalized_pagerank(graph)
+
+    def test_a_negative_seed_weight_is_refused_rather_than_clamped(self):
+        """Teleport mass has no negative direction, so the number is a mistake.
+
+        Clamped to zero it read as "this file was not seeded", which is the
+        one thing it is not: the caller named the file and asked for it.
+        """
+        graph = RefGraph(nodes=("a.py", "b.py"), edges={})
+
+        with pytest.raises(ValueError, match=r"a\.py"):
+            personalized_pagerank(graph, {"a.py": -1.0, "b.py": 1.0})
+
+    def test_a_negative_weight_on_an_unlisted_file_is_refused_too(self):
+        graph = RefGraph(nodes=("a.py",), edges={})
+
+        with pytest.raises(ValueError, match=r"gone\.py"):
+            personalized_pagerank(graph, {"gone.py": -1.0})
 
     def test_damping_zero_is_the_personalization_vector(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
@@ -313,6 +356,63 @@ class TestRelativeImports:
         )
 
 
+class TestPathIndex:
+    """The tail table answers what the scan answered, at one lookup a name."""
+
+    KNOWN = (
+        "src/agentless_mcp/core/refs.py",
+        "src/mycore/refs.py",
+        "docs/refs.py",
+        "app.py",
+    )
+
+    def test_the_table_and_the_scan_agree_on_every_module_tail(self):
+        index = PathIndex.build(self.KNOWN)
+        statement = ImportStatement(
+            module="",
+            names=(),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+            resolved_path="",
+        )
+        modules = (
+            "agentless_mcp.core.refs",
+            "core.refs",
+            "mycore.refs",
+            "refs",
+            "docs/refs",
+            "nothing.at.all",
+        )
+        for module in modules:
+            probe = replace(statement, module=module)
+            scanned = resolve_import_target("app.py", probe, list(self.KNOWN))
+            tabled = resolve_import_target("app.py", probe, index)
+            assert tabled == scanned, module
+
+    def test_the_shortest_match_still_wins_a_tie(self):
+        """Two paths end on the same tail; the table stores the same winner."""
+        index = PathIndex.build(("vendored/deep/core/refs.py", "x/core/refs.py"))
+
+        assert index.suffix_match("core.refs") == "x/core/refs.py"
+
+    def test_a_module_with_no_separator_never_matches(self):
+        """A bare name has no tail to land on a boundary, so it names nothing."""
+        assert PathIndex.build(self.KNOWN).suffix_match("refs") is None
+
+    def test_the_index_answers_membership_for_the_direct_candidates(self):
+        index = PathIndex.build(self.KNOWN)
+
+        assert "app.py" in index
+        assert "gone.py" not in index
+
+    def test_a_build_resolves_the_same_edges_through_the_index(self, tmp_path, extractor):
+        """``build_graph`` hands the index over; the edges must not move."""
+        graph = graph_of(write(tmp_path, PACKAGE), extractor)
+
+        assert graph.edges[("pkg/sub/user.py", "pkg/helper.py")] >= IMPORT_EDGE_WEIGHT
+
+
 class TestImportResolution:
     def test_a_relative_javascript_import_resolves_to_a_sibling(self):
         statement = ImportStatement(
@@ -388,6 +488,41 @@ class TestSuffixMatching:
     def test_a_module_matching_nothing_whole_resolves_to_nothing(self):
         known = ["src/mycore/refs.py"]
         assert resolve_import_target("app.py", self.absolute("core.refs"), known) is None
+
+
+class TestARelativeLevelAboveTheRoot:
+    """A level deeper than the importing file's directory names no file.
+
+    ``PurePosixPath(".").parent`` is ``"."``, so walking up used to saturate
+    at the repository root instead of running out -- and ``from ...... import
+    x`` in a top-level module resolved exactly as confidently as ``from .
+    import x``.
+    """
+
+    KNOWN = frozenset({"mod.py", "helper.py", "pkg/sub/user.py", "pkg/helper.py"})
+
+    def leveled(self, level: int) -> ImportStatement:
+        return ImportStatement(
+            module="helper",
+            names=(),
+            is_relative=True,
+            relative_level=level,
+            line_number=1,
+            resolved_path="",
+        )
+
+    def test_a_top_level_module_still_reaches_its_own_directory(self):
+        assert resolve_import_target("mod.py", self.leveled(1), self.KNOWN) == "helper.py"
+
+    def test_a_top_level_module_cannot_reach_above_the_repository(self):
+        assert resolve_import_target("mod.py", self.leveled(2), self.KNOWN) is None
+
+    def test_a_nested_module_reaches_the_root_but_no_further(self):
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(2), self.KNOWN) == (
+            "pkg/helper.py"
+        )
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(3), self.KNOWN) == "helper.py"
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(4), self.KNOWN) is None
 
 
 class TestASpecifierThatAlreadyNamesAFile:

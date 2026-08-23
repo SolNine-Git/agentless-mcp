@@ -36,6 +36,7 @@ import posixpath
 from collections.abc import Collection, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
+from types import MappingProxyType
 
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import RefIndex, RepoScan
@@ -120,6 +121,15 @@ class RefGraph:
             message = f"RefGraph edges name nodes outside the graph: {', '.join(unknown)}"
             raise ValueError(message)
 
+        # Copied after validation rather than aliased. The caller still holds
+        # the mapping it passed in, and one write to it afterwards adds an
+        # edge naming a node this check just refused -- which the ranking then
+        # meets as a ``KeyError`` from inside the numeric loop, the exact
+        # failure the paragraph above says was eliminated. A validating
+        # constructor on a frozen value promises the value cannot become
+        # invalid, not that it was valid for one instant.
+        object.__setattr__(self, "edges", MappingProxyType(dict(self.edges)))
+
     def adjacency(self) -> dict[str, tuple[tuple[str, float], ...]]:
         """Return outgoing ``(target, weight)`` pairs per node, in path order.
 
@@ -131,6 +141,55 @@ class RefGraph:
         for (source, target), weight in self.edges.items():
             collected[source].append((target, weight))
         return {node: tuple(sorted(pairs)) for node, pairs in collected.items()}
+
+
+@dataclass(frozen=True)
+class PathIndex:
+    """The repository's known paths, indexed for module-tail matching.
+
+    :func:`resolve_import_target` asks two questions of one path set: is this
+    exact candidate a file, and does some file's extension-less path end on a
+    separator with this module tail. The second used to be a scan over every
+    known path, allocating a ``PurePosixPath`` for each, run once per imported
+    name -- so a build cost O(import-names x files) and spent 94% of its time
+    there on this package's own tree. The table below answers it with one
+    dictionary lookup, and a caller that resolves a repository's worth of
+    imports walks the path set once instead of once per name.
+
+    ``by_tail`` already holds the answer :func:`_suffix_match` computes by
+    scanning: the shortest path matching each tail, ties broken by path order.
+    Storing the winner rather than the candidates keeps the table proportional
+    to the repository.
+
+    This is what makes ``src/`` layouts and Go module paths resolve at all:
+    ``agentless_mcp.core.refs`` never matches from the repository root, but it
+    does match the tail of ``src/agentless_mcp/core/refs.py``.
+    """
+
+    paths: frozenset[str]
+    by_tail: Mapping[str, str]
+
+    @classmethod
+    def build(cls, paths: Collection[str]) -> "PathIndex":
+        """Index ``paths`` once, for a caller that will resolve many imports."""
+        by_tail: dict[str, str] = {}
+        for path in paths:
+            segments = _stem(path).split("/")
+            for start in range(len(segments)):
+                tail = "/".join(segments[start:])
+                held = by_tail.get(tail)
+                if held is None or (len(path), path) < (len(held), held):
+                    by_tail[tail] = path
+        return cls(paths=frozenset(paths), by_tail=MappingProxyType(by_tail))
+
+    def __contains__(self, path: object) -> bool:
+        """True when ``path`` is one of the indexed repository files."""
+        return path in self.paths
+
+    def suffix_match(self, module: str) -> str | None:
+        """Return the known path this module's tail names, from the table."""
+        tail = _module_tail(module)
+        return self.by_tail.get(tail) if tail else None
 
 
 def name_multiplier(name: str, stoplist: frozenset[str] = frozenset()) -> float:
@@ -163,7 +222,11 @@ def build_graph(
 ) -> RefGraph:
     """Build the file-level reference graph for one scan."""
     nodes = tuple(sorted(facts.path for facts in scan.files))
-    known = set(nodes)
+    known = frozenset(nodes)
+    # Built once for the whole build rather than rebuilt per import name: the
+    # path set is the same for every statement in a scan, and the tail search
+    # is what used to make this function quadratic in the repository.
+    index_of_paths = PathIndex.build(known)
     edges: dict[tuple[str, str], float] = {}
 
     for facts in scan.files:
@@ -196,7 +259,7 @@ def build_graph(
                 edges[key] = edges.get(key, 0.0) + contribution
 
         for statement in facts.imports:
-            for target in _resolved_import_targets(facts.path, statement, known):
+            for target in _resolved_import_targets(facts.path, statement, index_of_paths):
                 if target == facts.path:
                     continue
                 key = (facts.path, target)
@@ -264,7 +327,7 @@ def rank_order(rank: Mapping[str, float]) -> list[str]:
 def resolve_import_target(
     importer: str,
     statement: ImportStatement,
-    known_paths: Collection[str],
+    known_paths: Collection[str] | PathIndex,
 ) -> str | None:
     """Resolve an import's module string to a file in the repository.
 
@@ -282,14 +345,23 @@ def resolve_import_target(
 
     ``known_paths`` is membership-tested per candidate, so a caller that
     already holds a set -- both repository-sized callers do -- hands it over
-    rather than paying to rebuild one per import statement.
+    rather than paying to rebuild one per import statement. A caller
+    resolving many imports against one unchanged path set hands over a
+    :class:`PathIndex` instead and pays the tail-table walk once for the whole
+    run rather than once per imported name.
     """
     module = statement.module.strip()
     relative = _is_relative(module, statement)
     if not module and not relative:
         return None
 
-    known = known_paths if isinstance(known_paths, Set) else set(known_paths)
+    index: PathIndex | None
+    known: Collection[str]
+    if isinstance(known_paths, PathIndex):
+        index, known = known_paths, known_paths.paths
+    else:
+        index = None
+        known = known_paths if isinstance(known_paths, Set) else set(known_paths)
     directory = PurePosixPath(importer).parent
 
     for base in _candidate_bases(module, statement, directory):
@@ -303,6 +375,8 @@ def resolve_import_target(
         # directory; matching it against the tail of an unrelated absolute path
         # would be the guess this resolver refuses to make.
         return None
+    if index is not None:
+        return index.suffix_match(module)
     return _suffix_match(module, known)
 
 
@@ -310,7 +384,7 @@ def resolve_imported_submodule(
     importer: str,
     statement: ImportStatement,
     name: str,
-    known_paths: Collection[str],
+    known_paths: Collection[str] | PathIndex,
 ) -> str | None:
     """Resolve ``from package import name`` when ``name`` is a module."""
     dotted = f"{statement.module}.{name}" if statement.module else name
@@ -321,7 +395,7 @@ def resolve_imported_submodule(
 def _resolved_import_targets(
     importer: str,
     statement: ImportStatement,
-    known_paths: Collection[str],
+    known_paths: Collection[str] | PathIndex,
 ) -> frozenset[str]:
     """Return the repository files one import statement declares."""
     targets = {
@@ -359,8 +433,16 @@ def _candidate_bases(
     if statement.relative_level:
         # Python: the level says how far up, and what remains of the module is
         # dotted the same way an absolute one is.
+        steps = statement.relative_level - 1
+        if steps > len(directory.parts):
+            # The level walks above the repository root, which names no file
+            # this tool can see. `PurePosixPath(".").parent` is `"."`, so
+            # walking up saturates instead of running out, and
+            # `from ...... import x` in a top-level module used to resolve
+            # against the root as confidently as `from . import x` does.
+            return []
         base = directory
-        for _ in range(statement.relative_level - 1):
+        for _ in range(steps):
             base = base.parent
         tail = module.replace(".", "/")
         return [_normalized(base / tail if tail else base)]
@@ -397,19 +479,18 @@ def _normalized(path: PurePosixPath) -> str:
 
 
 def _suffix_match(module: str, known: Collection[str]) -> str | None:
-    """Match a dotted or slashed module against the tail of a known path.
+    """Match a module tail against ``known`` by scanning it, with no index.
 
-    This is what makes ``src/`` layouts and Go module paths resolve at all:
-    ``agentless_mcp.core.refs`` never matches from the repository root, but it
-    does match the tail of ``src/agentless_mcp/core/refs.py``.
-
-    The tail must land on a path separator. A bare ``endswith`` matches inside
-    a component, so ``core/refs`` would also claim ``src/mycore/refs.py`` --
-    and because the tie-break prefers the shorter path, it would claim it in
-    preference to the file actually named.
+    The answer :meth:`PathIndex.suffix_match` reads from a table, computed the
+    long way for a caller that holds no index. Both exist on purpose: building
+    a table costs one walk over the path set, which is the whole saving for a
+    caller resolving a repository's worth of imports and a straight loss for a
+    caller asking one question. The rule they share -- which tails count and
+    which path wins -- lives in :func:`_module_tail`, :func:`_stem` and the
+    tie-break spelled the same way in both.
     """
-    tail = module.replace(".", "/")
-    if "/" not in tail:
+    tail = _module_tail(module)
+    if not tail:
         return None
 
     matches = sorted(
@@ -421,8 +502,26 @@ def _suffix_match(module: str, known: Collection[str]) -> str | None:
 
 def _ends_on_boundary(path: str, tail: str) -> bool:
     """True when ``path``'s extension-less form ends with a whole ``tail``."""
-    stem = PurePosixPath(path).with_suffix("").as_posix()
+    stem = _stem(path)
     return stem == tail or stem.endswith("/" + tail)
+
+
+def _stem(path: str) -> str:
+    """Return ``path`` without its final extension, in posix form."""
+    return PurePosixPath(path).with_suffix("").as_posix()
+
+
+def _module_tail(module: str) -> str:
+    """Return the slash form of ``module``, or ``""`` when it names no tail.
+
+    The tail must land on a path separator, which is what keeps a match from
+    falling inside a component: a bare ``endswith`` lets ``core/refs`` claim
+    ``src/mycore/refs.py``, and because the tie-break prefers the shorter
+    path it would claim it in preference to the file actually named. A module
+    string with no separator at all has no tail to test, so it never matches.
+    """
+    tail = module.replace(".", "/")
+    return tail if "/" in tail else ""
 
 
 def _reference_weight(
@@ -445,9 +544,23 @@ def _reference_weight(
 
 
 def _personalization(nodes: Sequence[str], seeds: Mapping[str, float] | None) -> dict[str, float]:
-    """Build the teleport vector: normalized seeds, or uniform without them."""
+    """Build the teleport vector: normalized seeds, or uniform without them.
+
+    A negative weight is refused rather than clamped to zero. Teleport mass
+    has no negative direction, so the number is a caller mistake, and reading
+    it as "no seed" hands back a map focused on whichever seeds were spelled
+    correctly with nothing said about the one that was not.
+
+    Seeds that name no node in the graph still fall back to the uniform
+    vector: that is a focus argument matching nothing, which the callers
+    report separately, and an unfocused map is the honest answer to it.
+    """
     if seeds:
-        weighted = {node: max(0.0, seeds.get(node, 0.0)) for node in nodes}
+        negative = sorted(node for node, weight in seeds.items() if weight < 0.0)
+        if negative:
+            message = f"seed weights must not be negative: {', '.join(negative)}"
+            raise ValueError(message)
+        weighted = {node: seeds.get(node, 0.0) for node in nodes}
         total = sum(weighted.values())
         if total > 0.0:
             return {node: weight / total for node, weight in weighted.items()}

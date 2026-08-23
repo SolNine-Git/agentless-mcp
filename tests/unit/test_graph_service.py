@@ -138,7 +138,7 @@ def imported(tmp_path):
 
 def elided_in(diagram):
     """The count the diagram's own elision node carries, or zero."""
-    found = re.search(r'"\.\.\. (\d+) more modules"', diagram)
+    found = re.search(r'"\.\.\. (\d+) more modules?"', diagram)
     return int(found.group(1)) if found else 0
 
 
@@ -218,7 +218,7 @@ class TestExplain:
 
         assert (group.tier, group.total, len(group.rows)) == ("same_file", 3, 1)
         assert group.omitted == 2
-        assert "... 2 more at this tier" in render.render_explanation(explained)
+        assert "... 2 more edges at this tier not listed" in render.render_explanation(explained)
 
     def test_the_import_section_says_how_many_importers_it_left_out(self, graphs, imported):
         """The one bounded section in this module that never counted at all."""
@@ -227,7 +227,7 @@ class TestExplain:
 
         assert explained.imports_in.total == IMPORTER_FILES
         assert explained.imports_in.omitted == IMPORTER_FILES - 2
-        assert f"... {IMPORTER_FILES - 2} more importers, not listed" in rendered
+        assert f"... {IMPORTER_FILES - 2} more importers not listed (limit 2)" in rendered
 
     def test_the_import_section_carries_its_count_into_the_json_too(self, graphs, imported):
         document = graphs.explain(imported, "helper", limit=2).as_dict()
@@ -335,6 +335,18 @@ class TestPath:
         assert not trace.found
         assert trace.exhausted
         assert "search bound" in trace.message
+
+    def test_the_advice_names_the_flag_that_carries_the_bound(self, graphs, repo):
+        """The MCP `path` operation does not publish `max_visited`.
+
+        The message used to say "raise the bound" without saying where the
+        bound lives, so an agent that could not reach it followed the advice
+        by reissuing the identical call.
+        """
+        trace = graphs.path(repo, "use", "caller", PathOptions(max_visited=1))
+
+        assert "--max-visited" in trace.message
+        assert "pick a nearer pair of endpoints" in trace.message
 
 
 class TestCycles:

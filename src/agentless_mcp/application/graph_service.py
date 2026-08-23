@@ -267,6 +267,7 @@ class GraphService:
         only while the diagram stays legible -- drawn identically, a pair of
         opposite reference edges reads as an import cycle the ``cycles`` view
         would deny.
+
         """
         bounds.at_least(max_nodes, 1, "max_nodes")
         ranked = self._ranked(ctx)
@@ -606,13 +607,20 @@ def _path_message(
 
     "Nothing connects these" and "I stopped looking" are different facts and
     are never merged: the second one names the bound it hit.
+
+    The exhausted message used to advise raising the bound without saying
+    where the bound lives. ``max_visited`` is a CLI flag and the MCP ``path``
+    operation does not publish it, so an agent following the advice reissued
+    the identical call. Naming the flag is what makes the sentence actionable
+    for the caller who has it and honest for the caller who does not.
     """
     if found.found:
         return ""
     if found.exhausted:
         return (
             f"no path from {found.source} to {found.target} within the search bound "
-            f"({found.visited} nodes visited); raise the bound or pick a nearer endpoint"
+            f"({found.visited} nodes visited); pick a nearer pair of endpoints, or "
+            "raise --max-visited from the CLI"
         )
     excluded: list[str] = []
     if not include_unique:

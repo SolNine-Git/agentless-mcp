@@ -140,6 +140,60 @@ class TestDeterminism:
         assert actual == expected
 
 
+class TestConvergence:
+    """A partition that ran out of passes is a partial answer, and says so."""
+
+    def test_a_settled_partition_reports_that_it_converged(self):
+        partition = detect_communities(clustered_graph())
+
+        assert partition.converged
+        assert partition.passes < 50
+
+    def test_a_partition_cut_off_by_the_pass_bound_says_so(self):
+        """``passes`` alone cannot tell this apart from settling on that pass."""
+        partition = detect_communities(clustered_graph(), max_passes=1)
+
+        assert partition.passes == 1
+        assert not partition.converged
+
+    def test_a_graph_with_no_edges_has_nothing_left_to_settle(self):
+        partition = detect_communities(RefGraph(nodes=("a.py", "b.py"), edges={}))
+
+        assert partition.converged
+        assert partition.passes == 0
+
+    def test_an_empty_graph_has_nothing_left_to_settle(self):
+        partition = detect_communities(RefGraph(nodes=(), edges={}))
+
+        assert partition.converged
+
+    def test_the_json_form_carries_the_convergence_flag(self):
+        document = detect_communities(clustered_graph(), max_passes=1).as_dict()
+
+        assert document["converged"] is False
+
+
+class TestSymmetrising:
+    def test_a_self_loop_is_dropped_rather_than_scored(self):
+        """The one drop clause a hand-built graph can still reach."""
+        looped = RefGraph(
+            nodes=("a.py", "b.py"),
+            edges={("a.py", "a.py"): 99.0, ("a.py", "b.py"): 1.0},
+        )
+        plain = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
+
+        assert detect_communities(looped).as_dict() == detect_communities(plain).as_dict()
+
+    def test_a_non_positive_weight_is_dropped_rather_than_scored(self):
+        weightless = RefGraph(
+            nodes=("a.py", "b.py", "c.py"),
+            edges={("a.py", "b.py"): 1.0, ("a.py", "c.py"): 0.0},
+        )
+        plain = RefGraph(nodes=("a.py", "b.py", "c.py"), edges={("a.py", "b.py"): 1.0})
+
+        assert detect_communities(weightless).as_dict() == detect_communities(plain).as_dict()
+
+
 class TestResolution:
     def test_a_higher_resolution_never_yields_fewer_communities(self):
         graph = clustered_graph()
@@ -151,6 +205,21 @@ class TestResolution:
 
     def test_the_resolution_used_is_reported(self):
         assert detect_communities(clustered_graph(), resolution=0.5).resolution == 0.5
+
+    def test_the_score_rises_with_a_lower_resolution_on_one_unchanged_graph(self):
+        """Why the documented 0.3 threshold has to name the resolution it reads at.
+
+        Nothing about the tree changes between these two calls; only the
+        null-model term the score subtracts does. A fixed threshold read
+        against both numbers calls the same repository structured at one
+        setting and arbitrary at the other.
+        """
+        graph = clustered_graph()
+
+        assert (
+            detect_communities(graph, resolution=0.25).modularity
+            > detect_communities(graph, resolution=4.0).modularity
+        )
 
 
 class TestLabels:
@@ -178,3 +247,13 @@ class TestLabels:
 
     def test_a_majority_outvotes_a_minority_at_the_same_depth(self):
         assert community_label(["a/one.py", "a/two.py", "z/one.py"]) == "a"
+
+    def test_depth_alone_decides_between_two_eligible_prefixes(self):
+        """The rule the docstring now states, and the reason it is the whole rule.
+
+        Every member holds both ``src`` and ``src/a``, so both clear the
+        majority. Only depth separates them, and no member can hold two
+        prefixes at one depth, so no pair of same-depth prefixes can ever
+        reach this comparison.
+        """
+        assert community_label(["src/a/one.py", "src/a/two.py"]) == "src/a"
