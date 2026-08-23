@@ -129,21 +129,18 @@ class TestDottedImportBinding:
 class TestAsyncDetection:
     """`is_async` is persisted to the tag cache and rendered into signatures."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H2: the Python handler substring-matches 'async' in the first bytes of "
-            "the declaration instead of testing for an `async` child node. Measured: both "
-            "`def async_handler(x)` and `def asynchronous(x)` come back is_async=True with "
-            "a rendered signature of `async def ...`. Telling an agent to await a "
-            "synchronous function is an instruction, not a display nit. The Rust half of "
-            "this defect is pinned in test_native_languages.py."
-        ),
-    )
     @pytest.mark.parametrize(
         "source", ["def async_handler(x): pass\n", "def asynchronous(x): pass\n"]
     )
     def test_a_function_merely_named_async_is_not_async(self, extractor, source):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        The Python handler substring-matched 'async' in the first bytes of the
+        declaration, so both `def async_handler(x)` and `def asynchronous(x)`
+        came back is_async=True with a rendered signature of `async def ...`.
+        The Rust half of the same defect is pinned in
+        tests/unit/test_tier1_languages.py.
+        """
         (symbol,) = extractor.extract_from_source(source, "python", "a.py")
         assert symbol.is_async is False
         assert symbol.signature.startswith("def ")

@@ -117,17 +117,14 @@ class TestRustGaps:
         """
         assert "round_half_up" in named(symbols_for(extractor, "rust"))
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H7: _extract_rust_function tests `any(c.type == 'async' ...)` on the "
-            "function_item's direct children, but tree-sitter-rust nests `async` inside a "
-            "`function_modifiers` node. Measured: `pub async fn price` reports "
-            "is_async=False and signature 'fn price(...)'. No Rust function has ever been "
-            "reported async. Fixed by stage 6c."
-        ),
-    )
     def test_an_async_method_is_reported_async(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        `_extract_rust_function` tested for an `async` child of the
+        `function_item`, and tree-sitter-rust nests `async` inside a
+        `function_modifiers` node: `pub async fn price` reported
+        is_async=False, and no Rust function had ever been reported async.
+        """
         price = named(symbols_for(extractor, "rust"))["price"]
         assert price.is_async
         assert price.signature.startswith("async fn ")

@@ -886,6 +886,29 @@ def declarations_under(root: Node, declaration_types: frozenset[str]) -> Iterato
         stack.extend(reversed(node.children))
 
 
+def declares_async(node: Node) -> bool:
+    """True when a declaration node carries an `async` keyword of its own.
+
+    Two grammars spell it differently and the question is one: Python puts
+    `async` among the `function_definition`'s own children, and Rust nests it
+    inside a `function_modifiers` node beside the visibility modifier.
+
+    Asked of the tree rather than of the source text. A substring search over
+    a declaration's first bytes reports `def async_handler(...)` as async, and
+    `is_async` is persisted to the tag cache and rendered into the signature
+    an agent reads -- so telling it to await a synchronous function is an
+    instruction, not a display nit.
+    """
+    for child in node.children:
+        if child.type == "async":
+            return True
+        if child.type == "function_modifiers" and any(
+            modifier.type == "async" for modifier in child.children
+        ):
+            return True
+    return False
+
+
 def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
     """Extract rationale markers and ADR/RFC citations from comment nodes."""
     found: list[Rationale] = []
@@ -2326,15 +2349,7 @@ class TreeSitterExtractor:
         return_node = node.child_by_field_name("return_type")
         return_text = f" -> {self._node_text(return_node, source)}" if return_node else ""
 
-        is_async = False
-        if node.parent and node.parent.type == "decorated_definition":
-            is_async = any(c.type == "async" for c in node.parent.children)
-        if not is_async:
-            end = min(node.start_byte + 10, node.end_byte)
-            prefix_text = source[node.start_byte : end].decode("utf-8", errors="replace")
-            if "async" in prefix_text:
-                is_async = True
-
+        is_async = declares_async(node)
         prefix = "async def" if is_async else "def"
         signature = f"{prefix} {name}{params_text}{return_text}"
 
@@ -2564,7 +2579,7 @@ class TreeSitterExtractor:
         return_node = node.child_by_field_name("return_type")
         return_text = f" -> {self._node_text(return_node, source)}" if return_node else ""
 
-        is_async = any(c.type == "async" for c in node.children)
+        is_async = declares_async(node)
         prefix = "async fn" if is_async else "fn"
         signature = f"{prefix} {name}{params_text}{return_text}"
 
