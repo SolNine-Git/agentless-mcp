@@ -156,6 +156,10 @@ class TestMonitor:
 class TestExecOrExit:
     def test_posix_replaces_the_process_with_the_original_argv(self, monkeypatch):
         calls: list[tuple[str, list[str]]] = []
+        # The real join reads a `grammars` module global, so a warm thread an
+        # earlier test left running would make this test wait out the join
+        # budget -- execution-order dependence this suite forbids.
+        monkeypatch.setattr(selfrestart.grammars, "wait_for_auto_warm", lambda: None)
         monkeypatch.setattr(selfrestart.os, "execv", lambda exe, argv: calls.append((exe, argv)))
         monkeypatch.setattr(sys, "platform", "linux")
 

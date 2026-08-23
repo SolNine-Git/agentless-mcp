@@ -144,6 +144,12 @@ class _MonitorState:
     and gets absorbed into a restart the operator did not ask for. The monitor
     raises exactly one SIGINT, so exactly one ``KeyboardInterrupt`` may be
     claimed as its own; every later one is a human and propagates.
+
+    One window stays ambiguous, and the claim narrows the problem rather than
+    ending it. The monitor sets ``interrupt_owed`` just before it raises the
+    SIGINT, so an operator's Ctrl+C inside that gap is still absorbed as the
+    monitor's own. Telling the two apart needs a token identifying which
+    interrupt arrived, which a signal does not carry.
     """
 
     thread: threading.Thread | None = None
