@@ -124,11 +124,14 @@ def line_wrap_content(
 ) -> str:
     """Render ``content`` as numbered lines, restricted to ``context_intervals``.
 
-    Every stretch of content that is not rendered is marked with ``...``, so
-    the reader can tell a slice from a whole file. When ``symbols`` is given,
-    the header line of each enclosing class or function is repeated above a
-    slice that starts inside it (sticky scroll), never repeating a header the
-    same render already showed.
+    Every gap between the rendered intervals is marked with ``...``, so the
+    reader can tell a slice from a whole file. When ``symbols`` is given, the
+    header line of each enclosing class or function is repeated above a slice
+    that starts inside it (sticky scroll), never repeating a header the same
+    render already showed. Inside that header stack only the gap below the
+    last header is marked: the stack already reads as a chain of enclosing
+    scopes rather than as contiguous lines, and a marker between every pair
+    would double its height.
 
     A non-empty interval list that clips to nothing raises: see :func:`_clamp`.
     """

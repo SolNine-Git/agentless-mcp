@@ -95,6 +95,11 @@ class LocResolution:
 
     ``spans`` are the symbols' own line ranges; ``intervals`` are those spans
     widened by the context window and merged, which is what a slice renders.
+
+    The two collections keep different policies on purpose. ``stable_ids`` is
+    deduplicated, because naming one symbol twice says nothing and a ``line:``
+    location contributes no id at all. ``spans`` keeps one entry per resolved
+    location, so a caller can count them against the locations it asked for.
     """
 
     stable_ids: tuple[str, ...]
