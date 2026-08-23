@@ -118,7 +118,11 @@ agentless-mcp index --repo /path/to/repo
 agentless-mcp capabilities --repo /path/to/repo
 ```
 
-Use `--no-cache` on repository-scoped commands to bypass the cache.
+The MCP server builds and refreshes this cache itself, in the background,
+the first time it serves a repository whose index is absent or stale
+(`--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX` opts out); the CLI
+indexes only through the explicit command above. Use `--no-cache` on
+repository-scoped commands to bypass the cache.
 
 ## MCP server
 

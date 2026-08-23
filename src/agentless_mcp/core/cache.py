@@ -50,9 +50,12 @@ between.
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import sys
+import threading
+import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -95,9 +98,12 @@ from agentless_mcp.util.fslimits import read_bounded
 SCHEMA_VERSION = 7
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
+ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 APPLICATION_DIR = "agentless-mcp"
 DATABASE_NAME = "tags.db"
 LOCK_NAME = "write.lock"
+
+logger = logging.getLogger(__name__)
 
 # 64 bits of realpath digest: enough that two repositories on one machine do
 # not collide, short enough that the directory name is still readable. The
@@ -117,6 +123,8 @@ DIRECTORY_MODE = 0o700
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
 REMEDIATION = MESSAGES.cache_stale_remediation
+STALE_REFRESHING = MESSAGES.cache_stale_refreshing
+ABSENT_REFRESHING = MESSAGES.cache_absent_refreshing
 
 # What one file's extraction may fail with without taking the scan down with
 # it. A repository index is a per-file job: a grammar that will not load, a
@@ -164,16 +172,25 @@ class CacheStatus:
 
     @property
     def receipt(self) -> str:
-        """Return the ``cache:`` field of the response receipt."""
+        """Return the ``cache:`` field of the response receipt.
+
+        While a background refresh is running for this database the
+        remediation names it instead of telling the agent to reindex --
+        advice that would race the refresh already doing exactly that.
+        """
         if not self.enabled:
             return RECEIPT_BYPASSED
+        refreshing = auto_index_in_progress(self.path)
         if self.generation is None:
-            return f"{RECEIPT_NONE} ({self.note})" if self.note else RECEIPT_NONE
+            notes = "; ".join(
+                note for note in (self.note, ABSENT_REFRESHING if refreshing else "") if note
+            )
+            return f"{RECEIPT_NONE} ({notes})" if notes else RECEIPT_NONE
         if self.generation_matches:
             return f"g:{self.generation} fresh"
         return (
             f"g:{self.generation} generation mismatch (repo g:{self.repo_generation}); "
-            f"{REMEDIATION}"
+            f"{STALE_REFRESHING if refreshing else REMEDIATION}"
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -662,6 +679,156 @@ class _IndexPlan:
     seen: frozenset[str]
     failures: tuple[IndexFailure, ...]
     skips: tuple[IndexSkip, ...]
+
+
+def auto_index_disabled() -> bool:
+    """True when the environment opts out of the background index refresh."""
+    return os.environ.get(ENV_NO_AUTO_INDEX, "") not in ("", "0", "false", "False")
+
+
+@dataclass
+class _AutoIndexRun:
+    """One repository's background refresh: its thread and the generation it targets.
+
+    The record outlives the thread so a completed run is not repeated for the
+    same generation -- success or failure, one attempt per generation per
+    process, exactly the auto-warm policy. A new commit changes the
+    generation and re-arms the trigger.
+    """
+
+    thread: threading.Thread
+    generation: str
+
+
+# Keyed by database path rather than repository root because the database is
+# what the refresh writes. Guarded by a mutex because the HTTP transport
+# resolves repositories from concurrent request threads.
+_AUTO_INDEX_LOCK = threading.Lock()
+_AUTO_INDEX_RUNS: dict[Path, _AutoIndexRun] = {}
+
+
+def auto_index_in_progress(database: Path | None) -> bool:
+    """True while a background refresh of ``database`` is still running."""
+    if database is None:
+        return False
+    with _AUTO_INDEX_LOCK:
+        run = _AUTO_INDEX_RUNS.get(database)
+    return run is not None and run.thread.is_alive()
+
+
+def start_auto_index(
+    root: Path,
+    extractor: TreeSitterExtractor,
+    *,
+    tree_oid: str | None = None,
+    head_sha: str | None = None,
+) -> threading.Thread | None:
+    """Start one background refresh of a stale tag cache; never blocks or raises.
+
+    Per repository on first use rather than for every configured root at
+    startup: a server can hold many roots, and walking repositories no call
+    ever asks about is work nobody ordered. The MCP server is the only
+    caller on purpose -- a one-shot CLI process would kill the daemon thread
+    at exit before its single end-of-run transaction commits, starting over
+    every invocation and finishing never; the CLI's path is the explicit
+    ``index`` command.
+
+    Returns the running thread, or ``None`` when there is nothing to do:
+    the environment opts out, the index already describes the repository's
+    generation, or this process already made its attempt at that generation.
+    """
+    if auto_index_disabled():
+        return None
+    resolved = root.resolve()
+    database = cache_path(resolved)
+
+    with _AUTO_INDEX_LOCK:
+        run = _AUTO_INDEX_RUNS.get(database)
+    if run is not None and run.thread.is_alive():
+        return run.thread
+
+    # Outside the git tree oid this walks the repository's stat manifest --
+    # the same cost ``open_source`` already pays on every cached call.
+    try:
+        generation = repo_generation(resolved, tree_oid)
+        done = (run is not None and run.generation == generation) or _index_current(
+            database, resolved, generation
+        )
+    except (AtlasError, OSError) as error:
+        logger.warning("background index refresh for %s skipped: %s", resolved, error)
+        return None
+    if done:
+        return None
+
+    with _AUTO_INDEX_LOCK:
+        raced = _AUTO_INDEX_RUNS.get(database)
+        if raced is not None and raced is not run and raced.thread.is_alive():
+            return raced.thread
+        thread = threading.Thread(
+            target=_auto_index,
+            args=(resolved, extractor, tree_oid, head_sha),
+            name="tag-auto-index",
+            daemon=True,
+        )
+        _AUTO_INDEX_RUNS[database] = _AutoIndexRun(thread=thread, generation=generation)
+    thread.start()
+    return thread
+
+
+def _auto_index(
+    root: Path,
+    extractor: TreeSitterExtractor,
+    tree_oid: str | None,
+    head_sha: str | None,
+) -> None:
+    """Refresh one repository's tag cache; one log line, never an exception out."""
+    # Index warm grammars rather than racing the startup warm: an index built
+    # over cold grammars records unwarmed stamps that expire on warmup anyway,
+    # so waiting the warm's own bounded deadline buys a one-pass index.
+    grammars.wait_for_auto_warm()
+    started = time.monotonic()
+    try:
+        report = build_index(root, extractor, tree_oid=tree_oid, head_sha=head_sha)
+    except CacheLocked:
+        # Another process is refreshing the same database. Its result serves
+        # this one too; a queue here would re-run work already done.
+        logger.info(
+            "background index refresh for %s skipped: another process holds the index lock",
+            root,
+        )
+        return
+    except (AtlasError, sqlite3.DatabaseError, OSError) as error:
+        # The contract is one log line and today's parse-live behavior,
+        # never a crashed thread mid-session.
+        logger.warning("background index refresh for %s failed: %s", root, error)
+        return
+    logger.info(
+        "background index refresh in %.1fs: %s",
+        time.monotonic() - started,
+        report.summary_line(),
+    )
+
+
+def _index_current(database: Path, repo_root: Path, generation: str) -> bool:
+    """Whether the index already describes ``generation``.
+
+    A missing, unreadable or rejected database is not current -- each is
+    exactly the state a refresh exists to replace, and ``build_index``
+    handles all of them.
+    """
+    if not database.exists():
+        return False
+    try:
+        connection = _connect(database)
+    except sqlite3.DatabaseError:
+        return False
+    try:
+        meta = _read_meta(connection)
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        connection.close()
+    return meta is not None and not _rejection(meta, repo_root) and meta.generation == generation
 
 
 def build_index(

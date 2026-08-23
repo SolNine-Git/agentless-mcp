@@ -105,6 +105,8 @@ MESSAGE_ARGUMENTS = {
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
     "cache_stale_remediation": {},
+    "cache_stale_refreshing": {},
+    "cache_absent_refreshing": {},
     "cache_build_hint": {"repo_root": "/srv/app"},
     "cache_discarded_no_index": {},
     "cache_discarded_old_schema": {"found": 1, "expected": 2},

@@ -150,6 +150,32 @@ def two_repos(tmp_path, one_repo):
     return [one_repo, other]
 
 
+class TestAutoIndexTrigger:
+    """Issue #21: resolving a repository is what arms its background refresh."""
+
+    def test_resolving_a_repository_starts_its_refresh(self, services, one_repo, monkeypatch):
+        started = []
+
+        def record(root, extractor, *, tree_oid=None, head_sha=None):
+            started.append(root)
+
+        monkeypatch.setattr(cache, "start_auto_index", record)
+        ToolHandlers([one_repo], services).resolve(None)
+        assert started == [one_repo.resolve()]
+
+    def test_the_flag_keeps_the_refresh_off(self, services, one_repo, monkeypatch):
+        monkeypatch.setattr(cache, "start_auto_index", self._must_not_start)
+        ToolHandlers([one_repo], services, auto_index=False).resolve(None)
+
+    def test_a_no_cache_call_does_not_arm_a_refresh(self, services, one_repo, monkeypatch):
+        monkeypatch.setattr(cache, "start_auto_index", self._must_not_start)
+        ToolHandlers([one_repo], services).resolve(None, no_cache=True)
+
+    @staticmethod
+    def _must_not_start(root, extractor, *, tree_oid=None, head_sha=None):
+        pytest.fail("the background refresh must not be armed here")
+
+
 class TestAllowlist:
     def test_one_root_is_the_default_for_an_omitted_repo_root(self, services, one_repo):
         handlers = ToolHandlers([one_repo], services)
@@ -938,6 +964,10 @@ class TestServerArguments:
 
     def test_no_roots_parses_to_an_empty_list(self):
         assert parse_args([]).root == []
+
+    def test_auto_index_defaults_on_and_the_flag_turns_it_off(self):
+        assert parse_args([]).no_auto_index is False
+        assert parse_args(["--no-auto-index"]).no_auto_index is True
 
 
 class TestTransportSelection:

@@ -46,7 +46,11 @@ answered. `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b); changed files
 parse live; reindex for performance` means the index predates the current
 tree. The answer is still correct: every cached row is checked against the
 sha256 of the file it describes, so an edited or newly committed file is
-re-parsed. Re-index when you see the mismatch repeatedly.
+re-parsed. The MCP server refreshes a stale index in the background the
+first time it serves a repository, and while that runs the remediation
+reads `a background refresh is in progress` instead -- do not race it with
+a manual `index`. Re-index by hand when the plain mismatch persists: over
+the CLI, or against a server started with `--no-auto-index`.
 
 ---
 
@@ -156,7 +160,10 @@ analysed repository's contents could talk an agent into calling must not be
 able to change that repository or run its code. No tool call ever fetches
 anything either; grammar fetches happen only at explicit `warmup` or in the
 disable-able, digest-verified background warm both entry points start at
-process launch.
+process launch. The one thing the server writes is its own tag cache, in the
+background, under the user cache directory -- derived facts about the
+repository, never bytes inside it, and never anything an answer's
+correctness depends on.
 
 MCP responses are text-native: new clients should read `content[0].text`.
 Existing clients may continue reading the compatibility copy in
@@ -679,7 +686,11 @@ agentless-mcp index --force               # re-extract even unchanged files
 
 Optional. Every read command works without it; indexing removes the symbol,
 import and reference parses for files whose sha256 has not changed since the
-last run. The database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never
+last run. The MCP server runs this refresh itself, in the background, the
+first time it serves a repository whose index is absent or stale (opt out
+with `--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX`; a held lock is a
+silent skip, since another process is already refreshing); the CLI never
+indexes implicitly -- this command is its one, explicit path. The database lives under `$XDG_CACHE_HOME/agentless-mcp/`, never
 inside the repository being analyzed, and one line reports what happened:
 
 ```

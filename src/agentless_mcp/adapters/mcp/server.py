@@ -525,11 +525,13 @@ class ToolHandlers:
         *,
         allow_client_roots: bool = False,
         roots_files: Sequence[RootsFile] = (),
+        auto_index: bool = True,
     ) -> None:
         self._roots = tuple(roots)
         self._services = services
         self._allow_client_roots = allow_client_roots
         self._roots_files = tuple(roots_files)
+        self._auto_index = auto_index
 
     @property
     def roots(self) -> tuple[Path, ...]:
@@ -606,6 +608,18 @@ class ToolHandlers:
             tree_oid=ctx.tree_oid,
             no_cache=no_cache,
         )
+        # First use of a repository is the auto-index trigger: per repo rather
+        # than at startup because a server can hold many roots, and a stale
+        # cache costs performance only -- this call is already served live
+        # from ``source`` while the refresh lands for the ones after it.
+        # A --no-cache call opts out of the cache and is taken at its word.
+        if self._auto_index and not no_cache:
+            cache.start_auto_index(
+                ctx.root,
+                self._services.extractor,
+                tree_oid=ctx.tree_oid,
+                head_sha=ctx.head_sha,
+            )
         return replace(ctx, symbols=source)
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
@@ -1720,6 +1734,14 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "in the environment does the same)",
     )
     parser.add_argument(
+        "--no-auto-index",
+        action="store_true",
+        help="do not refresh a stale tag cache in the background when a "
+        "repository is first served; the cache then updates only through "
+        f"agentless-mcp index ({cache.ENV_NO_AUTO_INDEX} in the environment "
+        "does the same)",
+    )
+    parser.add_argument(
         "--surface",
         choices=SURFACES,
         default=SURFACE_V2,
@@ -1780,6 +1802,7 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         services,
         allow_client_roots=args.allow_client_roots,
         roots_files=args.roots_from,
+        auto_index=not args.no_auto_index,
     )
     server = build_server(handlers, surface=args.surface)
     # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the
