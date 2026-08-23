@@ -1,7 +1,7 @@
 """Build and render the runtime capability contract shared by both adapters."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -32,6 +32,21 @@ from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_WALK_FILES,
 )
 
+# What a cold language reports while this process's own background warm is
+# still running. :func:`grammars.loaded_capabilities` cannot say it: it
+# answers one language at a time and the warm is a process-wide fact. Said
+# here for the reason the cache half of this report already says it -- advice
+# to run ``warmup`` would race the warm already doing exactly that, and a
+# tier-1 language listed as unavailable with nothing beside it reads as
+# permanent when it is a few seconds old.
+WARM_IN_PROGRESS = "not warmed: a background warm is in progress, retry shortly"
+
+# What the roots line says when there is no allowlist at all. ``None`` and an
+# empty sequence are different configurations -- see
+# :mod:`agentless_mcp.application.repo_context` -- and rendering both as
+# "none configured" told a reader that a CLI invocation may touch nothing.
+UNRESTRICTED_ROOTS = "unrestricted (CLI mode)"
+
 
 @dataclass(frozen=True)
 class CapabilityReport:
@@ -48,7 +63,9 @@ class CapabilityReport:
     effective_config: tuple[tuple[str, object], ...]
     # float rather than int: one bound is a modularity resolution.
     caps: tuple[tuple[str, float], ...]
-    configured_roots: tuple[str, ...]
+    # ``None`` is "no allowlist at all", which is CLI mode. An empty tuple is
+    # a server configured with no roots. The two are different answers.
+    configured_roots: tuple[str, ...] | None
     client_roots: tuple[str, ...]
 
     def as_dict(self) -> dict[str, Any]:
@@ -73,8 +90,15 @@ class CapabilityReport:
             "config": self.config.as_dict(),
             "effective_config": dict(self.effective_config),
             "caps": dict(self.caps),
+            # The hint is the one actionable line in the report, so the two
+            # renderings have to carry it. The CLI builds both up front so
+            # `--json` cannot diverge from the text output by accident, and
+            # this field is what makes that true of the remediation as well.
+            "cache_hint": self.cache_hint,
             "roots": {
-                "configured": list(self.configured_roots),
+                "configured": (
+                    None if self.configured_roots is None else list(self.configured_roots)
+                ),
                 "client": list(self.client_roots),
             },
         }
@@ -84,12 +108,17 @@ def build_capability_report(
     ctx: RepoContext,
     extractor: TreeSitterExtractor,
     *,
-    configured_roots: Sequence[Path] = (),
+    configured_roots: Sequence[Path] | None = None,
     client_roots: Sequence[Path] = (),
 ) -> CapabilityReport:
-    """Collect one request's capability facts without adapter-specific rendering."""
-    source = ctx.symbols if ctx.symbols is not None else cache.OnDemandSource(extractor)
-    status = source.status()
+    """Collect one request's capability facts without adapter-specific rendering.
+
+    ``configured_roots`` is the operator's allowlist, and ``None`` means there
+    is none -- the CLI, whose root comes from its own process. A server that
+    was started with no roots passes an empty sequence, which is a different
+    configuration and reads differently in the report.
+    """
+    status = _cache_status(ctx, extractor)
     hint = (
         MESSAGES.cache_build_hint.format(repo_root=ctx.root)
         if status.enabled and status.generation is None
@@ -101,13 +130,49 @@ def build_capability_report(
         grammar_cache=str(grammars.cache_dir()),
         cache_status=status,
         cache_hint=hint,
-        languages=tuple(grammars.loaded_capabilities()),
+        languages=_language_capabilities(),
         extensions=tuple(sorted(TreeSitterExtractor.SUPPORTED_EXTENSIONS.items())),
         config=ctx.config,
         effective_config=_effective_config(ctx.config),
         caps=_caps(),
-        configured_roots=tuple(str(path) for path in configured_roots),
+        configured_roots=(
+            None if configured_roots is None else tuple(str(path) for path in configured_roots)
+        ),
         client_roots=tuple(str(path) for path in client_roots),
+    )
+
+
+def _cache_status(ctx: RepoContext, extractor: TreeSitterExtractor) -> cache.CacheStatus:
+    """Describe this repository's tag cache, measuring it when nobody opened one.
+
+    Both adapters open a source before they call, so ``ctx.symbols`` is
+    normally the one the whole request read through and its status is the one
+    to report. A library caller need not open anything, and the fallback used
+    to be ``OnDemandSource(extractor)`` -- whose status is synthesised, not
+    measured: it reports "path None" and tells the caller to run ``index``
+    without having looked for a database at all. Opening the real source for
+    its status and closing it again is what makes the report about this
+    repository rather than about the fallback object.
+    """
+    if ctx.symbols is not None:
+        return ctx.symbols.status()
+    source = cache.open_source(ctx.root, extractor, tree_oid=ctx.tree_oid)
+    try:
+        return source.status()
+    finally:
+        source.close()
+
+
+def _language_capabilities() -> tuple[grammars.LanguageCapability, ...]:
+    """Report every language, saying which cold ones are being warmed right now."""
+    capabilities = tuple(grammars.loaded_capabilities())
+    if not grammars.auto_warm_in_progress():
+        return capabilities
+    return tuple(
+        replace(capability, detail=WARM_IN_PROGRESS)
+        if not capability.warmed and capability.detail.startswith("not warmed:")
+        else capability
+        for capability in capabilities
     )
 
 
@@ -124,7 +189,7 @@ def render_capability_report(report: CapabilityReport) -> str:
         lines.append(report.cache_hint)
     lines.extend(
         (
-            f"roots: {', '.join(report.configured_roots) or 'none configured'}",
+            f"roots: {_roots_line(report.configured_roots)}",
             f"client roots: {', '.join(report.client_roots) or 'none advertised'}",
             "languages (name:tier/abi):",
         )
@@ -137,6 +202,13 @@ def render_capability_report(report: CapabilityReport) -> str:
     lines.append("caps:")
     lines.extend(f"  {name} = {value}" for name, value in report.caps)
     return "\n".join(lines) + "\n"
+
+
+def _roots_line(roots: tuple[str, ...] | None) -> str:
+    """Render the configured allowlist, keeping "none" apart from "no list"."""
+    if roots is None:
+        return UNRESTRICTED_ROOTS
+    return ", ".join(roots) or "none configured"
 
 
 def _distribution_version() -> str:
@@ -213,12 +285,16 @@ def _caps() -> tuple[tuple[str, float], ...]:
 def _language_lines(languages: Sequence[grammars.LanguageCapability]) -> list[str]:
     """Group normal language states and spell exceptional failures separately."""
     warmed: list[str] = []
+    warming: list[str] = []
     unavailable: list[str] = []
     exceptional: list[str] = []
     for capability in languages:
         entry = f"{capability.name}:{capability.tier}/{capability.abi_version or '-'}"
         if capability.warmed and capability.probe_ok and not capability.detail:
             warmed.append(entry)
+        # Before the "not warmed:" arm below, which this detail also matches.
+        elif capability.detail == WARM_IN_PROGRESS:
+            warming.append(entry)
         elif (
             not capability.warmed
             and not capability.probe_ok
@@ -235,6 +311,8 @@ def _language_lines(languages: Sequence[grammars.LanguageCapability]) -> list[st
     lines: list[str] = []
     if warmed:
         lines.append(f"  warmed+probe: {', '.join(warmed)}")
+    if warming:
+        lines.append(f"  warming now: {', '.join(warming)}")
     if unavailable:
         lines.append(f"  unavailable: {', '.join(unavailable)}")
     lines.extend(exceptional)

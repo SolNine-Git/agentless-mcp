@@ -9,6 +9,7 @@ move -- rather than on which internal function was called.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -377,6 +378,178 @@ class TestApplyInPlace:
         for name, content in originals.items():
             assert (tmp_path / name).read_text(encoding="utf-8") == content
 
+    def test_a_rollback_that_also_fails_names_every_surviving_backup(self, repo, monkeypatch):
+        """The one state that leaves a file missing from its own name.
+
+        `_write_all` moves each original to its reserved backup before moving
+        the staged replacement in. When a later replacement fails and the
+        *restore* fails too, that file exists only as a backup sibling, and
+        the message naming those paths is the whole recovery procedure. The
+        adjacent test exercises the successful rollback; this is the branch
+        the three-phase design exists for, and it had no test at all.
+        """
+        real = Path.replace
+        staged = 0
+
+        def fail_the_second_move_and_every_restore(source, destination):
+            nonlocal staged
+            if source.name.endswith(patch_service.BACKUP_SUFFIX):
+                message = "simulated restore failure"
+                raise OSError(message)
+            if source.name.endswith(patch_service.STAGING_SUFFIX):
+                staged += 1
+                if staged == 2:
+                    message = "simulated replace failure"
+                    raise OSError(message)
+            return real(source, destination)
+
+        monkeypatch.setattr(Path, "replace", fail_the_second_move_and_every_restore)
+
+        with pytest.raises(AgentlessError) as caught:
+            patch_service._write_all(repo, {"app.py": "new app\n", "util.py": "new util\n"})
+
+        message = str(caught.value)
+        assert "patch partly applied: cannot replace util.py" in message
+        assert "rollback failed; originals retained at:" in message
+
+        backups = {
+            path.name.split(".")[1]: path for path in repo.glob(f"*{patch_service.BACKUP_SUFFIX}")
+        }
+        assert set(backups) == {"app", "util"}
+        # util.py is not at its own name any more: it is only the backup.
+        assert not (repo / "util.py").exists()
+        assert backups["util"].read_text(encoding="utf-8") == UTIL
+        assert (repo / "app.py").read_text(encoding="utf-8") == "new app\n"
+        assert backups["app"].read_text(encoding="utf-8") == APP
+        # Restored in reverse order, so the message names them that way.
+        assert message.index(str(backups["util"])) < message.index(str(backups["app"]))
+        # A failed staging move leaves no staging file behind either.
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+
+    def test_a_staging_write_that_fails_leaves_no_staging_file(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """Fault-injected below `_stage_file`, so its own cleanup runs.
+
+        The neighbouring test monkeypatches `_stage_file` wholesale, which
+        proves the outer contract and never enters the resource-safety code
+        inside it.
+        """
+
+        def refuse(descriptor, content, target_name):
+            _ = (descriptor, content)
+            message = "no space left on device"
+            raise OSError(28, message, target_name)
+
+        monkeypatch.setattr(patch_service, "_write_descriptor", refuse)
+
+        with pytest.raises(AgentlessError, match=r"cannot write app\.py"):
+            service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_an_interrupt_mid_write_still_removes_the_staging_file(self, repo, monkeypatch):
+        """`except BaseException` rather than `except Exception`, pinned.
+
+        A KeyboardInterrupt is the case the broader clause exists for: an
+        `except Exception` would let it past and leave both the descriptor and
+        the staging file behind.
+        """
+
+        def interrupt(descriptor, content, target_name):
+            _ = (descriptor, content, target_name)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(patch_service, "_write_descriptor", interrupt)
+
+        with pytest.raises(KeyboardInterrupt):
+            patch_service._stage_file(repo / "app.py", "new app\n")
+
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+
+    def test_a_backup_that_cannot_be_reserved_changes_nothing(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """The second phase's own failure: nothing is moved, nothing is left."""
+
+        def refuse(target, suffix):
+            _ = suffix
+            message = "read-only file system"
+            raise OSError(30, message, str(target))
+
+        monkeypatch.setattr(patch_service, "_reserve_sibling", refuse)
+
+        with pytest.raises(AgentlessError, match="cannot reserve rollback files"):
+            service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+        assert not list(repo.glob(f"*{patch_service.BACKUP_SUFFIX}"))
+
+    def test_a_short_write_is_an_error_rather_than_a_truncated_file(self, tmp_path, monkeypatch):
+        """`os.write` may write fewer bytes than it was given, and returning
+        zero forever is the case the loop cannot make progress against."""
+        descriptor = os.open(tmp_path / "sink.txt", os.O_WRONLY | os.O_CREAT, 0o600)
+        real_write = os.write
+
+        def write_nothing(fileno, data):
+            # Only this descriptor: pytest captures output through os.write.
+            return 0 if fileno == descriptor else real_write(fileno, data)
+
+        monkeypatch.setattr(os, "write", write_nothing)
+        try:
+            with pytest.raises(OSError, match=r"write returned zero bytes for app\.py"):
+                patch_service._write_descriptor(descriptor, b"content", "app.py")
+        finally:
+            os.close(descriptor)
+
+    def test_a_file_that_genuinely_holds_u_fffd_is_still_editable(self, service, repo):
+        """The strict decode decides, so a real U+FFFD is not a lossy decode.
+
+        `read_bounded` maps every undecodable byte to U+FFFD, which is why the
+        write side treats the character as the sign of a lossy read -- and why
+        it then has to check the bytes rather than trust the sign. A file that
+        contains the character legitimately must stay editable, and its bytes
+        must come back unchanged.
+        """
+        original = 'VERSION = "1"  # \ufffd marker\n'
+        patched = 'VERSION = "2"  # \ufffd marker\n'
+        (repo / "util.py").write_text(original, encoding="utf-8")
+        git(repo, "commit", "-am", "a real replacement character")
+        clean = resolve_repo(repo, None)
+        text = f"### util.py\n<<<<<<< SEARCH\n{original}=======\n{patched}>>>>>>> REPLACE\n"
+
+        report = service.apply(edits_of(text), clean, in_place=True)
+
+        assert report.ok, [outcome.reason for outcome in report.result.outcomes]
+        assert (repo / "util.py").read_bytes() == patched.encode("utf-8")
+
+    def test_a_file_whose_bytes_cannot_be_reread_is_reported_unreadable(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """The strict re-read is IO, so it has its own failure to report."""
+        (repo / "app.py").write_text(APP + "# \ufffd\n", encoding="utf-8")
+        git(repo, "commit", "-am", "a real replacement character")
+        clean = resolve_repo(repo, None)
+        _ = ctx
+        real = Path.read_bytes
+
+        def refuse(path):
+            if path.name == "app.py":
+                message = "permission denied"
+                raise OSError(13, message, str(path))
+            return real(path)
+
+        monkeypatch.setattr(Path, "read_bytes", refuse)
+
+        report = service.apply(edits_of(PATCH), clean, in_place=True)
+
+        assert not report.ok
+        assert "unreadable: permission denied" in report.result.outcomes[0].reason
+
     def test_crlf_bytes_survive_the_write(self, service, repo):
         """The writer performs no newline translation, on any platform.
 
@@ -470,3 +643,31 @@ class TestLoadEdits:
     def test_invalid_json_is_refused_with_the_parse_error(self):
         with pytest.raises(AgentlessError, match="not valid JSON"):
             load_edits('{"edits": [')
+
+    def test_an_edits_field_that_is_not_a_list_is_refused(self):
+        with pytest.raises(AgentlessError, match="must be a list of edit objects"):
+            load_edits('{"edits": {"path": "a.py"}}')
+
+    def test_a_list_entry_that_is_not_an_object_is_refused(self):
+        with pytest.raises(AgentlessError, match="edit 0 is not a JSON object"):
+            load_edits('{"edits": ["### a.py"]}')
+
+    def test_a_non_integer_index_is_refused(self):
+        document = '{"edits": [{"path": "a.py", "search": "x", "replace": "y", "index": "1"}]}'
+        with pytest.raises(AgentlessError, match="edit 0 has a non-integer 'index'"):
+            load_edits(document)
+
+    def test_an_empty_search_never_reaches_the_write(self, service, ctx, repo):
+        """An empty pre-image matches nothing; it used to append at end of file.
+
+        Refused in `core.patches._apply_one`, the one function in the package
+        that can write, so both the JSON form and raw blocks reach the same
+        answer. Pinned from the service because the write is what it costs.
+        """
+        parsed = load_edits('{"edits": [{"path": "app.py", "search": "", "replace": "X"}]}')
+
+        report = service.apply(parsed.edits, ctx, in_place=True)
+
+        assert not report.ok
+        assert "the SEARCH side is empty" in report.result.outcomes[0].reason
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP

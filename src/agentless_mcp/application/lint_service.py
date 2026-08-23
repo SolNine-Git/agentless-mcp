@@ -33,7 +33,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.patches import BlockError, Edit, ParseResult
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 
@@ -185,6 +185,12 @@ def _findings(
     ``shadowing`` would report each one as a name defined twice. That is a
     wrong answer rather than a missing one, which is why it costs the whole
     candidate rather than a line.
+
+    A candidate naming a path outside the repository costs that candidate and
+    no other. The refusal used to leave ``lint`` -- so a directory of ten
+    model-generated candidates in which one names ``../../etc/passwd``
+    produced no report at all, rather than nine reports and one refusal --
+    which is the case a model-generated candidate set is most likely to hold.
     """
     parsed = candidate.parsed
     notes = tuple(_note_row(note) for note in candidate.notes)
@@ -219,7 +225,11 @@ def _findings(
         )
         return (*notes, empty)
 
-    edits = _canonical(root, parsed.edits)
+    try:
+        edits = _canonical(root, parsed.edits)
+    except SecurityRefusal as refusal:
+        return (*notes, _refused_row(refusal))
+
     misoriented = unidiff.orientation(edits, facts.texts)
     if misoriented:
         return notes + tuple(_misoriented_row(problem) for problem in misoriented)
@@ -240,6 +250,26 @@ def _note_row(note: unidiff.DiffNote) -> render.LintFinding:
         line=0,
         location=where,
         evidence=note.reason,
+    )
+
+
+def _refused_row(refusal: SecurityRefusal) -> render.LintFinding:
+    """Report one candidate whose paths left the repository, as a coverage gap.
+
+    The same treatment :func:`_misoriented_row` gives the other "this
+    candidate cannot be checked against this tree" case, and for the same
+    reason: this service decides nothing, so a candidate it cannot check is a
+    row rather than the end of the run. The refusal's own message already
+    names what was refused without echoing the raw argument.
+    """
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=f"not checked: {refusal}",
+        path="",
+        line=0,
+        location="(repository)",
+        evidence="path refused",
     )
 
 

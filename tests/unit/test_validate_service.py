@@ -733,9 +733,16 @@ class TestACandidateDoesNotRewriteItsOwnJudge:
 
 
 class TestRunBudget:
-    def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
+    def test_a_baseline_the_budget_cut_short_says_which_bound_stopped_it(
         self, seeded_bug_repo, candidates_dir, validate, monkeypatch
     ):
+        """A timeout at 1s under `--timeout 60` is a fact about the budget.
+
+        The baseline command here is clamped to the one second the run budget
+        had left, and it times out there. Reported as a bare "timed out after
+        1.0s" it reads as a fact about the suite, so the detail names the
+        bound and the warning names the run that imposed it.
+        """
         moments = iter((0.0, 0.0, 1.0, 1.0))
         current = 0.0
 
@@ -761,11 +768,129 @@ class TestRunBudget:
 
         assert seen_timeouts == [1.0]
         assert report.header.baseline is BaselineStatus.UNVERIFIED
+        assert report.header.budget_truncated
+        assert "bounded by the run's remaining budget" in report.header.baseline_detail
+        assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
+        assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
+        assert not report.any_passed
+        assert any(warning.startswith("BUDGET:") for warning in report.warnings())
+        # Nothing was abandoned: the baseline ran every repeat it was asked
+        # for and answered UNVERIFIED. The flag is about work not reached.
+        assert not report.deadline_expired
+
+    def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """The budget expires after a green baseline and before any candidate."""
+        moments = iter((0.0, 1.0, 2.0, 20.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = (timeout, passthrough_env)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir(FOUR_CANDIDATES),
+            run_timeout=10,
+        )
+
+        assert report.header.baseline is BaselineStatus.OK
         assert report.deadline_expired
         assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
         assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
         assert not report.any_passed
         assert any("DEADLINE" in warning for warning in report.warnings())
+
+    def test_a_candidate_that_applied_before_the_budget_ran_out_says_it_applied(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """ "Applied, then unmeasured" is not "the patch did not apply".
+
+        The budget expires between the apply and the test command. Reporting
+        `apply_status=not_evaluated` made the vote exclude the candidate with
+        "the patch did not apply", which sent an agent to fix a patch that
+        had just landed cleanly.
+        """
+        moments = iter((0.0, 1.0, 2.0, 3.0, 4.0, 20.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = (timeout, passthrough_env)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS}),
+            run_timeout=10,
+        )
+
+        (verdict,) = report.verdicts
+        assert verdict.apply_status is ApplyStatus.OK
+        assert verdict.equivalence_key
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert verdict.budget_truncated
+        assert "applied, then not evaluated" in verdict.apply_reasons[0]
+        assert report.deadline_expired
+
+        excluded = dict(
+            vote.rank([v.as_vote_candidate() for v in report.verdicts], repro_valid=False).excluded
+        )
+        assert "did not apply" not in excluded["01-plus"]
+        assert "nothing was measured" in excluded["01-plus"]
+
+    def test_a_candidate_whose_slice_of_the_budget_is_too_small_is_not_evaluated(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """A fraction of a second measures nothing, so it buys no verdict.
+
+        The clamp had no floor, so a nearly-spent budget handed the command a
+        sliver and delivered the answer as `timeout` -- which `Verdict.measured`
+        counts, so the candidate entered the vote ladder on evidence the caller
+        never asked for.
+        """
+        moments = iter((0.0, 1.0, 2.0, 3.0, 4.0, 9.7))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        seen_timeouts = []
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = passthrough_env
+            seen_timeouts.append(timeout)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS}),
+            run_timeout=10,
+        )
+
+        # Only the baseline ran: 0.3s left is below the floor.
+        assert seen_timeouts == [9.0]
+        (verdict,) = report.verdicts
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert not verdict.regression.measured
 
     def test_every_command_is_clamped_to_the_aggregate_time_left(
         self, seeded_bug_repo, candidates_dir, validate, python_cmd, monkeypatch
@@ -799,14 +924,18 @@ class TestRunBudget:
             run_timeout=10,
         )
 
-        assert seen_timeouts == [9.0, 7.0, 4.0, 2.0]
+        assert seen_timeouts == [9.0, 7.0, 5.0, 4.0]
         assert not report.deadline_expired
         assert report.any_passed
+        # Every bound came from the budget and every command finished inside
+        # it. A clamp that nothing ran into is not a truncation.
+        assert not report.header.budget_truncated
+        assert not any(verdict.budget_truncated for verdict in report.verdicts)
 
     def test_a_budget_that_is_not_positive_is_refused(
         self, seeded_bug_repo, candidates_dir, validate
     ):
-        with pytest.raises(AgentlessError, match="positive number of seconds"):
+        with pytest.raises(AgentlessError, match="run_timeout must be at least 1"):
             validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), run_timeout=0)
 
     def test_a_budget_nobody_spends_changes_nothing(
@@ -816,6 +945,55 @@ class TestRunBudget:
 
         assert not report.deadline_expired
         assert report.any_passed
+
+
+class TestTheRequestsNumbersAreCheckedInOnePlace:
+    """Every numeric field of the request, refused rather than coerced."""
+
+    # Refused before the candidates are even listed, so the repository and the
+    # candidate directory here are never read.
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            ({"jobs": 0}, "jobs must be at least 1"),
+            ({"timeout": 0}, "timeout must be at least 1"),
+            ({"repeat_baseline": 0}, "repeat_baseline must be at least 1"),
+            ({"run_timeout": -5}, "run_timeout must be at least 1"),
+        ],
+    )
+    def test_a_bound_that_cannot_bound_anything_is_refused(
+        self, tmp_path, validate, field, expected
+    ):
+        with pytest.raises(AgentlessError, match=expected):
+            validate(tmp_path, tmp_path, **field)
+
+
+class TestTheCandidateSetIsBounded:
+    """A `--candidates` naming something else is refused, not run.
+
+    Every candidate file is read whole and each one costs two test runs, so
+    without a cap a mis-typed path turned into hours of suite over a source
+    tree. The aggregate time budget is opt-in; these two bounds are not.
+    """
+
+    def test_more_candidates_than_a_run_takes_are_refused(self, candidates_dir):
+        directory = candidates_dir(
+            {f"{index:04d}.txt": PLUS for index in range(validate_module.MAX_CANDIDATES + 1)}
+        )
+        with pytest.raises(AgentlessError, match="probably not a candidate set"):
+            load_candidates(directory)
+
+    def test_the_largest_accepted_candidate_set_still_loads(self, candidates_dir):
+        directory = candidates_dir(
+            {f"{index:04d}.txt": PLUS for index in range(validate_module.MAX_CANDIDATES)}
+        )
+        assert len(load_candidates(directory)) == validate_module.MAX_CANDIDATES
+
+    def test_a_candidate_larger_than_the_file_bound_is_refused(self, candidates_dir):
+        oversized = "#" * (validate_module.MAX_CANDIDATE_BYTES + 1)
+        directory = candidates_dir({"01-plus.txt": PLUS, "02-huge.txt": oversized})
+        with pytest.raises(AgentlessError, match="is not a patch"):
+            load_candidates(directory)
 
 
 class TestLoadVerdicts:
@@ -874,6 +1052,46 @@ def document(*, header=None, candidate=None):
     """Render one header and one candidate record as a verdicts document."""
     records = [{**HEADER, **(header or {})}, {**CANDIDATE, **(candidate or {})}]
     return "".join(json.dumps(record) + "\n" for record in records)
+
+
+def stuffed(*candidates):
+    """Render one header and the given candidate records as a document."""
+    records = [HEADER, *({**CANDIDATE, **override} for override in candidates)]
+    return "".join(json.dumps(record) + "\n" for record in records)
+
+
+class TestOneIdIsOneCandidate:
+    """The reader guards identity, not only spelling.
+
+    The writer refuses two candidates sharing an id because one candidate's
+    verdict would appear to be the other's. A reader that accepts what the
+    writer refuses is a ballot anyone can stuff by concatenating two
+    documents, and `vote` counts cluster size.
+    """
+
+    def test_a_repeated_id_is_refused_with_both_lines(self):
+        text = stuffed({"id": "c1", "index": 0}, {"id": "c1", "index": 1})
+        with pytest.raises(AgentlessError, match=r"line 3: candidate id 'c1' was already read"):
+            load_verdicts(text)
+
+    def test_a_repeated_index_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}, {"id": "c2", "index": 0})
+        with pytest.raises(AgentlessError, match=r"line 3: candidate index 0 was already read"):
+            load_verdicts(text)
+
+    def test_a_second_run_record_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}) + json.dumps(HEADER) + "\n"
+        with pytest.raises(AgentlessError, match=r"line 3: a second 'run' record"):
+            load_verdicts(text)
+
+    def test_a_record_kind_this_build_does_not_know_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}, {"record": "summary", "id": "c2", "index": 1})
+        with pytest.raises(AgentlessError, match=r"line 3: 'record' is 'summary'"):
+            load_verdicts(text)
+
+    def test_distinct_candidates_still_read(self):
+        loaded = load_verdicts(stuffed({"id": "c1", "index": 0}, {"id": "c2", "index": 1}))
+        assert [candidate.id for candidate in loaded.candidates] == ["c1", "c2"]
 
 
 class TestVerdictValuesAreReadThroughTheirEnums:

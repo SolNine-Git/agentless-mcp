@@ -44,6 +44,7 @@ Two rules govern the write itself, and both are all-or-nothing:
 """
 
 import json
+import logging
 import os
 import shutil
 import stat
@@ -69,6 +70,8 @@ from agentless_mcp.core.patches import (
 )
 from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.fslimits import BoundedRead, contained_path, read_bounded
+
+logger = logging.getLogger(__name__)
 
 EDITS_KEY = "edits"
 
@@ -649,12 +652,23 @@ def _rollback(completed: Sequence[tuple[Path, Path]]) -> list[Path]:
 
 
 def _discard(paths: Iterable[Path]) -> None:
-    """Remove temporary files that will never be moved into place."""
+    """Remove temporary files that will never be moved into place, and say so.
+
+    Not raising is right: the failure that brought us here is the one the
+    caller needs to see. Not *recording* it was not. The file left behind is
+    a staged or backup sibling in the caller's own repository, and nothing
+    else anywhere names it. :func:`agentless_mcp.core.sandbox._release`
+    already logs the scratch worktree it could not remove, for this reason.
+    """
     for path in paths:
-        # A staging file that cannot be removed is litter; the failure that
-        # brought us here is the one the caller needs to see.
-        with suppress(OSError):
+        try:
             path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "could not remove the temporary file %s: %s; delete it by hand",
+                path,
+                _reason(exc),
+            )
 
 
 def _reason(exc: OSError) -> str:
