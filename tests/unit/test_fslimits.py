@@ -4,10 +4,12 @@ Each one asserts the specific message the refusal carries: a bound that
 refuses with a vague message is a bound an operator cannot act on.
 """
 
+import logging
 import os
 
 import pytest
 
+from agentless_mcp.util import fslimits
 from agentless_mcp.util.errors import (
     AgentlessError,
     RepoResolutionError,
@@ -174,6 +176,20 @@ class TestReadBounded:
         assert result.skipped is not None
         assert result.skipped.startswith("unreadable: ")
 
+    def test_an_in_repo_symlink_is_read_because_the_walk_admitted_it(self, root):
+        # One symlink policy per module. `O_NOFOLLOW` here refused exactly the
+        # files `bounded_walk` had just yielded, and blamed a symlink loop
+        # that did not exist, so every symlinked file in a repository dropped
+        # out of the index, the refs listing and every view.
+        (root / "link.py").symlink_to(root / "app.py")
+
+        walked = sorted(path.name for path in bounded_walk(root))
+        result = read_bounded(root / "link.py")
+
+        assert walked == ["app.py", "link.py"]
+        assert result.skipped is None
+        assert result.text == "x = 1\n"
+
 
 class TestSymlinkLoops:
     """A loop resolves differently on the two supported interpreters.
@@ -182,8 +198,8 @@ class TestSymlinkLoops:
     a symlink loop, and the filter here caught only ``ValueError`` and
     ``OSError``, so the error escaped untyped past the boundary the adapters
     catch on. From 3.13 the same input resolves to a path that does not
-    exist, and the strict re-resolve is skipped, so it was accepted. Two
-    opposite failures on the two versions in the support matrix.
+    exist, so it was accepted. Two opposite failures on the two versions in
+    the support matrix.
 
     What this pins is the property that holds on both: the answer is either a
     path inside the root or this module's own refusal, never a stdlib error.
@@ -210,3 +226,33 @@ class TestSymlinkLoops:
 
         with pytest.raises(SecurityRefusal):
             contained_path(root, "escape")
+
+
+class TestDirectoryClaim:
+    """The prune that removes a subtree from a walk without refusing it.
+
+    Reached through the private helper rather than through ``bounded_walk``:
+    the condition is two paths sharing one ``(st_dev, st_ino)``, and building
+    that needs a bind mount, which needs root. What matters is that the skip
+    leaves a trace naming the directory, and the helper is where that is
+    decided.
+    """
+
+    def test_a_directory_seen_twice_is_pruned_and_says_so(self, root, caplog):
+        seen: set[tuple[int, int]] = set()
+        assert fslimits._claim_directory(root, seen) is True
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.util.fslimits"):
+            claimed = fslimits._claim_directory(root, seen)
+
+        assert claimed is False
+        assert str(root) in caplog.text
+        assert "already visited" in caplog.text
+
+    def test_a_directory_that_cannot_be_stated_is_skipped_and_says_so(self, root, caplog):
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.util.fslimits"):
+            claimed = fslimits._claim_directory(root / "gone", set())
+
+        assert claimed is False
+        assert "walk skipped" in caplog.text
+        assert "gone" in caplog.text

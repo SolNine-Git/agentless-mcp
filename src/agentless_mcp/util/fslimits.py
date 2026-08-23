@@ -13,6 +13,7 @@ first and resolving later is the pattern behind most path-traversal CVEs in
 this class of tool.
 """
 
+import logging
 import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ from pathlib import Path
 
 from agentless_mcp.util.bounds import at_least
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_DEPTH = 20
 # Named for the walk rather than DEFAULT_MAX_FILES, which is what
@@ -46,6 +49,13 @@ def contained_path(root: Path, candidate: str) -> Path:
     Every refusal is a :class:`SecurityRefusal`, including the one for a string
     the filesystem cannot name at all: this is the boundary the adapters catch
     on, so an untyped stdlib error escaping it would escape them too.
+
+    One ``resolve()`` is the whole check. It follows the final component as
+    well as the parents, so a symlinked leaf is already replaced by the file it
+    names before the containment test runs. A second strict pass would re-ask a
+    question pathlib has answered, and it would ask it outside the ``try``
+    above, where an unlink between the two calls raises an untyped
+    ``FileNotFoundError`` through this boundary.
     """
     resolved_root = root.resolve()
     joined = Path(candidate) if Path(candidate).is_absolute() else resolved_root / candidate
@@ -67,17 +77,6 @@ def contained_path(root: Path, candidate: str) -> Path:
     if not _is_within(resolved, resolved_root):
         message = f"path refused: resolved to {resolved}, which is outside the root {resolved_root}"
         raise SecurityRefusal(message)
-
-    if resolved.exists():
-        # Re-resolve strictly: an existing final component that is a symlink is
-        # only proven safe once the real file it names has been resolved.
-        strict = resolved.resolve(strict=True)
-        if not _is_within(strict, resolved_root):
-            message = (
-                f"path refused: resolved to {strict}, which is outside the root {resolved_root}"
-            )
-            raise SecurityRefusal(message)
-        return strict
 
     return resolved
 
@@ -110,7 +109,15 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
     """
     at_least(max_bytes, 0, "max_bytes")
     try:
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        # Symlinks are followed here, deliberately. Containment is decided
+        # before a path reaches this function -- by :func:`contained_path` for
+        # an argument from outside, by :func:`file_stays_inside` for a path the
+        # walk found -- and both admit a symlink whose target is still under
+        # the root. Adding `O_NOFOLLOW` would refuse exactly the files those
+        # two just admitted, and report them as `Too many levels of symbolic
+        # links`, which names a loop that is not there. One symlink policy per
+        # module, and it is the one the callers already enforce.
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         descriptor = os.open(path, flags)
     except OSError as exc:
         return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
@@ -155,6 +162,16 @@ def bounded_walk(
     skipped, so the walk cannot be steered outside the tree it was given.
     Directories already visited (by device and inode) are pruned, which stops
     a bind-mount or hardlink cycle from looping forever.
+
+    That prune is the one place this module skips rather than refuses, and the
+    module's opening paragraph does not cover it. It cannot refuse: two bind
+    mounts of one source directory are indistinguishable from a cycle by
+    ``(st_dev, st_ino)``, and raising would fail an ordinary walk of an
+    ordinary container image. It cannot yield either, because the cycle it is
+    there to stop has the same signature. So it logs the pruned directory at
+    warning level and carries on, which is the only report an iterator with no
+    second channel can make. A directory that cannot be stat'ed is skipped and
+    logged the same way.
 
     Gitignore awareness lives in :mod:`agentless_mcp.core.treewalk`, not here:
     this function is the security bound, and a bound that consults repository
@@ -220,13 +237,26 @@ def bounded_walk(
 
 
 def _claim_directory(directory: Path, seen: set[tuple[int, int]]) -> bool:
-    """Record ``directory`` by (device, inode); False when it was seen before."""
+    """Record ``directory`` by (device, inode); False when it was seen before.
+
+    This is the only place in the module that drops files from an answer
+    without raising, so both ways of returning False name the directory in a
+    warning. A walk that came back short leaves a trace of where it stopped.
+    """
     try:
         info = directory.stat()
-    except OSError:
+    except OSError as exc:
+        logger.warning("walk skipped %s: %s", directory, exc)
         return False
     key = (info.st_dev, info.st_ino)
     if key in seen:
+        logger.warning(
+            "walk pruned %s: device %s inode %s was already visited, so this subtree is "
+            "either a cycle or a second mount of one already walked",
+            directory,
+            info.st_dev,
+            info.st_ino,
+        )
         return False
     seen.add(key)
     return True

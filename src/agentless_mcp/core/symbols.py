@@ -26,6 +26,15 @@ symbols sharing a qualified name carry a ``#2``, ``#3`` ordinal in source
 order, and :func:`split_ordinal` takes it back off. The ordinal lives on the
 *id*, not on :func:`qualname`, so the name a reader sees stays the name the
 source spells.
+
+One string in this module is not a stable id and only looks like one: the
+rationale handle :func:`rationale_stable_id` builds. It carries the comment's
+line number, so an edit above the comment invalidates it, and it carries a
+second ``::``, so it does not parse back into a symbol. It is a presentation
+handle -- something for a reader to see a rationale by, next to the symbol it
+hangs off -- and :func:`parse_stable_id` refuses it by name rather than
+returning the wrong symbol's qualified name. Both properties are stated here
+because the guarantee above is what an agent caches an id on.
 """
 
 import re
@@ -164,7 +173,26 @@ _QUALNAME_SEPARATOR = "::"
 # inside its file. `#` is not a name character in any grammar in the table, so
 # a real qualified name can never be mistaken for one that carries an ordinal.
 _ORDINAL_MARKER = "#"
-_ORDINAL_SUFFIX = re.compile(r"#(\d+)$")
+# The digit run is bounded because `split_ordinal` is documented as total on
+# every string and calls `int()` on whatever this captures. Python refuses an
+# integer-string conversion past 4300 digits, so an unbounded `\d+` turns a
+# long numeric tail on an agent-supplied name into a `ValueError` out of a
+# helper that promises never to raise. Six digits is a million collisions of
+# one qualified name in one file; anything longer is not an ordinal.
+_ORDINAL_MAX_DIGITS = 6
+_ORDINAL_SUFFIX = re.compile(rf"#(\d{{1,{_ORDINAL_MAX_DIGITS}}})$")
+
+# What separates a rationale handle from the symbol id it hangs off. Named
+# rather than spelled inline at both ends because the builder and the parser
+# have to agree on it: one adds it, the other refuses anything carrying it.
+_RATIONALE_MARKER = f"{_QUALNAME_SEPARATOR}rationale@"
+
+# The C0 controls and DEL. This package's own output is line-oriented and read
+# back by an agent -- `N| symbol  [id]` rows -- and error text quotes a
+# parsed qualified name straight into it. A newline inside a component turns
+# one row into two, so a component that carries one is refused at the parse
+# rather than repaired after it.
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def normalise_signature(signature: str) -> str:
@@ -228,7 +256,11 @@ def split_ordinal(qualified_name: str) -> tuple[str, int]:
 
     The inverse of :func:`_apply_ordinal`, and the one place a consumer of an
     id is allowed to know the ordinal spelling. A name with no ordinal comes
-    back unchanged with index 0, so callers can apply it unconditionally.
+    back unchanged with index 0, so callers can apply it unconditionally. That
+    is total, not almost total: a name ending in more digits than an ordinal
+    can hold is a name with no ordinal, not an error, because both callers --
+    `core.refs` inside an `except ValueError` and `core.locs` on an
+    agent-supplied `function:` location -- take the docstring at its word.
     """
     match = _ORDINAL_SUFFIX.search(qualified_name)
     if match is None:
@@ -294,11 +326,18 @@ def symbol_stable_id(symbol: ASTSymbol) -> str:
 
 
 def rationale_stable_id(symbol: ASTSymbol, rationale: Rationale) -> str:
-    """Build a stable id for one rationale node below ``symbol``."""
+    """Build the presentation handle for one rationale node below ``symbol``.
+
+    Not a stable id, despite the shape, and :func:`parse_stable_id` refuses it:
+    the line number in the suffix moves under any edit above the comment, and
+    the second ``::`` means the qualified name it would parse back to names no
+    symbol. A rationale is shown beside the symbol that owns it and is reached
+    by expanding that symbol, so the handle never has to survive a re-index.
+    """
     suffix = f"{rationale.line_number}"
     if rationale.duplicate_index:
-        suffix += f"#{rationale.duplicate_index + 1}"
-    return f"{symbol_stable_id(symbol)}::rationale@{suffix}"
+        suffix += f"{_ORDINAL_MARKER}{rationale.duplicate_index + 1}"
+    return f"{symbol_stable_id(symbol)}{_RATIONALE_MARKER}{suffix}"
 
 
 def parse_stable_id(text: str) -> StableId:
@@ -306,11 +345,28 @@ def parse_stable_id(text: str) -> StableId:
 
     Malformed ids raise rather than resolving to a plausible-looking wrong
     symbol: an id is machine-generated, so a broken one is a bug upstream, not
-    user input to be guessed at.
+    user input to be guessed at. This is the one boundary agent-supplied ids
+    cross, so "malformed" covers the shapes that parse but address nothing --
+    a rationale handle, a component of pure whitespace -- and the shapes that
+    would carry a control character into line-oriented output.
     """
+    if _RATIONALE_MARKER in text:
+        message = (
+            f"not a stable id: {text!r}; this is a rationale handle, which names a "
+            "comment rather than a symbol. Expand the symbol it hangs off instead."
+        )
+        raise ValueError(message)
+
     prefix, colon, remainder = text.partition(":")
     path, separator, qualified_name = remainder.partition(_QUALNAME_SEPARATOR)
-    if not (colon and separator and prefix and path and qualified_name):
+    components = (prefix, path, qualified_name)
+    well_formed = (
+        colon
+        and separator
+        and all(component.strip() for component in components)
+        and not any(_CONTROL_CHARACTERS.search(component) for component in components)
+    )
+    if not well_formed:
         message = (
             f"not a stable id: {text!r}; expected <langprefix>:<relpath>::<qualname>, "
             "for example py:src/app/svc.py::Invoice.total"
