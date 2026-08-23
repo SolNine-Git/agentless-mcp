@@ -95,7 +95,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
@@ -158,7 +158,7 @@ def run(argv: Sequence[str] | None, services: CliServices) -> int:
             invocation = replace(services, resources=resources)
             try:
                 return handler(args, invocation)
-            except AtlasError as error:
+            except AgentlessError as error:
                 return fail(str(error), exit_code_for(error))
     finally:
         # One-shot process: exiting mid-extraction would kill the daemon
@@ -1572,7 +1572,7 @@ def _patch_call(
             f"{len(parsed.errors)} of {len(parsed.errors) + len(parsed.edits)} blocks "
             f"did not parse, so none of them was applied:\n{blocks}"
         )
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return ctx, parsed.edits
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.slices import line_count, line_wrap_content, merge_intervals
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 TWELVE_LINES = "\n".join(f"line {index}" for index in range(1, 13))
 
@@ -127,15 +127,15 @@ class TestAnUnsatisfiableIntervalIsRefused:
         assert line_wrap_content(TWELVE_LINES) == line_wrap_content(TWELVE_LINES, [])
 
     def test_a_transposed_interval_is_refused(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(60, 30)])
 
     def test_a_negative_interval_is_not_read_as_the_whole_file(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(-9, -1)])
 
     def test_an_interval_past_the_end_is_refused(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(30, 40)])
 
     def test_one_satisfiable_interval_is_enough_to_answer(self):

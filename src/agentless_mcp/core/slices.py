@@ -21,7 +21,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 ELISION = "..."
 
@@ -190,7 +190,7 @@ def _clamp(intervals: Sequence[tuple[int, int]] | None, total: int) -> list[tupl
     if not clipped:
         requested = ", ".join(f"{start}-{end}" for start, end in intervals)
         message = f"no requested line range falls inside the file's {total} lines: {requested}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return clipped
 
 

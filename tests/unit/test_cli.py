@@ -1541,7 +1541,7 @@ class TestGuide:
     def test_a_broken_install_raises_rather_than_printing_an_empty_guide(
         self, services, monkeypatch
     ):
-        """``run`` catches AtlasError only, so this propagates as a traceback."""
+        """``run`` catches AgentlessError only, so this propagates as a traceback."""
         absent = "agent-guide.md"
 
         def missing(*_args, **_kwargs):

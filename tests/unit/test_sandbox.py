@@ -27,7 +27,7 @@ import pytest
 from agentless_mcp.core import cache, sandbox
 from agentless_mcp.core.sandbox import RunStatus
 from agentless_mcp.util import platforms
-from agentless_mcp.util.errors import AtlasError, RepoResolutionError
+from agentless_mcp.util.errors import AgentlessError, RepoResolutionError
 
 FILES = {
     "app.py": "def add(a, b):\n    return a + b\n",
@@ -211,7 +211,7 @@ class TestWorktreeCreationFailure:
                 "killed mid-checkout\n", encoding="utf-8"
             )
             message = "git worktree add timed out"
-            raise AtlasError(message)
+            raise AgentlessError(message)
 
         monkeypatch.setattr(sandbox, "run_git", dies_after_the_record_exists)
 
@@ -219,7 +219,7 @@ class TestWorktreeCreationFailure:
             with sandbox.worktree(repo):
                 pytest.fail("the body must not run when creation failed")
 
-        with pytest.raises(AtlasError, match="timed out"):
+        with pytest.raises(AgentlessError, match="timed out"):
             enter()
 
         assert self.records(repo) == []
@@ -246,7 +246,7 @@ class TestDiff:
 
 class TestRunGit:
     def test_a_failing_command_raises_with_the_reason(self, repo):
-        with pytest.raises(AtlasError, match="exited"):
+        with pytest.raises(AgentlessError, match="exited"):
             sandbox.run_git(repo, ["rev-parse", "refs/heads/no-such-branch"])
 
 

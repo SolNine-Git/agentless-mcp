@@ -39,7 +39,7 @@ from agentless_mcp.application.validate_service import (
 )
 from agentless_mcp.core import vote
 from agentless_mcp.core.sandbox import RunResult, RunStatus
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 PLUS = """\
 ### app.py
@@ -174,16 +174,16 @@ class TestLoadCandidates:
         assert [candidate.index for candidate in candidates] == [0, 1, 2, 3]
 
     def test_an_empty_directory_is_refused(self, candidates_dir):
-        with pytest.raises(AtlasError, match="no candidate files"):
+        with pytest.raises(AgentlessError, match="no candidate files"):
             load_candidates(candidates_dir({}))
 
     def test_a_missing_directory_is_refused(self, tmp_path):
-        with pytest.raises(AtlasError, match="not one"):
+        with pytest.raises(AgentlessError, match="not one"):
             load_candidates(tmp_path / "nowhere")
 
     def test_two_candidates_sharing_a_stem_are_refused(self, candidates_dir):
         directory = candidates_dir({"fix.txt": PLUS, "fix.json": '{"edits": []}'})
-        with pytest.raises(AtlasError, match="share the id"):
+        with pytest.raises(AgentlessError, match="share the id"):
             load_candidates(directory)
 
 
@@ -611,7 +611,7 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
     ):
         repo = seeded_bug_repo()
 
-        with pytest.raises(AtlasError, match="came from the repository under analysis"):
+        with pytest.raises(AgentlessError, match="came from the repository under analysis"):
             service.validate(
                 resolve_repo(repo, None),
                 ValidateRequest(
@@ -806,7 +806,7 @@ class TestRunBudget:
     def test_a_budget_that_is_not_positive_is_refused(
         self, seeded_bug_repo, candidates_dir, validate
     ):
-        with pytest.raises(AtlasError, match="positive number of seconds"):
+        with pytest.raises(AgentlessError, match="positive number of seconds"):
             validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), run_timeout=0)
 
     def test_a_budget_nobody_spends_changes_nothing(
@@ -820,20 +820,20 @@ class TestRunBudget:
 
 class TestLoadVerdicts:
     def test_an_empty_document_is_refused(self):
-        with pytest.raises(AtlasError, match="empty"):
+        with pytest.raises(AgentlessError, match="empty"):
             load_verdicts("\n \n")
 
     def test_a_non_json_line_is_refused_with_its_number(self):
-        with pytest.raises(AtlasError, match=r"line 1 .* not valid JSON"):
+        with pytest.raises(AgentlessError, match=r"line 1 .* not valid JSON"):
             load_verdicts("not json at all\n")
 
     def test_a_document_that_does_not_start_with_a_run_record_is_refused(self):
-        with pytest.raises(AtlasError, match=r"must be a 'run' record"):
+        with pytest.raises(AgentlessError, match=r"must be a 'run' record"):
             load_verdicts(json.dumps({"record": "candidate", "id": "a"}) + "\n")
 
     def test_a_header_missing_repro_valid_is_refused_rather_than_defaulted(self):
         header = {"record": "run", "baseline": "ok", "test_cmd": "x", "repro_cmd": None}
-        with pytest.raises(AtlasError, match="repro_valid"):
+        with pytest.raises(AgentlessError, match="repro_valid"):
             load_verdicts(json.dumps(header) + "\n")
 
     def test_a_candidate_missing_its_apply_object_is_refused(self):
@@ -847,7 +847,7 @@ class TestLoadVerdicts:
         candidate = {"record": "candidate", "id": "a", "index": 0, "regression": "passed"}
         text = json.dumps(header) + "\n" + json.dumps(candidate) + "\n"
 
-        with pytest.raises(AtlasError, match=r"no 'apply' object"):
+        with pytest.raises(AgentlessError, match=r"no 'apply' object"):
             load_verdicts(text)
 
 
@@ -905,7 +905,7 @@ class TestVerdictValuesAreReadThroughTheirEnums:
         ],
     )
     def test_an_unrecognised_value_is_refused_with_its_line(self, label, text, expected):
-        with pytest.raises(AtlasError, match=expected):
+        with pytest.raises(AgentlessError, match=expected):
             load_verdicts(text)
 
     def test_a_recognised_document_still_reads(self):

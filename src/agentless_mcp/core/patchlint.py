@@ -119,7 +119,7 @@ from agentless_mcp.core.normalize import normalized_stream
 from agentless_mcp.core.patches import Edit, apply_edits
 from agentless_mcp.core.refs import Definition, FileFacts
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.fslimits import read_bounded
 
 CHECK_UNDECLARED_IMPORTS = "undeclared_imports"
@@ -190,7 +190,7 @@ REQUIREMENTS_GLOB = "requirements*.txt"
 # `UnicodeDecodeError` is a `ValueError` and is covered by it; a manifest or a
 # fragment that is not text arrives that way.
 DEGRADED_ERRORS: tuple[type[Exception], ...] = (
-    AtlasError,
+    AgentlessError,
     ValueError,
     RecursionError,
     OSError,

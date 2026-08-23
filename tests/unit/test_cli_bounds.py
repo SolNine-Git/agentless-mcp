@@ -34,7 +34,7 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateRequest, ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 SOURCE = """\
 RATE = 3
@@ -290,7 +290,7 @@ class TestValidateBoundsAreRefused:
         candidates.mkdir()
         request = ValidateRequest(candidates=candidates, test_cmd="true", **{field: value})
 
-        with pytest.raises(AtlasError, match=re.escape(expected)):
+        with pytest.raises(AgentlessError, match=re.escape(expected)):
             service.validate(resolve_repo(tmp_path, None), request)
 
     def test_a_zero_repeat_used_to_be_silently_rewritten_to_one(self, service, tmp_path):
@@ -301,5 +301,5 @@ class TestValidateBoundsAreRefused:
         candidates.mkdir()
         request = ValidateRequest(candidates=candidates, test_cmd="true", repeat_baseline=0)
 
-        with pytest.raises(AtlasError):
+        with pytest.raises(AgentlessError):
             service.validate(resolve_repo(tmp_path, None), request)

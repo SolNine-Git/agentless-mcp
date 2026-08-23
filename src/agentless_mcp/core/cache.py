@@ -70,7 +70,7 @@ from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambi
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
-from agentless_mcp.util.errors import AtlasError, CacheLocked
+from agentless_mcp.util.errors import AgentlessError, CacheLocked
 from agentless_mcp.util.fslimits import read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
@@ -157,7 +157,7 @@ ABSENT_REFRESHING = MESSAGES.cache_absent_refreshing
 # it here would invert that. ``UnicodeDecodeError`` is absent from both because
 # it is a ``ValueError`` and is caught by that member.
 EXTRACTION_FAILURES: tuple[type[Exception], ...] = (
-    AtlasError,
+    AgentlessError,
     ValueError,
     RecursionError,
     OSError,
@@ -870,7 +870,7 @@ def start_auto_index(
         done = (run is not None and run.generation == generation) or _index_current(
             database, resolved, generation
         )
-    except (AtlasError, OSError) as error:
+    except (AgentlessError, OSError) as error:
         logger.warning("background index refresh for %s skipped: %s", resolved, error)
         return None
     if done:
@@ -920,7 +920,7 @@ def _auto_index(
             root,
         )
         return
-    except (AtlasError, sqlite3.DatabaseError, OSError) as error:
+    except (AgentlessError, sqlite3.DatabaseError, OSError) as error:
         # The contract is one log line and today's parse-live behavior,
         # never a crashed thread mid-session.
         logger.warning("background index refresh for %s failed: %s", root, error)

@@ -16,7 +16,7 @@ import pytest
 from agentless_mcp.application import render
 from agentless_mcp.application.graph_service import GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 CORE = """\
 def helper(value):
@@ -252,12 +252,12 @@ class TestResolutionIsParsedNotCoerced:
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), -5.0, 0.0])
     def test_communities_refuses_a_resolution_that_is_not_one(self, graphs, repo, value):
-        with pytest.raises(AtlasError, match="resolution must be a finite number"):
+        with pytest.raises(AgentlessError, match="resolution must be a finite number"):
             graphs.communities(repo, resolution=value)
 
     @pytest.mark.parametrize("value", [float("nan"), -5.0])
     def test_the_diagram_refuses_the_same_values(self, graphs, repo, value):
-        with pytest.raises(AtlasError, match="resolution must be a finite number"):
+        with pytest.raises(AgentlessError, match="resolution must be a finite number"):
             graphs.diagram(repo, group_by_communities=True, resolution=value)
 
     def test_a_finite_positive_resolution_is_still_accepted(self, graphs, repo):

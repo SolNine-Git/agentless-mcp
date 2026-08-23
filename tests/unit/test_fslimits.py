@@ -9,7 +9,7 @@ import os
 import pytest
 
 from agentless_mcp.util.errors import (
-    AtlasError,
+    AgentlessError,
     RepoResolutionError,
     SecurityRefusal,
     WalkBoundExceeded,
@@ -165,7 +165,7 @@ class TestReadBounded:
         readable = root / "small.py"
         readable.write_text("x", encoding="utf-8")
 
-        with pytest.raises(AtlasError, match="max_bytes must be at least 0"):
+        with pytest.raises(AgentlessError, match="max_bytes must be at least 0"):
             read_bounded(readable, max_bytes=-1)
 
     def test_missing_file_is_reported_not_raised(self, root):

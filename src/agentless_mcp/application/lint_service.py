@@ -33,7 +33,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.patches import BlockError, Edit, ParseResult
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 
@@ -116,12 +116,12 @@ def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
         files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
         if not files:
             message = f"no patch files in {resolved}: one file per candidate patch"
-            raise AtlasError(message)
+            raise AgentlessError(message)
         return tuple(_candidate(path) for path in files)
 
     if not resolved.is_file():
         message = f"{resolved} is neither a patch file nor a directory of them"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return (_candidate(resolved),)
 
 
@@ -155,7 +155,7 @@ def _text(path: Path, what: str) -> str:
     read = read_bounded(path)
     if read.text is None:
         message = f"cannot read {what} {path.name}: {read.skipped}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return read.text
 
 

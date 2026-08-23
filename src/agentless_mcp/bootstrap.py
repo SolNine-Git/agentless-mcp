@@ -38,7 +38,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.tokens import (
     COUNTER_TIKTOKEN,
     Chars4Counter,
@@ -73,7 +73,7 @@ class TiktokenCounter:
                 f"installed ({exc}). Install it with: uv sync --extra tokens, or "
                 "pip install 'agentless-mcp[tokens]'."
             )
-            raise AtlasError(message) from exc
+            raise AgentlessError(message) from exc
         self._encoding = tiktoken.get_encoding(TIKTOKEN_ENCODING)
 
     def count(self, text: str) -> int:
@@ -109,7 +109,7 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
     extractor = TreeSitterExtractor()
     try:
         counter = select_counter(counter_choice(argv))
-    except AtlasError as error:
+    except AgentlessError as error:
         sys.stderr.write(f"agentless-mcp: {error}\n")
         return 2
     patches = PatchService(extractor)

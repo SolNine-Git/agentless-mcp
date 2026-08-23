@@ -20,7 +20,7 @@ import pytest
 import tree_sitter_language_pack as pack
 
 from agentless_mcp.core import grammars
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 
 
 class TestGetLanguage:
@@ -57,7 +57,7 @@ class TestGetLanguage:
 class TestWarmup:
     def test_no_download_flag_refuses_to_fetch(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
-        with pytest.raises(AtlasError) as caught:
+        with pytest.raises(AgentlessError) as caught:
             grammars.warmup(["python"], no_download=True)
         message = str(caught.value)
         assert "refusing to download grammar 'python'" in message
@@ -66,7 +66,7 @@ class TestWarmup:
     def test_no_download_environment_variable_refuses_to_fetch(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
         monkeypatch.setenv(grammars.ENV_NO_DOWNLOAD, "1")
-        with pytest.raises(AtlasError, match="refusing to download grammar"):
+        with pytest.raises(AgentlessError, match="refusing to download grammar"):
             grammars.warmup(["python"])
 
     def test_already_warmed_languages_do_not_need_a_download(self, monkeypatch):

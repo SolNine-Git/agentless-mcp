@@ -31,7 +31,7 @@ import sys
 
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.util.errors import (
-    AtlasError,
+    AgentlessError,
     RepoResolutionError,
     SecurityRefusal,
 )
@@ -63,7 +63,7 @@ def fail(message: str, code: int = EXIT_DOMAIN) -> int:
     return code
 
 
-def exit_code_for(error: AtlasError) -> int:
+def exit_code_for(error: AgentlessError) -> int:
     """Map a typed error onto its exit code.
 
     Keyed on what the error *is* -- a refusal versus a degraded answer -- not

@@ -37,7 +37,7 @@ from agentless_mcp.core.treewalk import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AtlasError, RepoResolutionError
+from agentless_mcp.util.errors import AgentlessError, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 # What a caller is told about a line range that is not one. Shaped like
@@ -117,7 +117,7 @@ def _check_context(context: int) -> None:
     """
     if context < 0:
         message = f"context must not be negative, got {context}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
 
 def _satisfiable(start: int, end: int, total: int) -> bool:
@@ -186,7 +186,7 @@ class ViewService:
                 continue
             try:
                 rendered = skeletonize(text, language, docstrings=docstrings, number_lines=numbered)
-            except AtlasError as exc:
+            except AgentlessError as exc:
                 views.append(FileView(path=resolved, language=language, text="", error=str(exc)))
                 continue
             views.append(FileView(path=resolved, language=language, text=rendered))

@@ -20,7 +20,7 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import sandbox
 from agentless_mcp.core.normalize import file_key
 from agentless_mcp.core.patches import EditStatus, parse_blocks
-from agentless_mcp.util.errors import AtlasError, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
 
 APP = """\
 def add(left, right):
@@ -295,7 +295,7 @@ class TestApplyInPlace:
 
         monkeypatch.setattr(patch_service, "_stage_file", refuse)
 
-        with pytest.raises(AtlasError, match=r"util\.py"):
+        with pytest.raises(AgentlessError, match=r"util\.py"):
             service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
@@ -335,7 +335,7 @@ class TestApplyInPlace:
 
         monkeypatch.setattr(Path, "replace", fail_second_staging)
 
-        with pytest.raises(AtlasError, match="every original was restored"):
+        with pytest.raises(AgentlessError, match="every original was restored"):
             patch_service._write_all(repo, {"app.py": "new app\n", "util.py": "new util\n"})
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
@@ -368,7 +368,7 @@ class TestApplyInPlace:
 
         monkeypatch.setattr(Path, "replace", fail_third_staging)
 
-        with pytest.raises(AtlasError, match="every original was restored"):
+        with pytest.raises(AgentlessError, match="every original was restored"):
             patch_service._write_all(
                 tmp_path, {name: f"REWRITTEN = {index}\n" for index, name in enumerate(originals)}
             )
@@ -399,7 +399,7 @@ class TestApplyInPlace:
     def test_a_dirty_tree_is_refused_with_the_count(self, service, repo):
         (repo / "app.py").write_text(APP + "\n# scratch\n", encoding="utf-8")
         dirty = resolve_repo(repo, None)
-        with pytest.raises(AtlasError, match="1 files are modified"):
+        with pytest.raises(AgentlessError, match="1 files are modified"):
             service.apply(edits_of(PATCH), dirty, in_place=True)
 
     def test_a_clean_tree_is_written_and_diffed(self, service, ctx, repo):
@@ -413,7 +413,7 @@ class TestApplyInPlace:
         plain.mkdir()
         (plain / "app.py").write_text(APP, encoding="utf-8")
         outside = resolve_repo(plain, None)
-        with pytest.raises(AtlasError, match="could not be read"):
+        with pytest.raises(AgentlessError, match="could not be read"):
             service.apply(edits_of(PATCH), outside, in_place=True)
 
 
@@ -460,13 +460,13 @@ class TestLoadEdits:
         assert reloaded.edits == parsed.edits
 
     def test_a_json_document_missing_a_field_is_refused(self):
-        with pytest.raises(AtlasError, match="missing a string 'search'"):
+        with pytest.raises(AgentlessError, match="missing a string 'search'"):
             load_edits('{"edits": [{"path": "a.py", "replace": "x"}]}')
 
     def test_a_document_without_an_edits_list_is_refused(self):
-        with pytest.raises(AtlasError, match="'edits' list"):
+        with pytest.raises(AgentlessError, match="'edits' list"):
             load_edits('{"blocks": []}')
 
     def test_invalid_json_is_refused_with_the_parse_error(self):
-        with pytest.raises(AtlasError, match="not valid JSON"):
+        with pytest.raises(AgentlessError, match="not valid JSON"):
             load_edits('{"edits": [')

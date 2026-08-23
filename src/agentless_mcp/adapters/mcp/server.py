@@ -98,7 +98,7 @@ from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from agentless_mcp.util import fslimits, textsafe
-from agentless_mcp.util.errors import AtlasError, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
 logger = logging.getLogger(__name__)
@@ -761,7 +761,7 @@ class ToolHandlers:
             message = MESSAGES.unknown_operation.format(
                 tool="analyze_structure", operation=request.operation, operations=listed
             )
-            raise AtlasError(message)
+            raise AgentlessError(message)
         return self._wrap(ctx, handler(self._services.graphs, ctx, request))
 
     def resolve_locations(
@@ -805,7 +805,7 @@ def _operation_path(graphs: GraphService, ctx: RepoContext, request: StructureRe
     """Render the shortest resolved path between two named endpoints."""
     if not request.source.strip() or not request.target.strip():
         message = MESSAGES.path_needs_endpoints
-        raise AtlasError(message)
+        raise AgentlessError(message)
     trace = graphs.path(
         ctx,
         request.source,
@@ -973,7 +973,7 @@ def _intervals(
                 f"{tool} range [{listed}] is not a line range: each one is "
                 "[start, end], 1-based and inclusive, with end at or after start."
             )
-            raise AtlasError(message)
+            raise AgentlessError(message)
         intervals.append((pair[0], pair[1]))
     return intervals
 
@@ -1018,10 +1018,10 @@ def _slice_intervals(
     """Parse an explicit bounded slice or an explicit whole-file request."""
     if ranges is not None and whole_file:
         message = f"{tool} accepts lines or whole_file=true, not both"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     if ranges is None and not whole_file:
         message = f"{tool} requires non-empty lines or explicit whole_file=true"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return [] if ranges is None else _intervals(ranges, tool=tool)
 
 
@@ -1040,7 +1040,7 @@ RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
 # package's refusals, and the framework's own -- a wire-schema rejection
 # naming the values a parameter accepts is FastMCP speaking, and that is
 # exactly the message an agent needs to correct its call.
-_DELIBERATE_ERRORS = (AtlasError, FastMCPError, ValidationError)
+_DELIBERATE_ERRORS = (AgentlessError, FastMCPError, ValidationError)
 
 _UNPLANNED_ERROR_MESSAGE = (
     "the tool failed for a reason it does not handle; the server log has the detail. "
@@ -1459,7 +1459,7 @@ def _checked_map_limit(operation: str, limit: int | None) -> None:
             minimum=projectconfig.MIN_MAX_FILES,
             maximum=projectconfig.MAX_MAX_FILES,
         )
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
 
 def _checked_operation(
@@ -1483,7 +1483,7 @@ def _checked_operation(
         message = MESSAGES.unknown_operation.format(
             tool=tool, operation=operation, operations=", ".join(sorted(specs))
         )
-        raise AtlasError(message)
+        raise AgentlessError(message)
     accepted = ", ".join(spec.accepted)
     required = ", ".join(spec.required) or "none"
     stray = sorted(
@@ -1499,7 +1499,7 @@ def _checked_operation(
             accepted=accepted,
             required=required,
         )
-        raise AtlasError(message)
+        raise AgentlessError(message)
     missing = [name for name in spec.required if _omitted(provided.get(name))]
     if missing:
         message = MESSAGES.op_requires_parameters.format(
@@ -1509,7 +1509,7 @@ def _checked_operation(
             accepted=accepted,
             required=required,
         )
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
 
 def _register_v2(

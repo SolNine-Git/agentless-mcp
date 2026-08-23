@@ -84,7 +84,7 @@ from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.core.vote import VoteCandidate
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_JOBS = 1
@@ -761,12 +761,12 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
     resolved = directory.expanduser().resolve()
     if not resolved.is_dir():
         message = f"--candidates must name a directory; {resolved} is not one"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
     if not files:
         message = f"no candidate files in {resolved}: one file per candidate patch"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     seen: dict[str, Path] = {}
     candidates: list[Candidate] = []
@@ -776,17 +776,17 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
                 f"two candidates share the id {path.stem!r}: {seen[path.stem].name} and "
                 f"{path.name}. Candidate ids come from the filename stem and must be unique."
             )
-            raise AtlasError(message)
+            raise AgentlessError(message)
         seen[path.stem] = path
 
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             message = f"cannot read candidate {path.name}: {exc.strerror}"
-            raise AtlasError(message) from exc
+            raise AgentlessError(message) from exc
         except UnicodeDecodeError as exc:
             message = f"candidate {path.name} is not UTF-8 text"
-            raise AtlasError(message) from exc
+            raise AgentlessError(message) from exc
 
         candidates.append(Candidate(id=path.stem, index=index, text=text))
 
@@ -812,13 +812,13 @@ def load_verdicts(text: str) -> LoadedVerdicts:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
         message = "the verdicts file is empty: run `agentless-mcp validate` to produce one"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     records = [_record(line, position) for position, line in enumerate(lines)]
     header = records[0]
     if _string(header, RECORD_KEY, 0) != RECORD_RUN:
         message = f"the first line of a verdicts file must be a '{RECORD_RUN}' record"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     candidates = tuple(
         _vote_candidate(record, position)
@@ -847,12 +847,12 @@ def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
     apply_field = record.get("apply")
     if not isinstance(apply_field, dict):
         message = f"line {position + 1}: candidate record has no 'apply' object"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     key = record.get("equivalence_key")
     if key is not None and not isinstance(key, str):
         message = f"line {position + 1}: 'equivalence_key' must be a string or null"
-        raise AtlasError(message)
+        raise AgentlessError(message)
 
     regression = _enum(record, "regression", position, Verdict)
     reproduction = _optional_enum(record, "reproduction", position, Verdict)
@@ -874,10 +874,10 @@ def _record(line: str, position: int) -> dict[str, Any]:
         parsed = json.loads(line)
     except json.JSONDecodeError as exc:
         message = f"line {position + 1} of the verdicts file is not valid JSON: {exc}"
-        raise AtlasError(message) from exc
+        raise AgentlessError(message) from exc
     if not isinstance(parsed, dict):
         message = f"line {position + 1} of the verdicts file is not a JSON object"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return parsed
 
 
@@ -886,7 +886,7 @@ def _string(record: dict[str, Any], field: str, position: int) -> str:
     value = record.get(field)
     if not isinstance(value, str):
         message = f"line {position + 1}: missing a string {field!r}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value
 
 
@@ -897,7 +897,7 @@ def _optional_string(record: dict[str, Any], field: str, position: int) -> str |
         return None
     if not isinstance(value, str):
         message = f"line {position + 1}: {field!r} must be a string or null"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value
 
 
@@ -906,14 +906,14 @@ def _boolean(record: dict[str, Any], field: str, position: int) -> bool:
     value = record.get(field)
     if not isinstance(value, bool):
         message = f"line {position + 1}: missing a boolean {field!r}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value
 
 
 def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]) -> _Member:
     """Read a required string field and coerce it through ``kind``, or refuse it.
 
-    The refusal is an :class:`AtlasError` naming the line, the value and what
+    The refusal is an :class:`AgentlessError` naming the line, the value and what
     was allowed, because every other refusal in this reader is: a bare
     ``ValueError`` out of an enum constructor reaches the caller as a
     traceback rather than as "your file is wrong at line 1".
@@ -924,7 +924,7 @@ def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]
     except ValueError as exc:
         allowed = ", ".join(member.value for member in kind)
         message = f"line {position + 1}: {field!r} is {value!r}, which is not one of: {allowed}"
-        raise AtlasError(message) from exc
+        raise AgentlessError(message) from exc
 
 
 def _optional_enum(
@@ -941,7 +941,7 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
     value = record.get(field)
     if not isinstance(value, int) or isinstance(value, bool):
         message = f"line {position + 1}: missing an integer {field!r}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value
 
 
@@ -964,7 +964,7 @@ def _candidate_edits(
     # candidate into a failed candidate, never a refused invocation into one.
     try:
         parsed = load_edits(candidate.text)
-    except AtlasError as error:
+    except AgentlessError as error:
         return (), _apply_failed(candidate, (str(error),), started)
 
     if parsed.errors:
@@ -1028,7 +1028,7 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
         "not from the invocation, so the repository would be choosing the command that judges "
         "it. Pass the command explicitly, or opt in with --allow-repo-test-cmd."
     )
-    raise AtlasError(message)
+    raise AgentlessError(message)
 
 
 def _check_bounds(request: ValidateRequest) -> None:
@@ -1053,7 +1053,7 @@ def _deadline(request: ValidateRequest) -> float | None:
         return None
     if request.run_timeout <= 0:
         message = f"the run timeout must be a positive number of seconds, not {request.run_timeout}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return _monotonic() + request.run_timeout
 
 

@@ -44,8 +44,8 @@ _PARENTHESISED = re.compile(r"\([^)]*\)")
 class GuideDataError(RuntimeError):
     """The packaged guide is missing, unreadable, or structurally ambiguous.
 
-    A ``RuntimeError`` rather than an ``AtlasError`` on purpose: the CLI maps
-    ``AtlasError`` onto an exit code and prints it as a one-line refusal, which
+    A ``RuntimeError`` rather than an ``AgentlessError`` on purpose: the CLI maps
+    ``AgentlessError`` onto an exit code and prints it as a one-line refusal, which
     is the right shape for "this repository has no such symbol" and the wrong
     shape for "this installation is broken". This one propagates.
     """

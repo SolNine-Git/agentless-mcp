@@ -59,7 +59,7 @@ from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, res
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
@@ -534,7 +534,7 @@ def _resolution(resolution: float | None) -> float:
     setting = float(resolution)
     if not math.isfinite(setting) or setting <= 0.0:
         message = f"resolution must be a finite number greater than 0, got {resolution}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return setting
 
 

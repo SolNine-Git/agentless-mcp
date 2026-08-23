@@ -44,7 +44,7 @@ import tree_sitter_language_pack as pack
 from tree_sitter import Language, Parser
 from tree_sitter_language_pack import PackConfig
 
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +356,7 @@ def _auto_warm(names: Sequence[str]) -> None:
                 break
             report = warmup([name])
             (warmed if report.ok else degraded).append(name)
-    except (AtlasError, pack.Error, RuntimeError, OSError) as error:
+    except (AgentlessError, pack.Error, RuntimeError, OSError) as error:
         # The contract is one log line and today's labeled-skip behavior,
         # never a crashed process or a traceback mid-session.
         logger.warning("background grammar warm failed: %s", error)
@@ -517,7 +517,7 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
                 f"Warm it on a networked machine and copy {cache_dir()} across, "
                 f"or clear the flag and run warmup again."
             )
-            raise AtlasError(message)
+            raise AgentlessError(message)
         try:
             pack.prefetch([name])
         except (pack.Error, RuntimeError) as exc:

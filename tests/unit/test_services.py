@@ -16,7 +16,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = '''\
@@ -301,11 +301,11 @@ class TestSliceRangesAreValidatedHere:
         assert "1|from core import normalise, quote" not in view.text
 
     def test_a_negative_context_is_refused_by_name(self, repo, extractor):
-        with pytest.raises(AtlasError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context must not be negative"):
             ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(5, 5)], context=-50)
 
     def test_resolve_locations_refuses_a_negative_context_too(self, repo, extractor):
-        with pytest.raises(AtlasError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context must not be negative"):
             ViewService(extractor).resolve_locations(repo, "core.py", ["line: 10"], context=-50)
 
     def test_one_bad_range_beside_a_good_one_still_renders_the_good_one(self, repo, extractor):
@@ -488,17 +488,17 @@ class TestALimitThatBoundsNothingIsRefused:
     """`limit=0` used to answer "no references" for a symbol with fifty-two."""
 
     def test_find_symbol_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit must be at least 1"):
             SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", limit=0)
 
     def test_fan_in_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit must be at least 1"):
             SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
                 repo, "quote", limit=0
             )
 
     def test_expand_refuses_a_negative_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit must be at least 1"):
             SymbolService(extractor, Chars4Counter()).expand_symbols(
                 repo, ["py:core.py::quote"], limit=-1
             )

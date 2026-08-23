@@ -12,7 +12,7 @@ The rule lives here; the two doors keep their own way of reporting it. That
 split is deliberate rather than a leftover. A bad value on the command line is
 a usage error and exits 2 with argparse's own wording, because that is what a
 person at a terminal expects; the same value through a service call is an
-``AtlasError``, because a library caller and the MCP adapter need it as a
+``AgentlessError``, because a library caller and the MCP adapter need it as a
 value they can catch. The adapter converts. What neither may do is decide the
 rule.
 
@@ -23,7 +23,7 @@ every service have to reach it.
 
 from __future__ import annotations
 
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 
 def at_least(value: int, minimum: int, name: str) -> int:
@@ -39,7 +39,7 @@ def at_least(value: int, minimum: int, name: str) -> int:
     """
     if value < minimum:
         message = f"{name} must be at least {minimum}, got {value}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value
 
 
@@ -51,5 +51,5 @@ def within(value: float, low: float, high: float, name: str) -> float:
     """
     if not low <= value <= high:
         message = f"{name} takes a value from {low} through {high}, got {value}"
-        raise AtlasError(message)
+        raise AgentlessError(message)
     return value

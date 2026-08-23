@@ -173,7 +173,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 # 2026-08-18, Phase 1a: the error names are the package's public vocabulary
 # (SecurityRefusal, WalkBoundExceeded, LanguageUnavailable) and read as the
 # refusal they describe at the raise site. Every one of them subclasses
-# AtlasError and lives in errors.py, so N818's "is this an exception?"
+# AgentlessError and lives in errors.py, so N818's "is this an exception?"
 # question is already answered by the base class and the module name.
 "src/agentless_mcp/util/errors.py" = ["N818"]
 

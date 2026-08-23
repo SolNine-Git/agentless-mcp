@@ -33,7 +33,7 @@ from agentless_mcp.core.patchlint import (
 )
 from agentless_mcp.core.refs import RepoScan, build_ref_index, scan_repo
 from agentless_mcp.core.resolve import build_resolver
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 PYPROJECT = """\
 [project]
@@ -350,12 +350,12 @@ class TestDegradation:
     def test_a_degraded_error_becomes_exactly_one_gap(self):
         def unreadable():
             message = "the fragment is not utf-8"
-            raise AtlasError(message)
+            raise AgentlessError(message)
 
         findings = _guarded(CHECK_ARITY, unreadable)
 
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
-        assert "AtlasError" in findings[0].message
+        assert "AgentlessError" in findings[0].message
 
     @pytest.mark.parametrize(
         "error",
@@ -374,7 +374,7 @@ class TestDegradation:
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
             facts(),
-            _RaisingSource(AtlasError),
+            _RaisingSource(AgentlessError),
         )
 
         gaps = checks(report, CHECK_COVERAGE)

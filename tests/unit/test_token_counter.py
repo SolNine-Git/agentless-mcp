@@ -17,7 +17,7 @@ import pytest
 
 from agentless_mcp import bootstrap
 from agentless_mcp.adapters.cli.main import build_parser
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
@@ -65,7 +65,7 @@ class TestProtocol:
 @pytest.mark.skipif(TIKTOKEN_INSTALLED, reason="the tokens extra is installed")
 class TestWithoutTheExtra:
     def test_asking_for_tiktoken_refuses_with_the_install_command(self):
-        with pytest.raises(AtlasError, match="tokens' extra"):
+        with pytest.raises(AgentlessError, match="tokens' extra"):
             bootstrap.select_counter(COUNTER_TIKTOKEN)
 
 
