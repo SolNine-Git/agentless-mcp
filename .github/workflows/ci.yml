@@ -37,8 +37,12 @@ jobs:
           key: grammars-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: grammars-${{ runner.os }}-
 
+      # Both extras, deliberately. Until 2026-08-23 this synced only --extra
+      # mcp, so the three tiktoken tests in tests/unit/test_token_counter.py
+      # skipped on every run and the exact-token-count path was never
+      # exercised in CI -- a guarantee whose gate never fired.
       - name: Sync
-        run: uv sync --extra mcp
+        run: uv sync --extra mcp --extra tokens
 
       - name: Warm grammars
         run: uv run agentless-mcp warmup
@@ -46,5 +50,27 @@ jobs:
       - name: Pre-commit
         run: uv run pre-commit run --all-files
 
+      # Under coverage, not bare pytest: the CLI suite spawns the console
+      # script as a subprocess, and COVERAGE_PROCESS_START plus `combine` is
+      # what makes those children report. See [tool.coverage.run] in
+      # pyproject.toml for why the parallel form is the only supported one.
+      # `-rs` reports every skip in this same run, so the skip ceiling below
+      # costs nothing extra. The suite is not run twice.
       - name: Test
-        run: uv run pytest
+        env:
+          COVERAGE_PROCESS_START: pyproject.toml
+        run: uv run coverage run -m pytest -rs | tee pytest-output.txt
+
+      - name: Coverage
+        run: |
+          uv run coverage combine
+          uv run coverage report
+
+      # A skip is invisible in the summary line, which is how three tiktoken
+      # tests sat un-run in CI for several releases. Assert the count instead
+      # of eyeballing it; lower the ceiling whenever a skip is retired.
+      - name: No unexpected skips
+        run: |
+          skips=$(grep -cE '^SKIPPED' pytest-output.txt || true)
+          echo "skipped: $skips (ceiling 10)"
+          test "$skips" -le 10

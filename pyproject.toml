@@ -73,11 +73,21 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "codespell>=2.4.3",
+    # 2026-08-23: coverage is a dev dependency because the CLI suite runs the
+    # console script as a real subprocess, and a coverage number that does not
+    # follow the child understates every module the CLI reaches. `parallel`
+    # plus `coverage combine` is the only configuration that measures both
+    # halves; see [tool.coverage.run] below.
+    "coverage>=7.6",
     "deptry>=0.25.1",
     "import-linter>=2.13",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
+    # Ships the .pth that starts coverage inside a spawned interpreter when
+    # COVERAGE_PROCESS_START is set. Without it the CLI subprocess tests are
+    # invisible to coverage no matter how the parent is configured.
+    "pytest-cov>=6",
     "pytest-timeout>=2.4.0",
     "ruff>=0.16.3",
 ]
@@ -322,6 +332,43 @@ markers = [
     # Registered so `-m e2e` / `-m 'not e2e'` select them and an
     # unregistered-marker warning cannot appear.
     "e2e: spawns a real server subprocess and speaks MCP over a shipped transport",
+]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+
+# 2026-08-23: `parallel` and the COVERAGE_PROCESS_START handshake exist because
+# tests/unit/test_cli.py and test_cli_readonly.py run the CLI as a real
+# subprocess (`[sys.executable, "-m", "agentless_mcp", ...]`). A single-process
+# measurement counts every line those children execute as uncovered: before
+# this configuration adapters/cli/main.py measured 76% line / 59% branch and
+# __main__.py measured 0%, against 90% / 79% and 80% once the children report.
+# A coverage number that disagrees with itself depending on how the suite was
+# invoked is not evidence, so the parallel form is the only supported one.
+#
+# Run it as:
+#   COVERAGE_PROCESS_START=pyproject.toml uv run coverage run -m pytest
+#   uv run coverage combine && uv run coverage report
+[tool.coverage.run]
+branch = true
+parallel = true
+source = ["agentless_mcp"]
+# The console-script child is spawned, not forked; `sigterm` lets a killed
+# child still flush what it measured instead of discarding the run.
+sigterm = true
+
+[tool.coverage.paths]
+# The parent measures the source tree and each child measures the installed
+# package. Without this they combine as two different files and every module
+# appears twice at half its true coverage.
+source = ["src/agentless_mcp", "*/site-packages/agentless_mcp"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
 ]
 
 [tool.codespell]

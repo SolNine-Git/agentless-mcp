@@ -38,14 +38,22 @@ def warm_grammars() -> grammars.WarmupReport:
     here, before the first move, is what keeps the two isolations independent:
     grammars stay where they were downloaded, tag caches never leave tmp.
     """
+    # setdefault, deliberately: CI points the pack at a cached directory
+    # through this same variable, and honouring that is the point.
     os.environ.setdefault(grammars.ENV_CACHE_DIR, pack.cache_dir())
     # Grammar access happens exactly once, here: without this, every run()
     # call and every spawned console script would start its own background
     # warm of the full language set into the shared cache. Tests that cover
     # the auto-warm itself clear the variable and stub the warm seam.
-    os.environ.setdefault(grammars.ENV_NO_AUTO_WARM, "1")
-    os.environ.setdefault(cache.ENV_NO_AUTO_INDEX, "1")
-    os.environ.setdefault(selfrestart.ENV_NO_AUTO_RESTART, "1")
+    #
+    # Assigned, not setdefault: these three are kill switches, and a suite
+    # that reads an ambient value for them is not hermetic. Subprocess tests
+    # inherit this environment, so an operator with AGENTLESS_MCP_NO_AUTO_INDEX=0
+    # exported would silently arm the background indexer for the whole run and
+    # change what the suite proves.
+    os.environ[grammars.ENV_NO_AUTO_WARM] = "1"
+    os.environ[cache.ENV_NO_AUTO_INDEX] = "1"
+    os.environ[selfrestart.ENV_NO_AUTO_RESTART] = "1"
     report = grammars.warmup(TEST_LANGUAGES)
     if report.degraded:
         details = ", ".join(f"{cap.name}: {cap.detail}" for cap in report.degraded)
