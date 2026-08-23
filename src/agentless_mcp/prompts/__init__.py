@@ -24,9 +24,12 @@ Four files, grouped by consumer:
     markers that ``application.envelope`` wraps every answer in.
 
 ``messages.json``
-    The refusal and guidance texts: the allowlist refusals raised by the
-    server and by ``application.repo_context``, and the cache-generation
-    remediation ``core.cache`` renders into the receipt.
+    The refusals and the guidance notes: a root or operation refusal, a
+    truncation or skipped-file note, a remediation for a cache generation
+    that no longer matches. Grouped by what a text says rather than by who
+    says it, because the consumers run from the adapter through the
+    application services down to ``core.cache`` and an enumerated list of
+    them goes stale.
 
 Every value is validated against the keys the code consumes, so a rename in
 the JSON fails at startup rather than serving a blank description. Templates

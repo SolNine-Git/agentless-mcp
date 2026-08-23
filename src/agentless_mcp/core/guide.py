@@ -8,7 +8,7 @@ data under ``agentless_mcp/docs/`` and is read back through
 ``importlib.resources``, which resolves to the source tree in development and
 to the installed package after an install, over the same code path.
 
-Sections exist because the guide is 45 KB and an agent usually wants one tool's
+Sections exist because the guide is long and an agent usually wants one tool's
 entry. Splitting is done here rather than in the CLI so the rules are testable
 without a parser: a heading is a heading only outside a fenced code block, and
 the addressable levels are ``##`` and ``###`` -- the title is the whole
@@ -51,8 +51,14 @@ class GuideDataError(RuntimeError):
     """
 
 
+@lru_cache(maxsize=1)
 def _resource_text() -> str:
-    """Return the packaged guide's text, or say which install is broken."""
+    """Return the packaged guide's text, or say which install is broken.
+
+    Memoised so the whole guide and the section split are derived from one
+    read. Packaged data does not change under a running process, and the two
+    would otherwise be free to disagree.
+    """
     resource = resources.files(PACKAGE) / GUIDE_DIRECTORY / GUIDE_FILENAME
     try:
         return resource.read_text(encoding="utf-8")
