@@ -122,7 +122,14 @@ def scan_repo(
 
         read = read_bounded(root / repo_file.path, max_bytes=max_file_bytes)
         if read.text is None:
-            skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped or "unreadable"))
+            if read.skipped is None:
+                # `BoundedRead` sets exactly one of `text` and `skipped`.
+                # Raised rather than coalesced to a default reason: a broken
+                # pair must fail here, not reach a report as a file skipped
+                # for something nothing measured.
+                message = f"bounded read of {repo_file.path} set neither text nor a skip reason"
+                raise RuntimeError(message)
+            skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped))
             continue
 
         facts = _parse_one(read.text, language, repo_file.path, facts_source)

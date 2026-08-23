@@ -328,11 +328,6 @@ class Cycle:
         return " -> ".join([*self.files, self.files[0]])
 
 
-def build_scopes(scan: RepoScan) -> dict[str, ImportScope]:
-    """Resolve every file's import statements to repository files, once."""
-    return build_file_scopes(scan.files)
-
-
 def _bind_module_object(
     facts: FileFacts,
     statement: ImportStatement,
@@ -433,7 +428,7 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
 
 def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
     """Build the resolver one call's views share."""
-    return Resolver(index=index, scopes=build_scopes(scan))
+    return Resolver(index=index, scopes=build_file_scopes(scan.files))
 
 
 def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
@@ -530,6 +525,9 @@ def shortest_path(
     adjacency = _undirected(usable)
 
     if source == target:
+        # Not checked against the graph: an endpoint reaches this function
+        # already resolved to a node (`application.graph_service`), and a node
+        # is trivially related to itself whether or not it carries edges.
         return PathResult(
             source=source, target=target, hops=(), found=True, visited=1, exhausted=False
         )
