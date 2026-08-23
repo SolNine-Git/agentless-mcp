@@ -878,10 +878,12 @@ async def effective_client_roots(context: Context) -> list[Path]:
     Asking is an out-of-process round trip to the client, on the critical path
     of every tool, so it is bounded: a capability query that has not answered
     in seconds is not going to, and a client that never answers must not hang
-    the tool that asked on its behalf. Every way the call can fail --
-    unimplemented, timed out, malformed payload, dead transport -- means the
-    same thing here, "no advertised roots", and leaves the static roots
-    standing.
+    the tool that asked on its behalf. The failures converted here --
+    unimplemented, timed out, malformed payload, socket error -- all mean the
+    same thing, "no advertised roots", and leave the static roots standing. A
+    transport torn down mid-call is not one of them: anyio raises its own
+    stream errors, which derive from Exception rather than OSError, and a call
+    whose transport is gone has nowhere to return an answer anyway.
     """
     try:
         roots = await asyncio.wait_for(context.list_roots(), _LIST_ROOTS_TIMEOUT_SECONDS)
@@ -1645,6 +1647,11 @@ def _register_v2(
                 return handlers.explain_symbol(
                     ctx, target or "", _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
                 )
+            # The remaining table entry is OPERATION_LOCATE. _checked_operation
+            # has already refused anything outside SYMBOLS_OPERATIONS, and the
+            # parity table pairs every table entry with its CLI rendering, so an
+            # operation added to the table without a branch fails there rather
+            # than silently landing on this arm.
             return handlers.resolve_locations(
                 ctx,
                 path or "",
@@ -1691,6 +1698,8 @@ def _register_v2(
                     intervals,
                     _or_default(context_lines, DEFAULT_CONTEXT_LINES),
                 )
+            # The remaining table entry is OPERATION_DIR; the note on the same
+            # arm of `symbols` says what keeps this fall-through honest.
             return handlers.list_dir(
                 ctx,
                 path,
