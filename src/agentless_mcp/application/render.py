@@ -33,6 +33,15 @@ framing stops. ``tests/unit/test_render.py`` walks every view model's string
 fields by reflection and asserts that none of them can add a line, so a field
 added later is covered without anyone remembering to cover it.
 
+**Structural markers sit in the first column, and every row is indented.**
+An omission line is the one signal that separates a bounded answer from a
+complete one, and it used to be distinguished from verbatim repository text
+only by an indent that the text also got: a symbol body line and the notice
+below it both opened with two spaces, so a file containing
+``... 7 more matches not listed (limit 3)`` rendered a byte-identical cut.
+:func:`_omitted_line` is the one home for that line, and it emits it
+unindented for exactly that reason.
+
 Two other modules render line-oriented answers and carry the same rule:
 :func:`agentless_mcp.core.treewalk.render_tree` and
 :mod:`agentless_mcp.application.envelope`. ``core/mermaid`` has its own
@@ -40,10 +49,11 @@ stricter escape because its grammar is not this one.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, overload
 
+from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
 from agentless_mcp.core.slices import line_prefix
 from agentless_mcp.prompts import MESSAGES
@@ -89,6 +99,51 @@ SKIPPED_FILES_SHOWN = 5
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
 WEAK_MODULARITY_THRESHOLD = 0.3
+
+# The severities of `core.patchlint`, most urgent first. The spellings come
+# from the enum so a rename there breaks the import rather than silently
+# reordering a summary line; the order is a rendering decision, so it lives
+# here. Sorting on the spellings instead put `warning` last, behind
+# `not_checked`, which is the reading order of an alphabet and not of a
+# severity.
+SEVERITY_ORDER = (Severity.WARNING.value, Severity.ADVISORY.value, Severity.NOT_CHECKED.value)
+
+
+def _omitted_line(omitted: int, noun: str, *, limit: int = 0) -> str:
+    """Render the one line a bounded view announces its cut with.
+
+    One spelling for every listing in this module, and no indent. Every row
+    rendered here is indented -- a card body by two spaces, a community member
+    by seven, a map symbol behind a ``line_prefix`` -- so a marker in the
+    first column is the one line repository text placed on a row cannot forge.
+    Eleven hand-spelled variants used to differ in whether they named the
+    limit and in where they put the comma, so an agent asking how much was
+    left out had eleven patterns to match.
+    """
+    bound = f" (limit {limit})" if limit else ""
+    return f"... {omitted} more {noun} not listed{bound}"
+
+
+def _locator(stable_id: str, *, parent: str = "", line: int | str | None = None) -> str:
+    """Render the navigable fragment a row is read for.
+
+    A stable id already carries the repository-relative path, so a location
+    appends only the line or span. ``parent`` links a rationale comment to the
+    symbol it annotates. One home, because this fragment is what the whole
+    product exists to emit and it was re-derived at six sites.
+    """
+    named = one_line(stable_id) if not parent else f"{one_line(stable_id)} -> {one_line(parent)}"
+    return f"[{named}]" if line is None else f"[{named}] @{line}"
+
+
+def _file_site(path: str, line: int) -> str:
+    """Render the ``path:line`` fragment a row uses when it names no symbol."""
+    return f"{one_line(path)}:{line}"
+
+
+def _references(count: int) -> str:
+    """Spell the noun a reference count takes."""
+    return "reference" if count == 1 else "references"
 
 
 class _Bounded(ABC):
@@ -872,9 +927,9 @@ def render_communities(report: CommunityReport) -> str:
         lines.append(f"  {index:>3}. {one_line(community.label)}  ({community.size} {files})")
         lines.extend(f"       {one_line(member)}" for member in community.members)
         if community.omitted:
-            lines.append(f"       ... {community.omitted} more files in this community")
+            lines.append(_omitted_line(community.omitted, "files in this community"))
     if report.omitted:
-        lines.append(f"  ... {report.omitted} more communities not listed")
+        lines.append(_omitted_line(report.omitted, "communities", limit=report.limit))
     return "\n".join(lines) + "\n"
 
 
@@ -934,13 +989,19 @@ def render_lint(report: LintReportView) -> str:
 
 
 def _severity_counts(findings: Sequence[LintFinding]) -> str:
-    """Summarise one candidate's findings by severity, in a fixed order."""
+    """Summarise one candidate's findings, most urgent severity first."""
     tally: dict[str, int] = {}
     for finding in findings:
         tally[finding.severity] = tally.get(finding.severity, 0) + 1
     if not tally:
         return "no findings"
-    return ", ".join(f"{tally[severity]} {severity}" for severity in sorted(tally))
+    return ", ".join(f"{tally[severity]} {severity}" for severity in sorted(tally, key=_urgency))
+
+
+def _urgency(severity: str) -> tuple[int, str]:
+    """Order a severity spelling by urgency, unknown spellings last."""
+    known = SEVERITY_ORDER.index(severity) if severity in SEVERITY_ORDER else len(SEVERITY_ORDER)
+    return (known, severity)
 
 
 def render_explanation(explanation: Explanation) -> str:
@@ -955,7 +1016,7 @@ def render_explanation(explanation: Explanation) -> str:
         lines.append("rationale")
         lines.extend(
             f"  {one_line(node.kind).upper()}  {one_line(node.text)}    "
-            f"[{one_line(node.stable_id)} -> {one_line(node.parent_id)}] @{node.line}"
+            f"{_locator(node.stable_id, parent=node.parent_id, line=node.line)}"
             for node in explanation.rationales
         )
     lines.append("")
@@ -977,7 +1038,7 @@ def render_path(trace: PathTrace) -> str:
     ]
     lines.extend(
         f"  {number:>3}. {hop.arrow} {hop.verb} ({one_line(hop.tier_label)})    "
-        f"{one_line(hop.label)}    [{one_line(hop.node)}] @{hop.line}"
+        f"{one_line(hop.label)}    {_locator(hop.node, line=hop.line)}"
         for number, hop in enumerate(trace.hops, start=1)
     )
     if trace.message:
@@ -1003,7 +1064,7 @@ def render_cycles(report: CycleReport) -> str:
     for index, cycle in enumerate(report.cycles, start=1):
         lines.append(f"  {index:>3}. ({len(cycle.files)} files) {one_line(cycle.chain)}")
     if report.omitted:
-        lines.append(f"  ... {report.omitted} more cycles not listed")
+        lines.append(_omitted_line(report.omitted, "cycles", limit=report.limit))
     return "\n".join(lines) + "\n"
 
 
@@ -1018,11 +1079,11 @@ def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
         lines.append(f"  {one_line(group.tier_label)} ({group.total})")
         lines.extend(
             f"    {one_line(row.relation)} {one_line(row.label)}    "
-            f"[{one_line(row.node)}] @{row.line}"
+            f"{_locator(row.node, line=row.line)}"
             for row in group.rows
         )
         if group.omitted:
-            lines.append(f"    ... {group.omitted} more at this tier")
+            lines.append(_omitted_line(group.omitted, "edges at this tier"))
     return "\n".join(lines) + "\n"
 
 
@@ -1032,20 +1093,32 @@ def _render_imports(explanation: Explanation) -> str:
     if explanation.imports_out:
         lines.extend(
             f"    declares  {one_line(row.module)} -> {one_line(row.other)}    "
-            f"{one_line(row.path)}:{row.line}"
+            f"{_file_site(row.path, row.line)}"
             for row in explanation.imports_out
         )
         if explanation.imports_out.omitted:
-            lines.append(f"    ... {explanation.imports_out.omitted} more declared, not listed")
+            lines.append(
+                _omitted_line(
+                    explanation.imports_out.omitted,
+                    "declared imports",
+                    limit=explanation.imports_out.limit,
+                )
+            )
     else:
         lines.append("    declares  none resolved inside this repository")
     if explanation.imports_in:
         lines.extend(
-            f"    imported by  {one_line(row.path)}:{row.line}  as {one_line(row.module)}"
+            f"    imported by  {_file_site(row.path, row.line)}  as {one_line(row.module)}"
             for row in explanation.imports_in
         )
         if explanation.imports_in.omitted:
-            lines.append(f"    ... {explanation.imports_in.omitted} more importers, not listed")
+            lines.append(
+                _omitted_line(
+                    explanation.imports_in.omitted,
+                    "importers",
+                    limit=explanation.imports_in.limit,
+                )
+            )
     else:
         lines.append("    imported by  nothing in this repository")
     return "\n".join(lines) + "\n"
@@ -1092,17 +1165,17 @@ def render_map(files: Sequence[MapFile]) -> str:
             lines.append(
                 f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
                 f"{'    ' * entry.depth}{one_line(entry.signature)}  "
-                f"[{one_line(entry.stable_id)}]"
+                f"{_locator(entry.stable_id)}"
             )
             lines.extend(
                 f"{line_prefix(node.line, LINE_NUMBER_WIDTH)}"
                 f"{'    ' * (entry.depth + 1)}# {one_line(node.kind).upper()}: "
                 f"{one_line(node.text)}  "
-                f"[{one_line(node.stable_id)} -> {one_line(node.parent_id)}]"
+                f"{_locator(node.stable_id, parent=node.parent_id)}"
                 for node in entry.rationales
             )
         if map_file.omitted:
-            lines.append(f"      ... {map_file.omitted} more symbols in this file")
+            lines.append(_omitted_line(map_file.omitted, "symbols in this file"))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"
 
@@ -1120,8 +1193,13 @@ def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:
         return "no matching symbols\n"
 
     body = "\n\n".join(_render_card(card) for card in cards) + "\n"
-    if isinstance(cards, CardListing) and cards.omitted:
-        return f"{body}  ... {cards.omitted} more matches not listed (limit {cards.limit})\n"
+    # `_Bounded` owns the arithmetic, so it is what the notice is keyed on:
+    # any bounded listing handed here announces its cut, and a listing added
+    # later does not render as a complete answer by default. Only the concrete
+    # listing knows the flag a reader would raise, so the limit is read there.
+    limit = cards.limit if isinstance(cards, CardListing) else 0
+    if isinstance(cards, _Bounded) and cards.omitted:
+        return f"{body}{_omitted_line(cards.omitted, 'matches', limit=limit)}\n"
     return body
 
 
@@ -1137,17 +1215,23 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
         return f"no references to {one_line(target)} outside its own definition\n"
 
     listed = sum(len(group.sites) for group in groups)
-    total = groups.total if isinstance(groups, RefListing) else listed
-    blocks = [f"{total} references to {one_line(target)}"]
+    total = groups.total if isinstance(groups, _Bounded) else listed
+    # Files, not sites: the sites are cut before they are grouped, so a file
+    # whose every site fell past the limit is absent from the listing
+    # altogether. Only a `RefListing` counts them, so only it can say so.
+    files_omitted = groups.files_omitted if isinstance(groups, RefListing) else 0
+    limit = groups.limit if isinstance(groups, RefListing) else 0
+    blocks = [f"{total} {_references(total)} to {one_line(target)}"]
     for group in groups:
         labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
-        lines = [f"{one_line(group.path)}  ({len(group.sites)} references{labelled})"]
+        sites = len(group.sites)
+        lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
         lines.extend(_render_site(site) for site in group.sites)
         blocks.append("\n".join(lines))
-    if isinstance(groups, RefListing) and groups.omitted:
-        note = f"  ... {groups.omitted} more references not listed (limit {groups.limit})"
-        if groups.files_omitted:
-            note += f", including every reference in {groups.files_omitted} more files"
+    if isinstance(groups, _Bounded) and groups.omitted:
+        note = _omitted_line(groups.omitted, "references", limit=limit)
+        if files_omitted:
+            note += f", including every reference in {files_omitted} more files"
         blocks.append(note)
     return "\n\n".join(blocks) + "\n"
 
@@ -1165,28 +1249,41 @@ def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
     if not listing.rows:
         return f"no symbols share callers with {one_line(target)}\n"
 
+    # Partitioned here rather than trusted from the caller. The heading makes
+    # a claim about every row beneath it, and emitting it at the first
+    # test-defined row made that claim true only while the service happened to
+    # sort on `in_tests` first.
+    production = [row for row in listing.rows if not row.in_tests]
+    from_tests = [row for row in listing.rows if row.in_tests]
+
     lines = [f"symbols sharing callers with {one_line(target)}"]
-    tests_heading_shown = False
-    for row in listing.rows:
-        if row.in_tests and not tests_heading_shown:
-            lines.append("  defined in tests (ranked below all production candidates):")
-            tests_heading_shown = True
+    lines.extend(_candidate_rows(production))
+    if from_tests:
+        lines.append("  defined in tests (ranked below all production candidates):")
+        lines.extend(_candidate_rows(from_tests))
+    if listing.omitted:
+        lines.append(_omitted_line(listing.omitted, "candidates", limit=listing.limit))
+    return "\n".join(lines) + "\n"
+
+
+def _candidate_rows(rows: Sequence[SharedCaller]) -> Iterator[str]:
+    """Yield one adjacency candidate and the callers that evidence it."""
+    for row in rows:
         files = "file" if row.shared_files == 1 else "files"
-        lines.append(
-            f"  [{one_line(row.stable_id)}] @{row.line}  "
+        yield (
+            f"  {_locator(row.stable_id, line=row.line)}  "
             f"({row.overlap} shared callers in {row.shared_files} {files}, "
             f"score {row.score:.3f})"
         )
         shown = row.callers[:SHARED_CALLERS_SHOWN]
-        lines.extend(
-            f"      {one_line(caller.qualname)}    {one_line(caller.path)}:{caller.line}"
+        yield from (
+            f"      {one_line(caller.qualname)}    {_file_site(caller.path, caller.line)}"
             for caller in shown
         )
         if len(row.callers) > len(shown):
-            lines.append(f"      ... {len(row.callers) - len(shown)} more callers not listed")
-    if listing.omitted:
-        lines.append(f"  ... {listing.omitted} more candidates not listed")
-    return "\n".join(lines) + "\n"
+            yield _omitted_line(
+                len(row.callers) - len(shown), "callers", limit=SHARED_CALLERS_SHOWN
+            )
 
 
 def _render_card(card: SymbolCard) -> str:
@@ -1198,7 +1295,7 @@ def _render_card(card: SymbolCard) -> str:
         else f"{card.start_line}-{card.end_line}"
     )
     lines = [
-        f"[{one_line(card.stable_id)}] @{span}",
+        _locator(card.stable_id, line=span),
         f"  {one_line(card.kind)}{owner} ({one_line(card.language)})",
     ]
     if card.body:
@@ -1210,6 +1307,6 @@ def _render_card(card: SymbolCard) -> str:
 
 def _render_site(site: RefSite) -> str:
     """Render one reference row beneath the file header that locates it."""
-    suffix = f"  [{one_line(site.stable_id)}]" if site.stable_id else ""
+    suffix = f"  {_locator(site.stable_id)}" if site.stable_id else ""
     prefix = line_prefix(site.line, LINE_NUMBER_WIDTH)
     return f"{prefix}{one_line(site.enclosing)}{suffix}"

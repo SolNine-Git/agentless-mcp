@@ -146,6 +146,22 @@ class TestEdgeKinds:
 
         assert EDGE_LEGEND not in rendered
 
+    def test_a_diagram_whose_every_edge_was_counted_carries_no_legend(self):
+        # Every edge is a reference and none fit the bound, so the only edge
+        # line is the comment counting them. A legend naming two arrow styles
+        # would sit above a diagram that draws neither.
+        graph = chain_graph(6)
+
+        rendered = render_flowchart(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_edges=1),
+            imports=frozenset(),
+        )
+
+        assert "%% 5 reference edges not drawn (edge bound 1)" in rendered
+        assert EDGE_LEGEND not in rendered
+
     def test_a_negative_edge_bound_is_refused(self):
         graph = chain_graph(3)
 
@@ -170,6 +186,13 @@ class TestBounding:
 
         assert f'{ELISION_ID}["... 6 more modules"]' in rendered
 
+    def test_one_elided_module_is_counted_in_the_singular(self):
+        graph = chain_graph(3)
+
+        rendered = render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=2))
+
+        assert f'{ELISION_ID}["... 1 more module"]' in rendered
+
     def test_a_complete_diagram_carries_no_elision_line(self):
         graph = chain_graph(3)
 
@@ -180,21 +203,6 @@ class TestBounding:
 
         with pytest.raises(ValueError, match="max_nodes"):
             render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=0))
-
-    def test_an_unknown_direction_is_refused(self):
-        graph = chain_graph(3)
-
-        with pytest.raises(ValueError, match="direction"):
-            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(direction="UP"))
-
-    def test_a_valid_direction_reaches_the_header(self):
-        graph = chain_graph(2)
-
-        rendered = render_flowchart(
-            graph, uniform_rank(graph), options=DiagramOptions(direction="TD")
-        )
-
-        assert rendered.startswith("flowchart TD\n")
 
 
 class TestFocus:
@@ -245,6 +253,12 @@ class TestFocus:
         )
 
         assert f'{ELISION_ID}["... 2 more modules"]' in rendered
+
+    def test_a_negative_focus_distance_is_refused(self):
+        graph = chain_graph(3)
+
+        with pytest.raises(ValueError, match="focus_distance"):
+            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(focus_distance=-1))
 
     def test_a_focus_outside_the_graph_is_refused(self):
         graph = chain_graph(3)

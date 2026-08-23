@@ -86,11 +86,11 @@ DEFAULT_DIAGRAM_EDGES = 40
 # question means: what it calls, and what those call.
 DEFAULT_FOCUS_DISTANCE = 2
 
+# Which way a flowchart runs. A module constant rather than an option: no
+# adapter ever offered a way to set it, so the field and the mermaid-direction
+# allowlist that checked it were validation machinery for a value no caller
+# could supply.
 DEFAULT_DIRECTION = "LR"
-
-# Mermaid's own flowchart directions. A caller passing anything else is a bug
-# in the caller, not repository content, so it is refused rather than damped.
-VALID_DIRECTIONS = frozenset({"TB", "TD", "BT", "RL", "LR"})
 
 # Words mermaid's flowchart grammar reserves. No generated id can spell one:
 # `_identifier` appends an integer, so every id ends in a digit and no reserved
@@ -153,7 +153,7 @@ _INDENT = "    "
 class DiagramOptions:
     """The knobs of one render.
 
-    A value object rather than five keyword arguments because these travel
+    A value object rather than four keyword arguments because these travel
     together from a CLI flag set or an MCP request to the renderer, and
     because a diagram is defined by them: two renders with the same options
     and the same graph are the same diagram.
@@ -163,7 +163,6 @@ class DiagramOptions:
     max_edges: int = DEFAULT_DIAGRAM_EDGES
     focus: str | None = None
     focus_distance: int = DEFAULT_FOCUS_DISTANCE
-    direction: str = DEFAULT_DIRECTION
 
 
 def render_flowchart(
@@ -197,17 +196,22 @@ def render_flowchart(
     candidates = _candidates(graph, settings)
     selected = set(selected_nodes(graph, rank, settings))
     identifiers = {node: _identifier("n", index) for index, node in enumerate(sorted(selected))}
-    edge_lines = _edge_lines(graph, identifiers, imports, settings.max_edges)
+    edges = _edge_lines(graph, identifiers, imports, settings.max_edges)
 
-    lines = [f"flowchart {settings.direction}"]
-    if imports is not None and edge_lines:
+    lines = [f"flowchart {DEFAULT_DIRECTION}"]
+    # Keyed on arrows drawn rather than on lines emitted. When every edge is a
+    # reference and none fit the bound, the only edge line is the `%%` comment
+    # counting them, and the legend named two arrow styles above a diagram
+    # that draws neither.
+    if imports is not None and edges.arrows:
         lines.append(f"{_INDENT}{EDGE_LEGEND}")
     lines.extend(_node_lines(identifiers, partition))
-    lines.extend(edge_lines)
+    lines.extend(edges.lines)
 
     elided = len(candidates) - len(selected)
     if elided > 0:
-        lines.append(f'{_INDENT}{ELISION_ID}["... {elided} more modules"]')
+        modules = "module" if elided == 1 else "modules"
+        lines.append(f'{_INDENT}{ELISION_ID}["... {elided} more {modules}"]')
 
     return "\n".join(lines) + "\n"
 
@@ -252,9 +256,6 @@ def safe_label(text: str) -> str:
 
 def _validate(settings: DiagramOptions) -> None:
     """Refuse option values that would render a diagram nobody asked for."""
-    if settings.direction not in VALID_DIRECTIONS:
-        message = f"direction must be one of {sorted(VALID_DIRECTIONS)}, got {settings.direction}"
-        raise ValueError(message)
     if settings.max_nodes < 1:
         message = f"max_nodes must be at least 1, got {settings.max_nodes}"
         raise ValueError(message)
@@ -378,12 +379,26 @@ def _declaration(identifier: str, path: str, indent: str) -> str:
     return f'{indent}{identifier}["{safe_label(path)}"]'
 
 
+@dataclass(frozen=True)
+class _EdgeRender:
+    """The edge lines of one diagram, and how many of them draw an arrow.
+
+    The count is carried rather than recovered from the lines: the legend has
+    to know whether any arrow was drawn, and a render that answers that by
+    reading its own output back is the parse-your-own-answer step this package
+    exists to remove.
+    """
+
+    lines: tuple[str, ...]
+    arrows: int
+
+
 def _edge_lines(
     graph: RefGraph,
     identifiers: Mapping[str, str],
     imports: AbstractSet[tuple[str, str]] | None,
     max_edges: int,
-) -> list[str]:
+) -> _EdgeRender:
     """Render the edges with both endpoints in the diagram, in id order.
 
     Weights are not drawn. They are floats derived from name-collision counts,
@@ -409,7 +424,8 @@ def _edge_lines(
         key=lambda entry: _identifier_sort_key(entry[:2]),
     )
     if imports is None:
-        return [f"{_INDENT}{source} --> {target}" for source, target, _ in drawn]
+        undifferentiated = tuple(f"{_INDENT}{source} --> {target}" for source, target, _ in drawn)
+        return _EdgeRender(lines=undifferentiated, arrows=len(undifferentiated))
 
     references = sum(1 for _, _, declared in drawn if not declared)
     fits = len(drawn) <= max_edges
@@ -419,9 +435,10 @@ def _edge_lines(
             lines.append(f"{_INDENT}{source} --> {target}")
         elif fits:
             lines.append(f"{_INDENT}{source} -.-> {target}")
+    arrows = len(lines)
     if references and not fits:
         lines.append(f"{_INDENT}%% {references} reference edges not drawn (edge bound {max_edges})")
-    return lines
+    return _EdgeRender(lines=tuple(lines), arrows=arrows)
 
 
 def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:
