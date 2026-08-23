@@ -36,7 +36,7 @@ import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import cache, lru_cache
+from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 
@@ -219,18 +219,35 @@ class _AutoWarmState:
 
     The handle outlives the thread so a second start is a no-op and the
     "warm in progress" probe stays a liveness check.
+
+    Every read and write of these two fields goes through
+    :data:`_AUTO_WARM_LOCK`, with one deliberate exception: ``_auto_warm``
+    reads ``deadline`` from inside the warm thread without it. That read must
+    stay unlocked, because the thread is started while the lock is held and
+    taking it from the target would deadlock. The write that publishes the
+    deadline happens before ``start()``, so the thread cannot observe a zero.
     """
 
     thread: threading.Thread | None = None
     deadline: float = 0.0
 
 
+# The state and the lock that publishes it. `core/cache.py`'s
+# `_AUTO_INDEX_RUNS` is the house pattern for a one-per-process background
+# registry and this is the same shape: the check and the set happen together,
+# and the thread is started while the lock is still held. Two callers reaching
+# the unguarded check at once each saw no warm running and each started one,
+# and two concurrent warms write the same grammar into the same cache
+# directory -- the truncated-grammar failure `wait_for_auto_warm` exists to
+# prevent, reached by a different route.
+_AUTO_WARM_LOCK = threading.Lock()
 _AUTO_WARM = _AutoWarmState()
 
 
 def auto_warm_in_progress() -> bool:
     """True while the startup background warm is still running."""
-    thread = _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        thread = _AUTO_WARM.thread
     return thread is not None and thread.is_alive()
 
 
@@ -251,8 +268,10 @@ def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread 
     """
     if auto_warm_disabled() or no_download_requested():
         return None
-    if _AUTO_WARM.thread is not None:
-        return _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        running = _AUTO_WARM.thread
+    if running is not None:
+        return running
 
     try:
         warmed = warmed_languages()
@@ -266,12 +285,25 @@ def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread 
     # Daemon so a closing transport is never held open by a warm; the one-shot
     # CLI pairs the start with wait_for_auto_warm so extraction is not killed
     # mid-write by interpreter shutdown.
-    thread = threading.Thread(
-        target=_auto_warm, args=(cold,), name="grammar-auto-warm", daemon=True
-    )
-    _AUTO_WARM.deadline = time.monotonic() + AUTO_WARM_DEADLINE_SECONDS
-    _AUTO_WARM.thread = thread
-    thread.start()
+    with _AUTO_WARM_LOCK:
+        # Re-checked rather than held from the first check: the probe above
+        # reads the cache directory, and holding the lock across filesystem
+        # work would queue every caller behind it on a cold cache.
+        raced = _AUTO_WARM.thread
+        if raced is not None:
+            return raced
+        thread = threading.Thread(
+            target=_auto_warm, args=(cold,), name="grammar-auto-warm", daemon=True
+        )
+        # The deadline is set before the thread starts, so the warm cannot
+        # read a zero and stop before it has warmed anything.
+        _AUTO_WARM.deadline = time.monotonic() + AUTO_WARM_DEADLINE_SECONDS
+        _AUTO_WARM.thread = thread
+        # Started under the lock, for the reason `core/cache.py` records: a
+        # thread that is registered but not yet started reads as
+        # `is_alive() == False`, so a caller probing liveness in that window
+        # sees no warm and starts a second one.
+        thread.start()
     return thread
 
 
@@ -293,9 +325,12 @@ def wait_for_auto_warm() -> None:
     deadline, so the only thing this waits out is the one extraction already
     running.
     """
-    thread = _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        thread = _AUTO_WARM.thread
     if thread is None:
         return
+    # Joined outside the lock. `_auto_warm` never takes it, but a join held
+    # under it would block every other caller for the whole join budget.
     thread.join(AUTO_WARM_JOIN_SECONDS)
     if thread.is_alive():
         logger.warning(
@@ -401,9 +436,24 @@ def get_language(name: str) -> Language:
         raise LanguageUnavailable(message) from exc
 
 
-@cache
 def get_parser(name: str) -> Parser:
-    """Return a memoized parser for ``name``. Never fetches."""
+    """Return a fresh parser for ``name``. Never fetches.
+
+    Fresh rather than memoized, deliberately. A ``Parser`` carries mutable
+    state across ``parse`` calls, and this function is reached from four
+    parse sites while the background index thread is running -- so one shared
+    instance is one object being driven by two threads at once. It is safe
+    today only because py-tree-sitter 0.26 holds the GIL for the whole of
+    ``parse``; the ``>=0.25,<0.27`` pin does not promise that, and a
+    free-threaded build removes it.
+
+    The memo bought nothing to weigh against that. Measured on this machine:
+    constructing a ``Parser`` costs 0.2 us against 405 us to parse 4.6 KB,
+    three orders of magnitude apart, and the grammar itself -- the expensive,
+    immutable half -- is still shared through :func:`get_language`.
+    :func:`_probe` already built one per call, which is the codebase's own
+    evidence that nothing depended on the identity.
+    """
     return Parser(get_language(name))
 
 

@@ -18,6 +18,7 @@ import subprocess
 import threading
 import time
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 
@@ -32,7 +33,7 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, refs
 from agentless_mcp.core.symbols import symbol_stable_id
-from agentless_mcp.util import fslimits
+from agentless_mcp.util import filelock, fslimits
 from agentless_mcp.util.errors import AtlasError, CacheLocked
 
 CORE = '''\
@@ -1025,3 +1026,169 @@ class TestAutoIndexStartRace:
                 thread.join(timeout=30)
 
         assert len(builds) == 1, f"the generation was indexed {len(builds)} times: {builds}"
+
+
+class TestTheReadViewIsPinned:
+    """A row read must see the database the freshness gate approved.
+
+    `_fresh_digest` consults the entries snapshot taken when the source
+    opened; the row reads that follow were separate autocommit statements,
+    each seeing the database at its own instant. The background index thread
+    that this very request starts writes between the two, and `_symbol_rows`
+    then returned an empty list -- which the caller cannot tell apart from a
+    file that genuinely defines nothing.
+    """
+
+    def test_rows_deleted_underneath_a_source_do_not_empty_its_answer(
+        self, repo, extractor, isolated_cache_home
+    ):
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        text = (repo / "core.py").read_text(encoding="utf-8")
+        assert [symbol.name for symbol in source.symbols_for(text, "python", "core.py")]
+
+        # A second connection, as the background index thread would be.
+        writer = sqlite3.connect(cache.cache_path(repo.resolve()), isolation_level=None)
+        try:
+            writer.execute("DELETE FROM tags")
+        finally:
+            writer.close()
+
+        after = source.symbols_for(text, "python", "core.py")
+        assert [symbol.name for symbol in after] == ["RATE", "quote", "PriceBook", "cost_of"]
+
+    def test_the_snapshot_is_released_when_the_source_closes(
+        self, repo, extractor, isolated_cache_home
+    ):
+        # The open transaction is what holds the WAL from checkpointing, so a
+        # source that never released it would grow the file for the life of
+        # the process. Proved by writing from another connection after close.
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        source.close()
+
+        writer = sqlite3.connect(cache.cache_path(repo.resolve()), isolation_level=None)
+        try:
+            writer.execute("PRAGMA journal_mode=WAL")
+            assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0] == 0
+        finally:
+            writer.close()
+
+
+class TestUnreadableRowsDegrade:
+    """The module promises that a read command never fails because of a cache."""
+
+    def _corrupt(self, repo, column, value):
+        connection = sqlite3.connect(cache.cache_path(repo.resolve()), isolation_level=None)
+        try:
+            connection.execute(f"UPDATE tags SET {column} = ?", (value,))  # noqa: S608
+        finally:
+            connection.close()
+
+    def test_a_kind_this_build_cannot_spell_is_parsed_instead(
+        self, repo, extractor, isolated_cache_home, caplog
+    ):
+        cache.build_index(repo, extractor)
+        self._corrupt(repo, "kind", "a-kind-from-another-version")
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        text = (repo / "core.py").read_text(encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            names = [symbol.name for symbol in source.symbols_for(text, "python", "core.py")]
+
+        assert names == ["RATE", "quote", "PriceBook", "cost_of"]
+        assert "are unreadable" in caplog.text
+        assert "core.py" in caplog.text
+
+    def test_malformed_rationale_json_is_parsed_instead(self, repo, extractor, isolated_cache_home):
+        cache.build_index(repo, extractor)
+        self._corrupt(repo, "rationales", "{not json")
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        text = (repo / "core.py").read_text(encoding="utf-8")
+
+        assert [symbol.name for symbol in source.symbols_for(text, "python", "core.py")] == [
+            "RATE",
+            "quote",
+            "PriceBook",
+            "cost_of",
+        ]
+
+
+class TestDiscardingIsNotUnlocked:
+    def test_a_database_being_written_is_not_deleted_by_a_reader(
+        self, repo, extractor, isolated_cache_home, monkeypatch, caplog
+    ):
+        """Two installs each opening the other's database must not race to delete it.
+
+        The write path's delete is sound because it holds the index lock. The
+        read path's was the same delete with no lock, so a build that judges
+        the database unusable could remove the one another build had just
+        finished writing -- forever, and silently, because discarding is a
+        degradation rather than an error.
+        """
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo.resolve())
+
+        def unusable(connection, root):
+            message = "simulated: written by another version"
+            raise sqlite3.DatabaseError(message)
+
+        monkeypatch.setattr(cache, "_read_index", unusable)
+
+        with (
+            filelock.exclusive(database.parent / cache.LOCK_NAME, flavour="posix"),
+            caplog.at_level(logging.INFO, logger=cache.logger.name),
+        ):
+            source = cache.open_source(repo, extractor, tree_oid=None)
+
+        assert database.exists(), "a reader deleted a database an indexer was holding"
+        assert "left in place" in caplog.text
+        assert "cache discarded" in source.receipt or source.receipt
+
+    def test_an_unusable_database_is_still_discarded_when_nobody_holds_the_lock(
+        self, repo, extractor, isolated_cache_home, monkeypatch
+    ):
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo.resolve())
+
+        def unusable(connection, root):
+            message = "simulated: written by another version"
+            raise sqlite3.DatabaseError(message)
+
+        monkeypatch.setattr(cache, "_read_index", unusable)
+        cache.open_source(repo, extractor, tree_oid=None)
+
+        assert not database.exists()
+
+
+class TestRelativeCacheHomeIsIgnored:
+    """A relative XDG_CACHE_HOME resolves against the working directory."""
+
+    def test_a_relative_value_falls_back_to_the_default(self, monkeypatch, tmp_path, caplog):
+        # Reproduced during the audit: `cd victim && XDG_CACHE_HOME=relcache
+        # ... validate --repo victim` created victim/relcache/agentless-mcp/
+        # worktrees inside the repository being analysed.
+        monkeypatch.setattr(cache, "_RELATIVE_CACHE_HOMES_SEEN", set())
+        monkeypatch.setenv(cache.ENV_CACHE_HOME, "relcache")
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            root = cache.cache_root()
+
+        assert root == tmp_path / ".cache" / cache.APPLICATION_DIR
+        assert "is relative and was ignored" in caplog.text
+
+    def test_the_warning_is_not_repeated_for_the_same_value(self, monkeypatch, tmp_path, caplog):
+        monkeypatch.setattr(cache, "_RELATIVE_CACHE_HOMES_SEEN", set())
+        monkeypatch.setenv(cache.ENV_CACHE_HOME, "relcache")
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            for _ in range(5):
+                cache.cache_root()
+
+        assert caplog.text.count("is relative and was ignored") == 1
+
+    def test_an_absolute_value_is_honoured(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(cache.ENV_CACHE_HOME, str(tmp_path / "elsewhere"))
+        assert cache.cache_root() == tmp_path / "elsewhere" / cache.APPLICATION_DIR

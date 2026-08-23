@@ -153,15 +153,26 @@ class _MonitorState:
 
 
 _MONITOR = _MonitorState()
-# Guards the claim on the monitor's own interrupt. The monitor thread sets it
-# and the main thread consumes it, so the read-modify-write cannot be a bare
-# attribute test.
+# Guards every field of the state above. It began as the guard on the
+# interrupt claim alone -- the monitor thread sets it and the main thread
+# consumes it, so that read-modify-write cannot be a bare attribute test --
+# and the start of the monitor itself is the same kind of read-modify-write
+# by a second caller. `core/cache.py`'s `_AUTO_INDEX_RUNS` is the house
+# pattern for both.
+#
+# One field is read without it on purpose: `_watch` reads `started` from
+# inside the monitor thread. That read must stay unlocked, because the thread
+# is started while the lock is held and taking it from the target would make
+# the child wait on its own parent. The write happens before `start()`, so
+# the thread cannot observe a zero and mistake a fresh process for one that
+# has been up long enough to restart.
 _MONITOR_LOCK = threading.Lock()
 
 
 def restart_pending() -> bool:
     """True when the monitor shut the server down to restart it."""
-    return _MONITOR.pending
+    with _MONITOR_LOCK:
+        return _MONITOR.pending
 
 
 def claim_monitor_interrupt() -> bool:
@@ -188,8 +199,10 @@ def start_update_monitor(distribution_name: str) -> threading.Thread | None:
     """
     if auto_restart_disabled():
         return None
-    if _MONITOR.thread is not None:
-        return _MONITOR.thread
+    with _MONITOR_LOCK:
+        running = _MONITOR.thread
+    if running is not None:
+        return running
 
     # Whether there is an install to drift from, not whether its fingerprint
     # reads right now: a server started by the very install event it should be
@@ -200,15 +213,30 @@ def start_update_monitor(distribution_name: str) -> threading.Thread | None:
         logger.info("install update monitor off: no installed metadata for %s", distribution_name)
         return None
 
-    thread = threading.Thread(
-        target=_watch,
-        args=(distribution_name, install_fingerprint(distribution_name)),
-        name="install-update-monitor",
-        daemon=True,
-    )
-    _MONITOR.started = time.monotonic()
-    _MONITOR.thread = thread
-    thread.start()
+    # Fingerprinted before the lock: reading RECORD is filesystem work, and a
+    # second caller arriving during it should wait on the registry rather than
+    # on the disk.
+    baseline = install_fingerprint(distribution_name)
+
+    with _MONITOR_LOCK:
+        # Re-checked, because the two calls above released the lock.
+        raced = _MONITOR.thread
+        if raced is not None:
+            return raced
+        thread = threading.Thread(
+            target=_watch,
+            args=(distribution_name, baseline),
+            name="install-update-monitor",
+            daemon=True,
+        )
+        _MONITOR.started = time.monotonic()
+        _MONITOR.thread = thread
+        # Started under the lock, for the reason `core/cache.py` records: a
+        # registered but unstarted thread reads as `is_alive() == False`, so
+        # a caller probing in that window sees no monitor and starts a second
+        # one. Two monitors means two SIGINTs for one install event, and only
+        # one of them can be claimed.
+        thread.start()
     return thread
 
 

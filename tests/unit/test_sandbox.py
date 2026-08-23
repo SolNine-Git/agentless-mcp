@@ -14,8 +14,11 @@ built to fail a leader-only kill -- the grandchild ignores SIGTERM -- so the
 assertion is about the group, not about the one process we hold a handle to.
 """
 
+import logging
 import os
+import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -23,6 +26,7 @@ import pytest
 
 from agentless_mcp.core import cache, sandbox
 from agentless_mcp.core.sandbox import RunStatus
+from agentless_mcp.util import platforms
 from agentless_mcp.util.errors import AtlasError, RepoResolutionError
 
 FILES = {
@@ -57,6 +61,25 @@ class TestWorktree:
         with sandbox.worktree(repo) as tree:
             assert repo not in tree.parents
             assert isolated_cache_home in tree.parents
+
+    def test_a_scratch_root_inside_the_repository_is_refused(self, repo, monkeypatch):
+        """Keyed on the property, not on the one way of breaking it.
+
+        `cache_root` now refuses a relative XDG_CACHE_HOME, which was how the
+        audit reached this. An operator pointing the variable at a directory
+        inside the repository reaches the same place by a route no
+        environment rule can catch, so the guard sits where the invariant is:
+        the scratch is never inside the target.
+        """
+        monkeypatch.setenv(cache.ENV_CACHE_HOME, str(repo / "inside"))
+
+        with (
+            pytest.raises(RepoResolutionError, match="inside the repository"),
+            sandbox.worktree(repo),
+        ):
+            pass
+
+        assert not (repo / "inside").exists(), "the refused location was created anyway"
 
     def test_the_checkout_is_bit_identical_afterwards(self, repo):
         before_status = git(repo, "status", "--porcelain")
@@ -412,6 +435,75 @@ class TestRunCommand:
         assert result.status is RunStatus.TIMEOUT
         _group, child = (int(value) for value in marker.read_text(encoding="utf-8").split())
         assert process_is_gone(child), f"child process {child} outlived the run"
+
+    def test_an_interrupted_run_still_ends_the_process_group(
+        self, workspace, python_cmd, monkeypatch
+    ):
+        """Ctrl-C reaches the server, never the command the server started.
+
+        `start_new_session=True` is what makes the group signalable, and it
+        is the same thing that takes the child out of the terminal's
+        foreground group. So the one event most likely to end a run is the
+        one event that used to leave the command running -- holding the port
+        or the lock the next run needs. Raised from inside the wait rather
+        than sent for real, so the test does not depend on this process's own
+        signal disposition.
+        """
+        marker = workspace / "pgid.txt"
+        self.write(workspace, "hang.py", HANG_SCRIPT)
+
+        real = sandbox._wait_bounded
+
+        def interrupt(process, streams, *, timeout, capture):
+            # Let the child reach the point where it has recorded its pids,
+            # then interrupt the parent exactly as an operator would.
+            real(process, streams, timeout=2, capture=capture)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(sandbox, "_wait_bounded", interrupt)
+
+        with pytest.raises(KeyboardInterrupt):
+            sandbox.run_command(workspace, python_cmd("hang.py", str(marker)), timeout=30)
+
+        _group, child = (int(value) for value in marker.read_text(encoding="utf-8").split())
+        assert process_is_gone(child), f"child process {child} outlived the interrupt"
+
+    def test_ending_an_already_reaped_process_does_not_raise(self, workspace, python_cmd):
+        """Cleanup now runs on paths where the process may already be gone.
+
+        `_kill_group` signals unconditionally rather than checking liveness
+        first, because a check-then-signal is a race. That only works if the
+        signal tolerates a group that has already exited, so the tolerance is
+        the thing to pin.
+        """
+        self.write(workspace, "ok.py", "print('fine')\n")
+        result = sandbox.run_command(workspace, python_cmd("ok.py"), timeout=30)
+        assert result.status is RunStatus.PASSED
+
+        process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+        process.wait()
+
+        sandbox._kill_group(process, platforms.family(sys.platform))
+
+    def test_a_group_that_cannot_be_signalled_is_logged_not_raised(self, monkeypatch, caplog):
+        """A permission error during cleanup must not become the run's failure.
+
+        Signalling can be refused when a group id has been reused by another
+        user's process. The command already failed or was interrupted at that
+        point; turning cleanup into an exception replaces a reported outcome
+        with a traceback.
+        """
+
+        def refuse(group, number):
+            message = "not permitted"
+            raise PermissionError(message)
+
+        monkeypatch.setattr(sandbox.os, "killpg", refuse)
+
+        with caplog.at_level(logging.ERROR, logger=sandbox.logger.name):
+            sandbox._signal_group(4_000_000, signal.SIGTERM)
+
+        assert "not permitted to signal process group" in caplog.text
 
     def test_the_capture_keeps_the_tail(self, workspace, python_cmd):
         self.write(workspace, "chatty.py", CHATTY_SCRIPT)

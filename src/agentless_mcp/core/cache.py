@@ -56,7 +56,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -340,24 +340,63 @@ class CachedSource:
         answers from its live content while the rest of the repository is
         still served from the index.
         """
-        digest = self._fresh_digest(text, path)
-        if digest is None:
+        rows = self._rows_or_none(self._symbol_rows, text, path, "symbol")
+        if rows is None:
             return self._extractor.extract_from_source(text, language, path)
-        return self._symbol_rows(path, digest)
+        return rows
 
     def imports_for(self, text: str, language: str, path: str) -> list[ImportStatement]:
         """Return cached imports when the row still describes ``text``."""
-        digest = self._fresh_digest(text, path)
-        if digest is None:
+        rows = self._rows_or_none(self._import_rows, text, path, "import")
+        if rows is None:
             return self._extractor.extract_imports_from_source(text, language, path)
-        return self._import_rows(path, digest)
+        return rows
 
     def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
         """Return cached identifier references when the row still describes ``text``."""
+        rows = self._rows_or_none(self._ref_rows, text, path, "reference")
+        if rows is None:
+            return self._extractor.extract_refs_from_source(text, language, path)
+        return rows
+
+    def _rows_or_none(
+        self,
+        read: "Callable[[str, str], list[Any]]",
+        text: str,
+        path: str,
+        kind: str,
+    ) -> list[Any] | None:
+        """Read one file's rows, or return ``None`` to mean "parse it instead".
+
+        The module promises that a read command never fails because of a
+        cache, and until now the three row readers had no handler at all: a
+        corrupt page, a truncated row, or an enum value written by a build
+        that spelled it differently raised straight out of a tool call. All
+        three are the same event -- persisted bytes this build cannot read --
+        and the answer to all three is the answer to a stale digest, which is
+        to parse the file.
+
+        The exception list is long because it enumerates the ways a row can
+        be wrong rather than catching everything: sqlite for the file itself,
+        ValueError for an unknown ``SymbolKind`` or ``IdentifierRole`` and for
+        malformed JSON, TypeError for rationale JSON of the wrong shape,
+        IndexError and KeyError for a row or document missing a field this
+        build reads. A defect in this module still raises.
+        """
         digest = self._fresh_digest(text, path)
         if digest is None:
-            return self._extractor.extract_refs_from_source(text, language, path)
-        return self._ref_rows(path, digest)
+            return None
+        try:
+            return read(path, digest)
+        except (sqlite3.DatabaseError, ValueError, TypeError, IndexError, KeyError) as exc:
+            logger.warning(
+                "tag cache %s: %s rows for %s are unreadable (%r); parsing the file instead",
+                self._state.database,
+                kind,
+                path,
+                exc,
+            )
+            return None
 
     def status(self) -> CacheStatus:
         """Describe the cache, counting its rows."""
@@ -374,7 +413,17 @@ class CachedSource:
         )
 
     def close(self) -> None:
-        """Release the read connection."""
+        """End the read snapshot, then release the connection.
+
+        Ended explicitly rather than left to ``close`` so the reason is
+        visible here: the open transaction is what holds the WAL from being
+        checkpointed, and a source that is never closed would grow it for as
+        long as the process lives.
+        """
+        try:
+            self._connection.execute("ROLLBACK")
+        except sqlite3.DatabaseError as exc:
+            logger.debug("read snapshot for %s was already gone: %r", self._state.database, exc)
         self._connection.close()
 
     def _fresh_digest(self, text: str, path: str) -> str | None:
@@ -447,10 +496,47 @@ def effective_source(
 
 
 def cache_root() -> Path:
-    """Return the directory holding every repository's cache, per XDG."""
+    """Return the directory holding every repository's cache, per XDG.
+
+    A relative ``XDG_CACHE_HOME`` is ignored, which is what the XDG base
+    directory specification requires -- "if an implementation encounters a
+    relative path it must consider the value invalid" -- and which this
+    module needs for a reason of its own. A relative value resolves against
+    the current working directory, and the working directory during a
+    ``validate`` run is the repository being analysed. Reproduced:
+    ``cd victim && XDG_CACHE_HOME=relcache agentless-mcp validate --repo
+    victim`` created ``victim/relcache/agentless-mcp/worktrees`` inside the
+    repository under analysis. It also made the cache location depend on
+    where each call happened to be standing, so two calls in one process
+    could read two different databases.
+    """
     configured = os.environ.get(ENV_CACHE_HOME, "").strip()
+    if configured and not Path(configured).is_absolute():
+        _warn_once_about_relative_cache_home(configured)
+        configured = ""
     home = Path(configured) if configured else Path.home() / ".cache"
     return home / APPLICATION_DIR
+
+
+_RELATIVE_CACHE_HOMES_SEEN: set[str] = set()
+
+
+def _warn_once_about_relative_cache_home(value: str) -> None:
+    """Say why the environment was ignored, once per distinct value.
+
+    Once rather than per call: ``cache_root`` runs on every cached read, and a
+    warning per read would bury the answer it is attached to.
+    """
+    if value in _RELATIVE_CACHE_HOMES_SEEN:
+        return
+    _RELATIVE_CACHE_HOMES_SEEN.add(value)
+    logger.warning(
+        "%s=%r is relative and was ignored; the XDG specification requires an absolute "
+        "path, and a relative one would put the cache inside whichever directory the "
+        "call was made from -- including the repository being analysed",
+        ENV_CACHE_HOME,
+        value,
+    )
 
 
 def cache_path(repo_root: Path) -> Path:
@@ -530,20 +616,30 @@ def open_source(
     try:
         connection = _connect(database)
     except sqlite3.DatabaseError as exc:
-        _discard(database)
+        _discard_unlocked(database, resolved)
         return OnDemandSource(extractor, _absent_status(database, f"cache discarded: {exc}"))
 
     try:
+        # One snapshot for every read this source will serve. The freshness
+        # gate consults `entries`, captured here; the row reads that follow
+        # are separate statements, and in autocommit each of those saw the
+        # database as it was at that instant. The background index thread
+        # this very request started can delete the rows between the two, and
+        # `_symbol_rows` then returned an empty list as fact -- a file with
+        # no symbols, rather than a cache miss. A deferred read transaction
+        # pins both to the same view. WAL is what makes this free: readers do
+        # not block the writer, so the index keeps running underneath.
+        connection.execute("BEGIN")
         opened = _read_index(connection, resolved)
     except sqlite3.DatabaseError as exc:
         connection.close()
-        _discard(database)
+        _discard_unlocked(database, resolved)
         return OnDemandSource(extractor, _absent_status(database, f"cache discarded: {exc}"))
 
     meta = opened.meta
     if meta is None:
         connection.close()
-        _discard(database)
+        _discard_unlocked(database, resolved)
         return OnDemandSource(extractor, _absent_status(database, opened.note))
 
     return CachedSource(
@@ -1455,6 +1551,36 @@ def _discard(database: Path) -> None:
     Deleting rather than ignoring: the file is derived data, and leaving an
     unusable one behind would make every later call pay the same open, fail
     the same check and report the same degradation.
+
+    Callers must already hold the write lock. The read path calls
+    :func:`_discard_unlocked` instead, which takes it.
     """
     for suffix in ("", "-wal", "-shm"):
         Path(str(database) + suffix).unlink(missing_ok=True)
+
+
+def _discard_unlocked(database: Path, repo_root: Path) -> None:
+    """Discard a database from the read path, under the write lock.
+
+    The write path's identical delete is sound because it holds this lock.
+    The read path's was not: two installs of different versions each open the
+    other's database, each judge it unusable, and each delete it -- including
+    the one the other has just finished writing. Neither ever keeps an index,
+    and nothing says why, because discarding is a degradation rather than an
+    error.
+
+    A lock that cannot be taken means somebody is writing that file right
+    now, and what they are writing is very likely the database this build
+    wants. Leaving it is strictly better than deleting it: the caller
+    degrades to on-demand parsing either way, and the next call finds a
+    finished index rather than a hole.
+    """
+    try:
+        with _write_lock(database.parent, repo_root):
+            _discard(database)
+    except CacheLocked as exc:
+        logger.info(
+            "tag cache %s left in place: an index run holds the write lock (%s)", database, exc
+        )
+    except OSError as exc:
+        logger.warning("tag cache %s could not be discarded: %r", database, exc)

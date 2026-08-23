@@ -25,8 +25,19 @@ class TestGetLanguage:
         language = grammars.get_language("python")
         assert language.abi_version >= 13
 
-    def test_parser_is_memoized(self):
-        assert grammars.get_parser("python") is grammars.get_parser("python")
+    def test_each_caller_gets_its_own_parser(self):
+        # Not memoized, and this test is the reason stated where a reader
+        # will look for it. A Parser carries mutable state across parse
+        # calls and four call sites reach it while the background index
+        # thread runs, so a shared instance is one object driven by two
+        # threads. Sharing was safe only because py-tree-sitter 0.26 holds
+        # the GIL across parse, which the version pin does not promise.
+        assert grammars.get_parser("python") is not grammars.get_parser("python")
+
+    def test_the_grammar_behind_them_is_still_shared(self):
+        # The expensive half is the Language, and it is immutable. Dropping
+        # the parser memo must not turn every parse into a grammar load.
+        assert grammars.get_parser("python").language == grammars.get_parser("python").language
 
     def test_unknown_language_is_named_as_unknown(self):
         with pytest.raises(LanguageUnavailable) as caught:

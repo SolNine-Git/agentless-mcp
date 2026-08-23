@@ -239,6 +239,20 @@ def worktree(root: Path) -> Iterator[Path]:
         raise RepoResolutionError(message)
 
     scratch = scratch_root()
+    # Keyed on the property the module docstring promises -- the scratch is
+    # never inside the target -- rather than on any particular way of getting
+    # it wrong. `cache_root` now refuses a relative XDG_CACHE_HOME, which was
+    # one route in; an operator pointing XDG_CACHE_HOME at a path inside the
+    # repository is another, and this catches both. Checked before mkdir, so
+    # a refused location is not created on the way to being refused.
+    if scratch == top or top in scratch.parents:
+        message = (
+            f"scratch worktrees would be created at {scratch}, inside the repository "
+            f"{top} they are meant to stay out of. Point {cache.ENV_CACHE_HOME} at a "
+            f"directory outside the repository."
+        )
+        raise RepoResolutionError(message)
+
     scratch.mkdir(parents=True, exist_ok=True)
     scratch.chmod(cache.DIRECTORY_MODE)
 
@@ -289,9 +303,13 @@ def run_command(
     * **No shell.** ``shlex.split`` produces an argv and ``Popen`` receives
       it. There is no interpretation of metacharacters at any point.
     * **Own process group.** ``start_new_session=True`` on POSIX makes the
-      child a process group leader, so the timeout path can signal the group
-      and reach the grandchildren a test runner spawned. Killing only the
-      direct child leaves the server it started holding a port. Windows gets
+      child a process group leader, so cleanup can signal the group and reach
+      the grandchildren a test runner spawned. Killing only the direct child
+      leaves the server it started holding a port. The group is signalled
+      whenever this function stops with the process unreaped -- the timeout
+      path and an interrupt alike -- because the same session that makes the
+      group reachable is what keeps an operator's Ctrl-C from reaching it.
+      Windows gets
       ``CREATE_NEW_PROCESS_GROUP``, which is the closest thing it has.
       Termination is bounded too: a command that ignores SIGTERM costs at most
       ``timeout`` + :data:`TERM_GRACE_SECONDS` + :data:`KILL_REAP_SECONDS` of
@@ -335,9 +353,18 @@ def run_command(
             elapsed = time.monotonic() - started
             return _spawn_failure(f"could not start {argv[0]!r}: {reason}", elapsed)
 
-        timed_out = _wait_bounded(process, (out, err), timeout=timeout, capture=max_capture)
-        if timed_out:
-            _kill_group(process, flavour)
+        try:
+            timed_out = _wait_bounded(process, (out, err), timeout=timeout, capture=max_capture)
+        finally:
+            # Not only on the timeout branch. `start_new_session=True` puts the
+            # child outside the terminal's foreground process group, so an
+            # operator's Ctrl-C reaches this process and never the command it
+            # started. Without this the run is abandoned and the command keeps
+            # running -- holding the port, the database or the lock that the
+            # next run needs. `returncode is None` is the invariant that
+            # matters: the process was never reaped, whatever the reason.
+            if process.returncode is None:
+                _kill_group(process, flavour)
 
         duration = round(time.monotonic() - started, 3)
         stdout_tail = _tail(out, max_capture)
