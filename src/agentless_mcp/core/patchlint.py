@@ -1421,13 +1421,7 @@ def _defined_names(facts: RepoFacts) -> tuple[str, ...]:
     )
 
 
-def near_misses(
-    name: str,
-    known: Sequence[str],
-    *,
-    limit: int = MAX_NEAR_MISSES,
-    ceiling: int = MAX_EDIT_DISTANCE,
-) -> tuple[str, ...]:
+def near_misses(name: str, known: Sequence[str]) -> tuple[str, ...]:
     """Return the existing names closest to ``name``, nearest first.
 
     A name differing only in case or underscores is offered first, at distance
@@ -1444,10 +1438,10 @@ def near_misses(
         if _folded(candidate) == folded:
             scored.append((0, candidate))
             continue
-        distance = _edit_distance(name, candidate, ceiling)
-        if distance <= ceiling:
+        distance = _edit_distance(name, candidate, MAX_EDIT_DISTANCE)
+        if distance <= MAX_EDIT_DISTANCE:
             scored.append((distance, candidate))
-    return tuple(candidate for _, candidate in sorted(scored)[:limit])
+    return tuple(candidate for _, candidate in sorted(scored)[:MAX_NEAR_MISSES])
 
 
 def _folded(name: str) -> str:
