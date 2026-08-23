@@ -573,6 +573,10 @@ def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) 
             capture_output=True,
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
+            # The write-side calls have most to lose from an ambient GIT_DIR:
+            # `worktree add` against a redirected repository would create the
+            # checkout somewhere the caller never named.
+            env=gitinfo.subprocess_env(),
         )
     except FileNotFoundError as exc:
         message = "git is not installed, so the patch machinery cannot run"

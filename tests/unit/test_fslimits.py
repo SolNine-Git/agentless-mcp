@@ -155,3 +155,40 @@ class TestReadBounded:
         assert result.text is None
         assert result.skipped is not None
         assert result.skipped.startswith("unreadable: ")
+
+
+class TestSymlinkLoops:
+    """A loop resolves differently on the two supported interpreters.
+
+    On the declared 3.10 floor ``Path.resolve()`` raises ``RuntimeError`` for
+    a symlink loop, and the filter here caught only ``ValueError`` and
+    ``OSError``, so the error escaped untyped past the boundary the adapters
+    catch on. From 3.13 the same input resolves to a path that does not
+    exist, and the strict re-resolve is skipped, so it was accepted. Two
+    opposite failures on the two versions in the support matrix.
+
+    What this pins is the property that holds on both: the answer is either a
+    path inside the root or this module's own refusal, never a stdlib error.
+    """
+
+    def test_a_loop_is_contained_or_refused_but_never_untyped(self, tmp_path):
+        (tmp_path / "loop_a").symlink_to(tmp_path / "loop_b")
+        (tmp_path / "loop_b").symlink_to(tmp_path / "loop_a")
+
+        try:
+            resolved = contained_path(tmp_path, "loop_a")
+        except SecurityRefusal:
+            return
+        assert tmp_path in resolved.parents
+
+    def test_a_loop_pointing_out_of_the_root_is_refused(self, tmp_path):
+        root = tmp_path / "repo"
+        root.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "loop_a").symlink_to(outside / "loop_b")
+        (outside / "loop_b").symlink_to(outside / "loop_a")
+        (root / "escape").symlink_to(outside / "loop_a")
+
+        with pytest.raises(SecurityRefusal):
+            contained_path(root, "escape")

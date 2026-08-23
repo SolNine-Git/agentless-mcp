@@ -1129,6 +1129,23 @@ class TestPatchSubprocess:
         assert result.stdout == ""
         assert (git_repo / "core.py").read_text(encoding="utf-8") == SOURCE
 
+    def test_a_patch_file_that_is_not_utf8_is_reported_not_crashed(self, git_repo, tmp_path):
+        """`UnicodeDecodeError` is a `ValueError`, so `except OSError` missed it.
+
+        The three CLI readers caught only OSError, so a latin-1 file or a
+        mistyped binary path came out as a raw traceback -- which also puts an
+        absolute local path on stderr. The MCP adapter's two readers already
+        caught both.
+        """
+        binary = tmp_path / "patch.bin"
+        binary.write_bytes(b"### core.py\n<<<<<<< SEARCH\n\xff\xfe not utf-8\n")
+
+        result = self.run_cli("patch", "check", "-f", str(binary), "--repo", str(git_repo))
+
+        assert result.returncode == EXIT_USAGE
+        assert "not valid UTF-8" in result.stderr
+        assert "Traceback" not in result.stderr
+
     def test_a_missing_patch_file_exits_two(self, git_repo, tmp_path):
         result = self.run_cli(
             "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)

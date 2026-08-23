@@ -23,6 +23,7 @@ forced through ``cat``. The prefix is public within the core so the walker and
 write-side sandbox cannot drift from the receipt code.
 """
 
+import os
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -51,6 +52,31 @@ HARDENING_PREFIX: tuple[str, ...] = (
     "-c",
     "diff.external=",
 )
+
+
+def subprocess_env() -> dict[str, str]:
+    """Return the environment a git call this package makes may inherit.
+
+    Every ``GIT_``-prefixed variable is removed, and nothing else is. The
+    variables that break this package are the ones that redirect git away from
+    the ``-C`` it was given -- ``GIT_DIR``, ``GIT_WORK_TREE``,
+    ``GIT_INDEX_FILE``, ``GIT_CEILING_DIRECTORIES``, ``GIT_OBJECT_DIRECTORY``
+    and their relatives -- and the whole family is stripped rather than a list
+    of the ones known to hurt today, because the list is git's to extend.
+
+    Reproduced before this existed: with ``GIT_DIR`` pointing at an unrelated
+    repository, the receipt for the analysed repository carried the *other*
+    repository's HEAD, and with ``GIT_INDEX_FILE`` pointing at a path that
+    does not exist, a clean tree reported two dirty files. The receipt is how
+    an agent knows which commit an answer describes, so a wrong one there is
+    not a cosmetic error.
+
+    Everything else is kept. ``PATH`` finds the binary and ``HOME`` finds the
+    global config, and this package already states the configuration it needs
+    on the argv -- :data:`HARDENING_PREFIX` -- rather than through the
+    environment.
+    """
+    return {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
 
 
 @dataclass(frozen=True)
@@ -152,6 +178,7 @@ def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
             capture_output=True,
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
+            env=subprocess_env(),
         )
     except FileNotFoundError:
         return _Outcome(None, "git is not installed, so repository state is unknown")

@@ -154,6 +154,7 @@ def _git_listed_paths(root: Path) -> list[str]:
             capture_output=True,
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
+            env=gitinfo.subprocess_env(),
         )
     except FileNotFoundError as exc:
         message = f"git is not installed, so {root} cannot be listed the way its .gitignore asks"

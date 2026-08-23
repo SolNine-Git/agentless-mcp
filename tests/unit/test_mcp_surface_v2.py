@@ -12,6 +12,8 @@ what it accepts and what it requires, never a schema validation dump.
 
 import asyncio
 import json
+import logging
+import sqlite3
 
 import pytest
 from fastmcp import Client
@@ -631,3 +633,56 @@ class TestTheWireRefusesWhatTheCliAccepts:
 
         with pytest.raises(ToolError):
             call(server, tool, {"repo_root": str(one_repo), **arguments})
+
+
+class TestTheRefusalContractDoesNotDependOnTheEnvironment:
+    """Two ways the wording an agent reads could stop being this package's.
+
+    FastMCP reads ``FASTMCP_MASK_ERROR_DETAILS`` from the environment, and a
+    masked error replaces a refusal that names the operation, what it accepts
+    and what it requires with a generic sentence. Measured before the pin: 243
+    of these tests passed with the variable unset and 22 failed with it set.
+    Whether an agent can correct its own call is not an operator's setting.
+
+    The other way is the opposite error. With masking off, an exception this
+    package did not plan for hands its own text to the client, and those carry
+    local detail -- a sqlite failure names the absolute path of the tag cache.
+    """
+
+    def test_a_refusal_survives_the_masking_environment_variable(
+        self, services, one_repo, monkeypatch
+    ):
+        monkeypatch.setenv("FASTMCP_MASK_ERROR_DETAILS", "true")
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError) as raised:
+            call(server, "orient", {"repo_root": str(one_repo), "operation": "nonsense"})
+
+        message = str(raised.value)
+        assert "nonsense" in message
+        for operation in ("map", "communities", "cycles", "diagram", "path"):
+            assert operation in message
+
+    def test_an_unplanned_failure_does_not_hand_its_own_words_to_the_client(
+        self, services, one_repo, monkeypatch, caplog
+    ):
+        """A defect is reported as a defect, and the detail goes to the log."""
+        local_path = "/home/someone/.cache/agentless-mcp/9f2a/tags.db"
+
+        def explode(*args, **kwargs):
+            message = f"unable to open database file {local_path}"
+            raise sqlite3.OperationalError(message)
+
+        monkeypatch.setattr(services.maps, "build", explode)
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with (
+            caplog.at_level(logging.ERROR, logger=server_module.logger.name),
+            pytest.raises(ToolError) as raised,
+        ):
+            call(server, "orient", {"repo_root": str(one_repo), "operation": "map"})
+
+        message = str(raised.value)
+        assert local_path not in message
+        assert "defect in agentless-mcp" in message
+        assert local_path in caplog.text

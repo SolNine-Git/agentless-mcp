@@ -50,9 +50,16 @@ def contained_path(root: Path, candidate: str) -> Path:
     joined = Path(candidate) if Path(candidate).is_absolute() else resolved_root / candidate
     try:
         resolved = joined.resolve()
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, RuntimeError) as exc:
         # A NUL byte or an otherwise unnameable path: JSON tool arguments can
         # carry both, and the form is not repeated back.
+        #
+        # RuntimeError is the symlink-loop case, and it is version-dependent:
+        # on the declared 3.10 floor `Path.resolve()` raises it, while from
+        # 3.13 the same input comes back as a path that simply does not
+        # exist. Catching it here is what makes the two interpreters answer
+        # the same way -- with a refusal typed as this module's own, which is
+        # the boundary the adapters catch on.
         message = "path refused: not a usable filesystem path"
         raise SecurityRefusal(message) from exc
 

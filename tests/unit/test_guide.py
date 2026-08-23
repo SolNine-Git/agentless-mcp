@@ -85,17 +85,29 @@ class TestPackagedResource:
         with pytest.raises(FileNotFoundError):
             guide.section_names()
 
-    def test_an_unreadable_resource_names_the_broken_install(self, monkeypatch):
-        """The OSError is converted so the message says which file is absent."""
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("no such file"),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        ],
+        ids=["absent", "not-utf8"],
+    )
+    def test_an_unreadable_resource_names_the_broken_install(self, monkeypatch, error):
+        """Both ways a packaged file can be unusable say which install is broken.
+
+        A guide that is present but not valid UTF-8 is the same broken
+        install as an absent one. `UnicodeDecodeError` is a `ValueError`, so
+        a handler naming only `OSError` let the second case out as a raw
+        decode traceback.
+        """
         resource = guide.resources.files(guide.PACKAGE) / guide.GUIDE_DIRECTORY
 
-        reason = "no such file"
-
         def refuse(*_args, **_kwargs):
-            raise OSError(reason)
+            raise error
 
         monkeypatch.setattr(type(resource), "read_text", refuse, raising=False)
-        with pytest.raises(GuideDataError, match="missing from the agentless_mcp package"):
+        with pytest.raises(GuideDataError, match="cannot be read from the agentless_mcp package"):
             guide._resource_text()
 
 

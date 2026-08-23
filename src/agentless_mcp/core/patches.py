@@ -483,6 +483,31 @@ def _apply_one(
     scoped: bool,
 ) -> tuple[EditOutcome, str, list[tuple[int, int]]]:
     """Apply one edit to ``content``, returning the outcome and the new state."""
+    if not edit.search:
+        # An empty pre-image means "create this file", and this function never
+        # creates one: a path absent from `file_contents` is already reported
+        # NO_SUCH_FILE above, so every file reaching here exists. Against an
+        # existing file the empty needle pads to "\n\n", matches the first
+        # blank line -- or the end of the file when there is none -- and the
+        # replacement is written with the outcome reported as `applied`.
+        # Reproduced: Edit(search="", replace="INJECTED\n") against a two-line
+        # file returned ok=True, matches=1, and appended the text.
+        #
+        # `core/unidiff` and `core/patchlint` both refuse this already. They
+        # are the two modules that cannot write; this is the one that can.
+        return (
+            EditOutcome(
+                edit=edit,
+                status=EditStatus.NO_ANCHOR,
+                reason=(
+                    f"{edit.path}: the SEARCH side is empty, which anchors nowhere in a "
+                    f"file that already exists"
+                ),
+            ),
+            content,
+            list(scopes),
+        )
+
     padded = _pad(content)
     search, replace, anchor_reason = resolve_elisions(edit.search, edit.replace, padded, scopes)
     if anchor_reason:

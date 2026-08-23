@@ -59,6 +59,10 @@ from typing import Annotated, Literal
 from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import FastMCPError, ToolError
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import ToolResult
+from mcp import types as mcp_types
 from mcp.shared.exceptions import McpError
 from pydantic import Field, ValidationError
 
@@ -1030,6 +1034,59 @@ ALWAYS_LOAD_META = {"anthropic/alwaysLoad": True}
 RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
 
 
+# The exceptions whose own text was written for a caller to read: this
+# package's refusals, and the framework's own -- a wire-schema rejection
+# naming the values a parameter accepts is FastMCP speaking, and that is
+# exactly the message an agent needs to correct its call.
+_DELIBERATE_ERRORS = (AtlasError, FastMCPError, ValidationError)
+
+_UNPLANNED_ERROR_MESSAGE = (
+    "the tool failed for a reason it does not handle; the server log has the detail. "
+    "This is a defect in agentless-mcp, not something the call can be corrected to avoid."
+)
+
+
+class _DeliberateErrorsOnly(Middleware):
+    """Let this package's own refusals through; replace anything else.
+
+    With ``mask_error_details=False`` an unhandled exception's text is what
+    reaches the client, and the exceptions this package does not plan for
+    carry local detail: a ``sqlite3`` failure names the absolute path of the
+    tag cache, an ``OSError`` names the file it could not open. Neither is
+    something to hand to a caller across a transport (CWE-209).
+
+    The split is by *authorship*, not by severity. A message this package or
+    FastMCP wrote is a message a caller can act on -- it names the operation,
+    what it accepts, what it requires. Everything else is a defect, and a
+    defect's own words were written for whoever reads the log. So the log gets
+    them, in full and with the traceback, and the caller gets a sentence that
+    says a defect happened.
+
+    The test is on ``__cause__`` rather than on the exception itself because
+    FastMCP wraps whatever a tool raises into a ``ToolError`` before any
+    middleware sees it. A ``ToolError`` with no cause is the framework
+    speaking for itself, which is deliberate too.
+    """
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mcp_types.CallToolRequestParams],
+        call_next: CallNext[mcp_types.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        """Run one tool call, converting an unplanned failure at the boundary."""
+        try:
+            return await call_next(context)
+        except _DELIBERATE_ERRORS as error:
+            cause = error.__cause__
+            if cause is None or isinstance(cause, _DELIBERATE_ERRORS):
+                raise
+            logger.exception("unhandled error in an agentless-mcp tool call")
+            raise ToolError(_UNPLANNED_ERROR_MESSAGE) from None
+        except Exception:
+            logger.exception("unhandled error in an agentless-mcp tool call")
+            raise ToolError(_UNPLANNED_ERROR_MESSAGE) from None
+
+
 def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastMCP[None]:
     """Register the selected tool surface on a FastMCP server and return it.
 
@@ -1045,7 +1102,20 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
     # of this server.
-    mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version())
+    # `mask_error_details` is pinned rather than left to FastMCP's default,
+    # which reads FASTMCP_MASK_ERROR_DETAILS from the environment. Measured:
+    # 243 of these tests pass with the variable unset and 22 fail with it set
+    # to true, because a masked error replaces this package's own refusal
+    # text -- which names the operation, what it accepts and what it requires
+    # -- with a generic message. The refusal wording is the contract an agent
+    # reads to correct its own call, so whether it survives must not depend
+    # on an operator's shell.
+    #
+    # False is safe here because every message that reaches this boundary is
+    # written by this package: `_safe_tool_error` below turns anything else
+    # into a deliberately worded error before FastMCP sees it.
+    mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version(), mask_error_details=False)
+    mcp.add_middleware(_DeliberateErrorsOnly())
 
     @asynccontextmanager
     async def context_for(

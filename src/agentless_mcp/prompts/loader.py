@@ -2,10 +2,11 @@
 
 Prompt text is data, so it is read the way foreign data is read anywhere else
 here: through one parse step that returns typed values or raises. A file that
-is missing from the wheel, a file that is not JSON, a key the code consumes
-that the file does not carry, a key the file carries that no code consumes,
-and a value that is blank are all the same class of defect -- a prompt the
-agent would never see -- and all five raise :class:`PromptDataError`.
+is missing from the wheel, a file that is present but is not valid UTF-8, a
+file that is not JSON, a key the code consumes that the file does not carry, a
+key the file carries that no code consumes, and a value that is blank are all
+the same class of defect -- a prompt the agent would never see -- and all six
+raise :class:`PromptDataError`.
 
 The parse happens at import time (see this package's ``__init__``), so the
 defect surfaces when the server starts rather than when the first tool call
@@ -35,8 +36,13 @@ def resource_text(filename: str) -> str:
     """Return one prompt file's text from the installed package."""
     try:
         return resources.files(PACKAGE).joinpath(filename).read_text(encoding="utf-8")
-    except OSError as exc:
-        message = f"prompt file {filename!r} is missing from the {PACKAGE} package: {exc}"
+    except (OSError, UnicodeDecodeError) as exc:
+        # Both, because this module's whole point is one parse step that turns
+        # every packaged-data defect into one named error, and a file that is
+        # present but not valid UTF-8 is as much a broken install as an absent
+        # one. `UnicodeDecodeError` is a `ValueError`, so catching `OSError`
+        # alone let the corrupt case out as a raw decode traceback.
+        message = f"prompt file {filename!r} cannot be read from the {PACKAGE} package: {exc}"
         raise PromptDataError(message) from exc
 
 

@@ -284,3 +284,33 @@ class TestWireDescriptions:
         assert {tool.name for tool in tools} == set(TOOL_NAMES)
         for tool in tools:
             assert tool.description == TOOL_DESCRIPTIONS[tool.name], tool.name
+
+
+class TestAPackagedFileThatIsNotUtf8:
+    """The sixth defect class, in the module that exists to name the other five.
+
+    `loader`'s docstring enumerates five ways packaged data can be broken and
+    says all five raise `PromptDataError`. A prompt file that is present but
+    not valid UTF-8 is a sixth in the same class, and it escaped the wrapper:
+    `read_text(encoding="utf-8")` raises `UnicodeDecodeError`, which is a
+    `ValueError`, and the handler named only `OSError`.
+    """
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("no such file"),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        ],
+        ids=["absent", "not-utf8"],
+    )
+    def test_it_is_named_rather_than_raised_raw(self, monkeypatch, error):
+        traversable = loader.resources.files(loader.PACKAGE)
+
+        def refuse(*_args, **_kwargs):
+            raise error
+
+        monkeypatch.setattr(type(traversable.joinpath("x")), "read_text", refuse, raising=False)
+
+        with pytest.raises(PromptDataError, match="cannot be read from"):
+            loader.resource_text("messages.json")

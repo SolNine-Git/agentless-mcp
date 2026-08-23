@@ -473,3 +473,53 @@ class TestElisions:
         (outcome,) = result.outcomes
         assert outcome.status is EditStatus.NO_ANCHOR
         assert "anchor" in outcome.reason
+
+
+class TestAnEmptySearchCannotWrite:
+    """The guard lived in the two modules that cannot write, not in this one.
+
+    ``core/unidiff`` refuses an empty pre-image against an existing file and
+    ``core/patchlint`` refuses it too. Both read; neither writes.
+    ``apply_edits`` is the function that produces the new file contents, and
+    it accepted the same edit: the empty needle pads to ``"\\n\\n"``, matches
+    the first blank line -- or the file's end when there is none -- and the
+    replacement is written with the outcome reported as ``applied``.
+    """
+
+    def test_an_empty_search_against_an_existing_file_is_refused(self):
+        result = apply_edits(
+            [Edit(index=0, path="a.py", search="", replace="INJECTED\n")],
+            {"a.py": "line one\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.outcomes[0].status is EditStatus.NO_ANCHOR
+        assert "anchors nowhere" in result.outcomes[0].reason
+        assert result.new_contents == {}
+
+    def test_it_is_refused_before_a_blank_line_can_anchor_it(self):
+        # The file with a blank line in it is the worse case: the padded
+        # needle matches there, so the text lands in the middle rather than
+        # at the end, which reads as a deliberate hunk.
+        result = apply_edits(
+            [Edit(index=0, path="a.py", search="", replace="INJECTED\n")],
+            {"a.py": "line one\n\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.new_contents == {}
+
+    def test_a_sibling_edit_in_the_same_patch_is_cancelled_with_it(self):
+        # The write is all or nothing, so one refused block cancels the patch
+        # rather than leaving the other half on disk.
+        result = apply_edits(
+            [
+                Edit(index=0, path="a.py", search="line one", replace="LINE ONE"),
+                Edit(index=1, path="a.py", search="", replace="INJECTED\n"),
+            ],
+            {"a.py": "line one\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.outcomes[0].status is EditStatus.APPLIED
+        assert result.outcomes[1].status is EditStatus.NO_ANCHOR

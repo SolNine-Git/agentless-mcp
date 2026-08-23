@@ -56,9 +56,12 @@ def _resource_text() -> str:
     resource = resources.files(PACKAGE) / GUIDE_DIRECTORY / GUIDE_FILENAME
     try:
         return resource.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # A guide that is present but not valid UTF-8 is the same broken
+        # install as an absent one, and `UnicodeDecodeError` is a
+        # `ValueError`, so it escaped a handler that named only `OSError`.
         message = (
-            f"the agent guide is missing from the {PACKAGE} package "
+            f"the agent guide cannot be read from the {PACKAGE} package "
             f"(expected {GUIDE_DIRECTORY}/{GUIDE_FILENAME}): {exc}"
         )
         raise GuideDataError(message) from exc

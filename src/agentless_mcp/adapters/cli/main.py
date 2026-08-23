@@ -1150,10 +1150,9 @@ def _check_diagram(rendered: str, target: Path) -> int:
     and the two lengths -- enough to see whether the drift is the tree moving
     or the flags differing, without printing two diagrams.
     """
-    try:
-        committed = target.read_text(encoding="utf-8")
-    except OSError as error:
-        return fail(f"cannot read {target}: {error.strerror}", EXIT_USAGE)
+    committed, reason = _read_caller_file(target)
+    if committed is None:
+        return fail(f"cannot read {target}: {reason}", EXIT_USAGE)
 
     stripped = render.strip_fence(committed)
     if stripped == rendered:
@@ -1346,10 +1345,9 @@ def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
     """
     _ = services
     source = Path(args.verdicts)
-    try:
-        text = source.read_text(encoding="utf-8")
-    except OSError as error:
-        return fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
+    text, reason = _read_caller_file(source)
+    if text is None:
+        return fail(f"cannot read {source}: {reason}", EXIT_USAGE)
 
     loaded = load_verdicts(text)
     report = vote.rank(loaded.candidates, repro_valid=loaded.repro_valid)
@@ -1491,6 +1489,29 @@ def _cmd_guide(args: argparse.Namespace, services: CliServices) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _read_caller_file(path: Path) -> tuple[str | None, str]:
+    """Read a file the caller named, or say why it could not be read.
+
+    Read as given rather than through :func:`util.fslimits.read_bounded`,
+    which the repository-content readers use: that one applies a size cap,
+    refuses a symlink and substitutes replacement characters for undecodable
+    bytes. All three are right for a file a traversal discovered and wrong
+    for one a person typed on a command line.
+
+    What was missing is the decode failure. ``UnicodeDecodeError`` is a
+    ``ValueError``, so an ``except OSError`` around ``read_text`` let a
+    latin-1 patch file or a mistyped binary path out as a raw traceback --
+    which also puts an absolute local path on stderr. The MCP adapter's two
+    readers already catch both; this is the same handling on the other door.
+    """
+    try:
+        return path.read_text(encoding="utf-8"), ""
+    except OSError as error:
+        return None, error.strerror or str(error)
+    except UnicodeDecodeError as error:
+        return None, f"not valid UTF-8: byte {error.start} is {error.reason}"
+
+
 def _patch_text(args: argparse.Namespace) -> str | None:
     """Read the patch text from ``--file`` or stdin, or report why not.
 
@@ -1502,11 +1523,10 @@ def _patch_text(args: argparse.Namespace) -> str | None:
         return sys.stdin.read()
 
     source = Path(args.file)
-    try:
-        return source.read_text(encoding="utf-8")
-    except OSError as error:
-        fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
-        return None
+    text, reason = _read_caller_file(source)
+    if text is None:
+        fail(f"cannot read {source}: {reason}", EXIT_USAGE)
+    return text
 
 
 def _patch_call(
