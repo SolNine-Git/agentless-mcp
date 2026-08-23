@@ -647,6 +647,91 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
         assert report.any_passed
 
 
+# A conftest the fixture repository really carries, so the candidate below
+# would apply cleanly. The refusal has to be the reason it does not land, not
+# a search string that was never going to match.
+SEEDED_CONFTEST = "COLLECT_IGNORE = []\n"
+
+EDITS_CONFTEST = """\
+### conftest.py
+<<<<<<< SEARCH
+COLLECT_IGNORE = []
+=======
+COLLECT_IGNORE = ["check_regression.py"]
+>>>>>>> REPLACE
+"""
+
+
+class TestACandidateDoesNotRewriteItsOwnJudge:
+    """The write-side twin of the command-provenance rule."""
+
+    @pytest.fixture
+    def repo_with_conftest(self, seeded_bug_repo):
+        return seeded_bug_repo(overrides={"conftest.py": SEEDED_CONFTEST})
+
+    def test_a_candidate_editing_conftest_is_refused(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        report = validate(repo_with_conftest, candidates_dir({"06-conftest.txt": EDITS_CONFTEST}))
+        verdict = by_id(report)["06-conftest"]
+
+        assert verdict.apply_status is ApplyStatus.FAILED
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert verdict.equivalence_key is None
+        assert len(verdict.apply_reasons) == 1
+        assert "conftest.py" in verdict.apply_reasons[0]
+        assert "--allow-test-config-edits" in verdict.apply_reasons[0]
+
+    def test_the_opt_in_applies_the_same_candidate(
+        self, repo_with_conftest, candidates_dir, service, python_cmd
+    ):
+        report = service.validate(
+            resolve_repo(repo_with_conftest, None),
+            ValidateRequest(
+                candidates=candidates_dir({"06-conftest.txt": EDITS_CONFTEST}),
+                test_cmd=python_cmd("check_regression.py"),
+                timeout=60,
+                allow_test_config_edits=True,
+            ),
+        )
+
+        assert by_id(report)["06-conftest"].apply_status is ApplyStatus.OK
+
+    def test_an_ordinary_source_edit_needs_no_opt_in(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        report = validate(repo_with_conftest, candidates_dir({"01-plus.txt": PLUS}))
+
+        assert by_id(report)["01-plus"].apply_status is ApplyStatus.OK
+
+    def test_the_run_record_says_whether_the_opt_in_was_given(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        # A verdict document read back weeks later has to say whether a
+        # candidate was allowed to rewrite its own judge.
+        report = validate(repo_with_conftest, candidates_dir({"01-plus.txt": PLUS}))
+
+        assert report.header.as_dict()["allow_test_config_edits"] is False
+
+    @pytest.mark.parametrize(
+        ("path", "named"),
+        [
+            ("conftest.py", True),
+            ("tests/unit/conftest.py", True),
+            (".github/workflows/ci.yml", True),
+            ("Makefile", True),
+            ("pyproject.toml", True),
+            ("src/app.py", False),
+            ("docs/conftest.py.md", False),
+            ("src/pytest_helpers.py", False),
+        ],
+    )
+    def test_which_paths_name_what_the_tests_run(self, path, named):
+        # A nested conftest collects exactly as hard as a root one, and a file
+        # whose name merely contains one of the words does not collect at all.
+        assert bool(validate_module.test_config_paths([path])) is named
+
+
 class TestRunBudget:
     def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
         self, seeded_bug_repo, candidates_dir, validate, monkeypatch

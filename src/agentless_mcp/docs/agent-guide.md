@@ -858,6 +858,18 @@ exactly one fallback: a `test_cmd` in the repository's own
 - refused unless `--allow-repo-test-cmd` is present
 - printed on stderr before it runs
 
+**A candidate does not rewrite the judge either.** A candidate patch that
+edits `conftest.py`, a build file (`pyproject.toml`, `Makefile`, `setup.py`,
+`package.json`) or anything under `.github/` is refused before it is applied:
+those files name what the test command runs, so the candidate would be
+choosing how it is judged. Pass `--allow-test-config-edits` when the fix
+genuinely belongs in one of them. The refusal names the files and the flag.
+
+This is not a sandbox and cannot be one. A candidate is judged by running the
+tests against it, so its code runs by construction. What the refusal protects
+is narrower: a candidate cannot silently change the collection rules or the
+CI definition while looking like an ordinary source fix in the diff.
+
 The tool splits both commands into an argv and executes them without a
 shell, so `&&`, `;` and `$(...)` are arguments rather than statements. Wrap a
 multi-step command in a script and name the script.

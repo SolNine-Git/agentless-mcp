@@ -612,6 +612,10 @@ def _add_validate(subparsers: Any) -> None:
     ``--allow-repo-test-cmd`` says otherwise. There is still no ``Makefile``
     sniffing, no ``package.json`` scripts lookup and no built-in default.
 
+    ``--allow-test-config-edits`` is that rule's write-side twin: a candidate
+    that edits ``conftest.py``, a build file or a CI workflow is refused
+    before it is applied, because it would be choosing how it is judged.
+
     The opt-in is the gate, not the note printed beside it: this CLI is the
     front door any agent can reach over Bash, so "a human saw the command"
     is not a property the code can hold, and the refusal lives in
@@ -645,6 +649,13 @@ def _add_validate(subparsers: Any) -> None:
         help="allow the test command to come from the analysed repository's "
         ".agentless-mcp.json; without this the fallback is refused, because the "
         "repository would be choosing the command that judges it",
+    )
+    parser.add_argument(
+        "--allow-test-config-edits",
+        action="store_true",
+        help="allow a candidate patch to edit conftest.py, a build file or a CI workflow; "
+        "without this such a candidate is refused before it is applied, because it "
+        "would be choosing how it is judged",
     )
     parser.add_argument(
         "--pass-env",
@@ -1315,6 +1326,7 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             passthrough_env=tuple(dict.fromkeys(args.pass_env)),
             test_cmd_from_repo=from_config,
             allow_repo_test_cmd=args.allow_repo_test_cmd,
+            allow_test_config_edits=args.allow_test_config_edits,
         ),
     )
 

@@ -39,6 +39,21 @@ The opt-in is the command-provenance enforcement. Separately, every command
 runs with an allowlisted environment; ``passthrough_env`` names any additional
 parent variables the caller deliberately exposes.
 
+**A candidate may not rewrite the judge either.** The command-provenance rule
+above stops the repository nominating its own judge; its write-side twin stops
+a *candidate* doing the same thing. A candidate that edits ``conftest.py`` has
+changed what ``pytest`` collects, and one that edits a workflow file has
+changed what CI runs -- while looking like an ordinary source fix in the
+diff. Those edits are refused before the candidate is applied, and
+``allow_test_config_edits`` is the caller accepting them.
+
+Say plainly what this is not: it is not a sandbox, and it cannot be one. A
+candidate patch is judged by running the repository's tests against it, so the
+code it writes runs by construction -- that is the whole mechanism. What the
+refusal protects is narrower and real: a candidate cannot silently change
+*how it is judged*. The files listed in ``TEST_CONFIG_NAMES`` are the ones
+that decide what runs rather than what the code does.
+
 **A run bounds its own total cost.** ``timeout`` bounds one command;
 ``run_timeout``, when given, bounds the run. A batch is
 ``repeat_baseline + 1 + candidates x 2`` commands, so per-command bounds
@@ -54,18 +69,18 @@ only place that format is parsed and the only place it is written.
 
 import json
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TypeVar
 
 from agentless_mcp.application import envelope
 from agentless_mcp.application.patch_service import PatchService, load_edits
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo
 from agentless_mcp.core import sandbox
-from agentless_mcp.core.patches import ApplyResult
+from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.core.vote import VoteCandidate
 from agentless_mcp.util import bounds
@@ -80,6 +95,35 @@ DEFAULT_JOBS = 1
 DEFAULT_REPEAT_BASELINE = 1
 
 RECORD_KEY = "record"
+# The files that decide what the test command runs rather than what the code
+# does. A candidate editing one of these has rewritten its own judge, so the
+# edit is refused unless the caller opts in.
+#
+# Matched on the basename anywhere in the tree, because a nested
+# ``tests/unit/conftest.py`` collects exactly as hard as a root one, plus any
+# path under a CI directory.
+TEST_CONFIG_NAMES = frozenset(
+    {
+        "conftest.py",
+        "pytest.ini",
+        "tox.ini",
+        "noxfile.py",
+        "setup.cfg",
+        "setup.py",
+        "pyproject.toml",
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "package.json",
+        ".pre-commit-config.yaml",
+        "sitecustomize.py",
+        "usercustomize.py",
+    }
+)
+
+# Path prefixes whose whole subtree decides what CI runs.
+TEST_CONFIG_PREFIXES = (".github/",)
+
 RECORD_RUN = "run"
 RECORD_CANDIDATE = "candidate"
 
@@ -187,6 +231,10 @@ class ValidateRequest:
     where the command came from, not on which adapter asked, because that is
     the property the refusal protects.
 
+    ``allow_test_config_edits`` is the write-side twin: without it a candidate
+    that edits a file naming what the tests run is refused before it is
+    applied. See the module docstring for what that does and does not protect.
+
     ``run_timeout`` bounds the whole run in seconds. ``None`` is the historical
     behaviour: no aggregate bound at all.
     """
@@ -201,6 +249,7 @@ class ValidateRequest:
     passthrough_env: tuple[str, ...] = ()
     test_cmd_from_repo: bool = False
     allow_repo_test_cmd: bool = False
+    allow_test_config_edits: bool = False
 
 
 @dataclass(frozen=True)
@@ -294,6 +343,7 @@ class RunHeader:
     repro_baseline_run: RunResult | None = None
     repeat_baseline: int = DEFAULT_REPEAT_BASELINE
     baseline_failures: int = 0
+    allow_test_config_edits: bool = False
 
     @property
     def repro_valid(self) -> bool:
@@ -322,6 +372,10 @@ class RunHeader:
             "flaky_baseline": self.flaky_baseline,
             "repro_verdict": self.repro_verdict.value,
             "repro_valid": self.repro_valid,
+            # On the run record rather than only in the invocation, because a
+            # verdict read back weeks later has to say whether a candidate was
+            # allowed to rewrite its own judge.
+            "allow_test_config_edits": self.allow_test_config_edits,
             "baseline_run": None if self.baseline_run is None else self.baseline_run.as_dict(),
             "repro_baseline_run": (
                 None if self.repro_baseline_run is None else self.repro_baseline_run.as_dict()
@@ -622,29 +676,19 @@ class ValidateService:
             # it is a refused invocation.
             scoped = resolve_repo(tree, None)
 
-            try:
-                parsed = load_edits(candidate.text)
-            except AtlasError as error:
-                return _apply_failed(candidate, (str(error),), started)
-
-            if parsed.errors:
-                reasons = tuple(
-                    f"block {error.index} ({error.path or 'no path'}): {error.reason}"
-                    for error in parsed.errors
-                )
-                return _apply_failed(candidate, reasons, started)
-            if not parsed.edits:
-                return _apply_failed(candidate, ("the candidate contains no edits",), started)
+            edits, refusal = _candidate_edits(candidate, request, started)
+            if refusal is not None:
+                return refusal
 
             # Normalising first computes the equivalence key against the same
             # unpatched content the apply is about to match against, and
             # reports every block that would not land -- so a candidate that
             # cannot apply costs no test run at all.
-            normalized = self._patches.normalize(parsed.edits, scoped)
+            normalized = self._patches.normalize(edits, scoped)
             if not normalized.ok:
                 return _apply_failed(candidate, _reasons(normalized.result), started)
 
-            applied = self._patches.apply(parsed.edits, scoped, in_place=True)
+            applied = self._patches.apply(edits, scoped, in_place=True)
             if not applied.ok:
                 return _apply_failed(candidate, _reasons(applied.result), started)
 
@@ -905,6 +949,67 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _candidate_edits(
+    candidate: Candidate, request: ValidateRequest, started: float
+) -> tuple[tuple[Edit, ...], CandidateVerdict | None]:
+    """Parse one candidate's edits, or say why it cannot be applied at all.
+
+    Every refusal here happens before the worktree is written to, so a
+    candidate that was never going to be judged costs no apply and no test
+    run.
+    """
+    try:
+        parsed = load_edits(candidate.text)
+    except AtlasError as error:
+        return (), _apply_failed(candidate, (str(error),), started)
+
+    if parsed.errors:
+        reasons = tuple(
+            f"block {error.index} ({error.path or 'no path'}): {error.reason}"
+            for error in parsed.errors
+        )
+        return (), _apply_failed(candidate, reasons, started)
+    if not parsed.edits:
+        return (), _apply_failed(candidate, ("the candidate contains no edits",), started)
+
+    if not request.allow_test_config_edits:
+        rewritten = test_config_paths(edit.path for edit in parsed.edits)
+        if rewritten:
+            return (), _apply_failed(candidate, _test_config_reasons(rewritten), started)
+
+    return tuple(parsed.edits), None
+
+
+def test_config_paths(paths: Iterable[str]) -> tuple[str, ...]:
+    """Return the given paths that name what the test command runs.
+
+    Public because the refusal it feeds is a documented property of a run, and
+    a caller building a request wants the same answer this service will give
+    rather than a second list that drifts from it.
+    """
+    named = sorted(
+        {
+            path
+            for path in paths
+            if PurePosixPath(path).name in TEST_CONFIG_NAMES
+            or path.startswith(TEST_CONFIG_PREFIXES)
+        }
+    )
+    return tuple(named)
+
+
+def _test_config_reasons(paths: Sequence[str]) -> tuple[str, ...]:
+    """Say which edits were refused and what accepting them would mean."""
+    listed = ", ".join(paths)
+    return (
+        (
+            f"refusing to apply edits to {listed}: those files name what the test command "
+            "runs, so the candidate would be choosing how it is judged. Opt in with "
+            "--allow-test-config-edits."
+        ),
+    )
+
+
 def _refuse_unowned_command(request: ValidateRequest) -> None:
     """Refuse a test command that the analysed repository named, unless opted in.
 
@@ -1076,6 +1181,7 @@ def _header(
         repro_baseline_run=repro_run,
         repeat_baseline=outcome.repeats,
         baseline_failures=outcome.failures,
+        allow_test_config_edits=request.allow_test_config_edits,
     )
 
 
