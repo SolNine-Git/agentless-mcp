@@ -12,8 +12,10 @@ developer's real cache.
 """
 
 import json
+import logging
 import sqlite3
 import subprocess
+import threading
 from contextlib import closing
 
 import pytest
@@ -30,7 +32,7 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, refs
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import fslimits
-from agentless_mcp.util.errors import CacheLocked
+from agentless_mcp.util.errors import AtlasError, CacheLocked
 
 CORE = '''\
 """Core."""
@@ -823,3 +825,134 @@ def _tree_oid(root) -> str:
     oid = gitinfo.tree_oid(root)
     assert oid is not None
     return oid
+
+
+@pytest.fixture
+def auto_index_isolated(monkeypatch):
+    """A clean per-test auto-index state, with the suite-wide opt-out lifted."""
+    monkeypatch.delenv(cache.ENV_NO_AUTO_INDEX, raising=False)
+    monkeypatch.setattr(cache, "_AUTO_INDEX_RUNS", {})
+
+
+class TestAutoIndex:
+    """Issue #21: the background refresh of a stale tag cache."""
+
+    def test_first_use_builds_the_absent_index(self, repo, extractor, auto_index_isolated):
+        thread = cache.start_auto_index(repo, extractor)
+        assert thread is not None
+        thread.join(timeout=30)
+        assert not thread.is_alive()
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        assert source.receipt.endswith("fresh")
+
+    def test_a_current_index_starts_nothing(self, repo, extractor, auto_index_isolated):
+        cache.build_index(repo, extractor)
+        assert cache.start_auto_index(repo, extractor) is None
+
+    def test_the_environment_opt_out_keeps_the_refresh_off(
+        self, repo, extractor, monkeypatch, auto_index_isolated
+    ):
+        monkeypatch.setenv(cache.ENV_NO_AUTO_INDEX, "1")
+        monkeypatch.setattr(cache, "build_index", self._must_not_index)
+        assert cache.start_auto_index(repo, extractor) is None
+        assert cache.auto_index_in_progress(cache.cache_path(repo)) is False
+
+    def test_a_running_refresh_is_not_duplicated(
+        self, repo, extractor, monkeypatch, auto_index_isolated
+    ):
+        release = threading.Event()
+        real = cache.build_index
+
+        def slow(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+            release.wait(timeout=10)
+            return real(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+
+        monkeypatch.setattr(cache, "build_index", slow)
+        thread = cache.start_auto_index(repo, extractor)
+        assert thread is not None
+        # The start returned while the refresh is still running: the caller is
+        # served live first and the cache lands later.
+        assert thread.is_alive()
+        # A second first-use of the same repository joins the same refresh.
+        assert cache.start_auto_index(repo, extractor) is thread
+        release.set()
+        thread.join(timeout=30)
+        assert not thread.is_alive()
+
+    def test_one_attempt_per_generation_even_after_failure(
+        self, repo, extractor, monkeypatch, auto_index_isolated, caplog
+    ):
+        def exploding(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+            message = "boom"
+            raise AtlasError(message)
+
+        monkeypatch.setattr(cache, "build_index", exploding)
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
+            thread = cache.start_auto_index(repo, extractor)
+            assert thread is not None
+            thread.join(timeout=10)
+        assert "background index refresh" in caplog.text
+        assert "failed: boom" in caplog.text
+
+        # The generation did not move, so the failed attempt is not retried:
+        # a broken build must not become a per-call retry storm.
+        monkeypatch.setattr(cache, "build_index", self._must_not_index)
+        assert cache.start_auto_index(repo, extractor) is None
+
+    def test_a_new_generation_rearms_the_trigger(self, repo, extractor, auto_index_isolated):
+        first = cache.start_auto_index(repo, extractor)
+        assert first is not None
+        first.join(timeout=30)
+
+        (repo / "core.py").write_text(CORE + "\nEXTRA = 1\n", encoding="utf-8")
+        second = cache.start_auto_index(repo, extractor)
+        assert second is not None
+        assert second is not first
+        second.join(timeout=30)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        assert source.receipt.endswith("fresh")
+
+    def test_a_held_lock_is_a_silent_skip(self, repo, extractor, auto_index_isolated, caplog):
+        database = cache.cache_path(repo)
+        database.parent.mkdir(parents=True, exist_ok=True)
+        with (
+            caplog.at_level(logging.INFO, logger="agentless_mcp.core.cache"),
+            cache._write_lock(database.parent, repo),
+        ):
+            cache._auto_index(repo, extractor, None, None)
+        assert "another process holds the index lock" in caplog.text
+        assert "failed" not in caplog.text
+
+    def test_the_receipt_names_the_refresh_while_it_runs(
+        self, repo, extractor, monkeypatch, auto_index_isolated
+    ):
+        cache.build_index(repo, extractor)
+        (repo / "core.py").write_text(CORE + "\nEXTRA = 1\n", encoding="utf-8")
+
+        release = threading.Event()
+        real = cache.build_index
+
+        def slow(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+            release.wait(timeout=10)
+            return real(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+
+        monkeypatch.setattr(cache, "build_index", slow)
+        thread = cache.start_auto_index(repo, extractor)
+        assert thread is not None
+        try:
+            stale = cache.open_source(repo, extractor, tree_oid=None)
+            assert "a background refresh is in progress" in stale.receipt
+            assert "reindex for performance" not in stale.receipt
+        finally:
+            release.set()
+            thread.join(timeout=30)
+
+        # Once the refresh has landed, the remediation is gone with the
+        # mismatch itself.
+        fresh = cache.open_source(repo, extractor, tree_oid=None)
+        assert fresh.receipt.endswith("fresh")
+
+    @staticmethod
+    def _must_not_index(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+        pytest.fail("the background refresh must not run here")

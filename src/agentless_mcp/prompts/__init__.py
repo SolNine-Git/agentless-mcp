@@ -91,6 +91,8 @@ class MessageText:
     overview_stable_ids: str
     slice_range_beyond_file: str
     cache_stale_remediation: str
+    cache_stale_refreshing: str
+    cache_absent_refreshing: str
     cache_build_hint: str
     cache_discarded_no_index: str
     cache_discarded_old_schema: str
