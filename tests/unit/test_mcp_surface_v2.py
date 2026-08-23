@@ -491,3 +491,89 @@ class TestSurfaceFlag:
 
         assert server_module.serve(["--root", str(tmp_path)], services) == 0
         assert built["surface"] == SURFACE_V2
+
+
+class TestZeroValuesAreNotStrayParameters:
+    """A parameter set to nothing is not a parameter the operation was given.
+
+    A generated call commonly fills every declared optional with a zero value.
+    Refusing those as stray refuses a call that asked for nothing unusual --
+    and for a flag whose v1 counterpart defaulted to False, it refuses the
+    default itself.
+    """
+
+    def call_ok(self, services, one_repo, tool, arguments):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+        return call(server, tool, {"repo_root": str(one_repo), **arguments})
+
+    def test_a_false_flag_is_not_a_stray_parameter(self, services, one_repo):
+        self.call_ok(services, one_repo, "read", {"operation": "dir", "whole_file": False})
+
+    def test_a_blank_string_is_not_a_stray_parameter(self, services, one_repo):
+        self.call_ok(
+            services, one_repo, "orient", {"operation": "map", "source": "", "target": "  "}
+        )
+
+    def test_false_booleans_foreign_to_map_are_not_stray(self, services, one_repo):
+        self.call_ok(
+            services,
+            one_repo,
+            "orient",
+            {"operation": "map", "include_unique": False, "group_by_communities": False},
+        )
+
+    def test_a_real_value_is_still_refused_as_stray(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="does not accept: source"):
+            call(
+                server,
+                "orient",
+                {"repo_root": str(one_repo), "operation": "map", "source": "quote"},
+            )
+
+
+class TestMapLimitMatchesItsV1Counterpart:
+    """orient's map operation carries repo_map's file cap, not the listing cap.
+
+    `limit` is one wire parameter serving three operations, and the ceiling is
+    not shared: communities and cycles are listings, map is the repository map
+    whose bound `repo_map` publishes as `max_files`.
+    """
+
+    def test_a_limit_past_the_v1_cap_is_refused(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="rejects limit=201"):
+            call(
+                server,
+                "orient",
+                {"repo_root": str(one_repo), "operation": "map", "limit": 201},
+            )
+
+    def test_the_refusal_names_the_range_and_why(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError) as raised:
+            call(
+                server,
+                "orient",
+                {"repo_root": str(one_repo), "operation": "map", "limit": 500},
+            )
+
+        message = str(raised.value)
+        assert "1-200" in message, message
+        assert "max_files" in message, message
+        assert "validation error" not in message, message
+
+    def test_the_cap_itself_is_accepted(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        call(server, "orient", {"repo_root": str(one_repo), "operation": "map", "limit": 200})
+
+    def test_the_listing_operations_keep_the_wider_ceiling(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        call(
+            server, "orient", {"repo_root": str(one_repo), "operation": "communities", "limit": 500}
+        )

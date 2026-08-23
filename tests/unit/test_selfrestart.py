@@ -80,6 +80,9 @@ class TestMonitor:
         answers = iter(["A", "A", None, "B"])
         monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: next(answers))
 
+        monkeypatch.setattr(selfrestart, "is_installed", lambda name: True)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 0.0)
+
         thread = selfrestart.start_update_monitor("x")
         assert thread is not None
         # A second start is a no-op on the same thread: exactly one monitor.
@@ -136,3 +139,221 @@ class TestSuiteHermeticity:
         # monitor thread polling during unrelated tests would be exactly the
         # ambient-state dependence the suite forbids.
         assert selfrestart.auto_restart_disabled() is True
+
+
+class TestInterruptOwnership:
+    """Exactly one interrupt belongs to the monitor; every other one is a human.
+
+    ``restart_pending`` says the monitor fired at some point, not that it raised
+    the interrupt now being handled. Keying the absorb-or-propagate decision on
+    it turned an operator's Ctrl+C during a draining restart into another
+    restart.
+    """
+
+    def test_the_claim_is_false_before_the_monitor_fires(self, monitor_isolated):
+        assert selfrestart.claim_monitor_interrupt() is False
+
+    def test_the_monitors_own_interrupt_is_claimable_once(self, monitor_isolated):
+        selfrestart._MONITOR.interrupt_owed = True
+
+        assert selfrestart.claim_monitor_interrupt() is True
+        assert selfrestart.claim_monitor_interrupt() is False
+
+    def test_a_pending_restart_does_not_by_itself_grant_the_claim(self, monitor_isolated):
+        # The monitor fired and its one signal was already consumed; a second
+        # interrupt arriving now is the operator's.
+        selfrestart._MONITOR.pending = True
+        selfrestart._MONITOR.interrupt_owed = False
+
+        assert selfrestart.restart_pending() is True
+        assert selfrestart.claim_monitor_interrupt() is False
+
+
+class TestExecFailureDoesNotKillTheServer:
+    """A failed exec must not be worse than the drift it was fixing.
+
+    Before this feature a drifting server kept serving stale code. An
+    unhandled OSError out of the exec would make it exit by traceback, which
+    is strictly less available than what it replaced.
+    """
+
+    def test_a_failing_exec_exits_cleanly_for_a_supervisor(self, monkeypatch, caplog):
+        monkeypatch.setattr(selfrestart.grammars, "wait_for_auto_warm", lambda: None)
+        monkeypatch.setattr(selfrestart.sys, "platform", "linux")
+
+        def boom(executable, argv):
+            raise OSError(2, "No such file or directory")
+
+        monkeypatch.setattr(selfrestart.os, "execv", boom)
+
+        with caplog.at_level(logging.ERROR, logger="agentless_mcp.core.selfrestart"):
+            assert selfrestart.exec_or_exit() == 0
+
+        assert "exec of" in caplog.text
+
+    def test_the_grammar_warm_is_joined_before_the_image_is_replaced(self, monkeypatch):
+        order = []
+        monkeypatch.setattr(
+            selfrestart.grammars, "wait_for_auto_warm", lambda: order.append("joined")
+        )
+        monkeypatch.setattr(selfrestart.sys, "platform", "linux")
+        monkeypatch.setattr(selfrestart.os, "execv", lambda executable, argv: order.append("execv"))
+
+        selfrestart.exec_or_exit()
+
+        # An extraction killed half-written leaves a truncated library in a
+        # cache every later process reads, and exec runs no cleanup.
+        assert order == ["joined", "execv"]
+
+    def test_the_windows_path_joins_the_warm_too(self, monkeypatch):
+        order = []
+        monkeypatch.setattr(
+            selfrestart.grammars, "wait_for_auto_warm", lambda: order.append("joined")
+        )
+        monkeypatch.setattr(selfrestart.sys, "platform", "win32")
+        monkeypatch.setattr(selfrestart.os, "execv", self._must_not_exec)
+
+        assert selfrestart.exec_or_exit() == 0
+        assert order == ["joined"]
+
+    @staticmethod
+    def _must_not_exec(executable, argv):
+        message = "windows must exit for the supervisor rather than exec"
+        raise AssertionError(message)
+
+
+class TestBaselineDuringAnUpgrade:
+    """An unreadable fingerprint at startup means wait, not "nothing to watch".
+
+    A server started by the very install event it should watch for -- which is
+    what a path-unit restart does -- can find RECORD mid-rewrite. Treating that
+    transient as a bare source tree switched the feature off for the life of
+    the process.
+    """
+
+    def test_an_installed_package_with_an_unreadable_record_is_still_watched(
+        self, monkeypatch, monitor_isolated
+    ):
+        monkeypatch.setattr(selfrestart, "is_installed", lambda name: True)
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: None)
+        # Stub the loop itself: a real monitor thread outliving this test would
+        # keep polling into later ones and raise signals into their stubs.
+        seen = []
+        monkeypatch.setattr(selfrestart, "_watch", lambda name, baseline: seen.append(baseline))
+
+        thread = selfrestart.start_update_monitor("agentless-mcp")
+
+        assert thread is not None
+        thread.join(timeout=5)
+        # Watched with no baseline: the first readable fingerprint sets it.
+        assert seen == [None]
+
+    def test_a_bare_source_tree_is_still_not_watched(self, monkeypatch, monitor_isolated):
+        monkeypatch.setattr(selfrestart, "is_installed", lambda name: False)
+
+        assert selfrestart.start_update_monitor("agentless-mcp") is None
+
+    def test_the_first_readable_fingerprint_becomes_the_baseline(
+        self, monkeypatch, monitor_isolated
+    ):
+        raised = []
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", raised.append)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 0.0)
+        reads = iter([None, "1.0:aaaa", "1.0:aaaa", "2.0:bbbb"])
+        monkeypatch.setattr(
+            selfrestart, "install_fingerprint", lambda name: next(reads, "2.0:bbbb")
+        )
+
+        selfrestart._watch("agentless-mcp", None)
+
+        # The None was waited out, "1.0:aaaa" became the baseline, and only the
+        # move away from it restarted.
+        assert raised == [signal.SIGINT]
+        assert selfrestart.restart_pending() is True
+        assert selfrestart.claim_monitor_interrupt() is True
+
+
+class _StopWatchingError(Exception):
+    """Break out of the monitor's infinite poll loop from inside a stub."""
+
+
+class TestMinimumUptime:
+    """An early change is held until the minimum uptime, never discarded.
+
+    Holding bounds how often a process can bounce. Discarding would lose the
+    upgrade entirely: an install landing seconds after startup is ordinary, and
+    adopting its fingerprint as the new baseline would leave this process
+    serving the old code forever with nothing to show it had happened.
+    """
+
+    def test_a_change_inside_the_window_does_not_restart_yet(
+        self, monkeypatch, monitor_isolated, caplog
+    ):
+        raised = []
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", raised.append)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 3600.0)
+        selfrestart._MONITOR.started = selfrestart.time.monotonic()
+
+        polls = []
+
+        def fingerprint(name):
+            polls.append(1)
+            if len(polls) > 3:
+                raise _StopWatchingError
+            return "2.0:bbbb"
+
+        monkeypatch.setattr(selfrestart, "install_fingerprint", fingerprint)
+
+        with (
+            caplog.at_level(logging.INFO, logger="agentless_mcp.core.selfrestart"),
+            pytest.raises(_StopWatchingError),
+        ):
+            selfrestart._watch("agentless-mcp", "1.0:aaaa")
+
+        assert raised == []
+        assert selfrestart.restart_pending() is False
+        assert "holding the restart" in caplog.text
+
+    def test_the_held_change_still_restarts_once_the_window_passes(
+        self, monkeypatch, monitor_isolated
+    ):
+        raised = []
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", raised.append)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 3600.0)
+        # Started an hour ago as far as the guard is concerned: the same change
+        # that was held above is now old enough to act on.
+        selfrestart._MONITOR.started = selfrestart.time.monotonic() - 7200
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: "2.0:bbbb")
+
+        selfrestart._watch("agentless-mcp", "1.0:aaaa")
+
+        assert raised == [signal.SIGINT]
+        assert selfrestart.restart_pending() is True
+
+    def test_the_upgrade_is_never_adopted_as_the_new_baseline(self, monkeypatch, monitor_isolated):
+        """The regression this guard must not become.
+
+        Adopting the changed fingerprint while inside the window would make the
+        difference vanish, so the restart would never fire even after the window
+        passed. Uptime crosses the threshold mid-loop here; the change must
+        still be there to act on.
+        """
+        raised = []
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", raised.append)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 3600.0)
+        selfrestart._MONITOR.started = selfrestart.time.monotonic()
+
+        polls = []
+
+        def fingerprint(name):
+            polls.append(1)
+            if len(polls) == 3:
+                # The window passes between polls.
+                selfrestart._MONITOR.started = selfrestart.time.monotonic() - 7200
+            return "2.0:bbbb"
+
+        monkeypatch.setattr(selfrestart, "install_fingerprint", fingerprint)
+
+        selfrestart._watch("agentless-mcp", "1.0:aaaa")
+
+        assert raised == [signal.SIGINT]

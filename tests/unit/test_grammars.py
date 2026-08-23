@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 import tree_sitter_language_pack as pack
@@ -247,3 +248,53 @@ class TestColdCacheOffline:
         assert result.returncode == 0, result.stdout + result.stderr
         assert result.stdout.startswith("fetch failed: ")
         assert not (cold / "libtree_sitter_json.so").exists()
+
+
+class TestWaitBudget:
+    """The wait is budgeted from the wait, not from the warm's start.
+
+    The callers that need this -- a CLI process at its exit, a server about to
+    replace its own image -- can arrive long after the start deadline lapsed.
+    A lapsed deadline read as "nothing to wait for" skipped the join entirely,
+    which is the mid-extraction kill the function exists to prevent.
+    """
+
+    def test_a_lapsed_start_deadline_still_joins(self, monkeypatch):
+        joined = []
+
+        class Warm:
+            def is_alive(self):
+                return False
+
+            def join(self, timeout=None):
+                joined.append(timeout)
+
+        state = grammars._AutoWarmState(thread=Warm(), deadline=time.monotonic() - 3600)
+        monkeypatch.setattr(grammars, "_AUTO_WARM", state)
+
+        grammars.wait_for_auto_warm()
+
+        assert joined == [grammars.AUTO_WARM_JOIN_SECONDS]
+
+    def test_no_warm_means_no_wait(self, monkeypatch):
+        monkeypatch.setattr(grammars, "_AUTO_WARM", grammars._AutoWarmState())
+
+        grammars.wait_for_auto_warm()
+
+    def test_a_warm_that_outlasts_the_budget_is_reported_not_awaited(self, monkeypatch, caplog):
+        class Stuck:
+            def is_alive(self):
+                return True
+
+            def join(self, timeout=None):
+                return None
+
+        monkeypatch.setattr(grammars, "AUTO_WARM_JOIN_SECONDS", 0.01)
+        monkeypatch.setattr(
+            grammars, "_AUTO_WARM", grammars._AutoWarmState(thread=Stuck(), deadline=0.0)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.grammars"):
+            grammars.wait_for_auto_warm()
+
+        assert "may be truncated" in caplog.text

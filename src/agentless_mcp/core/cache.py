@@ -762,7 +762,7 @@ def start_auto_index(
 
     with _AUTO_INDEX_LOCK:
         raced = _AUTO_INDEX_RUNS.get(database)
-        if raced is not None and raced is not run and raced.thread.is_alive():
+        if raced is not None and raced is not run and raced.generation == generation:
             return raced.thread
         thread = threading.Thread(
             target=_auto_index,
@@ -771,7 +771,14 @@ def start_auto_index(
             daemon=True,
         )
         _AUTO_INDEX_RUNS[database] = _AutoIndexRun(thread=thread, generation=generation)
-    thread.start()
+        # Started under the lock, not after it. A thread that is registered but
+        # not yet started reads as ``is_alive() == False``, so a second caller
+        # that had already found the registry empty saw no live run, fell past
+        # the guard, and started a duplicate index of the same generation. The
+        # guard now keys on the generation this run targets -- the thing the
+        # one-attempt-per-generation rule is actually about -- rather than on
+        # whether the thread has reached its first instruction.
+        thread.start()
     return thread
 
 

@@ -79,6 +79,7 @@ class MessageText:
     op_rejects_parameters: str
     op_requires_parameters: str
     path_needs_endpoints: str
+    map_limit_out_of_range: str
     repo_refused_no_roots: str
     repo_refused_not_allowed: str
     roots_file_hint: str
