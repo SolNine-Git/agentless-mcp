@@ -64,8 +64,9 @@ _MIN_QUOTED_LITERAL_CHARS = 2
 
 # Rationale comments are structural source facts, not generated summaries.
 # Only comment nodes reach these expressions, so a string containing
-# ``TODO:`` is never promoted into the graph. Text is capped before it enters
-# the cache or any response.
+# ``TODO:`` is never promoted into the graph. Only the text is capped before
+# it enters the cache or any response. A file contributes one rationale for
+# each marker line, and that count is not capped.
 _RATIONALE_MARKER = re.compile(r"\b(NOTE|WHY|HACK|TODO)\s*:\s*(.*)")
 _RATIONALE_CITATION = re.compile(r"\b(?:ADR|RFC)(?:[-\s#:]*)(\d+)\b", re.IGNORECASE)
 _MAX_RATIONALE_CHARS = 240
@@ -447,11 +448,36 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
     # Deterministic non-code surfaces use dedicated symbol handlers below;
     # these rows own their reference node types and keep the registry's trust
     # metadata in the same table as every other tier-2 language.
-    "json": LanguageConfig((), (), (), identifier_node_types=("string_content",)),
-    "toml": LanguageConfig((), (), (), identifier_node_types=("bare_key", "quoted_key")),
-    "yaml": LanguageConfig((), (), (), identifier_node_types=("string_scalar",)),
-    "hcl": LanguageConfig((), (), (), identifier_node_types=("identifier", "template_literal")),
-    "sql": LanguageConfig((), (), (), identifier_node_types=("identifier",)),
+    "json": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("string_content",),
+    ),
+    "toml": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("bare_key", "quoted_key"),
+    ),
+    "yaml": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("string_scalar",),
+    ),
+    "hcl": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("identifier", "template_literal"),
+    ),
+    "sql": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("identifier",),
+    ),
 }
 
 # C and C++ are handled by dedicated methods due to their nested declarator
@@ -694,7 +720,11 @@ def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
 
 
 def _nearest_scope(node: Node, scopes: Sequence[_ScopeBuilder]) -> _ScopeBuilder:
-    """Return the innermost lexical scope containing ``node``."""
+    """Return the innermost lexical scope containing ``node``.
+
+    ``min`` needs no default: the module scope's boundary is the root node,
+    so it contains every node the tree can offer.
+    """
     candidates = [
         scope
         for scope in scopes
@@ -872,9 +902,6 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     answer this tool could give.
     """
     wanted = identifier_node_types(language)
-    if not wanted:
-        return []
-
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
     tree = parser.parse(data)
@@ -1014,7 +1041,7 @@ def _comment_text(raw: str) -> str:
 def _attach_rationales(
     symbols: list[ASTSymbol], rationales: tuple[Rationale, ...]
 ) -> list[ASTSymbol]:
-    """Attach each rationale to the innermost symbol whose span contains it."""
+    """Attach each rationale to the last symbol that opens before it and contains it."""
     attached: dict[int, list[Rationale]] = {}
     for rationale in rationales:
         containing = [
@@ -1149,7 +1176,7 @@ class TreeSitterExtractor:
         ".tsx": "tsx",
         # Go (generic extractor)
         ".go": "go",
-        # Lua (generic extractor — Neovim plugins)
+        # Lua (dedicated extractor — Neovim plugins)
         ".lua": "lua",
         # C / C++ (dedicated extractor)
         ".c": "c",
@@ -1292,8 +1319,8 @@ class TreeSitterExtractor:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
-        tree = parser.parse(bytes(source, "utf-8"))
         source_bytes = bytes(source, "utf-8")
+        tree = parser.parse(source_bytes)
 
         # get_parser succeeded, so the language is registered.
         symbols: list[ASTSymbol] = []
@@ -1320,8 +1347,8 @@ class TreeSitterExtractor:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
-        tree = parser.parse(bytes(source, "utf-8"))
         source_bytes = bytes(source, "utf-8")
+        tree = parser.parse(source_bytes)
 
         # get_parser succeeded, so the language is registered.
         imports: list[ImportStatement] = []
@@ -1588,7 +1615,9 @@ class TreeSitterExtractor:
         result_node = node.child_by_field_name("return_type") or node.child_by_field_name("result")
         # TypeScript's return_type is a `type_annotation`, so its text arrives
         # as ": string"; the arrow already says what the colon would.
-        result_text = self._node_text(result_node, source).lstrip(": ") if result_node else ""
+        result_text = (
+            self._node_text(result_node, source).removeprefix(":").strip() if result_node else ""
+        )
         result = f" -> {result_text}" if result_text else ""
 
         return f"fn {name}{params}{result}"
@@ -1823,12 +1852,7 @@ class TreeSitterExtractor:
         if not name:
             return
 
-        has_func_value = var_list is not None and any(
-            c.type == "function_definition" for c in var_list.children
-        )
-
-        if has_func_value:
-            assert var_list is not None  # implied by has_func_value
+        if var_list is not None and any(c.type == "function_definition" for c in var_list.children):
             params = self._lua_assigned_func_params(var_list, source)
             symbols.append(
                 self._lua_symbol(
@@ -1871,15 +1895,11 @@ class TreeSitterExtractor:
         if not name:
             return
 
-        has_func_value = val_list is not None and any(
-            c.type == "function_definition" for c in val_list.children
-        )
         has_table_value = val_list is not None and any(
             c.type == "table_constructor" for c in val_list.children
         )
 
-        if has_func_value:
-            assert val_list is not None  # implied by has_func_value
+        if val_list is not None and any(c.type == "function_definition" for c in val_list.children):
             params = self._lua_assigned_func_params(val_list, source)
             symbols.append(
                 self._lua_symbol(
@@ -2131,12 +2151,12 @@ class TreeSitterExtractor:
 
     @staticmethod
     def _has_nested_pair(node: Node) -> bool:
-        """True when ``node`` contains another config mapping pair."""
-        return any(
-            child.type in {"pair", "block_mapping_pair"}
-            for child in walk_nodes(node)
-            if child.id != node.id
-        )
+        """True when ``node`` contains a config mapping pair.
+
+        The caller passes a pair's value node, which no grammar in the table
+        spells as a pair, so the walk needs no guard against ``node`` itself.
+        """
+        return any(child.type in {"pair", "block_mapping_pair"} for child in walk_nodes(node))
 
     def _data_key(self, node: Node, source: bytes, language: str) -> str:
         """Return the key one config pair or TOML table declares."""
@@ -2586,7 +2606,7 @@ class TreeSitterExtractor:
         bases = self._get_bases(node, source)
         decorators = extra_decorators or self._get_own_decorators(node, source)
 
-        kind = self._classify_class(class_name, bases, decorators)
+        kind = self._classify_class(bases, decorators)
 
         superclasses_node = node.child_by_field_name("superclasses")
         bases_text = self._node_text(superclasses_node, source) if superclasses_node else ""
@@ -2622,11 +2642,8 @@ class TreeSitterExtractor:
                         child, source, module_path, symbols, parent_class=class_name
                     )
 
-    def _classify_class(
-        self, name: str, bases: tuple[str, ...], decorators: tuple[str, ...]
-    ) -> SymbolKind:
+    def _classify_class(self, bases: tuple[str, ...], decorators: tuple[str, ...]) -> SymbolKind:
         """Determine specific SymbolKind for a class."""
-        _ = name
         dec_names = {d.split("(")[0] for d in decorators}
         if "dataclass" in dec_names or "dataclasses.dataclass" in dec_names:
             return SymbolKind.DATACLASS
@@ -2727,7 +2744,7 @@ class TreeSitterExtractor:
         its tests and which used to be invisible to the symbol map entirely.
         """
         for child in declarations_under(root, RUST_ITEM_TYPES):
-            self._visit_rust_item(child, source, module_path, symbols, parent_class="")
+            self._visit_rust_item(child, source, module_path, symbols)
 
     def _visit_rust_item(
         self,
@@ -2735,11 +2752,10 @@ class TreeSitterExtractor:
         source: bytes,
         module_path: str,
         symbols: list[ASTSymbol],
-        parent_class: str,
     ) -> None:
         """Dispatch a single Rust AST item to the appropriate extractor."""
         if node.type == "function_item":
-            symbols.append(self._extract_rust_function(node, source, module_path, parent_class))
+            symbols.append(self._extract_rust_function(node, source, module_path, parent_class=""))
         elif node.type in ("struct_item", "enum_item", "trait_item"):
             sym = self._extract_rust_adt(node, source, module_path)
             if sym is not None:
