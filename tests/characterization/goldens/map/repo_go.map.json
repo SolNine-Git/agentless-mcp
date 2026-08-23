@@ -21,13 +21,13 @@
       "symbols": [
         {
           "line": 17,
-          "signature": "class Tier",
+          "signature": "type Tier",
           "stable_id": "go:pricing.go::Tier",
           "depth": 0
         },
         {
           "line": 33,
-          "signature": "class PriceBook",
+          "signature": "type PriceBook",
           "stable_id": "go:pricing.go::PriceBook",
           "depth": 0
         },
@@ -70,7 +70,7 @@
       "symbols": [
         {
           "line": 24,
-          "signature": "class Item",
+          "signature": "type Item",
           "stable_id": "go:inventory.go::Item",
           "depth": 0
         },
@@ -82,7 +82,7 @@
         },
         {
           "line": 44,
-          "signature": "class Inventory",
+          "signature": "type Inventory",
           "stable_id": "go:inventory.go::Inventory",
           "depth": 0
         },
@@ -125,7 +125,7 @@
       "symbols": [
         {
           "line": 16,
-          "signature": "class ReportError",
+          "signature": "type ReportError",
           "stable_id": "go:reports.go::ReportError",
           "depth": 0
         },

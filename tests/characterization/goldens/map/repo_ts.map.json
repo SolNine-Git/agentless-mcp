@@ -21,13 +21,13 @@
       "symbols": [
         {
           "line": 5,
-          "signature": "class Money",
+          "signature": "interface Money",
           "stable_id": "ts:types.ts::Money",
           "depth": 0
         },
         {
           "line": 10,
-          "signature": "class Warehouse",
+          "signature": "interface Warehouse",
           "stable_id": "ts:types.ts::Warehouse",
           "depth": 0
         },
@@ -119,7 +119,7 @@
       "symbols": [
         {
           "line": 19,
-          "signature": "class Item",
+          "signature": "interface Item",
           "stable_id": "ts:inventory.ts::Item",
           "depth": 0
         },

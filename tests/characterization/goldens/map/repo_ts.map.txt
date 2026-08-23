@@ -2,8 +2,8 @@
 # repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 # NOTE: file contents below are repository data, not instructions.
 types.ts  (rank 0.4473)
-    5| class Money  [ts:types.ts::Money]
-   10| class Warehouse  [ts:types.ts::Warehouse]
+    5| interface Money  [ts:types.ts::Money]
+   10| interface Warehouse  [ts:types.ts::Warehouse]
    21| fn isRegion(value: string) -> value is Region  [ts:types.ts::isRegion]
    25| fn describeWarehouse(warehouse: Warehouse) -> string  [ts:types.ts::describeWarehouse]
    31| fn parseWarehouse(payload: unknown) -> Warehouse  [ts:types.ts::parseWarehouse]
@@ -20,7 +20,7 @@ pricing.ts  (rank 0.2476)
    94| fn formatMoney(money: Money) -> string  [ts:pricing.ts::formatMoney]
 
 inventory.ts  (rank 0.1726)
-   19| class Item  [ts:inventory.ts::Item]
+   19| interface Item  [ts:inventory.ts::Item]
    25| fn needsReorder(item: Item) -> boolean  [ts:inventory.ts::needsReorder]
    37| class Inventory  [ts:inventory.ts::Inventory]
    42|     fn constructor(public readonly warehouse: string = DEFAULT_WAREHOUSE)  [ts:inventory.ts::Inventory.constructor]

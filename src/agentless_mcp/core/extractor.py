@@ -18,9 +18,11 @@ package gets every grammar from `core.grammars`, which owns fetching,
 warmed-state and degradation.
 """
 
+import builtins
+import keyword
 import logging
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -251,6 +253,11 @@ _ECMASCRIPT_FUNCTION_VALUES = (
     "generator_function",
 )
 
+# `.tsx` is a TypeScript dialect, so it declares interfaces exactly as `.ts`
+# does. Shared rather than copied: three near-identical rows differing by one
+# tuple element is where a copy-paste omission survives review.
+_TYPESCRIPT_CLASSES = ("class_declaration", "interface_declaration")
+
 
 # ---------------------------------------------------------------------------
 # Language configuration table
@@ -281,7 +288,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
             "generator_function_declaration",
             "method_definition",
         ),
-        class_node_types=("class_declaration", "interface_declaration"),
+        class_node_types=_TYPESCRIPT_CLASSES,
         import_node_types=("import_statement",),
         name_field="name",
         import_path_field="source",
@@ -297,7 +304,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
             "generator_function_declaration",
             "method_definition",
         ),
-        class_node_types=("class_declaration",),
+        class_node_types=_TYPESCRIPT_CLASSES,
         import_node_types=("import_statement",),
         name_field="name",
         import_path_field="source",
@@ -452,7 +459,10 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         function_node_types=(),
         class_node_types=(),
         import_node_types=(),
-        identifier_node_types=("string_content",),
+        # `string`, not `string_content`: the grammar emits `string_content`
+        # as a repeat around `escape_sequence`, so the key `"a\nb"` arrives as
+        # the two fragments `a` and `b` -- two names the document never spells.
+        identifier_node_types=("string",),
     ),
     "toml": LanguageConfig(
         function_node_types=(),
@@ -464,7 +474,13 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         function_node_types=(),
         class_node_types=(),
         import_node_types=(),
-        identifier_node_types=("string_scalar",),
+        # A quoted scalar is a different node type from a plain one, and
+        # quoted keys and values are the norm in manifests and CI configs.
+        identifier_node_types=(
+            "string_scalar",
+            "double_quote_scalar",
+            "single_quote_scalar",
+        ),
     ),
     "hcl": LanguageConfig(
         function_node_types=(),
@@ -505,6 +521,7 @@ class IdentifierRole(str, Enum):
     MODULE_QUALIFIER = "module_qualifier"
     MODULE_ATTRIBUTE = "module_attribute"
     KEYWORD = "keyword"
+    BUILTIN = "builtin"
 
 
 @dataclass(frozen=True)
@@ -569,8 +586,6 @@ _PYTHON_SPLAT_PATTERNS = ("list_splat_pattern", "dictionary_splat_pattern")
 class _BindingScope:
     """One Python lexical scope and the names that cannot bind elsewhere."""
 
-    start_byte: int
-    end_byte: int
     kind: str
     bindings: frozenset[str]
     globals: frozenset[str]
@@ -582,8 +597,7 @@ class _ScopeBuilder:
     """Mutable collection state used only while one Python tree is classified."""
 
     node_id: int
-    start_byte: int
-    end_byte: int
+    boundary_id: int
     kind: str
     bindings: set[str]
     globals: set[str]
@@ -619,8 +633,8 @@ def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
 def _python_roles(
     root: Node,
     data: bytes,
-) -> tuple[dict[int, IdentifierRole], dict[int, str], tuple[_BindingScope, ...]]:
-    """Classify Python identifiers and collect lexical bindings in two passes."""
+) -> tuple[dict[int, IdentifierRole], dict[int, str], dict[int, _BindingScope]]:
+    """Classify Python identifiers and collect lexical bindings in three passes."""
     nodes = walk_nodes(root)
     builders = [_scope_builder(root, "module")]
     builders.extend(
@@ -629,6 +643,7 @@ def _python_roles(
         if (kind := _PYTHON_SCOPE_TYPES.get(node.type)) is not None
     )
     by_node = {scope.node_id: scope for scope in builders}
+    open_scopes = _scopes_by_boundary(builders)
     roles: dict[int, IdentifierRole] = {}
     qualifiers: dict[int, str] = {}
 
@@ -636,10 +651,10 @@ def _python_roles(
         if node.type in {"import_statement", "import_from_statement"}:
             for identifier in _descendant_identifiers(node):
                 roles[identifier.id] = IdentifierRole.IMPORT
-            _nearest_scope(node, builders).imports.update(_imported_module_names(node, data))
+            _nearest_scope(node, open_scopes).imports.update(_imported_module_names(node, data))
 
     for node in nodes:
-        _bind_python_declaration(node, builders, data)
+        _bind_python_declaration(node, open_scopes, data)
 
         field = _PYTHON_SCOPE_FIELDS.get(node.type)
         if field is not None:
@@ -654,7 +669,7 @@ def _python_roles(
         if target is not None:
             bound = _binding_identifiers(target)
             _mark_bindings(bound, roles)
-            scope = _nearest_scope(node, builders)
+            scope = _nearest_scope(node, open_scopes)
             names = {_node_text(identifier, data) for identifier in bound}
             if scope.kind == "module":
                 names = {name for name in names if _UPPER_CASE_RE.fullmatch(name) is None}
@@ -663,36 +678,47 @@ def _python_roles(
         if node.type in {"global_statement", "nonlocal_statement"}:
             declarations = tuple(_descendant_identifiers(node))
             _mark_bindings(declarations, roles)
-            scope = _nearest_scope(node, builders)
+            scope = _nearest_scope(node, open_scopes)
             names = {_node_text(identifier, data) for identifier in declarations}
             if node.type == "global_statement":
                 scope.globals.update(names)
             else:
                 scope.bindings.update(names)
 
-    for node in nodes:
-        _mark_non_reference_roles(node, roles, qualifiers, builders, data)
-
-    scopes = tuple(
-        sorted(
-            (
-                _BindingScope(
-                    start_byte=scope.start_byte,
-                    end_byte=scope.end_byte,
-                    kind=scope.kind,
-                    bindings=frozenset(scope.bindings),
-                    globals=frozenset(scope.globals),
-                    imports=frozenset(scope.imports),
-                )
-                for scope in builders
-            ),
-            key=lambda scope: (scope.end_byte - scope.start_byte, scope.start_byte),
+    # Frozen before the last pass, which only reads scopes: one shape of scope
+    # reaches every visibility walk, so the class-body rule cannot be stated
+    # once for the builders and again for the frozen set.
+    scopes = {
+        boundary_id: _BindingScope(
+            kind=scope.kind,
+            bindings=frozenset(scope.bindings),
+            globals=frozenset(scope.globals),
+            imports=frozenset(scope.imports),
         )
-    )
+        for boundary_id, scope in open_scopes.items()
+    }
+
+    for node in nodes:
+        _mark_non_reference_roles(node, roles, qualifiers, scopes, data)
+
     return roles, qualifiers, scopes
 
 
-def _bind_python_declaration(node: Node, scopes: Sequence[_ScopeBuilder], data: bytes) -> None:
+def _scopes_by_boundary(builders: Sequence[_ScopeBuilder]) -> dict[int, _ScopeBuilder]:
+    """Index scopes by the id of the node that bounds them.
+
+    ``builders`` arrives outermost first, and the first entry keeps a shared
+    id: a lambda whose whole body is a comprehension bounds both scopes with
+    the same node, and one of the two has to own it. The lookup and the
+    binding pass go through this one index, so whichever wins, both agree.
+    """
+    index: dict[int, _ScopeBuilder] = {}
+    for scope in builders:
+        index.setdefault(scope.boundary_id, scope)
+    return index
+
+
+def _bind_python_declaration(node: Node, scopes: Mapping[int, _ScopeBuilder], data: bytes) -> None:
     """Bind a nested function or class name in its enclosing lexical scope."""
     if node.type not in {"function_definition", "class_definition"}:
         return
@@ -705,13 +731,17 @@ def _bind_python_declaration(node: Node, scopes: Sequence[_ScopeBuilder], data: 
 
 
 def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
-    """Build the byte boundary where one scope's bindings apply."""
+    """Build the record of where one scope's bindings apply.
+
+    A function's or class's bindings apply inside its body, not across its
+    header: an annotation or a default expression is evaluated in the scope
+    the declaration sits in.
+    """
     body = node.child_by_field_name("body") if kind in {"function", "class"} else None
     boundary = body if body is not None else node
     return _ScopeBuilder(
         node_id=node.id,
-        start_byte=boundary.start_byte,
-        end_byte=boundary.end_byte,
+        boundary_id=boundary.id,
         kind=kind,
         bindings=set(),
         globals=set(),
@@ -719,25 +749,84 @@ def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
     )
 
 
-def _nearest_scope(node: Node, scopes: Sequence[_ScopeBuilder]) -> _ScopeBuilder:
-    """Return the innermost lexical scope containing ``node``.
+def _nearest_scope(node: Node, scopes: Mapping[int, _ScopeBuilder]) -> _ScopeBuilder:
+    """Return the scope ``node`` binds its names in.
 
-    ``min`` needs no default: the module scope's boundary is the root node,
-    so it contains every node the tree can offer.
+    A walk up the parent chain rather than a scan over every scope in the
+    file: the node bounding a scope is an ancestor of everything inside it,
+    so the answer costs the node's depth instead of the file's scope count. A
+    scan made the reference pass quadratic in the size of a Python file, and
+    the per-file byte cap only bounds work that is linear in bytes.
+
+    `:=` steps out past every enclosing comprehension. Python binds a named
+    expression in the scope around the comprehension, which is the whole
+    point of the construct; recording it inside would leak the name back out
+    as an unresolved reference.
     """
-    candidates = [
-        scope
-        for scope in scopes
-        if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
-    ]
-    return min(candidates, key=lambda scope: scope.end_byte - scope.start_byte)
+    escapes_comprehension = node.type == "named_expression"
+    current: Node | None = node
+    while current is not None:
+        found = scopes.get(current.id)
+        if found is not None and not (escapes_comprehension and found.kind == "comprehension"):
+            return found
+        current = current.parent
+    unreachable = "the module scope is bounded by the root, which has no parent"
+    raise AssertionError(unreachable)
+
+
+def _enclosing_scopes(node: Node, scopes: Mapping[int, _BindingScope]) -> Iterator[_BindingScope]:
+    """Yield each lexical scope containing ``node``, innermost first.
+
+    A comprehension's first iterable is evaluated where the comprehension is
+    written rather than inside it, so a name there does not see the
+    comprehension's own bindings.
+    """
+    current: Node | None = node
+    while current is not None:
+        found = scopes.get(current.id)
+        if found is not None and not (
+            found.kind == "comprehension" and _in_first_iterable(node, current)
+        ):
+            yield found
+        current = current.parent
+
+
+def _in_first_iterable(node: Node, comprehension: Node) -> bool:
+    """True when ``node`` sits in the iterable of a comprehension's first clause."""
+    clause = next(
+        (child for child in comprehension.named_children if child.type == "for_in_clause"),
+        None,
+    )
+    if clause is None:
+        return False
+    iterable = clause.child_by_field_name("right")
+    if iterable is None:
+        return False
+    return iterable.start_byte <= node.start_byte and node.end_byte <= iterable.end_byte
+
+
+def _visible_scopes(node: Node, scopes: Mapping[int, _BindingScope]) -> Iterator[_BindingScope]:
+    """Yield the scopes a name at ``node`` can resolve in, innermost first.
+
+    A class body is not a closure scope. A method or a comprehension written
+    inside a class never reads the class namespace, which is why
+    ``class C: xs = []; ys = [xs for _ in r]`` raises NameError in real
+    Python. This is the sharpest rule in the block, and it has one home.
+    """
+    nested = False
+    for scope in _enclosing_scopes(node, scopes):
+        if scope.kind in {"function", "comprehension"}:
+            nested = True
+        if scope.kind == "class" and nested:
+            continue
+        yield scope
 
 
 def _mark_non_reference_roles(
     node: Node,
     roles: dict[int, IdentifierRole],
     qualifiers: dict[int, str],
-    scopes: Sequence[_ScopeBuilder],
+    scopes: Mapping[int, _BindingScope],
     data: bytes,
 ) -> None:
     """Mark declaration, member, and label identifiers from named fields."""
@@ -795,22 +884,9 @@ def _imported_module_names(node: Node, data: bytes) -> set[str]:
     return names
 
 
-def _binds_imported_module(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> bool:
+def _binds_imported_module(name: str, node: Node, scopes: Mapping[int, _BindingScope]) -> bool:
     """True when ``name`` is an imported module object visible at ``node``."""
-    candidates = sorted(
-        (
-            scope
-            for scope in scopes
-            if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
-        ),
-        key=lambda scope: scope.end_byte - scope.start_byte,
-    )
-    inside_function = False
-    for scope in candidates:
-        if scope.kind == "function":
-            inside_function = True
-        if scope.kind == "class" and inside_function:
-            continue
+    for scope in _visible_scopes(node, scopes):
         if name in scope.globals:
             continue
         if name in scope.bindings:
@@ -859,38 +935,82 @@ def _node_text(node: Node, data: bytes) -> str:
     return data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
+# Names Python provides at every point in every module. A file that neither
+# binds nor imports one of these spells the language's own name, not a
+# repository symbol, so `type(x)` must not be offered as a caller of a
+# repository function named `type`. `sys.stdlib_module_names` is deliberately
+# absent: a bare `json` with no import in the file is a NameError, not a
+# reference to the standard library.
+#
+# `core.patchlint` keeps a wider table for a different question -- whether a
+# name is somebody's missing helper -- and the two have not been merged
+# because that module sits above this one in the import graph.
+_PYTHON_ALWAYS_BOUND: frozenset[str] = frozenset(dir(builtins)) | frozenset(keyword.kwlist)
+
+
+def _unbound_role(name: str) -> IdentifierRole:
+    """Classify a name no scope in the file binds."""
+    return IdentifierRole.BUILTIN if name in _PYTHON_ALWAYS_BOUND else IdentifierRole.REFERENCE
+
+
 def _python_role(
     node: Node,
     name: str,
     explicit: dict[int, IdentifierRole],
-    scopes: Sequence[_BindingScope],
+    scopes: Mapping[int, _BindingScope],
 ) -> IdentifierRole:
     """Return the explicit syntactic role or the nearest lexical binding."""
     direct = explicit.get(node.id)
     if direct is not None:
         return direct
 
-    inside_function = False
-    for scope in scopes:
-        if not (scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte):
-            continue
-        if scope.kind == "function":
-            inside_function = True
-        if scope.kind == "class" and inside_function:
-            continue
+    for scope in _visible_scopes(node, scopes):
         if name in scope.globals:
             return IdentifierRole.REFERENCE
         if name in scope.bindings:
             return IdentifierRole.LOCAL
-    return IdentifierRole.REFERENCE
+    return _unbound_role(name)
 
 
 def identifier_node_types(language: str) -> frozenset[str]:
-    """Return the leaf node types that name something in ``language``."""
+    """Return the node types that name something in ``language``.
+
+    Raises :class:`UnsupportedLanguageError` for a language in neither table.
+    Returning the default set instead would answer "this language has one
+    identifier node type" to a question that was really "I do not know this
+    language", and the caller cannot tell the two apart afterwards.
+    """
     config = LANGUAGE_CONFIGS.get(language)
     if config is not None:
         return frozenset(config.identifier_node_types)
-    return frozenset(_EXTRA_IDENTIFIER_NODE_TYPES.get(language, DEFAULT_IDENTIFIER_NODE_TYPES))
+    extra = _EXTRA_IDENTIFIER_NODE_TYPES.get(language)
+    if extra is not None:
+        return frozenset(extra)
+    detail = f"no identifier node types are registered for {language!r}"
+    raise UnsupportedLanguageError(detail)
+
+
+def _identifier_name(node: Node, data: bytes, wanted: frozenset[str]) -> str:
+    """Return the name ``node`` spells, or "" when it names nothing itself.
+
+    A node of a wanted type names one thing unless it contains another wanted
+    node, in which case the inner one is the name and this is a path or a
+    container. That rule is what admits the delimited forms -- TOML's
+    ``quoted_key``, YAML's quoted scalars, JSON's ``string`` -- whose only
+    children are the quote tokens; their text carries the delimiters, so the
+    delimiters come off here.
+    """
+    if any(child.type in wanted for child in node.named_children):
+        return ""
+    text = _node_text(node, data)
+    for quote in ('"', "'"):
+        if (
+            len(text) >= _MIN_QUOTED_LITERAL_CHARS
+            and text.startswith(quote)
+            and text.endswith(quote)
+        ):
+            return text[1:-1]
+    return text
 
 
 def collect_refs(source: str, language: str, path: str) -> list[Ref]:
@@ -907,15 +1027,15 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     tree = parser.parse(data)
     explicit: dict[int, IdentifierRole] = {}
     qualifiers: dict[int, str] = {}
-    scopes: tuple[_BindingScope, ...] = ()
+    scopes: dict[int, _BindingScope] = {}
     if language == "python":
         explicit, qualifiers, scopes = _python_roles(tree.root_node, data)
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
-        if node.type not in wanted or node.child_count:
+        if node.type not in wanted:
             continue
-        name = _node_text(node, data)
+        name = _identifier_name(node, data, wanted)
         if name:
             line = node.start_point[0] + 1
             refs.append(
@@ -1148,6 +1268,13 @@ RUST_ITEM_TYPES = frozenset(
         "type_item",
     }
 )
+# The config surfaces name a pair the same way in every grammar in the table,
+# and a TOML table header owns the pairs below it. `[[array]]` is a table
+# header too: its pairs have an owner exactly as `[table]`'s do.
+_CONFIG_PAIR_TYPES = frozenset({"pair", "block_mapping_pair"})
+_TOML_TABLE_TYPES = frozenset({"table", "table_array_element"})
+_CONFIG_OWNER_TYPES = _CONFIG_PAIR_TYPES | _TOML_TABLE_TYPES
+
 PYTHON_DECLARATION_TYPES = frozenset(
     {
         "function_definition",
@@ -1462,9 +1589,11 @@ class TreeSitterExtractor:
                     module_path=module_path,
                     line_number=node.start_point[0] + 1,
                     end_line_number=node.end_point[0] + 1,
-                    signature=f"class {name}",
+                    signature=f"{self._declaration_keyword(node, source)} {name}",
                     docstring="",
-                    parent_class="",
+                    # A class nested in another class, a namespace or a module
+                    # has an owner exactly as its own methods do.
+                    parent_class=parent,
                     decorators=(),
                     bases=(),
                     language=language,
@@ -1478,6 +1607,27 @@ class TreeSitterExtractor:
         # Not a declaration: a wrapper (export_statement, a block, an
         # expression) that may still hold one.
         return [(child, parent) for child in node.children]
+
+    @staticmethod
+    def _declaration_keyword(node: Node, source: bytes) -> str:
+        """Return the word the source wrote to open one type declaration.
+
+        A grammar that folds several keywords into one node type says which
+        it was on a ``declaration_kind`` field -- that is how Swift spells
+        `struct`, `enum` and `actor` as `class_declaration`. Every other row
+        in the table names the keyword in the node type itself, so stripping
+        the grammar's suffix recovers it: `interface_declaration` opens
+        `interface`, `trait_definition` opens `trait`, and Go's `type_spec`
+        opens `type`. Deriving beats a keyword table that drifts from the
+        rows it describes.
+        """
+        spelled = node.child_by_field_name("declaration_kind")
+        if spelled is not None:
+            return TreeSitterExtractor._node_text(spelled, source)
+        keyword_of = node.type
+        for suffix in ("_declaration", "_definition", "_spec"):
+            keyword_of = keyword_of.removesuffix(suffix)
+        return keyword_of
 
     def _generic_function_symbol(
         self, node: Node, source: bytes, walk: _GenericWalk, site: _FunctionSite
@@ -1863,6 +2013,20 @@ class TreeSitterExtractor:
                     signature=f"fn {name}{params}",
                 )
             )
+            return
+
+        # A module table's plain fields are part of the surface a caller
+        # reads, so `M.version = "1.0"` is a symbol like `M.go` is.
+        value = _truncate(self._node_text(var_list, source), _MAX_VALUE_CHARS) if var_list else ""
+        symbols.append(
+            self._lua_symbol(
+                name,
+                SymbolKind.CONSTANT,
+                module_path,
+                node,
+                signature=f"{name} = {value}" if value else name,
+            )
+        )
 
     def _extract_lua_variable_decl(
         self,
@@ -2001,7 +2165,7 @@ class TreeSitterExtractor:
 
         if language == "toml":
             for node in walk_nodes(root):
-                if node.type != "table":
+                if node.type not in _TOML_TABLE_TYPES:
                     continue
                 key = self._data_key(node, source, language)
                 if key:
@@ -2020,13 +2184,21 @@ class TreeSitterExtractor:
                         )
                     )
 
-        for node in walk_nodes(root):
-            if node.type != pair_type:
+        # One downward walk carrying the owner it has already derived, rather
+        # than one upward walk per pair. Re-deriving every ancestor's key for
+        # every pair below it made a deeply nested document cost far more than
+        # its size: depth 400 in 3.9 KB took 205 times as long as depth 50.
+        stack: list[tuple[Node, str]] = [(child, "") for child in reversed(root.children)]
+        while stack:
+            node, owner = stack.pop()
+            if node.type not in _CONFIG_OWNER_TYPES:
+                stack.extend((child, owner) for child in reversed(node.children))
                 continue
             key = self._data_key(node, source, language)
-            if not key:
+            nested_owner = ".".join(part for part in (owner, key) if part)
+            stack.extend((child, nested_owner) for child in reversed(node.children))
+            if node.type != pair_type or not key:
                 continue
-            owner = self._data_owner(node, source, language)
             value = node.child_by_field_name("value")
             has_nested_pair = value is not None and self._has_nested_pair(value)
             is_container = value is not None and value.type in {
@@ -2156,7 +2328,17 @@ class TreeSitterExtractor:
         The caller passes a pair's value node, which no grammar in the table
         spells as a pair, so the walk needs no guard against ``node`` itself.
         """
-        return any(child.type in {"pair", "block_mapping_pair"} for child in walk_nodes(node))
+        # An explicit stack that stops at the first pair. `walk_nodes` returns
+        # a list, so `any` over it built every descendant before looking at
+        # one, and a container holding a pair right below it paid for the
+        # whole subtree.
+        stack = list(node.children)
+        while stack:
+            current = stack.pop()
+            if current.type in _CONFIG_PAIR_TYPES:
+                return True
+            stack.extend(current.children)
+        return False
 
     def _data_key(self, node: Node, source: bytes, language: str) -> str:
         """Return the key one config pair or TOML table declares."""
@@ -2173,18 +2355,6 @@ class TreeSitterExtractor:
         if key_node is None:
             return ""
         return self._clean_surface_name(self._node_text(key_node, source), language)
-
-    def _data_owner(self, node: Node, source: bytes, language: str) -> str:
-        """Return the dotted key path enclosing one config pair."""
-        owners: list[str] = []
-        parent = node.parent
-        while parent is not None:
-            if parent.type in {"pair", "block_mapping_pair", "table"}:
-                key = self._data_key(parent, source, language)
-                if key:
-                    owners.append(key)
-            parent = parent.parent
-        return ".".join(reversed(owners))
 
     def _hcl_block_identity(self, node: Node, source: bytes) -> tuple[str, str, str]:
         """Return ``(owner, name, header)`` for one HCL block."""
@@ -2955,23 +3125,63 @@ class TreeSitterExtractor:
         source: bytes,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract a single use_declaration as an ImportStatement."""
-        for child in node.children:
-            if child.type in ("use", ";", "visibility_modifier"):
-                continue
-            path_text = self._node_text(child, source)
-            if path_text:
-                imports.append(
-                    ImportStatement(
-                        module=path_text,
-                        names=(),
-                        is_relative=path_text.startswith(("self::", "super::", "crate::")),
-                        relative_level=0,
-                        line_number=node.start_point[0] + 1,
-                        resolved_path="",
-                    )
-                )
-            break
+        """Extract a single use_declaration as an ImportStatement.
+
+        Two of the shapes behind the `argument` field wrap the path instead
+        of being one: `use a::b as c` puts it behind a `use_as_clause` and
+        `use a::{b, c}` behind a `scoped_use_list`. Reading the clause text
+        verbatim recorded modules spelled `a::b as c`, which matches no file
+        the resolver can offer.
+        """
+        argument = node.child_by_field_name("argument")
+        if argument is None:
+            return
+        module, names, local_names, alias = self._rust_use_target(argument, source)
+        if not module:
+            return
+        imports.append(
+            ImportStatement(
+                module=module,
+                names=names,
+                is_relative=module.split("::")[0] in {"self", "super", "crate"},
+                relative_level=0,
+                line_number=node.start_point[0] + 1,
+                resolved_path="",
+                alias=alias,
+                local_names=local_names if local_names != names else (),
+            )
+        )
+
+    def _rust_use_target(
+        self, argument: Node, source: bytes
+    ) -> tuple[str, tuple[str, ...], tuple[str, ...], str]:
+        """Return ``(module, names, local names, alias)`` for one use clause."""
+        if argument.type == "use_as_clause":
+            path = argument.child_by_field_name("path")
+            alias = argument.child_by_field_name("alias")
+            return (
+                self._node_text(path, source),
+                (),
+                (),
+                self._node_text(alias, source),
+            )
+        if argument.type == "scoped_use_list":
+            path = argument.child_by_field_name("path")
+            listed = argument.child_by_field_name("list")
+            entries = listed.named_children if listed is not None else []
+            names = tuple(self._rust_use_entry(entry, source)[0] for entry in entries)
+            locals_ = tuple(self._rust_use_entry(entry, source)[1] for entry in entries)
+            return self._node_text(path, source), names, locals_, ""
+        return self._node_text(argument, source), (), (), ""
+
+    def _rust_use_entry(self, entry: Node, source: bytes) -> tuple[str, str]:
+        """Return ``(imported name, local name)`` for one entry of a use list."""
+        if entry.type != "use_as_clause":
+            text = self._node_text(entry, source)
+            return text, text
+        path = entry.child_by_field_name("path")
+        alias = entry.child_by_field_name("alias")
+        return self._node_text(path, source), self._node_text(alias, source)
 
     # ------------------------------------------------------------------
     # Python import extraction (unchanged)
