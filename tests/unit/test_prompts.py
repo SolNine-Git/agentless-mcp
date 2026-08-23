@@ -90,6 +90,7 @@ MESSAGE_ARGUMENTS = {
         "required": "source, target",
     },
     "path_needs_endpoints": {},
+    "map_limit_out_of_range": {"limit": "500", "minimum": "1", "maximum": "200"},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
     "roots_file_hint": {"file": "/srv/agentless-roots.txt"},

@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import subprocess
 import threading
+import time
 from contextlib import closing
 
 import pytest
@@ -956,3 +957,71 @@ class TestAutoIndex:
     @staticmethod
     def _must_not_index(root, extractor, *, tree_oid=None, head_sha=None, force=False):
         pytest.fail("the background refresh must not run here")
+
+
+class TestAutoIndexStartRace:
+    """One index per generation, including across the registration window.
+
+    A thread that is registered but not yet started reads as
+    ``is_alive() == False``. A second caller that had already found the
+    registry empty therefore saw no live run, fell past the guard, and started
+    a duplicate index of the same generation. The window is narrow -- it is the
+    gap between the dict assignment and ``thread.start()`` -- so this drives the
+    interleaving directly rather than hoping to hit it.
+    """
+
+    def test_a_caller_arriving_in_the_registration_window_starts_nothing_new(
+        self, repo, extractor, monkeypatch, auto_index_isolated
+    ):
+        builds = []
+        real_build = cache.build_index
+
+        def counting(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+            builds.append(threading.current_thread().name)
+            return real_build(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+
+        monkeypatch.setattr(cache, "build_index", counting)
+
+        second_read_the_empty_registry = threading.Event()
+        first_registered_its_run = threading.Event()
+        real_index_current = cache._index_current
+
+        def gated(database, repo_root, generation):
+            # Park the second caller after it has seen an empty registry and
+            # before it re-checks, so it re-checks inside the window.
+            if threading.current_thread().name == "second":
+                second_read_the_empty_registry.set()
+                first_registered_its_run.wait(timeout=10)
+            return real_index_current(database, repo_root, generation)
+
+        monkeypatch.setattr(cache, "_index_current", gated)
+
+        real_thread = threading.Thread
+
+        class RegisteredButNotStarted(real_thread):
+            def start(self):
+                first_registered_its_run.set()
+                # Hold the registered-but-not-alive window open.
+                time.sleep(0.5)
+                super().start()
+
+        monkeypatch.setattr(cache.threading, "Thread", RegisteredButNotStarted)
+
+        handed: dict[str, object] = {}
+
+        def caller(tag):
+            handed[tag] = cache.start_auto_index(repo, extractor)
+
+        second = real_thread(target=caller, args=("second",), name="second")
+        second.start()
+        assert second_read_the_empty_registry.wait(timeout=10)
+        first = real_thread(target=caller, args=("first",), name="first")
+        first.start()
+
+        first.join(timeout=30)
+        second.join(timeout=30)
+        for thread in handed.values():
+            if thread is not None:
+                thread.join(timeout=30)
+
+        assert len(builds) == 1, f"the generation was indexed {len(builds)} times: {builds}"

@@ -163,7 +163,10 @@ disable-able, digest-verified background warm both entry points start at
 process launch. The one thing the server writes is its own tag cache, in the
 background, under the user cache directory -- derived facts about the
 repository, never bytes inside it, and never anything an answer's
-correctness depends on.
+correctness depends on. The HTTP server additionally watches its own
+install and, when the package is upgraded, drains and replaces itself with
+the new code (`--no-auto-restart` opts out) -- so a version reported over
+HTTP is the installed version, not a memory of one.
 
 MCP responses are text-native: new clients should read `content[0].text`.
 Existing clients may continue reading the compatibility copy in

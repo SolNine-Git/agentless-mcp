@@ -491,3 +491,63 @@ class TestRunCommand:
 
         assert result.status is RunStatus.FAILED
         assert "EOFError" in result.stderr_tail
+
+
+class TestTrim:
+    """``_trim`` judges the live bytes, not the file size the hole inflates.
+
+    The unit is exercised directly rather than through a live command: the bug
+    it fixes is a race between one poll tick and the child's final write, and
+    reproducing that timing from a subprocess is exactly the flaky test this
+    machinery exists to avoid. What can be pinned deterministically is the
+    decision -- once a file has been truncated, ``st_size`` still counts the
+    hole, and a trim that compares raw size truncates every later poll and eats
+    the tail the runner is about to report.
+    """
+
+    def test_a_file_over_the_ceiling_is_emptied_and_reports_its_hole(self, tmp_path):
+        path = tmp_path / "capture.log"
+        with path.open("wb") as handle:
+            handle.write(b"x" * 300)
+            handle.flush()
+
+            hole = sandbox._trim(handle, 100, 0)
+
+        assert hole == 300
+        assert path.stat().st_size == 0
+
+    def test_a_short_tail_written_past_the_hole_survives_the_next_poll(self, tmp_path):
+        path = tmp_path / "capture.log"
+        with path.open("wb") as handle:
+            handle.write(b"x" * 300)
+            handle.flush()
+            hole = sandbox._trim(handle, 100, 0)
+
+            # What the child writes next lands at its own offset, past the end
+            # of the emptied file: 4 live bytes in a file st_size still calls
+            # 304. Judged on raw size that is over the ceiling and the tail is
+            # truncated away; judged on live bytes it is not.
+            handle.seek(hole)
+            handle.write(b"tail")
+            handle.flush()
+
+            unchanged = sandbox._trim(handle, 100, hole)
+
+        assert unchanged == hole
+        assert path.stat().st_size == hole + len(b"tail")
+
+    def test_live_bytes_past_the_ceiling_trim_again_from_the_new_hole(self, tmp_path):
+        path = tmp_path / "capture.log"
+        with path.open("wb") as handle:
+            handle.write(b"x" * 300)
+            handle.flush()
+            first = sandbox._trim(handle, 100, 0)
+
+            handle.seek(first)
+            handle.write(b"y" * 200)
+            handle.flush()
+
+            second = sandbox._trim(handle, 100, first)
+
+        assert second == first + 200
+        assert path.stat().st_size == 0

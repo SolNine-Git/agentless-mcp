@@ -23,8 +23,13 @@ READ_ONLY_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": True,
     "destructiveHint": False,
     "idempotentHint": True,
-    # No tool here reaches the network. The one component that ever can --
-    # grammar download -- is a CLI warmup step, never a tool call.
+    # No tool call reaches the network, which is what this hint is about: a
+    # client asking whether calling a tool can touch anything outside the
+    # server. The one component that fetches -- the grammar download -- runs
+    # from the explicit warmup and from the background warm this process
+    # starts at startup, on its own thread, before any tool exists to call.
+    # A tool call never triggers it, and AGENTLESS_MCP_NO_DOWNLOAD forbids it
+    # outright.
     "openWorldHint": False,
 }
 

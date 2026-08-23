@@ -1,6 +1,7 @@
 # Effectiveness + Design Review: `agentless-mcp` v0.3.1
 
 - Review date: 2026-08-22
+- **Status: historical.** This assessed `ee439cf`. Its three headline findings were fixed in the same day's batches -- degraded scans now surface (PR #15), `index` now exits non-zero on file errors (PR #15), and zero-block patch text is now a parse error naming the `*** Begin Patch` dialect (PR #20). The MCP surface it describes is `--surface v1`; the default since 0.4.0 is v2. Read it as a record of that revision, not as open findings.
 - Assessed revision: `ee439cf` (two commits past the assessed `02c15e20`: `5339bf3` agent-guide-as-data + unified-diff lint, `ee439cf` HTTP transport + operator-editable roots)
 - Environment: Linux, Python 3.13.11 via `uv`
 - Repos used: `agentless-mcp` itself (121 source files, 40,140 LOC) plus small synthetic fixtures in `/tmp/agentless-review`. Large SWE-bench repos (ruff, druid) were **not** exercised, per instruction; large-repo performance statements are labeled `assumption`.

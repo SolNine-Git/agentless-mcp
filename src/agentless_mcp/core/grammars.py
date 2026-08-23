@@ -58,6 +58,15 @@ ENV_NO_AUTO_WARM = "AGENTLESS_MCP_NO_AUTO_WARM"
 # reintroduce, so a dead network cannot hold a one-shot CLI exit open.
 AUTO_WARM_DEADLINE_SECONDS = 30.0
 
+# How long a caller waiting for the warm to finish will hold still. Counted
+# from the wait rather than from the warm's start, because the callers that
+# need it -- a CLI process exiting, a server about to replace its own image --
+# can arrive long after the start deadline has lapsed, and a lapsed deadline
+# read as "nothing to wait for" is how an extraction gets killed half-written.
+# The warm starts no new language past its own deadline, so this only ever
+# waits out the extraction already in flight.
+AUTO_WARM_JOIN_SECONDS = 10.0
+
 # Tier-1 languages: the twelve ported from the mcp-local extractor, each with
 # a hand-checked node-type table and characterization coverage.
 TIER1_LANGUAGES: tuple[str, ...] = (
@@ -267,18 +276,33 @@ def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread 
 
 
 def wait_for_auto_warm() -> None:
-    """Block until the background warm finishes or its deadline passes.
+    """Block until the background warm finishes or the wait budget runs out.
 
-    For one-shot CLI processes: without this, interpreter shutdown would kill
-    the daemon thread partway through a cache write. The bound is the same
-    deadline the thread honours, so a hung fetch cannot hold the exit open.
+    Without this, process exit would kill the daemon thread partway through a
+    cache write, leaving a truncated grammar in a cache other processes read.
+    Two callers need it for that reason: the one-shot CLI at its exit, and the
+    HTTP server before it replaces its own image on an install update.
+
+    The budget is counted from the wait, not from the warm's start. Anchoring
+    it to :data:`AUTO_WARM_DEADLINE_SECONDS` past the start was the same number
+    for the CLI's own exit, which happens immediately, and no bound at all for
+    any caller reaching here later: a command running longer than the deadline,
+    or a server restarting hours in, found the deadline already lapsed and
+    skipped the join entirely -- exactly the mid-extraction kill the function
+    exists to prevent. The warm stops starting new languages at its own
+    deadline, so the only thing this waits out is the one extraction already
+    running.
     """
     thread = _AUTO_WARM.thread
     if thread is None:
         return
-    remaining = _AUTO_WARM.deadline - time.monotonic()
-    if remaining > 0:
-        thread.join(remaining)
+    thread.join(AUTO_WARM_JOIN_SECONDS)
+    if thread.is_alive():
+        logger.warning(
+            "background grammar warm still running after %.0fs; leaving it rather than "
+            "holding the exit open, so its current extraction may be truncated",
+            AUTO_WARM_JOIN_SECONDS,
+        )
 
 
 def _auto_warm(names: Sequence[str]) -> None:

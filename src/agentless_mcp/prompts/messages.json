@@ -5,6 +5,7 @@
   "op_rejects_parameters": "{tool} operation '{operation}' does not accept: {stray}. This operation accepts: {accepted}; required: {required}. Drop the stray parameters, or pick the operation that takes them.",
   "op_requires_parameters": "{tool} operation '{operation}' is missing: {missing}. This operation accepts: {accepted}; required: {required}. Retry naming the missing parameters.",
   "path_needs_endpoints": "analyze_structure operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends.",
+  "map_limit_out_of_range": "orient operation 'map' rejects limit={limit}: the map's file cap runs {minimum}-{maximum}, which is the same bound repo_map publishes as max_files. The wider ceiling on this parameter belongs to the communities and cycles listings that share it. Retry with a limit in range.",
   "repo_refused_no_roots": "repository refused: this server was started with no roots, so it serves no repositories. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line.",
   "repo_refused_not_allowed": "repository refused: the requested root is not one of this server's roots. Retry with repo_root set to one of: {roots}",
   "roots_file_hint": "To serve another repository, append its absolute path as a line in {file}; the file is re-read on the next call, no restart needed.",

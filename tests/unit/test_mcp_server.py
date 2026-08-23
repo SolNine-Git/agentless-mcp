@@ -1005,7 +1005,20 @@ class TestTransportSelection:
 
     def test_localhost_resolves_to_loopback_and_is_accepted(self):
         args = parse_args(["--transport", TRANSPORT_HTTP, "--host", "localhost"])
-        assert http_binding(args) == ("localhost", DEFAULT_HTTP_PORT)
+        host, port = http_binding(args)
+
+        # The literal that was checked is the literal that gets bound. Handing
+        # the name onward would leave the socket to resolve it a second time,
+        # and a name whose records change in between would pass the loopback
+        # check and bind the other answer.
+        assert port == DEFAULT_HTTP_PORT
+        assert ipaddress.ip_address(host).is_loopback, host
+
+    def test_a_name_is_never_handed_on_unresolved(self):
+        args = parse_args(["--transport", TRANSPORT_HTTP, "--host", "localhost"])
+        host, _ = http_binding(args)
+
+        assert host != "localhost"
 
     # The wildcard addresses are derived rather than spelled: a bind-all literal
     # in the source is the very thing a security lint looks for, and the point
@@ -1686,3 +1699,147 @@ class TestAutoWarmStartup:
     def test_the_flag_parses_and_defaults_off(self):
         assert parse_args(["--no-auto-warm"]).no_auto_warm is True
         assert parse_args([]).no_auto_warm is False
+
+
+class TestAutoRestartWiring:
+    """Issue #23: the HTTP transport arms the install monitor; stdio never does."""
+
+    class StubTransport:
+        def __init__(self, interrupt: bool = False) -> None:
+            self._interrupt = interrupt
+
+        def run(self, **kwargs):
+            _ = kwargs
+            if self._interrupt:
+                raise KeyboardInterrupt
+
+    @pytest.fixture
+    def monitor_calls(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(server_module.selfrestart, "start_update_monitor", calls.append)
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport()
+        )
+        return calls
+
+    def test_http_arms_the_monitor_for_this_distribution(self, services, tmp_path, monitor_calls):
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+        assert monitor_calls == [DISTRIBUTION_NAME]
+
+    def test_stdio_never_arms_it(self, services, tmp_path, monitor_calls):
+        assert server_module.serve(["--root", str(tmp_path)], services) == 0
+        assert monitor_calls == []
+
+    def test_the_flag_keeps_it_off(self, services, tmp_path, monitor_calls):
+        argv = ["--transport", TRANSPORT_HTTP, "--no-auto-restart", "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+        assert monitor_calls == []
+
+    def test_a_pending_restart_execs_after_the_transport_returns(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "exec_or_exit", lambda: 42)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 42
+
+    def test_the_monitors_interrupt_is_absorbed_into_the_restart(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport(True)
+        )
+        # The monitor raised this one: it owes exactly one interrupt, and the
+        # claim is what says so.
+        monkeypatch.setattr(server_module.selfrestart, "claim_monitor_interrupt", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "exec_or_exit", lambda: 0)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+
+    def test_an_operators_own_interrupt_still_propagates(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport(True)
+        )
+        monkeypatch.setattr(server_module.selfrestart, "claim_monitor_interrupt", lambda: False)
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: False)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        with pytest.raises(KeyboardInterrupt):
+            server_module.serve(argv, services)
+
+    def test_an_operators_interrupt_during_a_pending_restart_still_propagates(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        """The case restart_pending() alone could not tell apart.
+
+        A restart being pending says the monitor fired at some point, not that
+        it raised *this* interrupt. Its one signal is already spent, so this
+        one is a human asking the server to stop, and stopping is what must
+        happen -- not an exec that brings the process back.
+        """
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport(True)
+        )
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "claim_monitor_interrupt", lambda: False)
+        monkeypatch.setattr(server_module.selfrestart, "exec_or_exit", self._must_not_exec)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        with pytest.raises(KeyboardInterrupt):
+            server_module.serve(argv, services)
+
+    @staticmethod
+    def _must_not_exec() -> int:
+        message = "an operator's own interrupt must not be turned into a restart"
+        raise AssertionError(message)
+
+    def test_the_flag_parses_and_defaults_off(self):
+        assert parse_args(["--no-auto-restart"]).no_auto_restart is True
+        assert parse_args([]).no_auto_restart is False
+
+
+class TestClientRootsUnderHttp:
+    """--allow-client-roots hands the client the operator's decision.
+
+    Safe under stdio, where the client is the process that spawned this
+    server. Over HTTP the client is whatever reaches the port, so the two
+    flags together retire the --root allowlist as the thing deciding what is
+    servable. The refusal is at startup because a confinement boundary that
+    stops confining without anyone typing anything is the failure this
+    codebase refuses to ship.
+    """
+
+    def refuse(self, capsys, argv):
+        with pytest.raises(SystemExit) as raised:
+            parse_args(argv)
+        assert raised.value.code == 2
+        return capsys.readouterr().err
+
+    def test_http_with_client_roots_is_refused(self, capsys):
+        message = self.refuse(
+            capsys, ["--transport", TRANSPORT_HTTP, "--allow-client-roots", "--root", "/tmp"]
+        )
+
+        assert "--allow-client-roots" in message
+        assert "cannot be combined" in message
+
+    def test_the_refusal_names_the_remedy(self, capsys):
+        message = self.refuse(
+            capsys, ["--transport", TRANSPORT_HTTP, "--allow-client-roots", "--root", "/tmp"]
+        )
+
+        assert "--root" in message
+        assert "--roots-from" in message
+
+    def test_stdio_still_accepts_client_roots(self):
+        args = parse_args(["--allow-client-roots", "--root", "/tmp"])
+
+        assert args.allow_client_roots is True
+
+    def test_http_without_the_flag_is_still_accepted(self):
+        args = parse_args(["--transport", TRANSPORT_HTTP, "--root", "/tmp"])
+
+        assert args.transport == TRANSPORT_HTTP
+        assert args.allow_client_roots is False

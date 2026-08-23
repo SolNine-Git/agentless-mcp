@@ -47,9 +47,10 @@ import logging
 import shlex
 import socket
 import sys
+import threading
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
 from itertools import chain
@@ -85,7 +86,7 @@ from agentless_mcp.application.symbol_service import (
     render_find,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, projectconfig
+from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
@@ -449,6 +450,7 @@ class RootsFile:
     path: Path
     roots: list[Path]
     stat_key: tuple[int, int]
+    lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def current(self) -> list[Path]:
         """This file's roots as of now, re-read if the file changed on disk.
@@ -457,23 +459,32 @@ class RootsFile:
         rewrite landing within the filesystem's timestamp granularity almost
         always changes the byte count too, and both fields come from the one
         stat the freshness check already pays for.
+
+        Held under a lock because the HTTP transport reaches this from
+        concurrent request threads and the two fields are one fact: the roots
+        and the stat key they were read at. Publishing them separately lets a
+        second caller observe new roots against an old key, which costs a
+        redundant re-read now and would cost correctness the moment anything
+        else keyed on the pair. The same reasoning already guards the
+        background index's registry.
         """
-        try:
-            stat_result = self.path.stat()
-        except OSError as exc:
-            message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
-            raise SecurityRefusal(message) from exc
-        key = (stat_result.st_mtime_ns, stat_result.st_size)
-        if key == self.stat_key:
+        with self.lock:
+            try:
+                stat_result = self.path.stat()
+            except OSError as exc:
+                message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
+                raise SecurityRefusal(message) from exc
+            key = (stat_result.st_mtime_ns, stat_result.st_size)
+            if key == self.stat_key:
+                return self.roots
+            try:
+                text = self.path.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeDecodeError) as exc:
+                message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
+                raise SecurityRefusal(message) from exc
+            self.roots = resolved_allowlist(_root_lines(text))
+            self.stat_key = key
             return self.roots
-        try:
-            text = self.path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeDecodeError) as exc:
-            message = MESSAGES.roots_file_unreadable.format(file=self.path, error=exc)
-            raise SecurityRefusal(message) from exc
-        self.roots = resolved_allowlist(_root_lines(text))
-        self.stat_key = key
-        return self.roots
 
 
 @dataclass(frozen=True)
@@ -997,6 +1008,12 @@ def _slice_intervals(
     return [] if ranges is None else _intervals(ranges, tool=tool)
 
 
+# Published as MCP ``_meta`` on every v2-surface tool: clients that defer
+# tool schemas behind a search step (Claude Code tool search) load these at
+# session start instead. v1 tools never carry it; that surface is kept only
+# for migration and should not spend always-loaded schema budget.
+ALWAYS_LOAD_META = {"anthropic/alwaysLoad": True}
+
 # What a registrar needs to open one call's repository: the context_for
 # closure build_server makes over its handlers.
 RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
@@ -1237,6 +1254,7 @@ def _register_shared(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
         annotations=read_only("Find referencing symbols"),
+        meta=ALWAYS_LOAD_META,
     )
     async def find_referencing_symbols(
         context: Context,
@@ -1257,6 +1275,7 @@ def _register_shared(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["capabilities"],
         annotations=read_only("Capabilities"),
+        meta=ALWAYS_LOAD_META,
     )
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
@@ -1324,8 +1343,40 @@ READ_OPERATIONS: dict[str, OperationSpec] = {
 
 
 def _omitted(value: object) -> bool:
-    """Was this per-operation parameter left unset? A blank string counts too."""
-    return value is None or (isinstance(value, str) and not value.strip())
+    """Was this per-operation parameter left unset?
+
+    One definition for both halves of the check. A blank string counts, and so
+    does ``False`` on a flag: neither carries an instruction, and a client that
+    fills every declared optional with a zero value -- the ordinary shape of a
+    generated call -- is saying nothing by them. Refusing such a value as a
+    stray parameter refuses a call that asked for nothing unusual, and for a
+    flag whose v1 counterpart defaulted to ``False`` it refuses the default.
+    """
+    if value is None or value is False:
+        return True
+    return isinstance(value, str) and not value.strip()
+
+
+def _checked_map_limit(operation: str, limit: int | None) -> None:
+    """Hold ``orient``'s map operation to the file cap its v1 counterpart publishes.
+
+    ``limit`` is one parameter serving three operations, and they do not share a
+    ceiling: communities and cycles are listings bounded by :data:`MAX_LIMIT`,
+    while map's cap is the repository-map bound ``repo_map`` publishes as
+    ``max_files``. Keeping one shape on the wire is what the shared-parameter
+    pass bought; the difference between the two ceilings is a contract, so it is
+    enforced here rather than by splitting the parameter into two schemas that
+    a client would then have to tell apart.
+    """
+    if operation != OPERATION_MAP or limit is None:
+        return
+    if not projectconfig.MIN_MAX_FILES <= limit <= projectconfig.MAX_MAX_FILES:
+        message = MESSAGES.map_limit_out_of_range.format(
+            limit=limit,
+            minimum=projectconfig.MIN_MAX_FILES,
+            maximum=projectconfig.MAX_MAX_FILES,
+        )
+        raise AtlasError(message)
 
 
 def _checked_operation(
@@ -1353,7 +1404,9 @@ def _checked_operation(
     accepted = ", ".join(spec.accepted)
     required = ", ".join(spec.required) or "none"
     stray = sorted(
-        name for name, value in provided.items() if value is not None and name not in spec.accepted
+        name
+        for name, value in provided.items()
+        if not _omitted(value) and name not in spec.accepted
     )
     if stray:
         message = MESSAGES.op_rejects_parameters.format(
@@ -1391,6 +1444,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["orient"],
         annotations=read_only("Orient"),
+        meta=ALWAYS_LOAD_META,
     )
     async def orient(
         context: Context,
@@ -1428,6 +1482,7 @@ def _register_v2(
                 "group_by_communities": group_by_communities,
             },
         )
+        _checked_map_limit(operation, limit)
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             if operation == OPERATION_MAP:
                 return handlers.repo_map(
@@ -1458,6 +1513,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["symbols"],
         annotations=read_only("Symbols"),
+        meta=ALWAYS_LOAD_META,
     )
     async def symbols(
         context: Context,
@@ -1518,6 +1574,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["read"],
         annotations=read_only("Read"),
+        meta=ALWAYS_LOAD_META,
     )
     async def read(
         context: Context,
@@ -1669,6 +1726,18 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 f"--transport {TRANSPORT_HTTP} to serve over HTTP, or drop the flag."
             )
         return
+    if args.allow_client_roots:
+        parser.error(
+            f"--allow-client-roots cannot be combined with --transport {TRANSPORT_HTTP}. "
+            "That flag lets the connected client's advertised roots authorise "
+            "repositories, which is safe under stdio because the client is the process "
+            "that spawned this server. Over HTTP the client is whatever reaches the "
+            "port, and loopback is not per-user isolated, so any local process could "
+            "name its own root and read anything this server's user can read -- the "
+            "--root allowlist would stop deciding what is servable. Drop "
+            "--allow-client-roots and enrol the repositories with --root or "
+            "--roots-from."
+        )
     host = args.host if args.host is not None else DEFAULT_HTTP_HOST
     if not _loopback_only(host):
         parser.error(
@@ -1686,10 +1755,36 @@ def http_binding(args: argparse.Namespace) -> tuple[str, int]:
     One place resolves the ``None`` sentinels that let ``_check_transport``
     tell "the operator passed this" from "the operator said nothing", so the
     listener and the refusal can never disagree about what the default is.
+
+    A hostname is resolved here to the literal that was checked, and the
+    literal is what gets bound. Passing the name through would leave two
+    independent lookups between the loopback check and the socket -- this
+    one and the server stack's own at bind time -- and a name whose records
+    change in between (a short TTL, a round-robin mixing loopback with a
+    routable address) would pass the check and bind the other answer. What
+    was verified has to be what is used.
     """
     host = args.host if args.host is not None else DEFAULT_HTTP_HOST
     port = args.port if args.port is not None else DEFAULT_HTTP_PORT
-    return host, port
+    return _loopback_literal(host), port
+
+
+def _loopback_literal(host: str) -> str:
+    """The checked loopback address for ``host`` as an IP literal.
+
+    Falls back to the name only when it resolves to nothing at all, which
+    ``_check_transport`` has already refused for every path that reaches
+    here; returning it unchanged keeps this from inventing an address.
+    """
+    try:
+        candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return host
+    for info in candidates:
+        address = str(info[4][0])
+        if ipaddress.ip_address(address).is_loopback:
+            return address
+    return host
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -1740,6 +1835,14 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "repository is first served; the cache then updates only through "
         f"agentless-mcp index ({cache.ENV_NO_AUTO_INDEX} in the environment "
         "does the same)",
+    )
+    parser.add_argument(
+        "--no-auto-restart",
+        action="store_true",
+        help="do not restart the HTTP server when its installed package "
+        "changes; the process then serves the code it loaded at startup "
+        f"until restarted by hand ({selfrestart.ENV_NO_AUTO_RESTART} in the "
+        "environment does the same)",
     )
     parser.add_argument(
         "--surface",
@@ -1812,8 +1915,24 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
     if not args.no_auto_warm:
         grammars.start_auto_warm()
     if args.transport == TRANSPORT_HTTP:
+        # Only the long-running transport can drift from its install: stdio
+        # processes are per-connection and load new code on reconnect.
+        if not args.no_auto_restart:
+            selfrestart.start_update_monitor(DISTRIBUTION_NAME)
         host, port = http_binding(args)
-        server.run(transport=TRANSPORT_HTTP, host=host, port=port)
+        try:
+            server.run(transport=TRANSPORT_HTTP, host=host, port=port)
+        except KeyboardInterrupt:
+            # The monitor's SIGINT may surface as KeyboardInterrupt rather than
+            # as a handled transport shutdown, and exactly one interrupt is its
+            # own. Claiming it is what tells the two sources apart: a restart
+            # being pending says only that the monitor fired at some point, so
+            # keying on that alone absorbed an operator's Ctrl+C landing any
+            # time afterwards and restarted a server they meant to stop.
+            if not selfrestart.claim_monitor_interrupt():
+                raise
+        if selfrestart.restart_pending():
+            return selfrestart.exec_or_exit()
     else:
         server.run()
     return 0
