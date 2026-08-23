@@ -188,6 +188,11 @@ def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
         return _Outcome(None, f"git {subcommand} could not be run: {exc.strerror}")
 
     if completed.returncode != 0:
+        # Taking the first line keeps the note short. It is not what makes the
+        # note safe to put on a receipt row -- `application/envelope` escapes
+        # it at the sink, which is where the line grammar is known. Simplify
+        # this to `.strip()` if the note should carry more, and nothing
+        # downstream breaks.
         detail = completed.stderr.decode("utf-8", errors="replace").strip().splitlines()
         first = detail[0] if detail else "no detail"
         return _Outcome(None, f"git {subcommand} exited {completed.returncode}: {first}")

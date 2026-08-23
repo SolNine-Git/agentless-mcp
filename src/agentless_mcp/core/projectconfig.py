@@ -216,6 +216,9 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
     warnings: list[str] = []
 
     unknown = sorted(key for key in document if key not in KNOWN_KEYS)
+    # `{key!r}` happens to escape a newline in a repository-authored key,
+    # which is convenient and is not the guarantee: the warning is made safe
+    # for a line-oriented answer by `application/envelope`, at the sink.
     warnings.extend(
         f"unknown key {key!r} in {CONFIG_FILENAME}: ignored (known keys: {', '.join(KNOWN_KEYS)})"
         for key in unknown[:MAX_UNKNOWN_KEY_WARNINGS]
