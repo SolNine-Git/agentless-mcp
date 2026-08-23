@@ -434,7 +434,7 @@ def apply_edits(
     is searched whole, which is the empty-intervals fix.
     """
     scoped_paths = set(intervals) if intervals is not None else set()
-    outcomes: list[EditOutcome | None] = [None] * len(edits)
+    outcomes: dict[int, EditOutcome] = {}
     new_contents: dict[str, str] = {}
 
     for path, positions in _group_by_path(edits).items():
@@ -460,9 +460,12 @@ def apply_edits(
         if content != original:
             new_contents[path] = content
 
-    # Every slot is filled: the grouping visits each edit exactly once.
+    # Every slot is filled: the grouping visits each edit exactly once. Read
+    # back by position so a slot the grouping missed raises here, rather than
+    # dropping out of the tuple and reading downstream as a smaller patch that
+    # succeeded.
     return ApplyResult(
-        outcomes=tuple(outcome for outcome in outcomes if outcome is not None),
+        outcomes=tuple(outcomes[position] for position in range(len(edits))),
         new_contents=new_contents,
     )
 

@@ -62,8 +62,10 @@ from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, INDENT_BLOCK_NODE_TYPES
 from agentless_mcp.util.errors import LanguageUnavailable
 
-# What a block boundary looks like in the normalised stream. Two characters no
-# source token can be, so they cannot collide with a leaf's own text.
+# What a block boundary looks like in the normalised stream. Two control
+# characters no source token is written with, so they do not collide with a
+# leaf's own text. A string literal holding one of them raw is the exception,
+# and it costs at most a wrong equivalence between two files that both do it.
 BLOCK_OPEN = "\x01"
 BLOCK_CLOSE = "\x02"
 
@@ -239,7 +241,10 @@ def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
             continue
 
         if item.child_count == 0:
-            text = item.text.decode("utf-8", errors="replace") if item.text else ""
+            # Strict: the tree was parsed from this text's own UTF-8 bytes and
+            # node spans fall on codepoint boundaries, so a decode error here
+            # would mean the parser lied and should not be papered over.
+            text = item.text.decode("utf-8") if item.text else ""
             if text:
                 yield text
             continue
@@ -260,7 +265,7 @@ def _directive_text(node: Node) -> str:
     """
     if node.text is None:
         return ""
-    text = " ".join(node.text.decode("utf-8", errors="replace").split())
+    text = " ".join(node.text.decode("utf-8").split())
     body = _COMMENT_MARKER.sub("", text, count=1)
     if not _DIRECTIVE.match(body):
         return ""
