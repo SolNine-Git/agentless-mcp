@@ -92,9 +92,10 @@ DEFAULT_DIRECTION = "LR"
 # in the caller, not repository content, so it is refused rather than damped.
 VALID_DIRECTIONS = frozenset({"TB", "TD", "BT", "RL", "LR"})
 
-# Words mermaid's flowchart grammar reserves. Generated ids are `n<int>` and
-# `s<int>` and so cannot collide today; the check in `_identifier` is what
-# keeps that true if the prefixes ever change.
+# Words mermaid's flowchart grammar reserves. No generated id can spell one:
+# `_identifier` appends an integer, so every id ends in a digit and no reserved
+# word does. The set names what this module must never emit where mermaid
+# expects an identifier, and a test asserts the rendered ids against it.
 MERMAID_RESERVED_IDS = frozenset(
     {
         "graph",
@@ -252,30 +253,27 @@ def safe_label(text: str) -> str:
 def _validate(settings: DiagramOptions) -> None:
     """Refuse option values that would render a diagram nobody asked for."""
     if settings.direction not in VALID_DIRECTIONS:
-        message = f"direction must be one of {sorted(VALID_DIRECTIONS)}"
+        message = f"direction must be one of {sorted(VALID_DIRECTIONS)}, got {settings.direction}"
         raise ValueError(message)
     if settings.max_nodes < 1:
-        message = "max_nodes must be at least 1"
+        message = f"max_nodes must be at least 1, got {settings.max_nodes}"
         raise ValueError(message)
     if settings.max_edges < 0:
-        message = "max_edges must not be negative"
+        message = f"max_edges must not be negative, got {settings.max_edges}"
         raise ValueError(message)
     if settings.focus_distance < 0:
-        message = "focus_distance must not be negative"
+        message = f"focus_distance must not be negative, got {settings.focus_distance}"
         raise ValueError(message)
 
 
 def _identifier(prefix: str, index: int) -> str:
-    """Return a generated identifier that is not a mermaid reserved word.
+    """Return the generated identifier for one node or subgraph.
 
-    The guard keys on the invariant -- "this text is not a word mermaid gives
-    a meaning to" -- rather than on the fact that today's prefixes happen to
-    produce ``n0``. Suffixing rather than raising keeps the render total.
+    The appended integer is what keeps an id out of
+    :data:`MERMAID_RESERVED_IDS`: the result always ends in a digit, and no
+    word mermaid reserves does.
     """
-    candidate = f"{prefix}{index}"
-    if candidate.lower() in MERMAID_RESERVED_IDS:
-        return candidate + "_"
-    return candidate
+    return f"{prefix}{index}"
 
 
 def _candidates(graph: RefGraph, settings: DiagramOptions) -> set[str]:
@@ -284,7 +282,7 @@ def _candidates(graph: RefGraph, settings: DiagramOptions) -> set[str]:
     if settings.focus is None:
         return nodes
     if settings.focus not in nodes:
-        message = "focus is not a module in this graph"
+        message = f"focus is not a module in this graph: {settings.focus}"
         raise ValueError(message)
     return _neighbourhood(graph, settings.focus, settings.focus_distance)
 
@@ -296,12 +294,12 @@ def _neighbourhood(graph: RefGraph, seed: str, distance: int) -> set[str]:
     as much as what it imports, and a directed walk would answer only half of
     a blast-radius question.
     """
-    known = set(graph.nodes)
+    # No membership test: RefGraph refuses an edge naming a node outside the
+    # graph, so both endpoints are nodes.
     adjacent: dict[str, set[str]] = {}
     for source, target in graph.edges:
-        if source in known and target in known:
-            adjacent.setdefault(source, set()).add(target)
-            adjacent.setdefault(target, set()).add(source)
+        adjacent.setdefault(source, set()).add(target)
+        adjacent.setdefault(target, set()).add(source)
 
     seen = {seed}
     frontier = [seed]
@@ -332,18 +330,19 @@ def _node_lines(
         yield from (_declaration(identifiers[node], node, _INDENT) for node in sorted(identifiers))
         return
 
-    grouped: set[str] = set()
-    drawn: dict[str, int] = {}
-    index = 0
+    drawn: list[tuple[Community, list[str]]] = []
     for community in partition.communities:
         members = sorted(member for member in community.members if member in identifiers)
-        if not members:
-            continue
+        if members:
+            drawn.append((community, members))
+
+    grouped: set[str] = set()
+    titles = _group_titles([community for community, _ in drawn])
+    for index, ((_, members), title) in enumerate(zip(drawn, titles, strict=True)):
         grouped.update(members)
-        yield f'{_INDENT}subgraph {_identifier("s", index)}["{_group_label(community, drawn)}"]'
+        yield f'{_INDENT}subgraph {_identifier("s", index)}["{title}"]'
         yield from (_declaration(identifiers[member], member, _INDENT * 2) for member in members)
         yield f"{_INDENT}end"
-        index += 1
 
     yield from (
         _declaration(identifiers[node], node, _INDENT)
@@ -352,8 +351,8 @@ def _node_lines(
     )
 
 
-def _group_label(community: Community, drawn: dict[str, int]) -> str:
-    """Return a subgraph title that names one community and no other.
+def _group_titles(communities: Sequence[Community]) -> list[str]:
+    """Return one subgraph title per drawn community, each naming no other.
 
     Two communities can carry the same mechanical label -- ``repository root``
     covers every group whose members straddle directories -- and two boxes
@@ -361,12 +360,17 @@ def _group_label(community: Community, drawn: dict[str, int]) -> str:
     ascending ordinal in the order the partition lists them, which is stable
     because that order is. The first occurrence is left bare so the common
     case, where every label is already distinct, reads as the paths do.
+
+    The ordinals are counted here rather than accumulated in an argument the
+    caller passes back in, so this returns data and mutates nothing.
     """
-    label = safe_label(community.label)
-    drawn[label] = drawn.get(label, 0) + 1
-    if drawn[label] == 1:
-        return label
-    return f"{label} {drawn[label]}"
+    counts: dict[str, int] = {}
+    titles: list[str] = []
+    for community in communities:
+        label = safe_label(community.label)
+        counts[label] = counts.get(label, 0) + 1
+        titles.append(label if counts[label] == 1 else f"{label} {counts[label]}")
+    return titles
 
 
 def _declaration(identifier: str, path: str, indent: str) -> str:
@@ -427,4 +431,4 @@ def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:
 
 def _identifier_index(identifier: str) -> int:
     """Return the integer an ``n<int>`` identifier carries."""
-    return int(identifier.lstrip(string.ascii_letters).rstrip("_"))
+    return int(identifier.lstrip(string.ascii_letters))

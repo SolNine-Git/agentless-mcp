@@ -93,8 +93,10 @@ def render_html(
     edges = candidates[: settings.max_edges]
     represented = sorted({membership[path] for path in selected if path in membership})
     labels = {str(position): partition.communities[position].label for position in represented}
-    elided_nodes = max(0, len(graph.nodes) - len(nodes))
-    elided_edges = max(0, len(graph.edges) - len(edges))
+    # Neither difference can go negative: `nodes` is the bounded selection out
+    # of `graph.nodes`, and `edges` is a truncated slice of `graph.edges`.
+    elided_nodes = len(graph.nodes) - len(nodes)
+    elided_edges = len(graph.edges) - len(edges)
     payload = {
         "nodes": nodes,
         "edges": edges,
@@ -115,10 +117,10 @@ def render_html(
 
 def _validate(options: HtmlOptions) -> None:
     if not 1 <= options.max_nodes <= MAX_HTML_NODES:
-        message = f"max_nodes must be between 1 and {MAX_HTML_NODES}"
+        message = f"max_nodes must be between 1 and {MAX_HTML_NODES}, got {options.max_nodes}"
         raise ValueError(message)
     if not 0 <= options.max_edges <= MAX_HTML_EDGES:
-        message = f"max_edges must be between 0 and {MAX_HTML_EDGES}"
+        message = f"max_edges must be between 0 and {MAX_HTML_EDGES}, got {options.max_edges}"
         raise ValueError(message)
 
 
