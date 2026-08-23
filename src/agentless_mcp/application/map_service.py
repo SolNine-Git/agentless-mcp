@@ -150,13 +150,16 @@ class MapService:
         rank = personalized_pagerank(graph, seeds or None)
         chosen = rank_order(rank)[: max(0, max_files)]
 
+        # `chosen` is keyed the same way as `by_path` and `rank`: all three
+        # come from this one scan, so a missing key is a desynchronisation
+        # worth raising on rather than reading as an empty file.
         by_path = scan.by_path()
         if granularity == GRANULARITY_FILE:
             files = tuple(
                 render.MapFile(
                     path=path,
-                    rank=rank.get(path, 0.0),
-                    omitted=len(by_path[path].symbols) if path in by_path else 0,
+                    rank=rank[path],
+                    omitted=len(by_path[path].symbols),
                 )
                 for path in chosen
             )
@@ -164,7 +167,7 @@ class MapService:
                 files=files,
                 budget=0,
                 included=0,
-                candidates=sum(len(by_path[path].symbols) for path in chosen if path in by_path),
+                candidates=sum(len(by_path[path].symbols) for path in chosen),
                 ranked=len(rank),
                 seeds=tuple(sorted(seeds)),
                 skipped=scan.skipped,
@@ -292,6 +295,11 @@ def seed_weights(
     for entry in focus:
         cleaned = entry.strip()
         if not cleaned:
+            # A blank entry is the absence of an entry, not a seed that
+            # failed to resolve -- the same thing an empty ``--focus`` string
+            # already means -- so reporting it would name nothing back at the
+            # caller. "Nothing is lost quietly" is about entries that spell
+            # something the scan could not find.
             continue
 
         paths = focus_paths(cleaned, known, index)
@@ -385,13 +393,15 @@ def _score_symbols(
     reference count says which symbol inside it the repository is pointing at.
     Multiplying keeps both: a hot symbol in a cold file still loses to a warm
     symbol in a hot one, which is the ordering a funnel wants.
+
+    ``paths``, ``by_path`` and ``rank`` are keyed off the same scan, so a
+    missing key is a desynchronisation and raises here rather than dropping
+    the file from the map or ranking it alongside the genuinely cold ones.
     """
     candidates: list[_Candidate] = []
     for path in paths:
-        facts = by_path.get(path)
-        if facts is None:
-            continue
-        file_rank = rank.get(path, 0.0)
+        facts = by_path[path]
+        file_rank = rank[path]
         for symbol in facts.symbols:
             inbound = sum(1 for ref in index.sites.get(symbol.name, ()) if ref.path != path)
             candidates.append(
@@ -424,7 +434,7 @@ def _group(
     for candidate in candidates:
         totals[candidate.path] = totals.get(candidate.path, 0) + 1
 
-    order = sorted(totals, key=lambda path: (-rank.get(path, 0.0), path))
+    order = sorted(totals, key=lambda path: (-rank[path], path))
 
     files: list[render.MapFile] = []
     for path in order:
@@ -442,7 +452,7 @@ def _group(
         files.append(
             render.MapFile(
                 path=path,
-                rank=rank.get(path, 0.0),
+                rank=rank[path],
                 entries=entries,
                 omitted=totals.get(path, 0) - len(entries),
             )

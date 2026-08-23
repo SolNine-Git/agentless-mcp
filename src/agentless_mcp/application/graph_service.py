@@ -274,6 +274,8 @@ class GraphService:
         if seed.message:
             return _empty_diagram(focus or "", seed.message, grouped=group_by_communities)
 
+        # Parsed outside the branch below on purpose: a caller who mistypes
+        # the knob hears about it whether or not they asked for grouping.
         setting = _resolution(resolution)
         partition = (
             communities.detect_communities(ranked.graph, resolution=setting)
