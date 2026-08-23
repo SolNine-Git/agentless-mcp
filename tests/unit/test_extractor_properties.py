@@ -145,6 +145,28 @@ class TestAsyncDetection:
         assert symbol.is_async is False
         assert symbol.signature.startswith("def ")
 
+    @pytest.mark.parametrize(
+        ("language", "source", "expected"),
+        [
+            ("javascript", "async function f(){}\nfunction h(){}\n", {"f": True, "h": False}),
+            ("javascript", "const g = async () => {};\n", {"g": True}),
+            ("csharp", "class C { async Task M() {} void N() {} }\n", {"M": True, "N": False}),
+        ],
+    )
+    def test_the_generic_walker_reads_async_from_the_declaration(
+        self, extractor, language, source, expected
+    ):
+        """The generic walker hardcoded is_async=False for all sixteen languages.
+
+        Three spellings reach it: a keyword child of the declaration, a
+        keyword child of the value a binding names, and a modifier keyword
+        beside the visibility one. Under-reporting is not neutral here --
+        `is_async` is persisted and rendered, so a caller filtering on it gets
+        a short answer presented as a complete one.
+        """
+        found = named(extractor.extract_from_source(source, language, "a"))
+        assert {name: found[name].is_async for name in expected} == expected
+
     def test_a_genuinely_async_function_is_async(self, extractor):
         # Positive control, so the xfail above reads as over-matching rather
         # than as async detection being absent.
@@ -232,15 +254,14 @@ class TestTypeOwnership:
         found = named(extractor.extract_from_source(source, "go", "p.go"))
         assert found["Price"].parent_class == "Invoice"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05: the generic walker extracts Go methods but not `type X struct`, so the "
-            "receiver type every method names has no symbol of its own. Measured: the "
-            "source below yields one symbol, the method, and none for Invoice."
-        ),
-    )
     def test_a_go_struct_type_is_a_symbol_of_its_own(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        Go's class node type was `type_declaration`, which names nothing --
+        so it matched, yielded no symbol, and stopped the descent before
+        reaching the `type_spec` that carries the name. The source below used
+        to yield one symbol, the method, and none for Invoice.
+        """
         source = (
             "package p\n\ntype Invoice struct {\n\tSubtotal float64\n}\n\n"
             "func (i *Invoice) Price() float64 { return 0 }\n"
@@ -260,16 +281,15 @@ class TestFunctionValuedBindings:
             assert found["h"].kind is SymbolKind.FUNCTION
 
     @pytest.mark.parametrize("language", ["javascript", "typescript", "tsx"])
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05: the ECMAScript walker matches function_declaration and class_declaration "
-            "and not a lexical_declaration whose value is a function. Measured: "
-            "`export const App = () => {}` and `const g = function(){}` yield no symbols in "
-            "any of the three ECMAScript grammars."
-        ),
-    )
     def test_a_const_bound_function_is_extracted(self, extractor, language):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        The ECMAScript walker matched `function_declaration` and
+        `class_declaration` and not a binding whose value is a function, so
+        `export const App = () => {}` and `const g = function(){}` yielded no
+        symbols in any of the three grammars -- and that is the dominant way
+        modern JS and TS declare a function.
+        """
         source = "export const App = () => { return 1; };\nconst g = function(){ return 2; };\n"
         found = named(extractor.extract_from_source(source, language, "a.js"))
         assert "App" in found

@@ -235,27 +235,28 @@ class TestJava:
         # reads depends on which language the file happens to be in.
         assert named(symbols_for(extractor, "java"))["Priceable"].kind is SymbolKind.CLASS
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05: the generic walker hardcodes is_public=True for all sixteen of its "
-            "languages. Measured: `private void hidden()` comes back is_public=True, and "
-            "the value is persisted to the tag cache, so the column is wrong on disk too."
-        ),
-    )
     def test_a_private_method_is_not_reported_public(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6c landed.
+
+        The generic walker answered `is_public` from the leading-underscore
+        convention for all sixteen of its languages, so `private void
+        hidden()` came back is_public=True -- and the value is persisted to
+        the tag cache, so the column was wrong on disk too.
+        """
         source = "class C {\n    private void hidden() {}\n    public void shown() {}\n}\n"
         found = named(extractor.extract_from_source(source, "java", "C.java"))
         assert found["hidden"].is_public is False
         assert found["shown"].is_public is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05: the generic walker's constant branch does not match a Java field "
-            "declaration. Measured: `static final double TAX_RATE = 0.2` yields no symbol, "
-            "so the fixture's only constant is invisible."
-        ),
-    )
+    def test_an_instance_field_is_not_a_constant(self, extractor):
+        # `private final double subtotal` is per-instance state that happens
+        # not to be reassigned. `static final` is Java's constant, and the
+        # difference is a guarantee the map would otherwise claim falsely.
+        found = named(symbols_for(extractor, "java"))
+        assert "subtotal" not in found
+
     def test_a_static_final_field_is_a_constant(self, extractor):
+        # The generic walker had no constant branch at all, so
+        # `static final double TAX_RATE = 0.2` yielded no symbol and the
+        # fixture's only constant was invisible.
         assert named(symbols_for(extractor, "java"))["TAX_RATE"].kind is SymbolKind.CONSTANT

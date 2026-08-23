@@ -124,6 +124,46 @@ class TestRegistry:
         assert report.degraded_tier1 == ()
 
 
+# One private and one unmarked declaration per language that spells
+# visibility with a keyword. The keyword is what `is_public` must answer
+# from: every one of these names would read as public under the
+# leading-underscore convention the walker used before stage 6c.
+VISIBILITY_SOURCES = {
+    "php": "<?php\nclass C { private function hidden() {} public function shown() {} }\n",
+    "csharp": "class C { private void hidden() {} public void shown() {} }\n",
+    "kotlin": "class C {\n    private fun hidden() {}\n    fun shown() {}\n}\n",
+    "scala": "class C {\n    private def hidden(): Unit = {}\n    def shown(): Unit = {}\n}\n",
+}
+
+
+class TestVisibilityKeywords:
+    """`is_public` is persisted to the tag cache and filters an overview."""
+
+    @pytest.mark.parametrize("language", sorted(VISIBILITY_SOURCES))
+    def test_a_private_declaration_is_not_reported_public(self, language, extractor):
+        if language not in grammars.warmed_languages():
+            pytest.skip(f"grammar for {language} is not in the local pack cache")
+        found = {
+            symbol.name: symbol
+            for symbol in extractor.extract_from_source(
+                VISIBILITY_SOURCES[language], language, f"C.{language}"
+            )
+        }
+        assert found["hidden"].is_public is False
+        assert found["shown"].is_public is True
+
+    def test_a_php_constructor_is_public_when_the_keyword_says_so(self, extractor):
+        # `__construct` starts with an underscore and is declared public. The
+        # convention and the keyword disagree, and the keyword is the answer.
+        if "php" not in grammars.warmed_languages():
+            pytest.skip("grammar for php is not in the local pack cache")
+        source = "<?php\nclass C { public function __construct() {} }\n"
+        (symbol,) = [
+            s for s in extractor.extract_from_source(source, "php", "C.php") if s.name != "C"
+        ]
+        assert symbol.is_public is True
+
+
 class TestSymbolExtraction:
     def test_the_top_level_function_is_extracted(self, language, extractor):
         text, path = source_for(language)

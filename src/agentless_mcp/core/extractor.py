@@ -211,6 +211,44 @@ class LanguageConfig:
     # bare-name evidence for every language, including the ones where it means
     # nothing of the kind.
     import_name_node_types: tuple[str, ...] = ()
+    # Child node types carrying a declaration's modifier keywords. Two shapes
+    # in the pack -- a container whose children are the keywords (java,
+    # kotlin, scala `modifiers`) and one leaf per keyword (csharp `modifier`,
+    # php `visibility_modifier`) -- so the keywords are read as text and split
+    # rather than by node type. Empty means the language has no visibility
+    # keywords and the leading-underscore convention is the only signal there
+    # is.
+    modifier_node_types: tuple[str, ...] = ()
+    # Node types that bind a name to a value, where a function-valued binding
+    # is how the language declares a function. `export const App = () => {}`
+    # is the dominant form in modern ECMAScript, and matching only
+    # `function_declaration` reports a React component file as empty.
+    binding_node_types: tuple[str, ...] = ()
+    # Value node types that make such a binding a function declaration.
+    function_value_node_types: tuple[str, ...] = ()
+    # Node types that declare a constant, plus every modifier keyword the
+    # declaration must carry to be one. Java needs both: `static final double
+    # TAX_RATE` is a constant of the class and `private final double subtotal`
+    # is per-instance state that happens not to be reassigned. Reporting the
+    # second as a constant would make the map claim a guarantee the code does
+    # not give.
+    constant_node_types: tuple[str, ...] = ()
+    constant_modifier_keywords: tuple[str, ...] = ()
+
+
+# Modifier keywords that deny a declaration to importers. `internal` is C#
+# and Kotlin's assembly/module scope and `fileprivate` is Swift's; both are
+# narrower than public, which is the question `is_public` answers.
+NON_PUBLIC_MODIFIERS = frozenset({"private", "protected", "internal", "fileprivate"})
+
+# The ECMAScript value forms that make `const name = <value>` a function
+# declaration. Shared by the three grammars in the family.
+_ECMASCRIPT_FUNCTION_VALUES = (
+    "arrow_function",
+    "function_expression",
+    "function",
+    "generator_function",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +271,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "typescript": LanguageConfig(
         function_node_types=(
@@ -247,6 +287,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "tsx": LanguageConfig(
         function_node_types=(
@@ -261,10 +303,15 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "go": LanguageConfig(
         function_node_types=("function_declaration", "method_declaration"),
-        class_node_types=("type_declaration",),
+        # `type_spec`, not `type_declaration`: the outer node names nothing,
+        # so `type Invoice struct` used to match and yield no symbol at all --
+        # leaving every method's receiver type with no declaration of its own.
+        class_node_types=("type_spec",),
         import_node_types=("import_spec",),
         name_field="name",
         import_path_node_type="interpreted_string_literal",
@@ -300,6 +347,9 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_field="name",
         import_path_node_type="scoped_identifier",
         identifier_node_types=("identifier", "type_identifier"),
+        modifier_node_types=("modifiers",),
+        constant_node_types=("field_declaration",),
+        constant_modifier_keywords=("static", "final"),
     ),
     "ruby": LanguageConfig(
         function_node_types=("method", "singleton_method"),
@@ -327,6 +377,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # included: `variable_name` wraps `$` and a `name`, and the reference
         # pass only reads leaves.
         identifier_node_types=("name",),
+        modifier_node_types=("visibility_modifier",),
     ),
     "kotlin": LanguageConfig(
         function_node_types=("function_declaration",),
@@ -340,6 +391,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_node_types=("simple_identifier", "type_identifier"),
         class_body_node_types=("class_body",),
         signature_from_header=True,
+        modifier_node_types=("modifiers",),
     ),
     "swift": LanguageConfig(
         function_node_types=(
@@ -370,6 +422,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier", "type_identifier"),
         class_body_node_types=("template_body",),
         signature_from_header=True,
+        modifier_node_types=("modifiers",),
     ),
     "csharp": LanguageConfig(
         function_node_types=(
@@ -389,6 +442,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier",),
         class_body_node_types=("declaration_list",),
         signature_from_header=True,
+        modifier_node_types=("modifier",),
     ),
     # Deterministic non-code surfaces use dedicated symbol handlers below;
     # these rows own their reference node types and keep the registry's trust
@@ -1000,6 +1054,20 @@ class _GenericWalk:
 
 
 @dataclass(frozen=True)
+class _FunctionSite:
+    """The three parts of a function symbol that vary by where it was found.
+
+    ``header`` is the node the signature is rendered from. It is the
+    declaration itself except for a function-valued binding, where the name is
+    on the binding and the parameters are on the value.
+    """
+
+    name: str
+    owner: str
+    header: Node
+
+
+@dataclass(frozen=True)
 class _SurfaceDeclaration:
     """One parsed non-code declaration before common symbol fields are added."""
 
@@ -1335,24 +1403,16 @@ class TreeSitterExtractor:
             name = self._generic_name(node, source, cfg)
             if name:
                 owner = parent or self._receiver_owner(node, source, cfg)
-                kind = SymbolKind.METHOD if owner else SymbolKind.FUNCTION
                 symbols.append(
-                    ASTSymbol(
-                        name=name,
-                        kind=kind,
-                        module_path=module_path,
-                        line_number=node.start_point[0] + 1,
-                        end_line_number=node.end_point[0] + 1,
-                        signature=self._generic_signature(node, source, name, cfg),
-                        docstring="",
-                        parent_class=owner,
-                        decorators=(),
-                        bases=(),
-                        language=language,
-                        is_public=not name.startswith("_"),
-                        is_async=False,
+                    self._generic_function_symbol(
+                        node, source, walk, _FunctionSite(name=name, owner=owner, header=node)
                     )
                 )
+            return []
+        if node.type in cfg.binding_node_types:
+            return self._visit_generic_binding(node, source, walk, parent)
+        if node.type in cfg.constant_node_types:
+            self._append_generic_constant(node, source, walk, parent)
             return []
         if node.type in cfg.class_node_types:
             name = self._generic_name(node, source, cfg)
@@ -1371,7 +1431,7 @@ class TreeSitterExtractor:
                     decorators=(),
                     bases=(),
                     language=language,
-                    is_public=not name.startswith("_"),
+                    is_public=self._generic_is_public(node, source, cfg, name),
                     is_async=False,
                 )
             )
@@ -1381,6 +1441,121 @@ class TreeSitterExtractor:
         # Not a declaration: a wrapper (export_statement, a block, an
         # expression) that may still hold one.
         return [(child, parent) for child in node.children]
+
+    def _generic_function_symbol(
+        self, node: Node, source: bytes, walk: _GenericWalk, site: _FunctionSite
+    ) -> ASTSymbol:
+        """Build one function or method symbol from the site it was found at."""
+        return ASTSymbol(
+            name=site.name,
+            kind=SymbolKind.METHOD if site.owner else SymbolKind.FUNCTION,
+            module_path=walk.module_path,
+            line_number=node.start_point[0] + 1,
+            end_line_number=node.end_point[0] + 1,
+            signature=self._generic_signature(site.header, source, site.name, walk.cfg),
+            docstring="",
+            parent_class=site.owner,
+            decorators=(),
+            bases=(),
+            language=walk.language,
+            is_public=self._generic_is_public(node, source, walk.cfg, site.name),
+            # Three spellings across the pack: a keyword child (ECMAScript), a
+            # `function_modifiers` node (Rust), and a modifier keyword beside
+            # the visibility one (C#, Kotlin).
+            is_async=declares_async(site.header)
+            or "async" in self._modifier_keywords(site.header, source, walk.cfg),
+        )
+
+    def _visit_generic_binding(
+        self,
+        node: Node,
+        source: bytes,
+        walk: _GenericWalk,
+        parent: str,
+    ) -> list[tuple[Node, str]]:
+        """Emit a function symbol for a function-valued binding, or descend.
+
+        A binding whose value is not a function is not a declaration this
+        walker knows, so the walk carries on through it rather than stopping:
+        `const [a, b] = f()` still holds expressions worth reaching.
+        """
+        value = node.child_by_field_name("value")
+        if value is None or value.type not in walk.cfg.function_value_node_types:
+            return [(child, parent) for child in node.children]
+        name = self._generic_name(node, source, walk.cfg)
+        if name:
+            walk.symbols.append(
+                self._generic_function_symbol(
+                    node, source, walk, _FunctionSite(name=name, owner=parent, header=value)
+                )
+            )
+        return []
+
+    def _append_generic_constant(
+        self,
+        node: Node,
+        source: bytes,
+        walk: _GenericWalk,
+        parent: str,
+    ) -> None:
+        """Emit a constant symbol when the declaration carries the keyword.
+
+        The keywords are what separate a constant from mutable state: a Java
+        `static final double TAX_RATE` is a constant of the class, and
+        `private final double subtotal` is per-instance state that happens not
+        to be reassigned.
+        """
+        cfg = walk.cfg
+        required = frozenset(cfg.constant_modifier_keywords)
+        if not required <= self._modifier_keywords(node, source, cfg):
+            return
+        declarator = node.child_by_field_name("declarator")
+        name = self._generic_name(declarator if declarator is not None else node, source, cfg)
+        if not name:
+            return
+        walk.symbols.append(
+            ASTSymbol(
+                name=name,
+                kind=SymbolKind.CONSTANT,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=self._header_text(node, source),
+                docstring="",
+                parent_class=parent,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=self._generic_is_public(node, source, cfg, name),
+                is_async=False,
+            )
+        )
+
+    def _modifier_keywords(self, node: Node, source: bytes, cfg: LanguageConfig) -> frozenset[str]:
+        """Return the modifier keywords a declaration carries, as words.
+
+        Read as text and split, because the pack spells modifiers two ways: a
+        container node holding one child per keyword, and one leaf node per
+        keyword. The words are the same either way.
+        """
+        words: set[str] = set()
+        for child in node.children:
+            if child.type in cfg.modifier_node_types:
+                words.update(self._node_text(child, source).split())
+        return frozenset(words)
+
+    def _generic_is_public(self, node: Node, source: bytes, cfg: LanguageConfig, name: str) -> bool:
+        """Answer `is_public` from the declaration's own keywords where it has them.
+
+        `is_public` is persisted to the tag cache and is what a caller filters
+        an overview on, so a private method reported public is a wrong column
+        on disk. A language with no visibility keywords falls back to the
+        leading-underscore convention, which is the only signal such a
+        language gives.
+        """
+        if cfg.modifier_node_types:
+            return not (self._modifier_keywords(node, source, cfg) & NON_PUBLIC_MODIFIERS)
+        return not name.startswith("_")
 
     def _generic_signature(self, node: Node, source: bytes, name: str, cfg: LanguageConfig) -> str:
         """Render `fn name(params) -> result` from whatever fields exist.
