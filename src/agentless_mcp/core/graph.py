@@ -366,6 +366,17 @@ def _candidate_bases(
         # already a path, dots and separators included.
         return [_normalized(directory / module)]
 
+    if module.endswith(_MODULE_SUFFIXES):
+        # The specifier already names a file: C and C++ `#include "money.h"`,
+        # shell `source lib/util.sh`. Dotting it the way a Python module
+        # string is dotted turns `money.h` into `money/h`, and no suffix
+        # appended to that ever matches -- which is why, before this branch,
+        # no C or C++ include resolved to a repository file at all and the
+        # include graph was empty on every repository. Importer-relative
+        # first: `#include "util.h"` names the sibling, not a same-named file
+        # at the repository root.
+        return [_normalized(directory / module), module]
+
     dotted = module.replace(".", "/")
     return [dotted, _normalized(directory / dotted)]
 

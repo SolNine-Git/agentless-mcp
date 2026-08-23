@@ -388,3 +388,58 @@ class TestSuffixMatching:
     def test_a_module_matching_nothing_whole_resolves_to_nothing(self):
         known = ["src/mycore/refs.py"]
         assert resolve_import_target("app.py", self.absolute("core.refs"), known) is None
+
+
+class TestASpecifierThatAlreadyNamesAFile:
+    """C, C++ and shell write the filename; Python writes a dotted module.
+
+    Before this, every specifier was dotted the way a Python module string is,
+    so `#include "money.h"` became the stem `money/h` and no suffix appended
+    to that ever matched. Measured: no C or C++ include resolved to a
+    repository file at all, on any repository -- the include graph was empty,
+    and the audit's finding about *which* file such an include preferred could
+    not arise because it never reached one.
+    """
+
+    KNOWN = frozenset({"money.h", "app.c", "src/a/util.h", "src/a/app.c", "util.h", "lib/util.sh"})
+
+    def statement(self, module: str, *, relative: bool = True) -> ImportStatement:
+        return ImportStatement(
+            module=module,
+            names=(),
+            is_relative=relative,
+            relative_level=0,
+            line_number=1,
+            resolved_path="",
+        )
+
+    def test_a_quoted_include_resolves_to_the_file_it_names(self):
+        assert resolve_import_target("app.c", self.statement("money.h"), self.KNOWN) == "money.h"
+
+    def test_it_prefers_the_sibling_over_a_same_named_file_at_the_root(self):
+        # `#include "util.h"` names the header beside the including file.
+        # Both exist here, so the preference is the whole assertion.
+        assert (
+            resolve_import_target("src/a/app.c", self.statement("util.h"), self.KNOWN)
+            == "src/a/util.h"
+        )
+
+    def test_a_system_header_still_resolves_to_nothing(self):
+        # `<stdio.h>` is not in this repository, and inventing a match for it
+        # would be the guess this resolver refuses to make.
+        assert resolve_import_target("app.c", self.statement("stdio.h"), self.KNOWN) is None
+
+    def test_a_shell_source_path_resolves_too(self):
+        assert (
+            resolve_import_target("app.c", self.statement("lib/util.sh"), self.KNOWN)
+            == "lib/util.sh"
+        )
+
+    def test_a_dotted_python_module_is_unaffected(self):
+        # The branch keys on "the specifier already ends in a file suffix",
+        # so `package.module` still goes through the dotted path.
+        known = frozenset({"package/module.py", "app.py"})
+        assert (
+            resolve_import_target("app.py", self.statement("package.module", relative=False), known)
+            == "package/module.py"
+        )

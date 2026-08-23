@@ -38,7 +38,7 @@
     },
     {
       "tier": "imported",
-      "total": 5,
+      "total": 3,
       "omitted": 0,
       "rows": [
         {
@@ -49,13 +49,6 @@
           "relation": "references"
         },
         {
-          "node": "ts:inventory.ts::Inventory.reorderList",
-          "label": "Inventory.reorderList",
-          "path": "inventory.ts",
-          "line": 79,
-          "relation": "references"
-        },
-        {
           "node": "ts:pricing.ts::PriceBook",
           "label": "PriceBook",
           "path": "pricing.ts",
@@ -63,17 +56,31 @@
           "relation": "references"
         },
         {
-          "node": "ts:pricing.ts::PriceBook.quote",
-          "label": "PriceBook.quote",
-          "path": "pricing.ts",
-          "line": 46,
-          "relation": "references"
-        },
-        {
           "node": "ts:pricing.ts::formatMoney",
           "label": "formatMoney",
           "path": "pricing.ts",
           "line": 94,
+          "relation": "references"
+        }
+      ]
+    },
+    {
+      "tier": "unique",
+      "total": 2,
+      "omitted": 0,
+      "rows": [
+        {
+          "node": "ts:inventory.ts::Inventory.reorderList",
+          "label": "Inventory.reorderList",
+          "path": "inventory.ts",
+          "line": 79,
+          "relation": "references"
+        },
+        {
+          "node": "ts:pricing.ts::PriceBook.quote",
+          "label": "PriceBook.quote",
+          "path": "pricing.ts",
+          "line": 46,
           "relation": "references"
         }
       ]

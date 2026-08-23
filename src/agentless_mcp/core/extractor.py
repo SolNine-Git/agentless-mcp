@@ -197,6 +197,20 @@ class LanguageConfig:
     # same qualified name and the same stable id. The field is the grammar's
     # own, so the owner is read rather than guessed.
     receiver_field: str | None = None
+    # Node types inside an import statement that hold the names it binds into
+    # the importing file's own namespace. Empty for most languages, and the
+    # emptiness is a claim rather than an omission: `import "fmt"` in Go and
+    # `import a.b` in Python bind a module object, not the module's contents,
+    # so a bare reference to a name defined in that module is not evidence of
+    # an import. The ECMAScript family is the case in the table, where
+    # `import { X } from "./m"` genuinely does bind `X`.
+    #
+    # `core/resolve` depends on this being right. While the names were dropped,
+    # the resolver could only reach a TypeScript named import through its
+    # whole-module set -- which is why that set was allowed to supply
+    # bare-name evidence for every language, including the ones where it means
+    # nothing of the kind.
+    import_name_node_types: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +232,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
     ),
     "typescript": LanguageConfig(
         function_node_types=(
@@ -231,6 +246,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
     ),
     "tsx": LanguageConfig(
         function_node_types=(
@@ -244,6 +260,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
     ),
     "go": LanguageConfig(
         function_node_types=("function_declaration", "method_declaration"),
@@ -1412,13 +1429,43 @@ class TreeSitterExtractor:
                 imports.append(
                     ImportStatement(
                         module=path,
-                        names=(),
+                        names=self._import_names(node, source, cfg),
                         is_relative=path.startswith("."),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
                         resolved_path="",
                     )
                 )
+
+    def _import_names(self, node: Node, source: bytes, cfg: LanguageConfig) -> tuple[str, ...]:
+        """Return the names one import statement binds into the importing file.
+
+        The *local* name, so `import { Y as Z }` reports `Z`: what a bare
+        reference in this file can spell is the question, and `Y` is not it.
+
+        A namespace import (`import * as ns from "./n"`) binds a module
+        object rather than any of its names, so it contributes nothing here --
+        the same rule as Go's `import "fmt"` and Python's `import a.b`, and
+        the reason `import_name_node_types` is empty for both of those.
+        """
+        if not cfg.import_name_node_types:
+            return ()
+
+        names: list[str] = []
+        for child in walk_nodes(node):
+            if child.type == "import_specifier":
+                # `X` or `Y as Z`: the last identifier is the local binding.
+                identifiers = [c for c in child.children if c.type == "identifier"]
+                if identifiers:
+                    names.append(self._node_text(identifiers[-1], source))
+            elif child.type == "import_clause":
+                # A default import is a bare identifier directly under the
+                # clause; `{ ... }` and `* as ns` are their own node types and
+                # are not children of this shape.
+                names.extend(
+                    self._node_text(c, source) for c in child.children if c.type == "identifier"
+                )
+        return tuple(dict.fromkeys(names))
 
     def _extract_import_path(
         self,
@@ -2033,6 +2080,10 @@ class TreeSitterExtractor:
                                 relative_level=0,
                                 line_number=node.start_point[0] + 1,
                                 resolved_path="",
+                                # An `#include` is a textual paste: every name
+                                # the header declares is in this translation
+                                # unit's namespace afterwards, unqualified.
+                                binds_all=True,
                             )
                         )
                         break
@@ -2691,6 +2742,13 @@ class TreeSitterExtractor:
                 relative_level=relative_level,
                 line_number=node.start_point[0] + 1,
                 resolved_path="",
+                # `from x import *` is the one Python form that genuinely
+                # binds every name the target defines. It is recorded as the
+                # name `*`, which no reference ever spells, so without this
+                # the one import that does bind wholesale supplied no
+                # evidence at all while `import x` -- which binds none --
+                # supplied it for everything.
+                binds_all="*" in names,
             )
         )
 

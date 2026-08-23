@@ -10,7 +10,7 @@ and the imported one does not appear on the edge at all.
 
 import pytest
 
-from agentless_mcp.core import refs, resolve
+from agentless_mcp.core import grammars, refs, resolve
 
 CORE = '''\
 """Definitions the rest of the fixture resolves against."""
@@ -404,7 +404,18 @@ class TestSubmoduleImports:
         resolver, _ = submodule_repo
         scope = resolver.scopes["main.py"]
         assert scope.named["mod"] == frozenset({"pkg/mod.py"})
-        assert "pkg/mod.py" in scope.modules
+        assert scope.module_bindings["mod"] == frozenset({"pkg/mod.py"})
+
+    def test_the_submodule_is_not_wholesale_evidence(self, submodule_repo):
+        """`from pkg import mod` binds `mod`, not everything `mod` defines.
+
+        The submodule used to be added to the whole-module set as well, which
+        made every name `pkg/mod.py` defines resolve at `resolved-via-import`
+        in a file that imported only the module object. A bare reference to
+        one of them is a NameError in Python.
+        """
+        resolver, _ = submodule_repo
+        assert "pkg/mod.py" not in resolver.scopes["main.py"].wholesale
 
     def test_a_reference_through_the_submodule_resolves_imported(self, submodule_repo):
         _, graph = submodule_repo
@@ -579,3 +590,58 @@ class TestCycles:
         first = resolve.import_cycles(resolved(root, extractor)[1])
         second = resolve.import_cycles(resolved(root, extractor)[1])
         assert first == second
+
+
+# Two forms that genuinely do bring every name in unqualified, and one that
+# looks like them and does not.
+WHOLESALE_FILES = {
+    "core.py": "def helper(value):\n    return value\n",
+    "starred.py": "from core import *\n\n\ndef use(value):\n    return helper(value)\n",
+    "module_only.py": "import core\n\n\ndef use(value):\n    return helper(value)\n",
+}
+
+# A `static inline` definition rather than a prototype: `_extract_c_symbols`
+# reads `function_definition` and a prototype is a `declaration`, so a header
+# of prototypes yields no symbols to resolve to. Recorded as B05-H8.
+C_FILES = {
+    "money.h": (
+        "static inline double apply_tax(double amount, double rate) {\n"
+        "    return amount * (1 + rate);\n}\n"
+    ),
+    "app.c": '#include "money.h"\n\ndouble total(double a) {\n    return apply_tax(a, 0.2);\n}\n',
+}
+
+
+class TestWholesaleEvidence:
+    """Which imports may supply bare-name evidence, and which may not.
+
+    The whole-module set used to hold the target of every module import, so
+    "this file imported some module that happens to define this spelling" and
+    "this file imported this name" both answered `resolved-via-import`. It now
+    holds only the two forms that bring every name in unqualified.
+    """
+
+    def test_a_star_import_binds_every_name_it_brings_in(self, tmp_path, extractor):
+        _, graph = resolved(write(tmp_path, WHOLESALE_FILES), extractor)
+        edges = edges_from(graph, "py:starred.py::use", "helper")
+
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+    def test_a_module_import_binds_no_bare_name(self, tmp_path, extractor):
+        # `import core` binds the module object. A bare `helper(value)` in
+        # that file is a NameError, so the strongest honest answer is that
+        # the name is unique in the repository -- not that it was imported.
+        _, graph = resolved(write(tmp_path, WHOLESALE_FILES), extractor)
+        edges = edges_from(graph, "py:module_only.py::use", "helper")
+
+        assert [edge.tier for edge in edges] == [resolve.Tier.UNIQUE]
+
+    def test_a_c_include_binds_every_name_the_header_declares(self, tmp_path, extractor):
+        # The other direction: `#include` is a textual paste, so the arm has
+        # to stay for C or every cross-file C reference loses a tier.
+        if "c" not in grammars.warmed_languages():
+            pytest.skip("grammar for c is not in the local pack cache")
+        _, graph = resolved(write(tmp_path, C_FILES), extractor)
+        edges = edges_from(graph, "c:app.c::total", "apply_tax")
+
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]

@@ -8,12 +8,13 @@
 references (fan-out): 6
   same-file (1)
     references formatRow    [ts:reports.ts::formatRow] @51
-  resolved-via-import (5)
+  resolved-via-import (3)
     references Inventory    [ts:inventory.ts::Inventory] @37
-    references Inventory.reorderList    [ts:inventory.ts::Inventory.reorderList] @79
     references PriceBook    [ts:pricing.ts::PriceBook] @22
-    references PriceBook.quote    [ts:pricing.ts::PriceBook.quote] @46
     references formatMoney    [ts:pricing.ts::formatMoney] @94
+  unique (2)
+    references Inventory.reorderList    [ts:inventory.ts::Inventory.reorderList] @79
+    references PriceBook.quote    [ts:pricing.ts::PriceBook.quote] @46
 
 referenced by (fan-in): none
 

@@ -95,7 +95,13 @@ from agentless_mcp.util.fslimits import read_bounded
 # 7 (2026-08-19): module-attribute rows carry their syntactic qualifier, so
 #   ``core.helper`` can resolve through ``core`` without treating
 #   ``sys.stderr`` as repository-wide name evidence.
-SCHEMA_VERSION = 7
+# 8 (2026-08-23): import rows carry ``binds_all`` and the ECMAScript rows carry
+#   the names their import binds. Reusing v7 rows would read every C
+#   ``#include`` and every ``from x import *`` back as an import that binds no
+#   name, and every TypeScript named import back as one that binds nothing --
+#   which is precisely the whole-module over-promotion this version exists to
+#   end, reintroduced by a warm cache.
+SCHEMA_VERSION = 8
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
@@ -458,8 +464,8 @@ class CachedSource:
     def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
         """Rebuild one file's import statements from its rows, in extraction order."""
         cursor = self._connection.execute(
-            "SELECT module, names, is_relative, relative_level, line, resolved_path "
-            "FROM imports WHERE path = ? AND sha256 = ? ORDER BY ordinal",
+            "SELECT module, names, is_relative, relative_level, line, resolved_path, "
+            "binds_all FROM imports WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
         )
         return [_import_from_row(row) for row in cursor.fetchall()]
@@ -1120,8 +1126,8 @@ def _apply_plan(
             )
             connection.executemany(
                 "INSERT INTO imports (path, sha256, module, names, is_relative, "
-                "relative_level, line, resolved_path, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "relative_level, line, resolved_path, binds_all, ordinal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     _import_row(entry.path, entry.digest, ordinal, statement)
                     for ordinal, statement in enumerate(entry.imports)
@@ -1215,6 +1221,7 @@ def _import_row(
         statement.relative_level,
         statement.line_number,
         statement.resolved_path,
+        int(statement.binds_all),
         ordinal,
     )
 
@@ -1228,6 +1235,7 @@ def _import_from_row(row: Sequence[Any]) -> ImportStatement:
         relative_level=int(row[3]),
         line_number=int(row[4]),
         resolved_path=str(row[5]),
+        binds_all=bool(row[6]),
     )
 
 
@@ -1400,6 +1408,7 @@ CREATE TABLE IF NOT EXISTS imports (
     relative_level INTEGER NOT NULL,
     line INTEGER NOT NULL,
     resolved_path TEXT NOT NULL,
+    binds_all INTEGER NOT NULL,
     ordinal INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS refs (

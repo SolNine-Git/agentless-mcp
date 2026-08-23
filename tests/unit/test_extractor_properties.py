@@ -161,17 +161,16 @@ class TestWholeModuleEvidence:
         scope = scopes_for(write(tmp_path, SUBMODULE_IMPORT), extractor)["main.py"]
         assert scope.named["mod"] == frozenset({"pkg/mod.py"})
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B0x/6b over-promotion: build_file_scopes adds a `from pkg import mod` target "
-            "to the whole-module set, so every symbol defined in pkg/mod.py counts as "
-            "imported into the importing file. Measured: stray.py calls a bare `wrapped` "
-            "it never imported -- a NameError in Python -- and the resolver reports tier "
-            "`imported`, the tier an agent is told to read as a caller."
-        ),
-    )
     def test_a_name_the_file_never_imported_is_not_imported_evidence(self, tmp_path, extractor):
+        """Was a strict xfail; the marker came off when stage 6b landed.
+
+        `build_file_scopes` added a `from pkg import mod` target to the
+        whole-module set, so every symbol `pkg/mod.py` defines counted as
+        imported into the importing file. stray.py below calls a bare
+        `wrapped` it never imported -- a NameError in Python -- and the
+        resolver answered `imported`, the tier an agent is told to read as a
+        caller.
+        """
         root = write(tmp_path, SUBMODULE_IMPORT)
         scan = refs.scan_repo(root, extractor)
         resolver, _ = resolve.resolve_repo(scan, refs.build_ref_index(scan))
@@ -181,19 +180,32 @@ class TestWholeModuleEvidence:
 
 
 class TestTypeScriptNamedImports:
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "B05-H5: the ECMAScript import handler records the module string and drops the "
-            "named bindings. Measured: `import { X } from './m'` yields names=(), so every "
-            "named import degrades to whole-module evidence -- the same over-promotion as "
-            "the Python submodule case above, reached by a different door."
-        ),
-    )
     def test_a_named_import_records_the_names_it_binds(self, extractor):
+        """Was a strict xfail; the marker came off when stage 6b landed.
+
+        While the names were dropped, a TypeScript named import could only
+        reach the resolver through its whole-module set -- which is why that
+        set was allowed to supply bare-name evidence for every language,
+        including the ones where importing a module binds nothing of the sort.
+        """
         source = 'import { X } from "./m";\n'
         (statement,) = extractor.extract_imports_from_source(source, "typescript", "a.ts")
         assert statement.names == ("X",)
+
+    def test_the_local_name_is_what_is_recorded(self, extractor):
+        # `import { Y as Z }` binds Z. What a bare reference in this file can
+        # spell is the question, and Y is not it.
+        source = 'import { Y as Z } from "./m";\n'
+        (statement,) = extractor.extract_imports_from_source(source, "typescript", "a.ts")
+        assert statement.names == ("Z",)
+
+    def test_a_namespace_import_binds_no_bare_name(self, extractor):
+        # `import * as ns` binds a module object, the same as Go's
+        # `import "fmt"` and Python's `import a.b`. A bare reference to
+        # something the module defines is not evidence of an import.
+        source = 'import * as ns from "./n";\n'
+        (statement,) = extractor.extract_imports_from_source(source, "typescript", "a.ts")
+        assert statement.names == ()
 
 
 class TestTypeOwnership:

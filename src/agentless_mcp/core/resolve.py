@@ -186,14 +186,33 @@ class ImportScope:
     ``named`` holds the ``from x import n`` form, where only ``n`` is.
     """
 
-    modules: frozenset[str]
+    wholesale: frozenset[str]
     module_bindings: Mapping[str, frozenset[str]]
     named: Mapping[str, frozenset[str]]
     statements: tuple[tuple[str, int, str], ...]
 
     def binds(self, name: str, path: str) -> bool:
-        """True when this file's imports bring ``name`` in from ``path``."""
-        return path in self.modules or path in self.named.get(name, frozenset())
+        """True when this file's imports bring ``name`` in from ``path``.
+
+        ``wholesale`` was called ``modules`` and held the target of every
+        module import, which made "this file imported some module that
+        happens to define this spelling" indistinguishable from "this file
+        imported this name". Both answered at ``resolved-via-import``, the
+        tier a caller is told to read as a caller.
+
+        Reproduced against the shipped server on this repository:
+        ``adapters/cli/main.py`` imports ``resolve_repo`` by name from
+        ``application.repo_context`` and imports ``core.resolve`` as a module,
+        and a bare ``resolve_repo`` resolved to *both* files at
+        ``resolved-via-import`` -- so ``find_referencing_symbols`` on
+        ``core.resolve.resolve_repo`` listed ``main.py`` as a caller of a
+        function main.py does not import. 42 bare-reference sites on this
+        repository rested on that arm.
+
+        It now holds only the imports that genuinely bring every name in
+        unqualified: C's ``#include`` and Python's ``from x import *``.
+        """
+        return path in self.wholesale or path in self.named.get(name, frozenset())
 
 
 @dataclass(frozen=True)
@@ -330,7 +349,7 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
     scopes: dict[str, ImportScope] = {}
 
     for facts in files:
-        modules: set[str] = set()
+        wholesale: set[str] = set()
         module_bindings: dict[str, set[str]] = {}
         named: dict[str, set[str]] = {}
         statements: list[tuple[str, int, str]] = []
@@ -338,12 +357,19 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
         for statement in facts.imports:
             target = graph.resolve_import_target(facts.path, statement, known)
             statements.append((statement.module, statement.line_number, target or ""))
+            # Named rather than a bool so the narrowing is the type's, not a
+            # reader's: a file importing itself is not evidence about itself.
+            bound = target if target is not None and target != facts.path else None
+            if statement.binds_all and bound is not None:
+                # `#include` and `from x import *`: every name the target
+                # defines is spellable here, so a bare reference to one of
+                # them really is evidence of this import.
+                wholesale.add(bound)
             if not statement.names:
-                if target is not None and target != facts.path:
-                    modules.add(target)
+                if bound is not None:
                     binding = statement.module.split(".", maxsplit=1)[0]
                     if binding:
-                        module_bindings.setdefault(binding, set()).add(target)
+                        module_bindings.setdefault(binding, set()).add(bound)
                 continue
             for name in statement.names:
                 dotted = f"{statement.module}.{name}" if statement.module else name
@@ -354,15 +380,19 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
                     known,
                 )
                 if submodule is not None and submodule != facts.path:
+                    # `from pkg import mod` binds the name `mod` to a module
+                    # object. It does not bring `mod`'s contents into this
+                    # file, which is why the submodule is no longer added to
+                    # the wholesale set: a bare reference to something
+                    # `pkg/mod.py` defines is a NameError here.
                     named.setdefault(name, set()).add(submodule)
-                    modules.add(submodule)
                     module_bindings.setdefault(name, set()).add(submodule)
                     statements.append((dotted, statement.line_number, submodule))
-                elif target is not None and target != facts.path:
-                    named.setdefault(name, set()).add(target)
+                elif bound is not None:
+                    named.setdefault(name, set()).add(bound)
 
         scopes[facts.path] = ImportScope(
-            modules=frozenset(modules),
+            wholesale=frozenset(wholesale),
             module_bindings={name: frozenset(paths) for name, paths in module_bindings.items()},
             named={name: frozenset(paths) for name, paths in named.items()},
             statements=tuple(statements),
