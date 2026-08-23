@@ -17,6 +17,11 @@ at. Every requested id comes back with its location, its signature and at
 least the first lines of its body, every cut is marked on the card that was
 cut, and a summary line names how many were shortened and why.
 
+The ids the call could not seat come back as a count rather than as a list.
+The reason is identical for every one of them, and the rows are charged to the
+envelope's ceiling that this module's budget does not cover, so a long list of
+them ate the answer it was attached to.
+
 ``find_referencing_symbols`` is the asymmetric half of navigation. Callees
 come free from reading a body; callers do not, and they are what an error-path
 review or a blast-radius question actually needs. Each reference is attributed
@@ -38,7 +43,7 @@ name itself, matched the repository's only definition, or matched nothing but
 the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -52,9 +57,11 @@ from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
     id_qualname,
+    language_prefix,
     parse_stable_id,
     qualname,
     rationale_stable_id,
+    split_ordinal,
     symbol_stable_id,
 )
 from agentless_mcp.prompts import MESSAGES
@@ -87,15 +94,37 @@ EXPAND_BUDGET_TOKENS = 12_000
 # 60-card expansion: 8.1k text tokens, 11.3k JSON), so a seat count read off
 # the text render lets through more cards than the ceiling can then carry --
 # and the envelope trims that overflow by dropping whole symbols, which is
-# precisely the failure the fair split exists to prevent. 40 is four times the
-# documented per-call limit and was verified to leave the wrapped JSON clear
-# of the ceiling at 40, 60 and 192 requested ids.
+# precisely the failure the fair split exists to prevent.
+#
+# 40 is four times the documented per-call limit. Re-measured 2026-08-23 on
+# this repository with the chars/4 estimator, through
+# ``envelope.wrap_json(items_key="symbols")``: 40 ids render 6.2k JSON tokens
+# and 192 and 1000 ids both render 6.3k, all of them clear of the 16k ceiling
+# with every card kept. The earlier form of that sentence stopped being true
+# when the ids past the bound each cost a full sentence saying so: at 192 ids
+# the wrapped JSON reached 13.4k tokens and at 1000 it reached 48.2k, where
+# the ceiling dropped whole symbol cards. The over-bound ids are one row now,
+# so what the response carries is the cards and a count.
 EXPAND_MAX_SEATS = 40
 
 # Room kept back on each shortened card for the marker that says it was
 # shortened, so announcing the cut cannot be what pushes a card past its
 # share.
 _TRUNCATION_MARKER_TOKENS = 32
+
+# What stands in the ``stable_id`` column of an unresolved row that speaks for
+# a group of ids rather than for one. Parenthesised and countable so it cannot
+# read as an id: a real one carries a language prefix and a ``::``.
+GROUPED_IDS = "({count} ids)"
+
+# Said when a stable id names no symbol and the fan-in fell back to the bare
+# name. The fallback is deliberate and lives in ``core.refs.definitions_for``;
+# what was missing is this sentence, because the result echoed the id back as
+# its target and every other partial answer in this module is labelled.
+REFS_TARGET_UNRESOLVED = (
+    "{target} resolves to no symbol; these are the references to the name "
+    "{name}, wherever it is defined"
+)
 
 
 @dataclass(frozen=True)
@@ -149,7 +178,16 @@ def _check_limit(limit: int) -> None:
 
 @dataclass(frozen=True)
 class ExpandResult:
-    """Full bodies for the requested stable ids, plus the ids that missed."""
+    """Full bodies for the requested stable ids, plus the ids that missed.
+
+    An ``unresolved`` row usually names one id. A row whose ``stable_id``
+    reads ``(n ids)`` speaks for a group of them, because a reason that
+    repeats verbatim for every id costs a full sentence each and the rows are
+    charged to the envelope's ceiling that the service budget does not cover.
+    Measured on this repository: a thousand requested ids rendered 48.2k JSON
+    tokens as one row each, three times the ceiling, which then dropped every
+    symbol card the rows were attached to.
+    """
 
     cards: tuple[render.SymbolCard, ...]
     unresolved: tuple[tuple[str, str], ...]
@@ -184,6 +222,7 @@ class RefsResult:
     target: str
     groups: render.RefListing
     shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
+    target_resolved: bool = True
 
     @property
     def total(self) -> int:
@@ -195,10 +234,20 @@ class RefsResult:
         """The limit this fan-in was answered under."""
         return self.groups.limit
 
+    @property
+    def notice(self) -> str:
+        """Say so when this fan-in is about a name rather than the id asked for."""
+        if self.target_resolved:
+            return ""
+        base, _ = split_ordinal(self.target)
+        name = base.rpartition("::")[2].rpartition(".")[2] or base
+        return REFS_TARGET_UNRESOLVED.format(target=self.target, name=name)
+
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
         return {
             "target": self.target,
+            "target_resolved": self.target_resolved,
             **self.groups.as_dict(),
             "shared_callers": self.shared.as_dict(),
         }
@@ -245,24 +294,53 @@ class SymbolService:
         budget: int = EXPAND_BUDGET_TOKENS,
         seats: int = EXPAND_MAX_SEATS,
     ) -> ExpandResult:
-        """Return line-numbered bodies for the named stable ids, fairly budgeted."""
+        """Return line-numbered bodies for the named stable ids, fairly budgeted.
+
+        The batch is deduplicated first. Five copies of one id used to return
+        five identical cards, and they were charged five seats and five shares
+        of the budget -- so a repeated id cut the bodies of the symbols beside
+        it. One copy is expanded and the repeats are counted in one row.
+
+        Every bound this method takes is checked, not only ``limit``.
+        ``seats=-1`` sliced the card list from the end and reported the cards
+        it kept as the ones with no room, which is the negative-slicing defect
+        :func:`agentless_mcp.util.bounds.at_least` exists to refuse.
+        """
         _check_limit(limit)
+        bounds.at_least(budget, 1, "budget")
+        bounds.at_least(seats, 1, "seats")
+
+        requested = list(dict.fromkeys(stable_ids))
+        repeated = len(stable_ids) - len(requested)
         cards: list[render.SymbolCard] = []
         unresolved: list[tuple[str, str]] = []
 
-        for raw in stable_ids[:limit]:
+        for raw in requested[:limit]:
             card, reason = self._expand_one(ctx, raw)
             if card is None:
                 unresolved.append((raw, reason))
             else:
                 cards.append(card)
 
-        for raw in stable_ids[limit:]:
-            unresolved.append((raw, f"not expanded: the per-call limit is {limit} symbols"))
+        over_limit = len(requested[limit:])
+        if over_limit:
+            unresolved.append(
+                (
+                    GROUPED_IDS.format(count=over_limit),
+                    f"not expanded: the per-call limit is {limit} symbols",
+                )
+            )
+        if repeated:
+            unresolved.append(
+                (
+                    GROUPED_IDS.format(count=repeated),
+                    "not expanded: repeated in this batch, and expanded under the first copy",
+                )
+            )
 
         if len(cards) > seats:
             reason = MESSAGES.expand_no_room.format(requested=len(cards), seats=seats)
-            unresolved.extend((card.stable_id, reason) for card in cards[seats:])
+            unresolved.append((GROUPED_IDS.format(count=len(cards) - seats), reason))
             cards = cards[:seats]
 
         return ExpandResult(
@@ -304,7 +382,12 @@ class SymbolService:
             else ()
         )
         shared = render.SharedCallerListing(rows=ranked[:limit], total=len(ranked), limit=limit)
-        return RefsResult(target=target, groups=groups, shared=shared)
+        return RefsResult(
+            target=target,
+            groups=groups,
+            shared=shared,
+            target_resolved=_target_resolved(target, definitions),
+        )
 
     def _fit_bodies(
         self, cards: list[render.SymbolCard], budget: int
@@ -381,7 +464,19 @@ class SymbolService:
         )
 
     def _expand_one(self, ctx: RepoContext, raw: str) -> tuple[render.SymbolCard | None, str]:
-        """Resolve one stable id to a card carrying the symbol's whole body."""
+        """Resolve one stable id to a card carrying the symbol's whole body.
+
+        One symbol answers to one id, and :func:`core.symbols.disambiguate`
+        is what makes that true: it counts collisions on the qualified name an
+        id spells, so the dotted-owner case two data-language keys used to
+        share -- ``{"a": {"b.c": 1, "b": {"c": 2}}}`` -- is two ids now.
+
+        The language prefix is part of the id and is checked. It was parsed
+        and then ignored, so ``rs:core.py::quote`` answered with the Python
+        symbol and named it ``py:core.py::quote`` on the card -- a request
+        reinterpreted, with the correction shown as though it had been asked
+        for.
+        """
         try:
             parsed = parse_stable_id(raw)
         except ValueError as exc:
@@ -394,6 +489,12 @@ class SymbolService:
         match = next((symbol for symbol in symbols if id_qualname(symbol) == parsed.qualname), None)
         if match is None:
             return None, f"{parsed.path} no longer defines {parsed.qualname}"
+
+        if language_prefix(match.language) != parsed.prefix:
+            return None, (
+                f"no {parsed.prefix} symbol in {parsed.path}: the file is {match.language}. "
+                f"This symbol's id is {symbol_stable_id(match)}"
+            )
 
         lines = source.split("\n")
         start = match.line_number
@@ -413,6 +514,12 @@ class SymbolService:
         sets, and an exception here instead would discard every card the batch
         had already built while leaving the caller unable to tell which id
         poisoned the call.
+
+        The channel follows the shape of the operation and not the method that
+        caught the failure: a batch reports per item, a single-target view
+        raises. :mod:`agentless_mcp.application.view_service` keeps the same
+        rule over the same containment check, so an adapter handles a path
+        refusal one way per operation shape rather than one way per method.
         """
         try:
             # The id came from a caller, so its path is foreign data even
@@ -470,6 +577,27 @@ def render_find(result: FindResult) -> str:
     if not warning:
         return body
     return warning + "\n\n" + body
+
+
+def _target_resolved(target: str, definitions: Sequence[refs.Definition]) -> bool:
+    """True when a stable-id target found the symbol it named.
+
+    A bare name promises nothing about a file, so it always resolves. A stable
+    id does, and when the file no longer defines it
+    :func:`agentless_mcp.core.refs.definitions_for` falls back to every
+    definition of the name -- deliberately, so an id from an earlier
+    generation degrades to a name lookup instead of to an empty answer. The
+    caller has to be told which of the two answers it is holding: the
+    strongest evidence tier for a symbol nobody named reads as a fact.
+    """
+    try:
+        parsed = parse_stable_id(target)
+    except ValueError:
+        return True
+    return any(
+        definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
+        for definition in definitions
+    )
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:

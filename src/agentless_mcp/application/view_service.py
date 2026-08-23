@@ -16,6 +16,22 @@ top level.
 
 Every caller-supplied path crosses ``fslimits.contained_path`` before it is
 opened, so a path argument cannot walk out of the repository it was scoped to.
+One containment check, two outcome contracts, and which one applies is decided
+by what the caller handed in. A path this service is given is the caller's own
+argument, and a refusal raises: there is nothing to answer with, and nothing
+partial to salvage. :meth:`SymbolService.expand_symbols` reports the same
+refusal against the id that carried the path, because its input is a batch of
+ids and one bad id must not discard the cards already built beside it. The odd
+one out is :meth:`ViewService.skeleton`, which takes several paths and still
+raises on the first refusal; moving it to per-item reporting changes a
+documented CLI exit code and is not this module's decision alone.
+
+Only a skeleton needs a grammar. A slice needs the bytes to decode as text,
+and it asks for symbols so it can repeat an enclosing signature above a range
+that starts inside one. Refusing a README, a Dockerfile or a ``.cfg`` because
+no grammar claims its suffix was a guard keyed on a proxy: the line primitive
+answers without a parse, headerless, and says so by leaving ``language``
+empty.
 """
 
 from collections.abc import Sequence
@@ -37,7 +53,7 @@ from agentless_mcp.core.treewalk import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AgentlessError, RepoResolutionError
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 # What a caller is told about a line range that is not one. Shaped like
@@ -181,6 +197,8 @@ class ViewService:
         views: list[FileView] = []
         for raw in paths:
             resolved, language, text, error = self._load(ctx, raw)
+            if not language:
+                error = error or f"{resolved}: no grammar for this file type"
             if error:
                 views.append(FileView(path=resolved, language=language, text="", error=error))
                 continue
@@ -269,12 +287,21 @@ class ViewService:
         return LocationView(path=resolved, resolution=resolution, text=rendered)
 
     def _load(self, ctx: RepoContext, path: str) -> tuple[str, str, str, str]:
-        """Return (relative path, language, text, error) for one repository file."""
+        """Return (relative path, language, text, error) for one repository file.
+
+        An empty ``language`` is a fact, not an error: no grammar claims this
+        suffix. The invariant a line view needs is that the bytes decode as
+        text, and ``read_bounded`` is what enforces that. :meth:`skeleton`
+        turns the empty language into a refusal because a skeleton is a parse;
+        the two line views render headerless instead.
+
+        Raises on a containment refusal: the path is the caller's own
+        argument, so there is no partial answer to give and nothing to
+        attribute the refusal to but the call.
+        """
         absolute = contained_path(ctx.root, path)
         relative = absolute.relative_to(ctx.root).as_posix()
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix, "")
-        if not language:
-            return relative, "", "", f"{relative}: no grammar for this file type"
 
         read = read_bounded(absolute)
         if read.text is None:
@@ -282,6 +309,19 @@ class ViewService:
         return relative, language, read.text, ""
 
     def _symbols(self, ctx: RepoContext, text: str, language: str, path: str) -> list[ASTSymbol]:
-        """Get the symbols a slice uses for its sticky-scroll headers."""
+        """Get the symbols a slice uses for its sticky-scroll headers.
+
+        No symbols is an answer here. A file with no grammar has none to give,
+        and a grammar that was never warmed is an environment failure that
+        :meth:`skeleton` already degrades into ``FileView.error`` -- while the
+        two callers of this method raised it, although neither of them needed
+        the parse to answer. The slice loses its sticky-scroll headers and
+        keeps its lines.
+        """
+        if not language:
+            return []
         source = effective_source(ctx.symbols, self._extractor)
-        return list(source.symbols_for(text, language, path))
+        try:
+            return list(source.symbols_for(text, language, path))
+        except LanguageUnavailable:
+            return []
