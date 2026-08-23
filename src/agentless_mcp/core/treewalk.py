@@ -223,6 +223,10 @@ def _build_tree(files: list[RepoFile]) -> _Tree:
         for part in parts[:-1]:
             child = cursor.get(part)
             if not isinstance(child, dict):
+                # `child` is only ever absent here: a listing cannot name one
+                # path as both a file and a directory, so the `None` case is
+                # unreachable and the test is what narrows the walk to a
+                # `_Tree` rather than a guard against it.
                 child = {}
                 cursor[part] = child
             cursor = child
@@ -254,9 +258,10 @@ def _render_level(
         if level + 1 >= depth:
             # Depth elision is marked where it happens; only entries dropped
             # for the entry budget feed the trailing count, so the two
-            # truncations never double-report the same files.
-            if _count_entries(child):
-                lines.append(f"{indent}    ...")
+            # truncations never double-report the same files. Unconditional
+            # because `_build_tree` only creates a directory node on the way
+            # to a file, so a node reached here always holds something.
+            lines.append(f"{indent}    ...")
             continue
         _render_level(child, level + 1, depth, budget, lines)
 

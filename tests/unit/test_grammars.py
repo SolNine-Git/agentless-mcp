@@ -1,9 +1,12 @@
 """Tests for grammar loading, warmed-state gating and degradation.
 
-Nothing here reaches the network: the warmed-state probe is monkeypatched so
-the "not warmed" and "no download" paths are exercised without depending on
-what this machine happens to have cached, and the cold-cache warm test
-poisons the pack's manifest URL so any attempted fetch fails instantly.
+Nothing here reaches the network. The tests that need a real grammar read the
+one the session-scoped ``warm_grammars`` fixture warmed, which is where the
+suite's single download can happen; those assertions therefore rest on what
+that fixture arranged, not on this file. Everywhere else the warmed-state
+probe is monkeypatched so the "not warmed" and "no download" paths do not
+depend on what this machine happens to have cached, and the cold-cache warm
+test poisons the pack's manifest URL so any attempted fetch fails instantly.
 """
 
 import logging

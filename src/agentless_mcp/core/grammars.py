@@ -465,10 +465,15 @@ def warmup(
     """Fetch, load and probe-parse each language; report per language.
 
     This is the only function that downloads. A language that fails to fetch,
-    load or probe is reported as degraded; the run continues. The single case
-    that raises is a refusal: a fetch is required but downloads are forbidden,
-    which is a configuration decision the caller must see, not a degraded row
-    they might page past.
+    load or probe is reported as degraded; the run continues. The one case
+    this function raises deliberately is a refusal: a fetch is required but
+    downloads are forbidden, which is a configuration decision the caller must
+    see, not a degraded row they might page past.
+
+    A cache directory that cannot be read or written raises ``OSError`` out of
+    the pack on top of that. It is the whole local cache failing rather than
+    one language, so a caller that must not fail -- :func:`_auto_warm` --
+    catches it around this call.
     """
     names = tuple(languages) if languages is not None else ALL_LANGUAGES
     blocked = no_download or no_download_requested()
