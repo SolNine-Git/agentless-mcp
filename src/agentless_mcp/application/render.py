@@ -41,7 +41,7 @@ stricter escape because its grammar is not this one.
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, overload
 
 from agentless_mcp.core.refs import SkippedFile
@@ -82,7 +82,10 @@ SKIPPED_FILES_SHOWN = 5
 
 # The markdown fence a diagram travels in when it is going into a response
 # body. Declared here rather than in `core.mermaid` because fencing is a
-# property of the destination, not of the diagram.
+# property of the destination, not of the diagram. `core.patches` spells the
+# same three characters for the opposite job -- recognising a fence a model
+# wrote around a patch -- and that dialect is not ours to change, so the emit
+# side and the parse side keep separate copies on purpose.
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
 WEAK_MODULARITY_THRESHOLD = 0.3
@@ -243,7 +246,7 @@ class RefGroup:
     """
 
     path: str
-    sites: tuple[RefSite, ...] = field(default_factory=tuple)
+    sites: tuple[RefSite, ...] = ()
     tier: str = ""
     tier_label: str = ""
 
@@ -581,7 +584,12 @@ class PathHop:
 
 @dataclass(frozen=True)
 class CycleRow:
-    """One import cycle as the chain of files that closes it."""
+    """One import cycle as the chain of files that closes it.
+
+    ``files`` is non-empty by construction: a cycle the detector reports has
+    at least one file in it. ``chain`` closes the ring by repeating the first
+    entry, so an empty tuple would raise rather than render.
+    """
 
     files: tuple[str, ...]
 
