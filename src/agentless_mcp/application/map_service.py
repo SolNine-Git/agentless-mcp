@@ -36,8 +36,10 @@ from agentless_mcp.application.symbol_service import rationale_nodes
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
+from agentless_mcp.core.projectconfig import MAX_MAX_FILES, MIN_MAX_FILES
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 from agentless_mcp.prompts import MESSAGES
+from agentless_mcp.util import bounds
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_MAX_FILES = 10
@@ -128,6 +130,11 @@ class MapService:
         max_files = projectconfig.resolve(
             request.max_files, ctx.config.max_files, DEFAULT_MAX_FILES
         )
+        # The declared contract is projectconfig's MIN/MAX_MAX_FILES, and it
+        # was enforced for a config file and on the MCP wire but not here, so
+        # the CLI -- which declares --max-files as a bare type=int -- honoured
+        # anything. Enforced in the service means both doors inherit it.
+        bounds.within(max_files, MIN_MAX_FILES, MAX_MAX_FILES, "max_files")
         granularity = projectconfig.resolve(
             request.granularity, ctx.config.granularity, GRANULARITY_FUNCTION
         )

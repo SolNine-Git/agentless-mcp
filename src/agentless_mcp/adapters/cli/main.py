@@ -965,9 +965,6 @@ def _cmd_path(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.max_visited < 1:
-        return fail("--max-visited takes a positive integer", EXIT_USAGE)
-
     result = services.graphs.path(
         ctx,
         args.source,
@@ -998,9 +995,6 @@ def _cmd_communities(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.limit < 0 or args.members < 0:
-        return fail("--limit and --members take non-negative integers", EXIT_USAGE)
-
     result = services.graphs.communities(
         ctx, resolution=args.resolution, limit=args.limit, members=args.members
     )
@@ -1018,9 +1012,6 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.max_nodes < 1:
-        return fail("--max-nodes takes a positive integer", EXIT_USAGE)
-
     view = services.graphs.diagram(
         ctx,
         focus=args.focus,
@@ -1053,16 +1044,6 @@ def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if not 1 <= args.max_nodes <= htmlgraph.MAX_HTML_NODES:
-        return fail(
-            f"--max-nodes takes an integer from 1 through {htmlgraph.MAX_HTML_NODES}",
-            EXIT_USAGE,
-        )
-    if not 0 <= args.max_edges <= htmlgraph.MAX_HTML_EDGES:
-        return fail(
-            f"--max-edges takes an integer from 0 through {htmlgraph.MAX_HTML_EDGES}",
-            EXIT_USAGE,
-        )
     cache_name = _html_cache_name(args.cache_file)
     if args.cache_file is not None and cache_name is None:
         return fail(

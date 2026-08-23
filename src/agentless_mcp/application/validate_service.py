@@ -68,6 +68,7 @@ from agentless_mcp.core import sandbox
 from agentless_mcp.core.patches import ApplyResult
 from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.core.vote import VoteCandidate
+from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import AtlasError
 
 DEFAULT_TIMEOUT_SECONDS = 300
@@ -455,10 +456,11 @@ class ValidateService:
         """Validate every candidate in ``request.candidates`` against ``ctx``.
 
         Refuses before anything is executed when the command came out of the
-        repository under analysis and the caller did not opt in, and when the
-        run's own bound is not a positive number of seconds.
+        repository under analysis and the caller did not opt in, and when any
+        of its bounds cannot bound anything.
         """
         _refuse_unowned_command(request)
+        _check_bounds(request)
         deadline = _deadline(request)
 
         candidates = load_candidates(request.candidates)
@@ -512,7 +514,10 @@ class ValidateService:
         clothes. Reporting the disagreement is the only honest outcome, and
         the count is named so the caller can see how bad it is.
         """
-        repeats = max(1, request.repeat_baseline)
+        # Not `max(1, ...)`: `_check_bounds` refused anything below one
+        # before the run started, so clamping here would only hide a caller
+        # that reached this method without crossing that boundary.
+        repeats = request.repeat_baseline
         runs: list[RunResult] = []
         for _ in range(repeats):
             command_timeout = _command_timeout(request.timeout, deadline)
@@ -915,6 +920,22 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
         "it. Pass the command explicitly, or opt in with --allow-repo-test-cmd."
     )
     raise AtlasError(message)
+
+
+def _check_bounds(request: ValidateRequest) -> None:
+    """Refuse the numbers that cannot bound anything, before any run starts.
+
+    Refused rather than clamped, which is what ``repeat_baseline`` used to
+    get: ``max(1, request.repeat_baseline)`` turned ``--repeat-baseline 0``
+    into one run and reported it as one run, so a caller who asked for none
+    could not tell their request had been rewritten. ``--jobs 0`` was worse
+    -- the parallel path keys on ``jobs > 1``, so it silently ran serially.
+    A bound the caller sets and the tool ignores is the same defect as a
+    bound the tool answers.
+    """
+    bounds.at_least(request.jobs, 1, "jobs")
+    bounds.at_least(request.timeout, 1, "timeout")
+    bounds.at_least(request.repeat_baseline, 1, "repeat_baseline")
 
 
 def _deadline(request: ValidateRequest) -> float | None:

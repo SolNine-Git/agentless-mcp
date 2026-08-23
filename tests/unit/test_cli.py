@@ -276,10 +276,13 @@ class TestInProcess:
         assert code == EXIT_DOMAIN
         assert "no symbol or file matches no_such_symbol" in capsys.readouterr().out
 
-    def test_a_bad_search_bound_is_a_usage_error(self, services, repo_path, capsys):
+    def test_a_bad_search_bound_is_refused_by_the_service(self, services, repo_path, capsys):
+        # Was a usage error from a check written by hand in this adapter.
+        # Stage 4b moved the rule into GraphService so the MCP door inherits
+        # it too, which makes the refusal a domain failure on both.
         code = invoke(services, repo_path, "path", "quote", "run_billing", "--max-visited", "0")
-        assert code == EXIT_USAGE
-        assert "--max-visited" in capsys.readouterr().err
+        assert code == EXIT_DOMAIN
+        assert "max_visited must be at least 1, got 0" in capsys.readouterr().err
 
     def test_cycles_reports_an_empty_answer_with_exit_zero(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "cycles") == EXIT_OK
@@ -303,9 +306,11 @@ class TestInProcess:
         assert document["files"] == 2
         assert document["communities"]
 
-    def test_a_negative_community_bound_is_a_usage_error(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_USAGE
-        assert "--limit" in capsys.readouterr().err
+    def test_a_negative_community_bound_is_refused_by_the_service(
+        self, services, repo_path, capsys
+    ):
+        assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_DOMAIN
+        assert "limit must be at least 1, got -1" in capsys.readouterr().err
 
 
 class TestSliceBySymbol:
@@ -361,9 +366,9 @@ class TestDiagram:
         assert "```" not in captured.out
         assert "agentless-mcp receipt" in captured.err
 
-    def test_a_bad_node_bound_is_a_usage_error(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_USAGE
-        assert "--max-nodes" in capsys.readouterr().err
+    def test_a_bad_node_bound_is_refused_by_the_service(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_DOMAIN
+        assert "max_nodes must be at least 1, got 0" in capsys.readouterr().err
 
     def test_a_focus_naming_nothing_is_a_domain_failure(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "diagram", "--focus", "nope.py") == EXIT_DOMAIN
@@ -438,14 +443,12 @@ class TestHtml:
         assert code == EXIT_USAGE
         assert "simple .html name" in capsys.readouterr().err
 
-    def test_html_bounds_are_validated_at_the_cli_boundary(
-        self,
-        services,
-        repo_path,
-        capsys,
-    ):
-        assert invoke(services, repo_path, "html", "--max-nodes", "0") == EXIT_USAGE
-        assert "--max-nodes" in capsys.readouterr().err
+    def test_html_bounds_are_validated_by_the_service(self, services, repo_path, capsys):
+        # The range used to be spelled here and again in core/htmlgraph._validate.
+        # GraphService now applies it, so both front doors get the same answer
+        # and core keeps its own check as the last line rather than the only one.
+        assert invoke(services, repo_path, "html", "--max-nodes", "0") == EXIT_DOMAIN
+        assert "max_nodes takes a value from 1 through 1000, got 0" in capsys.readouterr().err
 
 
 PATCH_WITH_A_DANGLING_CALL = """\

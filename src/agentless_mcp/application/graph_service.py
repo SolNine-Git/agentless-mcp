@@ -58,6 +58,7 @@ from agentless_mcp.application.symbol_service import rationale_nodes, symbol_car
 from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
+from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import AtlasError
 
 DEFAULT_EXPLAIN_LIMIT = 20
@@ -145,6 +146,7 @@ class GraphService:
         limit: int = DEFAULT_EXPLAIN_LIMIT,
     ) -> render.Explanation:
         """Build the card for one symbol: definition site, fan-out, fan-in, imports."""
+        bounds.at_least(limit, 1, "limit")
         resolved = self._resolve(ctx)
         definitions = refs.definitions_for(resolved.index, target)
         if not definitions:
@@ -174,6 +176,7 @@ class GraphService:
         options: PathOptions = DEFAULT_PATH_OPTIONS,
     ) -> render.PathTrace:
         """Find the fewest-hop connection between two symbols or files."""
+        bounds.at_least(options.max_visited, 1, "max_visited")
         resolved = self._resolve(ctx)
         start = _endpoint(resolved, source)
         finish = _endpoint(resolved, target)
@@ -206,6 +209,7 @@ class GraphService:
 
     def cycles(self, ctx: RepoContext, *, limit: int = DEFAULT_CYCLE_LIMIT) -> render.CycleReport:
         """Report every module-level import cycle, in a deterministic order."""
+        bounds.at_least(limit, 1, "limit")
         resolved = self._resolve(ctx)
         cycles = resolve.import_cycles(resolved.graph)
         return render.CycleReport(
@@ -223,6 +227,8 @@ class GraphService:
         members: int = DEFAULT_MEMBER_LIMIT,
     ) -> render.CommunityReport:
         """Partition the repository's files into communities, largest first."""
+        bounds.at_least(limit, 1, "limit")
+        bounds.at_least(members, 1, "members")
         ranked = self._ranked(ctx)
         partition = communities.detect_communities(ranked.graph, resolution=_resolution(resolution))
         return render.CommunityReport(
@@ -262,6 +268,7 @@ class GraphService:
         opposite reference edges reads as an import cycle the ``cycles`` view
         would deny.
         """
+        bounds.at_least(max_nodes, 1, "max_nodes")
         ranked = self._ranked(ctx)
         seed = _diagram_focus(focus, ranked)
         if seed.message:
@@ -300,6 +307,8 @@ class GraphService:
         resolution: float | None = None,
     ) -> htmlgraph.HtmlExport:
         """Render an interactive module graph without persisting graph state."""
+        bounds.within(max_nodes, 1, htmlgraph.MAX_HTML_NODES, "max_nodes")
+        bounds.within(max_edges, 0, htmlgraph.MAX_HTML_EDGES, "max_edges")
         ranked = self._ranked(ctx)
         partition = communities.detect_communities(
             ranked.graph,

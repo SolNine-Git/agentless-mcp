@@ -36,6 +36,7 @@ from agentless_mcp.core.treewalk import (
     walk_repo,
 )
 from agentless_mcp.prompts import MESSAGES
+from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import AtlasError, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
@@ -153,6 +154,8 @@ class ViewService:
         max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> TreeView:
         """Render the gitignore-aware directory tree."""
+        bounds.at_least(depth, 1, "depth")
+        bounds.at_least(max_entries, 1, "max_entries")
         selected = ctx.root if path is None else contained_path(ctx.root, path)
         if not selected.is_dir():
             relative = selected.relative_to(ctx.root).as_posix()

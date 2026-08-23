@@ -58,7 +58,8 @@ from agentless_mcp.core.symbols import (
     symbol_stable_id,
 )
 from agentless_mcp.prompts import MESSAGES
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
+from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -137,18 +138,13 @@ class FindResult:
 def _check_limit(limit: int) -> None:
     """Refuse a limit that cannot bound a listing.
 
-    ``limit=0`` renders "no references to save_config" for a symbol with
-    fifty-two of them -- a confident false negative, and the most expensive
-    wrong answer this module can give. A negative limit is worse: it slices
-    from the end, expands everything but the last id, and then quotes itself
-    back to the caller as "the per-call limit is -1 symbols". Both are caller
-    bugs, so they are refused by name here, at the boundary both adapters and
-    every library caller cross, rather than clamped into an answer to a
-    different question.
+    The reasoning that used to live here now lives in
+    :func:`agentless_mcp.util.bounds.at_least`, where ``GraphService`` and
+    both front doors can reach it. This module was the only layer that had
+    the rule, which is why every listing ``GraphService`` owns accepted a
+    limit of zero and answered with an empty list.
     """
-    if limit < 1:
-        message = f"limit must be at least 1, got {limit}"
-        raise AtlasError(message)
+    bounds.at_least(limit, 1, "limit")
 
 
 @dataclass(frozen=True)
