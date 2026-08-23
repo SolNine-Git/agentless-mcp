@@ -1008,6 +1008,12 @@ def _slice_intervals(
     return [] if ranges is None else _intervals(ranges, tool=tool)
 
 
+# Published as MCP ``_meta`` on every v2-surface tool: clients that defer
+# tool schemas behind a search step (Claude Code tool search) load these at
+# session start instead. v1 tools never carry it; that surface is kept only
+# for migration and should not spend always-loaded schema budget.
+ALWAYS_LOAD_META = {"anthropic/alwaysLoad": True}
+
 # What a registrar needs to open one call's repository: the context_for
 # closure build_server makes over its handlers.
 RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
@@ -1248,6 +1254,7 @@ def _register_shared(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
         annotations=read_only("Find referencing symbols"),
+        meta=ALWAYS_LOAD_META,
     )
     async def find_referencing_symbols(
         context: Context,
@@ -1268,6 +1275,7 @@ def _register_shared(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["capabilities"],
         annotations=read_only("Capabilities"),
+        meta=ALWAYS_LOAD_META,
     )
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
@@ -1436,6 +1444,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["orient"],
         annotations=read_only("Orient"),
+        meta=ALWAYS_LOAD_META,
     )
     async def orient(
         context: Context,
@@ -1504,6 +1513,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["symbols"],
         annotations=read_only("Symbols"),
+        meta=ALWAYS_LOAD_META,
     )
     async def symbols(
         context: Context,
@@ -1564,6 +1574,7 @@ def _register_v2(
     @mcp.tool(
         description=TOOL_DESCRIPTIONS["read"],
         annotations=read_only("Read"),
+        meta=ALWAYS_LOAD_META,
     )
     async def read(
         context: Context,

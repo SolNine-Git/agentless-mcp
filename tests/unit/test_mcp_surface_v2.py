@@ -324,6 +324,21 @@ class TestSurfaceListing:
                 rendered = json.dumps(schema)
                 assert '"description"' in rendered, f"{tool.name}.{name}"
 
+    def test_every_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
+        # Deferral-capable clients keep these five schemas out of context
+        # without this hint, and an unloaded schema routes agents to grep.
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
+        for tool in tools:
+            assert (tool.meta or {}).get("anthropic/alwaysLoad") is True, tool.name
+
+    def test_v1_only_tools_never_ask_for_always_load(self, services, one_repo):
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
+        for tool in tools:
+            if tool.name in EXPECTED_TOOLS_V2:
+                continue
+            meta = tool.meta or {}
+            assert "anthropic/alwaysLoad" not in meta, tool.name
+
 
 class TestOperationSchema:
     """The v2 rejection story: no wire enum, the server's own message instead.
