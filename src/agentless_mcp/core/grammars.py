@@ -53,9 +53,15 @@ ENV_CACHE_DIR = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
 ENV_NO_AUTO_WARM = "AGENTLESS_MCP_NO_AUTO_WARM"
 
 # The background warm stops starting new languages once this much time has
-# passed. Local extraction of the full supported set measures ~3s from a cold
-# cache; the bound exists for the fetch path a future pack version could
-# reintroduce, so a dead network cannot hold a one-shot CLI exit open.
+# passed. That is the whole of what it does: `_auto_warm` reads it between
+# languages, so it cannot interrupt a fetch already in flight. `pack.prefetch`
+# is a Rust extension entry point that takes no timeout at all (checked against
+# tree-sitter-language-pack 1.14.3: no timeout parameter in `api.py`,
+# `options.py` or `_native.pyi`). What keeps a dead network from holding a
+# one-shot CLI exit open is the pair below -- `daemon=True` on the warm thread
+# plus AUTO_WARM_JOIN_SECONDS -- and not this constant. Local extraction of the
+# full supported set measures ~3s from a cold cache, so this only ever bites on
+# a fetch.
 AUTO_WARM_DEADLINE_SECONDS = 30.0
 
 # How long a caller waiting for the warm to finish will hold still. Counted
@@ -140,7 +146,16 @@ _PROBE_SAMPLES: dict[str, str] = {
 
 @dataclass(frozen=True)
 class LanguageCapability:
-    """What is actually available for one language, right now."""
+    """What is actually available for one language, right now.
+
+    ``cached`` and ``warmed`` are two different facts and the remediation
+    differs by which one is false. ``cached`` says the pack lists a library for
+    this language in the cache directory; ``warmed`` says that library also
+    loaded. A row that is cached but not warmed is the one case where the
+    advertised remedy is wrong: :func:`_warm_one` skips ``prefetch`` for
+    anything already downloaded, so running warmup again fetches nothing and
+    the report comes back unchanged.
+    """
 
     name: str
     abi_version: int | None
@@ -148,11 +163,17 @@ class LanguageCapability:
     warmed: bool
     probe_ok: bool
     detail: str = ""
+    cached: bool = False
 
     @property
     def tier(self) -> int:
         """Which support tier this language is in."""
         return 1 if is_tier1(self.name) else 2
+
+    @property
+    def unloadable(self) -> bool:
+        """True when the grammar is on disk and will not load from there."""
+        return self.cached and not self.warmed
 
 
 @dataclass(frozen=True)
@@ -362,9 +383,11 @@ def _auto_warm(names: Sequence[str]) -> None:
         logger.warning("background grammar warm failed: %s", error)
         return
 
-    fetched = sorted(_bundle_archives() - bundles_before)
+    bundles_after = _bundle_archives()
     notes = ""
-    if fetched:
+    if bundles_before is None or bundles_after is None:
+        notes = "; the bundle scan failed, so whether anything was downloaded is unknown"
+    elif fetched := sorted(bundles_after - bundles_before):
         notes = f"; fetched {', '.join(fetched)} (sha-256 in name, verified by the pack)"
     if degraded:
         notes += f"; degraded: {', '.join(degraded)} (those languages stay labeled skips)"
@@ -379,17 +402,31 @@ def _auto_warm(names: Sequence[str]) -> None:
     )
 
 
-def _bundle_archives() -> frozenset[str]:
-    """Names of downloaded bundle archives, digest and all.
+def _bundle_archives() -> frozenset[str] | None:
+    """Names of downloaded bundle archives, or None when the scan did not run.
 
     The pack stores ``bundles/`` and ``manifest.json`` in the parent of the
     libs directory that ``cache_dir()`` names, in both the default and the
     overridden layout (verified 2026-08-22), so the scan starts one level up.
+
+    One non-recursive glob of that one directory. It was ``rglob`` over the
+    whole parent, which is not a bounded place: the cache directory is
+    operator-supplied through ``TREE_SITTER_LANGUAGE_PACK_CACHE_DIR``, so its
+    parent is whatever encloses it, and setting the variable to
+    ``$HOME/.grammars`` turned a log detail into two full recursive walks of
+    the home directory at process start.
+
+    None rather than an empty set when the scan fails, because the caller
+    subtracts two of these: an empty set would read as "nothing was fetched"
+    for a scan that never ran. ``Path.glob`` itself swallows a missing or
+    unreadable directory and yields nothing, so what the guard catches is
+    :func:`cache_dir` failing to answer.
     """
     try:
-        return frozenset(path.name for path in Path(cache_dir()).parent.rglob("*.tar.zst"))
-    except OSError:
-        return frozenset()
+        bundles = Path(cache_dir()).parent / "bundles"
+        return frozenset(path.name for path in bundles.glob("*.tar.zst"))
+    except (pack.Error, RuntimeError, OSError):
+        return None
 
 
 def warmed_languages() -> frozenset[str]:
@@ -413,6 +450,22 @@ def unavailable_reason(name: str) -> str:
     return f"language '{name}' not warmed: run agentless-mcp warmup"
 
 
+def unloadable_reason(name: str, cause: str) -> str:
+    """The reason for a grammar the pack has cached but cannot load.
+
+    Kept apart from :func:`unavailable_reason` because the usual remedy is a
+    no-op here: :func:`_warm_one` fetches nothing for a language
+    ``downloaded_languages()`` already lists, so a reader told to run warmup
+    runs it, nothing is fetched, and the report comes back word for word the
+    same. The library on disk has to go before a fetch will replace it.
+    """
+    return (
+        f"language '{name}' is cached in {cache_dir()} but failed to load: {cause}. "
+        "Warmup will not refetch it: delete the cached library for this language, "
+        "or reinstall tree-sitter-language-pack."
+    )
+
+
 def get_language(name: str) -> Language:
     """Return the grammar for ``name`` without ever fetching it.
 
@@ -432,8 +485,7 @@ def get_language(name: str) -> Language:
     try:
         return pack.get_language(name)
     except (pack.Error, RuntimeError) as exc:
-        message = f"language '{name}' failed to load from {cache_dir()}: {exc}"
-        raise LanguageUnavailable(message) from exc
+        raise LanguageUnavailable(unloadable_reason(name, str(exc))) from exc
 
 
 def get_parser(name: str) -> Parser:
@@ -519,6 +571,15 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
             )
             raise AgentlessError(message)
         try:
+            # Unbounded, deliberately. `pack.prefetch` takes no timeout, and
+            # both ways to impose one -- killing a worker thread or a
+            # subprocess partway through -- leave a half-written file in a
+            # cache other processes read, which is the failure
+            # `wait_for_auto_warm` exists to prevent. Its two callers are
+            # bounded where the bound is safe: the background warm runs on a
+            # daemon thread that process exit joins for AUTO_WARM_JOIN_SECONDS,
+            # and `agentless-mcp warmup` is a foreground command a person typed
+            # whose whole job is to download.
             pack.prefetch([name])
         except (pack.Error, RuntimeError) as exc:
             return LanguageCapability(
@@ -534,7 +595,14 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
 
 
 def _load_and_probe(name: str, version: str) -> LanguageCapability:
-    """Load a warmed grammar and parse its probe sample."""
+    """Load a warmed grammar and parse its probe sample.
+
+    The cached state is read before the load, not derived from it: a grammar
+    the pack lists as downloaded and then refuses to load is a different
+    condition from one that was never fetched, and only the first fact
+    separates them once the load has failed.
+    """
+    cached = name in warmed_languages()
     try:
         language = get_language(name)
     except LanguageUnavailable as exc:
@@ -545,6 +613,7 @@ def _load_and_probe(name: str, version: str) -> LanguageCapability:
             warmed=False,
             probe_ok=False,
             detail=str(exc),
+            cached=cached,
         )
 
     probe_ok, detail = _probe(name, language)
@@ -555,6 +624,7 @@ def _load_and_probe(name: str, version: str) -> LanguageCapability:
         warmed=True,
         probe_ok=probe_ok,
         detail=detail,
+        cached=True,
     )
 
 

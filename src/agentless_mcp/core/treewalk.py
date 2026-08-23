@@ -13,6 +13,7 @@ walk is the fallback. Either way the security bounds in
 :mod:`agentless_mcp.util.fslimits` still apply.
 """
 
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,8 @@ from agentless_mcp.util.fslimits import (
     file_stays_inside,
 )
 from agentless_mcp.util.textsafe import one_line
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RENDER_DEPTH = 4
 DEFAULT_MAX_ENTRIES = 500
@@ -115,7 +118,16 @@ def walk_repo(
             )
             raise WalkBoundExceeded(message)
 
-        size = candidate.stat().st_size
+        size = _size_of(candidate)
+        if size is None:
+            # The walk is pointed at live repositories it does not own, and
+            # the file was still there when `file_stays_inside` looked. It can
+            # be removed, its mount can go, or a parent can lose the execute
+            # bit in between. A file this call cannot measure is one it cannot
+            # serve either, so it drops out here the same way an unresolvable
+            # symlink drops out above -- not as a traceback past the adapters'
+            # error boundary.
+            continue
         total_bytes += size
         if len(files) + 1 > max_files:
             message = (
@@ -133,6 +145,14 @@ def walk_repo(
         files.append(RepoFile(path=relative, size=size))
 
     return files
+
+
+def _size_of(path: Path) -> int | None:
+    """Return the file size, or None when it cannot be stat'ed."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
 
 
 def _git_listed_paths(root: Path) -> list[str]:
@@ -163,14 +183,54 @@ def _git_listed_paths(root: Path) -> list[str]:
     except subprocess.TimeoutExpired as exc:
         message = f"git ls-files timed out after {GIT_TIMEOUT_SECONDS}s in {root}"
         raise RepoResolutionError(message) from exc
+    except OSError as exc:
+        # The surface `gitinfo._run` already has for the same invocation. A
+        # permission bit on the git binary, or a spawn that fails under memory
+        # pressure, is a reason this listing has no answer -- not an untyped
+        # error travelling past the adapters' boundary as a traceback.
+        message = f"git ls-files could not be run in {root}: {exc.strerror}"
+        raise RepoResolutionError(message) from exc
 
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         message = f"git ls-files failed in {root} (exit {completed.returncode}): {detail}"
         raise RepoResolutionError(message)
 
-    stdout = completed.stdout.decode("utf-8", errors="replace")
-    return [entry for entry in stdout.split("\0") if entry]
+    return _decoded_paths(completed.stdout, root)
+
+
+def _decoded_paths(stdout: bytes, root: Path) -> list[str]:
+    """Split the NUL-separated listing, decoding each name on its own.
+
+    Per entry and strictly, rather than ``errors="replace"`` over the whole
+    buffer. ``-z`` makes git emit raw filesystem bytes unquoted, and a name
+    that is not UTF-8 decoded lossily into a string containing U+FFFD -- which
+    names a file that does not exist, so the entry disappeared at the
+    containment check in :func:`walk_repo` with no marker anywhere. That is the
+    silent drop this module's docstring forbids.
+
+    The name still cannot be listed: every sink downstream of here -- the tag
+    cache, the JSON envelope, the rendered tree -- encodes UTF-8, and a
+    surrogate-escaped path would raise inside one of them instead. So the count
+    goes to the log, which is where an operator can act on it.
+    """
+    paths: list[str] = []
+    undecodable = 0
+    for record in stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            paths.append(record.decode("utf-8"))
+        except UnicodeDecodeError:
+            undecodable += 1
+
+    if undecodable:
+        logger.warning(
+            "git listed %d path(s) under %s whose names are not valid UTF-8. The tree omits them.",
+            undecodable,
+            root,
+        )
+    return paths
 
 
 def render_tree(

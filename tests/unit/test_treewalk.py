@@ -5,13 +5,15 @@ tmp_path, so nothing here depends on the developer's git config or on a
 repository that happens to exist on the machine.
 """
 
+import logging
 import os
 import subprocess
 
 import pytest
 
+from agentless_mcp.core import treewalk
 from agentless_mcp.core.treewalk import RepoFile, render_tree, walk_repo
-from agentless_mcp.util.errors import WalkBoundExceeded
+from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 
 GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@test"]
 
@@ -104,6 +106,44 @@ class TestWalkRepo:
 
         paths = [f.path for f in walk_repo(git_repo / "pkg")]
         assert paths == ["mod.py"]
+
+    def test_a_file_that_vanishes_before_the_stat_is_skipped(self, git_repo, monkeypatch):
+        """The walk is pointed at repositories it does not own.
+
+        Between the containment check and the size read a file can be removed
+        or its mount can go. Forced here by holding the containment check open
+        over a path that is already gone.
+        """
+        monkeypatch.setattr(treewalk, "file_stays_inside", lambda candidate, root: True)
+        (git_repo / "app.py").unlink()
+
+        paths = [f.path for f in walk_repo(git_repo)]
+        assert "app.py" not in paths
+        assert "pkg/mod.py" in paths
+
+
+class TestGitListing:
+    def test_a_git_binary_that_cannot_be_run_is_a_typed_refusal(self, git_repo, monkeypatch):
+        """`gitinfo._run` degrades on any OSError; this argv used to escape on most."""
+
+        def refuse(command, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(subprocess, "run", refuse)
+        with pytest.raises(RepoResolutionError, match="git ls-files could not be run"):
+            treewalk._git_listed_paths(git_repo)
+
+    def test_a_name_that_is_not_utf8_is_counted_rather_than_mangled(self, tmp_path, caplog):
+        listing = b"app.py\x00bad\xff.py\x00pkg/mod.py\x00"
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.treewalk"):
+            paths = treewalk._decoded_paths(listing, tmp_path)
+
+        assert paths == ["app.py", "pkg/mod.py"]
+        assert "not valid UTF-8" in caplog.text
+
+    def test_a_valid_non_ascii_name_is_listed_unchanged(self, tmp_path):
+        listing = "café/naïve.py\x00".encode()
+        assert treewalk._decoded_paths(listing, tmp_path) == ["café/naïve.py"]
 
 
 class TestRenderTree:

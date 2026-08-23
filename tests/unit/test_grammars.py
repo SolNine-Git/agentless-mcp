@@ -53,6 +53,26 @@ class TestGetLanguage:
             grammars.get_language("go")
         assert str(caught.value) == "language 'go' not warmed: run agentless-mcp warmup"
 
+    def test_a_cached_grammar_that_will_not_load_names_a_different_remedy(self, monkeypatch):
+        """Telling this reader to run warmup sends them round a loop.
+
+        `_warm_one` skips `prefetch` for a language the pack already lists as
+        downloaded, so the fetch never happens and the report never changes.
+        """
+        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["python", "go"])
+
+        def refuse(name):
+            message = f"bad magic in {name}.so"
+            raise pack.DynamicLoadError(message)
+
+        monkeypatch.setattr(pack, "get_language", refuse)
+        with pytest.raises(LanguageUnavailable) as caught:
+            grammars.get_language("go")
+        message = str(caught.value)
+        assert "is cached in" in message
+        assert "bad magic in go.so" in message
+        assert "Warmup will not refetch it" in message
+
 
 class TestWarmup:
     def test_no_download_flag_refuses_to_fetch(self, monkeypatch):
@@ -113,6 +133,26 @@ class TestCapabilities:
         assert capability.probe_ok is False
         assert capability.detail == "not warmed: run agentless-mcp warmup go"
 
+    def test_a_cached_but_unloadable_grammar_is_not_reported_as_uncached(self, monkeypatch):
+        """The two states carried the same booleans, so only free text told them apart."""
+        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["python", "go"])
+
+        def refuse(name):
+            message = f"bad magic in {name}.so"
+            raise pack.DynamicLoadError(message)
+
+        monkeypatch.setattr(pack, "get_language", refuse)
+        (capability,) = grammars.loaded_capabilities(["go"])
+        assert capability.cached is True
+        assert capability.warmed is False
+        assert capability.unloadable is True
+
+    def test_a_language_that_was_never_fetched_is_not_reported_as_cached(self, monkeypatch):
+        monkeypatch.setattr(pack, "downloaded_languages", list)
+        (capability,) = grammars.loaded_capabilities(["go"])
+        assert capability.cached is False
+        assert capability.unloadable is False
+
     def test_default_capability_list_covers_both_tiers(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
         names = [cap.name for cap in grammars.loaded_capabilities()]
@@ -161,6 +201,41 @@ class TestAutoWarm:
         thread.join(timeout=5)
         assert not thread.is_alive()
         assert calls == [("json",)]
+
+    def test_the_bundle_scan_stays_inside_the_bundles_directory(self, monkeypatch, tmp_path):
+        """The operator owns the cache path, so its parent is not a bounded place."""
+        root = tmp_path / "grammars"
+        (root / "bundles").mkdir(parents=True)
+        (root / "bundles" / "linux-abc.tar.zst").touch()
+        (root / "unrelated").mkdir()
+        (root / "unrelated" / "someone-elses.tar.zst").touch()
+        monkeypatch.setattr(grammars, "cache_dir", lambda: str(root / "libs"))
+
+        assert grammars._bundle_archives() == frozenset({"linux-abc.tar.zst"})
+
+    def test_a_failed_bundle_scan_is_not_an_empty_one(self, monkeypatch):
+        """An empty set would subtract to "nothing was fetched" for a scan that never ran."""
+
+        def refuse():
+            message = "cache directory unreadable"
+            raise OSError(message)
+
+        monkeypatch.setattr(grammars, "cache_dir", refuse)
+        assert grammars._bundle_archives() is None
+
+    def test_the_warm_log_says_when_the_bundle_scan_failed(
+        self, monkeypatch, auto_warm_isolated, caplog
+    ):
+        clean = grammars.WarmupReport(cache_dir="cache", pack_version="1.0", languages=())
+        monkeypatch.setattr(grammars, "warmed_languages", frozenset)
+        monkeypatch.setattr(grammars, "warmup", lambda names, **kwargs: clean)
+        monkeypatch.setattr(grammars, "_bundle_archives", lambda: None)
+
+        with caplog.at_level(logging.INFO, logger="agentless_mcp.core.grammars"):
+            thread = grammars.start_auto_warm(["json"])
+            assert thread is not None
+            thread.join(timeout=5)
+        assert "the bundle scan failed" in caplog.text
 
     def test_no_download_has_absolute_priority(self, monkeypatch, auto_warm_isolated):
         monkeypatch.setenv(grammars.ENV_NO_DOWNLOAD, "1")

@@ -197,13 +197,20 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
     back to every definition of that name when the file no longer defines it,
     which is what makes an id from a previous generation degrade to a name
     lookup instead of to an empty answer.
+
+    A dotted name narrows the same way and degrades the same way. It was
+    reduced to its last component and answered exactly like a bare name, so
+    the least ambiguous input this function can be given bought nothing:
+    ``agentless_mcp.core.resolve.resolve_repo`` returned every definition of
+    ``resolve_repo`` in the repository, JSON fixtures included.
     """
     try:
         parsed = parse_stable_id(target)
     except ValueError:
         base, _ = split_ordinal(target)
         name = base.rpartition(".")[2] or base
-        return tuple(index.definitions.get(name, ()))
+        candidates = tuple(index.definitions.get(name, ()))
+        return _path_qualified(candidates, base) or candidates
 
     base, _ = split_ordinal(parsed.qualname)
     name = base.rpartition(".")[2] or base
@@ -213,6 +220,40 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
         if definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
     )
     return scoped or tuple(index.definitions.get(name, ()))
+
+
+def _path_qualified(candidates: tuple[Definition, ...], target: str) -> tuple[Definition, ...]:
+    """Keep the candidates whose own file confirms a dotted target's prefix.
+
+    The test is the candidate's fully dotted spelling: its path with the
+    separators and the extension turned into dots, then its qualified name.
+    ``agentless_mcp.core.resolve.resolve_repo`` matches
+    ``src/agentless_mcp/core/resolve.py`` that way and a same-named key in an
+    unrelated JSON file does not.
+
+    Only where the target reaches past the candidate's own qualified name into
+    its path. A target that names no more than the symbol -- ``Invoice.price``,
+    ``Resolver.resolve`` -- says nothing about which file to look in, and
+    :func:`agentless_mcp.application.graph_service.rank_candidates` already
+    orders those by evidence and reports the rest as alternatives. Filtering
+    them here would take that listing away.
+
+    An empty result means no candidate's path confirms the prefix, and
+    :func:`definitions_for` then keeps the bare-name set: over-reporting by
+    name is this surface's documented posture, and a narrowing that can empty
+    an answer is worse than one that can widen it.
+    """
+    return tuple(definition for definition in candidates if _path_confirms(definition, target))
+
+
+def _path_confirms(definition: Definition, target: str) -> bool:
+    """True when a dotted target names this definition through its own path."""
+    base, _ = split_ordinal(id_qualname(definition.symbol))
+    if len(target) <= len(base):
+        return False
+    module = Path(definition.path).with_suffix("").as_posix().replace("/", ".")
+    dotted = f"{module}.{base}"
+    return dotted == target or dotted.endswith(f".{target}")
 
 
 def span_end(symbol: ASTSymbol) -> int:

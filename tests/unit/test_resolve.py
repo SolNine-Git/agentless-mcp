@@ -442,6 +442,48 @@ class TestSubmoduleImports:
         edges = edges_from(graph, "py:aliased.py::use_alias", "wrapped")
         assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
 
+    def test_an_unaliased_dotted_import_binds_the_package_not_the_submodule(
+        self, tmp_path, extractor
+    ):
+        """`import pk.deep` binds `pk`, so `pk.shared()` is a call into the package.
+
+        Reported as `pk/deep.py::shared` at `resolved-via-import` -- one
+        confidently wrong answer at the tier a caller is told to read as a
+        caller, with the file Python would actually reach never listed.
+        """
+        root = write(
+            tmp_path,
+            {
+                "pk/__init__.py": "def shared():\n    return 1\n",
+                "pk/deep.py": "def shared():\n    return 2\n",
+                "app.py": "import pk.deep\n\n\ndef go():\n    return pk.shared()\n",
+            },
+        )
+        resolver, graph = resolved(root, extractor)
+        assert resolver.scopes["app.py"].module_bindings["pk"] == frozenset({"pk/__init__.py"})
+
+        edges = edges_from(graph, "py:app.py::go", "shared")
+        assert [edge.target.node for edge in edges] == ["py:pk/__init__.py::shared"]
+        assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+    def test_an_aliased_dotted_import_binds_the_submodule(self, tmp_path, extractor):
+        """`import pk.deep as d` binds `d` to the submodule, and `pk` to nothing."""
+        root = write(
+            tmp_path,
+            {
+                "pk/__init__.py": "def shared():\n    return 1\n",
+                "pk/deep.py": "def shared():\n    return 2\n",
+                "app.py": "import pk.deep as d\n\n\ndef go():\n    return d.shared()\n",
+            },
+        )
+        resolver, graph = resolved(root, extractor)
+        bindings = resolver.scopes["app.py"].module_bindings
+        assert bindings["d"] == frozenset({"pk/deep.py"})
+        assert "pk" not in bindings
+
+        edges = edges_from(graph, "py:app.py::go", "shared")
+        assert [edge.target.node for edge in edges] == ["py:pk/deep.py::shared"]
+
     def test_a_cycle_through_a_submodule_import_is_found(self, tmp_path, extractor):
         _, graph = resolved(write(tmp_path, SUBMODULE_CYCLE), extractor)
         cycles = resolve.import_cycles(graph)
@@ -593,6 +635,24 @@ class TestCycles:
         first = resolve.import_cycles(resolved(root, extractor)[1])
         second = resolve.import_cycles(resolved(root, extractor)[1])
         assert first == second
+
+
+class TestImportCoverage:
+    """An empty cycle list has to be readable against how much resolved."""
+
+    def test_an_import_that_names_no_file_is_counted(self, tmp_path, extractor):
+        root = write(tmp_path, {"a.py": "import json\nimport b\n", "b.py": "x = 1\n"})
+        _, graph = resolved(root, extractor)
+        assert graph.unresolved_imports == 1
+
+    def test_a_repository_whose_imports_all_resolve_counts_none(self, tmp_path, extractor):
+        _, graph = resolved(write(tmp_path, TWO_CYCLE), extractor)
+        assert graph.unresolved_imports == 0
+
+    def test_the_import_only_graph_reports_the_same_coverage(self, tmp_path, extractor):
+        root = write(tmp_path, {"a.py": "import json\nimport b\n", "b.py": "x = 1\n"})
+        scan = refs.scan_repo(root, extractor)
+        assert resolve.import_graph(scan.files).unresolved_imports == 1
 
 
 # Two forms that genuinely do bring every name in unqualified, and one that

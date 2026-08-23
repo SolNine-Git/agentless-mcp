@@ -49,6 +49,7 @@ sha256 gate already guarantees.
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Protocol
 
 from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
@@ -70,6 +71,27 @@ _SMALLEST_CYCLE = 2
 # module can look up.
 _SUBSCRIPT_OPEN = "["
 _KEYWORD_BASE = "="
+
+
+class FileImports(Protocol):
+    """The two facts import resolution reads off a file.
+
+    Narrower than :class:`~agentless_mcp.core.refs.FileFacts` on purpose.
+    :func:`import_graph` is reached with facts whose symbol and reference
+    tables belong to the *pre-patch* text -- :mod:`agentless_mcp.core.patchlint`
+    hands over exactly that -- so a parameter naming the whole record would
+    license reading a field the caller has already been told is stale. This
+    names what is read, which makes the caveat unrepresentable rather than
+    documented: an edit that reaches for ``symbols`` here does not type-check.
+    """
+
+    @property
+    def path(self) -> str:
+        """The file's repository-relative path."""
+
+    @property
+    def imports(self) -> Sequence[ImportStatement]:
+        """The import statements the file declares."""
 
 
 @dataclass(frozen=True)
@@ -267,11 +289,22 @@ class Resolver:
 
 @dataclass(frozen=True)
 class ResolvedGraph:
-    """Every resolved edge in one repository, in one deterministic order."""
+    """Every resolved edge in one repository, in one deterministic order.
+
+    ``unresolved_imports`` counts the import statements that named no file in
+    this repository. Import resolution is best effort by construction (see
+    :func:`agentless_mcp.core.graph.resolve_import_target`), and the number is
+    not small: 100 of 622 internal ``agentless_mcp.*`` statements resolved to
+    nothing when this was measured on this repository (2026-08-23). It travels
+    with the graph because every claim drawn from these edges -- the cycle
+    list above all -- is a claim about the imports that did resolve, and
+    "nothing found" and "little was searched" must not render identically.
+    """
 
     edges: tuple[SymbolEdge, ...]
     definitions: Mapping[str, Definition]
     files: tuple[str, ...]
+    unresolved_imports: int = 0
 
     def outgoing(self) -> dict[str, tuple[SymbolEdge, ...]]:
         """Return the edges leaving each node, keyed by node id."""
@@ -329,7 +362,7 @@ class Cycle:
 
 
 def _bind_module_object(
-    facts: FileFacts,
+    facts: FileImports,
     statement: ImportStatement,
     known: frozenset[str],
     module_bindings: dict[str, set[str]],
@@ -356,7 +389,7 @@ def _bind_module_object(
     module_bindings.setdefault(binding, set()).add(target)
 
 
-def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
+def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
     """Resolve every file's import statements to repository files, once.
 
     Takes the file facts rather than a whole scan, because a caller holding a
@@ -431,7 +464,7 @@ def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
     return Resolver(index=index, scopes=build_file_scopes(scan.files))
 
 
-def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
+def import_graph(files: Sequence[FileImports]) -> ResolvedGraph:
     """Assemble the module-level import edges alone, resolving no references.
 
     The cycle question is about modules, so it needs one third of
@@ -440,9 +473,10 @@ def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
     once as a patch would leave it -- without resolving every identifier in
     the tree twice to find out whether a knot appeared.
 
-    Only ``path`` and ``imports`` are read off each entry, so a caller may
-    hand over facts whose symbol and reference tables belong to the pre-patch
-    text; the returned graph has no symbol definitions for the same reason.
+    The parameter names only ``path`` and ``imports``, which is all this call
+    reads, so a caller may hand over facts whose symbol and reference tables
+    belong to the pre-patch text; the returned graph has no symbol definitions
+    for the same reason.
     """
     scopes = build_file_scopes(files)
     edges: list[SymbolEdge] = []
@@ -453,6 +487,7 @@ def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
         definitions={},
         files=tuple(sorted(facts.path for facts in files)),
+        unresolved_imports=_unresolved_imports(scopes.values()),
     )
 
 
@@ -487,6 +522,7 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
         definitions=definitions,
         files=tuple(sorted(facts.path for facts in scan.files)),
+        unresolved_imports=_unresolved_imports(resolver.scopes.values()),
     )
 
 
@@ -574,7 +610,12 @@ def shortest_path(
 
 
 def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
-    """Return every module-level import cycle, in a deterministic order.
+    """Return the import cycles the resolved imports prove, deterministically.
+
+    Not every cycle the repository holds. An import this package could not
+    resolve to a file contributes no edge, so it can hide a knot that is
+    really there; ``resolved.unresolved_imports`` is how many statements were
+    in that position, and it is what an empty result has to be read against.
 
     Tarjan's strongly connected components over the import edges alone: two
     files are in one cycle exactly when each can reach the other by following
@@ -597,6 +638,11 @@ def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
 
     cycles.sort(key=lambda cycle: (len(cycle.files), cycle.files))
     return tuple(cycles)
+
+
+def _unresolved_imports(scopes: Iterable[ImportScope]) -> int:
+    """Count the import statements that named no file in this repository."""
+    return sum(1 for scope in scopes for _module, _line, target in scope.statements if not target)
 
 
 def base_name(text: str) -> str:
@@ -688,7 +734,7 @@ def _add(
             edges.append(edge)
 
 
-def _import_edges(facts: FileFacts, scope: ImportScope | None) -> list[SymbolEdge]:
+def _import_edges(facts: FileImports, scope: ImportScope | None) -> list[SymbolEdge]:
     """Turn one file's resolved imports into module-level edges."""
     if scope is None:
         return []
