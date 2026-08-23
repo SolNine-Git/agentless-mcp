@@ -85,6 +85,13 @@ class MapResult:
     seeds: tuple[str, ...]
     skipped: tuple[refs.SkippedFile, ...]
     unresolved_seeds: tuple[str, ...] = ()
+    # How many files the ranking produced before --max-files cut it. Carried
+    # so an empty map can say which of three things happened rather than
+    # asserting the one an agent stops on: nothing parsed, the file limit
+    # kept none, or the token budget fitted none. Added alongside the
+    # existing fields rather than replacing one, because this is a shipped
+    # JSON shape.
+    ranked: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this map."""
@@ -92,6 +99,7 @@ class MapResult:
             "budget_tokens": self.budget,
             "symbols_included": self.included,
             "symbols_available": self.candidates,
+            "files_ranked": self.ranked,
             "seeds": list(self.seeds),
             "unresolved_seeds": list(self.unresolved_seeds),
             "files": [map_file.as_dict() for map_file in self.files],
@@ -150,6 +158,7 @@ class MapService:
                 budget=0,
                 included=0,
                 candidates=sum(len(by_path[path].symbols) for path in chosen if path in by_path),
+                ranked=len(rank),
                 seeds=tuple(sorted(seeds)),
                 skipped=scan.skipped,
                 unresolved_seeds=seeding.unresolved,
@@ -166,6 +175,7 @@ class MapService:
             budget=budget,
             included=included,
             candidates=len(candidates),
+            ranked=len(rank),
             seeds=tuple(sorted(seeds)),
             skipped=scan.skipped,
             unresolved_seeds=seeding.unresolved,
@@ -181,6 +191,8 @@ class MapService:
         """
         body = render.render_map(result.files)
         notes: list[str] = []
+        if not result.files:
+            notes.append(self._why_nothing_ranked(result))
         if result.unresolved_seeds:
             listed = ", ".join(result.unresolved_seeds)
             notes.append(MESSAGES.map_unresolved_seeds.format(seeds=listed))
@@ -190,6 +202,24 @@ class MapService:
         if not notes:
             return body
         return "\n".join(notes) + "\n\n" + body
+
+    def _why_nothing_ranked(self, result: MapResult) -> str:
+        """Say which of the two empty results this is.
+
+        `render_map` is handed rows and nothing else, so it can only report
+        that there are none. This layer holds the candidate count and the
+        budget, which is what tells "the repository parsed into no symbols"
+        apart from "the budget left room for none of them" -- and the second
+        reads as the first to an agent that then stops looking.
+        """
+        if not result.ranked:
+            return "nothing in this repository parsed into symbols"
+        if not result.candidates:
+            return f"--max-files kept none of the {result.ranked} ranked files"
+        return (
+            f"the {result.budget}-token budget left room for none of "
+            f"{result.candidates} symbols; raise --budget"
+        )
 
     def _auto_budget(self, candidates: list[_Candidate], rank: dict[str, float]) -> int:
         """Size the budget from the candidate set, clamped to the useful band."""

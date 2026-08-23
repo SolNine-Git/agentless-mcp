@@ -91,7 +91,7 @@ from agentless_mcp.core import (
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
@@ -454,8 +454,8 @@ def _add_diagram(subparsers: Any) -> None:
     parser.add_argument(
         "--max-nodes",
         type=int,
-        default=DEFAULT_MAX_NODES,
-        help=f"modules drawn (default: {DEFAULT_MAX_NODES}); the rest are announced "
+        default=DEFAULT_DIAGRAM_NODES,
+        help=f"modules drawn (default: {DEFAULT_DIAGRAM_NODES}); the rest are announced "
         "on an explicit elision node",
     )
     parser.add_argument(
@@ -487,16 +487,16 @@ def _add_html(subparsers: Any) -> None:
     parser.add_argument(
         "--max-nodes",
         type=int,
-        default=htmlgraph.DEFAULT_MAX_NODES,
-        help=f"modules included (default: {htmlgraph.DEFAULT_MAX_NODES}, "
-        f"maximum: {htmlgraph.MAX_NODES})",
+        default=htmlgraph.DEFAULT_HTML_NODES,
+        help=f"modules included (default: {htmlgraph.DEFAULT_HTML_NODES}, "
+        f"maximum: {htmlgraph.MAX_HTML_NODES})",
     )
     parser.add_argument(
         "--max-edges",
         type=int,
-        default=htmlgraph.DEFAULT_MAX_EDGES,
-        help=f"edges included (default: {htmlgraph.DEFAULT_MAX_EDGES}, "
-        f"maximum: {htmlgraph.MAX_EDGES})",
+        default=htmlgraph.DEFAULT_HTML_EDGES,
+        help=f"edges included (default: {htmlgraph.DEFAULT_HTML_EDGES}, "
+        f"maximum: {htmlgraph.MAX_HTML_EDGES})",
     )
     parser.add_argument(
         "--resolution",
@@ -1053,14 +1053,14 @@ def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if not 1 <= args.max_nodes <= htmlgraph.MAX_NODES:
+    if not 1 <= args.max_nodes <= htmlgraph.MAX_HTML_NODES:
         return fail(
-            f"--max-nodes takes an integer from 1 through {htmlgraph.MAX_NODES}",
+            f"--max-nodes takes an integer from 1 through {htmlgraph.MAX_HTML_NODES}",
             EXIT_USAGE,
         )
-    if not 0 <= args.max_edges <= htmlgraph.MAX_EDGES:
+    if not 0 <= args.max_edges <= htmlgraph.MAX_HTML_EDGES:
         return fail(
-            f"--max-edges takes an integer from 0 through {htmlgraph.MAX_EDGES}",
+            f"--max-edges takes an integer from 0 through {htmlgraph.MAX_HTML_EDGES}",
             EXIT_USAGE,
         )
     cache_name = _html_cache_name(args.cache_file)

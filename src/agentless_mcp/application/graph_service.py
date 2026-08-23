@@ -249,7 +249,7 @@ class GraphService:
         ctx: RepoContext,
         *,
         focus: str | None = None,
-        max_nodes: int = mermaid.DEFAULT_MAX_NODES,
+        max_nodes: int = mermaid.DEFAULT_DIAGRAM_NODES,
         group_by_communities: bool = False,
         resolution: float | None = None,
     ) -> render.DiagramView:
@@ -295,8 +295,8 @@ class GraphService:
         self,
         ctx: RepoContext,
         *,
-        max_nodes: int = htmlgraph.DEFAULT_MAX_NODES,
-        max_edges: int = htmlgraph.DEFAULT_MAX_EDGES,
+        max_nodes: int = htmlgraph.DEFAULT_HTML_NODES,
+        max_edges: int = htmlgraph.DEFAULT_HTML_EDGES,
         resolution: float | None = None,
     ) -> htmlgraph.HtmlExport:
         """Render an interactive module graph without persisting graph state."""

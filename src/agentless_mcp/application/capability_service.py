@@ -6,19 +6,31 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from agentless_mcp.application import envelope
+from agentless_mcp.application import envelope, graph_service, symbol_service
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITY_FUNCTION,
 )
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import DEFAULT_EXPAND_LIMIT
-from agentless_mcp.core import cache, grammars, projectconfig
+from agentless_mcp.core import (
+    cache,
+    communities,
+    grammars,
+    htmlgraph,
+    locs,
+    mermaid,
+    projectconfig,
+    resolve,
+)
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES
-from agentless_mcp.util.fslimits import DEFAULT_MAX_DEPTH, DEFAULT_MAX_FILE_BYTES
-from agentless_mcp.util.fslimits import DEFAULT_MAX_FILES as WALK_MAX_FILES
+from agentless_mcp.util.fslimits import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_WALK_FILES,
+)
 
 
 @dataclass(frozen=True)
@@ -34,7 +46,8 @@ class CapabilityReport:
     extensions: tuple[tuple[str, str], ...]
     config: projectconfig.ProjectConfig
     effective_config: tuple[tuple[str, object], ...]
-    caps: tuple[tuple[str, int], ...]
+    # float rather than int: one bound is a modularity resolution.
+    caps: tuple[tuple[str, float], ...]
     configured_roots: tuple[str, ...]
     client_roots: tuple[str, ...]
 
@@ -153,17 +166,47 @@ def _effective_config(config: projectconfig.ProjectConfig) -> tuple[tuple[str, o
     )
 
 
-def _caps() -> tuple[tuple[str, int], ...]:
-    """Return every public bound in force in stable display order."""
+def _caps() -> tuple[tuple[str, float], ...]:
+    """Return every bound the services apply, in stable display order.
+
+    "The services apply" rather than the older "every public bound in force",
+    which was false: this reported eight of the twenty-three numbers a caller
+    can set or hit, so a caller reading it as an inventory was reading a
+    sample. The wire schema's own ceilings are deliberately absent -- they
+    live in ``adapters.mcp`` and the layer contract forbids this module from
+    importing them, so that surface publishes them in its JSON schema
+    instead.
+
+    Hand-maintained, and ``tests/unit/test_capability_service.py`` is what
+    keeps it honest: it enumerates the bound-shaped names in each module this
+    imports from and fails when one is missing here. An inventory nobody
+    checks drifts back to a sample.
+    """
     return (
         ("max_walk_depth", DEFAULT_MAX_DEPTH),
-        ("max_walk_files", WALK_MAX_FILES),
+        ("max_walk_files", DEFAULT_MAX_WALK_FILES),
         ("max_file_bytes", DEFAULT_MAX_FILE_BYTES),
         ("max_output_tokens", envelope.DEFAULT_MAX_TOKENS),
+        ("max_config_warnings", envelope.MAX_CONFIG_WARNINGS),
         ("max_map_files", DEFAULT_MAX_FILES),
+        ("default_find_limit", symbol_service.DEFAULT_FIND_LIMIT),
+        ("default_refs_limit", symbol_service.DEFAULT_REFS_LIMIT),
         ("max_expand_symbols", DEFAULT_EXPAND_LIMIT),
+        ("default_explain_limit", graph_service.DEFAULT_EXPLAIN_LIMIT),
+        ("default_cycle_limit", graph_service.DEFAULT_CYCLE_LIMIT),
+        ("default_community_limit", graph_service.DEFAULT_COMMUNITY_LIMIT),
+        ("default_member_limit", graph_service.DEFAULT_MEMBER_LIMIT),
+        ("default_community_resolution", communities.DEFAULT_RESOLUTION),
+        ("default_context_lines", locs.DEFAULT_CONTEXT_LINES),
         ("default_tree_depth", DEFAULT_RENDER_DEPTH),
         ("default_tree_entries", DEFAULT_MAX_ENTRIES),
+        ("default_diagram_nodes", mermaid.DEFAULT_DIAGRAM_NODES),
+        ("default_diagram_edges", mermaid.DEFAULT_DIAGRAM_EDGES),
+        ("default_html_nodes", htmlgraph.DEFAULT_HTML_NODES),
+        ("default_html_edges", htmlgraph.DEFAULT_HTML_EDGES),
+        ("max_html_nodes", htmlgraph.MAX_HTML_NODES),
+        ("max_html_edges", htmlgraph.MAX_HTML_EDGES),
+        ("max_path_visited", resolve.DEFAULT_MAX_VISITED),
     )
 
 

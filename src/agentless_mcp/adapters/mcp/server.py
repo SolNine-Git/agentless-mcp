@@ -89,7 +89,7 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
@@ -273,7 +273,7 @@ MaxEntries = Annotated[
     int,
     Field(
         ge=1,
-        le=fslimits.DEFAULT_MAX_FILES,
+        le=fslimits.DEFAULT_MAX_WALK_FILES,
         description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
     ),
 ]
@@ -392,7 +392,7 @@ OptionalMaxEntries = Annotated[
     int | None,
     Field(
         ge=1,
-        le=fslimits.DEFAULT_MAX_FILES,
+        le=fslimits.DEFAULT_MAX_WALK_FILES,
         description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
     ),
 ]
@@ -504,7 +504,7 @@ class StructureRequest:
     limit: int | None = None
     resolution: float | None = None
     focus: str = ""
-    max_nodes: int = DEFAULT_MAX_NODES
+    max_nodes: int = DEFAULT_DIAGRAM_NODES
     group_by_communities: bool = False
 
 
@@ -1213,7 +1213,7 @@ def _register_v1(
         limit: StructureLimit = None,
         resolution: Resolution = None,
         focus: DiagramFocus = None,
-        max_nodes: MaxNodes = DEFAULT_MAX_NODES,
+        max_nodes: MaxNodes = DEFAULT_DIAGRAM_NODES,
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
     ) -> str:
@@ -1516,7 +1516,7 @@ def _register_v2(
                     limit=limit,
                     resolution=resolution,
                     focus=_sole_focus(focus),
-                    max_nodes=_or_default(max_nodes, DEFAULT_MAX_NODES),
+                    max_nodes=_or_default(max_nodes, DEFAULT_DIAGRAM_NODES),
                     group_by_communities=bool(group_by_communities),
                 ),
             )

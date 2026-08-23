@@ -15,18 +15,22 @@ from agentless_mcp.core import mermaid
 from agentless_mcp.core.communities import CommunityPartition
 from agentless_mcp.core.graph import RefGraph
 
-DEFAULT_MAX_NODES = 200
-DEFAULT_MAX_EDGES = 600
-MAX_NODES = 1_000
-MAX_EDGES = 5_000
+# What one interactive document holds, which is a capacity question rather
+# than the legibility question `core/mermaid` answers. The two used to share
+# the names DEFAULT_MAX_NODES and DEFAULT_MAX_EDGES while meaning 200/600 and
+# 40/40, and both spellings reached `--help`.
+DEFAULT_HTML_NODES = 200
+DEFAULT_HTML_EDGES = 600
+MAX_HTML_NODES = 1_000
+MAX_HTML_EDGES = 5_000
 
 
 @dataclass(frozen=True)
 class HtmlOptions:
     """Bounds applied before repository data reaches the document."""
 
-    max_nodes: int = DEFAULT_MAX_NODES
-    max_edges: int = DEFAULT_MAX_EDGES
+    max_nodes: int = DEFAULT_HTML_NODES
+    max_edges: int = DEFAULT_HTML_EDGES
 
 
 @dataclass(frozen=True)
@@ -110,11 +114,11 @@ def render_html(
 
 
 def _validate(options: HtmlOptions) -> None:
-    if not 1 <= options.max_nodes <= MAX_NODES:
-        message = f"max_nodes must be between 1 and {MAX_NODES}"
+    if not 1 <= options.max_nodes <= MAX_HTML_NODES:
+        message = f"max_nodes must be between 1 and {MAX_HTML_NODES}"
         raise ValueError(message)
-    if not 0 <= options.max_edges <= MAX_EDGES:
-        message = f"max_edges must be between 0 and {MAX_EDGES}"
+    if not 0 <= options.max_edges <= MAX_HTML_EDGES:
+        message = f"max_edges must be between 0 and {MAX_HTML_EDGES}"
         raise ValueError(message)
 
 

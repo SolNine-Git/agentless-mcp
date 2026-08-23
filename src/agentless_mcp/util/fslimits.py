@@ -21,7 +21,12 @@ from pathlib import Path
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
 
 DEFAULT_MAX_DEPTH = 20
-DEFAULT_MAX_FILES = 20_000
+# Named for the walk rather than DEFAULT_MAX_FILES, which is what
+# `application/map_service` calls its ranking limit of 10. The two met in
+# `application/capability_service`, which imported this one aliased as
+# WALK_MAX_FILES to tell them apart at the import -- a local workaround for a
+# name that meant two things.
+DEFAULT_MAX_WALK_FILES = 20_000
 DEFAULT_MAX_BYTES = 200_000_000
 DEFAULT_MAX_FILE_BYTES = 1_000_000
 
@@ -129,7 +134,7 @@ def bounded_walk(
     root: Path,
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_files: int = DEFAULT_MAX_WALK_FILES,
     max_bytes: int = DEFAULT_MAX_BYTES,
     include: Callable[[Path], bool] | None = None,
 ) -> Iterator[Path]:

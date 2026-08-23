@@ -817,8 +817,12 @@ class LintReportView:
 
 
 def render_communities(report: CommunityReport) -> str:
-    """Render a community partition, largest group first."""
-    if not report.communities:
+    """Render a community partition, largest group first.
+
+    Keyed on ``total`` rather than on the list the limit left, for the reason
+    :func:`render_cycles` records: a bound of zero must describe the bound.
+    """
+    if not report.total:
         return "no communities: nothing in this repository parsed into files\n"
 
     groups = "community" if report.total == 1 else "communities"
@@ -949,8 +953,16 @@ def render_path(trace: PathTrace) -> str:
 
 
 def render_cycles(report: CycleReport) -> str:
-    """Render module-level import cycles as arrow chains."""
-    if not report.cycles:
+    """Render module-level import cycles as arrow chains.
+
+    Keyed on ``total``, which the service computes before truncation, rather
+    than on the list the limit left behind. Branching on the truncated list
+    made ``cycles --limit 0`` answer "no import cycles", exit 0, for a
+    repository that has one -- a bound reported as a fact about the code. Of
+    the three renderers that phrase an empty result as a statement about the
+    repository, this is the one whose statement clears something.
+    """
+    if not report.total:
         return "no import cycles\n"
 
     cycles = "cycle" if report.total == 1 else "cycles"
@@ -1024,9 +1036,18 @@ def render_skipped_files(skipped: Sequence[SkippedFile]) -> str:
 
 
 def render_map(files: Sequence[MapFile]) -> str:
-    """Render ranked files as code-shaped signature blocks."""
+    """Render ranked files as code-shaped signature blocks.
+
+    An empty result says only that, because this function is handed the rows
+    and nothing else. It used to answer "nothing in this repository parsed
+    into symbols", which is a claim about the repository that the rows cannot
+    support: ``MapService._pack`` also returns zero when the first candidate's
+    render exceeds the budget, so a parsed repository read as one that
+    parses into nothing. The service knows which happened and says so -- see
+    ``MapService.render_text``.
+    """
     if not files:
-        return "no ranked files: nothing in this repository parsed into symbols\n"
+        return "no ranked files\n"
 
     blocks: list[str] = []
     for map_file in files:

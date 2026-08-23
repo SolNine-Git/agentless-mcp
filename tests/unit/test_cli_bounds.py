@@ -172,26 +172,45 @@ class TestBoundaryExitCodes:
 class TestZeroIsAnsweredAsEmptiness:
     """A bound of zero must describe the bound, never the repository."""
 
-    def test_map_reports_the_repository_as_having_nothing_to_rank(self, services, repo, capsys):
+    def test_map_names_the_budget_rather_than_blaming_the_repository(self, services, repo, capsys):
+        """`render_map` is handed rows and nothing else, so it says only that.
+
+        It used to answer "nothing in this repository parsed into symbols",
+        which is a claim about the repository the rows cannot support:
+        `MapService._pack` also returns zero when the first candidate exceeds
+        the budget. The service knows which happened and now says so.
+        """
         assert dispatch(services, repo, "map", "--max-files", "0") == EXIT_OK
-        assert "no ranked files: nothing in this repository" in capsys.readouterr().out
+        out = capsys.readouterr().out
 
-    def test_communities_reports_the_repository_as_having_no_grouping(self, services, repo, capsys):
+        assert "no ranked files" in out
+        assert "--max-files kept none of the 2 ranked files" in out
+        assert "nothing in this repository parsed into symbols" not in out
+
+    def test_a_genuinely_empty_repository_still_says_so(self, services, tmp_path, capsys):
+        # The other half of the same branch: when there really are no
+        # candidates, the honest message is the one that was always there.
+        (tmp_path / "notes.txt").write_text("no code here\n", encoding="utf-8")
+
+        assert dispatch(services, tmp_path, "map") == EXIT_OK
+        assert "nothing in this repository parsed into symbols" in capsys.readouterr().out
+
+    def test_communities_at_zero_reports_the_count_it_found(self, services, repo, capsys):
         assert dispatch(services, repo, "communities", "--limit", "0") == EXIT_OK
-        assert "no communities: nothing in this repository" in capsys.readouterr().out
+        out = capsys.readouterr().out
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "4a: render_cycles branches on the truncated list rather than on "
-            "CycleReport.total, which graph_service computes before truncation. Measured "
-            "on the two-file cycle below: `cycles` reports the cycle, `cycles --limit 0` "
-            "and `--limit -1` both report 'no import cycles' and exit 0. This is the "
-            "dangerous member of the family -- the other two mislead, this one clears a "
-            "repository that does not pass."
-        ),
-    )
+        assert "no communities: nothing in this repository" not in out
+        assert "communities not listed" in out
+
     def test_cycles_does_not_clear_a_repository_that_has_one(self, services, tmp_path, capsys):
+        """Was a strict xfail; the marker came off when stage 4a landed.
+
+        render_cycles branched on the truncated list rather than on
+        CycleReport.total, which graph_service computes before truncation, so
+        `cycles --limit 0` answered "no import cycles" and exited 0 for the
+        repository below. The other two members of this family mislead; this
+        one cleared a repository that does not pass.
+        """
         for name, content in CYCLE.items():
             (tmp_path / name).write_text(content, encoding="utf-8")
 

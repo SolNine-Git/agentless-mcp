@@ -29,7 +29,7 @@ arrow, a pair of reference edges reads as a mutual import -- a cycle the
 ``cycles`` view just said does not exist. A caller that knows which pairs are
 declared imports passes them as ``imports``; those render solid, reference-only
 edges render dashed, and a legend comment says so. Reference edges are also
-the hairball: past :data:`DEFAULT_MAX_EDGES` total edges they are left out
+the hairball: past :data:`DEFAULT_DIAGRAM_EDGES` total edges they are left out
 wholesale -- never a sampled subset, which would be a diagram lying about
 which references exist -- and a comment counts what was left out. Import
 edges are always drawn. Without ``imports`` the render is the undifferentiated
@@ -42,7 +42,7 @@ printed. The same graph renders to the same bytes, which is what lets a
 committed diagram be regenerated and diffed rather than trusted.
 
 **Bounding.** A repository has more modules than a diagram can show, so the
-render is PageRank-bounded to :data:`DEFAULT_MAX_NODES` nodes and says what it
+render is PageRank-bounded to :data:`DEFAULT_DIAGRAM_NODES` nodes and says what it
 left out on an explicit elision line. A bounded view that does not announce
 its bound is the failure this package exists to prevent.
 
@@ -70,13 +70,17 @@ from agentless_mcp.core.graph import RefGraph
 # How many modules a default diagram shows. Chosen for legibility, not for
 # capacity: past roughly this many nodes a flowchart stops being readable and
 # the ranked text views are the better answer.
-DEFAULT_MAX_NODES = 40
+#
+# Named for the diagram rather than DEFAULT_MAX_NODES, which is what it was
+# called while `core/htmlgraph` used the same name for 200. Both spellings
+# reached `--help`, so the tool advertised two different answers for one name.
+DEFAULT_DIAGRAM_NODES = 40
 
 # How many edges a diagram carries before reference edges stop being drawn.
-# The same legibility reasoning as DEFAULT_MAX_NODES: past this many arrows a
+# The same legibility reasoning as DEFAULT_DIAGRAM_NODES: past this many arrows a
 # flowchart is a hairball, and the import edges alone are the load-bearing
 # picture. Import edges are never dropped by this bound.
-DEFAULT_MAX_EDGES = 40
+DEFAULT_DIAGRAM_EDGES = 40
 
 # Hops from the focus seed. Two is the neighbourhood a "what touches this"
 # question means: what it calls, and what those call.
@@ -154,8 +158,8 @@ class DiagramOptions:
     and the same graph are the same diagram.
     """
 
-    max_nodes: int = DEFAULT_MAX_NODES
-    max_edges: int = DEFAULT_MAX_EDGES
+    max_nodes: int = DEFAULT_DIAGRAM_NODES
+    max_edges: int = DEFAULT_DIAGRAM_EDGES
     focus: str | None = None
     focus_distance: int = DEFAULT_FOCUS_DISTANCE
     direction: str = DEFAULT_DIRECTION

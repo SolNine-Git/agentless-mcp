@@ -22,7 +22,7 @@ from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_DEPTH,
-    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_WALK_FILES,
     bounded_walk,
     file_stays_inside,
 )
@@ -70,7 +70,7 @@ def walk_repo(
     root: Path,
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_files: int = DEFAULT_MAX_WALK_FILES,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> list[RepoFile]:
     """List every file under ``root`` that git would not ignore.
