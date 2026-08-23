@@ -144,6 +144,15 @@ client-advertised root can only select among them, never add one:
 agentless-mcp-server --root /path/to/repo --root /path/to/other
 ```
 
+Over HTTP the server also watches its own install: when the package is
+upgraded or reinstalled, it finishes in-flight requests and replaces itself
+with the new code (`--no-auto-restart` or `AGENTLESS_MCP_NO_AUTO_RESTART`
+opts out). A long-running process otherwise serves the code it loaded at
+startup forever -- reconnecting clients refreshes the connection, never the
+process. On Windows the server exits cleanly instead and a supervisor's
+`Restart=` completes the loop; `docs/deploy/mcp-agentless.service` is a
+ready example unit.
+
 `--roots-from FILE` reads that same list from a file, one path per line.
 The file is re-read whenever it changes on disk, so appending a line enrolls
 a repository on the next call without a restart, and the refusal an agent

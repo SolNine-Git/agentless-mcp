@@ -1686,3 +1686,73 @@ class TestAutoWarmStartup:
     def test_the_flag_parses_and_defaults_off(self):
         assert parse_args(["--no-auto-warm"]).no_auto_warm is True
         assert parse_args([]).no_auto_warm is False
+
+
+class TestAutoRestartWiring:
+    """Issue #23: the HTTP transport arms the install monitor; stdio never does."""
+
+    class StubTransport:
+        def __init__(self, interrupt: bool = False) -> None:
+            self._interrupt = interrupt
+
+        def run(self, **kwargs):
+            _ = kwargs
+            if self._interrupt:
+                raise KeyboardInterrupt
+
+    @pytest.fixture
+    def monitor_calls(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(server_module.selfrestart, "start_update_monitor", calls.append)
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport()
+        )
+        return calls
+
+    def test_http_arms_the_monitor_for_this_distribution(self, services, tmp_path, monitor_calls):
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+        assert monitor_calls == [DISTRIBUTION_NAME]
+
+    def test_stdio_never_arms_it(self, services, tmp_path, monitor_calls):
+        assert server_module.serve(["--root", str(tmp_path)], services) == 0
+        assert monitor_calls == []
+
+    def test_the_flag_keeps_it_off(self, services, tmp_path, monitor_calls):
+        argv = ["--transport", TRANSPORT_HTTP, "--no-auto-restart", "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+        assert monitor_calls == []
+
+    def test_a_pending_restart_execs_after_the_transport_returns(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "exec_or_exit", lambda: 42)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 42
+
+    def test_the_monitors_interrupt_is_absorbed_into_the_restart(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport(True)
+        )
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: True)
+        monkeypatch.setattr(server_module.selfrestart, "exec_or_exit", lambda: 0)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        assert server_module.serve(argv, services) == 0
+
+    def test_an_operators_own_interrupt_still_propagates(
+        self, services, tmp_path, monitor_calls, monkeypatch
+    ):
+        monkeypatch.setattr(
+            server_module, "build_server", lambda handlers, **kwargs: self.StubTransport(True)
+        )
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: False)
+        argv = ["--transport", TRANSPORT_HTTP, "--root", str(tmp_path)]
+        with pytest.raises(KeyboardInterrupt):
+            server_module.serve(argv, services)
+
+    def test_the_flag_parses_and_defaults_off(self):
+        assert parse_args(["--no-auto-restart"]).no_auto_restart is True
+        assert parse_args([]).no_auto_restart is False

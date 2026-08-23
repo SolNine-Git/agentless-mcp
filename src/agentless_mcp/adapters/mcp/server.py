@@ -85,7 +85,7 @@ from agentless_mcp.application.symbol_service import (
     render_find,
 )
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, projectconfig
+from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
@@ -1742,6 +1742,14 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "does the same)",
     )
     parser.add_argument(
+        "--no-auto-restart",
+        action="store_true",
+        help="do not restart the HTTP server when its installed package "
+        "changes; the process then serves the code it loaded at startup "
+        f"until restarted by hand ({selfrestart.ENV_NO_AUTO_RESTART} in the "
+        "environment does the same)",
+    )
+    parser.add_argument(
         "--surface",
         choices=SURFACES,
         default=SURFACE_V2,
@@ -1812,8 +1820,21 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
     if not args.no_auto_warm:
         grammars.start_auto_warm()
     if args.transport == TRANSPORT_HTTP:
+        # Only the long-running transport can drift from its install: stdio
+        # processes are per-connection and load new code on reconnect.
+        if not args.no_auto_restart:
+            selfrestart.start_update_monitor(DISTRIBUTION_NAME)
         host, port = http_binding(args)
-        server.run(transport=TRANSPORT_HTTP, host=host, port=port)
+        try:
+            server.run(transport=TRANSPORT_HTTP, host=host, port=port)
+        except KeyboardInterrupt:
+            # The monitor's SIGINT may surface as KeyboardInterrupt rather
+            # than as a handled transport shutdown; an operator's own Ctrl+C
+            # still propagates.
+            if not selfrestart.restart_pending():
+                raise
+        if selfrestart.restart_pending():
+            return selfrestart.exec_or_exit()
     else:
         server.run()
     return 0

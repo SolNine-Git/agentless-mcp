@@ -19,7 +19,7 @@ import pytest
 import tree_sitter_language_pack as pack
 
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import cache, grammars
+from agentless_mcp.core import cache, grammars, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
 
@@ -45,6 +45,7 @@ def warm_grammars() -> grammars.WarmupReport:
     # the auto-warm itself clear the variable and stub the warm seam.
     os.environ.setdefault(grammars.ENV_NO_AUTO_WARM, "1")
     os.environ.setdefault(cache.ENV_NO_AUTO_INDEX, "1")
+    os.environ.setdefault(selfrestart.ENV_NO_AUTO_RESTART, "1")
     report = grammars.warmup(TEST_LANGUAGES)
     if report.degraded:
         details = ", ".join(f"{cap.name}: {cap.detail}" for cap in report.degraded)

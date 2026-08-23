@@ -1,0 +1,33 @@
+# Example systemd user unit for the agentless-mcp HTTP server.
+#
+# On POSIX the server already replaces itself when its installed package
+# changes (see --no-auto-restart to opt out), so the unit needs no reload
+# machinery; Restart=on-failure covers crashes, and on Windows-style
+# deployments where the server exits instead of exec'ing, Restart= is what
+# completes the update loop.
+#
+# Install: copy to ~/.config/systemd/user/, adjust paths and roots, then
+#   systemctl --user daemon-reload && systemctl --user enable --now mcp-agentless
+
+[Unit]
+Description=Agentless MCP Server (HTTP)
+Documentation=https://github.com/SolNine-Git/agentless-mcp
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agentless-mcp-server \
+    --transport http \
+    --host 127.0.0.1 \
+    --port 8766 \
+    --root /path/to/repo \
+    --root /path/to/other
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-agentless
+
+[Install]
+WantedBy=default.target
