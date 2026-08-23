@@ -222,7 +222,7 @@ class TestExecFailureDoesNotKillTheServer:
     is strictly less available than what it replaced.
     """
 
-    def test_a_failing_exec_exits_cleanly_for_a_supervisor(self, monkeypatch, caplog):
+    def test_a_failing_exec_says_the_service_will_not_return_by_itself(self, monkeypatch, caplog):
         monkeypatch.setattr(selfrestart.grammars, "wait_for_auto_warm", lambda: None)
         monkeypatch.setattr(selfrestart.sys, "platform", "linux")
 
@@ -235,6 +235,11 @@ class TestExecFailureDoesNotKillTheServer:
             assert selfrestart.exec_or_exit() == 0
 
         assert "exec of" in caplog.text
+        # The line an operator reads during an outage. The POSIX design needs
+        # no supervisor while the exec succeeds; this is the path where it
+        # does, and a line promising a supervisor will restart the service is
+        # false on the deployment the module documents.
+        assert "will NOT come back on its own" in caplog.text
 
     def test_the_grammar_warm_is_joined_before_the_image_is_replaced(self, monkeypatch):
         order = []

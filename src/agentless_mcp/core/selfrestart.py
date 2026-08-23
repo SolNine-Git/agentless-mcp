@@ -28,12 +28,20 @@ and different does.
 ``SIGINT`` in the process, which is the graceful-shutdown path the HTTP
 stack already implements -- stop accepting, drain in-flight requests,
 return from ``run()``. Only then does the process replace itself with
-``os.execv`` of its original argv: same pid, same flags, new code, no
-supervisor required. All of this server's state is derived and on disk (the
-tag caches, the grammar caches), which is what makes exec-in-place safe
-here. On Windows, where exec with open sockets is unreliable, the process
-instead exits 0 after the same graceful shutdown and a supervisor's
-``Restart=`` completes the loop.
+``os.execv`` of its original argv: same pid, same flags, new code. All of
+this server's state is derived and on disk (the tag caches, the grammar
+caches), which is what makes exec-in-place safe here. On Windows, where exec
+with open sockets is unreliable, the process instead exits 0 after the same
+graceful shutdown and a supervisor's ``Restart=`` completes the loop.
+
+**A supervisor is optional on POSIX only while the exec succeeds.** The
+success path needs none, which is the point of exec-in-place. The failure
+path has nowhere left to go: the upgrade that prompted the restart is also
+what can move the interpreter out from under it, and a process that cannot
+exec cannot serve the new code either. It exits 0 there, so an unsupervised
+POSIX deployment loses the service until somebody starts it again. That is
+stated rather than hidden because it is the one case where this feature is
+less available than the stale-code drift it replaced.
 """
 
 import hashlib
@@ -63,13 +71,24 @@ POLL_SECONDS = 30.0
 # passed, so no upgrade is ever lost, and the rate at which a process can bounce
 # is bounded rather than being one restart per poll.
 #
-# This is a rate bound, not a loop breaker. An install whose fingerprint is
-# genuinely unstable -- a backend that regenerates RECORD non-deterministically,
-# an external sync touching dist-info -- would still restart once per interval
-# here, because a process that has replaced its own image cannot remember how
-# many times it has done so. Breaking that properly needs a counter carried
-# across the exec; it is not built until such an install is actually observed,
-# and the held-restart log line above is what would make it visible.
+# This is a rate bound, not a loop breaker, and it is the ONLY guard there is:
+# no backoff, no restart counter, no cap on total restarts, and no state carried
+# across the exec, so a process cannot know it has already bounced.
+#
+# The rationale for deferring the loop breaker used to be that no unstable
+# fingerprint source had been observed. That was wrong at the time: this module
+# manufactured one, by coalescing an absent RECORD to `sha256(b"")` -- a
+# present, different, perfectly valid fingerprint -- so every install window
+# produced a spurious change. `install_fingerprint` now returns None there, and
+# with that defect gone the remaining unstable sources are external ones: a
+# backend that regenerates RECORD non-deterministically, a sync touching
+# dist-info. Such an install would still restart once per interval here.
+#
+# So the deferral stands on a narrower claim than before -- no such install has
+# been observed, and this module is no longer the thing producing one. If one is
+# observed, the cheap carrier is an environment variable set before the execv
+# and read at startup, and the held-restart log line above is what makes the
+# bouncing visible in the meantime.
 MINIMUM_UPTIME_SECONDS = 60.0
 
 
@@ -323,8 +342,9 @@ def exec_or_exit() -> int:
             # instead, which is strictly less available than what it replaced.
             # Fall through to the clean exit a supervisor can act on.
             logger.exception(
-                "install updated but exec of %s failed; exiting cleanly instead so a "
-                "supervisor can restart this service",
+                "install updated but exec of %s failed; this process is exiting 0 and "
+                "will NOT come back on its own -- the service returns only when a "
+                "supervisor or an operator starts it again",
                 sys.executable,
             )
             return 0
