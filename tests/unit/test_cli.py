@@ -50,14 +50,6 @@ def run_billing(items):
 
 
 @pytest.fixture
-def repo_path(tmp_path):
-    """A two-file repository on disk, no git required."""
-    (tmp_path / "core.py").write_text(SOURCE, encoding="utf-8")
-    (tmp_path / "caller.py").write_text(CALLER, encoding="utf-8")
-    return tmp_path
-
-
-@pytest.fixture
 def services(extractor, counter):
     """The same wiring bootstrap builds, without the console-script layer."""
     return CliServices(
@@ -71,6 +63,14 @@ def services(extractor, counter):
         counter=counter,
         extractor=extractor,
     )
+
+
+@pytest.fixture
+def repo_path(tmp_path):
+    """A two-file repository on disk, no git required."""
+    (tmp_path / "core.py").write_text(SOURCE, encoding="utf-8")
+    (tmp_path / "caller.py").write_text(CALLER, encoding="utf-8")
+    return tmp_path
 
 
 def invoke(services, repo_path, *arguments):
@@ -1131,6 +1131,121 @@ class TestPatchSubprocess:
             "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)
         )
         assert result.returncode == 2
+
+    # --json on the three patch subcommands. Pinned because nothing reached it
+    # before: the machine-readable form of the only write path in the package
+    # was shipped and never asserted on.
+
+    def test_check_json_names_every_edit_and_every_file(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "check",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert document["ok"] is True
+        assert document["files"] == [
+            {
+                "path": "core.py",
+                "ok": True,
+                "verdict": {
+                    "language": "python",
+                    "old_errors": 0,
+                    "new_errors": 0,
+                    "ok": True,
+                    "detail": "",
+                },
+            }
+        ]
+        assert document["applied"] == 1
+        assert document["total"] == 1
+        assert document["changed_files"] == ["core.py"]
+        assert document["outcomes"] == [
+            {"index": 0, "path": "core.py", "status": "applied", "reason": "", "matches": 1}
+        ]
+
+    def test_apply_json_carries_the_diff_and_the_base_it_applied_against(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert document["diff"].startswith("diff --git a/core.py b/core.py")
+        assert "+    return RATE * 2" in document["diff"]
+        assert document["in_place"] is False
+        assert document["base"].startswith("HEAD (")
+        assert document["changed_files"] == ["core.py"]
+
+    def test_normalize_json_carries_a_key_per_file_and_one_for_the_whole(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "normalize",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert len(document["key"]) == 64
+        assert set(document["file_keys"]) == {"core.py"}
+        assert len(document["file_keys"]["core.py"]) == 64
+
+    def test_a_failing_check_still_emits_a_document_and_exits_one(self, git_repo, tmp_path):
+        # The failure path is the one an agent has to parse, so it must be a
+        # document rather than a message: status and reason per edit.
+        missing = (
+            "### core.py\n<<<<<<< SEARCH\n    return NOPE\n=======\n    return 1\n>>>>>>> REPLACE\n"
+        )
+        result = self.run_cli(
+            "patch",
+            "check",
+            "-f",
+            str(self.write_patch(tmp_path, missing)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 1
+        assert document["ok"] is False
+        assert document["files"] == []
+        assert document["outcomes"][0]["status"] == "not_found"
+        assert document["outcomes"][0]["reason"] == "search text not found"
+
+    def test_the_receipt_never_enters_the_json_document(self, git_repo, tmp_path):
+        # stdout is the document, stderr is the receipt. A receipt merged into
+        # the payload would make every patch answer unparsable by whatever
+        # reads it, so the split is the contract.
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert "receipt" not in document
+        assert result.stderr.startswith("# agentless-mcp receipt")
 
 
 # The phase-3 candidate set, three spellings of two distinct fixes plus one

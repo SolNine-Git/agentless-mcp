@@ -203,6 +203,45 @@ class TestApply:
         assert "a/app.py" in report.diff
         assert "a/util.py" in report.diff
 
+    def test_two_edits_naming_one_file_both_land(self, service, ctx):
+        """The ordinary shape of a real patch, and it reached no test before.
+
+        ``_read`` deduplicates by path so the file is read once, and the
+        edits then run against one accumulating copy. Two independent hunks
+        in one file is what an agent produces most of the time.
+        """
+        text = (
+            "### app.py\n<<<<<<< SEARCH\n    return left + right\n"
+            "=======\n    return left + right + 0\n>>>>>>> REPLACE\n"
+            "### app.py\n<<<<<<< SEARCH\n    return left - right\n"
+            "=======\n    return left - right - 0\n>>>>>>> REPLACE\n"
+        )
+        report = service.apply(edits_of(text), ctx)
+
+        assert report.ok
+        assert len(report.result.outcomes) == 2
+        assert "+    return left + right + 0" in report.diff
+        assert "+    return left - right - 0" in report.diff
+
+    def test_a_later_edit_sees_what_an_earlier_one_wrote(self, service, ctx):
+        """Order is meaningful within a file, so it has to be pinned.
+
+        The second block below searches for text that only exists because the
+        first block created it. If the edits ran against independent copies of
+        the original, the second would report `not_found`.
+        """
+        text = (
+            "### app.py\n<<<<<<< SEARCH\n    return left + right\n"
+            "=======\n    return MARKER\n>>>>>>> REPLACE\n"
+            "### app.py\n<<<<<<< SEARCH\n    return MARKER\n"
+            "=======\n    return left + right + 1\n>>>>>>> REPLACE\n"
+        )
+        report = service.apply(edits_of(text), ctx)
+
+        assert report.ok
+        assert "MARKER" not in report.diff
+        assert "+    return left + right + 1" in report.diff
+
     def test_a_missing_file_is_reported_as_missing_not_as_unreadable(self, service, ctx):
         """``apply`` names the same cause ``check`` does, for the same file."""
         text = PATCH.replace("### app.py", "### nowhere.py")
@@ -301,6 +340,42 @@ class TestApplyInPlace:
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
         assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_a_failure_at_the_third_of_five_leaves_no_residue(self, tmp_path, monkeypatch):
+        """Rollback has to undo a prefix and discard a suffix in one pass.
+
+        The two-file case above proves the prefix restores. Five files with
+        the failure in the middle is what proves the *suffix* is discarded
+        too: staging siblings for files four and five were created before the
+        third one failed, and a leftover `.agentless-mcp-staging` file in a
+        checkout is a patch that half-happened.
+        """
+        originals = {f"m{index}.py": f"VALUE = {index}\n" for index in range(5)}
+        for name, content in originals.items():
+            (tmp_path / name).write_text(content, encoding="utf-8")
+
+        real = Path.replace
+        replacements = 0
+
+        def fail_third_staging(staging, target):
+            nonlocal replacements
+            if staging.name.endswith(patch_service.STAGING_SUFFIX):
+                replacements += 1
+                if replacements == 3:
+                    message = "simulated replace failure"
+                    raise OSError(message)
+            return real(staging, target)
+
+        monkeypatch.setattr(Path, "replace", fail_third_staging)
+
+        with pytest.raises(AtlasError, match="every original was restored"):
+            patch_service._write_all(
+                tmp_path, {name: f"REWRITTEN = {index}\n" for index, name in enumerate(originals)}
+            )
+
+        assert {path.name for path in tmp_path.iterdir()} == set(originals)
+        for name, content in originals.items():
+            assert (tmp_path / name).read_text(encoding="utf-8") == content
 
     def test_crlf_bytes_survive_the_write(self, service, repo):
         """The writer performs no newline translation, on any platform.

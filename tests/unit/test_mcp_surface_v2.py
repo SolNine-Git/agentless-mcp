@@ -592,3 +592,42 @@ class TestMapLimitMatchesItsV1Counterpart:
         call(
             server, "orient", {"repo_root": str(one_repo), "operation": "communities", "limit": 500}
         )
+
+
+# Every numeric parameter the v2 surface publishes, at a value below its floor.
+OUT_OF_RANGE = [
+    ("orient", {"operation": "map", "limit": 0}),
+    ("orient", {"operation": "map", "limit": -1}),
+    ("orient", {"operation": "cycles", "limit": 0}),
+    ("orient", {"operation": "communities", "resolution": 0}),
+    ("orient", {"operation": "communities", "resolution": -1}),
+    ("orient", {"operation": "diagram", "max_nodes": 0}),
+    ("symbols", {"operation": "find", "name": "quote", "limit": 0}),
+    ("symbols", {"operation": "find", "name": "quote", "limit": -1}),
+    ("read", {"operation": "slice", "path": "core.py", "lines": [[1, 2]], "context_lines": -1}),
+    ("find_referencing_symbols", {"target": "quote", "limit": 0}),
+]
+
+
+class TestTheWireRefusesWhatTheCliAccepts:
+    """The other half of the bounds story pinned in ``test_cli_bounds.py``.
+
+    Every numeric parameter here carries a ``Field(ge=, le=)``, so zero and
+    minus one never reach a service through this door. The CLI spells the
+    same parameters as a bare ``type=int`` and lets most of them through, and
+    three of its commands answer a bound of zero by reporting that the
+    repository is empty. One number, two contracts. Stage 4b gives the
+    services one owner so both doors inherit the same answer; until then
+    these two modules are what measure the gap.
+    """
+
+    @pytest.mark.parametrize(
+        ("tool", "arguments"),
+        OUT_OF_RANGE,
+        ids=[f"{tool}-{sorted(arguments.items())[-1]}" for tool, arguments in OUT_OF_RANGE],
+    )
+    def test_zero_and_negative_never_reach_a_service(self, services, one_repo, tool, arguments):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError):
+            call(server, tool, {"repo_root": str(one_repo), **arguments})
