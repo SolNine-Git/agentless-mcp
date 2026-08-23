@@ -57,7 +57,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +125,12 @@ KEY_LENGTH = 16
 
 NOGIT_PREFIX = "nogit:"
 
+# How much of the manifest digest the non-git generation stamp keeps. Its own
+# constant rather than ``KEY_LENGTH``: the two happen to be the same width and
+# answer unrelated questions, so retuning the directory key must not re-spell
+# every generation stamp with it.
+MANIFEST_DIGEST_LENGTH = 16
+
 # SQLite is out-of-process state like any other: a lock wait gets a bound.
 SQLITE_TIMEOUT_SECONDS = 5.0
 
@@ -145,13 +151,14 @@ ABSENT_REFRESHING = MESSAGES.cache_absent_refreshing
 # belongs in ``IndexFailure``, not in a traceback out of ``agentless-mcp
 # index``. Named explicitly rather than catching ``Exception``: an error class
 # not in this list is a defect in the extractor and must surface as one.
-# ``core.patchlint`` keeps the same list for the same reason on the same parse
-# path; it is duplicated rather than imported because ``patchlint`` sits above
-# the cache in the module graph and importing it here would invert that.
+# ``core.patchlint`` keeps its own such list, ``DEGRADED_ERRORS``, for the same
+# reason on the same parse path; the two are separate rather than shared
+# because ``patchlint`` sits above the cache in the module graph and importing
+# it here would invert that. ``UnicodeDecodeError`` is absent from both because
+# it is a ``ValueError`` and is caught by that member.
 EXTRACTION_FAILURES: tuple[type[Exception], ...] = (
     AtlasError,
     ValueError,
-    UnicodeDecodeError,
     RecursionError,
     OSError,
 )
@@ -1509,21 +1516,25 @@ def _write_lock(directory: Path, repo_root: Path) -> Iterator[None]:
     which repository the caller was trying to index.
     """
     flavour = platforms.family(sys.platform)
-    try:
-        with filelock.exclusive(directory / LOCK_NAME, flavour=flavour):
-            yield
-    except filelock.LockUnavailableError as exc:
-        # The lock is unavailable either because another run holds it or
-        # because the filesystem cannot lock at all (ENOLCK/EOPNOTSUPP on some
-        # NFS, FUSE and overlay mounts). Naming only the first sends an
-        # operator hunting for a process that does not exist, so say both and
-        # carry the underlying reason.
-        message = (
-            f"could not take the index lock for {repo_root}: another index "
-            f"run may hold it, or {directory} may be on a filesystem that "
-            f"does not support locking"
-        )
-        raise CacheLocked(message) from exc
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(filelock.exclusive(directory / LOCK_NAME, flavour=flavour))
+        except filelock.LockUnavailableError as exc:
+            # The lock is unavailable either because another run holds it or
+            # because the filesystem cannot lock at all (ENOLCK/EOPNOTSUPP on
+            # some NFS, FUSE and overlay mounts). Naming only the first sends
+            # an operator hunting for a process that does not exist, so say
+            # both and carry the underlying reason.
+            message = (
+                f"could not take the index lock for {repo_root}: another index "
+                f"run may hold it, or {directory} may be on a filesystem that "
+                f"does not support locking"
+            )
+            raise CacheLocked(message) from exc
+        # Outside the try on purpose: the body runs under the lock, and a
+        # ``LockUnavailableError`` from a nested lock is not this lock failing
+        # to open.
+        yield
 
 
 def _manifest_digest(root: Path) -> str:
@@ -1536,7 +1547,7 @@ def _manifest_digest(root: Path) -> str:
             digest.update(f"{repo_file.path}\0missing\n".encode())
             continue
         digest.update(f"{repo_file.path}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())
-    return digest.hexdigest()[:KEY_LENGTH]
+    return digest.hexdigest()[:MANIFEST_DIGEST_LENGTH]
 
 
 def _absent_status(database: Path | None, note: str = "") -> CacheStatus:
