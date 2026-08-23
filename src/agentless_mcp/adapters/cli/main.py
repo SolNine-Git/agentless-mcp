@@ -1711,7 +1711,7 @@ def _with_truncation(answer: _Answer) -> dict[str, Any]:
     }
 
 
-def _render_locations(view: Any) -> str:
+def _render_locations(view: LocationView) -> str:
     """Render a location resolution as ids, intervals and the reasons for misses."""
     resolution = view.resolution
     lines = [f"file: {view.path}"]
@@ -1782,8 +1782,9 @@ def _map_budget(raw: str | None, ctx: RepoContext) -> tuple[int | None, str]:
     """Resolve ``--budget``: a number, ``auto``, or the reason it is neither.
 
     ``None`` for the budget means auto-size, which is why this cannot go
-    through :func:`_first`: "the caller said auto" and "nobody said anything"
-    are the same value there and must not be the same decision here.
+    through :func:`projectconfig.resolve`: "the caller said auto" and "nobody
+    said anything" are the same value there and must not be the same decision
+    here.
     """
     if raw is None:
         return (None if ctx.config.map_budget is None else ctx.config.map_budget), ""
