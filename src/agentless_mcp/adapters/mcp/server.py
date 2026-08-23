@@ -20,9 +20,14 @@ allowlist, re-read whenever it changes on disk, so appending a line enrols a
 repository on the next call without a restart. The client's own
 MCP ``roots`` capability -- verified present in the installed FastMCP as
 ``Context.list_roots()`` -- is read, but an advertised root can only *select*
-among the configured ones, never add one. A server started with no configured root
-serves nothing, whatever the client advertises, because otherwise the client
-rather than the operator would be deciding what this process may read. A
+among the configured ones, never add one. Unless the operator says otherwise, a
+server started with no configured root therefore serves nothing, whatever the
+client advertises, because otherwise the client rather than the operator would
+be deciding what this process may read. ``--allow-client-roots`` is that
+"otherwise", and it is the one configuration in which an advertised root
+authorises itself: an operator who passes it under stdio, with no ``--root``,
+has handed the client the whole decision on purpose. The HTTP transport refuses
+the flag outright, because there the client is whatever reaches the port. A
 client that does not implement roots answers "List roots not supported"; that
 is a normal negative, not a failure, and the static roots still apply.
 
@@ -146,6 +151,12 @@ TRANSPORTS = (TRANSPORT_STDIO, TRANSPORT_HTTP)
 # deployment that cares passes --port anyway.
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 8000
+
+# The ports an operator may name. Zero is excluded deliberately: it binds an
+# ephemeral port this process never reports, so the operator cannot register a
+# client against it.
+MIN_HTTP_PORT = 1
+MAX_HTTP_PORT = 65535
 
 # A line range arrives as a two-element [start, end] list.
 _RANGE_PAIR_LENGTH = 2
@@ -510,6 +521,10 @@ class StructureRequest:
     focus: str = ""
     max_nodes: int = DEFAULT_DIAGRAM_NODES
     group_by_communities: bool = False
+    # Which published tool this call came in through. Two surfaces route here
+    # and a refusal has to name the one the caller can retry, the way
+    # unknown_operation and op_requires_parameters already do.
+    tool: str = "analyze_structure"
 
 
 @dataclass(frozen=True)
@@ -562,6 +577,29 @@ class ToolHandlers:
         """
         merged = [*self._roots, *chain.from_iterable(f.current() for f in self._roots_files)]
         return tuple(dict.fromkeys(merged))
+
+    def needs_client_roots(self, repo_root: str | None) -> bool:
+        """Can what the client advertises change how this call resolves?
+
+        Asking the client for its roots is an out-of-process round trip on the
+        critical path of every tool, bounded at
+        :data:`_LIST_ROOTS_TIMEOUT_SECONDS`, and :meth:`resolve` reads the
+        answer in exactly two places: the ``--allow-client-roots`` merge, and
+        the selection among several roots for a call that named none. In the
+        two ordinary deployments -- a client that always sends ``repo_root``,
+        and a server holding one repository -- the answer is discarded, so a
+        slow client used to pay up to two seconds per navigation call for it.
+
+        ``capabilities`` reports the advertised roots as part of its answer and
+        so asks unconditionally; this is only about the resolution path.
+        """
+        if self._allow_client_roots:
+            return True
+        if repo_root is not None and repo_root.strip():
+            return False
+        # With no root there is nothing to select among and resolve refuses;
+        # with exactly one, _sole_selection returns it without looking.
+        return len(self.roots) > 1
 
     def _hinted(self, message: str) -> str:
         """Append the enrolment hint when an operator-editable roots file exists.
@@ -623,19 +661,30 @@ class ToolHandlers:
             tree_oid=ctx.tree_oid,
             no_cache=no_cache,
         )
-        # First use of a repository is the auto-index trigger: per repo rather
-        # than at startup because a server can hold many roots, and a stale
-        # cache costs performance only -- this call is already served live
-        # from ``source`` while the refresh lands for the ones after it.
-        # A --no-cache call opts out of the cache and is taken at its word.
-        if self._auto_index and not no_cache:
-            cache.start_auto_index(
-                ctx.root,
-                self._services.extractor,
-                tree_oid=ctx.tree_oid,
-                head_sha=ctx.head_sha,
-            )
         return replace(ctx, symbols=source)
+
+    def refresh_in_background(self, ctx: RepoContext, *, no_cache: bool = False) -> None:
+        """Arm the background index for a repository this call is about to read.
+
+        First use of a repository is the auto-index trigger: per repo rather
+        than at startup because a server can hold many roots, and a stale cache
+        costs performance only -- the call that armed it is already served live
+        while the refresh lands for the ones after it. A ``--no-cache`` call
+        opts out of the cache and is taken at its word.
+
+        Separate from :meth:`resolve` on purpose. Authorising a repository is a
+        question with an answer; scheduling work on it is a decision, and
+        folding the second into the first made the arming invisible at every
+        call site and impossible to skip.
+        """
+        if not self._auto_index or no_cache:
+            return
+        cache.start_auto_index(
+            ctx.root,
+            self._services.extractor,
+            tree_oid=ctx.tree_oid,
+            head_sha=ctx.head_sha,
+        )
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
         """Render a ranked, budgeted repository map.
@@ -804,7 +853,7 @@ class ToolHandlers:
 def _operation_path(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
     """Render the shortest resolved path between two named endpoints."""
     if not request.source.strip() or not request.target.strip():
-        message = MESSAGES.path_needs_endpoints
+        message = MESSAGES.path_needs_endpoints.format(tool=request.tool)
         raise AgentlessError(message)
     trace = graphs.path(
         ctx,
@@ -1126,8 +1175,11 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
         *,
         no_cache: bool = False,
     ) -> AsyncIterator[RepoContext]:
-        roots = await effective_client_roots(context)
+        roots: list[Path] = []
+        if handlers.needs_client_roots(repo_root):
+            roots = await effective_client_roots(context)
         ctx = handlers.resolve(repo_root, roots, no_cache=no_cache)
+        handlers.refresh_in_background(ctx, no_cache=no_cache)
         try:
             yield ctx
         finally:
@@ -1364,6 +1416,7 @@ def _register_shared(
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)
         ctx = handlers.resolve(repo_root, roots)
+        handlers.refresh_in_background(ctx)
         try:
             return handlers.capabilities(ctx, roots)
         finally:
@@ -1428,16 +1481,25 @@ READ_OPERATIONS: dict[str, OperationSpec] = {
 def _omitted(value: object) -> bool:
     """Was this per-operation parameter left unset?
 
-    One definition for both halves of the check. A blank string counts, and so
-    does ``False`` on a flag: neither carries an instruction, and a client that
-    fills every declared optional with a zero value -- the ordinary shape of a
-    generated call -- is saying nothing by them. Refusing such a value as a
-    stray parameter refuses a call that asked for nothing unusual, and for a
-    flag whose v1 counterpart defaulted to ``False`` it refuses the default.
+    One rule for the zero value of every shape, rather than a special case per
+    type. A client that fills every declared optional with a zero value -- the
+    ordinary shape of a generated call -- is saying nothing by them, so
+    ``None``, ``False``, a blank string, an empty sequence and a zero number
+    all read the same way here. Recognising only three of those was how
+    ``paths=[]`` came to satisfy ``required=("paths",)`` while ``paths=[]``
+    beside another operation was refused as a stray parameter.
+
+    This decides only whether a parameter was *given*. What a zero the caller
+    did mean goes on to the handler untouched: ``context_lines=0`` still
+    reaches ``read_slice`` as zero.
     """
     if value is None or value is False:
         return True
-    return isinstance(value, str) and not value.strip()
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, int | float):
+        return value == 0
+    return isinstance(value, Sequence) and len(value) == 0
 
 
 def _checked_map_limit(operation: str, limit: int | None) -> None:
@@ -1581,6 +1643,7 @@ def _register_v2(
                 ctx,
                 StructureRequest(
                     operation=operation,
+                    tool="orient",
                     source=source or "",
                     target=target or "",
                     include_unique=bool(include_unique),
@@ -1739,6 +1802,32 @@ def roots_file(raw: str) -> RootsFile:
     )
 
 
+def root_dir(raw: str) -> Path:
+    """Resolve one ``--root`` flag to an existing directory, or refuse it here.
+
+    A mistyped ``--root`` used to start the server and fail on every tool call
+    with "not a directory", which under an MCP client surfaces per call rather
+    than at spawn -- a wiring error found at first use instead of at startup.
+    ``--roots-from`` already stats and reads its file at parse time; this is
+    the same standard for the flag beside it.
+
+    The *contents* of a roots file stay unchecked on purpose: that file is
+    re-read live, so a line naming a repository nobody has cloned yet is a
+    defensible thing to write. A flag is fixed for the process lifetime and
+    has no such second chance.
+    """
+    path = Path(raw).expanduser()
+    try:
+        resolved = path.resolve()
+    except OSError as exc:
+        message = f"--root {raw}: {exc}"
+        raise argparse.ArgumentTypeError(message) from exc
+    if not resolved.is_dir():
+        message = f"--root {raw} is not a directory: {resolved}"
+        raise argparse.ArgumentTypeError(message)
+    return resolved
+
+
 def _looks_unsplit(element: str) -> bool:
     """Is this one argv element an option flag glued to its own value(s)?
 
@@ -1769,22 +1858,30 @@ def _report_argv(argv: Sequence[str]) -> None:
         )
 
 
-def _loopback_only(host: str) -> bool:
-    """Does every address ``host`` resolves to sit on the loopback interface?
+def _loopback_literal(host: str) -> str | None:
+    """The IP literal to bind for ``host``, or None when it is not loopback-only.
 
     Resolution rather than a string comparison: ``localhost``, ``127.0.0.1``,
     ``::1`` and a hosts-file alias are all the same decision, and a name that
     resolves to a routable address is that decision's opposite however
     local it looks. A name that resolves to nothing is not loopback either --
     the caller reports it as a refusal rather than binding something else.
+
+    One lookup, and the literal it returns is the one that gets bound.
+    Checking with one ``getaddrinfo`` and binding after another left a window
+    in which the records could change between the two, so a name that passed
+    the check could still put a routable address on the socket.
     """
     try:
         candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        return False
-    if not candidates:
-        return False
-    return all(ipaddress.ip_address(info[4][0]).is_loopback for info in candidates)
+        return None
+    addresses = [str(info[4][0]) for info in candidates]
+    if not addresses:
+        return None
+    if not all(ipaddress.ip_address(address).is_loopback for address in addresses):
+        return None
+    return addresses[0]
 
 
 def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -1805,7 +1902,18 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     unauthenticated read access to the source of every enrolled repository.
     Anything wider than loopback therefore needs an authenticating proxy in
     front, which is a deployment decision this process cannot make for itself.
+
+    The port is held to the same standard as the host beside it: ``--port
+    99999`` used to fail inside ``server.run`` as an opaque bind error, and
+    ``--port 0`` used to bind an ephemeral port the operator cannot predict
+    and was never told about.
+
+    The verified host literal is stashed on the namespace here so that
+    :func:`http_binding` binds the address this check resolved rather than
+    resolving the name a second time.
     """
+    # Always present, so a reader never has to know which branch ran.
+    args.host_literal = None
     if args.transport == TRANSPORT_STDIO:
         passed = (("--host", args.host), ("--port", args.port))
         given = [flag for flag, value in passed if value is not None]
@@ -1828,8 +1936,17 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             "--allow-client-roots and enrol the repositories with --root or "
             "--roots-from."
         )
+    port = args.port if args.port is not None else DEFAULT_HTTP_PORT
+    if not MIN_HTTP_PORT <= port <= MAX_HTTP_PORT:
+        parser.error(
+            f"--port {port} is outside {MIN_HTTP_PORT}-{MAX_HTTP_PORT}. Port 0 binds an "
+            "ephemeral port this process never reports, and anything above the range "
+            "fails inside the transport as an opaque bind error. Name a port a client "
+            "can be registered against."
+        )
     host = args.host if args.host is not None else DEFAULT_HTTP_HOST
-    if not _loopback_only(host):
+    literal = _loopback_literal(host)
+    if literal is None:
         parser.error(
             f"--host {host!r} is not a loopback address. This server authenticates no "
             "one: the --root allowlist decides which repositories are readable, not who "
@@ -1837,6 +1954,7 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             f"enrolled repository. Bind {DEFAULT_HTTP_HOST} and put an authenticating "
             "proxy in front if you need it off-host."
         )
+    args.host_literal = literal
 
 
 def http_binding(args: argparse.Namespace) -> tuple[str, int]:
@@ -1846,35 +1964,17 @@ def http_binding(args: argparse.Namespace) -> tuple[str, int]:
     tell "the operator passed this" from "the operator said nothing", so the
     listener and the refusal can never disagree about what the default is.
 
-    A hostname is resolved here to the literal that was checked, and the
-    literal is what gets bound. Passing the name through would leave two
-    independent lookups between the loopback check and the socket -- this
-    one and the server stack's own at bind time -- and a name whose records
-    change in between (a short TTL, a round-robin mixing loopback with a
-    routable address) would pass the check and bind the other answer. What
-    was verified has to be what is used.
+    The host is the literal :func:`_check_transport` resolved and approved,
+    carried on the namespace rather than resolved again. Two independent
+    lookups between the loopback check and the socket -- this one and the
+    server stack's own at bind time -- would let a name whose records change
+    in between (a short TTL, a round-robin mixing loopback with a routable
+    address) pass the check and bind the other answer. What was verified has
+    to be what is used, so there is exactly one lookup and this reads its
+    result.
     """
-    host = args.host if args.host is not None else DEFAULT_HTTP_HOST
     port = args.port if args.port is not None else DEFAULT_HTTP_PORT
-    return _loopback_literal(host), port
-
-
-def _loopback_literal(host: str) -> str:
-    """The checked loopback address for ``host`` as an IP literal.
-
-    Falls back to the name only when it resolves to nothing at all, which
-    ``_check_transport`` has already refused for every path that reaches
-    here; returning it unchanged keeps this from inventing an address.
-    """
-    try:
-        candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return host
-    for info in candidates:
-        address = str(info[4][0])
-        if ipaddress.ip_address(address).is_loopback:
-            return address
-    return host
+    return args.host_literal, port
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -1888,7 +1988,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="DIR",
-        help="a repository this server may serve; repeatable",
+        type=root_dir,
+        help="a repository this server may serve; must exist at startup; repeatable",
     )
     parser.add_argument(
         "--roots-from",
@@ -1969,7 +2070,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=None,
         type=int,
         metavar="N",
-        help=f"port --transport {TRANSPORT_HTTP} binds; default {DEFAULT_HTTP_PORT}",
+        help=f"port --transport {TRANSPORT_HTTP} binds; {MIN_HTTP_PORT}-{MAX_HTTP_PORT}, "
+        f"default {DEFAULT_HTTP_PORT}",
     )
     try:
         args = parser.parse_args(argv)

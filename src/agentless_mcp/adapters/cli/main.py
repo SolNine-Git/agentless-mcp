@@ -277,13 +277,18 @@ def _add_map(subparsers: Any) -> None:
         f"(default: {AUTO_BUDGET})",
     )
     parser.add_argument(
-        "--max-files", type=int, default=None, help=f"(default: {DEFAULT_MAX_FILES})"
+        "--max-files",
+        type=int,
+        default=None,
+        help="ranked files admitted to the map before symbol packing "
+        f"(default: {DEFAULT_MAX_FILES})",
     )
     parser.add_argument(
         "--granularity",
         choices=GRANULARITIES,
         default=None,
-        help=f"(default: {GRANULARITY_FUNCTION})",
+        help=f"map detail: '{GRANULARITY_FUNCTION}' lists symbols within ranked files, "
+        f"'file' reports ranked files only (default: {GRANULARITY_FUNCTION})",
     )
     parser.set_defaults(handler=_cmd_map)
 
@@ -291,8 +296,19 @@ def _add_map(subparsers: Any) -> None:
 def _add_tree(subparsers: Any) -> None:
     parser = subparsers.add_parser("tree", help="gitignore-aware directory tree")
     _repo_flags(parser)
-    parser.add_argument("--depth", type=int, default=DEFAULT_RENDER_DEPTH)
-    parser.add_argument("--max-entries", type=int, default=DEFAULT_MAX_ENTRIES)
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=DEFAULT_RENDER_DEPTH,
+        help=f"directory levels rendered below the tree root (default: {DEFAULT_RENDER_DEPTH})",
+    )
+    parser.add_argument(
+        "--max-entries",
+        type=int,
+        default=DEFAULT_MAX_ENTRIES,
+        help="files and directories rendered before the tree reports truncation "
+        f"(default: {DEFAULT_MAX_ENTRIES})",
+    )
     parser.set_defaults(handler=_cmd_tree)
 
 
@@ -321,15 +337,20 @@ def _add_expand(subparsers: Any) -> None:
 def _add_slice(subparsers: Any) -> None:
     parser = subparsers.add_parser("slice", help="numbered lines with scope headers")
     _repo_flags(parser)
-    parser.add_argument("file", nargs="?", metavar="FILE")
+    # FILE plus --lines and --symbol are alternatives, and --symbol used to win
+    # silently: `slice a.py --lines 1:3 --symbol py:b.py::f` sliced b.py whole
+    # and never said the other two were dropped. Declared the way `lint`
+    # declares the same shape, so argparse refuses the combination by name.
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("file", nargs="?", metavar="FILE")
+    source.add_argument("--symbol", metavar="STABLE_ID", help="slice this symbol instead")
     parser.add_argument(
         "--lines",
         action="append",
         default=[],
         metavar="A:B",
-        help="1-based inclusive line range; repeatable and merged",
+        help="1-based inclusive line range; repeatable and merged; needs FILE",
     )
-    parser.add_argument("--symbol", metavar="STABLE_ID", help="slice this symbol instead")
     parser.add_argument("--context", type=int, default=DEFAULT_CONTEXT_LINES)
     parser.set_defaults(handler=_cmd_slice)
 
@@ -664,7 +685,9 @@ def _add_validate(subparsers: Any) -> None:
         type=_environment_name,
         metavar="NAME",
         help="pass one additional parent environment variable to test commands; repeatable. "
-        "By default only PATH, HOME, LANG and TMPDIR are inherited",
+        "By default a test command inherits only a short per-platform allowlist: "
+        "PATH, HOME, LANG and TMPDIR on POSIX, and the names a Windows interpreter "
+        "needs to start on Windows",
     )
     parser.add_argument(
         "--repro-cmd",
@@ -822,11 +845,22 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
         docstrings=projectconfig.resolve(args.docstrings, ctx.config.docstrings, False),
         numbered=args.numbers,
     )
-    text = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
+    # The reason a file could not be read goes on stderr, never into the view.
+    # Interleaved, it rendered as source: an agent piping `skeleton a.py b.py`
+    # into a prompt read "b.py: unreadable: No such file or directory" as the
+    # contents of b.py, behind exit 0. The JSON form keeps the per-file error
+    # as its own field, which is a structure a reader can tell apart.
+    failed = [view for view in views if view.error]
+    text = "\n".join(f"### {view.path}\n{view.text}" for view in views if not view.error)
     _emit(args, ctx, services, _Answer(text, {"files": [v.as_dict() for v in views]}, "files"))
+    for view in failed:
+        # The same wording `slice` uses for the identical FileView.error: the
+        # service message already names the file it is about.
+        note(f"agentless-mcp: {view.error}")
     # A file that could not be read is not an empty answer: `slice` has always
-    # failed on the identical FileView.error, and the two must agree.
-    return EXIT_DOMAIN if views and all(view.error for view in views) else EXIT_OK
+    # failed on the identical FileView.error, and the two must agree. One of
+    # several is enough -- the caller named it, and it did not resolve.
+    return EXIT_DOMAIN if failed else EXIT_OK
 
 
 def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
@@ -862,7 +896,13 @@ def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _slice_by_symbol(args: argparse.Namespace, ctx: RepoContext, services: CliServices) -> int:
-    """Render the source of whatever symbol one stable id names."""
+    """Render the source of whatever symbol one stable id names.
+
+    ``--lines`` belongs to a FILE slice and this path discards it, so the
+    combination is refused rather than half-honoured.
+    """
+    if args.lines:
+        return fail("slice takes --lines with FILE, not with --symbol", EXIT_USAGE)
     try:
         parsed = parse_stable_id(args.symbol)
     except ValueError as error:
@@ -1338,7 +1378,14 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
         try:
             destination.write_text(document, encoding="utf-8")
         except OSError as error:
-            return fail(f"cannot write {destination}: {error.strerror}", EXIT_USAGE)
+            # The run has already spent minutes on a baseline and two commands
+            # per candidate, and the document is the only record of it. Losing
+            # the work as well as the write is the avoidable half of the
+            # failure, so the document goes to stdout and the exit code still
+            # says the write did not happen.
+            fail(f"cannot write {destination}: {error.strerror}; verdicts on stdout", EXIT_USAGE)
+            emit(document)
+            return EXIT_USAGE
         note(f"agentless-mcp: verdicts written to {destination}")
 
     note("\n".join([*envelope.receipt_lines(ctx), f"# {report.summary_line()}"]))
@@ -1607,23 +1654,30 @@ def _resolve(args: argparse.Namespace, *, require_git: bool) -> RepoContext | No
     ``allowlist=None`` throughout: in the CLI the root comes from the caller's
     own cwd or their own ``--repo``, which is exactly as trusted as the process
     itself. The allowlist exists for the server, where it is not.
+
+    The degradation warning fires at the one exit rather than per branch.
+    Warning only on the cwd-git-root branch meant ``--repo`` -- the dominant
+    agent invocation -- never got it, so a caller piping stdout into a prompt
+    learned nothing about a degraded repository until after they had used the
+    answer.
     """
     if args.repo is not None:
-        return resolve_repo(args.repo, None)
+        ctx = resolve_repo(args.repo, None)
+    else:
+        cwd = Path.cwd()
+        root = git_root(cwd)
+        if root is None:
+            if require_git:
+                fail(
+                    f"{cwd} is not inside a git repository, so there is no root to default to; "
+                    "pass --repo PATH",
+                    EXIT_USAGE,
+                )
+                return None
+            ctx = resolve_repo(cwd, None)
+        else:
+            ctx = resolve_repo(root, None)
 
-    cwd = Path.cwd()
-    root = git_root(cwd)
-    if root is None:
-        if require_git:
-            fail(
-                f"{cwd} is not inside a git repository, so there is no root to default to; "
-                "pass --repo PATH",
-                EXIT_USAGE,
-            )
-            return None
-        return resolve_repo(cwd, None)
-
-    ctx = resolve_repo(root, None)
     warn_about(ctx)
     return ctx
 

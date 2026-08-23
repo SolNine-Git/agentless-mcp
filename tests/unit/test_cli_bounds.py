@@ -180,7 +180,10 @@ class TestBoundaryExitCodes:
             ("tree", "--depth", "0"),
         ):
             dispatch(services, repo, command, option, value)
-            messages.append(capsys.readouterr().err.strip())
+            # The last line, because the fixture is not a git checkout and the
+            # degradation warning now precedes the refusal on stderr for a
+            # --repo invocation as well as for a cwd one.
+            messages.append(capsys.readouterr().err.strip().splitlines()[-1])
 
         assert messages == [
             "agentless-mcp: max_nodes takes a value from 1 through 1000, got 0",

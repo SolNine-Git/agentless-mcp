@@ -28,6 +28,7 @@ import argparse
 import pytest
 
 from agentless_mcp.adapters.cli import main as cli
+from agentless_mcp.core import projectconfig
 
 # Every (command, option) on the CLI that accepts a number, as of the audit
 # remediation. A new entry here is a new parameter that a service must bound;
@@ -89,6 +90,35 @@ class TestNumericSurface:
         live = _numeric_cli_options()
         missing = sorted(pair for pair in NUMERIC_CLI_OPTIONS if pair not in live)
         assert not missing, f"pinned CLI options no longer exist: {missing}"
+
+
+class TestTheOneNumericOptionTheTypeWalkCannotSee:
+    """``map --budget`` takes a number or the word 'auto', so it is type=str.
+
+    That keeps it out of the inventory above, which is why it is pinned here
+    instead. The MCP wire publishes ``Field(ge=MIN_BUDGET, le=MAX_BUDGET)`` for
+    the same parameter and ``projectconfig`` enforces the same range for a
+    ``.agentless-mcp.json`` entry, so the command line is the one of the three
+    doors with no bound behind it.
+    """
+
+    def test_budget_is_declared_as_text_not_a_number(self):
+        parser = cli.build_parser()
+        subparsers = [
+            action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+        ]
+        budget = next(
+            action
+            for group in subparsers
+            for action in group.choices["map"]._actions
+            if "--budget" in action.option_strings
+        )
+        assert budget.type is None
+        assert ("map", "--budget") not in NUMERIC_CLI_OPTIONS
+
+    def test_the_published_range_is_the_one_the_config_file_enforces(self):
+        assert projectconfig.MIN_BUDGET == 200
+        assert projectconfig.MAX_BUDGET == 64_000
 
 
 class TestPublishedBounds:

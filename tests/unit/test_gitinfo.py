@@ -1,5 +1,7 @@
 """Git state reading: real repositories in tmp_path, no ambient config."""
 
+import errno
+import os
 import subprocess
 
 import pytest
@@ -86,6 +88,36 @@ class TestDegradation:
 
         monkeypatch.setattr(subprocess, "run", slow)
         assert gitinfo.dirty_count(root) is None
+
+    def test_a_process_that_cannot_be_spawned_degrades_with_its_reason(
+        self, monkeypatch, make_git_repo
+    ):
+        """The OSError arm: the host, not git, is what failed.
+
+        ``FileNotFoundError`` is the one every reader thinks of, and it is a
+        subclass. The arm that matters under load is its sibling -- EMFILE,
+        ENOMEM, EAGAIN -- where git is installed and the process could not be
+        started anyway. The whole point of this module is that a snapshot
+        degrades to a note, so this must not reach the caller as a raise.
+        """
+        root = make_git_repo(SAMPLE)
+        real_run = subprocess.run
+
+        def cannot_spawn(command, **kwargs):
+            # Root discovery still works, so the snapshot gets past it and
+            # reaches the three reads whose notes are the thing under test.
+            if "--show-toplevel" in command:
+                return real_run(command, **kwargs)
+            raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
+
+        monkeypatch.setattr(subprocess, "run", cannot_spawn)
+        snapshot = gitinfo.snapshot(root)
+
+        assert snapshot.head_sha is None
+        assert snapshot.tree_oid is None
+        assert snapshot.dirty_count is None
+        assert os.strerror(errno.EMFILE) in snapshot.note
+        assert "could not be run" in snapshot.note
 
     def test_every_invocation_is_bounded_and_declines_optional_locks(
         self, monkeypatch, make_git_repo

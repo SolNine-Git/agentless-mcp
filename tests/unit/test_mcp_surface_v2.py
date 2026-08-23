@@ -34,6 +34,7 @@ from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.util.errors import AgentlessError
 
 EXPECTED_TOOLS_V2 = {
     "orient",
@@ -539,6 +540,17 @@ class TestZeroValuesAreNotStrayParameters:
             {"operation": "map", "include_unique": False, "group_by_communities": False},
         )
 
+    def test_an_empty_list_is_not_a_stray_parameter(self, services, one_repo):
+        # The rule recognised None, False and blank strings but not an empty
+        # sequence, so a generated call that filled every list optional was
+        # refused for the ones the operation does not take.
+        self.call_ok(
+            services, one_repo, "symbols", {"operation": "find", "name": "quote", "paths": []}
+        )
+
+    def test_a_zero_number_is_not_a_stray_parameter(self, services, one_repo):
+        self.call_ok(services, one_repo, "read", {"operation": "dir", "context_lines": 0})
+
     def test_a_real_value_is_still_refused_as_stray(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
 
@@ -547,6 +559,63 @@ class TestZeroValuesAreNotStrayParameters:
                 server,
                 "orient",
                 {"repo_root": str(one_repo), "operation": "map", "source": "quote"},
+            )
+
+
+class TestAnEmptyRequiredListIsMissing:
+    """`required=("paths",)` has to mean what it reads as.
+
+    An empty list satisfied the required check, so
+    `symbols(operation="overview", paths=[])` answered with a receipt and an
+    empty body -- a success that answered nothing, which is the
+    substitute-content failure `read` operation 'slice' refuses on principle.
+    """
+
+    @pytest.mark.parametrize(
+        ("operation", "arguments", "expected"),
+        [
+            ("overview", {"paths": []}, "is missing: paths"),
+            ("expand", {"stable_ids": []}, "is missing: stable_ids"),
+        ],
+        ids=["overview", "expand"],
+    )
+    def test_it_is_refused_by_name(self, services, one_repo, operation, arguments, expected):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match=expected):
+            call(
+                server,
+                "symbols",
+                {"repo_root": str(one_repo), "operation": operation, **arguments},
+            )
+
+
+class TestThePathRefusalNamesTheToolThatRefused:
+    """It hardcoded `analyze_structure`, so a v2 caller read a v1 tool name.
+
+    Unreachable from the v2 wire today: `_checked_operation` refuses a blank
+    endpoint first and its message already names `orient`. That is exactly why
+    the hardcoding was worth removing -- it is a backstop that becomes wrong
+    silently the moment v1 is retired or the blank check moves, and neither
+    change would fail a test. Driven at the function, which is the level the
+    backstop lives at.
+    """
+
+    @pytest.mark.parametrize("tool", ["analyze_structure", "orient"])
+    def test_the_refusal_names_the_surface_the_caller_used(self, tool):
+        request = server_module.StructureRequest(operation="path", tool=tool)
+
+        with pytest.raises(AgentlessError, match=f"{tool} operation 'path' needs both"):
+            server_module._operation_path(None, None, request)
+
+    def test_the_v2_wire_is_guarded_before_the_backstop(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="orient operation 'path' is missing: source, target"):
+            call(
+                server,
+                "orient",
+                {"repo_root": str(one_repo), "operation": "path", "source": " ", "target": " "},
             )
 
 

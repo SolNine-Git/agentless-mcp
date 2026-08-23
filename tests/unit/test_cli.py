@@ -8,8 +8,10 @@ it over Bash.
 """
 
 import json
+import os
 import subprocess
 import sys
+from dataclasses import replace
 
 import pytest
 
@@ -23,7 +25,36 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, guide
+from agentless_mcp.core import cache, grammars, guide, selfrestart
+
+# The environment every spawned console script gets. Built here rather than
+# inherited: the three kill switches decide whether a child starts a background
+# grammar warm, a background index or a self-restart monitor, and a suite that
+# is green because of what the developer's shell does not export is not
+# evidence. ``conftest`` assigns the same three for the in-process half; naming
+# them at the spawn as well is what makes the guarantee local to the harness
+# that depends on it.
+CHILD_ENV = {
+    **os.environ,
+    grammars.ENV_NO_AUTO_WARM: "1",
+    cache.ENV_NO_AUTO_INDEX: "1",
+    selfrestart.ENV_NO_AUTO_RESTART: "1",
+}
+
+
+def console_script(*arguments, cwd=None, stdin=None, timeout=120):
+    """Run the installed console script with a pinned environment."""
+    return subprocess.run(
+        [sys.executable, "-m", "agentless_mcp", *arguments],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=cwd,
+        input=stdin,
+        env=CHILD_ENV,
+        check=False,
+    )
+
 
 SOURCE = '''\
 """Core."""
@@ -782,6 +813,75 @@ def _git_restore(root):
     )
 
 
+class _StubReport:
+    """The four members ``_cmd_validate`` reads off a validation report."""
+
+    any_passed = True
+
+    def jsonl(self):
+        return '{"candidate": "01", "verdict": "PASS"}\n'
+
+    def summary_line(self):
+        return "1 candidate, 1 passed"
+
+    def warnings(self):
+        return []
+
+
+class _StubValidateService:
+    """Stands in for a run that took minutes, so the write is what is tested."""
+
+    def validate(self, ctx, request):
+        return _StubReport()
+
+
+class TestAFailedOutputWriteKeepsTheDocument:
+    """`-o` on an unwritable path used to discard the whole run.
+
+    A validation spends a baseline plus two commands per candidate, and the
+    verdicts document is the only record of it. Losing the work as well as the
+    write is the avoidable half of the failure.
+    """
+
+    def run_with_output(self, services, root, destination, capsys):
+        stubbed = replace(services, validates=_StubValidateService())
+        code = run(
+            [
+                "validate",
+                "--candidates",
+                str(root),
+                "--test-cmd",
+                "true",
+                "--repo",
+                str(root),
+                "-o",
+                str(destination),
+            ],
+            stubbed,
+        )
+        return code, capsys.readouterr()
+
+    def test_the_document_falls_back_to_stdout(self, services, make_git_repo, capsys):
+        root = make_git_repo({"core.py": SOURCE})
+        # A directory is never writable as a file, on every platform.
+        code, captured = self.run_with_output(services, root, root, capsys)
+
+        assert code == EXIT_USAGE
+        assert '"verdict": "PASS"' in captured.out
+        assert "verdicts on stdout" in captured.err
+
+    def test_a_writable_destination_still_keeps_stdout_clean(
+        self, services, make_git_repo, tmp_path, capsys
+    ):
+        root = make_git_repo({"core.py": SOURCE})
+        destination = tmp_path / "verdicts.jsonl"
+        code, captured = self.run_with_output(services, root, destination, capsys)
+
+        assert code == EXIT_OK
+        assert captured.out == ""
+        assert '"verdict": "PASS"' in destination.read_text(encoding="utf-8")
+
+
 class TestValidateTestCommand:
     """A command out of the analysed repository runs only when asked for."""
 
@@ -925,18 +1025,74 @@ class TestExitCodes:
         assert invoke(services, repo_path, *arguments) == expected, name
 
 
+class TestSkeletonReportsAPartialBatchAsAFailure:
+    """One unreadable file in a batch is a failure, and stderr says which.
+
+    `skeleton a.py nope.py` used to exit 0 and write
+    "nope.py: unreadable: No such file or directory" into the *view* on
+    stdout, where an agent piping the answer into a prompt reads it as the
+    contents of nope.py. The exit code only moved when *every* named file
+    failed, which is not the line formatting.py draws: 0 against 1 is "did
+    what the caller named exist", and one of several is enough.
+    """
+
+    def test_one_bad_file_among_good_ones_exits_domain(self, services, repo_path):
+        assert invoke(services, repo_path, "skeleton", "core.py", "gone.py") == EXIT_DOMAIN
+
+    def test_the_reason_is_on_stderr_and_not_in_the_view(self, services, repo_path, capsys):
+        invoke(services, repo_path, "skeleton", "core.py", "gone.py")
+        captured = capsys.readouterr()
+
+        assert "unreadable" in captured.err
+        assert "gone.py" in captured.err
+        assert "unreadable" not in captured.out
+        # The answer that did resolve is still rendered.
+        assert "def quote" in captured.out
+
+    def test_the_json_form_keeps_the_per_file_error_as_a_field(self, services, repo_path, capsys):
+        invoke(services, repo_path, "skeleton", "core.py", "gone.py", "--json")
+        document = json.loads(capsys.readouterr().out)
+
+        errors = [entry.get("error", "") for entry in document["files"]]
+        assert any("unreadable" in entry for entry in errors)
+
+
+class TestSliceRefusesTheCombinationItUsedToDiscard:
+    """FILE, --lines and --symbol are alternatives, not options that stack."""
+
+    def test_a_file_and_a_symbol_together_are_a_parser_error(self, services, repo_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "slice", "core.py", "--symbol", "py:core.py::quote")
+        assert raised.value.code == EXIT_USAGE
+
+    def test_lines_with_a_symbol_is_refused_rather_than_dropped(self, services, repo_path, capsys):
+        code = invoke(
+            services, repo_path, "slice", "--lines", "1:3", "--symbol", "py:core.py::quote"
+        )
+
+        assert code == EXIT_USAGE
+        assert "--lines with FILE" in capsys.readouterr().err
+
+
+class TestTheDegradationWarningReachesEveryCaller:
+    """It fired on one of _resolve's three return paths.
+
+    `--repo` is the dominant agent invocation and never got it, so a caller
+    piping stdout into a prompt learned nothing about a degraded repository
+    until after they had used the answer -- which is the whole reason
+    `formatting.warn_about` exists.
+    """
+
+    def test_a_repo_flag_invocation_warns_on_stderr(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map") == EXIT_OK
+        assert "not inside a git repository" in capsys.readouterr().err
+
+
 class TestSubprocess:
     """End to end through the installed console script."""
 
     def run_cli(self, *arguments, cwd=None):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=cwd,
-            check=False,
-        )
+        return console_script(*arguments, cwd=cwd)
 
     def test_map_prints_the_receipt_and_exits_zero(self, make_git_repo):
         root = make_git_repo({"core.py": SOURCE, "caller.py": CALLER})
@@ -1027,15 +1183,7 @@ class TestPatchSubprocess:
     """
 
     def run_cli(self, *arguments, cwd=None, stdin=None):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=cwd,
-            input=stdin,
-            check=False,
-        )
+        return console_script(*arguments, cwd=cwd, stdin=stdin)
 
     @pytest.fixture
     def git_repo(self, make_git_repo):
@@ -1333,13 +1481,7 @@ class TestValidateAndVoteSubprocess:
     """
 
     def run_cli(self, *arguments):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
+        return console_script(*arguments, timeout=300)
 
     def validate(self, repo, candidates, output, python_cmd, *extra):
         return self.run_cli(

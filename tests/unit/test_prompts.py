@@ -89,7 +89,7 @@ MESSAGE_ARGUMENTS = {
         "accepted": "source, target, include_unique, include_ambiguous",
         "required": "source, target",
     },
-    "path_needs_endpoints": {},
+    "path_needs_endpoints": {"tool": "orient"},
     "map_limit_out_of_range": {"limit": "500", "minimum": "1", "maximum": "200"},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
@@ -254,8 +254,21 @@ class TestWireDescriptions:
 
         assert "use grep when the literal string or file is already known" in description
         assert "target location is unknown" in description
-        assert "fan-in or blast radius" in description
         assert "change surface spans files" in description
+        # The map used to claim fan-in and blast radius as well, which is the
+        # question find_referencing_symbols publishes. Two tools answering one
+        # question with no tiebreak is the one defect these strings exist to
+        # prevent, so the clause belongs to the reference tool alone.
+        assert "fan-in" not in description
+        assert "blast radius" not in description
+        assert "Fan-in for blast radius" in TOOL_DESCRIPTIONS["find_referencing_symbols"]
+
+    def test_the_v2_surface_advertises_rationale_nodes(self):
+        # v2 is the default surface and routes to the same handlers, so a
+        # feature documented only on the retired v1 tools is unreachable
+        # documentation for every agent that reads the published schema.
+        assert "rationale nodes" in TOOL_DESCRIPTIONS["orient"]
+        assert "rationale comments" in TOOL_DESCRIPTIONS["symbols"]
 
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path
