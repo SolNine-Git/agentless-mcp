@@ -612,9 +612,9 @@ def _hunk_counts(header: str, target: _Target) -> tuple[int, int] | str:
 
     if old_count == 0 and not target.new_file:
         return (
-            f"{target.path} has a zero-context hunk ({header.strip()}) into a file that "
-            "already exists, so the hunk has no pre-image to anchor to; regenerate the diff "
-            "with context lines (drop -U0)"
+            f"{target.path} has a hunk with an empty pre-image ({header.strip()}) into a "
+            "file that already exists, so the hunk anchors to nothing; a zero-context hunk "
+            "is the usual cause, so regenerate the diff with context lines (drop -U0)"
         )
     return old_count, new_count
 
@@ -655,6 +655,10 @@ def _hunk_body(
             )
         line = lines[i]
         if line.startswith(_NO_NEWLINE):
+            # The marker is consumed and the fact it carries is dropped: an
+            # Edit has nowhere to hold it, and `_present` pads both sides with
+            # "\n" before matching, so whether the file ends with a newline
+            # cannot change which pre-image is found.
             i += 1
             continue
 
