@@ -699,45 +699,42 @@ class ValidateService:
 
             command_timeout = _command_timeout(request.timeout, deadline)
 
-            def measure() -> CandidateVerdict:
-                if command_timeout is None:
-                    return _deadline_expired(candidate, request.run_timeout)
-                regression_run = sandbox.run_command(
-                    tree,
-                    request.test_cmd,
-                    timeout=command_timeout,
-                    passthrough_env=request.passthrough_env,
-                )
+            if command_timeout is None:
+                return _deadline_expired(candidate, request.run_timeout)
+            regression_run = sandbox.run_command(
+                tree,
+                request.test_cmd,
+                timeout=command_timeout,
+                passthrough_env=request.passthrough_env,
+            )
 
-                reproduction_run = None
-                reproduction_verdict = None
-                if repro_valid and request.repro_cmd is not None:
-                    repro_timeout = _command_timeout(request.timeout, deadline)
-                    if repro_timeout is None:
-                        reproduction_verdict = Verdict.NOT_EVALUATED
-                    else:
-                        reproduction_run = sandbox.run_command(
-                            tree,
-                            request.repro_cmd,
-                            timeout=repro_timeout,
-                            passthrough_env=request.passthrough_env,
-                        )
-                        reproduction_verdict = Verdict.of(reproduction_run)
+            reproduction_run = None
+            reproduction_verdict = None
+            if repro_valid and request.repro_cmd is not None:
+                repro_timeout = _command_timeout(request.timeout, deadline)
+                if repro_timeout is None:
+                    reproduction_verdict = Verdict.NOT_EVALUATED
+                else:
+                    reproduction_run = sandbox.run_command(
+                        tree,
+                        request.repro_cmd,
+                        timeout=repro_timeout,
+                        passthrough_env=request.passthrough_env,
+                    )
+                    reproduction_verdict = Verdict.of(reproduction_run)
 
-                return CandidateVerdict(
-                    id=candidate.id,
-                    index=candidate.index,
-                    apply_status=ApplyStatus.OK,
-                    apply_reasons=(),
-                    equivalence_key=key,
-                    regression=Verdict.of(regression_run),
-                    reproduction=reproduction_verdict,
-                    duration=round(_monotonic() - started, 3),
-                    regression_run=regression_run,
-                    reproduction_run=reproduction_run,
-                )
-
-            return measure()
+            return CandidateVerdict(
+                id=candidate.id,
+                index=candidate.index,
+                apply_status=ApplyStatus.OK,
+                apply_reasons=(),
+                equivalence_key=key,
+                regression=Verdict.of(regression_run),
+                reproduction=reproduction_verdict,
+                duration=round(_monotonic() - started, 3),
+                regression_run=regression_run,
+                reproduction_run=reproduction_run,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +753,10 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
     Two files sharing a stem are refused rather than silently collapsed: the
     ids would collide in the report and one candidate's verdict would appear
     to be the other's.
+
+    The directory holds candidate patches and nothing else. There is no
+    extension filter, so a stray README or `.gitignore` becomes a candidate
+    that no patch can apply and lowers the "N of M applied" summary.
     """
     resolved = directory.expanduser().resolve()
     if not resolved.is_dir():
@@ -958,6 +959,9 @@ def _candidate_edits(
     candidate that was never going to be judged costs no apply and no test
     run.
     """
+    # `load_edits` parses text and resolves no path, so it cannot raise a
+    # containment refusal: catching the base class here turns a malformed
+    # candidate into a failed candidate, never a refused invocation into one.
     try:
         parsed = load_edits(candidate.text)
     except AtlasError as error:
