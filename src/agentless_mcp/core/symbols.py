@@ -29,9 +29,10 @@ source spells.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
+from types import MappingProxyType
 
 # A signature is an index row, not a rendering of the declaration. Every
 # renderer that shows one -- the map, find_symbol cards, expand headers --
@@ -62,9 +63,10 @@ class SymbolKind(str, Enum):
     """Classification of extracted AST symbols.
 
     ``str, Enum`` rather than ``StrEnum`` for the 3.10 floor. The mixin gives
-    the same equality and JSON behaviour, but ``str()`` and ``format()`` of a
-    plain mixin enum differ across 3.10/3.11/3.12, so ``__str__`` is pinned
-    here to the member value -- exactly what StrEnum guarantees. Code that
+    the same equality and JSON behaviour, but ``format()`` of a plain mixin
+    enum differs across 3.10 and 3.11+, and ``str()`` renders the class name
+    on every version rather than the value ``StrEnum`` gives, so both are
+    pinned here to the member value -- what StrEnum guarantees. Code that
     needs the wire form should still say ``.value``; this override exists so
     an f-string cannot silently emit ``SymbolKind.CLASS`` on one interpreter
     and ``class`` on another.
@@ -129,30 +131,32 @@ class ASTSymbol:
 # Short, conventional prefixes: the id is read by a human as often as it is
 # parsed by a machine, and `py:` costs five characters less than `python:` on
 # every line of every map.
-LANGUAGE_PREFIXES: dict[str, str] = {
-    "python": "py",
-    "javascript": "js",
-    "typescript": "ts",
-    "tsx": "tsx",
-    "go": "go",
-    "java": "java",
-    "ruby": "rb",
-    "rust": "rs",
-    "c": "c",
-    "cpp": "cpp",
-    "lua": "lua",
-    "bash": "sh",
-    "php": "php",
-    "kotlin": "kt",
-    "swift": "swift",
-    "scala": "scala",
-    "csharp": "cs",
-    "json": "json",
-    "toml": "toml",
-    "yaml": "yaml",
-    "hcl": "hcl",
-    "sql": "sql",
-}
+LANGUAGE_PREFIXES: Mapping[str, str] = MappingProxyType(
+    {
+        "python": "py",
+        "javascript": "js",
+        "typescript": "ts",
+        "tsx": "tsx",
+        "go": "go",
+        "java": "java",
+        "ruby": "rb",
+        "rust": "rs",
+        "c": "c",
+        "cpp": "cpp",
+        "lua": "lua",
+        "bash": "sh",
+        "php": "php",
+        "kotlin": "kt",
+        "swift": "swift",
+        "scala": "scala",
+        "csharp": "cs",
+        "json": "json",
+        "toml": "toml",
+        "yaml": "yaml",
+        "hcl": "hcl",
+        "sql": "sql",
+    }
+)
 
 _QUALNAME_SEPARATOR = "::"
 
@@ -209,10 +213,10 @@ def id_qualname(symbol: ASTSymbol) -> str:
     two functions are deliberately different: a card shows the name the source
     spells, an id has to name one symbol.
     """
-    return apply_ordinal(qualname(symbol), symbol.duplicate_index)
+    return _apply_ordinal(qualname(symbol), symbol.duplicate_index)
 
 
-def apply_ordinal(base: str, duplicate_index: int) -> str:
+def _apply_ordinal(base: str, duplicate_index: int) -> str:
     """Add the collision ordinal to a qualified name, if it needs one."""
     if duplicate_index <= 0:
         return base
@@ -222,7 +226,7 @@ def apply_ordinal(base: str, duplicate_index: int) -> str:
 def split_ordinal(qualified_name: str) -> tuple[str, int]:
     """Split a qualified name into its base and its collision ordinal.
 
-    The inverse of :func:`apply_ordinal`, and the one place a consumer of an
+    The inverse of :func:`_apply_ordinal`, and the one place a consumer of an
     id is allowed to know the ordinal spelling. A name with no ordinal comes
     back unchanged with index 0, so callers can apply it unconditionally.
     """

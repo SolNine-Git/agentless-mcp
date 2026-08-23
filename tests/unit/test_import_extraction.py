@@ -5,15 +5,6 @@ module paths changed. See ``test_extractor.py`` for the grammar-drift note
 that applies to the whole port.
 """
 
-import pytest
-
-from agentless_mcp.core.extractor import TreeSitterExtractor
-
-
-@pytest.fixture
-def extractor():
-    return TreeSitterExtractor()
-
 
 class TestBareImports:
     def test_simple_import(self, extractor):
