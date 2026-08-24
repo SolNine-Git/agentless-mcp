@@ -893,7 +893,7 @@ class TestWireBounds:
             .text
         )
 
-        assert "1|def quote(sku):" in text
+        assert "1| def quote(sku):" in text
         assert "class PriceBook" not in text
 
     def test_a_slice_requires_ranges_or_explicit_whole_file(self, services, one_repo):
@@ -904,7 +904,7 @@ class TestWireBounds:
             self.call(server, "read_slice", arguments)
 
         text = self.call(server, "read_slice", {**arguments, "whole_file": True}).content[0].text
-        assert "1|def quote(sku):" in text
+        assert "1| def quote(sku):" in text
         assert "class PriceBook" in text
 
     def test_a_slice_refuses_ranges_together_with_whole_file(self, services, one_repo):

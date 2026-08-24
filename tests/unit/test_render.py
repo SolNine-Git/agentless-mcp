@@ -208,9 +208,7 @@ class TestOmissionLines:
                         cycles=(render.CycleRow(files=("a.py", "b.py")),), total=3, limit=1
                     )
                 ),
-                render.render_map(
-                    [render.MapFile(path="core.py", rank=1.0, entries=(), omitted=2)]
-                ),
+                render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(), total=2)]),
             ]
         )
         notices = [line for line in rendered.splitlines() if line.startswith("...")]

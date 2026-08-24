@@ -17,12 +17,15 @@ Regenerate deliberately, never reflexively:
 """
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from agentless_mcp.application import envelope, render
-from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.graph_service import DiagramRequest, GraphService
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
@@ -35,9 +38,18 @@ PLACEHOLDER = "<REPO>"
 # One case per repository: the symbol explained, and the pair a path is traced
 # between. Chosen to exercise the precise tiers the default path accepts; weak
 # name-only tiers have separate opt-in unit coverage.
+#
+# `repo_nested` is the only fixture with directories, and it is here for the
+# two views the flat fixtures cannot exercise. Its community golden captures a
+# real partition -- two groups of different sizes, each labelled by the
+# directory a majority of its members sit in -- where a flat repository pins
+# the algorithm's trivial fixed point of one community at modularity 0.000
+# labelled `repository root`. Its cycles golden captures a real import cycle
+# for the same reason.
 CASES = {
     "repo_py": ("reorder_report", "reorder_report", "format_money"),
     "repo_ts": ("reorderReport", "reorderReport", "formatMoney"),
+    "repo_nested": ("format_amount", "render_invoice", "format_amount"),
 }
 
 REPOS = tuple(CASES)
@@ -70,7 +82,7 @@ def build_outputs(repo: str) -> dict[str, str]:
     traced = graphs.path(ctx, source_symbol, target_symbol)
     cycles = graphs.cycles(ctx)
     grouped = graphs.communities(ctx)
-    drawn = graphs.diagram(ctx, group_by_communities=True)
+    drawn = graphs.diagram(ctx, DiagramRequest(group_by_communities=True))
 
     return {
         "explain.txt": normalise(
@@ -136,5 +148,62 @@ class TestContract:
         tiers = {group["tier"] for group in (*document["fan_in"], *document["fan_out"])}
         assert tiers <= {"same_file", "imported", "unique", "ambiguous"}
 
-    def test_two_renders_of_one_tree_are_byte_identical(self, repo):
+    def test_two_renders_in_one_process_are_byte_identical(self, repo):
+        """Renaming is the fix here, not a weakening.
+
+        Both renders share one interpreter, where set and dict iteration
+        order is already fixed for the run, so this cannot fail for a
+        `PYTHONHASHSEED`-dependent ordering however it is named. What it does
+        pin is worth keeping: the renderers hold no state that a first call
+        leaves behind for a second. The hash-seed hazard is pinned by
+        :func:`test_two_hash_seeds_render_the_same_bytes`, which is the only
+        test here that can fail for it.
+        """
         assert build_outputs(repo) == build_outputs(repo)
+
+
+# Two fixed seeds rather than one fixed and one inherited: Python randomises
+# the hash seed per process unless `PYTHONHASHSEED` is set, so reading the
+# ambient one would make this test's strength depend on the environment it
+# happened to run in.
+HASH_SEEDS = ("0", "12345")
+
+# Both subprocesses only import and render. Well under pytest-timeout's 60s,
+# and a bound rather than none because a hung interpreter must fail here too.
+RENDER_TIMEOUT_SECONDS = 60
+
+_RENDER_PROGRAM = (
+    "import json;"
+    "from tests.characterization.test_graph_goldens import REPOS, build_outputs;"
+    "print(json.dumps({repo: build_outputs(repo) for repo in REPOS}, sort_keys=True))"
+)
+
+
+def _rendered_under(seed: str) -> dict[str, dict[str, str]]:
+    """Render every golden for every fixture in a fresh interpreter."""
+    root = Path(__file__).resolve().parents[2]
+    environment = {**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(root)}
+    completed = subprocess.run(
+        [sys.executable, "-c", _RENDER_PROGRAM],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=RENDER_TIMEOUT_SECONDS,
+    )
+    parsed: dict[str, dict[str, str]] = json.loads(completed.stdout)
+    return parsed
+
+
+def test_two_hash_seeds_render_the_same_bytes():
+    """The determinism guard that can actually fail for hash order.
+
+    Every view here walks sets and dicts built from a filesystem scan, and an
+    ordering that leaked from one would change the answer between two runs on
+    one unchanged tree -- the failure a byte-exact golden exists to catch and
+    the one an in-process comparison cannot see, because a single interpreter
+    fixes its hash seed for the whole run. So each render gets its own
+    interpreter and its own seed.
+    """
+    assert _rendered_under(HASH_SEEDS[0]) == _rendered_under(HASH_SEEDS[1])

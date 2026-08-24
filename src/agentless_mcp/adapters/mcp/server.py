@@ -81,6 +81,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
+    DiagramRequest,
     GraphService,
     PathOptions,
 )
@@ -93,12 +94,13 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
     render_expansion,
     render_find,
+    render_refs,
 )
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
@@ -242,6 +244,11 @@ Locations = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["locat
 MAX_LIMIT = 500
 MAX_CONTEXT_LINES = 200
 MAX_DIAGRAM_NODES = 500
+# Edges are bounded for the same reason nodes are, and at the same number: a
+# flowchart past a few hundred arrows is unreadable whatever its node count,
+# so a larger ceiling would only let a caller ask for a picture nobody can
+# use. The default sits far below this; the ceiling exists to refuse nonsense.
+MAX_DIAGRAM_EDGES = 500
 MAX_RESOLUTION = 100.0
 
 # ``limit`` is nullable on every tool that carries it because it is nullable
@@ -316,6 +323,14 @@ MaxNodes = Annotated[
         description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"],
     ),
 ]
+MaxEdges = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=MAX_DIAGRAM_EDGES,
+        description=PARAMETER_DESCRIPTIONS["diagram_max_edges"],
+    ),
+]
 Resolution = Annotated[
     float | None,
     Field(
@@ -375,6 +390,10 @@ OptionalGroupByCommunities = Annotated[
 OptionalMaxNodes = Annotated[
     int | None,
     Field(ge=1, le=MAX_DIAGRAM_NODES, description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"]),
+]
+OptionalMaxEdges = Annotated[
+    int | None,
+    Field(ge=1, le=MAX_DIAGRAM_EDGES, description=PARAMETER_DESCRIPTIONS["diagram_max_edges"]),
 ]
 OptionalFindName = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["find_name"])]
 OptionalOverviewPaths = Annotated[
@@ -520,6 +539,7 @@ class StructureRequest:
     resolution: float | None = None
     focus: str = ""
     max_nodes: int = DEFAULT_DIAGRAM_NODES
+    max_edges: int = DEFAULT_DIAGRAM_EDGES
     group_by_communities: bool = False
     # Which published tool this call came in through. Two surfaces route here
     # and a refusal has to name the one the caller can retry, the way
@@ -780,12 +800,7 @@ class ToolHandlers:
         result = self._services.symbols.find_referencing_symbols(
             ctx, target, limit=limit, shared_callers=shared_callers
         )
-        body = (
-            render.render_shared_callers(result.shared, target)
-            if shared_callers
-            else render.render_ref_groups(result.groups, target)
-        )
-        return self._wrap(ctx, body)
+        return self._wrap(ctx, render_refs(result, shared_callers=shared_callers))
 
     def explain_symbol(self, ctx: RepoContext, target: str, limit: int) -> str:
         """Render one symbol's definition site with its tiered fan-out and fan-in."""
@@ -899,10 +914,13 @@ def _operation_diagram(graphs: GraphService, ctx: RepoContext, request: Structur
     """Render the module graph as fenced mermaid text."""
     view = graphs.diagram(
         ctx,
-        focus=request.focus or None,
-        max_nodes=request.max_nodes,
-        group_by_communities=request.group_by_communities,
-        resolution=request.resolution,
+        DiagramRequest(
+            focus=request.focus or None,
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+            group_by_communities=request.group_by_communities,
+            resolution=request.resolution,
+        ),
     )
     return render.render_diagram(view)
 
@@ -1338,6 +1356,7 @@ def _register_v1(
         resolution: Resolution = None,
         focus: DiagramFocus = None,
         max_nodes: MaxNodes = DEFAULT_DIAGRAM_NODES,
+        max_edges: MaxEdges = DEFAULT_DIAGRAM_EDGES,
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
     ) -> str:
@@ -1355,6 +1374,7 @@ def _register_v1(
                     resolution=resolution,
                     focus=_sole_focus(focus),
                     max_nodes=max_nodes,
+                    max_edges=max_edges,
                     group_by_communities=group_by_communities,
                 ),
             )
@@ -1452,7 +1472,7 @@ ORIENT_OPERATIONS: dict[str, OperationSpec] = {
     OPERATION_COMMUNITIES: OperationSpec(accepted=("resolution", "limit")),
     OPERATION_CYCLES: OperationSpec(accepted=("limit",)),
     OPERATION_DIAGRAM: OperationSpec(
-        accepted=("focus", "max_nodes", "group_by_communities", "resolution")
+        accepted=("focus", "max_nodes", "max_edges", "group_by_communities", "resolution")
     ),
     OPERATION_PATH: OperationSpec(
         accepted=("source", "target", "include_unique", "include_ambiguous"),
@@ -1605,6 +1625,7 @@ def _register_v2(
         include_unique: OptionalIncludeUnique = None,
         include_ambiguous: OptionalIncludeAmbiguous = None,
         max_nodes: OptionalMaxNodes = None,
+        max_edges: OptionalMaxEdges = None,
         group_by_communities: OptionalGroupByCommunities = None,
         no_cache: NoCache = False,
     ) -> str:
@@ -1624,6 +1645,7 @@ def _register_v2(
                 "include_unique": include_unique,
                 "include_ambiguous": include_ambiguous,
                 "max_nodes": max_nodes,
+                "max_edges": max_edges,
                 "group_by_communities": group_by_communities,
             },
         )
@@ -1652,6 +1674,7 @@ def _register_v2(
                     resolution=resolution,
                     focus=_sole_focus(focus),
                     max_nodes=_or_default(max_nodes, DEFAULT_DIAGRAM_NODES),
+                    max_edges=_or_default(max_edges, DEFAULT_DIAGRAM_EDGES),
                     group_by_communities=bool(group_by_communities),
                 ),
             )

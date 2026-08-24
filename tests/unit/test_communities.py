@@ -221,6 +221,36 @@ class TestResolution:
             > detect_communities(graph, resolution=4.0).modularity
         )
 
+    def test_at_resolution_one_the_two_scores_are_the_same_number(self):
+        partition = detect_communities(clustered_graph(), resolution=1.0)
+
+        assert partition.standard_modularity == partition.modularity
+
+    def test_below_resolution_one_the_scaled_score_is_the_inflated_one(self):
+        """The knob moves one score and not the other, by construction.
+
+        The scaled score subtracts ``resolution`` times the null-model term,
+        so under 1.0 it subtracts less than the standard score does and reads
+        higher for the very same partition. That is the whole mechanism
+        behind a fixed 0.3 threshold reading a tree as structured at one
+        setting and arbitrary at another.
+        """
+        partition = detect_communities(clustered_graph(), resolution=0.25)
+
+        assert partition.modularity > partition.standard_modularity
+
+    def test_above_resolution_one_the_scaled_score_is_the_deflated_one(self):
+        partition = detect_communities(clustered_graph(), resolution=4.0)
+
+        assert partition.modularity < partition.standard_modularity
+
+    def test_the_standard_score_is_in_the_json_form(self):
+        document = detect_communities(clustered_graph(), resolution=0.5).as_dict()
+
+        assert document["standard_modularity"] == pytest.approx(
+            detect_communities(clustered_graph(), resolution=0.5).standard_modularity
+        )
+
 
 class TestLabels:
     def test_the_deepest_shared_directory_wins(self):

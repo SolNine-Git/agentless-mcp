@@ -8,6 +8,7 @@ import pytest
 
 from agentless_mcp.core.graph import (
     AMBIGUOUS_MATCH_MULTIPLIER,
+    DEFAULT_MAX_ITERATIONS,
     IMPORT_EDGE_WEIGHT,
     NOISE_NAME_MULTIPLIER,
     UNIQUE_MATCH_MULTIPLIER,
@@ -97,14 +98,14 @@ class TestGraphIsAValue:
 
 class TestPageRank:
     def test_an_empty_graph_ranks_nothing(self):
-        assert personalized_pagerank(RefGraph(nodes=(), edges={})) == {}
+        assert personalized_pagerank(RefGraph(nodes=(), edges={})).rank == {}
 
     def test_ranks_sum_to_one(self):
         graph = RefGraph(
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
         assert math.isclose(sum(rank.values()), 1.0, rel_tol=1e-6)
 
     def test_the_referenced_file_outranks_its_referrers(self):
@@ -112,7 +113,7 @@ class TestPageRank:
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        assert rank_order(personalized_pagerank(graph))[0] == "b.py"
+        assert rank_order(personalized_pagerank(graph).rank)[0] == "b.py"
 
     def test_two_independent_builds_of_one_tree_rank_identically(self, tmp_path, extractor):
         """The determinism claim is about the pipeline, not about a pure call.
@@ -127,26 +128,28 @@ class TestPageRank:
 
         assert first.nodes == second.nodes
         assert first.edges == second.edges
-        assert personalized_pagerank(first) == personalized_pagerank(second)
+        assert personalized_pagerank(first).rank == personalized_pagerank(second).rank
 
     def test_ties_are_broken_by_path_order(self):
         graph = RefGraph(nodes=("b.py", "a.py", "c.py"), edges={})
-        assert rank_order(personalized_pagerank(graph)) == ["a.py", "b.py", "c.py"]
+        assert rank_order(personalized_pagerank(graph).rank) == ["a.py", "b.py", "c.py"]
 
     def test_seeds_take_the_teleport_mass(self):
         graph = RefGraph(
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        unfocused = personalized_pagerank(graph)
-        focused = personalized_pagerank(graph, {"c.py": 1.0})
+        unfocused = personalized_pagerank(graph).rank
+        focused = personalized_pagerank(graph, {"c.py": 1.0}).rank
 
         assert focused["c.py"] > unfocused["c.py"]
         assert focused["a.py"] < unfocused["a.py"]
 
     def test_a_seed_outside_the_graph_falls_back_to_uniform(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={})
-        assert personalized_pagerank(graph, {"gone.py": 1.0}) == personalized_pagerank(graph)
+        assert (
+            personalized_pagerank(graph, {"gone.py": 1.0}).rank == personalized_pagerank(graph).rank
+        )
 
     def test_a_negative_seed_weight_is_refused_rather_than_clamped(self):
         """Teleport mass has no negative direction, so the number is a mistake.
@@ -167,14 +170,14 @@ class TestPageRank:
 
     def test_damping_zero_is_the_personalization_vector(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph, {"a.py": 1.0}, damping=0.0)
+        rank = personalized_pagerank(graph, {"a.py": 1.0}, damping=0.0).rank
         assert math.isclose(rank["a.py"], 1.0, rel_tol=1e-6)
         assert math.isclose(rank["b.py"], 0.0, abs_tol=1e-6)
 
     def test_dangling_mass_goes_to_the_seeds_not_uniformly(self):
         """b.py references nothing, so its mass must return to the seed."""
         graph = RefGraph(nodes=("a.py", "b.py", "c.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph, {"a.py": 1.0})
+        rank = personalized_pagerank(graph, {"a.py": 1.0}).rank
         assert rank["a.py"] > rank["b.py"] > rank["c.py"]
 
     def test_the_default_damping_is_the_one_the_rankings_were_tuned_against(self):
@@ -187,10 +190,61 @@ class TestPageRank:
         any other damping.
         """
         graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
 
         assert math.isclose(rank["a.py"], 0.3508771, abs_tol=1e-6)
         assert math.isclose(rank["b.py"], 0.6491228, abs_tol=1e-6)
+
+
+class TestConvergenceIsReported:
+    """A ranking that ran out of passes must not read as a settled one."""
+
+    def test_a_settled_run_says_so_and_names_its_pass_count(self):
+        graph = RefGraph(
+            nodes=("a.py", "b.py", "c.py"),
+            edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
+        )
+
+        ranking = personalized_pagerank(graph)
+
+        assert ranking.converged
+        assert 0 < ranking.iterations < DEFAULT_MAX_ITERATIONS
+
+    def test_an_empty_graph_has_converged_over_nothing(self):
+        ranking = personalized_pagerank(RefGraph(nodes=(), edges={}))
+
+        assert ranking.rank == {}
+        assert ranking.converged
+        assert ranking.iterations == 0
+
+    def test_a_run_that_spends_its_iterations_reports_an_unsettled_rank(self):
+        """The bound is reachable at the shipped defaults, not only at 1 pass.
+
+        A chain mixes slowly, and the damping is what decides how slowly.
+        Measured 2026-08-23: this graph needs 191 passes at damping 0.99 to
+        move less than the default epsilon, against a bound of 100. Nothing
+        in the returned vector says which of the two happened, which is why
+        the flag is on the value rather than left to the caller to infer from
+        the pass count.
+        """
+        nodes = tuple(f"f{index:03d}.py" for index in range(40))
+        edges = {(nodes[index], nodes[index + 1]): 1.0 for index in range(len(nodes) - 1)}
+        graph = RefGraph(nodes=nodes, edges=edges)
+
+        ranking = personalized_pagerank(graph, damping=0.99)
+
+        assert not ranking.converged
+        assert ranking.iterations == DEFAULT_MAX_ITERATIONS
+
+    def test_the_same_graph_settles_once_it_is_given_the_passes(self):
+        nodes = tuple(f"f{index:03d}.py" for index in range(40))
+        edges = {(nodes[index], nodes[index + 1]): 1.0 for index in range(len(nodes) - 1)}
+        graph = RefGraph(nodes=nodes, edges=edges)
+
+        ranking = personalized_pagerank(graph, damping=0.99, max_iterations=500)
+
+        assert ranking.converged
+        assert ranking.iterations == 191
 
 
 class TestNameWeighting:

@@ -40,6 +40,7 @@ NUMERIC_CLI_OPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("communities", "--members"),
         ("communities", "--resolution"),
         ("cycles", "--limit"),
+        ("diagram", "--max-edges"),
         ("diagram", "--max-nodes"),
         ("diagram", "--resolution"),
         ("expand", "--limit"),

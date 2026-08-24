@@ -98,6 +98,12 @@ SKIPPED_FILES_SHOWN = 5
 # side and the parse side keep separate copies on purpose.
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
+
+# Below this, a partition is a hint rather than a boundary. The published
+# reading of modularity is calibrated for resolution 1.0 alone, so this
+# constant may only ever be compared against
+# `CommunityReport.standard_modularity` -- see `weak_partition`, which is the
+# one place that comparison lives.
 WEAK_MODULARITY_THRESHOLD = 0.3
 
 # The severities of `core.patchlint`, most urgent first. The spellings come
@@ -216,13 +222,24 @@ class MapEntry:
 
 
 @dataclass(frozen=True)
-class MapFile:
-    """One ranked file in a repository map, with the symbols that fit."""
+class MapFile(_Bounded):
+    """One ranked file in a repository map, with the symbols that fit.
+
+    ``total`` is how many of this file's symbols competed for a place, so the
+    omitted count is the subtraction :class:`_Bounded` owns rather than a
+    number the service works out again. Passed in as a difference, the two
+    granularities computed it against two different denominators.
+    """
 
     path: str
     rank: float
     entries: tuple[MapEntry, ...] = ()
-    omitted: int = 0
+    total: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many of this file's symbols the map lists."""
+        return len(self.entries)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this file."""
@@ -726,11 +743,19 @@ class PathTrace:
 
 @dataclass(frozen=True)
 class CycleReport(_Bounded):
-    """Every import cycle found, already capped at the caller's limit."""
+    """Every import cycle found, already capped at the caller's limit.
+
+    ``unresolved_imports`` is how many import statements named no file in this
+    repository, counted by :mod:`agentless_mcp.core.resolve`, which owns the
+    question. It travels with the cycle list because "no import cycles" and
+    "few imports were resolved" render identically without it, and the first
+    is a claim about the code that only the second can qualify.
+    """
 
     cycles: tuple[CycleRow, ...]
     total: int
     limit: int
+    unresolved_imports: int = 0
 
     @property
     def shown(self) -> int:
@@ -743,20 +768,39 @@ class CycleReport(_Bounded):
             "total": self.total,
             "limit": self.limit,
             "omitted": self.omitted,
+            "unresolved_imports": self.unresolved_imports,
             "cycles": [cycle.as_dict() for cycle in self.cycles],
         }
 
 
 @dataclass(frozen=True)
-class CommunityRow:
-    """One community of files: its mechanical label and the members shown."""
+class CommunityRow(_Bounded):
+    """One community of files: its mechanical label and the members shown.
+
+    A community's whole membership is the denominator its omitted count is
+    taken against, so it is carried as :class:`_Bounded`'s ``total`` and the
+    subtraction happens once, there. ``size`` is the same number under the
+    name the JSON form has always spelled it. ``limit`` is the member bound
+    that did the cutting, named on the omission line so a reader knows which
+    knob to raise.
+    """
 
     label: str
-    size: int
+    total: int
     members: tuple[str, ...]
-    omitted: int
     internal_weight: float
     total_weight: float
+    limit: int = 0
+
+    @property
+    def size(self) -> int:
+        """How many files this community holds, listed or not."""
+        return self.total
+
+    @property
+    def shown(self) -> int:
+        """How many of them this row lists."""
+        return len(self.members)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this community."""
@@ -772,12 +816,19 @@ class CommunityRow:
 
 @dataclass(frozen=True)
 class CommunityReport(_Bounded):
-    """A whole partition, already capped, with the score behind it."""
+    """A whole partition, already capped, with the scores behind it.
+
+    ``modularity`` is the score at the resolution the partition was found at,
+    which is what the header prints. ``standard_modularity`` is the same
+    partition scored at resolution 1.0, and it is the only one of the two that
+    :attr:`weak_partition` may be keyed on.
+    """
 
     communities: tuple[CommunityRow, ...]
     total: int
     limit: int
     modularity: float
+    standard_modularity: float
     resolution: float
     files: int
 
@@ -788,8 +839,19 @@ class CommunityReport(_Bounded):
 
     @property
     def weak_partition(self) -> bool:
-        """Whether the modularity is too weak for an architectural claim."""
-        return self.modularity < WEAK_MODULARITY_THRESHOLD
+        """Whether the partition is too weak for an architectural claim.
+
+        Keyed on the resolution-1.0 score rather than on the one the header
+        prints, because :data:`WEAK_MODULARITY_THRESHOLD` is a constant and
+        the printed score is scaled by a knob the caller sets. Compared
+        against the scaled score, ``--resolution 0.25`` suppressed this note
+        on an unchanged tree: measured 2026-08-23 on this package, the scaled
+        score reads 0.723 at 0.25 and 0.148 at 4.0 while the standard score of
+        the very same partitions stays inside 0.156 to 0.319. The note is a
+        statement about the repository, so a caller's rollup setting must not
+        be able to turn it off.
+        """
+        return self.standard_modularity < WEAK_MODULARITY_THRESHOLD
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
@@ -798,6 +860,7 @@ class CommunityReport(_Bounded):
             "limit": self.limit,
             "omitted": self.omitted,
             "modularity": _no_negative_zero(round(self.modularity, 6)),
+            "standard_modularity": _no_negative_zero(round(self.standard_modularity, 6)),
             "weak_partition": self.weak_partition,
             "resolution": self.resolution,
             "files": self.files,
@@ -812,6 +875,17 @@ class DiagramView:
     ``text`` is bare mermaid with no fence: the CLI writes it into a document
     the caller fences, and the MCP tool fences it into a response body.
     ``message`` is non-empty only when there is no diagram to show.
+
+    ``elided`` counts the modules the node bound dropped and
+    ``edges_over_bound`` the reference edges the edge bound dropped, kept
+    apart for the reason
+    :class:`agentless_mcp.core.htmlgraph.HtmlExport` keeps them apart: one
+    number for two cuts sends a reader to raise the wrong knob.
+
+    ``rank_converged`` is false when the ranking that chose which modules to
+    draw ran out of iterations. Which modules a bounded picture keeps is
+    exactly what that ranking decides, so a partial ranking makes the
+    selection a partial answer and the picture must say so.
     """
 
     text: str
@@ -820,22 +894,30 @@ class DiagramView:
     grouped: bool
     focus: str
     message: str
+    edges_over_bound: int = 0
+    rank_converged: bool = True
 
     @property
     def caveat(self) -> str:
-        """The qualification a grouped, bounded diagram has to carry.
+        """The qualifications a bounded diagram has to carry.
 
         A subgraph is titled after its whole community, and the rank bound
         drops members out of the picture without changing that title. Left
         unsaid, a reader counts the boxes inside a group and believes the
         count.
         """
-        if not self.grouped or self.elided <= 0:
-            return ""
-        return (
-            "note: subgraph titles name whole communities, including the "
-            f"{self.elided} module(s) the rank bound left out of this diagram"
-        )
+        notes: list[str] = []
+        if not self.rank_converged:
+            notes.append(
+                "note: the ranking that chose these modules did not converge, "
+                "so which ones the bound kept is a partial answer"
+            )
+        if self.grouped and self.elided > 0:
+            notes.append(
+                "note: subgraph titles name whole communities, including the "
+                f"{self.elided} module(s) the rank bound left out of this diagram"
+            )
+        return "\n".join(notes)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this diagram."""
@@ -843,10 +925,12 @@ class DiagramView:
             "mermaid": self.text,
             "nodes": self.nodes,
             "elided": self.elided,
+            "edges_over_bound": self.edges_over_bound,
             "grouped": self.grouped,
             "focus": self.focus,
             "message": self.message,
             "caveat": self.caveat,
+            "rank_converged": self.rank_converged,
         }
 
 
@@ -913,13 +997,23 @@ def render_communities(report: CommunityReport) -> str:
         return "no communities: nothing in this repository parsed into files\n"
 
     groups = "community" if report.total == 1 else "communities"
+    scaled = _no_negative_zero(round(report.modularity, 3))
+    standard = _no_negative_zero(round(report.standard_modularity, 3))
     lines = [
         (
             f"{report.total} {groups} over {report.files} files "
-            f"(modularity {_no_negative_zero(round(report.modularity, 3)):.3f} "
-            f"at resolution {report.resolution:g})"
+            f"(modularity {scaled:.3f} at resolution {report.resolution:g})"
         )
     ]
+    # Named only when the knob moved it. At resolution 1.0 the two scores are
+    # the same float, and printing it twice would be noise; away from 1.0 the
+    # weak-partition note below is keyed on a number the header does not show,
+    # which reads as a contradiction unless the number is on the page.
+    if standard != scaled:
+        lines.append(
+            f"  modularity at resolution 1: {standard:.3f}; "
+            "compare this number against 0.3, not the one above"
+        )
     if report.weak_partition:
         lines.append("  note: weak partition; use these communities as a hint, not a boundary")
     for index, community in enumerate(report.communities, start=1):
@@ -927,7 +1021,9 @@ def render_communities(report: CommunityReport) -> str:
         lines.append(f"  {index:>3}. {one_line(community.label)}  ({community.size} {files})")
         lines.extend(f"       {one_line(member)}" for member in community.members)
         if community.omitted:
-            lines.append(_omitted_line(community.omitted, "files in this community"))
+            lines.append(
+                _omitted_line(community.omitted, "files in this community", limit=community.limit)
+            )
     if report.omitted:
         lines.append(_omitted_line(report.omitted, "communities", limit=report.limit))
     return "\n".join(lines) + "\n"
@@ -1056,16 +1152,35 @@ def render_cycles(report: CycleReport) -> str:
     the three renderers that phrase an empty result as a statement about the
     repository, this is the one whose statement clears something.
     """
+    note = _unresolved_imports_note(report.unresolved_imports)
     if not report.total:
-        return "no import cycles\n"
+        return "\n".join(["no import cycles", *note]) + "\n"
 
     cycles = "cycle" if report.total == 1 else "cycles"
-    lines = [f"{report.total} import {cycles}"]
+    lines = [f"{report.total} import {cycles}", *note]
     for index, cycle in enumerate(report.cycles, start=1):
         lines.append(f"  {index:>3}. ({len(cycle.files)} files) {one_line(cycle.chain)}")
     if report.omitted:
         lines.append(_omitted_line(report.omitted, "cycles", limit=report.limit))
     return "\n".join(lines) + "\n"
+
+
+def _unresolved_imports_note(count: int) -> list[str]:
+    """Say how much of the import graph the resolver could not build.
+
+    Returned as a list so the caller can splice it into either branch: the
+    empty result needs this line more than the populated one does, because
+    "no import cycles" is the reading an agent stops on.
+    """
+    if not count:
+        return []
+    statements = "statement" if count == 1 else "statements"
+    return [
+        (
+            f"  note: {count} import {statements} named no file in this repository, "
+            "so a cycle through them is not listed"
+        )
+    ]
 
 
 def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:

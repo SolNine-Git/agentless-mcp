@@ -45,6 +45,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
     DEFAULT_MEMBER_LIMIT,
+    DiagramRequest,
     GraphService,
     PathOptions,
 )
@@ -66,6 +67,7 @@ from agentless_mcp.application.symbol_service import (
     kind_names,
     render_expansion,
     render_find,
+    render_refs,
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
@@ -91,7 +93,7 @@ from agentless_mcp.core import (
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
@@ -478,6 +480,13 @@ def _add_diagram(subparsers: Any) -> None:
         default=DEFAULT_DIAGRAM_NODES,
         help=f"modules drawn (default: {DEFAULT_DIAGRAM_NODES}); the rest are announced "
         "on an explicit elision node",
+    )
+    parser.add_argument(
+        "--max-edges",
+        type=int,
+        default=DEFAULT_DIAGRAM_EDGES,
+        help=f"arrows drawn (default: {DEFAULT_DIAGRAM_EDGES}); reference edges past this "
+        "bound are announced in a comment rather than drawn",
     )
     parser.add_argument(
         "--communities",
@@ -981,11 +990,7 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
     result = services.symbols.find_referencing_symbols(
         ctx, args.target, limit=args.limit, shared_callers=args.shared_callers
     )
-    text = (
-        render.render_shared_callers(result.shared, args.target)
-        if args.shared_callers
-        else render.render_ref_groups(result.groups, args.target)
-    )
+    text = render_refs(result, shared_callers=args.shared_callers)
     _emit(args, ctx, services, _Answer(text, result.as_dict(), "groups"))
     return EXIT_OK
 
@@ -1065,10 +1070,13 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
         return EXIT_USAGE
     view = services.graphs.diagram(
         ctx,
-        focus=args.focus,
-        max_nodes=args.max_nodes,
-        group_by_communities=args.communities,
-        resolution=args.resolution,
+        DiagramRequest(
+            focus=args.focus,
+            max_nodes=args.max_nodes,
+            max_edges=args.max_edges,
+            group_by_communities=args.communities,
+            resolution=args.resolution,
+        ),
     )
     if view.message:
         return fail(view.message)

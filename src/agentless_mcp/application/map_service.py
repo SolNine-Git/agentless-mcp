@@ -121,6 +121,11 @@ class MapResult:
     # alone. Carried so the renderer can say when the headers went past it,
     # instead of reporting a budget as honoured when it was not.
     rendered: int = 0
+    # Whether the power iteration behind the ranking settled. The whole map is
+    # an ordering, so a ranking that ran out of iterations makes the order the
+    # reader is about to trust a partial answer, and silence about that is the
+    # failure this package exists to prevent.
+    rank_converged: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this map."""
@@ -130,6 +135,7 @@ class MapResult:
             "symbols_available": self.candidates,
             "files_ranked": self.ranked,
             "rendered_tokens": self.rendered,
+            "rank_converged": self.rank_converged,
             "seeds": list(self.seeds),
             "unresolved_seeds": list(self.unresolved_seeds),
             "files": [map_file.as_dict() for map_file in self.files],
@@ -175,7 +181,8 @@ class MapService:
 
         seeding = seed_weights(request.focus, scan, index)
         seeds = seeding.weights
-        rank = personalized_pagerank(graph, seeds or None)
+        ranking = personalized_pagerank(graph, seeds or None)
+        rank = ranking.rank
         chosen = rank_order(rank)[: max(0, max_files)]
 
         # `chosen` is keyed the same way as `by_path` and `rank`: all three
@@ -187,7 +194,7 @@ class MapService:
                 render.MapFile(
                     path=path,
                     rank=rank[path],
-                    omitted=len(by_path[path].symbols),
+                    total=len(by_path[path].symbols),
                 )
                 for path in chosen
             )
@@ -207,6 +214,7 @@ class MapService:
                 skipped=scan.skipped,
                 unresolved_seeds=seeding.unresolved,
                 rendered=self._counter.count(render.render_map(files)),
+                rank_converged=ranking.converged,
             )
 
         candidates = _score_symbols(chosen, by_path, index, rank, ctx.config.stoplist)
@@ -228,6 +236,7 @@ class MapService:
             skipped=scan.skipped,
             unresolved_seeds=seeding.unresolved,
             rendered=self._counter.count(render.render_map(grouped)),
+            rank_converged=ranking.converged,
         )
 
     def render_text(self, result: MapResult) -> str:
@@ -240,6 +249,11 @@ class MapService:
         """
         body = render.render_map(result.files)
         notes: list[str] = []
+        if not result.rank_converged:
+            notes.append(
+                "the ranking behind this map did not converge, so the order of "
+                "the files below is a partial answer"
+            )
         if not result.files:
             notes.append(self._why_nothing_ranked(result))
         if result.budget and result.rendered > result.budget:
@@ -464,7 +478,7 @@ def _score_symbols(
     paths: list[str],
     by_path: dict[str, refs.FileFacts],
     index: refs.RefIndex,
-    rank: dict[str, float],
+    rank: Mapping[str, float],
     stoplist: frozenset[str],
 ) -> list[_Candidate]:
     """Spread each file's rank across its symbols by inbound reference weight.
@@ -554,7 +568,7 @@ def _group(
                 path=path,
                 rank=rank[path],
                 entries=entries,
-                omitted=totals.get(path, 0) - len(entries),
+                total=totals.get(path, 0),
             )
         )
     return tuple(files)

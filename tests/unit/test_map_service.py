@@ -113,6 +113,46 @@ class TestTheFileViewIsNotABudgetedView:
         assert hub.omitted == 2
 
 
+class TestOmittedIsDerivedNotHandPassed:
+    """One subtraction, in the one place that owns it.
+
+    Both granularities used to pass `omitted` in as a difference they worked
+    out themselves, against two different denominators, which is exactly what
+    the `_Bounded` protocol was introduced to make impossible.
+    """
+
+    def test_the_file_view_counts_every_symbol_as_omitted(self, repo, maps):
+        result = maps.build(repo, MapRequest(granularity=GRANULARITY_FILE))
+
+        for row in result.files:
+            assert row.shown == 0
+            assert row.omitted == row.total
+
+    def test_the_symbol_view_omits_what_it_did_not_list(self, repo, maps):
+        result = maps.build(repo, MapRequest())
+
+        for row in result.files:
+            assert row.shown == len(row.entries)
+            assert row.omitted == row.total - len(row.entries)
+            assert row.as_dict()["omitted"] == row.omitted
+
+
+class TestTheRankingSaysWhetherItSettled:
+    """A partial ranking rendered as a finished one is the failure to avoid."""
+
+    def test_a_settled_ranking_is_reported_as_one(self, repo, maps):
+        result = maps.build(repo, MapRequest())
+
+        assert result.rank_converged
+        assert result.as_dict()["rank_converged"] is True
+
+    def test_an_unsettled_ranking_is_named_above_the_map(self, repo, maps):
+        result = dataclasses.replace(maps.build(repo, MapRequest()), rank_converged=False)
+
+        assert result.as_dict()["rank_converged"] is False
+        assert "did not converge" in maps.render_text(result)
+
+
 class TestTheBudgetBoundsTheBodyNotTheHeaders:
     """The packing search can only drive symbols to zero, never headers.
 
@@ -154,7 +194,7 @@ class TestSymbolScoresReadTheSameDampingTheEdgesDo:
     def scored(repo, extractor, stoplist):
         scan = refs.scan_repo(repo.root, extractor)
         index = refs.build_ref_index(scan)
-        rank = personalized_pagerank(build_graph(scan, index, stoplist=stoplist))
+        rank = personalized_pagerank(build_graph(scan, index, stoplist=stoplist)).rank
         chosen = rank_order(rank)
         return [
             candidate.symbol.name

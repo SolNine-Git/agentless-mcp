@@ -3,7 +3,8 @@
 Mermaid is presentation, never data interchange. An agent reading this
 package's answers reads the flattened text views; a diagram is for the human
 looking over its shoulder, which is why this module renders on demand, returns
-a string, touches no filesystem and is never a side effect of another call.
+the text with the counts behind it, touches no filesystem and is never a side
+effect of another call.
 
 Three properties, in the order they matter.
 
@@ -165,6 +166,28 @@ class DiagramOptions:
     focus_distance: int = DEFAULT_FOCUS_DISTANCE
 
 
+@dataclass(frozen=True)
+class FlowchartExport:
+    """One rendered diagram and an exact account of its bounds.
+
+    The same contract :class:`agentless_mcp.core.htmlgraph.HtmlExport` keeps,
+    and for the same reason: a bounded view that does not report its bounds
+    makes every caller recover them, and the caller that did so walked the
+    focus neighbourhood twice more to get a number this render already held.
+
+    ``elided_nodes`` counts against the candidate set, which a focus restricts
+    before the rank bound applies. ``edges_over_bound`` counts only the
+    reference edges ``max_edges`` cut, never an edge that lost an endpoint to
+    the node bound, because one number for both cuts sends a reader to raise
+    the wrong knob.
+    """
+
+    text: str
+    nodes: int
+    elided_nodes: int
+    edges_over_bound: int
+
+
 def render_flowchart(
     graph: RefGraph,
     rank: Mapping[str, float],
@@ -172,7 +195,7 @@ def render_flowchart(
     partition: CommunityPartition | None = None,
     options: DiagramOptions | None = None,
     imports: AbstractSet[tuple[str, str]] | None = None,
-) -> str:
+) -> FlowchartExport:
     """Render ``graph`` as mermaid flowchart text.
 
     ``rank`` is what bounds the diagram -- normally the personalized PageRank
@@ -194,7 +217,7 @@ def render_flowchart(
     _validate(settings)
 
     candidates = _candidates(graph, settings)
-    selected = set(selected_nodes(graph, rank, settings))
+    selected = _bounded(candidates, rank, settings)
     identifiers = {node: _identifier("n", index) for index, node in enumerate(sorted(selected))}
     edges = _edge_lines(graph, identifiers, imports, settings.max_edges)
 
@@ -213,7 +236,12 @@ def render_flowchart(
         modules = "module" if elided == 1 else "modules"
         lines.append(f'{_INDENT}{ELISION_ID}["... {elided} more {modules}"]')
 
-    return "\n".join(lines) + "\n"
+    return FlowchartExport(
+        text="\n".join(lines) + "\n",
+        nodes=len(selected),
+        elided_nodes=elided,
+        edges_over_bound=edges.over_bound,
+    )
 
 
 def selected_nodes(
@@ -223,11 +251,12 @@ def selected_nodes(
 ) -> tuple[str, ...]:
     """Return the nodes a render with these options would draw, in id order.
 
-    The same focus restriction and rank bound :func:`render_flowchart` applies,
-    exposed on its own so a caller can say how many modules a diagram shows and
-    how many it left out without reading the diagram back. Counting node
-    declarations in the rendered text would count subgraph titles too, which is
-    exactly the kind of "parse your own output" answer this returns instead.
+    The same focus restriction and rank bound :func:`render_flowchart`
+    applies, exposed on its own for a caller that needs the selection without
+    the flowchart -- :mod:`agentless_mcp.core.htmlgraph`, which draws the same
+    bounded node set into a different document. A caller that wants the
+    diagram reads the counts off :class:`FlowchartExport` instead of calling
+    this a second time.
     """
     settings = options if options is not None else DiagramOptions()
     _validate(settings)
@@ -383,14 +412,17 @@ def _declaration(identifier: str, path: str, indent: str) -> str:
 class _EdgeRender:
     """The edge lines of one diagram, and how many of them draw an arrow.
 
-    The count is carried rather than recovered from the lines: the legend has
-    to know whether any arrow was drawn, and a render that answers that by
+    The counts are carried rather than recovered from the lines: the legend
+    has to know whether any arrow was drawn, and a render that answers that by
     reading its own output back is the parse-your-own-answer step this package
-    exists to remove.
+    exists to remove. ``over_bound`` is the same fact for the reference edges
+    the ``max_edges`` bound left out -- already spelled into the ``%%``
+    comment, and needed by a caller that reports its bounds outside the text.
     """
 
     lines: tuple[str, ...]
     arrows: int
+    over_bound: int
 
 
 def _edge_lines(
@@ -425,7 +457,7 @@ def _edge_lines(
     )
     if imports is None:
         undifferentiated = tuple(f"{_INDENT}{source} --> {target}" for source, target, _ in drawn)
-        return _EdgeRender(lines=undifferentiated, arrows=len(undifferentiated))
+        return _EdgeRender(lines=undifferentiated, arrows=len(undifferentiated), over_bound=0)
 
     references = sum(1 for _, _, declared in drawn if not declared)
     fits = len(drawn) <= max_edges
@@ -436,9 +468,10 @@ def _edge_lines(
         elif fits:
             lines.append(f"{_INDENT}{source} -.-> {target}")
     arrows = len(lines)
-    if references and not fits:
+    over_bound = 0 if fits else references
+    if over_bound:
         lines.append(f"{_INDENT}%% {references} reference edges not drawn (edge bound {max_edges})")
-    return _EdgeRender(lines=tuple(lines), arrows=arrows)
+    return _EdgeRender(lines=tuple(lines), arrows=arrows, over_bound=over_bound)
 
 
 def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:

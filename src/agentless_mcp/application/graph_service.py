@@ -48,8 +48,8 @@ Every one of them is bounded and says what it left out.
 """
 
 import math
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
@@ -81,6 +81,28 @@ class PathOptions:
 
 
 DEFAULT_PATH_OPTIONS = PathOptions()
+
+
+@dataclass(frozen=True)
+class DiagramRequest:
+    """The knobs of one diagram call.
+
+    A value object rather than five keyword arguments, for the reason
+    :class:`agentless_mcp.core.mermaid.DiagramOptions` is one a layer down:
+    they travel together from a CLI flag set or an MCP request, and a diagram
+    is defined by them. It is also what lets ``max_edges`` reach the renderer
+    at all -- a sixth parameter on the method is over the argument-count
+    contract this package lints for.
+    """
+
+    focus: str | None = None
+    max_nodes: int = mermaid.DEFAULT_DIAGRAM_NODES
+    max_edges: int = mermaid.DEFAULT_DIAGRAM_EDGES
+    group_by_communities: bool = False
+    resolution: float | None = None
+
+
+DEFAULT_DIAGRAM_REQUEST = DiagramRequest()
 
 # Read as "the source <verb> the target", and its passive for a hop walked
 # backwards. Rendering a reverse hop with the active verb would invert the
@@ -119,9 +141,14 @@ class _Ranked:
     """
 
     index: refs.RefIndex
+    ranking: graph.PageRank
     graph: graph.RefGraph
-    rank: dict[str, float]
     imports: frozenset[tuple[str, str]]
+
+    @property
+    def rank(self) -> Mapping[str, float]:
+        """The score per file, without the convergence report around it."""
+        return self.ranking.rank
 
 
 @dataclass(frozen=True)
@@ -216,6 +243,7 @@ class GraphService:
             cycles=tuple(render.CycleRow(files=cycle.files) for cycle in cycles[:limit]),
             total=len(cycles),
             limit=limit,
+            unresolved_imports=resolved.graph.unresolved_imports,
         )
 
     def communities(
@@ -235,17 +263,18 @@ class GraphService:
             communities=tuple(
                 render.CommunityRow(
                     label=community.label,
-                    size=community.size,
+                    total=community.size,
                     members=community.members[:members],
-                    omitted=max(0, community.size - members),
                     internal_weight=community.internal_weight,
                     total_weight=community.total_weight,
+                    limit=members,
                 )
                 for community in partition.communities[:limit]
             ),
             total=len(partition.communities),
             limit=limit,
             modularity=partition.modularity,
+            standard_modularity=partition.standard_modularity,
             resolution=partition.resolution,
             files=len(ranked.graph.nodes),
         )
@@ -253,11 +282,7 @@ class GraphService:
     def diagram(
         self,
         ctx: RepoContext,
-        *,
-        focus: str | None = None,
-        max_nodes: int = mermaid.DEFAULT_DIAGRAM_NODES,
-        group_by_communities: bool = False,
-        resolution: float | None = None,
+        request: DiagramRequest = DEFAULT_DIAGRAM_REQUEST,
     ) -> render.DiagramView:
         """Render the module-level graph as mermaid text, edge kinds distinguished.
 
@@ -269,23 +294,33 @@ class GraphService:
         would deny.
 
         """
-        bounds.at_least(max_nodes, 1, "max_nodes")
+        bounds.at_least(request.max_nodes, 1, "max_nodes")
+        bounds.at_least(request.max_edges, 0, "max_edges")
         ranked = self._ranked(ctx)
-        seed = _diagram_focus(focus, ranked)
+        seed = _diagram_focus(request.focus, ranked)
         if seed.message:
-            return _empty_diagram(focus or "", seed.message, grouped=group_by_communities)
+            return _empty_diagram(
+                request.focus or "", seed.message, grouped=request.group_by_communities
+            )
 
         # Parsed outside the branch below on purpose: a caller who mistypes
         # the knob hears about it whether or not they asked for grouping.
-        setting = _resolution(resolution)
+        setting = _resolution(request.resolution)
         partition = (
             communities.detect_communities(ranked.graph, resolution=setting)
-            if group_by_communities
+            if request.group_by_communities
             else None
         )
-        options = mermaid.DiagramOptions(max_nodes=max_nodes, focus=seed.node or None)
-        drawn = mermaid.selected_nodes(ranked.graph, ranked.rank, options)
-        text = mermaid.render_flowchart(
+        options = mermaid.DiagramOptions(
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+            focus=seed.node or None,
+        )
+        # Every count below comes off the one render. Read back through
+        # `selected_nodes` instead, the counts cost two more neighbourhood
+        # walks and are produced by a second code path from the numbers
+        # already inside the picture.
+        drawn = mermaid.render_flowchart(
             ranked.graph,
             ranked.rank,
             partition=partition,
@@ -293,12 +328,14 @@ class GraphService:
             imports=ranked.imports,
         )
         return render.DiagramView(
-            text=text,
-            nodes=len(drawn),
-            elided=_elided(ranked, options, drawn),
+            text=drawn.text,
+            nodes=drawn.nodes,
+            elided=drawn.elided_nodes,
             grouped=partition is not None,
             focus=options.focus or "",
             message="",
+            edges_over_bound=drawn.edges_over_bound,
+            rank_converged=ranked.ranking.converged,
         )
 
     def html(
@@ -345,7 +382,7 @@ class GraphService:
         return _Ranked(
             index=index,
             graph=built,
-            rank=graph.personalized_pagerank(built),
+            ranking=graph.personalized_pagerank(built),
             imports=_import_pairs(scan),
         )
 
@@ -353,19 +390,19 @@ class GraphService:
 def _import_pairs(scan: refs.RepoScan) -> frozenset[tuple[str, str]]:
     """Return the ``(importer, imported)`` file pairs a declared import connects.
 
-    Read off :func:`agentless_mcp.core.resolve.build_file_scopes`, the one
-    owner of import resolution, so the diagram's solid edges cannot disagree
-    with explain, path and cycles -- in particular the submodule form
-    ``from pkg import mod``, which only the scopes resolve to the module file.
-    The built graph cannot answer this because it keeps only the merged edge
-    weight and not the kind, and deriving the kind from the weight would be a
-    proxy guard: enough name references sum past the import weight.
+    Read off :meth:`agentless_mcp.core.resolve.ImportScope.resolved_edges`,
+    the one owner of "which resolved statement becomes an import edge", so the
+    diagram's solid edges cannot disagree with explain, path and cycles -- in
+    particular the submodule form ``from pkg import mod``, which only the
+    scopes resolve to the module file. The built graph cannot answer this
+    because it keeps only the merged edge weight and not the kind, and
+    deriving the kind from the weight would be a proxy guard: enough name
+    references sum past the import weight.
     """
     pairs: set[tuple[str, str]] = set()
     for path, scope in resolve.build_file_scopes(scan.files).items():
-        for _module, _line, target in scope.statements:
-            if target and target != path:
-                pairs.add((path, target))
+        for _module, _line, target in scope.resolved_edges(path):
+            pairs.add((path, target))
     return frozenset(pairs)
 
 
@@ -537,22 +574,6 @@ def _resolution(resolution: float | None) -> float:
         message = f"resolution must be a finite number greater than 0, got {resolution}"
         raise AgentlessError(message)
     return setting
-
-
-def _elided(ranked: _Ranked, options: mermaid.DiagramOptions, drawn: Sequence[str]) -> int:
-    """Count what this diagram left out, against what it was drawing from.
-
-    A focus restricts the candidate set before the rank bound is applied, and
-    the elision node the picture carries counts against that restricted set.
-    Counting against the whole repository instead made one response say "12
-    elided" over a picture that had dropped nothing, and sent readers to raise
-    `max_nodes` for modules no bound had removed. The candidate set is read
-    back through the same public entry point the render uses, rather than
-    re-deriving the neighbourhood walk here, so the two numbers cannot drift.
-    """
-    unbounded = replace(options, max_nodes=max(1, len(ranked.graph.nodes)))
-    candidates = mermaid.selected_nodes(ranked.graph, ranked.rank, unbounded)
-    return max(0, len(candidates) - len(drawn))
 
 
 def _trace(

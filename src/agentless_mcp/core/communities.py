@@ -131,11 +131,19 @@ class CommunityPartition:
     split the files arbitrarily -- is calibrated for ``resolution == 1.0``
     alone. :func:`_partition` reports the resolution-scaled generalized
     modularity, so lowering the knob lowers the null-model term the score
-    subtracts and raises the score for an unchanged tree: measured 2026-08-23
-    on this package, 0.732 at resolution 0.25 against 0.131 at 4.0, a spread
-    of more than five times with nothing about the repository changed. A
-    caller lowering the resolution for a coarser rollup, which this module
-    recommends, is not being told the repository gained structure.
+    subtracts and raises the score for an unchanged tree -- see the measured
+    spread below. A caller lowering the resolution for a coarser rollup, which
+    this module recommends, is not being told the repository gained structure.
+
+    ``standard_modularity`` is the same membership scored at resolution 1.0,
+    which is the one scale that reading is calibrated for, and it is therefore
+    the number to compare against 0.3. It is what makes the comparison a
+    property of the partition rather than of the knob: measured 2026-08-23 on
+    this package, the scaled score runs 0.723 / 0.507 / 0.319 / 0.236 / 0.148
+    across resolutions 0.25 / 0.5 / 1.0 / 2.0 / 4.0 while the standard score
+    of the very same partitions runs 0.156 / 0.233 / 0.319 / 0.285 / 0.248 --
+    one crosses 0.3 twice on an unchanged tree, the other does not. At
+    resolution 1.0 the two are the same number.
 
     ``converged`` says why local moving stopped: no node wanted to move, or
     ``max_passes`` ran out. A partition that hit the bound is a partial answer,
@@ -146,6 +154,7 @@ class CommunityPartition:
 
     communities: tuple[Community, ...]
     modularity: float
+    standard_modularity: float
     resolution: float
     passes: int
     converged: bool
@@ -162,6 +171,7 @@ class CommunityPartition:
         """Return the JSON form of this partition."""
         return {
             "modularity": self.modularity,
+            "standard_modularity": self.standard_modularity,
             "resolution": self.resolution,
             "passes": self.passes,
             "converged": self.converged,
@@ -208,6 +218,7 @@ def detect_communities(
         return CommunityPartition(
             communities=(),
             modularity=0.0,
+            standard_modularity=0.0,
             resolution=resolution,
             passes=0,
             converged=True,
@@ -364,6 +375,7 @@ def _partition(
 
     communities: list[Community] = []
     modularity = 0.0
+    standard = 0.0
     for community_id in sorted(grouped):
         members = tuple(grouped[community_id])
         internal = sum(
@@ -374,7 +386,13 @@ def _partition(
         )
         outgoing = sum(weighted.degree[member] for member in members)
         if weighted.two_m > 0.0:
-            modularity += internal / weighted.two_m - resolution * (outgoing / weighted.two_m) ** 2
+            # Both scores share one loop so they cannot describe two different
+            # partitions, and at resolution 1.0 they are the same arithmetic
+            # and therefore the same float.
+            fraction = internal / weighted.two_m
+            share = (outgoing / weighted.two_m) ** 2
+            modularity += fraction - resolution * share
+            standard += fraction - share
         communities.append(
             Community(
                 label=community_label(members),
@@ -388,6 +406,7 @@ def _partition(
     return CommunityPartition(
         communities=tuple(communities),
         modularity=modularity,
+        standard_modularity=standard,
         resolution=resolution,
         passes=passes,
         converged=converged,

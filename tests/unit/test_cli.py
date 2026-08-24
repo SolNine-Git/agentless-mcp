@@ -660,9 +660,12 @@ class TestLint:
         assert "dependencies is not a list" in out
 
     def test_a_candidates_path_that_is_neither_is_refused(self, services, repo_path, capsys):
+        # A path that does not exist is a usage error wherever it is named, so
+        # this reads the same as `vote --verdicts gone.jsonl` rather than the
+        # exit 1 that means "the work ran and the answer was bad".
         assert (
             invoke(services, repo_path, "lint", "--candidates", str(repo_path / "nope"))
-            == EXIT_DOMAIN
+            == EXIT_USAGE
         )
         assert "neither a patch file nor a directory" in capsys.readouterr().err
 
@@ -775,9 +778,11 @@ class TestLintOverADiff:
         assert "renames or copies" in capsys.readouterr().out
 
     def test_a_diff_file_that_does_not_exist_is_refused(self, services, repo_path, capsys):
+        # Naming neither input is EXIT_USAGE two tests below; naming an input
+        # that is not there is the same class of mistake and now reads alike.
         assert (
             invoke(services, repo_path, "lint", "--diff", str(repo_path / "nope.patch"))
-            == EXIT_DOMAIN
+            == EXIT_USAGE
         )
         assert "cannot read diff" in capsys.readouterr().err
 
@@ -1363,6 +1368,7 @@ class TestPatchSubprocess:
                     "old_errors": 0,
                     "new_errors": 0,
                     "ok": True,
+                    "checked": True,
                     "detail": "",
                 },
             }
@@ -1373,6 +1379,25 @@ class TestPatchSubprocess:
         assert document["outcomes"] == [
             {"index": 0, "path": "core.py", "status": "applied", "reason": "", "matches": 1}
         ]
+
+    def test_a_file_with_no_grammar_says_it_was_not_checked(self, make_git_repo, tmp_path):
+        """``ok`` alone reads "no grammar" as "clean", which is the wrong answer.
+
+        ``ok`` is a delta and stays True here: the edit introduced nothing a
+        parser could see, because no parser ran. ``checked`` is the field that
+        says so, and a caller gating on a real parse has to be able to read it.
+        """
+        repo = make_git_repo({"notes.rst": "alpha\nbravo\n"})
+        patch = self.write_patch(
+            tmp_path,
+            "### notes.rst\n<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n",
+        )
+        result = self.run_cli("patch", "check", "-f", str(patch), "--repo", str(repo), "--json")
+
+        (check,) = json.loads(result.stdout)["files"]
+        assert check["verdict"]["ok"] is True
+        assert check["verdict"]["checked"] is False
+        assert "not checked" in check["verdict"]["detail"]
 
     def test_apply_json_carries_the_diff_and_the_base_it_applied_against(self, git_repo, tmp_path):
         result = self.run_cli(
