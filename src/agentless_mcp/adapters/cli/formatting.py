@@ -32,6 +32,7 @@ import sys
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.util.errors import (
     AgentlessError,
+    InputUnreadable,
     RepoResolutionError,
     SecurityRefusal,
 )
@@ -68,12 +69,18 @@ def exit_code_for(error: AgentlessError) -> int:
 
     Keyed on what the error *is* -- a refusal versus a degraded answer -- not
     on which subcommand raised it, so a new subcommand inherits the mapping
-    instead of re-deciding it. A refused path or root says the request was not
+    instead of re-deciding it. A refused path or root, and an input file the
+    caller named that could not be read, all say the request was not
     admissible; everything else the repository refused to answer is a domain
     failure, including ``LanguageUnavailable`` and ``WalkBoundExceeded``,
     which is why they need no branch of their own.
+
+    ``InputUnreadable`` is here rather than matched on a message because the
+    subcommands that read a caller's file through a service and the ones that
+    read it inline have to agree: ``lint --candidates gone`` and ``vote
+    --verdicts gone.jsonl`` are the same mistake and now carry the same code.
     """
-    if isinstance(error, SecurityRefusal | RepoResolutionError):
+    if isinstance(error, SecurityRefusal | RepoResolutionError | InputUnreadable):
         return EXIT_USAGE
     return EXIT_DOMAIN
 

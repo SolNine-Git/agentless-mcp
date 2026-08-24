@@ -87,7 +87,7 @@ from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.core.vote import VoteCandidate
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import AgentlessError, InputUnreadable, OperationFailed
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES
 
 DEFAULT_TIMEOUT_SECONDS = 300
@@ -101,10 +101,16 @@ DEFAULT_REPEAT_BASELINE = 1
 # How many candidates one run accepts. Agentless samples tens of patches, not
 # thousands; a directory holding more than this is a `--candidates` that names
 # something other than a candidate set, and running it is hours of test suite
-# nobody asked for. It is also what bounds `--jobs`: `ThreadPoolExecutor`
-# starts a thread per submitted task, so a run creates at most this many
-# however large a `max_workers` it is handed.
+# nobody asked for.
 MAX_CANDIDATES = 200
+
+# The most workers a run will take. One worker per candidate is the most any
+# run can use -- `ThreadPoolExecutor` starts a thread per submitted task, so a
+# larger `max_workers` creates no more threads than there are candidates -- and
+# `--jobs` above that is a number the caller cannot have meant. Refused rather
+# than clamped, for the reason `_check_bounds` gives: a bound the caller sets
+# and the tool silently rewrites is the same defect as one the tool ignores.
+MAX_JOBS = MAX_CANDIDATES
 
 # How large one candidate file may be. The same bound the package's read side
 # applies to any single file: a patch larger than this is not a patch.
@@ -842,18 +848,18 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
     resolved = directory.expanduser().resolve()
     if not resolved.is_dir():
         message = f"--candidates must name a directory; {resolved} is not one"
-        raise AgentlessError(message)
+        raise InputUnreadable(message)
 
     files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
     if not files:
         message = f"no candidate files in {resolved}: one file per candidate patch"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     if len(files) > MAX_CANDIDATES:
         message = (
             f"{resolved} holds {len(files)} files and a run takes at most {MAX_CANDIDATES}. "
             "One file is one candidate patch, so this directory is probably not a candidate set."
         )
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     seen: dict[str, Path] = {}
     candidates: list[Candidate] = []
@@ -863,29 +869,29 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
                 f"two candidates share the id {path.stem!r}: {seen[path.stem].name} and "
                 f"{path.name}. Candidate ids come from the filename stem and must be unique."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         seen[path.stem] = path
 
         try:
             size = path.stat().st_size
         except OSError as exc:
             message = f"cannot read candidate {path.name}: {exc.strerror}"
-            raise AgentlessError(message) from exc
+            raise InputUnreadable(message) from exc
         if size > MAX_CANDIDATE_BYTES:
             message = (
                 f"candidate {path.name} is {size} bytes and the limit is "
                 f"{MAX_CANDIDATE_BYTES}. A patch larger than that is not a patch."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             message = f"cannot read candidate {path.name}: {exc.strerror}"
-            raise AgentlessError(message) from exc
+            raise InputUnreadable(message) from exc
         except UnicodeDecodeError as exc:
             message = f"candidate {path.name} is not UTF-8 text"
-            raise AgentlessError(message) from exc
+            raise InputUnreadable(message) from exc
 
         candidates.append(Candidate(id=path.stem, index=index, text=text))
 
@@ -911,13 +917,13 @@ def load_verdicts(text: str) -> LoadedVerdicts:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
         message = "the verdicts file is empty: run `agentless-mcp validate` to produce one"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     records = [_record(line, position) for position, line in enumerate(lines)]
     header = records[0]
     if _string(header, RECORD_KEY, 0) != RECORD_RUN:
         message = f"the first line of a verdicts file must be a '{RECORD_RUN}' record"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     candidates = _candidate_records(records)
 
@@ -958,13 +964,13 @@ def _candidate_records(records: Sequence[dict[str, Any]]) -> tuple[VoteCandidate
                 f"line {position + 1}: a second {RECORD_RUN!r} record. A verdicts file "
                 "describes one run, so two of them concatenated is not one document."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         if kind != RECORD_CANDIDATE:
             message = (
                 f"line {position + 1}: {RECORD_KEY!r} is {kind!r}, which is not one of: "
                 f"{RECORD_RUN}, {RECORD_CANDIDATE}"
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         candidate = _vote_candidate(record, position)
         if candidate.id in ids:
@@ -972,14 +978,14 @@ def _candidate_records(records: Sequence[dict[str, Any]]) -> tuple[VoteCandidate
                 f"line {position + 1}: candidate id {candidate.id!r} was already read at line "
                 f"{ids[candidate.id] + 1}. One id is one candidate, and a repeated id votes twice."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         if candidate.index in indices:
             message = (
                 f"line {position + 1}: candidate index {candidate.index} was already read for "
                 f"{indices[candidate.index]!r}. The index is the vote's tiebreak between "
                 "equal-sized clusters, so two candidates cannot share one."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         ids[candidate.id] = position
         indices[candidate.index] = candidate.id
@@ -1000,12 +1006,12 @@ def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
     apply_field = record.get("apply")
     if not isinstance(apply_field, dict):
         message = f"line {position + 1}: candidate record has no 'apply' object"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     key = record.get("equivalence_key")
     if key is not None and not isinstance(key, str):
         message = f"line {position + 1}: 'equivalence_key' must be a string or null"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     regression = _enum(record, "regression", position, Verdict)
     reproduction = _optional_enum(record, "reproduction", position, Verdict)
@@ -1027,10 +1033,10 @@ def _record(line: str, position: int) -> dict[str, Any]:
         parsed = json.loads(line)
     except json.JSONDecodeError as exc:
         message = f"line {position + 1} of the verdicts file is not valid JSON: {exc}"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
     if not isinstance(parsed, dict):
         message = f"line {position + 1} of the verdicts file is not a JSON object"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return parsed
 
 
@@ -1039,7 +1045,7 @@ def _string(record: dict[str, Any], field: str, position: int) -> str:
     value = record.get(field)
     if not isinstance(value, str):
         message = f"line {position + 1}: missing a string {field!r}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -1050,7 +1056,7 @@ def _optional_string(record: dict[str, Any], field: str, position: int) -> str |
         return None
     if not isinstance(value, str):
         message = f"line {position + 1}: {field!r} must be a string or null"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -1059,7 +1065,7 @@ def _boolean(record: dict[str, Any], field: str, position: int) -> bool:
     value = record.get(field)
     if not isinstance(value, bool):
         message = f"line {position + 1}: missing a boolean {field!r}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -1077,7 +1083,7 @@ def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]
     except ValueError as exc:
         allowed = ", ".join(member.value for member in kind)
         message = f"line {position + 1}: {field!r} is {value!r}, which is not one of: {allowed}"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
 
 
 def _optional_enum(
@@ -1094,7 +1100,7 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
     value = record.get(field)
     if not isinstance(value, int) or isinstance(value, bool):
         message = f"line {position + 1}: missing an integer {field!r}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -1181,7 +1187,7 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
         "not from the invocation, so the repository would be choosing the command that judges "
         "it. Pass the command explicitly, or opt in with --allow-repo-test-cmd."
     )
-    raise AgentlessError(message)
+    raise OperationFailed(message)
 
 
 def _check_bounds(request: ValidateRequest) -> None:
@@ -1200,7 +1206,7 @@ def _check_bounds(request: ValidateRequest) -> None:
     step that refuses or returns is the boundary rule; the same rule spread
     over a helper named for something else is that step half-done.
     """
-    bounds.at_least(request.jobs, 1, "jobs")
+    bounds.within(request.jobs, 1, MAX_JOBS, "jobs")
     bounds.at_least(request.timeout, 1, "timeout")
     bounds.at_least(request.repeat_baseline, 1, "repeat_baseline")
     if request.run_timeout is not None:

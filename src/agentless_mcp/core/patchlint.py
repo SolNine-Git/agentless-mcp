@@ -9,15 +9,11 @@ Seven checks ship here. Three are resolution-independent -- they need the
 patch's parsed edits and the repository's already-extracted symbol and import
 tables, and nothing more. Four read
 :mod:`agentless_mcp.core.resolve`, through the resolver the caller hands over
-on :class:`RepoFacts`. No check opens a cache, a repository or a source file:
-every check reads the facts and text the caller supplies.
-
-One function here does open files, and naming it is better than a claim the
-next reader can disprove. :func:`read_declared_dependencies` reads the
-manifests at a repository root through the bounded reader. It belongs beside
-:meth:`agentless_mcp.application.lint_service.LintService._facts`, which owns
-reading the repository, and it has not moved there yet. The ``parse_*``
-functions beside it take text and are pure.
+on :class:`RepoFacts`. This module opens nothing -- no cache, no repository,
+no source file: every check reads the facts and text the caller supplies, and
+the ``parse_*`` functions beside them take text. Reading the repository is
+:mod:`agentless_mcp.application.lint_service`'s job, the dependency manifests
+included: it reads them and hands the result over on :class:`RepoFacts`.
 
 ``undeclared_imports``
     A top-level package the patch imports that is in neither the repository's
@@ -135,7 +131,6 @@ from agentless_mcp.core.patches import Edit, apply_edits, resolve_elisions
 from agentless_mcp.core.refs import Definition, FileFacts
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
 from agentless_mcp.util.errors import AgentlessError
-from agentless_mcp.util.fslimits import read_bounded
 
 CHECK_UNDECLARED_IMPORTS = "undeclared_imports"
 CHECK_SHADOWING = "shadowing"
@@ -151,8 +146,9 @@ CHECK_COVERAGE = "coverage"
 
 # Languages whose declared dependencies this module knows how to read. The
 # check is structured per language so another one can be added by teaching
-# `read_declared_dependencies` its manifest; a language absent from this set
-# is reported "not checked", never quietly passed.
+# the caller's manifest reader -- `lint_service.read_declared_dependencies`
+# -- its manifest; a language absent from this set is reported "not
+# checked", never quietly passed.
 DEPENDENCY_LANGUAGES = frozenset({"python"})
 
 # Languages whose builtin, keyword and binder vocabulary this module knows.
@@ -548,52 +544,6 @@ _REQUIRES_PYTHON = "requires-python"
 _OPTIONAL = "optional-dependencies"
 _DEPENDENCIES = "dependencies"
 _DEPENDENCY_GROUPS = "dependency-groups"
-
-
-def read_declared_dependencies(root: Path) -> DeclaredDependencies:
-    """Read ``root``'s dependency manifests.
-
-    ``pyproject.toml`` and every ``requirements*.txt`` at the repository root,
-    read through the same bounded reader every other file access in this
-    package uses. A manifest that cannot be parsed produces a warning and
-    contributes nothing, rather than being treated as an empty one -- an empty
-    declared set would make every third-party import in the patch look
-    hallucinated.
-    """
-    packages: set[str] = set()
-    sources: list[str] = []
-    warnings: list[str] = []
-    requires_python = ""
-
-    pyproject = root / PYPROJECT_NAME
-    if pyproject.is_file():
-        read = read_bounded(pyproject)
-        if read.text is None:
-            warnings.append(f"{PYPROJECT_NAME} not read: {read.skipped}")
-        else:
-            parse = parse_pyproject_dependencies(read.text)
-            packages.update(parse.packages)
-            warnings.extend(parse.warnings)
-            requires_python = parse.requires_python
-            if parse.parsed:
-                sources.append(PYPROJECT_NAME)
-
-    for requirements in sorted(root.glob(REQUIREMENTS_GLOB)):
-        if not requirements.is_file():
-            continue
-        read = read_bounded(requirements)
-        if read.text is None:
-            warnings.append(f"{requirements.name} not read: {read.skipped}")
-            continue
-        packages.update(parse_requirements(read.text))
-        sources.append(requirements.name)
-
-    return DeclaredDependencies(
-        packages=frozenset(packages),
-        sources=tuple(sources),
-        warnings=tuple(warnings),
-        requires_python=requires_python,
-    )
 
 
 def parse_pyproject_dependencies(text: str) -> ManifestParse:

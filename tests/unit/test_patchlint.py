@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agentless_mcp.application.lint_service import read_declared_dependencies
 from agentless_mcp.core import patchlint
 from agentless_mcp.core.cache import OnDemandSource
 from agentless_mcp.core.patches import Edit, parse_blocks
@@ -32,7 +33,6 @@ from agentless_mcp.core.patchlint import (
     parse_pyproject_dependencies,
     parse_requirements,
     python_floor,
-    read_declared_dependencies,
     requirement_name,
 )
 from agentless_mcp.core.refs import RepoScan, build_ref_index, scan_repo

@@ -280,8 +280,8 @@ class TestValidateBoundsAreRefused:
     @pytest.mark.parametrize(
         "case",
         [
-            ("jobs", 0, "jobs must be at least 1, got 0"),
-            ("jobs", -1, "jobs must be at least 1, got -1"),
+            ("jobs", 0, "jobs takes a value from 1 through 200, got 0"),
+            ("jobs", -1, "jobs takes a value from 1 through 200, got -1"),
             ("timeout", 0, "timeout must be at least 1, got 0"),
             ("repeat_baseline", 0, "repeat_baseline must be at least 1, got 0"),
         ],

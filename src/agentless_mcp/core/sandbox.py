@@ -88,7 +88,7 @@ from typing import IO, Any
 
 from agentless_mcp.core import cache, gitinfo
 from agentless_mcp.util import platforms
-from agentless_mcp.util.errors import AgentlessError, RepoResolutionError
+from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
 
 logger = logging.getLogger(__name__)
 
@@ -659,19 +659,19 @@ def run_git(
         )
     except FileNotFoundError as exc:
         message = "git is not installed, so the patch machinery cannot run"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
     except subprocess.TimeoutExpired as exc:
         message = f"git {subcommand} timed out after {timeout}s in {cwd}"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
     except OSError as exc:
         message = f"git {subcommand} could not be run in {cwd}: {exc.strerror}"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
 
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         first = detail.splitlines()[0] if detail else "no detail"
         message = f"git {subcommand} exited {completed.returncode} in {cwd}: {first}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     return completed.stdout.decode("utf-8", errors="replace")
 
@@ -692,13 +692,13 @@ def _release(root: Path, path: Path) -> None:
             ["worktree", "remove", "--force", "--force", str(path)],
             timeout=GIT_CLEANUP_TIMEOUT_SECONDS,
         )
-    except AgentlessError as exc:
+    except OperationFailed as exc:
         logger.warning("git worktree remove failed for %s: %s; removing the directory", path, exc)
         shutil.rmtree(path, ignore_errors=True)
 
     try:
         run_git(root, ["worktree", "prune"], timeout=GIT_CLEANUP_TIMEOUT_SECONDS)
-    except AgentlessError as exc:
+    except OperationFailed as exc:
         logger.warning("git worktree prune failed in %s: %s", root, exc)
 
     if path.exists():

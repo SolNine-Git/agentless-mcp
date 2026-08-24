@@ -33,7 +33,11 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.patches import BlockError, Edit, ParseResult
-from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
+from agentless_mcp.util.errors import (
+    InputUnreadable,
+    OperationFailed,
+    SecurityRefusal,
+)
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 
@@ -95,9 +99,59 @@ class LintService:
         return patchlint.RepoFacts(
             files=scan.by_path(),
             texts=_texts(ctx.root, scan),
-            dependencies=patchlint.read_declared_dependencies(ctx.root),
+            dependencies=read_declared_dependencies(ctx.root),
             resolver=resolve.build_resolver(scan, index),
         )
+
+
+def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
+    """Read ``root``'s dependency manifests.
+
+    ``pyproject.toml`` and every ``requirements*.txt`` at the repository root,
+    read through the same bounded reader every other file access in this
+    package uses. A manifest that cannot be parsed produces a warning and
+    contributes nothing, rather than being treated as an empty one -- an empty
+    declared set would make every third-party import in the patch look
+    hallucinated.
+
+    Here rather than beside the checks that consume it, because opening a file
+    at a repository root is this module's job and :mod:`patchlint` states that
+    it opens nothing. The parsing stays there: it takes text and is pure.
+    """
+    packages: set[str] = set()
+    sources: list[str] = []
+    warnings: list[str] = []
+    requires_python = ""
+
+    pyproject = root / patchlint.PYPROJECT_NAME
+    if pyproject.is_file():
+        read = read_bounded(pyproject)
+        if read.text is None:
+            warnings.append(f"{patchlint.PYPROJECT_NAME} not read: {read.skipped}")
+        else:
+            parse = patchlint.parse_pyproject_dependencies(read.text)
+            packages.update(parse.packages)
+            warnings.extend(parse.warnings)
+            requires_python = parse.requires_python
+            if parse.parsed:
+                sources.append(patchlint.PYPROJECT_NAME)
+
+    for requirements in sorted(root.glob(patchlint.REQUIREMENTS_GLOB)):
+        if not requirements.is_file():
+            continue
+        read = read_bounded(requirements)
+        if read.text is None:
+            warnings.append(f"{requirements.name} not read: {read.skipped}")
+            continue
+        packages.update(patchlint.parse_requirements(read.text))
+        sources.append(requirements.name)
+
+    return patchlint.DeclaredDependencies(
+        packages=frozenset(packages),
+        sources=tuple(sources),
+        warnings=tuple(warnings),
+        requires_python=requires_python,
+    )
 
 
 def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
@@ -116,12 +170,12 @@ def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
         files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
         if not files:
             message = f"no patch files in {resolved}: one file per candidate patch"
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         return tuple(_candidate(path) for path in files)
 
     if not resolved.is_file():
         message = f"{resolved} is neither a patch file nor a directory of them"
-        raise AgentlessError(message)
+        raise InputUnreadable(message)
     return (_candidate(resolved),)
 
 
@@ -155,7 +209,7 @@ def _text(path: Path, what: str) -> str:
     read = read_bounded(path)
     if read.text is None:
         message = f"cannot read {what} {path.name}: {read.skipped}"
-        raise AgentlessError(message)
+        raise InputUnreadable(message)
     return read.text
 
 

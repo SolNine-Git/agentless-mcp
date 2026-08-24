@@ -28,7 +28,7 @@ import pytest
 from agentless_mcp.core import cache, sandbox
 from agentless_mcp.core.sandbox import RunStatus
 from agentless_mcp.util import platforms
-from agentless_mcp.util.errors import AgentlessError, RepoResolutionError
+from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
 
 FILES = {
     "app.py": "def add(a, b):\n    return a + b\n",
@@ -235,7 +235,7 @@ class TestWorktreeCreationFailure:
                 "killed mid-checkout\n", encoding="utf-8"
             )
             message = "git worktree add timed out"
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         monkeypatch.setattr(sandbox, "run_git", dies_after_the_record_exists)
 
@@ -243,7 +243,7 @@ class TestWorktreeCreationFailure:
             with sandbox.worktree(repo):
                 pytest.fail("the body must not run when creation failed")
 
-        with pytest.raises(AgentlessError, match="timed out"):
+        with pytest.raises(OperationFailed, match="timed out"):
             enter()
 
         assert self.records(repo) == []
@@ -279,7 +279,7 @@ class TestRunGit:
     """
 
     def test_a_failing_command_raises_with_the_reason(self, repo):
-        with pytest.raises(AgentlessError, match="exited"):
+        with pytest.raises(OperationFailed, match="exited"):
             sandbox.run_git(repo, ["rev-parse", "refs/heads/no-such-branch"])
 
     def test_a_missing_git_binary_says_git_is_not_installed(self, repo, monkeypatch):
@@ -288,7 +288,7 @@ class TestRunGit:
 
         monkeypatch.setattr(sandbox.subprocess, "run", absent)
 
-        with pytest.raises(AgentlessError, match="git is not installed"):
+        with pytest.raises(OperationFailed, match="git is not installed"):
             sandbox.run_git(repo, ["status"])
 
     def test_a_hung_git_reports_the_bound_it_exceeded(self, repo, monkeypatch):
@@ -297,7 +297,7 @@ class TestRunGit:
 
         monkeypatch.setattr(sandbox.subprocess, "run", hangs)
 
-        with pytest.raises(AgentlessError, match=r"git status timed out after 7\.0s"):
+        with pytest.raises(OperationFailed, match=r"git status timed out after 7\.0s"):
             sandbox.run_git(repo, ["status"], timeout=7.0)
 
     def test_an_os_error_names_the_subcommand_and_the_directory(self, repo, monkeypatch):
@@ -306,7 +306,7 @@ class TestRunGit:
 
         monkeypatch.setattr(sandbox.subprocess, "run", refuses)
 
-        with pytest.raises(AgentlessError, match="git status could not be run"):
+        with pytest.raises(OperationFailed, match="git status could not be run"):
             sandbox.run_git(repo, ["status"])
 
     def test_the_default_bound_is_the_creation_bound(self, repo, monkeypatch):
@@ -318,7 +318,7 @@ class TestRunGit:
 
         monkeypatch.setattr(sandbox.subprocess, "run", record)
 
-        with pytest.raises(AgentlessError):
+        with pytest.raises(OperationFailed):
             sandbox.run_git(repo, ["status"])
 
         assert seen == [sandbox.GIT_TIMEOUT_SECONDS]
@@ -348,7 +348,7 @@ class TestRelease:
             calls.append((tuple(arguments), keywords.get("timeout")))
             if arguments[1] in failing:
                 message = f"git worktree {arguments[1]} exited 128"
-                raise AgentlessError(message)
+                raise OperationFailed(message)
             return ""
 
         return run, calls

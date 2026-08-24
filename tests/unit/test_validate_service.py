@@ -955,7 +955,11 @@ class TestTheRequestsNumbersAreCheckedInOnePlace:
     @pytest.mark.parametrize(
         ("field", "expected"),
         [
-            ({"jobs": 0}, "jobs must be at least 1"),
+            ({"jobs": 0}, f"jobs takes a value from 1 through {validate_module.MAX_JOBS}"),
+            (
+                {"jobs": validate_module.MAX_JOBS + 1},
+                f"jobs takes a value from 1 through {validate_module.MAX_JOBS}",
+            ),
             ({"timeout": 0}, "timeout must be at least 1"),
             ({"repeat_baseline": 0}, "repeat_baseline must be at least 1"),
             ({"run_timeout": -5}, "run_timeout must be at least 1"),
