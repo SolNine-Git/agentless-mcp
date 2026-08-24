@@ -1461,8 +1461,14 @@ def _fstring_end(text: str, start: int, marker: str) -> int:
         if depth == 0 and text.startswith(marker, index):
             return index + len(marker)
         if char in {"{", "}"}:
-            # A doubled brace is an escaped literal one, not a field.
-            if text[index + 1 : index + 2] == char:
+            # A doubled brace is an escaped literal one, but only in the
+            # literal portion. Inside a replacement field `}}` is the nested
+            # format spec closing and then the field closing -- `f"{a:{w}}"`
+            # -- and reading that pair as an escape left the depth above zero,
+            # so the closing quote opened a literal instead of ending one and
+            # the rest of the fragment was scanned as string. Every later call
+            # then reported no bracket span, and `_arity` went silently blind.
+            if depth == 0 and text[index + 1 : index + 2] == char:
                 index += 2
                 continue
             depth = depth + 1 if char == "{" else max(0, depth - 1)
@@ -1490,7 +1496,14 @@ def _inner_span(text: str, offset: int) -> str | None:
 
 
 def _split_top_level(text: str) -> list[str]:
-    """Split ``text`` on the commas that are not inside a bracket or a string."""
+    """Split ``text`` on the commas that are not inside a bracket or a string.
+
+    One construct separates arguments with a comma that no bracket encloses:
+    ``lambda``, whose parameter list is closed by ``:`` rather than by ``)``.
+    Its commas are at depth zero and are split like separators, so this is not
+    the function that can read one. :func:`_holds_top_level_lambda` is what the
+    callers ask before trusting the result.
+    """
     depths = _structure(text)
     parts: list[str] = []
     start = 0
@@ -1500,6 +1513,42 @@ def _split_top_level(text: str) -> list[str]:
             start = index + 1
     parts.append(text[start:])
     return parts
+
+
+_LAMBDA = "lambda"
+
+
+def _holds_top_level_lambda(text: str) -> bool:
+    """True when ``text`` holds a ``lambda`` no bracket and no string encloses.
+
+    Only a top-level one matters. A lambda nested inside a bracket keeps its
+    commas at that bracket's depth, where :func:`_split_top_level` already
+    leaves them alone; a lambda at depth zero puts its parameter separators
+    exactly where the argument separators are, and nothing downstream can tell
+    the two apart.
+
+    The answer to that is not to parse it. ``lambda`` joins the star and the
+    keyword argument on the list of things that make the count on the page
+    disagree with the count the callee sees, and the callers answer all three
+    the same way: do not judge this one. Reading it as a split reported
+    ``apply_to(lambda a, b: a + b)`` -- one argument -- as two, and read
+    ``def sorter(key=lambda a, b: a)`` as taking a required parameter it does
+    not have.
+    """
+    depths = _structure(text)
+    at = text.find(_LAMBDA)
+    while at != -1:
+        end = at + len(_LAMBDA)
+        before = text[at - 1] if at else ""
+        after = text[end] if end < len(text) else ""
+        if (
+            depths[at] == 0
+            and not (before.isalnum() or before == "_")
+            and not (after.isalnum() or after == "_")
+        ):
+            return True
+        at = text.find(_LAMBDA, at + 1)
+    return False
 
 
 def _names_keyword_argument(text: str) -> bool:
@@ -1523,11 +1572,14 @@ def _positional_arguments(text: str, offset: int) -> list[str] | None:
     """Return one call's positional arguments, or None when it is not readable.
 
     None is "do not judge this call": an unbalanced fragment, an unpacked
-    argument, a keyword argument or a trailing comma all mean the argument
-    count on the page is not the argument count the callee will see.
+    argument, a keyword argument, a top-level ``lambda`` or a trailing comma
+    all mean the argument count on the page is not the argument count the
+    callee will see.
     """
     inner = _inner_span(text, offset)
     if inner is None:
+        return None
+    if _holds_top_level_lambda(inner):
         return None
 
     arguments = [part.strip() for part in _split_top_level(inner)]
@@ -1540,8 +1592,8 @@ def _positional_arguments(text: str, offset: int) -> list[str] | None:
     return arguments
 
 
-def _parameter_shape(signature: str) -> _Shape | None:
-    """Return what ``signature`` accepts positionally, or None when unreadable.
+def _parameter_list(signature: str) -> str | None:
+    """Return the text inside a signature's parameter brackets, or None.
 
     The parameter list is the first balanced bracket pair, not the tail of the
     string: a captured signature carries its return annotation
@@ -1549,9 +1601,25 @@ def _parameter_shape(signature: str) -> _Shape | None:
     parenthesis would silently exempt every annotated function in a typed
     repository -- which is to say most of the ones worth checking.
 
-    None on anything that would make the comparison a guess: a signature the
-    extractor truncated, one this module cannot find a parameter list in, and
-    any list carrying a star -- ``*args``, ``**kwargs`` and the bare ``*`` that
+    None when there is no list to read: a signature the extractor truncated,
+    and one holding no bracket pair this can balance.
+    """
+    flattened = signature.strip()
+    if flattened.endswith("..."):
+        return None
+    opening = flattened.find("(")
+    if opening < 0:
+        return None
+    return _inner_span(flattened, opening)
+
+
+def _parameter_shape(signature: str) -> _Shape | None:
+    """Return what ``signature`` accepts positionally, or None when unreadable.
+
+    None on anything that would make the comparison a guess: a signature
+    :func:`_parameter_list` could not read, one whose default value is a
+    ``lambda`` -- whose own commas are not parameter separators -- and any
+    list carrying a star: ``*args``, ``**kwargs`` and the bare ``*`` that
     makes what follows keyword-only are three different rules and none of them
     is worth encoding for an advisory.
 
@@ -1561,19 +1629,13 @@ def _parameter_shape(signature: str) -> _Shape | None:
     as a parameter reported ``target(1, 2, 3)`` against ``def target(a, b, /,
     c)`` as one argument short.
     """
-    flattened = signature.strip()
-    if flattened.endswith("..."):
-        return None
-
-    opening = flattened.find("(")
-    if opening < 0:
-        return None
-
-    inner = _inner_span(flattened, opening)
+    inner = _parameter_list(signature)
     if inner is None:
         return None
     if not inner.strip():
         return _Shape(required=0, total=0)
+    if _holds_top_level_lambda(inner):
+        return None
 
     listed = [part.strip() for part in _split_top_level(inner)]
     parameters = [part for part in listed if part != _POSITIONAL_ONLY]

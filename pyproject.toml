@@ -1,6 +1,6 @@
 [project]
 name = "agentless-mcp"
-version = "0.5.0"
+version = "0.5.1"
 description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
 readme = "README.md"
 authors = [
@@ -365,6 +365,17 @@ sigterm = true
 source = ["src/agentless_mcp", "*/site-packages/agentless_mcp"]
 
 [tool.coverage.report]
+# 2026-08-23: a floor, not a target. Measured combined coverage at 0.5.1 is
+# 94.8% (percent_covered; line 96.2%, branch 89.8%), against 91.9% at the
+# 0.5.0 merge-base -- so 93 ratchets genuinely above the old release while
+# leaving about two points of headroom.
+#
+# The headroom is not politeness. Subprocess capture is not perfectly
+# deterministic: a measured run combined 47 of 52 data files, with 5 children
+# not reporting, so a floor set at the measured value would fail CI on
+# variance rather than on a regression. `fail_under` compares percent_covered,
+# which is the same metric quoted above and in the changelog.
+fail_under = 93
 exclude_also = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",

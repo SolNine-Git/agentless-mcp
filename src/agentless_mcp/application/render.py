@@ -1038,7 +1038,7 @@ def render_diagram(view: DiagramView) -> str:
     paste it into a document and choose their own fence.
     """
     if not view.text:
-        return (view.message or "no diagram").rstrip("\n") + "\n"
+        return one_line(view.message or "no diagram").rstrip("\n") + "\n"
 
     body = f"{MERMAID_FENCE}\n{view.text.rstrip(chr(10))}\n{FENCE}\n"
     return body if not view.caveat else f"{body}\n{view.caveat}\n"
@@ -1091,7 +1091,9 @@ def _severity_counts(findings: Sequence[LintFinding]) -> str:
         tally[finding.severity] = tally.get(finding.severity, 0) + 1
     if not tally:
         return "no findings"
-    return ", ".join(f"{tally[severity]} {severity}" for severity in sorted(tally, key=_urgency))
+    return ", ".join(
+        f"{tally[severity]} {one_line(severity)}" for severity in sorted(tally, key=_urgency)
+    )
 
 
 def _urgency(severity: str) -> tuple[int, str]:
@@ -1103,7 +1105,7 @@ def _urgency(severity: str) -> tuple[int, str]:
 def render_explanation(explanation: Explanation) -> str:
     """Render one symbol card with its tiered fan-out, fan-in and imports."""
     if explanation.card is None:
-        return explanation.message.rstrip("\n") + "\n"
+        return one_line(explanation.message).rstrip("\n") + "\n"
 
     lines = [_render_card(explanation.card)]
     lines.extend(f"  also defined at {one_line(entry)}" for entry in explanation.alternatives)
@@ -1125,7 +1127,7 @@ def render_explanation(explanation: Explanation) -> str:
 def render_path(trace: PathTrace) -> str:
     """Render a path hop by hop, each with its relation, tier and file:line."""
     if not trace.found:
-        return trace.message.rstrip("\n") + "\n"
+        return one_line(trace.message).rstrip("\n") + "\n"
 
     hops = "hop" if len(trace.hops) == 1 else "hops"
     lines = [
@@ -1133,12 +1135,13 @@ def render_path(trace: PathTrace) -> str:
         f"  start  {one_line(trace.source_label)}    {one_line(trace.source)}",
     ]
     lines.extend(
-        f"  {number:>3}. {hop.arrow} {hop.verb} ({one_line(hop.tier_label)})    "
+        f"  {number:>3}. {one_line(hop.arrow)} {one_line(hop.verb)} "
+        f"({one_line(hop.tier_label)})    "
         f"{one_line(hop.label)}    {_locator(hop.node, line=hop.line)}"
         for number, hop in enumerate(trace.hops, start=1)
     )
     if trace.message:
-        lines.append(f"  {trace.message}")
+        lines.append(f"  {one_line(trace.message)}")
     return "\n".join(lines) + "\n"
 
 

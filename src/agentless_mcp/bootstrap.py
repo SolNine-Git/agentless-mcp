@@ -32,7 +32,8 @@ server flag would have to be wired into.
 
 import importlib
 import socket
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import cast
 
 from agentless_mcp.adapters.cli.formatting import EXIT_USAGE, fail
@@ -68,8 +69,34 @@ TIKTOKEN_ENCODING = "cl100k_base"
 TIKTOKEN_FETCH_TIMEOUT_SECONDS = 30.0
 
 
+@contextmanager
+def _socket_default_timeout(seconds: float) -> Iterator[None]:
+    """Bound every socket this process opens in the block, then put it back.
+
+    ``socket.setdefaulttimeout`` is process-wide, which makes *where* it is
+    called the whole of whether it is safe. It belongs to a caller that knows
+    no other socket in the process is open -- see :func:`cli_main` -- and not
+    to whatever happens to need a bound, which is why it is a context manager
+    here rather than a few lines inside :class:`TiktokenCounter`.
+    """
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(seconds)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous)
+
+
 class TiktokenCounter:
     """Counts tokens with tiktoken, for callers who have it installed.
+
+    Constructing one may reach the network: on a cold cache tiktoken fetches
+    the BPE ranks over HTTP and offers no timeout of its own. This class does
+    not bound that, because the only bound reachable from here is the
+    process-wide socket default, and whether writing it is safe depends on
+    what else in the process holds a socket -- which is a fact about the
+    caller, not about this class. A caller that must not hang builds one
+    inside :func:`_socket_default_timeout`, as :func:`cli_main` does.
 
     Holds the encoding rather than looking it up per call: the lookup reads a
     data file, and a budget search calls ``count`` once per binary-search
@@ -95,14 +122,6 @@ class TiktokenCounter:
         # encoding or an unwritable cache directory fail here too. Every one of
         # them is a wiring failure the caller asked for by name, so every one of
         # them leaves as the error `cli_main` already knows how to report.
-        #
-        # The socket default is set around the call and restored after it. It is
-        # a blunt instrument -- it applies to whatever else opens a socket in
-        # this window -- but nothing else in this process has started one yet,
-        # and an unreachable network must not hang a CLI before it has parsed
-        # its own argv. A warm cache never opens a socket at all.
-        previous_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(TIKTOKEN_FETCH_TIMEOUT_SECONDS)
         try:
             self._encoding = tiktoken.get_encoding(TIKTOKEN_ENCODING)
         except Exception as exc:
@@ -113,8 +132,6 @@ class TiktokenCounter:
                 "without the flag to use the chars/4 estimator."
             )
             raise OperationFailed(message) from exc
-        finally:
-            socket.setdefaulttimeout(previous_timeout)
 
     def count(self, text: str) -> int:
         """Return the number of tokens ``text`` encodes to."""
@@ -165,7 +182,15 @@ def counter_choice(argv: Sequence[str] | None) -> str | None:
 def cli_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the ``agentless-mcp`` console script."""
     try:
-        counter = select_counter(counter_choice(argv))
+        # argv first, so an inadmissible command line fails before anything is
+        # built. Then the counter, under a bounded socket default: this line is
+        # the composition root, no transport or index thread exists yet, and
+        # the only thing inside the block that can open a socket is the
+        # tiktoken encoding fetch. That is what makes writing a process-wide
+        # setting safe here and nowhere further in.
+        choice = counter_choice(argv)
+        with _socket_default_timeout(TIKTOKEN_FETCH_TIMEOUT_SECONDS):
+            counter = select_counter(choice)
     except AgentlessError as error:
         # `fail` rather than a second spelling of it, and EXIT_USAGE rather
         # than a number: an extra that is not installed makes the flag itself

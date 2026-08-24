@@ -596,6 +596,34 @@ class TestNothingWasMeasured:
         assert not Verdict.ERROR.measured
         assert not Verdict.NOT_EVALUATED.measured
 
+    def test_a_candidate_the_budget_abandoned_is_not_a_command_that_never_started(self):
+        # `never_measured` feeds a warning that says the command could not be
+        # started at all. That is false about a command the run budget never
+        # reached: the patch applied, and nothing was run because the clock
+        # ran out. The BUDGET warning is what names those, and counting them
+        # here sent a reader to look for a spawn failure that did not happen.
+        report = ValidateReport(
+            header=a_run_where_nothing_started(count=1).header,
+            verdicts=(
+                CandidateVerdict(
+                    id="abandoned",
+                    index=0,
+                    apply_status=ApplyStatus.OK,
+                    apply_reasons=("applied, then not evaluated: the run's 60s budget expired",),
+                    equivalence_key="shared-key",
+                    regression=Verdict.NOT_EVALUATED,
+                    reproduction=None,
+                    duration=0.1,
+                    budget_truncated=True,
+                ),
+            ),
+        )
+
+        assert report.never_measured == ()
+        warnings = report.warnings()
+        assert not any("NOTHING WAS MEASURED" in warning for warning in warnings)
+        assert any(warning.startswith("BUDGET:") for warning in warnings)
+
     def test_an_unverified_baseline_does_not_claim_the_patches_failed(
         self, seeded_bug_repo, candidates_dir, validate
     ):
@@ -730,6 +758,31 @@ class TestACandidateDoesNotRewriteItsOwnJudge:
         # A nested conftest collects exactly as hard as a root one, and a file
         # whose name merely contains one of the words does not collect at all.
         assert bool(validate_module.test_config_paths([path])) is named
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "./.github/workflows/ci.yml",
+            "src/../.github/workflows/ci.yml",
+            "tests/../.github/workflows/ci.yml",
+            "a/b/../../.github/dependabot.yml",
+            "./conftest.py",
+        ],
+    )
+    def test_a_path_spelled_around_the_guard_is_still_named(self, path):
+        # The applier resolves every path before it writes, so all of these
+        # land on a file that decides what runs. A prefix test on the raw
+        # string matched none of the `.github/` ones: the guard read the
+        # spelling rather than the file, which reads as enforcement and is
+        # not.
+        assert validate_module.test_config_paths([path])
+
+    @pytest.mark.parametrize(
+        "path",
+        ["docs/github/notes.md", "src/mygithub/x.py", "src/.github_helpers.py"],
+    )
+    def test_normalising_does_not_widen_the_guard(self, path):
+        assert validate_module.test_config_paths([path]) == ()
 
 
 class TestRunBudget:

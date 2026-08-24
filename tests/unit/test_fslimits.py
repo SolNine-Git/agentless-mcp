@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from agentless_mcp.util import fslimits
+from agentless_mcp.util import fslimits, textsafe
 from agentless_mcp.util.errors import (
     AgentlessError,
     RepoResolutionError,
@@ -256,3 +256,45 @@ class TestDirectoryClaim:
         assert claimed is False
         assert "walk skipped" in caplog.text
         assert "gone" in caplog.text
+
+
+def _make_undecodable_file(root):
+    """Create a file whose name is not valid UTF-8, as a hostile clone can.
+
+    Built from bytes rather than from a ``Path``: the whole point is a name no
+    ``str`` can hold, so it cannot be spelled through the pathlib API.
+    """
+    raw = os.fsencode(root) + b"/bad\xff.py"
+    os.close(os.open(raw, os.O_CREAT | os.O_WRONLY))
+
+
+class TestAnUndecodableFilenameSurvivesTheWalkAndTheSink:
+    """The bound yields the file; the sink is what makes it renderable.
+
+    ``bounded_walk`` is the fallback traversal for a directory git does not
+    list, and ``os.walk`` hands back an undecodable filename byte as a lone
+    surrogate. Reproduced during the audit: the walk yielded the name, the
+    renderer raised ``UnicodeEncodeError`` from inside itself, and the caller
+    saw a traceback instead of an answer. The bound must not drop the file --
+    a security bound that silently loses entries is the thing this module
+    exists to refuse -- so the escape belongs at the sink.
+    """
+
+    def test_the_walk_yields_the_file_rather_than_dropping_it(self, root):
+        _make_undecodable_file(root)
+
+        found = sorted(path.name for path in bounded_walk(root))
+
+        assert found == ["app.py", "bad\udcff.py"]
+
+    def test_the_name_the_walk_yields_is_encodable_once_the_sink_has_it(self, root):
+        _make_undecodable_file(root)
+
+        walked = sorted(path.name for path in bounded_walk(root))
+        rendered = [textsafe.one_line(name) for name in walked]
+
+        # Raw, this raises; escaped, it does not. That is the whole fix.
+        with pytest.raises(UnicodeEncodeError):
+            "\n".join(walked).encode("utf-8")
+        assert "\n".join(rendered).encode("utf-8")
+        assert "bad\\udcff.py" in rendered

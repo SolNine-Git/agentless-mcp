@@ -131,7 +131,18 @@ def install_fingerprint(distribution_name: str) -> str | None:
     # so it still resolves after METADATA is unlinked, and `.version` then
     # feeds None to email.message_from_string. Without this the watcher thread
     # dies for the life of the process and drift detection stops silently.
-    except (PackageNotFoundError, OSError, TypeError) as exc:
+    #
+    # ValueError joins it for the same failure by a different route.
+    # `read_text` suppresses five OSError subclasses and nothing else, so a
+    # RECORD caught mid-write with a byte sequence that is not UTF-8 raises
+    # UnicodeDecodeError -- a ValueError. That is the same torn-install window
+    # this monitor exists to watch, so the type this package must not die on.
+    #
+    # The tuple is not what makes the thread safe, and it should not be read
+    # as an attempt to enumerate every way a foreign file can fail to parse:
+    # it grew once already and still missed this. `_watch` deregisters the
+    # monitor whatever ends it, which is what covers the type nobody listed.
+    except (PackageNotFoundError, OSError, TypeError, ValueError) as exc:
         logger.debug("install fingerprint for %s is unreadable: %r", distribution_name, exc)
         return None
     # NOT `or ""`. read_text suppresses FileNotFoundError and returns None, so
@@ -272,7 +283,31 @@ def _watch(distribution_name: str, baseline: str | None) -> None:
     first readable one establishes it instead. That is the same "None means
     wait, never changed" rule the poll below follows, applied to the one read
     that used to be exempt from it.
+
+    Whatever ends this thread deregisters it, which is the guard the caught
+    types above cannot be. Every input the poll reads is written by an
+    installer this process does not control, so an exception no tuple names
+    stays possible -- and one used to end the thread while ``_MONITOR.thread``
+    kept pointing at it. ``start_update_monitor`` then handed that dead handle
+    back as a running monitor, so drift detection was off for the life of the
+    process with ``is_alive()`` False and nobody asking. Deregistered instead,
+    the next call starts a fresh one. The exception itself is not swallowed:
+    it leaves through ``threading.excepthook`` with its traceback.
     """
+    try:
+        _poll_until_changed(distribution_name, baseline)
+    finally:
+        with _MONITOR_LOCK:
+            # Not when a restart is armed. That thread finished the job it was
+            # started for and the process is on its way out; forgetting it
+            # there would let a second monitor start and raise a second SIGINT
+            # for one install event, and only one of them can be claimed.
+            if not _MONITOR.pending:
+                _MONITOR.thread = None
+
+
+def _poll_until_changed(distribution_name: str, baseline: str | None) -> None:
+    """Run the poll loop itself, returning once a restart has been raised."""
     while True:
         time.sleep(POLL_SECONDS)
         current = install_fingerprint(distribution_name)

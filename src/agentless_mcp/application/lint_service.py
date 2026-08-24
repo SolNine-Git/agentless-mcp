@@ -38,7 +38,17 @@ from agentless_mcp.util.errors import (
     OperationFailed,
     SecurityRefusal,
 )
-from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.fslimits import (
+    BoundedRead,
+    contained_path,
+    file_stays_inside,
+    read_bounded,
+)
+
+# What a manifest at the repository root is refused with when it is a symlink
+# whose target is outside that root. Reported as an unread manifest rather than
+# raised, so the report says which one contributed nothing and why.
+MANIFEST_OUTSIDE_ROOT = "refused: a symlink whose target is outside the repository"
 
 
 @dataclass(frozen=True)
@@ -123,9 +133,11 @@ def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
     warnings: list[str] = []
     requires_python = ""
 
+    resolved_root = root.resolve()
+
     pyproject = root / patchlint.PYPROJECT_NAME
     if pyproject.is_file():
-        read = read_bounded(pyproject)
+        read = _read_manifest(pyproject, resolved_root)
         if read.text is None:
             warnings.append(f"{patchlint.PYPROJECT_NAME} not read: {read.skipped}")
         else:
@@ -139,7 +151,7 @@ def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
     for requirements in sorted(root.glob(patchlint.REQUIREMENTS_GLOB)):
         if not requirements.is_file():
             continue
-        read = read_bounded(requirements)
+        read = _read_manifest(requirements, resolved_root)
         if read.text is None:
             warnings.append(f"{requirements.name} not read: {read.skipped}")
             continue
@@ -152,6 +164,28 @@ def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
         warnings=tuple(warnings),
         requires_python=requires_python,
     )
+
+
+def _read_manifest(path: Path, resolved_root: Path) -> BoundedRead:
+    """Read one manifest at the repository root, refusing one that leaves it.
+
+    The containment step ``read_bounded`` names as its precondition and these
+    two callers did not perform. ``read_bounded`` follows symlinks on purpose
+    -- one symlink policy per module, and the policy is the caller's -- so
+    without this a repository whose ``pyproject.toml`` is a symlink to a file
+    outside it was read, and whatever package names parsed out of that file
+    were reported as this repository's own declared dependencies. A repository
+    is a thing people clone from strangers.
+
+    ``file_stays_inside`` rather than ``contained_path`` because the answer
+    here is a reason, not an exception: this function's whole contract is that
+    a manifest it cannot use contributes a warning and nothing else. Silence
+    would be worse than either -- an empty declared set makes every
+    third-party import in a patch look hallucinated.
+    """
+    if not file_stays_inside(path, resolved_root):
+        return BoundedRead(path=path, text=None, skipped=MANIFEST_OUTSIDE_ROOT)
+    return read_bounded(path)
 
 
 def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:

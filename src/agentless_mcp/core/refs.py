@@ -52,6 +52,12 @@ class FileFacts:
     refs: tuple[Ref, ...]
 
 
+# What makes a lookup target dotted, and therefore a claim about which file to
+# look in rather than a bare name. `Resolver` is a name; `core.refs.Resolver`
+# names a path as well, and can fail to find it.
+_DOTTED_SEPARATOR = "."
+
+
 @dataclass(frozen=True)
 class SkippedFile:
     """A file the scan saw but did not parse, and why."""
@@ -235,9 +241,17 @@ def resolve_definitions(index: RefIndex, target: str) -> Resolution:
         base, _ = split_ordinal(target)
         name = base.rpartition(".")[2] or base
         candidates = tuple(index.definitions.get(name, ()))
+        confirmed = _path_qualified(candidates, base)
+        if confirmed:
+            return Resolution(confirmed, scoped=True)
         # A bare name promises nothing about a file, so there is nothing it
-        # could have failed to find: it resolves by definition.
-        return Resolution(_path_qualified(candidates, base) or candidates, scoped=True)
+        # could have failed to find: it resolves by definition. A *dotted*
+        # name does promise one, and reporting `scoped=True` after the
+        # narrowing came back empty told the caller the target found what it
+        # named while handing back every definition of the last component --
+        # which is the fall-through the stable-id branch below reports
+        # honestly.
+        return Resolution(candidates, scoped=_DOTTED_SEPARATOR not in base)
 
     base, _ = split_ordinal(parsed.qualname)
     name = base.rpartition(".")[2] or base

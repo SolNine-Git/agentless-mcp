@@ -2,8 +2,11 @@
 
 import pytest
 
+from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import communities, htmlgraph
 from agentless_mcp.core.graph import RefGraph
+from agentless_mcp.util.errors import OperationFailed
 
 # Every way this document could reach the network. The old gate asserted that
 # `https://` was absent, which the document never contained: it names
@@ -178,29 +181,30 @@ def test_a_partition_from_another_graph_is_refused():
 
 
 @pytest.mark.parametrize(
-    ("options", "message"),
+    ("kwargs", "message"),
     [
-        (htmlgraph.HtmlOptions(max_nodes=0), "max_nodes"),
-        (htmlgraph.HtmlOptions(max_nodes=htmlgraph.MAX_HTML_NODES + 1), "max_nodes"),
-        (htmlgraph.HtmlOptions(max_edges=-1), "max_edges"),
-        (htmlgraph.HtmlOptions(max_edges=htmlgraph.MAX_HTML_EDGES + 1), "max_edges"),
+        ({"max_nodes": 0}, "max_nodes takes a value from 1 through 1000"),
+        ({"max_nodes": htmlgraph.MAX_HTML_NODES + 1}, "max_nodes takes a value from 1 through"),
+        ({"max_edges": -1}, "max_edges takes a value from 0 through 5000"),
+        ({"max_edges": htmlgraph.MAX_HTML_EDGES + 1}, "max_edges takes a value from 0 through"),
     ],
     ids=["nodes-zero", "nodes-over", "edges-negative", "edges-over"],
 )
-def test_a_bound_outside_the_ceiling_is_refused(options, message):
-    # The ceilings are the only limit on how large a document a caller can
-    # ask for. The CLI re-checks the same range today, so this is the gate
-    # that stops the ceiling being deleted here with the suite still green.
-    graph = RefGraph(nodes=("a.py",), edges={})
+def test_a_bound_outside_the_ceiling_is_refused(extractor, tmp_path, kwargs, message):
+    """The ceiling is refused by the service that owns it.
 
-    with pytest.raises(ValueError, match=message):
-        htmlgraph.render_html(
-            graph,
-            {"a.py": 1.0},
-            communities.detect_communities(graph),
-            imports=set(),
-            options=options,
-        )
+    It used to be refused twice: once here in `_validate` and once in
+    `GraphService.html`, with the same two numbers written out in both
+    places. The copy in this module raised `ValueError`, which is not an
+    `AgentlessError`, so had the two ever drifted the surviving check would
+    have escaped the CLI's handler as a traceback rather than a refusal.
+    `_validate` is gone and this asserts the one rule that remains.
+    """
+    (tmp_path / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+    service = GraphService(extractor)
+
+    with pytest.raises(OperationFailed, match=message):
+        service.html(resolve_repo(tmp_path, None), **kwargs)
 
 
 def test_two_exports_of_one_graph_are_byte_identical():

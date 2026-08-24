@@ -29,6 +29,7 @@ import pytest
 
 from agentless_mcp.adapters.cli import main as cli
 from agentless_mcp.core import projectconfig
+from agentless_mcp.util import bounds
 
 # Every (command, option) on the CLI that accepts a number, as of the audit
 # remediation. A new entry here is a new parameter that a service must bound;
@@ -137,3 +138,28 @@ class TestPublishedBounds:
         assert server.MAX_CONTEXT_LINES == 200
         assert server.MAX_DIAGRAM_NODES == 500
         assert server.MAX_RESOLUTION == 100.0
+
+    def test_the_published_numbers_come_from_the_shared_module(self):
+        """The adapter advertises the bound; it does not get to pick it.
+
+        Re-exported rather than declared, so that raising a ceiling for the
+        wire cannot leave the services enforcing the old one. Identity with
+        ``util.bounds`` is the property that keeps the two doors from drifting
+        apart again, and it is cheaper to assert than the drift is to find.
+        """
+        server = pytest.importorskip(
+            "agentless_mcp.adapters.mcp.server",
+            reason="the mcp extra is not installed",
+        )
+        assert server.MAX_LIMIT == bounds.MAX_LIMIT
+        assert server.MAX_CONTEXT_LINES == bounds.MAX_CONTEXT_LINES
+        assert server.MAX_DIAGRAM_NODES == bounds.MAX_DIAGRAM_NODES
+        assert server.MAX_DIAGRAM_EDGES == bounds.MAX_DIAGRAM_EDGES
+        assert server.MAX_RESOLUTION == bounds.MAX_RESOLUTION
+
+
+# The cross-door test that drives these numbers through both front doors with
+# a live client lives in `test_mcp_surface_v2.py`, beside the rest of the
+# suite that needs the `mcp` extra. It cannot live here: this module stays
+# importable without that extra, which is what the `importorskip` calls above
+# are for.

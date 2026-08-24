@@ -56,11 +56,15 @@ from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import (
     AgentlessError,
     LanguageUnavailable,
-    OperationFailed,
     RepoResolutionError,
     SecurityRefusal,
 )
-from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.fslimits import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_WALK_FILES,
+    contained_path,
+    read_bounded,
+)
 
 
 @dataclass(frozen=True)
@@ -129,15 +133,19 @@ class LocationView:
 
 
 def _check_context(context: int) -> None:
-    """Refuse a context window that cannot widen anything.
+    """Refuse a context window that cannot widen anything, or that widens past use.
 
     A negative context narrows the interval it is applied to, and past the
     interval's own width it inverts it. The caller asked for lines around a
     range; there is no answer to "the lines around it, minus fifty".
+
+    Delegated to :mod:`agentless_mcp.util.bounds` rather than written out
+    here. The hand-written rule said "context must not be negative", the one
+    wording in this package that did not match the shared sentence, and it
+    carried no ceiling at all -- so ``--context 1000000000`` was answered on
+    the command line and refused over MCP.
     """
-    if context < 0:
-        message = f"context must not be negative, got {context}"
-        raise OperationFailed(message)
+    bounds.within(context, 0, bounds.MAX_CONTEXT_LINES, "context")
 
 
 def _satisfiable(start: int, end: int, total: int) -> bool:
@@ -179,8 +187,10 @@ class ViewService:
         max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> TreeView:
         """Render the gitignore-aware directory tree."""
-        bounds.at_least(depth, 1, "depth")
-        bounds.at_least(max_entries, 1, "max_entries")
+        # Capped at the traversal limits fslimits already owns, which are the
+        # numbers the MCP schema publishes for the same two parameters.
+        bounds.within(depth, 1, DEFAULT_MAX_DEPTH, "depth")
+        bounds.within(max_entries, 1, DEFAULT_MAX_WALK_FILES, "max_entries")
         selected = ctx.root if path is None else contained_path(ctx.root, path)
         if not selected.is_dir():
             relative = selected.relative_to(ctx.root).as_posix()

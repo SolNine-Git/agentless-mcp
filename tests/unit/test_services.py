@@ -15,6 +15,7 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
+from agentless_mcp.core.projectconfig import MIN_BUDGET
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
 from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 from agentless_mcp.util.tokens import Chars4Counter
@@ -211,9 +212,27 @@ class TestMapService:
         result = MapService(extractor, counter).build(repo, MapRequest())
         assert AUTO_BUDGET_MIN <= result.budget <= AUTO_BUDGET_MAX
 
-    def test_a_file_reports_the_symbols_that_did_not_fit(self, repo, extractor, counter):
-        result = MapService(extractor, counter).build(repo, MapRequest(budget=120))
-        assert result.included < result.candidates
+    def test_a_file_reports_the_symbols_that_did_not_fit(self, tmp_path, extractor, counter):
+        """Partial packing still reports what it left out, at a legal budget.
+
+        This asked for ``budget=120``, which no door accepts any more:
+        ``projectconfig`` declares 200..64000 and ``MapService`` now holds
+        callers to it. The behaviour under test is unaffected -- a budget can
+        still fit some symbols and not others -- so the repository grows until
+        the smallest legal budget lands mid-way through it. Raising the floor
+        did not make this path unreachable, and this test is the evidence.
+        """
+        for index in range(12):
+            body = "".join(
+                f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
+                for inner in range(12)
+            )
+            (tmp_path / f"module_{index:02d}.py").write_text(body, encoding="utf-8")
+        repo = resolve_repo(tmp_path, None)
+
+        result = MapService(extractor, counter).build(repo, MapRequest(budget=MIN_BUDGET))
+
+        assert 0 < result.included < result.candidates
         assert sum(entry.omitted for entry in result.files) > 0
 
     def test_two_builds_of_an_unchanged_repository_are_identical(self, repo, extractor, counter):
@@ -320,11 +339,11 @@ class TestSliceRangesAreValidatedHere:
         assert "1| from core import normalise, quote" not in view.text
 
     def test_a_negative_context_is_refused_by_name(self, repo, extractor):
-        with pytest.raises(AgentlessError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context takes a value from 0 through 200"):
             ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(5, 5)], context=-50)
 
     def test_resolve_locations_refuses_a_negative_context_too(self, repo, extractor):
-        with pytest.raises(AgentlessError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context takes a value from 0 through 200"):
             ViewService(extractor).resolve_locations(repo, "core.py", ["line: 10"], context=-50)
 
     def test_one_bad_range_beside_a_good_one_still_renders_the_good_one(self, repo, extractor):
@@ -507,17 +526,17 @@ class TestALimitThatBoundsNothingIsRefused:
     """`limit=0` used to answer "no references" for a symbol with fifty-two."""
 
     def test_find_symbol_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AgentlessError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", limit=0)
 
     def test_fan_in_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AgentlessError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
                 repo, "quote", limit=0
             )
 
     def test_expand_refuses_a_negative_limit(self, repo, extractor):
-        with pytest.raises(AgentlessError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).expand_symbols(
                 repo, ["py:core.py::quote"], limit=-1
             )

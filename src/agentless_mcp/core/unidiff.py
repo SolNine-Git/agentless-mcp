@@ -59,11 +59,19 @@ What is refused, and why each is a refusal rather than a silent skip:
   guard, and also what makes the parse unambiguous: hunk content is consumed by
   count, so a context line that itself begins ``--- `` cannot be mistaken for
   the next file's header. Both directions are refused: a body shorter than the
-  header claims, and a body still holding lines when the counts run out.
+  header claims, and a body still holding lines when the counts run out. The
+  second is answered twice, because one line cannot always carry it: an empty
+  line and ``--`` follow a correct hunk in real output, so they are read as
+  its end, and the section is then checked for the hunks that reading would
+  have skipped.
+* **A section holding hunks but no ``---``/``+++`` pair.** Both headers absent
+  is how git spells a mode-only change, and a mode-only change has no hunks. A
+  section with both is a header block that lost them, and reporting it as the
+  mode change says there is no content to check about a content change.
 * **Hunks whose pre-image ranges overlap or run backwards.** A file's hunks
   cover disjoint, increasing ranges of the pre-image, so two hunks that claim
   the same lines describe two states of one file and no edit list can hold
-  both.
+  both. Stated per section: two sections naming one file are not compared.
 * **A hunk that declares no lines on either side** (``@@ -0,0 +0,0 @@``). It
   yields an edit whose search and replace are both empty, which every check
   reads as a change it examined and found clean.
@@ -415,17 +423,38 @@ def _file_section(lines: Sequence[str], at: int, ordinal: int) -> _Section:
         )
 
     if read.old_raw is None or read.new_raw is None:
-        return _without_pair(read, label, ordinal, resume)
+        return _without_pair(lines, read, label, ordinal, resume)
     return _paths_then_hunks(lines, read, label, ordinal, resume)
 
 
-def _without_pair(read: _Headers, label: str | None, ordinal: int, resume: int) -> _Section:
+def _without_pair(
+    lines: Sequence[str],
+    read: _Headers,
+    label: str | None,
+    ordinal: int,
+    resume: int,
+) -> _Section:
     """Judge a section that carries no complete ``---``/``+++`` pair.
 
     Both headers absent is the mode-only change git spells that way. One absent
     is a diff that states it changes something without stating what.
+
+    Both absent *and* hunks present is neither. It reached the note above,
+    which says there is no content to check about a section holding a content
+    change -- so a truncated or hand-edited header block turned real hunks
+    into a line reporting that nothing needed reading. A mode-only change has
+    no hunks; :func:`_headers` stops at the first one, so which of the two
+    this is costs a single line.
     """
     if read.old_raw is None and read.new_raw is None:
+        if _opens_hunk(lines, read.next):
+            return _section_error(
+                label,
+                ordinal,
+                resume,
+                "this section has hunks but neither a '---' nor a '+++' header, so the file "
+                "they change is not stated; a mode-only change carries no hunks",
+            )
         if label is None:
             return _section_error(
                 None,
@@ -568,6 +597,11 @@ def _side(raw: str, prefix: str) -> _Side:
     return _Side(path, "", value)
 
 
+def _opens_hunk(lines: Sequence[str], at: int) -> bool:
+    """True when ``at`` is a line inside the diff and that line opens a hunk."""
+    return at < len(lines) and lines[at].startswith("@@")
+
+
 def _skip_to_next_section(lines: Sequence[str], at: int, *, git_only: bool) -> int:
     """Return where the section containing ``at`` ends.
 
@@ -676,6 +710,40 @@ def _is_stray_body(line: str) -> bool:
     return line[0] in " -+"
 
 
+def _unread_content(lines: Sequence[str], at: int, end: int) -> bool:
+    """True when a section still holds hunk content the hunk loop did not read.
+
+    :func:`_is_stray_body` judges one line, and one line cannot tell a hunk
+    that outran its counts from a hunk that ended: a bare empty line and
+    ``--`` follow a *correct* hunk in real output, so both are read as the
+    end. The consequence was not bounded to the lines they hid. The loop that
+    reads hunks stops at anything that is not ``@@``, and the scan above it
+    passes over anything that does not open a file section -- and ``@@`` opens
+    neither -- so a hunk that ended one line early took every later hunk of
+    the file with it, silently, and the section reported as clean.
+
+    This is the same question asked of the section rather than of the line,
+    which is where the answer exists. Two shapes count as content:
+
+    * a well-formed ``@@`` header anywhere between here and the section's end,
+      which is a hunk nothing read;
+    * hunk body at the first line that is neither empty nor ``--``, which is
+      the tail of a hunk whose header undercounted it.
+
+    Neither shape occurs in the trailer these two lines really do introduce.
+    ``git format-patch`` writes ``-- `` and then a version, and ``git log -p``
+    an empty line and then ``commit <sha>``; a commit message body reached
+    this way is indented, and an indented line is not a hunk header.
+    """
+    stop = min(end, len(lines))
+    if any(_HUNK_HEADER.match(lines[index]) is not None for index in range(at, stop)):
+        return True
+    index = at
+    while index < stop and (lines[index] == "" or lines[index].rstrip() == _TRAILER):
+        index += 1
+    return index < stop and _is_stray_body(lines[index])
+
+
 def _hunks(
     lines: Sequence[str],
     at: int,
@@ -703,12 +771,21 @@ def _hunks(
             f"{target.path} has a file header but no hunks, so there is no change to read",
         )
 
+    header = lines[i]
     while i < len(lines) and lines[i].startswith("@@"):
+        header = lines[i]
         outcome, i, floor = _hunk(lines, i, target, index, floor)
         if isinstance(outcome, BlockError):
             return _Section(tuple(edits), (outcome,), (), index + 1, resume)
         edits.append(outcome)
         index += 1
+
+    if _unread_content(lines, i, resume):
+        # Blamed on the last header read: it is the one whose declared counts
+        # ended the hunk before its body did.
+        reason = _count_mismatch(target.path, header)
+        refusal = BlockError(index, target.path, reason)
+        return _Section(tuple(edits), (refusal,), (), index + 1, resume)
 
     return _Section(tuple(edits), (), (), index, i)
 

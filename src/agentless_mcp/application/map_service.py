@@ -169,6 +169,30 @@ class MapService:
         # the CLI -- which declares --max-files as a bare type=int -- honoured
         # anything. Enforced in the service means both doors inherit it.
         bounds.within(max_files, MIN_MAX_FILES, MAX_MAX_FILES, "max_files")
+        # ``budget`` had the same shape and one door fewer: projectconfig
+        # enforced MIN_BUDGET..MAX_BUDGET for a `.agentless-mcp.json` entry and
+        # the MCP schema published it, while `--budget` parsed only "a positive
+        # integer" and no service checked it at all. `map --budget 1` therefore
+        # exited 0 reporting that the budget left room for no symbols, which is
+        # a fact about the request dressed as one about the repository.
+        #
+        # This call is the rule. The other two places the range appears --
+        # `projectconfig._bounded_int` for the config file and the
+        # `Field(ge=, le=)` on the MCP parameter -- are re-exports of it, kept
+        # because each door has to refuse in its own idiom: a config file
+        # warns and falls back, and a wire schema has to advertise the range
+        # before the call is made. A drift between the three is fixed here and
+        # propagated outward, never by editing whichever copy turned up first.
+        #
+        # ``None`` is the auto-size request rather than a value, so it is not a
+        # number to bound.
+        if request.budget is not None:
+            bounds.within(
+                request.budget,
+                projectconfig.MIN_BUDGET,
+                projectconfig.MAX_BUDGET,
+                "budget",
+            )
         granularity = projectconfig.resolve(
             request.granularity, ctx.config.granularity, GRANULARITY_FUNCTION
         )

@@ -1,11 +1,13 @@
 """The reference graph and the personalized PageRank over it."""
 
 import math
+from contextlib import contextmanager
 from dataclasses import replace
 from types import MappingProxyType
 
 import pytest
 
+from agentless_mcp.core import graph as graph_module
 from agentless_mcp.core.graph import (
     AMBIGUOUS_MATCH_MULTIPLIER,
     DEFAULT_MAX_ITERATIONS,
@@ -59,6 +61,42 @@ def graph_of(root, extractor):
     """Scan a repository and build its reference graph."""
     scan = scan_repo(root, extractor)
     return build_graph(scan, build_ref_index(scan))
+
+
+# A `src/` layout, where a package is imported by a name that matches no path
+# from the repository root and only the tail search can answer it.
+SRC_LAYOUT = {
+    "src/store/__init__.py": "from store.ledger import post\n",
+    "src/store/ledger.py": "def post(entry):\n    return entry\n",
+    "src/store/audit/__init__.py": "",
+    "src/store/audit/trail.py": (
+        "from store import ledger\nfrom store.audit import trail\n\n\n"
+        "def keep(entry):\n    return ledger.post(entry)\n"
+    ),
+    "app.py": "from store.audit import trail\n\n\ndef run(entry):\n    return trail.keep(entry)\n",
+}
+
+
+@contextmanager
+def scanned_path_set():
+    """Run ``build_graph`` against a plain path set instead of the tail index.
+
+    `resolve_import_target` documents two argument shapes that must answer the
+    same question, and this is how the suite reaches the one `build_graph` does
+    not choose. Restored on the way out, so nothing leaks into another test.
+    """
+    original = graph_module.PathIndex
+
+    class _PlainSet:
+        @classmethod
+        def build(cls, paths):
+            return frozenset(paths)
+
+    graph_module.PathIndex = _PlainSet
+    try:
+        yield
+    finally:
+        graph_module.PathIndex = original
 
 
 def js_import(module):
@@ -459,10 +497,113 @@ class TestPathIndex:
         assert "gone.py" not in index
 
     def test_a_build_resolves_the_same_edges_through_the_index(self, tmp_path, extractor):
-        """``build_graph`` hands the index over; the edges must not move."""
-        graph = graph_of(write(tmp_path, PACKAGE), extractor)
+        """``build_graph`` hands the index over; the whole edge map must not move.
 
-        assert graph.edges[("pkg/sub/user.py", "pkg/helper.py")] >= IMPORT_EDGE_WEIGHT
+        The index replaced a scan that allocated a ``PurePosixPath`` per known
+        path per imported name, and the claim behind that replacement is that
+        the edge set is unchanged -- not that it is similar, and not that one
+        edge of it survived. Asserting one edge above a weight floor would pass
+        with every other edge dropped, with every weight changed, and with
+        extra edges added, so the whole mapping is compared.
+
+        Both weights and endpoints: a tail that resolves to a different file
+        moves an edge, and a name counted twice moves only a number.
+        """
+        root = write(tmp_path, PACKAGE | SRC_LAYOUT)
+        scan = scan_repo(root, extractor)
+        index = build_ref_index(scan)
+
+        through_index = build_graph(scan, index)
+        with scanned_path_set():
+            through_scan = build_graph(scan, index)
+
+        assert dict(through_index.edges) == dict(through_scan.edges)
+        assert through_index.nodes == through_scan.nodes
+        # The comparison is only worth what the fixture exercises, so the
+        # fixture has to produce edges at all.
+        assert through_index.edges
+
+
+class TestPackageEntryPoints:
+    """A package is imported by its directory's name, not by its file's.
+
+    `from agentless_mcp.application import X` names
+    `src/agentless_mcp/application/__init__.py`. The direct-candidate loop
+    builds that path from the repository root, which is one directory short in
+    a `src/` layout, and the tail search compared the module against the file's
+    own stem -- `.../application/__init__` -- which the module string never
+    ends with. So every package-level import in a `src/` layout resolved to
+    nothing: 115 statements on this repository, each an edge missing from the
+    import graph and each able to hide a cycle routed through an `__init__.py`.
+    """
+
+    PACKAGED = (
+        "src/store/__init__.py",
+        "src/store/ledger.py",
+        "src/store/audit/__init__.py",
+    )
+
+    def package_import(self, module):
+        return ImportStatement(
+            module=module,
+            names=("post",),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+        )
+
+    def test_a_single_segment_package_still_names_no_tail(self):
+        """The one package shape the tail rule cannot answer, stated as a limit.
+
+        A module string with no separator has no tail that can land on a path
+        boundary, so `import store` cannot be told from a `store` anywhere in
+        the tree -- see :func:`_module_tail`. Six statements on this repository
+        are in this position, all of them `import agentless_mcp`. Widening the
+        rule to reach them would let `refs` claim `src/mycore/refs.py`, which
+        is the guess this resolver refuses to make.
+        """
+        assert resolve_import_target("app.py", self.package_import("store"), self.PACKAGED) is None
+
+    def test_a_nested_package_import_resolves_to_its_entry_point(self):
+        assert (
+            resolve_import_target("app.py", self.package_import("store.audit"), self.PACKAGED)
+            == "src/store/audit/__init__.py"
+        )
+
+    def test_a_module_still_beats_the_package_that_holds_it(self):
+        # `store.ledger` names a module, and the entry point of the package it
+        # sits in must not answer for it.
+        assert (
+            resolve_import_target("app.py", self.package_import("store.ledger"), self.PACKAGED)
+            == "src/store/ledger.py"
+        )
+
+    def test_the_table_answers_a_package_the_same_way_the_scan_does(self):
+        index = PathIndex.build(self.PACKAGED)
+        for module in ("store", "store.audit", "store.ledger", "store.missing"):
+            probe = self.package_import(module)
+            assert resolve_import_target("app.py", probe, index) == resolve_import_target(
+                "app.py", probe, list(self.PACKAGED)
+            ), module
+
+    def test_an_ecmascript_directory_index_answers_for_its_directory(self):
+        # The same rule reaches `index.ts`, which is where the entry-point
+        # stems come from: they are derived from `_MODULE_SUFFIXES`.
+        known = ("packages/ui/src/index.ts", "packages/ui/src/button.ts")
+        statement = ImportStatement(
+            module="ui/src",
+            names=(),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+        )
+
+        assert resolve_import_target("app.ts", statement, known) == "packages/ui/src/index.ts"
+
+    def test_a_package_import_becomes_a_graph_edge(self, tmp_path, extractor):
+        graph = graph_of(write(tmp_path, SRC_LAYOUT), extractor)
+
+        assert ("app.py", "src/store/audit/__init__.py") in graph.edges
 
 
 class TestImportResolution:

@@ -88,6 +88,15 @@ _MODULE_SUFFIXES: tuple[str, ...] = (
     "",
 )
 
+# The file names that make a directory importable under the directory's own
+# name. Derived from the entry-point suffixes above so the two cannot drift:
+# a suffix added there is answered by the tail search without a second edit.
+_PACKAGE_ENTRY_STEMS: frozenset[str] = frozenset(
+    PurePosixPath(suffix).with_suffix("").name
+    for suffix in _MODULE_SUFFIXES
+    if suffix.startswith("/")
+)
+
 
 @dataclass(frozen=True)
 class RefGraph:
@@ -174,12 +183,13 @@ class PathIndex:
         """Index ``paths`` once, for a caller that will resolve many imports."""
         by_tail: dict[str, str] = {}
         for path in paths:
-            segments = _stem(path).split("/")
-            for start in range(len(segments)):
-                tail = "/".join(segments[start:])
-                held = by_tail.get(tail)
-                if held is None or (len(path), path) < (len(held), held):
-                    by_tail[tail] = path
+            for stem in _module_stems(path):
+                segments = stem.split("/")
+                for start in range(len(segments)):
+                    tail = "/".join(segments[start:])
+                    held = by_tail.get(tail)
+                    if held is None or (len(path), path) < (len(held), held):
+                        by_tail[tail] = path
         return cls(paths=frozenset(paths), by_tail=MappingProxyType(by_tail))
 
     def __contains__(self, path: object) -> bool:
@@ -529,14 +539,36 @@ def _suffix_match(module: str, known: Collection[str]) -> str | None:
 
 
 def _ends_on_boundary(path: str, tail: str) -> bool:
-    """True when ``path``'s extension-less form ends with a whole ``tail``."""
-    stem = _stem(path)
-    return stem == tail or stem.endswith("/" + tail)
+    """True when one of ``path``'s module spellings ends with a whole ``tail``."""
+    return any(stem == tail or stem.endswith("/" + tail) for stem in _module_stems(path))
 
 
 def _stem(path: str) -> str:
     """Return ``path`` without its final extension, in posix form."""
     return PurePosixPath(path).with_suffix("").as_posix()
+
+
+def _module_stems(path: str) -> tuple[str, ...]:
+    """Return every module string ``path`` answers to, extension-less.
+
+    One for an ordinary file, two for a package entry point. A package is
+    imported by the name of its directory -- `from agentless_mcp.application
+    import X` names `application/__init__.py` -- and the tail search compared
+    only against the file's own stem, which ends `.../application/__init__`
+    and therefore matched nothing. In a `src/` layout the direct-candidate
+    loop cannot cover for that: it builds `agentless_mcp/application/__init__.py`
+    from the repository root and the file is one directory further down.
+
+    Measured on this repository before the second stem was added: 115 of the
+    1199 import statements resolved to nothing, and every one of them named a
+    package. Each is an edge missing from the import graph, so a cycle routed
+    through a package's `__init__.py` could not be seen at all.
+    """
+    stem = _stem(path)
+    head, separator, last = stem.rpartition("/")
+    if separator and last in _PACKAGE_ENTRY_STEMS:
+        return (stem, head)
+    return (stem,)
 
 
 def _module_tail(module: str) -> str:

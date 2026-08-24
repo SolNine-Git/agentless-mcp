@@ -276,13 +276,26 @@ def worktree(root: Path) -> Iterator[Path]:
         )
         raise RepoResolutionError(message)
 
-    scratch = scratch_root()
     # Keyed on the property the module docstring promises -- the scratch is
     # never inside the target -- rather than on any particular way of getting
-    # it wrong. `cache_root` now refuses a relative XDG_CACHE_HOME, which was
-    # one route in; an operator pointing XDG_CACHE_HOME at a path inside the
-    # repository is another, and this catches both. Checked before mkdir, so
-    # a refused location is not created on the way to being refused.
+    # it wrong. `cache_root` refuses a relative XDG_CACHE_HOME, which was one
+    # route in; an operator pointing XDG_CACHE_HOME at a path inside the
+    # repository is another, and this catches both.
+    #
+    # Compared as real paths on BOTH sides. `top` already is one --
+    # `gitinfo.git_root` resolves what it returns -- and comparing an
+    # unresolved scratch against it keyed the rule on spelling rather than on
+    # location. Reproduced: with XDG_CACHE_HOME pointing at a symlink into the
+    # repository, `top in scratch.parents` was False and the worktrees were
+    # created inside the repository under analysis.
+    #
+    # `resolve()` needs no existence: it follows the symlinks in the part of
+    # the path that does exist and appends the rest, which is exactly the
+    # scratch's situation on a first run. Resolved before the check and before
+    # the mkdir, so a refused location is neither created on the way to being
+    # refused nor re-read after it was approved -- resolving afterwards would
+    # trade the lexical hole for a TOCTOU one.
+    scratch = scratch_root().resolve()
     if scratch == top or top in scratch.parents:
         message = (
             f"scratch worktrees would be created at {scratch}, inside the repository "

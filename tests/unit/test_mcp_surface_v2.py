@@ -14,11 +14,15 @@ import asyncio
 import json
 import logging
 import sqlite3
+from dataclasses import dataclass
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from agentless_mcp.adapters.cli.formatting import EXIT_OK
+from agentless_mcp.adapters.cli.main import CliServices
+from agentless_mcp.adapters.cli.main import run as cli_run
 from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.server import (
     SURFACE_BOTH,
@@ -31,10 +35,15 @@ from agentless_mcp.adapters.mcp.server import (
     parse_args,
 )
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
+from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.tokens import Chars4Counter
 
 EXPECTED_TOOLS_V2 = {
     "orient",
@@ -755,3 +764,160 @@ class TestTheRefusalContractDoesNotDependOnTheEnvironment:
         assert local_path not in message
         assert "defect in agentless-mcp" in message
         assert local_path in caplog.text
+
+
+# --------------------------------------------------------------------------
+# Two-door parity: one value, both front doors, one verdict.
+# --------------------------------------------------------------------------
+
+# The gate the parity claim lacked. `test_front_doors` pins each surface --
+# which options exist, which constants are published -- and a surface
+# inventory cannot see the defect that motivated it, because both doors
+# *declared* `limit` while only one *enforced* a ceiling on it. So
+# `cycles --limit 100000` was answered on the command line and refused over
+# MCP, for the same repository, and nothing failed.
+
+
+@dataclass(frozen=True)
+class DoorCase:
+    """One value, spelled for each door, with the verdict both must reach."""
+
+    name: str
+    argv: tuple[str, ...]
+    tool: str
+    arguments: dict[str, object]
+    verdict: str
+
+
+OUT_OF_RANGE = (
+    DoorCase(
+        "limit-above",
+        ("cycles", "--limit", "100000"),
+        "orient",
+        {"operation": "cycles", "limit": 100000},
+        "refused",
+    ),
+    DoorCase(
+        "limit-zero",
+        ("cycles", "--limit", "0"),
+        "orient",
+        {"operation": "cycles", "limit": 0},
+        "refused",
+    ),
+    DoorCase(
+        "resolution-above",
+        ("communities", "--resolution", "1000"),
+        "orient",
+        {"operation": "communities", "resolution": 1000.0},
+        "refused",
+    ),
+    DoorCase(
+        "max-nodes-above",
+        ("diagram", "--max-nodes", "100000"),
+        "orient",
+        {"operation": "diagram", "max_nodes": 100000},
+        "refused",
+    ),
+    DoorCase(
+        "max-edges-above",
+        ("diagram", "--max-edges", "100000"),
+        "orient",
+        {"operation": "diagram", "max_edges": 100000},
+        "refused",
+    ),
+    DoorCase(
+        "depth-above",
+        ("tree", "--depth", "999"),
+        "read",
+        {"operation": "dir", "depth": 999},
+        "refused",
+    ),
+    DoorCase(
+        "max-entries-above",
+        ("tree", "--max-entries", "999999"),
+        "read",
+        {"operation": "dir", "max_entries": 999999},
+        "refused",
+    ),
+    DoorCase(
+        "context-above",
+        ("slice", "core.py", "--context", "999"),
+        "read",
+        {"operation": "slice", "path": "core.py", "lines": [[1, 2]], "context_lines": 999},
+        "refused",
+    ),
+)
+
+# The mirror: a value inside the range, which both doors must ACCEPT. A parity
+# test that only checked refusals would pass equally well against two doors
+# that refused everything.
+IN_RANGE = (
+    DoorCase(
+        "limit-at-ceiling",
+        ("cycles", "--limit", "500"),
+        "orient",
+        {"operation": "cycles", "limit": 500},
+        "accepted",
+    ),
+    DoorCase(
+        "max-edges-at-floor",
+        ("diagram", "--max-edges", "0"),
+        "orient",
+        {"operation": "diagram", "max_edges": 0},
+        "accepted",
+    ),
+    DoorCase(
+        "depth-at-ceiling",
+        ("tree", "--depth", "20"),
+        "read",
+        {"operation": "dir", "depth": 20},
+        "accepted",
+    ),
+    DoorCase(
+        "context-at-ceiling",
+        ("slice", "core.py", "--context", "200"),
+        "read",
+        {"operation": "slice", "path": "core.py", "lines": [[1, 2]], "context_lines": 200},
+        "accepted",
+    ),
+)
+
+
+def cli_verdict(root, argv):
+    """Run one CLI invocation in process and say whether it was refused."""
+    extractor = TreeSitterExtractor()
+    counter = Chars4Counter()
+    patches = PatchService(extractor)
+    wiring = CliServices(
+        maps=MapService(extractor, counter),
+        views=ViewService(extractor),
+        symbols=SymbolService(extractor, counter),
+        graphs=GraphService(extractor),
+        patches=patches,
+        validates=ValidateService(patches),
+        lints=LintService(extractor),
+        counter=counter,
+        extractor=extractor,
+    )
+    return "accepted" if cli_run([*argv, "--repo", str(root)], wiring) == EXIT_OK else "refused"
+
+
+def mcp_verdict(server, root, case):
+    """Call the same parameter over MCP and say whether it was refused."""
+    try:
+        call(server, case.tool, {"repo_root": str(root), **case.arguments})
+    except (ToolError, AgentlessError):
+        # A wire-schema rejection reaches the client wrapped in ToolError; a
+        # service refusal is this package's own exception.
+        return "refused"
+    return "accepted"
+
+
+class TestTheTwoDoorsAgree:
+    """A bound is a bound on both doors, or it is a difference between them."""
+
+    @pytest.mark.parametrize("case", [*OUT_OF_RANGE, *IN_RANGE], ids=lambda case: case.name)
+    def test_both_doors_reach_the_same_verdict(self, services, one_repo, case):
+        server = build_server(ToolHandlers([one_repo], services, auto_index=False), SURFACE_V2)
+        assert cli_verdict(one_repo, case.argv) == case.verdict
+        assert mcp_verdict(server, one_repo, case) == case.verdict

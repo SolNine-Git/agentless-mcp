@@ -134,3 +134,64 @@ class TestAFileTheReaderSkippedIsReportedUnread:
 
         messages = [finding.message for finding in by_id(view)["01-good"].findings]
         assert not any("had no text supplied" in message for message in messages)
+
+
+class TestAManifestSymlinkedOutOfTheRepositoryIsRefused:
+    """A repository is a thing people clone from strangers.
+
+    ``read_bounded`` follows symlinks deliberately and states containment as
+    its caller's job. These two reads did not do it, so a repository whose
+    ``pyproject.toml`` was a symlink to any file the user could read had that
+    file read and its parsed package names reported as the repository's own
+    declared dependencies. Reproduced during the audit; the base commit
+    refused it only by accident, through an ``O_NOFOLLOW`` that also refused
+    every legitimate in-repository symlink.
+    """
+
+    def test_a_symlinked_pyproject_contributes_nothing_and_says_so(self, tmp_path):
+        outside = tmp_path / "outside.toml"
+        outside.write_text(
+            '[project]\nname = "x"\ndependencies = ["exfiltrated"]\n', encoding="utf-8"
+        )
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / patchlint.PYPROJECT_NAME).symlink_to(outside)
+
+        declared = lint_service.read_declared_dependencies(root)
+
+        assert "exfiltrated" not in declared.packages
+        assert declared.sources == ()
+        assert declared.warnings == (
+            f"{patchlint.PYPROJECT_NAME} not read: {lint_service.MANIFEST_OUTSIDE_ROOT}",
+        )
+
+    def test_a_symlinked_requirements_file_contributes_nothing_and_says_so(self, tmp_path):
+        outside = tmp_path / "outside.txt"
+        outside.write_text("exfiltrated\n", encoding="utf-8")
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / "requirements.txt").symlink_to(outside)
+
+        declared = lint_service.read_declared_dependencies(root)
+
+        assert "exfiltrated" not in declared.packages
+        assert declared.sources == ()
+        assert declared.warnings == (
+            f"requirements.txt not read: {lint_service.MANIFEST_OUTSIDE_ROOT}",
+        )
+
+    def test_a_manifest_symlinked_within_the_repository_is_still_read(self, tmp_path):
+        # The containment rule, not a blanket symlink refusal: this is exactly
+        # the case `O_NOFOLLOW` used to get wrong in the other direction.
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / "real.toml").write_text(
+            '[project]\nname = "x"\ndependencies = ["declared"]\n', encoding="utf-8"
+        )
+        (root / patchlint.PYPROJECT_NAME).symlink_to(root / "real.toml")
+
+        declared = lint_service.read_declared_dependencies(root)
+
+        assert "declared" in declared.packages
+        assert declared.sources == (patchlint.PYPROJECT_NAME,)
+        assert declared.warnings == ()

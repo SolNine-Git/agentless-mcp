@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.adapters.cli.formatting import EXIT_OK
+from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.lint_service import LintService
@@ -33,7 +33,7 @@ from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, gitinfo, refs
+from agentless_mcp.core import cache, gitinfo, grammars, patchlint, refs
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import cachedir, filelock, fslimits
 from agentless_mcp.util.errors import CacheLocked, OperationFailed
@@ -668,6 +668,68 @@ class TestCommandLine:
             "indexed 3, reused 0, pruned 0, skipped 0, errors 0:"
         )
 
+    # The two ways ``build_index`` fails that are not the package's own error
+    # class, so neither reached the handler in ``run``. Faked rather than
+    # staged: a full disk is not something a hermetic test can arrange, and a
+    # read-only cache directory is not refused the same way on every platform.
+    STORAGE_FAILURES = (
+        sqlite3.OperationalError("attempt to write a readonly database"),
+        sqlite3.DatabaseError("database disk image is malformed"),
+        OSError(28, "No space left on device"),
+        PermissionError(13, "Permission denied"),
+    )
+
+    @pytest.mark.parametrize("error", STORAGE_FAILURES, ids=lambda e: type(e).__name__)
+    def test_a_cache_that_cannot_be_written_is_a_refusal_and_not_a_traceback(
+        self, repo, services, capsys, monkeypatch, error
+    ):
+        """``build_index`` opens and writes SQLite, so it raises what those raise.
+
+        ``sqlite3.Error`` and ``OSError`` are not ``AgentlessError``, so the
+        handler in ``run`` did not catch either one and this command ended in
+        a raw traceback -- which also puts an absolute local path and the
+        package's own frames on stderr, for a condition the operator can act
+        on if they are simply told it.
+        """
+
+        def refuse(*arguments, **keywords):
+            raise error
+
+        monkeypatch.setattr(cache, "build_index", refuse)
+
+        assert invoke(services, repo, "index") == EXIT_DOMAIN
+
+        captured = capsys.readouterr()
+        assert captured.out == "", "a refusal must not also print a partial report"
+        assert "Traceback" not in captured.err
+
+        # Read as one line rather than as a blob. `fail` puts a refusal on
+        # exactly one line so that whatever splits stderr reads one refusal
+        # and not three, and this repository is not a git tree, so a
+        # degraded-repo note shares the stream with it.
+        (refusal,) = [line for line in captured.err.splitlines() if "tag cache" in line]
+        assert refusal.startswith("agentless-mcp: cannot build the tag cache for ")
+        assert str(repo.resolve()) in refusal
+        assert str(error) in refusal
+
+    def test_a_refused_index_prints_no_json_for_a_caller_parsing_stdout(
+        self, repo, services, capsys, monkeypatch
+    ):
+        """``--json`` fails the same way: an agent must not read half a document."""
+
+        def refuse(*arguments, **keywords):
+            message = "attempt to write a readonly database"
+            raise sqlite3.OperationalError(message)
+
+        monkeypatch.setattr(cache, "build_index", refuse)
+
+        assert invoke(services, repo, "index", "--json") == EXIT_DOMAIN
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        (refusal,) = [line for line in captured.err.splitlines() if "tag cache" in line]
+        assert refusal.startswith("agentless-mcp: cannot build the tag cache for ")
+
     def test_index_json_carries_the_same_numbers(self, repo, services, capsys):
         assert invoke(services, repo, "index", "--json") == EXIT_OK
         document = json.loads(capsys.readouterr().out)
@@ -1300,3 +1362,464 @@ class TestATransientReadErrorKeepsTheDatabase:
             connection.execute("CREATE TABLE unrelated (x INTEGER)")
 
             assert cache._read_meta(connection) is None
+
+
+# ---------------------------------------------------------------------------
+# The schemas this branch's four version bumps left behind
+# ---------------------------------------------------------------------------
+#
+# Verbatim from the commits that wrote them, because the migration has to be
+# tested against what a user's cache actually holds and not against a
+# paraphrase of it. They are historical constants: nothing can change them
+# now. What separates them is the columns this build no longer supplies --
+# every one of them declared NOT NULL, which is why reading an old database
+# rather than dropping it fails on the first file of every index run.
+
+_META_TABLE = """
+CREATE TABLE meta (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    schema_version INTEGER NOT NULL,
+    repo_root TEXT NOT NULL,
+    generation_tree_oid TEXT NOT NULL,
+    head_sha TEXT,
+    created_at TEXT NOT NULL
+);
+"""
+
+# v7 through v9: `files.size`, `files.lang`, `tags.is_def` and `tags.qualname`
+# are all still present and all still NOT NULL.
+_FILES_AND_TAGS_BEFORE_V10 = """
+CREATE TABLE files (
+    path TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    lang TEXT NOT NULL,
+    grammar_version TEXT NOT NULL
+);
+CREATE TABLE tags (
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    is_def INTEGER NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER,
+    signature TEXT NOT NULL,
+    parent TEXT NOT NULL,
+    qualname TEXT NOT NULL,
+    docstring TEXT NOT NULL,
+    decorators TEXT NOT NULL,
+    bases TEXT NOT NULL,
+    language TEXT NOT NULL,
+    is_public INTEGER NOT NULL,
+    is_async INTEGER NOT NULL,
+    rationales TEXT NOT NULL,
+    ordinal INTEGER NOT NULL
+);
+"""
+
+_FILES_AND_TAGS_V10 = """
+CREATE TABLE files (
+    path TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    grammar_version TEXT NOT NULL
+);
+CREATE TABLE tags (
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER,
+    signature TEXT NOT NULL,
+    parent TEXT NOT NULL,
+    docstring TEXT NOT NULL,
+    decorators TEXT NOT NULL,
+    bases TEXT NOT NULL,
+    language TEXT NOT NULL,
+    is_public INTEGER NOT NULL,
+    is_async INTEGER NOT NULL,
+    rationales TEXT NOT NULL,
+    ordinal INTEGER NOT NULL
+);
+"""
+
+# The imports table is what v8 and v9 changed, and `resolved_path` survives
+# all four of them -- it is v11 that drops it.
+_BINDS_ALL = "    binds_all INTEGER NOT NULL,"
+_ALIAS = "    alias TEXT NOT NULL,"
+_LOCAL_NAMES = "    local_names TEXT NOT NULL,"
+
+_IMPORTS_ADDITIONS = {
+    7: (),
+    8: (_BINDS_ALL,),
+    9: (_BINDS_ALL, _ALIAS, _LOCAL_NAMES),
+    10: (_BINDS_ALL, _ALIAS, _LOCAL_NAMES),
+}
+
+_REFS_AND_INDEXES = """
+CREATE TABLE refs (
+    path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    name TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    qualifier TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (path, sha256, ordinal)
+) WITHOUT ROWID;
+CREATE INDEX tags_path_sha256 ON tags (path, sha256);
+CREATE INDEX imports_path_sha256 ON imports (path, sha256);
+"""
+
+
+def _historic_schema(version):
+    """The complete schema the named version wrote."""
+    files_and_tags = _FILES_AND_TAGS_V10 if version == 10 else _FILES_AND_TAGS_BEFORE_V10
+    lines = [
+        "CREATE TABLE imports (",
+        "    path TEXT NOT NULL,",
+        "    sha256 TEXT NOT NULL,",
+        "    module TEXT NOT NULL,",
+        "    names TEXT NOT NULL,",
+        "    is_relative INTEGER NOT NULL,",
+        "    relative_level INTEGER NOT NULL,",
+        "    line INTEGER NOT NULL,",
+        "    resolved_path TEXT NOT NULL,",
+        *_IMPORTS_ADDITIONS[version],
+        "    ordinal INTEGER NOT NULL",
+        ");",
+    ]
+    return _META_TABLE + files_and_tags + "\n".join(lines) + "\n" + _REFS_AND_INDEXES
+
+
+OLDER_SCHEMA_VERSIONS = (7, 8, 9, 10)
+
+
+def _write_historic_database(repo, version):
+    """Put a database of the named older schema where this repository's cache goes."""
+    database = cache.cache_path(repo.resolve())
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+        connection.executescript(_historic_schema(version))
+        connection.execute(
+            "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
+            "created_at) VALUES (1, ?, ?, 'nogit:0000000000000000', NULL, '2026-01-01T00:00:00Z')",
+            (version, str(repo.resolve())),
+        )
+    return database
+
+
+def _columns(connection, table):
+    """The column names one table declares."""
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+class TestMigrationFromEveryOlderSchema:
+    """A database at any version this branch passed through is rebuilt, not read.
+
+    The read path deletes a database whose schema version it does not
+    recognise, so the only test there was never reached ``_ensure_schema``
+    with an old database at all. This is the upgrade a user actually
+    performs: ``agentless-mcp index`` against the cache the previous release
+    left behind. The merge-base is 7 and the branch bumps four times, so all
+    four have to survive, not only the last one.
+    """
+
+    @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
+    def test_an_older_database_is_rebuilt_with_this_schema(self, repo, extractor, version):
+        database = _write_historic_database(repo, version)
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.files == 3
+        with closing(sqlite3.connect(database)) as connection:
+            assert _columns(connection, "files") == {"path", "sha256", "grammar_version"}
+            assert {"qualname", "is_def"}.isdisjoint(_columns(connection, "tags"))
+            imports = _columns(connection, "imports")
+            assert "resolved_path" not in imports
+            assert {"binds_all", "alias", "local_names"} <= imports
+            assert _read_schema_version(connection) == cache.SCHEMA_VERSION
+
+    @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
+    def test_the_rebuilt_database_reads_back_as_fresh(self, repo, extractor, version):
+        _write_historic_database(repo, version)
+
+        report = cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        assert source.receipt == f"g:{report.generation} fresh"
+
+    def test_a_database_at_this_version_is_kept(self, repo, extractor):
+        """The drop is for a mismatch only: a current database keeps its rows."""
+        cache.build_index(repo, extractor)
+
+        second = cache.build_index(repo, extractor)
+
+        assert second.reused == 3
+        assert second.indexed == 0
+
+
+# Spelled 11, not ``cache.SCHEMA_VERSION - 1``. The literal is the point: it
+# names the one branch-internal version this bump exists to invalidate, and it
+# is what makes reverting the constant to 11 fail these tests instead of
+# quietly re-aiming them at whatever the previous number happens to be.
+INTERMEDIATE_SCHEMA_VERSION = 11
+
+# A name no extractor would ever produce from the fixture source, so finding it
+# after an index run means exactly one thing: the row was carried over.
+STALE_TAG_NAME = "symbol_the_pre_fix_extractor_wrote"
+
+
+def _seed_reusable_database(repo, version):
+    """A cache of ``core.py`` at ``version`` holding a row this build would never write.
+
+    Reusable on purpose. The ``files`` row carries the file's real digest and
+    the installed pack version, which is exactly the pair ``_plan_index``
+    tests before it decides to skip re-extraction, so a run that does not
+    discard this database will keep its rows rather than replace them.
+
+    Built from ``cache._SCHEMA`` rather than from a transcribed older one,
+    because that is the whole difficulty: v11 and v12 declare the same
+    columns. Nothing about the shape can fail, so nothing about the shape can
+    catch a missed discard either.
+    """
+    database = cache.cache_path(repo.resolve())
+    database.parent.mkdir(parents=True, exist_ok=True)
+    digest = cache.content_digest((repo / "core.py").read_text(encoding="utf-8"))
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+        connection.executescript(cache._SCHEMA)
+        connection.execute(
+            "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
+            "created_at) VALUES (1, ?, ?, 'nogit:0000000000000000', NULL, '2026-01-01T00:00:00Z')",
+            (version, str(repo.resolve())),
+        )
+        connection.execute(
+            "INSERT INTO files (path, sha256, grammar_version) VALUES ('core.py', ?, ?)",
+            (digest, grammars.pack_version()),
+        )
+        connection.execute(
+            "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, signature, "
+            "parent, docstring, decorators, bases, language, is_public, is_async, rationales, "
+            "ordinal) VALUES ('core.py', ?, ?, 'function', 1, 1, 'def stale()', '', '', "
+            "'[]', '[]', 'python', 1, 0, '[]', 0)",
+            (digest, STALE_TAG_NAME),
+        )
+    return database
+
+
+class TestAnIntermediateCacheIsDiscardedForItsContents:
+    """The four older schemas are self-enforcing. This one is not.
+
+    A v7 through v10 database carries columns this build no longer writes, so
+    skipping the drop fails loudly on the first INSERT of every run -- the
+    tests above would catch it whatever they asserted. v11 declares exactly
+    the columns v12 declares. Nothing fails; the rows are simply the ones the
+    pre-fix extractor wrote, with C and C++ methods missing, import bindings
+    and ``is_public`` wrong, and the reuse gate happily skipping past them.
+
+    No released build ever wrote v11 -- ``main`` is still at v7 -- so this
+    protects nobody's installed cache and every developer who ran this branch
+    mid-flight. It also only works because the staleness check is ``!=``:
+    these tests pass at 12 and fail at 11, which is what makes the bump
+    load-bearing rather than decorative.
+    """
+
+    def test_the_stale_rows_are_re_extracted_rather_than_reused(self, repo, extractor):
+        database = _seed_reusable_database(repo, INTERMEDIATE_SCHEMA_VERSION)
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.reused == 0, "rows from another version were carried over"
+        with closing(sqlite3.connect(database)) as connection:
+            names = {row[0] for row in connection.execute("SELECT name FROM tags")}
+            assert _read_schema_version(connection) == cache.SCHEMA_VERSION
+
+        assert STALE_TAG_NAME not in names, "a pre-fix row survived the version bump"
+        assert {"quote", "PriceBook", "cost_of"} <= names
+
+    def test_a_reader_is_never_served_the_stale_rows(self, repo, extractor):
+        """The harm, stated directly: what an answer is built from.
+
+        The read path has its own copy of the same check, so it is its own
+        test. Left un-discarded, this database answers a query about an
+        untouched file from rows nobody re-derived.
+        """
+        _seed_reusable_database(repo, INTERMEDIATE_SCHEMA_VERSION)
+        text = (repo / "core.py").read_text(encoding="utf-8")
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        served = {symbol.name for symbol in source.symbols_for(text, "python", "core.py")}
+
+        assert STALE_TAG_NAME not in served, "a reader was served a pre-fix row"
+        assert {"quote", "PriceBook", "cost_of"} <= served
+
+    def test_a_database_from_a_newer_build_is_discarded_too(self, repo, extractor):
+        """The check is "not this version", not "older than this version".
+
+        The same developer who holds a stale v11 cache is the one who switches
+        back and forth, so the newer-than direction is not hypothetical: a
+        build that reads a database written by a later one is reading rows
+        whose meaning it does not know, which is the same defect pointed the
+        other way. Written as ``<`` the drop would fire in only one direction
+        and this case would be served rather than rebuilt.
+        """
+        database = _seed_reusable_database(repo, cache.SCHEMA_VERSION + 1)
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.reused == 0, "rows written by a newer build were carried over"
+        with closing(sqlite3.connect(database)) as connection:
+            names = {row[0] for row in connection.execute("SELECT name FROM tags")}
+            assert _read_schema_version(connection) == cache.SCHEMA_VERSION
+
+        assert STALE_TAG_NAME not in names
+
+
+class TestTheMigrationIsOneTransaction:
+    """An interrupted migration must leave a whole database, not half of each.
+
+    The drop is five statements and the create is five more. Outside a
+    transaction each commits on its own, so a process killed between them
+    leaves tables from both schemas and a ``meta`` row that may or may not
+    have survived to say which. Recovery then rests on the order the drops
+    happen to be written in. Inside one, there is no such state to land in.
+    """
+
+    def test_a_migration_that_does_not_commit_leaves_the_old_schema(self, tmp_path):
+        database = tmp_path / "tags.db"
+        with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+            connection.executescript(_historic_schema(7))
+            connection.executescript(cache._MIGRATE_SCHEMA.replace(cache._COMMIT, "ROLLBACK;\n"))
+
+            assert "size" in _columns(connection, "files")
+            assert "qualname" in _columns(connection, "tags")
+            assert "resolved_path" in _columns(connection, "imports")
+
+    def test_a_create_that_does_not_commit_leaves_no_tables(self, tmp_path):
+        database = tmp_path / "tags.db"
+        with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+            connection.executescript(cache._CREATE_SCHEMA.replace(cache._COMMIT, "ROLLBACK;\n"))
+
+            assert not cache._has_table(connection, "meta")
+            assert not cache._has_table(connection, "files")
+
+
+class TestAnUnreadableMetaRowIsNotAnAbsentOne:
+    """``_ensure_schema`` swallowed the error ``_read_meta`` was changed to raise.
+
+    Reported as "no meta row", it took the not-stale branch, left every old
+    table in place behind ``CREATE TABLE IF NOT EXISTS``, and made
+    ``_open_for_write``'s own discard-and-rebuild handler unreachable for the
+    case its docstring names.
+    """
+
+    def test_a_meta_row_that_cannot_be_read_discards_and_rebuilds(
+        self, repo, extractor, monkeypatch
+    ):
+        cache.build_index(repo, extractor)
+        attempts = []
+        real = cache._read_meta
+
+        def refuse_once(connection):
+            attempts.append(1)
+            if len(attempts) == 1:
+                message = "database disk image is malformed"
+                raise sqlite3.DatabaseError(message)
+            return real(connection)
+
+        monkeypatch.setattr(cache, "_read_meta", refuse_once)
+
+        report = cache.build_index(repo, extractor)
+
+        assert len(attempts) == 2, "the second open must re-read the meta row it just rebuilt"
+        assert report.files == 3
+        assert report.reused == 0, "rows from a database judged unusable were read back as good"
+
+
+class TestTheFileScanObeysTheSameRuleAsTheMetaRead:
+    """``_load_entries`` answered a failed scan with an empty mapping.
+
+    That is the same swallow ``_read_meta`` was fixed for, one table over,
+    and it degrades worse: an empty mapping is not "no index", it is "an
+    index of a repository with no files", so every digest missed, every file
+    was re-parsed, and the receipt still said ``fresh``.
+    """
+
+    def test_an_unreadable_file_table_is_not_an_empty_one(self, tmp_path):
+        database = tmp_path / "tags.db"
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute("CREATE TABLE unrelated (x INTEGER)")
+
+            with pytest.raises(sqlite3.OperationalError):
+                cache._load_entries(connection)
+
+    def test_a_missing_file_table_degrades_without_deleting(self, repo, extractor):
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo)
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute("DROP TABLE files")
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        assert "cache unreadable" in source.receipt
+        assert "fresh" not in source.receipt
+        assert database.exists()
+
+
+class TestAnUnreadableIndexSaysWhyItIsRefreshed:
+    """An unreadable index starts a full run, so it has to say that is why.
+
+    Answered silently, a failing disk and an ordinary stale generation stamp
+    produced the same refresh and left nothing behind to tell them apart.
+    """
+
+    def test_a_failed_open_is_logged_with_the_database_and_the_reason(
+        self, repo, extractor, monkeypatch, caplog
+    ):
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo.resolve())
+
+        def refuse(path):
+            message = "unable to open database file"
+            raise sqlite3.OperationalError(message)
+
+        monkeypatch.setattr(cache, "_connect", refuse)
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._index_current(database, repo.resolve(), "nogit:whatever") is False
+
+        assert str(database) in caplog.text
+        assert "unable to open database file" in caplog.text
+
+    def test_a_failed_meta_read_is_logged_with_the_database_and_the_reason(
+        self, repo, extractor, monkeypatch, caplog
+    ):
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo.resolve())
+
+        def refuse(connection):
+            message = "disk I/O error"
+            raise sqlite3.OperationalError(message)
+
+        monkeypatch.setattr(cache, "_read_meta", refuse)
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._index_current(database, repo.resolve(), "nogit:whatever") is False
+
+        assert str(database) in caplog.text
+        assert "disk I/O error" in caplog.text
+
+
+def test_the_two_copies_of_the_degraded_error_list_agree():
+    """One rule in two files, and they had already drifted apart once.
+
+    ``core.patchlint`` cannot import ``core.cache`` -- it sits above it in the
+    module graph -- so the list of what a parse is allowed to fail with is
+    written out twice on purpose. At the merge-base the two had four members
+    and five. Nothing but this test keeps them equal.
+    """
+    assert cache.EXTRACTION_FAILURES == patchlint.DEGRADED_ERRORS
+
+
+def _read_schema_version(connection):
+    """The schema version the meta row records."""
+    return connection.execute("SELECT schema_version FROM meta WHERE id = 1").fetchone()[0]

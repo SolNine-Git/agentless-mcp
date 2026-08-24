@@ -57,6 +57,12 @@ jobs:
       # `-rs` reports every skip in this same run, so the skip ceiling below
       # costs nothing extra. The suite is not run twice.
       - name: Test
+        # `shell: bash` is load-bearing, not decoration. The default shell for a
+        # `run:` step is `bash -e {0}`, which does NOT set pipefail, so the exit
+        # status of `... | tee` is tee's and a failing pytest scores a green
+        # step. `shell: bash` runs `bash --noprofile --norc -eo pipefail`, which
+        # is the only form in which the pipeline below reports a test failure.
+        shell: bash
         env:
           COVERAGE_PROCESS_START: pyproject.toml
         run: uv run coverage run -m pytest -rs | tee pytest-output.txt
@@ -103,8 +109,16 @@ jobs:
       # A skip is invisible in the summary line, which is how three tiktoken
       # tests sat un-run in CI for several releases. Assert the count instead
       # of eyeballing it; lower the ceiling whenever a skip is retired.
+      #
+      # Sum the bracketed counts rather than counting lines. `-rs` GROUPS
+      # identical skips onto one row -- `SKIPPED [4] path:312: reason` -- so a
+      # line count measures distinct reasons, not skipped tests: this suite's
+      # 10 skips render as 6 lines. A line-counting ceiling of 10 would not
+      # have caught the regression named above, which added roughly two lines.
       - name: No unexpected skips
+        shell: bash
         run: |
-          skips=$(grep -cE '^SKIPPED' pytest-output.txt || true)
-          echo "skipped: $skips (ceiling 10)"
+          skips=$(grep -oE '^SKIPPED \[[0-9]+\]' pytest-output.txt \
+                  | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+          echo "skipped tests: $skips (ceiling 10)"
           test "$skips" -le 10

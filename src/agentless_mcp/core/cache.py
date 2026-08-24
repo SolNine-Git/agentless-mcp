@@ -135,7 +135,25 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 # list. The bump is not optional: a v10 database declares the column
 # ``NOT NULL``, so this build's shorter INSERT fails on the first file of
 # every index run.
-SCHEMA_VERSION = 11
+# 12 (2026-08-23): the extraction fixes in 0.5.1. C and C++ method definitions
+#   become symbols and carry an owner, so ``tags`` gains rows and
+#   ``parent_class`` values it did not have; java, kotlin, scala, php and C#
+#   imports record the name they bind, so ``imports.names`` and
+#   ``local_names`` change; ``tags.is_public`` changes for TypeScript, TSX,
+#   JavaScript and Swift, where a visibility keyword now beats the leading
+#   underscore convention.
+#
+#   The bump exists for a reader who is NOT a released user. Every released
+#   build wrote v7 -- versions 8 through 11 were all introduced on this branch
+#   and none reached ``main`` -- so a released cache is discarded whether this
+#   constant says 11 or 12, and the bump costs those users nothing at all.
+#   What it buys is the other case: the staleness check is ``!=``, so a
+#   developer who ran an intermediate v11 build of this branch holds a v11
+#   cache that 11 would NOT invalidate, and it would go on serving rows the
+#   pre-fix extractor wrote. That is the exact failure this package exists to
+#   refuse -- a confident answer built from facts nobody re-derived -- and it
+#   is worth one rebuild by the handful of people who tested mid-branch.
+SCHEMA_VERSION = 12
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 DATABASE_NAME = "tags.db"
@@ -1013,16 +1031,31 @@ def _index_current(database: Path, repo_root: Path, generation: str) -> bool:
     A missing, unreadable or rejected database is not current -- each is
     exactly the state a refresh exists to replace, and ``build_index``
     handles all of them.
+
+    Unreadable is logged rather than answered silently. "Not current" starts a
+    full background index of the repository, and nothing downstream could tell
+    that decision apart from an ordinary stale stamp: both produce the same
+    refresh, and only one of them says the storage is failing.
     """
     if not database.exists():
         return False
     try:
         connection = _connect(database)
-    except sqlite3.DatabaseError:
+    except sqlite3.DatabaseError as exc:
+        logger.warning(
+            "tag cache %s could not be opened; treating it as stale and refreshing: %r",
+            database,
+            exc,
+        )
         return False
     try:
         meta = _read_meta(connection)
-    except sqlite3.DatabaseError:
+    except sqlite3.DatabaseError as exc:
+        logger.warning(
+            "tag cache %s could not be read; treating it as stale and refreshing: %r",
+            database,
+            exc,
+        )
         return False
     finally:
         connection.close()
@@ -1443,22 +1476,25 @@ def _open_for_write(database: Path) -> sqlite3.Connection:
 
 
 def _ensure_schema(connection: sqlite3.Connection) -> None:
-    """Create the schema, dropping a database written by another version."""
-    try:
-        meta = _read_meta(connection)
-    except sqlite3.DatabaseError:
-        meta = None
+    """Create the schema, dropping a database written by another version.
 
+    A meta row that cannot be read propagates. It means the file is unusable
+    rather than new, and :func:`_open_for_write` answers exactly that by
+    discarding it and rebuilding -- the recovery its own docstring describes,
+    and which a handler here made unreachable by reporting every unreadable
+    database as one with no meta row.
+    """
+    meta = _read_meta(connection)
     stale = meta is not None and meta.schema_version != SCHEMA_VERSION
-    if stale:
-        connection.executescript(_DROP_SCHEMA)
-
-    connection.executescript(_SCHEMA)
+    connection.executescript(_MIGRATE_SCHEMA if stale else _CREATE_SCHEMA)
 
 
 # A version bump drops every table this package owns and rebuilds them. The
 # list is exhaustive on purpose: a table left behind by an older schema would
-# be read by the new code as if the new code had written it.
+# be read by the new code as if the new code had written it. The order within
+# it carries no meaning: :data:`_MIGRATE_SCHEMA` runs the drop and the create
+# as one transaction, so no reader and no later run can observe a database
+# that is part one version and part the other.
 _DROP_SCHEMA = """
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS imports;
@@ -1535,6 +1571,27 @@ CREATE INDEX IF NOT EXISTS tags_path_sha256 ON tags (path, sha256);
 CREATE INDEX IF NOT EXISTS imports_path_sha256 ON imports (path, sha256);
 """
 
+# The two scripts :func:`_ensure_schema` runs, each one transaction.
+#
+# A migration that is not atomic recovers only by luck. The drop is five
+# statements and the create is five more, and in autocommit each of them
+# commits on its own; an interrupted run then leaves a database that is part
+# one schema and part the other, whose surviving ``meta`` row -- if the drop
+# happened to reach it -- decides whether the next run repairs the file or
+# builds on top of the wreckage with ``CREATE TABLE IF NOT EXISTS``. Wrapped,
+# there is no such state to land in: the file is the old database or the new
+# one, and an interrupted migration is simply re-run.
+#
+# The BEGIN and the COMMIT are inside the script rather than around the call
+# because ``executescript`` commits any pending transaction before it starts
+# and performs no other transaction control of its own, so a ``BEGIN`` issued
+# on the connection first would be committed away rather than honoured.
+_BEGIN = "BEGIN;\n"
+_COMMIT = "COMMIT;\n"
+
+_CREATE_SCHEMA = _BEGIN + _SCHEMA + _COMMIT
+_MIGRATE_SCHEMA = _BEGIN + _DROP_SCHEMA + _SCHEMA + _COMMIT
+
 
 def _has_table(connection: sqlite3.Connection, name: str) -> bool:
     """Whether this database declares ``name`` as a table."""
@@ -1586,11 +1643,22 @@ def _rejection(meta: _Meta | None, repo_root: Path) -> str:
 
 
 def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
-    """Return every indexed file's digest and grammar version."""
-    try:
-        rows = connection.execute("SELECT path, sha256, grammar_version FROM files").fetchall()
-    except sqlite3.OperationalError:
-        return {}
+    """Return every indexed file's digest and grammar version.
+
+    No handler on the SELECT, deliberately. The table exists at both call
+    sites: the read path reaches this only after :func:`_rejection` accepted a
+    meta row of this schema version, and the write path only after
+    :func:`_ensure_schema` created it. So what a handler here could catch is
+    the environment failing -- a disk I/O error, a database that will not
+    open, a lock wait that timed out -- and never an old or missing table.
+
+    Answering one of those with an empty mapping made a healthy index read as
+    a repository with no indexed files: every digest missed, every file was
+    re-parsed, and the receipt still said ``fresh``. They propagate instead,
+    to :func:`_open_indexed`, which reports ``cache unreadable`` and leaves
+    the file in place. This is the same rule :func:`_read_meta` states.
+    """
+    rows = connection.execute("SELECT path, sha256, grammar_version FROM files").fetchall()
     return {
         str(row[0]): _FileEntry(digest=str(row[1]), grammar_version=str(row[2])) for row in rows
     }

@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
@@ -68,6 +69,7 @@ from agentless_mcp.application.symbol_service import (
     render_expansion,
     render_find,
     render_refs,
+    unresolved_lines,
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
@@ -884,7 +886,17 @@ def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
 
     result = services.symbols.expand_symbols(ctx, list(args.ids), limit=args.limit)
     _emit(args, ctx, services, _Answer(render_expansion(result), result.as_dict(), "symbols"))
-    return EXIT_DOMAIN if result.unresolved and not result.cards else EXIT_OK
+    # The same split `skeleton` uses, for the same reason. These rows used to
+    # ride stdout under the symbol bodies at exit 0, so an agent piping
+    # `expand` into a prompt read "unresolved: ... no longer defines X" as
+    # source among the sources it asked for. The JSON form keeps them as their
+    # own field, which is a structure a reader can tell apart.
+    for line in unresolved_lines(result):
+        note(f"agentless-mcp: {line}")
+    # An id the caller named and did not get back is a failure whether or not
+    # the other ids in the batch resolved -- the old rule reported success
+    # for a batch that answered one of fifty.
+    return EXIT_DOMAIN if result.unresolved else EXIT_OK
 
 
 def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
@@ -1497,13 +1509,26 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    report = cache.build_index(
-        ctx.root,
-        services.extractor,
-        tree_oid=ctx.tree_oid,
-        head_sha=ctx.head_sha,
-        force=args.force,
-    )
+    # `build_index` opens and writes a SQLite database, so it raises
+    # `sqlite3.Error` and `OSError` -- neither of which is an `AgentlessError`,
+    # so neither was caught by the handler in `run`. A full disk or a
+    # read-only cache directory ended this command in a raw traceback, which
+    # also puts an absolute local path on stderr. Converted to the package's
+    # own refusal, naming the repository the caller would have to act on --
+    # the repository rather than the database, because the cache path is an
+    # opaque hash directory derived from it and the root is what an operator
+    # can do something about.
+    try:
+        report = cache.build_index(
+            ctx.root,
+            services.extractor,
+            tree_oid=ctx.tree_oid,
+            head_sha=ctx.head_sha,
+            force=args.force,
+        )
+    except (sqlite3.Error, OSError) as error:
+        message = f"cannot build the tag cache for {ctx.root}: {error}"
+        raise OperationFailed(message) from error
     if args.json:
         emit(envelope.wrap_json(ctx, report.as_dict(), counter=services.counter))
         return EXIT_OK if report.errors == 0 else EXIT_DOMAIN

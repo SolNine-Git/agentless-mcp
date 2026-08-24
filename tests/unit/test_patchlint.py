@@ -462,6 +462,15 @@ class TestLiteralScanner:
             ('f(f"{d["a)b"]}", x)', ['f"{d["a)b"]}"', "x"]),
             ('f(f"{d["a"]}{e["b"]}", x)', ['f"{d["a"]}{e["b"]}"', "x"]),
             ('f(f"{{a,b}}", x)', ['f"{{a,b}}"', "x"]),
+            # A nested replacement field in the format spec. Its `}}` is the
+            # spec closing and then the field closing, not an escaped brace,
+            # and reading it as one left the scan inside the string for the
+            # rest of the text -- every later call unreadable, and silently.
+            ('f(f"{a:{w}}", x)', ['f"{a:{w}}"', "x"]),
+            ('f(f"{a!r:>{w}}", x)', ['f"{a!r:>{w}}"', "x"]),
+            ('f(f"{x:>{n}} tail", y)', ['f"{x:>{n}} tail"', "y"]),
+            ('f(f"{{literal}}", x)', ['f"{{literal}}"', "x"]),
+            ('f(f"{a}{b}", x)', ['f"{a}{b}"', "x"]),
         ],
     )
     def test_the_argument_scan_agrees_with_pythons_grammar(self, text, arguments):
@@ -1492,6 +1501,98 @@ class TestArity:
 
     def test_a_star_still_stops_the_count(self):
         assert _parameter_shape("def target(a, b, *, c) -> int") is None
+
+    @pytest.mark.parametrize(
+        "signature",
+        [
+            "def target(key=lambda a, b: a) -> int",
+            "def target(cb=lambda x: x) -> int",
+        ],
+    )
+    def test_a_lambda_default_stops_the_count(self, signature):
+        # A lambda's parameter list is closed by `:`, not by a bracket, so its
+        # commas sit exactly where the parameter separators do. Splitting on
+        # them read one optional parameter as two, one of them required.
+        assert _parameter_shape(signature) is None
+
+    def test_a_lambda_inside_a_bracket_still_counts(self):
+        # Nested, its commas are at that bracket's depth and were never split.
+        assert _parameter_shape("def target(a, b=sorted(x, key=lambda p, q: p)) -> int") == _Shape(
+            required=1, total=2
+        )
+
+    @pytest.mark.parametrize(
+        "signature",
+        ["def target(lambda_fn, other) -> int", "def target(my_lambda, other) -> int"],
+    )
+    def test_an_identifier_holding_lambda_is_not_one(self, signature):
+        assert _parameter_shape(signature) == _Shape(required=2, total=2)
+
+    @pytest.mark.parametrize(
+        "text",
+        ["apply_to(lambda a, b: a + b)", "apply_to(lambda a: a)"],
+    )
+    def test_a_call_passing_a_lambda_is_not_judged(self, text):
+        # `apply_to(lambda a, b: a + b)` passes one argument and was read as
+        # passing two, so a correct call against a one-parameter helper was
+        # reported as one argument too many.
+        assert _positional_arguments(text, text.index("(")) is None
+
+    @pytest.mark.parametrize(
+        ("text", "arguments"),
+        [
+            ("g(sorted(x, key=lambda p, q: p), y)", ["sorted(x, key=lambda p, q: p)", "y"]),
+            ('g("lambda a, b: a", z)', ['"lambda a, b: a"', "z"]),
+        ],
+    )
+    def test_a_lambda_no_split_can_reach_leaves_the_call_readable(self, text, arguments):
+        assert _positional_arguments(text, text.index("(")) == arguments
+
+    def test_a_call_passing_a_lambda_reports_no_arity_finding(self, facts, source):
+        report = lint_patch(
+            [edit("util_math.py", "    return total", "    return compute(lambda a, b: a)")],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_ARITY) == []
+
+    def test_a_nested_def_shadowing_an_import_is_not_a_call(self, facts, source):
+        # `_call_sites` takes only the occurrences the grammar called
+        # references. Reading every row instead made the nested `def helper(`
+        # line itself a call site, and made the call below it resolve to the
+        # imported `helper()` the local one shadows -- two advisories about a
+        # function that takes exactly the argument it is given.
+        replacement = "def run():\n    def helper(one):\n        return one\n    return helper(1)"
+        report = lint_patch(
+            [edit("caller.py", "def run():\n    return helper()", replacement)],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_ARITY) == []
+        assert checks(report, CHECK_DANGLING_REFERENCES) == []
+
+    def test_a_nested_format_spec_does_not_blind_the_rest_of_the_fragment(self, facts, source):
+        # `f"{n:>{w}}"` closes a nested spec and then the field. Reading that
+        # `}}` as an escaped brace left the scan inside the string, so every
+        # call after it in the fragment reported no bracket span and this
+        # check reported nothing at all -- about code it never read.
+        report = lint_patch(
+            [
+                edit(
+                    "util_math.py",
+                    "    return total",
+                    '    label = f"{total:>{width}}"\n    return compute(1, 2)',
+                )
+            ],
+            facts(),
+            source,
+        )
+
+        findings = checks(report, CHECK_ARITY)
+        assert len(findings) == 1
+        assert "2 positional argument(s)" in findings[0].message
 
     def test_a_file_the_scan_did_not_supply_is_a_stated_gap(self, facts, source):
         # Resolution needs the file's own import table, so a new file the

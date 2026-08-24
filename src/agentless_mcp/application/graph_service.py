@@ -173,7 +173,7 @@ class GraphService:
         limit: int = DEFAULT_EXPLAIN_LIMIT,
     ) -> render.Explanation:
         """Build the card for one symbol: definition site, fan-out, fan-in, imports."""
-        bounds.at_least(limit, 1, "limit")
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         resolved = self._resolve(ctx)
         definitions = refs.definitions_for(resolved.index, target)
         if not definitions:
@@ -236,7 +236,7 @@ class GraphService:
 
     def cycles(self, ctx: RepoContext, *, limit: int = DEFAULT_CYCLE_LIMIT) -> render.CycleReport:
         """Report every module-level import cycle, in a deterministic order."""
-        bounds.at_least(limit, 1, "limit")
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         resolved = self._resolve(ctx)
         cycles = resolve.import_cycles(resolved.graph)
         return render.CycleReport(
@@ -255,7 +255,7 @@ class GraphService:
         members: int = DEFAULT_MEMBER_LIMIT,
     ) -> render.CommunityReport:
         """Partition the repository's files into communities, largest first."""
-        bounds.at_least(limit, 1, "limit")
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         bounds.at_least(members, 1, "members")
         ranked = self._ranked(ctx)
         partition = communities.detect_communities(ranked.graph, resolution=_resolution(resolution))
@@ -294,8 +294,8 @@ class GraphService:
         would deny.
 
         """
-        bounds.at_least(request.max_nodes, 1, "max_nodes")
-        bounds.at_least(request.max_edges, 0, "max_edges")
+        bounds.within(request.max_nodes, 1, bounds.MAX_DIAGRAM_NODES, "max_nodes")
+        bounds.within(request.max_edges, 0, bounds.MAX_DIAGRAM_EDGES, "max_edges")
         ranked = self._ranked(ctx)
         seed = _diagram_focus(request.focus, ranked)
         if seed.message:
@@ -566,6 +566,12 @@ def _resolution(resolution: float | None) -> float:
     reports a modularity of 6.0 against a documented 0-to-1 scale. Both are
     refused here, at the one place both public methods that take the knob
     cross.
+
+    The floor stays local because it is exclusive and
+    :func:`agentless_mcp.util.bounds.within` is inclusive at both ends: zero
+    is not a resolution, where the ceiling is a value the caller may ask for.
+    The ceiling itself is the shared one, so the command line refuses
+    ``--resolution 1e9`` exactly as the MCP schema already did.
     """
     if resolution is None:
         return communities.DEFAULT_RESOLUTION
@@ -573,6 +579,7 @@ def _resolution(resolution: float | None) -> float:
     if not math.isfinite(setting) or setting <= 0.0:
         message = f"resolution must be a finite number greater than 0, got {resolution}"
         raise OperationFailed(message)
+    bounds.within(setting, 0.0, bounds.MAX_RESOLUTION, "resolution")
     return setting
 
 

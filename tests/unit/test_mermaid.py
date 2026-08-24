@@ -492,6 +492,60 @@ class TestLabelSafety:
     def test_ordinary_paths_pass_through_untouched(self):
         assert safe_label("src/agentless_mcp/core/graph.py") == "src/agentless_mcp/core/graph.py"
 
+    def test_two_modules_that_reduce_to_one_label_are_still_told_apart(self):
+        """`safe_label` is an allowlist, so it is many-to-one.
+
+        Two directory names that differ only outside the allowlist reduce to
+        the same underscore. The nodes stay distinct, so the graph is right;
+        without an ordinal the reader cannot say which box is which, which is
+        what the diagram is for.
+        """
+        graph = RefGraph(nodes=("src/日本語/mod.py", "src/中文字/mod.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+
+        assert '["src/_/mod.py"]' in rendered
+        assert '["src/_/mod.py 2"]' in rendered
+
+    def test_two_long_paths_sharing_a_prefix_are_still_told_apart(self):
+        """The other many-to-one step: the 60-character truncation."""
+        stem = "src/" + "a" * 70
+        graph = RefGraph(nodes=(f"{stem}/one.py", f"{stem}/two.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+        labels = [line.split('["')[1] for line in rendered.splitlines() if '["' in line]
+
+        assert len(set(labels)) == len(labels)
+
+    def test_a_label_that_occurs_once_carries_no_ordinal(self):
+        """The common case reads as the paths do."""
+        graph = RefGraph(nodes=("src/a.py", "src/b.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+
+        assert rendered == 'flowchart LR\n    n0["src/a.py"]\n    n1["src/b.py"]\n'
+
+    def test_a_module_keeps_its_label_whether_or_not_it_is_grouped(self):
+        """The ordinal is assigned over the whole drawn set, once.
+
+        A subgraph draws some modules and leaves the rest beside it, so an
+        ordinal counted per emission site would give one module two labels
+        across two renders of the same graph.
+        """
+        nodes = ("src/日本語/mod.py", "src/中文字/mod.py")
+        graph = RefGraph(nodes=nodes, edges={})
+        partition = detect_communities(graph)
+
+        plain = flowchart_text(graph, uniform_rank(graph))
+        grouped = flowchart_text(graph, uniform_rank(graph), partition=partition)
+
+        for identifier in ("n0", "n1"):
+            bare = next(line for line in plain.splitlines() if line.strip().startswith(identifier))
+            boxed = next(
+                line for line in grouped.splitlines() if line.strip().startswith(identifier)
+            )
+            assert bare.strip() == boxed.strip()
+
     def test_a_community_label_is_sanitised_too(self):
         graph = RefGraph(nodes=(f"{HOSTILE_NAME}/inner.py",), edges={})
         partition = detect_communities(graph)

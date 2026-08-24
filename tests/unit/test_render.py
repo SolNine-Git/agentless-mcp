@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, fields, replace
+from types import UnionType
+from typing import Union, get_args, get_origin, get_type_hints
 
 import pytest
 
@@ -314,29 +316,72 @@ def line_count(text: str) -> int:
     return len(text.splitlines())
 
 
-def with_field(value, name: str, replacement: str):
-    """Return ``value`` with one string field replaced."""
-    return replace(value, **{name: replacement})
+SINGLE = "str"
+SEQUENCE = "tuple"
+
+# A benign single-line stand-in. The baseline is measured with the field set
+# to this rather than to whatever the fixture happened to hold, so a `str |
+# None` field that is normally None and a `tuple[str, ...]` field of any
+# length are both compared against a render of the same shape.
+BENIGN = "benign"
 
 
-def string_fields(value) -> list[str]:
-    """Every ``str`` field on a frozen view model, by name.
+def with_field(value, name: str, kind: str, replacement: str):
+    """Return ``value`` with one string-carrying field replaced."""
+    return replace(value, **{name: replacement if kind == SINGLE else (replacement,)})
+
+
+def field_kind(annotation: object) -> str | None:
+    """Classify one declared annotation as a string sink, or as not one.
+
+    Keyed on what the field is *declared* to hold, not on what this fixture
+    happens to have put in it. Reflecting over the instance answered the
+    wrong question twice: a ``str | None`` field left None was silently not a
+    string and so was never probed, and a ``tuple[str, ...]`` field was never
+    a string at all -- which is how ``CycleRow.files`` and
+    ``CommunityRow.members``, both of them repository paths placed on a row,
+    sat outside a gate that reported full coverage.
+    """
+    if annotation is str:
+        return SINGLE
+    origin = get_origin(annotation)
+    if origin is UnionType or origin is Union:
+        optional = [arg for arg in get_args(annotation) if arg is not type(None)]
+        return SINGLE if optional == [str] else None
+    if origin is tuple:
+        args = get_args(annotation)
+        if args and all(arg is str or arg is Ellipsis for arg in args):
+            return SEQUENCE
+    return None
+
+
+def string_fields(value) -> list[tuple[str, str]]:
+    """Every string-carrying field on a frozen view model, by name and kind.
 
     Reflective rather than listed, so a field added later is covered without
     anyone remembering to add it here. That is the whole point: the audit's
     finding was not that one site was missed, it was that no mechanism said
     which sites there were.
     """
+    owner = type(value).__name__
+    declared = get_type_hints(type(value))
+    named = ((entry.name, field_kind(declared[entry.name])) for entry in fields(value))
     return [
-        entry.name
-        for entry in fields(value)
-        if isinstance(getattr(value, entry.name), str) and entry.name not in EXEMPT_FIELDS
+        (name, kind)
+        for name, kind in named
+        if kind is not None and (owner, name) not in EXEMPT_FIELDS
     ]
 
 
-# A symbol body is many lines by design -- it is the source text the card is
-# about -- so it is the one field whose line count is meant to grow.
-EXEMPT_FIELDS = frozenset({"body"})
+# The two fields whose line count is meant to grow. A symbol body is the
+# source text the card is about, and a diagram is a whole mermaid document
+# whose own escape is `core.mermaid.safe_label`, not this one.
+#
+# Named per model rather than by bare field name: `text` exempted everywhere
+# would also have exempted `RationaleNode.text`, which is a comment lifted out
+# of the repository and placed on a row -- the exact kind of field this gate
+# exists for.
+EXEMPT_FIELDS = frozenset({("SymbolCard", "body"), ("DiagramView", "text")})
 
 
 def cases():
@@ -388,6 +433,76 @@ def cases():
     map_file = render.MapFile(path="core.py", rank=1.0, entries=(entry,))
     skipped = SkippedFile(path="huge.py", reason="over the per-file cap")
     listing = render.SharedCallerListing(rows=(shared,), total=1, limit=10)
+
+    # The three views whose whole answer can be a message. Each is built in
+    # the state that renders it -- no card, no path, no diagram -- because a
+    # `message` field beside a populated result is a field nothing reads, and
+    # a probe of one proves nothing about the sink.
+    unresolved = replace(explanation, card=None, message="no symbol matches quote")
+    hop = render.PathHop(
+        verb="calls",
+        tier="unique",
+        tier_label="unique in this repository",
+        arrow="-->",
+        node="py:core.py::quote",
+        label="quote",
+        path="core.py",
+        line=4,
+    )
+    no_path = render.PathTrace(
+        source="quote",
+        target="ask",
+        source_label="quote",
+        target_label="ask",
+        hops=(),
+        found=False,
+        message="quote is ambiguous: py:core.py::quote",
+        visited=0,
+        exhausted=False,
+        include_unique=False,
+        include_ambiguous=False,
+        endpoints_resolved=False,
+    )
+    # `found` with a message as well: a trace that answered still carries the
+    # bound it hit, on a second sink at the foot of the rows.
+    found_path = replace(no_path, hops=(hop,), found=True, message="the search bound was hit")
+    no_diagram = render.DiagramView(
+        text="",
+        nodes=0,
+        elided=0,
+        grouped=False,
+        focus="core.py",
+        message="quote matches several modules: core.py",
+    )
+    finding = render.LintFinding(
+        check="anchor",
+        severity="warning",
+        message="the search block is one line",
+        path="core.py",
+        line=4,
+        location="function:quote",
+        evidence="return sku",
+    )
+    lint_candidate = render.LintCandidate(id="cand-1", findings=(finding,))
+    community = render.CommunityRow(
+        label="core",
+        total=2,
+        members=("core.py", "app.py"),
+        internal_weight=1.0,
+        total_weight=2.0,
+        limit=10,
+    )
+    community_report = render.CommunityReport(
+        communities=(community,),
+        total=1,
+        limit=10,
+        modularity=0.5,
+        standard_modularity=0.5,
+        resolution=1.0,
+        files=2,
+    )
+    cycle = render.CycleRow(files=("core.py", "app.py"))
+    cycle_report = render.CycleReport(cycles=(cycle,), total=1, limit=10)
 
     return [
         ("map/file", map_file, lambda v: render.render_map([v])),
@@ -442,13 +557,40 @@ def cases():
                 replace(listing, rows=(replace(shared, callers=(v,)),)), "quote"
             ),
         ),
+        ("explain/unresolved", unresolved, render.render_explanation),
+        ("path/unresolved", no_path, render.render_path),
+        ("path/found", found_path, render.render_path),
+        ("path/hop", hop, lambda v: render.render_path(replace(found_path, hops=(v,)))),
+        ("diagram/empty", no_diagram, render.render_diagram),
+        (
+            "lint/finding",
+            finding,
+            lambda v: render.render_lint(
+                render.LintReportView(candidates=(replace(lint_candidate, findings=(v,)),))
+            ),
+        ),
+        (
+            "lint/candidate",
+            lint_candidate,
+            lambda v: render.render_lint(render.LintReportView(candidates=(v,))),
+        ),
+        (
+            "communities/row",
+            community,
+            lambda v: render.render_communities(replace(community_report, communities=(v,))),
+        ),
+        (
+            "cycles/row",
+            cycle,
+            lambda v: render.render_cycles(replace(cycle_report, cycles=(v,))),
+        ),
     ]
 
 
 PROBES = [
-    (label, model, render_one, name)
+    (label, model, render_one, name, kind)
     for label, model, render_one in cases()
-    for name in string_fields(model)
+    for name, kind in string_fields(model)
 ]
 
 
@@ -467,26 +609,33 @@ class TestNoFieldCanAddALine:
     """
 
     @pytest.mark.parametrize(
-        ("label", "model", "render_one", "name"),
+        ("label", "model", "render_one", "name", "kind"),
         PROBES,
-        ids=[f"{label}.{name}" for label, _model, _render, name in PROBES],
+        ids=[f"{label}.{name}" for label, _model, _render, name, _kind in PROBES],
     )
-    def test_a_forged_row_in_one_field_does_not_become_a_row(self, label, model, render_one, name):
-        baseline = line_count(render_one(model))
-        forged = line_count(render_one(with_field(model, name, FORGED_NAME)))
+    def test_a_forged_row_in_one_field_does_not_become_a_row(
+        self, label, model, render_one, name, kind
+    ):
+        # Both renders set the same field, so the two differ in the value of
+        # one field and in nothing else -- an optional field the fixture left
+        # empty and a sequence field of any length compare like with like.
+        baseline = line_count(render_one(with_field(model, name, kind, BENIGN)))
+        forged = line_count(render_one(with_field(model, name, kind, FORGED_NAME)))
 
         assert forged == baseline, f"{label}.{name} let repository text open a line"
 
     @pytest.mark.parametrize(
-        ("label", "model", "render_one", "name"),
+        ("label", "model", "render_one", "name", "kind"),
         PROBES,
-        ids=[f"{label}.{name}" for label, _model, _render, name in PROBES],
+        ids=[f"{label}.{name}" for label, _model, _render, name, _kind in PROBES],
     )
-    def test_a_bare_carriage_return_cannot_overwrite_a_row(self, label, model, render_one, name):
+    def test_a_bare_carriage_return_cannot_overwrite_a_row(
+        self, label, model, render_one, name, kind
+    ):
         # A lone CR ends no line for `splitlines`' purposes on its own, but it
         # returns a terminal's cursor to the start of the row, so the text
         # after it overwrites what a reader has already seen.
-        rendered = render_one(with_field(model, name, "a\rforged"))
+        rendered = render_one(with_field(model, name, kind, "a\rforged"))
         assert "\r" not in rendered, f"{label}.{name} passed a carriage return through"
 
 
@@ -503,8 +652,14 @@ class TestTheForgeryEndToEnd:
 
     @pytest.fixture
     def forged_repo(self, tmp_path):
-        (tmp_path / "real.py").write_text("def real():\n    return 1\n", encoding="utf-8")
-        (tmp_path / FORGED_NAME).write_text("def hidden():\n    return 2\n", encoding="utf-8")
+        # `hidden` is defined in BOTH files on purpose. An endpoint or a focus
+        # that resolves to one module is answered with the module; only an
+        # ambiguous one is answered with the list of what it matched, and that
+        # list is where a repository path reaches a message field.
+        (tmp_path / "real.py").write_text(
+            "def hidden():\n    return 1\n\n\ndef real():\n    return 2\n", encoding="utf-8"
+        )
+        (tmp_path / FORGED_NAME).write_text("def hidden():\n    return 3\n", encoding="utf-8")
         return tmp_path
 
     @pytest.mark.parametrize(
@@ -517,8 +672,20 @@ class TestTheForgeryEndToEnd:
             ["find-symbol", "hidden"],
             ["refs", "hidden"],
             ["explain", "hidden"],
+            ["path", "hidden", "real"],
+            ["diagram", "--focus", "hidden"],
         ],
-        ids=["map", "tree", "communities", "cycles", "find-symbol", "refs", "explain"],
+        ids=[
+            "map",
+            "tree",
+            "communities",
+            "cycles",
+            "find-symbol",
+            "refs",
+            "explain",
+            "path",
+            "diagram",
+        ],
     )
     def test_no_command_lets_the_forged_row_occupy_a_line(
         self, services, forged_repo, capsys, command

@@ -19,6 +19,8 @@ from agentless_mcp.application.map_service import (
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import refs
 from agentless_mcp.core.graph import build_graph, personalized_pagerank, rank_order
+from agentless_mcp.core.projectconfig import MAX_BUDGET, MIN_BUDGET
+from agentless_mcp.util.errors import OperationFailed
 
 # `pkg/__init__.py` is the point of this tree: it is a real, ranked file that
 # extracts no symbol. Python packages and TypeScript barrels are the usual
@@ -162,8 +164,25 @@ class TestTheBudgetBoundsTheBodyNotTheHeaders:
     that held.
     """
 
-    def test_a_budget_the_headers_alone_exceed_is_named_in_the_render(self, repo, maps):
-        result = maps.build(repo, MapRequest(budget=1))
+    @staticmethod
+    @pytest.fixture
+    def wide_repo(tmp_path, pinned_context):
+        """Enough ranked files that their headers alone outrun the smallest budget.
+
+        This used to pass ``budget=1``, which is no longer a budget any door
+        accepts: ``projectconfig`` declares 200..64000, the MCP schema
+        publishes it, and ``MapService`` now holds callers to it too. The
+        behaviour under test is real -- headers are listed whatever the
+        budget says -- so the fixture grows until the smallest *legal* budget
+        reaches it, rather than the bound bending to the test.
+        """
+        for index in range(40):
+            name = f"a_module_with_a_long_name_{index:03d}.py"
+            (tmp_path / name).write_text(f"def f{index}():\n    return {index}\n", encoding="utf-8")
+        return pinned_context(tmp_path)
+
+    def test_a_budget_the_headers_alone_exceed_is_named_in_the_render(self, wide_repo, maps):
+        result = maps.build(wide_repo, MapRequest(budget=MIN_BUDGET))
 
         assert result.included == 0
         assert result.rendered > result.budget
@@ -175,10 +194,25 @@ class TestTheBudgetBoundsTheBodyNotTheHeaders:
         assert result.rendered <= result.budget
         assert "renders to" not in maps.render_text(result)
 
-    def test_the_rendered_cost_travels_in_the_json_too(self, repo, maps):
-        result = maps.build(repo, MapRequest(budget=1))
+    def test_the_rendered_cost_travels_in_the_json_too(self, wide_repo, maps):
+        result = maps.build(wide_repo, MapRequest(budget=MIN_BUDGET))
 
         assert result.as_dict()["rendered_tokens"] == result.rendered
+
+    def test_a_budget_below_the_published_floor_is_refused(self, repo, maps):
+        """The floor projectconfig and the MCP schema already declared.
+
+        `map --budget 1` used to exit 0 and report that the budget left room
+        for no symbols -- a fact about the request, worded as one about the
+        repository. The CLI was the only one of the three doors with no bound
+        behind it.
+        """
+        with pytest.raises(OperationFailed, match="budget takes a value from 200 through 64000"):
+            maps.build(repo, MapRequest(budget=1))
+
+    def test_a_budget_above_the_published_ceiling_is_refused(self, repo, maps):
+        with pytest.raises(OperationFailed, match="budget takes a value from 200 through 64000"):
+            maps.build(repo, MapRequest(budget=MAX_BUDGET + 1))
 
 
 class TestSymbolScoresReadTheSameDampingTheEdgesDo:

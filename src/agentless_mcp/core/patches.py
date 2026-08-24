@@ -54,7 +54,6 @@ writing files, and deciding which paths a caller may name at all, belong to
 :mod:`agentless_mcp.application.patch_service`.
 """
 
-import re
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -83,14 +82,19 @@ ELISION_PREFIX = ELISION + "\n"
 _MAX_PATH_WORDS = 3
 _MAX_EXTENSION = 12
 
-# What a single word has to look like to be read as a path: filename
-# characters throughout, and a last character that is not the punctuation a
-# sentence ends on. `Makefile`, `.gitignore`, `src/app.py`, `../pkg/mod.rs`
-# and `/etc/passwd` are paths; `Done!`, `Next:`, `Also,` and `Fixed.` are
-# prose. It is a shape test and not a guarantee -- a bare English word that
-# is also a legal filename still passes, and `apply_edits` answers that one
-# with `no_such_file` rather than writing to it.
-_PATH_WORD = re.compile(r"[A-Za-z0-9_.~/+@:\\-]*[A-Za-z0-9_~/+-]")
+# What a header line may not end on and still be read as a filename: the
+# punctuation a sentence ends on, and the delimiter a quoted or bracketed
+# phrase closes with. A line ending on one of these is prose, which is a fact
+# about the line rather than about the alphabet it is written in -- the test
+# this replaced enumerated the characters a path may *contain*, in ASCII, and
+# so read every accented or non-Latin filename as prose.
+_PROSE_END = frozenset(".,:;!?\"')]}")
+
+# What a header line may not begin with. A filename may open with `.`, `/`,
+# `~` or `-`; it does not open with a delimiter. Kept apart from `_PROSE_END`
+# because it carries no evidence either way about prose: a line failing here
+# is one this cannot read, and `_filename_in` answers those differently.
+_PATH_START_REFUSED = frozenset("\"'([{")
 
 
 @dataclass(frozen=True)
@@ -264,8 +268,13 @@ def parse_blocks(text: str) -> ParseResult:
     for index, segment in enumerate(segments[:-1]):
         parts = segment.split(SEARCH_MARKER)
         named = _filename_in(parts[0])
-        if named is not None:
-            current_path = named
+        if named.reason:
+            # Reported against the path this block would have inherited, so
+            # the reader can see which file it was about to be given.
+            errors.append(BlockError(index, current_path, named.reason))
+            continue
+        if named.path is not None:
+            current_path = named.path
 
         markers = len(parts) - 1
         if markers != 1:
@@ -294,7 +303,7 @@ def parse_blocks(text: str) -> ParseResult:
         errors.append(
             BlockError(
                 len(segments) - 1,
-                _filename_in(tail.split(SEARCH_MARKER)[0]) or current_path,
+                _filename_in(tail.split(SEARCH_MARKER)[0]).path or current_path,
                 "block is not terminated by >>>>>>> REPLACE (truncated output?)",
             )
         )
@@ -326,8 +335,28 @@ def _marker_reason(count: int) -> str:
     return f"block has {count} <<<<<<< SEARCH markers; expected one"
 
 
-def _filename_in(header: str) -> str | None:
-    """Return the file path a block header names, or None when it names none.
+@dataclass(frozen=True)
+class _HeaderPath:
+    """What a block's header names: a path, nothing, or a line it cannot read.
+
+    Three answers rather than two, because the two the caller used to get
+    conflated the only case where inheriting the previous block's path is
+    right with the case where it is a guess. A header holding nothing at all
+    -- a bare block, or a fence -- is the inheritance the format is built on.
+    A header holding a line this looked at and could not read is not: the
+    block below it belongs to whatever that line says, and attributing it to
+    the file above instead points every finding, and every write, at a file
+    the author did not name.
+
+    ``reason`` is non-empty only for that second case.
+    """
+
+    path: str | None
+    reason: str
+
+
+def _filename_in(header: str) -> _HeaderPath:
+    """Return the file path a block header names, or say why it names none.
 
     The last path-shaped line that is not a code fence wins: with a fenced
     block the fence sits between the previous edit and this one's path, and
@@ -335,45 +364,112 @@ def _filename_in(header: str) -> str | None:
     stripped so the ``### path/to/file.py`` heading the Agentless prompt asks
     for reads as a path.
 
-    Lines that are not path-shaped are skipped rather than returned, so the
+    A line punctuated like prose is skipped rather than returned, so the
     sentence a model writes above its block ("I will now fix the rounding in
     src/app.py:") becomes "this block names no file" instead of becoming the
     filename. Skipping rather than stopping is what lets a real header
     survive a line of prose written under it.
+
+    A line that is neither a path nor prose stops the walk and is reported.
+    It is the header this cannot read, and the answer to that is to say so:
+    reading it as "no header" made the block inherit the path above it, which
+    is how an accented filename came to be silently edited as a different
+    file. The trigger there was one over-narrow character class, and a
+    character class can be got wrong again; what stops the next one becoming
+    a wrong edit is that an unreadable header is refused rather than guessed.
     """
     for line in reversed(header.splitlines()):
         candidate = line.strip()
         if not candidate or candidate.startswith(FENCE):
             continue
         stripped = candidate.lstrip("#").strip()
-        if stripped and _is_path_shaped(stripped):
-            return stripped
-    return None
+        if not stripped:
+            continue
+        verdict = _classify_header(stripped)
+        if verdict is _Header.PATH:
+            return _HeaderPath(stripped, "")
+        if verdict is _Header.PROSE:
+            continue
+        return _HeaderPath(None, _unreadable_header_reason(stripped))
+    return _HeaderPath(None, "")
 
 
-def _is_path_shaped(candidate: str) -> bool:
-    """Return True when ``candidate`` could be a filename rather than prose.
+def _unreadable_header_reason(candidate: str) -> str:
+    """Say why a header line was read as neither a path nor prose."""
+    return (
+        f"the line above this block, {candidate!r}, is neither a path nor a sentence, so "
+        "which file this block edits is not stated; put the path on its own line above "
+        "<<<<<<< SEARCH"
+    )
+
+
+class _Header(str, Enum):
+    """What one candidate header line is, as far as shape can say.
+
+    ``PROSE`` and ``UNREADABLE`` are both "not a path", kept apart because the
+    caller does two different things with them. Prose is skipped, so the real
+    header written above it still wins -- which is the whole reason a model
+    may narrate between its blocks. Unreadable is reported, because the block
+    under it would otherwise take the path of the block above it.
+
+    The line between them is positive evidence. A line is prose when
+    something about it says so: the punctuation it ends on, more words than a
+    filename carries, or a last component with no extension. Absent all of
+    that, "not a path" means only that this could not read it, and a parser
+    that answers "I could not read this" with "inherit the file above" is how
+    an accented filename came to be edited as a different file.
+    """
+
+    PATH = "path"
+    PROSE = "prose"
+    UNREADABLE = "unreadable"
+
+
+def _classify_header(candidate: str) -> _Header:
+    """Say whether a header line is a path, prose, or a line this cannot read.
 
     The format has no quoting, so shape is the only signal there is. A single
-    word is taken as a path when it is *spelled* like one: ``Makefile`` and
-    ``src/app.py`` are, and so is ``../../etc/passwd``, which is refused later
-    by containment rather than here. Every single word used to qualify, so a
-    one-word line of prose (``Done!``) became the path, and path inheritance
-    then attached the block under it to that name -- which is worse than a
-    missing header, because the block that would have inherited the correct
-    path no longer does. A word rejected here is skipped rather than
-    remembered, so the real header above it still wins.
+    word is a path unless it is *punctuated* like prose: ``Makefile``,
+    ``src/app.py``, ``naïve.py`` and ``../../etc/passwd`` are paths -- the
+    last refused later by containment rather than here -- and ``Done!``,
+    ``Next:``, ``Also,`` and ``Fixed.`` are not. It is a shape test and not a
+    guarantee: a bare English word that is also a legal filename still
+    passes, and ``apply_edits`` answers that one with ``no_such_file`` rather
+    than writing to it.
 
-    A candidate carrying spaces is taken only when it stays within a few words
-    and its last component ends in an extension, which is what a filename with
-    a space in it looks like and what a sentence about a file does not.
+    The characters a path may *contain* are deliberately not enumerated. A
+    filename is any sequence of non-separator characters, so an enumeration
+    written in ASCII read ``src/naive.py`` as a path and ``src/naïve.py`` as
+    prose -- and the block under the second one was then attributed to the
+    file above it.
+
+    A candidate carrying spaces is a path only when it stays within a few
+    words and its last component ends in an extension, which is what a
+    filename with a space in it looks like and what a sentence about a file
+    does not. Failing either of those is evidence of prose in its own right,
+    whatever the line ends on: "Now fixing" and "I will now fix the rounding
+    in src/app.py" are sentences with or without their punctuation, and a
+    model writing one between two blocks is the ordinary case rather than the
+    edge case.
+
+    That leaves one line this can neither read nor call prose: one opening on
+    a quote or a bracket. A filename may open with ``.``, ``/``, ``~`` or
+    ``-``; it does not open with a delimiter, and a delimiter says the line
+    was meant as something the format does not accept.
     """
+    if candidate[0] in _PATH_START_REFUSED:
+        return _Header.UNREADABLE
+    if candidate[-1] in _PROSE_END:
+        return _Header.PROSE
+
     words = candidate.split()
     if len(words) == 1:
-        return bool(_PATH_WORD.fullmatch(candidate))
+        return _Header.PATH
     if len(words) > _MAX_PATH_WORDS or "  " in candidate or "\t" in candidate:
-        return False
-    return _has_extension(candidate.rpartition("/")[2])
+        return _Header.PROSE
+    if _has_extension(candidate.rpartition("/")[2]):
+        return _Header.PATH
+    return _Header.PROSE
 
 
 def _has_extension(name: str) -> bool:

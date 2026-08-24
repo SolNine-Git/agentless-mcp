@@ -61,7 +61,7 @@ writes into a response body.
 
 import re
 import string
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
@@ -356,8 +356,11 @@ def _node_lines(
     identifiers: Mapping[str, str], partition: CommunityPartition | None
 ) -> Iterator[str]:
     """Yield the node declarations, grouped into subgraphs when asked."""
+    labels = _node_labels(identifiers)
     if partition is None:
-        yield from (_declaration(identifiers[node], node, _INDENT) for node in sorted(identifiers))
+        yield from (
+            _declaration(identifiers[node], labels[node], _INDENT) for node in sorted(identifiers)
+        )
         return
 
     drawn: list[tuple[Community, list[str]]] = []
@@ -371,14 +374,41 @@ def _node_lines(
     for index, ((_, members), title) in enumerate(zip(drawn, titles, strict=True)):
         grouped.update(members)
         yield f'{_INDENT}subgraph {_identifier("s", index)}["{title}"]'
-        yield from (_declaration(identifiers[member], member, _INDENT * 2) for member in members)
+        yield from (
+            _declaration(identifiers[member], labels[member], _INDENT * 2) for member in members
+        )
         yield f"{_INDENT}end"
 
     yield from (
-        _declaration(identifiers[node], node, _INDENT)
+        _declaration(identifiers[node], labels[node], _INDENT)
         for node in sorted(identifiers)
         if node not in grouped
     )
+
+
+def _node_labels(identifiers: Mapping[str, str]) -> dict[str, str]:
+    """Return one label per drawn module, each naming no other module.
+
+    :func:`safe_label` is an allowlist, so it is many-to-one: every character
+    outside it becomes the same underscore and runs of those collapse. Two
+    modules that differ only outside the allowlist therefore reduce to one
+    label -- ``src/A/mod.py`` and ``src/B/mod.py`` for any two non-ASCII
+    directory names both read ``src/_/mod.py`` -- and so do two long paths
+    that share their first 57 characters. The nodes stay distinct, which is
+    why the picture is still correct; the reader cannot tell which box is
+    which, which is why it is still useless.
+
+    Assigned over ``sorted(identifiers)`` rather than in emission order, so a
+    module keeps its label whether it is drawn inside a subgraph or beside
+    one, and two renders of the same graph agree.
+
+    Counted separately from :func:`_group_titles`. A subgraph title names a
+    community and a node label names a module, so a collision between the two
+    kinds is not a collision a reader can be misled by, and merging the tallies
+    would put an ordinal on a label that occurs once.
+    """
+    drawn = sorted(identifiers)
+    return dict(zip(drawn, _distinct(safe_label(node) for node in drawn), strict=True))
 
 
 def _group_titles(communities: Sequence[Community]) -> list[str]:
@@ -388,24 +418,38 @@ def _group_titles(communities: Sequence[Community]) -> list[str]:
     covers every group whose members straddle directories -- and two boxes
     with the same title tell a reader nothing. Repeats therefore take an
     ascending ordinal in the order the partition lists them, which is stable
-    because that order is. The first occurrence is left bare so the common
-    case, where every label is already distinct, reads as the paths do.
+    because that order is.
+    """
+    return _distinct(safe_label(community.label) for community in communities)
 
-    The ordinals are counted here rather than accumulated in an argument the
-    caller passes back in, so this returns data and mutates nothing.
+
+def _distinct(labels: Iterable[str]) -> list[str]:
+    """Return ``labels`` with every repeat carrying an ascending ordinal.
+
+    The one home for the rule, because a subgraph title and a node label are
+    drawn in the same picture and a reader tells them apart the same way. The
+    first occurrence is left bare so the common case, where every label is
+    already distinct, reads as the paths do.
+
+    Counted here rather than accumulated in an argument the caller passes back
+    in, so this returns data and mutates nothing.
     """
     counts: dict[str, int] = {}
-    titles: list[str] = []
-    for community in communities:
-        label = safe_label(community.label)
+    distinct: list[str] = []
+    for label in labels:
         counts[label] = counts.get(label, 0) + 1
-        titles.append(label if counts[label] == 1 else f"{label} {counts[label]}")
-    return titles
+        distinct.append(label if counts[label] == 1 else f"{label} {counts[label]}")
+    return distinct
 
 
-def _declaration(identifier: str, path: str, indent: str) -> str:
-    """Render one node: a generated id and a quoted, sanitised label."""
-    return f'{indent}{identifier}["{safe_label(path)}"]'
+def _declaration(identifier: str, label: str, indent: str) -> str:
+    """Render one node: a generated id and a quoted, already-safe label.
+
+    The label arrives sanitised and disambiguated from :func:`_node_labels`;
+    sanitising here instead would give each declaration a label that no other
+    declaration was compared against.
+    """
+    return f'{indent}{identifier}["{label}"]'
 
 
 @dataclass(frozen=True)

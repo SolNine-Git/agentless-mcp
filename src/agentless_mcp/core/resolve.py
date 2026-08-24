@@ -215,6 +215,11 @@ class ResolvedImport:
     module: str
     line: int
     resolved: str | None
+    # Whether the statement was spelled against the importing file's own
+    # directory. Kept because the module string cannot be asked afterwards:
+    # `from .missing import x` records the module `missing`, which names
+    # nothing about this repository, while the statement names nothing else.
+    relative: bool = False
 
 
 @dataclass(frozen=True)
@@ -326,20 +331,32 @@ class Resolver:
 class ResolvedGraph:
     """Every resolved edge in one repository, in one deterministic order.
 
-    ``unresolved_imports`` counts the import statements that named no file in
-    this repository. Import resolution is best effort by construction (see
-    :func:`agentless_mcp.core.graph.resolve_import_target`), and the number is
-    not small: 100 of 622 internal ``agentless_mcp.*`` statements resolved to
-    nothing when this was measured on this repository (2026-08-23). It travels
-    with the graph because every claim drawn from these edges -- the cycle
-    list above all -- is a claim about the imports that did resolve, and
-    "nothing found" and "little was searched" must not render identically.
+    Two counts, because one of them cannot answer the question it is asked.
+
+    ``unresolved_imports`` counts every import statement that named no file in
+    this repository, which is literally true of ``import json`` and always will
+    be. Measured on this repository (2026-08-23): 518 of 1238 statements, and a
+    repository whose own imports all resolve would still report several
+    hundred. Read as coverage it says a repository was barely searched when
+    nothing was missed.
+
+    ``unresolved_internal_imports`` counts only the statements that named
+    something this repository holds -- a relative import, or one whose leading
+    segment is a directory or file here -- and failed anyway. That is the
+    number a claim drawn from these edges has to be read against, the cycle
+    list above all, because it is the one that is zero when nothing was
+    missed. Measured on the same tree, the same day: 6.
+
+    Both travel with the graph rather than being recomputed beside it, because
+    "nothing found" and "little was searched" must not render identically and
+    only one of the two numbers can tell them apart.
     """
 
     edges: tuple[SymbolEdge, ...]
     definitions: Mapping[str, Definition]
     files: tuple[str, ...]
     unresolved_imports: int = 0
+    unresolved_internal_imports: int = 0
 
     def outgoing(self) -> dict[str, tuple[SymbolEdge, ...]]:
         """Return the edges leaving each node, keyed by node id."""
@@ -453,6 +470,7 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
                     module=statement.module,
                     line=statement.line_number,
                     resolved=target,
+                    relative=statement.is_relative or bool(statement.relative_level),
                 )
             )
             # Named rather than a bool so the narrowing is the type's, not a
@@ -491,6 +509,7 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
                             module=dotted,
                             line=statement.line_number,
                             resolved=submodule,
+                            relative=statement.is_relative or bool(statement.relative_level),
                         )
                     )
                 elif bound is not None:
@@ -535,6 +554,7 @@ def import_graph(files: Sequence[FileImports]) -> ResolvedGraph:
         definitions={},
         files=tuple(sorted(facts.path for facts in files)),
         unresolved_imports=_unresolved_imports(scopes.values()),
+        unresolved_internal_imports=_unresolved_internal_imports(scopes.values(), scopes.keys()),
     )
 
 
@@ -570,6 +590,9 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
         definitions=definitions,
         files=tuple(sorted(facts.path for facts in scan.files)),
         unresolved_imports=_unresolved_imports(resolver.scopes.values()),
+        unresolved_internal_imports=_unresolved_internal_imports(
+            resolver.scopes.values(), resolver.scopes.keys()
+        ),
     )
 
 
@@ -661,8 +684,11 @@ def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
 
     Not every cycle the repository holds. An import this package could not
     resolve to a file contributes no edge, so it can hide a knot that is
-    really there; ``resolved.unresolved_imports`` is how many statements were
-    in that position, and it is what an empty result has to be read against.
+    really there. ``resolved.unresolved_internal_imports`` is how many
+    statements were in that position *and* named something this repository
+    holds, and it is what an empty result has to be read against;
+    ``unresolved_imports`` counts every unresolved statement, most of which
+    name the standard library and never could have resolved.
 
     Tarjan's strongly connected components over the import edges alone: two
     files are in one cycle exactly when each can reach the other by following
@@ -692,6 +718,54 @@ def _unresolved_imports(scopes: Iterable[ImportScope]) -> int:
     return sum(
         1 for scope in scopes for statement in scope.statements if statement.resolved is None
     )
+
+
+def _repository_segments(paths: Iterable[str]) -> frozenset[str]:
+    """Return every directory name and file stem the repository spells.
+
+    What an import has to lead with to be about this repository at all.
+    ``agentless_mcp`` is here because a directory carries that name;
+    ``json`` is not, unless the tree happens to hold a file or directory of
+    that name -- in which case an import leading with it really could have
+    meant this repository, and counting it is the safe direction.
+    """
+    segments: set[str] = set()
+    for path in paths:
+        parts = path.split("/")
+        segments.update(parts[:-1])
+        segments.add(parts[-1].rpartition(".")[0] or parts[-1])
+    return frozenset(segments)
+
+
+def _unresolved_internal_imports(scopes: Iterable[ImportScope], paths: Iterable[str]) -> int:
+    """Count the unresolved imports that named something this repository holds.
+
+    A relative import always did: it is spelled against the importing file's
+    own directory and can name nothing else, which is why
+    :class:`ResolvedImport` keeps that fact rather than re-reading the module
+    string -- ``from .missing import x`` records the module ``missing``. An
+    absolute one did when its
+    leading segment is a directory or a file here -- which is what separates
+    ``from agentless_mcp.application import X``, a resolution this package
+    owes an answer to, from ``import json``, which it never could.
+    """
+    segments = _repository_segments(paths)
+    return sum(
+        1
+        for scope in scopes
+        for statement in scope.statements
+        if statement.resolved is None
+        and (statement.relative or _names_this_repository(statement.module, segments))
+    )
+
+
+def _names_this_repository(module: str, segments: frozenset[str]) -> bool:
+    """True when a module string leads with a name this repository spells."""
+    text = module.strip()
+    if not text:
+        return False
+    lead = text.replace("\\", "/").replace("::", "/").replace(".", "/").split("/", 1)[0]
+    return bool(lead) and lead in segments
 
 
 def base_name(text: str) -> str:

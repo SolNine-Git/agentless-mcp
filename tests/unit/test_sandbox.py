@@ -82,6 +82,31 @@ class TestWorktree:
 
         assert not (repo / "inside").exists(), "the refused location was created anyway"
 
+    def test_a_scratch_root_symlinked_into_the_repository_is_refused(
+        self, repo, tmp_path, monkeypatch
+    ):
+        """The same property, reached by a spelling the lexical test misses.
+
+        Reproduced during the audit: the guard compared an unresolved scratch
+        against a resolved `top`, so an XDG_CACHE_HOME that is a symlink into
+        the repository read as outside it and the worktree was created inside
+        the repository under analysis. Both sides are real paths now, and this
+        is the case that says so.
+        """
+        inside = repo / "inside"
+        inside.mkdir()
+        cache_home = tmp_path / "cache-home-link"
+        cache_home.symlink_to(inside)
+        monkeypatch.setenv(cachedir.ENV_CACHE_HOME, str(cache_home))
+
+        with (
+            pytest.raises(RepoResolutionError, match="inside the repository"),
+            sandbox.worktree(repo),
+        ):
+            pass
+
+        assert list(inside.iterdir()) == [], "the refused worktree was created anyway"
+
     def test_the_checkout_is_bit_identical_afterwards(self, repo):
         before_status = git(repo, "status", "--porcelain")
         before_head = git(repo, "rev-parse", "HEAD")

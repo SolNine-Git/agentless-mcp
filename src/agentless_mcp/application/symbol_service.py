@@ -107,6 +107,18 @@ EXPAND_BUDGET_TOKENS = 12_000
 # so what the response carries is the cards and a count.
 EXPAND_MAX_SEATS = 40
 
+# How many ids that missed are named one by one before the rest become a
+# count. The grouping above handles ids that share a reason verbatim, and
+# that is not the expensive case: every "no longer defines X" reason embeds
+# its own file and symbol, so a batch of bogus ids produces a batch of
+# distinct reasons and groups into nothing. Measured on this repository, 40
+# real ids beside 460 bogus ones at ``--limit 500`` rendered 460 unresolved
+# rows and 15.9k JSON tokens, which pushed the ceiling down onto the cards
+# and returned 10 of the 40 bodies actually asked for. The failure report
+# must not be able to crowd out the answer, so it is bounded like every other
+# listing here and says how many it did not name.
+MAX_UNRESOLVED_ROWS = 20
+
 # Room kept back on each shortened card for the marker that says it was
 # shortened, so announcing the cut cannot be what pushes a card past its
 # share.
@@ -151,15 +163,21 @@ class FindResult:
 
 
 def _check_limit(limit: int) -> None:
-    """Refuse a limit that cannot bound a listing.
+    """Refuse a limit that cannot bound a listing, or that no listing can honour.
 
     The reasoning that used to live here now lives in
-    :func:`agentless_mcp.util.bounds.at_least`, where ``GraphService`` and
-    both front doors can reach it. This module was the only layer that had
-    the rule, which is why every listing ``GraphService`` owns accepted a
-    limit of zero and answered with an empty list.
+    :func:`agentless_mcp.util.bounds.within`, where ``GraphService`` and both
+    front doors can reach it. This module was the only layer that had the
+    rule, which is why every listing ``GraphService`` owns accepted a limit of
+    zero and answered with an empty list.
+
+    The ceiling is checked here too, and not only in the MCP schema that
+    publishes it. Enforced on one door alone it was not a bound but a
+    difference between the doors: ``refs --limit 100000`` was answered on the
+    command line and refused over MCP, for the same symbol in the same
+    repository.
     """
-    bounds.at_least(limit, 1, "limit")
+    bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
 
 
 @dataclass(frozen=True)
@@ -178,11 +196,20 @@ class ExpandResult:
     cards: tuple[render.SymbolCard, ...]
     unresolved: tuple[tuple[str, str], ...]
     budget: int = EXPAND_BUDGET_TOKENS
+    # Ids that missed and are not named in ``unresolved`` because the row
+    # bound took them. Counted rather than dropped: a failure report that
+    # cannot say what it left out is read as complete.
+    unresolved_omitted: int = 0
 
     @property
     def shortened(self) -> int:
         """How many of the returned bodies were cut to fit the budget."""
         return sum(1 for card in self.cards if card.body_shown < card.body_total)
+
+    @property
+    def unresolved_total(self) -> int:
+        """How many ids missed in all, named here or not."""
+        return len(self.unresolved) + self.unresolved_omitted
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this expansion."""
@@ -193,6 +220,8 @@ class ExpandResult:
             "unresolved": [
                 {"stable_id": entry, "reason": reason} for entry, reason in self.unresolved
             ],
+            "unresolved_total": self.unresolved_total,
+            "unresolved_omitted": self.unresolved_omitted,
         }
 
 
@@ -340,10 +369,13 @@ class SymbolService:
             unresolved.append((MESSAGES.grouped_ids.format(count=len(cards) - seats), reason))
             cards = cards[:seats]
 
+        # Bounded last, so the grouped rows built above are subject to it too.
+        named = unresolved[:MAX_UNRESOLVED_ROWS]
         return ExpandResult(
             cards=self._fit_bodies(cards, budget),
-            unresolved=tuple(unresolved),
+            unresolved=tuple(named),
             budget=budget,
+            unresolved_omitted=len(unresolved) - len(named),
         )
 
     def find_referencing_symbols(
@@ -544,11 +576,18 @@ class SymbolService:
 
 
 def render_expansion(result: ExpandResult) -> str:
-    """Render an expansion: the cards, what was shortened, and what missed.
+    """Render an expansion: the cards and what was shortened.
 
-    One home for the three pieces because both adapters print all three, and
-    an adapter that printed the cards without the shortening summary would be
-    the silent-truncation defect back in a different file.
+    One home for both pieces because both adapters print both, and an adapter
+    that printed the cards without the shortening summary would be the
+    silent-truncation defect back in a different file.
+
+    The ids that *missed* are deliberately not here. They are a failure
+    report, and each door carries one on the channel it has: the CLI on
+    stderr with a non-zero exit, the MCP adapter appended to the single
+    string a tool call returns. Rendered into this body they reached the
+    CLI's stdout in among the symbol sources at exit 0 -- the same defect
+    ``skeleton`` was fixed for, in the sibling command nobody checked.
     """
     blocks = [render.render_symbol_cards(result.cards)]
     if result.shortened:
@@ -557,8 +596,18 @@ def render_expansion(result: ExpandResult) -> str:
                 shortened=result.shortened, total=len(result.cards), budget=result.budget
             )
         )
-    blocks.extend(f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved)
     return "\n".join(blocks)
+
+
+def unresolved_lines(result: ExpandResult) -> list[str]:
+    """Say which requested ids missed, and how many were not named."""
+    lines = [f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved]
+    if result.unresolved_omitted:
+        lines.append(
+            f"unresolved: {result.unresolved_omitted} further ids are not listed; "
+            f"{result.unresolved_total} of the ids requested did not resolve"
+        )
+    return lines
 
 
 def render_refs(result: RefsResult, *, shared_callers: bool = False) -> str:

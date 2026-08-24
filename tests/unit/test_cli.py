@@ -377,7 +377,7 @@ class TestInProcess:
         self, services, repo_path, capsys
     ):
         assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_DOMAIN
-        assert "limit must be at least 1, got -1" in capsys.readouterr().err
+        assert "limit takes a value from 1 through 500, got -1" in capsys.readouterr().err
 
 
 class TestSliceBySymbol:
@@ -435,7 +435,7 @@ class TestDiagram:
 
     def test_a_bad_node_bound_is_refused_by_the_service(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_DOMAIN
-        assert "max_nodes must be at least 1, got 0" in capsys.readouterr().err
+        assert "max_nodes takes a value from 1 through 500, got 0" in capsys.readouterr().err
 
     def test_a_focus_naming_nothing_is_a_domain_failure(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "diagram", "--focus", "nope.py") == EXIT_DOMAIN
@@ -976,7 +976,19 @@ class TestJsonShape:
     """``--json`` says everything the text form says, on every subcommand."""
 
     def test_json_reports_the_truncation_the_text_form_reports(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "map", "--budget", "40", "--json") == EXIT_OK
+        # `--budget 40` used to force this. 40 is not a budget any door
+        # accepts now -- projectconfig declares 200..64000 and the service
+        # holds callers to it -- so the repository grows until the smallest
+        # legal budget truncates instead. The truncation path is unchanged;
+        # only the way this test reaches it is.
+        for index in range(8):
+            body = "".join(
+                f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
+                for inner in range(12)
+            )
+            (repo_path / f"module_{index:02d}.py").write_text(body, encoding="utf-8")
+
+        assert invoke(services, repo_path, "map", "--budget", "200", "--json") == EXIT_OK
         document = json.loads(capsys.readouterr().out)
         assert document["truncation"]["shown"] < document["truncation"]["total"]
         assert document["truncation"]["unit"] == "symbols"
@@ -1028,6 +1040,42 @@ class TestExitCodes:
         self, services, repo_path, name, arguments, expected
     ):
         assert invoke(services, repo_path, *arguments) == expected, name
+
+
+class TestExpandReportsAPartialBatchAsAFailure:
+    """`expand` is the sibling `skeleton` was fixed without.
+
+    Same defect, same shape, one command over: an id that missed was rendered
+    into the *answer* on stdout, under the symbol bodies, at exit 0. An agent
+    piping `expand` into a prompt read "unresolved: core.py no longer defines
+    X" as source among the sources it asked for. The exit code only moved when
+    *every* id missed, so a batch that answered one of fifty reported success.
+    """
+
+    def test_one_bad_id_among_good_ones_exits_domain(self, services, repo_path):
+        code = invoke(services, repo_path, "expand", "py:core.py::quote", "py:core.py::absent")
+        assert code == EXIT_DOMAIN
+
+    def test_the_reason_is_on_stderr_and_not_in_the_answer(self, services, repo_path, capsys):
+        invoke(services, repo_path, "expand", "py:core.py::quote", "py:core.py::absent")
+        captured = capsys.readouterr()
+
+        assert "unresolved" in captured.err
+        assert "absent" in captured.err
+        assert "unresolved" not in captured.out
+        # The answer it did have is still on stdout, whole.
+        assert "def quote" in captured.out
+
+    def test_a_batch_that_fully_resolves_still_exits_ok(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "expand", "py:core.py::quote") == EXIT_OK
+        assert "unresolved" not in capsys.readouterr().err
+
+    def test_the_json_form_keeps_the_misses_as_their_own_field(self, services, repo_path, capsys):
+        invoke(services, repo_path, "expand", "py:core.py::absent", "--json")
+        document = json.loads(capsys.readouterr().out)
+
+        assert document["unresolved"]
+        assert document["unresolved_total"] == 1
 
 
 class TestSkeletonReportsAPartialBatchAsAFailure:

@@ -11,13 +11,16 @@ person who lands the fix has to remove the marker rather than leave a test
 that quietly lies.
 """
 
+import builtins
+import time
 from collections import Counter
 from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import refs, resolve, symbols
-from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core import extractor as extractor_module
+from agentless_mcp.core import grammars, refs, resolve, symbols
+from agentless_mcp.core.extractor import IdentifierRole, TreeSitterExtractor
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
@@ -363,3 +366,171 @@ class TestStableIdentity:
         )
         assert symbols.symbol_stable_id(book) == "py:core.py::Book"
         assert symbols.symbol_stable_id(price) == "py:core.py::Book.price"
+
+
+# A left-nested chain: `a + a + ... + a` parses to a binary_operator tree whose
+# depth is the number of terms, so the parse tree of a 6 KB file is 1500 nodes
+# deep. Every shape that reaches this depth is ordinary Python -- a long `|`
+# type union, a long `or` guard, a generated concatenation.
+CHAIN_TERMS = 3000
+CHAINED_EXPRESSION = "x = " + " + ".join(["a"] * CHAIN_TERMS) + "\n"
+
+# Generous enough that a loaded CI box does not flake, and two orders of
+# magnitude below the cost of the walk this pins against. The parent-chain
+# walk took 288 seconds on a 20 KB file of this shape; the scope-boundary
+# index takes 0.02.
+CHAIN_BUDGET_SECONDS = 2.0
+
+
+class TestReferencePassCostIsLinear:
+    """The reference pass must not cost the depth of an expression.
+
+    Classifying a Python identifier needs the scopes that enclose it. Asking
+    for them by walking the node's parent chain costs the node's depth, and a
+    chained expression makes depth equal to file size -- so the pass went
+    cubic in the length of one line and a 20 KB file took 288 seconds, against
+    0.044 for the whole-scope scan it had replaced. `_ScopeTree` answers from a
+    boundary index built in one downward walk, which costs the number of
+    enclosing *scopes* instead.
+
+    Wall-clock rather than a call count, because the failure is a hang: a
+    repository holding one generated file stopped being indexable at all, and
+    no assertion about the shape of the traversal would have said so.
+    """
+
+    def test_a_chained_expression_is_classified_in_linear_time(self, extractor):
+        started = time.perf_counter()
+        found = extractor.extract_refs_from_source(CHAINED_EXPRESSION, "python", "chain.py")
+        elapsed = time.perf_counter() - started
+
+        assert len(found) == CHAIN_TERMS + 1
+        assert elapsed < CHAIN_BUDGET_SECONDS
+
+    def test_depth_costs_no_more_than_breadth(self, extractor):
+        """The same identifiers, nested and flat, cost the same order.
+
+        The flat form was never slow, so comparing the two is what separates
+        "this machine is loaded" from "depth is being paid for". A ratio bound
+        rather than an equality: the deep form does more real work, just not
+        more per level of nesting.
+        """
+        flat = "x = [" + ", ".join(["a"] * CHAIN_TERMS) + "]\n"
+
+        started = time.perf_counter()
+        extractor.extract_refs_from_source(flat, "python", "flat.py")
+        flat_seconds = time.perf_counter() - started
+
+        started = time.perf_counter()
+        extractor.extract_refs_from_source(CHAINED_EXPRESSION, "python", "chain.py")
+        chained_seconds = time.perf_counter() - started
+
+        assert chained_seconds < max(flat_seconds * 20.0, 0.5)
+
+    def test_a_comprehension_still_hides_its_bindings_from_its_first_iterable(self, extractor):
+        """The correctness the parent walk bought, kept by the index.
+
+        `rows` is the comprehension's own binding and `source` is not, so a
+        name in the first iterable sees the enclosing scope and a name in the
+        body sees the comprehension. The index carries the bounding node for
+        exactly this test.
+        """
+        source = "def use(source):\n    return [rows for rows in source if rows]\n"
+        roles = {
+            (found.name, found.line): found.role
+            for found in extractor.extract_refs_from_source(source, "python", "c.py")
+        }
+
+        assert roles[("source", 2)] is IdentifierRole.LOCAL
+        assert roles[("rows", 2)] is IdentifierRole.LOCAL
+
+
+VISIBILITY_SOURCES = {
+    "typescript": (
+        "s.ts",
+        (
+            "export class Svc {\n"
+            "    private secret(): number { return 1; }\n"
+            "    public open(): number { return 2; }\n"
+            "}\n"
+        ),
+    ),
+    "swift": (
+        "s.swift",
+        (
+            "class Svc {\n"
+            "    private func secret() -> Int { return 1 }\n"
+            "    func open() -> Int { return 2 }\n"
+            "}\n"
+        ),
+    ),
+}
+
+
+class TestVisibilityKeywordsBeatTheUnderscoreConvention:
+    """`is_public` is a persisted column, so a wrong one is wrong on disk.
+
+    `_generic_is_public` reads the declaration's own keywords where its row
+    lists them and falls back to the leading-underscore rule where it does
+    not. TypeScript spells the keyword `accessibility_modifier` and Swift
+    wraps it in `modifiers`, and neither row listed one -- so `private
+    secret()` came back public in the two languages where the keyword is most
+    often written.
+    """
+
+    @pytest.mark.parametrize("language", sorted(VISIBILITY_SOURCES))
+    def test_a_private_member_is_not_reported_public(self, language, extractor):
+        if language not in grammars.warmed_languages():
+            pytest.skip(f"grammar for {language} is not in the local pack cache")
+        path, source = VISIBILITY_SOURCES[language]
+        found = {s.name: s for s in extractor.extract_from_source(source, language, path)}
+
+        assert found["secret"].is_public is False
+        assert found["open"].is_public is True
+
+
+class TestRationaleLinesUseTheRowGrammarTreeSitterUses:
+    """A comment's rows are its newlines, and nothing else.
+
+    `str.splitlines` also breaks on a form feed, a vertical tab, U+0085 and
+    U+2028; tree-sitter counts rows on `\n` alone. A form feed is the Emacs
+    page marker and is ordinary in older C sources, and one inside a block
+    comment moved every later marker in that comment down a line --
+    `_attach_rationales` then hangs it off whichever symbol that line falls in.
+    """
+
+    def test_a_form_feed_inside_a_comment_does_not_move_the_line(self, extractor):
+        if "c" not in grammars.warmed_languages():
+            pytest.skip("grammar for c is not in the local pack cache")
+        source = "/* pad\n\x0cmore\nTODO: fix me */\nint x;\n"
+        parser = grammars.get_parser("c")
+        data = source.encode("utf-8")
+
+        found = extractor_module._extract_rationales(parser.parse(data).root_node, data)
+
+        assert [rationale.line_number for rationale in found] == [3]
+
+
+class TestTheAlwaysBoundNamesDoNotMoveWithTheInterpreter:
+    """The same tree must classify the same way on every supported Python.
+
+    The set was `dir(builtins)` of the running interpreter, and the tag cache
+    generation is keyed on the tree rather than on the interpreter -- so a
+    repository indexed under 3.10 and served under 3.13 disagreed about
+    `ExceptionGroup` and four other names, from one cache.
+    """
+
+    def test_the_set_is_a_literal_and_not_the_running_interpreter(self):
+        # The names CPython added after the 3.10 floor. They must be present
+        # whatever interpreter runs this, which is only true of a literal.
+        assert {"ExceptionGroup", "BaseExceptionGroup", "aiter", "anext"} <= (
+            extractor_module._PYTHON_ALWAYS_BOUND
+        )
+        # And the pin must not have drifted from the language: every name this
+        # interpreter calls a builtin is in it.
+        assert set(dir(builtins)) <= extractor_module._PYTHON_ALWAYS_BOUND
+
+    def test_a_soft_keyword_is_still_an_ordinary_name(self):
+        # `match` and `case` are names everywhere except one statement, and a
+        # repository function called `match` has callers.
+        assert "match" not in extractor_module._PYTHON_ALWAYS_BOUND
+        assert "case" not in extractor_module._PYTHON_ALWAYS_BOUND

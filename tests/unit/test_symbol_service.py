@@ -14,10 +14,15 @@ from agentless_mcp.application import envelope, render
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import (
     EXPAND_MAX_SEATS,
+    MAX_UNRESOLVED_ROWS,
     SymbolService,
+    render_expansion,
     render_refs,
+    unresolved_lines,
 )
+from agentless_mcp.util.bounds import MAX_LIMIT
 from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = "def quote(value):\n    return value\n\n\ndef normalise(value):\n    return value\n"
 
@@ -204,3 +209,63 @@ class TestAnUnresolvedFanInTarget:
 
         assert rendered.startswith(result.notice)
         assert render.render_shared_callers(result.shared, result.target) in rendered
+
+
+class TestTheUnresolvedListIsBounded:
+    """A failure report must not be able to crowd out the answer.
+
+    Every "no longer defines X" reason embeds its own file and symbol, so a
+    batch of bogus ids produces a batch of *distinct* reasons and the existing
+    group-by-identical-reason path collapses none of them. Measured before the
+    bound: 40 real ids beside 460 bogus ones at ``limit=500`` returned 460
+    unresolved rows and 15.9k JSON tokens, which pushed the envelope ceiling
+    down onto the cards and returned 10 of the 40 bodies actually asked for.
+    """
+
+    def test_five_hundred_bogus_ids_do_not_produce_five_hundred_rows(self, repo, symbols):
+        bogus = [f"py:wide.py::absent_{number}" for number in range(500)]
+
+        result = symbols.expand_symbols(repo, bogus, limit=MAX_LIMIT)
+
+        assert len(result.unresolved) == MAX_UNRESOLVED_ROWS
+        assert result.unresolved_omitted == 500 - MAX_UNRESOLVED_ROWS
+        assert result.unresolved_total == 500
+
+    def test_the_ids_it_did_not_name_are_counted_not_dropped(self, repo, symbols):
+        bogus = [f"py:wide.py::absent_{number}" for number in range(500)]
+
+        lines = unresolved_lines(symbols.expand_symbols(repo, bogus, limit=MAX_LIMIT))
+
+        assert "500 of the ids requested did not resolve" in lines[-1]
+
+    def test_the_bound_leaves_room_for_the_cards_that_did_resolve(self, repo, symbols):
+        """The regression this bound exists for: rows crowding out bodies."""
+        requested = [*wide_ids(40), *[f"py:wide.py::absent_{n}" for n in range(460)]]
+
+        result = symbols.expand_symbols(repo, requested, limit=MAX_LIMIT)
+        wrapped = envelope.wrap_json(repo, result.as_dict(), counter=Chars4Counter())
+
+        assert len(result.cards) == EXPAND_MAX_SEATS
+        assert len(json.loads(wrapped)["symbols"]) == EXPAND_MAX_SEATS
+
+
+class TestTheFailureReportIsNotPartOfTheAnswer:
+    """`expand` was the unedited sibling of the `skeleton` defect.
+
+    `skeleton a.py missing.py` used to render the read failure into stdout
+    among the file contents at exit 0, and was fixed. `expand` did the same
+    thing with ids that missed, and was not: an agent piping the output into a
+    prompt read "unresolved: ... no longer defines X" as source among the
+    sources it asked for.
+    """
+
+    def test_the_rendered_body_carries_only_the_answer(self, repo, symbols):
+        result = symbols.expand_symbols(repo, ["py:core.py::quote", "py:core.py::absent"])
+
+        assert "def quote" in render_expansion(result)
+        assert "unresolved" not in render_expansion(result)
+
+    def test_the_ids_that_missed_are_still_reported_separately(self, repo, symbols):
+        result = symbols.expand_symbols(repo, ["py:core.py::quote", "py:core.py::absent"])
+
+        assert any("absent" in line for line in unresolved_lines(result))

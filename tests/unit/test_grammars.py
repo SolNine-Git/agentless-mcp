@@ -133,25 +133,33 @@ class TestCapabilities:
         assert capability.probe_ok is False
         assert capability.detail == "not warmed: run agentless-mcp warmup go"
 
-    def test_a_cached_but_unloadable_grammar_is_not_reported_as_uncached(self, monkeypatch):
-        """The two states carried the same booleans, so only free text told them apart."""
-        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["python", "go"])
+    def test_a_broken_grammar_and_an_unfetched_one_carry_different_remedies(self, monkeypatch):
+        """Both are unwarmed, and running warmup fixes only one of them.
+
+        The two states carry identical booleans, so the detail is the only
+        thing that separates them -- and it has to, because the advice the
+        pair exists to distinguish is advice a reader acts on. ``warmup``
+        skips ``prefetch`` for anything ``downloaded_languages`` already
+        lists, so telling the owner of a broken cached library to run it
+        sends them to a command that fetches nothing.
+        """
+        monkeypatch.setattr(pack, "downloaded_languages", list)
+        (never_fetched,) = grammars.loaded_capabilities(["go"])
 
         def refuse(name):
             message = f"bad magic in {name}.so"
             raise pack.DynamicLoadError(message)
 
+        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["go"])
         monkeypatch.setattr(pack, "get_language", refuse)
-        (capability,) = grammars.loaded_capabilities(["go"])
-        assert capability.cached is True
-        assert capability.warmed is False
-        assert capability.unloadable is True
+        (broken,) = grammars.loaded_capabilities(["go"])
 
-    def test_a_language_that_was_never_fetched_is_not_reported_as_cached(self, monkeypatch):
-        monkeypatch.setattr(pack, "downloaded_languages", list)
-        (capability,) = grammars.loaded_capabilities(["go"])
-        assert capability.cached is False
-        assert capability.unloadable is False
+        assert never_fetched.warmed is False
+        assert broken.warmed is False
+        assert never_fetched.detail != broken.detail
+        assert "run agentless-mcp warmup" in never_fetched.detail
+        assert "bad magic in go.so" in broken.detail
+        assert "Warmup will not refetch it" in broken.detail
 
     def test_default_capability_list_covers_both_tiers(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)

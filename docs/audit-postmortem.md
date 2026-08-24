@@ -4,6 +4,11 @@ Written 2026-08-23, from the `audit-remediation` branch, after stages 0-6a of
 the remediation. Two questions: why these defects surfaced now, and what to
 change in the gates so the next batch surfaces before an audit has to look.
 
+The counts below are the ones that stood at stage 6a. The remediation closed at
+**337** findings (316 fixed, 12 superseded, 9 not established); the two added
+after this was written do not change any argument here, and the number is left
+as it was measured rather than restated, so the write-up and its evidence agree.
+
 ## What the numbers are, and what they are not
 
 The audit segmented `src/agentless_mcp` into 25 blocks, ran a 7-pass

@@ -9,6 +9,7 @@ move -- rather than on which internal function was called.
 """
 
 import json
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -468,6 +469,35 @@ class TestApplyInPlace:
             patch_service._stage_file(repo / "app.py", "new app\n")
 
         assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+
+    def test_a_temporary_file_that_cannot_be_removed_is_recorded(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Not raising is right here; not recording it was not.
+
+        `_discard` runs on a path that is already failing, so the failure the
+        caller needs to see is the other one. But the file left behind is a
+        staged or backup sibling inside the caller's own repository, and
+        nothing else anywhere names it -- swallowing the error left litter no
+        one could be told about.
+        """
+        litter = tmp_path / f"app.py{patch_service.STAGING_SUFFIX}"
+        litter.write_text("staged", encoding="utf-8")
+
+        def refuse(self, missing_ok=False):
+            _ = missing_ok
+            message = "read-only file system"
+            raise OSError(30, message, str(self))
+
+        monkeypatch.setattr(Path, "unlink", refuse)
+
+        with caplog.at_level(logging.WARNING, logger=patch_service.logger.name):
+            patch_service._discard([litter])
+
+        (record,) = caplog.records
+        assert record.levelno == logging.WARNING
+        assert str(litter) in record.getMessage()
+        assert "read-only file system" in record.getMessage()
 
     def test_a_backup_that_cannot_be_reserved_changes_nothing(
         self, service, ctx, repo, monkeypatch

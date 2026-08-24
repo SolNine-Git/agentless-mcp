@@ -13,6 +13,7 @@ the repository rather than a wait.
 
 import errno
 import importlib
+import logging
 import subprocess
 import sys
 
@@ -124,6 +125,36 @@ class TestFileLock:
             filelock.exclusive(tmp_path / "write.lock", flavour=platforms.POSIX),
         ):
             pytest.fail("the acquisition should have been refused")
+
+    @pytest.mark.skipif(
+        platforms.family(sys.platform) != platforms.POSIX,
+        reason="the fcntl branch only runs on POSIX",
+    )
+    def test_a_release_the_kernel_refuses_is_logged_not_raised(self, tmp_path, monkeypatch, caplog):
+        # The release cannot fail the caller. `handle.close()` in `exclusive`
+        # drops the lock whatever the unlock call did, so raising here would
+        # replace the caller's own failure with one about the release -- and
+        # it would arrive as a raw OSError, which the handler that catches
+        # this module's LockUnavailableError would miss.
+        fcntl = importlib.import_module("fcntl")
+        real_flock = fcntl.flock
+
+        def refuse_the_unlock(descriptor: int, operation: int) -> None:
+            if operation == fcntl.LOCK_UN:
+                raise OSError(errno.EBADF, "Bad file descriptor")
+            real_flock(descriptor, operation)
+
+        monkeypatch.setattr(fcntl, "flock", refuse_the_unlock)
+        path = tmp_path / "write.lock"
+
+        with (
+            caplog.at_level(logging.WARNING, logger=filelock.logger.name),
+            filelock.exclusive(path, flavour=platforms.POSIX),
+        ):
+            pass
+
+        assert "releasing the lock" in caplog.text
+        assert str(path) in caplog.text
 
     def test_the_lock_is_released_for_the_next_holder(self, tmp_path):
         flavour = platforms.family(sys.platform)

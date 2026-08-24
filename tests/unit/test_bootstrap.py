@@ -127,7 +127,65 @@ class TestTheEncodingLoadIsInsideTheBoundary:
         with pytest.raises(AgentlessError, match=bootstrap.TIKTOKEN_ENCODING):
             bootstrap.TiktokenCounter()
 
-    def test_the_load_runs_under_a_socket_bound(self, monkeypatch):
+
+class TestTheSocketBoundBelongsToTheCompositionRoot:
+    """``socket.setdefaulttimeout`` is process-wide, so where it is set is the fix.
+
+    The bound has to exist -- tiktoken fetches the BPE ranks over HTTP on a
+    cold cache and takes no timeout of its own -- but writing a process-wide
+    setting is safe only where nothing else in the process holds a socket.
+    That is a fact about ``cli_main``, which has just parsed argv and built
+    nothing, and not about ``TiktokenCounter``, which any caller can construct
+    at any time. Set from the constructor it read as a property of the class,
+    and a second caller would have re-timed every socket in the process.
+    """
+
+    # A value nothing in this package uses, and deliberately not
+    # TIKTOKEN_FETCH_TIMEOUT_SECONDS: these tests are about who may write the
+    # process-wide default, so reading it as a starting point would let a test
+    # inherit the very value it exists to catch from whatever ran before it.
+    SENTINEL_TIMEOUT = 11.5
+
+    @pytest.fixture(autouse=True)
+    def pinned_socket_default(self):
+        """Own the process-wide default for the length of one test.
+
+        Set rather than sampled, and put back afterwards. The setting is
+        global, so a test that only reads it is not testing anything: a defect
+        that leaks a bound from an earlier test would be handed back its own
+        leak as the expected value.
+        """
+        restore = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(self.SENTINEL_TIMEOUT)
+        try:
+            yield
+        finally:
+            socket.setdefaulttimeout(restore)
+
+    def _tiktoken_argv(self):
+        """An argv the full parser accepts that selects the optional counter."""
+        return ["--token-counter", COUNTER_TIKTOKEN, "tree", "--repo", "."]
+
+    def test_the_root_bounds_the_load_it_starts(self, monkeypatch):
+        record = []
+        monkeypatch.setattr(
+            bootstrap.importlib, "import_module", lambda name: _FailingTiktoken(record=record)
+        )
+
+        assert bootstrap.cli_main(self._tiktoken_argv()) == EXIT_USAGE
+
+        assert record == [bootstrap.TIKTOKEN_FETCH_TIMEOUT_SECONDS]
+
+    def test_the_process_wide_default_is_put_back(self, monkeypatch):
+        # The bound is set on the process, not on one call, so leaving it in
+        # place would silently bound every socket opened afterwards.
+        monkeypatch.setattr(bootstrap.importlib, "import_module", lambda name: _FailingTiktoken())
+
+        assert bootstrap.cli_main(self._tiktoken_argv()) == EXIT_USAGE
+
+        assert socket.getdefaulttimeout() == self.SENTINEL_TIMEOUT
+
+    def test_the_counter_alone_leaves_the_process_wide_default_untouched(self, monkeypatch):
         record = []
         monkeypatch.setattr(
             bootstrap.importlib, "import_module", lambda name: _FailingTiktoken(record=record)
@@ -136,18 +194,8 @@ class TestTheEncodingLoadIsInsideTheBoundary:
         with pytest.raises(AgentlessError):
             bootstrap.TiktokenCounter()
 
-        assert record == [bootstrap.TIKTOKEN_FETCH_TIMEOUT_SECONDS]
-
-    def test_the_process_wide_default_is_put_back(self, monkeypatch):
-        # The bound is set on the process, not on one call, so leaving it in
-        # place would silently bound every socket opened afterwards.
-        before = socket.getdefaulttimeout()
-        monkeypatch.setattr(bootstrap.importlib, "import_module", lambda name: _FailingTiktoken())
-
-        with pytest.raises(AgentlessError):
-            bootstrap.TiktokenCounter()
-
-        assert socket.getdefaulttimeout() == before
+        assert record == [self.SENTINEL_TIMEOUT]
+        assert socket.getdefaulttimeout() == self.SENTINEL_TIMEOUT
 
 
 class _StubServer:

@@ -148,13 +148,13 @@ _PROBE_SAMPLES: dict[str, str] = {
 class LanguageCapability:
     """What is actually available for one language, right now.
 
-    ``cached`` and ``warmed`` are two different facts and the remediation
-    differs by which one is false. ``cached`` says the pack lists a library for
-    this language in the cache directory; ``warmed`` says that library also
-    loaded. A row that is cached but not warmed is the one case where the
-    advertised remedy is wrong: :func:`_warm_one` skips ``prefetch`` for
-    anything already downloaded, so running warmup again fetches nothing and
-    the report comes back unchanged.
+    A grammar that is cached and will not load carries no field of its own.
+    The two states it has to be told apart from -- never fetched, and fetched
+    but broken -- differ in the remediation and not in the booleans, and the
+    remediation is what ``detail`` holds: :func:`unloadable_reason` for the
+    second, :func:`unavailable_reason` for the first. A boolean would have to
+    reach a reader through the capability report to say anything the text does
+    not already say there.
     """
 
     name: str
@@ -163,17 +163,11 @@ class LanguageCapability:
     warmed: bool
     probe_ok: bool
     detail: str = ""
-    cached: bool = False
 
     @property
     def tier(self) -> int:
         """Which support tier this language is in."""
         return 1 if is_tier1(self.name) else 2
-
-    @property
-    def unloadable(self) -> bool:
-        """True when the grammar is on disk and will not load from there."""
-        return self.cached and not self.warmed
 
 
 @dataclass(frozen=True)
@@ -597,12 +591,10 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
 def _load_and_probe(name: str, version: str) -> LanguageCapability:
     """Load a warmed grammar and parse its probe sample.
 
-    The cached state is read before the load, not derived from it: a grammar
-    the pack lists as downloaded and then refuses to load is a different
-    condition from one that was never fetched, and only the first fact
-    separates them once the load has failed.
+    A load that fails is reported with :func:`unloadable_reason` as its
+    detail, which is what separates it from a language that was never
+    fetched: the pack has this one on disk, and warmup will not replace it.
     """
-    cached = name in warmed_languages()
     try:
         language = get_language(name)
     except LanguageUnavailable as exc:
@@ -613,7 +605,6 @@ def _load_and_probe(name: str, version: str) -> LanguageCapability:
             warmed=False,
             probe_ok=False,
             detail=str(exc),
-            cached=cached,
         )
 
     probe_ok, detail = _probe(name, language)
@@ -624,7 +615,6 @@ def _load_and_probe(name: str, version: str) -> LanguageCapability:
         warmed=True,
         probe_ok=probe_ok,
         detail=detail,
-        cached=True,
     )
 
 

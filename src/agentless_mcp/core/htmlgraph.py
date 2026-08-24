@@ -69,10 +69,16 @@ def render_html(
     imports: Set[tuple[str, str]],
     options: HtmlOptions | None = None,
 ) -> HtmlExport:
-    """Render a searchable, clickable graph document with community colours."""
-    settings = options if options is not None else HtmlOptions()
-    _validate(settings)
+    """Render a searchable, clickable graph document with community colours.
 
+    The node and edge bounds are not re-checked here. ``GraphService.html``
+    owns them through :mod:`agentless_mcp.util.bounds`, against the same
+    ``MAX_HTML_NODES`` and ``MAX_HTML_EDGES`` this module declares. A second
+    copy raising ``ValueError`` -- not an ``AgentlessError`` -- was worse than
+    redundant: had the two copies ever drifted, the surviving check would have
+    escaped the CLI's error handler as a traceback instead of a refusal.
+    """
+    settings = options if options is not None else HtmlOptions()
     selection = mermaid.DiagramOptions(max_nodes=settings.max_nodes)
     selected = mermaid.selected_nodes(graph, rank, selection)
     selected_set = set(selected)
@@ -155,15 +161,6 @@ def _require_partition_covers(selected: Sequence[str], membership: Mapping[str, 
             f"partition does not cover {len(missing)} of the {len(selected)} modules "
             f"drawn, starting with {missing[0]}"
         )
-        raise ValueError(message)
-
-
-def _validate(options: HtmlOptions) -> None:
-    if not 1 <= options.max_nodes <= MAX_HTML_NODES:
-        message = f"max_nodes must be between 1 and {MAX_HTML_NODES}, got {options.max_nodes}"
-        raise ValueError(message)
-    if not 0 <= options.max_edges <= MAX_HTML_EDGES:
-        message = f"max_edges must be between 0 and {MAX_HTML_EDGES}, got {options.max_edges}"
         raise ValueError(message)
 
 

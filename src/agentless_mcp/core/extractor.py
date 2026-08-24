@@ -18,11 +18,9 @@ package gets every grammar from `core.grammars`, which owns fetching,
 warmed-state and degradation.
 """
 
-import builtins
-import keyword
 import logging
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -150,6 +148,27 @@ def _truncate(text: str, limit: int) -> str:
     return text
 
 
+class ImportBinding(str, Enum):
+    """How one language's import statement binds names into the importing file.
+
+    The question `core.resolve` asks of every statement: may a *bare*
+    reference in this file be read as evidence of this import? Answering it
+    wrong in either direction is a wrong tier on a row an agent is told to
+    read as a caller, so every row in the table below states its answer rather
+    than inheriting one by omission.
+    """
+
+    #: `import a.b` in Python, `import "fmt"` in Go. Binds a module object, so
+    #: a bare reference to a name that module defines is a NameError here.
+    MODULE_OBJECT = "module_object"
+    #: `import { X } from "./m"` in the ECMAScript family. The listed
+    #: specifiers bind, and `import * as ns` binds a module object instead.
+    SPECIFIERS = "specifiers"
+    #: `import com.acme.Money;` in Java, and the same shape in Kotlin, Scala,
+    #: C# and PHP. The path ends on the name it brings in unqualified.
+    LAST_SEGMENT = "last_segment"
+
+
 @dataclass(frozen=True)
 class LanguageConfig:
     """
@@ -214,6 +233,14 @@ class LanguageConfig:
     # bare-name evidence for every language, including the ones where it means
     # nothing of the kind.
     import_name_node_types: tuple[str, ...] = ()
+    # Which of the three binding shapes this language's import has. Declared
+    # per row rather than defaulted quietly, because the wrong answer is
+    # invisible: `import com.acme.Money;` followed by a bare `Money` really is
+    # a caller of that file, and reading Java's import as a module object
+    # demoted it from `resolved-via-import` to `unique` -- the tier a caller
+    # is told not to trust. `tests/unit/test_import_extraction.py` requires
+    # every row to name its shape.
+    import_binding: ImportBinding = ImportBinding.MODULE_OBJECT
     # Child node types carrying a declaration's modifier keywords. Two shapes
     # in the pack -- a container whose children are the keywords (java,
     # kotlin, scala `modifiers`) and one leaf per keyword (csharp `modifier`,
@@ -237,6 +264,24 @@ class LanguageConfig:
     # not give.
     constant_node_types: tuple[str, ...] = ()
     constant_modifier_keywords: tuple[str, ...] = ()
+
+
+# The nodes that turn a `LAST_SEGMENT` import into something other than one
+# bound name. Spelled once across the five grammars because the names do not
+# collide, and a per-language column for three node types would be three more
+# places for one rule to drift.
+_IMPORT_WILDCARD_NODE_TYPES = frozenset(
+    {
+        "asterisk",  # java: `import com.acme.*;`
+        "wildcard_import",  # kotlin: `import com.acme.*`
+        "namespace_wildcard",  # scala: `import pricing._`
+    }
+)
+# scala's `import pricing.{Money, Tax}`: the path is the package and each
+# listed identifier is a name it brings in.
+_IMPORT_SELECTOR_NODE_TYPES = frozenset({"namespace_selectors"})
+# kotlin's `import com.acme.Money as M`, whose local name is `M`.
+_IMPORT_ALIAS_NODE_TYPES = frozenset({"import_alias"})
 
 
 # Modifier keywords that deny a declaration to importers. `internal` is C#
@@ -279,6 +324,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
         binding_node_types=("variable_declarator",),
         function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
@@ -295,6 +342,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
         binding_node_types=("variable_declarator",),
         function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
@@ -311,6 +360,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
         import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
         binding_node_types=("variable_declarator",),
         function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
@@ -355,6 +406,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_field="name",
         import_path_node_type="scoped_identifier",
         identifier_node_types=("identifier", "type_identifier"),
+        import_binding=ImportBinding.LAST_SEGMENT,
         modifier_node_types=("modifiers",),
         constant_node_types=("field_declaration",),
         constant_modifier_keywords=("static", "final"),
@@ -385,6 +437,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # included: `variable_name` wraps `$` and a `name`, and the reference
         # pass only reads leaves.
         identifier_node_types=("name",),
+        import_binding=ImportBinding.LAST_SEGMENT,
         modifier_node_types=("visibility_modifier",),
     ),
     "kotlin": LanguageConfig(
@@ -399,6 +452,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_node_types=("simple_identifier", "type_identifier"),
         class_body_node_types=("class_body",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
         modifier_node_types=("modifiers",),
     ),
     "swift": LanguageConfig(
@@ -416,6 +470,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # node, and the return type reuses the `name` field, so a composed
         # signature would read `fn applyTax()` for a two-parameter function.
         signature_from_header=True,
+        modifier_node_types=("modifiers",),
     ),
     "scala": LanguageConfig(
         function_node_types=("function_definition", "function_declaration"),
@@ -430,6 +485,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier", "type_identifier"),
         class_body_node_types=("template_body",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
         modifier_node_types=("modifiers",),
     ),
     "csharp": LanguageConfig(
@@ -450,6 +506,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier",),
         class_body_node_types=("declaration_list",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
         modifier_node_types=("modifier",),
     ),
     # Deterministic non-code surfaces use dedicated symbol handlers below;
@@ -604,6 +661,121 @@ class _ScopeBuilder:
     imports: set[str]
 
 
+@dataclass(frozen=True)
+class _ScopeTree:
+    """Which lexical scopes contain each node of one Python tree.
+
+    Built by one downward walk and then read, instead of re-walking a node's
+    parent chain per query. The chain walk cost a node's depth, which is the
+    length of the whole expression for a left-nested one: `x = a + a + ... + a`
+    at 20 KB took 288 seconds against 0.044 for the scope scan it replaced,
+    because the parse tree of a chain that long is that deep. Both shapes are
+    answered here in the number of *scopes* that enclose a node, which no
+    expression can inflate.
+
+    ``boundary_of`` is inclusive: a node that bounds a scope is its own nearest
+    boundary, which is what the parent walk did by testing ``node`` before
+    stepping to its parent. Its value is ``None`` for a node with no boundary
+    above it, which :func:`_python_roles` never produces -- the module scope is
+    bounded by the root -- and which the type keeps representable so this
+    class holds for any boundary set it is handed.
+    """
+
+    boundary_of: Mapping[int, int | None]
+    outer_of: Mapping[int, int | None]
+    node_of: Mapping[int, Node]
+
+    def boundaries(self, node: Node) -> Iterator[tuple[int, Node]]:
+        """Yield ``(boundary id, bounding node)`` for each scope containing ``node``."""
+        boundary = self.boundary_of.get(node.id)
+        while boundary is not None:
+            yield boundary, self.node_of[boundary]
+            boundary = self.outer_of[boundary]
+
+
+def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
+    """Index every node under ``root`` by the scope boundaries above it.
+
+    One pre-order walk carrying the innermost boundary downward, the same
+    shape as :func:`declarations_under`, and iterative for the same reason: a
+    deep chain of nodes must not exhaust the interpreter's stack.
+    """
+    boundary_of: dict[int, int | None] = {}
+    outer_of: dict[int, int | None] = {}
+    node_of: dict[int, Node] = {}
+    stack: list[tuple[Node, int | None]] = [(root, None)]
+    while stack:
+        node, enclosing = stack.pop()
+        innermost = enclosing
+        if node.id in boundary_ids:
+            outer_of[node.id] = enclosing
+            node_of[node.id] = node
+            innermost = node.id
+        boundary_of[node.id] = innermost
+        stack.extend((child, innermost) for child in reversed(node.children))
+    return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+
+
+@dataclass(frozen=True)
+class _ScopeView:
+    """One Python tree's scopes, joined to the index that locates them.
+
+    The two halves are one answer: a caller holding ``scopes`` without the
+    tree knows what each scope binds and not which of them contain a node, and
+    the join is the rule about class bodies below. Naming the pair keeps that
+    rule in one place instead of at every site that holds both tables.
+    """
+
+    tree: _ScopeTree
+    scopes: Mapping[int, _BindingScope]
+
+    def enclosing(self, node: Node) -> Iterator[_BindingScope]:
+        """Yield each lexical scope containing ``node``, innermost first.
+
+        A comprehension's first iterable is evaluated where the comprehension
+        is written rather than inside it, so a name there does not see the
+        comprehension's own bindings. That test reads the bounding node, which
+        is why :class:`_ScopeTree` carries it rather than the boundary id
+        alone.
+        """
+        for boundary, bounding in self.tree.boundaries(node):
+            found = self.scopes.get(boundary)
+            if found is not None and not (
+                found.kind == "comprehension" and _in_first_iterable(node, bounding)
+            ):
+                yield found
+
+    def visible(self, node: Node) -> Iterator[_BindingScope]:
+        """Yield the scopes a name at ``node`` can resolve in, innermost first.
+
+        A class body is not a closure scope. A method or a comprehension
+        written inside a class never reads the class namespace, which is why
+        ``class C: xs = []; ys = [xs for _ in r]`` raises NameError in real
+        Python. This is the sharpest rule in the block, and it has one home.
+        """
+        nested = False
+        for scope in self.enclosing(node):
+            if scope.kind in {"function", "comprehension"}:
+                nested = True
+            if scope.kind == "class" and nested:
+                continue
+            yield scope
+
+
+def _in_first_iterable(node: Node, comprehension: Node) -> bool:
+    """True when ``node`` sits in the iterable of a comprehension's first clause."""
+    clause = next(
+        (child for child in comprehension.named_children if child.type == "for_in_clause"),
+        None,
+    )
+    if clause is None:
+        return False
+    iterable = clause.child_by_field_name("right")
+    if iterable is None:
+        return False
+    return iterable.start_byte <= node.start_byte and node.end_byte <= iterable.end_byte
+
+
 def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
     """Extract the identifier nodes a Python parameter list binds.
 
@@ -630,10 +802,21 @@ def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
     return tuple(nodes)
 
 
-def _python_roles(
-    root: Node,
-    data: bytes,
-) -> tuple[dict[int, IdentifierRole], dict[int, str], dict[int, _BindingScope]]:
+@dataclass(frozen=True)
+class _PythonRoles:
+    """What one Python tree's scope analysis leaves for the reference pass.
+
+    Named rather than a three-wide tuple because the last member is what the
+    first two are read against: ``roles`` answers the identifiers the syntax
+    settles, and ``view`` answers the rest from the scopes around them.
+    """
+
+    roles: Mapping[int, IdentifierRole]
+    qualifiers: Mapping[int, str]
+    view: _ScopeView
+
+
+def _python_roles(root: Node, data: bytes) -> _PythonRoles:
     """Classify Python identifiers and collect lexical bindings in three passes."""
     nodes = walk_nodes(root)
     builders = [_scope_builder(root, "module")]
@@ -644,6 +827,9 @@ def _python_roles(
     )
     by_node = {scope.node_id: scope for scope in builders}
     open_scopes = _scopes_by_boundary(builders)
+    # Built from the boundaries the builders name, so every lookup below and
+    # every lookup in `collect_refs` reads one index of one tree.
+    tree = _scope_tree(root, frozenset(open_scopes))
     roles: dict[int, IdentifierRole] = {}
     qualifiers: dict[int, str] = {}
 
@@ -651,10 +837,12 @@ def _python_roles(
         if node.type in {"import_statement", "import_from_statement"}:
             for identifier in _descendant_identifiers(node):
                 roles[identifier.id] = IdentifierRole.IMPORT
-            _nearest_scope(node, open_scopes).imports.update(_imported_module_names(node, data))
+            _nearest_scope(node, open_scopes, tree).imports.update(
+                _imported_module_names(node, data)
+            )
 
     for node in nodes:
-        _bind_python_declaration(node, open_scopes, data)
+        _bind_python_declaration(node, open_scopes, tree, data)
 
         field = _PYTHON_SCOPE_FIELDS.get(node.type)
         if field is not None:
@@ -669,7 +857,7 @@ def _python_roles(
         if target is not None:
             bound = _binding_identifiers(target)
             _mark_bindings(bound, roles)
-            scope = _nearest_scope(node, open_scopes)
+            scope = _nearest_scope(node, open_scopes, tree)
             names = {_node_text(identifier, data) for identifier in bound}
             if scope.kind == "module":
                 names = {name for name in names if _UPPER_CASE_RE.fullmatch(name) is None}
@@ -678,7 +866,7 @@ def _python_roles(
         if node.type in {"global_statement", "nonlocal_statement"}:
             declarations = tuple(_descendant_identifiers(node))
             _mark_bindings(declarations, roles)
-            scope = _nearest_scope(node, open_scopes)
+            scope = _nearest_scope(node, open_scopes, tree)
             names = {_node_text(identifier, data) for identifier in declarations}
             if node.type == "global_statement":
                 scope.globals.update(names)
@@ -698,10 +886,11 @@ def _python_roles(
         for boundary_id, scope in open_scopes.items()
     }
 
+    view = _ScopeView(tree=tree, scopes=scopes)
     for node in nodes:
-        _mark_non_reference_roles(node, roles, qualifiers, scopes, data)
+        _mark_non_reference_roles(node, roles, qualifiers, view, data)
 
-    return roles, qualifiers, scopes
+    return _PythonRoles(roles=roles, qualifiers=qualifiers, view=view)
 
 
 def _scopes_by_boundary(builders: Sequence[_ScopeBuilder]) -> dict[int, _ScopeBuilder]:
@@ -718,14 +907,16 @@ def _scopes_by_boundary(builders: Sequence[_ScopeBuilder]) -> dict[int, _ScopeBu
     return index
 
 
-def _bind_python_declaration(node: Node, scopes: Mapping[int, _ScopeBuilder], data: bytes) -> None:
+def _bind_python_declaration(
+    node: Node, scopes: Mapping[int, _ScopeBuilder], tree: _ScopeTree, data: bytes
+) -> None:
     """Bind a nested function or class name in its enclosing lexical scope."""
     if node.type not in {"function_definition", "class_definition"}:
         return
     name = node.child_by_field_name("name")
     if name is None:
         return
-    scope = _nearest_scope(name, scopes)
+    scope = _nearest_scope(name, scopes, tree)
     if scope.kind != "module":
         scope.bindings.add(_node_text(name, data))
 
@@ -749,14 +940,17 @@ def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
     )
 
 
-def _nearest_scope(node: Node, scopes: Mapping[int, _ScopeBuilder]) -> _ScopeBuilder:
+def _nearest_scope(
+    node: Node, scopes: Mapping[int, _ScopeBuilder], tree: _ScopeTree
+) -> _ScopeBuilder:
     """Return the scope ``node`` binds its names in.
 
-    A walk up the parent chain rather than a scan over every scope in the
-    file: the node bounding a scope is an ancestor of everything inside it,
-    so the answer costs the node's depth instead of the file's scope count. A
-    scan made the reference pass quadratic in the size of a Python file, and
-    the per-file byte cap only bounds work that is linear in bytes.
+    A hop from scope boundary to scope boundary through :class:`_ScopeTree`,
+    so the answer costs the number of scopes around ``node`` rather than the
+    number of nodes above it. Neither a scan over every scope in the file nor
+    a walk up the parent chain: the first is linear in the file's scope count
+    and the second is linear in the depth of the enclosing expression, and a
+    single chained expression makes that depth the size of the file.
 
     `:=` steps out past every enclosing comprehension. Python binds a named
     expression in the scope around the comprehension, which is the whole
@@ -764,69 +958,19 @@ def _nearest_scope(node: Node, scopes: Mapping[int, _ScopeBuilder]) -> _ScopeBui
     as an unresolved reference.
     """
     escapes_comprehension = node.type == "named_expression"
-    current: Node | None = node
-    while current is not None:
-        found = scopes.get(current.id)
+    for boundary, _ in tree.boundaries(node):
+        found = scopes.get(boundary)
         if found is not None and not (escapes_comprehension and found.kind == "comprehension"):
             return found
-        current = current.parent
-    unreachable = "the module scope is bounded by the root, which has no parent"
+    unreachable = "the module scope is bounded by the root, which encloses every node"
     raise AssertionError(unreachable)
-
-
-def _enclosing_scopes(node: Node, scopes: Mapping[int, _BindingScope]) -> Iterator[_BindingScope]:
-    """Yield each lexical scope containing ``node``, innermost first.
-
-    A comprehension's first iterable is evaluated where the comprehension is
-    written rather than inside it, so a name there does not see the
-    comprehension's own bindings.
-    """
-    current: Node | None = node
-    while current is not None:
-        found = scopes.get(current.id)
-        if found is not None and not (
-            found.kind == "comprehension" and _in_first_iterable(node, current)
-        ):
-            yield found
-        current = current.parent
-
-
-def _in_first_iterable(node: Node, comprehension: Node) -> bool:
-    """True when ``node`` sits in the iterable of a comprehension's first clause."""
-    clause = next(
-        (child for child in comprehension.named_children if child.type == "for_in_clause"),
-        None,
-    )
-    if clause is None:
-        return False
-    iterable = clause.child_by_field_name("right")
-    if iterable is None:
-        return False
-    return iterable.start_byte <= node.start_byte and node.end_byte <= iterable.end_byte
-
-
-def _visible_scopes(node: Node, scopes: Mapping[int, _BindingScope]) -> Iterator[_BindingScope]:
-    """Yield the scopes a name at ``node`` can resolve in, innermost first.
-
-    A class body is not a closure scope. A method or a comprehension written
-    inside a class never reads the class namespace, which is why
-    ``class C: xs = []; ys = [xs for _ in r]`` raises NameError in real
-    Python. This is the sharpest rule in the block, and it has one home.
-    """
-    nested = False
-    for scope in _enclosing_scopes(node, scopes):
-        if scope.kind in {"function", "comprehension"}:
-            nested = True
-        if scope.kind == "class" and nested:
-            continue
-        yield scope
 
 
 def _mark_non_reference_roles(
     node: Node,
     roles: dict[int, IdentifierRole],
     qualifiers: dict[int, str],
-    scopes: Mapping[int, _BindingScope],
+    view: _ScopeView,
     data: bytes,
 ) -> None:
     """Mark declaration, member, and label identifiers from named fields."""
@@ -839,7 +983,7 @@ def _mark_non_reference_roles(
                 if object_node is not None and object_node.type == "identifier"
                 else None
             )
-            imported = qualifier is not None and _binds_imported_module(qualifier, node, scopes)
+            imported = qualifier is not None and _binds_imported_module(qualifier, node, view)
             role = IdentifierRole.MODULE_ATTRIBUTE if imported else IdentifierRole.ATTRIBUTE
             roles.setdefault(attribute.id, role)
             if imported and object_node is not None and qualifier is not None:
@@ -884,9 +1028,9 @@ def _imported_module_names(node: Node, data: bytes) -> set[str]:
     return names
 
 
-def _binds_imported_module(name: str, node: Node, scopes: Mapping[int, _BindingScope]) -> bool:
+def _binds_imported_module(name: str, node: Node, view: _ScopeView) -> bool:
     """True when ``name`` is an imported module object visible at ``node``."""
-    for scope in _visible_scopes(node, scopes):
+    for scope in view.visible(node):
         if name in scope.globals:
             continue
         if name in scope.bindings:
@@ -945,7 +1089,216 @@ def _node_text(node: Node, data: bytes) -> str:
 # `core.patchlint` keeps a wider table for a different question -- whether a
 # name is somebody's missing helper -- and the two have not been merged
 # because that module sits above this one in the import graph.
-_PYTHON_ALWAYS_BOUND: frozenset[str] = frozenset(dir(builtins)) | frozenset(keyword.kwlist)
+# Spelled out rather than read off `dir(builtins)`, which is the running
+# interpreter's answer and not the language's. `requires-python` is ">=3.10"
+# and the tag cache generation is keyed on the tree, not on the interpreter,
+# so a repository indexed under 3.10 and served under 3.13 disagreed about
+# `aiter`, `anext`, `ExceptionGroup`, `BaseExceptionGroup` and
+# `PythonFinalizationError` -- a file defining its own `ExceptionGroup` had
+# callers under one interpreter and none under another, from one cache.
+#
+# The union across the supported versions, not the intersection: a name in
+# here is not a repository reference, so over-listing costs a missing edge and
+# under-listing costs a wrong one. This package's posture is that the first is
+# cheaper. Captured from CPython 3.13, which adds to every earlier version in
+# the range and removes nothing from it, plus `keyword.kwlist`; soft keywords
+# (`match`, `case`, `_`) are deliberately absent because they are ordinary
+# names everywhere else.
+_PYTHON_ALWAYS_BOUND: frozenset[str] = frozenset(
+    {
+        "ArithmeticError",
+        "AssertionError",
+        "AttributeError",
+        "BaseException",
+        "BaseExceptionGroup",
+        "BlockingIOError",
+        "BrokenPipeError",
+        "BufferError",
+        "BytesWarning",
+        "ChildProcessError",
+        "ConnectionAbortedError",
+        "ConnectionError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "DeprecationWarning",
+        "EOFError",
+        "Ellipsis",
+        "EncodingWarning",
+        "EnvironmentError",
+        "Exception",
+        "ExceptionGroup",
+        "False",
+        "FileExistsError",
+        "FileNotFoundError",
+        "FloatingPointError",
+        "FutureWarning",
+        "GeneratorExit",
+        "IOError",
+        "ImportError",
+        "ImportWarning",
+        "IndentationError",
+        "IndexError",
+        "InterruptedError",
+        "IsADirectoryError",
+        "KeyError",
+        "KeyboardInterrupt",
+        "LookupError",
+        "MemoryError",
+        "ModuleNotFoundError",
+        "NameError",
+        "None",
+        "NotADirectoryError",
+        "NotImplemented",
+        "NotImplementedError",
+        "OSError",
+        "OverflowError",
+        "PendingDeprecationWarning",
+        "PermissionError",
+        "ProcessLookupError",
+        "PythonFinalizationError",
+        "RecursionError",
+        "ReferenceError",
+        "ResourceWarning",
+        "RuntimeError",
+        "RuntimeWarning",
+        "StopAsyncIteration",
+        "StopIteration",
+        "SyntaxError",
+        "SyntaxWarning",
+        "SystemError",
+        "SystemExit",
+        "TabError",
+        "TimeoutError",
+        "True",
+        "TypeError",
+        "UnboundLocalError",
+        "UnicodeDecodeError",
+        "UnicodeEncodeError",
+        "UnicodeError",
+        "UnicodeTranslateError",
+        "UnicodeWarning",
+        "UserWarning",
+        "ValueError",
+        "Warning",
+        "ZeroDivisionError",
+        "_IncompleteInputError",
+        "__build_class__",
+        "__debug__",
+        "__doc__",
+        "__import__",
+        "__loader__",
+        "__name__",
+        "__package__",
+        "__spec__",
+        "abs",
+        "aiter",
+        "all",
+        "and",
+        "anext",
+        "any",
+        "as",
+        "ascii",
+        "assert",
+        "async",
+        "await",
+        "bin",
+        "bool",
+        "break",
+        "breakpoint",
+        "bytearray",
+        "bytes",
+        "callable",
+        "chr",
+        "class",
+        "classmethod",
+        "compile",
+        "complex",
+        "continue",
+        "copyright",
+        "credits",
+        "def",
+        "del",
+        "delattr",
+        "dict",
+        "dir",
+        "divmod",
+        "elif",
+        "else",
+        "enumerate",
+        "eval",
+        "except",
+        "exec",
+        "exit",
+        "filter",
+        "finally",
+        "float",
+        "for",
+        "format",
+        "from",
+        "frozenset",
+        "getattr",
+        "global",
+        "globals",
+        "hasattr",
+        "hash",
+        "help",
+        "hex",
+        "id",
+        "if",
+        "import",
+        "in",
+        "input",
+        "int",
+        "is",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "lambda",
+        "len",
+        "license",
+        "list",
+        "locals",
+        "map",
+        "max",
+        "memoryview",
+        "min",
+        "next",
+        "nonlocal",
+        "not",
+        "object",
+        "oct",
+        "open",
+        "or",
+        "ord",
+        "pass",
+        "pow",
+        "print",
+        "property",
+        "quit",
+        "raise",
+        "range",
+        "repr",
+        "return",
+        "reversed",
+        "round",
+        "set",
+        "setattr",
+        "slice",
+        "sorted",
+        "staticmethod",
+        "str",
+        "sum",
+        "super",
+        "try",
+        "tuple",
+        "type",
+        "vars",
+        "while",
+        "with",
+        "yield",
+        "zip",
+    }
+)
 
 
 def _unbound_role(name: str) -> IdentifierRole:
@@ -953,18 +1306,13 @@ def _unbound_role(name: str) -> IdentifierRole:
     return IdentifierRole.BUILTIN if name in _PYTHON_ALWAYS_BOUND else IdentifierRole.REFERENCE
 
 
-def _python_role(
-    node: Node,
-    name: str,
-    explicit: dict[int, IdentifierRole],
-    scopes: Mapping[int, _BindingScope],
-) -> IdentifierRole:
+def _python_role(node: Node, name: str, analysis: "_PythonRoles") -> IdentifierRole:
     """Return the explicit syntactic role or the nearest lexical binding."""
-    direct = explicit.get(node.id)
+    direct = analysis.roles.get(node.id)
     if direct is not None:
         return direct
 
-    for scope in _visible_scopes(node, scopes):
+    for scope in analysis.view.visible(node):
         if name in scope.globals:
             return IdentifierRole.REFERENCE
         if name in scope.bindings:
@@ -1025,11 +1373,9 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
     tree = parser.parse(data)
-    explicit: dict[int, IdentifierRole] = {}
-    qualifiers: dict[int, str] = {}
-    scopes: dict[int, _BindingScope] = {}
-    if language == "python":
-        explicit, qualifiers, scopes = _python_roles(tree.root_node, data)
+    # None for the nineteen languages with no scope analysis, rather than three
+    # empty tables that read as "analysed, and it found nothing".
+    analysis = _python_roles(tree.root_node, data) if language == "python" else None
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1044,11 +1390,11 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
                     name=name,
                     line=line,
                     role=(
-                        _python_role(node, name, explicit, scopes)
-                        if language == "python"
+                        _python_role(node, name, analysis)
+                        if analysis is not None
                         else IdentifierRole.REFERENCE
                     ),
-                    qualifier=qualifiers.get(node.id, ""),
+                    qualifier=analysis.qualifiers.get(node.id, "") if analysis else "",
                 )
             )
     return refs
@@ -1121,7 +1467,12 @@ def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
         if node.type not in COMMENT_NODE_TYPES:
             continue
         comment = source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-        for offset, raw_line in enumerate(comment.splitlines()):
+        # `split`, not `splitlines`: the latter breaks on a form feed, a
+        # vertical tab and U+2028, none of which tree-sitter counts as a row.
+        # An Emacs page marker inside a block comment moved every later
+        # rationale in that comment one line down, and `_attach_rationales`
+        # hangs a rationale off the symbol whose span that line falls in.
+        for offset, raw_line in enumerate(comment.split("\n")):
             line = _comment_text(raw_line)
             marker = _RATIONALE_MARKER.search(line)
             citations = tuple(
@@ -1205,6 +1556,22 @@ class _GenericWalk:
 
 
 @dataclass(frozen=True)
+class _CWalk:
+    """The context one C or C++ traversal carries, apart from the node.
+
+    The same shape as :class:`_GenericWalk`: what is being read, what it is
+    called, and where the symbols go. Split out so each step takes the node it
+    is looking at and the walk it belongs to, rather than five fixed values
+    re-listed at every call.
+    """
+
+    source: bytes
+    module_path: str
+    language: str
+    symbols: list[ASTSymbol]
+
+
+@dataclass(frozen=True)
 class _FunctionSite:
     """The three parts of a function symbol that vary by where it was found.
 
@@ -1216,6 +1583,25 @@ class _FunctionSite:
     name: str
     owner: str
     header: Node
+
+
+# A `pointer_declarator` chain is bounded in real source; the count exists so
+# a malformed tree cannot spin here rather than because a real declaration
+# reaches it.
+_C_DECLARATOR_UNWRAP_LIMIT = 32
+
+
+@dataclass(frozen=True)
+class _CName:
+    """The owner and name one C or C++ declarator spells.
+
+    ``owner`` is empty for a free function and for an in-class declaration,
+    where the enclosing class is known from the walk rather than from the
+    name; it is filled only by the out-of-line form, which names its own.
+    """
+
+    owner: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -1256,7 +1642,30 @@ C_TAGGED_TYPES = frozenset({"struct_specifier", "class_specifier", "enum_specifi
 # unit resolves against are the ones with no symbol. The declarator rather
 # than the declaration, because a `declaration` may instead hold a tagged type
 # the walk still has to descend into.
-C_DECLARATION_TYPES = frozenset({"function_definition", "function_declarator"}) | C_TAGGED_TYPES
+# `field_declaration` carries a class member: `void reset();` inside a class
+# body is one, and so is `int field_;`. Only the first yields a symbol -- the
+# shape test below is what tells them apart -- but both have to end the descent
+# so a member's own declarator is never mistaken for a free function.
+C_DECLARATION_TYPES = (
+    frozenset({"function_definition", "function_declarator", "field_declaration"}) | C_TAGGED_TYPES
+)
+
+# The nodes a C or C++ declarator ends at when it names a function. Anything
+# else there -- `parenthesized_declarator` wrapping a `pointer_declarator` --
+# is the function-pointer shape, which declares a variable of function type
+# rather than a function. `field_identifier` is the in-class spelling,
+# `qualified_identifier` the out-of-line one, and `operator_name` and
+# `destructor_name` are the two C++ spells that are not identifiers at all.
+C_FUNCTION_NAME_TYPES = frozenset(
+    {
+        "identifier",
+        "field_identifier",
+        "type_identifier",
+        "qualified_identifier",
+        "operator_name",
+        "destructor_name",
+    }
+)
 RUST_ITEM_TYPES = frozenset(
     {
         "function_item",
@@ -1864,30 +2273,40 @@ class TreeSitterExtractor:
                 continue
             path = self._extract_import_path(node, source, cfg)
             if path:
+                names, local_names = self._import_names(node, source, path, cfg)
                 imports.append(
                     ImportStatement(
                         module=path,
-                        names=self._import_names(node, source, cfg),
+                        names=names,
+                        local_names=local_names if local_names != names else (),
                         is_relative=path.startswith("."),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
                     )
                 )
 
-    def _import_names(self, node: Node, source: bytes, cfg: LanguageConfig) -> tuple[str, ...]:
-        """Return the names one import statement binds into the importing file.
+    def _import_names(
+        self, node: Node, source: bytes, path: str, cfg: LanguageConfig
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return the members one import names and the local names they bind.
 
-        The *local* name, so `import { Y as Z }` reports `Z`: what a bare
-        reference in this file can spell is the question, and `Y` is not it.
-
-        A namespace import (`import * as ns from "./n"`) binds a module
-        object rather than any of its names, so it contributes nothing here --
-        the same rule as Go's `import "fmt"` and Python's `import a.b`, and
-        the reason `import_name_node_types` is empty for both of those.
+        The *local* name is the second half, so `import { Y as Z }` reports the
+        member `Y` and the binding `Z`: resolution needs the first and a bare
+        reference in this file can only spell the second.
         """
-        if not cfg.import_name_node_types:
-            return ()
+        if cfg.import_binding is ImportBinding.SPECIFIERS:
+            bound = self._specifier_names(node, source)
+            return bound, bound
+        if cfg.import_binding is ImportBinding.LAST_SEGMENT:
+            return self._last_segment_names(node, source, path)
+        # MODULE_OBJECT: `import a.b` in Python, `import "fmt"` in Go and
+        # `import * as ns` in the ECMAScript family all bind a module object.
+        # A bare reference to something that module defines is a NameError, so
+        # the statement names nothing this file can spell unqualified.
+        return (), ()
 
+    def _specifier_names(self, node: Node, source: bytes) -> tuple[str, ...]:
+        """Return the local names an ECMAScript import statement lists."""
         names: list[str] = []
         for child in walk_nodes(node):
             if child.type == "import_specifier":
@@ -1903,6 +2322,58 @@ class TreeSitterExtractor:
                     self._node_text(c, source) for c in child.children if c.type == "identifier"
                 )
         return tuple(dict.fromkeys(names))
+
+    def _last_segment_names(
+        self, node: Node, source: bytes, path: str
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return what `import com.acme.Money;` and its four cousins bind.
+
+        The path ends on the name, so the name is read off the path rather
+        than off a node type: Java, Kotlin, Scala, C# and PHP each spell the
+        path with a different node, and none of them gives the final segment
+        one of its own.
+
+        Three statements in these grammars do not end on a name, and each is
+        answered rather than guessed at. A wildcard brings in a whole package,
+        whose target is a directory and therefore no file this resolver can
+        offer, so it binds nothing here. A selector list names several members
+        below the package the path gives. An alias replaces the local name and
+        leaves the member alone, which is exactly the pair the two returned
+        tuples hold.
+
+        A Java `import static com.acme.Tax.RATE;` is out of this rule's reach:
+        its path runs one segment past the file, so `RATE` is reported as the
+        member of a module string that names no file, and it binds nothing.
+        That is the behaviour before this method existed, stated rather than
+        left to be discovered.
+        """
+        children = {child.type for child in walk_nodes(node)}
+        if children & _IMPORT_WILDCARD_NODE_TYPES:
+            return (), ()
+
+        selected = [
+            self._node_text(listed, source)
+            for child in walk_nodes(node)
+            if child.type in _IMPORT_SELECTOR_NODE_TYPES
+            for listed in child.named_children
+        ]
+        if selected:
+            members = tuple(dict.fromkeys(selected))
+            return members, members
+
+        member = path.replace("\\", ".").rpartition(".")[2]
+        if not member:
+            return (), ()
+        alias = next(
+            (
+                self._node_text(named, source)
+                for child in walk_nodes(node)
+                if child.type in _IMPORT_ALIAS_NODE_TYPES
+                for named in child.named_children
+            ),
+            "",
+        )
+        return (member,), (alias or member,)
 
     def _extract_import_path(
         self,
@@ -2449,51 +2920,140 @@ class TreeSitterExtractor:
         descended through rather than treated as the end of the file: an
         `#ifndef` wraps a whole header in one `preproc_ifdef`, which is the
         normal shape of a C header and used to hide every symbol in it.
+
+        A tagged type ends that descent and then opens its own, carrying its
+        name down as the owner. Without it a C++ class contributed one symbol
+        and none of its methods, in a language where the header declares the
+        class and the source file defines the methods out of line -- so a
+        routine `.cpp` yielded one symbol out of five.
         """
-        for node in declarations_under(root, C_DECLARATION_TYPES):
-            if node.type in ("function_definition", "function_declarator"):
-                name = self._c_function_name(node, source)
-                # A function-pointer declarator resolves to `(*fp)` rather
-                # than to a name, and a symbol map is read as code.
-                if name.isidentifier():
-                    symbols.append(
-                        ASTSymbol(
-                            name=name,
-                            kind=SymbolKind.FUNCTION,
-                            module_path=module_path,
-                            line_number=node.start_point[0] + 1,
-                            end_line_number=node.end_point[0] + 1,
-                            signature=f"fn {name}",
-                            docstring="",
-                            parent_class="",
-                            decorators=(),
-                            bases=(),
-                            language=language,
-                            is_public=True,
-                            is_async=False,
-                        )
-                    )
-            else:
-                name_node = node.child_by_field_name("name")
-                if name_node:
-                    name = self._node_text(name_node, source)
-                    symbols.append(
-                        ASTSymbol(
-                            name=name,
-                            kind=SymbolKind.CLASS,
-                            module_path=module_path,
-                            line_number=node.start_point[0] + 1,
-                            end_line_number=node.end_point[0] + 1,
-                            signature=f"{node.type.split('_')[0]} {name}",
-                            docstring="",
-                            parent_class="",
-                            decorators=(),
-                            bases=(),
-                            language=language,
-                            is_public=True,
-                            is_async=False,
-                        )
-                    )
+        walk = _CWalk(source=source, module_path=module_path, language=language, symbols=symbols)
+        pending: list[tuple[Node, str]] = [(root, "")]
+        while pending:
+            scope, owner = pending.pop()
+            for node in declarations_under(scope, C_DECLARATION_TYPES):
+                if node.type in C_TAGGED_TYPES:
+                    inner = self._append_c_tagged_type(node, walk, owner)
+                    body = node.child_by_field_name("body")
+                    if body is not None and inner:
+                        pending.append((body, f"{owner}.{inner}" if owner else inner))
+                    continue
+                self._append_c_function(node, walk, owner)
+
+    def _append_c_tagged_type(self, node: Node, walk: _CWalk, owner: str) -> str:
+        """Append the symbol for one struct, class, union or enum, and name it."""
+        name_node = node.child_by_field_name("name")
+        if name_node is None:
+            return ""
+        name = self._node_text(name_node, walk.source)
+        walk.symbols.append(
+            ASTSymbol(
+                name=name,
+                kind=SymbolKind.CLASS,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=f"{node.type.split('_')[0]} {name}",
+                docstring="",
+                parent_class=owner,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=True,
+                is_async=False,
+            )
+        )
+        return name
+
+    def _append_c_function(self, node: Node, walk: _CWalk, owner: str) -> None:
+        """Append the symbol for one function, if this declaration declares one."""
+        site = self._c_function_site(node, walk.source)
+        if site is None:
+            return
+        parent = site.owner or owner
+        walk.symbols.append(
+            ASTSymbol(
+                name=site.name,
+                kind=SymbolKind.METHOD if parent else SymbolKind.FUNCTION,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=f"fn {site.name}",
+                docstring="",
+                parent_class=parent,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=True,
+                is_async=False,
+            )
+        )
+
+    def _c_function_site(self, node: Node, source: bytes) -> _CName | None:
+        """Return the owner and name one C/C++ declaration declares, or None.
+
+        The declarator's *shape* decides, not the spelling of the text it
+        resolves to. Testing `str.isidentifier()` on that text was a proxy for
+        "this names a function", and it refused every C++ form that is not a
+        bare Python identifier: `Logger::emit`, `Logger::~Logger` and
+        `operator==` all vanished from a source file, which is where a C++
+        codebase keeps its method bodies.
+
+        A declarator that reaches a name only through a parenthesis and a star
+        is the function-pointer shape -- `void (*handler)(int)` declares a
+        variable -- and is refused. One returning a function pointer,
+        `int (*make(void))(int)`, wraps a further `function_declarator`, and
+        that inner one is the declaration this file makes.
+        """
+        declarator = self._c_function_declarator(node)
+        if declarator is None:
+            return None
+        named = declarator.child_by_field_name("declarator")
+        if named is None:
+            return None
+        if named.type in C_FUNCTION_NAME_TYPES:
+            return self._c_qualified_name(named, source)
+        # `(*name)(...)`: a variable unless a nested declarator declares a
+        # function of its own.
+        nested = self._c_function_declarator(named)
+        return self._c_function_site(nested, source) if nested is not None else None
+
+    @staticmethod
+    def _c_function_declarator(node: Node) -> Node | None:
+        """Return the ``function_declarator`` one declaration hangs off, if any."""
+        if node.type == "function_declarator":
+            return node
+        seen = 0
+        current: Node | None = node
+        while current is not None and seen < _C_DECLARATOR_UNWRAP_LIMIT:
+            seen += 1
+            if current.type == "function_declarator":
+                return current
+            following = current.child_by_field_name("declarator")
+            if following is None and current.type == "parenthesized_declarator":
+                following = next(iter(current.named_children), None)
+            current = following
+        return None
+
+    def _c_qualified_name(self, node: Node, source: bytes) -> _CName:
+        """Split ``A::B::method`` into the owner ``A.B`` and the name ``method``.
+
+        The owner is spelled with the separator every other language in this
+        package uses, because it becomes ``parent_class`` and
+        `core.symbols.qualname` joins on a dot. Template arguments come off the
+        owner: ``C<T>::go`` is a method of ``C``, and the map is read as code.
+        """
+        scopes: list[str] = []
+        current = node
+        while current.type == "qualified_identifier":
+            following = current.child_by_field_name("name")
+            if following is None:
+                break
+            outer = next(iter(current.named_children), None)
+            if outer is not None and outer.id != following.id:
+                scopes.append(self._node_text(outer, source).split("<", 1)[0])
+            current = following
+        return _CName(owner=".".join(scopes), name=self._node_text(current, source))
 
     def _c_function_name(self, node: Node, source: bytes) -> str:
         """

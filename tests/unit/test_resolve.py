@@ -654,6 +654,49 @@ class TestImportCoverage:
         scan = refs.scan_repo(root, extractor)
         assert resolve.import_graph(scan.files).unresolved_imports == 1
 
+    def test_a_standard_library_import_is_not_counted_as_internal(self, tmp_path, extractor):
+        """The count a caller reads coverage from must be zero when nothing was missed.
+
+        `import json` names no file here and never could, so counting it makes
+        a fully resolved repository report hundreds of failures: 508 of 1238
+        statements on this repository, against 6 that named something it
+        actually holds. `unresolved_imports` keeps its literal meaning and
+        `unresolved_internal_imports` answers the coverage question.
+        """
+        root = write(tmp_path, {"a.py": "import json\nimport os\n", "b.py": "x = 1\n"})
+        _, graph = resolved(root, extractor)
+
+        assert graph.unresolved_imports == 2
+        assert graph.unresolved_internal_imports == 0
+
+    def test_an_import_naming_this_repository_is_counted_as_internal(self, tmp_path, extractor):
+        # `pkg` is a directory here, so `pkg.missing` is a resolution this
+        # package owed an answer to and did not give.
+        root = write(
+            tmp_path,
+            {"pkg/__init__.py": "", "pkg/real.py": "x = 1\n", "a.py": "import pkg.missing\n"},
+        )
+        _, graph = resolved(root, extractor)
+
+        assert graph.unresolved_internal_imports == 1
+
+    def test_a_relative_import_that_resolves_to_nothing_is_always_internal(
+        self, tmp_path, extractor
+    ):
+        # A relative import is spelled against the importing file's own
+        # directory and can name nothing else, so it needs no segment table.
+        root = write(tmp_path, {"pkg/__init__.py": "", "pkg/a.py": "from .missing import x\n"})
+        _, graph = resolved(root, extractor)
+
+        assert graph.unresolved_internal_imports == 1
+
+    def test_the_import_only_graph_reports_both_counts(self, tmp_path, extractor):
+        root = write(tmp_path, {"a.py": "import json\nimport b\n", "b.py": "x = 1\n"})
+        scan = refs.scan_repo(root, extractor)
+        built = resolve.import_graph(scan.files)
+
+        assert (built.unresolved_imports, built.unresolved_internal_imports) == (1, 0)
+
 
 # Two forms that genuinely do bring every name in unqualified, and one that
 # looks like them and does not.
@@ -710,6 +753,24 @@ class TestWholesaleEvidence:
         assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
 
 
+# The same decision in a language `tests/conftest.py` always warms, so a cold
+# language pack cannot turn it into no decision. `uses.go` declares a method
+# named `Helper` and names the type `Helper` twice on that one line, as the
+# receiver and as the result; `spread.go` names it twice one line down.
+SAME_LINE_GO = {
+    "helper.go": "package main\n\ntype Helper struct{}\n",
+    "uses.go": "package main\n\nfunc (h Helper) Helper() Helper { return h }\n",
+    "spread.go": "package main\n\nfunc (h Helper) Widen() Helper {\n\treturn h\n}\n",
+}
+
+# A declaration the Go table does not model: `var handler = 3` yields no
+# symbol, so the guard has nothing to key on and the declaration's own name is
+# left to resolve as a reference.
+UNMODELLED_DECLARATION_GO = {
+    "a.go": "package main\n\nfunc handler(x int) int { return x }\n",
+    "b.go": "package main\n\nvar handler = 3\n",
+}
+
 # `Uses.Helper` names its return type, itself, and a constructor call, all on
 # one line. Only Python records a declaration identifier as a role, so this is
 # where the line-keyed guard in `_reference_edges` is visible.
@@ -717,6 +778,92 @@ SAME_LINE_FILES = {
     "Helper.java": "public class Helper {\n    public int value() { return 1; }\n}\n",
     "Uses.java": ("public class Uses {\n    public Helper Helper() { return new Helper(); }\n}\n"),
 }
+
+
+class TestTheDeclarationGuardCostsBothWays:
+    """What the line-keyed guard drops, and what it lets through.
+
+    `_reference_edges` refuses every occurrence of a name on the line a symbol
+    of that name starts on. That is a proxy for "this occurrence *is* the
+    declaration identifier", and a proxy has two failure directions. Re-keying
+    it was measured and refused -- marking the tree-sitter `name`-field child a
+    declaration adds tens of thousands of wrong edges, because JSON, YAML and
+    TOML keys sit behind no such field -- so both directions are costs the
+    guard is known to carry, and both are pinned here rather than assumed.
+
+    In Go, which `tests/conftest.py` warms on every run. The Java pair below
+    says the same thing in the language the cost was first measured in, and
+    skips when that grammar is cold; this class is why that skip cannot leave
+    the decision unrecorded.
+    """
+
+    def test_a_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
+        """Direction one: a real edge lost.
+
+        The receiver type and the result type on `uses.go` line 3 both name
+        `helper.go`'s `Helper`, and the method declared on that line is also
+        called `Helper`, so all three go.
+        """
+        _, graph = resolved(write(tmp_path, SAME_LINE_GO), extractor)
+
+        assert edges_from(graph, "go:uses.go::Helper.Helper", "Helper") == []
+
+    def test_the_same_reference_one_line_down_resolves(self, tmp_path, extractor):
+        """The guard is keyed on the line, so the cost is exactly one line wide."""
+        _, graph = resolved(write(tmp_path, SAME_LINE_GO), extractor)
+        edges = edges_from(graph, "go:spread.go::Helper.Widen", "Helper")
+
+        assert {edge.target.path for edge in edges} == {"helper.go", "uses.go"}
+
+    def test_a_declaration_with_no_symbol_is_read_as_a_reference(self, tmp_path, extractor):
+        """Direction two: a wrong edge kept, which the guard's comment omits.
+
+        The guard keys on the symbols a file recorded, so a declaration form
+        the language table does not model leaves it nothing to match. `b.go`
+        declares `handler` and defines nothing of that name, so the resolver
+        reads the declaration's own identifier as a bare reference and answers
+        it with the unrelated function in `a.go` -- at `unique`, the tier that
+        means only that the repository spells the name once.
+
+        This is the direction the C++ regression below closed by making the
+        declaration a symbol. Closing it in general means recording the
+        declaration role per language in the extractor, which is what the
+        guard's comment in `core/resolve.py` names as the real fix.
+        """
+        _, graph = resolved(write(tmp_path, UNMODELLED_DECLARATION_GO), extractor)
+        edges = [edge for edge in graph.edges if edge.name == "handler"]
+
+        assert [(edge.source.path, edge.target.path, edge.tier) for edge in edges] == [
+            ("b.go", "a.go", resolve.Tier.UNIQUE)
+        ]
+
+
+class TestAnOutOfLineDefinitionIsNotAReference:
+    """The C++ instance of the guard's miss direction, closed at the source.
+
+    `int Logger::emit(int x)` used to yield no symbol at all -- the extractor
+    tested `str.isidentifier()` on the declarator's text and `Logger::emit` is
+    not one -- so the guard had nothing to key on and both `emit` identifiers
+    in the file became references to an unrelated free function in another
+    file, at `unique`. Two confidently wrong edges from one missing symbol.
+    """
+
+    def test_a_qualified_definition_does_not_reference_a_free_function(self, tmp_path, extractor):
+        if "cpp" not in grammars.warmed_languages():
+            pytest.skip("grammar for cpp is not in the local pack cache")
+        files = {
+            "util.cpp": "int emit(int x) { return x; }\n",
+            "logger.cpp": (
+                "class Logger { public: int emit(int x); };\n\n"
+                "int Logger::emit(int x) {\n    return x + 1;\n}\n"
+            ),
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        strays = [
+            edge for edge in graph.edges if edge.name == "emit" and edge.target.path == "util.cpp"
+        ]
+
+        assert strays == []
 
 
 class TestADeclarationSharingALineWithAReference:

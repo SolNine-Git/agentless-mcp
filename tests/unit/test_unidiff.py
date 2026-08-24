@@ -8,6 +8,8 @@ pins one construct to one of those three, and the refusals are asserted on their
 act on is only a slower silence.
 """
 
+import pytest
+
 from agentless_mcp.core import unidiff
 
 SIMPLE = """\
@@ -392,6 +394,86 @@ class TestHunkBodies:
     def test_a_file_header_with_no_hunks_is_refused(self):
         text = "--- a/app.py\n+++ b/app.py\ndiff --git a/other.py b/other.py\n"
         assert "no hunks" in only_error(text).reason
+
+
+class TestAHunkEndedByATrailerShape:
+    """An empty line and ``--`` end a hunk, and cannot be trusted to.
+
+    Both follow a correct hunk in real output, so both are read as its end.
+    Both also sit where an over-long body's first excess line sits, and the
+    loop that reads hunks stops at anything that is not ``@@`` while the scan
+    above it passes over anything that does not open a file section. A hunk
+    ended one line early therefore took every later hunk of the file with it,
+    reported nothing, and left a section that read as checked and clean.
+    """
+
+    HEAD = "--- a/app.py\n+++ b/app.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+    LATER_HUNK = "@@ -20,1 +20,1 @@\n-second\n+SECOND\n"
+
+    def _refusal(self, text):
+        parsed = unidiff.parse_unified_diff(text)
+        assert len(parsed.result.errors) == 1, parsed.result.errors
+        return parsed.result.errors[0]
+
+    @pytest.mark.parametrize("boundary", ["\n", "--\n", "-- \n"])
+    def test_a_later_hunk_behind_a_trailer_shape_is_refused_not_dropped(self, boundary):
+        error = self._refusal(self.HEAD + boundary + self.LATER_HUNK)
+        assert "does not match" in error.reason
+        assert "app.py" in error.reason
+
+    @pytest.mark.parametrize("boundary", ["\n", "--\n"])
+    def test_trailing_body_behind_a_trailer_shape_is_refused_not_dropped(self, boundary):
+        error = self._refusal(self.HEAD + boundary + "-third\n+THIRD\n")
+        assert "does not match" in error.reason
+
+    def test_a_format_patch_signature_still_ends_the_last_hunk(self):
+        # `git format-patch` writes `-- ` and then its version. Nothing after
+        # it is hunk content, and refusing it would refuse every patch file.
+        (edit,) = edits_of(self.HEAD + "-- \n2.43.0\n")
+        assert edit.path == "app.py"
+
+    def test_a_git_log_p_commit_header_still_ends_the_last_hunk(self):
+        text = self.HEAD + "\ncommit 1234567890abcdef\nAuthor: A <a@b.invalid>\n\n    message\n"
+        (edit,) = edits_of(text)
+        assert edit.path == "app.py"
+
+    def test_two_correct_hunks_in_a_row_are_both_read(self):
+        edits = edits_of(self.HEAD + self.LATER_HUNK)
+        assert [block.search for block in edits] == ["old", "second"]
+
+
+class TestASectionThatLostItsPathPair:
+    """A mode-only change has no hunks, so a section with hunks is not one.
+
+    Both ``---`` and ``+++`` absent was read as the mode change git spells
+    that way, without asking whether hunks followed. A header block truncated
+    down to its ``index`` line therefore reported "there is no content to
+    check" about a section holding a content change -- the coverage claim this
+    module exists to keep honest, made about a diff nothing read.
+    """
+
+    def test_hunks_without_a_path_pair_are_refused(self):
+        text = "diff --git a/app.py b/app.py\nindex 1111111..2222222 100644\n"
+        text += "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        error = only_error(text)
+        assert error.path == "app.py"
+        assert "has hunks but neither a '---' nor a '+++' header" in error.reason
+
+    def test_a_real_mode_only_change_is_still_a_note(self):
+        text = "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+        parsed = unidiff.parse_unified_diff(text)
+        assert parsed.result.errors == ()
+        (note,) = parsed.notes
+        assert "mode change only" in note.reason
+
+    def test_a_refused_section_does_not_cost_the_one_after_it(self):
+        text = "diff --git a/app.py b/app.py\nindex 1111111..2222222 100644\n"
+        text += "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        text += "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n"
+        text += "@@ -1,1 +1,1 @@\n-x\n+y\n"
+        parsed = unidiff.parse_unified_diff(text)
+        assert len(parsed.result.errors) == 1
+        assert [block.path for block in parsed.result.edits] == ["other.py"]
 
 
 class TestZeroContext:

@@ -10,6 +10,7 @@ through the server's own SIGINT shutdown path rather than around it.
 import logging
 import signal
 import sys
+import threading
 from importlib.metadata import PackageNotFoundError
 
 import pytest
@@ -407,3 +408,83 @@ class TestMinimumUptime:
         selfrestart._watch("agentless-mcp", "1.0:aaaa")
 
         assert raised == [signal.SIGINT]
+
+
+class TestATornRecordIsAbsentRatherThanADifferentInstall:
+    def test_a_record_that_is_not_utf8_reads_as_absent(self, monkeypatch):
+        # `read_text` suppresses five OSError subclasses and nothing else, so a
+        # RECORD caught mid-write with a byte sequence no UTF-8 decoder accepts
+        # raises UnicodeDecodeError -- a ValueError, not an OSError. That is
+        # the same torn-install window the monitor exists to watch, so it must
+        # read as "wait", never as a change and never as a dead thread.
+        class TornRecord:
+            version = "1.0"
+
+            def read_text(self, name: str) -> str:
+                torn = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+                raise torn
+
+        monkeypatch.setattr(selfrestart, "distribution", lambda name: TornRecord())
+
+        assert selfrestart.install_fingerprint("x") is None
+
+
+class TestADeadMonitorDoesNotReadAsARunningOne:
+    """`_MONITOR.thread` is the early return in ``start_update_monitor``.
+
+    A thread ended by an exception no caught type covers used to leave that
+    handle set, so every later call was answered with the corpse and drift
+    detection stayed off for the life of the process -- ``is_alive()`` False,
+    and nothing consulting it.
+    """
+
+    def test_a_reader_error_no_tuple_names_deregisters_the_monitor(
+        self, monkeypatch, monitor_isolated
+    ):
+        def explode(name):
+            raise _StopWatchingError
+
+        monkeypatch.setattr(selfrestart, "install_fingerprint", explode)
+        selfrestart._MONITOR.thread = threading.current_thread()
+
+        with pytest.raises(_StopWatchingError):
+            selfrestart._watch("agentless-mcp", None)
+
+        assert selfrestart._MONITOR.thread is None
+
+    def test_the_next_start_gets_a_fresh_monitor_rather_than_the_corpse(
+        self, monkeypatch, monitor_isolated
+    ):
+        monkeypatch.setattr(selfrestart, "is_installed", lambda name: True)
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: "1.0:aaaa")
+        started = []
+        monkeypatch.setattr(selfrestart, "_watch", lambda name, baseline: started.append(name))
+
+        first = selfrestart.start_update_monitor("agentless-mcp")
+        assert first is not None
+        first.join(timeout=5)
+        # What the dead thread leaves behind, which the finally in `_watch`
+        # does for real and the stub above cannot.
+        selfrestart._MONITOR.thread = None
+
+        second = selfrestart.start_update_monitor("agentless-mcp")
+
+        assert second is not None
+        second.join(timeout=5)
+        assert second is not first
+        assert started == ["agentless-mcp", "agentless-mcp"]
+
+    def test_a_monitor_that_armed_a_restart_stays_registered(self, monkeypatch, monitor_isolated):
+        # It finished the job it was started for and the process is on its way
+        # out. Forgetting it there would let a second monitor start and raise a
+        # second SIGINT for one install event, and only one can be claimed.
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", lambda number: None)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 0.0)
+        reads = iter(["1.0:aaaa", "2.0:bbbb"])
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: next(reads))
+        selfrestart._MONITOR.thread = threading.current_thread()
+
+        selfrestart._watch("agentless-mcp", None)
+
+        assert selfrestart._MONITOR.pending is True
+        assert selfrestart._MONITOR.thread is not None

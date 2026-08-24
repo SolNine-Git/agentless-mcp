@@ -95,6 +95,7 @@ from agentless_mcp.application.symbol_service import (
     render_expansion,
     render_find,
     render_refs,
+    unresolved_lines,
 )
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
@@ -104,7 +105,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NO
 from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
-from agentless_mcp.util import fslimits, textsafe
+from agentless_mcp.util import bounds, fslimits, textsafe
 from agentless_mcp.util.errors import AgentlessError, OperationFailed, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -240,16 +241,23 @@ Locations = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["locat
 # because that schema is the only refusal a model can read before it makes
 # the call -- an out-of-range value comes back as a validation error naming
 # the bound rather than as a nonsense answer from a service that sliced with
-# it. Services keep their own checks; this is the gate in front of them.
-MAX_LIMIT = 500
-MAX_CONTEXT_LINES = 200
-MAX_DIAGRAM_NODES = 500
+# it.
+#
+# The numbers are re-exported from `util.bounds` rather than declared here.
+# Owning them made this adapter the only place a ceiling existed, so the CLI
+# honoured what the wire refused: `cycles --limit 100000` was answered and
+# `orient(operation="cycles", limit=100000)` was not. The services now check
+# the same constants, which leaves this layer advertising a bound rather than
+# deciding one.
+MAX_LIMIT = bounds.MAX_LIMIT
+MAX_CONTEXT_LINES = bounds.MAX_CONTEXT_LINES
+MAX_DIAGRAM_NODES = bounds.MAX_DIAGRAM_NODES
 # Edges are bounded for the same reason nodes are, and at the same number: a
 # flowchart past a few hundred arrows is unreadable whatever its node count,
 # so a larger ceiling would only let a caller ask for a picture nobody can
 # use. The default sits far below this; the ceiling exists to refuse nonsense.
-MAX_DIAGRAM_EDGES = 500
-MAX_RESOLUTION = 100.0
+MAX_DIAGRAM_EDGES = bounds.MAX_DIAGRAM_EDGES
+MAX_RESOLUTION = bounds.MAX_RESOLUTION
 
 # ``limit`` is nullable on every tool that carries it because it is nullable
 # on analyze_structure, whose default depends on the operation. A client that
@@ -323,10 +331,14 @@ MaxNodes = Annotated[
         description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"],
     ),
 ]
+# ``ge=0`` and not ``ge=1``: no reference edges is a legible diagram -- the
+# declared imports still draw -- where no nodes is not a diagram at all. The
+# service has always allowed zero, so ``ge=1`` here refused over MCP a call
+# the command line answered.
 MaxEdges = Annotated[
     int,
     Field(
-        ge=1,
+        ge=0,
         le=MAX_DIAGRAM_EDGES,
         description=PARAMETER_DESCRIPTIONS["diagram_max_edges"],
     ),
@@ -393,7 +405,7 @@ OptionalMaxNodes = Annotated[
 ]
 OptionalMaxEdges = Annotated[
     int | None,
-    Field(ge=1, le=MAX_DIAGRAM_EDGES, description=PARAMETER_DESCRIPTIONS["diagram_max_edges"]),
+    Field(ge=0, le=MAX_DIAGRAM_EDGES, description=PARAMETER_DESCRIPTIONS["diagram_max_edges"]),
 ]
 OptionalFindName = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["find_name"])]
 OptionalOverviewPaths = Annotated[
@@ -766,9 +778,15 @@ class ToolHandlers:
         return self._wrap(ctx, "\n".join(blocks))
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:
-        """Render bodies for the named stable ids, marking whatever was shortened."""
+        """Render bodies for the named stable ids, marking whatever was shortened.
+
+        A tool call has one channel, so the ids that missed are appended to
+        the body here rather than raised. The CLI puts the same rows on
+        stderr, which is the split described on :func:`render_expansion`.
+        """
         result = self._services.symbols.expand_symbols(ctx, list(stable_ids), limit=limit)
-        return self._wrap(ctx, render_expansion(result))
+        body = "\n".join([render_expansion(result), *unresolved_lines(result)])
+        return self._wrap(ctx, body)
 
     def read_slice(
         self,

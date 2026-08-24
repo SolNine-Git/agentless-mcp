@@ -64,6 +64,18 @@ def imports_for(extractor, fixture: str):
     return extractor.extract_imports_from_source(source, grammar, name)
 
 
+def require_grammar(grammar: str) -> None:
+    """Skip when ``grammar`` is cold, for a test whose source is inline.
+
+    The same policy the fixture helpers apply, spelled once for the tests that
+    hold their source in the module rather than in a file.
+    """
+    if grammar not in grammars.warmed_languages():
+        pytest.skip(
+            f"grammar for {grammar} is not in the local pack cache: run agentless-mcp warmup"
+        )
+
+
 def named(symbols):
     """Map symbol name to symbol, for assertions that read as prose."""
     return {symbol.name: symbol for symbol in symbols}
@@ -202,10 +214,18 @@ class TestCPrototypes:
         assert found["scaled"].kind is SymbolKind.FUNCTION
 
     def test_a_function_pointer_variable_is_not_a_function(self, extractor):
-        # `int (*fp)(void);` declares a variable. Its declarator resolves to
-        # `(*fp)`, which is not a name, and a symbol map is read as code.
+        # `int (*fp)(void);` declares a variable. Its declarator reaches a
+        # name only through a parenthesis and a star, which is the
+        # function-pointer shape, and a symbol map is read as code.
         source = "int (*fp)(void);\n"
         assert extractor.extract_from_source(source, "c", "money.h") == []
+
+    def test_a_function_returning_a_function_pointer_is_still_a_function(self, extractor):
+        # The other side of the same shape: `int (*make(void))(int);` wraps a
+        # further `function_declarator`, and that inner one is the declaration
+        # the file makes. Refusing the whole shape would lose it.
+        source = "int (*make(void))(int);\n"
+        assert "make" in named(extractor.extract_from_source(source, "c", "money.h"))
 
     def test_a_tagged_type_inside_a_declaration_still_arrives(self, extractor):
         # The prototype match is on the declarator rather than on the
@@ -213,6 +233,108 @@ class TestCPrototypes:
         # descended into.
         source = "struct Money { double amount; } m;\n"
         assert "Money" in named(extractor.extract_from_source(source, "c", "money.h"))
+
+
+# A routine C++ source file: the class is declared in a header and its methods
+# are defined out of line here. Four of the five function definitions below
+# spell a name that is not a Python identifier.
+CPP_MEMBERS = """\
+namespace acme {
+
+Logger::Logger() : level_(0) {}
+
+Logger::~Logger() {}
+
+int Logger::emit(int x) { return x + level_; }
+
+bool operator==(const Logger& a, const Logger& b) { return true; }
+
+int free_function(int y) { return y; }
+
+}  // namespace acme
+"""
+
+CPP_INLINE_CLASS = """\
+class Logger {
+  public:
+    int emit(int x) { return x; }
+    void reset();
+    int level_;
+};
+"""
+
+
+class TestCppMemberDefinitions:
+    """The forms a C++ source file is actually written in.
+
+    `name.isidentifier()` was the test for "this declarator names a function".
+    It is a proxy for the shape, and it refused every C++ spelling that is not
+    a bare Python identifier, so the file above yielded one symbol out of five
+    -- and `Logger::emit` had been a symbol before the guard landed.
+    """
+
+    def test_every_definition_in_a_routine_source_file_is_a_symbol(self, extractor):
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_MEMBERS, "cpp", "logger.cpp"))
+
+        assert set(found) == {"Logger", "~Logger", "emit", "operator==", "free_function"}
+
+    def test_an_out_of_line_definition_carries_the_class_it_names(self, extractor):
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_MEMBERS, "cpp", "logger.cpp"))
+
+        assert found["emit"].parent_class == "Logger"
+        assert found["emit"].kind is SymbolKind.METHOD
+
+    def test_a_constructor_and_a_destructor_are_both_extracted(self, extractor):
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_MEMBERS, "cpp", "logger.cpp"))
+
+        assert found["Logger"].parent_class == "Logger"
+        assert found["~Logger"].parent_class == "Logger"
+
+    def test_a_free_operator_is_not_owned_by_a_class(self, extractor):
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_MEMBERS, "cpp", "logger.cpp"))
+
+        assert found["operator=="].parent_class == ""
+        assert found["operator=="].kind is SymbolKind.FUNCTION
+
+    def test_a_nested_qualified_definition_keeps_every_scope(self, extractor):
+        require_grammar("cpp")
+        source = "int A::B::method(int x) { return x; }\n"
+        found = named(extractor.extract_from_source(source, "cpp", "q.cpp"))
+
+        assert found["method"].parent_class == "A.B"
+
+    def test_a_template_class_owns_its_method_without_its_arguments(self, extractor):
+        require_grammar("cpp")
+        source = "template<class T> int C<T>::go() { return 1; }\n"
+        found = named(extractor.extract_from_source(source, "cpp", "t.cpp"))
+
+        assert found["go"].parent_class == "C"
+
+    def test_a_method_declared_inside_a_class_body_is_a_symbol(self, extractor):
+        """A `class_specifier` ends one descent and opens another.
+
+        The class used to be the end of the walk, so an inline class -- the
+        whole surface of a header-only library -- contributed the class name
+        and nothing it declares.
+        """
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_INLINE_CLASS, "cpp", "logger.hpp"))
+
+        assert found["emit"].parent_class == "Logger"
+        assert found["reset"].parent_class == "Logger"
+
+    def test_a_data_member_is_not_reported_as_a_function(self, extractor):
+        # `int level_;` is a `field_declaration` too, and it ends the descent
+        # for the same reason a method does. Only the one whose declarator is
+        # a `function_declarator` becomes a symbol.
+        require_grammar("cpp")
+        found = named(extractor.extract_from_source(CPP_INLINE_CLASS, "cpp", "logger.hpp"))
+
+        assert "level_" not in found
 
 
 class TestCppNamespace:

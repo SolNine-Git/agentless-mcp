@@ -71,6 +71,7 @@ only place that format is parsed and the only place it is written.
 """
 
 import json
+import posixpath
 import time
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -1149,16 +1150,28 @@ def test_config_paths(paths: Iterable[str]) -> tuple[str, ...]:
     Public because the refusal it feeds is a documented property of a run, and
     a caller building a request wants the same answer this service will give
     rather than a second list that drifts from it.
+
+    Each path is judged in the form the applier will write it in, not in the
+    form the candidate spelled it. ``PatchService`` resolves every path before
+    it writes, so ``./.github/workflows/ci.yml`` and
+    ``src/../.github/workflows/ci.yml`` both land in ``.github/`` -- while a
+    prefix test on the raw string matched neither. Guarding the spelling
+    rather than the file is a guard that reads as enforcement and is not.
+
+    The normalisation is lexical, so a route into one of these directories
+    through a symlink is not seen. That is the limit of a check that reads
+    paths rather than a filesystem; the module docstring says what this does
+    and does not protect.
     """
-    named = sorted(
-        {
-            path
-            for path in paths
-            if PurePosixPath(path).name in TEST_CONFIG_NAMES
-            or path.startswith(TEST_CONFIG_PREFIXES)
-        }
+    return tuple(sorted({path for path in paths if _names_test_config(path)}))
+
+
+def _names_test_config(path: str) -> bool:
+    """True when ``path`` resolves to a file that decides what the tests run."""
+    canonical = posixpath.normpath(path)
+    return PurePosixPath(canonical).name in TEST_CONFIG_NAMES or canonical.startswith(
+        TEST_CONFIG_PREFIXES
     )
-    return tuple(named)
 
 
 def _test_config_reasons(paths: Sequence[str]) -> tuple[str, ...]:

@@ -7,6 +7,7 @@ from agentless_mcp.core.refs import (
     enclosing_symbol,
     line_owners,
     references_to,
+    resolve_definitions,
     scan_repo,
 )
 from agentless_mcp.core.symbols import qualname
@@ -385,3 +386,52 @@ class TestLookupTargets:
         index = self.classes(tmp_path, extractor)
         found = definitions_for(index, "book.Invoice.price")
         assert [qualname(definition.symbol) for definition in found] == ["Invoice.price"]
+
+
+class TestADottedTargetReportsWhetherItFoundWhatItNamed:
+    """``scoped`` is what tells a caller its narrowing worked.
+
+    A bare name promises nothing about a file, so it resolves by definition. A
+    dotted one names a path as well, and reporting `scoped=True` after the
+    path narrowing came back empty told the caller the target found what it
+    named while handing back every definition of the last component -- the
+    fall-through the stable-id branch reports honestly.
+    """
+
+    def test_a_bare_name_always_resolves_by_definition(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "quote")
+
+        assert resolution.scoped is True
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_a_dotted_target_whose_path_confirms_is_scoped(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "core.quote")
+
+        assert resolution.scoped is True
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_a_dotted_target_that_no_path_confirms_says_it_fell_through(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "somewhere.else.quote")
+
+        assert resolution.scoped is False
+        # The definitions still come back: over-reporting by name is this
+        # surface's documented posture, and a narrowing that can empty an
+        # answer is worse than one that can widen it.
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_the_convenience_wrapper_still_returns_the_same_definitions(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        assert definitions_for(index, "somewhere.else.quote") == (
+            resolve_definitions(index, "somewhere.else.quote").definitions
+        )

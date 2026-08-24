@@ -1,16 +1,14 @@
 """Every numeric CLI option at 0, at -1, and above its cap.
 
-Nothing owns numeric bounds on this surface. `application/symbol_service`
-carries a `_check_limit`, `adapters/cli/main` carries two more rules written
-by hand, `GraphService` carries none, and the MCP adapter carries a
-`Field(ge=, le=)` on parameters the CLI accepts bare. The result is that one
-number means four things depending on which command reads it.
+`agentless_mcp.util.bounds` owns the rule and the numbers; every service
+calls it, and the MCP adapter re-exports the same constants into the JSON
+schema it publishes. That is what makes this table meaningful across both
+front doors rather than only this one.
 
-This module pins what each option does today, before stage 4 gives the
-services one owner. The exit-code table is deliberately exhaustive rather
-than representative: the value of a characterization test is that the diff
-after the fix shows every cell that moved, and a sampled table hides the
-cells nobody thought to sample.
+The exit-code table is deliberately exhaustive rather than representative:
+the value of a characterization test is that the diff after a change shows
+every cell that moved, and a sampled table hides the cells nobody thought to
+sample.
 
 Three of these are worse than inconsistent. `cycles`, `map` and `communities`
 answer a bounded question by reporting that the repository is empty, so a
@@ -79,36 +77,49 @@ LEADING = {
 
 # Measured on the fixture below. EXIT_OK means the value was honoured or
 # ignored; EXIT_USAGE means an adapter-local rule refused it; EXIT_DOMAIN
-# means a service refused it. Read a row across and the divergence is the
-# finding: `--limit -1` is a usage error on communities, a domain error on
-# refs, and a clean success on cycles.
+# means a service refused it.
+#
+# The "above cap" column used to read EXIT_OK on fourteen of these rows, and
+# that expectation was wrong rather than merely lenient: the MCP adapter has
+# always refused those same values through `Field(le=)`, so the table was
+# pinning the divergence between the two front doors as if it were the
+# contract. `cycles --limit 100000` was answered on the command line and
+# refused over MCP for the same repository. The services now hold the
+# published ceiling, so both doors refuse it and this column says so.
+#
+# Two rows still read EXIT_OK above the cap, and they are not oversights.
+# `--members` and `--max-visited` are reachable from the command line only;
+# with no second door publishing a ceiling there is no number to agree with,
+# and neither value misleads -- a huge `--members` lists every member it has,
+# a huge `--max-visited` simply never trips.
 BOUNDARY_EXITS: dict[tuple[str, str], tuple[int, int, int]] = {
     #                                        0            -1        above cap
-    ("communities", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("communities", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
+    ("communities", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("communities", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    # CLI-only: no published ceiling to match. See the note above.
     ("communities", "--members"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("cycles", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("diagram", "--max-nodes"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("diagram", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("expand", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("explain", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("find-symbol", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
+    ("cycles", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    # The floor is zero for the reason the html twin below gives.
+    ("diagram", "--max-edges"): (EXIT_OK, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("diagram", "--max-nodes"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("diagram", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("expand", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("explain", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("find-symbol", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     ("html", "--max-nodes"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     # The one option whose floor is zero rather than one: no reference edges
     # is a legible diagram, where no nodes is not a diagram.
     ("html", "--max-edges"): (EXIT_OK, EXIT_DOMAIN, EXIT_DOMAIN),
-    ("html", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    # The one option with a published ceiling as well as a floor:
-    # projectconfig declares 1..200 and enforces it for a config file and on
-    # the MCP wire, while the CLI declared --max-files as a bare type=int.
+    ("html", "--resolution"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     ("map", "--max-files"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    # CLI-only: no published ceiling to match. See the note above.
     ("path", "--max-visited"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("refs", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
+    ("refs", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     # Context lines are a span around a match, so zero of them is an answer.
-    ("resolve-locs", "--context"): (EXIT_OK, EXIT_DOMAIN, EXIT_OK),
-    ("slice", "--context"): (EXIT_OK, EXIT_DOMAIN, EXIT_OK),
-    ("tree", "--depth"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
-    ("tree", "--max-entries"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_OK),
+    ("resolve-locs", "--context"): (EXIT_OK, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("slice", "--context"): (EXIT_OK, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("tree", "--depth"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("tree", "--max-entries"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
 }
 
 CASES = [
@@ -178,6 +189,7 @@ class TestBoundaryExitCodes:
             ("communities", "--limit", "-1"),
             ("refs", "--limit", "0"),
             ("tree", "--depth", "0"),
+            ("communities", "--members", "0"),
         ):
             dispatch(services, repo, command, option, value)
             # The last line, because the fixture is not a git checkout and the
@@ -185,11 +197,16 @@ class TestBoundaryExitCodes:
             # --repo invocation as well as for a cwd one.
             messages.append(capsys.readouterr().err.strip().splitlines()[-1])
 
+        # Every one of these now names a range rather than a floor, because
+        # every one of them now has a ceiling the MCP door already published.
+        # `--members` is the parameter that still reads "at least", and it is
+        # the one with no second door to agree with.
         assert messages == [
             "agentless-mcp: max_nodes takes a value from 1 through 1000, got 0",
-            "agentless-mcp: limit must be at least 1, got -1",
-            "agentless-mcp: limit must be at least 1, got 0",
-            "agentless-mcp: depth must be at least 1, got 0",
+            "agentless-mcp: limit takes a value from 1 through 500, got -1",
+            "agentless-mcp: limit takes a value from 1 through 500, got 0",
+            "agentless-mcp: depth takes a value from 1 through 20, got 0",
+            "agentless-mcp: members must be at least 1, got 0",
         ]
 
 
@@ -211,7 +228,7 @@ class TestABoundOfZeroIsRefused:
         self, services, repo, capsys, command, option
     ):
         assert dispatch(services, repo, command, option, "0") == EXIT_DOMAIN
-        assert "limit must be at least 1, got 0" in capsys.readouterr().err
+        assert "limit takes a value from 1 through 500, got 0" in capsys.readouterr().err
 
     def test_a_map_file_limit_is_refused_against_its_published_range(self, services, repo, capsys):
         # max_files has a ceiling as well as a floor, so it reports the range

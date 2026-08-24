@@ -520,6 +520,122 @@ class TestAOneWordPathHeader:
         assert parsed.path == word
 
 
+class TestANonAsciiPathHeader:
+    """A filename is not an ASCII string, and reading it as prose wrote elsewhere.
+
+    The shape test enumerated the characters a path may contain, in ASCII, so
+    every accented or non-Latin filename failed it, was skipped as prose, and
+    the block under it silently inherited the *previous* block's path. Parse
+    reported two edits and no errors, both naming the wrong file.
+    """
+
+    TWO_FILES = (
+        "src/app.py\n"
+        "<<<<<<< SEARCH\nold one\n=======\nnew one\n>>>>>>> REPLACE\n"
+        "src/naïve.py\n"
+        "<<<<<<< SEARCH\nold two\n=======\nnew two\n>>>>>>> REPLACE\n"
+    )
+
+    def test_a_non_ascii_header_is_not_absorbed_by_the_block_above_it(self):
+        result = parse_blocks(self.TWO_FILES)
+        assert result.errors == ()
+        assert [block.path for block in result.edits] == ["src/app.py", "src/naïve.py"]
+
+    @pytest.mark.parametrize(
+        "word", ["src/naïve.py", "src/café/app.py", "日本語.py", "über.rs", "naïve.py"]
+    )
+    def test_a_non_ascii_word_is_a_path(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.path == word
+
+
+class TestAnUnreadableHeaderIsRefused:
+    """Inheritance is right for a header holding nothing, wrong for one it cannot read.
+
+    Both used to answer None, so a header line the shape test rejected made
+    the block below it take the path above it. That is what turned one
+    over-narrow character class into a wrong file. A rejected line now has to
+    carry evidence of prose -- the punctuation a sentence ends on -- to be
+    skipped; anything else is reported against the block it would have
+    mis-attributed.
+    """
+
+    @staticmethod
+    def _two_blocks(header: str) -> str:
+        return (
+            "### src/a.py\n"
+            "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+            f"{header}\n"
+            "<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n"
+        )
+
+    @pytest.mark.parametrize(
+        "header",
+        ['"src/b.py', "'src/b.py", "(see src/b.py", "[src/b.py", "{src/b.py"],
+    )
+    def test_a_header_opening_on_a_delimiter_is_reported(self, header):
+        # The one shape that is neither a path nor evidence of prose. A
+        # filename opens with `.`, `/`, `~` or `-`, never with a quote or a
+        # bracket, and "(see src/b.py" carries an extension on its last
+        # component, so no prose test below reaches it.
+        result = parse_blocks(self._two_blocks(header))
+        assert [block.path for block in result.edits] == ["src/a.py"]
+        (error,) = result.errors
+        assert error.index == 1
+        assert "neither a path nor a sentence" in error.reason
+        assert repr(header) in error.reason
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            # Punctuated like prose.
+            "Done!",
+            "Next:",
+            "Also,",
+            "Fixed.",
+            "I will now fix the rounding in src/app.py:",
+            # More words than a filename carries, punctuation or not. A model
+            # narrating between its blocks writes these, so refusing them
+            # would lose the header above far more often than the bug this
+            # class exists for ever mis-attributed it.
+            "Here is the change",
+            "I will now fix the rounding in src/app.py",
+            "Next I update the parser",
+            # Few enough words, but a last component with no extension.
+            "Now fixing",
+            "and then",
+        ],
+    )
+    def test_a_header_carrying_evidence_of_prose_is_skipped(self, header):
+        result = parse_blocks(self._two_blocks(header))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "src/b.py",
+            "src/naïve.py",
+            "src/café/app.py",
+            "日本語.py",
+            "über.rs",
+            "Makefile",
+            ".gitignore",
+            "my dir/my file.py",
+        ],
+    )
+    def test_a_header_spelled_like_a_path_names_its_own_file(self, header):
+        result = parse_blocks(self._two_blocks(header))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", header]
+
+    def test_a_header_holding_nothing_still_inherits(self):
+        result = parse_blocks(self._two_blocks("```"))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+
 class TestCrlfIsDiagnosed:
     """A CRLF patch against an LF checkout is a line-ending problem.
 
