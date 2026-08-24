@@ -708,3 +708,53 @@ class TestWholesaleEvidence:
         edges = edges_from(graph, "c:app.c::total", "apply_tax")
 
         assert [edge.tier for edge in edges] == [resolve.Tier.IMPORTED]
+
+
+# `Uses.Helper` names its return type, itself, and a constructor call, all on
+# one line. Only Python records a declaration identifier as a role, so this is
+# where the line-keyed guard in `_reference_edges` is visible.
+SAME_LINE_FILES = {
+    "Helper.java": "public class Helper {\n    public int value() { return 1; }\n}\n",
+    "Uses.java": ("public class Uses {\n    public Helper Helper() { return new Helper(); }\n}\n"),
+}
+
+
+class TestADeclarationSharingALineWithAReference:
+    """What the line-keyed declaration guard costs, pinned rather than assumed.
+
+    The guard drops every occurrence of a name on the line a symbol of that
+    name starts on, which is a proxy for "this occurrence IS the declaration
+    identifier". Two tighter keys were measured against this repository's
+    reference edge set and both were refused: marking the tree-sitter
+    `name`-field child a declaration adds tens of thousands of wrong edges,
+    because JSON, YAML and TOML keys sit behind no such field; dropping only
+    the first match per line keeps the declaration identifier here and drops
+    the return type instead, which trades a missing edge for a wrong one.
+
+    So the reference on the declaration's own line is lost. This test exists
+    so that deleting the guard is a visible decision rather than a silent one.
+    """
+
+    def test_the_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
+        if "java" not in grammars.warmed_languages():
+            pytest.skip("grammar for java is not in the local pack cache")
+        _, graph = resolved(write(tmp_path, SAME_LINE_FILES), extractor)
+
+        assert edges_from(graph, "java:Uses.java::Uses.Helper", "Helper") == []
+
+    def test_a_reference_on_any_other_line_still_resolves(self, tmp_path, extractor):
+        """The guard is keyed on the line, so one line down is enough."""
+        if "java" not in grammars.warmed_languages():
+            pytest.skip("grammar for java is not in the local pack cache")
+        moved = dict(SAME_LINE_FILES)
+        moved["Uses.java"] = (
+            "public class Uses {\n"
+            "    public Object Helper() {\n"
+            "        return new Helper();\n"
+            "    }\n"
+            "}\n"
+        )
+        _, graph = resolved(write(tmp_path, moved), extractor)
+
+        edges = edges_from(graph, "java:Uses.java::Uses.Helper", "Helper")
+        assert [edge.target.path for edge in edges] == ["Helper.java"]

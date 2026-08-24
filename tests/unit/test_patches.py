@@ -364,76 +364,34 @@ class TestApply:
 LONG_SOURCE = "one\ntwo\nthree\nfour\ntarget\nsix\n"
 
 
-class TestIntervals:
-    def test_an_edit_inside_its_interval_applies(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(4, 6)]},
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "one\ntwo\nthree\nfour\nTARGET\nsix\n"}
+class TestTheRemovedIntervalScoping:
+    """The Agentless ``context_segment`` scoping is gone, not merely unused.
 
-    def test_an_edit_outside_its_interval_is_refused_with_that_reason(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(1, 3)]},
-        )
+    No surface ever supplied it: the CLI patch commands took no line ranges,
+    the MCP server exposes no patch tool, and ``patchlint`` matched whole
+    files. It left a serialised ``outside_intervals`` status no caller could
+    ever receive, and the ``...`` anchor stayed file-wide either way.
+    """
+
+    def test_apply_edits_takes_no_scoping_keyword(self):
+        with pytest.raises(TypeError):
+            apply_edits(
+                [edit("a.py", "target", "TARGET")],
+                {"a.py": LONG_SOURCE},
+                intervals={"a.py": [(4, 6)]},
+            )
+
+    def test_the_status_a_scope_used_to_produce_is_gone(self):
+        assert not hasattr(EditStatus, "OUTSIDE_INTERVALS")
+        assert "outside_intervals" not in {status.value for status in EditStatus}
+
+    def test_a_repeated_line_is_refused_rather_than_narrowed_by_a_range(self):
+        """What a scope used to resolve, an ambiguity refusal now reports."""
+        result = apply_edits([edit("a.py", "x", "X")], {"a.py": "x\nkeep\nx\n"})
         (outcome,) = result.outcomes
-        assert outcome.status is EditStatus.OUTSIDE_INTERVALS
-        assert "scoped to" in outcome.reason
+        assert outcome.status is EditStatus.AMBIGUOUS
+        assert outcome.matches == 2
         assert result.new_contents == {}
-
-    def test_an_interval_disambiguates_a_repeated_line(self):
-        content = "x\nkeep\nx\n"
-        result = apply_edits(
-            [edit("a.py", "x", "X")], {"a.py": content}, intervals={"a.py": [(3, 3)]}
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "x\nkeep\nX\n"}
-
-    def test_a_later_interval_survives_an_earlier_edit_changing_the_length(self):
-        """Scopes are tracked as offsets, so a growing edit does not shift them."""
-        content = "a\nb\nc\nd\n"
-        edits = [
-            edit("a.py", "a", "a1\na2\na3", 0),
-            edit("a.py", "d", "D", 1),
-        ]
-        result = apply_edits(edits, {"a.py": content}, intervals={"a.py": [(1, 1), (4, 4)]})
-        assert result.ok, [outcome.reason for outcome in result.outcomes]
-        assert result.new_contents == {"a.py": "a1\na2\na3\nb\nc\nD\n"}
-
-    def test_empty_intervals_search_the_whole_file(self):
-        """Regression: Agentless raised NameError on this path (postprocess_data.py:747).
-
-        ``file_loc_intervals == []`` referenced ``original`` and ``replace``
-        before assignment, so a patch with no localization intervals crashed
-        instead of applying. Empty means unscoped here.
-        """
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": []},
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "one\ntwo\nthree\nfour\nTARGET\nsix\n"}
-
-    def test_a_path_absent_from_the_intervals_map_is_unscoped(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"other.py": [(1, 1)]},
-        )
-        assert result.ok
-
-    def test_an_out_of_range_interval_is_dropped_not_clamped_open(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(90, 99)]},
-        )
-        assert result.outcomes[0].status is EditStatus.OUTSIDE_INTERVALS
 
 
 ELIDED_SOURCE = "import os\n\n\ndef helper():\n    return 1\n"

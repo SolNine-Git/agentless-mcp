@@ -16,14 +16,6 @@ changes, each of which the tests pin:
   ``no_line_number``) are gone. They were Agentless prompt knobs that no
   caller here ever set, and the dataclass existed only to route between them.
 
-One thing this module still spells two ways, stated rather than implied: a
-slice renders ``7|    total += part`` and the skeleton view, through
-:func:`line_prefix`, renders ``7|     total += part`` for the same line of the
-same file. ``line_prefix`` is meant to be the one home for the prefix, so the
-slice render belongs on it -- but that moves the rendered text of every
-``read slice`` response, and the expectations for it live in the view service,
-the MCP server and the CLI. It is a coordinated change, not a local one.
-
 Intervals are 1-based and inclusive at both ends, matching the file:line
 convention used everywhere else in this package.
 """
@@ -147,7 +139,7 @@ def line_wrap_content(
             rendered.extend(_scope_header_lines(lines, symbols, start, shown_scopes))
 
         for number in range(start, end + 1):
-            rendered.append(f"{number}|{lines[number - 1]}")
+            rendered.append(f"{line_prefix(number)}{lines[number - 1]}")
         shown_scopes.update(range(start, end + 1))
         covered_to = max(covered_to, end)
 
@@ -215,7 +207,7 @@ def _scope_header_lines(
         if header in shown_scopes or header > len(lines):
             continue
         shown_scopes.add(header)
-        headers.append(f"{header}|{lines[header - 1]}")
+        headers.append(f"{line_prefix(header)}{lines[header - 1]}")
         last_header = header
 
     if last_header is not None and last_header < start - 1:

@@ -46,7 +46,7 @@ is exactly the freshness of the scan that produced it -- which the per-file
 sha256 gate already guarantees.
 """
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol
@@ -201,6 +201,23 @@ class Resolution:
 
 
 @dataclass(frozen=True)
+class ResolvedImport:
+    """One import statement and the repository file it named, if any.
+
+    ``resolved`` is ``None`` when no file in this repository answered the
+    module string, which is what
+    :func:`agentless_mcp.core.graph.resolve_import_target` returns for that
+    case. It used to be flattened to an empty string inside a bare
+    ``tuple[str, int, str]``, so the one value meaning "this import proves
+    nothing" was spelled as a name.
+    """
+
+    module: str
+    line: int
+    resolved: str | None
+
+
+@dataclass(frozen=True)
 class ImportScope:
     """What one file's own import statements bind, resolved to repository files.
 
@@ -212,7 +229,25 @@ class ImportScope:
     wholesale: frozenset[str]
     module_bindings: Mapping[str, frozenset[str]]
     named: Mapping[str, frozenset[str]]
-    statements: tuple[tuple[str, int, str], ...]
+    statements: tuple[ResolvedImport, ...]
+
+    def resolved_edges(self, path: str) -> Iterator[tuple[str, int, str]]:
+        """Yield ``(module, line, target)`` for the statements that are edges.
+
+        The one home for "which resolved statement becomes an import edge".
+        The rule had drifted into two: :func:`_import_edges` here and
+        ``graph_service._import_pairs``, which fed the module diagram. Two
+        copies of one predicate is how a solid edge on a diagram comes to
+        disagree with the edge list ``explain``, ``path`` and ``cycles`` are
+        drawn from.
+
+        A file that imports itself is dropped for the reason :func:`_edge`
+        gives: it is real, and it says nothing about how two files relate.
+        """
+        for statement in self.statements:
+            if statement.resolved is None or statement.resolved == path:
+                continue
+            yield statement.module, statement.line, statement.resolved
 
     def binds(self, name: str, path: str) -> bool:
         """True when this file's imports bring ``name`` in from ``path``.
@@ -409,11 +444,17 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
         wholesale: set[str] = set()
         module_bindings: dict[str, set[str]] = {}
         named: dict[str, set[str]] = {}
-        statements: list[tuple[str, int, str]] = []
+        statements: list[ResolvedImport] = []
 
         for statement in facts.imports:
             target = graph.resolve_import_target(facts.path, statement, known)
-            statements.append((statement.module, statement.line_number, target or ""))
+            statements.append(
+                ResolvedImport(
+                    module=statement.module,
+                    line=statement.line_number,
+                    resolved=target,
+                )
+            )
             # Named rather than a bool so the narrowing is the type's, not a
             # reader's: a file importing itself is not evidence about itself.
             bound = target if target is not None and target != facts.path else None
@@ -445,7 +486,13 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
                     # binds.
                     named.setdefault(local, set()).add(submodule)
                     module_bindings.setdefault(local, set()).add(submodule)
-                    statements.append((dotted, statement.line_number, submodule))
+                    statements.append(
+                        ResolvedImport(
+                            module=dotted,
+                            line=statement.line_number,
+                            resolved=submodule,
+                        )
+                    )
                 elif bound is not None:
                     named.setdefault(local, set()).add(bound)
 
@@ -642,7 +689,9 @@ def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
 
 def _unresolved_imports(scopes: Iterable[ImportScope]) -> int:
     """Count the import statements that named no file in this repository."""
-    return sum(1 for scope in scopes for _module, _line, target in scope.statements if not target)
+    return sum(
+        1 for scope in scopes for statement in scope.statements if statement.resolved is None
+    )
 
 
 def base_name(text: str) -> str:
@@ -673,7 +722,27 @@ def _reference_edges(
             # not a bare repository reference at any evidence tier.
             continue
         if (ref.name, ref.line) in declarations:
-            # The identifier in `def quote` is the declaration, not a use of it.
+            # The identifier in `def quote` is the declaration, not a use of
+            # it. Only Python records that as a role the filter above can
+            # read; `collect_refs` calls every other identifier a REFERENCE,
+            # so this is where the other nineteen languages are answered.
+            #
+            # It is a proxy -- "a symbol of this name starts on this line" --
+            # and two tighter keys were measured against the edge set of this
+            # repository (175 files, 20 languages, 10,731 reference edges).
+            # Marking the tree-sitter `name`-field child a DECLARATION in the
+            # extractor adds 35,939 edges and drops 215: JSON, YAML and TOML
+            # keys sit behind no `name` field, so every key becomes a
+            # reference to every other key of that spelling. Dropping only the
+            # first match per line reproduces this edge set exactly here, and
+            # on `Helper Helper() { return new Helper(); }` it keeps the
+            # declaration identifier and drops the return type -- a wrong edge
+            # traded for a missing one, which is the wrong direction.
+            #
+            # So the cost is paid where it is cheapest: 1,086 of 14,947
+            # resolvable references are dropped, none of them a second
+            # occurrence sharing a line with a declaration. Closing it for
+            # real means recording the role per language in the extractor.
             continue
         resolution = (
             resolver.resolve_module_attribute(ref.name, facts.path, ref.qualifier)
@@ -740,9 +809,7 @@ def _import_edges(facts: FileImports, scope: ImportScope | None) -> list[SymbolE
         return []
 
     edges: list[SymbolEdge] = []
-    for module, line, target in scope.statements:
-        if not target or target == facts.path:
-            continue
+    for module, line, target in scope.resolved_edges(facts.path):
         edge = _edge(
             file_endpoint(facts.path, line),
             file_endpoint(target),

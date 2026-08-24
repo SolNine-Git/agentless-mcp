@@ -25,16 +25,17 @@ reachable from model output. Neither the quoting nor the ``eval`` is here.
 
 Three behavioural fixes over the original, each pinned by a test:
 
-* **Empty intervals search the whole file.** The original referenced
-  ``original`` and ``replace`` before assignment when a file had no location
-  intervals, so that path raised ``NameError`` instead of applying anything.
-  No intervals now means the whole file is in scope, which is what the code
-  was reaching for.
+* **A search runs over the whole file.** The original took per-file location
+  intervals and referenced ``original`` and ``replace`` before assignment when
+  a file had none, so that path raised ``NameError`` instead of applying
+  anything. The intervals are gone rather than repaired: nothing an agent can
+  reach ever supplied them, and a scope no caller can express is a second way
+  to be wrong about where an edit landed.
 * **Every non-applied block reports why.** The original printed
   ``"not replaced"`` to stdout and returned the unchanged content, so a caller
   could not tell a no-op patch from an applied one. Each edit here returns a
   structured outcome: applied, not found, ambiguous with a match count, or
-  outside the intervals it was scoped to.
+  anchored nowhere.
 * **Ambiguity is refused, not guessed.** ``str.replace`` in the original
   rewrote *every* occurrence of the search text. Search text matching more
   than once is now reported with the count and applied nowhere, because which
@@ -44,7 +45,7 @@ Two structural rules are preserved from the original because they are what
 make the format work at all. Matching is **whole-line**: both the haystack and
 the needle are wrapped in newline sentinels, so a search block can never match
 a fragment of a longer line. And ``...`` **elisions** are honoured: a search
-block of just ``...`` is anchored to a unique unindented line in scope, and a
+block of just ``...`` is anchored to a unique unindented line, and a
 leading ``...`` line on either side is dropped. A block that elides *both*
 sides describes no change and is refused at parse time.
 
@@ -169,7 +170,6 @@ class EditStatus(str, Enum):
     APPLIED = "applied"
     NOT_FOUND = "not_found"
     AMBIGUOUS = "ambiguous"
-    OUTSIDE_INTERVALS = "outside_intervals"
     NO_SUCH_FILE = "no_such_file"
     UNREADABLE = "unreadable"
     NO_ANCHOR = "no_anchor"
@@ -460,25 +460,23 @@ def _divider_reason(count: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def apply_edits(
-    edits: Sequence[Edit],
-    file_contents: Mapping[str, str],
-    *,
-    intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
-) -> ApplyResult:
+def apply_edits(edits: Sequence[Edit], file_contents: Mapping[str, str]) -> ApplyResult:
     """Apply ``edits`` to ``file_contents``, reporting each edit's outcome.
 
     Edits to one file are applied in the order given and each sees the result
-    of the ones before it. ``intervals`` restricts where an edit for a path
-    may match, as 1-based inclusive line ranges over the file's *original*
-    content -- the Agentless ``context_segment`` scoping, with the ranges
-    tracked as character spans so that an earlier edit changing the file's
-    length does not move a later edit's scope out from under it.
+    of the ones before it, and every edit is matched against the whole file.
 
-    A path with no entry in ``intervals`` (and the ``intervals=None`` case)
-    is searched whole, which is the empty-intervals fix.
+    The Agentless ``context_segment`` scoping this was ported with -- 1-based
+    line ranges per path, tracked as character spans so an earlier edit could
+    not move a later one's scope -- is gone. No surface ever supplied it: the
+    CLI patch commands took no ranges, the MCP server exposes no patch tool at
+    all, and ``patchlint`` matched whole files. What it left behind was a
+    serialised status a caller could never receive and sixty lines of offset
+    arithmetic only tests ran. An agent that needs a narrower match writes a
+    longer SEARCH side, which is in the patch and reviewable; an ambiguous one
+    is still refused with its count rather than resolved by a coordinate the
+    patch does not carry.
     """
-    scoped_paths = set(intervals) if intervals is not None else set()
     outcomes: dict[int, EditOutcome] = {}
     new_contents: dict[str, str] = {}
 
@@ -493,13 +491,9 @@ def apply_edits(
                 )
             continue
 
-        ranges = intervals.get(path) if intervals is not None else None
         content = original
-        scopes = _initial_scopes(content, ranges)
-        scoped = path in scoped_paths and bool(ranges)
-
         for position in positions:
-            outcome, content, scopes = _apply_one(edits[position], content, scopes, scoped=scoped)
+            outcome, content = _apply_one(edits[position], content)
             outcomes[position] = outcome
 
         if content != original:
@@ -523,14 +517,8 @@ def _group_by_path(edits: Sequence[Edit]) -> dict[str, list[int]]:
     return grouped
 
 
-def _apply_one(
-    edit: Edit,
-    content: str,
-    scopes: Sequence[tuple[int, int]],
-    *,
-    scoped: bool,
-) -> tuple[EditOutcome, str, list[tuple[int, int]]]:
-    """Apply one edit to ``content``, returning the outcome and the new state."""
+def _apply_one(edit: Edit, content: str) -> tuple[EditOutcome, str]:
+    """Apply one edit to ``content``, returning the outcome and the new text."""
     if not edit.search:
         # An empty pre-image means "create this file", and this function never
         # creates one: a path absent from `file_contents` is already reported
@@ -553,60 +541,40 @@ def _apply_one(
                 ),
             ),
             content,
-            list(scopes),
         )
 
     padded = _pad(content)
-    search, replace, anchor_reason = resolve_elisions(edit.search, edit.replace, padded, scopes)
+    whole_file = ((0, len(padded)),)
+    search, replace, anchor_reason = resolve_elisions(edit.search, edit.replace, padded, whole_file)
     if anchor_reason:
         return (
             EditOutcome(edit=edit, status=EditStatus.NO_ANCHOR, reason=anchor_reason),
             content,
-            list(scopes),
         )
 
     needle = _pad(search)
-    everywhere = list(_find_all(padded, needle))
-    inside = [at for at in everywhere if _within(at, len(needle), scopes)]
+    matches = list(_find_all(padded, needle))
 
-    if len(inside) > 1:
+    if len(matches) > 1:
         return (
             EditOutcome(
                 edit=edit,
                 status=EditStatus.AMBIGUOUS,
-                reason=f"search text ambiguous ({len(inside)} matches)",
-                matches=len(inside),
+                reason=f"search text ambiguous ({len(matches)} matches)",
+                matches=len(matches),
             ),
             content,
-            list(scopes),
         )
 
-    if not inside:
-        if everywhere and scoped:
-            return (
-                EditOutcome(
-                    edit=edit,
-                    status=EditStatus.OUTSIDE_INTERVALS,
-                    reason=(
-                        f"search text found {len(everywhere)} times in the file but never "
-                        "inside the lines this edit was scoped to"
-                    ),
-                    matches=len(everywhere),
-                ),
-                content,
-                list(scopes),
-            )
+    if not matches:
         return (
             EditOutcome(edit=edit, status=EditStatus.NOT_FOUND, reason="search text not found"),
             content,
-            list(scopes),
         )
 
-    at = inside[0]
+    at = matches[0]
     end = at + len(needle)
-    replacement = _pad(replace)
-    updated = padded[:at] + replacement + padded[end:]
-    delta = len(replacement) - len(needle)
+    updated = padded[:at] + _pad(replace) + padded[end:]
     return (
         EditOutcome(
             edit=edit,
@@ -615,7 +583,6 @@ def _apply_one(
             matches=1,
         ),
         _unpad(updated),
-        _shift(scopes, end, delta),
     )
 
 
@@ -623,9 +590,9 @@ def _placement(edit: Edit, search: str, padded: str, at: int) -> str:
     """Say where a bare ``...`` edit landed; say nothing for a located one.
 
     A block whose search side is only ``...`` expresses no location at all:
-    :func:`_find_anchor` picks the first unindented unique line in scope, and
-    with no scope that is a property of the file rather than anything the
-    author wrote. Reporting `applied` and nothing else made the caller accept
+    :func:`_find_anchor` picks the first unindented unique line in the file,
+    which is a property of the file rather than anything the author wrote.
+    Reporting `applied` and nothing else made the caller accept
     a placement it could not see, so the line the insert went above is named
     here. Every other edit says where it goes by quoting it, and repeating
     that back adds nothing.
@@ -661,54 +628,6 @@ def _find_all(haystack: str, needle: str) -> Iterator[int]:
     while at != -1:
         yield at
         at = haystack.find(needle, at + 1)
-
-
-def _within(at: int, length: int, scopes: Sequence[tuple[int, int]]) -> bool:
-    """True when the span starting at ``at`` fits entirely inside some scope."""
-    return any(start <= at and at + length <= end for start, end in scopes)
-
-
-def _shift(scopes: Sequence[tuple[int, int]], edited_end: int, delta: int) -> list[tuple[int, int]]:
-    """Move every scope boundary at or past ``edited_end`` by ``delta``."""
-
-    def moved(offset: int) -> int:
-        return offset + delta if offset >= edited_end else offset
-
-    return [(moved(start), moved(end)) for start, end in scopes]
-
-
-def _initial_scopes(
-    content: str, ranges: Sequence[tuple[int, int]] | None
-) -> list[tuple[int, int]]:
-    """Turn 1-based inclusive line ranges into character spans of the padded text.
-
-    A span runs from the newline *before* the first line to the newline
-    *after* the last one, which is exactly the region a whole-line match may
-    occupy. Without ranges the span is the whole padded text.
-    """
-    padded_length = len(content) + 2
-    if not ranges:
-        return [(0, padded_length)]
-
-    lines = _line_spans(content)
-    spans: list[tuple[int, int]] = []
-    for start, end in ranges:
-        low = max(1, start)
-        high = len(lines) if end == -1 else min(len(lines), end)
-        if low > high or low > len(lines):
-            continue
-        spans.append((lines[low - 1][0] - 1, lines[high - 1][1] + 1))
-    return spans
-
-
-def _line_spans(content: str) -> list[tuple[int, int]]:
-    """Return each line's ``(start, end)`` offsets in the padded text."""
-    spans: list[tuple[int, int]] = []
-    offset = 1
-    for line in content.split("\n"):
-        spans.append((offset, offset + len(line)))
-        offset += len(line) + 1
-    return spans
 
 
 def resolve_elisions(

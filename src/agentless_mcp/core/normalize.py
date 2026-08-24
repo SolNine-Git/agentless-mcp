@@ -157,16 +157,18 @@ class SyntaxVerdict:
     def as_dict(self) -> dict[str, object]:
         """Return the JSON form of this verdict.
 
-        ``checked`` is not on the wire yet. Adding a key is additive and this
-        one belongs here, but ``patch check --json`` is pinned by exact-dict
-        equality in the CLI tests, so the key and those expectations have to
-        land together.
+        ``checked`` is on the wire because ``ok`` alone cannot answer the
+        question a caller gating on a real parse is asking: a file with no
+        grammar comes back ``ok=True, checked=False``, which asserts nothing.
+        Reading ``ok`` without it reads "nothing looked at this" as "this is
+        clean".
         """
         return {
             "language": self.language,
             "old_errors": self.old_errors,
             "new_errors": self.new_errors,
             "ok": self.ok,
+            "checked": self.checked,
             "detail": self.detail,
         }
 

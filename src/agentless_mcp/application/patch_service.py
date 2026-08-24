@@ -289,17 +289,11 @@ class PatchService:
         """Parse patch text into edits and per-block errors."""
         return parse_blocks(text)
 
-    def check(
-        self,
-        edits: Sequence[Edit],
-        ctx: RepoContext,
-        *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
-    ) -> CheckReport:
+    def check(self, edits: Sequence[Edit], ctx: RepoContext) -> CheckReport:
         """Apply ``edits`` in memory and report each edited file's syntax delta."""
-        scoped = self._canonical(ctx, edits)
-        sources = self._read(ctx.root, scoped)
-        result = apply_edits(scoped, sources.contents, intervals=intervals)
+        canonical = self._canonical(ctx, edits)
+        sources = self._read(ctx.root, canonical)
+        result = apply_edits(canonical, sources.contents)
 
         checks = [
             FileCheck(path=path, verdict=None, error=reason)
@@ -322,7 +316,6 @@ class PatchService:
         ctx: RepoContext,
         *,
         in_place: bool = False,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
     ) -> ApplyReport:
         """Apply ``edits`` and return the unified diff they produce.
 
@@ -339,25 +332,19 @@ class PatchService:
         writes no file and returns an empty diff, and a write that fails
         part-way raises rather than leaving a prefix of the patch on disk.
         """
-        scoped = self._canonical(ctx, edits)
+        canonical = self._canonical(ctx, edits)
         if in_place:
             self._require_clean(ctx)
-            return self._apply_at(ctx, ctx.root, scoped, intervals=intervals, in_place=True)
+            return self._apply_at(ctx, ctx.root, canonical, in_place=True)
 
         with sandbox.worktree(ctx.root) as tree:
-            return self._apply_at(ctx, tree, scoped, intervals=intervals, in_place=False)
+            return self._apply_at(ctx, tree, canonical, in_place=False)
 
-    def normalize(
-        self,
-        edits: Sequence[Edit],
-        ctx: RepoContext,
-        *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
-    ) -> NormalizeReport:
+    def normalize(self, edits: Sequence[Edit], ctx: RepoContext) -> NormalizeReport:
         """Return the AST-equivalence key of the change ``edits`` describe."""
-        scoped = self._canonical(ctx, edits)
-        sources = self._read(ctx.root, scoped)
-        result = apply_edits(scoped, sources.contents, intervals=intervals)
+        canonical = self._canonical(ctx, edits)
+        sources = self._read(ctx.root, canonical)
+        result = apply_edits(canonical, sources.contents)
 
         changes = {path: (sources.contents[path], new) for path, new in result.new_contents.items()}
         file_keys = {
@@ -380,7 +367,6 @@ class PatchService:
         base: Path,
         edits: Sequence[Edit],
         *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None,
         in_place: bool,
     ) -> ApplyReport:
         """Apply already-canonicalised ``edits`` against ``base`` and diff it.
@@ -390,9 +376,7 @@ class PatchService:
         happened to match.
         """
         sources = self._read(base, edits)
-        result = _with_read_reasons(
-            apply_edits(edits, sources.contents, intervals=intervals), sources.unreadable
-        )
+        result = _with_read_reasons(apply_edits(edits, sources.contents), sources.unreadable)
 
         if result.ok:
             _write_all(base, result.new_contents)

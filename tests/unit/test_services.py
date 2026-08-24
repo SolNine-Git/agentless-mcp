@@ -257,20 +257,20 @@ class TestViewService:
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(9, 9000)], context=0
         )
-        assert "9|        return quote(item)" in view.text
+        assert "9|         return quote(item)" in view.text
         assert "unsatisfiable" not in view.text
 
     def test_a_bad_interval_does_not_hide_the_good_ones(self, repo, extractor):
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(6, 6), (9000, 9050)], context=0
         )
-        assert "6|        return normalise(quote(item))" in view.text
+        assert "6|         return normalise(quote(item))" in view.text
         assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (9 lines)" in view.text
 
     def test_a_slice_with_no_ranges_still_returns_the_whole_file(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py")
-        assert "1|from core import normalise, quote" in view.text
-        assert "9|        return quote(item)" in view.text
+        assert "1| from core import normalise, quote" in view.text
+        assert "9|         return quote(item)" in view.text
 
     def test_resolve_locations_returns_ids_intervals_and_reasons(self, repo, extractor):
         view = ViewService(extractor).resolve_locations(
@@ -293,12 +293,12 @@ class TestSliceRangesAreValidatedHere:
     def test_a_transposed_range_is_refused_rather_than_rendered_whole(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(8, 3)], context=0)
         assert "line range 8-3 is not a range" in view.text
-        assert "1|from core import normalise, quote" not in view.text
+        assert "1| from core import normalise, quote" not in view.text
 
     def test_a_range_starting_below_one_is_refused(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(-5, -1)], context=0)
         assert "line range -5--1 is not a range" in view.text
-        assert "1|from core import normalise, quote" not in view.text
+        assert "1| from core import normalise, quote" not in view.text
 
     def test_a_negative_context_is_refused_by_name(self, repo, extractor):
         with pytest.raises(AgentlessError, match="context must not be negative"):
@@ -312,7 +312,7 @@ class TestSliceRangesAreValidatedHere:
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(6, 6), (8, 3)], context=0
         )
-        assert "6|        return normalise(quote(item))" in view.text
+        assert "6|         return normalise(quote(item))" in view.text
         assert "line range 8-3 is not a range" in view.text
 
 
@@ -327,7 +327,7 @@ class TestTheReportedLineCountIsTheFilesOwn:
 
     def test_a_whole_file_slice_has_no_phantom_last_line(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py")
-        assert view.text.rstrip("\n").endswith("9|        return quote(item)")
+        assert view.text.rstrip("\n").endswith("9|         return quote(item)")
         assert "10|" not in view.text
 
     def test_the_out_of_range_message_states_the_real_count(self, repo, extractor):
