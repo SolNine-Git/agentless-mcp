@@ -26,19 +26,21 @@ greedy fill, so the answer is the largest prefix of the score ordering that
 fits -- deterministic, and independent of the order files were walked in.
 """
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import rationale_nodes
+from agentless_mcp.application.symbol_service import is_test_path, rationale_nodes
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import (
+    RefGraph,
     build_graph,
     common_name_damping,
+    flood,
     name_multiplier,
     personalized_pagerank,
     rank_order,
@@ -50,6 +52,20 @@ from agentless_mcp.util import bounds
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_MAX_FILES = 10
+
+# How many test files the companion section lists before cutting to a count.
+# Small on purpose: the section sits outside the token budget the ranked files
+# are packed into, so every row it adds is a row the caller did not ask for.
+# Five is enough to name the suites that exercise a ten-file map and short
+# enough that a repository with a thousand tests cannot turn the map into one.
+DEFAULT_MAX_TEST_FILES = 5
+
+# How far the companion walk goes out from the seeded-or-chosen files. One hop
+# is the test that exercises its subject directly, which is what the section is
+# for; two is the test that reaches it through a helper or a wrapper. Past that
+# the relationship is thinner than the row costs.
+TEST_COMPANION_DEPTH = 2
+
 GRANULARITY_FUNCTION = "function"
 GRANULARITY_FILE = "file"
 GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE)
@@ -126,6 +142,15 @@ class MapResult:
     # reader is about to trust a partial answer, and silence about that is the
     # failure this package exists to prevent.
     rank_converged: bool = True
+    # The test files that exercise the ranked or seeded files, listed outside
+    # the budget the ranked files are packed into. Edges run referrer to
+    # definer, so a test file has no inbound weight and the ranking that
+    # scores inbound weight cannot place it however relevant it is; this is
+    # the only route a test has into a map. Added as a key rather than folded
+    # into an existing one, because this JSON shape is shipped.
+    test_companions: render.TestCompanionListing = field(
+        default_factory=render.TestCompanionListing
+    )
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this map."""
@@ -140,6 +165,7 @@ class MapResult:
             "unresolved_seeds": list(self.unresolved_seeds),
             "files": [map_file.as_dict() for map_file in self.files],
             "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
+            "test_companions": self.test_companions.as_dict(),
         }
 
 
@@ -201,7 +227,12 @@ class MapService:
         # The stoplist is a property of the repository rather than of the
         # request: it says which names collide in *this* codebase, which the
         # codebase is better placed to know than the caller.
-        graph = build_graph(scan, index, stoplist=ctx.config.stoplist)
+        graph = build_graph(
+            scan,
+            index,
+            stoplist=ctx.config.stoplist,
+            relation_weights=bool(ctx.config.relation_weights),
+        )
 
         seeding = seed_weights(request.focus, scan, index)
         seeds = seeding.weights
@@ -213,6 +244,10 @@ class MapService:
         # come from this one scan, so a missing key is a desynchronisation
         # worth raising on rather than reading as an empty file.
         by_path = scan.by_path()
+        # Seeded *and* chosen, not chosen alone: a seed the ranking did not
+        # keep is still the file the caller asked about, and the test that
+        # exercises it is the answer to the question they asked.
+        companions = companions_for(graph, by_path, index, set(seeds) | set(chosen))
         if granularity == GRANULARITY_FILE:
             files = tuple(
                 render.MapFile(
@@ -239,6 +274,7 @@ class MapService:
                 unresolved_seeds=seeding.unresolved,
                 rendered=self._counter.count(render.render_map(files)),
                 rank_converged=ranking.converged,
+                test_companions=companions,
             )
 
         candidates = _score_symbols(chosen, by_path, index, rank, ctx.config.stoplist)
@@ -261,6 +297,7 @@ class MapService:
             unresolved_seeds=seeding.unresolved,
             rendered=self._counter.count(render.render_map(grouped)),
             rank_converged=ranking.converged,
+            test_companions=companions,
         )
 
     def render_text(self, result: MapResult) -> str:
@@ -270,8 +307,16 @@ class MapService:
         the bottom: both notes change how the ranking below them should be
         read, and a reader who stops at the first interesting filename has to
         have seen them.
+
+        The test companions go at the foot and only when there are any. They
+        are an answer to a second question -- what exercises these files --
+        so they must not interleave with the ranking, and a repository whose
+        map reaches no test spends nothing saying so.
         """
         body = render.render_map(result.files)
+        companions = render.render_test_companions(result.test_companions)
+        if companions:
+            body = f"{body}\n{companions}"
         notes: list[str] = []
         if not result.rank_converged:
             notes.append(
@@ -368,6 +413,140 @@ class MapService:
             else:
                 high = middle - 1
         return low
+
+
+def companions_for(
+    graph: RefGraph,
+    by_path: Mapping[str, refs.FileFacts],
+    index: refs.RefIndex,
+    targets: Collection[str],
+    *,
+    limit: int = DEFAULT_MAX_TEST_FILES,
+) -> render.TestCompanionListing:
+    """Return the test files that exercise ``targets``, best first.
+
+    The map's ranking cannot do this. Edges run referrer to definer, so a test
+    file is a pure source: it has no inbound weight, personalized PageRank
+    scores inbound weight, and a test therefore never places however directly
+    it exercises the file above it. This walks the graph the other way instead.
+
+    **One row per test file.** A suite that touches six of the ranked files
+    would otherwise take six of the five rows and starve the specific tests
+    that matter, so each file is aggregated into one row naming what it covers.
+
+    **A test qualifies on a name reference, never on an import alone.** An
+    import says a module was pulled in; a reference says a name from it was
+    used, and only the reference has a line to point at. Two things fall out
+    of that and both are wanted. A ``from app import a, b, c`` that exercises
+    one of the three counts one, so import fan-out cannot buy coverage -- see
+    the ranking below. And a test whose only use of its subject is a method on
+    a value built elsewhere is invisible here, because attribute references
+    spell no edge; that limit is the graph's, stated rather than papered over.
+
+    **Ranking, in this order.** Flood depth ascending, then the number of
+    distinct ``targets`` the file covers descending, then aggregated edge
+    weight descending, then path. Coverage leads inside a depth band because
+    weight does not survive a language change: a Go ``*_test.go`` sits in the
+    same package as its subject, never earns an import edge, and is scored on
+    damped name-reference weight alone, so weight-first buries every Go test
+    under the Python and TypeScript ones. Counting covered files is neutral --
+    three is three in any language. Depth still leads across bands, and path
+    last makes the order total, which is what lets a golden pin it.
+    """
+    wanted = frozenset(targets)
+    reach = flood(graph, wanted, backward=True, max_depth=TEST_COMPANION_DEPTH)
+    depths = {row.path: row.depth for row in reach.reached}
+
+    rows: list[render.TestCompanion] = []
+    for path, depth in depths.items():
+        if not is_test_path(path):
+            continue
+        # Everything this file could have come through: the targets, plus
+        # whatever the walk placed strictly nearer them. A one-hop test
+        # references a target directly; a two-hop test references the helper
+        # that does, and that helper is the file its span has to point at.
+        closer = wanted | {other for other, hops in depths.items() if hops < depth}
+        # `depths` is keyed by graph node and the graph's nodes are this
+        # scan's files, so a missing key is a desynchronisation to raise on.
+        found = _companion_reference(by_path[path], index, closer)
+        if found is None:
+            continue
+        covers, span = found
+        rows.append(
+            render.TestCompanion(
+                path=path,
+                start=span[0],
+                end=span[1],
+                covers=covers,
+                depth=depth,
+                weight=sum(graph.edges.get((path, other), 0.0) for other in closer),
+            )
+        )
+
+    rows.sort(
+        key=lambda row: (
+            row.depth,
+            -len(wanted.intersection(row.covers)),
+            -row.weight,
+            row.path,
+        )
+    )
+    return render.TestCompanionListing(rows=tuple(rows[:limit]), total=len(rows), limit=limit)
+
+
+def _companion_reference(
+    facts: refs.FileFacts,
+    index: refs.RefIndex,
+    closer: frozenset[str],
+) -> tuple[tuple[str, ...], tuple[int, int]] | None:
+    """Which of ``closer`` a file references by name, and the one span that does it.
+
+    ``None`` when it references none of them, which is how an import-only edge
+    is kept out of the section: there is nothing to point at inside the file.
+
+    The span is the referencing symbol that covers the most of ``closer``, ties
+    going to the one with the most sites and then to the first declared. One
+    symbol rather than the hull of every referencing symbol, because a test
+    file's first and last test functions between them span the whole file --
+    and a whole-file span is what the budgeted metrics this section exists for
+    already treat as no answer. Where no reference sits inside a symbol at all,
+    the span is the first and last line that reference ``closer``.
+
+    Same-file definitions shadow repository-wide name matches here exactly as
+    they do in ``build_graph``, so the evidence and the edges agree on which
+    names connect two files.
+    """
+    owners = refs.line_owners(facts)
+    referenced: set[str] = set()
+    hits: dict[tuple[int, int], set[str]] = {}
+    sites: dict[tuple[int, int], int] = {}
+    loose: list[int] = []
+
+    for ref in facts.refs:
+        if not ref.is_reference:
+            continue
+        defining = index.defining_paths(ref.name)
+        if facts.path in defining:
+            continue
+        reached = closer.intersection(defining)
+        if not reached:
+            continue
+        referenced |= reached
+        owner = owners.get(ref.line)
+        if owner is None:
+            loose.append(ref.line)
+            continue
+        span = (owner.line_number, refs.span_end(owner))
+        hits.setdefault(span, set()).update(reached)
+        sites[span] = sites.get(span, 0) + 1
+
+    if not referenced:
+        return None
+    if hits:
+        best = max(hits, key=lambda span: (len(hits[span]), sites[span], -span[0], -span[1]))
+    else:
+        best = (min(loose), max(loose))
+    return tuple(sorted(referenced)), best
 
 
 @dataclass(frozen=True)

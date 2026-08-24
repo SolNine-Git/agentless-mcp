@@ -45,6 +45,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
+    DEFAULT_HEALTH_LIMIT,
     DEFAULT_MEMBER_LIMIT,
     DiagramRequest,
     GraphService,
@@ -220,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_cycles(subparsers)
     _add_communities(subparsers)
     _add_diagram(subparsers)
+    _add_health(subparsers)
     _add_html(subparsers)
     _add_resolve_locs(subparsers)
     _add_patch(subparsers)
@@ -511,6 +513,19 @@ def _add_diagram(subparsers: Any) -> None:
         "committed .md diagram can be checked as it stands",
     )
     parser.set_defaults(handler=_cmd_diagram)
+
+
+def _add_health(subparsers: Any) -> None:
+    parser = subparsers.add_parser("health", help="orphan candidates, unused exports and hubs")
+    _repo_flags(parser)
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_HEALTH_LIMIT,
+        help=f"rows listed per section (default: {DEFAULT_HEALTH_LIMIT}); "
+        "every section's count is always complete",
+    )
+    parser.set_defaults(handler=_cmd_health)
 
 
 def _add_html(subparsers: Any) -> None:
@@ -1077,6 +1092,17 @@ def _cmd_communities(args: argparse.Namespace, services: CliServices) -> int:
         services,
         _Answer(render.render_communities(result), result.as_dict(), "communities"),
     )
+    return EXIT_OK
+
+
+def _cmd_health(args: argparse.Namespace, services: CliServices) -> int:
+    """Render the structural-health sections; a clean repository is a successful answer."""
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+
+    result = services.graphs.health(ctx, limit=args.limit)
+    _emit(args, ctx, services, _Answer(render.render_health(result), result.as_dict()))
     return EXIT_OK
 
 

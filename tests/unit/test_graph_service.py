@@ -73,7 +73,9 @@ CYCLE_FILES = {
 def build(tmp_path, files):
     """Write a fixture repository and resolve its context."""
     for relative, text in files.items():
-        (tmp_path / relative).write_text(text, encoding="utf-8")
+        written = tmp_path / relative
+        written.parent.mkdir(parents=True, exist_ok=True)
+        written.write_text(text, encoding="utf-8")
     return resolve_repo(tmp_path, None)
 
 
@@ -716,3 +718,85 @@ class TestHtml:
         assert exported.nodes == 2
         assert exported.edges <= 1
         assert exported.elided_nodes == len(FILES) - 2
+
+
+class TestHealth:
+    """The three structural-health findings, and the tier gating behind them.
+
+    The port this view comes from counts every edge alike, because its edges
+    carry no evidence tier. These do, so the count is gated on the two binding
+    tiers and the discounted matches are named on the row. What is asserted
+    here is that gate: a symbol reached only by a name-only-ambiguous match is
+    still an orphan candidate, and the row says which tier it discounted.
+    """
+
+    def test_a_function_nothing_references_is_an_orphan_candidate(self, graphs, repo):
+        report = graphs.health(repo)
+
+        orphans = {row.label for row in report.orphans.rows}
+        assert "marooned" in orphans
+        assert "helper" not in orphans
+
+    def test_an_ambiguous_only_caller_leaves_the_orphan_standing_and_is_named(self, graphs, repo):
+        """`shared` is defined twice, so `gamma.ask` resolves to neither by binding.
+
+        This is the whole reason the view was not ported as written. Counted
+        as an edge, the name-only match reads as "something calls this" and
+        the orphan disappears; dropped, the finding is a bare assertion. The
+        row has to survive *and* say what it did not count.
+        """
+        report = graphs.health(repo)
+
+        rows = {row.path: row for row in report.orphans.rows}
+        assert "alpha.py" in rows, sorted(rows)
+        assert rows["alpha.py"].in_degree == 0
+        assert [(entry.tier, entry.count) for entry in rows["alpha.py"].discounted] == [
+            ("name-only-ambiguous", 1)
+        ]
+
+    def test_a_public_function_with_outbound_edges_only_is_an_unused_export(self, graphs, repo):
+        report = graphs.health(repo)
+
+        unused = {row.label: row for row in report.unused_exports.rows}
+        assert "use" in unused
+        assert unused["use"].in_degree == 0
+        assert unused["use"].out_degree > 0
+        assert "helper" not in unused
+
+    def test_hubs_rank_by_counted_degree_and_exclude_the_unreached(self, graphs, repo):
+        report = graphs.health(repo)
+
+        degrees = [row.degree for row in report.hubs.rows]
+        assert degrees == sorted(degrees, reverse=True)
+        assert report.hubs.rows[0].label == "helper"
+        assert "marooned" not in {row.label for row in report.hubs.rows}
+
+    def test_test_and_fixture_paths_are_excluded_and_counted(self, graphs, tmp_path):
+        """A fixture nothing calls is not a finding; it is what a fixture is."""
+        repo = build(
+            tmp_path,
+            {
+                "core.py": CORE,
+                "tests/test_core.py": "def test_helper():\n    return 1\n",
+                "fixtures/sample.py": "def sample():\n    return 1\n",
+            },
+        )
+
+        report = graphs.health(repo)
+
+        paths = {row.path for row in report.orphans.rows}
+        assert paths == set()
+        assert report.excluded == 2
+        assert report.symbols == 2
+
+    def test_every_section_is_capped_and_says_what_it_left_out(self, graphs, repo):
+        report = graphs.health(repo, limit=1)
+
+        assert report.hubs.limit == 1
+        assert report.hubs.shown == 1
+        assert report.hubs.total > 1
+        assert report.hubs.omitted == report.hubs.total - 1
+
+    def test_a_limit_outside_the_published_range_is_refused(self, graphs, repo):
+        with pytest.raises(AgentlessError):
+            graphs.health(repo, limit=0)

@@ -55,7 +55,12 @@ from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
-from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
+from agentless_mcp.core.symbols import (
+    ASTSymbol,
+    base_name,
+    qualname,
+    symbol_stable_id,
+)
 
 # A path search that has looked at this many nodes has stopped answering the
 # question it was asked. The bound is a parameter everywhere it matters; this
@@ -69,8 +74,6 @@ _SMALLEST_CYCLE = 2
 # Bases arrive as source text: `Generic[T]`, `enum.Enum`, `metaclass=ABCMeta`.
 # Only the last dotted component of the un-subscripted head is a name this
 # module can look up.
-_SUBSCRIPT_OPEN = "["
-_KEYWORD_BASE = "="
 
 
 class FileImports(Protocol):
@@ -766,19 +769,6 @@ def _names_this_repository(module: str, segments: frozenset[str]) -> bool:
         return False
     lead = text.replace("\\", "/").replace("::", "/").replace(".", "/").split("/", 1)[0]
     return bool(lead) and lead in segments
-
-
-def base_name(text: str) -> str:
-    """Return the looked-up name of a base-class expression, or an empty string.
-
-    ``Generic[T]`` is ``Generic``, ``enum.Enum`` is ``Enum``, and
-    ``metaclass=ABCMeta`` is nothing at all: a keyword argument in a base list
-    is not a base.
-    """
-    head = text.split(_SUBSCRIPT_OPEN, 1)[0].strip()
-    if not head or _KEYWORD_BASE in head:
-        return ""
-    return head.rpartition(".")[2].strip()
 
 
 def _reference_edges(

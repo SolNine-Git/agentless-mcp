@@ -21,6 +21,7 @@ from agentless_mcp.core import (
     htmlgraph,
     locs,
     mermaid,
+    projectconfig,
     resolve,
     treewalk,
 )
@@ -208,6 +209,41 @@ def test_renderer_groups_normal_language_states_and_preserves_exceptions(tmp_pat
     assert "warmed=true probe=false: sql:2/14 -- probe failed" in text
 
 
+class TestTheEffectiveConfigCoversEveryKey:
+    """`_effective_config` says it resolves the repository defaults, so check it.
+
+    The report is what a caller reads to learn what this repository asked for.
+    A key the parser accepts and this omits is a setting a repository can turn
+    on with nothing anywhere saying it is on.
+    """
+
+    def test_every_parsed_key_is_resolved_in_the_report(self):
+        # `stoplist` and `test_cmd` are reported under their own names; every
+        # other key in the schema has to appear under its own name too.
+        reported = {name for name, _ in capability_service._effective_config(projectconfig.EMPTY)}
+
+        missing = [key for key in projectconfig.KNOWN_KEYS if key not in reported]
+        assert not missing, f"config keys the report does not resolve: {missing}"
+
+    def test_relation_weights_defaults_to_off(self):
+        """The flag ships dark, and the report is where that is auditable.
+
+        It reads `ASTSymbol.bases`, which only the extractor's Python class
+        handler fills in, so it is not language-neutral and must not become
+        the default by drift.
+        """
+        resolved = dict(capability_service._effective_config(projectconfig.EMPTY))
+
+        assert resolved["relation_weights"] is False
+
+    def test_a_repository_that_asks_for_it_is_reported_as_asking(self):
+        config = projectconfig.parse({"relation_weights": True})
+
+        resolved = dict(capability_service._effective_config(config))
+
+        assert resolved["relation_weights"] is True
+
+
 class TestTheInventoryIsComplete:
     """`_caps` says it lists every bound the services apply, so check it.
 
@@ -229,11 +265,12 @@ class TestTheInventoryIsComplete:
                 "DEFAULT_EXPLAIN_LIMIT",
                 "DEFAULT_CYCLE_LIMIT",
                 "DEFAULT_COMMUNITY_LIMIT",
+                "DEFAULT_HEALTH_LIMIT",
                 "DEFAULT_MEMBER_LIMIT",
             ),
         ),
         (symbol_service, ("DEFAULT_FIND_LIMIT", "DEFAULT_REFS_LIMIT", "DEFAULT_EXPAND_LIMIT")),
-        (map_service, ("DEFAULT_MAX_FILES",)),
+        (map_service, ("DEFAULT_MAX_FILES", "DEFAULT_MAX_TEST_FILES", "TEST_COMPANION_DEPTH")),
         (mermaid, ("DEFAULT_DIAGRAM_NODES", "DEFAULT_DIAGRAM_EDGES")),
         (
             htmlgraph,

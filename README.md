@@ -63,12 +63,14 @@ context. Symbol IDs are printed by `map` and `skeleton` and can be passed to
 agentless-mcp path App.run Database.connect
 agentless-mcp cycles
 agentless-mcp communities
+agentless-mcp health
 agentless-mcp diagram > modules.mmd
 agentless-mcp html > modules.html
 ```
 
 These commands find relationships between symbols or files, report import
-cycles, group related files, and export Mermaid or interactive HTML graphs.
+cycles, group related files, list orphan candidates, unused exports and hubs,
+and export Mermaid or interactive HTML graphs.
 
 ### Validate patches
 
@@ -200,7 +202,7 @@ questions behind an `operation` parameter:
 
 | Tool | Operations | Purpose |
 | --- | --- | --- |
-| `orient` | `map`, `communities`, `cycles`, `diagram`, `path` | Where does this live, how is the repository put together |
+| `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | Where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
 | `find_referencing_symbols` | | Find references and callers (blast radius) |
 | `read` | `slice`, `dir` | Read selected source lines; list the repository tree |

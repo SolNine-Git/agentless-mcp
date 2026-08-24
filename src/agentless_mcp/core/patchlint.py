@@ -129,7 +129,7 @@ from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.normalize import normalized_stream
 from agentless_mcp.core.patches import Edit, apply_edits, resolve_elisions
 from agentless_mcp.core.refs import Definition, FileFacts
-from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, qualname
+from agentless_mcp.core.symbols import ASTSymbol, SymbolKind, base_name, qualname
 from agentless_mcp.util.errors import AgentlessError
 
 CHECK_UNDECLARED_IMPORTS = "undeclared_imports"
@@ -1700,7 +1700,7 @@ def _usages(fragment: _Fragment) -> list[_Usage]:
     usages = [_Usage(name=site.name, line=site.line, verb=_VERB_CALLS) for site in fragment.calls]
     for symbol in fragment.introduced:
         for base in symbol.bases:
-            name = resolve.base_name(base)
+            name = base_name(base)
             if name:
                 usages.append(_Usage(name=name, line=symbol.line_number, verb=_VERB_INHERITS))
     return usages

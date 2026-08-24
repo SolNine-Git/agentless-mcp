@@ -45,6 +45,7 @@ the spelling, so a reader can weigh the rows instead of trusting them equally.
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
+from itertools import zip_longest
 from typing import Any
 
 from agentless_mcp.application import render
@@ -73,6 +74,19 @@ from agentless_mcp.util.tokens import TokenCounter
 DEFAULT_FIND_LIMIT = 20
 DEFAULT_REFS_LIMIT = 50
 DEFAULT_EXPAND_LIMIT = 10
+
+# Directory names that mark a test tree. Matched as whole path segments by
+# :func:`is_test_path`, never as substrings: a substring rule reads ``spec``
+# out of ``introspection.py`` and ``test`` out of ``latest/``.
+TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs", "__tests__"})
+
+# Directory names that hold test data rather than code anyone calls. Kept
+# apart from :data:`TEST_DIRECTORY_SEGMENTS` because a fixture is not a test:
+# :func:`is_test_path` decides which files the map lists as test companions
+# and which shared-caller candidates rank below production, and a fixture tree
+# is neither a test that exercises the code above it nor a candidate to reuse.
+# A structural-health view needs both names excluded, so it asks for both.
+FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures"})
 
 # What the rendered cards of one expansion may cost. Under the envelope's
 # 16k-token ceiling by a margin that covers the receipt, the banner, and the
@@ -401,7 +415,7 @@ class SymbolService:
         resolver = resolve.build_resolver(scan, index)
         target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
         groups = render.RefListing(
-            rows=_group_sites(sites[:limit], by_path, resolver, target_ids),
+            rows=_group_sites(_round_robin(sites, limit), by_path, resolver, target_ids),
             total=len(sites),
             limit=limit,
             files=len({site.path for site in sites}),
@@ -713,6 +727,31 @@ def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
     return [unique[key] for key in sorted(unique)]
 
 
+def _round_robin(sites: list[Ref], limit: int) -> list[Ref]:
+    """Keep ``limit`` sites, one per referencing file at a time.
+
+    A flat ``sites[:limit]`` cut the list a path sort had already ordered, so
+    the limit fell on whichever files sort last -- and ``src`` sorts before
+    ``tests``. A symbol with more sites than the limit answered with its
+    production callers and dropped its test ones, which reads as "no test
+    covers this" and is the expensive error fan-in exists to prevent. Nothing
+    in the code demoted the tests; the alphabet did.
+
+    Taking one site per file in turn spends the limit on breadth first, so
+    every referencing file is represented before any file gets a second site.
+    Within a file the sites keep their line order, and the files keep the
+    order :func:`_dedupe` put them in, so the answer stays deterministic.
+    """
+    by_file: dict[str, list[Ref]] = {}
+    for site in sites:
+        by_file.setdefault(site.path, []).append(site)
+
+    kept: list[Ref] = []
+    for round_ in zip_longest(*by_file.values()):
+        kept.extend(site for site in round_ if site is not None)
+    return kept[:limit]
+
+
 def _group_sites(
     sites: list[Ref],
     by_path: dict[str, refs.FileFacts],
@@ -825,22 +864,57 @@ class _Adjacency:
             shared_files=len(weight_by_file),
             score=score,
             callers=tuple(callers),
-            in_tests=_defined_in_tests(self.definition.path),
+            in_tests=is_test_path(self.definition.path),
         )
 
 
-def _defined_in_tests(path: str) -> bool:
-    """True when ``path`` sits under a test tree.
+def _has_directory_segment(path: str, names: frozenset[str]) -> bool:
+    """True when a directory in ``path`` is one of ``names``.
+
+    Whole segments, never substrings, so ``latest/`` cannot match ``test``
+    and ``fixtures_old/`` cannot match ``fixtures``. The filename is not a
+    directory and is excluded here rather than by each caller.
+    """
+    return any(segment in names for segment in path.split("/")[:-1])
+
+
+def is_fixture_path(path: str) -> bool:
+    """True when ``path`` sits inside a fixture directory.
+
+    Beside :func:`is_test_path` rather than folded into it. A caller that
+    ranks tests as tests must not also collect fixtures, and a caller that
+    excludes unreferenced code must exclude both, so the two questions stay
+    two names.
+    """
+    return _has_directory_segment(path, FIXTURE_DIRECTORY_SEGMENTS)
+
+
+def is_test_path(path: str) -> bool:
+    """True when ``path`` is a test file, by directory or by filename.
 
     A path heuristic, because the scan carries no structural notion of a test
-    tree -- and deliberately scoped to whole path segments named ``test`` or
-    ``tests`` plus ``conftest`` modules, so that ``latest/`` or ``contest.py``
-    cannot match. Paths are repository-relative with forward slashes.
+    tree. Two conventions, and the second one is what the directory rule
+    alone cannot see: Go, Rust and TypeScript put the test beside the code it
+    exercises, so ``config/os_test.go`` and ``applications/shareUrl.test.ts``
+    sit under no test directory at all and used to read as production files.
+
+    Directories are matched as whole segments, never as substrings, so
+    ``latest/`` cannot match ``test`` and ``introspection.py`` cannot match
+    ``spec``. Filenames are matched on the ``_test`` stem suffix and on the
+    ``.test.`` and ``.spec.`` infixes, so ``contest.py`` -- whose stem ends in
+    ``test`` but not in ``_test`` -- stays a production file. Paths are
+    repository-relative with forward slashes.
     """
-    segments = path.split("/")
-    if any(segment in ("test", "tests") for segment in segments[:-1]):
+    if _has_directory_segment(path, TEST_DIRECTORY_SEGMENTS):
         return True
-    return segments[-1].rsplit(".", 1)[0] == "conftest"
+
+    filename = path.rpartition("/")[2]
+    stem, dot, _extension = filename.rpartition(".")
+    if not dot:
+        stem = filename
+    if stem == "conftest" or stem.endswith("_test"):
+        return True
+    return ".test." in filename or ".spec." in filename
 
 
 def _shared_callers(

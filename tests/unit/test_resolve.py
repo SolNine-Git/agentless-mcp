@@ -10,7 +10,7 @@ and the imported one does not appear on the edge at all.
 
 import pytest
 
-from agentless_mcp.core import grammars, refs, resolve
+from agentless_mcp.core import grammars, refs, resolve, symbols
 
 CORE = '''\
 """Definitions the rest of the fixture resolves against."""
@@ -376,10 +376,10 @@ class TestRelations:
 
     @pytest.mark.parametrize("text", ["Generic[T]", " enum.Enum ", "Base"])
     def test_base_expressions_reduce_to_a_lookup_name(self, text):
-        assert resolve.base_name(text) in {"Generic", "Enum", "Base"}
+        assert symbols.base_name(text) in {"Generic", "Enum", "Base"}
 
     def test_a_keyword_in_a_base_list_is_not_a_base(self):
-        assert resolve.base_name("metaclass=ABCMeta") == ""
+        assert symbols.base_name("metaclass=ABCMeta") == ""
 
 
 class TestSubmoduleImports:

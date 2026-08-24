@@ -195,6 +195,28 @@ _RATIONALE_MARKER = f"{_QUALNAME_SEPARATOR}rationale@"
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
+_SUBSCRIPT_OPEN = "["
+_KEYWORD_BASE = "="
+
+
+def base_name(text: str) -> str:
+    """Return the looked-up name of a base-class expression, or an empty string.
+
+    ``Generic[T]`` is ``Generic``, ``enum.Enum`` is ``Enum``, and
+    ``metaclass=ABCMeta`` is nothing at all: a keyword argument in a base list
+    is not a base.
+
+    It lives here rather than beside either caller because both ``resolve`` and
+    ``graph`` need it and ``resolve`` imports ``graph``: a shared home below
+    both is the only placement that does not close a cycle. This module imports
+    nothing from the package, which is what makes it that home.
+    """
+    head = text.split(_SUBSCRIPT_OPEN, 1)[0].strip()
+    if not head or _KEYWORD_BASE in head:
+        return ""
+    return head.rpartition(".")[2].strip()
+
+
 def normalise_signature(signature: str) -> str:
     """Collapse a signature onto one line and cap its length.
 

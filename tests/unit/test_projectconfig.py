@@ -171,6 +171,7 @@ class TestSchema:
                     "docstrings": True,
                     "stoplist": ["ctx", "helper"],
                     "test_cmd": "pytest -q",
+                    "relation_weights": True,
                 }
             )
         )
@@ -180,6 +181,7 @@ class TestSchema:
         assert config.docstrings is True
         assert config.stoplist == frozenset({"ctx", "helper"})
         assert config.test_cmd == "pytest -q"
+        assert config.relation_weights is True
         assert config.warnings == ()
 
     def test_an_unknown_key_is_a_warning_not_an_error(self, repo):
@@ -243,12 +245,31 @@ class TestSchema:
             ("stoplist", "ctx"),
             ("test_cmd", 42),
             ("test_cmd", ""),
+            ("relation_weights", "yes"),
+            ("relation_weights", 1),
         ],
     )
     def test_a_wrongly_typed_value_is_dropped_with_a_warning(self, repo, key, value):
         config = projectconfig.load(repo({key: value}))
         assert getattr(config, key) in (None, frozenset())
         assert config.warnings
+
+    def test_an_absent_relation_weights_key_stays_unset(self, repo):
+        """`None` is what makes the precedence rule a one-liner at the call site.
+
+        A key that defaulted to `False` here would be indistinguishable from a
+        repository that asked for `False`, and the caller could no longer tell
+        "the file said nothing" from "the file said no".
+        """
+        assert projectconfig.load(repo({"map_budget": 3000})).relation_weights is None
+
+    def test_relation_weights_is_a_known_key(self, repo):
+        # A key the parser reads and `KNOWN_KEYS` does not list warns about
+        # itself on every response for the repository that sets it.
+        config = projectconfig.load(repo({"relation_weights": True}))
+
+        assert not any("unknown key" in warning for warning in config.warnings)
+        assert config.as_dict()["relation_weights"] is True
 
     def test_a_multi_line_test_command_is_refused(self, repo):
         config = projectconfig.load(repo({"test_cmd": "pytest -q\nrm -rf /"}))

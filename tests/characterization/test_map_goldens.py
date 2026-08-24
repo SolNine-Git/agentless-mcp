@@ -36,7 +36,7 @@ from agentless_mcp.util.tokens import Chars4Counter
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDENS = Path(__file__).parent / "goldens" / "map"
 
-REPOS = ("repo_py", "repo_ts", "repo_go")
+REPOS = ("repo_py", "repo_ts", "repo_go", "repo_py_tests")
 
 # Measured 2026-08-18 with the chars/4 estimator on the committed fixtures.
 # A drift outside +/-5% means the map's shape changed; decide whether that was
@@ -55,6 +55,14 @@ TOKEN_PINS = {
     # there, so this repository gained six: the receiver type every method
     # names now has a line the map can point at.
     "repo_go": 449,
+    # Pinned 2026-08-23 with the companion section. This repository holds
+    # twelve files against a ten-file map on purpose: the two test files fall
+    # outside the ranking, which is the only state in which the companion
+    # section has anything to say. The other three fixtures fit inside the
+    # limit entirely, so every file is ranked and no test is ever left over
+    # to be a companion -- which is why they pin nothing about this feature
+    # and this repository had to exist.
+    "repo_py_tests": 1185,
 }
 TOKEN_TOLERANCE = 0.05
 
@@ -140,6 +148,25 @@ class TestGoldens:
         document = json.loads(outputs["map.json"])
         printed = [line for line in outputs["map.txt"].splitlines() if "  [" in line]
         assert len(printed) == document["symbols_included"]
+
+    def test_the_two_renders_agree_on_the_test_companions(self, repo):
+        """The companion section is a second listing, so it needs its own check.
+
+        The symbol check above counts locator rows and a companion row carries
+        no locator, so it would pass while the two forms disagreed. This is
+        the same cross-check for the section the ranking cannot produce:
+        every companion in the JSON is a row in the text, spelled the way the
+        answer contract wants it, and neither form carries one the other does
+        not.
+        """
+        outputs = build_outputs(repo)
+        companions = json.loads(outputs["map.json"])["test_companions"]
+        rows = [line for line in outputs["map.txt"].splitlines() if line.startswith("  tests/")]
+
+        assert len(rows) == len(companions["rows"])
+        for row, listed in zip(rows, companions["rows"], strict=True):
+            assert row.startswith(f"  {listed['path']}:{listed['start']}-{listed['end']}")
+        assert companions["omitted"] == companions["total"] - len(companions["rows"])
 
     def test_every_symbol_occupies_exactly_one_line(self, repo):
         """One symbol per line is the map's format contract.

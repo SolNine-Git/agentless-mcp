@@ -416,6 +416,17 @@ func Add(left int, right int) int {
 \treturn left +
 """
 
+# Two errors, so a traversal that reports whichever it reached first is
+# distinguishable from one that reports the first in document order.
+PY_BROKEN_TWICE = """\
+def first(:
+    pass
+
+
+def second(:
+    pass
+"""
+
 PY_ALREADY_BROKEN = """\
 def broken(:
     pass
@@ -475,6 +486,59 @@ class TestSyntaxDelta:
         rather than as a substring of `detail`."""
         assert not syntax_delta("anything", "anything else", None).checked
         assert syntax_delta(PY_BEFORE, PY_SEMANTIC, "python").checked
+
+
+class TestWhereTheErrorIs:
+    """A count tells a caller its patch broke the file and leaves it to find
+    where. The line is what makes the verdict actionable."""
+
+    def test_a_failing_verdict_names_the_line(self):
+        verdict = syntax_delta(PY_BEFORE, PY_BROKEN, "python")
+
+        assert verdict.first_error_line == 6
+        assert "first at line 6" in verdict.detail
+
+    def test_the_first_error_in_document_order_is_the_one_reported(self):
+        """The ported source walks a stack that pops the last erroring child
+        first, so with two errors it names the second. A caller works down a
+        file from the top, and the later error is often a consequence of the
+        earlier one."""
+        verdict = syntax_delta(PY_BEFORE, PY_BROKEN_TWICE, "python")
+
+        assert verdict.new_errors == 2
+        assert verdict.first_error_line == 1
+
+    def test_a_file_that_parses_reports_no_line(self):
+        """None, not 0 or 1: there is no error to point at, and a caller
+        must not read a placeholder line number as a place to look."""
+        assert syntax_delta(PY_BEFORE, PY_SEMANTIC, "python").first_error_line is None
+
+    def test_a_patch_that_repaired_the_file_reports_no_line(self):
+        """The line describes the new content, so it goes away when the
+        errors do -- even though `detail` still reports the old count."""
+        verdict = syntax_delta(PY_ALREADY_BROKEN, PY_BEFORE, "python")
+
+        assert verdict.old_errors > 0
+        assert verdict.first_error_line is None
+
+    def test_a_file_left_equally_broken_still_says_where(self):
+        """`ok` is a delta, so this verdict passes. The caller looking at the
+        pre-existing error still needs somewhere to look."""
+        verdict = syntax_delta(PY_ALREADY_BROKEN, PY_ALREADY_BROKEN_EDITED, "python")
+
+        assert verdict.ok
+        assert verdict.first_error_line == 1
+
+    def test_an_unparsed_file_reports_no_line(self):
+        """Nothing looked at the file, so it cannot claim a location."""
+        assert syntax_delta("anything", "anything else", None).first_error_line is None
+
+    def test_the_line_is_on_the_wire(self):
+        """A caller reading the JSON form must not have to reparse the file
+        to learn what the verdict already knows."""
+        record = syntax_delta(PY_BEFORE, PY_BROKEN, "python").as_dict()
+
+        assert record["first_error_line"] == 6
 
 
 class TestAKeyBuiltWithoutAGrammarSaysSo:
