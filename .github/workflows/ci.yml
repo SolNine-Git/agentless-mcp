@@ -115,10 +115,15 @@ jobs:
       # line count measures distinct reasons, not skipped tests: this suite's
       # 10 skips render as 6 lines. A line-counting ceiling of 10 would not
       # have caught the regression named above, which added roughly two lines.
+      #
+      # The ceiling is 12 rather than 10 because two of them are conditional on
+      # the filesystem: the undecodable-filename tests in test_fslimits.py skip
+      # where the filesystem enforces UTF-8 names, which APFS does and ext4 does
+      # not. Linux runs 10, macOS runs 12.
       - name: No unexpected skips
         shell: bash
         run: |
           skips=$(grep -oE '^SKIPPED \[[0-9]+\]' pytest-output.txt \
                   | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
-          echo "skipped tests: $skips (ceiling 10)"
-          test "$skips" -le 10
+          echo "skipped tests: $skips (ceiling 12)"
+          test "$skips" -le 12

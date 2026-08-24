@@ -263,9 +263,20 @@ def _make_undecodable_file(root):
 
     Built from bytes rather than from a ``Path``: the whole point is a name no
     ``str`` can hold, so it cannot be spelled through the pathlib API.
+
+    Skips where the filesystem refuses the name rather than where the platform
+    is macOS. APFS enforces UTF-8 and answers ``EILSEQ``; ext4 does not care;
+    a Linux runner on a mounted exFAT volume behaves like APFS. The property
+    under test is "this filesystem stores a non-UTF-8 name", so the guard asks
+    for exactly that and lets the error say which filesystems said no -- a
+    ``sys.platform`` check would be a correlate, and would silently stop
+    covering Linux the day the runner's temp directory moved.
     """
     raw = os.fsencode(root) + b"/bad\xff.py"
-    os.close(os.open(raw, os.O_CREAT | os.O_WRONLY))
+    try:
+        os.close(os.open(raw, os.O_CREAT | os.O_WRONLY))
+    except OSError as exc:
+        pytest.skip(f"the filesystem under {root} refuses a non-UTF-8 filename: {exc.strerror}")
 
 
 class TestAnUndecodableFilenameSurvivesTheWalkAndTheSink:
