@@ -313,6 +313,112 @@ passes.
 Write the routing half as well as the loading half. A model that loads the
 schemas and reads no routing rule still reaches for `Grep`.
 
+### Structural-first gate (optional Claude Code hooks)
+
+Prose asks for the structural pass. A hook enforces it. Two scripts in
+`contrib/hooks/` deny `Grep` and `Glob` until the session has made one
+`mcp__agentless__*` call, and unlock them permanently after that call. The
+constraint is an order, not a ban: once the gate opens, `Grep` keeps the one
+job a symbol map cannot do, which is string literals, error messages, config
+keys, and fixtures. The gate fires once per session and costs one denied call.
+
+The measured reason is a paired comparison on SWE-Explore-Bench, run against
+agentless-mcp 0.6.1 with n=60 issue-localization tasks on Sonnet. An arm
+restricted to the agentless tools plus `Read` beat an arm with every tool
+available on all six metrics: precision +0.062, recall +0.041, F1 +0.040,
+hit-region rate +0.052, WCC +0.043, and recall@100 +0.011, with every 95%
+confidence interval excluding 0. Prompt steering alone did not produce that
+ordering discipline in the free-choice arm. Read the numbers as evidence for
+the ordering, not as a prediction for your repository: the measured arm removed
+the native search tools, and this gate only defers them.
+
+Install the gate by copying the two scripts and adding one hooks block.
+
+1. Copy `contrib/hooks/agentless_gate_check.py` and
+   `contrib/hooks/agentless_gate_mark.py` to a stable path, for example
+   `~/.claude/hooks/`.
+2. Merge the block in `contrib/hooks/settings-example.json` into
+   `~/.claude/settings.json` for every project, or into the repository's
+   `.claude/settings.json` for one. JSON allows no comments, so the file
+   carries placeholder paths and this section carries the explanation.
+3. Replace each `/ABSOLUTE/PATH/TO/...` placeholder with the absolute path of
+   the copied script. A relative path does not resolve.
+4. Keep the `/usr/bin/env python3` prefix. Claude Code runs the `command`
+   string as a shell command, not as an argv list, so the interpreter has to
+   be named.
+5. Start a new session. Claude Code reads `settings.json` at session start.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_check.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__agentless__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_mark.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Verify the scripts outside a session first. Feed each one a fake hook payload
+on stdin and read the exit code:
+
+```sh
+rm -rf /tmp/agentless_gate
+
+# No structural call yet: exit 2, and the denial text goes to stderr.
+echo '{"session_id":"probe","tool_name":"Grep"}' \
+  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+
+# One structural call marks the session.
+echo '{"session_id":"probe","tool_name":"mcp__agentless__orient"}' \
+  | python3 ~/.claude/hooks/agentless_gate_mark.py
+
+# Now the same Grep is allowed: exit 0, no output.
+echo '{"session_id":"probe","tool_name":"Grep"}' \
+  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+
+rm -rf /tmp/agentless_gate
+```
+
+The first call prints the denial text and reports `exit=2`. The third call
+prints nothing and reports `exit=0`. Inside a session, a denied `Grep` shows
+as a blocked tool call, and the model receives the same denial text as an
+instruction to call `orient` first. The unlock marker is
+`/tmp/agentless_gate/<session_id>.ok`, so its presence tells you which sessions
+have passed the gate.
+
+**Both hooks fail open.** Malformed stdin, a payload with no session id, an
+unwritable `/tmp`, or any other internal error exits 0 and allows the call. A
+gate that breaks an unrelated session is worse than a gate that misses one
+call. The failure mode to expect is a `Grep` that runs early, never a session
+that cannot search.
+
+Set `AGENTLESS_GATE_LOG` to a file path to append one JSONL line per decision.
+The variable is optional and unset by default. Use it to confirm that the gate
+fired rather than assuming it did.
+
+Remove the gate by deleting the `PreToolUse` and `PostToolUse` blocks from
+`settings.json` and starting a new session. Delete `/tmp/agentless_gate` and
+the copied scripts afterwards. Nothing else on disk changes.
+
 ## Supported languages
 
 The bundled grammars support Bash, C, C++, C#, Go, HCL, Java, JavaScript, JSON,
