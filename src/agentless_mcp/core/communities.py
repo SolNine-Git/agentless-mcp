@@ -61,8 +61,18 @@ because a majority at one depth can only be held by one prefix. A label is
 therefore
 repository content, and every renderer that shows one has to treat it as
 untrusted -- see :func:`agentless_mcp.core.mermaid.safe_label`.
+
+A label is a display name, not an identity. Two communities in one partition
+can share one -- two halves of ``src/core`` split by the detector are both
+labelled ``src/core`` -- and the same group of files can be labelled
+differently after an edit moves one member. So a community also carries
+:func:`community_hash` of its members, which is equal exactly when the member
+set is equal: it is what lets an agent match a community across two runs, tell
+two same-labelled communities apart, and see that a group drifted rather than
+guess it from a label that did not move.
 """
 
+import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -86,10 +96,27 @@ EPSILON = 1e-12
 # Deliberately free of characters a diagram renderer would have to escape.
 ROOT_LABEL = "repository root"
 
+# What goes into a member hash, versioned. The prefix is not decoration: a
+# later change to the hashed material -- symbol ids instead of paths, a level
+# number once there is more than one level -- must produce digests that cannot
+# be mistaken for digests of the old material by a caller comparing two runs
+# across an upgrade. Bump it with any such change.
+HASH_VERSION = "v1"
+
+# A NUL cannot occur in a repository path, so joining the members on one makes
+# the hashed bytes a faithful encoding of the member set: no two distinct sets
+# can flatten to the same string, which a separator like "/" or "," permits.
+_HASH_SEPARATOR = b"\0"
+
 
 @dataclass(frozen=True)
 class Community:
     """One community: its members, its mechanical label and its weights.
+
+    ``label`` names the community for a reader and ``member_hash`` identifies
+    it for a caller. Neither substitutes for the other: two communities in one
+    partition can carry the same label, and no reader should be asked to quote
+    a digest back.
 
     ``internal_weight`` is the summed weight of edges with both endpoints
     inside the community and ``total_weight`` the summed degree of its
@@ -109,10 +136,20 @@ class Community:
         """The number of files in this community."""
         return len(self.members)
 
+    @property
+    def member_hash(self) -> str:
+        """This community's identity: :func:`community_hash` of its members.
+
+        Derived rather than stored, like :attr:`size`, so it cannot disagree
+        with the members it claims to describe.
+        """
+        return community_hash(self.members)
+
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this community."""
         return {
             "label": self.label,
+            "member_hash": self.member_hash,
             "size": self.size,
             "members": list(self.members),
             "internal_weight": self.internal_weight,
@@ -274,6 +311,31 @@ def community_label(members: Sequence[str]) -> str:
     if not eligible:
         return ROOT_LABEL
     return min(eligible, key=lambda prefix: (-prefix.count("/"), prefix))
+
+
+def community_hash(members: Sequence[str]) -> str:
+    """Return the identity of a community holding exactly these members.
+
+    A sha256 over :data:`HASH_VERSION` and the sorted members, NUL-separated.
+    Sorted because a community is a set and the order its members were
+    collected in is not part of what it is, so the same group of files hashes
+    the same however the partition was reached.
+
+    Two runs over two commits can therefore be matched member-set to member-
+    set, which is the question "did this group drift" asked in a form that has
+    an answer. The digest is deliberately not shown as the community's name:
+    :func:`community_label` owns that, and an agent quoting 64 hex characters
+    back into a tool call is worse off than one quoting ``src/core``.
+    """
+    digest = hashlib.sha256()
+    digest.update(HASH_VERSION.encode("utf-8"))
+    digest.update(_HASH_SEPARATOR)
+    # Deduplicated as well as sorted, so the digest is a function of the member
+    # *set* the way this docstring promises. Every partition this package builds
+    # already hands over distinct members, so nothing here changes today; the
+    # call is what keeps the promise true for a caller that does not.
+    digest.update(_HASH_SEPARATOR.join(member.encode("utf-8") for member in sorted(set(members))))
+    return digest.hexdigest()
 
 
 def _directory_prefixes(path: str) -> list[str]:

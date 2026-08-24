@@ -24,7 +24,7 @@
   "shared_callers": "Also rank symbols that repeatedly occur beside the target in the same callers; this is fuzzy retrieval evidence, not binding evidence.",
   "explain_target": "Stable id, qualified name, or symbol name to explain. Ambiguous names are refused with candidates.",
   "explain_limit": "Maximum rows shown within each fan-in, fan-out, and import section of the explanation. Omit it to use the tool's default.",
-  "structure_operation": "Structural view to compute: path traces precise symbol evidence; cycles reports import SCCs; communities partitions the relevance graph; diagram emits bounded Mermaid.",
+  "structure_operation": "Structural view to compute: path traces precise symbol evidence; cycles reports import SCCs; communities partitions the relevance graph; diagram emits bounded Mermaid; health reports orphan candidates, unused exports and hubs.",
   "path_source": "Starting stable id, qualified symbol name, or repository-relative file path for a path operation.",
   "path_target": "Ending stable id, qualified symbol name, or repository-relative file path for a path operation.",
   "include_unique": "Allow repository-wide unique-name edges in a path. Off by default because uniqueness is retrieval evidence, not import or same-file binding evidence.",
@@ -36,11 +36,11 @@
   "diagram_max_edges": "Maximum arrows drawn in a diagram; reference edges past this bound are announced in a comment rather than drawn.",
   "group_by_communities": "Group diagram nodes into deterministic community subgraphs.",
   "locations": "Location selectors such as class:Name, function:name, or line:N to resolve within the named file.",
-  "orient_operation": "Which orientation question to answer: map (budgeted skeleton of the most relevant files), communities (which files belong together), cycles (module-level import cycles), diagram (bounded mermaid module graph), or path (fewest-hop evidence chain from source to target). A wrong value is answered with this list; a parameter foreign to the selected operation is refused naming what it accepts and requires.",
+  "orient_operation": "Which orientation question to answer: map (budgeted skeleton of the most relevant files), communities (which files belong together), cycles (module-level import cycles), diagram (bounded mermaid module graph), path (fewest-hop evidence chain from source to target), or health (orphan candidates, unused exports and hubs). A wrong value is answered with this list; a parameter foreign to the selected operation is refused naming what it accepts and requires.",
   "symbols_operation": "Which symbol question to answer: find (lookup by name), overview (signatures with bodies elided for paths), expand (line-numbered bodies for stable_ids), explain (one symbol's wiring card for target), or locate (resolve class:/function:/line: strings within path). A wrong value is answered with this list; a parameter foreign to the selected operation is refused naming what it accepts and requires.",
   "read_operation": "Which read to perform: slice (numbered lines from one file) or dir (gitignore-honouring directory tree). A wrong value is answered with this list; a parameter foreign to the selected operation is refused naming what it accepts and requires.",
   "orient_focus": "File paths, path suffixes, module names, or symbol names that receive the ranking focus. A single string or a list of strings is accepted; a bare string reads as a one-element list. The map operation uses every entry; a diagram has one centre, so only the first entry is used there.",
-  "orient_limit": "Maximum results for the selected operation: ranked files for map, communities for communities, cycles for cycles. Omit it to use the selected operation's own default.",
+  "orient_limit": "Maximum results for the selected operation: ranked files for map, communities for communities, cycles for cycles, rows per section for health. Omit it to use the selected operation's own default.",
   "symbols_limit": "Maximum result rows for the selected operation: matching cards for find, expanded symbols for expand, rows per section for explain. Omit it to use the selected operation's own default.",
   "read_path": "Repository-relative path the selected operation reads: for slice, the source file to read (required); for dir, an optional directory whose tracked subtree is rendered, defaulting to the repository root. The resolved path must remain beneath the authorized repository root."
 }

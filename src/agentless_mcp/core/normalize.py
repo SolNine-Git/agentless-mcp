@@ -42,7 +42,9 @@ with a pre-existing parse error under this grammar would fail every candidate
 including the right one -- but "does it parse *no worse than before*". The
 verdict compares ERROR and MISSING node counts between the old and the new
 content, so a file that already had two error nodes is judged on whether it
-still has two.
+still has two. It also reports the line the first of the new content's errors
+sits on, because a count tells a caller that its patch broke the file and
+leaves it to find where.
 
 A file whose language has no grammar here is not skipped. It falls back to a
 whitespace-normalised comparison of the raw text, which catches a semantic
@@ -145,6 +147,12 @@ class SyntaxVerdict:
     distinguished them -- so a caller that wanted to gate on a real parse
     could not. ``ok`` keeps its meaning for the callers already reading it:
     the edit introduced nothing new that a parser could see.
+
+    ``first_error_line`` is the 1-based line of the first ERROR or MISSING
+    node in the *new* content, in document order, and ``None`` when the new
+    content has none. It describes the new content whatever ``ok`` says, so a
+    patch that cleaned up a pre-existing error reports ``None`` and a file
+    that stayed equally broken still says where.
     """
 
     language: str
@@ -153,6 +161,7 @@ class SyntaxVerdict:
     ok: bool
     detail: str = ""
     checked: bool = True
+    first_error_line: int | None = None
 
     def as_dict(self) -> dict[str, object]:
         """Return the JSON form of this verdict.
@@ -169,6 +178,7 @@ class SyntaxVerdict:
             "new_errors": self.new_errors,
             "ok": self.ok,
             "checked": self.checked,
+            "first_error_line": self.first_error_line,
             "detail": self.detail,
         }
 
@@ -251,6 +261,9 @@ def syntax_delta(old: str, new: str, language: str | None) -> SyntaxVerdict:
     ``ok`` when the edit introduced no new ERROR or MISSING nodes. Read it
     with ``checked``: a file whose language has no grammar comes back
     ``ok=True, checked=False``, which asserts nothing about the parse.
+
+    A verdict that fails names the line of the new content's first error, so
+    the caller has somewhere to look rather than a count.
     """
     parser = _parser_for(language)
     if parser is None:
@@ -263,12 +276,16 @@ def syntax_delta(old: str, new: str, language: str | None) -> SyntaxVerdict:
             checked=False,
         )
 
+    new_root = parser.parse(new.encode("utf-8")).root_node
     old_errors = _error_count(parser.parse(old.encode("utf-8")).root_node)
-    new_errors = _error_count(parser.parse(new.encode("utf-8")).root_node)
+    new_errors = _error_count(new_root)
+    first_error_line = _first_error_line(new_root)
     ok = new_errors <= old_errors
     detail = ""
     if not ok:
         detail = f"edit introduced {new_errors - old_errors} new parse errors"
+        if first_error_line is not None:
+            detail = f"{detail}, first at line {first_error_line}"
     elif old_errors:
         detail = f"file already had {old_errors} parse errors before the edit"
 
@@ -278,6 +295,7 @@ def syntax_delta(old: str, new: str, language: str | None) -> SyntaxVerdict:
         new_errors=new_errors,
         ok=ok,
         detail=detail,
+        first_error_line=first_error_line,
     )
 
 
@@ -362,3 +380,28 @@ def _error_count(root: Node) -> int:
             continue
         stack.extend(node.children)
     return count
+
+
+def _first_error_line(root: Node) -> int | None:
+    """Return the 1-based line of the first ERROR or MISSING node, or None.
+
+    *First* means first in document order, and that is the whole value of the
+    number. Children are pushed in reverse so the stack pops them left to
+    right: a traversal that pops the last child first reports whichever error
+    it happened to reach, which for a file with several is not the one to fix
+    first.
+
+    Descent stops at an error node for the reason :func:`_error_count` stops
+    counting there -- the fragments underneath it are consequences of that one
+    failure -- and no descendant can start before its parent, so the topmost
+    error reached is the earliest one.
+    """
+    stack: list[Node] = [root]
+    while stack:
+        node = stack.pop()
+        if not node.has_error and not node.is_missing:
+            continue
+        if node.is_missing or node.is_error:
+            return node.start_point[0] + 1
+        stack.extend(reversed(node.children))
+    return None

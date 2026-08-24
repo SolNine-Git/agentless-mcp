@@ -122,7 +122,7 @@ then `symbols` for declarations and bodies, then `read` for exact lines.
 
 | MCP tool | Operations | CLI | Answers |
 |---|---|---|---|
-| `orient` | `map`, `communities`, `cycles`, `diagram`, `path` | `map` / `communities` / `cycles` / `diagram` / `path` | where does this live, how is the repository put together |
+| `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | `map` / `communities` / `cycles` / `diagram` / `path` / `health` | where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | `find-symbol` / `skeleton` / `expand` / `explain` / `resolve-locs` | what is this symbol, what does it declare, what does it do |
 | `find_referencing_symbols` | *(none)* | `refs` | who calls it (blast radius) |
 | `read` | `slice`, `dir` | `slice` / `tree` | these exact lines, what exists |
@@ -150,7 +150,7 @@ migrate:
 | `read_slice` | `read` operation `slice` |
 | `find_symbol` | `symbols` operation `find` |
 | `explain_symbol` | `symbols` operation `explain` |
-| `analyze_structure` | `orient` operations `path` / `cycles` / `communities` / `diagram` |
+| `analyze_structure` | `orient` operations `path` / `cycles` / `communities` / `diagram` / `health` |
 | `resolve_locations` | `symbols` operation `locate` |
 
 `find_referencing_symbols` and `capabilities` are the same tools on both
@@ -261,6 +261,45 @@ clamps it to 2k-8k tokens. Pass an integer to pin it.
 
 Output is one block per file: `NN| signature  [stable_id]`, plus a count of
 the symbols that did not fit.
+
+Below the ranked files the map may add a **test companion section**. The
+ranking cannot produce that section. Edges run referrer to definer, so a test
+file is a pure source in the reference graph: it carries no inbound weight,
+personalized PageRank scores inbound weight, and a test therefore never enters
+the ranked map however directly it exercises the files in it. The companion
+section is how a test file reaches the answer at all.
+
+```
+tests exercising the files above:
+  tests/test_pricing.py:12-31  covers src/billing/invoice.py, src/billing/book.py
+... 3 more test files not listed (limit 5)
+```
+
+A test qualifies only when it references a seeded or chosen file **by name**.
+An import alone does not list it. What the row is worth over a bare path is
+its line range, and an import gives nothing to point at.
+
+One row per test file. A broad suite that touches six ranked files says so on
+its own row instead of taking six of them. Rows are ranked by flood depth
+first, then by how many ranked files the test covers, then by aggregated edge
+weight, then by path. The walk reaches two hops, so a test that exercises its
+subject through a helper is still listed. The section is capped at five rows
+and is omitted entirely when it is empty, so a repository with no tests pays
+nothing for it.
+
+The JSON form carries the same section under `test_companions`, shaped
+`{total, limit, omitted, rows}`. `total` is how many test files were found
+before the cap and `omitted` how many the cap left out. Each row is
+`{path, start, end, covers, depth, weight}`: `start` and `end` are the span of
+the referencing symbol inside the test, never the whole file; `covers` names
+the ranked or seeded files that one test reaches; `depth` is its distance from
+them; `weight` is the aggregated edge weight behind it.
+
+Two things the section cannot see, both properties of the graph rather than of
+the section. A fixture with no grammar is never parsed, so it appears in no
+edge. And a test whose only use of its subject is a method on a value built
+elsewhere -- `s.Parse()`, `obj.method()` -- spells an attribute reference,
+which is not an edge at any tier.
 
 ### `tree` (`read` operation `dir`) -- what exists
 
@@ -656,6 +695,55 @@ a `.md` file exactly as it stands. That is the never-stale story for committed
 diagrams. Wire it into pre-commit, and a diagram cannot silently describe a
 tree that no longer exists.
 
+### `health` (`orient` operation `health`) -- what is unreferenced, what is central
+
+```
+agentless-mcp health --limit 20
+```
+
+```json
+{"operation": "health"}
+```
+
+Three readings of one degree count over the resolved symbol graph, returned as
+one answer: orphan candidates, unused exports and hubs. `--limit` bounds each
+section separately, and every section reports the complete count it was cut
+from.
+
+```
+health over 412 symbols; 88 excluded as test or fixture paths
+degree counts same-file and resolved-via-import edges only; unique and name-only-ambiguous matches are discounted and named per row
+methods are ranked as hubs and never reported as orphans: a call through a selector resolves to no edge, so every method would be a permanent candidate
+
+2 orphan candidates (function, no counted edge in or out)
+  [py:app/legacy.py::migrate] @31  migrate  function  in 0  out 0  -- discounted: 1 name-only-ambiguous
+```
+
+**Only binding edges are counted.** A same-file reference and a
+resolved-via-import reference are bindings; a repository-wide unique-name
+match and a name-only-ambiguous match are retrieval evidence, and counting
+them reports a symbol as reached because something somewhere spells the same
+word. They are not dropped either. Each one is counted under its tier and
+named on the row it was discounted from, so an orphan row states the evidence
+it was **not** built on and you can go and look before deleting anything.
+
+**Test and fixture paths are excluded before anything is counted.** A fixture
+exists to be parsed and a test helper is called by a runner, so both are
+permanent orphans and would otherwise be the whole listing. The header says
+how many symbols that left out.
+
+**Methods are ranked as hubs and never reported as orphans.** A call through a
+selector is an attribute member, which resolves to no edge at any tier, so no
+method earns an inbound edge from its ordinary call site. Measured on this
+repository, including methods made all 184 orphan candidates and all 238
+unused exports methods, and none of them was dead. The blind spot is named in
+the header instead of filling the listing.
+
+Read the sections for code health, not for localization. An orphan is by
+definition a symbol nothing references, which is close to the opposite of
+where a bug lives. The hub ranking is the section to read when the question is
+which symbol a change has to route through.
+
 ### `html` (CLI only) -- the module graph, interactive
 
 ```
@@ -1050,7 +1138,8 @@ root. Every key is optional:
   "granularity": "function",
   "docstrings": false,
   "stoplist": ["ctx", "helper", "handle"],
-  "test_cmd": "pytest -q tests/unit"
+  "test_cmd": "pytest -q tests/unit",
+  "relation_weights": false
 }
 ```
 
@@ -1074,6 +1163,22 @@ The file is repository content, and the tool treats it as such:
 `test_cmd` is inert everywhere except the CLI's `validate`. `validate` uses
 it only when the invocation passed no `--test-cmd`, and prints the resolved
 command on stderr before it runs.
+
+`relation_weights` weights the file graph's edges by relation kind: inheritance
+3.0, imports 2.0, calls 1.5, references 1.0. It is off by default. The map's
+ranking, `communities` and `diagram` all read that graph, so the key moves all
+three views. Three things are worth knowing before you set it:
+
+- it re-tunes the weights rather than adding one. The shipped scheme already
+  weights an import at 3.0. The key drops imports to 2.0 at the same time as
+  it adds inheritance at 3.0, so a ranking you already depend on will move.
+- the `calls` tier never fires. The extractor records a function call and a
+  bare mention as the same reference, so a call is weighted as a reference.
+  Only three of the four tiers are reachable.
+- inheritance weighting is Python-only. The base classes it reads are filled
+  in by the extractor's Python class handler alone, and every other language
+  records none. On a Go, Java, Rust or TypeScript repository the key changes
+  the import weighting and adds no inheritance edge at all.
 
 ## Token counting
 

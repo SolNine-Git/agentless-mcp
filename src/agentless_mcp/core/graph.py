@@ -24,6 +24,12 @@ so rank flows outward from the files the caller named instead of being spread
 uniformly. With no seeds the vector is uniform and the result is the plain
 PageRank of the repository.
 
+The same graph answers a second, unranked question. :func:`flood` walks out
+from a set of files and reports how far each reachable file is, forward or
+backward. Backward is the one nothing else here can answer: edges run referrer
+to definer, so a test file reaches the code it exercises and that code reaches
+nothing back.
+
 The iteration is hand-rolled (~40 lines) rather than pulling in networkx: the
 package's only runtime dependency is the tree-sitter pair, and a power
 iteration with an explicit dangling-mass rule is not the part of this tool
@@ -33,13 +39,14 @@ unchanged tree produce bit-identical rankings.
 
 import math
 import posixpath
-from collections.abc import Collection, Mapping, Sequence, Set
+from collections.abc import Collection, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from types import MappingProxyType
 
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.refs import RefIndex, RepoScan
+from agentless_mcp.core.refs import FileFacts, RefIndex, RepoScan
+from agentless_mcp.core.symbols import base_name
 
 DEFAULT_DAMPING = 0.85
 DEFAULT_EPSILON = 1e-6
@@ -47,6 +54,36 @@ DEFAULT_MAX_ITERATIONS = 100
 
 # An import is a declared edge, not an inferred one.
 IMPORT_EDGE_WEIGHT = 3.0
+
+# The relation-typed weight table, a port of ``CODE_REL_TYPE_WEIGHTS`` in
+# code-graph (``src/community/weights.ts``). Read only when ``build_graph`` is
+# asked for it; the shipped default weights edges exactly as the paragraphs at
+# the top of this module describe.
+#
+# ``calls`` is in the table and unreachable from here. The file-level graph has
+# no call relation to key on -- :class:`~agentless_mcp.core.extractor.Ref`
+# records a call and a bare mention as the same ``REFERENCE`` role -- so a call
+# is weighted as a reference. The entry stays so the table reads as the ported
+# one rather than as a silently trimmed copy.
+RELATION_WEIGHTS: Mapping[str, float] = MappingProxyType(
+    {
+        "inheritance": 3.0,
+        "imports": 2.0,
+        "calls": 1.5,
+        "references": 1.0,
+    }
+)
+
+# The number of nodes a flood may expand before it stops answering the question
+# it was asked. Same value and same reasoning as
+# ``agentless_mcp.core.resolve.DEFAULT_MAX_VISITED``, spelled again rather than
+# imported: ``resolve`` imports this module, so reading the constant back out
+# of it would close a cycle.
+DEFAULT_MAX_FLOOD_VISITED = 20_000
+
+# How far a flood walks when the caller names no bound. Ported from
+# ``DEFAULT_MAX_DEPTH`` in code-graph's ``src/query/reachability.ts``.
+DEFAULT_FLOOD_DEPTH = 20
 
 # Name-only matches are retrieval evidence, not binding evidence. The map
 # keeps that recall but discounts it before PageRank and community detection.
@@ -151,6 +188,23 @@ class RefGraph:
             collected[source].append((target, weight))
         return {node: tuple(sorted(pairs)) for node, pairs in collected.items()}
 
+    def reverse_adjacency(self) -> dict[str, tuple[tuple[str, float], ...]]:
+        """Return incoming ``(source, weight)`` pairs per node, in path order.
+
+        The mirror of :meth:`adjacency`, and built the same single pass over
+        the edge map for the same reason: a per-node filter costs one walk of
+        every edge per node.
+
+        Edges run referrer to definer, so this is the index that answers "who
+        mentions this file". Nothing else in the package can answer it: the
+        forward index says what a file reaches and a test file reaches its
+        subject while the subject reaches nothing back.
+        """
+        collected: dict[str, list[tuple[str, float]]] = {node: [] for node in self.nodes}
+        for (source, target), weight in self.edges.items():
+            collected[target].append((source, weight))
+        return {node: tuple(sorted(pairs)) for node, pairs in collected.items()}
+
 
 @dataclass(frozen=True)
 class PathIndex:
@@ -228,9 +282,27 @@ def common_name_damping(spread: int) -> float:
 
 
 def build_graph(
-    scan: RepoScan, index: RefIndex, *, stoplist: frozenset[str] = frozenset()
+    scan: RepoScan,
+    index: RefIndex,
+    *,
+    stoplist: frozenset[str] = frozenset(),
+    relation_weights: bool = False,
 ) -> RefGraph:
-    """Build the file-level reference graph for one scan."""
+    """Build the file-level reference graph for one scan.
+
+    ``relation_weights`` swaps the shipped weighting for :data:`RELATION_WEIGHTS`:
+    an import edge drops from :data:`IMPORT_EDGE_WEIGHT` to 2.0, a declared base
+    class adds an edge of its own at 3.0, and a name reference keeps its damped
+    contribution at 1.0. Off by default, and the default is what every caller
+    passes today.
+
+    **It is off because it is not language-neutral.** The base classes it reads
+    come from ``ASTSymbol.bases``, which exactly one extractor handler fills in
+    -- the Python class handler. Every other language records ``bases=()``, so
+    turning this on weights Python inheritance and silently weights nothing for
+    TypeScript, Go, Java or Rust. Populating ``bases`` for the other class-based
+    grammars is the prerequisite for switching it on, not a later improvement.
+    """
     nodes = tuple(sorted(facts.path for facts in scan.files))
     known = frozenset(nodes)
     # Built once for the whole build rather than rebuilt per import name: the
@@ -238,44 +310,102 @@ def build_graph(
     # is what used to make this function quadratic in the repository.
     index_of_paths = PathIndex.build(known)
     edges: dict[tuple[str, str], float] = {}
+    import_weight = RELATION_WEIGHTS["imports"] if relation_weights else IMPORT_EDGE_WEIGHT
+    # Both branches are 1.0 today, because ``RELATION_WEIGHTS["references"]``
+    # and the shipped reference weight happen to agree. Kept as a branch rather
+    # than folded away: it is the seam the two weightings meet at, exactly as
+    # ``import_weight`` above is, and raising the table entry is what makes it
+    # bite. Folding it would hide that the table no longer reaches this edge.
+    reference_weight = RELATION_WEIGHTS["references"] if relation_weights else 1.0
 
     for facts in scan.files:
-        counts: dict[str, int] = {}
-        for ref in facts.refs:
-            if not ref.is_reference:
-                # Bindings, declaration names, labels, and attribute members
-                # spell no bare repository relationship.
-                continue
-            counts[ref.name] = counts.get(ref.name, 0) + 1
-
-        for name in sorted(counts):
-            targets = index.defining_paths(name)
-            if facts.path in targets:
-                # A same-file definition shadows repository-wide name matches.
-                continue
-            contribution = _reference_weight(
-                name,
-                counts[name],
-                index,
-                stoplist,
-                candidate_count=len(targets),
-            )
-            if contribution <= 0.0:
-                continue
-            for target in targets:
-                if target == facts.path or target not in known:
-                    continue
-                key = (facts.path, target)
-                edges[key] = edges.get(key, 0.0) + contribution
+        for target, contribution in _reference_contributions(
+            facts, index, stoplist, known, reference_weight
+        ):
+            key = (facts.path, target)
+            edges[key] = edges.get(key, 0.0) + contribution
 
         for statement in facts.imports:
             for target in _resolved_import_targets(facts.path, statement, index_of_paths):
                 if target == facts.path:
                     continue
                 key = (facts.path, target)
-                edges[key] = edges.get(key, 0.0) + IMPORT_EDGE_WEIGHT
+                edges[key] = edges.get(key, 0.0) + import_weight
+
+        if relation_weights:
+            for target in _inheritance_targets(facts, index, known):
+                key = (facts.path, target)
+                edges[key] = edges.get(key, 0.0) + RELATION_WEIGHTS["inheritance"]
 
     return RefGraph(nodes=nodes, edges=edges)
+
+
+def _reference_contributions(
+    facts: FileFacts,
+    index: RefIndex,
+    stoplist: frozenset[str],
+    known: frozenset[str],
+    reference_weight: float,
+) -> Iterator[tuple[str, float]]:
+    """Yield one ``(target, contribution)`` pair per name-reference edge.
+
+    Names in sorted order and each name's targets together, so the caller
+    accumulates the same floats in the same sequence however it stores them.
+    """
+    counts: dict[str, int] = {}
+    for ref in facts.refs:
+        if not ref.is_reference:
+            # Bindings, declaration names, labels, and attribute members
+            # spell no bare repository relationship.
+            continue
+        counts[ref.name] = counts.get(ref.name, 0) + 1
+
+    for name in sorted(counts):
+        targets = index.defining_paths(name)
+        if facts.path in targets:
+            # A same-file definition shadows repository-wide name matches.
+            continue
+        contribution = reference_weight * _reference_weight(
+            name,
+            counts[name],
+            index,
+            stoplist,
+            candidate_count=len(targets),
+        )
+        if contribution <= 0.0:
+            continue
+        for target in targets:
+            if target == facts.path or target not in known:
+                continue
+            yield target, contribution
+
+
+def _inheritance_targets(facts: FileFacts, index: RefIndex, known: frozenset[str]) -> list[str]:
+    """Return the files defining the base classes ``facts`` declares.
+
+    One target per base per declaring symbol, repeats included: a file that
+    subclasses three bases out of one module has declared three dependencies on
+    it, exactly as three import statements would.
+
+    Only symbols already carrying ``bases`` produce anything, and the Python
+    class handler is the only extractor site that fills that field in -- see
+    :func:`build_graph` on why the weighting this feeds is off by default.
+    """
+    targets: list[str] = []
+    for symbol in facts.symbols:
+        for base in symbol.bases:
+            name = base_name(base)
+            if not name:
+                continue
+            defining = index.defining_paths(name)
+            if facts.path in defining:
+                # A same-file definition shadows repository-wide name matches,
+                # the rule the reference pass above applies to every name.
+                continue
+            targets.extend(
+                target for target in defining if target != facts.path and target in known
+            )
+    return targets
 
 
 @dataclass(frozen=True)
@@ -360,6 +490,91 @@ def personalized_pagerank(
 def rank_order(rank: Mapping[str, float]) -> list[str]:
     """Return the ranked paths, highest first, ties broken by path order."""
     return sorted(rank, key=lambda path: (-rank[path], path))
+
+
+@dataclass(frozen=True)
+class Reached:
+    """One file a flood arrived at, and the fewest hops that arrive there."""
+
+    path: str
+    depth: int
+
+
+@dataclass(frozen=True)
+class Flood:
+    """The outcome of one flood: what it reached, and whether it finished.
+
+    ``exhausted`` is the same distinction :class:`PathResult` draws in
+    ``agentless_mcp.core.resolve``: a caller must be able to tell "the walk saw
+    everything there was" from "the walk stopped looking", because a truncated
+    reach set read as a complete one says a file is unrelated when nobody
+    checked.
+    """
+
+    reached: tuple[Reached, ...]
+    visited: int
+    exhausted: bool
+
+
+def flood(
+    graph: RefGraph,
+    seeds: Collection[str],
+    *,
+    backward: bool = False,
+    max_depth: int = DEFAULT_FLOOD_DEPTH,
+    max_visited: int = DEFAULT_MAX_FLOOD_VISITED,
+) -> Flood:
+    """Walk out from ``seeds`` breadth-first and report every file within reach.
+
+    Forward answers "what do these files reach"; ``backward=True`` answers "what
+    reaches these files", which the forward index cannot: edges run referrer to
+    definer, so a test file reaches its subject and the subject reaches nothing
+    back.
+
+    The seeds themselves are never reported -- a seed is the question, not an
+    answer -- and each reported file carries the *fewest* hops that arrive at
+    it, so a file two ways away is one row at the shorter distance. Repeat
+    seeds, seeds naming no node in the graph, and cycles all fold away in the
+    same step: a node is expanded the first time it is seen and never again.
+
+    Rows come back ordered by ``(depth, path)``. The port this follows orders by
+    ``(depth, name)``, which is not a total order -- two symbols share a name --
+    and here the path *is* the node identity, so the pair is total and two
+    floods of an unchanged graph agree row for row.
+    """
+    known = frozenset(graph.nodes)
+    frontier = sorted({seed for seed in seeds if seed in known})
+    if not frontier:
+        return Flood(reached=(), visited=0, exhausted=False)
+
+    neighbours = graph.reverse_adjacency() if backward else graph.adjacency()
+    seen = set(frontier)
+    depths: dict[str, int] = {}
+    visited = 0
+    exhausted = False
+    depth = 0
+
+    while frontier and depth < max_depth and not exhausted:
+        depth += 1
+        following: list[str] = []
+        for node in frontier:
+            visited += 1
+            if visited > max_visited:
+                exhausted = True
+                break
+            for other, _weight in neighbours[node]:
+                if other in seen:
+                    continue
+                seen.add(other)
+                depths[other] = depth
+                following.append(other)
+        frontier = following
+
+    reached = tuple(
+        Reached(path=path, depth=hops)
+        for path, hops in sorted(depths.items(), key=lambda item: (item[1], item[0]))
+    )
+    return Flood(reached=reached, visited=visited, exhausted=exhausted)
 
 
 def resolve_import_target(

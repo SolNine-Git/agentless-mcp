@@ -252,6 +252,85 @@ class MapFile(_Bounded):
 
 
 @dataclass(frozen=True)
+class TestCompanion:
+    """One test file that exercises the files a map ranked, and where it does it.
+
+    Edges run referrer to definer, so a test file is a pure source in the
+    reference graph: it has no inbound weight and the ranking that scores
+    inbound weight can never place it. This row is how a test reaches the map
+    at all, and it is listed outside the ranked-file budget because it answers
+    a different question from "what is this repository about".
+
+    ``start`` and ``end`` are a real span inside the test file -- the
+    referencing symbol that connects it to the files above -- never the whole
+    file. A reader handed a bare path has to open the file to find the lines,
+    and a whole-file span is the same answer with the work hidden.
+
+    ``covers`` names the ranked or seeded files this one test file reaches,
+    which is what makes one row per test file honest: a broad suite that
+    touches six of them says so on its own row instead of taking six.
+    """
+
+    path: str
+    start: int
+    end: int
+    covers: tuple[str, ...] = ()
+    depth: int = 1
+    weight: float = 0.0
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this companion."""
+        return {
+            "path": self.path,
+            "start": self.start,
+            "end": self.end,
+            "covers": list(self.covers),
+            "depth": self.depth,
+            "weight": round(self.weight, 6),
+        }
+
+
+@dataclass(frozen=True)
+class TestCompanionListing(_Bounded):
+    """The test companions the cap kept, and how many it left out.
+
+    The listing rather than a bare tuple, for the reason
+    :class:`SharedCallerListing` gives: the renderer is handed nothing else,
+    and a section that cannot say what it left out is read as the complete
+    set of tests for the files above it.
+
+    Two different cuts can shorten this section and they are not the same
+    fact. ``limit`` and ``omitted`` say the rows were trimmed *after* every
+    test was found, so what is missing is known and counted. ``exhausted``
+    says the backward walk stopped before it finished looking, so what is
+    missing was never counted and ``total`` is a floor rather than a total.
+    A reader told only the first reads a truncated walk as a complete one,
+    which is the failure :class:`~agentless_mcp.core.graph.Flood` carries the
+    flag to prevent.
+    """
+
+    rows: tuple[TestCompanion, ...] = ()
+    total: int = 0
+    limit: int = 0
+    exhausted: bool = False
+
+    @property
+    def shown(self) -> int:
+        """How many test files the listing kept."""
+        return len(self.rows)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "exhausted": self.exhausted,
+            "rows": [row.as_dict() for row in self.rows],
+        }
+
+
+@dataclass(frozen=True)
 class SymbolCard:
     """A denormalized symbol record: everything a reader needs, in one place.
 
@@ -869,6 +948,121 @@ class CommunityReport(_Bounded):
 
 
 @dataclass(frozen=True)
+class DiscountedTier:
+    """How many edges of one weak evidence tier a degree count left out.
+
+    The row carries this rather than the renderer inferring it, because
+    "nothing references this symbol" and "one name-only-ambiguous match
+    references this symbol" are different findings and only the second one
+    names where a reader should look before deleting anything.
+    """
+
+    tier: str
+    count: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this discounted tier."""
+        return {"tier": self.tier, "count": self.count}
+
+
+@dataclass(frozen=True)
+class HealthSymbol:
+    """One symbol in a health section, with the degree that placed it there.
+
+    ``in_degree`` and ``out_degree`` count same-file and resolved-via-import
+    edges alone. A repository-wide unique name match and a name-only-ambiguous
+    match are retrieval evidence, not a binding, so counting them would report
+    a symbol as reached because something somewhere spells the same word.
+    They are not dropped either: each one lands in ``discounted`` under its
+    tier, which is what makes an orphan row auditable instead of an assertion.
+    """
+
+    stable_id: str
+    path: str
+    line: int
+    label: str
+    kind: str
+    in_degree: int
+    out_degree: int
+    discounted: tuple[DiscountedTier, ...] = ()
+
+    @property
+    def degree(self) -> int:
+        """The counted edges at both ends of this symbol."""
+        return self.in_degree + self.out_degree
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {
+            "stable_id": self.stable_id,
+            "path": self.path,
+            "line": self.line,
+            "label": self.label,
+            "kind": self.kind,
+            "in_degree": self.in_degree,
+            "out_degree": self.out_degree,
+            "degree": self.degree,
+            "discounted": [entry.as_dict() for entry in self.discounted],
+        }
+
+
+@dataclass(frozen=True)
+class HealthSection(_Bounded):
+    """One health finding, capped, with the size of the finding it came from.
+
+    ``total`` is counted before the cap, so a section that lists twenty rows
+    of two hundred says two hundred. A section is a listing rather than a bare
+    tuple for the reason :class:`TestCompanionListing` gives: read without the
+    count, twenty rows are the whole answer.
+    """
+
+    rows: tuple[HealthSymbol, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many rows the cap kept."""
+        return len(self.rows)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this section."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "rows": [row.as_dict() for row in self.rows],
+        }
+
+
+@dataclass(frozen=True)
+class HealthReport:
+    """The three structural-health findings over one repository, in one answer.
+
+    ``symbols`` is how many definitions the three sections were computed over
+    and ``excluded`` how many the test and fixture rule left out, because a
+    section that found nothing and a section that was handed nothing render
+    the same sentence without them.
+    """
+
+    orphans: HealthSection
+    unused_exports: HealthSection
+    hubs: HealthSection
+    symbols: int = 0
+    excluded: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this report."""
+        return {
+            "symbols": self.symbols,
+            "excluded": self.excluded,
+            "orphans": self.orphans.as_dict(),
+            "unused_exports": self.unused_exports.as_dict(),
+            "hubs": self.hubs.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class DiagramView:
     """Rendered mermaid text, plus what the render left out.
 
@@ -1186,6 +1380,111 @@ def _unresolved_imports_note(count: int) -> list[str]:
     ]
 
 
+def render_health(report: HealthReport) -> str:
+    """Render the three structural-health findings under one shared header.
+
+    The header states the denominator and the counting rule once, so no
+    section has to repeat them and no row can be read against a rule it was
+    not computed under. Each section names its own criterion in the same
+    place, and every section is present even when it found nothing: an absent
+    section reads as a section that was not run.
+    """
+    excluded = f"; {report.excluded} excluded as test or fixture paths" if report.excluded else ""
+    lines = [
+        f"health over {report.symbols} {_symbols(report.symbols)}{excluded}",
+        (
+            "degree counts same-file and resolved-via-import edges only; "
+            "unique and name-only-ambiguous matches are discounted and named per row"
+        ),
+        (
+            "methods are ranked as hubs and never reported as orphans: a call through a "
+            "selector resolves to no edge, so every method would be a permanent candidate"
+        ),
+    ]
+    lines.extend(_health_section(report.orphans, _ORPHAN_WORDING))
+    lines.extend(_health_section(report.unused_exports, _UNUSED_WORDING))
+    lines.extend(_health_section(report.hubs, _HUB_WORDING))
+    return "\n".join(lines) + "\n"
+
+
+def _symbols(count: int) -> str:
+    """Spell the noun a symbol count takes."""
+    return "symbol" if count == 1 else "symbols"
+
+
+@dataclass(frozen=True)
+class _SectionWording:
+    """What one health section calls itself, whether or not it found anything.
+
+    ``omitted`` is the noun the cut line takes when it differs from ``plural``.
+    The hub section counts every symbol with an edge, so its heading has to say
+    that, while the rows it cut are hubs and its cut line has to say that.
+    """
+
+    singular: str
+    plural: str
+    criterion: str
+    empty: str
+    omitted: str = ""
+
+
+_ORPHAN_WORDING = _SectionWording(
+    singular="orphan candidate",
+    plural="orphan candidates",
+    criterion="function, no counted edge in or out",
+    empty="no orphan candidates: every function has a counted edge",
+)
+
+_UNUSED_WORDING = _SectionWording(
+    singular="unused export",
+    plural="unused exports",
+    criterion="public function, no counted edge in",
+    empty="no unused exports: every public function is reached",
+)
+
+# The heading counts symbols rather than hubs on purpose: every symbol with an
+# edge is in the ranking, and "1164 hubs" would read as a finding about the
+# repository rather than as the size of a ranked list.
+_HUB_WORDING = _SectionWording(
+    singular="symbol carries a counted edge",
+    plural="symbols carry a counted edge",
+    criterion="function, method or class, highest counted degree first",
+    empty="no hubs: no function, method or class carries a counted edge",
+    omitted="hubs",
+)
+
+
+def _health_section(section: HealthSection, wording: _SectionWording) -> list[str]:
+    """Render one health section, keyed on the count before the cap.
+
+    Keyed on ``total`` for the reason :func:`render_cycles` gives: read off
+    the rows the cap left behind, ``--limit`` would turn a finding into the
+    statement that the repository has none.
+    """
+    if not section.total:
+        return ["", wording.empty]
+
+    noun = wording.singular if section.total == 1 else wording.plural
+    lines = ["", f"{section.total} {noun} ({wording.criterion})"]
+    lines.extend(_health_rows(section.rows))
+    if section.omitted:
+        lines.append(
+            _omitted_line(section.omitted, wording.omitted or wording.plural, limit=section.limit)
+        )
+    return lines
+
+
+def _health_rows(rows: Sequence[HealthSymbol]) -> Iterator[str]:
+    """Yield one row per symbol: where it is, what it is, and its two degrees."""
+    for row in rows:
+        discounted = ", ".join(f"{entry.count} {one_line(entry.tier)}" for entry in row.discounted)
+        note = f"  -- discounted: {discounted}" if discounted else ""
+        yield (
+            f"  {_locator(row.stable_id, line=row.line)}  {one_line(row.label)}  "
+            f"{one_line(row.kind)}  in {row.in_degree}  out {row.out_degree}{note}"
+        )
+
+
 def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
     """Render one section of an explanation, grouped strongest tier first."""
     total = sum(group.total for group in groups)
@@ -1296,6 +1595,59 @@ def render_map(files: Sequence[MapFile]) -> str:
             lines.append(_omitted_line(map_file.omitted, "symbols in this file"))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"
+
+
+def render_test_companions(listing: TestCompanionListing) -> str:
+    """Render the test files that exercise a map's ranked files, or nothing.
+
+    An empty listing renders the empty string rather than a heading over no
+    rows. Most repositories a map is asked about hold no test the ranked files
+    reach, and a heading that always appears spends the caller's budget saying
+    the section found nothing -- which the section's absence already says.
+
+    Each row is one test file: its span, then the ranked files it covers. The
+    span comes first because it is the part a caller pastes into a read, and
+    the covered files explain why the row is here at all.
+
+    The two are stated as separate clauses because they are measured over
+    different extents. The span is one referencing symbol; the covered files
+    are everything the *whole file* reaches. A row that ran them together as
+    "``path:50-60`` covers a, b, c" reads as a promise that lines 50 to 60
+    mention all three, and a test whose other function is what reaches ``a``
+    breaks that promise. Naming the file as the subject of the coverage
+    clause keeps the span honest about being an entry point rather than the
+    evidence for every name beside it.
+    """
+    if not listing.rows:
+        return "".join(_reach_exhausted_note(listing.exhausted))
+
+    lines = ["tests exercising the files above:"]
+    for row in listing.rows:
+        covers = ", ".join(one_line(path) for path in row.covers)
+        located = f"{one_line(row.path)}:{row.start}-{row.end}"
+        lines.append(f"  {located}  -- file references {covers}" if covers else f"  {located}")
+    if listing.omitted:
+        lines.append(_omitted_line(listing.omitted, "test files", limit=listing.limit))
+    lines.extend(_reach_exhausted_note(listing.exhausted))
+    return "\n".join(lines) + "\n"
+
+
+def _reach_exhausted_note(exhausted: bool) -> list[str]:
+    """Say that the walk behind this section stopped before it finished.
+
+    Returned as a list so the caller can splice it into either branch, for the
+    reason :func:`_unresolved_imports_note` gives: the empty section needs the
+    line more than the populated one does, because "no tests exercise these
+    files" is the reading an agent stops on, and a capped walk did not earn it.
+    """
+    if not exhausted:
+        return []
+    return [
+        (
+            "  note: the walk out to these tests hit its node bound before it "
+            "finished, so this section is a floor rather than every test"
+        )
+    ]
 
 
 def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:

@@ -70,6 +70,15 @@ KEY_GRANULARITY = "granularity"
 KEY_DOCSTRINGS = "docstrings"
 KEY_STOPLIST = "stoplist"
 KEY_TEST_CMD = "test_cmd"
+# Weight the reference graph's edges by what kind of relationship each one is
+# -- inheritance above imports, imports above name references -- instead of by
+# the shipped scheme. Off unless a repository asks for it, and **it is not
+# language-neutral**: the base classes it reads come from ``ASTSymbol.bases``,
+# which only the extractor's Python class handler fills in. Every other
+# language records no bases, so this weights Python inheritance and weights
+# nothing at all for TypeScript, Go, Java or Rust. Do not turn it on expecting
+# a repository-wide effect on a repository that is not Python.
+KEY_RELATION_WEIGHTS = "relation_weights"
 
 KNOWN_KEYS = (
     KEY_MAP_BUDGET,
@@ -78,6 +87,7 @@ KNOWN_KEYS = (
     KEY_DOCSTRINGS,
     KEY_STOPLIST,
     KEY_TEST_CMD,
+    KEY_RELATION_WEIGHTS,
 )
 
 # Characters that would make a stoplist entry something other than an
@@ -105,6 +115,7 @@ class ProjectConfig:
     docstrings: bool | None = None
     stoplist: frozenset[str] = frozenset()
     test_cmd: str | None = None
+    relation_weights: bool | None = None
     warnings: tuple[str, ...] = ()
 
     @property
@@ -122,6 +133,7 @@ class ProjectConfig:
             KEY_DOCSTRINGS: self.docstrings,
             KEY_STOPLIST: sorted(self.stoplist),
             KEY_TEST_CMD: self.test_cmd,
+            KEY_RELATION_WEIGHTS: self.relation_weights,
             "warnings": list(self.warnings),
         }
 
@@ -254,6 +266,7 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
     docstrings = _boolean(document, KEY_DOCSTRINGS, warnings)
     stoplist = _stoplist(document, warnings)
     test_cmd = _command(document, warnings)
+    relation_weights = _boolean(document, KEY_RELATION_WEIGHTS, warnings)
 
     unknown = sorted(key for key in document if key not in KNOWN_KEYS)
     # `{key!r}` happens to escape a newline in a repository-authored key,
@@ -277,6 +290,7 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
         docstrings=docstrings,
         stoplist=stoplist,
         test_cmd=test_cmd,
+        relation_weights=relation_weights,
         warnings=tuple(warnings),
     )
 

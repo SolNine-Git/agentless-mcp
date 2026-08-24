@@ -47,6 +47,7 @@ NUMERIC_CLI_OPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("expand", "--limit"),
         ("explain", "--limit"),
         ("find-symbol", "--limit"),
+        ("health", "--limit"),
         ("html", "--max-edges"),
         ("html", "--max-nodes"),
         ("html", "--resolution"),

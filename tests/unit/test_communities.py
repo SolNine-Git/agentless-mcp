@@ -4,6 +4,8 @@ import pytest
 
 from agentless_mcp.core.communities import (
     ROOT_LABEL,
+    Community,
+    community_hash,
     community_label,
     detect_communities,
 )
@@ -287,3 +289,81 @@ class TestLabels:
         reach this comparison.
         """
         assert community_label(["src/a/one.py", "src/a/two.py"]) == "src/a"
+
+
+class TestIdentity:
+    """A label names a community for a reader; the hash identifies it.
+
+    Two runs over two commits return communities an agent has to match up,
+    and a label cannot do it: two communities in one partition can share one,
+    and the same group of files can be relabelled by an edit that moves a
+    single member.
+    """
+
+    def test_the_same_members_hash_the_same_whatever_order_they_arrive_in(self):
+        """A community is a set. The order the detector collected it in is
+        not part of what it is, so it must not reach the digest."""
+        assert community_hash(["src/a/two.py", "src/a/one.py"]) == community_hash(
+            ["src/a/one.py", "src/a/two.py"]
+        )
+
+    def test_a_changed_member_moves_the_hash(self):
+        """The drift signal. A group that gained or lost a file is a different
+        group, and the caller comparing two runs has to see that."""
+        before = community_hash(["src/a/one.py", "src/a/two.py"])
+
+        assert community_hash(["src/a/one.py", "src/a/three.py"]) != before
+        assert community_hash(["src/a/one.py", "src/a/two.py", "src/a/three.py"]) != before
+
+    def test_two_communities_sharing_a_label_still_have_two_identities(self):
+        """The failure that motivates the field: the detector may split one
+        directory in two, and both halves are then labelled by it."""
+        first = Community(
+            label="src/a",
+            members=("src/a/one.py", "src/a/two.py"),
+            internal_weight=1.0,
+            total_weight=2.0,
+        )
+        second = Community(
+            label="src/a",
+            members=("src/a/three.py", "src/a/four.py"),
+            internal_weight=1.0,
+            total_weight=2.0,
+        )
+
+        assert first.label == second.label
+        assert first.member_hash != second.member_hash
+
+    def test_the_members_alone_decide_a_community_identity(self):
+        """Identity is over the member set, so a community whose weights or
+        label differ but whose members do not is the same community."""
+        members = ("src/a/one.py", "src/a/two.py")
+        labelled = Community(label="src/a", members=members, internal_weight=1.0, total_weight=2.0)
+        relabelled = Community(
+            label=ROOT_LABEL, members=members, internal_weight=9.0, total_weight=9.0
+        )
+
+        assert labelled.member_hash == relabelled.member_hash == community_hash(members)
+
+    def test_a_member_set_is_not_flattened_into_one_string(self):
+        """Without a separator the members would join into one byte string and
+        two different sets could share a digest."""
+        assert community_hash(["src/a/b", "c"]) != community_hash(["src/a/bc"])
+
+    def test_the_digest_is_pinned_to_the_v1_scheme(self):
+        """The hash travels out of this process, so two runs on two versions
+        of this tool compare digests. A change to what is hashed has to move
+        HASH_VERSION and this pin together, never silently."""
+        assert (
+            community_hash(["src/a/one.py", "src/a/two.py"])
+            == "c22c09a1941c8da50617bcd60bddbb0d9a33f634958c1ada11450ef39808c59a"
+        )
+
+    def test_the_json_form_carries_the_identity_beside_the_label(self):
+        """A caller reading the wire form must not have to recompute the hash
+        to match two runs, and must still get a readable name."""
+        partition = detect_communities(clustered_graph())
+        first = partition.as_dict()["communities"][0]
+
+        assert first["label"] == "src/a"
+        assert first["member_hash"] == community_hash(CLUSTER_A)

@@ -488,7 +488,9 @@ class TestABoundedListingSaysWhatItLeftOut:
         assert rendered.startswith(f"{sites} references to widget")
         assert "caller_0.py:4" not in rendered
         assert f"... {sites - 4} more references not listed" in rendered
-        assert "including every reference in 4 more files" in rendered
+        # Four sites are spent one per file, so four of the six files are
+        # represented and two are cut out whole.
+        assert "including every reference in 2 more files" in rendered
 
     def test_the_json_form_carries_the_same_counts_as_the_text(self, wide_fan_in, extractor):
         result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(

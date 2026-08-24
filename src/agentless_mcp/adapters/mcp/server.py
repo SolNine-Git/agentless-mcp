@@ -81,6 +81,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
+    DEFAULT_HEALTH_LIMIT,
     DiagramRequest,
     GraphService,
     PathOptions,
@@ -185,6 +186,7 @@ OPERATION_PATH = "path"
 OPERATION_CYCLES = "cycles"
 OPERATION_COMMUNITIES = "communities"
 OPERATION_DIAGRAM = "diagram"
+OPERATION_HEALTH = "health"
 
 # The one parameter every tool shares. Its description is prompt data like
 # the tool descriptions; pydantic carries it into the published schema, which
@@ -217,7 +219,7 @@ ReferenceTarget = Annotated[
 SharedCallers = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["shared_callers"])]
 ExplainTarget = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["explain_target"])]
 StructureOperation = Annotated[
-    Literal["path", "cycles", "communities", "diagram"],
+    Literal["path", "cycles", "communities", "diagram", "health"],
     Field(description=PARAMETER_DESCRIPTIONS["structure_operation"]),
 ]
 PathSource = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["path_source"])]
@@ -918,6 +920,12 @@ def _operation_communities(
     return render.render_communities(report)
 
 
+def _operation_health(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
+    """Render the orphan, unused-export and hub sections in one answer."""
+    limit = _or_default(request.limit, DEFAULT_HEALTH_LIMIT)
+    return render.render_health(graphs.health(ctx, limit=limit))
+
+
 def _or_default(value: int | None, fallback: int) -> int:
     """Return the caller's bound, or this view's own when they named none.
 
@@ -951,6 +959,7 @@ _OPERATIONS: dict[str, Callable[[GraphService, RepoContext, StructureRequest], s
     OPERATION_CYCLES: _operation_cycles,
     OPERATION_COMMUNITIES: _operation_communities,
     OPERATION_DIAGRAM: _operation_diagram,
+    OPERATION_HEALTH: _operation_health,
 }
 
 
@@ -1378,7 +1387,10 @@ def _register_v1(
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
     ) -> str:
-        """Answer one whole-repository structural question: path, cycles, communities, diagram."""
+        """Answer one whole-repository structural question.
+
+        The operations are path, cycles, communities, diagram and health.
+        """
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             return handlers.analyze_structure(
                 ctx,
@@ -1489,6 +1501,7 @@ ORIENT_OPERATIONS: dict[str, OperationSpec] = {
     OPERATION_MAP: OperationSpec(accepted=("focus", "budget", "limit", "granularity")),
     OPERATION_COMMUNITIES: OperationSpec(accepted=("resolution", "limit")),
     OPERATION_CYCLES: OperationSpec(accepted=("limit",)),
+    OPERATION_HEALTH: OperationSpec(accepted=("limit",)),
     OPERATION_DIAGRAM: OperationSpec(
         accepted=("focus", "max_nodes", "max_edges", "group_by_communities", "resolution")
     ),

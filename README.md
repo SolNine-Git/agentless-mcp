@@ -63,12 +63,14 @@ context. Symbol IDs are printed by `map` and `skeleton` and can be passed to
 agentless-mcp path App.run Database.connect
 agentless-mcp cycles
 agentless-mcp communities
+agentless-mcp health
 agentless-mcp diagram > modules.mmd
 agentless-mcp html > modules.html
 ```
 
 These commands find relationships between symbols or files, report import
-cycles, group related files, and export Mermaid or interactive HTML graphs.
+cycles, group related files, list orphan candidates, unused exports and hubs,
+and export Mermaid or interactive HTML graphs.
 
 ### Validate patches
 
@@ -200,7 +202,7 @@ questions behind an `operation` parameter:
 
 | Tool | Operations | Purpose |
 | --- | --- | --- |
-| `orient` | `map`, `communities`, `cycles`, `diagram`, `path` | Where does this live, how is the repository put together |
+| `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | Where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
 | `find_referencing_symbols` | | Find references and callers (blast radius) |
 | `read` | `slice`, `dir` | Read selected source lines; list the repository tree |
@@ -227,6 +229,89 @@ mapping between the surfaces is in
 `agentless-mcp guide --section the-two-surfaces`.
 
 The MCP server does not apply patches or execute repository commands.
+
+### Keeping the tools enabled in Claude Code
+
+Claude Code asks for approval the first time a session calls each MCP tool.
+Every prompt is a chance to fall back to `Grep`, and the approval does not
+carry to the next session. Pre-approve the server once instead, in
+`permissions.allow` in `~/.claude/settings.json` for every project, or in
+the repository's `.claude/settings.json` for one:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__agentless__orient",
+      "mcp__agentless__symbols",
+      "mcp__agentless__find_referencing_symbols",
+      "mcp__agentless__read",
+      "mcp__agentless__capabilities"
+    ]
+  }
+}
+```
+
+A rule of the form `mcp__agentless` approves every tool the server
+publishes, which survives a surface change and a new operation. List the
+tools one by one, as above, when you want each addition to ask once before
+it runs unattended. Claude Code matches these rules literally: a wildcard
+such as `mcp__agentless__*` matches nothing.
+
+The prefix carries the server name you registered. These entries assume the
+`claude mcp add ... agentless ...` line at the top of this section. Under
+`--surface v1` or `--surface both`, add the per-question tool names as
+well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
+`read_slice`, `find_symbol`, `explain_symbol`, `analyze_structure`, and
+`resolve_locations`.
+
+### Loading the tool schemas at session start
+
+Approval is not the only way a session loses the server. Claude Code can
+also defer an MCP server's tools: they arrive as bare names, and the model
+must fetch each schema before it can call the tool. A deferred tool is not a
+callable tool. `Grep` loads from the first turn, so the model routes a
+locate step to `Grep` and never reaches this server.
+
+Tell the model to load the schemas first, and tell it when to prefer them.
+Both instructions belong in `CLAUDE.md`: use `~/.claude/CLAUDE.md` for every
+project, or the repository's own `CLAUDE.md` for one.
+
+````markdown
+## Session Start
+
+If the `mcp__agentless__*` tools show as deferred names rather than loaded
+tools, load their schemas before the first code-locating action of the
+session:
+
+`ToolSearch(query="select:mcp__agentless__orient,mcp__agentless__symbols,mcp__agentless__find_referencing_symbols,mcp__agentless__read")`
+
+A grep issued while these schemas sit unloaded is a routing failure, not a
+neutral default. Every subagent dispatch prompt that navigates code must
+include the same ToolSearch line. A worker without loaded schemas defaults
+to `Grep`, because `Grep` is loaded from the start.
+
+## Repo Navigation
+
+The `agentless` MCP server owns structural navigation: where code lives,
+what a file declares, who calls a symbol. Use it for every locate, trace,
+or orient step in a repository it covers. `Grep` owns exact text: string
+literals, error messages, config keys, and comments. A name that lives in
+configuration or a fixture never appears in a symbol map, so run both
+passes.
+
+- Locate a bug or feature: `orient` (map) with focus seeds from the ask,
+  then `symbols` (expand) for the few bodies that matter.
+- See what a file declares: `symbols` (overview), never a whole-file read.
+- Trace callers and blast radius: `find_referencing_symbols`.
+- Check whether a symbol or utility exists: `symbols` (find).
+- Orient in an unfamiliar repository: `orient` (communities), then `read`
+  (dir). The map returns ten ranked files. It localizes, it does not
+  enumerate.
+````
+
+Write the routing half as well as the loading half. A model that loads the
+schemas and reads no routing rule still reaches for `Grep`.
 
 ## Supported languages
 

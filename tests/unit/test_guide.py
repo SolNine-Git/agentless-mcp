@@ -38,6 +38,7 @@ EXPECTED_SECTIONS = (
     "cycles",
     "communities",
     "diagram",
+    "health",
     "html",
     "resolve-locs",
     "capabilities",
@@ -51,7 +52,7 @@ EXPECTED_SECTIONS = (
 )
 
 # Heading level -> count, over the whole guide, fences excluded.
-EXPECTED_LEVELS = {1: 1, 2: 8, 3: 20, 4: 4}
+EXPECTED_LEVELS = {1: 1, 2: 8, 3: 21, 4: 4}
 
 
 @pytest.fixture(autouse=True)

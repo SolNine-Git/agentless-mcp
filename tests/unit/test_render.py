@@ -116,6 +116,165 @@ class TestMap:
         assert "    9|     def price(self)  [py:core.py::Book.price]" in text
 
 
+class TestTestCompanions:
+    """The section the ranking cannot produce, so nothing else pins its shape."""
+
+    def row(self, **overrides):
+        fields = {
+            "path": "tests/test_quote.py",
+            "start": 12,
+            "end": 18,
+            "covers": ("core.py", "book.py"),
+        }
+        return render.TestCompanion(**{**fields, **overrides})
+
+    def listing(self, **overrides):
+        fields = {"rows": (self.row(),), "total": 1, "limit": 5}
+        return render.TestCompanionListing(**{**fields, **overrides})
+
+    def test_an_empty_listing_renders_nothing_at_all(self):
+        """Not a heading over no rows: the absence is the answer.
+
+        Most repositories a map is asked about reach no test, and this is
+        what keeps the section free on all of them -- and what keeps the
+        existing map goldens byte-identical, which is how the feature is
+        measured.
+        """
+        assert render.render_test_companions(render.TestCompanionListing()) == ""
+
+    def test_a_row_carries_a_span_and_the_files_it_covers(self):
+        text = render.render_test_companions(self.listing())
+
+        assert "  tests/test_quote.py:12-18  -- file references core.py, book.py" in text
+
+    def test_the_coverage_clause_names_the_file_not_the_span(self):
+        """The span is one symbol; the covered files are the whole file's.
+
+        Run together as "span covers a, b" the row promises those lines
+        mention every name beside them, which a test whose second function
+        reaches the second file does not do. The clause has to say which
+        extent it was measured over.
+        """
+        text = render.render_test_companions(self.listing())
+
+        assert "file references" in text
+        assert ":12-18  covers" not in text
+
+    def test_a_capped_walk_says_the_section_is_a_floor(self):
+        """A bounded walk that reads as a complete one is the failure the
+        flag exists to prevent: it reports a test as absent that nobody
+        looked for.
+        """
+        text = render.render_test_companions(self.listing(exhausted=True))
+
+        assert "node bound" in text
+        assert "floor rather than every test" in text
+
+    def test_an_empty_section_still_says_the_walk_was_capped(self):
+        """The empty section needs the note most. "No test exercises these
+        files" is the reading an agent stops on, and a capped walk did not
+        earn it.
+        """
+        text = render.render_test_companions(render.TestCompanionListing(exhausted=True))
+
+        assert "node bound" in text
+
+    def test_a_finished_walk_says_nothing_about_a_bound(self):
+        assert "node bound" not in render.render_test_companions(self.listing())
+
+    def test_the_section_names_itself_before_its_first_row(self):
+        text = render.render_test_companions(self.listing())
+
+        assert text.splitlines()[0] == "tests exercising the files above:"
+
+    def test_a_row_with_nothing_to_name_is_still_a_located_row(self):
+        """A span with no covered file is a row, not a dangling ``covers``."""
+        text = render.render_test_companions(self.listing(rows=(self.row(covers=()),)))
+
+        assert text.splitlines()[1] == "  tests/test_quote.py:12-18"
+
+    def test_a_cut_listing_says_how_much_it_left_out(self):
+        text = render.render_test_companions(self.listing(total=9))
+
+        assert text.splitlines()[-1] == "... 8 more test files not listed (limit 5)"
+
+    def test_an_uncut_listing_says_nothing_about_omissions(self):
+        assert "not listed" not in render.render_test_companions(self.listing())
+
+
+class TestHealth:
+    """The health answer's shape: three sections, always all three.
+
+    A health section that renders only when it found something reads as a
+    section that was not run, which is the opposite of what a dead-code
+    listing must say. Each section therefore states its criterion or states
+    that nothing met it, and every row names the evidence tiers its degree
+    count discounted.
+    """
+
+    def row(self, **overrides):
+        fields = {
+            "stable_id": "py:core.py::orphaned",
+            "path": "core.py",
+            "line": 12,
+            "label": "orphaned",
+            "kind": "function",
+            "in_degree": 0,
+            "out_degree": 0,
+        }
+        return render.HealthSymbol(**{**fields, **overrides})
+
+    def report(self, **overrides):
+        empty = render.HealthSection(rows=(), total=0, limit=20)
+        fields = {
+            "orphans": render.HealthSection(rows=(self.row(),), total=1, limit=20),
+            "unused_exports": empty,
+            "hubs": empty,
+            "symbols": 4,
+            "excluded": 2,
+        }
+        return render.HealthReport(**{**fields, **overrides})
+
+    def test_the_header_states_the_denominator_and_the_counting_rule(self):
+        lines = render.render_health(self.report()).splitlines()
+
+        assert lines[0] == "health over 4 symbols; 2 excluded as test or fixture paths"
+        assert "same-file and resolved-via-import edges only" in lines[1]
+
+    def test_a_row_carries_its_location_kind_and_both_degrees(self):
+        text = render.render_health(self.report())
+
+        assert "  [py:core.py::orphaned] @12  orphaned  function  in 0  out 0" in text
+
+    def test_a_discounted_tier_is_named_on_the_row(self):
+        """The adaptation the ported SQL cannot express, asserted at the sink.
+
+        Counted, a name-only match hides the orphan; dropped, the row is a
+        bare assertion. Named, the reader can go and look.
+        """
+        discounted = (render.DiscountedTier(tier="name-only-ambiguous", count=2),)
+        section = render.HealthSection(rows=(self.row(discounted=discounted),), total=1, limit=20)
+
+        text = render.render_health(self.report(orphans=section))
+
+        assert "-- discounted: 2 name-only-ambiguous" in text
+
+    def test_a_section_that_found_nothing_still_says_so(self):
+        text = render.render_health(self.report())
+
+        assert "no unused exports: every public function is reached" in text
+
+    def test_a_cut_section_says_how_much_it_left_out(self):
+        section = render.HealthSection(rows=(self.row(),), total=9, limit=1)
+
+        text = render.render_health(self.report(orphans=section))
+
+        assert "... 8 more orphan candidates not listed (limit 1)" in text
+
+    def test_a_single_finding_is_spelled_in_the_singular(self):
+        assert "1 orphan candidate (" in render.render_health(self.report())
+
+
 class TestImports:
     def build(self, **overrides):
         fields = {
@@ -431,6 +590,9 @@ def cases():
         rationales=(rationale,),
     )
     map_file = render.MapFile(path="core.py", rank=1.0, entries=(entry,))
+    companion = render.TestCompanion(
+        path="tests/test_core.py", start=12, end=18, covers=("core.py",)
+    )
     skipped = SkippedFile(path="huge.py", reason="over the per-file cap")
     listing = render.SharedCallerListing(rows=(shared,), total=1, limit=10)
 
@@ -503,6 +665,23 @@ def cases():
     )
     cycle = render.CycleRow(files=("core.py", "app.py"))
     cycle_report = render.CycleReport(cycles=(cycle,), total=1, limit=10)
+    health_row = render.HealthSymbol(
+        stable_id="py:core.py::quote",
+        path="core.py",
+        line=3,
+        label="quote",
+        kind="function",
+        in_degree=0,
+        out_degree=0,
+        discounted=(render.DiscountedTier(tier="name-only-ambiguous", count=1),),
+    )
+    empty_section = render.HealthSection(rows=(), total=0, limit=10)
+    health_report = render.HealthReport(
+        orphans=render.HealthSection(rows=(health_row,), total=1, limit=10),
+        unused_exports=empty_section,
+        hubs=empty_section,
+        symbols=1,
+    )
 
     return [
         ("map/file", map_file, lambda v: render.render_map([v])),
@@ -512,6 +691,13 @@ def cases():
             rationale,
             lambda v: render.render_map(
                 [replace(map_file, entries=(replace(entry, rationales=(v,)),))]
+            ),
+        ),
+        (
+            "map/companion",
+            companion,
+            lambda v: render.render_test_companions(
+                render.TestCompanionListing(rows=(v,), total=1, limit=5)
             ),
         ),
         ("skipped", skipped, lambda v: render.render_skipped_files([v])),
@@ -583,6 +769,25 @@ def cases():
             "cycles/row",
             cycle,
             lambda v: render.render_cycles(replace(cycle_report, cycles=(v,))),
+        ),
+        (
+            "health/row",
+            health_row,
+            lambda v: render.render_health(
+                replace(health_report, orphans=render.HealthSection(rows=(v,), total=1, limit=10))
+            ),
+        ),
+        (
+            "health/tier",
+            render.DiscountedTier(tier="name-only-ambiguous", count=1),
+            lambda v: render.render_health(
+                replace(
+                    health_report,
+                    orphans=render.HealthSection(
+                        rows=(replace(health_row, discounted=(v,)),), total=1, limit=10
+                    ),
+                )
+            ),
         ),
     ]
 

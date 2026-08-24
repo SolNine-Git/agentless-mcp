@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.6.0 -- 2026-08-24
+
+Recovers test-file localization and adds a structural-health view. The
+benchmark regression this release exists for was algorithmic, not a tuning
+mistake: `build_graph` writes edges referrer to definer, so a test file is a
+pure source with no inbound weight, and a ranking that scores inbound weight
+could never place one however directly it exercised the code above it.
+
+### New
+
+- **`orient(map)` lists the tests that exercise the files it ranked.** A
+  backward flood over the reference graph finds them and reports each as one
+  row with a real `path:start-end` span, outside the token budget the ranked
+  files are packed into. The section is omitted entirely when it is empty.
+- **`orient(health)` and `agentless-mcp health`.** Orphan candidates, unused
+  exports and hubs over the resolved graph, gated on same-file and imported
+  evidence tiers with the discounted tiers named per row.
+- **`core.graph.flood`.** A depth-bounded breadth-first walk, forward or
+  backward, that reports how far each reachable file is and whether it
+  finished looking.
+- **`relation_weights` project-config key.** Weights edges by relationship
+  kind. Off by default, and **not language-neutral**: only the Python class
+  handler fills in the base classes it reads.
+- **Community identity.** Each community carries `member_hash`, equal exactly
+  when the member set is equal, so a group can be matched across two runs.
+- **`SyntaxVerdict.first_error_line`.** A failing verdict names the line of
+  the new content's first parse error instead of only a count.
+
+### Behaviour changes
+
+Read this section before upgrading a script or an agent loop.
+
+- **`is_test_path` replaces `_defined_in_tests` and is public.** It now
+  recognises in-package test names -- `config/os_test.go`,
+  `shareUrl.test.ts` -- which the directory rule alone could not see. Note
+  that a repository keeping OpenAPI or protocol documents under `spec/` has
+  those files read as tests, which excludes them from `health` and ranks them
+  below production among shared-caller candidates.
+- **Reference sites truncate round-robin rather than by a flat prefix cut.**
+  The old cut was alphabetical, so `src` sorted before `tests` and the dropped
+  tail was disproportionately test files.
+- **The map's JSON gains a `test_companions` key** carrying `total`, `limit`,
+  `omitted`, `exhausted` and `rows`. Additive: no existing key changed.
+- **The rendered companion row reads `-- file references`, not `covers`.**
+  The span is one referencing symbol while the named files are the whole
+  file's reach, and the old wording read as a promise that the cited lines
+  mentioned every name beside them.
+- **A capped companion walk says so.** `test_companions.exhausted` is true
+  when the backward walk hit its node bound, and the rendered section adds a
+  note. Without it a truncated reach set read as a complete one, which
+  reports a test as absent that nobody looked for.
+
+### Fixed
+
+- **The companion walk no longer rebuilds its candidate set per test file.**
+  The set depends only on the flood depth, so it is built once per depth.
+  Measured on a synthetic graph of 8000 test files and 8000 helpers: 4.23s
+  before, 0.019s after, and the cost is now linear rather than quadratic.
+- **`community_hash` deduplicates its members** before hashing, so the digest
+  is a function of the member set the docstring promises. No shipped caller
+  passes duplicates, so no digest changes.
+- **`base_name` moved to `core.symbols`,** the only home below both `graph`
+  and `resolve` that does not close an import cycle.
+
 ## 0.5.1 -- 2026-08-23
 
 A correctness and security release. No new features.

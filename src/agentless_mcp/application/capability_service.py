@@ -9,7 +9,9 @@ from typing import Any
 from agentless_mcp.application import envelope, graph_service, symbol_service
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
+    DEFAULT_MAX_TEST_FILES,
     GRANULARITY_FUNCTION,
+    TEST_COMPANION_DEPTH,
 )
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import DEFAULT_EXPAND_LIMIT
@@ -235,6 +237,10 @@ def _effective_config(config: projectconfig.ProjectConfig) -> tuple[tuple[str, o
             "test_cmd",
             "configured (CLI validate only; value hidden)" if config.test_cmd else "none",
         ),
+        (
+            "relation_weights",
+            projectconfig.resolve(None, config.relation_weights, False),
+        ),
     )
 
 
@@ -261,12 +267,15 @@ def _caps() -> tuple[tuple[str, float], ...]:
         ("max_output_tokens", envelope.DEFAULT_MAX_TOKENS),
         ("max_config_warnings", envelope.MAX_CONFIG_WARNINGS),
         ("max_map_files", DEFAULT_MAX_FILES),
+        ("max_test_companions", DEFAULT_MAX_TEST_FILES),
+        ("test_companion_depth", TEST_COMPANION_DEPTH),
         ("default_find_limit", symbol_service.DEFAULT_FIND_LIMIT),
         ("default_refs_limit", symbol_service.DEFAULT_REFS_LIMIT),
         ("max_expand_symbols", DEFAULT_EXPAND_LIMIT),
         ("default_explain_limit", graph_service.DEFAULT_EXPLAIN_LIMIT),
         ("default_cycle_limit", graph_service.DEFAULT_CYCLE_LIMIT),
         ("default_community_limit", graph_service.DEFAULT_COMMUNITY_LIMIT),
+        ("default_health_limit", graph_service.DEFAULT_HEALTH_LIMIT),
         ("default_member_limit", graph_service.DEFAULT_MEMBER_LIMIT),
         ("default_community_resolution", communities.DEFAULT_RESOLUTION),
         ("default_context_lines", locs.DEFAULT_CONTEXT_LINES),

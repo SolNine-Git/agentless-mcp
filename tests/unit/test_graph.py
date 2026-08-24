@@ -13,10 +13,13 @@ from agentless_mcp.core.graph import (
     DEFAULT_MAX_ITERATIONS,
     IMPORT_EDGE_WEIGHT,
     NOISE_NAME_MULTIPLIER,
+    RELATION_WEIGHTS,
     UNIQUE_MATCH_MULTIPLIER,
     PathIndex,
+    Reached,
     RefGraph,
     build_graph,
+    flood,
     name_multiplier,
     personalized_pagerank,
     rank_order,
@@ -765,3 +768,279 @@ class TestASpecifierThatAlreadyNamesAFile:
             resolve_import_target("app.py", self.statement("package.module", relative=False), known)
             == "package/module.py"
         )
+
+
+# A reference graph with one cycle and two test files, hand-built because the
+# flood is about shape rather than about parsing. Edges run referrer to
+# definer, so every test file is a pure source: `src/a.py` reaches nothing
+# back, which is the whole reason the backward walk exists.
+FLOODED = RefGraph(
+    nodes=(
+        "lonely.py",
+        "src/a.py",
+        "src/b.py",
+        "src/c.py",
+        "tests/test_a.py",
+        "tests/test_b.py",
+    ),
+    edges=line(
+        ("tests/test_a.py", "src/a.py", 3.0),
+        ("tests/test_b.py", "src/b.py", 3.0),
+        ("src/b.py", "src/a.py", 1.0),
+        ("src/c.py", "src/b.py", 1.0),
+        ("src/a.py", "src/c.py", 1.0),
+    ),
+)
+
+
+class TestReverseAdjacency:
+    def test_it_lists_the_files_that_mention_each_file(self):
+        """The forward index cannot answer this, and the flood is built on it.
+
+        `adjacency` groups an edge under its source. Grouping the same edge
+        map under its target is the only new data the backward walk needs, and
+        getting the direction wrong would make a backward flood a forward one
+        that still returns rows.
+        """
+        incoming = FLOODED.reverse_adjacency()
+
+        assert incoming["src/a.py"] == (("src/b.py", 1.0), ("tests/test_a.py", 3.0))
+
+    def test_a_file_nothing_mentions_is_present_and_empty(self):
+        # Absent and empty are different answers, and a caller indexing the
+        # table by node must not meet a KeyError for a file with no fan-in.
+        assert FLOODED.reverse_adjacency()["lonely.py"] == ()
+
+    def test_every_node_appears_exactly_once_in_each_direction(self):
+        assert set(FLOODED.reverse_adjacency()) == set(FLOODED.adjacency()) == set(FLOODED.nodes)
+
+
+class TestFlood:
+    """Depth-bounded reachability over the reference graph, either direction."""
+
+    def test_backward_finds_the_tests_that_reach_a_file(self):
+        """The feature this exists for: production code has no outbound edge
+        to the tests that exercise it, so only the backward walk finds them.
+        """
+        walked = flood(FLOODED, ("src/a.py",), backward=True)
+
+        assert walked.reached == (
+            Reached(path="src/b.py", depth=1),
+            Reached(path="tests/test_a.py", depth=1),
+            Reached(path="src/c.py", depth=2),
+            Reached(path="tests/test_b.py", depth=2),
+        )
+        assert walked.exhausted is False
+
+    def test_forward_walks_the_other_way(self):
+        # Same graph, same seed, opposite direction: a result that did not
+        # move would mean `backward` is being ignored.
+        walked = flood(FLOODED, ("src/a.py",))
+
+        assert walked.reached == (
+            Reached(path="src/c.py", depth=1),
+            Reached(path="src/b.py", depth=2),
+        )
+
+    def test_a_seed_is_never_its_own_answer(self):
+        """A seed is the question. `src/a.py` is reachable from itself around
+        the cycle, and reporting it would put the question in the answer.
+        """
+        walked = flood(FLOODED, ("src/a.py", "src/b.py"), backward=True)
+
+        assert {row.path for row in walked.reached}.isdisjoint({"src/a.py", "src/b.py"})
+
+    def test_a_cycle_terminates_and_keeps_the_shortest_arrival(self):
+        """`c` is one hop from `a` directly and two hops around the cycle.
+
+        A walk that re-expanded an already-seen node would not return at all
+        here, and one that overwrote the depth would report `c` at 2.
+        """
+        cyclic = RefGraph(
+            nodes=("a.py", "b.py", "c.py"),
+            edges=line(
+                ("a.py", "b.py", 1.0),
+                ("b.py", "c.py", 1.0),
+                ("c.py", "a.py", 1.0),
+                ("a.py", "c.py", 1.0),
+            ),
+        )
+
+        walked = flood(cyclic, ("a.py",))
+
+        assert walked.reached == (
+            Reached(path="b.py", depth=1),
+            Reached(path="c.py", depth=1),
+        )
+
+    def test_rows_are_ordered_by_depth_then_path(self):
+        """The port orders by `(depth, name)`, which is not a total order.
+
+        This fixture discovers `z_far.py` before `a_far.py`, because the
+        frontier node that reaches `z_far.py` sorts first. Insertion order and
+        path order therefore disagree at depth 2, and only a sort on
+        `(depth, path)` makes two runs of an unchanged graph agree.
+        """
+        forked = RefGraph(
+            nodes=("a_far.py", "b_mid.py", "c_mid.py", "seed.py", "z_far.py"),
+            edges=line(
+                ("seed.py", "b_mid.py", 1.0),
+                ("seed.py", "c_mid.py", 1.0),
+                ("b_mid.py", "z_far.py", 1.0),
+                ("c_mid.py", "a_far.py", 1.0),
+            ),
+        )
+
+        walked = flood(forked, ("seed.py",))
+
+        assert [(row.depth, row.path) for row in walked.reached] == [
+            (1, "b_mid.py"),
+            (1, "c_mid.py"),
+            (2, "a_far.py"),
+            (2, "z_far.py"),
+        ]
+
+    def test_the_depth_bound_stops_the_walk_without_calling_it_exhausted(self):
+        # A depth bound is the caller's question, not a failure to answer it.
+        walked = flood(FLOODED, ("src/a.py",), backward=True, max_depth=1)
+
+        assert [row.path for row in walked.reached] == ["src/b.py", "tests/test_a.py"]
+        assert walked.exhausted is False
+
+    def test_a_walk_that_hits_the_visit_bound_says_so(self):
+        """Nothing further reaches this, and the walk stopped looking, are
+        different answers. A truncated reach set read as a complete one says a
+        file is unrelated when nobody checked.
+        """
+        walked = flood(FLOODED, ("src/a.py",), backward=True, max_visited=1)
+
+        assert walked.exhausted is True
+        assert "tests/test_b.py" not in {row.path for row in walked.reached}
+
+    def test_a_seed_naming_no_node_reaches_nothing(self):
+        walked = flood(FLOODED, ("gone.py",), backward=True)
+
+        assert walked.reached == ()
+        assert walked.visited == 0
+        assert walked.exhausted is False
+
+    def test_an_unknown_seed_beside_a_known_one_changes_nothing(self):
+        # The unknown name must not shift the answer the known seed gives, and
+        # must not raise from the adjacency lookup either.
+        assert flood(FLOODED, ("src/a.py", "gone.py"), backward=True) == flood(
+            FLOODED, ("src/a.py",), backward=True
+        )
+
+    def test_a_repeated_seed_is_walked_once(self):
+        assert (
+            flood(FLOODED, ("src/a.py", "src/a.py"), backward=True).visited
+            == flood(FLOODED, ("src/a.py",), backward=True).visited
+        )
+
+
+# A base class in one file and its subclass in another, which is the only
+# shape the inheritance weight can act on: `ASTSymbol.bases` is populated by
+# the Python class handler and by nothing else.
+INHERITED = {
+    "base.py": "class Ledger:\n    def post(self):\n        return 1\n",
+    "derived.py": "class Journal(Ledger):\n    pass\n",
+}
+
+
+class TestRelationWeights:
+    """The ported relation-typed weight table, and the flag that gates it.
+
+    The table is dark on purpose. `ASTSymbol.bases` is filled in by exactly one
+    extractor handler -- the Python class handler -- so the inheritance weight
+    fires for Python and silently never fires for any other language.
+    """
+
+    def built(self, tmp_path, extractor, files, *, relation_weights):
+        scan = scan_repo(write(tmp_path, files), extractor)
+        return build_graph(scan, build_ref_index(scan), relation_weights=relation_weights)
+
+    def test_the_shipped_default_is_the_shipped_weighting(self, tmp_path, extractor):
+        """The flag must be inert until a caller asks for it.
+
+        The characterization goldens pin the map byte for byte, so a default
+        that quietly re-weighted anything would move output nobody asked to
+        move.
+        """
+        files = INHERITED | {"user.py": "import base\n"}
+        scan = scan_repo(write(tmp_path, files), extractor)
+        index = build_ref_index(scan)
+
+        assert dict(build_graph(scan, index).edges) == dict(
+            build_graph(scan, index, relation_weights=False).edges
+        )
+        assert build_graph(scan, index).edges[("user.py", "base.py")] == IMPORT_EDGE_WEIGHT
+
+    def test_an_import_falls_to_the_tables_import_weight(self, tmp_path, extractor):
+        # An import statement mints no reference edge, so this edge is the
+        # import weight alone and the swap is visible on its own.
+        graph = self.built(
+            tmp_path,
+            extractor,
+            {"base.py": "VALUE = 1\n", "user.py": "import base\n"},
+            relation_weights=True,
+        )
+
+        assert graph.edges[("user.py", "base.py")] == RELATION_WEIGHTS["imports"]
+
+    def test_a_declared_base_class_adds_the_inheritance_weight(self, tmp_path, extractor):
+        """`class Journal(Ledger)` is a stronger claim than mentioning the name.
+
+        Measured as a delta against the same graph unweighted, because the
+        base name is also an ordinary reference and that contribution is
+        present either way.
+        """
+        without = self.built(tmp_path / "off", extractor, INHERITED, relation_weights=False)
+        with_bases = self.built(tmp_path / "on", extractor, INHERITED, relation_weights=True)
+
+        edge = ("derived.py", "base.py")
+        assert with_bases.edges[edge] - without.edges[edge] == RELATION_WEIGHTS["inheritance"]
+
+    def test_a_qualified_or_subscripted_base_still_resolves(self, tmp_path, extractor):
+        """Bases arrive as source text: `pkg.Ledger` and `Ledger[int]`.
+
+        Handed to the name index unnormalized, neither resolves, and the
+        weighting would fire only for the plainest spelling of the one
+        language it works for at all.
+        """
+        files = {
+            "base.py": "class Ledger:\n    def post(self):\n        return 1\n",
+            "derived.py": "class One(base.Ledger):\n    pass\n\n\nclass Two(Ledger[int]):\n"
+            "    pass\n",
+        }
+        without = self.built(tmp_path / "off", extractor, files, relation_weights=False)
+        with_bases = self.built(tmp_path / "on", extractor, files, relation_weights=True)
+
+        edge = ("derived.py", "base.py")
+        assert with_bases.edges[edge] - without.edges[edge] == 2 * RELATION_WEIGHTS["inheritance"]
+
+    def test_a_keyword_argument_in_a_base_list_is_not_a_base(self, tmp_path, extractor):
+        """`metaclass=Meta` is recorded among the bases and is not one.
+
+        Counting it would weight a metaclass as a superclass, and the same
+        mistake would weight any other keyword argument a base list carries.
+        """
+        files = {
+            "meta.py": "class Meta(type):\n    pass\n",
+            "derived.py": "class Odd(metaclass=Meta):\n    pass\n",
+        }
+        without = self.built(tmp_path / "off", extractor, files, relation_weights=False)
+        with_bases = self.built(tmp_path / "on", extractor, files, relation_weights=True)
+
+        edge = ("derived.py", "meta.py")
+        assert with_bases.edges[edge] == without.edges[edge]
+
+    def test_a_base_defined_in_the_same_file_points_nowhere(self, tmp_path, extractor):
+        # The shadowing rule the reference pass applies to every name: a local
+        # definition wins, so no cross-file inheritance edge is minted.
+        files = {
+            "solo.py": "class Ledger:\n    pass\n\n\nclass Journal(Ledger):\n    pass\n",
+            "other.py": "class Ledger:\n    pass\n",
+        }
+        graph = self.built(tmp_path, extractor, files, relation_weights=True)
+
+        assert ("solo.py", "other.py") not in graph.edges

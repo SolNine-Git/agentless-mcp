@@ -142,6 +142,13 @@ PARITY_PAIRS = [
         "analyze_structure",
         {"operation": "cycles", "limit": 2},
     ),
+    ("orient", {"operation": "health"}, "analyze_structure", {"operation": "health"}),
+    (
+        "orient",
+        {"operation": "health", "limit": 2},
+        "analyze_structure",
+        {"operation": "health", "limit": 2},
+    ),
     ("orient", {"operation": "diagram"}, "analyze_structure", {"operation": "diagram"}),
     (
         "orient",
@@ -381,7 +388,10 @@ REJECTIONS = [
     (
         "orient",
         {"operation": "graph"},
-        ["orient has no operation named 'graph'", "communities, cycles, diagram, map, path"],
+        [
+            "orient has no operation named 'graph'",
+            "communities, cycles, diagram, health, map, path",
+        ],
     ),
     (
         "symbols",

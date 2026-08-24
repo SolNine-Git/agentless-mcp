@@ -16,6 +16,8 @@ from agentless_mcp.application.symbol_service import (
     EXPAND_MAX_SEATS,
     MAX_UNRESOLVED_ROWS,
     SymbolService,
+    is_fixture_path,
+    is_test_path,
     render_expansion,
     render_refs,
     unresolved_lines,
@@ -269,3 +271,160 @@ class TestTheFailureReportIsNotPartOfTheAnswer:
         result = symbols.expand_symbols(repo, ["py:core.py::quote", "py:core.py::absent"])
 
         assert any("absent" in line for line in unresolved_lines(result))
+
+
+# One helper called from three production files and one test file. The
+# production paths sort first, so a flat prefix cut spends the whole limit on
+# them before the test file is reached.
+MIXED_CALLER = """\
+from src.core import widget
+
+
+def use_{index}():
+    first = widget()
+    return first + widget()
+"""
+
+MIXED_TEST = """\
+from src.core import widget
+
+
+def test_widget():
+    assert widget() == 1
+"""
+
+MIXED_PRODUCTION_FILES = ("alpha", "beta", "gamma")
+
+
+@pytest.fixture
+def mixed_fan_in(tmp_path):
+    """A repository whose helper is called from `src/` files and one `tests/` file."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "core.py").write_text("def widget():\n    return 1\n", encoding="utf-8")
+    for index, name in enumerate(MIXED_PRODUCTION_FILES):
+        (tmp_path / "src" / f"{name}.py").write_text(
+            MIXED_CALLER.format(index=index), encoding="utf-8"
+        )
+    (tmp_path / "tests" / "test_widget.py").write_text(MIXED_TEST, encoding="utf-8")
+    return resolve_repo(tmp_path, None)
+
+
+class TestTheLimitIsSpentOnBreadth:
+    """A truncated fan-in used to drop the test files and say nothing.
+
+    `_dedupe` orders the sites by `(path, line, name)` and the limit used to
+    cut that list flat, so the tail it dropped was whichever files sort last
+    -- and `src` sorts before `tests`. A symbol with more sites than the limit
+    answered with its production callers alone, which an agent reads as "no
+    test covers this". Nothing demoted the tests; the alphabet did.
+    """
+
+    def test_a_test_file_survives_a_limit_the_production_files_could_fill(
+        self, mixed_fan_in, symbols
+    ):
+        result = symbols.find_referencing_symbols(mixed_fan_in, "widget", limit=4)
+
+        assert any(group.path.startswith("tests/") for group in result.groups)
+
+    def test_every_referencing_file_is_represented_before_any_gets_a_second_site(
+        self, mixed_fan_in, symbols
+    ):
+        result = symbols.find_referencing_symbols(mixed_fan_in, "widget", limit=4)
+
+        assert [len(group.sites) for group in result.groups] == [1, 1, 1, 1]
+
+    def test_the_counts_still_speak_for_every_site_and_file(self, mixed_fan_in, symbols):
+        """The round-robin decides what is shown, never what is counted."""
+        result = symbols.find_referencing_symbols(mixed_fan_in, "widget", limit=4)
+        whole = symbols.find_referencing_symbols(mixed_fan_in, "widget")
+
+        assert result.groups.total == whole.groups.total
+        assert result.groups.files == len(MIXED_PRODUCTION_FILES) + 1
+        assert result.groups.files_omitted == 0
+        assert result.groups.omitted == whole.groups.total - 4
+
+    def test_a_limit_below_the_file_count_still_reports_the_files_it_cut(
+        self, mixed_fan_in, symbols
+    ):
+        result = symbols.find_referencing_symbols(mixed_fan_in, "widget", limit=2)
+
+        assert len(result.groups) == 2
+        assert result.groups.files_omitted == 2
+
+    def test_the_sites_of_one_file_keep_their_line_order(self, mixed_fan_in, symbols):
+        result = symbols.find_referencing_symbols(mixed_fan_in, "widget")
+        lines = [[site.line for site in group.sites] for group in result.groups]
+
+        assert all(group == sorted(group) for group in lines)
+
+
+class TestWhatCountsAsATestPath:
+    """The predicate is what makes a test file visible as one.
+
+    It was scoped to `test`/`tests` directory segments, which sees a Python
+    repository and misses the languages that put the test beside the code:
+    Go, Rust and TypeScript name the file, not the directory. Measured
+    against the bench ground truth, the directory rule alone missed 11 of 57
+    test files, and in-package suffix-named files were the dominant class.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "tests/test_pricing.py",
+            "conftest.py",
+            "pkg/conftest.py",
+            "testing/harness.go",
+            "spec/models.rb",
+            "specs/acceptance.rb",
+            "__tests__/App.jsx",
+            "config/os_test.go",
+            "rpc/flipt/validation_test.go",
+            "src/ledger_test.rs",
+            "pkg/thing_test.py",
+            "applications/web/shareUrl.test.ts",
+            "app/models.spec.ts",
+        ],
+    )
+    def test_each_convention_reads_as_a_test_file(self, path):
+        assert is_test_path(path)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "latest/pricing.py",
+            "contest.py",
+            "introspection.py",
+            "src/core.py",
+            "spectrum/analyse.py",
+        ],
+    )
+    def test_a_name_that_merely_contains_the_word_is_production(self, path):
+        """A substring rule reads `spec` out of `introspection.py` and fails here."""
+        assert not is_test_path(path)
+
+
+class TestWhatCountsAsAFixturePath:
+    """Beside the test predicate rather than folded into it.
+
+    A fixture exists to be parsed, so nothing calls it and it is a permanent
+    orphan candidate; a fixture is not a test, so it must not rank as one in
+    the map's companion section. Two questions, two names, and the health
+    view is the caller that asks both.
+    """
+
+    @pytest.mark.parametrize(
+        "path",
+        ["fixtures/repo_py/core.py", "tests/characterization/fixtures/sample.py"],
+    )
+    def test_a_fixture_directory_reads_as_one(self, path):
+        assert is_fixture_path(path)
+
+    @pytest.mark.parametrize("path", ["fixtures_old/core.py", "src/fixture.py", "src/core.py"])
+    def test_a_name_that_merely_contains_the_word_is_production(self, path):
+        assert not is_fixture_path(path)
+
+    def test_a_fixture_is_not_reported_as_a_test(self):
+        """The map lists tests as companions; a fixture has nothing to exercise."""
+        assert not is_test_path("fixtures/repo_py/core.py")

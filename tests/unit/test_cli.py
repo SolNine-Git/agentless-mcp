@@ -361,6 +361,25 @@ class TestInProcess:
         assert document["symbol"]["stable_id"] == "py:core.py::quote"
         assert document["fan_in"]
 
+    def test_health_reports_the_three_sections_with_exit_zero(self, services, repo_path, capsys):
+        """A repository with nothing wrong is a successful answer, not an empty one."""
+        assert invoke(services, repo_path, "health") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "orphan candidate" in out
+        assert "unused export" in out
+        assert "counted edge" in out
+
+    def test_health_has_a_json_form(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "health", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert set(document["hubs"]) == {"total", "limit", "omitted", "rows"}
+        assert document["symbols"] > 0
+
+    def test_a_bad_health_limit_is_refused_by_the_service(self, services, repo_path, capsys):
+        code = invoke(services, repo_path, "health", "--limit", "0")
+        assert code == EXIT_DOMAIN
+        assert "limit takes a value from 1 through 500, got 0" in capsys.readouterr().err
+
     def test_communities_rolls_the_files_up(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "communities") == EXIT_OK
         out = capsys.readouterr().out
@@ -1023,6 +1042,7 @@ class TestExitCodes:
         [
             ("map_answers", ("map",), EXIT_OK),
             ("cycles_are_legitimately_empty", ("cycles",), EXIT_OK),
+            ("health_finds_nothing_wrong", ("health",), EXIT_OK),
             ("skeleton_missing_file", ("skeleton", "gone.py"), EXIT_DOMAIN),
             ("slice_missing_file", ("slice", "gone.py"), EXIT_DOMAIN),
             ("expand_unknown_id", ("expand", "py:core.py::nothing"), EXIT_DOMAIN),
@@ -1418,6 +1438,7 @@ class TestPatchSubprocess:
                     "ok": True,
                     "checked": True,
                     "detail": "",
+                    "first_error_line": None,
                 },
             }
         ]

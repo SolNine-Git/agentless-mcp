@@ -836,6 +836,7 @@ class TestWireBounds:
             "cycles",
             "communities",
             "diagram",
+            "health",
         }
 
     @pytest.mark.parametrize(
@@ -1546,7 +1547,7 @@ class TestAnalyzeStructure:
         assert "needs both source and target" in str(raised.value)
 
     def test_every_operation_is_dispatched_by_the_table(self):
-        assert set(_OPERATIONS) == {"path", "cycles", "communities", "diagram"}
+        assert set(_OPERATIONS) == {"path", "cycles", "communities", "diagram", "health"}
 
 
 class TestMapFocusShapes:

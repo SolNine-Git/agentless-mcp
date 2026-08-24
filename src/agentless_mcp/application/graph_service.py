@@ -48,22 +48,30 @@ Every one of them is bounded and says what it left out.
 """
 
 import math
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import rationale_nodes, symbol_card
+from agentless_mcp.application.symbol_service import (
+    is_fixture_path,
+    is_test_path,
+    rationale_nodes,
+    symbol_card,
+)
 from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.symbols import qualname, symbol_stable_id
+from agentless_mcp.core.symbols import SymbolKind, qualname, symbol_stable_id
 from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import OperationFailed
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
 DEFAULT_COMMUNITY_LIMIT = 20
+DEFAULT_HEALTH_LIMIT = 20
 
 # How many member paths one community lists before it elides. A community is
 # usually a directory; past a dozen files the reader wants the label and the
@@ -120,6 +128,44 @@ _PASSIVE: dict[resolve.Relation, str] = {
 
 FORWARD_ARROW = "->"
 REVERSE_ARROW = "<-"
+
+# The evidence tiers a degree count trusts. A unique-name match says only
+# that the repository spells that name once, and a name-only-ambiguous match
+# says only that it spells it at all; counted as edges, either one reports a
+# symbol as reached because a word appears somewhere. They are discounted
+# rather than dropped -- every health row names the tiers behind the matches
+# it did not count -- which is the fact the SQL this view is ported from
+# cannot express, because its edges carry no tier.
+_BINDING_TIERS = frozenset({resolve.Tier.SAME_FILE, resolve.Tier.IMPORTED})
+
+# The one kind whose absence from the call graph is a finding. A constant, a
+# type alias or an enum member is called by nothing and would fill an orphan
+# listing with rows nobody can act on.
+#
+# Methods are excluded, and that is a departure from the SQL this view is
+# ported from. A call through a selector -- ``obj.method()``, ``self.help()``
+# -- is an attribute member, which :func:`resolve._reference_edges` refuses at
+# every tier, so no method ever earns an inbound edge from its ordinary call
+# site. Measured on this repository (2026-08-23): with methods included, all
+# 184 orphan candidates and all 238 unused exports were methods and none was
+# dead. A listing that is entirely one blind spot is a confident false
+# positive, so the blind spot is named in the report instead.
+_ORPHAN_KINDS = frozenset({SymbolKind.FUNCTION})
+
+# The kinds a hub may be. Wider, because the symbol everything routes through
+# is as often a class as a function, and methods belong here: the same missing
+# selector edge only undercounts a degree, where above it manufactures a
+# finding.
+_HUB_KINDS = frozenset(
+    {
+        SymbolKind.FUNCTION,
+        SymbolKind.METHOD,
+        SymbolKind.CLASS,
+        SymbolKind.DATACLASS,
+        SymbolKind.PROTOCOL,
+        SymbolKind.ENUM,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -245,6 +291,18 @@ class GraphService:
             limit=limit,
             unresolved_imports=resolved.graph.unresolved_imports,
         )
+
+    def health(self, ctx: RepoContext, *, limit: int = DEFAULT_HEALTH_LIMIT) -> render.HealthReport:
+        """Report orphans, unused exports and hubs over the resolved graph.
+
+        Three findings in one answer rather than three calls, because they are
+        three readings of one degree count and computing that count is what
+        the call costs. ``limit`` bounds each section separately, and each
+        section carries the size of the finding it was cut from.
+        """
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
+        resolved = self._resolve(ctx)
+        return health_report(resolved.graph, limit=limit)
 
     def communities(
         self,
@@ -378,13 +436,176 @@ class GraphService:
         """
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
-        built = graph.build_graph(scan, index, stoplist=ctx.config.stoplist)
+        built = graph.build_graph(
+            scan,
+            index,
+            stoplist=ctx.config.stoplist,
+            relation_weights=bool(ctx.config.relation_weights),
+        )
         return _Ranked(
             index=index,
             graph=built,
             ranking=graph.personalized_pagerank(built),
             imports=_import_pairs(scan),
         )
+
+
+@dataclass(frozen=True)
+class _Degree:
+    """One symbol's counted edges, and the weak matches that were not counted."""
+
+    counted_in: int = 0
+    counted_out: int = 0
+    discounted_in: Mapping[resolve.Tier, int] = MappingProxyType({})
+    discounted_out: Mapping[resolve.Tier, int] = MappingProxyType({})
+
+    @property
+    def counted(self) -> int:
+        """The counted edges at both ends."""
+        return self.counted_in + self.counted_out
+
+
+_NO_DEGREE = _Degree()
+
+
+def health_report(graph: resolve.ResolvedGraph, *, limit: int) -> render.HealthReport:
+    """Compute the three structural-health findings over one resolved graph.
+
+    Pure: one graph in, one report out, no repository and no clock. Test and
+    fixture paths are excluded before anything is counted, because a fixture
+    that exists to be parsed and a test helper nothing calls are permanent
+    orphans and would be the whole listing on most repositories.
+    """
+    degrees = _degrees(graph)
+    considered = [
+        (stable_id, definition)
+        for stable_id, definition in sorted(graph.definitions.items())
+        if not is_test_path(definition.path) and not is_fixture_path(definition.path)
+    ]
+
+    orphans = [
+        (stable_id, definition, degree)
+        for stable_id, definition, degree in _of_kinds(considered, degrees, _ORPHAN_KINDS)
+        if not degree.counted
+    ]
+    unused = [
+        (stable_id, definition, degree)
+        for stable_id, definition, degree in _of_kinds(considered, degrees, _ORPHAN_KINDS)
+        if definition.symbol.is_public and not degree.counted_in
+    ]
+    hubs = sorted(
+        (entry for entry in _of_kinds(considered, degrees, _HUB_KINDS) if entry[2].counted),
+        key=lambda entry: (-entry[2].counted, entry[1].path, entry[1].symbol.line_number),
+    )
+
+    return render.HealthReport(
+        orphans=_health_section(orphans, limit=limit, inbound_only=False),
+        unused_exports=_health_section(unused, limit=limit, inbound_only=True),
+        hubs=_health_section(hubs, limit=limit, inbound_only=False),
+        symbols=len(considered),
+        excluded=len(graph.definitions) - len(considered),
+    )
+
+
+def _of_kinds(
+    considered: Sequence[tuple[str, refs.Definition]],
+    degrees: Mapping[str, _Degree],
+    kinds: frozenset[SymbolKind],
+) -> list[tuple[str, refs.Definition, _Degree]]:
+    """Keep the definitions of the named kinds, each beside its degree.
+
+    Ordered by ``(path, line)`` -- the order the ported SQL sorts by -- with
+    the stable id breaking a tie, because two symbols can start on one line
+    and a listing whose order depends on dictionary insertion is not a
+    listing a golden can pin.
+    """
+    return sorted(
+        (
+            (stable_id, definition, degrees.get(stable_id, _NO_DEGREE))
+            for stable_id, definition in considered
+            if definition.symbol.kind in kinds
+        ),
+        key=lambda entry: (entry[1].path, entry[1].symbol.line_number, entry[0]),
+    )
+
+
+def _degrees(graph: resolve.ResolvedGraph) -> dict[str, _Degree]:
+    """Count each node's edges in one pass, keeping the tiers apart.
+
+    Both ends of every edge are counted here rather than through
+    :meth:`ResolvedGraph.incoming` and :meth:`ResolvedGraph.outgoing`, which
+    build two grouped copies of the whole edge list to answer a question that
+    is two integers per node.
+    """
+    counted_in: Counter[str] = Counter()
+    counted_out: Counter[str] = Counter()
+    weak_in: defaultdict[str, Counter[resolve.Tier]] = defaultdict(Counter)
+    weak_out: defaultdict[str, Counter[resolve.Tier]] = defaultdict(Counter)
+
+    for edge in graph.edges:
+        if edge.tier in _BINDING_TIERS:
+            counted_out[edge.source.node] += 1
+            counted_in[edge.target.node] += 1
+        else:
+            weak_out[edge.source.node][edge.tier] += 1
+            weak_in[edge.target.node][edge.tier] += 1
+
+    nodes = set(counted_in) | set(counted_out) | set(weak_in) | set(weak_out)
+    return {
+        node: _Degree(
+            counted_in=counted_in[node],
+            counted_out=counted_out[node],
+            discounted_in=MappingProxyType(dict(weak_in[node])),
+            discounted_out=MappingProxyType(dict(weak_out[node])),
+        )
+        for node in nodes
+    }
+
+
+def _health_section(
+    entries: Sequence[tuple[str, refs.Definition, _Degree]],
+    *,
+    limit: int,
+    inbound_only: bool,
+) -> render.HealthSection:
+    """Cap one finding and keep the count it was cut from.
+
+    ``inbound_only`` selects which discounted matches a row names. An unused
+    export is a claim about what reaches the symbol, so naming the weak
+    matches leaving it would answer a question the row does not ask.
+    """
+    rows = tuple(
+        _health_row(stable_id, definition, degree, inbound_only=inbound_only)
+        for stable_id, definition, degree in entries[:limit]
+    )
+    return render.HealthSection(rows=rows, total=len(entries), limit=limit)
+
+
+def _health_row(
+    stable_id: str,
+    definition: refs.Definition,
+    degree: _Degree,
+    *,
+    inbound_only: bool,
+) -> render.HealthSymbol:
+    """Render one symbol's degree into a row, tiers named."""
+    discounted: Counter[resolve.Tier] = Counter(degree.discounted_in)
+    if not inbound_only:
+        discounted.update(degree.discounted_out)
+    return render.HealthSymbol(
+        stable_id=stable_id,
+        path=definition.path,
+        line=definition.symbol.line_number,
+        label=qualname(definition.symbol),
+        kind=definition.symbol.kind.value,
+        in_degree=degree.counted_in,
+        out_degree=degree.counted_out,
+        discounted=tuple(
+            render.DiscountedTier(tier=tier.label, count=discounted[tier])
+            for tier in resolve.TIER_ORDER
+            if discounted[tier]
+        ),
+    )
 
 
 def _import_pairs(scan: refs.RepoScan) -> frozenset[tuple[str, str]]:
