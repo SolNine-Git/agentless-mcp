@@ -106,24 +106,39 @@ class Truncation:
 def receipt_lines(
     ctx: RepoContext,
     *,
+    summary: str | None = None,
     counter: TokenCounter | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> list[str]:
-    """Return the whole receipt block: the tool's own lines, then the warnings.
+    """Return the whole receipt block, with the banner between its two halves.
 
     A repository carrying a ``.agentless-mcp.json`` says so, and the warnings
     the file produced are printed. Defaults taken from repository content have
     to be visible: an answer shaped by a file the caller never read is the
     thing this line exists to prevent.
 
+    The two halves are not interchangeable. Everything above the banner is
+    authored here; a config warning below it quotes a key out of the analysed
+    repository. Run together with no marker, as they were, a warning reads as
+    another line this tool wrote -- on the receipt, which is the one region an
+    agent is told to trust.
+
+    ``summary`` is the caller's own closing line, and it is a parameter rather
+    than something the caller appends afterwards because appending is what put
+    tool-authored text below the banner. There is one order, and this function
+    owns it.
+
     Human-facing and positional: read :func:`receipt_fields` to parse a
-    receipt. The two halves are separable because :func:`wrap` renders them in
-    different regions -- the tool's lines above the untrusted-content banner,
-    the repository's warnings below it -- while a caller with no banner to
-    place them either side of wants the block whole.
+    receipt. :func:`wrap` does not call this -- it renders the same two halves
+    into different regions of the wrapped body.
     """
     warnings = _bounded_warnings(ctx.config.warnings, counter, max_tokens)
-    return [*_tool_lines(ctx), *_warning_lines(warnings)]
+    tool = [*_tool_lines(ctx)]
+    if summary is not None:
+        tool.append(f"# {summary}")
+    if not warnings:
+        return tool
+    return [*tool, ENVELOPE.banner, *_warning_lines(warnings)]
 
 
 def _tool_lines(ctx: RepoContext) -> list[str]:

@@ -43,7 +43,7 @@ name itself, matched the repository's only definition, or matched nothing but
 the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -360,7 +360,8 @@ class SymbolService:
         index = refs.build_ref_index(scan)
         by_path = scan.by_path()
 
-        definitions = list(refs.definitions_for(index, target))
+        resolution = refs.resolve_definitions(index, target)
+        definitions = list(resolution.definitions)
         sites = _dedupe(
             site for definition in definitions for site in refs.references_to(index, definition)
         )
@@ -383,7 +384,7 @@ class SymbolService:
             target=target,
             groups=groups,
             shared=shared,
-            target_resolved=_target_resolved(target, definitions),
+            target_resolved=resolution.scoped,
         )
 
     def _fit_bodies(
@@ -595,27 +596,6 @@ def render_find(result: FindResult) -> str:
     if not warning:
         return body
     return warning + "\n\n" + body
-
-
-def _target_resolved(target: str, definitions: Sequence[refs.Definition]) -> bool:
-    """True when a stable-id target found the symbol it named.
-
-    A bare name promises nothing about a file, so it always resolves. A stable
-    id does, and when the file no longer defines it
-    :func:`agentless_mcp.core.refs.definitions_for` falls back to every
-    definition of the name -- deliberately, so an id from an earlier
-    generation degrades to a name lookup instead of to an empty answer. The
-    caller has to be told which of the two answers it is holding: the
-    strongest evidence tier for a symbol nobody named reads as a fact.
-    """
-    try:
-        parsed = parse_stable_id(target)
-    except ValueError:
-        return True
-    return any(
-        definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
-        for definition in definitions
-    )
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:

@@ -237,6 +237,35 @@ class TestRepositoryAuthoredText:
 
         assert wrapped.index(BANNER) < wrapped.index("config warning")
 
+    def test_the_stderr_receipt_carries_the_banner_too(self, counter, pinned_context):
+        """The stderr block ran its two halves together with no marker.
+
+        `wrap` has always put the banner between them. `receipt_lines` -- what
+        diagram, html, validate and patch print -- did not, so a warning
+        quoting a key out of the analysed repository sat flush against the
+        lines this tool wrote, on the one region an agent is told to trust.
+        """
+        block = "\n".join(envelope.receipt_lines(with_warnings(pinned_context(ROOT), 1)))
+
+        assert block.index(BANNER) < block.index("config warning")
+
+    def test_a_repository_with_no_warnings_gets_no_banner(self, pinned_context):
+        """The banner marks a boundary; with nothing below it there is none."""
+        assert BANNER not in "\n".join(envelope.receipt_lines(pinned_context(ROOT)))
+
+    def test_the_callers_summary_stays_above_the_banner(self, pinned_context):
+        """Why `summary` is a parameter and not something the caller appends.
+
+        Appending is what put tool-authored text below the marker: every CLI
+        site built `[*receipt_lines(ctx), f"# {summary}"]`, so the summary
+        landed under the warnings once they gained a banner above them.
+        """
+        block = "\n".join(
+            envelope.receipt_lines(with_warnings(pinned_context(ROOT), 1), summary="12 files")
+        )
+
+        assert block.index("# 12 files") < block.index(BANNER) < block.index("config warning")
+
     def test_the_receipt_counts_the_warnings_it_left_out(self, counter, pinned_context):
         wrapped = envelope.wrap(with_warnings(pinned_context(ROOT), 50), "body\n", counter=counter)
 

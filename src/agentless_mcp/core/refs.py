@@ -188,7 +188,32 @@ def references_to(index: RefIndex, definition: Definition) -> tuple[Ref, ...]:
     )
 
 
+@dataclass(frozen=True)
+class Resolution:
+    """What ``target`` resolved to, and whether it named the symbol it found.
+
+    ``scoped`` answers the question a caller cannot re-derive without copying
+    this module's matching rule: did a stable id find the symbol in the file it
+    named, or did it fall through to every definition of that name? Both are
+    useful answers and only one of them is what the caller asked for, so the
+    distinction travels with the definitions rather than being recomputed
+    beside them.
+    """
+
+    definitions: tuple[Definition, ...]
+    scoped: bool
+
+
 def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
+    """Resolve a lookup target to definitions, for a caller that needs no more.
+
+    :func:`resolve_definitions` is the same walk and also reports whether the
+    target named what it found.
+    """
+    return resolve_definitions(index, target).definitions
+
+
+def resolve_definitions(index: RefIndex, target: str) -> Resolution:
     """Resolve a lookup target -- a stable id or a bare name -- to definitions.
 
     One home for what "the symbol the caller meant" means, because fan-in,
@@ -210,7 +235,9 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
         base, _ = split_ordinal(target)
         name = base.rpartition(".")[2] or base
         candidates = tuple(index.definitions.get(name, ()))
-        return _path_qualified(candidates, base) or candidates
+        # A bare name promises nothing about a file, so there is nothing it
+        # could have failed to find: it resolves by definition.
+        return Resolution(_path_qualified(candidates, base) or candidates, scoped=True)
 
     base, _ = split_ordinal(parsed.qualname)
     name = base.rpartition(".")[2] or base
@@ -219,7 +246,9 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
         for definition in index.definitions.get(name, ())
         if definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
     )
-    return scoped or tuple(index.definitions.get(name, ()))
+    if scoped:
+        return Resolution(scoped, scoped=True)
+    return Resolution(tuple(index.definitions.get(name, ())), scoped=False)
 
 
 def _path_qualified(candidates: tuple[Definition, ...], target: str) -> tuple[Definition, ...]:

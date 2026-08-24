@@ -92,6 +92,7 @@ from agentless_mcp.core import (
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
+from agentless_mcp.core.htmlgraph import HtmlExport
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
@@ -1092,7 +1093,7 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     else:
         emit(view.text)
 
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {_diagram_summary(view)}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=_diagram_summary(view))))
     if view.caveat:
         note(f"agentless-mcp: {view.caveat}")
     return EXIT_OK
@@ -1126,18 +1127,24 @@ def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
             return fail(f"cannot write HTML export: {error}", EXIT_DOMAIN)
         note(f"agentless-mcp: wrote {target}")
 
-    note(
-        "\n".join(
-            [
-                *envelope.receipt_lines(ctx),
-                (
-                    f"# HTML graph of {exported.nodes} modules and {exported.edges} edges; "
-                    f"{exported.elided_nodes} modules and {exported.elided_edges} edges elided"
-                ),
-            ]
-        )
-    )
+    note("\n".join(envelope.receipt_lines(ctx, summary=_html_summary(exported, args))))
     return EXIT_OK
+
+
+def _html_summary(exported: HtmlExport, args: argparse.Namespace) -> str:
+    """Say what the export left out, and which bound took it.
+
+    One number for two causes was unreadable: `0 modules and 200 edges elided`
+    on this repository meant every one of the 200 came from the edge bound and
+    none from the node bound, but the line could equally have described the
+    reverse -- and only one of those is fixed by raising --max-nodes.
+    """
+    return (
+        f"HTML graph of {exported.nodes} modules and {exported.edges} edges; "
+        f"{exported.elided_nodes} modules elided (node bound {args.max_nodes}); "
+        f"{exported.edges_without_both_nodes} edges elided with them, "
+        f"{exported.edges_over_bound} past the edge bound ({args.max_edges})"
+    )
 
 
 def _html_cache_name(raw: str | None) -> str | None:
@@ -1396,7 +1403,7 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             return EXIT_USAGE
         note(f"agentless-mcp: verdicts written to {destination}")
 
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {report.summary_line()}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=report.summary_line())))
     for warning in report.warnings():
         note(f"agentless-mcp: {warning}")
     return EXIT_OK if report.any_passed else EXIT_DOMAIN
@@ -1650,7 +1657,7 @@ def _check_lines(report: CheckReport) -> list[str]:
 
 def _patch_receipt(ctx: RepoContext, summary: str, result: ApplyResult) -> None:
     """Put the receipt, the summary and every failed edit on stderr."""
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {summary}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=summary)))
     for outcome in result.failures:
         edit = outcome.edit
         note(f"  {outcome.status.value}: {edit.path} block {edit.index}: {outcome.reason}")
