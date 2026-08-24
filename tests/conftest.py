@@ -21,6 +21,7 @@ import tree_sitter_language_pack as pack
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import cache, grammars, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.util import cachedir
 from agentless_mcp.util.tokens import Chars4Counter
 
 # The languages the suite actually parses. Kept short on purpose: warming the
@@ -72,7 +73,7 @@ def isolated_cache_home(tmp_path_factory, monkeypatch):
     resolves through this same variable.
     """
     home = tmp_path_factory.mktemp("xdg-cache")
-    monkeypatch.setenv(cache.ENV_CACHE_HOME, str(home))
+    monkeypatch.setenv(cachedir.ENV_CACHE_HOME, str(home))
     return home
 
 

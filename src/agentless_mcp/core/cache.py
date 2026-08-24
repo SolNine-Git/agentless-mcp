@@ -70,6 +70,10 @@ from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambi
 from agentless_mcp.core.treewalk import walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
+from agentless_mcp.util.cachedir import (
+    DIRECTORY_MODE,
+    cache_root,
+)
 from agentless_mcp.util.errors import AgentlessError, CacheLocked
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 
@@ -133,9 +137,7 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 # every index run.
 SCHEMA_VERSION = 11
 
-ENV_CACHE_HOME = "XDG_CACHE_HOME"
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
-APPLICATION_DIR = "agentless-mcp"
 DATABASE_NAME = "tags.db"
 LOCK_NAME = "write.lock"
 
@@ -158,9 +160,6 @@ MANIFEST_DIGEST_LENGTH = 16
 # SQLite is out-of-process state like any other: a lock wait gets a bound.
 SQLITE_TIMEOUT_SECONDS = 5.0
 
-# Directories under the user's cache home hold derived facts about private
-# repositories, so they are owner-only.
-DIRECTORY_MODE = 0o700
 
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
@@ -531,50 +530,6 @@ def effective_source(
     user -- get the index-free path without having to construct anything.
     """
     return source if source is not None else OnDemandSource(extractor)
-
-
-def cache_root() -> Path:
-    """Return the directory holding every repository's cache, per XDG.
-
-    A relative ``XDG_CACHE_HOME`` is ignored, which is what the XDG base
-    directory specification requires -- "if an implementation encounters a
-    relative path it must consider the value invalid" -- and which this
-    module needs for a reason of its own. A relative value resolves against
-    the current working directory, and the working directory during a
-    ``validate`` run is the repository being analysed. Reproduced:
-    ``cd victim && XDG_CACHE_HOME=relcache agentless-mcp validate --repo
-    victim`` created ``victim/relcache/agentless-mcp/worktrees`` inside the
-    repository under analysis. It also made the cache location depend on
-    where each call happened to be standing, so two calls in one process
-    could read two different databases.
-    """
-    configured = os.environ.get(ENV_CACHE_HOME, "").strip()
-    if configured and not Path(configured).is_absolute():
-        _warn_once_about_relative_cache_home(configured)
-        configured = ""
-    home = Path(configured) if configured else Path.home() / ".cache"
-    return home / APPLICATION_DIR
-
-
-_RELATIVE_CACHE_HOMES_SEEN: set[str] = set()
-
-
-def _warn_once_about_relative_cache_home(value: str) -> None:
-    """Say why the environment was ignored, once per distinct value.
-
-    Once rather than per call: ``cache_root`` runs on every cached read, and a
-    warning per read would bury the answer it is attached to.
-    """
-    if value in _RELATIVE_CACHE_HOMES_SEEN:
-        return
-    _RELATIVE_CACHE_HOMES_SEEN.add(value)
-    logger.warning(
-        "%s=%r is relative and was ignored; the XDG specification requires an absolute "
-        "path, and a relative one would put the cache inside whichever directory the "
-        "call was made from -- including the repository being analysed",
-        ENV_CACHE_HOME,
-        value,
-    )
 
 
 def cache_path(repo_root: Path) -> Path:

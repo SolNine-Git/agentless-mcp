@@ -25,9 +25,9 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import cache, sandbox
+from agentless_mcp.core import sandbox
 from agentless_mcp.core.sandbox import RunStatus
-from agentless_mcp.util import platforms
+from agentless_mcp.util import cachedir, platforms
 from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
 
 FILES = {
@@ -72,7 +72,7 @@ class TestWorktree:
         environment rule can catch, so the guard sits where the invariant is:
         the scratch is never inside the target.
         """
-        monkeypatch.setenv(cache.ENV_CACHE_HOME, str(repo / "inside"))
+        monkeypatch.setenv(cachedir.ENV_CACHE_HOME, str(repo / "inside"))
 
         with (
             pytest.raises(RepoResolutionError, match="inside the repository"),
@@ -166,7 +166,7 @@ class TestWorktree:
         )
 
     def test_the_scratch_root_is_under_the_cache_home(self, isolated_cache_home):
-        assert sandbox.scratch_root().parent == cache.cache_root()
+        assert sandbox.scratch_root().parent == cachedir.cache_root()
         assert isolated_cache_home in sandbox.scratch_root().parents
 
 

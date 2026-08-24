@@ -35,7 +35,7 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, refs
 from agentless_mcp.core.symbols import symbol_stable_id
-from agentless_mcp.util import filelock, fslimits
+from agentless_mcp.util import cachedir, filelock, fslimits
 from agentless_mcp.util.errors import CacheLocked, OperationFailed
 
 CORE = '''\
@@ -204,14 +204,14 @@ class TestLocation:
         ``mkdir(mode=...)`` sets the leaf and nothing else, and never
         re-applies the mode to a directory that already exists.
         """
-        application = cache.cache_root()
+        application = cachedir.cache_root()
         application.mkdir(parents=True, exist_ok=True)
         application.chmod(0o755)
 
         database = cache.build_index(repo, extractor).database
 
-        assert stat.S_IMODE(application.stat().st_mode) == cache.DIRECTORY_MODE
-        assert stat.S_IMODE(database.parent.stat().st_mode) == cache.DIRECTORY_MODE
+        assert stat.S_IMODE(application.stat().st_mode) == cachedir.DIRECTORY_MODE
+        assert stat.S_IMODE(database.parent.stat().st_mode) == cachedir.DIRECTORY_MODE
 
     def test_two_repositories_get_two_databases(self, repo, tmp_path):
         other = tmp_path / "other"
@@ -1300,36 +1300,3 @@ class TestATransientReadErrorKeepsTheDatabase:
             connection.execute("CREATE TABLE unrelated (x INTEGER)")
 
             assert cache._read_meta(connection) is None
-
-
-class TestRelativeCacheHomeIsIgnored:
-    """A relative XDG_CACHE_HOME resolves against the working directory."""
-
-    def test_a_relative_value_falls_back_to_the_default(self, monkeypatch, tmp_path, caplog):
-        # Reproduced during the audit: `cd victim && XDG_CACHE_HOME=relcache
-        # ... validate --repo victim` created victim/relcache/agentless-mcp/
-        # worktrees inside the repository being analysed.
-        monkeypatch.setattr(cache, "_RELATIVE_CACHE_HOMES_SEEN", set())
-        monkeypatch.setenv(cache.ENV_CACHE_HOME, "relcache")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-
-        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
-            root = cache.cache_root()
-
-        assert root == tmp_path / ".cache" / cache.APPLICATION_DIR
-        assert "is relative and was ignored" in caplog.text
-
-    def test_the_warning_is_not_repeated_for_the_same_value(self, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr(cache, "_RELATIVE_CACHE_HOMES_SEEN", set())
-        monkeypatch.setenv(cache.ENV_CACHE_HOME, "relcache")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-
-        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
-            for _ in range(5):
-                cache.cache_root()
-
-        assert caplog.text.count("is relative and was ignored") == 1
-
-    def test_an_absolute_value_is_honoured(self, monkeypatch, tmp_path):
-        monkeypatch.setenv(cache.ENV_CACHE_HOME, str(tmp_path / "elsewhere"))
-        assert cache.cache_root() == tmp_path / "elsewhere" / cache.APPLICATION_DIR

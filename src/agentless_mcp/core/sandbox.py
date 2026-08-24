@@ -86,8 +86,8 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from agentless_mcp.core import cache, gitinfo
-from agentless_mcp.util import platforms
+from agentless_mcp.core import gitinfo
+from agentless_mcp.util import cachedir, platforms
 from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
 
 logger = logging.getLogger(__name__)
@@ -240,7 +240,7 @@ class RunResult:
 
 def scratch_root() -> Path:
     """Return the directory scratch worktrees are created under."""
-    return cache.cache_root() / WORKTREE_DIR
+    return cachedir.cache_root() / WORKTREE_DIR
 
 
 @contextmanager
@@ -286,7 +286,7 @@ def worktree(root: Path) -> Iterator[Path]:
     if scratch == top or top in scratch.parents:
         message = (
             f"scratch worktrees would be created at {scratch}, inside the repository "
-            f"{top} they are meant to stay out of. Point {cache.ENV_CACHE_HOME} at a "
+            f"{top} they are meant to stay out of. Point {cachedir.ENV_CACHE_HOME} at a "
             f"directory outside the repository."
         )
         raise RepoResolutionError(message)
@@ -294,8 +294,8 @@ def worktree(root: Path) -> Iterator[Path]:
     # `mode=` on the create, as `core/cache.py` does, so the directory is
     # never briefly at the umask's mode. The chmod stays for the directory an
     # earlier run already made.
-    scratch.mkdir(parents=True, exist_ok=True, mode=cache.DIRECTORY_MODE)
-    scratch.chmod(cache.DIRECTORY_MODE)
+    scratch.mkdir(parents=True, exist_ok=True, mode=cachedir.DIRECTORY_MODE)
+    scratch.chmod(cachedir.DIRECTORY_MODE)
 
     path = scratch / f"wt-{uuid.uuid4().hex}"
     try:
