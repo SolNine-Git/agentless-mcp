@@ -16,7 +16,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
-from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = '''\
@@ -229,9 +229,28 @@ class TestViewService:
         assert "def quote(sku):" in view.text
         assert "return RATE" not in view.text
 
-    def test_a_path_outside_the_repository_is_refused(self, repo, extractor):
-        with pytest.raises(SecurityRefusal):
-            ViewService(extractor).skeleton(repo, ["../escape.py"])
+    def test_a_path_outside_the_repository_is_refused_per_file(self, repo, extractor):
+        """A batch reports the refusal; it does not throw away the batch.
+
+        `skeleton` used to raise, so one bad path discarded every other file
+        the caller named and left them unable to tell which one did it. The
+        rule `SymbolService._card` states over the same containment check --
+        a batch reports per item, a single-target view raises -- now holds
+        here too.
+        """
+        views = ViewService(extractor).skeleton(repo, ["core.py", "../escape.py"])
+
+        assert [view.path for view in views] == ["core.py", "../escape.py"]
+        assert "def quote(sku):" in views[0].text
+        assert views[1].refused
+        assert not views[0].refused
+
+    def test_a_refusal_is_marked_apart_from_a_file_that_cannot_be_read(self, repo, extractor):
+        """The two are different outcomes and the adapter maps them differently."""
+        views = ViewService(extractor).skeleton(repo, ["../escape.py", "gone.py"])
+
+        assert [view.refused for view in views] == [True, False]
+        assert all(view.error for view in views)
 
     def test_an_unparseable_file_type_is_reported_per_file(self, repo, extractor):
         (repo.root / "notes.md").write_text("# hi\n", encoding="utf-8")

@@ -867,9 +867,13 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
         # The same wording `slice` uses for the identical FileView.error: the
         # service message already names the file it is about.
         note(f"agentless-mcp: {view.error}")
-    # A file that could not be read is not an empty answer: `slice` has always
-    # failed on the identical FileView.error, and the two must agree. One of
-    # several is enough -- the caller named it, and it did not resolve.
+    # A refused path outranks an unreadable one, and keys on the typed marker
+    # rather than on the message: a path outside the root is a usage error
+    # however many other files the batch answered, while a file that could not
+    # be read is a domain failure. Both beat exit 0 -- the caller named them
+    # and they did not resolve.
+    if any(view.refused for view in views):
+        return EXIT_USAGE
     return EXIT_DOMAIN if failed else EXIT_OK
 
 

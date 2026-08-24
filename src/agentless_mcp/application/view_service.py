@@ -58,6 +58,7 @@ from agentless_mcp.util.errors import (
     LanguageUnavailable,
     OperationFailed,
     RepoResolutionError,
+    SecurityRefusal,
 )
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
@@ -89,12 +90,19 @@ class FileView:
     language: str
     text: str
     error: str = ""
+    # Why a flag and not a look at ``error``: an adapter has to tell a path it
+    # was refused from a path it could not read, and those map to different
+    # exit codes. Matching on the message text would be a guard on a proxy --
+    # the wording is a message, and messages get reworded.
+    refused: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this file view."""
         record: dict[str, Any] = {"path": self.path, "language": self.language, "text": self.text}
         if self.error:
             record["error"] = self.error
+        if self.refused:
+            record["refused"] = True
         return record
 
 
@@ -194,10 +202,28 @@ class ViewService:
         docstrings: bool = False,
         numbered: bool = False,
     ) -> list[FileView]:
-        """Render each named file as signatures with elided bodies."""
+        """Render each named file as signatures with elided bodies.
+
+        A batch, so a refused path is reported per item rather than raised.
+        :meth:`agentless_mcp.application.symbol_service.SymbolService._card`
+        states that rule over the same containment check -- the channel
+        follows the shape of the operation, not the method that caught the
+        failure -- and this method was the exception to it: one refused path
+        discarded every other file the caller named, and the caller could not
+        tell which of them did it.
+
+        ``FileView.refused`` is what keeps the CLI's documented exit 2 for a
+        refusal while the answer itself degrades per file.
+        """
         views: list[FileView] = []
         for raw in paths:
-            resolved, language, text, error = self._load(ctx, raw)
+            try:
+                resolved, language, text, error = self._load(ctx, raw)
+            except SecurityRefusal as refusal:
+                views.append(
+                    FileView(path=raw, language="", text="", error=str(refusal), refused=True)
+                )
+                continue
             if not language:
                 error = error or f"{resolved}: no grammar for this file type"
             if error:

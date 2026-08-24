@@ -362,3 +362,99 @@ class TestStackSafety:
         ext = make_extractor()
         imports = ext.extract_imports_from_source(DEEP_JS, "javascript", "bundle.js")
         assert [i.module for i in imports] == ["./defaults.js"]
+
+
+class TestTheDecisionsBranchCoverageLeftUnpinned:
+    """Real constructs the suite never drove, measured rather than guessed.
+
+    Each one below was a partial branch in this module: a shape the grammar
+    produces, reached by no test. None of them turned out to be broken, so
+    what follows is a pin on behaviour that was correct by luck and had
+    nothing holding it there.
+    """
+
+    def test_a_global_declaration_stops_a_name_resolving_to_the_import(self):
+        """The highest-value gap of the set, because it decides an evidence tier.
+
+        ``global json`` rebinds the name inside the function, so a later use is
+        the module-level variable and not the imported module. Without this
+        branch the use reads as ``module_qualifier`` and the resolver hands an
+        agent ``resolved-via-import`` for a symbol the import never named --
+        the strongest evidence tier this tool publishes, on a relationship that
+        does not exist.
+        """
+        ext = make_extractor()
+        visible = "import json\n\ndef f():\n    return json.loads\n"
+        shadowed = "import json\n\ndef f():\n    global json\n    json = 1\n    return json\n"
+
+        roles = [r.role.value for r in ext.extract_refs_from_source(visible, "python", "g.py")]
+        assert "module_qualifier" in roles
+
+        after = ext.extract_refs_from_source(shadowed, "python", "g.py")
+        assert [r.role.value for r in after if r.line == 6] == ["reference"]
+        assert "module_qualifier" not in [r.role.value for r in after]
+
+    def test_parameter_separators_are_not_mistaken_for_parameters(self):
+        """``/`` and ``*`` are named nodes in the parameter list, not identifiers."""
+        ext = make_extractor()
+        source = "def f(a, /, b, *, c):\n    return a + b + c\n"
+
+        bound = [r.name for r in ext.extract_refs_from_source(source, "python", "p.py")]
+
+        assert bound == ["f", "a", "b", "c", "a", "b", "c"]
+
+    def test_a_nonlocal_declaration_binds_rather_than_references(self):
+        """``nonlocal total`` says where ``total`` lives; it does not read it."""
+        ext = make_extractor()
+        source = (
+            "def outer():\n"
+            "    total = 0\n"
+            "    def inner():\n"
+            "        nonlocal total\n"
+            "        total += 1\n"
+            "    return inner\n"
+        )
+
+        roles = {
+            (r.name, r.line): r.role.value
+            for r in ext.extract_refs_from_source(source, "python", "n.py")
+        }
+
+        assert roles[("total", 4)] == "binding"
+
+    @pytest.mark.parametrize(
+        ("source", "language", "path"),
+        [
+            ("int f(void) {\n  /* NOTE: keep the id stable */\n  return 1;\n}\n", "c", "a.c"),
+            (
+                "function f() {\n  // NOTE: keep the id stable\n  return 1;\n}\n",
+                "javascript",
+                "a.js",
+            ),
+            ("def f():\n    # NOTE: keep the id stable\n    return 1\n", "python", "a.py"),
+        ],
+        ids=["block-comment", "line-comment", "hash-comment"],
+    )
+    def test_comment_delimiters_are_stripped_from_both_ends(self, source, language, path):
+        """A trailing ``*/`` in the rationale text is the delimiter leaking through."""
+        ext = make_extractor()
+
+        symbols = ext.extract_from_source(source, language, path)
+
+        rationales = [r for symbol in symbols for r in symbol.rationales]
+        assert [r.text for r in rationales] == ["keep the id stable"]
+
+    def test_a_rationale_inside_no_symbol_is_dropped(self):
+        """Characterization, not endorsement: a module-level NOTE reaches nobody.
+
+        Rationales attach to the symbol that contains them, and a comment above
+        every symbol is contained in none. Pinned so that giving module-level
+        comments a home later is a visible change rather than an accident.
+        """
+        ext = make_extractor()
+        source = "# NOTE: a module-level rationale\ndef f():\n    return 1\n"
+
+        symbols = ext.extract_from_source(source, "python", "b.py")
+
+        assert [symbol.name for symbol in symbols] == ["f"]
+        assert not [r for symbol in symbols for r in symbol.rationales]
