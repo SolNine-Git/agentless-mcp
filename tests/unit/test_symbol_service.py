@@ -10,11 +10,12 @@ import json
 
 import pytest
 
-from agentless_mcp.application import envelope
+from agentless_mcp.application import envelope, render
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import (
     EXPAND_MAX_SEATS,
     SymbolService,
+    render_refs,
 )
 from agentless_mcp.util.errors import AgentlessError
 
@@ -176,3 +177,30 @@ class TestAnUnresolvedFanInTarget:
 
         assert result.target_resolved is True
         assert result.notice == ""
+
+    def test_the_text_render_carries_the_notice_above_the_rows(self, repo, symbols):
+        """The notice reached the JSON form and nothing else.
+
+        Both adapters built the text from the row renderer alone, so the
+        reader who gets text was handed the strongest evidence tier for a
+        symbol nobody named, with no sign the id had degraded to a name.
+        """
+        result = symbols.find_referencing_symbols(repo, "py:no/such/file.py::quote")
+        rendered = render_refs(result)
+
+        assert rendered.startswith(result.notice)
+        assert "resolves to no symbol" in rendered.split("\n\n", 1)[0]
+
+    def test_a_resolved_target_renders_the_rows_alone(self, repo, symbols):
+        result = symbols.find_referencing_symbols(repo, "py:core.py::quote")
+
+        assert render_refs(result) == render.render_ref_groups(result.groups, result.target)
+
+    def test_the_shared_caller_render_carries_the_notice_too(self, repo, symbols):
+        result = symbols.find_referencing_symbols(
+            repo, "py:no/such/file.py::quote", shared_callers=True
+        )
+        rendered = render_refs(result, shared_callers=True)
+
+        assert rendered.startswith(result.notice)
+        assert render.render_shared_callers(result.shared, result.target) in rendered

@@ -56,15 +56,6 @@ from agentless_mcp.util import bounds
 from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, RepoResolutionError
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
-# What a caller is told about a line range that is not one. Shaped like
-# `MESSAGES.slice_range_beyond_file`, because "you asked for lines 60-30" and
-# "you asked for lines past the end" are the same kind of answer: the range is
-# named back, with what a satisfiable one looks like.
-SLICE_RANGE_NOT_A_RANGE = (
-    "unsatisfiable: line range {start}-{end} is not a range in {path}: "
-    "a start of 1 or more, and an end at or after the start"
-)
-
 
 @dataclass(frozen=True)
 class TreeView:
@@ -149,10 +140,15 @@ def _satisfiable(start: int, end: int, total: int) -> bool:
 
 
 def _unsatisfiable(start: int, end: int, path: str, total: int) -> str:
-    """Say why one requested range cannot be answered, naming the range."""
+    """Say why one requested range cannot be answered, naming the range.
+
+    Two texts of one shape, which is why they are two keys in one catalogue:
+    "you asked for lines 60-30" and "you asked for lines past the end" both
+    name the range back with what a satisfiable one looks like.
+    """
     if start > total:
         return MESSAGES.slice_range_beyond_file.format(start=start, end=end, path=path, total=total)
-    return SLICE_RANGE_NOT_A_RANGE.format(start=start, end=end, path=path)
+    return MESSAGES.slice_range_not_a_range.format(start=start, end=end, path=path)
 
 
 class ViewService:

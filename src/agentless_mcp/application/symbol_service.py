@@ -112,20 +112,6 @@ EXPAND_MAX_SEATS = 40
 # share.
 _TRUNCATION_MARKER_TOKENS = 32
 
-# What stands in the ``stable_id`` column of an unresolved row that speaks for
-# a group of ids rather than for one. Parenthesised and countable so it cannot
-# read as an id: a real one carries a language prefix and a ``::``.
-GROUPED_IDS = "({count} ids)"
-
-# Said when a stable id names no symbol and the fan-in fell back to the bare
-# name. The fallback is deliberate and lives in ``core.refs.definitions_for``;
-# what was missing is this sentence, because the result echoed the id back as
-# its target and every other partial answer in this module is labelled.
-REFS_TARGET_UNRESOLVED = (
-    "{target} resolves to no symbol; these are the references to the name "
-    "{name}, wherever it is defined"
-)
-
 
 @dataclass(frozen=True)
 class FindResult:
@@ -236,12 +222,18 @@ class RefsResult:
 
     @property
     def notice(self) -> str:
-        """Say so when this fan-in is about a name rather than the id asked for."""
+        """Say so when this fan-in is about a name rather than the id asked for.
+
+        The fallback itself is deliberate and lives in
+        :func:`agentless_mcp.core.refs.definitions_for`. What was missing is
+        this sentence: the result echoed the id back as its target, while
+        every other partial answer in this module is labelled.
+        """
         if self.target_resolved:
             return ""
         base, _ = split_ordinal(self.target)
         name = base.rpartition("::")[2].rpartition(".")[2] or base
-        return REFS_TARGET_UNRESOLVED.format(target=self.target, name=name)
+        return MESSAGES.refs_target_unresolved.format(target=self.target, name=name)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
@@ -305,6 +297,11 @@ class SymbolService:
         ``seats=-1`` sliced the card list from the end and reported the cards
         it kept as the ones with no room, which is the negative-slicing defect
         :func:`agentless_mcp.util.bounds.at_least` exists to refuse.
+
+        A row that speaks for a group of ids stands in the ``stable_id``
+        column as ``MESSAGES.grouped_ids``. It is parenthesised and countable
+        so that it cannot read as an id: a real one carries a language prefix
+        and a ``::``.
         """
         _check_limit(limit)
         bounds.at_least(budget, 1, "budget")
@@ -326,21 +323,21 @@ class SymbolService:
         if over_limit:
             unresolved.append(
                 (
-                    GROUPED_IDS.format(count=over_limit),
+                    MESSAGES.grouped_ids.format(count=over_limit),
                     f"not expanded: the per-call limit is {limit} symbols",
                 )
             )
         if repeated:
             unresolved.append(
                 (
-                    GROUPED_IDS.format(count=repeated),
+                    MESSAGES.grouped_ids.format(count=repeated),
                     "not expanded: repeated in this batch, and expanded under the first copy",
                 )
             )
 
         if len(cards) > seats:
             reason = MESSAGES.expand_no_room.format(requested=len(cards), seats=seats)
-            unresolved.append((GROUPED_IDS.format(count=len(cards) - seats), reason))
+            unresolved.append((MESSAGES.grouped_ids.format(count=len(cards) - seats), reason))
             cards = cards[:seats]
 
         return ExpandResult(
@@ -561,6 +558,27 @@ def render_expansion(result: ExpandResult) -> str:
         )
     blocks.extend(f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved)
     return "\n".join(blocks)
+
+
+def render_refs(result: RefsResult, *, shared_callers: bool = False) -> str:
+    """Render a fan-in: any unresolved-target notice, then the rows.
+
+    One home for both pieces, for the same reason :func:`render_expansion` is
+    one. ``RefsResult.notice`` and the ``target_resolved`` key reached the
+    JSON form and nothing else, because each adapter assembled the text from
+    the row renderer alone -- so the reader who gets text was handed the
+    strongest evidence tier for a symbol nobody named, with no sign that the
+    id had degraded to a name lookup. The notice comes first because it
+    changes how every row below it must be read.
+    """
+    body = (
+        render.render_shared_callers(result.shared, result.target)
+        if shared_callers
+        else render.render_ref_groups(result.groups, result.target)
+    )
+    if not result.notice:
+        return body
+    return result.notice + "\n\n" + body
 
 
 def render_find(result: FindResult) -> str:

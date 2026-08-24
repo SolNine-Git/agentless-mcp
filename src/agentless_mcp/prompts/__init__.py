@@ -92,8 +92,11 @@ class MessageText:
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str
+    grouped_ids: str
+    refs_target_unresolved: str
     overview_stable_ids: str
     slice_range_beyond_file: str
+    slice_range_not_a_range: str
     cache_stale_remediation: str
     cache_stale_refreshing: str
     cache_absent_refreshing: str
@@ -169,6 +172,7 @@ PARAMETER_NAMES = (
     "structure_limit",
     "community_resolution",
     "diagram_focus",
+    "diagram_max_edges",
     "diagram_max_nodes",
     "group_by_communities",
     "locations",

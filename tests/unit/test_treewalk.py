@@ -145,6 +145,22 @@ class TestGitListing:
         listing = "café/naïve.py\x00".encode()
         assert treewalk._decoded_paths(listing, tmp_path) == ["café/naïve.py"]
 
+    def test_a_listing_over_the_file_bound_is_refused_while_it_is_decoded(self, tmp_path):
+        """The bound used to apply after the whole listing was decoded.
+
+        Measured over a one-million-name listing: 196 MB of allocations to
+        decide a walk bounded at 20,000 files. What this pins is the refusal,
+        which is the observable half of it.
+        """
+        listing = b"".join(f"f{index}.py\x00".encode() for index in range(6))
+        with pytest.raises(WalkBoundExceeded, match="more than 5 files"):
+            treewalk._decoded_paths(listing, tmp_path, max_files=5)
+
+    def test_a_path_listed_once_per_conflict_stage_counts_once(self, tmp_path):
+        """An unmerged index lists one path three times; `walk_repo` sees one."""
+        listing = b"a.py\x00a.py\x00a.py\x00b.py\x00"
+        assert treewalk._decoded_paths(listing, tmp_path, max_files=2) == ["a.py", "b.py"]
+
 
 class TestRenderTree:
     def test_directories_carry_a_trailing_slash(self):
