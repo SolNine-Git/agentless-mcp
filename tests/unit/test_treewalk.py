@@ -59,6 +59,30 @@ def git_repo(tmp_path):
     return repo
 
 
+@pytest.fixture
+def disowning_repo(tmp_path):
+    """A repository that ignores one inner tree of files and owns another.
+
+    The shape the 0.6.1 fix exists for: a snapshot unpacked under a
+    gitignored directory, carrying no ``.git`` of its own. git answers for
+    that root and lists nothing at all for it.
+    """
+    outer = tmp_path / "outer"
+    (outer / "repos" / "snap" / "pkg").mkdir(parents=True)
+    (outer / "kept").mkdir()
+    (outer / ".gitignore").write_text("repos/\n*.log\n", encoding="utf-8")
+    (outer / "outer.py").write_text("o = 1\n", encoding="utf-8")
+    (outer / "kept" / "lib.py").write_text("l = 1\n", encoding="utf-8")
+    (outer / "kept" / "trace.log").write_text("noise\n", encoding="utf-8")
+    (outer / "repos" / "snap" / "app.py").write_text("a = 1\n", encoding="utf-8")
+    (outer / "repos" / "snap" / "pkg" / "mod.py").write_text("m = 2\n", encoding="utf-8")
+
+    git(outer, "init", "--quiet")
+    git(outer, "add", ".")
+    git(outer, "commit", "--quiet", "-m", "initial")
+    return outer
+
+
 class TestWalkRepo:
     def test_gitignored_paths_are_excluded(self, git_repo):
         paths = [f.path for f in walk_repo(git_repo)]
@@ -120,6 +144,49 @@ class TestWalkRepo:
         paths = [f.path for f in walk_repo(git_repo)]
         assert "app.py" not in paths
         assert "pkg/mod.py" in paths
+
+
+class TestADisownedRoot:
+    """The enclosing repository answers for the root without owning it."""
+
+    def test_a_root_the_enclosing_repository_ignores_is_walked(self, disowning_repo):
+        """Reported from production: a full tree served as an empty repository.
+
+        `git ls-files --cached --others --exclude-standard` returns zero paths
+        under a root the answering work tree ignores wholesale, so the branch
+        that trusted "git answers" reported nothing at all here.
+        """
+        snapshot = disowning_repo / "repos" / "snap"
+
+        paths = [f.path for f in walk_repo(snapshot)]
+        assert paths == ["app.py", "pkg/mod.py"]
+
+    def test_a_root_the_enclosing_repository_owns_still_uses_the_listing(self, disowning_repo):
+        """The fallback must not widen to roots that list correctly today.
+
+        `trace.log` is ignored by the outer `*.log` rule, which the bounded
+        walk knows nothing about, so it is what tells the two branches apart.
+        """
+        paths = [f.path for f in walk_repo(disowning_repo / "kept")]
+        assert paths == ["lib.py"]
+
+    def test_an_ignored_root_with_its_own_repository_uses_its_own_listing(self, disowning_repo):
+        """A repository the parent ignores still owns itself.
+
+        The parent disowns the directory, so the question is answered by the
+        inner repository, whose own `.gitignore` is the one that applies.
+        """
+        inner = disowning_repo / "repos" / "own"
+        inner.mkdir()
+        (inner / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
+        (inner / "keep.py").write_text("k = 1\n", encoding="utf-8")
+        (inner / "scratch.tmp").write_text("noise\n", encoding="utf-8")
+        git(inner, "init", "--quiet")
+        git(inner, "add", ".")
+        git(inner, "commit", "--quiet", "-m", "initial")
+
+        paths = [f.path for f in walk_repo(inner)]
+        assert paths == [".gitignore", "keep.py"]
 
 
 class TestGitListing:

@@ -5,11 +5,14 @@ as far as this tool is concerned, and :func:`render_tree` decides how many of
 them a caller is shown. A view that silently drops entries is worse than a
 short one, so every truncation is marked in the output.
 
-Inside a git repository the file list comes from git itself
-(``git ls-files --cached --others --exclude-standard``), which is the only
-way to honour nested ``.gitignore`` files, ``.git/info/exclude`` and the
+Inside a git repository that owns the root, the file list comes from git
+itself (``git ls-files --cached --others --exclude-standard``), which is the
+only way to honour nested ``.gitignore`` files, ``.git/info/exclude`` and the
 user's global excludes without reimplementing them. Outside one, the bounded
-walk is the fallback. Either way the security bounds in
+walk is the fallback. A root an enclosing work tree ignores wholesale takes
+that same fallback: git answers for it and lists nothing, which is a correct
+statement about that repository's contents and a false one about the tree
+being served. Either way the security bounds in
 :mod:`agentless_mcp.util.fslimits` still apply.
 """
 
@@ -58,16 +61,73 @@ class RepoFile:
         return tuple(self.path.split("/"))
 
 
-def is_git_repo(root: Path) -> bool:
-    """True when ``root`` lies inside a git work tree.
+def _git_listing_speaks_for(root: Path) -> bool:
+    """True when a git listing describes the whole tree under ``root``.
 
     Asked of git rather than of the filesystem: a ``.git`` entry at exactly
     this path is a correlate, and it is absent for every root git still
     answers for -- a package inside a monorepo, a linked worktree, a
     submodule. ``git -C <root> ls-files`` scopes its output to the given
     directory, so the branch below stays correct wherever the root sits.
+
+    That some repository answers is not enough, which is the defect this
+    predicate replaces. A root the enclosing work tree ignores wholesale --
+    a snapshot unpacked under a gitignored ``repos/`` directory, carrying no
+    ``.git`` of its own -- makes ``ls-files --cached --others
+    --exclude-standard`` return zero paths, and the tool reported an empty
+    repository for a tree full of files. The invariant the branch keys on is
+    that the answering repository owns the root, not that a repository
+    answers; a disowned root is served by the bounded walk, exactly like a
+    root outside any repository.
     """
-    return gitinfo.git_root(root) is not None
+    top = gitinfo.git_root(root)
+    if top is None:
+        return False
+    if top == root:
+        return True
+    return not _git_ignores(top, root)
+
+
+def _git_ignores(top: Path, path: Path) -> bool:
+    """True when the work tree at ``top`` excludes ``path`` by its own rules.
+
+    Only git's two documented answers are read as an answer: exit 0 says the
+    path is ignored, exit 1 says no path given to it is. Everything else --
+    a timeout, a git that cannot be run, the exit 128 git uses for a fatal
+    error -- means the question went unanswered, and reads as not ignored so
+    the caller keeps the git listing. A fix for roots that list empty must
+    not widen into a fallback for the roots that list correctly today.
+    """
+    command = [
+        "git",
+        *gitinfo.HARDENING_PREFIX,
+        "-C",
+        str(top),
+        "check-ignore",
+        "-q",
+        "--",
+        str(path),
+    ]
+    try:
+        # Fixed argv, no shell, and nothing from repository content reaches it.
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+            check=False,
+            env=gitinfo.subprocess_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning(
+            "git check-ignore could not be run in %s for %s (%s). "
+            "The listing for %s comes from git, as it did before.",
+            top,
+            path,
+            exc,
+            path,
+        )
+        return False
+    return completed.returncode == 0
 
 
 def walk_repo(
@@ -83,13 +143,19 @@ def walk_repo(
     Raises :class:`WalkBoundExceeded` rather than truncating; raises
     :class:`RepoResolutionError` when the root is not a directory or git
     refuses to answer.
+
+    The git listing is used only when the repository that answers for the
+    root also owns it, which :func:`_git_listing_speaks_for` decides. A root
+    an enclosing work tree ignores wholesale is walked instead, exactly like
+    a root outside any repository, because git's listing for such a root is
+    empty however many files the tree holds.
     """
     resolved = root.resolve()
     if not resolved.is_dir():
         message = f"not a directory: {resolved}"
         raise RepoResolutionError(message)
 
-    if is_git_repo(resolved):
+    if _git_listing_speaks_for(resolved):
         relatives = _git_listed_paths(resolved, max_files=max_files)
     else:
         relatives = [
