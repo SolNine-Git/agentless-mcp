@@ -45,9 +45,10 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_TIKTOKEN,
+    TOKEN_COUNTERS,
     Chars4Counter,
     TokenCounter,
 )
@@ -86,7 +87,7 @@ class TiktokenCounter:
                 f"installed ({exc}). Install it with: uv sync --extra tokens, or "
                 "pip install 'agentless-mcp[tokens]'."
             )
-            raise AgentlessError(message) from exc
+            raise OperationFailed(message) from exc
 
         # Inside the boundary, because this is the one line in this module that
         # reaches the network: on a cold cache tiktoken fetches the ranks over
@@ -111,7 +112,7 @@ class TiktokenCounter:
                 "use; point TIKTOKEN_CACHE_DIR at a writable directory holding it, or run "
                 "without the flag to use the chars/4 estimator."
             )
-            raise AgentlessError(message) from exc
+            raise OperationFailed(message) from exc
         finally:
             socket.setdefaulttimeout(previous_timeout)
 
@@ -125,7 +126,22 @@ def select_counter(choice: str | None) -> TokenCounter:
 
     ``None`` is "nobody chose", which is the chars/4 estimator -- the default
     the pins are written against.
+
+    A name that is not one of :data:`TOKEN_COUNTERS` is refused rather than
+    quietly answered with the default. argparse ``choices`` already screens the
+    command line, so the only caller who can reach this is a library caller or
+    a future front door, and for them a silent fallback is the worst outcome:
+    every budget in the answer would be estimated by a counter they did not
+    ask for, and nothing in the receipt would say so.
     """
+    if choice is None:
+        return Chars4Counter()
+    if choice not in TOKEN_COUNTERS:
+        message = (
+            f"unknown token counter {choice!r}; the counters this build has are "
+            f"{', '.join(TOKEN_COUNTERS)}"
+        )
+        raise OperationFailed(message)
     if choice == COUNTER_TIKTOKEN:
         return TiktokenCounter()
     return Chars4Counter()

@@ -68,7 +68,7 @@ from agentless_mcp.core.patches import (
     apply_edits,
     parse_blocks,
 )
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.fslimits import BoundedRead, contained_path, read_bounded
 
 logger = logging.getLogger(__name__)
@@ -229,16 +229,16 @@ def load_edits(text: str) -> ParseResult:
         document = json.loads(text)
     except json.JSONDecodeError as exc:
         message = f"edits document is not valid JSON: {exc}"
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
 
     if not isinstance(document, dict) or EDITS_KEY not in document:
         message = f"edits document must be a JSON object with an '{EDITS_KEY}' list"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     entries = document[EDITS_KEY]
     if not isinstance(entries, list):
         message = f"'{EDITS_KEY}' must be a list of edit objects"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     return ParseResult(
         edits=tuple(_edit_from(entry, position) for position, entry in enumerate(entries)),
@@ -250,14 +250,14 @@ def _edit_from(entry: object, position: int) -> Edit:
     """Turn one JSON edit object into an :class:`Edit`, or refuse it."""
     if not isinstance(entry, dict):
         message = f"edit {position} is not a JSON object"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     values: dict[str, str] = {}
     for field in ("path", "search", "replace"):
         value = entry.get(field)
         if not isinstance(value, str):
             message = f"edit {position} is missing a string '{field}'"
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         values[field] = value
 
     # `index` labels the block in reports and nothing keys on it, so an entry
@@ -265,7 +265,7 @@ def _edit_from(entry: object, position: int) -> Edit:
     index = entry.get("index", position)
     if not isinstance(index, int):
         message = f"edit {position} has a non-integer 'index'"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     return Edit(
         index=index,
@@ -403,12 +403,12 @@ class PatchService:
                 "--in-place refused: this repository's dirty-file count could not be read, "
                 "so a clean tree cannot be proven. Drop --in-place to apply in a worktree."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         message = (
             f"--in-place refused: {ctx.dirty_count} files are modified or untracked. "
             "Commit or stash them, or drop --in-place to apply in a scratch worktree."
         )
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     def _language_of(self, path: str) -> str | None:
         """Return the language a repository-relative path is written in."""
@@ -529,7 +529,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
         except OSError as exc:
             _discard(path for path, _ in staged)
             message = f"patch not applied: cannot write {path}: {_reason(exc)}; nothing was changed"
-            raise AgentlessError(message) from exc
+            raise OperationFailed(message) from exc
         staged.append((staging, target))
 
     backups: list[tuple[Path, Path]] = []
@@ -542,7 +542,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
         message = (
             f"patch not applied: cannot reserve rollback files: {_reason(exc)}; nothing changed"
         )
-        raise AgentlessError(message) from exc
+        raise OperationFailed(message) from exc
 
     completed: list[tuple[Path, Path]] = []
     for position, ((staging, target), (backup, _)) in enumerate(zip(staged, backups, strict=True)):
@@ -566,7 +566,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
                     f"patch not applied: cannot replace {target.name}: {_reason(exc)}; "
                     "every original was restored"
                 )
-            raise AgentlessError(message) from exc
+            raise OperationFailed(message) from exc
 
     _discard(path for path, _ in backups)
 

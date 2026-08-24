@@ -8,8 +8,11 @@ whichever front door reached it -- it used to be 1 through a service and 2
 through the CLI's own reader, for the same mistake.
 """
 
+from pathlib import Path
+
 import pytest
 
+import agentless_mcp
 from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_USAGE, exit_code_for
 from agentless_mcp.application import lint_service, validate_service
 from agentless_mcp.util.errors import (
@@ -101,3 +104,49 @@ class TestAnInputThatCannotBeReadIsOneCondition:
         directory.mkdir()
         with pytest.raises(OperationFailed, match="no candidate files"):
             validate_service.load_candidates(directory)
+
+
+class TestTheRootIsABaseAndNothingElse:
+    """The docstring said "a base and nothing else" while 61 sites raised it.
+
+    A root that is also raised means two things at once -- "any error from
+    this package" to the handler, and "nobody classified this" at the raise
+    site -- and no handler can tell them apart. The constructor is what makes
+    the sentence enforceable rather than aspirational.
+    """
+
+    def test_the_root_cannot_be_constructed_on_its_own(self):
+        # Construction, not the raise: refusing it here means a raise site
+        # cannot even build the object, and the traceback points at the site
+        # rather than at whatever caught it.
+        with pytest.raises(TypeError, match="taxonomy root"):
+            AgentlessError("anything")
+
+    def test_the_refusal_names_the_leaf_to_reach_for(self):
+        with pytest.raises(TypeError, match="OperationFailed"):
+            AgentlessError("anything")
+
+    def test_every_leaf_still_constructs_and_carries_its_message(self):
+        for leaf in (OperationFailed, InputUnreadable):
+            error = leaf("what went wrong")
+            assert str(error) == "what went wrong"
+
+    @pytest.mark.parametrize("leaf", [OperationFailed, InputUnreadable])
+    def test_catching_the_root_still_catches_every_leaf(self, leaf):
+        # The point of the gate is to keep this true while making the root
+        # unraisable: handlers that mean "any error this package raises" do
+        # not have to change.
+        error = leaf("caught by the root")
+        with pytest.raises(AgentlessError):
+            raise error
+
+    def test_no_module_raises_the_root_directly(self):
+        """The gate fails at runtime; this fails in review, which is cheaper."""
+        source_root = Path(agentless_mcp.__file__).parent
+        offenders = [
+            f"{path.relative_to(source_root)}:{number}"
+            for path in source_root.rglob("*.py")
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if "raise AgentlessError(" in line
+        ]
+        assert not offenders, f"the taxonomy root is raised at: {offenders}"

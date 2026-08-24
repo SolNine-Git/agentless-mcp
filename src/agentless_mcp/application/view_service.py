@@ -53,7 +53,12 @@ from agentless_mcp.core.treewalk import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, RepoResolutionError
+from agentless_mcp.util.errors import (
+    AgentlessError,
+    LanguageUnavailable,
+    OperationFailed,
+    RepoResolutionError,
+)
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 
 
@@ -124,7 +129,7 @@ def _check_context(context: int) -> None:
     """
     if context < 0:
         message = f"context must not be negative, got {context}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
 
 def _satisfiable(start: int, end: int, total: int) -> bool:

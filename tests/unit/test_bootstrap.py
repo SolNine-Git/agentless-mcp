@@ -13,7 +13,7 @@ import pytest
 
 from agentless_mcp import bootstrap
 from agentless_mcp.adapters.cli.formatting import EXIT_USAGE
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import COUNTER_CHARS4, COUNTER_TIKTOKEN, Chars4Counter
 
 
@@ -89,7 +89,7 @@ class TestFailureReportingIsTheAdaptersOwn:
     def test_a_refused_counter_is_reported_with_the_usage_code(self, monkeypatch, capsys):
         def refuse(choice):
             message = "needs the 'tokens' extra, which is not installed"
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         monkeypatch.setattr(bootstrap, "select_counter", refuse)
 

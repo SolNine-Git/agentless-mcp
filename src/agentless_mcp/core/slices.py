@@ -23,7 +23,7 @@ convention used everywhere else in this package.
 from collections.abc import Iterable, Sequence
 
 from agentless_mcp.core.symbols import ASTSymbol, SymbolKind
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import OperationFailed
 
 ELISION = "..."
 
@@ -178,7 +178,7 @@ def _clamp(intervals: Sequence[tuple[int, int]] | None, total: int) -> list[tupl
     if not clipped:
         requested = ", ".join(f"{start}-{end}" for start, end in intervals)
         message = f"no requested line range falls inside the file's {total} lines: {requested}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return clipped
 
 

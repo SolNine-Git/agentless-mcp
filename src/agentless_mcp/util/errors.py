@@ -14,7 +14,21 @@ class AgentlessError(Exception):
     nobody bothered to classify" at the raise site -- and no handler can
     tell those apart. Every raise names a leaf instead; the leaf for a
     condition with no class of its own is :class:`OperationFailed`.
+
+    The constructor enforces that, so the paragraph above is a rule rather
+    than a request. Without it the docstring was already false: this class
+    was raised at sixty-one sites across nine modules while claiming to be
+    a base.
     """
+
+    def __init__(self, *args: object) -> None:
+        if type(self) is AgentlessError:
+            message = (
+                "AgentlessError is the taxonomy root and cannot be raised on its own; "
+                "raise a leaf, and OperationFailed when no leaf fits"
+            )
+            raise TypeError(message)
+        super().__init__(*args)
 
 
 class OperationFailed(AgentlessError):

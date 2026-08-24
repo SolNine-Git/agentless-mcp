@@ -69,7 +69,6 @@ def js_import(module):
         is_relative=True,
         relative_level=0,
         line_number=1,
-        resolved_path="",
     )
 
 
@@ -428,7 +427,6 @@ class TestPathIndex:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         modules = (
             "agentless_mcp.core.refs",
@@ -475,7 +473,6 @@ class TestImportResolution:
             is_relative=True,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert (
             resolve_import_target("src/inventory.ts", statement, ["src/pricing.ts"])
@@ -489,7 +486,6 @@ class TestImportResolution:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert (
             resolve_import_target(
@@ -507,7 +503,6 @@ class TestImportResolution:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert resolve_import_target("app.py", statement, ["app.py", "other.py"]) is None
 
@@ -523,7 +518,6 @@ class TestSuffixMatching:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
 
     def test_a_src_layout_resolves_through_the_tail(self):
@@ -562,7 +556,6 @@ class TestARelativeLevelAboveTheRoot:
             is_relative=True,
             relative_level=level,
             line_number=1,
-            resolved_path="",
         )
 
     def test_a_top_level_module_still_reaches_its_own_directory(self):
@@ -599,7 +592,6 @@ class TestASpecifierThatAlreadyNamesAFile:
             is_relative=relative,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
 
     def test_a_quoted_include_resolves_to_the_file_it_names(self):

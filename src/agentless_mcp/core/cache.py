@@ -124,7 +124,14 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   v9 reference row read by this build is fine; a ``builtin`` row read by an
 #   OLDER build raises at ``IdentifierRole(...)``, which is the other half of
 #   why one bump has to cover both.
-SCHEMA_VERSION = 10
+#
+# v11 drops ``imports.resolved_path``. It was written on every row and read
+# only by the code that wrote it back, so nothing ever consulted it; the
+# resolver computes the target from ``module`` and the repository's own file
+# list. The bump is not optional: a v10 database declares the column
+# ``NOT NULL``, so this build's shorter INSERT fails on the first file of
+# every index run.
+SCHEMA_VERSION = 11
 
 ENV_CACHE_HOME = "XDG_CACHE_HOME"
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
@@ -488,7 +495,7 @@ class CachedSource:
     def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
         """Rebuild one file's import statements from its rows, in extraction order."""
         cursor = self._connection.execute(
-            "SELECT module, names, is_relative, relative_level, line, resolved_path, "
+            "SELECT module, names, is_relative, relative_level, line, "
             "binds_all, alias, local_names FROM imports "
             "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
             (path, digest),
@@ -1278,8 +1285,8 @@ def _apply_plan(
             )
             connection.executemany(
                 "INSERT INTO imports (path, sha256, module, names, is_relative, "
-                "relative_level, line, resolved_path, binds_all, alias, local_names, "
-                "ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "relative_level, line, binds_all, alias, local_names, "
+                "ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     _import_row(entry.path, entry.digest, ordinal, statement)
                     for ordinal, statement in enumerate(entry.imports)
@@ -1365,7 +1372,6 @@ def _import_row(
         int(statement.is_relative),
         statement.relative_level,
         statement.line_number,
-        statement.resolved_path,
         int(statement.binds_all),
         statement.alias,
         json.dumps(list(statement.local_names)),
@@ -1381,10 +1387,9 @@ def _import_from_row(row: Sequence[Any]) -> ImportStatement:
         is_relative=bool(row[2]),
         relative_level=int(row[3]),
         line_number=int(row[4]),
-        resolved_path=str(row[5]),
-        binds_all=bool(row[6]),
-        alias=str(row[7]),
-        local_names=tuple(str(item) for item in json.loads(str(row[8]))),
+        binds_all=bool(row[5]),
+        alias=str(row[6]),
+        local_names=tuple(str(item) for item in json.loads(str(row[7]))),
     )
 
 
@@ -1556,7 +1561,6 @@ CREATE TABLE IF NOT EXISTS imports (
     is_relative INTEGER NOT NULL,
     relative_level INTEGER NOT NULL,
     line INTEGER NOT NULL,
-    resolved_path TEXT NOT NULL,
     binds_all INTEGER NOT NULL,
     alias TEXT NOT NULL,
     local_names TEXT NOT NULL,

@@ -23,7 +23,7 @@ every service have to reach it.
 
 from __future__ import annotations
 
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import OperationFailed
 
 
 def at_least(value: int, minimum: int, name: str) -> int:
@@ -39,7 +39,7 @@ def at_least(value: int, minimum: int, name: str) -> int:
     """
     if value < minimum:
         message = f"{name} must be at least {minimum}, got {value}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -51,5 +51,5 @@ def within(value: float, low: float, high: float, name: str) -> float:
     """
     if not low <= value <= high:
         message = f"{name} takes a value from {low} through {high}, got {value}"
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return value

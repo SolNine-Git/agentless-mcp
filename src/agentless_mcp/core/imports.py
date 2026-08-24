@@ -17,7 +17,6 @@ class ImportStatement:
     is_relative: bool
     relative_level: int
     line_number: int
-    resolved_path: str
     # True when this import brings *every* name the target defines into the
     # importing file's own namespace, so a bare reference to one of them is
     # evidence that the file imported it. C's `#include` and Python's

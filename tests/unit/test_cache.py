@@ -36,7 +36,7 @@ from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, refs
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import filelock, fslimits
-from agentless_mcp.util.errors import AgentlessError, CacheLocked
+from agentless_mcp.util.errors import CacheLocked, OperationFailed
 
 CORE = '''\
 """Core."""
@@ -970,7 +970,7 @@ class TestAutoIndex:
     ):
         def exploding(root, extractor, *, tree_oid=None, head_sha=None, force=False):
             message = "boom"
-            raise AgentlessError(message)
+            raise OperationFailed(message)
 
         monkeypatch.setattr(cache, "build_index", exploding)
         with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):

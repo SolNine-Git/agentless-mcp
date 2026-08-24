@@ -53,7 +53,7 @@ from typing import Any
 
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.prompts import ENVELOPE
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import Chars4Counter, TokenCounter
 
@@ -347,7 +347,7 @@ def wrap_json(
             f"payload keys collide with the envelope's own: {', '.join(collisions)}. "
             "Rename the field: the envelope owns these keys."
         )
-        raise AgentlessError(message)
+        raise OperationFailed(message)
 
     # No key can be overwritten once the collisions above are refused, so the
     # envelope's own fields stay first, where every reader of this format --

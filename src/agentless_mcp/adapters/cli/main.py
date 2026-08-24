@@ -97,7 +97,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NO
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
@@ -1627,7 +1627,7 @@ def _patch_call(
             f"{len(parsed.errors)} of {len(parsed.errors) + len(parsed.edits)} blocks "
             f"did not parse, so none of them was applied:\n{blocks}"
         )
-        raise AgentlessError(message)
+        raise OperationFailed(message)
     return ctx, parsed.edits
 
 

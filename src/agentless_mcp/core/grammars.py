@@ -44,7 +44,7 @@ import tree_sitter_language_pack as pack
 from tree_sitter import Language, Parser
 from tree_sitter_language_pack import PackConfig
 
-from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, OperationFailed
 
 logger = logging.getLogger(__name__)
 
@@ -569,7 +569,7 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
                 f"Warm it on a networked machine and copy {cache_dir()} across, "
                 f"or clear the flag and run warmup again."
             )
-            raise AgentlessError(message)
+            raise OperationFailed(message)
         try:
             # Unbounded, deliberately. `pack.prefetch` takes no timeout, and
             # both ways to impose one -- killing a worker thread or a

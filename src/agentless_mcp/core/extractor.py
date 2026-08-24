@@ -1871,7 +1871,6 @@ class TreeSitterExtractor:
                         is_relative=path.startswith("."),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
 
@@ -2551,7 +2550,6 @@ class TreeSitterExtractor:
                                 is_relative=not self._node_text(child, source).startswith("<"),
                                 relative_level=0,
                                 line_number=node.start_point[0] + 1,
-                                resolved_path="",
                                 # An `#include` is a textual paste: every name
                                 # the header declares is in this translation
                                 # unit's namespace afterwards, unqualified.
@@ -2609,7 +2607,6 @@ class TreeSitterExtractor:
                                 is_relative=path.startswith("."),
                                 relative_level=0,
                                 line_number=node.start_point[0] + 1,
-                                resolved_path="",
                             )
                         )
                     break
@@ -2652,7 +2649,6 @@ class TreeSitterExtractor:
                         is_relative=not path.startswith("/"),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
 
@@ -3146,7 +3142,6 @@ class TreeSitterExtractor:
                 is_relative=module.split("::")[0] in {"self", "super", "crate"},
                 relative_level=0,
                 line_number=node.start_point[0] + 1,
-                resolved_path="",
                 alias=alias,
                 local_names=local_names if local_names != names else (),
             )
@@ -3224,7 +3219,6 @@ class TreeSitterExtractor:
                         is_relative=False,
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
             elif child.type == "aliased_import":
@@ -3239,7 +3233,6 @@ class TreeSitterExtractor:
                             is_relative=False,
                             relative_level=0,
                             line_number=node.start_point[0] + 1,
-                            resolved_path="",
                             # `import a.b as ab` binds `ab` to the submodule,
                             # not `a` to the package. Dropping the alias lost
                             # both halves of that.
@@ -3266,7 +3259,6 @@ class TreeSitterExtractor:
                 is_relative=relative_level > 0,
                 relative_level=relative_level,
                 line_number=node.start_point[0] + 1,
-                resolved_path="",
                 # `from x import *` is the one Python form that genuinely
                 # binds every name the target defines. It is recorded as the
                 # name `*`, which no reference ever spells, so without this
