@@ -1,5 +1,34 @@
 # Navigation evidence
 
+## Correction, 2026-08-24: every figure below is invalid
+
+Read this section before any number in this document.
+
+The run this document reports, and the 0.6.0 run that followed it, both
+measured a server that could not see the repositories under test. The
+SWE-Explore-Bench harness unpacks each instance's snapshot repository into a
+gitignored directory inside the bench work tree, and until 0.6.1
+`core.treewalk.walk_repo` took its file list from git whenever git answered
+for the root. git answers for such a root and lists zero paths for it, so
+every snapshot repository read as empty: no files to walk, no files to map,
+nothing to rank. The defect and its fix are the 0.6.1 entry in `CHANGELOG.md`.
+
+What that costs this document: the two agentless arms in every table below
+measured the server answering about empty repositories. The grep-only and
+deterministic arms are unaffected by the defect, so their columns stand on
+their own, but every comparison against an agentless arm -- the results table,
+the paired intervals, the tool-selection counts, the span statistics and the
+cost figures -- says nothing about the tools as they behave on a repository
+they can read. The same holds for the 0.6.0 benchmark run and its
+"recovers test-file localization" claim.
+
+Nothing here is retracted as a negative result either. An arm that saw no
+files is not evidence that the tools underperform; it is not evidence of
+anything. The figures below are kept as the record of what was run. Replace
+them by re-running the benchmark against 0.6.1 or later, by the procedure in
+"How to regenerate this document", and confirm before scoring that an
+`orient(map)` call against an unpacked snapshot lists its files.
+
 ## What this document reports
 
 - Document date: 2026-08-23.

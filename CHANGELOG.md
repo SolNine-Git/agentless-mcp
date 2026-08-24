@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.6.1 -- 2026-08-24
+
+A correctness release with one fix, and a correction to what 0.6.0 claimed.
+
+### Fixed
+
+- **A root an enclosing repository ignores is no longer served as empty.**
+  `walk_repo` took the git branch whenever git answered for the root, which is
+  a correlate rather than the invariant. When the served root sits inside an
+  enclosing work tree that ignores it wholesale -- a snapshot unpacked under a
+  gitignored `repos/` directory, carrying no `.git` of its own -- git answers,
+  `git ls-files --cached --others --exclude-standard` returns zero paths, and
+  every tree view, directory listing and map built on the walk reported an
+  empty repository for a tree full of files. The branch now keys on ownership:
+  git's listing is used when the answering repository's top level is the root
+  itself, or when `git check-ignore` says that repository does not exclude the
+  root. A disowned root takes the bounded walk, exactly like a root outside any
+  repository. When `check-ignore` cannot answer -- a timeout, a git that cannot
+  be run, git's fatal exit 128 -- the git listing is kept, so the fix cannot
+  widen into a fallback for roots that list correctly today.
+- **`core.treewalk.is_git_repo` is gone,** replaced by the private
+  `_git_listing_speaks_for`. It had one caller, the one above, and a predicate
+  that answers "does git answer for this path" is the defect waiting to be
+  reintroduced by the next caller that reaches for it.
+
+### Correction to the 0.6.0 entry
+
+The 0.6.0 entry below is kept as published. Its benchmark validation is not.
+
+- **0.6.0's benchmark validation was invalid, and the defect above is why.**
+  The SWE-Explore-Bench harness unpacks each instance's snapshot repository
+  into a gitignored directory inside the bench work tree, so every repository
+  under test was a disowned root. The server listed zero files for all of them,
+  in the 0.5.0 run and in the 0.6.0 run alike. Both runs therefore measured the
+  server answering about empty repositories, not about the code they contained.
+- **The "recovers test-file localization" claim is unvalidated,** pending a
+  re-run of the benchmark against 0.6.1. Nothing in 0.6.0 is withdrawn on the
+  strength of those numbers either; they say nothing in either direction.
+- **The mechanical `is_test_path` widening stands.** It was measured against
+  the ground-truth file lists rather than through the server: 11 more
+  ground-truth files are recognised as tests, and none that were recognised
+  before are lost. That measurement does not touch the walk.
+
 ## 0.6.0 -- 2026-08-24
 
 Recovers test-file localization and adds a structural-health view. The
