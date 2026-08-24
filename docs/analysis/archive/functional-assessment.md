@@ -1,3 +1,8 @@
+> Archived 2026-08-24: superseded by
+> [`docs/analysis/benchmark-methodology.md`](../benchmark-methodology.md) for the
+> navigation evidence and by `CHANGELOG.md` for findings M1 to M3; the repository
+> paths cited below are the ones that stood on the assessment date.
+
 # Functional assessment
 
 - Assessment date: 2026-08-20

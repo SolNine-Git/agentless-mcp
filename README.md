@@ -313,6 +313,10 @@ ordering discipline in the free-choice arm. Read the numbers as evidence for
 the ordering, not as a prediction for your repository: the measured arm removed
 the native search tools, and this gate only defers them.
 
+How that comparison is run, which guardrails it carries and why, and what the
+gated arm itself measured are in
+[`docs/analysis/benchmark-methodology.md`](docs/analysis/benchmark-methodology.md).
+
 Install the gate by copying the two scripts and adding one hooks block.
 
 1. Copy `contrib/hooks/agentless_gate_check.py` and

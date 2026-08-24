@@ -1,3 +1,8 @@
+> Archived 2026-08-24: superseded by
+> [`docs/analysis/benchmark-methodology.md`](../benchmark-methodology.md) and by
+> `CHANGELOG.md`, which records the findings D1 to D3 as fixed; the repository
+> paths cited below are the ones that stood on the review date.
+
 # Effectiveness + Design Review: `agentless-mcp` v0.3.1
 
 - Review date: 2026-08-22

@@ -63,9 +63,10 @@ Process-group control is where the platforms genuinely differ. POSIX gets the
 full guarantee: a new session, then SIGTERM and SIGKILL to the whole group, so
 grandchildren die with their parent. Windows gets a documented best effort --
 a new process group at spawn, then ``terminate()`` and ``kill()`` on the
-leader -- and that difference is stated in ``docs/functional-assessment.md``
-rather than papered over, because a caller who believes stray children are
-impossible on a platform where they are not has been told something false.
+leader -- and that difference is stated in
+``docs/analysis/archive/functional-assessment.md`` rather than papered over,
+because a caller who believes stray children are impossible on a platform
+where they are not has been told something false.
 """
 
 import logging
@@ -583,8 +584,9 @@ def _kill_leader(process: "subprocess.Popen[bytes]") -> None:
     """End the timed-out command's leader process, politely then not.
 
     The Windows path. Anything the command spawned survives it, which is why
-    ``docs/functional-assessment.md`` says the timeout guarantee there is best
-    effort: without a job object there is nothing to signal a whole tree with.
+    ``docs/analysis/archive/functional-assessment.md`` says the timeout
+    guarantee there is best effort: without a job object there is nothing to
+    signal a whole tree with.
     """
     process.terminate()
     try:

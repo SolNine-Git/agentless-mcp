@@ -1,3 +1,7 @@
+> Archived 2026-08-24: superseded by
+> [`docs/analysis/benchmark-methodology.md`](../benchmark-methodology.md), which
+> carries forward the guardrail rules this post-mortem proposed.
+
 # Post-mortem: why a 9-phase audit found 335 defects a review had not
 
 Written 2026-08-23, from the `audit-remediation` branch, after stages 0-6a of
