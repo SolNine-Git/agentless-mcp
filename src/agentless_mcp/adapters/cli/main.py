@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
@@ -45,6 +46,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
     DEFAULT_MEMBER_LIMIT,
+    DiagramRequest,
     GraphService,
     PathOptions,
 )
@@ -66,6 +68,8 @@ from agentless_mcp.application.symbol_service import (
     kind_names,
     render_expansion,
     render_find,
+    render_refs,
+    unresolved_lines,
 )
 from agentless_mcp.application.validate_service import (
     DEFAULT_JOBS,
@@ -90,12 +94,13 @@ from agentless_mcp.core import (
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import git_root
+from agentless_mcp.core.htmlgraph import HtmlExport
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
@@ -158,7 +163,7 @@ def run(argv: Sequence[str] | None, services: CliServices) -> int:
             invocation = replace(services, resources=resources)
             try:
                 return handler(args, invocation)
-            except AtlasError as error:
+            except AgentlessError as error:
                 return fail(str(error), exit_code_for(error))
     finally:
         # One-shot process: exiting mid-extraction would kill the daemon
@@ -277,13 +282,18 @@ def _add_map(subparsers: Any) -> None:
         f"(default: {AUTO_BUDGET})",
     )
     parser.add_argument(
-        "--max-files", type=int, default=None, help=f"(default: {DEFAULT_MAX_FILES})"
+        "--max-files",
+        type=int,
+        default=None,
+        help="ranked files admitted to the map before symbol packing "
+        f"(default: {DEFAULT_MAX_FILES})",
     )
     parser.add_argument(
         "--granularity",
         choices=GRANULARITIES,
         default=None,
-        help=f"(default: {GRANULARITY_FUNCTION})",
+        help=f"map detail: '{GRANULARITY_FUNCTION}' lists symbols within ranked files, "
+        f"'file' reports ranked files only (default: {GRANULARITY_FUNCTION})",
     )
     parser.set_defaults(handler=_cmd_map)
 
@@ -291,8 +301,19 @@ def _add_map(subparsers: Any) -> None:
 def _add_tree(subparsers: Any) -> None:
     parser = subparsers.add_parser("tree", help="gitignore-aware directory tree")
     _repo_flags(parser)
-    parser.add_argument("--depth", type=int, default=DEFAULT_RENDER_DEPTH)
-    parser.add_argument("--max-entries", type=int, default=DEFAULT_MAX_ENTRIES)
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=DEFAULT_RENDER_DEPTH,
+        help=f"directory levels rendered below the tree root (default: {DEFAULT_RENDER_DEPTH})",
+    )
+    parser.add_argument(
+        "--max-entries",
+        type=int,
+        default=DEFAULT_MAX_ENTRIES,
+        help="files and directories rendered before the tree reports truncation "
+        f"(default: {DEFAULT_MAX_ENTRIES})",
+    )
     parser.set_defaults(handler=_cmd_tree)
 
 
@@ -321,15 +342,20 @@ def _add_expand(subparsers: Any) -> None:
 def _add_slice(subparsers: Any) -> None:
     parser = subparsers.add_parser("slice", help="numbered lines with scope headers")
     _repo_flags(parser)
-    parser.add_argument("file", nargs="?", metavar="FILE")
+    # FILE plus --lines and --symbol are alternatives, and --symbol used to win
+    # silently: `slice a.py --lines 1:3 --symbol py:b.py::f` sliced b.py whole
+    # and never said the other two were dropped. Declared the way `lint`
+    # declares the same shape, so argparse refuses the combination by name.
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("file", nargs="?", metavar="FILE")
+    source.add_argument("--symbol", metavar="STABLE_ID", help="slice this symbol instead")
     parser.add_argument(
         "--lines",
         action="append",
         default=[],
         metavar="A:B",
-        help="1-based inclusive line range; repeatable and merged",
+        help="1-based inclusive line range; repeatable and merged; needs FILE",
     )
-    parser.add_argument("--symbol", metavar="STABLE_ID", help="slice this symbol instead")
     parser.add_argument("--context", type=int, default=DEFAULT_CONTEXT_LINES)
     parser.set_defaults(handler=_cmd_slice)
 
@@ -454,9 +480,16 @@ def _add_diagram(subparsers: Any) -> None:
     parser.add_argument(
         "--max-nodes",
         type=int,
-        default=DEFAULT_MAX_NODES,
-        help=f"modules drawn (default: {DEFAULT_MAX_NODES}); the rest are announced "
+        default=DEFAULT_DIAGRAM_NODES,
+        help=f"modules drawn (default: {DEFAULT_DIAGRAM_NODES}); the rest are announced "
         "on an explicit elision node",
+    )
+    parser.add_argument(
+        "--max-edges",
+        type=int,
+        default=DEFAULT_DIAGRAM_EDGES,
+        help=f"arrows drawn (default: {DEFAULT_DIAGRAM_EDGES}); reference edges past this "
+        "bound are announced in a comment rather than drawn",
     )
     parser.add_argument(
         "--communities",
@@ -487,16 +520,16 @@ def _add_html(subparsers: Any) -> None:
     parser.add_argument(
         "--max-nodes",
         type=int,
-        default=htmlgraph.DEFAULT_MAX_NODES,
-        help=f"modules included (default: {htmlgraph.DEFAULT_MAX_NODES}, "
-        f"maximum: {htmlgraph.MAX_NODES})",
+        default=htmlgraph.DEFAULT_HTML_NODES,
+        help=f"modules included (default: {htmlgraph.DEFAULT_HTML_NODES}, "
+        f"maximum: {htmlgraph.MAX_HTML_NODES})",
     )
     parser.add_argument(
         "--max-edges",
         type=int,
-        default=htmlgraph.DEFAULT_MAX_EDGES,
-        help=f"edges included (default: {htmlgraph.DEFAULT_MAX_EDGES}, "
-        f"maximum: {htmlgraph.MAX_EDGES})",
+        default=htmlgraph.DEFAULT_HTML_EDGES,
+        help=f"edges included (default: {htmlgraph.DEFAULT_HTML_EDGES}, "
+        f"maximum: {htmlgraph.MAX_HTML_EDGES})",
     )
     parser.add_argument(
         "--resolution",
@@ -612,6 +645,10 @@ def _add_validate(subparsers: Any) -> None:
     ``--allow-repo-test-cmd`` says otherwise. There is still no ``Makefile``
     sniffing, no ``package.json`` scripts lookup and no built-in default.
 
+    ``--allow-test-config-edits`` is that rule's write-side twin: a candidate
+    that edits ``conftest.py``, a build file or a CI workflow is refused
+    before it is applied, because it would be choosing how it is judged.
+
     The opt-in is the gate, not the note printed beside it: this CLI is the
     front door any agent can reach over Bash, so "a human saw the command"
     is not a property the code can hold, and the refusal lives in
@@ -647,13 +684,22 @@ def _add_validate(subparsers: Any) -> None:
         "repository would be choosing the command that judges it",
     )
     parser.add_argument(
+        "--allow-test-config-edits",
+        action="store_true",
+        help="allow a candidate patch to edit conftest.py, a build file or a CI workflow; "
+        "without this such a candidate is refused before it is applied, because it "
+        "would be choosing how it is judged",
+    )
+    parser.add_argument(
         "--pass-env",
         action="append",
         default=[],
         type=_environment_name,
         metavar="NAME",
         help="pass one additional parent environment variable to test commands; repeatable. "
-        "By default only PATH, HOME, LANG and TMPDIR are inherited",
+        "By default a test command inherits only a short per-platform allowlist: "
+        "PATH, HOME, LANG and TMPDIR on POSIX, and the names a Windows interpreter "
+        "needs to start on Windows",
     )
     parser.add_argument(
         "--repro-cmd",
@@ -811,11 +857,26 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
         docstrings=projectconfig.resolve(args.docstrings, ctx.config.docstrings, False),
         numbered=args.numbers,
     )
-    text = "\n".join(f"### {view.path}\n{view.text or view.error}" for view in views)
+    # The reason a file could not be read goes on stderr, never into the view.
+    # Interleaved, it rendered as source: an agent piping `skeleton a.py b.py`
+    # into a prompt read "b.py: unreadable: No such file or directory" as the
+    # contents of b.py, behind exit 0. The JSON form keeps the per-file error
+    # as its own field, which is a structure a reader can tell apart.
+    failed = [view for view in views if view.error]
+    text = "\n".join(f"### {view.path}\n{view.text}" for view in views if not view.error)
     _emit(args, ctx, services, _Answer(text, {"files": [v.as_dict() for v in views]}, "files"))
-    # A file that could not be read is not an empty answer: `slice` has always
-    # failed on the identical FileView.error, and the two must agree.
-    return EXIT_DOMAIN if views and all(view.error for view in views) else EXIT_OK
+    for view in failed:
+        # The same wording `slice` uses for the identical FileView.error: the
+        # service message already names the file it is about.
+        note(f"agentless-mcp: {view.error}")
+    # A refused path outranks an unreadable one, and keys on the typed marker
+    # rather than on the message: a path outside the root is a usage error
+    # however many other files the batch answered, while a file that could not
+    # be read is a domain failure. Both beat exit 0 -- the caller named them
+    # and they did not resolve.
+    if any(view.refused for view in views):
+        return EXIT_USAGE
+    return EXIT_DOMAIN if failed else EXIT_OK
 
 
 def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
@@ -825,7 +886,17 @@ def _cmd_expand(args: argparse.Namespace, services: CliServices) -> int:
 
     result = services.symbols.expand_symbols(ctx, list(args.ids), limit=args.limit)
     _emit(args, ctx, services, _Answer(render_expansion(result), result.as_dict(), "symbols"))
-    return EXIT_DOMAIN if result.unresolved and not result.cards else EXIT_OK
+    # The same split `skeleton` uses, for the same reason. These rows used to
+    # ride stdout under the symbol bodies at exit 0, so an agent piping
+    # `expand` into a prompt read "unresolved: ... no longer defines X" as
+    # source among the sources it asked for. The JSON form keeps them as their
+    # own field, which is a structure a reader can tell apart.
+    for line in unresolved_lines(result):
+        note(f"agentless-mcp: {line}")
+    # An id the caller named and did not get back is a failure whether or not
+    # the other ids in the batch resolved -- the old rule reported success
+    # for a batch that answered one of fifty.
+    return EXIT_DOMAIN if result.unresolved else EXIT_OK
 
 
 def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
@@ -851,7 +922,13 @@ def _cmd_slice(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _slice_by_symbol(args: argparse.Namespace, ctx: RepoContext, services: CliServices) -> int:
-    """Render the source of whatever symbol one stable id names."""
+    """Render the source of whatever symbol one stable id names.
+
+    ``--lines`` belongs to a FILE slice and this path discards it, so the
+    combination is refused rather than half-honoured.
+    """
+    if args.lines:
+        return fail("slice takes --lines with FILE, not with --symbol", EXIT_USAGE)
     try:
         parsed = parse_stable_id(args.symbol)
     except ValueError as error:
@@ -930,11 +1007,7 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
     result = services.symbols.find_referencing_symbols(
         ctx, args.target, limit=args.limit, shared_callers=args.shared_callers
     )
-    text = (
-        render.render_shared_callers(result.shared, args.target)
-        if args.shared_callers
-        else render.render_ref_groups(result.groups, args.target)
-    )
+    text = render_refs(result, shared_callers=args.shared_callers)
     _emit(args, ctx, services, _Answer(text, result.as_dict(), "groups"))
     return EXIT_OK
 
@@ -965,9 +1038,6 @@ def _cmd_path(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.max_visited < 1:
-        return fail("--max-visited takes a positive integer", EXIT_USAGE)
-
     result = services.graphs.path(
         ctx,
         args.source,
@@ -998,9 +1068,6 @@ def _cmd_communities(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.limit < 0 or args.members < 0:
-        return fail("--limit and --members take non-negative integers", EXIT_USAGE)
-
     result = services.graphs.communities(
         ctx, resolution=args.resolution, limit=args.limit, members=args.members
     )
@@ -1018,15 +1085,15 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if args.max_nodes < 1:
-        return fail("--max-nodes takes a positive integer", EXIT_USAGE)
-
     view = services.graphs.diagram(
         ctx,
-        focus=args.focus,
-        max_nodes=args.max_nodes,
-        group_by_communities=args.communities,
-        resolution=args.resolution,
+        DiagramRequest(
+            focus=args.focus,
+            max_nodes=args.max_nodes,
+            max_edges=args.max_edges,
+            group_by_communities=args.communities,
+            resolution=args.resolution,
+        ),
     )
     if view.message:
         return fail(view.message)
@@ -1042,7 +1109,7 @@ def _cmd_diagram(args: argparse.Namespace, services: CliServices) -> int:
     else:
         emit(view.text)
 
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {_diagram_summary(view)}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=_diagram_summary(view))))
     if view.caveat:
         note(f"agentless-mcp: {view.caveat}")
     return EXIT_OK
@@ -1053,16 +1120,6 @@ def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
     ctx = _context(args, services)
     if ctx is None:
         return EXIT_USAGE
-    if not 1 <= args.max_nodes <= htmlgraph.MAX_NODES:
-        return fail(
-            f"--max-nodes takes an integer from 1 through {htmlgraph.MAX_NODES}",
-            EXIT_USAGE,
-        )
-    if not 0 <= args.max_edges <= htmlgraph.MAX_EDGES:
-        return fail(
-            f"--max-edges takes an integer from 0 through {htmlgraph.MAX_EDGES}",
-            EXIT_USAGE,
-        )
     cache_name = _html_cache_name(args.cache_file)
     if args.cache_file is not None and cache_name is None:
         return fail(
@@ -1086,18 +1143,24 @@ def _cmd_html(args: argparse.Namespace, services: CliServices) -> int:
             return fail(f"cannot write HTML export: {error}", EXIT_DOMAIN)
         note(f"agentless-mcp: wrote {target}")
 
-    note(
-        "\n".join(
-            [
-                *envelope.receipt_lines(ctx),
-                (
-                    f"# HTML graph of {exported.nodes} modules and {exported.edges} edges; "
-                    f"{exported.elided_nodes} modules and {exported.elided_edges} edges elided"
-                ),
-            ]
-        )
-    )
+    note("\n".join(envelope.receipt_lines(ctx, summary=_html_summary(exported, args))))
     return EXIT_OK
+
+
+def _html_summary(exported: HtmlExport, args: argparse.Namespace) -> str:
+    """Say what the export left out, and which bound took it.
+
+    One number for two causes was unreadable: `0 modules and 200 edges elided`
+    on this repository meant every one of the 200 came from the edge bound and
+    none from the node bound, but the line could equally have described the
+    reverse -- and only one of those is fixed by raising --max-nodes.
+    """
+    return (
+        f"HTML graph of {exported.nodes} modules and {exported.edges} edges; "
+        f"{exported.elided_nodes} modules elided (node bound {args.max_nodes}); "
+        f"{exported.edges_without_both_nodes} edges elided with them, "
+        f"{exported.edges_over_bound} past the edge bound ({args.max_edges})"
+    )
 
 
 def _html_cache_name(raw: str | None) -> str | None:
@@ -1169,10 +1232,9 @@ def _check_diagram(rendered: str, target: Path) -> int:
     and the two lengths -- enough to see whether the drift is the tree moving
     or the flags differing, without printing two diagrams.
     """
-    try:
-        committed = target.read_text(encoding="utf-8")
-    except OSError as error:
-        return fail(f"cannot read {target}: {error.strerror}", EXIT_USAGE)
+    committed, reason = _read_caller_file(target)
+    if committed is None:
+        return fail(f"cannot read {target}: {reason}", EXIT_USAGE)
 
     stripped = render.strip_fence(committed)
     if stripped == rendered:
@@ -1335,6 +1397,7 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
             passthrough_env=tuple(dict.fromkeys(args.pass_env)),
             test_cmd_from_repo=from_config,
             allow_repo_test_cmd=args.allow_repo_test_cmd,
+            allow_test_config_edits=args.allow_test_config_edits,
         ),
     )
 
@@ -1346,10 +1409,17 @@ def _cmd_validate(args: argparse.Namespace, services: CliServices) -> int:
         try:
             destination.write_text(document, encoding="utf-8")
         except OSError as error:
-            return fail(f"cannot write {destination}: {error.strerror}", EXIT_USAGE)
+            # The run has already spent minutes on a baseline and two commands
+            # per candidate, and the document is the only record of it. Losing
+            # the work as well as the write is the avoidable half of the
+            # failure, so the document goes to stdout and the exit code still
+            # says the write did not happen.
+            fail(f"cannot write {destination}: {error.strerror}; verdicts on stdout", EXIT_USAGE)
+            emit(document)
+            return EXIT_USAGE
         note(f"agentless-mcp: verdicts written to {destination}")
 
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {report.summary_line()}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=report.summary_line())))
     for warning in report.warnings():
         note(f"agentless-mcp: {warning}")
     return EXIT_OK if report.any_passed else EXIT_DOMAIN
@@ -1365,10 +1435,9 @@ def _cmd_vote(args: argparse.Namespace, services: CliServices) -> int:
     """
     _ = services
     source = Path(args.verdicts)
-    try:
-        text = source.read_text(encoding="utf-8")
-    except OSError as error:
-        return fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
+    text, reason = _read_caller_file(source)
+    if text is None:
+        return fail(f"cannot read {source}: {reason}", EXIT_USAGE)
 
     loaded = load_verdicts(text)
     report = vote.rank(loaded.candidates, repro_valid=loaded.repro_valid)
@@ -1440,13 +1509,26 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
     if ctx is None:
         return EXIT_USAGE
 
-    report = cache.build_index(
-        ctx.root,
-        services.extractor,
-        tree_oid=ctx.tree_oid,
-        head_sha=ctx.head_sha,
-        force=args.force,
-    )
+    # `build_index` opens and writes a SQLite database, so it raises
+    # `sqlite3.Error` and `OSError` -- neither of which is an `AgentlessError`,
+    # so neither was caught by the handler in `run`. A full disk or a
+    # read-only cache directory ended this command in a raw traceback, which
+    # also puts an absolute local path on stderr. Converted to the package's
+    # own refusal, naming the repository the caller would have to act on --
+    # the repository rather than the database, because the cache path is an
+    # opaque hash directory derived from it and the root is what an operator
+    # can do something about.
+    try:
+        report = cache.build_index(
+            ctx.root,
+            services.extractor,
+            tree_oid=ctx.tree_oid,
+            head_sha=ctx.head_sha,
+            force=args.force,
+        )
+    except (sqlite3.Error, OSError) as error:
+        message = f"cannot build the tag cache for {ctx.root}: {error}"
+        raise OperationFailed(message) from error
     if args.json:
         emit(envelope.wrap_json(ctx, report.as_dict(), counter=services.counter))
         return EXIT_OK if report.errors == 0 else EXIT_DOMAIN
@@ -1510,6 +1592,29 @@ def _cmd_guide(args: argparse.Namespace, services: CliServices) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _read_caller_file(path: Path) -> tuple[str | None, str]:
+    """Read a file the caller named, or say why it could not be read.
+
+    Read as given rather than through :func:`util.fslimits.read_bounded`,
+    which the repository-content readers use: that one applies a size cap,
+    refuses a symlink and substitutes replacement characters for undecodable
+    bytes. All three are right for a file a traversal discovered and wrong
+    for one a person typed on a command line.
+
+    What was missing is the decode failure. ``UnicodeDecodeError`` is a
+    ``ValueError``, so an ``except OSError`` around ``read_text`` let a
+    latin-1 patch file or a mistyped binary path out as a raw traceback --
+    which also puts an absolute local path on stderr. The MCP adapter's two
+    readers already catch both; this is the same handling on the other door.
+    """
+    try:
+        return path.read_text(encoding="utf-8"), ""
+    except OSError as error:
+        return None, error.strerror or str(error)
+    except UnicodeDecodeError as error:
+        return None, f"not valid UTF-8: byte {error.start} is {error.reason}"
+
+
 def _patch_text(args: argparse.Namespace) -> str | None:
     """Read the patch text from ``--file`` or stdin, or report why not.
 
@@ -1521,11 +1626,10 @@ def _patch_text(args: argparse.Namespace) -> str | None:
         return sys.stdin.read()
 
     source = Path(args.file)
-    try:
-        return source.read_text(encoding="utf-8")
-    except OSError as error:
-        fail(f"cannot read {source}: {error.strerror}", EXIT_USAGE)
-        return None
+    text, reason = _read_caller_file(source)
+    if text is None:
+        fail(f"cannot read {source}: {reason}", EXIT_USAGE)
+    return text
 
 
 def _patch_call(
@@ -1559,7 +1663,7 @@ def _patch_call(
             f"{len(parsed.errors)} of {len(parsed.errors) + len(parsed.edits)} blocks "
             f"did not parse, so none of them was applied:\n{blocks}"
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return ctx, parsed.edits
 
 
@@ -1582,7 +1686,7 @@ def _check_lines(report: CheckReport) -> list[str]:
 
 def _patch_receipt(ctx: RepoContext, summary: str, result: ApplyResult) -> None:
     """Put the receipt, the summary and every failed edit on stderr."""
-    note("\n".join([*envelope.receipt_lines(ctx), f"# {summary}"]))
+    note("\n".join(envelope.receipt_lines(ctx, summary=summary)))
     for outcome in result.failures:
         edit = outcome.edit
         note(f"  {outcome.status.value}: {edit.path} block {edit.index}: {outcome.reason}")
@@ -1594,23 +1698,30 @@ def _resolve(args: argparse.Namespace, *, require_git: bool) -> RepoContext | No
     ``allowlist=None`` throughout: in the CLI the root comes from the caller's
     own cwd or their own ``--repo``, which is exactly as trusted as the process
     itself. The allowlist exists for the server, where it is not.
+
+    The degradation warning fires at the one exit rather than per branch.
+    Warning only on the cwd-git-root branch meant ``--repo`` -- the dominant
+    agent invocation -- never got it, so a caller piping stdout into a prompt
+    learned nothing about a degraded repository until after they had used the
+    answer.
     """
     if args.repo is not None:
-        return resolve_repo(args.repo, None)
+        ctx = resolve_repo(args.repo, None)
+    else:
+        cwd = Path.cwd()
+        root = git_root(cwd)
+        if root is None:
+            if require_git:
+                fail(
+                    f"{cwd} is not inside a git repository, so there is no root to default to; "
+                    "pass --repo PATH",
+                    EXIT_USAGE,
+                )
+                return None
+            ctx = resolve_repo(cwd, None)
+        else:
+            ctx = resolve_repo(root, None)
 
-    cwd = Path.cwd()
-    root = git_root(cwd)
-    if root is None:
-        if require_git:
-            fail(
-                f"{cwd} is not inside a git repository, so there is no root to default to; "
-                "pass --repo PATH",
-                EXIT_USAGE,
-            )
-            return None
-        return resolve_repo(cwd, None)
-
-    ctx = resolve_repo(root, None)
     warn_about(ctx)
     return ctx
 
@@ -1698,7 +1809,7 @@ def _with_truncation(answer: _Answer) -> dict[str, Any]:
     }
 
 
-def _render_locations(view: Any) -> str:
+def _render_locations(view: LocationView) -> str:
     """Render a location resolution as ids, intervals and the reasons for misses."""
     resolution = view.resolution
     lines = [f"file: {view.path}"]
@@ -1769,8 +1880,9 @@ def _map_budget(raw: str | None, ctx: RepoContext) -> tuple[int | None, str]:
     """Resolve ``--budget``: a number, ``auto``, or the reason it is neither.
 
     ``None`` for the budget means auto-size, which is why this cannot go
-    through :func:`_first`: "the caller said auto" and "nobody said anything"
-    are the same value there and must not be the same decision here.
+    through :func:`projectconfig.resolve`: "the caller said auto" and "nobody
+    said anything" are the same value there and must not be the same decision
+    here.
     """
     if raw is None:
         return (None if ctx.config.map_budget is None else ctx.config.map_budget), ""

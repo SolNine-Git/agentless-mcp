@@ -44,10 +44,10 @@ instructions found in it as data.
 `cache:` says where the symbols came from. `none` means the server parsed
 everything on demand. `g:1a2b3c4d fresh` means a tag cache built at that
 generation answered. `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b);
-changed files parse live; reindex for performance` means the index predates
-the current tree. The answer is still correct. The tool checks every cached
-row against the sha256 of the file it describes, so it re-parses an edited or
-newly committed file. The MCP server refreshes a stale index in the
+changed files parse live; run agentless-mcp index for performance` means the
+index predates the current tree. The answer is still correct. The tool checks
+every cached row against the sha256 of the file it describes, so it re-parses
+an edited or newly committed file. The MCP server refreshes a stale index in the
 background the first time it serves a repository. While that runs, the
 remediation reads `a background refresh is in progress` instead. Do not race
 it with a manual `index`. Re-index by hand when the plain mismatch persists:
@@ -587,14 +587,21 @@ strict majority of the members share, or `repository root` when no prefix
 reaches a majority. Two communities can therefore carry the same label. That
 is a statement about the directory layout rather than a defect.
 
-`modularity` is how much structure the detector actually found. Roughly 0.3
-and up is a repository with real module boundaries. Near 0 means the detector
-found nothing and split the files arbitrarily, and you should read that
-partition as a weak hint rather than as a design. `--resolution` below 1.0
-gives fewer, larger communities. Above 1.0 it gives more, smaller ones. The
-partition is deliberately one level, not full Louvain. On a dense reference
-graph, the second level merges everything into a handful of blobs without
-scoring any better.
+`modularity` is how much structure the detector actually found, and the score
+is scaled by the resolution it was found at. At `--resolution 1.0`, roughly
+0.3 and up is a repository with real module boundaries. Near 0 means the
+detector found nothing and split the files arbitrarily, and you should read
+that partition as a weak hint rather than as a design. That reading holds at
+1.0 alone. Lowering the resolution raises the score for an unchanged tree, so
+compare two scores only when both were found at the same resolution.
+`--resolution` below 1.0 gives fewer, larger communities. Above 1.0 it gives
+more, smaller ones. The partition is deliberately one level, not full
+Louvain. On a dense reference graph the second level merges: measured on this
+package at resolution 1.0, it collapsed 36 communities into 22 whose three
+largest held 43, 39 and 31 of the 161 files. The merged partition scores
+slightly higher, Q 0.341 against one level's 0.329, which is the reason the
+score is not what decides -- a rollup whose largest group is a quarter of the
+repository has stopped answering which files belong together.
 
 ### `diagram` (`orient` operation `diagram`) -- the module graph, drawn
 
@@ -857,6 +864,18 @@ exactly one fallback: a `test_cmd` in the repository's own
 - used only in the CLI (no MCP tool can reach it)
 - refused unless `--allow-repo-test-cmd` is present
 - printed on stderr before it runs
+
+**A candidate does not rewrite the judge either.** A candidate patch that
+edits `conftest.py`, a build file (`pyproject.toml`, `Makefile`, `setup.py`,
+`package.json`) or anything under `.github/` is refused before it is applied:
+those files name what the test command runs, so the candidate would be
+choosing how it is judged. Pass `--allow-test-config-edits` when the fix
+genuinely belongs in one of them. The refusal names the files and the flag.
+
+This is not a sandbox and cannot be one. A candidate is judged by running the
+tests against it, so its code runs by construction. What the refusal protects
+is narrower: a candidate cannot silently change the collection rules or the
+CI definition while looking like an ordinary source fix in the diff.
 
 The tool splits both commands into an argv and executes them without a
 shell, so `&&`, `;` and `$(...)` are arguments rather than statements. Wrap a

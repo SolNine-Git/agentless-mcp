@@ -58,7 +58,23 @@ What is refused, and why each is a refusal rather than a silent skip:
 * **Hunk line counts that disagree with the ``@@`` header.** The truncation
   guard, and also what makes the parse unambiguous: hunk content is consumed by
   count, so a context line that itself begins ``--- `` cannot be mistaken for
-  the next file's header.
+  the next file's header. Both directions are refused: a body shorter than the
+  header claims, and a body still holding lines when the counts run out. The
+  second is answered twice, because one line cannot always carry it: an empty
+  line and ``--`` follow a correct hunk in real output, so they are read as
+  its end, and the section is then checked for the hunks that reading would
+  have skipped.
+* **A section holding hunks but no ``---``/``+++`` pair.** Both headers absent
+  is how git spells a mode-only change, and a mode-only change has no hunks. A
+  section with both is a header block that lost them, and reporting it as the
+  mode change says there is no content to check about a content change.
+* **Hunks whose pre-image ranges overlap or run backwards.** A file's hunks
+  cover disjoint, increasing ranges of the pre-image, so two hunks that claim
+  the same lines describe two states of one file and no edit list can hold
+  both. Stated per section: two sections naming one file are not compared.
+* **A hunk that declares no lines on either side** (``@@ -0,0 +0,0 @@``). It
+  yields an edit whose search and replace are both empty, which every check
+  reads as a change it examined and found clean.
 """
 
 import re
@@ -252,10 +268,14 @@ class _Side:
     ``path`` is None for ``/dev/null``, which is how the format spells "this
     side does not exist" -- an addition on the old side, a deletion on the new.
     ``reason`` is non-empty only when the side could not be read at all.
+    ``raw`` is the header's own text with the timestamp column removed, kept so
+    that a disagreement between the two sides can be judged before either one
+    lost its ``a/``/``b/`` prefix.
     """
 
     path: str | None
     reason: str
+    raw: str
 
 
 def _lines(text: str) -> list[str]:
@@ -386,15 +406,16 @@ def _file_section(lines: Sequence[str], at: int, ordinal: int) -> _Section:
     """Parse one file's headers and hunks, starting at ``at``."""
     read = _headers(lines, at)
     resume = _skip_to_next_section(lines, read.next, git_only=read.git_section)
+    label = _label(read)
 
     if read.reason:
-        return _section_error(read.named, ordinal, resume, read.reason)
+        return _section_error(label, ordinal, resume, read.reason)
     if read.binary:
-        note = DiffNote(read.named or "", "binary, so there is no text to check")
+        note = DiffNote(label or "", "binary, so there is no text to check")
         return _Section((), (), (note,), ordinal, resume)
     if read.renamed:
         return _section_error(
-            read.named,
+            label,
             ordinal,
             resume,
             "this section renames or copies a file, which one edit cannot express because an "
@@ -402,28 +423,49 @@ def _file_section(lines: Sequence[str], at: int, ordinal: int) -> _Section:
         )
 
     if read.old_raw is None or read.new_raw is None:
-        return _without_pair(read, ordinal, resume)
-    return _paths_then_hunks(lines, read, ordinal, resume)
+        return _without_pair(lines, read, label, ordinal, resume)
+    return _paths_then_hunks(lines, read, label, ordinal, resume)
 
 
-def _without_pair(read: _Headers, ordinal: int, resume: int) -> _Section:
+def _without_pair(
+    lines: Sequence[str],
+    read: _Headers,
+    label: str | None,
+    ordinal: int,
+    resume: int,
+) -> _Section:
     """Judge a section that carries no complete ``---``/``+++`` pair.
 
     Both headers absent is the mode-only change git spells that way. One absent
     is a diff that states it changes something without stating what.
+
+    Both absent *and* hunks present is neither. It reached the note above,
+    which says there is no content to check about a section holding a content
+    change -- so a truncated or hand-edited header block turned real hunks
+    into a line reporting that nothing needed reading. A mode-only change has
+    no hunks; :func:`_headers` stops at the first one, so which of the two
+    this is costs a single line.
     """
     if read.old_raw is None and read.new_raw is None:
-        if read.named is None:
+        if _opens_hunk(lines, read.next):
+            return _section_error(
+                label,
+                ordinal,
+                resume,
+                "this section has hunks but neither a '---' nor a '+++' header, so the file "
+                "they change is not stated; a mode-only change carries no hunks",
+            )
+        if label is None:
             return _section_error(
                 None,
                 ordinal,
                 resume,
                 "this section names no file: no '---'/'+++' pair and no 'diff --git' header",
             )
-        note = DiffNote(read.named, "mode change only, so there is no content to check")
+        note = DiffNote(label, "mode change only, so there is no content to check")
         return _Section((), (), (note,), ordinal, resume)
     return _section_error(
-        read.named,
+        label,
         ordinal,
         resume,
         "this section has only one of the '---' and '+++' headers, so which file it "
@@ -434,6 +476,7 @@ def _without_pair(read: _Headers, ordinal: int, resume: int) -> _Section:
 def _paths_then_hunks(
     lines: Sequence[str],
     read: _Headers,
+    label: str | None,
     ordinal: int,
     resume: int,
 ) -> _Section:
@@ -442,26 +485,42 @@ def _paths_then_hunks(
     new = _side(read.new_raw or "", "b")
     for side in (old, new):
         if side.reason:
-            return _section_error(read.named, ordinal, resume, side.reason)
+            return _section_error(label, ordinal, resume, side.reason)
 
     if old.path is not None and new.path is not None and old.path != new.path:
-        return _section_error(
-            read.named,
-            ordinal,
-            resume,
-            f"this section renames {old.path} to {new.path}, which one edit cannot express "
-            "because an edit carries a single path; lint the content change separately",
-        )
+        return _section_error(label, ordinal, resume, _two_paths(old, new))
 
     path = new.path if new.path is not None else old.path
     if path is None:
         return _section_error(
-            read.named,
+            label,
             ordinal,
             resume,
             "both sides of this section are /dev/null, so it names no file at all",
         )
     return _hunks(lines, read.next, _Target(path, old.path is None), ordinal, resume)
+
+
+def _two_paths(old: _Side, new: _Side) -> str:
+    """Say why a section whose two sides resolve to different files is refused.
+
+    Two headers spelling the same path are not a rename however they resolve.
+    That happens to a ``git diff --no-prefix`` of a file under a top-level
+    ``a/`` or ``b/`` directory: only one side then matches the prefix this
+    reader strips, and calling the result a rename sends the reader looking for
+    one that is not there.
+    """
+    if old.raw == new.raw:
+        return (
+            f"this section's '---' and '+++' headers both name {old.raw}, and only one of "
+            "them carries the 'a/' or 'b/' prefix git adds, so the two sides resolve to "
+            f"{old.path} and {new.path}; regenerate the diff with git's default prefixes "
+            "(drop --no-prefix)"
+        )
+    return (
+        f"this section renames {old.path} to {new.path}, which one edit cannot express "
+        "because an edit carries a single path; lint the content change separately"
+    )
 
 
 def _diff_git_path(line: str) -> str | None:
@@ -470,33 +529,77 @@ def _diff_git_path(line: str) -> str | None:
     Used only to attribute a refusal or a note to a file. The authoritative
     paths are the ``---``/``+++`` pair; this is a label, and a header it cannot
     read confidently yields None rather than a guess.
+
+    A path holding ``" b/"`` makes the line ambiguous by construction, because
+    the separator and the name are spelled the same. One candidate separator is
+    read as-is, which is what keeps a rename's two different paths labelled;
+    several are read only when exactly one split leaves the two halves naming
+    one file, and otherwise the header is one this cannot read confidently.
     """
     rest = line[len(_DIFF_GIT) :]
     if rest.startswith('"'):
         return None
-    _, separator, tail = rest.partition(" b/")
-    if not separator:
+    separator = " b/"
+    at = [i for i in range(len(rest)) if rest.startswith(separator, i)]
+    if not at:
         return None
-    return tail or None
+    if len(at) == 1:
+        return rest[at[0] + len(separator) :] or None
+    agreed = [tail for i in at if (tail := rest[i + len(separator) :]) and rest[:i] == "a/" + tail]
+    return agreed[0] if len(agreed) == 1 else None
+
+
+def _label(read: _Headers) -> str | None:
+    """Name the file a refusal or a note is about, or None when nothing does.
+
+    The ``---``/``+++`` pair is what a section authoritatively names, and a
+    plain ``diff -u`` has nothing else: ``read.named`` comes from the
+    ``diff --git`` header, which such a diff does not write. Falling back to it
+    unconditionally reports a specific file's problem as a repository-level
+    one, which is a fact the reader cannot act on.
+    """
+    for raw, prefix in ((read.new_raw, "b"), (read.old_raw, "a")):
+        if raw is None:
+            continue
+        side = _side(raw, prefix)
+        if side.path is not None:
+            return side.path
+    return read.named
 
 
 def _side(raw: str, prefix: str) -> _Side:
-    """Read one ``---``/``+++`` path, stripping the ``a/``/``b/`` git adds."""
-    value = raw.split("\t", maxsplit=1)[0].rstrip()
+    """Read one ``---``/``+++`` path, stripping the ``a/``/``b/`` git adds.
+
+    Only the timestamp column a plain ``diff -u`` adds is removed. Trailing
+    whitespace is part of the name, so trimming it would quietly point every
+    finding at a different file -- the same mis-attribution the C-quote refusal
+    below exists to prevent, reached by another route. A structural line ending
+    in a carriage return never gets here: :func:`_crlf` refuses it first.
+    """
+    value = raw.split("\t", maxsplit=1)[0]
     if value.startswith('"'):
         return _Side(
             None,
             f"the diff names a C-quoted path ({value}); this reader does not decode those "
             "escapes, because decoding one wrong attributes findings to the wrong file",
+            value,
         )
     if value == _DEV_NULL:
-        return _Side(None, "")
+        return _Side(None, "", value)
     head = prefix + "/"
-    if value.startswith(head):
-        value = value[len(head) :]
-    if not value:
-        return _Side(None, "the diff has an empty path on one side of its '---'/'+++' pair")
-    return _Side(value, "")
+    path = value[len(head) :] if value.startswith(head) else value
+    if not path:
+        return _Side(
+            None,
+            "the diff has an empty path on one side of its '---'/'+++' pair",
+            value,
+        )
+    return _Side(path, "", value)
+
+
+def _opens_hunk(lines: Sequence[str], at: int) -> bool:
+    """True when ``at`` is a line inside the diff and that line opens a hunk."""
+    return at < len(lines) and lines[at].startswith("@@")
 
 
 def _skip_to_next_section(lines: Sequence[str], at: int, *, git_only: bool) -> int:
@@ -506,13 +609,21 @@ def _skip_to_next_section(lines: Sequence[str], at: int, *, git_only: bool) -> i
     ``diff --git`` section runs to the next ``diff --git``, so its own ``---``
     line does not end it; a plain ``diff -u`` section has no such opener and
     ends at the next ``---``.
+
+    Hunk bodies are stepped over by the counts their headers declare rather
+    than read line by line. A removed line whose content begins ``-- `` is
+    spelled ``--- `` in the body, and reading that as the next section's header
+    puts the end of this section inside it, so a refusal here resumes on hunk
+    content and builds a phantom file out of it. A header this cannot read
+    leaves no count to step by, so the scan reads that one line and moves on.
     """
     i = at
     while i < len(lines):
         line = lines[i]
         if line.startswith(_DIFF_GIT) or (not git_only and _opens_section(line)):
             return i
-        i += 1
+        end = _end_of_hunk(lines, i) if line.startswith("@@") else None
+        i = i + 1 if end is None else end
     return len(lines)
 
 
@@ -527,6 +638,110 @@ class _Target:
 
     path: str
     new_file: bool
+
+
+@dataclass(frozen=True)
+class _Counts:
+    """What one hunk's ``@@`` header declares about its two sides."""
+
+    old_start: int
+    old_count: int
+    new_count: int
+
+
+# The two shapes that follow a hunk's last body line in real output without
+# being body: `git format-patch` writes this separator before its version, and
+# `git log -p` a bare empty line before the next commit's header.
+_TRAILER = "--"
+
+
+def _declared(match: "re.Match[str]") -> tuple[int, int]:
+    """Return the ``(pre-image, post-image)`` counts a hunk header states.
+
+    An omitted count is 1, which is the format's own spelling for a one-line
+    side (``@@ -3 +3 @@``).
+    """
+    old = int(match.group(2)) if match.group(2) is not None else 1
+    new = int(match.group(4)) if match.group(4) is not None else 1
+    return old, new
+
+
+def _end_of_hunk(lines: Sequence[str], at: int) -> int | None:
+    """Return the line after the hunk at ``at``, or None when it cannot be read.
+
+    Only where a hunk *ends* is wanted here, so nothing this refuses is judged:
+    a header or a body :func:`_hunks` will refuse yields None, and the caller
+    falls back to reading one line at a time.
+    """
+    match = _HUNK_HEADER.match(lines[at])
+    if match is None:
+        return None
+    body = _hunk_body(lines, at + 1, _declared(match), "", lines[at])
+    return None if isinstance(body, str) else body.next
+
+
+def _count_mismatch(path: str, header: str) -> str:
+    """The one refusal both directions of a wrong line count report."""
+    return (
+        f"{path}: hunk {header.strip()} declares line counts its body does not match "
+        "(truncated or hand-edited diff?)"
+    )
+
+
+def _is_stray_body(line: str) -> bool:
+    """True when this line is hunk body that no ``@@`` header declared.
+
+    A hunk is consumed by count, so a body line still sitting after the counts
+    run out means the header declared fewer lines than the hunk holds. Nothing
+    reads the rest: every later hunk of the file is passed over as prologue,
+    and the section reports as clean.
+
+    Two shapes are read as the hunk's end rather than as body, because they
+    follow a correct hunk in real output -- ``_TRAILER`` and a bare empty line.
+    A diff removing a line whose whole text is ``-`` is therefore not caught. A
+    removed line spelled ``--- x`` is not caught either, and cannot be: it is
+    exactly what the next section's header looks like, and the line itself says
+    nothing about which one it is.
+    """
+    if line == "" or line.rstrip() == _TRAILER:
+        return False
+    if line.startswith("@@") or _opens_section(line):
+        return False
+    return line[0] in " -+"
+
+
+def _unread_content(lines: Sequence[str], at: int, end: int) -> bool:
+    """True when a section still holds hunk content the hunk loop did not read.
+
+    :func:`_is_stray_body` judges one line, and one line cannot tell a hunk
+    that outran its counts from a hunk that ended: a bare empty line and
+    ``--`` follow a *correct* hunk in real output, so both are read as the
+    end. The consequence was not bounded to the lines they hid. The loop that
+    reads hunks stops at anything that is not ``@@``, and the scan above it
+    passes over anything that does not open a file section -- and ``@@`` opens
+    neither -- so a hunk that ended one line early took every later hunk of
+    the file with it, silently, and the section reported as clean.
+
+    This is the same question asked of the section rather than of the line,
+    which is where the answer exists. Two shapes count as content:
+
+    * a well-formed ``@@`` header anywhere between here and the section's end,
+      which is a hunk nothing read;
+    * hunk body at the first line that is neither empty nor ``--``, which is
+      the tail of a hunk whose header undercounted it.
+
+    Neither shape occurs in the trailer these two lines really do introduce.
+    ``git format-patch`` writes ``-- `` and then a version, and ``git log -p``
+    an empty line and then ``commit <sha>``; a commit message body reached
+    this way is indented, and an indented line is not a hunk header.
+    """
+    stop = min(end, len(lines))
+    if any(_HUNK_HEADER.match(lines[index]) is not None for index in range(at, stop)):
+        return True
+    index = at
+    while index < stop and (lines[index] == "" or lines[index].rstrip() == _TRAILER):
+        index += 1
+    return index < stop and _is_stray_body(lines[index])
 
 
 def _hunks(
@@ -546,6 +761,7 @@ def _hunks(
     edits: list[Edit] = []
     i = at
     index = ordinal
+    floor = 0
 
     if i >= len(lines) or not lines[i].startswith("@@"):
         return _section_error(
@@ -555,12 +771,21 @@ def _hunks(
             f"{target.path} has a file header but no hunks, so there is no change to read",
         )
 
+    header = lines[i]
     while i < len(lines) and lines[i].startswith("@@"):
-        outcome, i = _hunk(lines, i, target, index)
+        header = lines[i]
+        outcome, i, floor = _hunk(lines, i, target, index, floor)
         if isinstance(outcome, BlockError):
             return _Section(tuple(edits), (outcome,), (), index + 1, resume)
         edits.append(outcome)
         index += 1
+
+    if _unread_content(lines, i, resume):
+        # Blamed on the last header read: it is the one whose declared counts
+        # ended the hunk before its body did.
+        reason = _count_mismatch(target.path, header)
+        refusal = BlockError(index, target.path, reason)
+        return _Section(tuple(edits), (refusal,), (), index + 1, resume)
 
     return _Section(tuple(edits), (), (), index, i)
 
@@ -570,33 +795,36 @@ def _hunk(
     at: int,
     target: _Target,
     index: int,
-) -> tuple[Edit | BlockError, int]:
+    floor: int,
+) -> tuple[Edit | BlockError, int, int]:
     """Read one hunk into an edit, or refuse it, and say where the next line is.
 
-    The index returned alongside a refusal is only a forward step; the caller
-    replaces it with the section's own end.
+    ``floor`` is the first pre-image line this hunk may claim, and the third
+    value returned is that floor for the hunk after it. The index returned
+    alongside a refusal is only a forward step; the caller replaces it with the
+    section's own end.
     """
     header = lines[at]
-    counts = _hunk_counts(header, target)
+    counts = _hunk_counts(header, target, floor)
     if isinstance(counts, str):
-        return BlockError(index, target.path, counts), at + 1
+        return BlockError(index, target.path, counts), at + 1, floor
 
-    body = _hunk_body(lines, at + 1, counts, target.path, header)
+    body = _hunk_body(lines, at + 1, (counts.old_count, counts.new_count), target.path, header)
     if isinstance(body, str):
-        return BlockError(index, target.path, body), at + 1
+        return BlockError(index, target.path, body), at + 1, floor
+    if body.next < len(lines) and _is_stray_body(lines[body.next]):
+        reason = _count_mismatch(target.path, header)
+        return BlockError(index, target.path, reason), at + 1, floor
 
     return (
         Edit(index=index, path=target.path, search=body.search, replace=body.replace),
         body.next,
+        counts.old_start + counts.old_count,
     )
 
 
-def _hunk_counts(header: str, target: _Target) -> tuple[int, int] | str:
-    """Return this hunk's ``(pre-image, post-image)`` line counts, or a refusal.
-
-    An omitted count is 1, which is the format's own spelling for a one-line
-    side (``@@ -3 +3 @@``).
-    """
+def _hunk_counts(header: str, target: _Target, floor: int) -> _Counts | str:
+    """Return what this hunk's ``@@`` header declares, or a refusal."""
     crlf = _crlf(header)
     if crlf is not None:
         return crlf
@@ -607,16 +835,28 @@ def _hunk_counts(header: str, target: _Target) -> tuple[int, int] | str:
             f"{target.path} has a hunk header that is not '@@ -old,count +new,count @@': {header!r}"
         )
 
-    old_count = int(match.group(2)) if match.group(2) is not None else 1
-    new_count = int(match.group(4)) if match.group(4) is not None else 1
+    old_start = int(match.group(1))
+    old_count, new_count = _declared(match)
 
+    if old_count == 0 and new_count == 0:
+        return (
+            f"{target.path} has a hunk that declares no lines on either side "
+            f"({header.strip()}), so it states no change; git does not emit one, and the "
+            "empty edit it would yield reads as a change that was checked and found clean"
+        )
     if old_count == 0 and not target.new_file:
         return (
-            f"{target.path} has a zero-context hunk ({header.strip()}) into a file that "
-            "already exists, so the hunk has no pre-image to anchor to; regenerate the diff "
-            "with context lines (drop -U0)"
+            f"{target.path} has a hunk with an empty pre-image ({header.strip()}) into a "
+            "file that already exists, so the hunk anchors to nothing; a zero-context hunk "
+            "is the usual cause, so regenerate the diff with context lines (drop -U0)"
         )
-    return old_count, new_count
+    if old_start < floor:
+        return (
+            f"{target.path} has hunks whose pre-image ranges overlap or run backwards: "
+            f"{header.strip()} starts at line {old_start}, which the hunk before it already "
+            "covered; a file's hunks describe one state of it, so no edit list holds both"
+        )
+    return _Counts(old_start, old_count, new_count)
 
 
 @dataclass(frozen=True)
@@ -655,6 +895,10 @@ def _hunk_body(
             )
         line = lines[i]
         if line.startswith(_NO_NEWLINE):
+            # The marker is consumed and the fact it carries is dropped: an
+            # Edit has nowhere to hold it, and `_present` pads both sides with
+            # "\n" before matching, so whether the file ends with a newline
+            # cannot change which pre-image is found.
             i += 1
             continue
 
@@ -683,10 +927,7 @@ def _hunk_body(
                 f"'\\': {line!r}"
             )
         if not fits:
-            return (
-                f"{path}: hunk {header.strip()} declares line counts its body does not match "
-                "(truncated or hand-edited diff?)"
-            )
+            return _count_mismatch(path, header)
         i += 1
 
     while i < len(lines) and lines[i].startswith(_NO_NEWLINE):

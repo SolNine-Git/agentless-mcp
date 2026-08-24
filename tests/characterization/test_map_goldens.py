@@ -51,7 +51,10 @@ REPOS = ("repo_py", "repo_ts", "repo_go")
 TOKEN_PINS = {
     "repo_py": 711,
     "repo_ts": 630,
-    "repo_go": 388,
+    # 388 before stage 6c. Go type declarations became symbols of their own
+    # there, so this repository gained six: the receiver type every method
+    # names now has a line the map can point at.
+    "repo_go": 449,
 }
 TOKEN_TOLERANCE = 0.05
 

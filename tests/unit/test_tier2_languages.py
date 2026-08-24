@@ -19,8 +19,10 @@ from agentless_mcp.core import grammars, graph, refs, skeleton
 from agentless_mcp.core.extractor import (
     LANGUAGE_CONFIGS,
     TreeSitterExtractor,
+    UnsupportedLanguageError,
     collect_refs,
     identifier_node_types,
+    walk_nodes,
 )
 from agentless_mcp.core.symbols import LANGUAGE_PREFIXES
 
@@ -41,21 +43,49 @@ FIXTURE_FILES = {
 }
 
 # What each language's fixture must yield: the top-level function, the type
-# holding the price method, and the qualified name of that method. Bash has no
-# type system to speak of and lua's dedicated handler reports a module table,
-# so those two carry only what they really have.
+# holding the price method, the qualified name of that method, and the one
+# module the fixture imports. Bash has no type system to speak of and lua's
+# dedicated handler reports a module table, so those two carry only what they
+# really have.
+#
+# The module is spelled in full. Each fixture has exactly one import, so a
+# truncated path -- `pricing` where the source wrote `pricing.Money` -- is a
+# wrong module rather than a missing one, and nothing but the expected string
+# can catch that.
 EXPECTED = {
-    "php": ("apply_tax", "Invoice", "Invoice.price"),
-    "kotlin": ("applyTax", "Invoice", "Invoice.price"),
-    "swift": ("applyTax", "Invoice", "Invoice.price"),
-    "scala": ("applyTax", "Invoice", "Invoice.price"),
-    "csharp": ("ApplyTax", "Invoice", "Invoice.Price"),
-    "ruby": ("apply_tax", "Invoice", "Invoice.price"),
-    "lua": ("apply_tax", "Invoice", None),
-    "bash": ("apply_tax", None, None),
+    "php": ("apply_tax", "Invoice", "Invoice.price", "App\\Money\\Currency"),
+    "kotlin": ("applyTax", "Invoice", "Invoice.price", "app.money.Currency"),
+    "swift": ("applyTax", "Invoice", "Invoice.price", "Foundation"),
+    "scala": ("applyTax", "Invoice", "Invoice.price", "pricing.Money"),
+    "csharp": ("ApplyTax", "Invoice", "Invoice.Price", "Money.Core"),
+    "ruby": ("apply_tax", "Invoice", "Invoice.price", "json"),
+    "lua": ("apply_tax", "Invoice", None, "app.money"),
+    "bash": ("apply_tax", None, None, "./money.sh"),
 }
 
 LANGUAGES = tuple(FIXTURE_FILES)
+
+# One sample per surface that spells every identifier node type its config row
+# declares, with the name each one must produce. Quoted keys and quoted values
+# are the norm in manifests and CI configs, so they belong in the sample rather
+# than only in a bug report.
+IDENTIFIER_SAMPLES = {
+    # The JSON key carries an escape. The grammar emits `string_content` as a
+    # repeat around `escape_sequence`, so a row naming the fragment reported
+    # `esc` and `key` -- two names the document never spells.
+    "json": ('{"bare": "value", "esc\\tkey": 1}', {"bare", "value", "esc\\tkey"}),
+    # TOML's row names key nodes only, so the value is not a name here.
+    "toml": ('bare = "value"\n"quoted key" = 1\n', {"bare", "quoted key"}),
+    "yaml": (
+        "plain: bare\n\"dq key\": \"dq val\"\n'sq key': 'sq val'\n",
+        {"plain", "bare", "dq key", "dq val", "sq key", "sq val"},
+    ),
+    "hcl": (
+        'resource "aws_s3_bucket" "logs" {\n  bucket = "prefix-${var.suffix}"\n}\n',
+        {"resource", "bucket", "var", "suffix"},
+    ),
+    "sql": ("CREATE TABLE teams (id INT);\n", {"teams", "id"}),
+}
 
 SURFACE_FIXTURES = {
     "json": ("config.json", {"service", "port", "enabled"}),
@@ -99,6 +129,21 @@ class TestRegistry:
         mapped = set(TreeSitterExtractor.SUPPORTED_EXTENSIONS.values())
         assert set(grammars.TIER2_LANGUAGES) <= mapped
 
+    def test_every_supported_extension_has_identifier_node_types(self):
+        # `identifier_node_types` raises for a language in neither table
+        # rather than handing back a plausible default. The scanner routes by
+        # extension, so every language the extension map can produce has to be
+        # in one of the tables or a repository scan aborts on that file.
+        for language in set(TreeSitterExtractor.SUPPORTED_EXTENSIONS.values()):
+            assert identifier_node_types(language)
+
+    def test_a_language_in_no_table_is_refused_rather_than_defaulted(self):
+        # The default set is a plausible answer to a different question. An
+        # unrecognised name must read as "I do not know this language", not as
+        # "this language has one identifier node type".
+        with pytest.raises(UnsupportedLanguageError):
+            identifier_node_types("pythn")
+
     def test_every_tier2_language_has_a_stable_id_prefix(self):
         for name in grammars.TIER2_LANGUAGES:
             assert name in LANGUAGE_PREFIXES
@@ -122,6 +167,46 @@ class TestRegistry:
         )
         assert [cap.name for cap in report.degraded] == ["kotlin"]
         assert report.degraded_tier1 == ()
+
+
+# One private and one unmarked declaration per language that spells
+# visibility with a keyword. The keyword is what `is_public` must answer
+# from: every one of these names would read as public under the
+# leading-underscore convention the walker used before stage 6c.
+VISIBILITY_SOURCES = {
+    "php": "<?php\nclass C { private function hidden() {} public function shown() {} }\n",
+    "csharp": "class C { private void hidden() {} public void shown() {} }\n",
+    "kotlin": "class C {\n    private fun hidden() {}\n    fun shown() {}\n}\n",
+    "scala": "class C {\n    private def hidden(): Unit = {}\n    def shown(): Unit = {}\n}\n",
+}
+
+
+class TestVisibilityKeywords:
+    """`is_public` is persisted to the tag cache and filters an overview."""
+
+    @pytest.mark.parametrize("language", sorted(VISIBILITY_SOURCES))
+    def test_a_private_declaration_is_not_reported_public(self, language, extractor):
+        if language not in grammars.warmed_languages():
+            pytest.skip(f"grammar for {language} is not in the local pack cache")
+        found = {
+            symbol.name: symbol
+            for symbol in extractor.extract_from_source(
+                VISIBILITY_SOURCES[language], language, f"C.{language}"
+            )
+        }
+        assert found["hidden"].is_public is False
+        assert found["shown"].is_public is True
+
+    def test_a_php_constructor_is_public_when_the_keyword_says_so(self, extractor):
+        # `__construct` starts with an underscore and is declared public. The
+        # convention and the keyword disagree, and the keyword is the answer.
+        if "php" not in grammars.warmed_languages():
+            pytest.skip("grammar for php is not in the local pack cache")
+        source = "<?php\nclass C { public function __construct() {} }\n"
+        (symbol,) = [
+            s for s in extractor.extract_from_source(source, "php", "C.php") if s.name != "C"
+        ]
+        assert symbol.is_public is True
 
 
 class TestSymbolExtraction:
@@ -154,13 +239,13 @@ class TestSymbolExtraction:
         for symbol in extractor.extract_from_source(text, language, path):
             assert "return" not in symbol.signature, symbol.signature
 
-    def test_imports_are_extracted(self, language, extractor):
+    def test_the_imported_module_is_extracted_in_full(self, language, extractor):
         text, path = source_for(language)
         modules = {
             statement.module
             for statement in extractor.extract_imports_from_source(text, language, path)
         }
-        assert modules, f"{language} extracted no imports from {path}"
+        assert modules == {EXPECTED[language][3]}, f"{language} from {path}"
 
 
 class TestDeterministicNonCodeSurfaces:
@@ -190,7 +275,26 @@ class TestDeterministicNonCodeSurfaces:
 
         names = {ref.name for ref in collect_refs(text, surface_language, filename)}
 
-        assert names & expected
+        assert expected <= names
+
+    def test_every_declared_identifier_type_reaches_the_reference_pass(self, surface_language):
+        """A declared node type the collector can never emit describes nothing.
+
+        The config row and the collector's leaf rule are two halves of one
+        contract kept in two places. When they disagree the surface reports
+        zero references for a whole construct instead of an error, which is
+        the most expensive answer this tool gives: a quoted TOML key and
+        every quoted YAML scalar were invisible under the old rule.
+        """
+        text, expected = IDENTIFIER_SAMPLES[surface_language]
+        declared = identifier_node_types(surface_language)
+
+        tree = grammars.get_parser(surface_language).parse(text.encode("utf-8"))
+        spelled = {node.type for node in walk_nodes(tree.root_node)} & declared
+        names = {ref.name for ref in collect_refs(text, surface_language, "sample")}
+
+        assert spelled == declared, f"{surface_language} sample spells only {sorted(spelled)}"
+        assert expected <= names
 
     def test_nested_config_keys_carry_their_owner(self, surface_language, extractor):
         if surface_language not in {"json", "toml", "yaml"}:

@@ -10,6 +10,7 @@ through the server's own SIGINT shutdown path rather than around it.
 import logging
 import signal
 import sys
+import threading
 from importlib.metadata import PackageNotFoundError
 
 import pytest
@@ -60,13 +61,54 @@ class TestFingerprint:
         monkeypatch.setattr(selfrestart, "distribution", missing)
         assert selfrestart.install_fingerprint("x") is None
 
-    def test_a_missing_record_file_is_still_a_fingerprint(self, monkeypatch):
-        # read_text returns None for a file the dist-info does not carry; the
-        # version alone must still fingerprint rather than read as absent.
+    def test_an_unreadable_record_reads_as_absent_not_as_a_change(self, monkeypatch):
+        # This replaces a test that asserted the opposite ("the version alone
+        # must still fingerprint"). That assertion was the defect: read_text
+        # suppresses FileNotFoundError and returns None, so the old `or ""`
+        # fingerprinted an ABSENT record as sha256(b"") -- a present, different
+        # value. A wheel writes RECORD last, so `uv tool install --upgrade`
+        # opens exactly this window, and the monitor restarted against a
+        # half-written install. The module docstring has always said absence
+        # never triggers; the code now agrees with it.
         monkeypatch.setattr(
             selfrestart, "distribution", lambda name: _FakeDistribution("1.0", None)
         )
-        assert selfrestart.install_fingerprint("x") is not None
+        assert selfrestart.install_fingerprint("x") is None
+
+    def test_an_absent_record_is_not_mistaken_for_a_different_install(self, monkeypatch):
+        # The regression stated as the operator sees it: the fingerprint taken
+        # mid-upgrade must not compare unequal to the one taken before it.
+        monkeypatch.setattr(
+            selfrestart, "distribution", lambda name: _FakeDistribution("1.0", "a.py,,\n")
+        )
+        before = selfrestart.install_fingerprint("x")
+
+        monkeypatch.setattr(
+            selfrestart, "distribution", lambda name: _FakeDistribution("1.0", None)
+        )
+        mid_upgrade = selfrestart.install_fingerprint("x")
+
+        assert before is not None
+        assert mid_upgrade is None
+        assert mid_upgrade != before or mid_upgrade is None
+
+    def test_a_half_removed_dist_info_does_not_kill_the_watcher(self, monkeypatch):
+        # `distribution()` matches on the directory name, so it still resolves
+        # after METADATA is unlinked; `.version` then feeds None to
+        # email.message_from_string and raises TypeError -- not an OSError.
+        # Uncaught, that ends the daemon thread for the life of the process and
+        # drift detection stops with only a stderr traceback.
+        class HalfRemoved:
+            def read_text(self, name: str) -> str | None:
+                return None
+
+            @property
+            def version(self) -> str:
+                message = "expected string or bytes-like object, got 'NoneType'"
+                raise TypeError(message)
+
+        monkeypatch.setattr(selfrestart, "distribution", lambda name: HalfRemoved())
+        assert selfrestart.install_fingerprint("x") is None
 
 
 class TestMonitor:
@@ -115,6 +157,10 @@ class TestMonitor:
 class TestExecOrExit:
     def test_posix_replaces_the_process_with_the_original_argv(self, monkeypatch):
         calls: list[tuple[str, list[str]]] = []
+        # The real join reads a `grammars` module global, so a warm thread an
+        # earlier test left running would make this test wait out the join
+        # budget -- execution-order dependence this suite forbids.
+        monkeypatch.setattr(selfrestart.grammars, "wait_for_auto_warm", lambda: None)
         monkeypatch.setattr(selfrestart.os, "execv", lambda exe, argv: calls.append((exe, argv)))
         monkeypatch.setattr(sys, "platform", "linux")
 
@@ -177,7 +223,7 @@ class TestExecFailureDoesNotKillTheServer:
     is strictly less available than what it replaced.
     """
 
-    def test_a_failing_exec_exits_cleanly_for_a_supervisor(self, monkeypatch, caplog):
+    def test_a_failing_exec_says_the_service_will_not_return_by_itself(self, monkeypatch, caplog):
         monkeypatch.setattr(selfrestart.grammars, "wait_for_auto_warm", lambda: None)
         monkeypatch.setattr(selfrestart.sys, "platform", "linux")
 
@@ -190,6 +236,11 @@ class TestExecFailureDoesNotKillTheServer:
             assert selfrestart.exec_or_exit() == 0
 
         assert "exec of" in caplog.text
+        # The line an operator reads during an outage. The POSIX design needs
+        # no supervisor while the exec succeeds; this is the path where it
+        # does, and a line promising a supervisor will restart the service is
+        # false on the deployment the module documents.
+        assert "will NOT come back on its own" in caplog.text
 
     def test_the_grammar_warm_is_joined_before_the_image_is_replaced(self, monkeypatch):
         order = []
@@ -357,3 +408,83 @@ class TestMinimumUptime:
         selfrestart._watch("agentless-mcp", "1.0:aaaa")
 
         assert raised == [signal.SIGINT]
+
+
+class TestATornRecordIsAbsentRatherThanADifferentInstall:
+    def test_a_record_that_is_not_utf8_reads_as_absent(self, monkeypatch):
+        # `read_text` suppresses five OSError subclasses and nothing else, so a
+        # RECORD caught mid-write with a byte sequence no UTF-8 decoder accepts
+        # raises UnicodeDecodeError -- a ValueError, not an OSError. That is
+        # the same torn-install window the monitor exists to watch, so it must
+        # read as "wait", never as a change and never as a dead thread.
+        class TornRecord:
+            version = "1.0"
+
+            def read_text(self, name: str) -> str:
+                torn = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+                raise torn
+
+        monkeypatch.setattr(selfrestart, "distribution", lambda name: TornRecord())
+
+        assert selfrestart.install_fingerprint("x") is None
+
+
+class TestADeadMonitorDoesNotReadAsARunningOne:
+    """`_MONITOR.thread` is the early return in ``start_update_monitor``.
+
+    A thread ended by an exception no caught type covers used to leave that
+    handle set, so every later call was answered with the corpse and drift
+    detection stayed off for the life of the process -- ``is_alive()`` False,
+    and nothing consulting it.
+    """
+
+    def test_a_reader_error_no_tuple_names_deregisters_the_monitor(
+        self, monkeypatch, monitor_isolated
+    ):
+        def explode(name):
+            raise _StopWatchingError
+
+        monkeypatch.setattr(selfrestart, "install_fingerprint", explode)
+        selfrestart._MONITOR.thread = threading.current_thread()
+
+        with pytest.raises(_StopWatchingError):
+            selfrestart._watch("agentless-mcp", None)
+
+        assert selfrestart._MONITOR.thread is None
+
+    def test_the_next_start_gets_a_fresh_monitor_rather_than_the_corpse(
+        self, monkeypatch, monitor_isolated
+    ):
+        monkeypatch.setattr(selfrestart, "is_installed", lambda name: True)
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: "1.0:aaaa")
+        started = []
+        monkeypatch.setattr(selfrestart, "_watch", lambda name, baseline: started.append(name))
+
+        first = selfrestart.start_update_monitor("agentless-mcp")
+        assert first is not None
+        first.join(timeout=5)
+        # What the dead thread leaves behind, which the finally in `_watch`
+        # does for real and the stub above cannot.
+        selfrestart._MONITOR.thread = None
+
+        second = selfrestart.start_update_monitor("agentless-mcp")
+
+        assert second is not None
+        second.join(timeout=5)
+        assert second is not first
+        assert started == ["agentless-mcp", "agentless-mcp"]
+
+    def test_a_monitor_that_armed_a_restart_stays_registered(self, monkeypatch, monitor_isolated):
+        # It finished the job it was started for and the process is on its way
+        # out. Forgetting it there would let a second monitor start and raise a
+        # second SIGINT for one install event, and only one can be claimed.
+        monkeypatch.setattr(selfrestart.signal, "raise_signal", lambda number: None)
+        monkeypatch.setattr(selfrestart, "MINIMUM_UPTIME_SECONDS", 0.0)
+        reads = iter(["1.0:aaaa", "2.0:bbbb"])
+        monkeypatch.setattr(selfrestart, "install_fingerprint", lambda name: next(reads))
+        selfrestart._MONITOR.thread = threading.current_thread()
+
+        selfrestart._watch("agentless-mcp", None)
+
+        assert selfrestart._MONITOR.pending is True
+        assert selfrestart._MONITOR.thread is not None

@@ -20,7 +20,7 @@ warmed-state and degradation.
 
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
@@ -64,8 +64,9 @@ _MIN_QUOTED_LITERAL_CHARS = 2
 
 # Rationale comments are structural source facts, not generated summaries.
 # Only comment nodes reach these expressions, so a string containing
-# ``TODO:`` is never promoted into the graph. Text is capped before it enters
-# the cache or any response.
+# ``TODO:`` is never promoted into the graph. Only the text is capped before
+# it enters the cache or any response. A file contributes one rationale for
+# each marker line, and that count is not capped.
 _RATIONALE_MARKER = re.compile(r"\b(NOTE|WHY|HACK|TODO)\s*:\s*(.*)")
 _RATIONALE_CITATION = re.compile(r"\b(?:ADR|RFC)(?:[-\s#:]*)(\d+)\b", re.IGNORECASE)
 _MAX_RATIONALE_CHARS = 240
@@ -147,6 +148,27 @@ def _truncate(text: str, limit: int) -> str:
     return text
 
 
+class ImportBinding(str, Enum):
+    """How one language's import statement binds names into the importing file.
+
+    The question `core.resolve` asks of every statement: may a *bare*
+    reference in this file be read as evidence of this import? Answering it
+    wrong in either direction is a wrong tier on a row an agent is told to
+    read as a caller, so every row in the table below states its answer rather
+    than inheriting one by omission.
+    """
+
+    #: `import a.b` in Python, `import "fmt"` in Go. Binds a module object, so
+    #: a bare reference to a name that module defines is a NameError here.
+    MODULE_OBJECT = "module_object"
+    #: `import { X } from "./m"` in the ECMAScript family. The listed
+    #: specifiers bind, and `import * as ns` binds a module object instead.
+    SPECIFIERS = "specifiers"
+    #: `import com.acme.Money;` in Java, and the same shape in Kotlin, Scala,
+    #: C# and PHP. The path ends on the name it brings in unqualified.
+    LAST_SEGMENT = "last_segment"
+
+
 @dataclass(frozen=True)
 class LanguageConfig:
     """
@@ -197,6 +219,89 @@ class LanguageConfig:
     # same qualified name and the same stable id. The field is the grammar's
     # own, so the owner is read rather than guessed.
     receiver_field: str | None = None
+    # Node types inside an import statement that hold the names it binds into
+    # the importing file's own namespace. Empty for most languages, and the
+    # emptiness is a claim rather than an omission: `import "fmt"` in Go and
+    # `import a.b` in Python bind a module object, not the module's contents,
+    # so a bare reference to a name defined in that module is not evidence of
+    # an import. The ECMAScript family is the case in the table, where
+    # `import { X } from "./m"` genuinely does bind `X`.
+    #
+    # `core/resolve` depends on this being right. While the names were dropped,
+    # the resolver could only reach a TypeScript named import through its
+    # whole-module set -- which is why that set was allowed to supply
+    # bare-name evidence for every language, including the ones where it means
+    # nothing of the kind.
+    import_name_node_types: tuple[str, ...] = ()
+    # Which of the three binding shapes this language's import has. Declared
+    # per row rather than defaulted quietly, because the wrong answer is
+    # invisible: `import com.acme.Money;` followed by a bare `Money` really is
+    # a caller of that file, and reading Java's import as a module object
+    # demoted it from `resolved-via-import` to `unique` -- the tier a caller
+    # is told not to trust. `tests/unit/test_import_extraction.py` requires
+    # every row to name its shape.
+    import_binding: ImportBinding = ImportBinding.MODULE_OBJECT
+    # Child node types carrying a declaration's modifier keywords. Two shapes
+    # in the pack -- a container whose children are the keywords (java,
+    # kotlin, scala `modifiers`) and one leaf per keyword (csharp `modifier`,
+    # php `visibility_modifier`) -- so the keywords are read as text and split
+    # rather than by node type. Empty means the language has no visibility
+    # keywords and the leading-underscore convention is the only signal there
+    # is.
+    modifier_node_types: tuple[str, ...] = ()
+    # Node types that bind a name to a value, where a function-valued binding
+    # is how the language declares a function. `export const App = () => {}`
+    # is the dominant form in modern ECMAScript, and matching only
+    # `function_declaration` reports a React component file as empty.
+    binding_node_types: tuple[str, ...] = ()
+    # Value node types that make such a binding a function declaration.
+    function_value_node_types: tuple[str, ...] = ()
+    # Node types that declare a constant, plus every modifier keyword the
+    # declaration must carry to be one. Java needs both: `static final double
+    # TAX_RATE` is a constant of the class and `private final double subtotal`
+    # is per-instance state that happens not to be reassigned. Reporting the
+    # second as a constant would make the map claim a guarantee the code does
+    # not give.
+    constant_node_types: tuple[str, ...] = ()
+    constant_modifier_keywords: tuple[str, ...] = ()
+
+
+# The nodes that turn a `LAST_SEGMENT` import into something other than one
+# bound name. Spelled once across the five grammars because the names do not
+# collide, and a per-language column for three node types would be three more
+# places for one rule to drift.
+_IMPORT_WILDCARD_NODE_TYPES = frozenset(
+    {
+        "asterisk",  # java: `import com.acme.*;`
+        "wildcard_import",  # kotlin: `import com.acme.*`
+        "namespace_wildcard",  # scala: `import pricing._`
+    }
+)
+# scala's `import pricing.{Money, Tax}`: the path is the package and each
+# listed identifier is a name it brings in.
+_IMPORT_SELECTOR_NODE_TYPES = frozenset({"namespace_selectors"})
+# kotlin's `import com.acme.Money as M`, whose local name is `M`.
+_IMPORT_ALIAS_NODE_TYPES = frozenset({"import_alias"})
+
+
+# Modifier keywords that deny a declaration to importers. `internal` is C#
+# and Kotlin's assembly/module scope and `fileprivate` is Swift's; both are
+# narrower than public, which is the question `is_public` answers.
+NON_PUBLIC_MODIFIERS = frozenset({"private", "protected", "internal", "fileprivate"})
+
+# The ECMAScript value forms that make `const name = <value>` a function
+# declaration. Shared by the three grammars in the family.
+_ECMASCRIPT_FUNCTION_VALUES = (
+    "arrow_function",
+    "function_expression",
+    "function",
+    "generator_function",
+)
+
+# `.tsx` is a TypeScript dialect, so it declares interfaces exactly as `.ts`
+# does. Shared rather than copied: three near-identical rows differing by one
+# tuple element is where a copy-paste omission survives review.
+_TYPESCRIPT_CLASSES = ("class_declaration", "interface_declaration")
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +323,11 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "typescript": LanguageConfig(
         function_node_types=(
@@ -225,12 +335,17 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
             "generator_function_declaration",
             "method_definition",
         ),
-        class_node_types=("class_declaration", "interface_declaration"),
+        class_node_types=_TYPESCRIPT_CLASSES,
         import_node_types=("import_statement",),
         name_field="name",
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "tsx": LanguageConfig(
         function_node_types=(
@@ -238,16 +353,24 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
             "generator_function_declaration",
             "method_definition",
         ),
-        class_node_types=("class_declaration",),
+        class_node_types=_TYPESCRIPT_CLASSES,
         import_node_types=("import_statement",),
         name_field="name",
         import_path_field="source",
         import_path_node_type="string",
         identifier_node_types=_ECMASCRIPT_IDENTIFIERS,
+        import_name_node_types=("import_specifier", "import_clause"),
+        import_binding=ImportBinding.SPECIFIERS,
+        modifier_node_types=("accessibility_modifier",),
+        binding_node_types=("variable_declarator",),
+        function_value_node_types=_ECMASCRIPT_FUNCTION_VALUES,
     ),
     "go": LanguageConfig(
         function_node_types=("function_declaration", "method_declaration"),
-        class_node_types=("type_declaration",),
+        # `type_spec`, not `type_declaration`: the outer node names nothing,
+        # so `type Invoice struct` used to match and yield no symbol at all --
+        # leaving every method's receiver type with no declaration of its own.
+        class_node_types=("type_spec",),
         import_node_types=("import_spec",),
         name_field="name",
         import_path_node_type="interpreted_string_literal",
@@ -283,6 +406,10 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_field="name",
         import_path_node_type="scoped_identifier",
         identifier_node_types=("identifier", "type_identifier"),
+        import_binding=ImportBinding.LAST_SEGMENT,
+        modifier_node_types=("modifiers",),
+        constant_node_types=("field_declaration",),
+        constant_modifier_keywords=("static", "final"),
     ),
     "ruby": LanguageConfig(
         function_node_types=("method", "singleton_method"),
@@ -310,6 +437,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # included: `variable_name` wraps `$` and a `name`, and the reference
         # pass only reads leaves.
         identifier_node_types=("name",),
+        import_binding=ImportBinding.LAST_SEGMENT,
+        modifier_node_types=("visibility_modifier",),
     ),
     "kotlin": LanguageConfig(
         function_node_types=("function_declaration",),
@@ -323,6 +452,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         name_node_types=("simple_identifier", "type_identifier"),
         class_body_node_types=("class_body",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
+        modifier_node_types=("modifiers",),
     ),
     "swift": LanguageConfig(
         function_node_types=(
@@ -339,6 +470,7 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         # node, and the return type reuses the `name` field, so a composed
         # signature would read `fn applyTax()` for a two-parameter function.
         signature_from_header=True,
+        modifier_node_types=("modifiers",),
     ),
     "scala": LanguageConfig(
         function_node_types=("function_definition", "function_declaration"),
@@ -353,6 +485,8 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier", "type_identifier"),
         class_body_node_types=("template_body",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
+        modifier_node_types=("modifiers",),
     ),
     "csharp": LanguageConfig(
         function_node_types=(
@@ -372,15 +506,51 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("identifier",),
         class_body_node_types=("declaration_list",),
         signature_from_header=True,
+        import_binding=ImportBinding.LAST_SEGMENT,
+        modifier_node_types=("modifier",),
     ),
     # Deterministic non-code surfaces use dedicated symbol handlers below;
     # these rows own their reference node types and keep the registry's trust
     # metadata in the same table as every other tier-2 language.
-    "json": LanguageConfig((), (), (), identifier_node_types=("string_content",)),
-    "toml": LanguageConfig((), (), (), identifier_node_types=("bare_key", "quoted_key")),
-    "yaml": LanguageConfig((), (), (), identifier_node_types=("string_scalar",)),
-    "hcl": LanguageConfig((), (), (), identifier_node_types=("identifier", "template_literal")),
-    "sql": LanguageConfig((), (), (), identifier_node_types=("identifier",)),
+    "json": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        # `string`, not `string_content`: the grammar emits `string_content`
+        # as a repeat around `escape_sequence`, so the key `"a\nb"` arrives as
+        # the two fragments `a` and `b` -- two names the document never spells.
+        identifier_node_types=("string",),
+    ),
+    "toml": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("bare_key", "quoted_key"),
+    ),
+    "yaml": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        # A quoted scalar is a different node type from a plain one, and
+        # quoted keys and values are the norm in manifests and CI configs.
+        identifier_node_types=(
+            "string_scalar",
+            "double_quote_scalar",
+            "single_quote_scalar",
+        ),
+    ),
+    "hcl": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("identifier", "template_literal"),
+    ),
+    "sql": LanguageConfig(
+        function_node_types=(),
+        class_node_types=(),
+        import_node_types=(),
+        identifier_node_types=("identifier",),
+    ),
 }
 
 # C and C++ are handled by dedicated methods due to their nested declarator
@@ -408,6 +578,7 @@ class IdentifierRole(str, Enum):
     MODULE_QUALIFIER = "module_qualifier"
     MODULE_ATTRIBUTE = "module_attribute"
     KEYWORD = "keyword"
+    BUILTIN = "builtin"
 
 
 @dataclass(frozen=True)
@@ -472,12 +643,10 @@ _PYTHON_SPLAT_PATTERNS = ("list_splat_pattern", "dictionary_splat_pattern")
 class _BindingScope:
     """One Python lexical scope and the names that cannot bind elsewhere."""
 
-    start_byte: int
-    end_byte: int
     kind: str
     bindings: frozenset[str]
     globals: frozenset[str]
-    imports: Mapping[str, str]
+    imports: frozenset[str]
 
 
 @dataclass
@@ -485,12 +654,126 @@ class _ScopeBuilder:
     """Mutable collection state used only while one Python tree is classified."""
 
     node_id: int
-    start_byte: int
-    end_byte: int
+    boundary_id: int
     kind: str
     bindings: set[str]
     globals: set[str]
-    imports: dict[str, str]
+    imports: set[str]
+
+
+@dataclass(frozen=True)
+class _ScopeTree:
+    """Which lexical scopes contain each node of one Python tree.
+
+    Built by one downward walk and then read, instead of re-walking a node's
+    parent chain per query. The chain walk cost a node's depth, which is the
+    length of the whole expression for a left-nested one: `x = a + a + ... + a`
+    at 20 KB took 288 seconds against 0.044 for the scope scan it replaced,
+    because the parse tree of a chain that long is that deep. Both shapes are
+    answered here in the number of *scopes* that enclose a node, which no
+    expression can inflate.
+
+    ``boundary_of`` is inclusive: a node that bounds a scope is its own nearest
+    boundary, which is what the parent walk did by testing ``node`` before
+    stepping to its parent. Its value is ``None`` for a node with no boundary
+    above it, which :func:`_python_roles` never produces -- the module scope is
+    bounded by the root -- and which the type keeps representable so this
+    class holds for any boundary set it is handed.
+    """
+
+    boundary_of: Mapping[int, int | None]
+    outer_of: Mapping[int, int | None]
+    node_of: Mapping[int, Node]
+
+    def boundaries(self, node: Node) -> Iterator[tuple[int, Node]]:
+        """Yield ``(boundary id, bounding node)`` for each scope containing ``node``."""
+        boundary = self.boundary_of.get(node.id)
+        while boundary is not None:
+            yield boundary, self.node_of[boundary]
+            boundary = self.outer_of[boundary]
+
+
+def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
+    """Index every node under ``root`` by the scope boundaries above it.
+
+    One pre-order walk carrying the innermost boundary downward, the same
+    shape as :func:`declarations_under`, and iterative for the same reason: a
+    deep chain of nodes must not exhaust the interpreter's stack.
+    """
+    boundary_of: dict[int, int | None] = {}
+    outer_of: dict[int, int | None] = {}
+    node_of: dict[int, Node] = {}
+    stack: list[tuple[Node, int | None]] = [(root, None)]
+    while stack:
+        node, enclosing = stack.pop()
+        innermost = enclosing
+        if node.id in boundary_ids:
+            outer_of[node.id] = enclosing
+            node_of[node.id] = node
+            innermost = node.id
+        boundary_of[node.id] = innermost
+        stack.extend((child, innermost) for child in reversed(node.children))
+    return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+
+
+@dataclass(frozen=True)
+class _ScopeView:
+    """One Python tree's scopes, joined to the index that locates them.
+
+    The two halves are one answer: a caller holding ``scopes`` without the
+    tree knows what each scope binds and not which of them contain a node, and
+    the join is the rule about class bodies below. Naming the pair keeps that
+    rule in one place instead of at every site that holds both tables.
+    """
+
+    tree: _ScopeTree
+    scopes: Mapping[int, _BindingScope]
+
+    def enclosing(self, node: Node) -> Iterator[_BindingScope]:
+        """Yield each lexical scope containing ``node``, innermost first.
+
+        A comprehension's first iterable is evaluated where the comprehension
+        is written rather than inside it, so a name there does not see the
+        comprehension's own bindings. That test reads the bounding node, which
+        is why :class:`_ScopeTree` carries it rather than the boundary id
+        alone.
+        """
+        for boundary, bounding in self.tree.boundaries(node):
+            found = self.scopes.get(boundary)
+            if found is not None and not (
+                found.kind == "comprehension" and _in_first_iterable(node, bounding)
+            ):
+                yield found
+
+    def visible(self, node: Node) -> Iterator[_BindingScope]:
+        """Yield the scopes a name at ``node`` can resolve in, innermost first.
+
+        A class body is not a closure scope. A method or a comprehension
+        written inside a class never reads the class namespace, which is why
+        ``class C: xs = []; ys = [xs for _ in r]`` raises NameError in real
+        Python. This is the sharpest rule in the block, and it has one home.
+        """
+        nested = False
+        for scope in self.enclosing(node):
+            if scope.kind in {"function", "comprehension"}:
+                nested = True
+            if scope.kind == "class" and nested:
+                continue
+            yield scope
+
+
+def _in_first_iterable(node: Node, comprehension: Node) -> bool:
+    """True when ``node`` sits in the iterable of a comprehension's first clause."""
+    clause = next(
+        (child for child in comprehension.named_children if child.type == "for_in_clause"),
+        None,
+    )
+    if clause is None:
+        return False
+    iterable = clause.child_by_field_name("right")
+    if iterable is None:
+        return False
+    return iterable.start_byte <= node.start_byte and node.end_byte <= iterable.end_byte
 
 
 def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
@@ -519,11 +802,22 @@ def _python_parameter_nodes(params: Node) -> tuple[Node, ...]:
     return tuple(nodes)
 
 
-def _python_roles(
-    root: Node,
-    data: bytes,
-) -> tuple[dict[int, IdentifierRole], dict[int, str], tuple[_BindingScope, ...]]:
-    """Classify Python identifiers and collect lexical bindings in two passes."""
+@dataclass(frozen=True)
+class _PythonRoles:
+    """What one Python tree's scope analysis leaves for the reference pass.
+
+    Named rather than a three-wide tuple because the last member is what the
+    first two are read against: ``roles`` answers the identifiers the syntax
+    settles, and ``view`` answers the rest from the scopes around them.
+    """
+
+    roles: Mapping[int, IdentifierRole]
+    qualifiers: Mapping[int, str]
+    view: _ScopeView
+
+
+def _python_roles(root: Node, data: bytes) -> _PythonRoles:
+    """Classify Python identifiers and collect lexical bindings in three passes."""
     nodes = walk_nodes(root)
     builders = [_scope_builder(root, "module")]
     builders.extend(
@@ -532,6 +826,10 @@ def _python_roles(
         if (kind := _PYTHON_SCOPE_TYPES.get(node.type)) is not None
     )
     by_node = {scope.node_id: scope for scope in builders}
+    open_scopes = _scopes_by_boundary(builders)
+    # Built from the boundaries the builders name, so every lookup below and
+    # every lookup in `collect_refs` reads one index of one tree.
+    tree = _scope_tree(root, frozenset(open_scopes))
     roles: dict[int, IdentifierRole] = {}
     qualifiers: dict[int, str] = {}
 
@@ -539,10 +837,12 @@ def _python_roles(
         if node.type in {"import_statement", "import_from_statement"}:
             for identifier in _descendant_identifiers(node):
                 roles[identifier.id] = IdentifierRole.IMPORT
-            _nearest_scope(node, builders).imports.update(_import_bindings(node, data))
+            _nearest_scope(node, open_scopes, tree).imports.update(
+                _imported_module_names(node, data)
+            )
 
     for node in nodes:
-        _bind_python_declaration(node, builders, data)
+        _bind_python_declaration(node, open_scopes, tree, data)
 
         field = _PYTHON_SCOPE_FIELDS.get(node.type)
         if field is not None:
@@ -557,7 +857,7 @@ def _python_roles(
         if target is not None:
             bound = _binding_identifiers(target)
             _mark_bindings(bound, roles)
-            scope = _nearest_scope(node, builders)
+            scope = _nearest_scope(node, open_scopes, tree)
             names = {_node_text(identifier, data) for identifier in bound}
             if scope.kind == "module":
                 names = {name for name in names if _UPPER_CASE_RE.fullmatch(name) is None}
@@ -566,77 +866,111 @@ def _python_roles(
         if node.type in {"global_statement", "nonlocal_statement"}:
             declarations = tuple(_descendant_identifiers(node))
             _mark_bindings(declarations, roles)
-            scope = _nearest_scope(node, builders)
+            scope = _nearest_scope(node, open_scopes, tree)
             names = {_node_text(identifier, data) for identifier in declarations}
             if node.type == "global_statement":
                 scope.globals.update(names)
             else:
                 scope.bindings.update(names)
 
-    for node in nodes:
-        _mark_non_reference_roles(node, roles, qualifiers, builders, data)
-
-    scopes = tuple(
-        sorted(
-            (
-                _BindingScope(
-                    start_byte=scope.start_byte,
-                    end_byte=scope.end_byte,
-                    kind=scope.kind,
-                    bindings=frozenset(scope.bindings),
-                    globals=frozenset(scope.globals),
-                    imports=dict(scope.imports),
-                )
-                for scope in builders
-            ),
-            key=lambda scope: (scope.end_byte - scope.start_byte, scope.start_byte),
+    # Frozen before the last pass, which only reads scopes: one shape of scope
+    # reaches every visibility walk, so the class-body rule cannot be stated
+    # once for the builders and again for the frozen set.
+    scopes = {
+        boundary_id: _BindingScope(
+            kind=scope.kind,
+            bindings=frozenset(scope.bindings),
+            globals=frozenset(scope.globals),
+            imports=frozenset(scope.imports),
         )
-    )
-    return roles, qualifiers, scopes
+        for boundary_id, scope in open_scopes.items()
+    }
+
+    view = _ScopeView(tree=tree, scopes=scopes)
+    for node in nodes:
+        _mark_non_reference_roles(node, roles, qualifiers, view, data)
+
+    return _PythonRoles(roles=roles, qualifiers=qualifiers, view=view)
 
 
-def _bind_python_declaration(node: Node, scopes: Sequence[_ScopeBuilder], data: bytes) -> None:
+def _scopes_by_boundary(builders: Sequence[_ScopeBuilder]) -> dict[int, _ScopeBuilder]:
+    """Index scopes by the id of the node that bounds them.
+
+    ``builders`` arrives outermost first, and the first entry keeps a shared
+    id: a lambda whose whole body is a comprehension bounds both scopes with
+    the same node, and one of the two has to own it. The lookup and the
+    binding pass go through this one index, so whichever wins, both agree.
+    """
+    index: dict[int, _ScopeBuilder] = {}
+    for scope in builders:
+        index.setdefault(scope.boundary_id, scope)
+    return index
+
+
+def _bind_python_declaration(
+    node: Node, scopes: Mapping[int, _ScopeBuilder], tree: _ScopeTree, data: bytes
+) -> None:
     """Bind a nested function or class name in its enclosing lexical scope."""
     if node.type not in {"function_definition", "class_definition"}:
         return
     name = node.child_by_field_name("name")
     if name is None:
         return
-    scope = _nearest_scope(name, scopes)
+    scope = _nearest_scope(name, scopes, tree)
     if scope.kind != "module":
         scope.bindings.add(_node_text(name, data))
 
 
 def _scope_builder(node: Node, kind: str) -> _ScopeBuilder:
-    """Build the byte boundary where one scope's bindings apply."""
+    """Build the record of where one scope's bindings apply.
+
+    A function's or class's bindings apply inside its body, not across its
+    header: an annotation or a default expression is evaluated in the scope
+    the declaration sits in.
+    """
     body = node.child_by_field_name("body") if kind in {"function", "class"} else None
     boundary = body if body is not None else node
     return _ScopeBuilder(
         node_id=node.id,
-        start_byte=boundary.start_byte,
-        end_byte=boundary.end_byte,
+        boundary_id=boundary.id,
         kind=kind,
         bindings=set(),
         globals=set(),
-        imports={},
+        imports=set(),
     )
 
 
-def _nearest_scope(node: Node, scopes: Sequence[_ScopeBuilder]) -> _ScopeBuilder:
-    """Return the innermost lexical scope containing ``node``."""
-    candidates = [
-        scope
-        for scope in scopes
-        if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
-    ]
-    return min(candidates, key=lambda scope: scope.end_byte - scope.start_byte)
+def _nearest_scope(
+    node: Node, scopes: Mapping[int, _ScopeBuilder], tree: _ScopeTree
+) -> _ScopeBuilder:
+    """Return the scope ``node`` binds its names in.
+
+    A hop from scope boundary to scope boundary through :class:`_ScopeTree`,
+    so the answer costs the number of scopes around ``node`` rather than the
+    number of nodes above it. Neither a scan over every scope in the file nor
+    a walk up the parent chain: the first is linear in the file's scope count
+    and the second is linear in the depth of the enclosing expression, and a
+    single chained expression makes that depth the size of the file.
+
+    `:=` steps out past every enclosing comprehension. Python binds a named
+    expression in the scope around the comprehension, which is the whole
+    point of the construct; recording it inside would leak the name back out
+    as an unresolved reference.
+    """
+    escapes_comprehension = node.type == "named_expression"
+    for boundary, _ in tree.boundaries(node):
+        found = scopes.get(boundary)
+        if found is not None and not (escapes_comprehension and found.kind == "comprehension"):
+            return found
+    unreachable = "the module scope is bounded by the root, which encloses every node"
+    raise AssertionError(unreachable)
 
 
 def _mark_non_reference_roles(
     node: Node,
     roles: dict[int, IdentifierRole],
     qualifiers: dict[int, str],
-    scopes: Sequence[_ScopeBuilder],
+    view: _ScopeView,
     data: bytes,
 ) -> None:
     """Mark declaration, member, and label identifiers from named fields."""
@@ -644,20 +978,20 @@ def _mark_non_reference_roles(
         attribute = node.child_by_field_name("attribute")
         if attribute is not None:
             object_node = node.child_by_field_name("object")
-            imported_module = (
-                _visible_import(_node_text(object_node, data), node, scopes)
+            qualifier = (
+                _node_text(object_node, data)
                 if object_node is not None and object_node.type == "identifier"
                 else None
             )
-            role = (
-                IdentifierRole.MODULE_ATTRIBUTE
-                if imported_module is not None
-                else IdentifierRole.ATTRIBUTE
-            )
+            imported = qualifier is not None and _binds_imported_module(qualifier, node, view)
+            role = IdentifierRole.MODULE_ATTRIBUTE if imported else IdentifierRole.ATTRIBUTE
             roles.setdefault(attribute.id, role)
-            if imported_module is not None and object_node is not None:
+            if imported and object_node is not None and qualifier is not None:
                 roles.setdefault(object_node.id, IdentifierRole.MODULE_QUALIFIER)
-                qualifiers[attribute.id] = imported_module
+                # The name the source spells, which is what `core/resolve`
+                # keys a module binding on. `import a.b as ab` is written
+                # `ab.f()` here, and `a` is a name this file never binds.
+                qualifiers[attribute.id] = qualifier
     if node.type == "keyword_argument":
         name = node.child_by_field_name("name")
         if name is not None:
@@ -668,51 +1002,42 @@ def _mark_non_reference_roles(
             roles.setdefault(name.id, IdentifierRole.DECLARATION)
 
 
-def _import_bindings(node: Node, data: bytes) -> dict[str, str]:
-    """Map the local names one import introduces to their source names."""
-    bindings: dict[str, str] = {}
+def _imported_module_names(node: Node, data: bytes) -> set[str]:
+    """Return the local names one import statement introduces.
+
+    Names, not a mapping to the module behind them: the only consumer is the
+    qualifier a module attribute carries, and a reference spells the local
+    name. `import a.b as ab` introduces `ab`, `import a.b` introduces `a`, and
+    `from pkg import mod` introduces `mod`.
+    """
+    names: set[str] = set()
     for index, child in enumerate(node.children):
         if node.field_name_for_child(index) != "name":
             continue
         alias = child.child_by_field_name("alias")
-        source_node = child.child_by_field_name("name") if alias is not None else child
-        if source_node is None:
+        if alias is not None:
+            names.add(_node_text(alias, data))
             continue
-        identifiers = _descendant_identifiers(source_node)
+        identifiers = _descendant_identifiers(child)
         if not identifiers:
             continue
+        # `import a.b` binds the package `a`; `from pkg import mod` binds
+        # `mod`, the last segment.
         selected = identifiers[0] if node.type == "import_statement" else identifiers[-1]
-        imported = _node_text(selected, data)
-        if alias is not None:
-            bindings[_node_text(alias, data)] = imported
-            continue
-        bindings[imported] = imported
-    return bindings
+        names.add(_node_text(selected, data))
+    return names
 
 
-def _visible_import(name: str, node: Node, scopes: Sequence[_ScopeBuilder]) -> str | None:
-    """Return the source name behind a visible local import binding."""
-    candidates = sorted(
-        (
-            scope
-            for scope in scopes
-            if scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte
-        ),
-        key=lambda scope: scope.end_byte - scope.start_byte,
-    )
-    inside_function = False
-    for scope in candidates:
-        if scope.kind == "function":
-            inside_function = True
-        if scope.kind == "class" and inside_function:
-            continue
+def _binds_imported_module(name: str, node: Node, view: _ScopeView) -> bool:
+    """True when ``name`` is an imported module object visible at ``node``."""
+    for scope in view.visible(node):
         if name in scope.globals:
             continue
         if name in scope.bindings:
-            return None
+            return False
         if name in scope.imports:
-            return scope.imports[name]
-    return None
+            return True
+    return False
 
 
 def _binding_target(node: Node) -> Node | None:
@@ -754,38 +1079,286 @@ def _node_text(node: Node, data: bytes) -> str:
     return data[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
-def _python_role(
-    node: Node,
-    name: str,
-    explicit: dict[int, IdentifierRole],
-    scopes: Sequence[_BindingScope],
-) -> IdentifierRole:
+# Names Python provides at every point in every module. A file that neither
+# binds nor imports one of these spells the language's own name, not a
+# repository symbol, so `type(x)` must not be offered as a caller of a
+# repository function named `type`. `sys.stdlib_module_names` is deliberately
+# absent: a bare `json` with no import in the file is a NameError, not a
+# reference to the standard library.
+#
+# `core.patchlint` keeps a wider table for a different question -- whether a
+# name is somebody's missing helper -- and the two have not been merged
+# because that module sits above this one in the import graph.
+# Spelled out rather than read off `dir(builtins)`, which is the running
+# interpreter's answer and not the language's. `requires-python` is ">=3.10"
+# and the tag cache generation is keyed on the tree, not on the interpreter,
+# so a repository indexed under 3.10 and served under 3.13 disagreed about
+# `aiter`, `anext`, `ExceptionGroup`, `BaseExceptionGroup` and
+# `PythonFinalizationError` -- a file defining its own `ExceptionGroup` had
+# callers under one interpreter and none under another, from one cache.
+#
+# The union across the supported versions, not the intersection: a name in
+# here is not a repository reference, so over-listing costs a missing edge and
+# under-listing costs a wrong one. This package's posture is that the first is
+# cheaper. Captured from CPython 3.13, which adds to every earlier version in
+# the range and removes nothing from it, plus `keyword.kwlist`; soft keywords
+# (`match`, `case`, `_`) are deliberately absent because they are ordinary
+# names everywhere else.
+_PYTHON_ALWAYS_BOUND: frozenset[str] = frozenset(
+    {
+        "ArithmeticError",
+        "AssertionError",
+        "AttributeError",
+        "BaseException",
+        "BaseExceptionGroup",
+        "BlockingIOError",
+        "BrokenPipeError",
+        "BufferError",
+        "BytesWarning",
+        "ChildProcessError",
+        "ConnectionAbortedError",
+        "ConnectionError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "DeprecationWarning",
+        "EOFError",
+        "Ellipsis",
+        "EncodingWarning",
+        "EnvironmentError",
+        "Exception",
+        "ExceptionGroup",
+        "False",
+        "FileExistsError",
+        "FileNotFoundError",
+        "FloatingPointError",
+        "FutureWarning",
+        "GeneratorExit",
+        "IOError",
+        "ImportError",
+        "ImportWarning",
+        "IndentationError",
+        "IndexError",
+        "InterruptedError",
+        "IsADirectoryError",
+        "KeyError",
+        "KeyboardInterrupt",
+        "LookupError",
+        "MemoryError",
+        "ModuleNotFoundError",
+        "NameError",
+        "None",
+        "NotADirectoryError",
+        "NotImplemented",
+        "NotImplementedError",
+        "OSError",
+        "OverflowError",
+        "PendingDeprecationWarning",
+        "PermissionError",
+        "ProcessLookupError",
+        "PythonFinalizationError",
+        "RecursionError",
+        "ReferenceError",
+        "ResourceWarning",
+        "RuntimeError",
+        "RuntimeWarning",
+        "StopAsyncIteration",
+        "StopIteration",
+        "SyntaxError",
+        "SyntaxWarning",
+        "SystemError",
+        "SystemExit",
+        "TabError",
+        "TimeoutError",
+        "True",
+        "TypeError",
+        "UnboundLocalError",
+        "UnicodeDecodeError",
+        "UnicodeEncodeError",
+        "UnicodeError",
+        "UnicodeTranslateError",
+        "UnicodeWarning",
+        "UserWarning",
+        "ValueError",
+        "Warning",
+        "ZeroDivisionError",
+        "_IncompleteInputError",
+        "__build_class__",
+        "__debug__",
+        "__doc__",
+        "__import__",
+        "__loader__",
+        "__name__",
+        "__package__",
+        "__spec__",
+        "abs",
+        "aiter",
+        "all",
+        "and",
+        "anext",
+        "any",
+        "as",
+        "ascii",
+        "assert",
+        "async",
+        "await",
+        "bin",
+        "bool",
+        "break",
+        "breakpoint",
+        "bytearray",
+        "bytes",
+        "callable",
+        "chr",
+        "class",
+        "classmethod",
+        "compile",
+        "complex",
+        "continue",
+        "copyright",
+        "credits",
+        "def",
+        "del",
+        "delattr",
+        "dict",
+        "dir",
+        "divmod",
+        "elif",
+        "else",
+        "enumerate",
+        "eval",
+        "except",
+        "exec",
+        "exit",
+        "filter",
+        "finally",
+        "float",
+        "for",
+        "format",
+        "from",
+        "frozenset",
+        "getattr",
+        "global",
+        "globals",
+        "hasattr",
+        "hash",
+        "help",
+        "hex",
+        "id",
+        "if",
+        "import",
+        "in",
+        "input",
+        "int",
+        "is",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "lambda",
+        "len",
+        "license",
+        "list",
+        "locals",
+        "map",
+        "max",
+        "memoryview",
+        "min",
+        "next",
+        "nonlocal",
+        "not",
+        "object",
+        "oct",
+        "open",
+        "or",
+        "ord",
+        "pass",
+        "pow",
+        "print",
+        "property",
+        "quit",
+        "raise",
+        "range",
+        "repr",
+        "return",
+        "reversed",
+        "round",
+        "set",
+        "setattr",
+        "slice",
+        "sorted",
+        "staticmethod",
+        "str",
+        "sum",
+        "super",
+        "try",
+        "tuple",
+        "type",
+        "vars",
+        "while",
+        "with",
+        "yield",
+        "zip",
+    }
+)
+
+
+def _unbound_role(name: str) -> IdentifierRole:
+    """Classify a name no scope in the file binds."""
+    return IdentifierRole.BUILTIN if name in _PYTHON_ALWAYS_BOUND else IdentifierRole.REFERENCE
+
+
+def _python_role(node: Node, name: str, analysis: "_PythonRoles") -> IdentifierRole:
     """Return the explicit syntactic role or the nearest lexical binding."""
-    direct = explicit.get(node.id)
+    direct = analysis.roles.get(node.id)
     if direct is not None:
         return direct
 
-    inside_function = False
-    for scope in scopes:
-        if not (scope.start_byte <= node.start_byte and node.end_byte <= scope.end_byte):
-            continue
-        if scope.kind == "function":
-            inside_function = True
-        if scope.kind == "class" and inside_function:
-            continue
+    for scope in analysis.view.visible(node):
         if name in scope.globals:
             return IdentifierRole.REFERENCE
         if name in scope.bindings:
             return IdentifierRole.LOCAL
-    return IdentifierRole.REFERENCE
+    return _unbound_role(name)
 
 
 def identifier_node_types(language: str) -> frozenset[str]:
-    """Return the leaf node types that name something in ``language``."""
+    """Return the node types that name something in ``language``.
+
+    Raises :class:`UnsupportedLanguageError` for a language in neither table.
+    Returning the default set instead would answer "this language has one
+    identifier node type" to a question that was really "I do not know this
+    language", and the caller cannot tell the two apart afterwards.
+    """
     config = LANGUAGE_CONFIGS.get(language)
     if config is not None:
         return frozenset(config.identifier_node_types)
-    return frozenset(_EXTRA_IDENTIFIER_NODE_TYPES.get(language, DEFAULT_IDENTIFIER_NODE_TYPES))
+    extra = _EXTRA_IDENTIFIER_NODE_TYPES.get(language)
+    if extra is not None:
+        return frozenset(extra)
+    detail = f"no identifier node types are registered for {language!r}"
+    raise UnsupportedLanguageError(detail)
+
+
+def _identifier_name(node: Node, data: bytes, wanted: frozenset[str]) -> str:
+    """Return the name ``node`` spells, or "" when it names nothing itself.
+
+    A node of a wanted type names one thing unless it contains another wanted
+    node, in which case the inner one is the name and this is a path or a
+    container. That rule is what admits the delimited forms -- TOML's
+    ``quoted_key``, YAML's quoted scalars, JSON's ``string`` -- whose only
+    children are the quote tokens; their text carries the delimiters, so the
+    delimiters come off here.
+    """
+    if any(child.type in wanted for child in node.named_children):
+        return ""
+    text = _node_text(node, data)
+    for quote in ('"', "'"):
+        if (
+            len(text) >= _MIN_QUOTED_LITERAL_CHARS
+            and text.startswith(quote)
+            and text.endswith(quote)
+        ):
+            return text[1:-1]
+    return text
 
 
 def collect_refs(source: str, language: str, path: str) -> list[Ref]:
@@ -797,23 +1370,18 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     answer this tool could give.
     """
     wanted = identifier_node_types(language)
-    if not wanted:
-        return []
-
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
     tree = parser.parse(data)
-    explicit: dict[int, IdentifierRole] = {}
-    qualifiers: dict[int, str] = {}
-    scopes: tuple[_BindingScope, ...] = ()
-    if language == "python":
-        explicit, qualifiers, scopes = _python_roles(tree.root_node, data)
+    # None for the nineteen languages with no scope analysis, rather than three
+    # empty tables that read as "analysed, and it found nothing".
+    analysis = _python_roles(tree.root_node, data) if language == "python" else None
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
-        if node.type not in wanted or node.child_count:
+        if node.type not in wanted:
             continue
-        name = _node_text(node, data)
+        name = _identifier_name(node, data, wanted)
         if name:
             line = node.start_point[0] + 1
             refs.append(
@@ -822,11 +1390,11 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
                     name=name,
                     line=line,
                     role=(
-                        _python_role(node, name, explicit, scopes)
-                        if language == "python"
+                        _python_role(node, name, analysis)
+                        if analysis is not None
                         else IdentifierRole.REFERENCE
                     ),
-                    qualifier=qualifiers.get(node.id, ""),
+                    qualifier=analysis.qualifiers.get(node.id, "") if analysis else "",
                 )
             )
     return refs
@@ -847,6 +1415,51 @@ def walk_nodes(root: Node) -> list[Node]:
     return found
 
 
+def declarations_under(root: Node, declaration_types: frozenset[str]) -> Iterator[Node]:
+    """Yield each declaration beneath ``root``, descending through wrappers.
+
+    One traversal rule, stated once and shared by every handler that has a set
+    of declaration node types: a node that is not itself a declaration is a
+    wrapper that may still hold one, and a declaration ends the descent
+    because what it contains belongs to it. Include guards, C++ namespaces,
+    Rust `mod` bodies and `if TYPE_CHECKING:` blocks are all the same shape,
+    and a loop over the root's direct children reaches inside none of them.
+
+    Iterative for the reason :func:`walk_nodes` gives: a deep chain of nodes
+    must not exhaust the interpreter's stack and abort a repository index.
+    """
+    stack: list[Node] = list(reversed(root.children))
+    while stack:
+        node = stack.pop()
+        if node.type in declaration_types:
+            yield node
+            continue
+        stack.extend(reversed(node.children))
+
+
+def declares_async(node: Node) -> bool:
+    """True when a declaration node carries an `async` keyword of its own.
+
+    Two grammars spell it differently and the question is one: Python puts
+    `async` among the `function_definition`'s own children, and Rust nests it
+    inside a `function_modifiers` node beside the visibility modifier.
+
+    Asked of the tree rather than of the source text. A substring search over
+    a declaration's first bytes reports `def async_handler(...)` as async, and
+    `is_async` is persisted to the tag cache and rendered into the signature
+    an agent reads -- so telling it to await a synchronous function is an
+    instruction, not a display nit.
+    """
+    for child in node.children:
+        if child.type == "async":
+            return True
+        if child.type == "function_modifiers" and any(
+            modifier.type == "async" for modifier in child.children
+        ):
+            return True
+    return False
+
+
 def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
     """Extract rationale markers and ADR/RFC citations from comment nodes."""
     found: list[Rationale] = []
@@ -854,7 +1467,12 @@ def _extract_rationales(root: Node, source: bytes) -> tuple[Rationale, ...]:
         if node.type not in COMMENT_NODE_TYPES:
             continue
         comment = source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-        for offset, raw_line in enumerate(comment.splitlines()):
+        # `split`, not `splitlines`: the latter breaks on a form feed, a
+        # vertical tab and U+2028, none of which tree-sitter counts as a row.
+        # An Emacs page marker inside a block comment moved every later
+        # rationale in that comment one line down, and `_attach_rationales`
+        # hangs a rationale off the symbol whose span that line falls in.
+        for offset, raw_line in enumerate(comment.split("\n")):
             line = _comment_text(raw_line)
             marker = _RATIONALE_MARKER.search(line)
             citations = tuple(
@@ -894,7 +1512,7 @@ def _comment_text(raw: str) -> str:
 def _attach_rationales(
     symbols: list[ASTSymbol], rationales: tuple[Rationale, ...]
 ) -> list[ASTSymbol]:
-    """Attach each rationale to the innermost symbol whose span contains it."""
+    """Attach each rationale to the last symbol that opens before it and contains it."""
     attached: dict[int, list[Rationale]] = {}
     for rationale in rationales:
         containing = [
@@ -938,6 +1556,55 @@ class _GenericWalk:
 
 
 @dataclass(frozen=True)
+class _CWalk:
+    """The context one C or C++ traversal carries, apart from the node.
+
+    The same shape as :class:`_GenericWalk`: what is being read, what it is
+    called, and where the symbols go. Split out so each step takes the node it
+    is looking at and the walk it belongs to, rather than five fixed values
+    re-listed at every call.
+    """
+
+    source: bytes
+    module_path: str
+    language: str
+    symbols: list[ASTSymbol]
+
+
+@dataclass(frozen=True)
+class _FunctionSite:
+    """The three parts of a function symbol that vary by where it was found.
+
+    ``header`` is the node the signature is rendered from. It is the
+    declaration itself except for a function-valued binding, where the name is
+    on the binding and the parameters are on the value.
+    """
+
+    name: str
+    owner: str
+    header: Node
+
+
+# A `pointer_declarator` chain is bounded in real source; the count exists so
+# a malformed tree cannot spin here rather than because a real declaration
+# reaches it.
+_C_DECLARATOR_UNWRAP_LIMIT = 32
+
+
+@dataclass(frozen=True)
+class _CName:
+    """The owner and name one C or C++ declarator spells.
+
+    ``owner`` is empty for a free function and for an in-class declaration,
+    where the enclosing class is known from the walk rather than from the
+    name; it is filled only by the out-of-line form, which names its own.
+    """
+
+    owner: str
+    name: str
+
+
+@dataclass(frozen=True)
 class _SurfaceDeclaration:
     """One parsed non-code declaration before common symbol fields are added."""
 
@@ -964,6 +1631,71 @@ class _LanguageSpec:
     extract_imports: ImportHandler
 
 
+# The node types each dedicated handler treats as a declaration. They are
+# what `declarations_under` stops the descent at, so a type listed here also
+# says "what is inside this belongs to it" -- which is why a C++
+# `class_specifier` is listed and a `namespace_definition` is not.
+C_TAGGED_TYPES = frozenset({"struct_specifier", "class_specifier", "enum_specifier"})
+# `function_declarator` is the prototype: `double apply_tax(double, double);`
+# parses as a `declaration` whose declarator is one. A header of prototypes is
+# the normal shape of a C header, so without it the declarations a translation
+# unit resolves against are the ones with no symbol. The declarator rather
+# than the declaration, because a `declaration` may instead hold a tagged type
+# the walk still has to descend into.
+# `field_declaration` carries a class member: `void reset();` inside a class
+# body is one, and so is `int field_;`. Only the first yields a symbol -- the
+# shape test below is what tells them apart -- but both have to end the descent
+# so a member's own declarator is never mistaken for a free function.
+C_DECLARATION_TYPES = (
+    frozenset({"function_definition", "function_declarator", "field_declaration"}) | C_TAGGED_TYPES
+)
+
+# The nodes a C or C++ declarator ends at when it names a function. Anything
+# else there -- `parenthesized_declarator` wrapping a `pointer_declarator` --
+# is the function-pointer shape, which declares a variable of function type
+# rather than a function. `field_identifier` is the in-class spelling,
+# `qualified_identifier` the out-of-line one, and `operator_name` and
+# `destructor_name` are the two C++ spells that are not identifiers at all.
+C_FUNCTION_NAME_TYPES = frozenset(
+    {
+        "identifier",
+        "field_identifier",
+        "type_identifier",
+        "qualified_identifier",
+        "operator_name",
+        "destructor_name",
+    }
+)
+RUST_ITEM_TYPES = frozenset(
+    {
+        "function_item",
+        "struct_item",
+        "enum_item",
+        "trait_item",
+        "impl_item",
+        "const_item",
+        "type_item",
+    }
+)
+# The config surfaces name a pair the same way in every grammar in the table,
+# and a TOML table header owns the pairs below it. `[[array]]` is a table
+# header too: its pairs have an owner exactly as `[table]`'s do.
+_CONFIG_PAIR_TYPES = frozenset({"pair", "block_mapping_pair"})
+_TOML_TABLE_TYPES = frozenset({"table", "table_array_element"})
+_CONFIG_OWNER_TYPES = _CONFIG_PAIR_TYPES | _TOML_TABLE_TYPES
+
+PYTHON_DECLARATION_TYPES = frozenset(
+    {
+        "function_definition",
+        "class_definition",
+        "expression_statement",
+        "assignment",
+        "type_alias_statement",
+        "decorated_definition",
+    }
+)
+
+
 class TreeSitterExtractor:
     """Extract AST symbols from source files using tree-sitter."""
 
@@ -980,7 +1712,7 @@ class TreeSitterExtractor:
         ".tsx": "tsx",
         # Go (generic extractor)
         ".go": "go",
-        # Lua (generic extractor — Neovim plugins)
+        # Lua (dedicated extractor — Neovim plugins)
         ".lua": "lua",
         # C / C++ (dedicated extractor)
         ".c": "c",
@@ -1123,8 +1855,8 @@ class TreeSitterExtractor:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
-        tree = parser.parse(bytes(source, "utf-8"))
         source_bytes = bytes(source, "utf-8")
+        tree = parser.parse(source_bytes)
 
         # get_parser succeeded, so the language is registered.
         symbols: list[ASTSymbol] = []
@@ -1151,8 +1883,8 @@ class TreeSitterExtractor:
             logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
             return []
 
-        tree = parser.parse(bytes(source, "utf-8"))
         source_bytes = bytes(source, "utf-8")
+        tree = parser.parse(source_bytes)
 
         # get_parser succeeded, so the language is registered.
         imports: list[ImportStatement] = []
@@ -1244,24 +1976,16 @@ class TreeSitterExtractor:
             name = self._generic_name(node, source, cfg)
             if name:
                 owner = parent or self._receiver_owner(node, source, cfg)
-                kind = SymbolKind.METHOD if owner else SymbolKind.FUNCTION
                 symbols.append(
-                    ASTSymbol(
-                        name=name,
-                        kind=kind,
-                        module_path=module_path,
-                        line_number=node.start_point[0] + 1,
-                        end_line_number=node.end_point[0] + 1,
-                        signature=self._generic_signature(node, source, name, cfg),
-                        docstring="",
-                        parent_class=owner,
-                        decorators=(),
-                        bases=(),
-                        language=language,
-                        is_public=not name.startswith("_"),
-                        is_async=False,
+                    self._generic_function_symbol(
+                        node, source, walk, _FunctionSite(name=name, owner=owner, header=node)
                     )
                 )
+            return []
+        if node.type in cfg.binding_node_types:
+            return self._visit_generic_binding(node, source, walk, parent)
+        if node.type in cfg.constant_node_types:
+            self._append_generic_constant(node, source, walk, parent)
             return []
         if node.type in cfg.class_node_types:
             name = self._generic_name(node, source, cfg)
@@ -1274,13 +1998,15 @@ class TreeSitterExtractor:
                     module_path=module_path,
                     line_number=node.start_point[0] + 1,
                     end_line_number=node.end_point[0] + 1,
-                    signature=f"class {name}",
+                    signature=f"{self._declaration_keyword(node, source)} {name}",
                     docstring="",
-                    parent_class="",
+                    # A class nested in another class, a namespace or a module
+                    # has an owner exactly as its own methods do.
+                    parent_class=parent,
                     decorators=(),
                     bases=(),
                     language=language,
-                    is_public=not name.startswith("_"),
+                    is_public=self._generic_is_public(node, source, cfg, name),
                     is_async=False,
                 )
             )
@@ -1290,6 +2016,142 @@ class TreeSitterExtractor:
         # Not a declaration: a wrapper (export_statement, a block, an
         # expression) that may still hold one.
         return [(child, parent) for child in node.children]
+
+    @staticmethod
+    def _declaration_keyword(node: Node, source: bytes) -> str:
+        """Return the word the source wrote to open one type declaration.
+
+        A grammar that folds several keywords into one node type says which
+        it was on a ``declaration_kind`` field -- that is how Swift spells
+        `struct`, `enum` and `actor` as `class_declaration`. Every other row
+        in the table names the keyword in the node type itself, so stripping
+        the grammar's suffix recovers it: `interface_declaration` opens
+        `interface`, `trait_definition` opens `trait`, and Go's `type_spec`
+        opens `type`. Deriving beats a keyword table that drifts from the
+        rows it describes.
+        """
+        spelled = node.child_by_field_name("declaration_kind")
+        if spelled is not None:
+            return TreeSitterExtractor._node_text(spelled, source)
+        keyword_of = node.type
+        for suffix in ("_declaration", "_definition", "_spec"):
+            keyword_of = keyword_of.removesuffix(suffix)
+        return keyword_of
+
+    def _generic_function_symbol(
+        self, node: Node, source: bytes, walk: _GenericWalk, site: _FunctionSite
+    ) -> ASTSymbol:
+        """Build one function or method symbol from the site it was found at."""
+        return ASTSymbol(
+            name=site.name,
+            kind=SymbolKind.METHOD if site.owner else SymbolKind.FUNCTION,
+            module_path=walk.module_path,
+            line_number=node.start_point[0] + 1,
+            end_line_number=node.end_point[0] + 1,
+            signature=self._generic_signature(site.header, source, site.name, walk.cfg),
+            docstring="",
+            parent_class=site.owner,
+            decorators=(),
+            bases=(),
+            language=walk.language,
+            is_public=self._generic_is_public(node, source, walk.cfg, site.name),
+            # Three spellings across the pack: a keyword child (ECMAScript), a
+            # `function_modifiers` node (Rust), and a modifier keyword beside
+            # the visibility one (C#, Kotlin).
+            is_async=declares_async(site.header)
+            or "async" in self._modifier_keywords(site.header, source, walk.cfg),
+        )
+
+    def _visit_generic_binding(
+        self,
+        node: Node,
+        source: bytes,
+        walk: _GenericWalk,
+        parent: str,
+    ) -> list[tuple[Node, str]]:
+        """Emit a function symbol for a function-valued binding, or descend.
+
+        A binding whose value is not a function is not a declaration this
+        walker knows, so the walk carries on through it rather than stopping:
+        `const [a, b] = f()` still holds expressions worth reaching.
+        """
+        value = node.child_by_field_name("value")
+        if value is None or value.type not in walk.cfg.function_value_node_types:
+            return [(child, parent) for child in node.children]
+        name = self._generic_name(node, source, walk.cfg)
+        if name:
+            walk.symbols.append(
+                self._generic_function_symbol(
+                    node, source, walk, _FunctionSite(name=name, owner=parent, header=value)
+                )
+            )
+        return []
+
+    def _append_generic_constant(
+        self,
+        node: Node,
+        source: bytes,
+        walk: _GenericWalk,
+        parent: str,
+    ) -> None:
+        """Emit a constant symbol when the declaration carries the keyword.
+
+        The keywords are what separate a constant from mutable state: a Java
+        `static final double TAX_RATE` is a constant of the class, and
+        `private final double subtotal` is per-instance state that happens not
+        to be reassigned.
+        """
+        cfg = walk.cfg
+        required = frozenset(cfg.constant_modifier_keywords)
+        if not required <= self._modifier_keywords(node, source, cfg):
+            return
+        declarator = node.child_by_field_name("declarator")
+        name = self._generic_name(declarator if declarator is not None else node, source, cfg)
+        if not name:
+            return
+        walk.symbols.append(
+            ASTSymbol(
+                name=name,
+                kind=SymbolKind.CONSTANT,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=self._header_text(node, source),
+                docstring="",
+                parent_class=parent,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=self._generic_is_public(node, source, cfg, name),
+                is_async=False,
+            )
+        )
+
+    def _modifier_keywords(self, node: Node, source: bytes, cfg: LanguageConfig) -> frozenset[str]:
+        """Return the modifier keywords a declaration carries, as words.
+
+        Read as text and split, because the pack spells modifiers two ways: a
+        container node holding one child per keyword, and one leaf node per
+        keyword. The words are the same either way.
+        """
+        words: set[str] = set()
+        for child in node.children:
+            if child.type in cfg.modifier_node_types:
+                words.update(self._node_text(child, source).split())
+        return frozenset(words)
+
+    def _generic_is_public(self, node: Node, source: bytes, cfg: LanguageConfig, name: str) -> bool:
+        """Answer `is_public` from the declaration's own keywords where it has them.
+
+        `is_public` is persisted to the tag cache and is what a caller filters
+        an overview on, so a private method reported public is a wrong column
+        on disk. A language with no visibility keywords falls back to the
+        leading-underscore convention, which is the only signal such a
+        language gives.
+        """
+        if cfg.modifier_node_types:
+            return not (self._modifier_keywords(node, source, cfg) & NON_PUBLIC_MODIFIERS)
+        return not name.startswith("_")
 
     def _generic_signature(self, node: Node, source: bytes, name: str, cfg: LanguageConfig) -> str:
         """Render `fn name(params) -> result` from whatever fields exist.
@@ -1312,7 +2174,9 @@ class TreeSitterExtractor:
         result_node = node.child_by_field_name("return_type") or node.child_by_field_name("result")
         # TypeScript's return_type is a `type_annotation`, so its text arrives
         # as ": string"; the arrow already says what the colon would.
-        result_text = self._node_text(result_node, source).lstrip(": ") if result_node else ""
+        result_text = (
+            self._node_text(result_node, source).removeprefix(":").strip() if result_node else ""
+        )
         result = f" -> {result_text}" if result_text else ""
 
         return f"fn {name}{params}{result}"
@@ -1409,16 +2273,107 @@ class TreeSitterExtractor:
                 continue
             path = self._extract_import_path(node, source, cfg)
             if path:
+                names, local_names = self._import_names(node, source, path, cfg)
                 imports.append(
                     ImportStatement(
                         module=path,
-                        names=(),
+                        names=names,
+                        local_names=local_names if local_names != names else (),
                         is_relative=path.startswith("."),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
+
+    def _import_names(
+        self, node: Node, source: bytes, path: str, cfg: LanguageConfig
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return the members one import names and the local names they bind.
+
+        The *local* name is the second half, so `import { Y as Z }` reports the
+        member `Y` and the binding `Z`: resolution needs the first and a bare
+        reference in this file can only spell the second.
+        """
+        if cfg.import_binding is ImportBinding.SPECIFIERS:
+            bound = self._specifier_names(node, source)
+            return bound, bound
+        if cfg.import_binding is ImportBinding.LAST_SEGMENT:
+            return self._last_segment_names(node, source, path)
+        # MODULE_OBJECT: `import a.b` in Python, `import "fmt"` in Go and
+        # `import * as ns` in the ECMAScript family all bind a module object.
+        # A bare reference to something that module defines is a NameError, so
+        # the statement names nothing this file can spell unqualified.
+        return (), ()
+
+    def _specifier_names(self, node: Node, source: bytes) -> tuple[str, ...]:
+        """Return the local names an ECMAScript import statement lists."""
+        names: list[str] = []
+        for child in walk_nodes(node):
+            if child.type == "import_specifier":
+                # `X` or `Y as Z`: the last identifier is the local binding.
+                identifiers = [c for c in child.children if c.type == "identifier"]
+                if identifiers:
+                    names.append(self._node_text(identifiers[-1], source))
+            elif child.type == "import_clause":
+                # A default import is a bare identifier directly under the
+                # clause; `{ ... }` and `* as ns` are their own node types and
+                # are not children of this shape.
+                names.extend(
+                    self._node_text(c, source) for c in child.children if c.type == "identifier"
+                )
+        return tuple(dict.fromkeys(names))
+
+    def _last_segment_names(
+        self, node: Node, source: bytes, path: str
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """Return what `import com.acme.Money;` and its four cousins bind.
+
+        The path ends on the name, so the name is read off the path rather
+        than off a node type: Java, Kotlin, Scala, C# and PHP each spell the
+        path with a different node, and none of them gives the final segment
+        one of its own.
+
+        Three statements in these grammars do not end on a name, and each is
+        answered rather than guessed at. A wildcard brings in a whole package,
+        whose target is a directory and therefore no file this resolver can
+        offer, so it binds nothing here. A selector list names several members
+        below the package the path gives. An alias replaces the local name and
+        leaves the member alone, which is exactly the pair the two returned
+        tuples hold.
+
+        A Java `import static com.acme.Tax.RATE;` is out of this rule's reach:
+        its path runs one segment past the file, so `RATE` is reported as the
+        member of a module string that names no file, and it binds nothing.
+        That is the behaviour before this method existed, stated rather than
+        left to be discovered.
+        """
+        children = {child.type for child in walk_nodes(node)}
+        if children & _IMPORT_WILDCARD_NODE_TYPES:
+            return (), ()
+
+        selected = [
+            self._node_text(listed, source)
+            for child in walk_nodes(node)
+            if child.type in _IMPORT_SELECTOR_NODE_TYPES
+            for listed in child.named_children
+        ]
+        if selected:
+            members = tuple(dict.fromkeys(selected))
+            return members, members
+
+        member = path.replace("\\", ".").rpartition(".")[2]
+        if not member:
+            return (), ()
+        alias = next(
+            (
+                self._node_text(named, source)
+                for child in walk_nodes(node)
+                if child.type in _IMPORT_ALIAS_NODE_TYPES
+                for named in child.named_children
+            ),
+            "",
+        )
+        return (member,), (alias or member,)
 
     def _extract_import_path(
         self,
@@ -1433,16 +2388,26 @@ class TreeSitterExtractor:
             if path_node:
                 return self._strip_quotes(self._node_text(path_node, source))
 
-        # Walk children looking for the expected string node type
+        # Walk children looking for the expected string node type. Every
+        # match under one parent is joined with a dot, because a grammar that
+        # spells a dotted path as a run of sibling identifiers -- scala's
+        # `import pricing.Money`, csharp's `using App.Money` -- otherwise
+        # reports only its first segment, and the import resolves to a package
+        # rather than to the file that defines the name.
         target_type = cfg.import_path_node_type or "string"
+        direct = [child for child in node.children if child.type == target_type]
+        if direct:
+            return self._joined_path(direct, source)
+        # One level of nesting (e.g. import_statement > string_fragment).
         for child in node.children:
-            if child.type == target_type:
-                return self._strip_quotes(self._node_text(child, source))
-            # One level of nesting (e.g. import_statement > string_fragment)
-            for grandchild in child.children:
-                if grandchild.type == target_type:
-                    return self._strip_quotes(self._node_text(grandchild, source))
+            nested = [grandchild for grandchild in child.children if grandchild.type == target_type]
+            if nested:
+                return self._joined_path(nested, source)
         return ""
+
+    def _joined_path(self, nodes: list[Node], source: bytes) -> str:
+        """Join one run of path segments into a dotted module string."""
+        return ".".join(self._strip_quotes(self._node_text(node, source)) for node in nodes)
 
     # ------------------------------------------------------------------
     # Lua (dedicated — assigned functions and module tables)
@@ -1507,12 +2472,7 @@ class TreeSitterExtractor:
         if not name:
             return
 
-        has_func_value = var_list is not None and any(
-            c.type == "function_definition" for c in var_list.children
-        )
-
-        if has_func_value:
-            assert var_list is not None  # implied by has_func_value
+        if var_list is not None and any(c.type == "function_definition" for c in var_list.children):
             params = self._lua_assigned_func_params(var_list, source)
             symbols.append(
                 self._lua_symbol(
@@ -1523,6 +2483,20 @@ class TreeSitterExtractor:
                     signature=f"fn {name}{params}",
                 )
             )
+            return
+
+        # A module table's plain fields are part of the surface a caller
+        # reads, so `M.version = "1.0"` is a symbol like `M.go` is.
+        value = _truncate(self._node_text(var_list, source), _MAX_VALUE_CHARS) if var_list else ""
+        symbols.append(
+            self._lua_symbol(
+                name,
+                SymbolKind.CONSTANT,
+                module_path,
+                node,
+                signature=f"{name} = {value}" if value else name,
+            )
+        )
 
     def _extract_lua_variable_decl(
         self,
@@ -1555,15 +2529,11 @@ class TreeSitterExtractor:
         if not name:
             return
 
-        has_func_value = val_list is not None and any(
-            c.type == "function_definition" for c in val_list.children
-        )
         has_table_value = val_list is not None and any(
             c.type == "table_constructor" for c in val_list.children
         )
 
-        if has_func_value:
-            assert val_list is not None  # implied by has_func_value
+        if val_list is not None and any(c.type == "function_definition" for c in val_list.children):
             params = self._lua_assigned_func_params(val_list, source)
             symbols.append(
                 self._lua_symbol(
@@ -1665,7 +2635,7 @@ class TreeSitterExtractor:
 
         if language == "toml":
             for node in walk_nodes(root):
-                if node.type != "table":
+                if node.type not in _TOML_TABLE_TYPES:
                     continue
                 key = self._data_key(node, source, language)
                 if key:
@@ -1684,13 +2654,21 @@ class TreeSitterExtractor:
                         )
                     )
 
-        for node in walk_nodes(root):
-            if node.type != pair_type:
+        # One downward walk carrying the owner it has already derived, rather
+        # than one upward walk per pair. Re-deriving every ancestor's key for
+        # every pair below it made a deeply nested document cost far more than
+        # its size: depth 400 in 3.9 KB took 205 times as long as depth 50.
+        stack: list[tuple[Node, str]] = [(child, "") for child in reversed(root.children)]
+        while stack:
+            node, owner = stack.pop()
+            if node.type not in _CONFIG_OWNER_TYPES:
+                stack.extend((child, owner) for child in reversed(node.children))
                 continue
             key = self._data_key(node, source, language)
-            if not key:
+            nested_owner = ".".join(part for part in (owner, key) if part)
+            stack.extend((child, nested_owner) for child in reversed(node.children))
+            if node.type != pair_type or not key:
                 continue
-            owner = self._data_owner(node, source, language)
             value = node.child_by_field_name("value")
             has_nested_pair = value is not None and self._has_nested_pair(value)
             is_container = value is not None and value.type in {
@@ -1815,12 +2793,22 @@ class TreeSitterExtractor:
 
     @staticmethod
     def _has_nested_pair(node: Node) -> bool:
-        """True when ``node`` contains another config mapping pair."""
-        return any(
-            child.type in {"pair", "block_mapping_pair"}
-            for child in walk_nodes(node)
-            if child.id != node.id
-        )
+        """True when ``node`` contains a config mapping pair.
+
+        The caller passes a pair's value node, which no grammar in the table
+        spells as a pair, so the walk needs no guard against ``node`` itself.
+        """
+        # An explicit stack that stops at the first pair. `walk_nodes` returns
+        # a list, so `any` over it built every descendant before looking at
+        # one, and a container holding a pair right below it paid for the
+        # whole subtree.
+        stack = list(node.children)
+        while stack:
+            current = stack.pop()
+            if current.type in _CONFIG_PAIR_TYPES:
+                return True
+            stack.extend(current.children)
+        return False
 
     def _data_key(self, node: Node, source: bytes, language: str) -> str:
         """Return the key one config pair or TOML table declares."""
@@ -1837,18 +2825,6 @@ class TreeSitterExtractor:
         if key_node is None:
             return ""
         return self._clean_surface_name(self._node_text(key_node, source), language)
-
-    def _data_owner(self, node: Node, source: bytes, language: str) -> str:
-        """Return the dotted key path enclosing one config pair."""
-        owners: list[str] = []
-        parent = node.parent
-        while parent is not None:
-            if parent.type in {"pair", "block_mapping_pair", "table"}:
-                key = self._data_key(parent, source, language)
-                if key:
-                    owners.append(key)
-            parent = parent.parent
-        return ".".join(reversed(owners))
 
     def _hcl_block_identity(self, node: Node, source: bytes) -> tuple[str, str, str]:
         """Return ``(owner, name, header)`` for one HCL block."""
@@ -1938,49 +2914,146 @@ class TreeSitterExtractor:
         symbols: list[ASTSymbol],
         language: str,
     ) -> None:
-        """Extract function and struct symbols from C/C++ AST."""
-        for node in root.children:
-            if node.type == "function_definition":
-                name = self._c_function_name(node, source)
-                if name:
-                    symbols.append(
-                        ASTSymbol(
-                            name=name,
-                            kind=SymbolKind.FUNCTION,
-                            module_path=module_path,
-                            line_number=node.start_point[0] + 1,
-                            end_line_number=node.end_point[0] + 1,
-                            signature=f"fn {name}",
-                            docstring="",
-                            parent_class="",
-                            decorators=(),
-                            bases=(),
-                            language=language,
-                            is_public=True,
-                            is_async=False,
-                        )
-                    )
-            elif node.type in ("struct_specifier", "class_specifier", "enum_specifier"):
-                name_node = node.child_by_field_name("name")
-                if name_node:
-                    name = self._node_text(name_node, source)
-                    symbols.append(
-                        ASTSymbol(
-                            name=name,
-                            kind=SymbolKind.CLASS,
-                            module_path=module_path,
-                            line_number=node.start_point[0] + 1,
-                            end_line_number=node.end_point[0] + 1,
-                            signature=f"{node.type.split('_')[0]} {name}",
-                            docstring="",
-                            parent_class="",
-                            decorators=(),
-                            bases=(),
-                            language=language,
-                            is_public=True,
-                            is_async=False,
-                        )
-                    )
+        """Extract function and tagged-type symbols from a C/C++ AST.
+
+        Over `declarations_under`, so an include guard and a C++ namespace are
+        descended through rather than treated as the end of the file: an
+        `#ifndef` wraps a whole header in one `preproc_ifdef`, which is the
+        normal shape of a C header and used to hide every symbol in it.
+
+        A tagged type ends that descent and then opens its own, carrying its
+        name down as the owner. Without it a C++ class contributed one symbol
+        and none of its methods, in a language where the header declares the
+        class and the source file defines the methods out of line -- so a
+        routine `.cpp` yielded one symbol out of five.
+        """
+        walk = _CWalk(source=source, module_path=module_path, language=language, symbols=symbols)
+        pending: list[tuple[Node, str]] = [(root, "")]
+        while pending:
+            scope, owner = pending.pop()
+            for node in declarations_under(scope, C_DECLARATION_TYPES):
+                if node.type in C_TAGGED_TYPES:
+                    inner = self._append_c_tagged_type(node, walk, owner)
+                    body = node.child_by_field_name("body")
+                    if body is not None and inner:
+                        pending.append((body, f"{owner}.{inner}" if owner else inner))
+                    continue
+                self._append_c_function(node, walk, owner)
+
+    def _append_c_tagged_type(self, node: Node, walk: _CWalk, owner: str) -> str:
+        """Append the symbol for one struct, class, union or enum, and name it."""
+        name_node = node.child_by_field_name("name")
+        if name_node is None:
+            return ""
+        name = self._node_text(name_node, walk.source)
+        walk.symbols.append(
+            ASTSymbol(
+                name=name,
+                kind=SymbolKind.CLASS,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=f"{node.type.split('_')[0]} {name}",
+                docstring="",
+                parent_class=owner,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=True,
+                is_async=False,
+            )
+        )
+        return name
+
+    def _append_c_function(self, node: Node, walk: _CWalk, owner: str) -> None:
+        """Append the symbol for one function, if this declaration declares one."""
+        site = self._c_function_site(node, walk.source)
+        if site is None:
+            return
+        parent = site.owner or owner
+        walk.symbols.append(
+            ASTSymbol(
+                name=site.name,
+                kind=SymbolKind.METHOD if parent else SymbolKind.FUNCTION,
+                module_path=walk.module_path,
+                line_number=node.start_point[0] + 1,
+                end_line_number=node.end_point[0] + 1,
+                signature=f"fn {site.name}",
+                docstring="",
+                parent_class=parent,
+                decorators=(),
+                bases=(),
+                language=walk.language,
+                is_public=True,
+                is_async=False,
+            )
+        )
+
+    def _c_function_site(self, node: Node, source: bytes) -> _CName | None:
+        """Return the owner and name one C/C++ declaration declares, or None.
+
+        The declarator's *shape* decides, not the spelling of the text it
+        resolves to. Testing `str.isidentifier()` on that text was a proxy for
+        "this names a function", and it refused every C++ form that is not a
+        bare Python identifier: `Logger::emit`, `Logger::~Logger` and
+        `operator==` all vanished from a source file, which is where a C++
+        codebase keeps its method bodies.
+
+        A declarator that reaches a name only through a parenthesis and a star
+        is the function-pointer shape -- `void (*handler)(int)` declares a
+        variable -- and is refused. One returning a function pointer,
+        `int (*make(void))(int)`, wraps a further `function_declarator`, and
+        that inner one is the declaration this file makes.
+        """
+        declarator = self._c_function_declarator(node)
+        if declarator is None:
+            return None
+        named = declarator.child_by_field_name("declarator")
+        if named is None:
+            return None
+        if named.type in C_FUNCTION_NAME_TYPES:
+            return self._c_qualified_name(named, source)
+        # `(*name)(...)`: a variable unless a nested declarator declares a
+        # function of its own.
+        nested = self._c_function_declarator(named)
+        return self._c_function_site(nested, source) if nested is not None else None
+
+    @staticmethod
+    def _c_function_declarator(node: Node) -> Node | None:
+        """Return the ``function_declarator`` one declaration hangs off, if any."""
+        if node.type == "function_declarator":
+            return node
+        seen = 0
+        current: Node | None = node
+        while current is not None and seen < _C_DECLARATOR_UNWRAP_LIMIT:
+            seen += 1
+            if current.type == "function_declarator":
+                return current
+            following = current.child_by_field_name("declarator")
+            if following is None and current.type == "parenthesized_declarator":
+                following = next(iter(current.named_children), None)
+            current = following
+        return None
+
+    def _c_qualified_name(self, node: Node, source: bytes) -> _CName:
+        """Split ``A::B::method`` into the owner ``A.B`` and the name ``method``.
+
+        The owner is spelled with the separator every other language in this
+        package uses, because it becomes ``parent_class`` and
+        `core.symbols.qualname` joins on a dot. Template arguments come off the
+        owner: ``C<T>::go`` is a method of ``C``, and the map is read as code.
+        """
+        scopes: list[str] = []
+        current = node
+        while current.type == "qualified_identifier":
+            following = current.child_by_field_name("name")
+            if following is None:
+                break
+            outer = next(iter(current.named_children), None)
+            if outer is not None and outer.id != following.id:
+                scopes.append(self._node_text(outer, source).split("<", 1)[0])
+            current = following
+        return _CName(owner=".".join(scopes), name=self._node_text(current, source))
 
     def _c_function_name(self, node: Node, source: bytes) -> str:
         """
@@ -2018,9 +3091,14 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract #include directives as import statements."""
+        """Extract #include directives as import statements.
+
+        Over the whole tree, the same as the generic import walk: an include
+        inside a guard is one level deeper than the root, and a header that
+        contributed no edges to the import graph was the result.
+        """
         _ = module_path
-        for node in root.children:
+        for node in walk_nodes(root):
             if node.type == "preproc_include":
                 for child in node.children:
                     if child.type in ("string_literal", "system_lib_string"):
@@ -2032,7 +3110,10 @@ class TreeSitterExtractor:
                                 is_relative=not self._node_text(child, source).startswith("<"),
                                 relative_level=0,
                                 line_number=node.start_point[0] + 1,
-                                resolved_path="",
+                                # An `#include` is a textual paste: every name
+                                # the header declares is in this translation
+                                # unit's namespace afterwards, unqualified.
+                                binds_all=True,
                             )
                         )
                         break
@@ -2086,7 +3167,6 @@ class TreeSitterExtractor:
                                 is_relative=path.startswith("."),
                                 relative_level=0,
                                 line_number=node.start_point[0] + 1,
-                                resolved_path="",
                             )
                         )
                     break
@@ -2129,7 +3209,6 @@ class TreeSitterExtractor:
                         is_relative=not path.startswith("/"),
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
 
@@ -2144,8 +3223,13 @@ class TreeSitterExtractor:
         module_path: str,
         symbols: list[ASTSymbol],
     ) -> None:
-        """Extract symbols from a Python AST."""
-        for child in root.children:
+        """Extract symbols from a Python AST.
+
+        Over `declarations_under`, so a definition guarded by `if
+        TYPE_CHECKING:` or by a version check is a symbol of the module that
+        makes it, not one hidden by the block it sits in.
+        """
+        for child in declarations_under(root, PYTHON_DECLARATION_TYPES):
             if child.type == "function_definition":
                 symbols.append(self._extract_function(child, source, module_path, parent_class=""))
             elif child.type == "class_definition":
@@ -2208,15 +3292,7 @@ class TreeSitterExtractor:
         return_node = node.child_by_field_name("return_type")
         return_text = f" -> {self._node_text(return_node, source)}" if return_node else ""
 
-        is_async = False
-        if node.parent and node.parent.type == "decorated_definition":
-            is_async = any(c.type == "async" for c in node.parent.children)
-        if not is_async:
-            end = min(node.start_byte + 10, node.end_byte)
-            prefix_text = source[node.start_byte : end].decode("utf-8", errors="replace")
-            if "async" in prefix_text:
-                is_async = True
-
+        is_async = declares_async(node)
         prefix = "async def" if is_async else "def"
         signature = f"{prefix} {name}{params_text}{return_text}"
 
@@ -2256,7 +3332,7 @@ class TreeSitterExtractor:
         bases = self._get_bases(node, source)
         decorators = extra_decorators or self._get_own_decorators(node, source)
 
-        kind = self._classify_class(class_name, bases, decorators)
+        kind = self._classify_class(bases, decorators)
 
         superclasses_node = node.child_by_field_name("superclasses")
         bases_text = self._node_text(superclasses_node, source) if superclasses_node else ""
@@ -2292,11 +3368,8 @@ class TreeSitterExtractor:
                         child, source, module_path, symbols, parent_class=class_name
                     )
 
-    def _classify_class(
-        self, name: str, bases: tuple[str, ...], decorators: tuple[str, ...]
-    ) -> SymbolKind:
+    def _classify_class(self, bases: tuple[str, ...], decorators: tuple[str, ...]) -> SymbolKind:
         """Determine specific SymbolKind for a class."""
-        _ = name
         dec_names = {d.split("(")[0] for d in decorators}
         if "dataclass" in dec_names or "dataclasses.dataclass" in dec_names:
             return SymbolKind.DATACLASS
@@ -2390,9 +3463,14 @@ class TreeSitterExtractor:
         module_path: str,
         symbols: list[ASTSymbol],
     ) -> None:
-        """Extract symbols from a Rust AST (top-level items only)."""
-        for child in root.children:
-            self._visit_rust_item(child, source, module_path, symbols, parent_class="")
+        """Extract symbols from a Rust AST.
+
+        Over `declarations_under`, so a `mod` body contributes its items --
+        including `#[cfg(test)] mod tests`, which is how a Rust crate writes
+        its tests and which used to be invisible to the symbol map entirely.
+        """
+        for child in declarations_under(root, RUST_ITEM_TYPES):
+            self._visit_rust_item(child, source, module_path, symbols)
 
     def _visit_rust_item(
         self,
@@ -2400,11 +3478,10 @@ class TreeSitterExtractor:
         source: bytes,
         module_path: str,
         symbols: list[ASTSymbol],
-        parent_class: str,
     ) -> None:
         """Dispatch a single Rust AST item to the appropriate extractor."""
         if node.type == "function_item":
-            symbols.append(self._extract_rust_function(node, source, module_path, parent_class))
+            symbols.append(self._extract_rust_function(node, source, module_path, parent_class=""))
         elif node.type in ("struct_item", "enum_item", "trait_item"):
             sym = self._extract_rust_adt(node, source, module_path)
             if sym is not None:
@@ -2441,7 +3518,7 @@ class TreeSitterExtractor:
         return_node = node.child_by_field_name("return_type")
         return_text = f" -> {self._node_text(return_node, source)}" if return_node else ""
 
-        is_async = any(c.type == "async" for c in node.children)
+        is_async = declares_async(node)
         prefix = "async fn" if is_async else "fn"
         signature = f"{prefix} {name}{params_text}{return_text}"
 
@@ -2588,9 +3665,13 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract use declarations from a Rust AST."""
+        """Extract use declarations from a Rust AST.
+
+        Over the whole tree, so a `use super::*;` inside a `mod` block reaches
+        the import graph.
+        """
         _ = module_path
-        for child in root.children:
+        for child in walk_nodes(root):
             if child.type == "use_declaration":
                 self._extract_rust_use(child, source, imports)
 
@@ -2600,23 +3681,62 @@ class TreeSitterExtractor:
         source: bytes,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract a single use_declaration as an ImportStatement."""
-        for child in node.children:
-            if child.type in ("use", ";", "visibility_modifier"):
-                continue
-            path_text = self._node_text(child, source)
-            if path_text:
-                imports.append(
-                    ImportStatement(
-                        module=path_text,
-                        names=(),
-                        is_relative=path_text.startswith(("self::", "super::", "crate::")),
-                        relative_level=0,
-                        line_number=node.start_point[0] + 1,
-                        resolved_path="",
-                    )
-                )
-            break
+        """Extract a single use_declaration as an ImportStatement.
+
+        Two of the shapes behind the `argument` field wrap the path instead
+        of being one: `use a::b as c` puts it behind a `use_as_clause` and
+        `use a::{b, c}` behind a `scoped_use_list`. Reading the clause text
+        verbatim recorded modules spelled `a::b as c`, which matches no file
+        the resolver can offer.
+        """
+        argument = node.child_by_field_name("argument")
+        if argument is None:
+            return
+        module, names, local_names, alias = self._rust_use_target(argument, source)
+        if not module:
+            return
+        imports.append(
+            ImportStatement(
+                module=module,
+                names=names,
+                is_relative=module.split("::")[0] in {"self", "super", "crate"},
+                relative_level=0,
+                line_number=node.start_point[0] + 1,
+                alias=alias,
+                local_names=local_names if local_names != names else (),
+            )
+        )
+
+    def _rust_use_target(
+        self, argument: Node, source: bytes
+    ) -> tuple[str, tuple[str, ...], tuple[str, ...], str]:
+        """Return ``(module, names, local names, alias)`` for one use clause."""
+        if argument.type == "use_as_clause":
+            path = argument.child_by_field_name("path")
+            alias = argument.child_by_field_name("alias")
+            return (
+                self._node_text(path, source),
+                (),
+                (),
+                self._node_text(alias, source),
+            )
+        if argument.type == "scoped_use_list":
+            path = argument.child_by_field_name("path")
+            listed = argument.child_by_field_name("list")
+            entries = listed.named_children if listed is not None else []
+            names = tuple(self._rust_use_entry(entry, source)[0] for entry in entries)
+            locals_ = tuple(self._rust_use_entry(entry, source)[1] for entry in entries)
+            return self._node_text(path, source), names, locals_, ""
+        return self._node_text(argument, source), (), (), ""
+
+    def _rust_use_entry(self, entry: Node, source: bytes) -> tuple[str, str]:
+        """Return ``(imported name, local name)`` for one entry of a use list."""
+        if entry.type != "use_as_clause":
+            text = self._node_text(entry, source)
+            return text, text
+        path = entry.child_by_field_name("path")
+        alias = entry.child_by_field_name("alias")
+        return self._node_text(path, source), self._node_text(alias, source)
 
     # ------------------------------------------------------------------
     # Python import extraction (unchanged)
@@ -2629,9 +3749,14 @@ class TreeSitterExtractor:
         module_path: str,
         imports: list[ImportStatement],
     ) -> None:
-        """Extract import statements from a Python AST."""
+        """Extract import statements from a Python AST.
+
+        Over the whole tree, the same as the generic import walk: an import
+        under `if TYPE_CHECKING:` is exactly the one a repository puts there
+        to avoid a cycle, and it never reached the import graph.
+        """
         _ = module_path
-        for child in root.children:
+        for child in walk_nodes(root):
             if child.type == "import_statement":
                 self._extract_bare_import(child, source, imports)
             elif child.type == "import_from_statement":
@@ -2654,11 +3779,11 @@ class TreeSitterExtractor:
                         is_relative=False,
                         relative_level=0,
                         line_number=node.start_point[0] + 1,
-                        resolved_path="",
                     )
                 )
             elif child.type == "aliased_import":
                 name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
                 if name_node:
                     module_name = self._node_text(name_node, source)
                     imports.append(
@@ -2668,7 +3793,10 @@ class TreeSitterExtractor:
                             is_relative=False,
                             relative_level=0,
                             line_number=node.start_point[0] + 1,
-                            resolved_path="",
+                            # `import a.b as ab` binds `ab` to the submodule,
+                            # not `a` to the package. Dropping the alias lost
+                            # both halves of that.
+                            alias=self._node_text(alias_node, source) if alias_node else "",
                         )
                     )
 
@@ -2681,16 +3809,23 @@ class TreeSitterExtractor:
         """Extract 'from foo import bar' statements."""
         module_node = node.child_by_field_name("module_name")
         module_name, relative_level = self._resolve_from_module(node, module_node, source)
-        names = self._collect_import_names(node, module_node, source)
+        names, local_names = self._collect_import_names(node, module_node, source)
 
         imports.append(
             ImportStatement(
                 module=module_name,
                 names=tuple(names),
+                local_names=tuple(local_names),
                 is_relative=relative_level > 0,
                 relative_level=relative_level,
                 line_number=node.start_point[0] + 1,
-                resolved_path="",
+                # `from x import *` is the one Python form that genuinely
+                # binds every name the target defines. It is recorded as the
+                # name `*`, which no reference ever spells, so without this
+                # the one import that does bind wholesale supplied no
+                # evidence at all while `import x` -- which binds none --
+                # supplied it for everything.
+                binds_all="*" in names,
             )
         )
 
@@ -2721,19 +3856,34 @@ class TreeSitterExtractor:
 
     def _collect_import_names(
         self, node: Node, module_node: Node | None, source: bytes
-    ) -> list[str]:
-        """Collect imported names from a 'from' import node."""
+    ) -> tuple[list[str], list[str]]:
+        """Collect the members a 'from' import names and the names they bind.
+
+        Two lists rather than one, positionally paired: `from pkg import mod
+        as m` needs `mod` to resolve the member and `m` to record what this
+        file can spell. Recording only the first left `m` bound to nothing.
+        """
         names: list[str] = []
+        local_names: list[str] = []
         for child in node.children:
             if child.type == "dotted_name" and child != module_node:
-                names.append(self._node_text(child, source))
+                text = self._node_text(child, source)
+                names.append(text)
+                local_names.append(text)
             elif child.type == "aliased_import":
                 name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
                 if name_node:
                     names.append(self._node_text(name_node, source))
+                    local_names.append(
+                        self._node_text(alias_node, source)
+                        if alias_node
+                        else self._node_text(name_node, source)
+                    )
             elif child.type == "wildcard_import":
                 names.append("*")
-        return names
+                local_names.append("*")
+        return names, local_names
 
     # ------------------------------------------------------------------
     # Docstring / decorator helpers (Python-specific)

@@ -17,6 +17,11 @@ at. Every requested id comes back with its location, its signature and at
 least the first lines of its body, every cut is marked on the card that was
 cut, and a summary line names how many were shortened and why.
 
+The ids the call could not seat come back as a count rather than as a list.
+The reason is identical for every one of them, and the rows are charged to the
+envelope's ceiling that this module's budget does not cover, so a long list of
+them ate the answer it was attached to.
+
 ``find_referencing_symbols`` is the asymmetric half of navigation. Callees
 come free from reading a body; callers do not, and they are what an error-path
 review or a blast-radius question actually needs. Each reference is attributed
@@ -47,18 +52,21 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
-from agentless_mcp.core.slices import line_prefix
+from agentless_mcp.core.slices import line_count, line_prefix
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
     id_qualname,
+    language_prefix,
     parse_stable_id,
     qualname,
     rationale_stable_id,
+    split_ordinal,
     symbol_stable_id,
 )
 from agentless_mcp.prompts import MESSAGES
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
+from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -86,10 +94,30 @@ EXPAND_BUDGET_TOKENS = 12_000
 # 60-card expansion: 8.1k text tokens, 11.3k JSON), so a seat count read off
 # the text render lets through more cards than the ceiling can then carry --
 # and the envelope trims that overflow by dropping whole symbols, which is
-# precisely the failure the fair split exists to prevent. 40 is four times the
-# documented per-call limit and was verified to leave the wrapped JSON clear
-# of the ceiling at 40, 60 and 192 requested ids.
+# precisely the failure the fair split exists to prevent.
+#
+# 40 is four times the documented per-call limit. Re-measured 2026-08-23 on
+# this repository with the chars/4 estimator, through
+# ``envelope.wrap_json(items_key="symbols")``: 40 ids render 6.2k JSON tokens
+# and 192 and 1000 ids both render 6.3k, all of them clear of the 16k ceiling
+# with every card kept. The earlier form of that sentence stopped being true
+# when the ids past the bound each cost a full sentence saying so: at 192 ids
+# the wrapped JSON reached 13.4k tokens and at 1000 it reached 48.2k, where
+# the ceiling dropped whole symbol cards. The over-bound ids are one row now,
+# so what the response carries is the cards and a count.
 EXPAND_MAX_SEATS = 40
+
+# How many ids that missed are named one by one before the rest become a
+# count. The grouping above handles ids that share a reason verbatim, and
+# that is not the expensive case: every "no longer defines X" reason embeds
+# its own file and symbol, so a batch of bogus ids produces a batch of
+# distinct reasons and groups into nothing. Measured on this repository, 40
+# real ids beside 460 bogus ones at ``--limit 500`` rendered 460 unresolved
+# rows and 15.9k JSON tokens, which pushed the ceiling down onto the cards
+# and returned 10 of the 40 bodies actually asked for. The failure report
+# must not be able to crowd out the answer, so it is bounded like every other
+# listing here and says how many it did not name.
+MAX_UNRESOLVED_ROWS = 20
 
 # Room kept back on each shortened card for the marker that says it was
 # shortened, so announcing the cut cannot be what pushes a card past its
@@ -135,34 +163,53 @@ class FindResult:
 
 
 def _check_limit(limit: int) -> None:
-    """Refuse a limit that cannot bound a listing.
+    """Refuse a limit that cannot bound a listing, or that no listing can honour.
 
-    ``limit=0`` renders "no references to save_config" for a symbol with
-    fifty-two of them -- a confident false negative, and the most expensive
-    wrong answer this module can give. A negative limit is worse: it slices
-    from the end, expands everything but the last id, and then quotes itself
-    back to the caller as "the per-call limit is -1 symbols". Both are caller
-    bugs, so they are refused by name here, at the boundary both adapters and
-    every library caller cross, rather than clamped into an answer to a
-    different question.
+    The reasoning that used to live here now lives in
+    :func:`agentless_mcp.util.bounds.within`, where ``GraphService`` and both
+    front doors can reach it. This module was the only layer that had the
+    rule, which is why every listing ``GraphService`` owns accepted a limit of
+    zero and answered with an empty list.
+
+    The ceiling is checked here too, and not only in the MCP schema that
+    publishes it. Enforced on one door alone it was not a bound but a
+    difference between the doors: ``refs --limit 100000`` was answered on the
+    command line and refused over MCP, for the same symbol in the same
+    repository.
     """
-    if limit < 1:
-        message = f"limit must be at least 1, got {limit}"
-        raise AtlasError(message)
+    bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
 
 
 @dataclass(frozen=True)
 class ExpandResult:
-    """Full bodies for the requested stable ids, plus the ids that missed."""
+    """Full bodies for the requested stable ids, plus the ids that missed.
+
+    An ``unresolved`` row usually names one id. A row whose ``stable_id``
+    reads ``(n ids)`` speaks for a group of them, because a reason that
+    repeats verbatim for every id costs a full sentence each and the rows are
+    charged to the envelope's ceiling that the service budget does not cover.
+    Measured on this repository: a thousand requested ids rendered 48.2k JSON
+    tokens as one row each, three times the ceiling, which then dropped every
+    symbol card the rows were attached to.
+    """
 
     cards: tuple[render.SymbolCard, ...]
     unresolved: tuple[tuple[str, str], ...]
     budget: int = EXPAND_BUDGET_TOKENS
+    # Ids that missed and are not named in ``unresolved`` because the row
+    # bound took them. Counted rather than dropped: a failure report that
+    # cannot say what it left out is read as complete.
+    unresolved_omitted: int = 0
 
     @property
     def shortened(self) -> int:
         """How many of the returned bodies were cut to fit the budget."""
         return sum(1 for card in self.cards if card.body_shown < card.body_total)
+
+    @property
+    def unresolved_total(self) -> int:
+        """How many ids missed in all, named here or not."""
+        return len(self.unresolved) + self.unresolved_omitted
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this expansion."""
@@ -173,6 +220,8 @@ class ExpandResult:
             "unresolved": [
                 {"stable_id": entry, "reason": reason} for entry, reason in self.unresolved
             ],
+            "unresolved_total": self.unresolved_total,
+            "unresolved_omitted": self.unresolved_omitted,
         }
 
 
@@ -188,6 +237,7 @@ class RefsResult:
     target: str
     groups: render.RefListing
     shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
+    target_resolved: bool = True
 
     @property
     def total(self) -> int:
@@ -199,10 +249,26 @@ class RefsResult:
         """The limit this fan-in was answered under."""
         return self.groups.limit
 
+    @property
+    def notice(self) -> str:
+        """Say so when this fan-in is about a name rather than the id asked for.
+
+        The fallback itself is deliberate and lives in
+        :func:`agentless_mcp.core.refs.definitions_for`. What was missing is
+        this sentence: the result echoed the id back as its target, while
+        every other partial answer in this module is labelled.
+        """
+        if self.target_resolved:
+            return ""
+        base, _ = split_ordinal(self.target)
+        name = base.rpartition("::")[2].rpartition(".")[2] or base
+        return MESSAGES.refs_target_unresolved.format(target=self.target, name=name)
+
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this result."""
         return {
             "target": self.target,
+            "target_resolved": self.target_resolved,
             **self.groups.as_dict(),
             "shared_callers": self.shared.as_dict(),
         }
@@ -249,30 +315,67 @@ class SymbolService:
         budget: int = EXPAND_BUDGET_TOKENS,
         seats: int = EXPAND_MAX_SEATS,
     ) -> ExpandResult:
-        """Return line-numbered bodies for the named stable ids, fairly budgeted."""
+        """Return line-numbered bodies for the named stable ids, fairly budgeted.
+
+        The batch is deduplicated first. Five copies of one id used to return
+        five identical cards, and they were charged five seats and five shares
+        of the budget -- so a repeated id cut the bodies of the symbols beside
+        it. One copy is expanded and the repeats are counted in one row.
+
+        Every bound this method takes is checked, not only ``limit``.
+        ``seats=-1`` sliced the card list from the end and reported the cards
+        it kept as the ones with no room, which is the negative-slicing defect
+        :func:`agentless_mcp.util.bounds.at_least` exists to refuse.
+
+        A row that speaks for a group of ids stands in the ``stable_id``
+        column as ``MESSAGES.grouped_ids``. It is parenthesised and countable
+        so that it cannot read as an id: a real one carries a language prefix
+        and a ``::``.
+        """
         _check_limit(limit)
+        bounds.at_least(budget, 1, "budget")
+        bounds.at_least(seats, 1, "seats")
+
+        requested = list(dict.fromkeys(stable_ids))
+        repeated = len(stable_ids) - len(requested)
         cards: list[render.SymbolCard] = []
         unresolved: list[tuple[str, str]] = []
 
-        for raw in stable_ids[:limit]:
+        for raw in requested[:limit]:
             card, reason = self._expand_one(ctx, raw)
             if card is None:
                 unresolved.append((raw, reason))
             else:
                 cards.append(card)
 
-        for raw in stable_ids[limit:]:
-            unresolved.append((raw, f"not expanded: the per-call limit is {limit} symbols"))
+        over_limit = len(requested[limit:])
+        if over_limit:
+            unresolved.append(
+                (
+                    MESSAGES.grouped_ids.format(count=over_limit),
+                    f"not expanded: the per-call limit is {limit} symbols",
+                )
+            )
+        if repeated:
+            unresolved.append(
+                (
+                    MESSAGES.grouped_ids.format(count=repeated),
+                    "not expanded: repeated in this batch, and expanded under the first copy",
+                )
+            )
 
         if len(cards) > seats:
             reason = MESSAGES.expand_no_room.format(requested=len(cards), seats=seats)
-            unresolved.extend((card.stable_id, reason) for card in cards[seats:])
+            unresolved.append((MESSAGES.grouped_ids.format(count=len(cards) - seats), reason))
             cards = cards[:seats]
 
+        # Bounded last, so the grouped rows built above are subject to it too.
+        named = unresolved[:MAX_UNRESOLVED_ROWS]
         return ExpandResult(
             cards=self._fit_bodies(cards, budget),
-            unresolved=tuple(unresolved),
+            unresolved=tuple(named),
             budget=budget,
+            unresolved_omitted=len(unresolved) - len(named),
         )
 
     def find_referencing_symbols(
@@ -289,7 +392,8 @@ class SymbolService:
         index = refs.build_ref_index(scan)
         by_path = scan.by_path()
 
-        definitions = list(refs.definitions_for(index, target))
+        resolution = refs.resolve_definitions(index, target)
+        definitions = list(resolution.definitions)
         sites = _dedupe(
             site for definition in definitions for site in refs.references_to(index, definition)
         )
@@ -308,7 +412,12 @@ class SymbolService:
             else ()
         )
         shared = render.SharedCallerListing(rows=ranked[:limit], total=len(ranked), limit=limit)
-        return RefsResult(target=target, groups=groups, shared=shared)
+        return RefsResult(
+            target=target,
+            groups=groups,
+            shared=shared,
+            target_resolved=resolution.scoped,
+        )
 
     def _fit_bodies(
         self, cards: list[render.SymbolCard], budget: int
@@ -385,7 +494,19 @@ class SymbolService:
         )
 
     def _expand_one(self, ctx: RepoContext, raw: str) -> tuple[render.SymbolCard | None, str]:
-        """Resolve one stable id to a card carrying the symbol's whole body."""
+        """Resolve one stable id to a card carrying the symbol's whole body.
+
+        One symbol answers to one id, and :func:`core.symbols.disambiguate`
+        is what makes that true: it counts collisions on the qualified name an
+        id spells, so the dotted-owner case two data-language keys used to
+        share -- ``{"a": {"b.c": 1, "b": {"c": 2}}}`` -- is two ids now.
+
+        The language prefix is part of the id and is checked. It was parsed
+        and then ignored, so ``rs:core.py::quote`` answered with the Python
+        symbol and named it ``py:core.py::quote`` on the card -- a request
+        reinterpreted, with the correction shown as though it had been asked
+        for.
+        """
         try:
             parsed = parse_stable_id(raw)
         except ValueError as exc:
@@ -399,9 +520,15 @@ class SymbolService:
         if match is None:
             return None, f"{parsed.path} no longer defines {parsed.qualname}"
 
+        if language_prefix(match.language) != parsed.prefix:
+            return None, (
+                f"no {parsed.prefix} symbol in {parsed.path}: the file is {match.language}. "
+                f"This symbol's id is {symbol_stable_id(match)}"
+            )
+
         lines = source.split("\n")
         start = match.line_number
-        end = min(len(lines), match.end_line_number or match.line_number)
+        end = min(line_count(source), match.end_line_number or match.line_number)
         body = "\n".join(
             f"{line_prefix(number)}{lines[number - 1]}" for number in range(start, end + 1)
         )
@@ -417,6 +544,12 @@ class SymbolService:
         sets, and an exception here instead would discard every card the batch
         had already built while leaving the caller unable to tell which id
         poisoned the call.
+
+        The channel follows the shape of the operation and not the method that
+        caught the failure: a batch reports per item, a single-target view
+        raises. :mod:`agentless_mcp.application.view_service` keeps the same
+        rule over the same containment check, so an adapter handles a path
+        refusal one way per operation shape rather than one way per method.
         """
         try:
             # The id came from a caller, so its path is foreign data even
@@ -443,11 +576,18 @@ class SymbolService:
 
 
 def render_expansion(result: ExpandResult) -> str:
-    """Render an expansion: the cards, what was shortened, and what missed.
+    """Render an expansion: the cards and what was shortened.
 
-    One home for the three pieces because both adapters print all three, and
-    an adapter that printed the cards without the shortening summary would be
-    the silent-truncation defect back in a different file.
+    One home for both pieces because both adapters print both, and an adapter
+    that printed the cards without the shortening summary would be the
+    silent-truncation defect back in a different file.
+
+    The ids that *missed* are deliberately not here. They are a failure
+    report, and each door carries one on the channel it has: the CLI on
+    stderr with a non-zero exit, the MCP adapter appended to the single
+    string a tool call returns. Rendered into this body they reached the
+    CLI's stdout in among the symbol sources at exit 0 -- the same defect
+    ``skeleton`` was fixed for, in the sibling command nobody checked.
     """
     blocks = [render.render_symbol_cards(result.cards)]
     if result.shortened:
@@ -456,8 +596,39 @@ def render_expansion(result: ExpandResult) -> str:
                 shortened=result.shortened, total=len(result.cards), budget=result.budget
             )
         )
-    blocks.extend(f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved)
     return "\n".join(blocks)
+
+
+def unresolved_lines(result: ExpandResult) -> list[str]:
+    """Say which requested ids missed, and how many were not named."""
+    lines = [f"unresolved: {entry} -- {reason}" for entry, reason in result.unresolved]
+    if result.unresolved_omitted:
+        lines.append(
+            f"unresolved: {result.unresolved_omitted} further ids are not listed; "
+            f"{result.unresolved_total} of the ids requested did not resolve"
+        )
+    return lines
+
+
+def render_refs(result: RefsResult, *, shared_callers: bool = False) -> str:
+    """Render a fan-in: any unresolved-target notice, then the rows.
+
+    One home for both pieces, for the same reason :func:`render_expansion` is
+    one. ``RefsResult.notice`` and the ``target_resolved`` key reached the
+    JSON form and nothing else, because each adapter assembled the text from
+    the row renderer alone -- so the reader who gets text was handed the
+    strongest evidence tier for a symbol nobody named, with no sign that the
+    id had degraded to a name lookup. The notice comes first because it
+    changes how every row below it must be read.
+    """
+    body = (
+        render.render_shared_callers(result.shared, result.target)
+        if shared_callers
+        else render.render_ref_groups(result.groups, result.target)
+    )
+    if not result.notice:
+        return body
+    return result.notice + "\n\n" + body
 
 
 def render_find(result: FindResult) -> str:

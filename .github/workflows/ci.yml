@@ -37,8 +37,12 @@ jobs:
           key: grammars-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: grammars-${{ runner.os }}-
 
+      # Both extras, deliberately. Until 2026-08-23 this synced only --extra
+      # mcp, so the three tiktoken tests in tests/unit/test_token_counter.py
+      # skipped on every run and the exact-token-count path was never
+      # exercised in CI -- a guarantee whose gate never fired.
       - name: Sync
-        run: uv sync --extra mcp
+        run: uv sync --extra mcp --extra tokens
 
       - name: Warm grammars
         run: uv run agentless-mcp warmup
@@ -46,5 +50,80 @@ jobs:
       - name: Pre-commit
         run: uv run pre-commit run --all-files
 
+      # Under coverage, not bare pytest: the CLI suite spawns the console
+      # script as a subprocess, and COVERAGE_PROCESS_START plus `combine` is
+      # what makes those children report. See [tool.coverage.run] in
+      # pyproject.toml for why the parallel form is the only supported one.
+      # `-rs` reports every skip in this same run, so the skip ceiling below
+      # costs nothing extra. The suite is not run twice.
       - name: Test
-        run: uv run pytest
+        # `shell: bash` is load-bearing, not decoration. The default shell for a
+        # `run:` step is `bash -e {0}`, which does NOT set pipefail, so the exit
+        # status of `... | tee` is tee's and a failing pytest scores a green
+        # step. `shell: bash` runs `bash --noprofile --norc -eo pipefail`, which
+        # is the only form in which the pipeline below reports a test failure.
+        shell: bash
+        env:
+          COVERAGE_PROCESS_START: pyproject.toml
+        run: uv run coverage run -m pytest -rs | tee pytest-output.txt
+
+      - name: Coverage
+        run: |
+          uv run coverage combine
+          uv run coverage report
+
+      # The prompt JSON and the agent guide are read through
+      # `importlib.resources`, which in a checkout resolves to `src/`. Every
+      # test of them therefore passes whether or not the files are in the
+      # distribution, so a wheel that shipped without them would fail at the
+      # user's first import and nowhere earlier. `uv_build` includes them
+      # today by its include-everything default and exposes no positive wheel
+      # include to declare that intent in pyproject.toml, which leaves this
+      # step as the only place the guarantee can be stated.
+      - name: Packaged data ships in the wheel
+        run: |
+          rm -rf dist
+          uv build --wheel
+          uv run python - <<'PY'
+          import pathlib
+          import sys
+          import zipfile
+
+          wheels = sorted(pathlib.Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              sys.exit(f"expected exactly one wheel in dist/, found {wheels}")
+          required = {
+              "agentless_mcp/prompts/envelope.json",
+              "agentless_mcp/prompts/messages.json",
+              "agentless_mcp/prompts/parameter_descriptions.json",
+              "agentless_mcp/prompts/tool_descriptions.json",
+              "agentless_mcp/docs/agent-guide.md",
+          }
+          members = set(zipfile.ZipFile(wheels[0]).namelist())
+          missing = sorted(required - members)
+          if missing:
+              sys.exit(f"{wheels[0].name} is missing packaged data: {missing}")
+          print(f"{wheels[0].name} carries all {len(required)} packaged data files")
+          PY
+
+      # A skip is invisible in the summary line, which is how three tiktoken
+      # tests sat un-run in CI for several releases. Assert the count instead
+      # of eyeballing it; lower the ceiling whenever a skip is retired.
+      #
+      # Sum the bracketed counts rather than counting lines. `-rs` GROUPS
+      # identical skips onto one row -- `SKIPPED [4] path:312: reason` -- so a
+      # line count measures distinct reasons, not skipped tests: this suite's
+      # 10 skips render as 6 lines. A line-counting ceiling of 10 would not
+      # have caught the regression named above, which added roughly two lines.
+      #
+      # The ceiling is 12 rather than 10 because two of them are conditional on
+      # the filesystem: the undecodable-filename tests in test_fslimits.py skip
+      # where the filesystem enforces UTF-8 names, which APFS does and ext4 does
+      # not. Linux runs 10, macOS runs 12.
+      - name: No unexpected skips
+        shell: bash
+        run: |
+          skips=$(grep -oE '^SKIPPED \[[0-9]+\]' pytest-output.txt \
+                  | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
+          echo "skipped tests: $skips (ceiling 12)"
+          test "$skips" -le 12

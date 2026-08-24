@@ -46,8 +46,13 @@ still has two.
 
 A file whose language has no grammar here is not skipped. It falls back to a
 whitespace-normalised comparison of the raw text, which catches a semantic
-change and normalises away reformatting, and the verdict says so instead of
-claiming a clean parse nobody performed.
+change and normalises away reformatting, and both answers say so in the value
+rather than only in this docstring: the key carries
+:data:`TEXT_ONLY_KEY_PREFIX` and the verdict carries ``checked=False``.
+Labelling matters because the fallback is not a normalisation for a file
+whose meaning depends on whitespace -- two YAML files with different nesting
+collapse to one stream -- so a caller clustering candidates has to be able to
+refuse the key.
 """
 
 import difflib
@@ -62,8 +67,10 @@ from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, INDENT_BLOCK_NODE_TYPES
 from agentless_mcp.util.errors import LanguageUnavailable
 
-# What a block boundary looks like in the normalised stream. Two characters no
-# source token can be, so they cannot collide with a leaf's own text.
+# What a block boundary looks like in the normalised stream. Two control
+# characters no source token is written with, so they do not collide with a
+# leaf's own text. A string literal holding one of them raw is the exception,
+# and it costs at most a wrong equivalence between two files that both do it.
 BLOCK_OPEN = "\x01"
 BLOCK_CLOSE = "\x02"
 
@@ -90,15 +97,37 @@ _DIRECTIVE = re.compile(
     r"!"  # a shebang selects the interpreter
     r"|go:"  # //go:build, //go:embed, //go:generate
     r"|\+build\b"  # the pre-1.17 Go build constraint
+    r"|-\*-"  # the PEP 263 coding cookie
     r"|type:"  # PEP 484 type comments
     r"|noqa\b"  # a suppressed diagnostic is still a decision
     r"|pragma:"  # coverage and compiler pragmas
     r"|@ts-"  # @ts-expect-error, @ts-ignore, @ts-nocheck
     r"|eslint-"  # eslint-disable and friends
+    # The linter and formatter families, each of which this repository's own
+    # stack reads: `# ruff: noqa` is the file-level form and does not begin
+    # with `noqa`, and `fmt: off` switches formatting for a region.
+    r"|ruff:"
+    r"|pylint:"
+    r"|mypy:"
+    r"|flake8:"
+    r"|coverage:"
+    r"|fmt:"
+    r"|yapf\b"
+    r"|isort:"
+    r"|prettier-"
     r")"
 )
 
 LanguageOf = Callable[[str], str | None]
+
+# What a key built without a grammar is labelled with. A bare 64-character
+# hex digest means an AST key; this prefix means the stream behind it is
+# whitespace-collapsed raw text, which is a weaker claim: `a:\n  b: 1` and
+# `a:\n    b: 1` share it, and so do `a: 1\nb: 2` and `a: 1 b: 2`. Carried in
+# the value because that value is what reaches `core.vote` and patchlint's
+# near-duplicate check, and clustering two files on a text-only key credits
+# one candidate's samples to another candidate's class.
+TEXT_ONLY_KEY_PREFIX = "text:"
 
 
 @dataclass(frozen=True)
@@ -109,6 +138,13 @@ class SyntaxVerdict:
     counts are carried so a caller can tell "clean before, clean after" from
     "broken before, equally broken after", which are the same verdict and very
     different situations.
+
+    ``checked`` says whether a parser ran at all. Without it "checked and
+    clean" and "not checked, because this file has no grammar" were the same
+    ``ok=True`` at the boundary, and only the free-text ``detail``
+    distinguished them -- so a caller that wanted to gate on a real parse
+    could not. ``ok`` keeps its meaning for the callers already reading it:
+    the edit introduced nothing new that a parser could see.
     """
 
     language: str
@@ -116,14 +152,23 @@ class SyntaxVerdict:
     new_errors: int
     ok: bool
     detail: str = ""
+    checked: bool = True
 
     def as_dict(self) -> dict[str, object]:
-        """Return the JSON form of this verdict."""
+        """Return the JSON form of this verdict.
+
+        ``checked`` is on the wire because ``ok`` alone cannot answer the
+        question a caller gating on a real parse is asking: a file with no
+        grammar comes back ``ok=True, checked=False``, which asserts nothing.
+        Reading ``ok`` without it reads "nothing looked at this" as "this is
+        clean".
+        """
         return {
             "language": self.language,
             "old_errors": self.old_errors,
             "new_errors": self.new_errors,
             "ok": self.ok,
+            "checked": self.checked,
             "detail": self.detail,
         }
 
@@ -133,15 +178,22 @@ def equivalence_key(changes: Mapping[str, tuple[str, str]], language_of: Languag
 
     Two patches share a key when they make the same structural change to the
     same files, however differently they were written.
+
+    The key carries :data:`TEXT_ONLY_KEY_PREFIX` when any one file in the set
+    had no grammar, because the whole key is then only as strong as its
+    weakest file.
     """
     digest = hashlib.sha256()
+    degraded = False
     for path in sorted(changes):
         old, new = changes[path]
+        key = file_key(old, new, language_of(path))
+        degraded = degraded or key.startswith(TEXT_ONLY_KEY_PREFIX)
         digest.update(path.encode("utf-8"))
         digest.update(_KEY_SEPARATOR.encode("utf-8"))
-        digest.update(file_key(old, new, language_of(path)).encode("utf-8"))
+        digest.update(key.encode("utf-8"))
         digest.update(b"\n")
-    return digest.hexdigest()
+    return _label(digest.hexdigest(), grammar=not degraded)
 
 
 def file_key(old: str, new: str, language: str | None) -> str:
@@ -150,11 +202,19 @@ def file_key(old: str, new: str, language: str | None) -> str:
     Identical content before and after yields an empty diff and therefore one
     fixed key, which is how a comment-only or whitespace-only edit becomes
     indistinguishable from no edit at all.
+
+    A key built without a grammar carries :data:`TEXT_ONLY_KEY_PREFIX`. The
+    fallback stream is whitespace-collapsed raw text, so for any file whose
+    meaning depends on whitespace -- YAML being the everyday case -- two
+    genuinely different files share a key. Labelling the value is what lets a
+    caller that clusters candidates refuse to cluster on this one; without it
+    the fallback was documented only in this module's own docstring and the
+    hash reaching the vote was indistinguishable from a real AST key.
     """
-    before = normalized_stream(old, language)
-    after = normalized_stream(new, language)
+    before, grammar = _stream_and_grammar(old, language)
+    after, _ = _stream_and_grammar(new, language)
     diff = "\n".join(difflib.unified_diff(before.splitlines(), after.splitlines(), lineterm=""))
-    return hashlib.sha256(diff.encode("utf-8")).hexdigest()
+    return _label(hashlib.sha256(diff.encode("utf-8")).hexdigest(), grammar=grammar)
 
 
 def normalized_stream(text: str, language: str | None) -> str:
@@ -166,19 +226,31 @@ def normalized_stream(text: str, language: str | None) -> str:
     whitespace-collapsed raw text when the language has no usable grammar:
     documented degradation rather than a silent claim of AST equivalence.
     """
+    return _stream_and_grammar(text, language)[0]
+
+
+def _stream_and_grammar(text: str, language: str | None) -> tuple[str, bool]:
+    """Return the normalised stream and whether a grammar produced it."""
     parser = _parser_for(language)
     if parser is None:
-        return " ".join(text.split())
+        return " ".join(text.split()), False
 
     tree = parser.parse(text.encode("utf-8"))
     blocks = frozenset(INDENT_BLOCK_NODE_TYPES.get(language or "", ()))
-    return " ".join(_tokens(tree.root_node, blocks))
+    return " ".join(_tokens(tree.root_node, blocks)), True
+
+
+def _label(digest: str, *, grammar: bool) -> str:
+    """Prefix a digest that no grammar stands behind, leaving a real one bare."""
+    return digest if grammar else TEXT_ONLY_KEY_PREFIX + digest
 
 
 def syntax_delta(old: str, new: str, language: str | None) -> SyntaxVerdict:
     """Compare the parse-error count of ``new`` against ``old``.
 
-    ``ok`` when the edit introduced no new ERROR or MISSING nodes.
+    ``ok`` when the edit introduced no new ERROR or MISSING nodes. Read it
+    with ``checked``: a file whose language has no grammar comes back
+    ``ok=True, checked=False``, which asserts nothing about the parse.
     """
     parser = _parser_for(language)
     if parser is None:
@@ -188,6 +260,7 @@ def syntax_delta(old: str, new: str, language: str | None) -> SyntaxVerdict:
             new_errors=0,
             ok=True,
             detail="no grammar for this file: syntax was not checked",
+            checked=False,
         )
 
     old_errors = _error_count(parser.parse(old.encode("utf-8")).root_node)
@@ -239,7 +312,10 @@ def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
             continue
 
         if item.child_count == 0:
-            text = item.text.decode("utf-8", errors="replace") if item.text else ""
+            # Strict: the tree was parsed from this text's own UTF-8 bytes and
+            # node spans fall on codepoint boundaries, so a decode error here
+            # would mean the parser lied and should not be papered over.
+            text = item.text.decode("utf-8") if item.text else ""
             if text:
                 yield text
             continue
@@ -260,7 +336,7 @@ def _directive_text(node: Node) -> str:
     """
     if node.text is None:
         return ""
-    text = " ".join(node.text.decode("utf-8", errors="replace").split())
+    text = " ".join(node.text.decode("utf-8").split())
     body = _COMMENT_MARKER.sub("", text, count=1)
     if not _DIRECTIVE.match(body):
         return ""

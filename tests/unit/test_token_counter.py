@@ -17,10 +17,11 @@ import pytest
 
 from agentless_mcp import bootstrap
 from agentless_mcp.adapters.cli.main import build_parser
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
     COUNTER_TIKTOKEN,
+    TOKEN_COUNTERS,
     Chars4Counter,
     TokenCounter,
 )
@@ -37,10 +38,15 @@ class TestSelection:
     def test_the_chars4_name_selects_the_estimator(self):
         assert isinstance(bootstrap.select_counter(COUNTER_CHARS4), Chars4Counter)
 
-    def test_an_unknown_name_falls_back_to_the_default(self):
-        # argparse rejects an unknown value before this is reached; the
-        # fallback exists so a library caller cannot end up with None.
-        assert isinstance(bootstrap.select_counter("nonsense"), Chars4Counter)
+    def test_an_unknown_name_is_refused_by_name(self):
+        # argparse rejects an unknown value before this is reached, so only a
+        # library caller arrives here. Answering them with the default would
+        # estimate every budget with a counter they did not ask for.
+        with pytest.raises(OperationFailed) as raised:
+            bootstrap.select_counter("nonsense")
+        message = str(raised.value)
+        assert "nonsense" in message
+        assert all(name in message for name in TOKEN_COUNTERS)
 
     def test_the_flag_is_read_out_of_an_argv_before_the_subcommand_parse(self):
         assert bootstrap.counter_choice(["map", "--repo", "/tmp"]) is None
@@ -65,7 +71,7 @@ class TestProtocol:
 @pytest.mark.skipif(TIKTOKEN_INSTALLED, reason="the tokens extra is installed")
 class TestWithoutTheExtra:
     def test_asking_for_tiktoken_refuses_with_the_install_command(self):
-        with pytest.raises(AtlasError, match="tokens' extra"):
+        with pytest.raises(AgentlessError, match="tokens' extra"):
             bootstrap.select_counter(COUNTER_TIKTOKEN)
 
 

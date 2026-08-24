@@ -48,8 +48,8 @@ Every one of them is bounded and says what it left out.
 """
 
 import math
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
@@ -58,7 +58,8 @@ from agentless_mcp.application.symbol_service import rationale_nodes, symbol_car
 from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, resolve
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import qualname, symbol_stable_id
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import OperationFailed
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
@@ -80,6 +81,28 @@ class PathOptions:
 
 
 DEFAULT_PATH_OPTIONS = PathOptions()
+
+
+@dataclass(frozen=True)
+class DiagramRequest:
+    """The knobs of one diagram call.
+
+    A value object rather than five keyword arguments, for the reason
+    :class:`agentless_mcp.core.mermaid.DiagramOptions` is one a layer down:
+    they travel together from a CLI flag set or an MCP request, and a diagram
+    is defined by them. It is also what lets ``max_edges`` reach the renderer
+    at all -- a sixth parameter on the method is over the argument-count
+    contract this package lints for.
+    """
+
+    focus: str | None = None
+    max_nodes: int = mermaid.DEFAULT_DIAGRAM_NODES
+    max_edges: int = mermaid.DEFAULT_DIAGRAM_EDGES
+    group_by_communities: bool = False
+    resolution: float | None = None
+
+
+DEFAULT_DIAGRAM_REQUEST = DiagramRequest()
 
 # Read as "the source <verb> the target", and its passive for a hop walked
 # backwards. Rendering a reverse hop with the active verb would invert the
@@ -118,9 +141,14 @@ class _Ranked:
     """
 
     index: refs.RefIndex
+    ranking: graph.PageRank
     graph: graph.RefGraph
-    rank: dict[str, float]
     imports: frozenset[tuple[str, str]]
+
+    @property
+    def rank(self) -> Mapping[str, float]:
+        """The score per file, without the convergence report around it."""
+        return self.ranking.rank
 
 
 @dataclass(frozen=True)
@@ -145,6 +173,7 @@ class GraphService:
         limit: int = DEFAULT_EXPLAIN_LIMIT,
     ) -> render.Explanation:
         """Build the card for one symbol: definition site, fan-out, fan-in, imports."""
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         resolved = self._resolve(ctx)
         definitions = refs.definitions_for(resolved.index, target)
         if not definitions:
@@ -174,6 +203,7 @@ class GraphService:
         options: PathOptions = DEFAULT_PATH_OPTIONS,
     ) -> render.PathTrace:
         """Find the fewest-hop connection between two symbols or files."""
+        bounds.at_least(options.max_visited, 1, "max_visited")
         resolved = self._resolve(ctx)
         start = _endpoint(resolved, source)
         finish = _endpoint(resolved, target)
@@ -206,12 +236,14 @@ class GraphService:
 
     def cycles(self, ctx: RepoContext, *, limit: int = DEFAULT_CYCLE_LIMIT) -> render.CycleReport:
         """Report every module-level import cycle, in a deterministic order."""
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         resolved = self._resolve(ctx)
         cycles = resolve.import_cycles(resolved.graph)
         return render.CycleReport(
             cycles=tuple(render.CycleRow(files=cycle.files) for cycle in cycles[:limit]),
             total=len(cycles),
             limit=limit,
+            unresolved_imports=resolved.graph.unresolved_imports,
         )
 
     def communities(
@@ -223,23 +255,26 @@ class GraphService:
         members: int = DEFAULT_MEMBER_LIMIT,
     ) -> render.CommunityReport:
         """Partition the repository's files into communities, largest first."""
+        bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
+        bounds.at_least(members, 1, "members")
         ranked = self._ranked(ctx)
         partition = communities.detect_communities(ranked.graph, resolution=_resolution(resolution))
         return render.CommunityReport(
             communities=tuple(
                 render.CommunityRow(
                     label=community.label,
-                    size=community.size,
+                    total=community.size,
                     members=community.members[:members],
-                    omitted=max(0, community.size - members),
                     internal_weight=community.internal_weight,
                     total_weight=community.total_weight,
+                    limit=members,
                 )
                 for community in partition.communities[:limit]
             ),
             total=len(partition.communities),
             limit=limit,
             modularity=partition.modularity,
+            standard_modularity=partition.standard_modularity,
             resolution=partition.resolution,
             files=len(ranked.graph.nodes),
         )
@@ -247,11 +282,7 @@ class GraphService:
     def diagram(
         self,
         ctx: RepoContext,
-        *,
-        focus: str | None = None,
-        max_nodes: int = mermaid.DEFAULT_MAX_NODES,
-        group_by_communities: bool = False,
-        resolution: float | None = None,
+        request: DiagramRequest = DEFAULT_DIAGRAM_REQUEST,
     ) -> render.DiagramView:
         """Render the module-level graph as mermaid text, edge kinds distinguished.
 
@@ -261,21 +292,35 @@ class GraphService:
         only while the diagram stays legible -- drawn identically, a pair of
         opposite reference edges reads as an import cycle the ``cycles`` view
         would deny.
-        """
-        ranked = self._ranked(ctx)
-        seed = _diagram_focus(focus, ranked)
-        if seed.message:
-            return _empty_diagram(focus or "", seed.message, grouped=group_by_communities)
 
-        setting = _resolution(resolution)
+        """
+        bounds.within(request.max_nodes, 1, bounds.MAX_DIAGRAM_NODES, "max_nodes")
+        bounds.within(request.max_edges, 0, bounds.MAX_DIAGRAM_EDGES, "max_edges")
+        ranked = self._ranked(ctx)
+        seed = _diagram_focus(request.focus, ranked)
+        if seed.message:
+            return _empty_diagram(
+                request.focus or "", seed.message, grouped=request.group_by_communities
+            )
+
+        # Parsed outside the branch below on purpose: a caller who mistypes
+        # the knob hears about it whether or not they asked for grouping.
+        setting = _resolution(request.resolution)
         partition = (
             communities.detect_communities(ranked.graph, resolution=setting)
-            if group_by_communities
+            if request.group_by_communities
             else None
         )
-        options = mermaid.DiagramOptions(max_nodes=max_nodes, focus=seed.node or None)
-        drawn = mermaid.selected_nodes(ranked.graph, ranked.rank, options)
-        text = mermaid.render_flowchart(
+        options = mermaid.DiagramOptions(
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+            focus=seed.node or None,
+        )
+        # Every count below comes off the one render. Read back through
+        # `selected_nodes` instead, the counts cost two more neighbourhood
+        # walks and are produced by a second code path from the numbers
+        # already inside the picture.
+        drawn = mermaid.render_flowchart(
             ranked.graph,
             ranked.rank,
             partition=partition,
@@ -283,23 +328,27 @@ class GraphService:
             imports=ranked.imports,
         )
         return render.DiagramView(
-            text=text,
-            nodes=len(drawn),
-            elided=_elided(ranked, options, drawn),
+            text=drawn.text,
+            nodes=drawn.nodes,
+            elided=drawn.elided_nodes,
             grouped=partition is not None,
             focus=options.focus or "",
             message="",
+            edges_over_bound=drawn.edges_over_bound,
+            rank_converged=ranked.ranking.converged,
         )
 
     def html(
         self,
         ctx: RepoContext,
         *,
-        max_nodes: int = htmlgraph.DEFAULT_MAX_NODES,
-        max_edges: int = htmlgraph.DEFAULT_MAX_EDGES,
+        max_nodes: int = htmlgraph.DEFAULT_HTML_NODES,
+        max_edges: int = htmlgraph.DEFAULT_HTML_EDGES,
         resolution: float | None = None,
     ) -> htmlgraph.HtmlExport:
         """Render an interactive module graph without persisting graph state."""
+        bounds.within(max_nodes, 1, htmlgraph.MAX_HTML_NODES, "max_nodes")
+        bounds.within(max_edges, 0, htmlgraph.MAX_HTML_EDGES, "max_edges")
         ranked = self._ranked(ctx)
         partition = communities.detect_communities(
             ranked.graph,
@@ -333,7 +382,7 @@ class GraphService:
         return _Ranked(
             index=index,
             graph=built,
-            rank=graph.personalized_pagerank(built),
+            ranking=graph.personalized_pagerank(built),
             imports=_import_pairs(scan),
         )
 
@@ -341,19 +390,19 @@ class GraphService:
 def _import_pairs(scan: refs.RepoScan) -> frozenset[tuple[str, str]]:
     """Return the ``(importer, imported)`` file pairs a declared import connects.
 
-    Read off :func:`agentless_mcp.core.resolve.build_file_scopes`, the one
-    owner of import resolution, so the diagram's solid edges cannot disagree
-    with explain, path and cycles -- in particular the submodule form
-    ``from pkg import mod``, which only the scopes resolve to the module file.
-    The built graph cannot answer this because it keeps only the merged edge
-    weight and not the kind, and deriving the kind from the weight would be a
-    proxy guard: enough name references sum past the import weight.
+    Read off :meth:`agentless_mcp.core.resolve.ImportScope.resolved_edges`,
+    the one owner of "which resolved statement becomes an import edge", so the
+    diagram's solid edges cannot disagree with explain, path and cycles -- in
+    particular the submodule form ``from pkg import mod``, which only the
+    scopes resolve to the module file. The built graph cannot answer this
+    because it keeps only the merged edge weight and not the kind, and
+    deriving the kind from the weight would be a proxy guard: enough name
+    references sum past the import weight.
     """
     pairs: set[tuple[str, str]] = set()
     for path, scope in resolve.build_file_scopes(scan.files).items():
-        for _module, _line, target in scope.statements:
-            if target and target != path:
-                pairs.add((path, target))
+        for _module, _line, target in scope.resolved_edges(path):
+            pairs.add((path, target))
     return frozenset(pairs)
 
 
@@ -517,30 +566,21 @@ def _resolution(resolution: float | None) -> float:
     reports a modularity of 6.0 against a documented 0-to-1 scale. Both are
     refused here, at the one place both public methods that take the knob
     cross.
+
+    The floor stays local because it is exclusive and
+    :func:`agentless_mcp.util.bounds.within` is inclusive at both ends: zero
+    is not a resolution, where the ceiling is a value the caller may ask for.
+    The ceiling itself is the shared one, so the command line refuses
+    ``--resolution 1e9`` exactly as the MCP schema already did.
     """
     if resolution is None:
         return communities.DEFAULT_RESOLUTION
     setting = float(resolution)
     if not math.isfinite(setting) or setting <= 0.0:
         message = f"resolution must be a finite number greater than 0, got {resolution}"
-        raise AtlasError(message)
+        raise OperationFailed(message)
+    bounds.within(setting, 0.0, bounds.MAX_RESOLUTION, "resolution")
     return setting
-
-
-def _elided(ranked: _Ranked, options: mermaid.DiagramOptions, drawn: Sequence[str]) -> int:
-    """Count what this diagram left out, against what it was drawing from.
-
-    A focus restricts the candidate set before the rank bound is applied, and
-    the elision node the picture carries counts against that restricted set.
-    Counting against the whole repository instead made one response say "12
-    elided" over a picture that had dropped nothing, and sent readers to raise
-    `max_nodes` for modules no bound had removed. The candidate set is read
-    back through the same public entry point the render uses, rather than
-    re-deriving the neighbourhood walk here, so the two numbers cannot drift.
-    """
-    unbounded = replace(options, max_nodes=max(1, len(ranked.graph.nodes)))
-    candidates = mermaid.selected_nodes(ranked.graph, ranked.rank, unbounded)
-    return max(0, len(candidates) - len(drawn))
 
 
 def _trace(
@@ -595,13 +635,20 @@ def _path_message(
 
     "Nothing connects these" and "I stopped looking" are different facts and
     are never merged: the second one names the bound it hit.
+
+    The exhausted message used to advise raising the bound without saying
+    where the bound lives. ``max_visited`` is a CLI flag and the MCP ``path``
+    operation does not publish it, so an agent following the advice reissued
+    the identical call. Naming the flag is what makes the sentence actionable
+    for the caller who has it and honest for the caller who does not.
     """
     if found.found:
         return ""
     if found.exhausted:
         return (
             f"no path from {found.source} to {found.target} within the search bound "
-            f"({found.visited} nodes visited); raise the bound or pick a nearer endpoint"
+            f"({found.visited} nodes visited); pick a nearer pair of endpoints, or "
+            "raise --max-visited from the CLI"
         )
     excluded: list[str] = []
     if not include_unique:

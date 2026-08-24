@@ -28,12 +28,20 @@ and different does.
 ``SIGINT`` in the process, which is the graceful-shutdown path the HTTP
 stack already implements -- stop accepting, drain in-flight requests,
 return from ``run()``. Only then does the process replace itself with
-``os.execv`` of its original argv: same pid, same flags, new code, no
-supervisor required. All of this server's state is derived and on disk (the
-tag caches, the grammar caches), which is what makes exec-in-place safe
-here. On Windows, where exec with open sockets is unreliable, the process
-instead exits 0 after the same graceful shutdown and a supervisor's
-``Restart=`` completes the loop.
+``os.execv`` of its original argv: same pid, same flags, new code. All of
+this server's state is derived and on disk (the tag caches, the grammar
+caches), which is what makes exec-in-place safe here. On Windows, where exec
+with open sockets is unreliable, the process instead exits 0 after the same
+graceful shutdown and a supervisor's ``Restart=`` completes the loop.
+
+**A supervisor is optional on POSIX only while the exec succeeds.** The
+success path needs none, which is the point of exec-in-place. The failure
+path has nowhere left to go: the upgrade that prompted the restart is also
+what can move the interpreter out from under it, and a process that cannot
+exec cannot serve the new code either. It exits 0 there, so an unsupervised
+POSIX deployment loses the service until somebody starts it again. That is
+stated rather than hidden because it is the one case where this feature is
+less available than the stale-code drift it replaced.
 """
 
 import hashlib
@@ -63,13 +71,24 @@ POLL_SECONDS = 30.0
 # passed, so no upgrade is ever lost, and the rate at which a process can bounce
 # is bounded rather than being one restart per poll.
 #
-# This is a rate bound, not a loop breaker. An install whose fingerprint is
-# genuinely unstable -- a backend that regenerates RECORD non-deterministically,
-# an external sync touching dist-info -- would still restart once per interval
-# here, because a process that has replaced its own image cannot remember how
-# many times it has done so. Breaking that properly needs a counter carried
-# across the exec; it is not built until such an install is actually observed,
-# and the held-restart log line above is what would make it visible.
+# This is a rate bound, not a loop breaker, and it is the ONLY guard there is:
+# no backoff, no restart counter, no cap on total restarts, and no state carried
+# across the exec, so a process cannot know it has already bounced.
+#
+# The rationale for deferring the loop breaker used to be that no unstable
+# fingerprint source had been observed. That was wrong at the time: this module
+# manufactured one, by coalescing an absent RECORD to `sha256(b"")` -- a
+# present, different, perfectly valid fingerprint -- so every install window
+# produced a spurious change. `install_fingerprint` now returns None there, and
+# with that defect gone the remaining unstable sources are external ones: a
+# backend that regenerates RECORD non-deterministically, a sync touching
+# dist-info. Such an install would still restart once per interval here.
+#
+# So the deferral stands on a narrower claim than before -- no such install has
+# been observed, and this module is no longer the thing producing one. If one is
+# observed, the cheap carrier is an environment variable set before the execv
+# and read at startup, and the held-restart log line above is what makes the
+# bouncing visible in the meantime.
 MINIMUM_UPTIME_SECONDS = 60.0
 
 
@@ -105,9 +124,36 @@ def install_fingerprint(distribution_name: str) -> str | None:
     """
     try:
         installed = distribution(distribution_name)
-        record = installed.read_text("RECORD") or ""
+        record = installed.read_text("RECORD")
         version = installed.version
-    except (PackageNotFoundError, OSError):
+    # TypeError joins the tuple because a half-removed dist-info raises it
+    # rather than an OSError: `distribution()` matches on the directory name,
+    # so it still resolves after METADATA is unlinked, and `.version` then
+    # feeds None to email.message_from_string. Without this the watcher thread
+    # dies for the life of the process and drift detection stops silently.
+    #
+    # ValueError joins it for the same failure by a different route.
+    # `read_text` suppresses five OSError subclasses and nothing else, so a
+    # RECORD caught mid-write with a byte sequence that is not UTF-8 raises
+    # UnicodeDecodeError -- a ValueError. That is the same torn-install window
+    # this monitor exists to watch, so the type this package must not die on.
+    #
+    # The tuple is not what makes the thread safe, and it should not be read
+    # as an attempt to enumerate every way a foreign file can fail to parse:
+    # it grew once already and still missed this. `_watch` deregisters the
+    # monitor whatever ends it, which is what covers the type nobody listed.
+    except (PackageNotFoundError, OSError, TypeError, ValueError) as exc:
+        logger.debug("install fingerprint for %s is unreadable: %r", distribution_name, exc)
+        return None
+    # NOT `or ""`. read_text suppresses FileNotFoundError and returns None, so
+    # coalescing turns "RECORD is absent" into sha256(b"") -- a present,
+    # different, perfectly valid fingerprint. That is the exact case the
+    # docstring above rules out, and a wheel writes RECORD last, so an ordinary
+    # `uv tool install --upgrade` lands in that window. The result was a
+    # restart fired against a half-written install, with no supervisor on POSIX
+    # to bring the process back.
+    if record is None:
+        logger.debug("install fingerprint for %s: RECORD not readable yet", distribution_name)
         return None
     digest = hashlib.sha256(record.encode("utf-8")).hexdigest()[:16]
     return f"{version}:{digest}"
@@ -128,6 +174,12 @@ class _MonitorState:
     and gets absorbed into a restart the operator did not ask for. The monitor
     raises exactly one SIGINT, so exactly one ``KeyboardInterrupt`` may be
     claimed as its own; every later one is a human and propagates.
+
+    One window stays ambiguous, and the claim narrows the problem rather than
+    ending it. The monitor sets ``interrupt_owed`` just before it raises the
+    SIGINT, so an operator's Ctrl+C inside that gap is still absorbed as the
+    monitor's own. Telling the two apart needs a token identifying which
+    interrupt arrived, which a signal does not carry.
     """
 
     thread: threading.Thread | None = None
@@ -137,15 +189,26 @@ class _MonitorState:
 
 
 _MONITOR = _MonitorState()
-# Guards the claim on the monitor's own interrupt. The monitor thread sets it
-# and the main thread consumes it, so the read-modify-write cannot be a bare
-# attribute test.
+# Guards every field of the state above. It began as the guard on the
+# interrupt claim alone -- the monitor thread sets it and the main thread
+# consumes it, so that read-modify-write cannot be a bare attribute test --
+# and the start of the monitor itself is the same kind of read-modify-write
+# by a second caller. `core/cache.py`'s `_AUTO_INDEX_RUNS` is the house
+# pattern for both.
+#
+# One field is read without it on purpose: `_watch` reads `started` from
+# inside the monitor thread. That read must stay unlocked, because the thread
+# is started while the lock is held and taking it from the target would make
+# the child wait on its own parent. The write happens before `start()`, so
+# the thread cannot observe a zero and mistake a fresh process for one that
+# has been up long enough to restart.
 _MONITOR_LOCK = threading.Lock()
 
 
 def restart_pending() -> bool:
     """True when the monitor shut the server down to restart it."""
-    return _MONITOR.pending
+    with _MONITOR_LOCK:
+        return _MONITOR.pending
 
 
 def claim_monitor_interrupt() -> bool:
@@ -172,8 +235,10 @@ def start_update_monitor(distribution_name: str) -> threading.Thread | None:
     """
     if auto_restart_disabled():
         return None
-    if _MONITOR.thread is not None:
-        return _MONITOR.thread
+    with _MONITOR_LOCK:
+        running = _MONITOR.thread
+    if running is not None:
+        return running
 
     # Whether there is an install to drift from, not whether its fingerprint
     # reads right now: a server started by the very install event it should be
@@ -184,15 +249,30 @@ def start_update_monitor(distribution_name: str) -> threading.Thread | None:
         logger.info("install update monitor off: no installed metadata for %s", distribution_name)
         return None
 
-    thread = threading.Thread(
-        target=_watch,
-        args=(distribution_name, install_fingerprint(distribution_name)),
-        name="install-update-monitor",
-        daemon=True,
-    )
-    _MONITOR.started = time.monotonic()
-    _MONITOR.thread = thread
-    thread.start()
+    # Fingerprinted before the lock: reading RECORD is filesystem work, and a
+    # second caller arriving during it should wait on the registry rather than
+    # on the disk.
+    baseline = install_fingerprint(distribution_name)
+
+    with _MONITOR_LOCK:
+        # Re-checked, because the two calls above released the lock.
+        raced = _MONITOR.thread
+        if raced is not None:
+            return raced
+        thread = threading.Thread(
+            target=_watch,
+            args=(distribution_name, baseline),
+            name="install-update-monitor",
+            daemon=True,
+        )
+        _MONITOR.started = time.monotonic()
+        _MONITOR.thread = thread
+        # Started under the lock, for the reason `core/cache.py` records: a
+        # registered but unstarted thread reads as `is_alive() == False`, so
+        # a caller probing in that window sees no monitor and starts a second
+        # one. Two monitors means two SIGINTs for one install event, and only
+        # one of them can be claimed.
+        thread.start()
     return thread
 
 
@@ -203,7 +283,31 @@ def _watch(distribution_name: str, baseline: str | None) -> None:
     first readable one establishes it instead. That is the same "None means
     wait, never changed" rule the poll below follows, applied to the one read
     that used to be exempt from it.
+
+    Whatever ends this thread deregisters it, which is the guard the caught
+    types above cannot be. Every input the poll reads is written by an
+    installer this process does not control, so an exception no tuple names
+    stays possible -- and one used to end the thread while ``_MONITOR.thread``
+    kept pointing at it. ``start_update_monitor`` then handed that dead handle
+    back as a running monitor, so drift detection was off for the life of the
+    process with ``is_alive()`` False and nobody asking. Deregistered instead,
+    the next call starts a fresh one. The exception itself is not swallowed:
+    it leaves through ``threading.excepthook`` with its traceback.
     """
+    try:
+        _poll_until_changed(distribution_name, baseline)
+    finally:
+        with _MONITOR_LOCK:
+            # Not when a restart is armed. That thread finished the job it was
+            # started for and the process is on its way out; forgetting it
+            # there would let a second monitor start and raise a second SIGINT
+            # for one install event, and only one of them can be claimed.
+            if not _MONITOR.pending:
+                _MONITOR.thread = None
+
+
+def _poll_until_changed(distribution_name: str, baseline: str | None) -> None:
+    """Run the poll loop itself, returning once a restart has been raised."""
     while True:
         time.sleep(POLL_SECONDS)
         current = install_fingerprint(distribution_name)
@@ -273,8 +377,9 @@ def exec_or_exit() -> int:
             # instead, which is strictly less available than what it replaced.
             # Fall through to the clean exit a supervisor can act on.
             logger.exception(
-                "install updated but exec of %s failed; exiting cleanly instead so a "
-                "supervisor can restart this service",
+                "install updated but exec of %s failed; this process is exiting 0 and "
+                "will NOT come back on its own -- the service returns only when a "
+                "supervisor or an operator starts it again",
                 sys.executable,
             )
             return 0

@@ -14,20 +14,27 @@ carrying the two competing self-loop conventions through the modularity
 arithmetic would buy nothing.
 
 The aggregation step is deliberately not here, and that is a measurement
-rather than a preference. A reference graph is dense -- this package's own is
-102 files and 1417 edges, average degree 28 -- and on a dense graph the second
-Louvain level does exactly what a rollup must not do. Measured 2026-08-18 by
-running one level, collapsing the graph onto it and running a second level: at
-resolution 1.0 the second level merged 29 communities into 10 whose three
-largest held 44, 33 and 18 of the 102 files, and scored no better on the
-original graph (Q 0.272 -> 0.271); at resolution 0.5 it put 95 of 102 files in
-one community. One level at resolution 1.0 gives Q = 0.272 over 29
-communities, largest 16, labelled ``src/agentless_mcp``, ``tests/unit``,
-``tests/characterization/fixtures``. Q = 0.272 is modest, and it is the honest
-score of a graph where every file shares identifier names with most others;
-the partition is neither a blob nor all singletons, and its labels are the
-directory structure. Callers wanting a coarser rollup should lower
-``resolution`` (0.5 gives Q = 0.458 over 18 communities), not add a level.
+rather than a preference. A reference graph is dense, and on a dense graph the
+second Louvain level does exactly what a rollup must not do: it merges.
+Measured 2026-08-23 over this package's own tree of 161 files and 778 edges,
+average degree 9.7, by running one level, collapsing the graph onto it and
+running a second level: at resolution 1.0 the second level merged 36
+communities into 22 whose three largest held 43, 39 and 31 of the 161 files;
+at resolution 0.5 it put 113 of the 161 in one community. The second level
+scores slightly *higher* on the original graph (Q 0.329 -> 0.341), and that is
+the finding rather than an argument against it -- modularity rewards the
+merge, so the score cannot be the thing that decides. A rollup whose largest
+group is a quarter of the repository has stopped answering "which files belong
+together".
+
+One level at resolution 1.0 gave Q = 0.329 over 36 communities on that tree,
+labelled by directory paths such as ``tests/unit``. That score is modest, and
+it is the honest score of a graph where every file shares identifier names
+with most others; the partition is neither a blob nor all singletons, and its
+labels are the directory structure. Callers wanting a coarser rollup should
+lower ``resolution``, which buys the same merge under the caller's control,
+rather than add a level. Scores found at two resolutions are not comparable
+-- see :class:`CommunityPartition`.
 
 **Determinism is a property of three explicit rules**, and every one of them is
 an ordering decision that would otherwise be taken by dictionary iteration:
@@ -48,9 +55,10 @@ an ordering decision that would otherwise be taken by dictionary iteration:
 Identical input produces identical communities, pinned by a test.
 
 Labels are mechanical, never generated: the label of a community is the
-deepest directory prefix shared by a strict majority of its members, ties
-broken by the lexicographically-first prefix, and :data:`ROOT_LABEL` when no
-prefix reaches a majority. A label is therefore
+deepest directory prefix shared by a strict majority of its members, and
+:data:`ROOT_LABEL` when no prefix reaches a majority. Depth alone decides,
+because a majority at one depth can only be held by one prefix. A label is
+therefore
 repository content, and every renderer that shows one has to treat it as
 untrusted -- see :func:`agentless_mcp.core.mermaid.safe_label`.
 """
@@ -117,14 +125,39 @@ class CommunityPartition:
     """A whole partition: the communities, and how good it is.
 
     ``modularity`` is the score of this partition under the resolution it was
-    found at, so a caller can tell "this repository has structure" (roughly
-    0.3 and up) from "the detector found nothing and split it arbitrarily".
+    found at, **and it is comparable only to another score found at the same
+    resolution**. The published reading -- roughly 0.3 and up is a repository
+    with real module boundaries, near 0 means the detector found nothing and
+    split the files arbitrarily -- is calibrated for ``resolution == 1.0``
+    alone. :func:`_partition` reports the resolution-scaled generalized
+    modularity, so lowering the knob lowers the null-model term the score
+    subtracts and raises the score for an unchanged tree -- see the measured
+    spread below. A caller lowering the resolution for a coarser rollup, which
+    this module recommends, is not being told the repository gained structure.
+
+    ``standard_modularity`` is the same membership scored at resolution 1.0,
+    which is the one scale that reading is calibrated for, and it is therefore
+    the number to compare against 0.3. It is what makes the comparison a
+    property of the partition rather than of the knob: measured 2026-08-23 on
+    this package, the scaled score runs 0.723 / 0.507 / 0.319 / 0.236 / 0.148
+    across resolutions 0.25 / 0.5 / 1.0 / 2.0 / 4.0 while the standard score
+    of the very same partitions runs 0.156 / 0.233 / 0.319 / 0.285 / 0.248 --
+    one crosses 0.3 twice on an unchanged tree, the other does not. At
+    resolution 1.0 the two are the same number.
+
+    ``converged`` says why local moving stopped: no node wanted to move, or
+    ``max_passes`` ran out. A partition that hit the bound is a partial answer,
+    and ``passes`` alone cannot tell the two apart -- a run that converged on
+    its fiftieth pass reports the same number as one that was cut off at
+    fifty.
     """
 
     communities: tuple[Community, ...]
     modularity: float
+    standard_modularity: float
     resolution: float
     passes: int
+    converged: bool
 
     def index_of(self) -> dict[str, int]:
         """Map each member path to the position of its community."""
@@ -138,8 +171,10 @@ class CommunityPartition:
         """Return the JSON form of this partition."""
         return {
             "modularity": self.modularity,
+            "standard_modularity": self.standard_modularity,
             "resolution": self.resolution,
             "passes": self.passes,
+            "converged": self.converged,
             "communities": [community.as_dict() for community in self.communities],
         }
 
@@ -173,24 +208,39 @@ def detect_communities(
     A graph with no edges is not a failure and is not forced together: every
     node becomes its own community and the modularity is 0.0, which is the
     true score of that partition rather than a placeholder.
+
+    A run that spends ``max_passes`` without settling returns what it reached
+    and says so on :attr:`CommunityPartition.converged`, because a partial
+    partition an agent reads as final is worse than a slow one.
     """
     nodes = sorted(set(graph.nodes))
     if not nodes:
-        return CommunityPartition(communities=(), modularity=0.0, resolution=resolution, passes=0)
+        return CommunityPartition(
+            communities=(),
+            modularity=0.0,
+            standard_modularity=0.0,
+            resolution=resolution,
+            passes=0,
+            converged=True,
+        )
 
     weighted = _symmetrise(graph, nodes)
     membership = {node: index for index, node in enumerate(nodes)}
     if weighted.two_m <= 0.0:
-        return _partition(membership, weighted, resolution=resolution, passes=0)
+        return _partition(membership, weighted, resolution=resolution, passes=0, converged=True)
 
     total = {index: weighted.degree[node] for index, node in enumerate(nodes)}
     passes = 0
+    converged = False
     while passes < max_passes:
         passes += 1
         if not _one_pass(nodes, weighted, total, membership, resolution):
+            converged = True
             break
 
-    return _partition(membership, weighted, resolution=resolution, passes=passes)
+    return _partition(
+        membership, weighted, resolution=resolution, passes=passes, converged=converged
+    )
 
 
 def community_label(members: Sequence[str]) -> str:
@@ -202,6 +252,14 @@ def community_label(members: Sequence[str]) -> str:
     nothing, and strict enough that a community split evenly between two
     directories is labelled by the parent they share rather than by whichever
     half sorts first.
+
+    Depth alone picks the winner. :func:`_directory_prefixes` gives each member
+    exactly one prefix per depth, so the counts at one depth sum to at most
+    ``len(members)`` and two prefixes there cannot both clear a strict
+    majority. The prefix in the sort key below therefore decides nothing the
+    data can produce; it is kept so that a hand-built call reaching this
+    function with counts the rule above cannot yield still answers the same way
+    twice, rather than by dictionary order.
     """
     if not members:
         return ROOT_LABEL
@@ -227,15 +285,21 @@ def _directory_prefixes(path: str) -> list[str]:
 def _symmetrise(graph: RefGraph, nodes: Sequence[str]) -> _Weighted:
     """Return the undirected weighted view of ``graph`` over ``nodes``.
 
-    Edges naming a node the graph does not list, self loops, and non-positive
-    weights are dropped: none of the three has a meaning in the modularity
-    objective, and keeping them would only make the arithmetic answer a
-    question nobody asked.
+    Self loops and non-positive weights are dropped: neither has a meaning in
+    the modularity objective, and keeping them would only make the arithmetic
+    answer a question nobody asked. A hand-built graph can still supply both,
+    which is why the two clauses stay.
+
+    Endpoints are not re-checked.
+    :meth:`agentless_mcp.core.graph.RefGraph.__post_init__` refuses an edge
+    naming a node the graph does not list, and ``nodes`` is that node list, so
+    a membership test here would be a second home for an invariant the value
+    object already owns -- and a dead one, which reads as a live hazard to
+    everyone after.
     """
-    known = set(nodes)
     adjacency: dict[str, dict[str, float]] = {node: {} for node in nodes}
     for (source, target), weight in graph.edges.items():
-        if source == target or weight <= 0.0 or source not in known or target not in known:
+        if source == target or weight <= 0.0:
             continue
         adjacency[source][target] = adjacency[source].get(target, 0.0) + weight
         adjacency[target][source] = adjacency[target].get(source, 0.0) + weight
@@ -302,6 +366,7 @@ def _partition(
     *,
     resolution: float,
     passes: int,
+    converged: bool,
 ) -> CommunityPartition:
     """Turn a membership map into the ordered, labelled, scored partition."""
     grouped: dict[int, list[str]] = {}
@@ -310,6 +375,7 @@ def _partition(
 
     communities: list[Community] = []
     modularity = 0.0
+    standard = 0.0
     for community_id in sorted(grouped):
         members = tuple(grouped[community_id])
         internal = sum(
@@ -320,7 +386,13 @@ def _partition(
         )
         outgoing = sum(weighted.degree[member] for member in members)
         if weighted.two_m > 0.0:
-            modularity += internal / weighted.two_m - resolution * (outgoing / weighted.two_m) ** 2
+            # Both scores share one loop so they cannot describe two different
+            # partitions, and at resolution 1.0 they are the same arithmetic
+            # and therefore the same float.
+            fraction = internal / weighted.two_m
+            share = (outgoing / weighted.two_m) ** 2
+            modularity += fraction - resolution * share
+            standard += fraction - share
         communities.append(
             Community(
                 label=community_label(members),
@@ -334,6 +406,8 @@ def _partition(
     return CommunityPartition(
         communities=tuple(communities),
         modularity=modularity,
+        standard_modularity=standard,
         resolution=resolution,
         passes=passes,
+        converged=converged,
     )

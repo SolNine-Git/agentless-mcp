@@ -89,7 +89,7 @@ MESSAGE_ARGUMENTS = {
         "accepted": "source, target, include_unique, include_ambiguous",
         "required": "source, target",
     },
-    "path_needs_endpoints": {},
+    "path_needs_endpoints": {"tool": "orient"},
     "map_limit_out_of_range": {"limit": "500", "minimum": "1", "maximum": "200"},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
@@ -103,8 +103,11 @@ MESSAGE_ARGUMENTS = {
     "expand_body_truncated": {"shown": 12, "total": 340},
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
+    "grouped_ids": {"count": 12},
+    "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
+    "slice_range_not_a_range": {"start": 60, "end": 30, "path": "src/app/svc.py"},
     "cache_stale_remediation": {},
     "cache_stale_refreshing": {},
     "cache_absent_refreshing": {},
@@ -254,8 +257,21 @@ class TestWireDescriptions:
 
         assert "use grep when the literal string or file is already known" in description
         assert "target location is unknown" in description
-        assert "fan-in or blast radius" in description
         assert "change surface spans files" in description
+        # The map used to claim fan-in and blast radius as well, which is the
+        # question find_referencing_symbols publishes. Two tools answering one
+        # question with no tiebreak is the one defect these strings exist to
+        # prevent, so the clause belongs to the reference tool alone.
+        assert "fan-in" not in description
+        assert "blast radius" not in description
+        assert "Fan-in for blast radius" in TOOL_DESCRIPTIONS["find_referencing_symbols"]
+
+    def test_the_v2_surface_advertises_rationale_nodes(self):
+        # v2 is the default surface and routes to the same handlers, so a
+        # feature documented only on the retired v1 tools is unreachable
+        # documentation for every agent that reads the published schema.
+        assert "rationale nodes" in TOOL_DESCRIPTIONS["orient"]
+        assert "rationale comments" in TOOL_DESCRIPTIONS["symbols"]
 
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path
@@ -284,3 +300,33 @@ class TestWireDescriptions:
         assert {tool.name for tool in tools} == set(TOOL_NAMES)
         for tool in tools:
             assert tool.description == TOOL_DESCRIPTIONS[tool.name], tool.name
+
+
+class TestAPackagedFileThatIsNotUtf8:
+    """The sixth defect class, in the module that exists to name the other five.
+
+    `loader`'s docstring enumerates five ways packaged data can be broken and
+    says all five raise `PromptDataError`. A prompt file that is present but
+    not valid UTF-8 is a sixth in the same class, and it escaped the wrapper:
+    `read_text(encoding="utf-8")` raises `UnicodeDecodeError`, which is a
+    `ValueError`, and the handler named only `OSError`.
+    """
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("no such file"),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        ],
+        ids=["absent", "not-utf8"],
+    )
+    def test_it_is_named_rather_than_raised_raw(self, monkeypatch, error):
+        traversable = loader.resources.files(loader.PACKAGE)
+
+        def refuse(*_args, **_kwargs):
+            raise error
+
+        monkeypatch.setattr(type(traversable.joinpath("x")), "read_text", refuse, raising=False)
+
+        with pytest.raises(PromptDataError, match="cannot be read from"):
+            loader.resource_text("messages.json")

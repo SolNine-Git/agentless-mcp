@@ -115,10 +115,20 @@ class TestGoReceivers:
         assert pointer.kind is SymbolKind.METHOD
 
     def test_a_plain_function_keeps_no_owner(self, extractor):
+        # The two struct types are parentless symbols of their own since
+        # stage 6c, so the question is asked of functions rather than of
+        # everything without a parent.
         symbols = extractor.extract_from_source(GO_RECEIVERS, "go", "config/config.go")
-        plain = [symbol for symbol in symbols if not symbol.parent_class]
+        plain = [symbol for symbol in symbols if symbol.kind is SymbolKind.FUNCTION]
         assert [symbol.name for symbol in plain] == ["Validate"]
-        assert plain[0].kind is SymbolKind.FUNCTION
+        assert not plain[0].parent_class
+
+    def test_a_receiver_type_is_declared_as_a_symbol(self, extractor):
+        # Every method above names a receiver type; each one now has a
+        # declaration the map can point at.
+        symbols = extractor.extract_from_source(GO_RECEIVERS, "go", "config/config.go")
+        types = [s.name for s in symbols if s.kind is SymbolKind.CLASS]
+        assert types == ["ServerInfo", "AWSConf"]
 
 
 class TestDuplicateBackstop:

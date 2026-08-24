@@ -4,11 +4,18 @@ Each one asserts the specific message the refusal carries: a bound that
 refuses with a vague message is a bound an operator cannot act on.
 """
 
+import logging
 import os
 
 import pytest
 
-from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
+from agentless_mcp.util import fslimits, textsafe
+from agentless_mcp.util.errors import (
+    AgentlessError,
+    RepoResolutionError,
+    SecurityRefusal,
+    WalkBoundExceeded,
+)
 from agentless_mcp.util.fslimits import bounded_walk, contained_path, read_bounded
 
 
@@ -132,9 +139,13 @@ class TestReadBounded:
         assert result.text is None
         assert result.skipped == "skipped: 5000 bytes exceeds the per-file cap of 1000 bytes"
 
-    def test_file_growth_cannot_bypass_the_read_cap(self, root, monkeypatch):
-        growing = root / "growing.py"
-        growing.write_bytes(b"x" * 100)
+    def test_a_stale_stat_cannot_bypass_the_read_cap(self, root, monkeypatch):
+        # Named for what it asserts. `st_size` is made to under-report, and
+        # the reported size comes from the bytes actually read rather than
+        # from the stat -- so a file whose size the filesystem answers wrongly
+        # is still capped.
+        understated = root / "understated.py"
+        understated.write_bytes(b"x" * 100)
         real_fstat = os.fstat
 
         def stale_size(descriptor):
@@ -145,13 +156,156 @@ class TestReadBounded:
 
         monkeypatch.setattr(os, "fstat", stale_size)
 
-        result = read_bounded(growing, max_bytes=4)
+        result = read_bounded(understated, max_bytes=4)
 
         assert result.text is None
         assert result.skipped == "skipped: 5 bytes exceeds the per-file cap of 4 bytes"
+
+    def test_a_negative_cap_is_refused_as_the_package_error(self, root):
+        # The one bound in this module a caller could get wrong. It raised a
+        # bare ValueError, which is not what the adapters catch on.
+        readable = root / "small.py"
+        readable.write_text("x", encoding="utf-8")
+
+        with pytest.raises(AgentlessError, match="max_bytes must be at least 0"):
+            read_bounded(readable, max_bytes=-1)
 
     def test_missing_file_is_reported_not_raised(self, root):
         result = read_bounded(root / "gone.py")
         assert result.text is None
         assert result.skipped is not None
         assert result.skipped.startswith("unreadable: ")
+
+    def test_an_in_repo_symlink_is_read_because_the_walk_admitted_it(self, root):
+        # One symlink policy per module. `O_NOFOLLOW` here refused exactly the
+        # files `bounded_walk` had just yielded, and blamed a symlink loop
+        # that did not exist, so every symlinked file in a repository dropped
+        # out of the index, the refs listing and every view.
+        (root / "link.py").symlink_to(root / "app.py")
+
+        walked = sorted(path.name for path in bounded_walk(root))
+        result = read_bounded(root / "link.py")
+
+        assert walked == ["app.py", "link.py"]
+        assert result.skipped is None
+        assert result.text == "x = 1\n"
+
+
+class TestSymlinkLoops:
+    """A loop resolves differently on the two supported interpreters.
+
+    On the declared 3.10 floor ``Path.resolve()`` raises ``RuntimeError`` for
+    a symlink loop, and the filter here caught only ``ValueError`` and
+    ``OSError``, so the error escaped untyped past the boundary the adapters
+    catch on. From 3.13 the same input resolves to a path that does not
+    exist, so it was accepted. Two opposite failures on the two versions in
+    the support matrix.
+
+    What this pins is the property that holds on both: the answer is either a
+    path inside the root or this module's own refusal, never a stdlib error.
+    """
+
+    def test_a_loop_is_contained_or_refused_but_never_untyped(self, tmp_path):
+        (tmp_path / "loop_a").symlink_to(tmp_path / "loop_b")
+        (tmp_path / "loop_b").symlink_to(tmp_path / "loop_a")
+
+        try:
+            resolved = contained_path(tmp_path, "loop_a")
+        except SecurityRefusal:
+            return
+        assert tmp_path in resolved.parents
+
+    def test_a_loop_pointing_out_of_the_root_is_refused(self, tmp_path):
+        root = tmp_path / "repo"
+        root.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "loop_a").symlink_to(outside / "loop_b")
+        (outside / "loop_b").symlink_to(outside / "loop_a")
+        (root / "escape").symlink_to(outside / "loop_a")
+
+        with pytest.raises(SecurityRefusal):
+            contained_path(root, "escape")
+
+
+class TestDirectoryClaim:
+    """The prune that removes a subtree from a walk without refusing it.
+
+    Reached through the private helper rather than through ``bounded_walk``:
+    the condition is two paths sharing one ``(st_dev, st_ino)``, and building
+    that needs a bind mount, which needs root. What matters is that the skip
+    leaves a trace naming the directory, and the helper is where that is
+    decided.
+    """
+
+    def test_a_directory_seen_twice_is_pruned_and_says_so(self, root, caplog):
+        seen: set[tuple[int, int]] = set()
+        assert fslimits._claim_directory(root, seen) is True
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.util.fslimits"):
+            claimed = fslimits._claim_directory(root, seen)
+
+        assert claimed is False
+        assert str(root) in caplog.text
+        assert "already visited" in caplog.text
+
+    def test_a_directory_that_cannot_be_stated_is_skipped_and_says_so(self, root, caplog):
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.util.fslimits"):
+            claimed = fslimits._claim_directory(root / "gone", set())
+
+        assert claimed is False
+        assert "walk skipped" in caplog.text
+        assert "gone" in caplog.text
+
+
+def _make_undecodable_file(root):
+    """Create a file whose name is not valid UTF-8, as a hostile clone can.
+
+    Built from bytes rather than from a ``Path``: the whole point is a name no
+    ``str`` can hold, so it cannot be spelled through the pathlib API.
+
+    Skips where the filesystem refuses the name rather than where the platform
+    is macOS. APFS enforces UTF-8 and answers ``EILSEQ``; ext4 does not care;
+    a Linux runner on a mounted exFAT volume behaves like APFS. The property
+    under test is "this filesystem stores a non-UTF-8 name", so the guard asks
+    for exactly that and lets the error say which filesystems said no -- a
+    ``sys.platform`` check would be a correlate, and would silently stop
+    covering Linux the day the runner's temp directory moved.
+    """
+    raw = os.fsencode(root) + b"/bad\xff.py"
+    try:
+        os.close(os.open(raw, os.O_CREAT | os.O_WRONLY))
+    except OSError as exc:
+        pytest.skip(f"the filesystem under {root} refuses a non-UTF-8 filename: {exc.strerror}")
+
+
+class TestAnUndecodableFilenameSurvivesTheWalkAndTheSink:
+    """The bound yields the file; the sink is what makes it renderable.
+
+    ``bounded_walk`` is the fallback traversal for a directory git does not
+    list, and ``os.walk`` hands back an undecodable filename byte as a lone
+    surrogate. Reproduced during the audit: the walk yielded the name, the
+    renderer raised ``UnicodeEncodeError`` from inside itself, and the caller
+    saw a traceback instead of an answer. The bound must not drop the file --
+    a security bound that silently loses entries is the thing this module
+    exists to refuse -- so the escape belongs at the sink.
+    """
+
+    def test_the_walk_yields_the_file_rather_than_dropping_it(self, root):
+        _make_undecodable_file(root)
+
+        found = sorted(path.name for path in bounded_walk(root))
+
+        assert found == ["app.py", "bad\udcff.py"]
+
+    def test_the_name_the_walk_yields_is_encodable_once_the_sink_has_it(self, root):
+        _make_undecodable_file(root)
+
+        walked = sorted(path.name for path in bounded_walk(root))
+        rendered = [textsafe.one_line(name) for name in walked]
+
+        # Raw, this raises; escaped, it does not. That is the whole fix.
+        with pytest.raises(UnicodeEncodeError):
+            "\n".join(walked).encode("utf-8")
+        assert "\n".join(rendered).encode("utf-8")
+        assert "bad\\udcff.py" in rendered

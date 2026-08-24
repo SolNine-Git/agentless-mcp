@@ -155,7 +155,15 @@ def load(repo_root: Path) -> ProjectConfig:
     """
     path = repo_root / CONFIG_FILENAME
     if not path.is_file():
-        return EMPTY
+        # Two different facts, and only one of them is silent. Nothing at that
+        # name is the ordinary case and gets no warning. *Something* at that
+        # name that is not a readable regular file -- a directory, a FIFO, a
+        # dangling symlink -- is a config that will silently do nothing, which
+        # is the case every other refusal path here exists to make visible.
+        # `exists` follows links, so a dangling one needs the second test.
+        if not path.exists() and not path.is_symlink():
+            return EMPTY
+        return _refused(f"{CONFIG_FILENAME} is not a readable regular file; ignored")
 
     if not file_stays_inside(path, repo_root.resolve()):
         # `is_file` and `read_text` both follow links, so without this a
@@ -187,10 +195,28 @@ def _bounded_text(path: Path) -> tuple[str | None, str]:
             f"{CONFIG_FILENAME} is {size} bytes, over the {MAX_CONFIG_BYTES}-byte cap; ignored",
         )
 
+    # One byte past the cap, so the read itself enforces it. The stat above is
+    # an early-out that names the size; it cannot be the bound, because a
+    # writer that grows the file between the two calls would then be read
+    # whole. Repository content is the untrusted source this module names, and
+    # an active writer is the only precondition that needs.
     try:
-        return path.read_text(encoding="utf-8"), ""
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_CONFIG_BYTES + 1)
     except OSError as exc:
         return None, f"{CONFIG_FILENAME} could not be read: {exc.strerror}"
+
+    if len(raw) > MAX_CONFIG_BYTES:
+        return (
+            None,
+            (
+                f"{CONFIG_FILENAME} grew past the {MAX_CONFIG_BYTES}-byte cap while it "
+                "was being read; ignored"
+            ),
+        )
+
+    try:
+        return raw.decode("utf-8"), ""
     except UnicodeDecodeError:
         return None, f"{CONFIG_FILENAME} is not UTF-8 text; ignored"
 
@@ -215,7 +241,24 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
     """
     warnings: list[str] = []
 
+    # The values first, deliberately. `envelope.MAX_CONFIG_WARNINGS` is 8 and
+    # so is `MAX_UNKNOWN_KEY_WARNINGS`, so whichever warnings are appended
+    # first are the ones an operator gets to read. A value this build rejected
+    # is about a key the file meant to set and is actionable; an unknown key is
+    # a key this build ignores, and a newer file read by an older one is the
+    # ordinary reason for it. Ordered the other way, eight unknown keys pushed
+    # every warning about the file's own malformed values out of the response.
+    map_budget = _bounded_int(document, KEY_MAP_BUDGET, MIN_BUDGET, MAX_BUDGET, warnings)
+    max_files = _bounded_int(document, KEY_MAX_FILES, MIN_MAX_FILES, MAX_MAX_FILES, warnings)
+    granularity = _choice(document, KEY_GRANULARITY, GRANULARITIES, warnings)
+    docstrings = _boolean(document, KEY_DOCSTRINGS, warnings)
+    stoplist = _stoplist(document, warnings)
+    test_cmd = _command(document, warnings)
+
     unknown = sorted(key for key in document if key not in KNOWN_KEYS)
+    # `{key!r}` happens to escape a newline in a repository-authored key,
+    # which is convenient and is not the guarantee: the warning is made safe
+    # for a line-oriented answer by `application/envelope`, at the sink.
     warnings.extend(
         f"unknown key {key!r} in {CONFIG_FILENAME}: ignored (known keys: {', '.join(KNOWN_KEYS)})"
         for key in unknown[:MAX_UNKNOWN_KEY_WARNINGS]
@@ -228,12 +271,12 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
 
     return ProjectConfig(
         path=path,
-        map_budget=_bounded_int(document, KEY_MAP_BUDGET, MIN_BUDGET, MAX_BUDGET, warnings),
-        max_files=_bounded_int(document, KEY_MAX_FILES, MIN_MAX_FILES, MAX_MAX_FILES, warnings),
-        granularity=_choice(document, KEY_GRANULARITY, GRANULARITIES, warnings),
-        docstrings=_boolean(document, KEY_DOCSTRINGS, warnings),
-        stoplist=_stoplist(document, warnings),
-        test_cmd=_command(document, warnings),
+        map_budget=map_budget,
+        max_files=max_files,
+        granularity=granularity,
+        docstrings=docstrings,
+        stoplist=stoplist,
+        test_cmd=test_cmd,
         warnings=tuple(warnings),
     )
 

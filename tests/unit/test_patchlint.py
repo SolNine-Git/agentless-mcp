@@ -1,9 +1,11 @@
 """The deterministic hallucination checks over a parsed patch."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
+from agentless_mcp.application.lint_service import read_declared_dependencies
 from agentless_mcp.core import patchlint
 from agentless_mcp.core.cache import OnDemandSource
 from agentless_mcp.core.patches import Edit, parse_blocks
@@ -22,18 +24,20 @@ from agentless_mcp.core.patchlint import (
     Severity,
     _guarded,
     _literal_end,
+    _parameter_shape,
     _positional_arguments,
+    _Shape,
     lint_patch,
     near_misses,
     normalize_distribution,
     parse_pyproject_dependencies,
     parse_requirements,
-    read_declared_dependencies,
+    python_floor,
     requirement_name,
 )
 from agentless_mcp.core.refs import RepoScan, build_ref_index, scan_repo
 from agentless_mcp.core.resolve import build_resolver
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import OperationFailed
 
 PYPROJECT = """\
 [project]
@@ -196,6 +200,18 @@ def checks(report, name):
     return [finding for finding in report.findings if finding.check == name]
 
 
+def accusations(report, name):
+    """What one check said about the patch, with its coverage gaps left out.
+
+    The import check states what this environment could not map beside what it
+    found, and which distributions are installed here is not something a test
+    may depend on. Asserting on the accusations keeps these hermetic.
+    """
+    return [
+        finding for finding in checks(report, name) if finding.severity is not Severity.NOT_CHECKED
+    ]
+
+
 class TestDependencyManifests:
     def test_normalization_follows_pep_503(self):
         assert normalize_distribution("Tree_Sitter.Core") == "tree-sitter-core"
@@ -350,12 +366,12 @@ class TestDegradation:
     def test_a_degraded_error_becomes_exactly_one_gap(self):
         def unreadable():
             message = "the fragment is not utf-8"
-            raise AtlasError(message)
+            raise OperationFailed(message)
 
         findings = _guarded(CHECK_ARITY, unreadable)
 
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
-        assert "AtlasError" in findings[0].message
+        assert "OperationFailed" in findings[0].message
 
     @pytest.mark.parametrize(
         "error",
@@ -374,7 +390,7 @@ class TestDegradation:
         report = lint_patch(
             [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
             facts(),
-            _RaisingSource(AtlasError),
+            _RaisingSource(OperationFailed),
         )
 
         gaps = checks(report, CHECK_COVERAGE)
@@ -439,6 +455,22 @@ class TestLiteralScanner:
             ("f(a, \\\n  b)", ["a", "\\\n  b"]),
             ('f(f"{d["k"]}", b)', ['f"{d["k"]}"', "b"]),
             ('f(f"{d["k"]}, x")', ['f"{d["k"]}, x"']),
+            # A nested same-quote literal holding the separator the scan looks
+            # for. Taking its opening quote as the f-string's terminator hands
+            # the rest of the line back with string and code polarity swapped.
+            ('f(f"{d["a,b"]}", x)', ['f"{d["a,b"]}"', "x"]),
+            ('f(f"{d["a)b"]}", x)', ['f"{d["a)b"]}"', "x"]),
+            ('f(f"{d["a"]}{e["b"]}", x)', ['f"{d["a"]}{e["b"]}"', "x"]),
+            ('f(f"{{a,b}}", x)', ['f"{{a,b}}"', "x"]),
+            # A nested replacement field in the format spec. Its `}}` is the
+            # spec closing and then the field closing, not an escaped brace,
+            # and reading it as one left the scan inside the string for the
+            # rest of the text -- every later call unreadable, and silently.
+            ('f(f"{a:{w}}", x)', ['f"{a:{w}}"', "x"]),
+            ('f(f"{a!r:>{w}}", x)', ['f"{a!r:>{w}}"', "x"]),
+            ('f(f"{x:>{n}} tail", y)', ['f"{x:>{n}} tail"', "y"]),
+            ('f(f"{{literal}}", x)', ['f"{{literal}}"', "x"]),
+            ('f(f"{a}{b}", x)', ['f"{a}{b}"', "x"]),
         ],
     )
     def test_the_argument_scan_agrees_with_pythons_grammar(self, text, arguments):
@@ -473,71 +505,6 @@ class TestLiteralScanner:
         assert _literal_end(text, 0) == end
 
 
-class TestManifestParserUnavailable:
-    """What an explicitly unavailable TOML parser reports.
-
-    The normal runtime has a parser on every supported Python version. These
-    tests keep the degraded-input contract explicit by simulating an
-    unavailable parser.
-
-    Nothing here skips: the degraded path is stood in for rather than depended
-    on, so the contract remains tested on every supported interpreter.
-    """
-
-    @pytest.fixture
-    def no_toml_parser(self, monkeypatch):
-        """Stand in for a runtime where no TOML parser is available."""
-        monkeypatch.setattr(patchlint, "_load_toml", lambda _text: None)
-
-    def test_the_manifest_declares_nothing_knowable_rather_than_nothing(self, no_toml_parser):
-        parse = parse_pyproject_dependencies(PYPROJECT)
-
-        assert parse.parsed is False
-        assert parse.packages == frozenset()
-        assert parse.warnings == (
-            ("pyproject.toml not read: no TOML parser is available, so this check did not run"),
-        )
-
-    def test_a_manifest_that_could_not_be_read_is_not_a_source(self, repo, no_toml_parser):
-        declared = read_declared_dependencies(repo)
-
-        assert declared.known is False
-        assert declared.packages == frozenset()
-        assert len(declared.warnings) == 1
-
-    def test_the_import_check_reports_a_gap_rather_than_hallucinations(
-        self, facts, source, no_toml_parser
-    ):
-        report = lint_patch(
-            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
-            facts(),
-            source,
-        )
-
-        findings = checks(report, CHECK_UNDECLARED_IMPORTS)
-        assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
-        assert "no TOML parser is available" in findings[0].evidence
-
-    def test_the_reason_reaches_the_report(self, facts, source, no_toml_parser):
-        report = lint_patch(
-            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
-            facts(),
-            source,
-        )
-
-        assert len(report.warnings) == 1
-        assert "no TOML parser is available" in report.warnings[0]
-
-    def test_the_other_checks_still_run(self, facts, source, no_toml_parser):
-        report = lint_patch(
-            [edit("app.py", "CONSTANT = 1", "def greet(name):\n    return name\n\nCONSTANT = 1")],
-            facts(),
-            source,
-        )
-
-        assert checks(report, CHECK_SHADOWING)
-
-
 class TestUndeclaredImports:
     @requires_tomllib
     def test_a_package_nothing_declares_is_reported(self, facts, source):
@@ -547,7 +514,7 @@ class TestUndeclaredImports:
             source,
         )
 
-        findings = checks(report, CHECK_UNDECLARED_IMPORTS)
+        findings = accusations(report, CHECK_UNDECLARED_IMPORTS)
         assert len(findings) == 1
         assert findings[0].severity is Severity.WARNING
         assert "nonexistent_pkg" in findings[0].message
@@ -560,7 +527,7 @@ class TestUndeclaredImports:
             source,
         )
 
-        assert checks(report, CHECK_UNDECLARED_IMPORTS)[0].location == "app.py:1"
+        assert accusations(report, CHECK_UNDECLARED_IMPORTS)[0].location == "app.py:1"
 
     @requires_tomllib
     def test_a_declared_dependency_is_not_reported(self, facts, source):
@@ -648,7 +615,7 @@ class TestUndeclaredImports:
             source,
         )
 
-        assert len(checks(report, CHECK_UNDECLARED_IMPORTS)) == 1
+        assert len(accusations(report, CHECK_UNDECLARED_IMPORTS)) == 1
 
     def test_a_repository_with_no_manifest_is_reported_not_checked(
         self, facts, source, tmp_path, extractor
@@ -679,6 +646,154 @@ class TestUndeclaredImports:
         findings = checks(report, CHECK_UNDECLARED_IMPORTS)
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
         assert "go" in findings[0].message
+
+
+class TestTheInterpreterTheTablesCameFrom:
+    """Which Python answered "is this a builtin" is a fact about the run.
+
+    `dir(builtins)` and `sys.stdlib_module_names` describe the interpreter
+    this process runs on. `tomllib` and `ExceptionGroup` both arrived in 3.11,
+    so a newer interpreter passes a name the declared floor does not have and
+    an older one accuses a name the repository may legitimately use. Neither
+    direction is knowable here, so the disagreement is stated.
+    """
+
+    def test_the_declared_floor_is_read_from_the_manifest(self):
+        parse = parse_pyproject_dependencies('[project]\nrequires-python = ">=3.10"\n')
+
+        assert parse.requires_python == ">=3.10"
+
+    @pytest.mark.parametrize(
+        ("specifier", "floor"),
+        [
+            (">=3.10", (3, 10)),
+            (">= 3.11, <4", (3, 11)),
+            ("", None),
+            ("<4", None),
+        ],
+    )
+    def test_only_the_lower_bound_is_read(self, specifier, floor):
+        assert python_floor(specifier) == floor
+
+    def test_a_floor_below_this_interpreter_is_reported_as_a_gap(self, facts, source, repo):
+        floor = f">={sys.version_info.major}.{sys.version_info.minor - 1}"
+        (repo / "pyproject.toml").write_text(
+            PYPROJECT.replace("version = ", f'requires-python = "{floor}"\nversion = '),
+            encoding="utf-8",
+        )
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            source,
+        )
+
+        gaps = checks(report, CHECK_COVERAGE)
+        assert [gap.severity for gap in gaps] == [Severity.NOT_CHECKED]
+        assert floor in gaps[0].evidence
+
+    def test_a_floor_this_interpreter_matches_says_nothing(self, facts, source, repo):
+        floor = f">={sys.version_info.major}.{sys.version_info.minor}"
+        (repo / "pyproject.toml").write_text(
+            PYPROJECT.replace("version = ", f'requires-python = "{floor}"\nversion = '),
+            encoding="utf-8",
+        )
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_COVERAGE) == []
+
+    def test_a_manifest_stating_no_floor_says_nothing(self, facts, source):
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "CONSTANT = 2")],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_COVERAGE) == []
+
+
+class TestDistributionNamesAreNotImportNames:
+    """`PyYAML` provides `yaml`, and only its metadata says so.
+
+    The environment mapping is stood in for rather than depended on: which
+    distributions are installed beside these tests is not something a test may
+    assert against.
+    """
+
+    @pytest.fixture
+    def provides(self, monkeypatch):
+        """Stand in for this environment's import-name to distribution map."""
+
+        def install(mapping):
+            monkeypatch.setattr(patchlint, "_provided_modules", lambda: mapping)
+
+        return install
+
+    def test_a_declared_distribution_covers_the_import_name_it_provides(
+        self, facts, source, provides
+    ):
+        provides({"reqs": ["requests"], "tree_sitter": ["tree-sitter"]})
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import reqs\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        assert accusations(report, CHECK_UNDECLARED_IMPORTS) == []
+
+    def test_an_import_no_installed_distribution_provides_is_still_reported(
+        self, facts, source, provides
+    ):
+        provides({"reqs": ["requests"], "tree_sitter": ["tree-sitter"]})
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        assert len(accusations(report, CHECK_UNDECLARED_IMPORTS)) == 1
+
+    def test_declared_distributions_this_environment_lacks_are_named(self, facts, source, provides):
+        provides({})
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        gaps = [
+            finding
+            for finding in checks(report, CHECK_UNDECLARED_IMPORTS)
+            if finding.severity is Severity.NOT_CHECKED
+        ]
+        assert len(gaps) == 1
+        assert "4 declared distribution(s) are not installed" in gaps[0].message
+
+    def test_nothing_is_said_when_every_declared_distribution_maps(self, facts, source, provides):
+        provides(
+            {
+                "requests": ["requests"],
+                "tree_sitter": ["tree-sitter"],
+                "fastmcp": ["fastmcp"],
+                "pytest": ["pytest"],
+            }
+        )
+
+        report = lint_patch(
+            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
+            facts(),
+            source,
+        )
+
+        assert len(checks(report, CHECK_UNDECLARED_IMPORTS)) == 1
 
 
 class TestShadowing:
@@ -784,6 +899,45 @@ class TestNearDuplicates:
         )
 
         assert checks(report, CHECK_NEAR_DUPLICATES) == []
+
+    def test_a_duplicate_in_another_class_is_not_hidden_by_the_replaced_one(
+        self, facts, source, repo
+    ):
+        # `ThisClass.run` and `OtherClass.run` are two definitions. Matching
+        # the replaced site on the tail of the name alone let a patch that
+        # rewrites one suppress a genuine duplicate of the other.
+        twins = (
+            "class ThisClass:\n"
+            "    def run(self, values):\n"
+            "        total = 0\n"
+            "        for value in values:\n"
+            "            total = total + value * 2\n"
+            "        return total\n"
+            "\n"
+            "\n"
+            "class OtherClass:\n"
+            "    def run(self, values):\n"
+            "        total = 0\n"
+            "        for value in values:\n"
+            "            total = total + value * 2\n"
+            "        return total\n"
+        )
+        (repo / "twins.py").write_text(twins, encoding="utf-8")
+        block = twins.split("\n\n\n", maxsplit=1)[0].rstrip("\n")
+
+        report = lint_patch([edit("twins.py", block, block)], facts(), source)
+
+        findings = checks(report, CHECK_NEAR_DUPLICATES)
+        assert len(findings) == 1
+        assert "twins.py:10 (OtherClass.run)" in findings[0].evidence
+
+    def test_the_body_index_is_built_once_per_repository(self, facts):
+        # A caller lints several candidates against one set of facts. Building
+        # the index inside each run re-normalised and re-hashed every function
+        # body in the repository once per candidate.
+        built = facts()
+
+        assert built.bodies is built.bodies
 
     def test_rewriting_a_symbol_does_not_report_it_as_its_own_duplicate(self, facts, source):
         report = lint_patch(
@@ -897,21 +1051,10 @@ class TestReport:
 
         report = lint_patch(parsed.edits, facts(), source)
 
-        assert len(checks(report, CHECK_UNDECLARED_IMPORTS)) == 1
+        assert len(accusations(report, CHECK_UNDECLARED_IMPORTS)) == 1
 
     def test_an_empty_patch_produces_an_empty_report(self, facts, source):
         assert lint_patch([], facts(), source).findings == ()
-
-    def test_severity_filtering_returns_report_order(self, facts, source):
-        report = lint_patch(
-            [edit("app.py", "CONSTANT = 1", "import nonexistent_pkg\n\nCONSTANT = 1")],
-            facts(),
-            source,
-        )
-
-        assert report.of_severity(Severity.WARNING) == tuple(
-            finding for finding in report.findings if finding.severity is Severity.WARNING
-        )
 
 
 def _empty_facts():
@@ -1037,6 +1180,159 @@ class TestDanglingReferences:
         findings = checks(report, CHECK_DANGLING_REFERENCES)
         assert [finding.severity for finding in findings] == [Severity.NOT_CHECKED]
         assert "builtin and keyword table" in findings[0].message
+
+
+class TestNamesTheRestOfThePatchBinds:
+    """A change split across two blocks is one patch, not two repositories.
+
+    Splitting one change over two SEARCH/REPLACE blocks in a file is the
+    ordinary shape of model output. Judged one block at a time against the
+    pre-patch repository, the second block's use of the first block's
+    definition reads as a hallucinated helper, and a definition the patch
+    moves reads as both a removal and a redefinition.
+    """
+
+    def test_one_edits_definition_is_bound_for_the_next(self, facts, source):
+        report = lint_patch(
+            [
+                edit("app.py", "CONSTANT = 1", "CONSTANT = 1\n\n\ndef seeded(x):\n    return x"),
+                edit(
+                    "app.py",
+                    'def farewell(name):\n    return "bye " + name',
+                    'def farewell(name):\n    return seeded("bye " + name)',
+                    index=1,
+                ),
+            ],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_DANGLING_REFERENCES) == []
+
+    def test_a_definition_the_patch_moves_is_not_reported_as_shadowing(self, facts, source):
+        report = lint_patch(
+            [
+                edit("app.py", 'def greet(name):\n    return "hello " + name', ""),
+                edit(
+                    "app.py",
+                    'def farewell(name):\n    return "bye " + name',
+                    'def farewell(name):\n    return "bye " + name\n\n\n'
+                    'def greet(name):\n    return "hello " + name',
+                    index=1,
+                ),
+            ],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_SHADOWING) == []
+
+    def test_a_definition_the_patch_moves_is_not_reported_as_removed(self, facts, source):
+        report = lint_patch(
+            [
+                edit("helpers.py", "def helper():\n    return 1", ""),
+                edit(
+                    "helpers.py",
+                    "",
+                    "def helper():\n    return 2",
+                    index=1,
+                ),
+            ],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_DANGLING_CALLERS) == []
+
+    def test_a_definition_the_patch_really_removes_is_still_reported(self, facts, source):
+        report = lint_patch(
+            [edit("helpers.py", "def helper():\n    return 1", "")],
+            facts(),
+            source,
+        )
+
+        assert len(checks(report, CHECK_DANGLING_CALLERS)) == 1
+
+
+class TestNamesTheGrammarAlreadyScoped:
+    """A local this patch binds is not a helper this repository is missing.
+
+    Every case below is ordinary Python that the extractor's scope pass
+    already labels. Judging the text with regular expressions instead
+    produced a confident warning naming a real local as a hallucinated
+    helper.
+    """
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "for index, (key, value) in enumerate(items):\n        value(key)",
+            "with open('f') as (first, second):\n        first(second)",
+            "callback = lambda z: z(1)\n    callback(2)",
+            "first = second = int\n    second(1)",
+            "def inner(handler):\n        return handler(1)",
+            "if (handler := int):\n        handler(1)",
+        ],
+    )
+    def test_a_locally_bound_name_is_not_a_dangling_reference(self, facts, source, body):
+        report = lint_patch(
+            [
+                edit(
+                    "app.py",
+                    "    return 1",
+                    f"    items = [(1, 2)]\n    {body}",
+                )
+            ],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_DANGLING_REFERENCES) == []
+
+    def test_a_call_to_a_name_nothing_binds_is_still_reported(self, facts, source):
+        report = lint_patch(
+            [edit("app.py", "    return 1", "    return absent_helper(1)")],
+            facts(),
+            source,
+        )
+
+        assert len(checks(report, CHECK_DANGLING_REFERENCES)) == 1
+
+
+class TestElidedEdits:
+    """The applier's elision rule has one owner, and this calls it.
+
+    `apply_edits` expands `...` before it matches. Matching the block as
+    written anchored nowhere, so every finding about an elided edit came back
+    naming the file with no line -- the least useful place a reviewer can be
+    sent.
+    """
+
+    def test_an_elided_edit_anchors_where_the_applier_would(self, facts, source):
+        report = lint_patch(
+            [
+                edit(
+                    "app.py",
+                    '...\ndef farewell(name):\n    return "bye " + name',
+                    "...\ndef farewell(name):\n    return absent_helper(name)",
+                )
+            ],
+            facts(),
+            source,
+        )
+
+        (finding,) = checks(report, CHECK_DANGLING_REFERENCES)
+        assert finding.location == "app.py:9"
+
+    def test_an_elision_with_no_anchor_still_refuses_to_guess(self, facts, source):
+        report = lint_patch(
+            [edit("app.py", "...", "    return absent_helper(1)")],
+            facts(),
+            source,
+        )
+
+        (finding,) = checks(report, CHECK_DANGLING_REFERENCES)
+        assert finding.location == "app.py"
 
 
 class TestNearMisses:
@@ -1196,6 +1492,120 @@ class TestArity:
         )
 
         assert checks(report, CHECK_ARITY) == []
+
+    def test_the_positional_only_marker_is_not_a_parameter(self):
+        # `/` says how the parameters before it may be spelled, not that there
+        # is another one. Counting it reported a correct call one argument
+        # short.
+        assert _parameter_shape("def target(a, b, /, c) -> int") == _Shape(required=3, total=3)
+
+    def test_a_star_still_stops_the_count(self):
+        assert _parameter_shape("def target(a, b, *, c) -> int") is None
+
+    @pytest.mark.parametrize(
+        "signature",
+        [
+            "def target(key=lambda a, b: a) -> int",
+            "def target(cb=lambda x: x) -> int",
+        ],
+    )
+    def test_a_lambda_default_stops_the_count(self, signature):
+        # A lambda's parameter list is closed by `:`, not by a bracket, so its
+        # commas sit exactly where the parameter separators do. Splitting on
+        # them read one optional parameter as two, one of them required.
+        assert _parameter_shape(signature) is None
+
+    def test_a_lambda_inside_a_bracket_still_counts(self):
+        # Nested, its commas are at that bracket's depth and were never split.
+        assert _parameter_shape("def target(a, b=sorted(x, key=lambda p, q: p)) -> int") == _Shape(
+            required=1, total=2
+        )
+
+    @pytest.mark.parametrize(
+        "signature",
+        ["def target(lambda_fn, other) -> int", "def target(my_lambda, other) -> int"],
+    )
+    def test_an_identifier_holding_lambda_is_not_one(self, signature):
+        assert _parameter_shape(signature) == _Shape(required=2, total=2)
+
+    @pytest.mark.parametrize(
+        "text",
+        ["apply_to(lambda a, b: a + b)", "apply_to(lambda a: a)"],
+    )
+    def test_a_call_passing_a_lambda_is_not_judged(self, text):
+        # `apply_to(lambda a, b: a + b)` passes one argument and was read as
+        # passing two, so a correct call against a one-parameter helper was
+        # reported as one argument too many.
+        assert _positional_arguments(text, text.index("(")) is None
+
+    @pytest.mark.parametrize(
+        ("text", "arguments"),
+        [
+            ("g(sorted(x, key=lambda p, q: p), y)", ["sorted(x, key=lambda p, q: p)", "y"]),
+            ('g("lambda a, b: a", z)', ['"lambda a, b: a"', "z"]),
+        ],
+    )
+    def test_a_lambda_no_split_can_reach_leaves_the_call_readable(self, text, arguments):
+        assert _positional_arguments(text, text.index("(")) == arguments
+
+    def test_a_call_passing_a_lambda_reports_no_arity_finding(self, facts, source):
+        report = lint_patch(
+            [edit("util_math.py", "    return total", "    return compute(lambda a, b: a)")],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_ARITY) == []
+
+    def test_a_nested_def_shadowing_an_import_is_not_a_call(self, facts, source):
+        # `_call_sites` takes only the occurrences the grammar called
+        # references. Reading every row instead made the nested `def helper(`
+        # line itself a call site, and made the call below it resolve to the
+        # imported `helper()` the local one shadows -- two advisories about a
+        # function that takes exactly the argument it is given.
+        replacement = "def run():\n    def helper(one):\n        return one\n    return helper(1)"
+        report = lint_patch(
+            [edit("caller.py", "def run():\n    return helper()", replacement)],
+            facts(),
+            source,
+        )
+
+        assert checks(report, CHECK_ARITY) == []
+        assert checks(report, CHECK_DANGLING_REFERENCES) == []
+
+    def test_a_nested_format_spec_does_not_blind_the_rest_of_the_fragment(self, facts, source):
+        # `f"{n:>{w}}"` closes a nested spec and then the field. Reading that
+        # `}}` as an escaped brace left the scan inside the string, so every
+        # call after it in the fragment reported no bracket span and this
+        # check reported nothing at all -- about code it never read.
+        report = lint_patch(
+            [
+                edit(
+                    "util_math.py",
+                    "    return total",
+                    '    label = f"{total:>{width}}"\n    return compute(1, 2)',
+                )
+            ],
+            facts(),
+            source,
+        )
+
+        findings = checks(report, CHECK_ARITY)
+        assert len(findings) == 1
+        assert "2 positional argument(s)" in findings[0].message
+
+    def test_a_file_the_scan_did_not_supply_is_a_stated_gap(self, facts, source):
+        # Resolution needs the file's own import table, so a new file the
+        # patch creates disables this check rather than passing it.
+        report = lint_patch(
+            [edit("new_module.py", "", "from helpers import helper\n\nhelper(1, 2, 3)\n")],
+            facts(),
+            source,
+        )
+
+        gaps = [finding for finding in checks(report, CHECK_ARITY) if finding.path]
+        assert [gap.path for gap in gaps] == ["new_module.py"]
+        assert gaps[0].severity is Severity.NOT_CHECKED
 
     def test_a_keyword_argument_makes_the_call_unjudgeable(self, facts, source):
         report = lint_patch(

@@ -52,6 +52,12 @@ class FileFacts:
     refs: tuple[Ref, ...]
 
 
+# What makes a lookup target dotted, and therefore a claim about which file to
+# look in rather than a bare name. `Resolver` is a name; `core.refs.Resolver`
+# names a path as well, and can fail to find it.
+_DOTTED_SEPARATOR = "."
+
+
 @dataclass(frozen=True)
 class SkippedFile:
     """A file the scan saw but did not parse, and why."""
@@ -122,7 +128,14 @@ def scan_repo(
 
         read = read_bounded(root / repo_file.path, max_bytes=max_file_bytes)
         if read.text is None:
-            skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped or "unreadable"))
+            if read.skipped is None:
+                # `BoundedRead` sets exactly one of `text` and `skipped`.
+                # Raised rather than coalesced to a default reason: a broken
+                # pair must fail here, not reach a report as a file skipped
+                # for something nothing measured.
+                message = f"bounded read of {repo_file.path} set neither text nor a skip reason"
+                raise RuntimeError(message)
+            skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped))
             continue
 
         facts = _parse_one(read.text, language, repo_file.path, facts_source)
@@ -181,7 +194,32 @@ def references_to(index: RefIndex, definition: Definition) -> tuple[Ref, ...]:
     )
 
 
+@dataclass(frozen=True)
+class Resolution:
+    """What ``target`` resolved to, and whether it named the symbol it found.
+
+    ``scoped`` answers the question a caller cannot re-derive without copying
+    this module's matching rule: did a stable id find the symbol in the file it
+    named, or did it fall through to every definition of that name? Both are
+    useful answers and only one of them is what the caller asked for, so the
+    distinction travels with the definitions rather than being recomputed
+    beside them.
+    """
+
+    definitions: tuple[Definition, ...]
+    scoped: bool
+
+
 def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
+    """Resolve a lookup target to definitions, for a caller that needs no more.
+
+    :func:`resolve_definitions` is the same walk and also reports whether the
+    target named what it found.
+    """
+    return resolve_definitions(index, target).definitions
+
+
+def resolve_definitions(index: RefIndex, target: str) -> Resolution:
     """Resolve a lookup target -- a stable id or a bare name -- to definitions.
 
     One home for what "the symbol the caller meant" means, because fan-in,
@@ -190,13 +228,30 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
     back to every definition of that name when the file no longer defines it,
     which is what makes an id from a previous generation degrade to a name
     lookup instead of to an empty answer.
+
+    A dotted name narrows the same way and degrades the same way. It was
+    reduced to its last component and answered exactly like a bare name, so
+    the least ambiguous input this function can be given bought nothing:
+    ``agentless_mcp.core.resolve.resolve_repo`` returned every definition of
+    ``resolve_repo`` in the repository, JSON fixtures included.
     """
     try:
         parsed = parse_stable_id(target)
     except ValueError:
         base, _ = split_ordinal(target)
         name = base.rpartition(".")[2] or base
-        return tuple(index.definitions.get(name, ()))
+        candidates = tuple(index.definitions.get(name, ()))
+        confirmed = _path_qualified(candidates, base)
+        if confirmed:
+            return Resolution(confirmed, scoped=True)
+        # A bare name promises nothing about a file, so there is nothing it
+        # could have failed to find: it resolves by definition. A *dotted*
+        # name does promise one, and reporting `scoped=True` after the
+        # narrowing came back empty told the caller the target found what it
+        # named while handing back every definition of the last component --
+        # which is the fall-through the stable-id branch below reports
+        # honestly.
+        return Resolution(candidates, scoped=_DOTTED_SEPARATOR not in base)
 
     base, _ = split_ordinal(parsed.qualname)
     name = base.rpartition(".")[2] or base
@@ -205,7 +260,43 @@ def definitions_for(index: RefIndex, target: str) -> tuple[Definition, ...]:
         for definition in index.definitions.get(name, ())
         if definition.path == parsed.path and id_qualname(definition.symbol) == parsed.qualname
     )
-    return scoped or tuple(index.definitions.get(name, ()))
+    if scoped:
+        return Resolution(scoped, scoped=True)
+    return Resolution(tuple(index.definitions.get(name, ())), scoped=False)
+
+
+def _path_qualified(candidates: tuple[Definition, ...], target: str) -> tuple[Definition, ...]:
+    """Keep the candidates whose own file confirms a dotted target's prefix.
+
+    The test is the candidate's fully dotted spelling: its path with the
+    separators and the extension turned into dots, then its qualified name.
+    ``agentless_mcp.core.resolve.resolve_repo`` matches
+    ``src/agentless_mcp/core/resolve.py`` that way and a same-named key in an
+    unrelated JSON file does not.
+
+    Only where the target reaches past the candidate's own qualified name into
+    its path. A target that names no more than the symbol -- ``Invoice.price``,
+    ``Resolver.resolve`` -- says nothing about which file to look in, and
+    :func:`agentless_mcp.application.graph_service.rank_candidates` already
+    orders those by evidence and reports the rest as alternatives. Filtering
+    them here would take that listing away.
+
+    An empty result means no candidate's path confirms the prefix, and
+    :func:`definitions_for` then keeps the bare-name set: over-reporting by
+    name is this surface's documented posture, and a narrowing that can empty
+    an answer is worse than one that can widen it.
+    """
+    return tuple(definition for definition in candidates if _path_confirms(definition, target))
+
+
+def _path_confirms(definition: Definition, target: str) -> bool:
+    """True when a dotted target names this definition through its own path."""
+    base, _ = split_ordinal(id_qualname(definition.symbol))
+    if len(target) <= len(base):
+        return False
+    module = Path(definition.path).with_suffix("").as_posix().replace("/", ".")
+    dotted = f"{module}.{base}"
+    return dotted == target or dotted.endswith(f".{target}")
 
 
 def span_end(symbol: ASTSymbol) -> int:

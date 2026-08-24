@@ -1,14 +1,20 @@
 """The reference graph and the personalized PageRank over it."""
 
 import math
+from contextlib import contextmanager
+from dataclasses import replace
+from types import MappingProxyType
 
 import pytest
 
+from agentless_mcp.core import graph as graph_module
 from agentless_mcp.core.graph import (
     AMBIGUOUS_MATCH_MULTIPLIER,
+    DEFAULT_MAX_ITERATIONS,
     IMPORT_EDGE_WEIGHT,
     NOISE_NAME_MULTIPLIER,
     UNIQUE_MATCH_MULTIPLIER,
+    PathIndex,
     RefGraph,
     build_graph,
     name_multiplier,
@@ -57,6 +63,42 @@ def graph_of(root, extractor):
     return build_graph(scan, build_ref_index(scan))
 
 
+# A `src/` layout, where a package is imported by a name that matches no path
+# from the repository root and only the tail search can answer it.
+SRC_LAYOUT = {
+    "src/store/__init__.py": "from store.ledger import post\n",
+    "src/store/ledger.py": "def post(entry):\n    return entry\n",
+    "src/store/audit/__init__.py": "",
+    "src/store/audit/trail.py": (
+        "from store import ledger\nfrom store.audit import trail\n\n\n"
+        "def keep(entry):\n    return ledger.post(entry)\n"
+    ),
+    "app.py": "from store.audit import trail\n\n\ndef run(entry):\n    return trail.keep(entry)\n",
+}
+
+
+@contextmanager
+def scanned_path_set():
+    """Run ``build_graph`` against a plain path set instead of the tail index.
+
+    `resolve_import_target` documents two argument shapes that must answer the
+    same question, and this is how the suite reaches the one `build_graph` does
+    not choose. Restored on the way out, so nothing leaks into another test.
+    """
+    original = graph_module.PathIndex
+
+    class _PlainSet:
+        @classmethod
+        def build(cls, paths):
+            return frozenset(paths)
+
+    graph_module.PathIndex = _PlainSet
+    try:
+        yield
+    finally:
+        graph_module.PathIndex = original
+
+
 def js_import(module):
     """A JavaScript-style relative import statement of ``module``."""
     return ImportStatement(
@@ -65,20 +107,42 @@ def js_import(module):
         is_relative=True,
         relative_level=0,
         line_number=1,
-        resolved_path="",
     )
+
+
+class TestGraphIsAValue:
+    def test_the_caller_cannot_mutate_a_built_graph(self):
+        """A validating constructor promises the value cannot become invalid.
+
+        The edge map used to be stored by reference, so one write through the
+        mapping the caller still held added an edge naming a node
+        ``__post_init__`` had just refused -- and the ranking met it as a
+        ``KeyError`` from inside the numeric loop.
+        """
+        edges = {("a.py", "b.py"): 1.0}
+        graph = RefGraph(nodes=("a.py", "b.py"), edges=edges)
+
+        edges[("a.py", "vendor/gone.py")] = 99.0
+
+        assert ("a.py", "vendor/gone.py") not in graph.edges
+        assert personalized_pagerank(graph)
+
+    def test_the_mapping_the_graph_hands_out_is_read_only(self):
+        graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
+
+        assert isinstance(graph.edges, MappingProxyType)
 
 
 class TestPageRank:
     def test_an_empty_graph_ranks_nothing(self):
-        assert personalized_pagerank(RefGraph(nodes=(), edges={})) == {}
+        assert personalized_pagerank(RefGraph(nodes=(), edges={})).rank == {}
 
     def test_ranks_sum_to_one(self):
         graph = RefGraph(
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
         assert math.isclose(sum(rank.values()), 1.0, rel_tol=1e-6)
 
     def test_the_referenced_file_outranks_its_referrers(self):
@@ -86,7 +150,7 @@ class TestPageRank:
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        assert rank_order(personalized_pagerank(graph))[0] == "b.py"
+        assert rank_order(personalized_pagerank(graph).rank)[0] == "b.py"
 
     def test_two_independent_builds_of_one_tree_rank_identically(self, tmp_path, extractor):
         """The determinism claim is about the pipeline, not about a pure call.
@@ -101,37 +165,56 @@ class TestPageRank:
 
         assert first.nodes == second.nodes
         assert first.edges == second.edges
-        assert personalized_pagerank(first) == personalized_pagerank(second)
+        assert personalized_pagerank(first).rank == personalized_pagerank(second).rank
 
     def test_ties_are_broken_by_path_order(self):
         graph = RefGraph(nodes=("b.py", "a.py", "c.py"), edges={})
-        assert rank_order(personalized_pagerank(graph)) == ["a.py", "b.py", "c.py"]
+        assert rank_order(personalized_pagerank(graph).rank) == ["a.py", "b.py", "c.py"]
 
     def test_seeds_take_the_teleport_mass(self):
         graph = RefGraph(
             nodes=("a.py", "b.py", "c.py"),
             edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
         )
-        unfocused = personalized_pagerank(graph)
-        focused = personalized_pagerank(graph, {"c.py": 1.0})
+        unfocused = personalized_pagerank(graph).rank
+        focused = personalized_pagerank(graph, {"c.py": 1.0}).rank
 
         assert focused["c.py"] > unfocused["c.py"]
         assert focused["a.py"] < unfocused["a.py"]
 
     def test_a_seed_outside_the_graph_falls_back_to_uniform(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={})
-        assert personalized_pagerank(graph, {"gone.py": 1.0}) == personalized_pagerank(graph)
+        assert (
+            personalized_pagerank(graph, {"gone.py": 1.0}).rank == personalized_pagerank(graph).rank
+        )
+
+    def test_a_negative_seed_weight_is_refused_rather_than_clamped(self):
+        """Teleport mass has no negative direction, so the number is a mistake.
+
+        Clamped to zero it read as "this file was not seeded", which is the
+        one thing it is not: the caller named the file and asked for it.
+        """
+        graph = RefGraph(nodes=("a.py", "b.py"), edges={})
+
+        with pytest.raises(ValueError, match=r"a\.py"):
+            personalized_pagerank(graph, {"a.py": -1.0, "b.py": 1.0})
+
+    def test_a_negative_weight_on_an_unlisted_file_is_refused_too(self):
+        graph = RefGraph(nodes=("a.py",), edges={})
+
+        with pytest.raises(ValueError, match=r"gone\.py"):
+            personalized_pagerank(graph, {"gone.py": -1.0})
 
     def test_damping_zero_is_the_personalization_vector(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph, {"a.py": 1.0}, damping=0.0)
+        rank = personalized_pagerank(graph, {"a.py": 1.0}, damping=0.0).rank
         assert math.isclose(rank["a.py"], 1.0, rel_tol=1e-6)
         assert math.isclose(rank["b.py"], 0.0, abs_tol=1e-6)
 
     def test_dangling_mass_goes_to_the_seeds_not_uniformly(self):
         """b.py references nothing, so its mass must return to the seed."""
         graph = RefGraph(nodes=("a.py", "b.py", "c.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph, {"a.py": 1.0})
+        rank = personalized_pagerank(graph, {"a.py": 1.0}).rank
         assert rank["a.py"] > rank["b.py"] > rank["c.py"]
 
     def test_the_default_damping_is_the_one_the_rankings_were_tuned_against(self):
@@ -144,10 +227,61 @@ class TestPageRank:
         any other damping.
         """
         graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
 
         assert math.isclose(rank["a.py"], 0.3508771, abs_tol=1e-6)
         assert math.isclose(rank["b.py"], 0.6491228, abs_tol=1e-6)
+
+
+class TestConvergenceIsReported:
+    """A ranking that ran out of passes must not read as a settled one."""
+
+    def test_a_settled_run_says_so_and_names_its_pass_count(self):
+        graph = RefGraph(
+            nodes=("a.py", "b.py", "c.py"),
+            edges=line(("a.py", "b.py", 1.0), ("c.py", "b.py", 1.0)),
+        )
+
+        ranking = personalized_pagerank(graph)
+
+        assert ranking.converged
+        assert 0 < ranking.iterations < DEFAULT_MAX_ITERATIONS
+
+    def test_an_empty_graph_has_converged_over_nothing(self):
+        ranking = personalized_pagerank(RefGraph(nodes=(), edges={}))
+
+        assert ranking.rank == {}
+        assert ranking.converged
+        assert ranking.iterations == 0
+
+    def test_a_run_that_spends_its_iterations_reports_an_unsettled_rank(self):
+        """The bound is reachable at the shipped defaults, not only at 1 pass.
+
+        A chain mixes slowly, and the damping is what decides how slowly.
+        Measured 2026-08-23: this graph needs 191 passes at damping 0.99 to
+        move less than the default epsilon, against a bound of 100. Nothing
+        in the returned vector says which of the two happened, which is why
+        the flag is on the value rather than left to the caller to infer from
+        the pass count.
+        """
+        nodes = tuple(f"f{index:03d}.py" for index in range(40))
+        edges = {(nodes[index], nodes[index + 1]): 1.0 for index in range(len(nodes) - 1)}
+        graph = RefGraph(nodes=nodes, edges=edges)
+
+        ranking = personalized_pagerank(graph, damping=0.99)
+
+        assert not ranking.converged
+        assert ranking.iterations == DEFAULT_MAX_ITERATIONS
+
+    def test_the_same_graph_settles_once_it_is_given_the_passes(self):
+        nodes = tuple(f"f{index:03d}.py" for index in range(40))
+        edges = {(nodes[index], nodes[index + 1]): 1.0 for index in range(len(nodes) - 1)}
+        graph = RefGraph(nodes=nodes, edges=edges)
+
+        ranking = personalized_pagerank(graph, damping=0.99, max_iterations=500)
+
+        assert ranking.converged
+        assert ranking.iterations == 191
 
 
 class TestNameWeighting:
@@ -313,6 +447,165 @@ class TestRelativeImports:
         )
 
 
+class TestPathIndex:
+    """The tail table answers what the scan answered, at one lookup a name."""
+
+    KNOWN = (
+        "src/agentless_mcp/core/refs.py",
+        "src/mycore/refs.py",
+        "docs/refs.py",
+        "app.py",
+    )
+
+    def test_the_table_and_the_scan_agree_on_every_module_tail(self):
+        index = PathIndex.build(self.KNOWN)
+        statement = ImportStatement(
+            module="",
+            names=(),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+        )
+        modules = (
+            "agentless_mcp.core.refs",
+            "core.refs",
+            "mycore.refs",
+            "refs",
+            "docs/refs",
+            "nothing.at.all",
+        )
+        for module in modules:
+            probe = replace(statement, module=module)
+            scanned = resolve_import_target("app.py", probe, list(self.KNOWN))
+            tabled = resolve_import_target("app.py", probe, index)
+            assert tabled == scanned, module
+
+    def test_the_shortest_match_still_wins_a_tie(self):
+        """Two paths end on the same tail; the table stores the same winner."""
+        index = PathIndex.build(("vendored/deep/core/refs.py", "x/core/refs.py"))
+
+        assert index.suffix_match("core.refs") == "x/core/refs.py"
+
+    def test_a_module_with_no_separator_never_matches(self):
+        """A bare name has no tail to land on a boundary, so it names nothing."""
+        assert PathIndex.build(self.KNOWN).suffix_match("refs") is None
+
+    def test_the_index_answers_membership_for_the_direct_candidates(self):
+        index = PathIndex.build(self.KNOWN)
+
+        assert "app.py" in index
+        assert "gone.py" not in index
+
+    def test_a_build_resolves_the_same_edges_through_the_index(self, tmp_path, extractor):
+        """``build_graph`` hands the index over; the whole edge map must not move.
+
+        The index replaced a scan that allocated a ``PurePosixPath`` per known
+        path per imported name, and the claim behind that replacement is that
+        the edge set is unchanged -- not that it is similar, and not that one
+        edge of it survived. Asserting one edge above a weight floor would pass
+        with every other edge dropped, with every weight changed, and with
+        extra edges added, so the whole mapping is compared.
+
+        Both weights and endpoints: a tail that resolves to a different file
+        moves an edge, and a name counted twice moves only a number.
+        """
+        root = write(tmp_path, PACKAGE | SRC_LAYOUT)
+        scan = scan_repo(root, extractor)
+        index = build_ref_index(scan)
+
+        through_index = build_graph(scan, index)
+        with scanned_path_set():
+            through_scan = build_graph(scan, index)
+
+        assert dict(through_index.edges) == dict(through_scan.edges)
+        assert through_index.nodes == through_scan.nodes
+        # The comparison is only worth what the fixture exercises, so the
+        # fixture has to produce edges at all.
+        assert through_index.edges
+
+
+class TestPackageEntryPoints:
+    """A package is imported by its directory's name, not by its file's.
+
+    `from agentless_mcp.application import X` names
+    `src/agentless_mcp/application/__init__.py`. The direct-candidate loop
+    builds that path from the repository root, which is one directory short in
+    a `src/` layout, and the tail search compared the module against the file's
+    own stem -- `.../application/__init__` -- which the module string never
+    ends with. So every package-level import in a `src/` layout resolved to
+    nothing: 115 statements on this repository, each an edge missing from the
+    import graph and each able to hide a cycle routed through an `__init__.py`.
+    """
+
+    PACKAGED = (
+        "src/store/__init__.py",
+        "src/store/ledger.py",
+        "src/store/audit/__init__.py",
+    )
+
+    def package_import(self, module):
+        return ImportStatement(
+            module=module,
+            names=("post",),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+        )
+
+    def test_a_single_segment_package_still_names_no_tail(self):
+        """The one package shape the tail rule cannot answer, stated as a limit.
+
+        A module string with no separator has no tail that can land on a path
+        boundary, so `import store` cannot be told from a `store` anywhere in
+        the tree -- see :func:`_module_tail`. Six statements on this repository
+        are in this position, all of them `import agentless_mcp`. Widening the
+        rule to reach them would let `refs` claim `src/mycore/refs.py`, which
+        is the guess this resolver refuses to make.
+        """
+        assert resolve_import_target("app.py", self.package_import("store"), self.PACKAGED) is None
+
+    def test_a_nested_package_import_resolves_to_its_entry_point(self):
+        assert (
+            resolve_import_target("app.py", self.package_import("store.audit"), self.PACKAGED)
+            == "src/store/audit/__init__.py"
+        )
+
+    def test_a_module_still_beats_the_package_that_holds_it(self):
+        # `store.ledger` names a module, and the entry point of the package it
+        # sits in must not answer for it.
+        assert (
+            resolve_import_target("app.py", self.package_import("store.ledger"), self.PACKAGED)
+            == "src/store/ledger.py"
+        )
+
+    def test_the_table_answers_a_package_the_same_way_the_scan_does(self):
+        index = PathIndex.build(self.PACKAGED)
+        for module in ("store", "store.audit", "store.ledger", "store.missing"):
+            probe = self.package_import(module)
+            assert resolve_import_target("app.py", probe, index) == resolve_import_target(
+                "app.py", probe, list(self.PACKAGED)
+            ), module
+
+    def test_an_ecmascript_directory_index_answers_for_its_directory(self):
+        # The same rule reaches `index.ts`, which is where the entry-point
+        # stems come from: they are derived from `_MODULE_SUFFIXES`.
+        known = ("packages/ui/src/index.ts", "packages/ui/src/button.ts")
+        statement = ImportStatement(
+            module="ui/src",
+            names=(),
+            is_relative=False,
+            relative_level=0,
+            line_number=1,
+        )
+
+        assert resolve_import_target("app.ts", statement, known) == "packages/ui/src/index.ts"
+
+    def test_a_package_import_becomes_a_graph_edge(self, tmp_path, extractor):
+        graph = graph_of(write(tmp_path, SRC_LAYOUT), extractor)
+
+        assert ("app.py", "src/store/audit/__init__.py") in graph.edges
+
+
 class TestImportResolution:
     def test_a_relative_javascript_import_resolves_to_a_sibling(self):
         statement = ImportStatement(
@@ -321,7 +614,6 @@ class TestImportResolution:
             is_relative=True,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert (
             resolve_import_target("src/inventory.ts", statement, ["src/pricing.ts"])
@@ -335,7 +627,6 @@ class TestImportResolution:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert (
             resolve_import_target(
@@ -353,7 +644,6 @@ class TestImportResolution:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
         assert resolve_import_target("app.py", statement, ["app.py", "other.py"]) is None
 
@@ -369,7 +659,6 @@ class TestSuffixMatching:
             is_relative=False,
             relative_level=0,
             line_number=1,
-            resolved_path="",
         )
 
     def test_a_src_layout_resolves_through_the_tail(self):
@@ -388,3 +677,91 @@ class TestSuffixMatching:
     def test_a_module_matching_nothing_whole_resolves_to_nothing(self):
         known = ["src/mycore/refs.py"]
         assert resolve_import_target("app.py", self.absolute("core.refs"), known) is None
+
+
+class TestARelativeLevelAboveTheRoot:
+    """A level deeper than the importing file's directory names no file.
+
+    ``PurePosixPath(".").parent`` is ``"."``, so walking up used to saturate
+    at the repository root instead of running out -- and ``from ...... import
+    x`` in a top-level module resolved exactly as confidently as ``from .
+    import x``.
+    """
+
+    KNOWN = frozenset({"mod.py", "helper.py", "pkg/sub/user.py", "pkg/helper.py"})
+
+    def leveled(self, level: int) -> ImportStatement:
+        return ImportStatement(
+            module="helper",
+            names=(),
+            is_relative=True,
+            relative_level=level,
+            line_number=1,
+        )
+
+    def test_a_top_level_module_still_reaches_its_own_directory(self):
+        assert resolve_import_target("mod.py", self.leveled(1), self.KNOWN) == "helper.py"
+
+    def test_a_top_level_module_cannot_reach_above_the_repository(self):
+        assert resolve_import_target("mod.py", self.leveled(2), self.KNOWN) is None
+
+    def test_a_nested_module_reaches_the_root_but_no_further(self):
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(2), self.KNOWN) == (
+            "pkg/helper.py"
+        )
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(3), self.KNOWN) == "helper.py"
+        assert resolve_import_target("pkg/sub/user.py", self.leveled(4), self.KNOWN) is None
+
+
+class TestASpecifierThatAlreadyNamesAFile:
+    """C, C++ and shell write the filename; Python writes a dotted module.
+
+    Before this, every specifier was dotted the way a Python module string is,
+    so `#include "money.h"` became the stem `money/h` and no suffix appended
+    to that ever matched. Measured: no C or C++ include resolved to a
+    repository file at all, on any repository -- the include graph was empty,
+    and the audit's finding about *which* file such an include preferred could
+    not arise because it never reached one.
+    """
+
+    KNOWN = frozenset({"money.h", "app.c", "src/a/util.h", "src/a/app.c", "util.h", "lib/util.sh"})
+
+    def statement(self, module: str, *, relative: bool = True) -> ImportStatement:
+        return ImportStatement(
+            module=module,
+            names=(),
+            is_relative=relative,
+            relative_level=0,
+            line_number=1,
+        )
+
+    def test_a_quoted_include_resolves_to_the_file_it_names(self):
+        assert resolve_import_target("app.c", self.statement("money.h"), self.KNOWN) == "money.h"
+
+    def test_it_prefers_the_sibling_over_a_same_named_file_at_the_root(self):
+        # `#include "util.h"` names the header beside the including file.
+        # Both exist here, so the preference is the whole assertion.
+        assert (
+            resolve_import_target("src/a/app.c", self.statement("util.h"), self.KNOWN)
+            == "src/a/util.h"
+        )
+
+    def test_a_system_header_still_resolves_to_nothing(self):
+        # `<stdio.h>` is not in this repository, and inventing a match for it
+        # would be the guess this resolver refuses to make.
+        assert resolve_import_target("app.c", self.statement("stdio.h"), self.KNOWN) is None
+
+    def test_a_shell_source_path_resolves_too(self):
+        assert (
+            resolve_import_target("app.c", self.statement("lib/util.sh"), self.KNOWN)
+            == "lib/util.sh"
+        )
+
+    def test_a_dotted_python_module_is_unaffected(self):
+        # The branch keys on "the specifier already ends in a file suffix",
+        # so `package.module` still goes through the dotted path.
+        known = frozenset({"package/module.py", "app.py"})
+        assert (
+            resolve_import_target("app.py", self.statement("package.module", relative=False), known)
+            == "package/module.py"
+        )

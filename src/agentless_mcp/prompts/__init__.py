@@ -24,9 +24,12 @@ Four files, grouped by consumer:
     markers that ``application.envelope`` wraps every answer in.
 
 ``messages.json``
-    The refusal and guidance texts: the allowlist refusals raised by the
-    server and by ``application.repo_context``, and the cache-generation
-    remediation ``core.cache`` renders into the receipt.
+    The refusals and the guidance notes: a root or operation refusal, a
+    truncation or skipped-file note, a remediation for a cache generation
+    that no longer matches. Grouped by what a text says rather than by who
+    says it, because the consumers run from the adapter through the
+    application services down to ``core.cache`` and an enumerated list of
+    them goes stale.
 
 Every value is validated against the keys the code consumes, so a rename in
 the JSON fails at startup rather than serving a blank description. Templates
@@ -89,8 +92,11 @@ class MessageText:
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str
+    grouped_ids: str
+    refs_target_unresolved: str
     overview_stable_ids: str
     slice_range_beyond_file: str
+    slice_range_not_a_range: str
     cache_stale_remediation: str
     cache_stale_refreshing: str
     cache_absent_refreshing: str
@@ -166,6 +172,7 @@ PARAMETER_NAMES = (
     "structure_limit",
     "community_resolution",
     "diagram_focus",
+    "diagram_max_edges",
     "diagram_max_nodes",
     "group_by_communities",
     "locations",

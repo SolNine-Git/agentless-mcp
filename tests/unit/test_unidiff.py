@@ -8,6 +8,8 @@ pins one construct to one of those three, and the refusals are asserted on their
 act on is only a slower silence.
 """
 
+import pytest
+
 from agentless_mcp.core import unidiff
 
 SIMPLE = """\
@@ -124,6 +126,28 @@ diff --git a/other.py b/other.py
         assert edit.search == "-- still content\ngone"
         assert edit.replace == "new"
 
+    def test_a_refusal_after_such_a_line_does_not_build_a_phantom_section(self):
+        # The end of a section is found by stepping over hunks with their
+        # declared counts. Scanning for it line by line lands inside the first
+        # hunk, and the refusal below then resumes on `--- looks like header`
+        # and reports a second, invented file.
+        text = "--- a/app.py\n+++ b/app.py\n@@ -1,2 +1,1 @@\n--- looks like header\n-gone\n"
+        text += "+new\n@@ nonsense @@\n-a\n+b\n"
+        parsed = unidiff.parse_unified_diff(text)
+        (error,) = parsed.result.errors
+        assert error.path == "app.py"
+        assert "not '@@ -old,count +new,count @@'" in error.reason
+
+    def test_hunks_whose_pre_image_ranges_overlap_are_refused(self):
+        # Two hunks over the same lines describe two states of one file, and
+        # the edits they yield contradict each other.
+        text = "--- a/app.py\n+++ b/app.py\n@@ -1,2 +1,2 @@\n a\n-b\n+B\n"
+        text += "@@ -1,2 +1,2 @@\n a\n-b\n+C\n"
+        parsed = unidiff.parse_unified_diff(text)
+        (error,) = parsed.result.errors
+        assert "overlap or run backwards" in error.reason
+        assert "starts at line 1" in error.reason
+
 
 class TestFilesThatAppearOrDisappear:
     def test_a_new_file_becomes_an_edit_with_an_empty_pre_image(self):
@@ -203,6 +227,18 @@ Binary files a/logo.png and b/logo.png differ
         assert parsed.result.errors == ()
         assert parsed.notes[0].path == "logo.png"
 
+    def test_a_note_on_a_plain_diff_names_the_file_the_pair_names(self):
+        # A `diff -u` has no `diff --git` label, so falling back to it reports a
+        # specific file's section as a fact about the repository.
+        text = "--- a/x.bin\n+++ b/x.bin\nBinary files a/x.bin and b/x.bin differ\n"
+        parsed = unidiff.parse_unified_diff(text)
+        (note,) = parsed.notes
+        assert note.path == "x.bin"
+
+    def test_a_refusal_on_a_plain_diff_names_the_file_the_pair_names(self):
+        text = "--- a/old.py\n+++ b/new.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+        assert only_error(text).path == "new.py"
+
     def test_a_binary_file_does_not_stop_the_rest_of_the_diff(self):
         text = (
             """\
@@ -256,6 +292,35 @@ class TestPathsThisReaderWillNotGuessAt:
         text = "diff --git a/app.py b/app.py\n--- a/app.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
         assert "only one of the '---' and '+++' headers" in only_error(text).reason
 
+    def test_a_trailing_space_stays_in_the_path_rather_than_being_trimmed(self):
+        # A hand-written diff may name a file whose name ends in a space.
+        # Trimming it points every finding at a different file, silently.
+        text = "--- a/sp \n+++ b/sp \n@@ -1,1 +1,1 @@\n-old\n+new\n"
+        (edit,) = edits_of(text)
+        assert edit.path == "sp "
+
+    def test_no_prefix_under_a_top_level_a_directory_is_not_called_a_rename(self):
+        # `git diff --no-prefix` of a file at `a/bar.py` writes the same path on
+        # both sides, and only the old side matches the prefix this strips.
+        text = "--- a/bar.py\n+++ a/bar.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+        error = only_error(text)
+        assert error.path == "a/bar.py"
+        assert "both name a/bar.py" in error.reason
+        assert "drop --no-prefix" in error.reason
+        assert "rename" not in error.reason
+
+    def test_a_diff_git_line_whose_path_holds_the_separator_is_still_labelled(self):
+        # `diff --git a/my b/dir.py b/my b/dir.py` has two candidate separators.
+        # Only the split whose halves name one file is read.
+        text = "diff --git a/my b/dir.py b/my b/dir.py\nold mode 100644\nnew mode 100755\n"
+        parsed = unidiff.parse_unified_diff(text)
+        (note,) = parsed.notes
+        assert note.path == "my b/dir.py"
+
+    def test_a_diff_git_line_that_stays_ambiguous_is_not_guessed_at(self):
+        text = "diff --git a/one b/two.py b/three b/four.py\nold mode 100644\nnew mode 100755\n"
+        assert "names no file" in only_error(text).reason
+
 
 class TestLineEndings:
     def test_a_carriage_return_inside_content_is_kept_because_the_file_has_it(self):
@@ -293,6 +358,23 @@ class TestHunkBodies:
         text = "--- a/app.py\n+++ b/app.py\n@@ -1,1 +1,1 @@\n-one\n-two\n+new\n"
         assert "does not match" in only_error(text).reason
 
+    def test_a_body_the_counts_run_out_inside_is_refused_rather_than_dropped(self):
+        # A context line takes both counters to zero at once, so the loop ends
+        # with body still to read. Passing it over drops every later hunk of the
+        # file too, and reports a clean section about a diff nothing read.
+        text = "--- a/app.py\n+++ b/app.py\n@@ -1,1 +1,1 @@\n keep\n-real removal\n"
+        text += "+real addition\n@@ -9,1 +9,1 @@\n-second\n+SECOND\n"
+        reason = only_error(text).reason
+        assert "does not match" in reason
+        assert "app.py" in reason
+
+    def test_a_blank_line_after_a_hunk_ends_it_rather_than_extending_it(self):
+        # What `git log -p` puts between one commit's diff and the next
+        # commit's header.
+        text = SIMPLE + "\ncommit 1234567890abcdef\nAuthor: Someone <someone@example.invalid>\n"
+        (edit,) = edits_of(text)
+        assert edit.path == "app.py"
+
     def test_a_body_line_with_no_marker_is_refused(self):
         text = "--- a/app.py\n+++ b/app.py\n@@ -1,2 +1,1 @@\n context\nnaked line\n+new\n"
         assert "is not ' ', '-', '+'" in only_error(text).reason
@@ -314,6 +396,86 @@ class TestHunkBodies:
         assert "no hunks" in only_error(text).reason
 
 
+class TestAHunkEndedByATrailerShape:
+    """An empty line and ``--`` end a hunk, and cannot be trusted to.
+
+    Both follow a correct hunk in real output, so both are read as its end.
+    Both also sit where an over-long body's first excess line sits, and the
+    loop that reads hunks stops at anything that is not ``@@`` while the scan
+    above it passes over anything that does not open a file section. A hunk
+    ended one line early therefore took every later hunk of the file with it,
+    reported nothing, and left a section that read as checked and clean.
+    """
+
+    HEAD = "--- a/app.py\n+++ b/app.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+    LATER_HUNK = "@@ -20,1 +20,1 @@\n-second\n+SECOND\n"
+
+    def _refusal(self, text):
+        parsed = unidiff.parse_unified_diff(text)
+        assert len(parsed.result.errors) == 1, parsed.result.errors
+        return parsed.result.errors[0]
+
+    @pytest.mark.parametrize("boundary", ["\n", "--\n", "-- \n"])
+    def test_a_later_hunk_behind_a_trailer_shape_is_refused_not_dropped(self, boundary):
+        error = self._refusal(self.HEAD + boundary + self.LATER_HUNK)
+        assert "does not match" in error.reason
+        assert "app.py" in error.reason
+
+    @pytest.mark.parametrize("boundary", ["\n", "--\n"])
+    def test_trailing_body_behind_a_trailer_shape_is_refused_not_dropped(self, boundary):
+        error = self._refusal(self.HEAD + boundary + "-third\n+THIRD\n")
+        assert "does not match" in error.reason
+
+    def test_a_format_patch_signature_still_ends_the_last_hunk(self):
+        # `git format-patch` writes `-- ` and then its version. Nothing after
+        # it is hunk content, and refusing it would refuse every patch file.
+        (edit,) = edits_of(self.HEAD + "-- \n2.43.0\n")
+        assert edit.path == "app.py"
+
+    def test_a_git_log_p_commit_header_still_ends_the_last_hunk(self):
+        text = self.HEAD + "\ncommit 1234567890abcdef\nAuthor: A <a@b.invalid>\n\n    message\n"
+        (edit,) = edits_of(text)
+        assert edit.path == "app.py"
+
+    def test_two_correct_hunks_in_a_row_are_both_read(self):
+        edits = edits_of(self.HEAD + self.LATER_HUNK)
+        assert [block.search for block in edits] == ["old", "second"]
+
+
+class TestASectionThatLostItsPathPair:
+    """A mode-only change has no hunks, so a section with hunks is not one.
+
+    Both ``---`` and ``+++`` absent was read as the mode change git spells
+    that way, without asking whether hunks followed. A header block truncated
+    down to its ``index`` line therefore reported "there is no content to
+    check" about a section holding a content change -- the coverage claim this
+    module exists to keep honest, made about a diff nothing read.
+    """
+
+    def test_hunks_without_a_path_pair_are_refused(self):
+        text = "diff --git a/app.py b/app.py\nindex 1111111..2222222 100644\n"
+        text += "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        error = only_error(text)
+        assert error.path == "app.py"
+        assert "has hunks but neither a '---' nor a '+++' header" in error.reason
+
+    def test_a_real_mode_only_change_is_still_a_note(self):
+        text = "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+        parsed = unidiff.parse_unified_diff(text)
+        assert parsed.result.errors == ()
+        (note,) = parsed.notes
+        assert "mode change only" in note.reason
+
+    def test_a_refused_section_does_not_cost_the_one_after_it(self):
+        text = "diff --git a/app.py b/app.py\nindex 1111111..2222222 100644\n"
+        text += "@@ -1,1 +1,1 @@\n-old\n+new\n"
+        text += "diff --git a/other.py b/other.py\n--- a/other.py\n+++ b/other.py\n"
+        text += "@@ -1,1 +1,1 @@\n-x\n+y\n"
+        parsed = unidiff.parse_unified_diff(text)
+        assert len(parsed.result.errors) == 1
+        assert [block.path for block in parsed.result.edits] == ["other.py"]
+
+
 class TestZeroContext:
     def test_a_zero_context_hunk_into_an_existing_file_is_refused(self):
         # An empty pre-image anchors nowhere, and apply_edits pads it into
@@ -327,6 +489,14 @@ class TestZeroContext:
         text = "--- /dev/null\n+++ b/new.py\n@@ -0,0 +1,1 @@\n+added\n"
         (edit,) = edits_of(text)
         assert edit.search == ""
+
+    def test_a_hunk_that_declares_nothing_on_either_side_is_refused(self):
+        # Both sides empty yields an edit with an empty search and an empty
+        # replace, which every check downstream reads as a change it examined.
+        text = "--- /dev/null\n+++ b/new.py\n@@ -0,0 +0,0 @@\n"
+        reason = only_error(text).reason
+        assert "declares no lines on either side" in reason
+        assert "new.py" in reason
 
 
 class TestWholeDocuments:

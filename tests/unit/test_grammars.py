@@ -1,9 +1,12 @@
 """Tests for grammar loading, warmed-state gating and degradation.
 
-Nothing here reaches the network: the warmed-state probe is monkeypatched so
-the "not warmed" and "no download" paths are exercised without depending on
-what this machine happens to have cached, and the cold-cache warm test
-poisons the pack's manifest URL so any attempted fetch fails instantly.
+Nothing here reaches the network. The tests that need a real grammar read the
+one the session-scoped ``warm_grammars`` fixture warmed, which is where the
+suite's single download can happen; those assertions therefore rest on what
+that fixture arranged, not on this file. Everywhere else the warmed-state
+probe is monkeypatched so the "not warmed" and "no download" paths do not
+depend on what this machine happens to have cached, and the cold-cache warm
+test poisons the pack's manifest URL so any attempted fetch fails instantly.
 """
 
 import logging
@@ -17,7 +20,7 @@ import pytest
 import tree_sitter_language_pack as pack
 
 from agentless_mcp.core import grammars
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 
 
 class TestGetLanguage:
@@ -25,8 +28,19 @@ class TestGetLanguage:
         language = grammars.get_language("python")
         assert language.abi_version >= 13
 
-    def test_parser_is_memoized(self):
-        assert grammars.get_parser("python") is grammars.get_parser("python")
+    def test_each_caller_gets_its_own_parser(self):
+        # Not memoized, and this test is the reason stated where a reader
+        # will look for it. A Parser carries mutable state across parse
+        # calls and four call sites reach it while the background index
+        # thread runs, so a shared instance is one object driven by two
+        # threads. Sharing was safe only because py-tree-sitter 0.26 holds
+        # the GIL across parse, which the version pin does not promise.
+        assert grammars.get_parser("python") is not grammars.get_parser("python")
+
+    def test_the_grammar_behind_them_is_still_shared(self):
+        # The expensive half is the Language, and it is immutable. Dropping
+        # the parser memo must not turn every parse into a grammar load.
+        assert grammars.get_parser("python").language == grammars.get_parser("python").language
 
     def test_unknown_language_is_named_as_unknown(self):
         with pytest.raises(LanguageUnavailable) as caught:
@@ -39,11 +53,31 @@ class TestGetLanguage:
             grammars.get_language("go")
         assert str(caught.value) == "language 'go' not warmed: run agentless-mcp warmup"
 
+    def test_a_cached_grammar_that_will_not_load_names_a_different_remedy(self, monkeypatch):
+        """Telling this reader to run warmup sends them round a loop.
+
+        `_warm_one` skips `prefetch` for a language the pack already lists as
+        downloaded, so the fetch never happens and the report never changes.
+        """
+        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["python", "go"])
+
+        def refuse(name):
+            message = f"bad magic in {name}.so"
+            raise pack.DynamicLoadError(message)
+
+        monkeypatch.setattr(pack, "get_language", refuse)
+        with pytest.raises(LanguageUnavailable) as caught:
+            grammars.get_language("go")
+        message = str(caught.value)
+        assert "is cached in" in message
+        assert "bad magic in go.so" in message
+        assert "Warmup will not refetch it" in message
+
 
 class TestWarmup:
     def test_no_download_flag_refuses_to_fetch(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
-        with pytest.raises(AtlasError) as caught:
+        with pytest.raises(AgentlessError) as caught:
             grammars.warmup(["python"], no_download=True)
         message = str(caught.value)
         assert "refusing to download grammar 'python'" in message
@@ -52,7 +86,7 @@ class TestWarmup:
     def test_no_download_environment_variable_refuses_to_fetch(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
         monkeypatch.setenv(grammars.ENV_NO_DOWNLOAD, "1")
-        with pytest.raises(AtlasError, match="refusing to download grammar"):
+        with pytest.raises(AgentlessError, match="refusing to download grammar"):
             grammars.warmup(["python"])
 
     def test_already_warmed_languages_do_not_need_a_download(self, monkeypatch):
@@ -98,6 +132,34 @@ class TestCapabilities:
         assert capability.warmed is False
         assert capability.probe_ok is False
         assert capability.detail == "not warmed: run agentless-mcp warmup go"
+
+    def test_a_broken_grammar_and_an_unfetched_one_carry_different_remedies(self, monkeypatch):
+        """Both are unwarmed, and running warmup fixes only one of them.
+
+        The two states carry identical booleans, so the detail is the only
+        thing that separates them -- and it has to, because the advice the
+        pair exists to distinguish is advice a reader acts on. ``warmup``
+        skips ``prefetch`` for anything ``downloaded_languages`` already
+        lists, so telling the owner of a broken cached library to run it
+        sends them to a command that fetches nothing.
+        """
+        monkeypatch.setattr(pack, "downloaded_languages", list)
+        (never_fetched,) = grammars.loaded_capabilities(["go"])
+
+        def refuse(name):
+            message = f"bad magic in {name}.so"
+            raise pack.DynamicLoadError(message)
+
+        monkeypatch.setattr(pack, "downloaded_languages", lambda: ["go"])
+        monkeypatch.setattr(pack, "get_language", refuse)
+        (broken,) = grammars.loaded_capabilities(["go"])
+
+        assert never_fetched.warmed is False
+        assert broken.warmed is False
+        assert never_fetched.detail != broken.detail
+        assert "run agentless-mcp warmup" in never_fetched.detail
+        assert "bad magic in go.so" in broken.detail
+        assert "Warmup will not refetch it" in broken.detail
 
     def test_default_capability_list_covers_both_tiers(self, monkeypatch):
         monkeypatch.setattr(pack, "downloaded_languages", list)
@@ -147,6 +209,41 @@ class TestAutoWarm:
         thread.join(timeout=5)
         assert not thread.is_alive()
         assert calls == [("json",)]
+
+    def test_the_bundle_scan_stays_inside_the_bundles_directory(self, monkeypatch, tmp_path):
+        """The operator owns the cache path, so its parent is not a bounded place."""
+        root = tmp_path / "grammars"
+        (root / "bundles").mkdir(parents=True)
+        (root / "bundles" / "linux-abc.tar.zst").touch()
+        (root / "unrelated").mkdir()
+        (root / "unrelated" / "someone-elses.tar.zst").touch()
+        monkeypatch.setattr(grammars, "cache_dir", lambda: str(root / "libs"))
+
+        assert grammars._bundle_archives() == frozenset({"linux-abc.tar.zst"})
+
+    def test_a_failed_bundle_scan_is_not_an_empty_one(self, monkeypatch):
+        """An empty set would subtract to "nothing was fetched" for a scan that never ran."""
+
+        def refuse():
+            message = "cache directory unreadable"
+            raise OSError(message)
+
+        monkeypatch.setattr(grammars, "cache_dir", refuse)
+        assert grammars._bundle_archives() is None
+
+    def test_the_warm_log_says_when_the_bundle_scan_failed(
+        self, monkeypatch, auto_warm_isolated, caplog
+    ):
+        clean = grammars.WarmupReport(cache_dir="cache", pack_version="1.0", languages=())
+        monkeypatch.setattr(grammars, "warmed_languages", frozenset)
+        monkeypatch.setattr(grammars, "warmup", lambda names, **kwargs: clean)
+        monkeypatch.setattr(grammars, "_bundle_archives", lambda: None)
+
+        with caplog.at_level(logging.INFO, logger="agentless_mcp.core.grammars"):
+            thread = grammars.start_auto_warm(["json"])
+            assert thread is not None
+            thread.join(timeout=5)
+        assert "the bundle scan failed" in caplog.text
 
     def test_no_download_has_absolute_priority(self, monkeypatch, auto_warm_isolated):
         monkeypatch.setenv(grammars.ENV_NO_DOWNLOAD, "1")

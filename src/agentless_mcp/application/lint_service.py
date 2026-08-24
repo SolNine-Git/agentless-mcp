@@ -33,8 +33,22 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.patches import BlockError, Edit, ParseResult
-from agentless_mcp.util.errors import AtlasError
-from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.errors import (
+    InputUnreadable,
+    OperationFailed,
+    SecurityRefusal,
+)
+from agentless_mcp.util.fslimits import (
+    BoundedRead,
+    contained_path,
+    file_stays_inside,
+    read_bounded,
+)
+
+# What a manifest at the repository root is refused with when it is a symlink
+# whose target is outside that root. Reported as an unread manifest rather than
+# raised, so the report says which one contributed nothing and why.
+MANIFEST_OUTSIDE_ROOT = "refused: a symlink whose target is outside the repository"
 
 
 @dataclass(frozen=True)
@@ -95,29 +109,107 @@ class LintService:
         return patchlint.RepoFacts(
             files=scan.by_path(),
             texts=_texts(ctx.root, scan),
-            dependencies=patchlint.read_declared_dependencies(ctx.root),
+            dependencies=read_declared_dependencies(ctx.root),
             resolver=resolve.build_resolver(scan, index),
         )
 
 
+def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
+    """Read ``root``'s dependency manifests.
+
+    ``pyproject.toml`` and every ``requirements*.txt`` at the repository root,
+    read through the same bounded reader every other file access in this
+    package uses. A manifest that cannot be parsed produces a warning and
+    contributes nothing, rather than being treated as an empty one -- an empty
+    declared set would make every third-party import in the patch look
+    hallucinated.
+
+    Here rather than beside the checks that consume it, because opening a file
+    at a repository root is this module's job and :mod:`patchlint` states that
+    it opens nothing. The parsing stays there: it takes text and is pure.
+    """
+    packages: set[str] = set()
+    sources: list[str] = []
+    warnings: list[str] = []
+    requires_python = ""
+
+    resolved_root = root.resolve()
+
+    pyproject = root / patchlint.PYPROJECT_NAME
+    if pyproject.is_file():
+        read = _read_manifest(pyproject, resolved_root)
+        if read.text is None:
+            warnings.append(f"{patchlint.PYPROJECT_NAME} not read: {read.skipped}")
+        else:
+            parse = patchlint.parse_pyproject_dependencies(read.text)
+            packages.update(parse.packages)
+            warnings.extend(parse.warnings)
+            requires_python = parse.requires_python
+            if parse.parsed:
+                sources.append(patchlint.PYPROJECT_NAME)
+
+    for requirements in sorted(root.glob(patchlint.REQUIREMENTS_GLOB)):
+        if not requirements.is_file():
+            continue
+        read = _read_manifest(requirements, resolved_root)
+        if read.text is None:
+            warnings.append(f"{requirements.name} not read: {read.skipped}")
+            continue
+        packages.update(patchlint.parse_requirements(read.text))
+        sources.append(requirements.name)
+
+    return patchlint.DeclaredDependencies(
+        packages=frozenset(packages),
+        sources=tuple(sources),
+        warnings=tuple(warnings),
+        requires_python=requires_python,
+    )
+
+
+def _read_manifest(path: Path, resolved_root: Path) -> BoundedRead:
+    """Read one manifest at the repository root, refusing one that leaves it.
+
+    The containment step ``read_bounded`` names as its precondition and these
+    two callers did not perform. ``read_bounded`` follows symlinks on purpose
+    -- one symlink policy per module, and the policy is the caller's -- so
+    without this a repository whose ``pyproject.toml`` is a symlink to a file
+    outside it was read, and whatever package names parsed out of that file
+    were reported as this repository's own declared dependencies. A repository
+    is a thing people clone from strangers.
+
+    ``file_stays_inside`` rather than ``contained_path`` because the answer
+    here is a reason, not an exception: this function's whole contract is that
+    a manifest it cannot use contributes a warning and nothing else. Silence
+    would be worse than either -- an empty declared set makes every
+    third-party import in a patch look hallucinated.
+    """
+    if not file_stays_inside(path, resolved_root):
+        return BoundedRead(path=path, text=None, skipped=MANIFEST_OUTSIDE_ROOT)
+    return read_bounded(path)
+
+
 def load_candidates(target: Path) -> tuple[LintCandidateInput, ...]:
-    """Read one patch file, or every patch file in a directory.
+    """Read one patch file, or every file in a directory of them.
 
     The same two shapes ``patch parse`` accepts, and the same id rule
     ``validate`` uses: one file is one candidate and its stem is its id, so a
     lint report and a verdicts document name the same candidate the same way.
+
+    A directory holds candidate patches and nothing else. There is no
+    extension filter, so a stray README or editor swap file becomes a
+    candidate and is reported with the parse errors it produces.
     """
     resolved = target.expanduser().resolve()
     if resolved.is_dir():
         files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
         if not files:
             message = f"no patch files in {resolved}: one file per candidate patch"
-            raise AtlasError(message)
+            raise OperationFailed(message)
         return tuple(_candidate(path) for path in files)
 
     if not resolved.is_file():
         message = f"{resolved} is neither a patch file nor a directory of them"
-        raise AtlasError(message)
+        raise InputUnreadable(message)
     return (_candidate(resolved),)
 
 
@@ -151,7 +243,7 @@ def _text(path: Path, what: str) -> str:
     read = read_bounded(path)
     if read.text is None:
         message = f"cannot read {what} {path.name}: {read.skipped}"
-        raise AtlasError(message)
+        raise InputUnreadable(message)
     return read.text
 
 
@@ -181,6 +273,12 @@ def _findings(
     ``shadowing`` would report each one as a name defined twice. That is a
     wrong answer rather than a missing one, which is why it costs the whole
     candidate rather than a line.
+
+    A candidate naming a path outside the repository costs that candidate and
+    no other. The refusal used to leave ``lint`` -- so a directory of ten
+    model-generated candidates in which one names ``../../etc/passwd``
+    produced no report at all, rather than nine reports and one refusal --
+    which is the case a model-generated candidate set is most likely to hold.
     """
     parsed = candidate.parsed
     notes = tuple(_note_row(note) for note in candidate.notes)
@@ -215,7 +313,11 @@ def _findings(
         )
         return (*notes, empty)
 
-    edits = _canonical(root, parsed.edits)
+    try:
+        edits = _canonical(root, parsed.edits)
+    except SecurityRefusal as refusal:
+        return (*notes, _refused_row(refusal))
+
     misoriented = unidiff.orientation(edits, facts.texts)
     if misoriented:
         return notes + tuple(_misoriented_row(problem) for problem in misoriented)
@@ -236,6 +338,26 @@ def _note_row(note: unidiff.DiffNote) -> render.LintFinding:
         line=0,
         location=where,
         evidence=note.reason,
+    )
+
+
+def _refused_row(refusal: SecurityRefusal) -> render.LintFinding:
+    """Report one candidate whose paths left the repository, as a coverage gap.
+
+    The same treatment :func:`_misoriented_row` gives the other "this
+    candidate cannot be checked against this tree" case, and for the same
+    reason: this service decides nothing, so a candidate it cannot check is a
+    row rather than the end of the run. The refusal's own message already
+    names what was refused without echoing the raw argument.
+    """
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=f"not checked: {refusal}",
+        path="",
+        line=0,
+        location="(repository)",
+        evidence="path refused",
     )
 
 

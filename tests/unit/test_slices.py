@@ -6,7 +6,7 @@ import pytest
 
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.slices import line_count, line_wrap_content, merge_intervals
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 TWELVE_LINES = "\n".join(f"line {index}" for index in range(1, 13))
 
@@ -44,25 +44,25 @@ class TestMergeIntervals:
 class TestLineWrapContent:
     def test_whole_file_is_numbered_without_markers(self):
         rendered = line_wrap_content("a\nb\nc")
-        assert rendered == "1|a\n2|b\n3|c"
+        assert rendered == "1| a\n2| b\n3| c"
 
     def test_slice_is_marked_at_both_ends(self):
         rendered = line_wrap_content(TWELVE_LINES, [(4, 6)]).splitlines()
         assert rendered[0] == "..."
-        assert rendered[1] == "4|line 4"
+        assert rendered[1] == "4| line 4"
         assert rendered[-1] == "..."
 
     def test_slice_starting_at_line_one_has_no_leading_marker(self):
         rendered = line_wrap_content(TWELVE_LINES, [(1, 3)]).splitlines()
-        assert rendered[0] == "1|line 1"
+        assert rendered[0] == "1| line 1"
 
     def test_gap_between_intervals_is_marked_once(self):
         rendered = line_wrap_content(TWELVE_LINES, [(1, 2), (5, 12)]).splitlines()
         assert rendered == [
-            "1|line 1",
-            "2|line 2",
+            "1| line 1",
+            "2| line 2",
             "...",
-            *[f"{n}|line {n}" for n in range(5, 13)],
+            *[f"{n}| line {n}" for n in range(5, 13)],
         ]
 
     def test_trailing_marker_does_not_follow_the_last_interval_alone(self):
@@ -71,31 +71,51 @@ class TestLineWrapContent:
         already reached the end of the file still got an elision marker."""
         rendered = line_wrap_content(TWELVE_LINES, [(1, 12), (5, 7)])
         assert not rendered.endswith("...")
-        assert rendered.splitlines()[-1] == "12|line 12"
+        assert rendered.splitlines()[-1] == "12| line 12"
 
-    def test_add_space_format(self):
-        assert line_wrap_content("a", add_space=True) == "1| a "
-
-    def test_no_line_number_format(self):
-        assert line_wrap_content("a\nb", no_line_number=True) == "a\nb"
+    def test_the_removed_prompt_options_left_one_render_path(self):
+        """``add_space`` and ``no_line_number`` were Agentless prompt knobs
+        that no caller here ever set, and the dataclass existed only to route
+        between them. One spelling is left, and it is ``line_prefix``'s, so a
+        slice and a skeleton of the same file agree line for line."""
+        assert line_wrap_content("a") == "1| a"
+        with pytest.raises(TypeError):
+            line_wrap_content("a", add_space=True)
 
     def test_scope_headers_come_from_symbols(self):
         symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
         rendered = line_wrap_content(SCOPED_SOURCE, [(7, 7)], symbols=symbols).splitlines()
         assert rendered == [
             "...",
-            "1|class Widget:",
-            "4|    def render(self) -> str:",
+            "1| class Widget:",
+            "4|     def render(self) -> str:",
             "...",
-            "7|            total += part",
+            "7|             total += part",
             "...",
         ]
 
     def test_scope_headers_are_not_repeated_across_intervals(self):
         symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
         rendered = line_wrap_content(SCOPED_SOURCE, [(6, 6), (8, 8)], symbols=symbols)
-        assert rendered.count("1|class Widget:") == 1
-        assert rendered.count("4|    def render(self) -> str:") == 1
+        assert rendered.count("1| class Widget:") == 1
+        assert rendered.count("4|     def render(self) -> str:") == 1
+
+    def test_a_header_the_render_already_showed_as_content_is_not_repeated(self):
+        """Regression: ``shown_scopes`` recorded only the headers this render
+        wrote, so an interval covering the class line and a later interval
+        inside that class printed the class line twice and the numbers ran
+        backwards."""
+        symbols = TreeSitterExtractor().extract_from_source(SCOPED_SOURCE, "python", "widget.py")
+        rendered = line_wrap_content(SCOPED_SOURCE, [(1, 2), (7, 7)], symbols=symbols).splitlines()
+        assert rendered == [
+            "1| class Widget:",
+            '2|     """A widget."""',
+            "...",
+            "4|     def render(self) -> str:",
+            "...",
+            "7|             total += part",
+            "...",
+        ]
 
 
 class TestLineCount:
@@ -114,7 +134,7 @@ class TestLineCount:
         assert line_count("") == 0
 
     def test_the_whole_file_render_has_no_phantom_last_line(self):
-        assert line_wrap_content("a\nb\n") == "1|a\n2|b"
+        assert line_wrap_content("a\nb\n") == "1| a\n2| b"
 
 
 class TestAnUnsatisfiableIntervalIsRefused:
@@ -127,20 +147,20 @@ class TestAnUnsatisfiableIntervalIsRefused:
         assert line_wrap_content(TWELVE_LINES) == line_wrap_content(TWELVE_LINES, [])
 
     def test_a_transposed_interval_is_refused(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(60, 30)])
 
     def test_a_negative_interval_is_not_read_as_the_whole_file(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(-9, -1)])
 
     def test_an_interval_past_the_end_is_refused(self):
-        with pytest.raises(AtlasError, match="no requested line range falls inside"):
+        with pytest.raises(AgentlessError, match="no requested line range falls inside"):
             line_wrap_content(TWELVE_LINES, [(30, 40)])
 
     def test_one_satisfiable_interval_is_enough_to_answer(self):
         rendered = line_wrap_content(TWELVE_LINES, [(2, 3), (30, 40)]).splitlines()
-        assert rendered == ["...", "2|line 2", "3|line 3", "..."]
+        assert rendered == ["...", "2| line 2", "3| line 3", "..."]
 
 
 class TestASymbolWithNoEndLine:
@@ -158,5 +178,5 @@ class TestASymbolWithNoEndLine:
             for symbol in symbols
         ]
         rendered = line_wrap_content(SCOPED_SOURCE, [(7, 7)], symbols=stale)
-        assert "1|class Widget:" not in rendered
-        assert "4|    def render(self) -> str:" in rendered
+        assert "1| class Widget:" not in rendered
+        assert "4|     def render(self) -> str:" in rendered

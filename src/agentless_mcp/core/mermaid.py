@@ -3,7 +3,8 @@
 Mermaid is presentation, never data interchange. An agent reading this
 package's answers reads the flattened text views; a diagram is for the human
 looking over its shoulder, which is why this module renders on demand, returns
-a string, touches no filesystem and is never a side effect of another call.
+the text with the counts behind it, touches no filesystem and is never a side
+effect of another call.
 
 Three properties, in the order they matter.
 
@@ -29,7 +30,7 @@ arrow, a pair of reference edges reads as a mutual import -- a cycle the
 ``cycles`` view just said does not exist. A caller that knows which pairs are
 declared imports passes them as ``imports``; those render solid, reference-only
 edges render dashed, and a legend comment says so. Reference edges are also
-the hairball: past :data:`DEFAULT_MAX_EDGES` total edges they are left out
+the hairball: past :data:`DEFAULT_DIAGRAM_EDGES` total edges they are left out
 wholesale -- never a sampled subset, which would be a diagram lying about
 which references exist -- and a comment counts what was left out. Import
 edges are always drawn. Without ``imports`` the render is the undifferentiated
@@ -42,7 +43,7 @@ printed. The same graph renders to the same bytes, which is what lets a
 committed diagram be regenerated and diffed rather than trusted.
 
 **Bounding.** A repository has more modules than a diagram can show, so the
-render is PageRank-bounded to :data:`DEFAULT_MAX_NODES` nodes and says what it
+render is PageRank-bounded to :data:`DEFAULT_DIAGRAM_NODES` nodes and says what it
 left out on an explicit elision line. A bounded view that does not announce
 its bound is the failure this package exists to prevent.
 
@@ -60,7 +61,7 @@ writes into a response body.
 
 import re
 import string
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
@@ -70,27 +71,32 @@ from agentless_mcp.core.graph import RefGraph
 # How many modules a default diagram shows. Chosen for legibility, not for
 # capacity: past roughly this many nodes a flowchart stops being readable and
 # the ranked text views are the better answer.
-DEFAULT_MAX_NODES = 40
+#
+# Named for the diagram rather than DEFAULT_MAX_NODES, which is what it was
+# called while `core/htmlgraph` used the same name for 200. Both spellings
+# reached `--help`, so the tool advertised two different answers for one name.
+DEFAULT_DIAGRAM_NODES = 40
 
 # How many edges a diagram carries before reference edges stop being drawn.
-# The same legibility reasoning as DEFAULT_MAX_NODES: past this many arrows a
+# The same legibility reasoning as DEFAULT_DIAGRAM_NODES: past this many arrows a
 # flowchart is a hairball, and the import edges alone are the load-bearing
 # picture. Import edges are never dropped by this bound.
-DEFAULT_MAX_EDGES = 40
+DEFAULT_DIAGRAM_EDGES = 40
 
 # Hops from the focus seed. Two is the neighbourhood a "what touches this"
 # question means: what it calls, and what those call.
 DEFAULT_FOCUS_DISTANCE = 2
 
+# Which way a flowchart runs. A module constant rather than an option: no
+# adapter ever offered a way to set it, so the field and the mermaid-direction
+# allowlist that checked it were validation machinery for a value no caller
+# could supply.
 DEFAULT_DIRECTION = "LR"
 
-# Mermaid's own flowchart directions. A caller passing anything else is a bug
-# in the caller, not repository content, so it is refused rather than damped.
-VALID_DIRECTIONS = frozenset({"TB", "TD", "BT", "RL", "LR"})
-
-# Words mermaid's flowchart grammar reserves. Generated ids are `n<int>` and
-# `s<int>` and so cannot collide today; the check in `_identifier` is what
-# keeps that true if the prefixes ever change.
+# Words mermaid's flowchart grammar reserves. No generated id can spell one:
+# `_identifier` appends an integer, so every id ends in a digit and no reserved
+# word does. The set names what this module must never emit where mermaid
+# expects an identifier, and a test asserts the rendered ids against it.
 MERMAID_RESERVED_IDS = frozenset(
     {
         "graph",
@@ -148,17 +154,38 @@ _INDENT = "    "
 class DiagramOptions:
     """The knobs of one render.
 
-    A value object rather than five keyword arguments because these travel
+    A value object rather than four keyword arguments because these travel
     together from a CLI flag set or an MCP request to the renderer, and
     because a diagram is defined by them: two renders with the same options
     and the same graph are the same diagram.
     """
 
-    max_nodes: int = DEFAULT_MAX_NODES
-    max_edges: int = DEFAULT_MAX_EDGES
+    max_nodes: int = DEFAULT_DIAGRAM_NODES
+    max_edges: int = DEFAULT_DIAGRAM_EDGES
     focus: str | None = None
     focus_distance: int = DEFAULT_FOCUS_DISTANCE
-    direction: str = DEFAULT_DIRECTION
+
+
+@dataclass(frozen=True)
+class FlowchartExport:
+    """One rendered diagram and an exact account of its bounds.
+
+    The same contract :class:`agentless_mcp.core.htmlgraph.HtmlExport` keeps,
+    and for the same reason: a bounded view that does not report its bounds
+    makes every caller recover them, and the caller that did so walked the
+    focus neighbourhood twice more to get a number this render already held.
+
+    ``elided_nodes`` counts against the candidate set, which a focus restricts
+    before the rank bound applies. ``edges_over_bound`` counts only the
+    reference edges ``max_edges`` cut, never an edge that lost an endpoint to
+    the node bound, because one number for both cuts sends a reader to raise
+    the wrong knob.
+    """
+
+    text: str
+    nodes: int
+    elided_nodes: int
+    edges_over_bound: int
 
 
 def render_flowchart(
@@ -168,7 +195,7 @@ def render_flowchart(
     partition: CommunityPartition | None = None,
     options: DiagramOptions | None = None,
     imports: AbstractSet[tuple[str, str]] | None = None,
-) -> str:
+) -> FlowchartExport:
     """Render ``graph`` as mermaid flowchart text.
 
     ``rank`` is what bounds the diagram -- normally the personalized PageRank
@@ -190,21 +217,31 @@ def render_flowchart(
     _validate(settings)
 
     candidates = _candidates(graph, settings)
-    selected = set(selected_nodes(graph, rank, settings))
+    selected = _bounded(candidates, rank, settings)
     identifiers = {node: _identifier("n", index) for index, node in enumerate(sorted(selected))}
-    edge_lines = _edge_lines(graph, identifiers, imports, settings.max_edges)
+    edges = _edge_lines(graph, identifiers, imports, settings.max_edges)
 
-    lines = [f"flowchart {settings.direction}"]
-    if imports is not None and edge_lines:
+    lines = [f"flowchart {DEFAULT_DIRECTION}"]
+    # Keyed on arrows drawn rather than on lines emitted. When every edge is a
+    # reference and none fit the bound, the only edge line is the `%%` comment
+    # counting them, and the legend named two arrow styles above a diagram
+    # that draws neither.
+    if imports is not None and edges.arrows:
         lines.append(f"{_INDENT}{EDGE_LEGEND}")
     lines.extend(_node_lines(identifiers, partition))
-    lines.extend(edge_lines)
+    lines.extend(edges.lines)
 
     elided = len(candidates) - len(selected)
     if elided > 0:
-        lines.append(f'{_INDENT}{ELISION_ID}["... {elided} more modules"]')
+        modules = "module" if elided == 1 else "modules"
+        lines.append(f'{_INDENT}{ELISION_ID}["... {elided} more {modules}"]')
 
-    return "\n".join(lines) + "\n"
+    return FlowchartExport(
+        text="\n".join(lines) + "\n",
+        nodes=len(selected),
+        elided_nodes=elided,
+        edges_over_bound=edges.over_bound,
+    )
 
 
 def selected_nodes(
@@ -214,11 +251,12 @@ def selected_nodes(
 ) -> tuple[str, ...]:
     """Return the nodes a render with these options would draw, in id order.
 
-    The same focus restriction and rank bound :func:`render_flowchart` applies,
-    exposed on its own so a caller can say how many modules a diagram shows and
-    how many it left out without reading the diagram back. Counting node
-    declarations in the rendered text would count subgraph titles too, which is
-    exactly the kind of "parse your own output" answer this returns instead.
+    The same focus restriction and rank bound :func:`render_flowchart`
+    applies, exposed on its own for a caller that needs the selection without
+    the flowchart -- :mod:`agentless_mcp.core.htmlgraph`, which draws the same
+    bounded node set into a different document. A caller that wants the
+    diagram reads the counts off :class:`FlowchartExport` instead of calling
+    this a second time.
     """
     settings = options if options is not None else DiagramOptions()
     _validate(settings)
@@ -247,31 +285,25 @@ def safe_label(text: str) -> str:
 
 def _validate(settings: DiagramOptions) -> None:
     """Refuse option values that would render a diagram nobody asked for."""
-    if settings.direction not in VALID_DIRECTIONS:
-        message = f"direction must be one of {sorted(VALID_DIRECTIONS)}"
-        raise ValueError(message)
     if settings.max_nodes < 1:
-        message = "max_nodes must be at least 1"
+        message = f"max_nodes must be at least 1, got {settings.max_nodes}"
         raise ValueError(message)
     if settings.max_edges < 0:
-        message = "max_edges must not be negative"
+        message = f"max_edges must not be negative, got {settings.max_edges}"
         raise ValueError(message)
     if settings.focus_distance < 0:
-        message = "focus_distance must not be negative"
+        message = f"focus_distance must not be negative, got {settings.focus_distance}"
         raise ValueError(message)
 
 
 def _identifier(prefix: str, index: int) -> str:
-    """Return a generated identifier that is not a mermaid reserved word.
+    """Return the generated identifier for one node or subgraph.
 
-    The guard keys on the invariant -- "this text is not a word mermaid gives
-    a meaning to" -- rather than on the fact that today's prefixes happen to
-    produce ``n0``. Suffixing rather than raising keeps the render total.
+    The appended integer is what keeps an id out of
+    :data:`MERMAID_RESERVED_IDS`: the result always ends in a digit, and no
+    word mermaid reserves does.
     """
-    candidate = f"{prefix}{index}"
-    if candidate.lower() in MERMAID_RESERVED_IDS:
-        return candidate + "_"
-    return candidate
+    return f"{prefix}{index}"
 
 
 def _candidates(graph: RefGraph, settings: DiagramOptions) -> set[str]:
@@ -280,7 +312,7 @@ def _candidates(graph: RefGraph, settings: DiagramOptions) -> set[str]:
     if settings.focus is None:
         return nodes
     if settings.focus not in nodes:
-        message = "focus is not a module in this graph"
+        message = f"focus is not a module in this graph: {settings.focus}"
         raise ValueError(message)
     return _neighbourhood(graph, settings.focus, settings.focus_distance)
 
@@ -292,12 +324,12 @@ def _neighbourhood(graph: RefGraph, seed: str, distance: int) -> set[str]:
     as much as what it imports, and a directed walk would answer only half of
     a blast-radius question.
     """
-    known = set(graph.nodes)
+    # No membership test: RefGraph refuses an edge naming a node outside the
+    # graph, so both endpoints are nodes.
     adjacent: dict[str, set[str]] = {}
     for source, target in graph.edges:
-        if source in known and target in known:
-            adjacent.setdefault(source, set()).add(target)
-            adjacent.setdefault(target, set()).add(source)
+        adjacent.setdefault(source, set()).add(target)
+        adjacent.setdefault(target, set()).add(source)
 
     seen = {seed}
     frontier = [seed]
@@ -324,50 +356,117 @@ def _node_lines(
     identifiers: Mapping[str, str], partition: CommunityPartition | None
 ) -> Iterator[str]:
     """Yield the node declarations, grouped into subgraphs when asked."""
+    labels = _node_labels(identifiers)
     if partition is None:
-        yield from (_declaration(identifiers[node], node, _INDENT) for node in sorted(identifiers))
+        yield from (
+            _declaration(identifiers[node], labels[node], _INDENT) for node in sorted(identifiers)
+        )
         return
 
-    grouped: set[str] = set()
-    drawn: dict[str, int] = {}
-    index = 0
+    drawn: list[tuple[Community, list[str]]] = []
     for community in partition.communities:
         members = sorted(member for member in community.members if member in identifiers)
-        if not members:
-            continue
+        if members:
+            drawn.append((community, members))
+
+    grouped: set[str] = set()
+    titles = _group_titles([community for community, _ in drawn])
+    for index, ((_, members), title) in enumerate(zip(drawn, titles, strict=True)):
         grouped.update(members)
-        yield f'{_INDENT}subgraph {_identifier("s", index)}["{_group_label(community, drawn)}"]'
-        yield from (_declaration(identifiers[member], member, _INDENT * 2) for member in members)
+        yield f'{_INDENT}subgraph {_identifier("s", index)}["{title}"]'
+        yield from (
+            _declaration(identifiers[member], labels[member], _INDENT * 2) for member in members
+        )
         yield f"{_INDENT}end"
-        index += 1
 
     yield from (
-        _declaration(identifiers[node], node, _INDENT)
+        _declaration(identifiers[node], labels[node], _INDENT)
         for node in sorted(identifiers)
         if node not in grouped
     )
 
 
-def _group_label(community: Community, drawn: dict[str, int]) -> str:
-    """Return a subgraph title that names one community and no other.
+def _node_labels(identifiers: Mapping[str, str]) -> dict[str, str]:
+    """Return one label per drawn module, each naming no other module.
+
+    :func:`safe_label` is an allowlist, so it is many-to-one: every character
+    outside it becomes the same underscore and runs of those collapse. Two
+    modules that differ only outside the allowlist therefore reduce to one
+    label -- ``src/A/mod.py`` and ``src/B/mod.py`` for any two non-ASCII
+    directory names both read ``src/_/mod.py`` -- and so do two long paths
+    that share their first 57 characters. The nodes stay distinct, which is
+    why the picture is still correct; the reader cannot tell which box is
+    which, which is why it is still useless.
+
+    Assigned over ``sorted(identifiers)`` rather than in emission order, so a
+    module keeps its label whether it is drawn inside a subgraph or beside
+    one, and two renders of the same graph agree.
+
+    Counted separately from :func:`_group_titles`. A subgraph title names a
+    community and a node label names a module, so a collision between the two
+    kinds is not a collision a reader can be misled by, and merging the tallies
+    would put an ordinal on a label that occurs once.
+    """
+    drawn = sorted(identifiers)
+    return dict(zip(drawn, _distinct(safe_label(node) for node in drawn), strict=True))
+
+
+def _group_titles(communities: Sequence[Community]) -> list[str]:
+    """Return one subgraph title per drawn community, each naming no other.
 
     Two communities can carry the same mechanical label -- ``repository root``
     covers every group whose members straddle directories -- and two boxes
     with the same title tell a reader nothing. Repeats therefore take an
     ascending ordinal in the order the partition lists them, which is stable
-    because that order is. The first occurrence is left bare so the common
-    case, where every label is already distinct, reads as the paths do.
+    because that order is.
     """
-    label = safe_label(community.label)
-    drawn[label] = drawn.get(label, 0) + 1
-    if drawn[label] == 1:
-        return label
-    return f"{label} {drawn[label]}"
+    return _distinct(safe_label(community.label) for community in communities)
 
 
-def _declaration(identifier: str, path: str, indent: str) -> str:
-    """Render one node: a generated id and a quoted, sanitised label."""
-    return f'{indent}{identifier}["{safe_label(path)}"]'
+def _distinct(labels: Iterable[str]) -> list[str]:
+    """Return ``labels`` with every repeat carrying an ascending ordinal.
+
+    The one home for the rule, because a subgraph title and a node label are
+    drawn in the same picture and a reader tells them apart the same way. The
+    first occurrence is left bare so the common case, where every label is
+    already distinct, reads as the paths do.
+
+    Counted here rather than accumulated in an argument the caller passes back
+    in, so this returns data and mutates nothing.
+    """
+    counts: dict[str, int] = {}
+    distinct: list[str] = []
+    for label in labels:
+        counts[label] = counts.get(label, 0) + 1
+        distinct.append(label if counts[label] == 1 else f"{label} {counts[label]}")
+    return distinct
+
+
+def _declaration(identifier: str, label: str, indent: str) -> str:
+    """Render one node: a generated id and a quoted, already-safe label.
+
+    The label arrives sanitised and disambiguated from :func:`_node_labels`;
+    sanitising here instead would give each declaration a label that no other
+    declaration was compared against.
+    """
+    return f'{indent}{identifier}["{label}"]'
+
+
+@dataclass(frozen=True)
+class _EdgeRender:
+    """The edge lines of one diagram, and how many of them draw an arrow.
+
+    The counts are carried rather than recovered from the lines: the legend
+    has to know whether any arrow was drawn, and a render that answers that by
+    reading its own output back is the parse-your-own-answer step this package
+    exists to remove. ``over_bound`` is the same fact for the reference edges
+    the ``max_edges`` bound left out -- already spelled into the ``%%``
+    comment, and needed by a caller that reports its bounds outside the text.
+    """
+
+    lines: tuple[str, ...]
+    arrows: int
+    over_bound: int
 
 
 def _edge_lines(
@@ -375,7 +474,7 @@ def _edge_lines(
     identifiers: Mapping[str, str],
     imports: AbstractSet[tuple[str, str]] | None,
     max_edges: int,
-) -> list[str]:
+) -> _EdgeRender:
     """Render the edges with both endpoints in the diagram, in id order.
 
     Weights are not drawn. They are floats derived from name-collision counts,
@@ -401,7 +500,8 @@ def _edge_lines(
         key=lambda entry: _identifier_sort_key(entry[:2]),
     )
     if imports is None:
-        return [f"{_INDENT}{source} --> {target}" for source, target, _ in drawn]
+        undifferentiated = tuple(f"{_INDENT}{source} --> {target}" for source, target, _ in drawn)
+        return _EdgeRender(lines=undifferentiated, arrows=len(undifferentiated), over_bound=0)
 
     references = sum(1 for _, _, declared in drawn if not declared)
     fits = len(drawn) <= max_edges
@@ -411,9 +511,11 @@ def _edge_lines(
             lines.append(f"{_INDENT}{source} --> {target}")
         elif fits:
             lines.append(f"{_INDENT}{source} -.-> {target}")
-    if references and not fits:
+    arrows = len(lines)
+    over_bound = 0 if fits else references
+    if over_bound:
         lines.append(f"{_INDENT}%% {references} reference edges not drawn (edge bound {max_edges})")
-    return lines
+    return _EdgeRender(lines=tuple(lines), arrows=arrows, over_bound=over_bound)
 
 
 def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:
@@ -423,4 +525,4 @@ def _identifier_sort_key(pair: Sequence[str]) -> tuple[int, int]:
 
 def _identifier_index(identifier: str) -> int:
     """Return the integer an ``n<int>`` identifier carries."""
-    return int(identifier.lstrip(string.ascii_letters).rstrip("_"))
+    return int(identifier.lstrip(string.ascii_letters))

@@ -3,11 +3,15 @@
 The export is an on-demand human view, not stored graph state. Repository
 paths and community labels enter one JSON payload with HTML-significant
 characters escaped; the browser assigns them through ``textContent`` only.
-No external scripts, styles, fonts, or network calls are present.
+
+No external scripts, styles, fonts, or network calls are present, and the
+document says so twice: ``tests/unit/test_htmlgraph.py`` asserts that no sink
+which could fetch one appears in the text, and a ``default-src 'none'``
+content-security policy makes the browser refuse one that ever did.
 """
 
 import json
-from collections.abc import Mapping, Set
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,30 +19,46 @@ from agentless_mcp.core import mermaid
 from agentless_mcp.core.communities import CommunityPartition
 from agentless_mcp.core.graph import RefGraph
 
-DEFAULT_MAX_NODES = 200
-DEFAULT_MAX_EDGES = 600
-MAX_NODES = 1_000
-MAX_EDGES = 5_000
+# What one interactive document holds, which is a capacity question rather
+# than the legibility question `core/mermaid` answers. The two used to share
+# the names DEFAULT_MAX_NODES and DEFAULT_MAX_EDGES while meaning 200/600 and
+# 40/40, and both spellings reached `--help`.
+DEFAULT_HTML_NODES = 200
+DEFAULT_HTML_EDGES = 600
+MAX_HTML_NODES = 1_000
+MAX_HTML_EDGES = 5_000
 
 
 @dataclass(frozen=True)
 class HtmlOptions:
     """Bounds applied before repository data reaches the document."""
 
-    max_nodes: int = DEFAULT_MAX_NODES
-    max_edges: int = DEFAULT_MAX_EDGES
+    max_nodes: int = DEFAULT_HTML_NODES
+    max_edges: int = DEFAULT_HTML_EDGES
 
 
 @dataclass(frozen=True)
 class HtmlExport:
-    """One rendered document and an exact account of its bounds."""
+    """One rendered document and an exact account of its bounds.
+
+    The two edge counts are separate because the two cuts are: an edge can be
+    left out because the node bound removed an endpoint, or because the edge
+    bound cut it. One number for both sends a reader who sees "580 edges
+    elided" to raise ``max_edges`` when ``max_nodes`` did the cutting.
+    """
 
     text: str
     nodes: int
     edges: int
     elided_nodes: int
-    elided_edges: int
+    edges_without_both_nodes: int
+    edges_over_bound: int
     communities: int
+
+    @property
+    def elided_edges(self) -> int:
+        """Every edge the document leaves out, whichever cut removed it."""
+        return self.edges_without_both_nodes + self.edges_over_bound
 
 
 def render_html(
@@ -49,25 +69,34 @@ def render_html(
     imports: Set[tuple[str, str]],
     options: HtmlOptions | None = None,
 ) -> HtmlExport:
-    """Render a searchable, clickable graph document with community colours."""
-    settings = options if options is not None else HtmlOptions()
-    _validate(settings)
+    """Render a searchable, clickable graph document with community colours.
 
+    The node and edge bounds are not re-checked here. ``GraphService.html``
+    owns them through :mod:`agentless_mcp.util.bounds`, against the same
+    ``MAX_HTML_NODES`` and ``MAX_HTML_EDGES`` this module declares. A second
+    copy raising ``ValueError`` -- not an ``AgentlessError`` -- was worse than
+    redundant: had the two copies ever drifted, the surviving check would have
+    escaped the CLI's error handler as a traceback instead of a refusal.
+    """
+    settings = options if options is not None else HtmlOptions()
     selection = mermaid.DiagramOptions(max_nodes=settings.max_nodes)
     selected = mermaid.selected_nodes(graph, rank, selection)
     selected_set = set(selected)
     identifiers = {path: f"n{position}" for position, path in enumerate(selected)}
     membership = partition.index_of()
+    _require_partition_covers(selected, membership)
 
     nodes = [
         {
             "id": identifiers[path],
             "path": path,
-            "community": membership.get(path, -1),
-            "rank": rank.get(path, 0.0),
+            "community": membership[path],
         }
         for path in selected
     ]
+    # Self-references are dropped, as `core.mermaid` and `core.communities`
+    # drop them: one would draw a zero-length line under an arrow marker and
+    # spend a slot of the edge bound saying nothing.
     candidates = [
         {
             "source": identifiers[source],
@@ -76,7 +105,7 @@ def render_html(
             "weight": weight,
         }
         for (source, target), weight in graph.edges.items()
-        if source in selected_set and target in selected_set
+        if source in selected_set and target in selected_set and source != target
     ]
     candidates.sort(
         key=lambda edge: (
@@ -87,16 +116,23 @@ def render_html(
         )
     )
     edges = candidates[: settings.max_edges]
-    represented = sorted({membership[path] for path in selected if path in membership})
+    represented = sorted({membership[path] for path in selected})
     labels = {str(position): partition.communities[position].label for position in represented}
-    elided_nodes = max(0, len(graph.nodes) - len(nodes))
-    elided_edges = max(0, len(graph.edges) - len(edges))
+    # No difference can go negative: `nodes` is the bounded selection out of
+    # `graph.nodes`, `candidates` is a filtered view of `graph.edges`, and
+    # `edges` is a truncated slice of `candidates`.
+    elided_nodes = len(graph.nodes) - len(nodes)
+    without_both_nodes = len(graph.edges) - len(candidates)
+    over_bound = len(candidates) - len(edges)
     payload = {
         "nodes": nodes,
         "edges": edges,
         "communities": labels,
         "elidedNodes": elided_nodes,
-        "elidedEdges": elided_edges,
+        "edgesWithoutBothNodes": without_both_nodes,
+        "edgesOverBound": over_bound,
+        "nodeBound": settings.max_nodes,
+        "edgeBound": settings.max_edges,
     }
     document = _DOCUMENT.replace("__GRAPH_DATA__", _script_json(payload))
     return HtmlExport(
@@ -104,17 +140,27 @@ def render_html(
         nodes=len(nodes),
         edges=len(edges),
         elided_nodes=elided_nodes,
-        elided_edges=elided_edges,
+        edges_without_both_nodes=without_both_nodes,
+        edges_over_bound=over_bound,
         communities=len(represented),
     )
 
 
-def _validate(options: HtmlOptions) -> None:
-    if not 1 <= options.max_nodes <= MAX_NODES:
-        message = f"max_nodes must be between 1 and {MAX_NODES}"
-        raise ValueError(message)
-    if not 0 <= options.max_edges <= MAX_EDGES:
-        message = f"max_edges must be between 0 and {MAX_EDGES}"
+def _require_partition_covers(selected: Sequence[str], membership: Mapping[str, int]) -> None:
+    """Refuse a partition that does not place every module the document draws.
+
+    ``partition`` is this function's foreign data: coalescing a missing path
+    to the "unassigned" colour instead would render a partition detected from
+    a different graph as a grey blob with an empty legend -- a repository with
+    no community structure, reported as a fact rather than as the mismatch it
+    is.
+    """
+    missing = sorted(path for path in selected if path not in membership)
+    if missing:
+        message = (
+            f"partition does not cover {len(missing)} of the {len(selected)} modules "
+            f"drawn, starting with {missing[0]}"
+        )
         raise ValueError(message)
 
 
@@ -129,6 +175,8 @@ _DOCUMENT = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <title>agentless-mcp graph</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
@@ -286,7 +334,9 @@ _DOCUMENT = """<!doctype html>
     });
 
     stats.textContent = `${DATA.nodes.length} nodes, ${DATA.edges.length} edges\n` +
-      `${DATA.elidedNodes} nodes elided, ${DATA.elidedEdges} edges elided`;
+      `${DATA.elidedNodes} nodes elided (node bound ${DATA.nodeBound})\n` +
+      `${DATA.edgesWithoutBothNodes} edges elided with them\n` +
+      `${DATA.edgesOverBound} edges past the edge bound (${DATA.edgeBound})`;
     Object.entries(DATA.communities).forEach(([id, label]) => {
       const row = document.createElement("div");
       row.className = "legend-row";

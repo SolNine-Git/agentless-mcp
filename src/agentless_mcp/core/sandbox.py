@@ -43,12 +43,14 @@ and executed as an argv, never through a shell, so a command carrying ``;`` or
 session, so the whole process group can be killed when the bound expires:
 a test suite that spawns a server and hangs must leave nothing running.
 
-The child receives an explicit environment containing only ``PATH``, ``HOME``,
-``LANG`` and ``TMPDIR`` when those names exist in the parent. A caller may opt
-individual additional names in, but there is no bulk inheritance. This keeps
-ambient credentials out of ordinary validation runs; it is credential
-containment, not process sandboxing, because the command still runs with the
-caller's user identity and can read anything that identity can read.
+The child receives an explicit environment holding only the names its platform
+family allows -- ``PATH``, ``HOME``, ``LANG`` and ``TMPDIR`` on POSIX, and the
+Windows equivalents on Windows -- when those names exist in the parent. A
+caller may opt individual additional names in, but there is no bulk
+inheritance. This keeps ambient credentials out of ordinary validation runs; it
+is credential containment, not process sandboxing, because the command still
+runs with the caller's user identity and can read anything that identity can
+read.
 
 The bound is hard, and a command that hits it is a **failure**. A hung test
 run is the case this machinery exists to catch, and the one place where
@@ -61,9 +63,9 @@ Process-group control is where the platforms genuinely differ. POSIX gets the
 full guarantee: a new session, then SIGTERM and SIGKILL to the whole group, so
 grandchildren die with their parent. Windows gets a documented best effort --
 a new process group at spawn, then ``terminate()`` and ``kill()`` on the
-leader -- and that difference is stated in the README rather than papered
-over, because a caller who believes stray children are impossible on a
-platform where they are not has been told something false.
+leader -- and that difference is stated in ``docs/functional-assessment.md``
+rather than papered over, because a caller who believes stray children are
+impossible on a platform where they are not has been told something false.
 """
 
 import logging
@@ -84,9 +86,9 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from agentless_mcp.core import cache, gitinfo
-from agentless_mcp.util import platforms
-from agentless_mcp.util.errors import AtlasError, RepoResolutionError
+from agentless_mcp.core import gitinfo
+from agentless_mcp.util import cachedir, platforms
+from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,17 @@ logger = logging.getLogger(__name__)
 # than a status read but nowhere near a minute. A bound that can be hit by a
 # healthy repository is a flake, and no bound at all is a hang.
 GIT_TIMEOUT_SECONDS = 120.0
+
+# The bound on the cleanup calls, deliberately shorter. `_release` runs under
+# `_WORKTREE_LOCK`, so a stuck `remove` or `prune` blocks every other worktree
+# operation in this process for as long as it is allowed to run -- and there
+# are two of them, so the creation bound would put four minutes of one hung
+# cleanup in front of a `validate --jobs N` pool. Removing a worktree deletes
+# files git already tracks and pruning walks a handful of records; neither
+# checks anything out, so neither has the reason `worktree add` has to be slow.
+# When it does expire, `_release` falls through to `shutil.rmtree` and the
+# directory still goes away.
+GIT_CLEANUP_TIMEOUT_SECONDS = 30.0
 
 WORKTREE_DIR = "worktrees"
 
@@ -139,7 +152,26 @@ NO_REPO_CODE = ("-c", "core.hooksPath=/dev/null")
 # Deliberately small. These are process-operability values rather than
 # credentials, and absent values stay absent instead of being invented. Any
 # additional variable must be named explicitly by the validate invocation.
-TEST_ENV_ALLOWLIST: tuple[str, ...] = ("PATH", "HOME", "LANG", "TMPDIR")
+#
+# One list per family, because the POSIX names are not something a Windows
+# child can start with. A CPython child given no ``SystemRoot`` fails during
+# interpreter start-up, so a single POSIX list decided that no Python test
+# suite could run on the platform the process-group code was written for.
+# ``PATHEXT`` is how the loader decides what is executable, ``COMSPEC`` is what
+# a runner shelling out expects to find, ``TEMP``/``TMP`` are what ``TMPDIR``
+# is called there, and ``USERPROFILE`` is the home directory ``HOME`` is not.
+# Upper case throughout because ``os.environ`` upper-cases its keys on Windows.
+POSIX_TEST_ENV_ALLOWLIST: tuple[str, ...] = ("PATH", "HOME", "LANG", "TMPDIR")
+WINDOWS_TEST_ENV_ALLOWLIST: tuple[str, ...] = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+)
 
 # ``git worktree add`` and ``git worktree prune`` race each other: prune walks
 # the repository's worktree records and can remove one that a concurrent add
@@ -147,6 +179,12 @@ TEST_ENV_ALLOWLIST: tuple[str, ...] = ("PATH", "HOME", "LANG", "TMPDIR")
 # process is what lets `validate --jobs N` give every candidate its own
 # worktree. The lock is held across the git call only, never across the body
 # of the context manager, so nested worktrees do not deadlock.
+#
+# It is still held across git, so the git bounds are what bound the wait: one
+# stuck call blocks the pool for its own timeout. The worst case is one
+# creation plus one release -- `GIT_TIMEOUT_SECONDS` +
+# 2 * `GIT_CLEANUP_TIMEOUT_SECONDS` -- which is why the cleanup pair is bounded
+# separately rather than inheriting the creation's minute-scale allowance.
 _WORKTREE_LOCK = threading.Lock()
 
 
@@ -202,7 +240,7 @@ class RunResult:
 
 def scratch_root() -> Path:
     """Return the directory scratch worktrees are created under."""
-    return cache.cache_root() / WORKTREE_DIR
+    return cachedir.cache_root() / WORKTREE_DIR
 
 
 @contextmanager
@@ -238,9 +276,39 @@ def worktree(root: Path) -> Iterator[Path]:
         )
         raise RepoResolutionError(message)
 
-    scratch = scratch_root()
-    scratch.mkdir(parents=True, exist_ok=True)
-    scratch.chmod(cache.DIRECTORY_MODE)
+    # Keyed on the property the module docstring promises -- the scratch is
+    # never inside the target -- rather than on any particular way of getting
+    # it wrong. `cache_root` refuses a relative XDG_CACHE_HOME, which was one
+    # route in; an operator pointing XDG_CACHE_HOME at a path inside the
+    # repository is another, and this catches both.
+    #
+    # Compared as real paths on BOTH sides. `top` already is one --
+    # `gitinfo.git_root` resolves what it returns -- and comparing an
+    # unresolved scratch against it keyed the rule on spelling rather than on
+    # location. Reproduced: with XDG_CACHE_HOME pointing at a symlink into the
+    # repository, `top in scratch.parents` was False and the worktrees were
+    # created inside the repository under analysis.
+    #
+    # `resolve()` needs no existence: it follows the symlinks in the part of
+    # the path that does exist and appends the rest, which is exactly the
+    # scratch's situation on a first run. Resolved before the check and before
+    # the mkdir, so a refused location is neither created on the way to being
+    # refused nor re-read after it was approved -- resolving afterwards would
+    # trade the lexical hole for a TOCTOU one.
+    scratch = scratch_root().resolve()
+    if scratch == top or top in scratch.parents:
+        message = (
+            f"scratch worktrees would be created at {scratch}, inside the repository "
+            f"{top} they are meant to stay out of. Point {cachedir.ENV_CACHE_HOME} at a "
+            f"directory outside the repository."
+        )
+        raise RepoResolutionError(message)
+
+    # `mode=` on the create, as `core/cache.py` does, so the directory is
+    # never briefly at the umask's mode. The chmod stays for the directory an
+    # earlier run already made.
+    scratch.mkdir(parents=True, exist_ok=True, mode=cachedir.DIRECTORY_MODE)
+    scratch.chmod(cachedir.DIRECTORY_MODE)
 
     path = scratch / f"wt-{uuid.uuid4().hex}"
     try:
@@ -250,7 +318,22 @@ def worktree(root: Path) -> Iterator[Path]:
                 ["worktree", "add", "--detach", str(path), "HEAD"],
                 config=NO_REPO_CODE,
             )
-        yield path / resolved.relative_to(top)
+        relative = resolved.relative_to(top)
+        inside = path / relative
+        # The worktree holds HEAD, so a directory that exists in the caller's
+        # working tree but is untracked or ignored is simply not in it. Without
+        # this the yielded path does not exist, and the caller's own Popen is
+        # what fails -- reporting that it could not start the interpreter,
+        # which names neither the directory nor the reason. Raised inside the
+        # try, so the worktree just created is still released.
+        if not inside.is_dir():
+            message = (
+                f"{resolved} is not at HEAD of {top}, so the worktree has no {relative} to "
+                "work in. The directory is untracked or ignored: commit it, or point this "
+                "call at a directory the repository tracks."
+            )
+            raise RepoResolutionError(message)
+        yield inside
     finally:
         with _WORKTREE_LOCK:
             _release(top, path)
@@ -289,9 +372,13 @@ def run_command(
     * **No shell.** ``shlex.split`` produces an argv and ``Popen`` receives
       it. There is no interpretation of metacharacters at any point.
     * **Own process group.** ``start_new_session=True`` on POSIX makes the
-      child a process group leader, so the timeout path can signal the group
-      and reach the grandchildren a test runner spawned. Killing only the
-      direct child leaves the server it started holding a port. Windows gets
+      child a process group leader, so cleanup can signal the group and reach
+      the grandchildren a test runner spawned. Killing only the direct child
+      leaves the server it started holding a port. The group is signalled
+      whenever this function stops with the process unreaped -- the timeout
+      path and an interrupt alike -- because the same session that makes the
+      group reachable is what keeps an operator's Ctrl-C from reaching it.
+      Windows gets
       ``CREATE_NEW_PROCESS_GROUP``, which is the closest thing it has.
       Termination is bounded too: a command that ignores SIGTERM costs at most
       ``timeout`` + :data:`TERM_GRACE_SECONDS` + :data:`KILL_REAP_SECONDS` of
@@ -303,10 +390,11 @@ def run_command(
       after the process is gone. The files are bounded while they are being
       written, not only when they are read: ``max_capture`` is a cap on what
       the command may leave on disk as well as on what is reported.
-    * **Environment is allowlisted.** The child receives only
-      :data:`TEST_ENV_ALLOWLIST` plus names the caller explicitly passes
-      through. This contains ambient credentials; it does not sandbox the
-      process or constrain what the caller's user can read from disk.
+    * **Environment is allowlisted.** The child receives only the names its
+      platform family allows -- :data:`POSIX_TEST_ENV_ALLOWLIST` or
+      :data:`WINDOWS_TEST_ENV_ALLOWLIST` -- plus names the caller explicitly
+      passes through. This contains ambient credentials; it does not sandbox
+      the process or constrain what the caller's user can read from disk.
     """
     try:
         argv = shlex.split(cmd)
@@ -324,7 +412,7 @@ def run_command(
             process = subprocess.Popen(
                 argv,
                 cwd=cwd,
-                env=_test_environment(passthrough_env),
+                env=_test_environment(passthrough_env, flavour),
                 stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=err,
@@ -335,9 +423,18 @@ def run_command(
             elapsed = time.monotonic() - started
             return _spawn_failure(f"could not start {argv[0]!r}: {reason}", elapsed)
 
-        timed_out = _wait_bounded(process, (out, err), timeout=timeout, capture=max_capture)
-        if timed_out:
-            _kill_group(process, flavour)
+        try:
+            timed_out = _wait_bounded(process, (out, err), timeout=timeout, capture=max_capture)
+        finally:
+            # Not only on the timeout branch. `start_new_session=True` puts the
+            # child outside the terminal's foreground process group, so an
+            # operator's Ctrl-C reaches this process and never the command it
+            # started. Without this the run is abandoned and the command keeps
+            # running -- holding the port, the database or the lock that the
+            # next run needs. `returncode is None` is the invariant that
+            # matters: the process was never reaped, whatever the reason.
+            if process.returncode is None:
+                _kill_group(process, flavour)
 
         duration = round(time.monotonic() - started, 3)
         stdout_tail = _tail(out, max_capture)
@@ -351,9 +448,21 @@ def run_command(
     return RunResult(status, code, duration, stdout_tail, stderr_tail)
 
 
-def _test_environment(passthrough: Sequence[str]) -> dict[str, str]:
+def _env_allowlist(flavour: str) -> tuple[str, ...]:
+    """Return the parent variable names a child may inherit on ``flavour``.
+
+    A pure function of the family rather than a module-level constant, so the
+    choice is testable on either platform -- the same reason
+    :func:`_group_kwargs` is one.
+    """
+    if flavour == platforms.WINDOWS:
+        return WINDOWS_TEST_ENV_ALLOWLIST
+    return POSIX_TEST_ENV_ALLOWLIST
+
+
+def _test_environment(passthrough: Sequence[str], flavour: str) -> dict[str, str]:
     """Return the exact parent variables one test command may inherit."""
-    names = (*TEST_ENV_ALLOWLIST, *passthrough)
+    names = (*_env_allowlist(flavour), *passthrough)
     return {name: os.environ[name] for name in names if name in os.environ}
 
 
@@ -474,8 +583,8 @@ def _kill_leader(process: "subprocess.Popen[bytes]") -> None:
     """End the timed-out command's leader process, politely then not.
 
     The Windows path. Anything the command spawned survives it, which is why
-    the README says the timeout guarantee there is best effort: without a job
-    object there is nothing to signal a whole tree with.
+    ``docs/functional-assessment.md`` says the timeout guarantee there is best
+    effort: without a job object there is nothing to signal a whole tree with.
     """
     process.terminate()
     try:
@@ -526,7 +635,13 @@ def _tail(handle: IO[bytes], limit: int) -> str:
     return f"[... {start} earlier bytes dropped ...]\n{text}"
 
 
-def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) -> str:
+def run_git(
+    cwd: Path,
+    arguments: Sequence[str],
+    *,
+    config: Sequence[str] = (),
+    timeout: float = GIT_TIMEOUT_SECONDS,
+) -> str:
     """Run one bounded git command, raising on anything but success.
 
     Unlike :func:`agentless_mcp.core.gitinfo._run`, a failure here is an
@@ -537,6 +652,10 @@ def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) 
     ``config`` carries ``-c key=value`` pairs that go in front of the
     subcommand, which is how a caller overrides what the analysed repository's
     own configuration would otherwise decide -- see :data:`NO_REPO_CODE`.
+
+    ``timeout`` defaults to the creation bound. A caller holding a lock across
+    this call should pass a smaller one, because the bound it chooses is how
+    long every other holder of that lock waits.
     """
     subcommand = arguments[0] if arguments else "git"
     command = ["git", *gitinfo.HARDENING_PREFIX, *config, "-C", str(cwd), *arguments]
@@ -544,24 +663,28 @@ def run_git(cwd: Path, arguments: Sequence[str], *, config: Sequence[str] = ()) 
         completed = subprocess.run(
             command,
             capture_output=True,
-            timeout=GIT_TIMEOUT_SECONDS,
+            timeout=timeout,
             check=False,
+            # The write-side calls have most to lose from an ambient GIT_DIR:
+            # `worktree add` against a redirected repository would create the
+            # checkout somewhere the caller never named.
+            env=gitinfo.subprocess_env(),
         )
     except FileNotFoundError as exc:
         message = "git is not installed, so the patch machinery cannot run"
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
     except subprocess.TimeoutExpired as exc:
-        message = f"git {subcommand} timed out after {GIT_TIMEOUT_SECONDS}s in {cwd}"
-        raise AtlasError(message) from exc
+        message = f"git {subcommand} timed out after {timeout}s in {cwd}"
+        raise OperationFailed(message) from exc
     except OSError as exc:
         message = f"git {subcommand} could not be run in {cwd}: {exc.strerror}"
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
 
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         first = detail.splitlines()[0] if detail else "no detail"
         message = f"git {subcommand} exited {completed.returncode} in {cwd}: {first}"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     return completed.stdout.decode("utf-8", errors="replace")
 
@@ -577,14 +700,18 @@ def _release(root: Path, path: Path) -> None:
     so there is nothing a force can destroy that was not already disposable.
     """
     try:
-        run_git(root, ["worktree", "remove", "--force", "--force", str(path)])
-    except AtlasError as exc:
+        run_git(
+            root,
+            ["worktree", "remove", "--force", "--force", str(path)],
+            timeout=GIT_CLEANUP_TIMEOUT_SECONDS,
+        )
+    except OperationFailed as exc:
         logger.warning("git worktree remove failed for %s: %s; removing the directory", path, exc)
         shutil.rmtree(path, ignore_errors=True)
 
     try:
-        run_git(root, ["worktree", "prune"])
-    except AtlasError as exc:
+        run_git(root, ["worktree", "prune"], timeout=GIT_CLEANUP_TIMEOUT_SECONDS)
+    except OperationFailed as exc:
         logger.warning("git worktree prune failed in %s: %s", root, exc)
 
     if path.exists():

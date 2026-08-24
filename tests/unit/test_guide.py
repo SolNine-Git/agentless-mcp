@@ -9,6 +9,7 @@ failure instead of a section an agent asks for and does not get.
 """
 
 import re
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,14 +56,19 @@ EXPECTED_LEVELS = {1: 1, 2: 8, 3: 20, 4: 4}
 
 @pytest.fixture(autouse=True)
 def _uncached_sections():
-    """Clear the split cache around every test.
+    """Clear the guide caches around every test.
 
-    ``_sections`` is memoised for the process, so a test that patches the
-    resource away would otherwise leave either a poisoned or a stale cache
-    behind for whatever runs next.
+    The resource read and the split are both memoised for the process, so a
+    test that patches the resource away would otherwise leave either a
+    poisoned or a stale cache behind for whatever runs next. The read is held
+    by reference because a test may have replaced the module attribute with a
+    plain function that is still in place when this tears down.
     """
+    read = guide._resource_text
+    read.cache_clear()
     guide._sections.cache_clear()
     yield
+    read.cache_clear()
     guide._sections.cache_clear()
 
 
@@ -85,17 +91,39 @@ class TestPackagedResource:
         with pytest.raises(FileNotFoundError):
             guide.section_names()
 
-    def test_an_unreadable_resource_names_the_broken_install(self, monkeypatch):
-        """The OSError is converted so the message says which file is absent."""
-        resource = guide.resources.files(guide.PACKAGE) / guide.GUIDE_DIRECTORY
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("no such file"),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+        ],
+        ids=["absent", "not-utf8"],
+    )
+    def test_an_unreadable_resource_names_the_broken_install(self, monkeypatch, error):
+        """Both ways a packaged file can be unusable say which install is broken.
 
-        reason = "no such file"
+        A guide that is present but not valid UTF-8 is the same broken
+        install as an absent one. `UnicodeDecodeError` is a `ValueError`, so
+        a handler naming only `OSError` let the second case out as a raw
+        decode traceback.
+        """
 
-        def refuse(*_args, **_kwargs):
-            raise OSError(reason)
+        class Refusing:
+            """Stands in for the traversable the guide is read through."""
 
-        monkeypatch.setattr(type(resource), "read_text", refuse, raising=False)
-        with pytest.raises(GuideDataError, match="missing from the agentless_mcp package"):
+            def __truediv__(self, _part):
+                return self
+
+            def read_text(self, **_kwargs):
+                raise error
+
+        # The stand-in replaces `resources` as this module sees it, rather
+        # than patching `read_text` on the type the traversable happens to
+        # have. That type is `pathlib.Path` only because a source checkout
+        # returns one; under a zip-imported install it is `zipfile.Path`, and
+        # the patch would then miss the call this test is about.
+        monkeypatch.setattr(guide, "resources", SimpleNamespace(files=lambda _package: Refusing()))
+        with pytest.raises(GuideDataError, match="cannot be read from the agentless_mcp package"):
             guide._resource_text()
 
 

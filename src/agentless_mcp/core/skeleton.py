@@ -60,6 +60,12 @@ _EXTRA_FUNCTION_NODE_TYPES: dict[str, frozenset[str]] = {
 
 _WHITESPACE_RUN = re.compile(r"\s+")
 
+# A Python string prefix (`r`, `b`, `f`, `rb`, `Rb`, ...) sits between the
+# start of the literal and its quote run. Bounded at three letters, which is
+# one more than any prefix the language spells, so a bare identifier followed
+# by a quote cannot be eaten whole.
+_STRING_PREFIX = re.compile(r"^[A-Za-z]{0,3}(?=['\"])")
+
 
 def function_node_types(language: str) -> frozenset[str]:
     """Return the node types treated as functions for ``language``."""
@@ -157,6 +163,24 @@ def compression_ratio(
     return counted.count(source) / max(1, counted.count(skeleton))
 
 
+def _char_column(line: str, byte_column: int) -> int:
+    """Convert a tree-sitter byte column into an index into the decoded line.
+
+    Tree-sitter counts a column in UTF-8 bytes; every column this module uses
+    indexes a Python ``str``. The two agree only while the line is ASCII, and
+    slicing a ``str`` past its end never raises, so one accented character
+    earlier on the line silently moves every later cut -- leaking source past
+    a sentinel, or leaving half a comment marker behind. Converting here is
+    the one place the two index spaces meet.
+
+    The decode is strict: a node boundary that does not land on a codepoint
+    boundary would mean the parser reported a span the source does not have.
+    """
+    if line.isascii():
+        return byte_column
+    return len(line.encode("utf-8")[:byte_column].decode("utf-8"))
+
+
 def _walk(root: Node) -> Iterator[Node]:
     """Yield every node in the tree, parents before children."""
     stack = [root]
@@ -194,21 +218,32 @@ def _plan_function(node: Node, lines: list[str], plan: _Plan, *, keep_docstring:
         # cannot see, and would not re-parse.
         return
 
-    signature_line = lines[body_first - 1]
-    body_column = body.start_point[1]
+    # The line the body opens on, which is the signature's own line only when
+    # the body starts there. Naming it for what it holds is what stops the
+    # Allman branch below reading as dead code.
+    body_line = lines[body_first - 1]
+    body_column = _char_column(body_line, body.start_point[1])
+    opens_brace = body_line[body_column : body_column + 1] == "{"
 
     docstring = _body_docstring(body) if keep_docstring else None
 
-    if body_column > len(signature_line) - len(signature_line.lstrip()):
+    if body_column > len(body_line) - len(body_line.lstrip()):
         # The body opens on the signature's own line: keep the prefix and put
         # the sentinel where the body was.
-        prefix = signature_line[:body_column].rstrip()
-        opens_brace = signature_line[body_column : body_column + 1] == "{"
+        prefix = body_line[:body_column].rstrip()
         sentinel = f"{prefix} {{ {SENTINEL} }}" if opens_brace else f"{prefix} {SENTINEL}"
         plan.elide(body_first, body_last, {body_first: sentinel})
         return
 
     indent = " " * body_column
+    if opens_brace:
+        # Allman style: the brace opens its own line. Replacing the whole body
+        # with a bare sentinel left the signature followed by `...` and no
+        # block at all, which does not re-parse as C, C++, Java or Go. The
+        # braces are emitted around the sentinel instead.
+        plan.elide(body_first, body_last, {body_first: f"{indent}{{ {SENTINEL} }}"})
+        return
+
     if docstring is not None:
         doc_first = docstring.start_point[0] + 1
         doc_last = docstring.end_point[0] + 1
@@ -222,18 +257,30 @@ def _plan_function(node: Node, lines: list[str], plan: _Plan, *, keep_docstring:
 
 
 def _plan_comment(node: Node, lines: list[str], plan: _Plan) -> None:
-    """Drop a whole-line comment; trim a trailing one off its line."""
+    """Drop a comment, keeping whatever code shares its first or last line.
+
+    A `#` comment runs to the end of its line, so only the text before it can
+    be code. A `/* ... */` comment does not: it can sit between two pieces of
+    an expression, on one line or across several. Keeping only the head
+    rewrote `const X = 1 /* note */ + 2` into `const X = 1`, which still reads
+    as a complete constant with a different value.
+    """
     first = node.start_point[0] + 1
     last = node.end_point[0] + 1
-    column = node.start_point[1]
-    line = lines[first - 1]
+    first_line = lines[first - 1]
+    last_line = lines[last - 1]
+    head = first_line[: _char_column(first_line, node.start_point[1])]
+    tail = last_line[_char_column(last_line, node.end_point[1]) :]
 
-    if not line[:column].strip():
+    if not head.strip() and not tail.strip():
         plan.drop_range(first, last)
         return
 
     plan.drop_range(first + 1, last)
-    plan.replace(first, line[:column].rstrip())
+    # A comment opening its own line keeps that line's indentation; one with
+    # code before it keeps the code and loses the whitespace it left behind.
+    kept = head.rstrip() + tail if head.strip() else head + tail.lstrip()
+    plan.replace(first, kept.rstrip())
 
 
 def _plan_docstring(node: Node, lines: list[str], plan: _Plan, *, keep: bool) -> None:
@@ -244,7 +291,7 @@ def _plan_docstring(node: Node, lines: list[str], plan: _Plan, *, keep: bool) ->
         plan.drop_range(first, last)
         return
 
-    indent = " " * node.start_point[1]
+    indent = " " * _char_column(lines[first - 1], node.start_point[1])
     plan.drop_range(first, last)
     plan.replace(first, indent + _one_line_docstring(node, lines))
 
@@ -294,21 +341,30 @@ def _body_docstring(body: Node) -> Node | None:
 
 def _one_line_docstring(node: Node, lines: list[str]) -> str:
     """Render a docstring node as one truncated line, quotes preserved."""
-    text = _node_text(node, lines)
-    quote = '"""' if '"""' in text else ("'''" if "'''" in text else text[:1])
-    inner = text.strip()
+    text = _node_text(node, lines).strip()
+    # The quote run is matched against the literal with its string prefix
+    # removed: `r"""docs."""` matched against the whole literal starts with
+    # `r`, not with `"""`, so the unstripped literal used to be wrapped in a
+    # second pair of quotes and the result did not parse. The prefix is put
+    # back, because dropping it changes what the literal means.
+    match = _STRING_PREFIX.match(text)
+    prefix = match.group(0) if match else ""
+    inner = text[len(prefix) :]
+    quote = '"""' if '"""' in inner else ("'''" if "'''" in inner else inner[:1])
     if quote and inner.startswith(quote) and inner.endswith(quote) and len(inner) >= 2 * len(quote):
         inner = inner[len(quote) : -len(quote)]
     flattened = _WHITESPACE_RUN.sub(" ", inner).strip()
     if len(flattened) > DOCSTRING_MAX_CHARS:
         flattened = flattened[: DOCSTRING_MAX_CHARS - 3] + SENTINEL
-    return f"{quote}{flattened}{quote}"
+    return f"{prefix}{quote}{flattened}{quote}"
 
 
 def _node_text(node: Node, lines: list[str]) -> str:
     """Return a node's source text, reconstructed from the split lines."""
-    first, first_column = node.start_point
-    last, last_column = node.end_point
+    first, first_byte = node.start_point
+    last, last_byte = node.end_point
+    first_column = _char_column(lines[first], first_byte)
+    last_column = _char_column(lines[last], last_byte)
     if first == last:
         return lines[first][first_column:last_column]
     parts = [lines[first][first_column:]]
@@ -321,6 +377,11 @@ def _render(lines: list[str], plan: _Plan, *, number_lines: bool) -> str:
     """Emit the surviving lines, collapsing the blank runs removal leaves."""
     rendered: list[str] = []
     previous_blank = True
+    # How long `rendered` was after the last line that carried content. Read
+    # back from the rendered text instead, the trim never fired under
+    # `number_lines`: a blank line is emitted as `2| `, and no amount of
+    # stripping makes a line prefix blank once it carries a digit.
+    content_end = 0
     for number, original in enumerate(lines, start=1):
         if number in plan.dropped:
             continue
@@ -333,8 +394,8 @@ def _render(lines: list[str], plan: _Plan, *, number_lines: bool) -> str:
             continue
         previous_blank = False
         rendered.append(f"{line_prefix(number)}{text}" if number_lines else text)
+        content_end = len(rendered)
 
-    while rendered and not rendered[-1].strip().rstrip("|"):
-        rendered.pop()
+    del rendered[content_end:]
 
     return "\n".join(rendered) + "\n" if rendered else ""

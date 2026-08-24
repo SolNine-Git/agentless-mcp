@@ -1,6 +1,10 @@
 """Git state reading: real repositories in tmp_path, no ambient config."""
 
+import errno
+import os
 import subprocess
+
+import pytest
 
 from agentless_mcp.core import gitinfo, sandbox, treewalk
 
@@ -85,6 +89,36 @@ class TestDegradation:
         monkeypatch.setattr(subprocess, "run", slow)
         assert gitinfo.dirty_count(root) is None
 
+    def test_a_process_that_cannot_be_spawned_degrades_with_its_reason(
+        self, monkeypatch, make_git_repo
+    ):
+        """The OSError arm: the host, not git, is what failed.
+
+        ``FileNotFoundError`` is the one every reader thinks of, and it is a
+        subclass. The arm that matters under load is its sibling -- EMFILE,
+        ENOMEM, EAGAIN -- where git is installed and the process could not be
+        started anyway. The whole point of this module is that a snapshot
+        degrades to a note, so this must not reach the caller as a raise.
+        """
+        root = make_git_repo(SAMPLE)
+        real_run = subprocess.run
+
+        def cannot_spawn(command, **kwargs):
+            # Root discovery still works, so the snapshot gets past it and
+            # reaches the three reads whose notes are the thing under test.
+            if "--show-toplevel" in command:
+                return real_run(command, **kwargs)
+            raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
+
+        monkeypatch.setattr(subprocess, "run", cannot_spawn)
+        snapshot = gitinfo.snapshot(root)
+
+        assert snapshot.head_sha is None
+        assert snapshot.tree_oid is None
+        assert snapshot.dirty_count is None
+        assert os.strerror(errno.EMFILE) in snapshot.note
+        assert "could not be run" in snapshot.note
+
     def test_every_invocation_is_bounded_and_declines_optional_locks(
         self, monkeypatch, make_git_repo
     ):
@@ -129,3 +163,53 @@ class TestDegradation:
         expected = ["git", *gitinfo.HARDENING_PREFIX]
         assert len(calls) == 3
         assert all(command[: len(expected)] == expected for command in calls)
+
+
+class TestAmbientGitEnvironmentCannotRedirect:
+    """The ``-C`` this package passes has to be what decides the repository.
+
+    Reproduced before the fix: with ``GIT_DIR`` pointing at an unrelated
+    repository, the receipt for the analysed repository carried the *other*
+    repository's HEAD; with ``GIT_INDEX_FILE`` naming a path that does not
+    exist, a clean tree reported dirty files. The receipt is how an agent
+    knows which commit an answer describes.
+    """
+
+    @pytest.fixture
+    def two_repos(self, make_git_repo):
+        analysed = make_git_repo({"m.py": "value = 1\n"}, name="analysed")
+        elsewhere = make_git_repo({"n.py": "value = 2\n"}, name="elsewhere")
+        return analysed, elsewhere
+
+    def test_a_git_dir_pointing_elsewhere_does_not_move_the_head(self, two_repos, monkeypatch):
+        analysed, elsewhere = two_repos
+        expected = gitinfo.snapshot(analysed).head_sha
+
+        monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+
+        assert gitinfo.snapshot(analysed).head_sha == expected
+
+    def test_a_broken_index_file_does_not_make_a_clean_tree_dirty(
+        self, two_repos, monkeypatch, tmp_path
+    ):
+        analysed, _ = two_repos
+        assert gitinfo.snapshot(analysed).dirty_count == 0
+
+        monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "nonexistent"))
+
+        assert gitinfo.snapshot(analysed).dirty_count == 0
+
+    def test_the_whole_git_family_is_stripped_and_nothing_else_is(self, monkeypatch):
+        # A denylist of the variables known to hurt today would be a list git
+        # is free to extend. The whole prefix is stripped instead, and the
+        # configuration this package needs travels on the argv.
+        monkeypatch.setenv("GIT_DIR", "/somewhere")
+        monkeypatch.setenv("GIT_SOMETHING_INVENTED_LATER", "1")
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("HOME", "/home/someone")
+
+        environment = gitinfo.subprocess_env()
+
+        assert not [name for name in environment if name.startswith("GIT_")]
+        assert environment["PATH"] == "/usr/bin"
+        assert environment["HOME"] == "/home/someone"

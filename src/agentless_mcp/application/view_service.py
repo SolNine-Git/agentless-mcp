@@ -16,6 +16,22 @@ top level.
 
 Every caller-supplied path crosses ``fslimits.contained_path`` before it is
 opened, so a path argument cannot walk out of the repository it was scoped to.
+One containment check, two outcome contracts, and which one applies is decided
+by what the caller handed in. A path this service is given is the caller's own
+argument, and a refusal raises: there is nothing to answer with, and nothing
+partial to salvage. :meth:`SymbolService.expand_symbols` reports the same
+refusal against the id that carried the path, because its input is a batch of
+ids and one bad id must not discard the cards already built beside it. The odd
+one out is :meth:`ViewService.skeleton`, which takes several paths and still
+raises on the first refusal; moving it to per-item reporting changes a
+documented CLI exit code and is not this module's decision alone.
+
+Only a skeleton needs a grammar. A slice needs the bytes to decode as text,
+and it asks for symbols so it can repeat an enclosing signature above a range
+that starts inside one. Refusing a README, a Dockerfile or a ``.cfg`` because
+no grammar claims its suffix was a guard keyed on a proxy: the line primitive
+answers without a parse, headerless, and says so by leaving ``language``
+empty.
 """
 
 from collections.abc import Sequence
@@ -36,16 +52,18 @@ from agentless_mcp.core.treewalk import (
     walk_repo,
 )
 from agentless_mcp.prompts import MESSAGES
-from agentless_mcp.util.errors import AtlasError, RepoResolutionError
-from agentless_mcp.util.fslimits import contained_path, read_bounded
-
-# What a caller is told about a line range that is not one. Shaped like
-# `MESSAGES.slice_range_beyond_file`, because "you asked for lines 60-30" and
-# "you asked for lines past the end" are the same kind of answer: the range is
-# named back, with what a satisfiable one looks like.
-SLICE_RANGE_NOT_A_RANGE = (
-    "unsatisfiable: line range {start}-{end} is not a range in {path}: "
-    "a start of 1 or more, and an end at or after the start"
+from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import (
+    AgentlessError,
+    LanguageUnavailable,
+    RepoResolutionError,
+    SecurityRefusal,
+)
+from agentless_mcp.util.fslimits import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_WALK_FILES,
+    contained_path,
+    read_bounded,
 )
 
 
@@ -76,12 +94,19 @@ class FileView:
     language: str
     text: str
     error: str = ""
+    # Why a flag and not a look at ``error``: an adapter has to tell a path it
+    # was refused from a path it could not read, and those map to different
+    # exit codes. Matching on the message text would be a guard on a proxy --
+    # the wording is a message, and messages get reworded.
+    refused: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this file view."""
         record: dict[str, Any] = {"path": self.path, "language": self.language, "text": self.text}
         if self.error:
             record["error"] = self.error
+        if self.refused:
+            record["refused"] = True
         return record
 
 
@@ -108,15 +133,19 @@ class LocationView:
 
 
 def _check_context(context: int) -> None:
-    """Refuse a context window that cannot widen anything.
+    """Refuse a context window that cannot widen anything, or that widens past use.
 
     A negative context narrows the interval it is applied to, and past the
     interval's own width it inverts it. The caller asked for lines around a
     range; there is no answer to "the lines around it, minus fifty".
+
+    Delegated to :mod:`agentless_mcp.util.bounds` rather than written out
+    here. The hand-written rule said "context must not be negative", the one
+    wording in this package that did not match the shared sentence, and it
+    carried no ceiling at all -- so ``--context 1000000000`` was answered on
+    the command line and refused over MCP.
     """
-    if context < 0:
-        message = f"context must not be negative, got {context}"
-        raise AtlasError(message)
+    bounds.within(context, 0, bounds.MAX_CONTEXT_LINES, "context")
 
 
 def _satisfiable(start: int, end: int, total: int) -> bool:
@@ -132,10 +161,15 @@ def _satisfiable(start: int, end: int, total: int) -> bool:
 
 
 def _unsatisfiable(start: int, end: int, path: str, total: int) -> str:
-    """Say why one requested range cannot be answered, naming the range."""
+    """Say why one requested range cannot be answered, naming the range.
+
+    Two texts of one shape, which is why they are two keys in one catalogue:
+    "you asked for lines 60-30" and "you asked for lines past the end" both
+    name the range back with what a satisfiable one looks like.
+    """
     if start > total:
         return MESSAGES.slice_range_beyond_file.format(start=start, end=end, path=path, total=total)
-    return SLICE_RANGE_NOT_A_RANGE.format(start=start, end=end, path=path)
+    return MESSAGES.slice_range_not_a_range.format(start=start, end=end, path=path)
 
 
 class ViewService:
@@ -153,6 +187,10 @@ class ViewService:
         max_entries: int = DEFAULT_MAX_ENTRIES,
     ) -> TreeView:
         """Render the gitignore-aware directory tree."""
+        # Capped at the traversal limits fslimits already owns, which are the
+        # numbers the MCP schema publishes for the same two parameters.
+        bounds.within(depth, 1, DEFAULT_MAX_DEPTH, "depth")
+        bounds.within(max_entries, 1, DEFAULT_MAX_WALK_FILES, "max_entries")
         selected = ctx.root if path is None else contained_path(ctx.root, path)
         if not selected.is_dir():
             relative = selected.relative_to(ctx.root).as_posix()
@@ -174,16 +212,36 @@ class ViewService:
         docstrings: bool = False,
         numbered: bool = False,
     ) -> list[FileView]:
-        """Render each named file as signatures with elided bodies."""
+        """Render each named file as signatures with elided bodies.
+
+        A batch, so a refused path is reported per item rather than raised.
+        :meth:`agentless_mcp.application.symbol_service.SymbolService._card`
+        states that rule over the same containment check -- the channel
+        follows the shape of the operation, not the method that caught the
+        failure -- and this method was the exception to it: one refused path
+        discarded every other file the caller named, and the caller could not
+        tell which of them did it.
+
+        ``FileView.refused`` is what keeps the CLI's documented exit 2 for a
+        refusal while the answer itself degrades per file.
+        """
         views: list[FileView] = []
         for raw in paths:
-            resolved, language, text, error = self._load(ctx, raw)
+            try:
+                resolved, language, text, error = self._load(ctx, raw)
+            except SecurityRefusal as refusal:
+                views.append(
+                    FileView(path=raw, language="", text="", error=str(refusal), refused=True)
+                )
+                continue
+            if not language:
+                error = error or f"{resolved}: no grammar for this file type"
             if error:
-                views.append(FileView(path=raw, language=language, text="", error=error))
+                views.append(FileView(path=resolved, language=language, text="", error=error))
                 continue
             try:
                 rendered = skeletonize(text, language, docstrings=docstrings, number_lines=numbered)
-            except AtlasError as exc:
+            except AgentlessError as exc:
                 views.append(FileView(path=resolved, language=language, text="", error=str(exc)))
                 continue
             views.append(FileView(path=resolved, language=language, text=rendered))
@@ -217,7 +275,7 @@ class ViewService:
         _check_context(context)
         resolved, language, text, error = self._load(ctx, path)
         if error:
-            return FileView(path=path, language=language, text="", error=error)
+            return FileView(path=resolved, language=language, text="", error=error)
 
         total = line_count(text)
         satisfiable = [(start, end) for start, end in intervals if _satisfiable(start, end, total)]
@@ -266,12 +324,21 @@ class ViewService:
         return LocationView(path=resolved, resolution=resolution, text=rendered)
 
     def _load(self, ctx: RepoContext, path: str) -> tuple[str, str, str, str]:
-        """Return (relative path, language, text, error) for one repository file."""
+        """Return (relative path, language, text, error) for one repository file.
+
+        An empty ``language`` is a fact, not an error: no grammar claims this
+        suffix. The invariant a line view needs is that the bytes decode as
+        text, and ``read_bounded`` is what enforces that. :meth:`skeleton`
+        turns the empty language into a refusal because a skeleton is a parse;
+        the two line views render headerless instead.
+
+        Raises on a containment refusal: the path is the caller's own
+        argument, so there is no partial answer to give and nothing to
+        attribute the refusal to but the call.
+        """
         absolute = contained_path(ctx.root, path)
         relative = absolute.relative_to(ctx.root).as_posix()
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix, "")
-        if not language:
-            return relative, "", "", f"{relative}: no grammar for this file type"
 
         read = read_bounded(absolute)
         if read.text is None:
@@ -279,6 +346,19 @@ class ViewService:
         return relative, language, read.text, ""
 
     def _symbols(self, ctx: RepoContext, text: str, language: str, path: str) -> list[ASTSymbol]:
-        """Get the symbols a slice uses for its sticky-scroll headers."""
+        """Get the symbols a slice uses for its sticky-scroll headers.
+
+        No symbols is an answer here. A file with no grammar has none to give,
+        and a grammar that was never warmed is an environment failure that
+        :meth:`skeleton` already degrades into ``FileView.error`` -- while the
+        two callers of this method raised it, although neither of them needed
+        the parse to answer. The slice loses its sticky-scroll headers and
+        keeps its lines.
+        """
+        if not language:
+            return []
         source = effective_source(ctx.symbols, self._extractor)
-        return list(source.symbols_for(text, language, path))
+        try:
+            return list(source.symbols_for(text, language, path))
+        except LanguageUnavailable:
+            return []

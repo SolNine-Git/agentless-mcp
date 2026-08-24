@@ -44,6 +44,7 @@ Two rules govern the write itself, and both are all-or-nothing:
 """
 
 import json
+import logging
 import os
 import shutil
 import stat
@@ -67,8 +68,10 @@ from agentless_mcp.core.patches import (
     apply_edits,
     parse_blocks,
 )
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.fslimits import BoundedRead, contained_path, read_bounded
+
+logger = logging.getLogger(__name__)
 
 EDITS_KEY = "edits"
 
@@ -226,16 +229,16 @@ def load_edits(text: str) -> ParseResult:
         document = json.loads(text)
     except json.JSONDecodeError as exc:
         message = f"edits document is not valid JSON: {exc}"
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
 
     if not isinstance(document, dict) or EDITS_KEY not in document:
         message = f"edits document must be a JSON object with an '{EDITS_KEY}' list"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     entries = document[EDITS_KEY]
     if not isinstance(entries, list):
         message = f"'{EDITS_KEY}' must be a list of edit objects"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     return ParseResult(
         edits=tuple(_edit_from(entry, position) for position, entry in enumerate(entries)),
@@ -247,20 +250,22 @@ def _edit_from(entry: object, position: int) -> Edit:
     """Turn one JSON edit object into an :class:`Edit`, or refuse it."""
     if not isinstance(entry, dict):
         message = f"edit {position} is not a JSON object"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     values: dict[str, str] = {}
     for field in ("path", "search", "replace"):
         value = entry.get(field)
         if not isinstance(value, str):
             message = f"edit {position} is missing a string '{field}'"
-            raise AtlasError(message)
+            raise OperationFailed(message)
         values[field] = value
 
+    # `index` labels the block in reports and nothing keys on it, so an entry
+    # that omits it takes its position in the list rather than being refused.
     index = entry.get("index", position)
     if not isinstance(index, int):
         message = f"edit {position} has a non-integer 'index'"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     return Edit(
         index=index,
@@ -284,17 +289,11 @@ class PatchService:
         """Parse patch text into edits and per-block errors."""
         return parse_blocks(text)
 
-    def check(
-        self,
-        edits: Sequence[Edit],
-        ctx: RepoContext,
-        *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
-    ) -> CheckReport:
+    def check(self, edits: Sequence[Edit], ctx: RepoContext) -> CheckReport:
         """Apply ``edits`` in memory and report each edited file's syntax delta."""
-        scoped = self._canonical(ctx, edits)
-        sources = self._read(ctx.root, scoped)
-        result = apply_edits(scoped, sources.contents, intervals=intervals)
+        canonical = self._canonical(ctx, edits)
+        sources = self._read(ctx.root, canonical)
+        result = apply_edits(canonical, sources.contents)
 
         checks = [
             FileCheck(path=path, verdict=None, error=reason)
@@ -317,7 +316,6 @@ class PatchService:
         ctx: RepoContext,
         *,
         in_place: bool = False,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
     ) -> ApplyReport:
         """Apply ``edits`` and return the unified diff they produce.
 
@@ -334,25 +332,19 @@ class PatchService:
         writes no file and returns an empty diff, and a write that fails
         part-way raises rather than leaving a prefix of the patch on disk.
         """
-        scoped = self._canonical(ctx, edits)
+        canonical = self._canonical(ctx, edits)
         if in_place:
             self._require_clean(ctx)
-            return self._apply_at(ctx, ctx.root, scoped, intervals=intervals, in_place=True)
+            return self._apply_at(ctx, ctx.root, canonical, in_place=True)
 
         with sandbox.worktree(ctx.root) as tree:
-            return self._apply_at(ctx, tree, scoped, intervals=intervals, in_place=False)
+            return self._apply_at(ctx, tree, canonical, in_place=False)
 
-    def normalize(
-        self,
-        edits: Sequence[Edit],
-        ctx: RepoContext,
-        *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None = None,
-    ) -> NormalizeReport:
+    def normalize(self, edits: Sequence[Edit], ctx: RepoContext) -> NormalizeReport:
         """Return the AST-equivalence key of the change ``edits`` describe."""
-        scoped = self._canonical(ctx, edits)
-        sources = self._read(ctx.root, scoped)
-        result = apply_edits(scoped, sources.contents, intervals=intervals)
+        canonical = self._canonical(ctx, edits)
+        sources = self._read(ctx.root, canonical)
+        result = apply_edits(canonical, sources.contents)
 
         changes = {path: (sources.contents[path], new) for path, new in result.new_contents.items()}
         file_keys = {
@@ -375,7 +367,6 @@ class PatchService:
         base: Path,
         edits: Sequence[Edit],
         *,
-        intervals: Mapping[str, Sequence[tuple[int, int]]] | None,
         in_place: bool,
     ) -> ApplyReport:
         """Apply already-canonicalised ``edits`` against ``base`` and diff it.
@@ -385,9 +376,7 @@ class PatchService:
         happened to match.
         """
         sources = self._read(base, edits)
-        result = _with_read_reasons(
-            apply_edits(edits, sources.contents, intervals=intervals), sources.unreadable
-        )
+        result = _with_read_reasons(apply_edits(edits, sources.contents), sources.unreadable)
 
         if result.ok:
             _write_all(base, result.new_contents)
@@ -400,7 +389,13 @@ class PatchService:
         )
 
     def _require_clean(self, ctx: RepoContext) -> None:
-        """Refuse an in-place apply unless the working tree is provably clean."""
+        """Refuse an in-place apply unless the working tree is provably clean.
+
+        The count is the snapshot ``resolve_repo`` took when the call started,
+        not a fresh read. A write landing in the window between the two can
+        only widen the diff this call reports: every edit is still matched
+        against the file as it stands, so a late write is never overwritten.
+        """
         if ctx.dirty_count == 0:
             return
         if ctx.dirty_count is None:
@@ -408,12 +403,12 @@ class PatchService:
                 "--in-place refused: this repository's dirty-file count could not be read, "
                 "so a clean tree cannot be proven. Drop --in-place to apply in a worktree."
             )
-            raise AtlasError(message)
+            raise OperationFailed(message)
         message = (
             f"--in-place refused: {ctx.dirty_count} files are modified or untracked. "
             "Commit or stash them, or drop --in-place to apply in a scratch worktree."
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     def _language_of(self, path: str) -> str | None:
         """Return the language a repository-relative path is written in."""
@@ -534,7 +529,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
         except OSError as exc:
             _discard(path for path, _ in staged)
             message = f"patch not applied: cannot write {path}: {_reason(exc)}; nothing was changed"
-            raise AtlasError(message) from exc
+            raise OperationFailed(message) from exc
         staged.append((staging, target))
 
     backups: list[tuple[Path, Path]] = []
@@ -547,7 +542,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
         message = (
             f"patch not applied: cannot reserve rollback files: {_reason(exc)}; nothing changed"
         )
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
 
     completed: list[tuple[Path, Path]] = []
     for position, ((staging, target), (backup, _)) in enumerate(zip(staged, backups, strict=True)):
@@ -571,7 +566,7 @@ def _write_all(base: Path, new_contents: Mapping[str, str]) -> None:
                     f"patch not applied: cannot replace {target.name}: {_reason(exc)}; "
                     "every original was restored"
                 )
-            raise AtlasError(message) from exc
+            raise OperationFailed(message) from exc
 
     _discard(path for path, _ in backups)
 
@@ -641,12 +636,23 @@ def _rollback(completed: Sequence[tuple[Path, Path]]) -> list[Path]:
 
 
 def _discard(paths: Iterable[Path]) -> None:
-    """Remove temporary files that will never be moved into place."""
+    """Remove temporary files that will never be moved into place, and say so.
+
+    Not raising is right: the failure that brought us here is the one the
+    caller needs to see. Not *recording* it was not. The file left behind is
+    a staged or backup sibling in the caller's own repository, and nothing
+    else anywhere names it. :func:`agentless_mcp.core.sandbox._release`
+    already logs the scratch worktree it could not remove, for this reason.
+    """
     for path in paths:
-        # A staging file that cannot be removed is litter; the failure that
-        # brought us here is the one the caller needs to see.
-        with suppress(OSError):
+        try:
             path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "could not remove the temporary file %s: %s; delete it by hand",
+                path,
+                _reason(exc),
+            )
 
 
 def _reason(exc: OSError) -> str:

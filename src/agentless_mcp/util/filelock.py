@@ -107,4 +107,14 @@ def _release(handle: IO[str], flavour: str) -> None:
         return
 
     fcntl = importlib.import_module("fcntl")
-    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError as exc:
+        # The Windows branch above states why a release never raises, and the
+        # reasoning is the platform's, not the flavour's: `handle.close()` in
+        # :func:`exclusive` drops the lock whatever this call did, so raising
+        # here would only replace the caller's own failure with one about the
+        # release. It would also arrive as a raw `OSError` rather than a
+        # `LockUnavailableError`, so the handler that catches this module's
+        # refusal would miss it.
+        logger.warning("releasing the lock on %s failed: %s", handle.name, exc)

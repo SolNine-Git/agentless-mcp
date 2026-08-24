@@ -31,10 +31,12 @@ import sys
 
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.util.errors import (
-    AtlasError,
+    AgentlessError,
+    InputUnreadable,
     RepoResolutionError,
     SecurityRefusal,
 )
+from agentless_mcp.util.textsafe import one_line
 
 EXIT_OK = 0
 EXIT_DOMAIN = 1
@@ -58,22 +60,36 @@ def note(text: str) -> None:
 
 
 def fail(message: str, code: int = EXIT_DOMAIN) -> int:
-    """Report a failure on stderr and return the exit code to propagate."""
-    sys.stderr.write(f"agentless-mcp: {message}\n")
+    """Report a failure on stderr and return the exit code to propagate.
+
+    One line, always: a refusal quotes what the caller named and what the
+    repository holds -- an ambiguous endpoint is answered with the stable ids
+    it matched -- so the message is repository text and this is the sink that
+    places it on a line. An agent driving this over Bash reads stderr the way
+    it reads stdout, and a refusal that spans three lines is three refusals to
+    whatever splits it.
+    """
+    sys.stderr.write(f"agentless-mcp: {one_line(message)}\n")
     return code
 
 
-def exit_code_for(error: AtlasError) -> int:
+def exit_code_for(error: AgentlessError) -> int:
     """Map a typed error onto its exit code.
 
     Keyed on what the error *is* -- a refusal versus a degraded answer -- not
     on which subcommand raised it, so a new subcommand inherits the mapping
-    instead of re-deciding it. A refused path or root says the request was not
+    instead of re-deciding it. A refused path or root, and an input file the
+    caller named that could not be read, all say the request was not
     admissible; everything else the repository refused to answer is a domain
     failure, including ``LanguageUnavailable`` and ``WalkBoundExceeded``,
     which is why they need no branch of their own.
+
+    ``InputUnreadable`` is here rather than matched on a message because the
+    subcommands that read a caller's file through a service and the ones that
+    read it inline have to agree: ``lint --candidates gone`` and ``vote
+    --verdicts gone.jsonl`` are the same mistake and now carry the same code.
     """
-    if isinstance(error, SecurityRefusal | RepoResolutionError):
+    if isinstance(error, SecurityRefusal | RepoResolutionError | InputUnreadable):
         return EXIT_USAGE
     return EXIT_DOMAIN
 
@@ -83,6 +99,11 @@ def warn_about(ctx: RepoContext) -> None:
 
     The receipt already carries the note, but a caller that pipes stdout into
     a prompt would never see it there in time to act.
+
+    The same value the receipt renders, so it gets the same escape the receipt
+    applies to it: ``application.envelope`` puts ``ctx.note`` through
+    :func:`one_line` on the receipt line, and one value escaped at one of its
+    two sinks is the asymmetry that makes a rule impossible to state.
     """
     if ctx.note:
-        sys.stderr.write(f"agentless-mcp: {ctx.note}\n")
+        sys.stderr.write(f"agentless-mcp: {one_line(ctx.note)}\n")

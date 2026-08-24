@@ -98,6 +98,54 @@ class TestAbsentAndMalformed:
         assert run(["map", "--repo", str(root)], services) == EXIT_OK
         assert "config warning" in capsys.readouterr().out
 
+    def test_a_directory_under_the_config_name_is_refused_with_a_reason(self, tmp_path):
+        """A directory under the config name is unreadable, not absent.
+
+        The module promises that an absent file, an unreadable one and a
+        malformed one are all distinguishable by their warnings. A directory
+        under the config name is a config that silently does nothing, which is
+        exactly what the promise rules out.
+        """
+        (tmp_path / projectconfig.CONFIG_FILENAME).mkdir()
+
+        config = projectconfig.load(tmp_path)
+
+        assert config.present is False
+        assert config.warnings == (
+            f"{projectconfig.CONFIG_FILENAME} is not a readable regular file; ignored",
+        )
+
+    def test_a_dangling_symlink_is_refused_with_a_reason(self, tmp_path):
+        """A config replaced by a broken link is unreadable, not absent."""
+        (tmp_path / projectconfig.CONFIG_FILENAME).symlink_to(tmp_path / "gone.json")
+
+        config = projectconfig.load(tmp_path)
+
+        assert config.present is False
+        assert any("not a readable regular file" in warning for warning in config.warnings)
+
+    def test_a_file_that_grows_after_the_stat_is_still_bounded(self, tmp_path, monkeypatch):
+        """The read enforces the cap; the stat is only an early-out.
+
+        Stated as the race it is: the size is read once and the file is read
+        after it, so a writer active between the two decides how much of the
+        repository's content this module reads. The stat is stubbed small
+        rather than a writer being raced, because a test that depends on that
+        timing is the flaky test this suite forbids.
+        """
+        path = tmp_path / projectconfig.CONFIG_FILENAME
+        path.write_text("x" * (projectconfig.MAX_CONFIG_BYTES + 10), encoding="utf-8")
+
+        class _SmallStat:
+            st_size = 10
+
+        monkeypatch.setattr(projectconfig.Path, "stat", lambda self, **_: _SmallStat())
+
+        text, refusal = projectconfig._bounded_text(path)
+
+        assert text is None
+        assert "grew past" in refusal
+
     def test_a_symlinked_config_is_not_read(self, tmp_path):
         root = tmp_path / "repo"
         root.mkdir()
@@ -147,6 +195,26 @@ class TestSchema:
         assert (
             config.warnings[-1]
             == f"50 further unknown keys in {projectconfig.CONFIG_FILENAME}: warnings suppressed"
+        )
+
+    def test_unknown_keys_never_crowd_out_a_warning_about_a_value(self, repo):
+        """Order decides which warnings survive the envelope's cap.
+
+        `envelope.MAX_CONFIG_WARNINGS` is 8 and so is the unknown-key cap, so
+        eight unknown keys used to fill the response and leave the file's own
+        malformed value unreported -- the repository choosing which diagnostic
+        its operator reads.
+        """
+        document = {f"k{index}": 1 for index in range(projectconfig.MAX_UNKNOWN_KEY_WARNINGS)}
+        document["map_budget"] = 0
+
+        config = projectconfig.load(repo(document))
+
+        assert config.map_budget is None
+        assert "map_budget" in config.warnings[0]
+        assert all(
+            "unknown key" not in warning
+            for warning in config.warnings[: -projectconfig.MAX_UNKNOWN_KEY_WARNINGS]
         )
 
     @pytest.mark.parametrize(

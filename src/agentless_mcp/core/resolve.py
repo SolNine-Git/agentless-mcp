@@ -46,12 +46,14 @@ is exactly the freshness of the scan that produced it -- which the per-file
 sha256 gate already guarantees.
 """
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Protocol
 
 from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
+from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
 from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
 
@@ -69,6 +71,27 @@ _SMALLEST_CYCLE = 2
 # module can look up.
 _SUBSCRIPT_OPEN = "["
 _KEYWORD_BASE = "="
+
+
+class FileImports(Protocol):
+    """The two facts import resolution reads off a file.
+
+    Narrower than :class:`~agentless_mcp.core.refs.FileFacts` on purpose.
+    :func:`import_graph` is reached with facts whose symbol and reference
+    tables belong to the *pre-patch* text -- :mod:`agentless_mcp.core.patchlint`
+    hands over exactly that -- so a parameter naming the whole record would
+    license reading a field the caller has already been told is stale. This
+    names what is read, which makes the caveat unrepresentable rather than
+    documented: an edit that reaches for ``symbols`` here does not type-check.
+    """
+
+    @property
+    def path(self) -> str:
+        """The file's repository-relative path."""
+
+    @property
+    def imports(self) -> Sequence[ImportStatement]:
+        """The import statements the file declares."""
 
 
 @dataclass(frozen=True)
@@ -178,6 +201,28 @@ class Resolution:
 
 
 @dataclass(frozen=True)
+class ResolvedImport:
+    """One import statement and the repository file it named, if any.
+
+    ``resolved`` is ``None`` when no file in this repository answered the
+    module string, which is what
+    :func:`agentless_mcp.core.graph.resolve_import_target` returns for that
+    case. It used to be flattened to an empty string inside a bare
+    ``tuple[str, int, str]``, so the one value meaning "this import proves
+    nothing" was spelled as a name.
+    """
+
+    module: str
+    line: int
+    resolved: str | None
+    # Whether the statement was spelled against the importing file's own
+    # directory. Kept because the module string cannot be asked afterwards:
+    # `from .missing import x` records the module `missing`, which names
+    # nothing about this repository, while the statement names nothing else.
+    relative: bool = False
+
+
+@dataclass(frozen=True)
 class ImportScope:
     """What one file's own import statements bind, resolved to repository files.
 
@@ -186,14 +231,51 @@ class ImportScope:
     ``named`` holds the ``from x import n`` form, where only ``n`` is.
     """
 
-    modules: frozenset[str]
+    wholesale: frozenset[str]
     module_bindings: Mapping[str, frozenset[str]]
     named: Mapping[str, frozenset[str]]
-    statements: tuple[tuple[str, int, str], ...]
+    statements: tuple[ResolvedImport, ...]
+
+    def resolved_edges(self, path: str) -> Iterator[tuple[str, int, str]]:
+        """Yield ``(module, line, target)`` for the statements that are edges.
+
+        The one home for "which resolved statement becomes an import edge".
+        The rule had drifted into two: :func:`_import_edges` here and
+        ``graph_service._import_pairs``, which fed the module diagram. Two
+        copies of one predicate is how a solid edge on a diagram comes to
+        disagree with the edge list ``explain``, ``path`` and ``cycles`` are
+        drawn from.
+
+        A file that imports itself is dropped for the reason :func:`_edge`
+        gives: it is real, and it says nothing about how two files relate.
+        """
+        for statement in self.statements:
+            if statement.resolved is None or statement.resolved == path:
+                continue
+            yield statement.module, statement.line, statement.resolved
 
     def binds(self, name: str, path: str) -> bool:
-        """True when this file's imports bring ``name`` in from ``path``."""
-        return path in self.modules or path in self.named.get(name, frozenset())
+        """True when this file's imports bring ``name`` in from ``path``.
+
+        ``wholesale`` was called ``modules`` and held the target of every
+        module import, which made "this file imported some module that
+        happens to define this spelling" indistinguishable from "this file
+        imported this name". Both answered at ``resolved-via-import``, the
+        tier a caller is told to read as a caller.
+
+        Reproduced against the shipped server on this repository:
+        ``adapters/cli/main.py`` imports ``resolve_repo`` by name from
+        ``application.repo_context`` and imports ``core.resolve`` as a module,
+        and a bare ``resolve_repo`` resolved to *both* files at
+        ``resolved-via-import`` -- so ``find_referencing_symbols`` on
+        ``core.resolve.resolve_repo`` listed ``main.py`` as a caller of a
+        function main.py does not import. 42 bare-reference sites on this
+        repository rested on that arm.
+
+        It now holds only the imports that genuinely bring every name in
+        unqualified: C's ``#include`` and Python's ``from x import *``.
+        """
+        return path in self.wholesale or path in self.named.get(name, frozenset())
 
 
 @dataclass(frozen=True)
@@ -247,11 +329,34 @@ class Resolver:
 
 @dataclass(frozen=True)
 class ResolvedGraph:
-    """Every resolved edge in one repository, in one deterministic order."""
+    """Every resolved edge in one repository, in one deterministic order.
+
+    Two counts, because one of them cannot answer the question it is asked.
+
+    ``unresolved_imports`` counts every import statement that named no file in
+    this repository, which is literally true of ``import json`` and always will
+    be. Measured on this repository (2026-08-23): 518 of 1238 statements, and a
+    repository whose own imports all resolve would still report several
+    hundred. Read as coverage it says a repository was barely searched when
+    nothing was missed.
+
+    ``unresolved_internal_imports`` counts only the statements that named
+    something this repository holds -- a relative import, or one whose leading
+    segment is a directory or file here -- and failed anyway. That is the
+    number a claim drawn from these edges has to be read against, the cycle
+    list above all, because it is the one that is zero when nothing was
+    missed. Measured on the same tree, the same day: 6.
+
+    Both travel with the graph rather than being recomputed beside it, because
+    "nothing found" and "little was searched" must not render identically and
+    only one of the two numbers can tell them apart.
+    """
 
     edges: tuple[SymbolEdge, ...]
     definitions: Mapping[str, Definition]
     files: tuple[str, ...]
+    unresolved_imports: int = 0
+    unresolved_internal_imports: int = 0
 
     def outgoing(self) -> dict[str, tuple[SymbolEdge, ...]]:
         """Return the edges leaving each node, keyed by node id."""
@@ -308,12 +413,35 @@ class Cycle:
         return " -> ".join([*self.files, self.files[0]])
 
 
-def build_scopes(scan: RepoScan) -> dict[str, ImportScope]:
-    """Resolve every file's import statements to repository files, once."""
-    return build_file_scopes(scan.files)
+def _bind_module_object(
+    facts: FileImports,
+    statement: ImportStatement,
+    known: frozenset[str],
+    module_bindings: dict[str, set[str]],
+) -> None:
+    """Record the local name a module-object import binds, and what it names.
+
+    The name and its target are one question, and `import a.b` answers both
+    differently from `import a.b as ab`. Unaliased, Python binds `a` -- the
+    *package* -- so `a.in_init()` is a call into `a/__init__.py` and not into
+    the submodule the statement happens to name. Aliased, it binds `ab` to the
+    submodule, and `a` is a name the file never binds at all.
+
+    So the target is resolved from the module the local name refers to, not
+    from the statement's own dotted path. Attributing `a.in_init()` to
+    `a/b.py` names the one file that does not define it.
+    """
+    referenced = statement.module if statement.alias else statement.module.split(".")[0]
+    binding = statement.alias or referenced
+    if not binding:
+        return
+    target = graph.resolve_import_target(facts.path, replace(statement, module=referenced), known)
+    if target is None or target == facts.path:
+        return
+    module_bindings.setdefault(binding, set()).add(target)
 
 
-def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
+def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
     """Resolve every file's import statements to repository files, once.
 
     Takes the file facts rather than a whole scan, because a caller holding a
@@ -330,39 +458,65 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
     scopes: dict[str, ImportScope] = {}
 
     for facts in files:
-        modules: set[str] = set()
+        wholesale: set[str] = set()
         module_bindings: dict[str, set[str]] = {}
         named: dict[str, set[str]] = {}
-        statements: list[tuple[str, int, str]] = []
+        statements: list[ResolvedImport] = []
 
         for statement in facts.imports:
             target = graph.resolve_import_target(facts.path, statement, known)
-            statements.append((statement.module, statement.line_number, target or ""))
+            statements.append(
+                ResolvedImport(
+                    module=statement.module,
+                    line=statement.line_number,
+                    resolved=target,
+                    relative=statement.is_relative or bool(statement.relative_level),
+                )
+            )
+            # Named rather than a bool so the narrowing is the type's, not a
+            # reader's: a file importing itself is not evidence about itself.
+            bound = target if target is not None and target != facts.path else None
+            if statement.binds_all and bound is not None:
+                # `#include` and `from x import *`: every name the target
+                # defines is spellable here, so a bare reference to one of
+                # them really is evidence of this import.
+                wholesale.add(bound)
             if not statement.names:
-                if target is not None and target != facts.path:
-                    modules.add(target)
-                    binding = statement.module.split(".", maxsplit=1)[0]
-                    if binding:
-                        module_bindings.setdefault(binding, set()).add(target)
+                _bind_module_object(facts, statement, known, module_bindings)
                 continue
-            for name in statement.names:
-                dotted = f"{statement.module}.{name}" if statement.module else name
+            for member, local in statement.bound_names():
+                dotted = f"{statement.module}.{member}" if statement.module else member
                 submodule = graph.resolve_imported_submodule(
                     facts.path,
                     statement,
-                    name,
+                    member,
                     known,
                 )
                 if submodule is not None and submodule != facts.path:
-                    named.setdefault(name, set()).add(submodule)
-                    modules.add(submodule)
-                    module_bindings.setdefault(name, set()).add(submodule)
-                    statements.append((dotted, statement.line_number, submodule))
-                elif target is not None and target != facts.path:
-                    named.setdefault(name, set()).add(target)
+                    # `from pkg import mod` binds the name `mod` to a module
+                    # object. It does not bring `mod`'s contents into this
+                    # file, which is why the submodule is no longer added to
+                    # the wholesale set: a bare reference to something
+                    # `pkg/mod.py` defines is a NameError here.
+                    #
+                    # Keyed on the local name: `from pkg import mod as m`
+                    # spells `m` here, and `mod` is a name this file never
+                    # binds.
+                    named.setdefault(local, set()).add(submodule)
+                    module_bindings.setdefault(local, set()).add(submodule)
+                    statements.append(
+                        ResolvedImport(
+                            module=dotted,
+                            line=statement.line_number,
+                            resolved=submodule,
+                            relative=statement.is_relative or bool(statement.relative_level),
+                        )
+                    )
+                elif bound is not None:
+                    named.setdefault(local, set()).add(bound)
 
         scopes[facts.path] = ImportScope(
-            modules=frozenset(modules),
+            wholesale=frozenset(wholesale),
             module_bindings={name: frozenset(paths) for name, paths in module_bindings.items()},
             named={name: frozenset(paths) for name, paths in named.items()},
             statements=tuple(statements),
@@ -373,10 +527,10 @@ def build_file_scopes(files: Sequence[FileFacts]) -> dict[str, ImportScope]:
 
 def build_resolver(scan: RepoScan, index: RefIndex) -> Resolver:
     """Build the resolver one call's views share."""
-    return Resolver(index=index, scopes=build_scopes(scan))
+    return Resolver(index=index, scopes=build_file_scopes(scan.files))
 
 
-def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
+def import_graph(files: Sequence[FileImports]) -> ResolvedGraph:
     """Assemble the module-level import edges alone, resolving no references.
 
     The cycle question is about modules, so it needs one third of
@@ -385,9 +539,10 @@ def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
     once as a patch would leave it -- without resolving every identifier in
     the tree twice to find out whether a knot appeared.
 
-    Only ``path`` and ``imports`` are read off each entry, so a caller may
-    hand over facts whose symbol and reference tables belong to the pre-patch
-    text; the returned graph has no symbol definitions for the same reason.
+    The parameter names only ``path`` and ``imports``, which is all this call
+    reads, so a caller may hand over facts whose symbol and reference tables
+    belong to the pre-patch text; the returned graph has no symbol definitions
+    for the same reason.
     """
     scopes = build_file_scopes(files)
     edges: list[SymbolEdge] = []
@@ -398,6 +553,8 @@ def import_graph(files: Sequence[FileFacts]) -> ResolvedGraph:
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
         definitions={},
         files=tuple(sorted(facts.path for facts in files)),
+        unresolved_imports=_unresolved_imports(scopes.values()),
+        unresolved_internal_imports=_unresolved_internal_imports(scopes.values(), scopes.keys()),
     )
 
 
@@ -432,6 +589,10 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
         definitions=definitions,
         files=tuple(sorted(facts.path for facts in scan.files)),
+        unresolved_imports=_unresolved_imports(resolver.scopes.values()),
+        unresolved_internal_imports=_unresolved_internal_imports(
+            resolver.scopes.values(), resolver.scopes.keys()
+        ),
     )
 
 
@@ -470,6 +631,9 @@ def shortest_path(
     adjacency = _undirected(usable)
 
     if source == target:
+        # Not checked against the graph: an endpoint reaches this function
+        # already resolved to a node (`application.graph_service`), and a node
+        # is trivially related to itself whether or not it carries edges.
         return PathResult(
             source=source, target=target, hops=(), found=True, visited=1, exhausted=False
         )
@@ -516,7 +680,15 @@ def shortest_path(
 
 
 def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
-    """Return every module-level import cycle, in a deterministic order.
+    """Return the import cycles the resolved imports prove, deterministically.
+
+    Not every cycle the repository holds. An import this package could not
+    resolve to a file contributes no edge, so it can hide a knot that is
+    really there. ``resolved.unresolved_internal_imports`` is how many
+    statements were in that position *and* named something this repository
+    holds, and it is what an empty result has to be read against;
+    ``unresolved_imports`` counts every unresolved statement, most of which
+    name the standard library and never could have resolved.
 
     Tarjan's strongly connected components over the import edges alone: two
     files are in one cycle exactly when each can reach the other by following
@@ -539,6 +711,61 @@ def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
 
     cycles.sort(key=lambda cycle: (len(cycle.files), cycle.files))
     return tuple(cycles)
+
+
+def _unresolved_imports(scopes: Iterable[ImportScope]) -> int:
+    """Count the import statements that named no file in this repository."""
+    return sum(
+        1 for scope in scopes for statement in scope.statements if statement.resolved is None
+    )
+
+
+def _repository_segments(paths: Iterable[str]) -> frozenset[str]:
+    """Return every directory name and file stem the repository spells.
+
+    What an import has to lead with to be about this repository at all.
+    ``agentless_mcp`` is here because a directory carries that name;
+    ``json`` is not, unless the tree happens to hold a file or directory of
+    that name -- in which case an import leading with it really could have
+    meant this repository, and counting it is the safe direction.
+    """
+    segments: set[str] = set()
+    for path in paths:
+        parts = path.split("/")
+        segments.update(parts[:-1])
+        segments.add(parts[-1].rpartition(".")[0] or parts[-1])
+    return frozenset(segments)
+
+
+def _unresolved_internal_imports(scopes: Iterable[ImportScope], paths: Iterable[str]) -> int:
+    """Count the unresolved imports that named something this repository holds.
+
+    A relative import always did: it is spelled against the importing file's
+    own directory and can name nothing else, which is why
+    :class:`ResolvedImport` keeps that fact rather than re-reading the module
+    string -- ``from .missing import x`` records the module ``missing``. An
+    absolute one did when its
+    leading segment is a directory or a file here -- which is what separates
+    ``from agentless_mcp.application import X``, a resolution this package
+    owes an answer to, from ``import json``, which it never could.
+    """
+    segments = _repository_segments(paths)
+    return sum(
+        1
+        for scope in scopes
+        for statement in scope.statements
+        if statement.resolved is None
+        and (statement.relative or _names_this_repository(statement.module, segments))
+    )
+
+
+def _names_this_repository(module: str, segments: frozenset[str]) -> bool:
+    """True when a module string leads with a name this repository spells."""
+    text = module.strip()
+    if not text:
+        return False
+    lead = text.replace("\\", "/").replace("::", "/").replace(".", "/").split("/", 1)[0]
+    return bool(lead) and lead in segments
 
 
 def base_name(text: str) -> str:
@@ -569,7 +796,27 @@ def _reference_edges(
             # not a bare repository reference at any evidence tier.
             continue
         if (ref.name, ref.line) in declarations:
-            # The identifier in `def quote` is the declaration, not a use of it.
+            # The identifier in `def quote` is the declaration, not a use of
+            # it. Only Python records that as a role the filter above can
+            # read; `collect_refs` calls every other identifier a REFERENCE,
+            # so this is where the other nineteen languages are answered.
+            #
+            # It is a proxy -- "a symbol of this name starts on this line" --
+            # and two tighter keys were measured against the edge set of this
+            # repository (175 files, 20 languages, 10,731 reference edges).
+            # Marking the tree-sitter `name`-field child a DECLARATION in the
+            # extractor adds 35,939 edges and drops 215: JSON, YAML and TOML
+            # keys sit behind no `name` field, so every key becomes a
+            # reference to every other key of that spelling. Dropping only the
+            # first match per line reproduces this edge set exactly here, and
+            # on `Helper Helper() { return new Helper(); }` it keeps the
+            # declaration identifier and drops the return type -- a wrong edge
+            # traded for a missing one, which is the wrong direction.
+            #
+            # So the cost is paid where it is cheapest: 1,086 of 14,947
+            # resolvable references are dropped, none of them a second
+            # occurrence sharing a line with a declaration. Closing it for
+            # real means recording the role per language in the extractor.
             continue
         resolution = (
             resolver.resolve_module_attribute(ref.name, facts.path, ref.qualifier)
@@ -630,15 +877,13 @@ def _add(
             edges.append(edge)
 
 
-def _import_edges(facts: FileFacts, scope: ImportScope | None) -> list[SymbolEdge]:
+def _import_edges(facts: FileImports, scope: ImportScope | None) -> list[SymbolEdge]:
     """Turn one file's resolved imports into module-level edges."""
     if scope is None:
         return []
 
     edges: list[SymbolEdge] = []
-    for module, line, target in scope.statements:
-        if not target or target == facts.path:
-            continue
+    for module, line, target in scope.resolved_edges(facts.path):
         edge = _edge(
             file_endpoint(facts.path, line),
             file_endpoint(target),

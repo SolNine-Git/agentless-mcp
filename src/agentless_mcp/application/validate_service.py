@@ -39,12 +39,30 @@ The opt-in is the command-provenance enforcement. Separately, every command
 runs with an allowlisted environment; ``passthrough_env`` names any additional
 parent variables the caller deliberately exposes.
 
-**A run bounds its own total cost.** ``timeout`` bounds one command;
-``run_timeout``, when given, bounds the run. A batch is
-``repeat_baseline + 1 + candidates x 2`` commands, so per-command bounds
-multiply into hours. Past the deadline the remaining candidates are reported
-``not_evaluated`` rather than skipped silently -- an unevaluated candidate and
-a failed one are different answers.
+**A candidate may not rewrite the judge either.** The command-provenance rule
+above stops the repository nominating its own judge; its write-side twin stops
+a *candidate* doing the same thing. A candidate that edits ``conftest.py`` has
+changed what ``pytest`` collects, and one that edits a workflow file has
+changed what CI runs -- while looking like an ordinary source fix in the
+diff. Those edits are refused before the candidate is applied, and
+``allow_test_config_edits`` is the caller accepting them.
+
+Say plainly what this is not: it is not a sandbox, and it cannot be one. A
+candidate patch is judged by running the repository's tests against it, so the
+code it writes runs by construction -- that is the whole mechanism. What the
+refusal protects is narrower and real: a candidate cannot silently change
+*how it is judged*. The files listed in ``TEST_CONFIG_NAMES`` are the ones
+that decide what runs rather than what the code does.
+
+**A run's aggregate bound is opt-in.** ``timeout`` bounds one command and is
+always in force; ``run_timeout`` bounds the whole run and defaults to none. A
+batch is ``repeat_baseline + 1 + candidates x 2`` commands, so per-command
+bounds multiply into hours and only ``run_timeout`` stops that. Past the
+deadline the remaining candidates are reported ``not_evaluated`` rather than
+skipped silently -- an unevaluated candidate and a failed one are different
+answers. What is always in force is the size of the input: the candidate count
+and each candidate's byte size are capped, so a mis-typed ``--candidates``
+naming a source tree is refused rather than run.
 
 The output is one JSON Lines document: a ``run`` record carrying the receipt,
 the commands and the baseline outcome, then a ``candidate`` record per
@@ -53,22 +71,25 @@ only place that format is parsed and the only place it is written.
 """
 
 import json
+import posixpath
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TypeVar
 
 from agentless_mcp.application import envelope
 from agentless_mcp.application.patch_service import PatchService, load_edits
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo
 from agentless_mcp.core import sandbox
-from agentless_mcp.core.patches import ApplyResult
+from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.sandbox import RunResult, RunStatus
 from agentless_mcp.core.vote import VoteCandidate
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import AgentlessError, InputUnreadable, OperationFailed
+from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES
 
 DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_JOBS = 1
@@ -78,7 +99,61 @@ DEFAULT_JOBS = 1
 # who suspects flakiness finds out before the candidates inherit the doubt.
 DEFAULT_REPEAT_BASELINE = 1
 
+# How many candidates one run accepts. Agentless samples tens of patches, not
+# thousands; a directory holding more than this is a `--candidates` that names
+# something other than a candidate set, and running it is hours of test suite
+# nobody asked for.
+MAX_CANDIDATES = 200
+
+# The most workers a run will take. One worker per candidate is the most any
+# run can use -- `ThreadPoolExecutor` starts a thread per submitted task, so a
+# larger `max_workers` creates no more threads than there are candidates -- and
+# `--jobs` above that is a number the caller cannot have meant. Refused rather
+# than clamped, for the reason `_check_bounds` gives: a bound the caller sets
+# and the tool silently rewrites is the same defect as one the tool ignores.
+MAX_JOBS = MAX_CANDIDATES
+
+# How large one candidate file may be. The same bound the package's read side
+# applies to any single file: a patch larger than this is not a patch.
+MAX_CANDIDATE_BYTES = DEFAULT_MAX_FILE_BYTES
+
+# The least time a command may be given. Below this the aggregate budget,
+# rather than the caller's own `timeout`, is what the command measures -- and
+# `Verdict.TIMEOUT` is measured, so a candidate handed a fraction of a second
+# enters the vote ladder carrying evidence nobody chose. No time at all is the
+# honest answer, and `not_evaluated` is what says so.
+MIN_COMMAND_SECONDS = 1.0
+
 RECORD_KEY = "record"
+# The files that decide what the test command runs rather than what the code
+# does. A candidate editing one of these has rewritten its own judge, so the
+# edit is refused unless the caller opts in.
+#
+# Matched on the basename anywhere in the tree, because a nested
+# ``tests/unit/conftest.py`` collects exactly as hard as a root one, plus any
+# path under a CI directory.
+TEST_CONFIG_NAMES = frozenset(
+    {
+        "conftest.py",
+        "pytest.ini",
+        "tox.ini",
+        "noxfile.py",
+        "setup.cfg",
+        "setup.py",
+        "pyproject.toml",
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "package.json",
+        ".pre-commit-config.yaml",
+        "sitecustomize.py",
+        "usercustomize.py",
+    }
+)
+
+# Path prefixes whose whole subtree decides what CI runs.
+TEST_CONFIG_PREFIXES = (".github/",)
+
 RECORD_RUN = "run"
 RECORD_CANDIDATE = "candidate"
 
@@ -186,6 +261,10 @@ class ValidateRequest:
     where the command came from, not on which adapter asked, because that is
     the property the refusal protects.
 
+    ``allow_test_config_edits`` is the write-side twin: without it a candidate
+    that edits a file naming what the tests run is refused before it is
+    applied. See the module docstring for what that does and does not protect.
+
     ``run_timeout`` bounds the whole run in seconds. ``None`` is the historical
     behaviour: no aggregate bound at all.
     """
@@ -200,6 +279,7 @@ class ValidateRequest:
     passthrough_env: tuple[str, ...] = ()
     test_cmd_from_repo: bool = False
     allow_repo_test_cmd: bool = False
+    allow_test_config_edits: bool = False
 
 
 @dataclass(frozen=True)
@@ -225,6 +305,11 @@ class CandidateVerdict:
     duration: float
     regression_run: RunResult | None = None
     reproduction_run: RunResult | None = None
+    # True when the run's aggregate budget, not the caller's own `timeout`,
+    # is what bounded this candidate. A `timeout` produced by a bound the
+    # caller never chose reads exactly like one they did, so which bound
+    # applied travels with the verdict rather than being lost in the number.
+    budget_truncated: bool = False
 
     @property
     def usable(self) -> bool:
@@ -262,6 +347,7 @@ class CandidateVerdict:
             "reproduction": None if self.reproduction is None else self.reproduction.value,
             "equivalence_key": self.equivalence_key,
             "duration": self.duration,
+            "budget_truncated": self.budget_truncated,
         }
         tails = {
             name: run.as_dict()
@@ -293,6 +379,10 @@ class RunHeader:
     repro_baseline_run: RunResult | None = None
     repeat_baseline: int = DEFAULT_REPEAT_BASELINE
     baseline_failures: int = 0
+    allow_test_config_edits: bool = False
+    # The baseline's half of the same fact the candidate verdicts carry: the
+    # run budget, not `timeout`, is what the baseline command ran under.
+    budget_truncated: bool = False
 
     @property
     def repro_valid(self) -> bool:
@@ -319,8 +409,13 @@ class RunHeader:
             "repeat_baseline": self.repeat_baseline,
             "baseline_failures": self.baseline_failures,
             "flaky_baseline": self.flaky_baseline,
+            "budget_truncated": self.budget_truncated,
             "repro_verdict": self.repro_verdict.value,
             "repro_valid": self.repro_valid,
+            # On the run record rather than only in the invocation, because a
+            # verdict read back weeks later has to say whether a candidate was
+            # allowed to rewrite its own judge.
+            "allow_test_config_edits": self.allow_test_config_edits,
             "baseline_run": None if self.baseline_run is None else self.baseline_run.as_dict(),
             "repro_baseline_run": (
                 None if self.repro_baseline_run is None else self.repro_baseline_run.as_dict()
@@ -375,11 +470,18 @@ class ValidateReport:
         regression command could not be started at all -- a spawn failure, a
         patch that renamed the runner -- so there is no measurement to report
         either way. They are excluded from the vote ladder for the same reason.
+
+        A candidate the run budget stopped after its patch applied is also
+        unmeasured and is deliberately not here: the warning this feeds says
+        the command could not be started, which is false about a command that
+        was never reached. The budget warning is what names those.
         """
         return tuple(
             verdict.id
             for verdict in self.verdicts
-            if verdict.apply_status is ApplyStatus.OK and not verdict.regression.measured
+            if verdict.apply_status is ApplyStatus.OK
+            and not verdict.regression.measured
+            and not verdict.budget_truncated
         )
 
     def warnings(self) -> tuple[str, ...]:
@@ -425,6 +527,17 @@ class ValidateReport:
                 "nothing was run against them, so they are excluded from the vote ladder "
                 "rather than reported as breaking the suite."
             )
+        truncated = [
+            *(["the baseline"] if self.header.budget_truncated else []),
+            *(verdict.id for verdict in self.verdicts if verdict.budget_truncated),
+        ]
+        if truncated:
+            lines.append(
+                f"BUDGET: the run's own budget, not --timeout {self.header.timeout}, is what "
+                f"bounded {', '.join(truncated)}. A command cut short by the budget reports a "
+                "timeout against a bound nobody chose, so read those as unfinished rather than "
+                "as slow."
+            )
         if self.deadline_expired:
             lines.append(
                 "DEADLINE: the run's overall time budget expired before evaluation completed. "
@@ -455,10 +568,11 @@ class ValidateService:
         """Validate every candidate in ``request.candidates`` against ``ctx``.
 
         Refuses before anything is executed when the command came out of the
-        repository under analysis and the caller did not opt in, and when the
-        run's own bound is not a positive number of seconds.
+        repository under analysis and the caller did not opt in, and when any
+        of its bounds cannot bound anything.
         """
         _refuse_unowned_command(request)
+        _check_bounds(request)
         deadline = _deadline(request)
 
         candidates = load_candidates(request.candidates)
@@ -512,49 +626,58 @@ class ValidateService:
         clothes. Reporting the disagreement is the only honest outcome, and
         the count is named so the caller can see how bad it is.
         """
-        repeats = max(1, request.repeat_baseline)
+        # Not `max(1, ...)`: `_check_bounds` refused anything below one
+        # before the run started, so clamping here would only hide a caller
+        # that reached this method without crossing that boundary.
+        repeats = request.repeat_baseline
         runs: list[RunResult] = []
+        truncated = False
         for _ in range(repeats):
-            command_timeout = _command_timeout(request.timeout, deadline)
-            if command_timeout is None:
+            bound = _command_bound(request.timeout, deadline)
+            if bound is None:
                 outcome = _expired_baseline(runs, repeats, request.run_timeout)
                 return _header(ctx, request, count, outcome, repro_run=None), True
             with sandbox.worktree(ctx.root) as tree:
-                runs.append(
-                    sandbox.run_command(
-                        tree,
-                        request.test_cmd,
-                        timeout=command_timeout,
-                        passthrough_env=request.passthrough_env,
-                    )
+                run = sandbox.run_command(
+                    tree,
+                    request.test_cmd,
+                    timeout=bound.seconds,
+                    passthrough_env=request.passthrough_env,
                 )
+            runs.append(run)
+            truncated = truncated or _truncated(bound, run)
 
             if _deadline_reached(deadline) and len(runs) < repeats:
                 outcome = _expired_baseline(runs, repeats, request.run_timeout)
                 return _header(ctx, request, count, outcome, repro_run=None), True
 
         failures = [run for run in runs if not run.passed]
-        outcome = _baseline_outcome(runs, failures, repeats)
+        outcome = _baseline_outcome(runs, failures, repeats, truncated=truncated)
         if outcome.status is BaselineStatus.UNVERIFIED:
-            expired = _deadline_reached(deadline)
-            return _header(ctx, request, count, outcome, repro_run=None), expired
+            # Not `_deadline_reached(deadline)`: the baseline ran every repeat
+            # it was asked for and answered. Whether the clock has since passed
+            # the deadline says nothing about work this run abandoned, and the
+            # DEADLINE warning is about abandoned work.
+            return _header(ctx, request, count, outcome, repro_run=None), False
 
         repro_run = None
         if request.repro_cmd is not None:
-            command_timeout = _command_timeout(request.timeout, deadline)
-            if command_timeout is None:
+            bound = _command_bound(request.timeout, deadline)
+            if bound is None:
                 expired_outcome = replace(outcome, deadline_expired=True)
                 return _header(ctx, request, count, expired_outcome, repro_run=None), True
             with sandbox.worktree(ctx.root) as tree:
                 repro_run = sandbox.run_command(
                     tree,
                     request.repro_cmd,
-                    timeout=command_timeout,
+                    timeout=bound.seconds,
                     passthrough_env=request.passthrough_env,
                 )
+            outcome = replace(
+                outcome, budget_truncated=outcome.budget_truncated or _truncated(bound, repro_run)
+            )
 
-        expired = _deadline_reached(deadline)
-        return _header(ctx, request, count, outcome, repro_run=repro_run), expired
+        return _header(ctx, request, count, outcome, repro_run=repro_run), False
 
     # ------------------------------------------------------------------
     # Candidates
@@ -579,15 +702,20 @@ class ValidateService:
         Every command receives the smaller of its own bound and the aggregate
         budget left. Work already in flight therefore stops at the same
         deadline, while queued candidates become ``not_evaluated``.
+
+        The second half of each pair is whether the budget stopped work this
+        candidate would otherwise have had -- reported by the code that
+        abandoned it, not sampled off the clock afterwards. A run whose last
+        command finishes at the deadline reached everything it was asked to
+        reach, and used to raise the DEADLINE warning anyway.
         """
 
         def evaluate(candidate: Candidate) -> tuple[CandidateVerdict, bool]:
             if _deadline_reached(deadline):
                 return _deadline_expired(candidate, request.run_timeout), True
-            verdict = self._evaluate(
+            return self._evaluate(
                 ctx, request, candidate, repro_valid=repro_valid, deadline=deadline
             )
-            return verdict, _deadline_reached(deadline)
 
         if request.jobs > 1 and len(candidates) > 1:
             with ThreadPoolExecutor(max_workers=request.jobs) as pool:
@@ -606,8 +734,13 @@ class ValidateService:
         *,
         repro_valid: bool,
         deadline: float | None,
-    ) -> CandidateVerdict:
-        """Apply one candidate in its own worktree and run the tests there."""
+    ) -> tuple[CandidateVerdict, bool]:
+        """Apply one candidate in its own worktree and run the tests there.
+
+        The second value is whether the run's aggregate budget abandoned work
+        this candidate would otherwise have had. It is set where the work is
+        abandoned, which is the only place that knows.
+        """
         started = _monotonic()
         with sandbox.worktree(ctx.root) as tree:
             # The worktree is the repository this candidate is judged in, so
@@ -617,65 +750,58 @@ class ValidateService:
             # it is a refused invocation.
             scoped = resolve_repo(tree, None)
 
-            try:
-                parsed = load_edits(candidate.text)
-            except AtlasError as error:
-                return _apply_failed(candidate, (str(error),), started)
-
-            if parsed.errors:
-                reasons = tuple(
-                    f"block {error.index} ({error.path or 'no path'}): {error.reason}"
-                    for error in parsed.errors
-                )
-                return _apply_failed(candidate, reasons, started)
-            if not parsed.edits:
-                return _apply_failed(candidate, ("the candidate contains no edits",), started)
+            edits, refusal = _candidate_edits(candidate, request, started)
+            if refusal is not None:
+                return refusal, False
 
             # Normalising first computes the equivalence key against the same
             # unpatched content the apply is about to match against, and
             # reports every block that would not land -- so a candidate that
             # cannot apply costs no test run at all.
-            normalized = self._patches.normalize(parsed.edits, scoped)
+            normalized = self._patches.normalize(edits, scoped)
             if not normalized.ok:
-                return _apply_failed(candidate, _reasons(normalized.result), started)
+                return _apply_failed(candidate, _reasons(normalized.result), started), False
 
-            applied = self._patches.apply(parsed.edits, scoped, in_place=True)
+            applied = self._patches.apply(edits, scoped, in_place=True)
             if not applied.ok:
-                return _apply_failed(candidate, _reasons(applied.result), started)
+                return _apply_failed(candidate, _reasons(applied.result), started), False
 
             # A patch that applied and changed nothing has no equivalence
             # class to vote in: the Agentless ladder's `patch_key.strip()`
             # guard, kept in every tier.
             key = normalized.key if normalized.result.new_contents else None
 
-            command_timeout = _command_timeout(request.timeout, deadline)
+            bound = _command_bound(request.timeout, deadline)
+            if bound is None:
+                return _applied_but_unmeasured(candidate, key, request.run_timeout, started), True
+            regression_run = sandbox.run_command(
+                tree,
+                request.test_cmd,
+                timeout=bound.seconds,
+                passthrough_env=request.passthrough_env,
+            )
+            truncated = _truncated(bound, regression_run)
+            abandoned = False
 
-            def measure() -> CandidateVerdict:
-                if command_timeout is None:
-                    return _deadline_expired(candidate, request.run_timeout)
-                regression_run = sandbox.run_command(
-                    tree,
-                    request.test_cmd,
-                    timeout=command_timeout,
-                    passthrough_env=request.passthrough_env,
-                )
+            reproduction_run = None
+            reproduction_verdict = None
+            if repro_valid and request.repro_cmd is not None:
+                repro_bound = _command_bound(request.timeout, deadline)
+                if repro_bound is None:
+                    reproduction_verdict = Verdict.NOT_EVALUATED
+                    abandoned = True
+                else:
+                    reproduction_run = sandbox.run_command(
+                        tree,
+                        request.repro_cmd,
+                        timeout=repro_bound.seconds,
+                        passthrough_env=request.passthrough_env,
+                    )
+                    reproduction_verdict = Verdict.of(reproduction_run)
+                    truncated = truncated or _truncated(repro_bound, reproduction_run)
 
-                reproduction_run = None
-                reproduction_verdict = None
-                if repro_valid and request.repro_cmd is not None:
-                    repro_timeout = _command_timeout(request.timeout, deadline)
-                    if repro_timeout is None:
-                        reproduction_verdict = Verdict.NOT_EVALUATED
-                    else:
-                        reproduction_run = sandbox.run_command(
-                            tree,
-                            request.repro_cmd,
-                            timeout=repro_timeout,
-                            passthrough_env=request.passthrough_env,
-                        )
-                        reproduction_verdict = Verdict.of(reproduction_run)
-
-                return CandidateVerdict(
+            return (
+                CandidateVerdict(
                     id=candidate.id,
                     index=candidate.index,
                     apply_status=ApplyStatus.OK,
@@ -686,9 +812,10 @@ class ValidateService:
                     duration=round(_monotonic() - started, 3),
                     regression_run=regression_run,
                     reproduction_run=reproduction_run,
-                )
-
-            return measure()
+                    budget_truncated=truncated,
+                ),
+                abandoned,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -707,16 +834,33 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
     Two files sharing a stem are refused rather than silently collapsed: the
     ids would collide in the report and one candidate's verdict would appear
     to be the other's.
+
+    The directory holds candidate patches and nothing else. There is no
+    extension filter, so a stray README or `.gitignore` becomes a candidate
+    that no patch can apply and lowers the "N of M applied" summary.
+
+    Two sizes are refused rather than read: more than
+    :data:`MAX_CANDIDATES` files, and any one file over
+    :data:`MAX_CANDIDATE_BYTES`. Neither is a candidate set that a caller
+    typed on purpose, and each file is read whole, so without the caps a
+    ``--candidates`` naming a source tree became hours of test runs over
+    megabytes of text that no patch parser was ever going to accept.
     """
     resolved = directory.expanduser().resolve()
     if not resolved.is_dir():
         message = f"--candidates must name a directory; {resolved} is not one"
-        raise AtlasError(message)
+        raise InputUnreadable(message)
 
     files = sorted(entry for entry in resolved.iterdir() if entry.is_file())
     if not files:
         message = f"no candidate files in {resolved}: one file per candidate patch"
-        raise AtlasError(message)
+        raise OperationFailed(message)
+    if len(files) > MAX_CANDIDATES:
+        message = (
+            f"{resolved} holds {len(files)} files and a run takes at most {MAX_CANDIDATES}. "
+            "One file is one candidate patch, so this directory is probably not a candidate set."
+        )
+        raise OperationFailed(message)
 
     seen: dict[str, Path] = {}
     candidates: list[Candidate] = []
@@ -726,17 +870,29 @@ def load_candidates(directory: Path) -> tuple[Candidate, ...]:
                 f"two candidates share the id {path.stem!r}: {seen[path.stem].name} and "
                 f"{path.name}. Candidate ids come from the filename stem and must be unique."
             )
-            raise AtlasError(message)
+            raise OperationFailed(message)
         seen[path.stem] = path
+
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            message = f"cannot read candidate {path.name}: {exc.strerror}"
+            raise InputUnreadable(message) from exc
+        if size > MAX_CANDIDATE_BYTES:
+            message = (
+                f"candidate {path.name} is {size} bytes and the limit is "
+                f"{MAX_CANDIDATE_BYTES}. A patch larger than that is not a patch."
+            )
+            raise OperationFailed(message)
 
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             message = f"cannot read candidate {path.name}: {exc.strerror}"
-            raise AtlasError(message) from exc
+            raise InputUnreadable(message) from exc
         except UnicodeDecodeError as exc:
             message = f"candidate {path.name} is not UTF-8 text"
-            raise AtlasError(message) from exc
+            raise InputUnreadable(message) from exc
 
         candidates.append(Candidate(id=path.stem, index=index, text=text))
 
@@ -762,19 +918,15 @@ def load_verdicts(text: str) -> LoadedVerdicts:
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
         message = "the verdicts file is empty: run `agentless-mcp validate` to produce one"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     records = [_record(line, position) for position, line in enumerate(lines)]
     header = records[0]
     if _string(header, RECORD_KEY, 0) != RECORD_RUN:
         message = f"the first line of a verdicts file must be a '{RECORD_RUN}' record"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
-    candidates = tuple(
-        _vote_candidate(record, position)
-        for position, record in enumerate(records[1:], start=1)
-        if _string(record, RECORD_KEY, position) == RECORD_CANDIDATE
-    )
+    candidates = _candidate_records(records)
 
     return LoadedVerdicts(
         baseline=_enum(header, "baseline", 0, BaselineStatus),
@@ -783,6 +935,64 @@ def load_verdicts(text: str) -> LoadedVerdicts:
         repro_cmd=_optional_string(header, "repro_cmd", 0),
         candidates=candidates,
     )
+
+
+def _candidate_records(records: Sequence[dict[str, Any]]) -> tuple[VoteCandidate, ...]:
+    """Read every record after the header as a candidate, or refuse the document.
+
+    Identity is checked here and nowhere else on this side of the format. The
+    writer already refuses two candidates sharing an id, because "the ids
+    would collide in the report and one candidate's verdict would appear to be
+    the other's" -- and a reader that accepts what the writer refuses is a
+    ballot anyone can stuff by concatenating two documents. Measured against
+    the real reader and the real vote: a document holding ``c1`` twice ranked
+    its cluster at size three, with members ``('c1', 'c1', 'c2')``, and crowned
+    a different candidate.
+
+    A record value this build does not know is refused for the same reason
+    every other unrecognised value in this reader is. Silently skipping it
+    dropped every record after the first non-candidate, so a document with one
+    unknown line in the middle voted with half a ballot and said nothing.
+    """
+    candidates: list[VoteCandidate] = []
+    ids: dict[str, int] = {}
+    indices: dict[int, str] = {}
+
+    for position, record in enumerate(records[1:], start=1):
+        kind = _string(record, RECORD_KEY, position)
+        if kind == RECORD_RUN:
+            message = (
+                f"line {position + 1}: a second {RECORD_RUN!r} record. A verdicts file "
+                "describes one run, so two of them concatenated is not one document."
+            )
+            raise OperationFailed(message)
+        if kind != RECORD_CANDIDATE:
+            message = (
+                f"line {position + 1}: {RECORD_KEY!r} is {kind!r}, which is not one of: "
+                f"{RECORD_RUN}, {RECORD_CANDIDATE}"
+            )
+            raise OperationFailed(message)
+
+        candidate = _vote_candidate(record, position)
+        if candidate.id in ids:
+            message = (
+                f"line {position + 1}: candidate id {candidate.id!r} was already read at line "
+                f"{ids[candidate.id] + 1}. One id is one candidate, and a repeated id votes twice."
+            )
+            raise OperationFailed(message)
+        if candidate.index in indices:
+            message = (
+                f"line {position + 1}: candidate index {candidate.index} was already read for "
+                f"{indices[candidate.index]!r}. The index is the vote's tiebreak between "
+                "equal-sized clusters, so two candidates cannot share one."
+            )
+            raise OperationFailed(message)
+
+        ids[candidate.id] = position
+        indices[candidate.index] = candidate.id
+        candidates.append(candidate)
+
+    return tuple(candidates)
 
 
 def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
@@ -797,12 +1007,12 @@ def _vote_candidate(record: dict[str, Any], position: int) -> VoteCandidate:
     apply_field = record.get("apply")
     if not isinstance(apply_field, dict):
         message = f"line {position + 1}: candidate record has no 'apply' object"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     key = record.get("equivalence_key")
     if key is not None and not isinstance(key, str):
         message = f"line {position + 1}: 'equivalence_key' must be a string or null"
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
     regression = _enum(record, "regression", position, Verdict)
     reproduction = _optional_enum(record, "reproduction", position, Verdict)
@@ -824,10 +1034,10 @@ def _record(line: str, position: int) -> dict[str, Any]:
         parsed = json.loads(line)
     except json.JSONDecodeError as exc:
         message = f"line {position + 1} of the verdicts file is not valid JSON: {exc}"
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
     if not isinstance(parsed, dict):
         message = f"line {position + 1} of the verdicts file is not a JSON object"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return parsed
 
 
@@ -836,7 +1046,7 @@ def _string(record: dict[str, Any], field: str, position: int) -> str:
     value = record.get(field)
     if not isinstance(value, str):
         message = f"line {position + 1}: missing a string {field!r}"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -847,7 +1057,7 @@ def _optional_string(record: dict[str, Any], field: str, position: int) -> str |
         return None
     if not isinstance(value, str):
         message = f"line {position + 1}: {field!r} must be a string or null"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return value
 
 
@@ -856,14 +1066,14 @@ def _boolean(record: dict[str, Any], field: str, position: int) -> bool:
     value = record.get(field)
     if not isinstance(value, bool):
         message = f"line {position + 1}: missing a boolean {field!r}"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return value
 
 
 def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]) -> _Member:
     """Read a required string field and coerce it through ``kind``, or refuse it.
 
-    The refusal is an :class:`AtlasError` naming the line, the value and what
+    The refusal is an :class:`AgentlessError` naming the line, the value and what
     was allowed, because every other refusal in this reader is: a bare
     ``ValueError`` out of an enum constructor reaches the caller as a
     traceback rather than as "your file is wrong at line 1".
@@ -874,7 +1084,7 @@ def _enum(record: dict[str, Any], field: str, position: int, kind: type[_Member]
     except ValueError as exc:
         allowed = ", ".join(member.value for member in kind)
         message = f"line {position + 1}: {field!r} is {value!r}, which is not one of: {allowed}"
-        raise AtlasError(message) from exc
+        raise OperationFailed(message) from exc
 
 
 def _optional_enum(
@@ -891,13 +1101,89 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
     value = record.get(field)
     if not isinstance(value, int) or isinstance(value, bool):
         message = f"line {position + 1}: missing an integer {field!r}"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return value
 
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
+
+def _candidate_edits(
+    candidate: Candidate, request: ValidateRequest, started: float
+) -> tuple[tuple[Edit, ...], CandidateVerdict | None]:
+    """Parse one candidate's edits, or say why it cannot be applied at all.
+
+    Every refusal here happens before the worktree is written to, so a
+    candidate that was never going to be judged costs no apply and no test
+    run.
+    """
+    # `load_edits` parses text and resolves no path, so it cannot raise a
+    # containment refusal: catching the base class here turns a malformed
+    # candidate into a failed candidate, never a refused invocation into one.
+    try:
+        parsed = load_edits(candidate.text)
+    except AgentlessError as error:
+        return (), _apply_failed(candidate, (str(error),), started)
+
+    if parsed.errors:
+        reasons = tuple(
+            f"block {error.index} ({error.path or 'no path'}): {error.reason}"
+            for error in parsed.errors
+        )
+        return (), _apply_failed(candidate, reasons, started)
+    if not parsed.edits:
+        return (), _apply_failed(candidate, ("the candidate contains no edits",), started)
+
+    if not request.allow_test_config_edits:
+        rewritten = test_config_paths(edit.path for edit in parsed.edits)
+        if rewritten:
+            return (), _apply_failed(candidate, _test_config_reasons(rewritten), started)
+
+    return tuple(parsed.edits), None
+
+
+def test_config_paths(paths: Iterable[str]) -> tuple[str, ...]:
+    """Return the given paths that name what the test command runs.
+
+    Public because the refusal it feeds is a documented property of a run, and
+    a caller building a request wants the same answer this service will give
+    rather than a second list that drifts from it.
+
+    Each path is judged in the form the applier will write it in, not in the
+    form the candidate spelled it. ``PatchService`` resolves every path before
+    it writes, so ``./.github/workflows/ci.yml`` and
+    ``src/../.github/workflows/ci.yml`` both land in ``.github/`` -- while a
+    prefix test on the raw string matched neither. Guarding the spelling
+    rather than the file is a guard that reads as enforcement and is not.
+
+    The normalisation is lexical, so a route into one of these directories
+    through a symlink is not seen. That is the limit of a check that reads
+    paths rather than a filesystem; the module docstring says what this does
+    and does not protect.
+    """
+    return tuple(sorted({path for path in paths if _names_test_config(path)}))
+
+
+def _names_test_config(path: str) -> bool:
+    """True when ``path`` resolves to a file that decides what the tests run."""
+    canonical = posixpath.normpath(path)
+    return PurePosixPath(canonical).name in TEST_CONFIG_NAMES or canonical.startswith(
+        TEST_CONFIG_PREFIXES
+    )
+
+
+def _test_config_reasons(paths: Sequence[str]) -> tuple[str, ...]:
+    """Say which edits were refused and what accepting them would mean."""
+    listed = ", ".join(paths)
+    return (
+        (
+            f"refusing to apply edits to {listed}: those files name what the test command "
+            "runs, so the candidate would be choosing how it is judged. Opt in with "
+            "--allow-test-config-edits."
+        ),
+    )
 
 
 def _refuse_unowned_command(request: ValidateRequest) -> None:
@@ -914,16 +1200,40 @@ def _refuse_unowned_command(request: ValidateRequest) -> None:
         "not from the invocation, so the repository would be choosing the command that judges "
         "it. Pass the command explicitly, or opt in with --allow-repo-test-cmd."
     )
-    raise AtlasError(message)
+    raise OperationFailed(message)
+
+
+def _check_bounds(request: ValidateRequest) -> None:
+    """Refuse the numbers that cannot bound anything, before any run starts.
+
+    Refused rather than clamped, which is what ``repeat_baseline`` used to
+    get: ``max(1, request.repeat_baseline)`` turned ``--repeat-baseline 0``
+    into one run and reported it as one run, so a caller who asked for none
+    could not tell their request had been rewritten. ``--jobs 0`` was worse
+    -- the parallel path keys on ``jobs > 1``, so it silently ran serially.
+    A bound the caller sets and the tool ignores is the same defect as a
+    bound the tool answers.
+
+    Every numeric field of the request is checked here, including
+    ``run_timeout``, which used to be checked inside ``_deadline``. One parse
+    step that refuses or returns is the boundary rule; the same rule spread
+    over a helper named for something else is that step half-done.
+    """
+    bounds.within(request.jobs, 1, MAX_JOBS, "jobs")
+    bounds.at_least(request.timeout, 1, "timeout")
+    bounds.at_least(request.repeat_baseline, 1, "repeat_baseline")
+    if request.run_timeout is not None:
+        bounds.at_least(request.run_timeout, 1, "run_timeout")
 
 
 def _deadline(request: ValidateRequest) -> float | None:
-    """Return the monotonic instant by which the whole run must finish."""
+    """Return the monotonic instant by which the whole run must finish.
+
+    ``_check_bounds`` has already refused a budget that cannot bound
+    anything, so this reads the value rather than judging it.
+    """
     if request.run_timeout is None:
         return None
-    if request.run_timeout <= 0:
-        message = f"the run timeout must be a positive number of seconds, not {request.run_timeout}"
-        raise AtlasError(message)
     return _monotonic() + request.run_timeout
 
 
@@ -937,14 +1247,38 @@ def _deadline_reached(deadline: float | None) -> bool:
     return deadline is not None and _monotonic() >= deadline
 
 
-def _command_timeout(per_command: int, deadline: float | None) -> float | None:
-    """Return the command's own bound clamped to the aggregate time left."""
+@dataclass(frozen=True)
+class _CommandBound:
+    """How long one command may run, and which bound decided that."""
+
+    seconds: float
+    from_budget: bool
+
+
+def _command_bound(per_command: int, deadline: float | None) -> _CommandBound | None:
+    """Return this command's bound, or ``None`` when there is no time to give it.
+
+    The clamp used to have no floor, so a nearly-spent budget handed a command
+    a fraction of a second and delivered the result as an ordinary ``timeout``
+    -- a measured, non-passing verdict that can be crowned at the apply-ok
+    rung. Below :data:`MIN_COMMAND_SECONDS` there is nothing to measure, and
+    ``None`` is what turns the candidate into ``not_evaluated`` instead. Above
+    it a clamped bound is used and says so, because a caller who passed
+    ``--timeout 300`` and got a timeout at four seconds is owed the reason.
+    """
     if deadline is None:
-        return float(per_command)
+        return _CommandBound(float(per_command), from_budget=False)
     remaining = deadline - _monotonic()
-    if remaining <= 0:
+    if remaining < MIN_COMMAND_SECONDS:
         return None
-    return min(float(per_command), remaining)
+    if remaining < per_command:
+        return _CommandBound(remaining, from_budget=True)
+    return _CommandBound(float(per_command), from_budget=False)
+
+
+def _truncated(bound: _CommandBound, run: RunResult) -> bool:
+    """True when the run budget, not the caller's bound, ended this command."""
+    return bound.from_budget and run.status is RunStatus.TIMEOUT
 
 
 @dataclass(frozen=True)
@@ -957,6 +1291,7 @@ class _BaselineOutcome:
     repeats: int
     failures: int
     deadline_expired: bool = False
+    budget_truncated: bool = False
 
 
 def _expired_baseline(
@@ -988,7 +1323,11 @@ def _expired_baseline(
 
 
 def _baseline_outcome(
-    runs: Sequence[RunResult], failures: Sequence[RunResult], repeats: int
+    runs: Sequence[RunResult],
+    failures: Sequence[RunResult],
+    repeats: int,
+    *,
+    truncated: bool = False,
 ) -> _BaselineOutcome:
     """Decide what a set of baseline runs means.
 
@@ -997,6 +1336,11 @@ def _baseline_outcome(
     is not "mostly green", it is an instrument that gives a different reading
     each time it is used, and it invalidates the run exactly as a red baseline
     does.
+
+    ``truncated`` says the run budget, not ``timeout``, is what bounded a
+    baseline command. It changes no outcome and is reported, because "timed
+    out after 0.4s" against a caller's ``--timeout 300`` is a fact about the
+    budget rather than about the suite.
     """
     if not failures:
         detail = (
@@ -1004,7 +1348,9 @@ def _baseline_outcome(
             if repeats == 1
             else f"the test command passed on unpatched HEAD in all {repeats} baseline runs"
         )
-        return _BaselineOutcome(BaselineStatus.OK, detail, runs[-1], repeats, 0)
+        return _BaselineOutcome(
+            BaselineStatus.OK, detail, runs[-1], repeats, 0, budget_truncated=truncated
+        )
 
     if len(failures) < repeats:
         detail = (
@@ -1013,15 +1359,21 @@ def _baseline_outcome(
             "changing between them"
         )
         return _BaselineOutcome(
-            BaselineStatus.UNVERIFIED, detail, failures[0], repeats, len(failures)
+            BaselineStatus.UNVERIFIED,
+            detail,
+            failures[0],
+            repeats,
+            len(failures),
+            budget_truncated=truncated,
         )
 
     return _BaselineOutcome(
         BaselineStatus.UNVERIFIED,
-        _baseline_detail(failures[0]),
+        _baseline_detail(failures[0], truncated=truncated),
         failures[0],
         repeats,
         len(failures),
+        budget_truncated=truncated,
     )
 
 
@@ -1055,6 +1407,8 @@ def _header(
         repro_baseline_run=repro_run,
         repeat_baseline=outcome.repeats,
         baseline_failures=outcome.failures,
+        allow_test_config_edits=request.allow_test_config_edits,
+        budget_truncated=outcome.budget_truncated,
     )
 
 
@@ -1074,10 +1428,19 @@ def _repro_verdict(run: RunResult | None) -> ReproVerdict:
     return ReproVerdict.REPRODUCES
 
 
-def _baseline_detail(run: RunResult) -> str:
-    """Explain a baseline that did not pass, in one line."""
+def _baseline_detail(run: RunResult, *, truncated: bool = False) -> str:
+    """Explain a baseline that did not pass, in one line.
+
+    A timeout names which bound produced it. Without that, a baseline the run
+    budget cut to 0.4s read as "timed out after 0.4s" to a caller who passed
+    ``--timeout 300``, and the number looked like the suite's fault.
+    """
     if run.status is RunStatus.TIMEOUT:
-        return f"the test command timed out after {run.duration}s on unpatched HEAD"
+        bound = "the run's remaining budget" if truncated else "its own timeout"
+        return (
+            f"the test command timed out after {run.duration}s on unpatched HEAD, "
+            f"bounded by {bound}"
+        )
     if run.status is RunStatus.ERROR:
         return f"the test command could not be started: {run.stderr_tail.strip()}"
     return f"the test command exited {run.exit_code} on unpatched HEAD"
@@ -1102,6 +1465,31 @@ def _apply_failed(candidate: Candidate, reasons: Sequence[str], started: float) 
         regression=Verdict.NOT_EVALUATED,
         reproduction=None,
         duration=round(_monotonic() - started, 3),
+    )
+
+
+def _applied_but_unmeasured(
+    candidate: Candidate, key: str | None, budget: int | None, started: float
+) -> CandidateVerdict:
+    """Return the verdict of a candidate that applied and was never measured.
+
+    ``apply_status`` is OK because the patch applied -- ``_patches.apply``
+    said so a few lines earlier. Reporting ``not_evaluated`` here made the
+    vote exclude it with "the patch did not apply", so an agent was sent to
+    fix a patch that was fine. ``ApplyStatus`` exists to keep "nothing was
+    attempted" apart from "it failed"; the regression verdict carries the
+    half that really was not evaluated.
+    """
+    return CandidateVerdict(
+        id=candidate.id,
+        index=candidate.index,
+        apply_status=ApplyStatus.OK,
+        apply_reasons=(f"applied, then not evaluated: the run's {budget}s budget expired",),
+        equivalence_key=key,
+        regression=Verdict.NOT_EVALUATED,
+        reproduction=None,
+        duration=round(_monotonic() - started, 3),
+        budget_truncated=True,
     )
 
 

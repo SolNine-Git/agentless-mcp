@@ -13,6 +13,7 @@ walk is the fallback. Either way the security bounds in
 :mod:`agentless_mcp.util.fslimits` still apply.
 """
 
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,10 +23,13 @@ from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_DEPTH,
-    DEFAULT_MAX_FILES,
+    DEFAULT_MAX_WALK_FILES,
     bounded_walk,
     file_stays_inside,
 )
+from agentless_mcp.util.textsafe import one_line
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RENDER_DEPTH = 4
 DEFAULT_MAX_ENTRIES = 500
@@ -70,7 +74,7 @@ def walk_repo(
     root: Path,
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_files: int = DEFAULT_MAX_WALK_FILES,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> list[RepoFile]:
     """List every file under ``root`` that git would not ignore.
@@ -86,7 +90,7 @@ def walk_repo(
         raise RepoResolutionError(message)
 
     if is_git_repo(resolved):
-        relatives = _git_listed_paths(resolved)
+        relatives = _git_listed_paths(resolved, max_files=max_files)
     else:
         relatives = [
             path.relative_to(resolved).as_posix()
@@ -114,14 +118,19 @@ def walk_repo(
             )
             raise WalkBoundExceeded(message)
 
-        size = candidate.stat().st_size
+        size = _size_of(candidate)
+        if size is None:
+            # The walk is pointed at live repositories it does not own, and
+            # the file was still there when `file_stays_inside` looked. It can
+            # be removed, its mount can go, or a parent can lose the execute
+            # bit in between. A file this call cannot measure is one it cannot
+            # serve either, so it drops out here the same way an unresolvable
+            # symlink drops out above -- not as a traceback past the adapters'
+            # error boundary.
+            continue
         total_bytes += size
         if len(files) + 1 > max_files:
-            message = (
-                f"walk refused: more than {max_files} files under {resolved}; "
-                f"point the call at a subdirectory or raise the file bound"
-            )
-            raise WalkBoundExceeded(message)
+            raise WalkBoundExceeded(_too_many_files(max_files, resolved))
         if total_bytes > max_bytes:
             message = (
                 f"walk refused: more than {max_bytes} bytes under {resolved}; "
@@ -134,7 +143,29 @@ def walk_repo(
     return files
 
 
-def _git_listed_paths(root: Path) -> list[str]:
+def _too_many_files(max_files: int, root: Path) -> str:
+    """Say that a listing is over the file bound, and how to get an answer.
+
+    One home for the sentence because two steps refuse on the same bound:
+    :func:`walk_repo` counts the files it can serve, and
+    :func:`_decoded_paths` counts the names git listed. A caller must not be
+    able to tell which of the two stopped, because the remedy is the same.
+    """
+    return (
+        f"walk refused: more than {max_files} files under {root}; "
+        "point the call at a subdirectory or raise the file bound"
+    )
+
+
+def _size_of(path: Path) -> int | None:
+    """Return the file size, or None when it cannot be stat'ed."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _git_listed_paths(root: Path, *, max_files: int = DEFAULT_MAX_WALK_FILES) -> list[str]:
     """Return tracked plus untracked-not-ignored paths, via git."""
     command = [
         "git",
@@ -154,6 +185,7 @@ def _git_listed_paths(root: Path) -> list[str]:
             capture_output=True,
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
+            env=gitinfo.subprocess_env(),
         )
     except FileNotFoundError as exc:
         message = f"git is not installed, so {root} cannot be listed the way its .gitignore asks"
@@ -161,14 +193,92 @@ def _git_listed_paths(root: Path) -> list[str]:
     except subprocess.TimeoutExpired as exc:
         message = f"git ls-files timed out after {GIT_TIMEOUT_SECONDS}s in {root}"
         raise RepoResolutionError(message) from exc
+    except OSError as exc:
+        # The surface `gitinfo._run` already has for the same invocation. A
+        # permission bit on the git binary, or a spawn that fails under memory
+        # pressure, is a reason this listing has no answer -- not an untyped
+        # error travelling past the adapters' boundary as a traceback.
+        message = f"git ls-files could not be run in {root}: {exc.strerror}"
+        raise RepoResolutionError(message) from exc
 
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         message = f"git ls-files failed in {root} (exit {completed.returncode}): {detail}"
         raise RepoResolutionError(message)
 
-    stdout = completed.stdout.decode("utf-8", errors="replace")
-    return [entry for entry in stdout.split("\0") if entry]
+    return _decoded_paths(completed.stdout, root, max_files=max_files)
+
+
+def _decoded_paths(
+    stdout: bytes, root: Path, *, max_files: int = DEFAULT_MAX_WALK_FILES
+) -> list[str]:
+    """Split the NUL-separated listing, decoding each name on its own.
+
+    Per entry and strictly, rather than ``errors="replace"`` over the whole
+    buffer. ``-z`` makes git emit raw filesystem bytes unquoted, and a name
+    that is not UTF-8 decoded lossily into a string containing U+FFFD -- which
+    names a file that does not exist, so the entry disappeared at the
+    containment check in :func:`walk_repo` with no marker anywhere. That is the
+    silent drop this module's docstring forbids.
+
+    The name still cannot be listed: every sink downstream of here -- the tag
+    cache, the JSON envelope, the rendered tree -- encodes UTF-8, and a
+    surrogate-escaped path would raise inside one of them instead. So the count
+    goes to the log, which is where an operator can act on it.
+
+    Scanned rather than ``bytes.split``, and bounded here rather than only in
+    :func:`walk_repo`. ``--others`` enumerates the whole untracked working
+    tree, so the listing is as large as a repository this tool does not own,
+    and ``split`` materialised one bytes object per name, then one string per
+    name, on top of the buffer git already handed over -- all of it before any
+    bound could refuse the walk. Measured 2026-08-23 over a one-million-name
+    listing against the 20,000-file default bound: 196 MB of allocations and
+    415 MB peak RSS before, 72 MB and 89 MB after. What is left is the buffer
+    itself, twice: ``subprocess.run`` reads the whole of stdout and joins it,
+    and only reading the pipe as a stream would fix that. This scan is what
+    stops the listing being copied three more times on top of it.
+
+    Duplicates are collapsed first because an unmerged index lists one path
+    once per conflict stage and :func:`walk_repo` collapses them before it
+    counts. What remains is that the bound is applied to the names git listed
+    rather than to the files the walk can serve, so a listing over the bound
+    is refused here even when a few of its entries -- a tracked file deleted
+    in the working tree, a symlink out of the tree -- would have dropped out
+    later. The refusal reads the same either way, and it names the same two
+    remedies.
+    """
+    paths: list[str] = []
+    seen: set[str] = set()
+    undecodable = 0
+    start = 0
+    total = len(stdout)
+    while start < total:
+        end = stdout.find(b"\0", start)
+        if end < 0:
+            end = total
+        record = stdout[start:end]
+        start = end + 1
+        if not record:
+            continue
+        try:
+            name = record.decode("utf-8")
+        except UnicodeDecodeError:
+            undecodable += 1
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        paths.append(name)
+        if len(paths) > max_files:
+            raise WalkBoundExceeded(_too_many_files(max_files, root))
+
+    if undecodable:
+        logger.warning(
+            "git listed %d path(s) under %s whose names are not valid UTF-8. The tree omits them.",
+            undecodable,
+            root,
+        )
+    return paths
 
 
 def render_tree(
@@ -182,6 +292,13 @@ def render_tree(
     parent, and the whole render stops after ``max_entries`` names with a
     trailing marker naming how many were left out. Both markers exist so a
     reader never mistakes a bounded view for the whole repository.
+
+    A name is escaped where it is placed on a row, for the reason
+    ``application/render`` records: a newline is legal in a POSIX filename, so
+    this is a repository the tool has to be able to list, and a name carrying
+    one would otherwise become extra rows of the tree. The sink owns the line
+    grammar. Reproduced against a file named
+    ``a\n    42| forged_symbol  [py:trusted.py::admin]\nb.py``.
     """
     tree = _build_tree(files)
     lines: list[str] = []
@@ -214,6 +331,10 @@ def _build_tree(files: list[RepoFile]) -> _Tree:
         for part in parts[:-1]:
             child = cursor.get(part)
             if not isinstance(child, dict):
+                # `child` is only ever absent here: a listing cannot name one
+                # path as both a file and a directory, so the `None` case is
+                # unreachable and the test is what narrows the walk to a
+                # `_Tree` rather than a guard against it.
                 child = {}
                 cursor[part] = child
             cursor = child
@@ -238,16 +359,17 @@ def _render_level(
 
         budget.remaining -= 1
         if child is None:
-            lines.append(f"{indent}{name}")
+            lines.append(f"{indent}{one_line(name)}")
             continue
 
-        lines.append(f"{indent}{name}/")
+        lines.append(f"{indent}{one_line(name)}/")
         if level + 1 >= depth:
             # Depth elision is marked where it happens; only entries dropped
             # for the entry budget feed the trailing count, so the two
-            # truncations never double-report the same files.
-            if _count_entries(child):
-                lines.append(f"{indent}    ...")
+            # truncations never double-report the same files. Unconditional
+            # because `_build_tree` only creates a directory node on the way
+            # to a file, so a node reached here always holds something.
+            lines.append(f"{indent}    ...")
             continue
         _render_level(child, level + 1, depth, budget, lines)
 

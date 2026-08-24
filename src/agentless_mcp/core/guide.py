@@ -8,7 +8,7 @@ data under ``agentless_mcp/docs/`` and is read back through
 ``importlib.resources``, which resolves to the source tree in development and
 to the installed package after an install, over the same code path.
 
-Sections exist because the guide is 45 KB and an agent usually wants one tool's
+Sections exist because the guide is long and an agent usually wants one tool's
 entry. Splitting is done here rather than in the CLI so the rules are testable
 without a parser: a heading is a heading only outside a fenced code block, and
 the addressable levels are ``##`` and ``###`` -- the title is the whole
@@ -44,21 +44,30 @@ _PARENTHESISED = re.compile(r"\([^)]*\)")
 class GuideDataError(RuntimeError):
     """The packaged guide is missing, unreadable, or structurally ambiguous.
 
-    A ``RuntimeError`` rather than an ``AtlasError`` on purpose: the CLI maps
-    ``AtlasError`` onto an exit code and prints it as a one-line refusal, which
+    A ``RuntimeError`` rather than an ``AgentlessError`` on purpose: the CLI maps
+    ``AgentlessError`` onto an exit code and prints it as a one-line refusal, which
     is the right shape for "this repository has no such symbol" and the wrong
     shape for "this installation is broken". This one propagates.
     """
 
 
+@lru_cache(maxsize=1)
 def _resource_text() -> str:
-    """Return the packaged guide's text, or say which install is broken."""
+    """Return the packaged guide's text, or say which install is broken.
+
+    Memoised so the whole guide and the section split are derived from one
+    read. Packaged data does not change under a running process, and the two
+    would otherwise be free to disagree.
+    """
     resource = resources.files(PACKAGE) / GUIDE_DIRECTORY / GUIDE_FILENAME
     try:
         return resource.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # A guide that is present but not valid UTF-8 is the same broken
+        # install as an absent one, and `UnicodeDecodeError` is a
+        # `ValueError`, so it escaped a handler that named only `OSError`.
         message = (
-            f"the agent guide is missing from the {PACKAGE} package "
+            f"the agent guide cannot be read from the {PACKAGE} package "
             f"(expected {GUIDE_DIRECTORY}/{GUIDE_FILENAME}): {exc}"
         )
         raise GuideDataError(message) from exc

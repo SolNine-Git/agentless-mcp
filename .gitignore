@@ -25,3 +25,12 @@ venv/
 
 # setup-quality-gates.sh backups
 .quality-gates-backup/
+
+# Coverage data. `parallel = true` writes one file per process (.coverage.host.pid.rand)
+# and `coverage combine` merges them into .coverage; none of it is a source artifact.
+.coverage
+.coverage.*
+htmlcov/
+
+# CI test log (tee target for the skip-ceiling check)
+pytest-output.txt

@@ -23,6 +23,7 @@ import pytest
 from agentless_mcp.core.normalize import (
     BLOCK_CLOSE,
     BLOCK_OPEN,
+    TEXT_ONLY_KEY_PREFIX,
     equivalence_key,
     file_key,
     normalized_stream,
@@ -467,3 +468,89 @@ class TestSyntaxDelta:
         verdict = syntax_delta("anything", "anything else", None)
         assert verdict.ok
         assert "not checked" in verdict.detail
+
+    def test_not_checked_is_its_own_field_not_only_free_text(self):
+        """`ok` is a delta over what a parser saw. With no parser it saw
+        nothing, and a caller gating on a real parse needs that as a value
+        rather than as a substring of `detail`."""
+        assert not syntax_delta("anything", "anything else", None).checked
+        assert syntax_delta(PY_BEFORE, PY_SEMANTIC, "python").checked
+
+
+class TestAKeyBuiltWithoutAGrammarSaysSo:
+    """The text-only fallback is a weaker claim than an AST key, and the
+    value has to carry that.
+
+    Whitespace-collapsed raw text is not a normalisation for a file whose
+    meaning depends on whitespace. Two YAML files with different nesting
+    collapse to one stream, and the hash that reached `core.vote` and
+    patchlint's near-duplicate check was indistinguishable from a real AST
+    key, so a false duplicate was a wrong answer the vote acted on.
+    """
+
+    def test_a_grammar_backed_key_stays_a_bare_digest(self):
+        key = file_key(PY_BEFORE, PY_SEMANTIC, "python")
+        assert not key.startswith(TEXT_ONLY_KEY_PREFIX)
+        assert len(key) == 64
+
+    def test_a_fallback_key_is_labelled(self):
+        key = file_key("a: 1\n", "a: 2\n", None)
+        assert key.startswith(TEXT_ONLY_KEY_PREFIX)
+
+    def test_the_yaml_collision_is_still_there_but_now_visible(self):
+        nested = file_key("x", "a:\n  b: 1\n", None)
+        deeper = file_key("x", "a:\n    b: 1\n", None)
+        assert nested == deeper
+        assert nested.startswith(TEXT_ONLY_KEY_PREFIX)
+
+    def test_one_ungrammared_file_labels_the_whole_patch_key(self):
+        mixed = equivalence_key(
+            {"a.py": (PY_BEFORE, PY_SEMANTIC), "b.yml": ("a: 1\n", "a: 2\n")},
+            lambda path: "python" if path.endswith(".py") else None,
+        )
+        assert mixed.startswith(TEXT_ONLY_KEY_PREFIX)
+
+    def test_an_all_grammar_patch_key_stays_bare(self):
+        key = equivalence_key({"a.py": (PY_BEFORE, PY_SEMANTIC)}, lambda _: "python")
+        assert not key.startswith(TEXT_ONLY_KEY_PREFIX)
+        assert len(key) == 64
+
+
+class TestDirectiveFamilies:
+    """A directive is read by something, so rewriting one is a real change.
+
+    The table stopped at the languages that were being measured, and left out
+    the families this repository's own stack reads. One test per family, not
+    per literal: the point is the family.
+    """
+
+    @pytest.mark.parametrize(
+        "directive",
+        [
+            "# ruff: noqa",
+            "# ruff: noqa: E501",
+            "# pylint: disable=too-many-locals",
+            "# mypy: disable-error-code=misc",
+            "# flake8: noqa",
+            "# fmt: off",
+            "# isort: skip_file",
+            "# -*- coding: utf-8 -*-",
+            "# noqa: E501",
+            "# type: ignore[arg-type]",
+            "# pragma: no cover",
+        ],
+    )
+    def test_adding_a_directive_moves_the_key(self, directive):
+        plain = "TOTAL = 1\n"
+        with_directive = f"{directive}\nTOTAL = 1\n"
+        assert file_key(plain, with_directive, "python") != file_key(plain, plain, "python")
+
+    def test_prose_is_still_dropped(self):
+        plain = "TOTAL = 1\n"
+        commented = "# Sum of everything.\nTOTAL = 1\n"
+        assert file_key(plain, commented, "python") == file_key(plain, plain, "python")
+
+    def test_a_word_that_merely_starts_like_a_directive_is_prose(self):
+        plain = "TOTAL = 1\n"
+        prose = "# pragmatic choices were made\nTOTAL = 1\n"
+        assert file_key(plain, prose, "python") == file_key(plain, plain, "python")

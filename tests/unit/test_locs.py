@@ -213,3 +213,31 @@ class TestSpansThatNoLongerFitTheFile:
         result = resolve_locs(["class: Invoice"], stale, context=0)
 
         assert result.spans == ((6, 6),)
+
+
+class TestAnEmptyFileIsAKnownLineCount:
+    """Zero lines is a count, not a missing one.
+
+    The bounds check was guarded on the truthiness of ``total_lines``, so an
+    empty ``__init__.py`` disabled it entirely: ``line: 9999`` came back
+    resolved with a span of (9999, 9999), and the render that followed raised
+    on an interval no line of the file satisfies.
+    """
+
+    def test_a_line_past_the_end_of_an_empty_file_is_unrecognized(self):
+        empty = replace(target(), symbols=(), total_lines=0)
+        result = resolve_locs(["line: 9999"], empty)
+
+        assert result.spans == ()
+        assert result.intervals == ()
+        assert [entry.reason for entry in result.unrecognized] == [
+            "line 9999 is outside billing.py (1-0)"
+        ]
+
+    def test_an_unknown_total_still_leaves_the_high_end_unclamped(self):
+        unknown = replace(target(), total_lines=None)
+        result = resolve_locs(["line: 9999"], unknown, context=0)
+
+        assert result.spans == ((9999, 9999),)
+        assert result.intervals == ((9999, 9999),)
+        assert result.unrecognized == ()

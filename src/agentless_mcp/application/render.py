@@ -14,16 +14,50 @@ what it looks like. Nothing here reads the filesystem or parses anything.
 
 Every path is repository-relative with forward slashes, and every navigable
 row carries a stable id plus an exact line or span.
+
+**This module owns the line grammar, so it is where repository text is made
+safe for a row.** Every field that carries a repository-derived value --
+paths, signatures, stable ids, qualified names, module strings, rationale
+text -- goes through :func:`agentless_mcp.util.textsafe.one_line` at the
+point it is placed on a line. Not at the source: a newline is legal in a
+POSIX filename, so refusing such a repository would be worse than rendering
+it safely, and a value escaped upstream and again here would come out
+double-escaped. Entry points reject, the sink escapes, nothing normalises in
+between.
+
+The rule is worth restating because it failed once. Reproduced against the
+working tree: a repository containing a file named ``a\n    42|
+forged_symbol  [py:trusted.py::admin]\nb.py`` rendered a byte-identical
+structural row directly below the line that tells an agent where trusted
+framing stops. ``tests/unit/test_render.py`` walks every view model's string
+fields by reflection and asserts that none of them can add a line, so a field
+added later is covered without anyone remembering to cover it.
+
+**Structural markers sit in the first column, and every row is indented.**
+An omission line is the one signal that separates a bounded answer from a
+complete one, and it used to be distinguished from verbatim repository text
+only by an indent that the text also got: a symbol body line and the notice
+below it both opened with two spaces, so a file containing
+``... 7 more matches not listed (limit 3)`` rendered a byte-identical cut.
+:func:`_omitted_line` is the one home for that line, and it emits it
+unindented for exactly that reason.
+
+Two other modules render line-oriented answers and carry the same rule:
+:func:`agentless_mcp.core.treewalk.render_tree` and
+:mod:`agentless_mcp.application.envelope`. ``core/mermaid`` has its own
+stricter escape because its grammar is not this one.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from typing import Any, overload
 
+from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
 from agentless_mcp.core.slices import line_prefix
 from agentless_mcp.prompts import MESSAGES
+from agentless_mcp.util.textsafe import one_line
 
 
 def _no_negative_zero(value: float) -> float:
@@ -58,10 +92,64 @@ SKIPPED_FILES_SHOWN = 5
 
 # The markdown fence a diagram travels in when it is going into a response
 # body. Declared here rather than in `core.mermaid` because fencing is a
-# property of the destination, not of the diagram.
+# property of the destination, not of the diagram. `core.patches` spells the
+# same three characters for the opposite job -- recognising a fence a model
+# wrote around a patch -- and that dialect is not ours to change, so the emit
+# side and the parse side keep separate copies on purpose.
 FENCE = "```"
 MERMAID_FENCE = FENCE + "mermaid"
+
+# Below this, a partition is a hint rather than a boundary. The published
+# reading of modularity is calibrated for resolution 1.0 alone, so this
+# constant may only ever be compared against
+# `CommunityReport.standard_modularity` -- see `weak_partition`, which is the
+# one place that comparison lives.
 WEAK_MODULARITY_THRESHOLD = 0.3
+
+# The severities of `core.patchlint`, most urgent first. The spellings come
+# from the enum so a rename there breaks the import rather than silently
+# reordering a summary line; the order is a rendering decision, so it lives
+# here. Sorting on the spellings instead put `warning` last, behind
+# `not_checked`, which is the reading order of an alphabet and not of a
+# severity.
+SEVERITY_ORDER = (Severity.WARNING.value, Severity.ADVISORY.value, Severity.NOT_CHECKED.value)
+
+
+def _omitted_line(omitted: int, noun: str, *, limit: int = 0) -> str:
+    """Render the one line a bounded view announces its cut with.
+
+    One spelling for every listing in this module, and no indent. Every row
+    rendered here is indented -- a card body by two spaces, a community member
+    by seven, a map symbol behind a ``line_prefix`` -- so a marker in the
+    first column is the one line repository text placed on a row cannot forge.
+    Eleven hand-spelled variants used to differ in whether they named the
+    limit and in where they put the comma, so an agent asking how much was
+    left out had eleven patterns to match.
+    """
+    bound = f" (limit {limit})" if limit else ""
+    return f"... {omitted} more {noun} not listed{bound}"
+
+
+def _locator(stable_id: str, *, parent: str = "", line: int | str | None = None) -> str:
+    """Render the navigable fragment a row is read for.
+
+    A stable id already carries the repository-relative path, so a location
+    appends only the line or span. ``parent`` links a rationale comment to the
+    symbol it annotates. One home, because this fragment is what the whole
+    product exists to emit and it was re-derived at six sites.
+    """
+    named = one_line(stable_id) if not parent else f"{one_line(stable_id)} -> {one_line(parent)}"
+    return f"[{named}]" if line is None else f"[{named}] @{line}"
+
+
+def _file_site(path: str, line: int) -> str:
+    """Render the ``path:line`` fragment a row uses when it names no symbol."""
+    return f"{one_line(path)}:{line}"
+
+
+def _references(count: int) -> str:
+    """Spell the noun a reference count takes."""
+    return "reference" if count == 1 else "references"
 
 
 class _Bounded(ABC):
@@ -134,13 +222,24 @@ class MapEntry:
 
 
 @dataclass(frozen=True)
-class MapFile:
-    """One ranked file in a repository map, with the symbols that fit."""
+class MapFile(_Bounded):
+    """One ranked file in a repository map, with the symbols that fit.
+
+    ``total`` is how many of this file's symbols competed for a place, so the
+    omitted count is the subtraction :class:`_Bounded` owns rather than a
+    number the service works out again. Passed in as a difference, the two
+    granularities computed it against two different denominators.
+    """
 
     path: str
     rank: float
     entries: tuple[MapEntry, ...] = ()
-    omitted: int = 0
+    total: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many of this file's symbols the map lists."""
+        return len(self.entries)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this file."""
@@ -219,7 +318,7 @@ class RefGroup:
     """
 
     path: str
-    sites: tuple[RefSite, ...] = field(default_factory=tuple)
+    sites: tuple[RefSite, ...] = ()
     tier: str = ""
     tier_label: str = ""
 
@@ -557,7 +656,12 @@ class PathHop:
 
 @dataclass(frozen=True)
 class CycleRow:
-    """One import cycle as the chain of files that closes it."""
+    """One import cycle as the chain of files that closes it.
+
+    ``files`` is non-empty by construction: a cycle the detector reports has
+    at least one file in it. ``chain`` closes the ring by repeating the first
+    entry, so an empty tuple would raise rather than render.
+    """
 
     files: tuple[str, ...]
 
@@ -639,11 +743,19 @@ class PathTrace:
 
 @dataclass(frozen=True)
 class CycleReport(_Bounded):
-    """Every import cycle found, already capped at the caller's limit."""
+    """Every import cycle found, already capped at the caller's limit.
+
+    ``unresolved_imports`` is how many import statements named no file in this
+    repository, counted by :mod:`agentless_mcp.core.resolve`, which owns the
+    question. It travels with the cycle list because "no import cycles" and
+    "few imports were resolved" render identically without it, and the first
+    is a claim about the code that only the second can qualify.
+    """
 
     cycles: tuple[CycleRow, ...]
     total: int
     limit: int
+    unresolved_imports: int = 0
 
     @property
     def shown(self) -> int:
@@ -656,20 +768,39 @@ class CycleReport(_Bounded):
             "total": self.total,
             "limit": self.limit,
             "omitted": self.omitted,
+            "unresolved_imports": self.unresolved_imports,
             "cycles": [cycle.as_dict() for cycle in self.cycles],
         }
 
 
 @dataclass(frozen=True)
-class CommunityRow:
-    """One community of files: its mechanical label and the members shown."""
+class CommunityRow(_Bounded):
+    """One community of files: its mechanical label and the members shown.
+
+    A community's whole membership is the denominator its omitted count is
+    taken against, so it is carried as :class:`_Bounded`'s ``total`` and the
+    subtraction happens once, there. ``size`` is the same number under the
+    name the JSON form has always spelled it. ``limit`` is the member bound
+    that did the cutting, named on the omission line so a reader knows which
+    knob to raise.
+    """
 
     label: str
-    size: int
+    total: int
     members: tuple[str, ...]
-    omitted: int
     internal_weight: float
     total_weight: float
+    limit: int = 0
+
+    @property
+    def size(self) -> int:
+        """How many files this community holds, listed or not."""
+        return self.total
+
+    @property
+    def shown(self) -> int:
+        """How many of them this row lists."""
+        return len(self.members)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this community."""
@@ -685,12 +816,19 @@ class CommunityRow:
 
 @dataclass(frozen=True)
 class CommunityReport(_Bounded):
-    """A whole partition, already capped, with the score behind it."""
+    """A whole partition, already capped, with the scores behind it.
+
+    ``modularity`` is the score at the resolution the partition was found at,
+    which is what the header prints. ``standard_modularity`` is the same
+    partition scored at resolution 1.0, and it is the only one of the two that
+    :attr:`weak_partition` may be keyed on.
+    """
 
     communities: tuple[CommunityRow, ...]
     total: int
     limit: int
     modularity: float
+    standard_modularity: float
     resolution: float
     files: int
 
@@ -701,8 +839,19 @@ class CommunityReport(_Bounded):
 
     @property
     def weak_partition(self) -> bool:
-        """Whether the modularity is too weak for an architectural claim."""
-        return self.modularity < WEAK_MODULARITY_THRESHOLD
+        """Whether the partition is too weak for an architectural claim.
+
+        Keyed on the resolution-1.0 score rather than on the one the header
+        prints, because :data:`WEAK_MODULARITY_THRESHOLD` is a constant and
+        the printed score is scaled by a knob the caller sets. Compared
+        against the scaled score, ``--resolution 0.25`` suppressed this note
+        on an unchanged tree: measured 2026-08-23 on this package, the scaled
+        score reads 0.723 at 0.25 and 0.148 at 4.0 while the standard score of
+        the very same partitions stays inside 0.156 to 0.319. The note is a
+        statement about the repository, so a caller's rollup setting must not
+        be able to turn it off.
+        """
+        return self.standard_modularity < WEAK_MODULARITY_THRESHOLD
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this report."""
@@ -711,6 +860,7 @@ class CommunityReport(_Bounded):
             "limit": self.limit,
             "omitted": self.omitted,
             "modularity": _no_negative_zero(round(self.modularity, 6)),
+            "standard_modularity": _no_negative_zero(round(self.standard_modularity, 6)),
             "weak_partition": self.weak_partition,
             "resolution": self.resolution,
             "files": self.files,
@@ -725,6 +875,17 @@ class DiagramView:
     ``text`` is bare mermaid with no fence: the CLI writes it into a document
     the caller fences, and the MCP tool fences it into a response body.
     ``message`` is non-empty only when there is no diagram to show.
+
+    ``elided`` counts the modules the node bound dropped and
+    ``edges_over_bound`` the reference edges the edge bound dropped, kept
+    apart for the reason
+    :class:`agentless_mcp.core.htmlgraph.HtmlExport` keeps them apart: one
+    number for two cuts sends a reader to raise the wrong knob.
+
+    ``rank_converged`` is false when the ranking that chose which modules to
+    draw ran out of iterations. Which modules a bounded picture keeps is
+    exactly what that ranking decides, so a partial ranking makes the
+    selection a partial answer and the picture must say so.
     """
 
     text: str
@@ -733,22 +894,30 @@ class DiagramView:
     grouped: bool
     focus: str
     message: str
+    edges_over_bound: int = 0
+    rank_converged: bool = True
 
     @property
     def caveat(self) -> str:
-        """The qualification a grouped, bounded diagram has to carry.
+        """The qualifications a bounded diagram has to carry.
 
         A subgraph is titled after its whole community, and the rank bound
         drops members out of the picture without changing that title. Left
         unsaid, a reader counts the boxes inside a group and believes the
         count.
         """
-        if not self.grouped or self.elided <= 0:
-            return ""
-        return (
-            "note: subgraph titles name whole communities, including the "
-            f"{self.elided} module(s) the rank bound left out of this diagram"
-        )
+        notes: list[str] = []
+        if not self.rank_converged:
+            notes.append(
+                "note: the ranking that chose these modules did not converge, "
+                "so which ones the bound kept is a partial answer"
+            )
+        if self.grouped and self.elided > 0:
+            notes.append(
+                "note: subgraph titles name whole communities, including the "
+                f"{self.elided} module(s) the rank bound left out of this diagram"
+            )
+        return "\n".join(notes)
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this diagram."""
@@ -756,10 +925,12 @@ class DiagramView:
             "mermaid": self.text,
             "nodes": self.nodes,
             "elided": self.elided,
+            "edges_over_bound": self.edges_over_bound,
             "grouped": self.grouped,
             "focus": self.focus,
             "message": self.message,
             "caveat": self.caveat,
+            "rank_converged": self.rank_converged,
         }
 
 
@@ -817,28 +988,44 @@ class LintReportView:
 
 
 def render_communities(report: CommunityReport) -> str:
-    """Render a community partition, largest group first."""
-    if not report.communities:
+    """Render a community partition, largest group first.
+
+    Keyed on ``total`` rather than on the list the limit left, for the reason
+    :func:`render_cycles` records: a bound of zero must describe the bound.
+    """
+    if not report.total:
         return "no communities: nothing in this repository parsed into files\n"
 
     groups = "community" if report.total == 1 else "communities"
+    scaled = _no_negative_zero(round(report.modularity, 3))
+    standard = _no_negative_zero(round(report.standard_modularity, 3))
     lines = [
         (
             f"{report.total} {groups} over {report.files} files "
-            f"(modularity {_no_negative_zero(round(report.modularity, 3)):.3f} "
-            f"at resolution {report.resolution:g})"
+            f"(modularity {scaled:.3f} at resolution {report.resolution:g})"
         )
     ]
+    # Named only when the knob moved it. At resolution 1.0 the two scores are
+    # the same float, and printing it twice would be noise; away from 1.0 the
+    # weak-partition note below is keyed on a number the header does not show,
+    # which reads as a contradiction unless the number is on the page.
+    if standard != scaled:
+        lines.append(
+            f"  modularity at resolution 1: {standard:.3f}; "
+            "compare this number against 0.3, not the one above"
+        )
     if report.weak_partition:
         lines.append("  note: weak partition; use these communities as a hint, not a boundary")
     for index, community in enumerate(report.communities, start=1):
         files = "file" if community.size == 1 else "files"
-        lines.append(f"  {index:>3}. {community.label}  ({community.size} {files})")
-        lines.extend(f"       {member}" for member in community.members)
+        lines.append(f"  {index:>3}. {one_line(community.label)}  ({community.size} {files})")
+        lines.extend(f"       {one_line(member)}" for member in community.members)
         if community.omitted:
-            lines.append(f"       ... {community.omitted} more files in this community")
+            lines.append(
+                _omitted_line(community.omitted, "files in this community", limit=community.limit)
+            )
     if report.omitted:
-        lines.append(f"  ... {report.omitted} more communities not listed")
+        lines.append(_omitted_line(report.omitted, "communities", limit=report.limit))
     return "\n".join(lines) + "\n"
 
 
@@ -851,7 +1038,7 @@ def render_diagram(view: DiagramView) -> str:
     paste it into a document and choose their own fence.
     """
     if not view.text:
-        return (view.message or "no diagram").rstrip("\n") + "\n"
+        return one_line(view.message or "no diagram").rstrip("\n") + "\n"
 
     body = f"{MERMAID_FENCE}\n{view.text.rstrip(chr(10))}\n{FENCE}\n"
     return body if not view.caveat else f"{body}\n{view.caveat}\n"
@@ -885,11 +1072,12 @@ def render_lint(report: LintReportView) -> str:
     blocks: list[str] = []
     for candidate in report.candidates:
         counts = _severity_counts(candidate.findings)
-        lines = [f"{candidate.id}: {counts}"]
+        lines = [f"{one_line(candidate.id)}: {counts}"]
         lines.extend(
-            f"  [{finding.severity}] {finding.check}  {finding.location}\n"
-            f"      {finding.message}\n"
-            f"      evidence: {finding.evidence}"
+            f"  [{one_line(finding.severity)}] {one_line(finding.check)}  "
+            f"{one_line(finding.location)}\n"
+            f"      {one_line(finding.message)}\n"
+            f"      evidence: {one_line(finding.evidence)}"
             for finding in candidate.findings
         )
         blocks.append("\n".join(lines))
@@ -897,28 +1085,36 @@ def render_lint(report: LintReportView) -> str:
 
 
 def _severity_counts(findings: Sequence[LintFinding]) -> str:
-    """Summarise one candidate's findings by severity, in a fixed order."""
+    """Summarise one candidate's findings, most urgent severity first."""
     tally: dict[str, int] = {}
     for finding in findings:
         tally[finding.severity] = tally.get(finding.severity, 0) + 1
     if not tally:
         return "no findings"
-    return ", ".join(f"{tally[severity]} {severity}" for severity in sorted(tally))
+    return ", ".join(
+        f"{tally[severity]} {one_line(severity)}" for severity in sorted(tally, key=_urgency)
+    )
+
+
+def _urgency(severity: str) -> tuple[int, str]:
+    """Order a severity spelling by urgency, unknown spellings last."""
+    known = SEVERITY_ORDER.index(severity) if severity in SEVERITY_ORDER else len(SEVERITY_ORDER)
+    return (known, severity)
 
 
 def render_explanation(explanation: Explanation) -> str:
     """Render one symbol card with its tiered fan-out, fan-in and imports."""
     if explanation.card is None:
-        return explanation.message.rstrip("\n") + "\n"
+        return one_line(explanation.message).rstrip("\n") + "\n"
 
     lines = [_render_card(explanation.card)]
-    lines.extend(f"  also defined at {entry}" for entry in explanation.alternatives)
+    lines.extend(f"  also defined at {one_line(entry)}" for entry in explanation.alternatives)
     if explanation.rationales:
         lines.append("")
         lines.append("rationale")
         lines.extend(
-            f"  {node.kind.upper()}  {node.text}    "
-            f"[{node.stable_id} -> {node.parent_id}] @{node.line}"
+            f"  {one_line(node.kind).upper()}  {one_line(node.text)}    "
+            f"{_locator(node.stable_id, parent=node.parent_id, line=node.line)}"
             for node in explanation.rationales
         )
     lines.append("")
@@ -931,35 +1127,63 @@ def render_explanation(explanation: Explanation) -> str:
 def render_path(trace: PathTrace) -> str:
     """Render a path hop by hop, each with its relation, tier and file:line."""
     if not trace.found:
-        return trace.message.rstrip("\n") + "\n"
+        return one_line(trace.message).rstrip("\n") + "\n"
 
     hops = "hop" if len(trace.hops) == 1 else "hops"
     lines = [
-        f"{len(trace.hops)} {hops} from {trace.source} to {trace.target}",
-        f"  start  {trace.source_label}    {trace.source}",
+        f"{len(trace.hops)} {hops} from {one_line(trace.source)} to {one_line(trace.target)}",
+        f"  start  {one_line(trace.source_label)}    {one_line(trace.source)}",
     ]
     lines.extend(
-        f"  {number:>3}. {hop.arrow} {hop.verb} ({hop.tier_label})    "
-        f"{hop.label}    [{hop.node}] @{hop.line}"
+        f"  {number:>3}. {one_line(hop.arrow)} {one_line(hop.verb)} "
+        f"({one_line(hop.tier_label)})    "
+        f"{one_line(hop.label)}    {_locator(hop.node, line=hop.line)}"
         for number, hop in enumerate(trace.hops, start=1)
     )
     if trace.message:
-        lines.append(f"  {trace.message}")
+        lines.append(f"  {one_line(trace.message)}")
     return "\n".join(lines) + "\n"
 
 
 def render_cycles(report: CycleReport) -> str:
-    """Render module-level import cycles as arrow chains."""
-    if not report.cycles:
-        return "no import cycles\n"
+    """Render module-level import cycles as arrow chains.
+
+    Keyed on ``total``, which the service computes before truncation, rather
+    than on the list the limit left behind. Branching on the truncated list
+    made ``cycles --limit 0`` answer "no import cycles", exit 0, for a
+    repository that has one -- a bound reported as a fact about the code. Of
+    the three renderers that phrase an empty result as a statement about the
+    repository, this is the one whose statement clears something.
+    """
+    note = _unresolved_imports_note(report.unresolved_imports)
+    if not report.total:
+        return "\n".join(["no import cycles", *note]) + "\n"
 
     cycles = "cycle" if report.total == 1 else "cycles"
-    lines = [f"{report.total} import {cycles}"]
+    lines = [f"{report.total} import {cycles}", *note]
     for index, cycle in enumerate(report.cycles, start=1):
-        lines.append(f"  {index:>3}. ({len(cycle.files)} files) {cycle.chain}")
+        lines.append(f"  {index:>3}. ({len(cycle.files)} files) {one_line(cycle.chain)}")
     if report.omitted:
-        lines.append(f"  ... {report.omitted} more cycles not listed")
+        lines.append(_omitted_line(report.omitted, "cycles", limit=report.limit))
     return "\n".join(lines) + "\n"
+
+
+def _unresolved_imports_note(count: int) -> list[str]:
+    """Say how much of the import graph the resolver could not build.
+
+    Returned as a list so the caller can splice it into either branch: the
+    empty result needs this line more than the populated one does, because
+    "no import cycles" is the reading an agent stops on.
+    """
+    if not count:
+        return []
+    statements = "statement" if count == 1 else "statements"
+    return [
+        (
+            f"  note: {count} import {statements} named no file in this repository, "
+            "so a cycle through them is not listed"
+        )
+    ]
 
 
 def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
@@ -970,12 +1194,14 @@ def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:
 
     lines = [f"{heading}: {total}"]
     for group in groups:
-        lines.append(f"  {group.tier_label} ({group.total})")
+        lines.append(f"  {one_line(group.tier_label)} ({group.total})")
         lines.extend(
-            f"    {row.relation} {row.label}    [{row.node}] @{row.line}" for row in group.rows
+            f"    {one_line(row.relation)} {one_line(row.label)}    "
+            f"{_locator(row.node, line=row.line)}"
+            for row in group.rows
         )
         if group.omitted:
-            lines.append(f"    ... {group.omitted} more at this tier")
+            lines.append(_omitted_line(group.omitted, "edges at this tier"))
     return "\n".join(lines) + "\n"
 
 
@@ -984,20 +1210,33 @@ def _render_imports(explanation: Explanation) -> str:
     lines = ["imports"]
     if explanation.imports_out:
         lines.extend(
-            f"    declares  {row.module} -> {row.other}    {row.path}:{row.line}"
+            f"    declares  {one_line(row.module)} -> {one_line(row.other)}    "
+            f"{_file_site(row.path, row.line)}"
             for row in explanation.imports_out
         )
         if explanation.imports_out.omitted:
-            lines.append(f"    ... {explanation.imports_out.omitted} more declared, not listed")
+            lines.append(
+                _omitted_line(
+                    explanation.imports_out.omitted,
+                    "declared imports",
+                    limit=explanation.imports_out.limit,
+                )
+            )
     else:
         lines.append("    declares  none resolved inside this repository")
     if explanation.imports_in:
         lines.extend(
-            f"    imported by  {row.path}:{row.line}  as {row.module}"
+            f"    imported by  {_file_site(row.path, row.line)}  as {one_line(row.module)}"
             for row in explanation.imports_in
         )
         if explanation.imports_in.omitted:
-            lines.append(f"    ... {explanation.imports_in.omitted} more importers, not listed")
+            lines.append(
+                _omitted_line(
+                    explanation.imports_in.omitted,
+                    "importers",
+                    limit=explanation.imports_in.limit,
+                )
+            )
     else:
         lines.append("    imported by  nothing in this repository")
     return "\n".join(lines) + "\n"
@@ -1017,33 +1256,44 @@ def render_skipped_files(skipped: Sequence[SkippedFile]) -> str:
     if not skipped:
         return ""
     shown = skipped[:SKIPPED_FILES_SHOWN]
-    listed = "; ".join(f"{entry.path} ({entry.reason})" for entry in shown)
+    listed = "; ".join(f"{one_line(entry.path)} ({one_line(entry.reason)})" for entry in shown)
     if len(skipped) > len(shown):
         listed += f"; ... {len(skipped) - len(shown)} more"
     return MESSAGES.scan_skipped_files.format(count=len(skipped), listed=listed)
 
 
 def render_map(files: Sequence[MapFile]) -> str:
-    """Render ranked files as code-shaped signature blocks."""
+    """Render ranked files as code-shaped signature blocks.
+
+    An empty result says only that, because this function is handed the rows
+    and nothing else. It used to answer "nothing in this repository parsed
+    into symbols", which is a claim about the repository that the rows cannot
+    support: ``MapService._pack`` also returns zero when the first candidate's
+    render exceeds the budget, so a parsed repository read as one that
+    parses into nothing. The service knows which happened and says so -- see
+    ``MapService.render_text``.
+    """
     if not files:
-        return "no ranked files: nothing in this repository parsed into symbols\n"
+        return "no ranked files\n"
 
     blocks: list[str] = []
     for map_file in files:
-        lines = [f"{map_file.path}  (rank {map_file.rank:.4f})"]
+        lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f})"]
         for entry in map_file.entries:
             lines.append(
                 f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
-                f"{'    ' * entry.depth}{entry.signature}  [{entry.stable_id}]"
+                f"{'    ' * entry.depth}{one_line(entry.signature)}  "
+                f"{_locator(entry.stable_id)}"
             )
             lines.extend(
                 f"{line_prefix(node.line, LINE_NUMBER_WIDTH)}"
-                f"{'    ' * (entry.depth + 1)}# {node.kind.upper()}: {node.text}  "
-                f"[{node.stable_id} -> {node.parent_id}]"
+                f"{'    ' * (entry.depth + 1)}# {one_line(node.kind).upper()}: "
+                f"{one_line(node.text)}  "
+                f"{_locator(node.stable_id, parent=node.parent_id)}"
                 for node in entry.rationales
             )
         if map_file.omitted:
-            lines.append(f"      ... {map_file.omitted} more symbols in this file")
+            lines.append(_omitted_line(map_file.omitted, "symbols in this file"))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"
 
@@ -1061,8 +1311,13 @@ def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:
         return "no matching symbols\n"
 
     body = "\n\n".join(_render_card(card) for card in cards) + "\n"
-    if isinstance(cards, CardListing) and cards.omitted:
-        return f"{body}  ... {cards.omitted} more matches not listed (limit {cards.limit})\n"
+    # `_Bounded` owns the arithmetic, so it is what the notice is keyed on:
+    # any bounded listing handed here announces its cut, and a listing added
+    # later does not render as a complete answer by default. Only the concrete
+    # listing knows the flag a reader would raise, so the limit is read there.
+    limit = cards.limit if isinstance(cards, CardListing) else 0
+    if isinstance(cards, _Bounded) and cards.omitted:
+        return f"{body}{_omitted_line(cards.omitted, 'matches', limit=limit)}\n"
     return body
 
 
@@ -1075,20 +1330,26 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     an agent reads that as the blast radius and ships against it.
     """
     if not groups:
-        return f"no references to {target} outside its own definition\n"
+        return f"no references to {one_line(target)} outside its own definition\n"
 
     listed = sum(len(group.sites) for group in groups)
-    total = groups.total if isinstance(groups, RefListing) else listed
-    blocks = [f"{total} references to {target}"]
+    total = groups.total if isinstance(groups, _Bounded) else listed
+    # Files, not sites: the sites are cut before they are grouped, so a file
+    # whose every site fell past the limit is absent from the listing
+    # altogether. Only a `RefListing` counts them, so only it can say so.
+    files_omitted = groups.files_omitted if isinstance(groups, RefListing) else 0
+    limit = groups.limit if isinstance(groups, RefListing) else 0
+    blocks = [f"{total} {_references(total)} to {one_line(target)}"]
     for group in groups:
-        labelled = f", {group.tier_label}" if group.tier_label else ""
-        lines = [f"{group.path}  ({len(group.sites)} references{labelled})"]
+        labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
+        sites = len(group.sites)
+        lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
         lines.extend(_render_site(site) for site in group.sites)
         blocks.append("\n".join(lines))
-    if isinstance(groups, RefListing) and groups.omitted:
-        note = f"  ... {groups.omitted} more references not listed (limit {groups.limit})"
-        if groups.files_omitted:
-            note += f", including every reference in {groups.files_omitted} more files"
+    if isinstance(groups, _Bounded) and groups.omitted:
+        note = _omitted_line(groups.omitted, "references", limit=limit)
+        if files_omitted:
+            note += f", including every reference in {files_omitted} more files"
         blocks.append(note)
     return "\n\n".join(blocks) + "\n"
 
@@ -1104,50 +1365,66 @@ def render_shared_callers(listing: SharedCallerListing, target: str) -> str:
     candidates past the listing's limit are counted rather than shown.
     """
     if not listing.rows:
-        return f"no symbols share callers with {target}\n"
+        return f"no symbols share callers with {one_line(target)}\n"
 
-    lines = [f"symbols sharing callers with {target}"]
-    tests_heading_shown = False
-    for row in listing.rows:
-        if row.in_tests and not tests_heading_shown:
-            lines.append("  defined in tests (ranked below all production candidates):")
-            tests_heading_shown = True
+    # Partitioned here rather than trusted from the caller. The heading makes
+    # a claim about every row beneath it, and emitting it at the first
+    # test-defined row made that claim true only while the service happened to
+    # sort on `in_tests` first.
+    production = [row for row in listing.rows if not row.in_tests]
+    from_tests = [row for row in listing.rows if row.in_tests]
+
+    lines = [f"symbols sharing callers with {one_line(target)}"]
+    lines.extend(_candidate_rows(production))
+    if from_tests:
+        lines.append("  defined in tests (ranked below all production candidates):")
+        lines.extend(_candidate_rows(from_tests))
+    if listing.omitted:
+        lines.append(_omitted_line(listing.omitted, "candidates", limit=listing.limit))
+    return "\n".join(lines) + "\n"
+
+
+def _candidate_rows(rows: Sequence[SharedCaller]) -> Iterator[str]:
+    """Yield one adjacency candidate and the callers that evidence it."""
+    for row in rows:
         files = "file" if row.shared_files == 1 else "files"
-        lines.append(
-            f"  [{row.stable_id}] @{row.line}  "
+        yield (
+            f"  {_locator(row.stable_id, line=row.line)}  "
             f"({row.overlap} shared callers in {row.shared_files} {files}, "
             f"score {row.score:.3f})"
         )
         shown = row.callers[:SHARED_CALLERS_SHOWN]
-        lines.extend(f"      {caller.qualname}    {caller.path}:{caller.line}" for caller in shown)
+        yield from (
+            f"      {one_line(caller.qualname)}    {_file_site(caller.path, caller.line)}"
+            for caller in shown
+        )
         if len(row.callers) > len(shown):
-            lines.append(f"      ... {len(row.callers) - len(shown)} more callers not listed")
-    if listing.omitted:
-        lines.append(f"  ... {listing.omitted} more candidates not listed")
-    return "\n".join(lines) + "\n"
+            yield _omitted_line(
+                len(row.callers) - len(shown), "callers", limit=SHARED_CALLERS_SHOWN
+            )
 
 
 def _render_card(card: SymbolCard) -> str:
     """Render one incident card without repeating the path inside its stable id."""
-    owner = f" in class {card.parent_class}" if card.parent_class else ""
+    owner = f" in class {one_line(card.parent_class)}" if card.parent_class else ""
     span = (
         str(card.start_line)
         if card.start_line == card.end_line
         else f"{card.start_line}-{card.end_line}"
     )
     lines = [
-        f"[{card.stable_id}] @{span}",
-        f"  {card.kind}{owner} ({card.language})",
+        _locator(card.stable_id, line=span),
+        f"  {one_line(card.kind)}{owner} ({one_line(card.language)})",
     ]
     if card.body:
-        lines.extend(f"  {line}" for line in card.body.split("\n"))
+        lines.extend(f"  {one_line(line)}" for line in card.body.split("\n"))
     else:
-        lines.append(f"  {card.signature}")
+        lines.append(f"  {one_line(card.signature)}")
     return "\n".join(lines)
 
 
 def _render_site(site: RefSite) -> str:
     """Render one reference row beneath the file header that locates it."""
-    suffix = f"  [{site.stable_id}]" if site.stable_id else ""
+    suffix = f"  {_locator(site.stable_id)}" if site.stable_id else ""
     prefix = line_prefix(site.line, LINE_NUMBER_WIDTH)
-    return f"{prefix}{site.enclosing}{suffix}"
+    return f"{prefix}{one_line(site.enclosing)}{suffix}"

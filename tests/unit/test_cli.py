@@ -8,8 +8,10 @@ it over Bash.
 """
 
 import json
+import os
 import subprocess
 import sys
+from dataclasses import replace
 
 import pytest
 
@@ -23,7 +25,36 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, grammars, guide
+from agentless_mcp.core import cache, grammars, guide, selfrestart
+
+# The environment every spawned console script gets. Built here rather than
+# inherited: the three kill switches decide whether a child starts a background
+# grammar warm, a background index or a self-restart monitor, and a suite that
+# is green because of what the developer's shell does not export is not
+# evidence. ``conftest`` assigns the same three for the in-process half; naming
+# them at the spawn as well is what makes the guarantee local to the harness
+# that depends on it.
+CHILD_ENV = {
+    **os.environ,
+    grammars.ENV_NO_AUTO_WARM: "1",
+    cache.ENV_NO_AUTO_INDEX: "1",
+    selfrestart.ENV_NO_AUTO_RESTART: "1",
+}
+
+
+def console_script(*arguments, cwd=None, stdin=None, timeout=120):
+    """Run the installed console script with a pinned environment."""
+    return subprocess.run(
+        [sys.executable, "-m", "agentless_mcp", *arguments],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=cwd,
+        input=stdin,
+        env=CHILD_ENV,
+        check=False,
+    )
+
 
 SOURCE = '''\
 """Core."""
@@ -50,14 +81,6 @@ def run_billing(items):
 
 
 @pytest.fixture
-def repo_path(tmp_path):
-    """A two-file repository on disk, no git required."""
-    (tmp_path / "core.py").write_text(SOURCE, encoding="utf-8")
-    (tmp_path / "caller.py").write_text(CALLER, encoding="utf-8")
-    return tmp_path
-
-
-@pytest.fixture
 def services(extractor, counter):
     """The same wiring bootstrap builds, without the console-script layer."""
     return CliServices(
@@ -71,6 +94,14 @@ def services(extractor, counter):
         counter=counter,
         extractor=extractor,
     )
+
+
+@pytest.fixture
+def repo_path(tmp_path):
+    """A two-file repository on disk, no git required."""
+    (tmp_path / "core.py").write_text(SOURCE, encoding="utf-8")
+    (tmp_path / "caller.py").write_text(CALLER, encoding="utf-8")
+    return tmp_path
 
 
 def invoke(services, repo_path, *arguments):
@@ -143,22 +174,58 @@ class TestInProcess:
         summary = capsys.readouterr().out.splitlines()[0]
         assert summary.startswith("indexed 2, reused 0, pruned 0, skipped 0, errors 0: 2 files,")
 
-    def test_index_with_a_failing_file_exits_non_zero(self, services, repo_path, capsys):
+    def test_index_reports_an_over_cap_file_as_a_skip_and_exits_zero(
+        self, services, repo_path, capsys
+    ):
+        """Both of these asserted the opposite until the B07 sweep.
+
+        `read_bounded`'s own docstring settles it: "one oversized or
+        unreadable file in a repository must not fail a whole traversal, but
+        it must also never pass silently as an empty file". Declining to read
+        a file is a skip. `index` was the one caller disagreeing, so a
+        repository whose only problem was a file over the cap exited
+        EXIT_DOMAIN and reported it under `error:`.
+        """
         write_over_cap_file(repo_path)
 
-        assert invoke(services, repo_path, "index") == EXIT_DOMAIN
+        assert invoke(services, repo_path, "index") == EXIT_OK
         out = capsys.readouterr().out
-        assert "errors 1" in out.splitlines()[0]
-        assert "  error: huge.py:" in out
+        assert "skipped 1, errors 0" in out.splitlines()[0]
+        assert "  warning: huge.py: skipped:" in out
+        assert "  error:" not in out
 
-    def test_index_with_a_failing_file_exits_non_zero_in_json_mode_too(
+    def test_index_reports_an_over_cap_file_as_a_skip_in_json_mode_too(
         self, services, repo_path, capsys
     ):
         write_over_cap_file(repo_path)
 
-        assert invoke(services, repo_path, "index", "--json") == EXIT_DOMAIN
+        assert invoke(services, repo_path, "index", "--json") == EXIT_OK
         document = json.loads(capsys.readouterr().out)
-        assert document["errors"] == 1
+        assert document["errors"] == 0
+        assert document["skipped"] == 1
+        assert [entry["path"] for entry in document["skipped_files"]] == ["huge.py"]
+
+    def test_index_still_exits_non_zero_when_a_file_cannot_be_extracted(
+        self, services, repo_path, capsys, monkeypatch
+    ):
+        """The error class did not go away with the over-cap file.
+
+        That file was the only thing the two tests above ever put in it, so
+        without this one nothing would gate the failure path or its exit code.
+        """
+
+        def refuse(text, language, path):
+            if path == "core.py":
+                message = "deliberate extraction failure"
+                raise ValueError(message)
+            return []
+
+        monkeypatch.setattr(services.extractor, "extract_from_source", refuse)
+
+        assert invoke(services, repo_path, "index") == EXIT_DOMAIN
+        out = capsys.readouterr().out
+        assert "errors 1" in out.splitlines()[0]
+        assert "  error: core.py: ValueError: deliberate extraction failure" in out
 
     def test_index_reports_an_unwarmed_language_as_a_warning_and_exits_zero(
         self, services, repo_path, capsys, monkeypatch
@@ -276,10 +343,13 @@ class TestInProcess:
         assert code == EXIT_DOMAIN
         assert "no symbol or file matches no_such_symbol" in capsys.readouterr().out
 
-    def test_a_bad_search_bound_is_a_usage_error(self, services, repo_path, capsys):
+    def test_a_bad_search_bound_is_refused_by_the_service(self, services, repo_path, capsys):
+        # Was a usage error from a check written by hand in this adapter.
+        # Stage 4b moved the rule into GraphService so the MCP door inherits
+        # it too, which makes the refusal a domain failure on both.
         code = invoke(services, repo_path, "path", "quote", "run_billing", "--max-visited", "0")
-        assert code == EXIT_USAGE
-        assert "--max-visited" in capsys.readouterr().err
+        assert code == EXIT_DOMAIN
+        assert "max_visited must be at least 1, got 0" in capsys.readouterr().err
 
     def test_cycles_reports_an_empty_answer_with_exit_zero(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "cycles") == EXIT_OK
@@ -303,9 +373,11 @@ class TestInProcess:
         assert document["files"] == 2
         assert document["communities"]
 
-    def test_a_negative_community_bound_is_a_usage_error(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_USAGE
-        assert "--limit" in capsys.readouterr().err
+    def test_a_negative_community_bound_is_refused_by_the_service(
+        self, services, repo_path, capsys
+    ):
+        assert invoke(services, repo_path, "communities", "--limit", "-1") == EXIT_DOMAIN
+        assert "limit takes a value from 1 through 500, got -1" in capsys.readouterr().err
 
 
 class TestSliceBySymbol:
@@ -361,9 +433,9 @@ class TestDiagram:
         assert "```" not in captured.out
         assert "agentless-mcp receipt" in captured.err
 
-    def test_a_bad_node_bound_is_a_usage_error(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_USAGE
-        assert "--max-nodes" in capsys.readouterr().err
+    def test_a_bad_node_bound_is_refused_by_the_service(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "diagram", "--max-nodes", "0") == EXIT_DOMAIN
+        assert "max_nodes takes a value from 1 through 500, got 0" in capsys.readouterr().err
 
     def test_a_focus_naming_nothing_is_a_domain_failure(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "diagram", "--focus", "nope.py") == EXIT_DOMAIN
@@ -438,14 +510,12 @@ class TestHtml:
         assert code == EXIT_USAGE
         assert "simple .html name" in capsys.readouterr().err
 
-    def test_html_bounds_are_validated_at_the_cli_boundary(
-        self,
-        services,
-        repo_path,
-        capsys,
-    ):
-        assert invoke(services, repo_path, "html", "--max-nodes", "0") == EXIT_USAGE
-        assert "--max-nodes" in capsys.readouterr().err
+    def test_html_bounds_are_validated_by_the_service(self, services, repo_path, capsys):
+        # The range used to be spelled here and again in core/htmlgraph._validate.
+        # GraphService now applies it, so both front doors get the same answer
+        # and core keeps its own check as the last line rather than the only one.
+        assert invoke(services, repo_path, "html", "--max-nodes", "0") == EXIT_DOMAIN
+        assert "max_nodes takes a value from 1 through 1000, got 0" in capsys.readouterr().err
 
 
 PATCH_WITH_A_DANGLING_CALL = """\
@@ -590,9 +660,12 @@ class TestLint:
         assert "dependencies is not a list" in out
 
     def test_a_candidates_path_that_is_neither_is_refused(self, services, repo_path, capsys):
+        # A path that does not exist is a usage error wherever it is named, so
+        # this reads the same as `vote --verdicts gone.jsonl` rather than the
+        # exit 1 that means "the work ran and the answer was bad".
         assert (
             invoke(services, repo_path, "lint", "--candidates", str(repo_path / "nope"))
-            == EXIT_DOMAIN
+            == EXIT_USAGE
         )
         assert "neither a patch file nor a directory" in capsys.readouterr().err
 
@@ -705,9 +778,11 @@ class TestLintOverADiff:
         assert "renames or copies" in capsys.readouterr().out
 
     def test_a_diff_file_that_does_not_exist_is_refused(self, services, repo_path, capsys):
+        # Naming neither input is EXIT_USAGE two tests below; naming an input
+        # that is not there is the same class of mistake and now reads alike.
         assert (
             invoke(services, repo_path, "lint", "--diff", str(repo_path / "nope.patch"))
-            == EXIT_DOMAIN
+            == EXIT_USAGE
         )
         assert "cannot read diff" in capsys.readouterr().err
 
@@ -741,6 +816,75 @@ def _git_restore(root):
         capture_output=True,
         timeout=30,
     )
+
+
+class _StubReport:
+    """The four members ``_cmd_validate`` reads off a validation report."""
+
+    any_passed = True
+
+    def jsonl(self):
+        return '{"candidate": "01", "verdict": "PASS"}\n'
+
+    def summary_line(self):
+        return "1 candidate, 1 passed"
+
+    def warnings(self):
+        return []
+
+
+class _StubValidateService:
+    """Stands in for a run that took minutes, so the write is what is tested."""
+
+    def validate(self, ctx, request):
+        return _StubReport()
+
+
+class TestAFailedOutputWriteKeepsTheDocument:
+    """`-o` on an unwritable path used to discard the whole run.
+
+    A validation spends a baseline plus two commands per candidate, and the
+    verdicts document is the only record of it. Losing the work as well as the
+    write is the avoidable half of the failure.
+    """
+
+    def run_with_output(self, services, root, destination, capsys):
+        stubbed = replace(services, validates=_StubValidateService())
+        code = run(
+            [
+                "validate",
+                "--candidates",
+                str(root),
+                "--test-cmd",
+                "true",
+                "--repo",
+                str(root),
+                "-o",
+                str(destination),
+            ],
+            stubbed,
+        )
+        return code, capsys.readouterr()
+
+    def test_the_document_falls_back_to_stdout(self, services, make_git_repo, capsys):
+        root = make_git_repo({"core.py": SOURCE})
+        # A directory is never writable as a file, on every platform.
+        code, captured = self.run_with_output(services, root, root, capsys)
+
+        assert code == EXIT_USAGE
+        assert '"verdict": "PASS"' in captured.out
+        assert "verdicts on stdout" in captured.err
+
+    def test_a_writable_destination_still_keeps_stdout_clean(
+        self, services, make_git_repo, tmp_path, capsys
+    ):
+        root = make_git_repo({"core.py": SOURCE})
+        destination = tmp_path / "verdicts.jsonl"
+        code, captured = self.run_with_output(services, root, destination, capsys)
+
+        assert code == EXIT_OK
+        assert captured.out == ""
+        assert '"verdict": "PASS"' in destination.read_text(encoding="utf-8")
 
 
 class TestValidateTestCommand:
@@ -832,7 +976,19 @@ class TestJsonShape:
     """``--json`` says everything the text form says, on every subcommand."""
 
     def test_json_reports_the_truncation_the_text_form_reports(self, services, repo_path, capsys):
-        assert invoke(services, repo_path, "map", "--budget", "40", "--json") == EXIT_OK
+        # `--budget 40` used to force this. 40 is not a budget any door
+        # accepts now -- projectconfig declares 200..64000 and the service
+        # holds callers to it -- so the repository grows until the smallest
+        # legal budget truncates instead. The truncation path is unchanged;
+        # only the way this test reaches it is.
+        for index in range(8):
+            body = "".join(
+                f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
+                for inner in range(12)
+            )
+            (repo_path / f"module_{index:02d}.py").write_text(body, encoding="utf-8")
+
+        assert invoke(services, repo_path, "map", "--budget", "200", "--json") == EXIT_OK
         document = json.loads(capsys.readouterr().out)
         assert document["truncation"]["shown"] < document["truncation"]["total"]
         assert document["truncation"]["unit"] == "symbols"
@@ -886,18 +1042,110 @@ class TestExitCodes:
         assert invoke(services, repo_path, *arguments) == expected, name
 
 
+class TestExpandReportsAPartialBatchAsAFailure:
+    """`expand` is the sibling `skeleton` was fixed without.
+
+    Same defect, same shape, one command over: an id that missed was rendered
+    into the *answer* on stdout, under the symbol bodies, at exit 0. An agent
+    piping `expand` into a prompt read "unresolved: core.py no longer defines
+    X" as source among the sources it asked for. The exit code only moved when
+    *every* id missed, so a batch that answered one of fifty reported success.
+    """
+
+    def test_one_bad_id_among_good_ones_exits_domain(self, services, repo_path):
+        code = invoke(services, repo_path, "expand", "py:core.py::quote", "py:core.py::absent")
+        assert code == EXIT_DOMAIN
+
+    def test_the_reason_is_on_stderr_and_not_in_the_answer(self, services, repo_path, capsys):
+        invoke(services, repo_path, "expand", "py:core.py::quote", "py:core.py::absent")
+        captured = capsys.readouterr()
+
+        assert "unresolved" in captured.err
+        assert "absent" in captured.err
+        assert "unresolved" not in captured.out
+        # The answer it did have is still on stdout, whole.
+        assert "def quote" in captured.out
+
+    def test_a_batch_that_fully_resolves_still_exits_ok(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "expand", "py:core.py::quote") == EXIT_OK
+        assert "unresolved" not in capsys.readouterr().err
+
+    def test_the_json_form_keeps_the_misses_as_their_own_field(self, services, repo_path, capsys):
+        invoke(services, repo_path, "expand", "py:core.py::absent", "--json")
+        document = json.loads(capsys.readouterr().out)
+
+        assert document["unresolved"]
+        assert document["unresolved_total"] == 1
+
+
+class TestSkeletonReportsAPartialBatchAsAFailure:
+    """One unreadable file in a batch is a failure, and stderr says which.
+
+    `skeleton a.py nope.py` used to exit 0 and write
+    "nope.py: unreadable: No such file or directory" into the *view* on
+    stdout, where an agent piping the answer into a prompt reads it as the
+    contents of nope.py. The exit code only moved when *every* named file
+    failed, which is not the line formatting.py draws: 0 against 1 is "did
+    what the caller named exist", and one of several is enough.
+    """
+
+    def test_one_bad_file_among_good_ones_exits_domain(self, services, repo_path):
+        assert invoke(services, repo_path, "skeleton", "core.py", "gone.py") == EXIT_DOMAIN
+
+    def test_the_reason_is_on_stderr_and_not_in_the_view(self, services, repo_path, capsys):
+        invoke(services, repo_path, "skeleton", "core.py", "gone.py")
+        captured = capsys.readouterr()
+
+        assert "unreadable" in captured.err
+        assert "gone.py" in captured.err
+        assert "unreadable" not in captured.out
+        # The answer that did resolve is still rendered.
+        assert "def quote" in captured.out
+
+    def test_the_json_form_keeps_the_per_file_error_as_a_field(self, services, repo_path, capsys):
+        invoke(services, repo_path, "skeleton", "core.py", "gone.py", "--json")
+        document = json.loads(capsys.readouterr().out)
+
+        errors = [entry.get("error", "") for entry in document["files"]]
+        assert any("unreadable" in entry for entry in errors)
+
+
+class TestSliceRefusesTheCombinationItUsedToDiscard:
+    """FILE, --lines and --symbol are alternatives, not options that stack."""
+
+    def test_a_file_and_a_symbol_together_are_a_parser_error(self, services, repo_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "slice", "core.py", "--symbol", "py:core.py::quote")
+        assert raised.value.code == EXIT_USAGE
+
+    def test_lines_with_a_symbol_is_refused_rather_than_dropped(self, services, repo_path, capsys):
+        code = invoke(
+            services, repo_path, "slice", "--lines", "1:3", "--symbol", "py:core.py::quote"
+        )
+
+        assert code == EXIT_USAGE
+        assert "--lines with FILE" in capsys.readouterr().err
+
+
+class TestTheDegradationWarningReachesEveryCaller:
+    """It fired on one of _resolve's three return paths.
+
+    `--repo` is the dominant agent invocation and never got it, so a caller
+    piping stdout into a prompt learned nothing about a degraded repository
+    until after they had used the answer -- which is the whole reason
+    `formatting.warn_about` exists.
+    """
+
+    def test_a_repo_flag_invocation_warns_on_stderr(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map") == EXIT_OK
+        assert "not inside a git repository" in capsys.readouterr().err
+
+
 class TestSubprocess:
     """End to end through the installed console script."""
 
     def run_cli(self, *arguments, cwd=None):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=cwd,
-            check=False,
-        )
+        return console_script(*arguments, cwd=cwd)
 
     def test_map_prints_the_receipt_and_exits_zero(self, make_git_repo):
         root = make_git_repo({"core.py": SOURCE, "caller.py": CALLER})
@@ -988,15 +1236,7 @@ class TestPatchSubprocess:
     """
 
     def run_cli(self, *arguments, cwd=None, stdin=None):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=cwd,
-            input=stdin,
-            check=False,
-        )
+        return console_script(*arguments, cwd=cwd, stdin=stdin)
 
     @pytest.fixture
     def git_repo(self, make_git_repo):
@@ -1126,11 +1366,163 @@ class TestPatchSubprocess:
         assert result.stdout == ""
         assert (git_repo / "core.py").read_text(encoding="utf-8") == SOURCE
 
+    def test_a_patch_file_that_is_not_utf8_is_reported_not_crashed(self, git_repo, tmp_path):
+        """`UnicodeDecodeError` is a `ValueError`, so `except OSError` missed it.
+
+        The three CLI readers caught only OSError, so a latin-1 file or a
+        mistyped binary path came out as a raw traceback -- which also puts an
+        absolute local path on stderr. The MCP adapter's two readers already
+        caught both.
+        """
+        binary = tmp_path / "patch.bin"
+        binary.write_bytes(b"### core.py\n<<<<<<< SEARCH\n\xff\xfe not utf-8\n")
+
+        result = self.run_cli("patch", "check", "-f", str(binary), "--repo", str(git_repo))
+
+        assert result.returncode == EXIT_USAGE
+        assert "not valid UTF-8" in result.stderr
+        assert "Traceback" not in result.stderr
+
     def test_a_missing_patch_file_exits_two(self, git_repo, tmp_path):
         result = self.run_cli(
             "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)
         )
         assert result.returncode == 2
+
+    # --json on the three patch subcommands. Pinned because nothing reached it
+    # before: the machine-readable form of the only write path in the package
+    # was shipped and never asserted on.
+
+    def test_check_json_names_every_edit_and_every_file(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "check",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert document["ok"] is True
+        assert document["files"] == [
+            {
+                "path": "core.py",
+                "ok": True,
+                "verdict": {
+                    "language": "python",
+                    "old_errors": 0,
+                    "new_errors": 0,
+                    "ok": True,
+                    "checked": True,
+                    "detail": "",
+                },
+            }
+        ]
+        assert document["applied"] == 1
+        assert document["total"] == 1
+        assert document["changed_files"] == ["core.py"]
+        assert document["outcomes"] == [
+            {"index": 0, "path": "core.py", "status": "applied", "reason": "", "matches": 1}
+        ]
+
+    def test_a_file_with_no_grammar_says_it_was_not_checked(self, make_git_repo, tmp_path):
+        """``ok`` alone reads "no grammar" as "clean", which is the wrong answer.
+
+        ``ok`` is a delta and stays True here: the edit introduced nothing a
+        parser could see, because no parser ran. ``checked`` is the field that
+        says so, and a caller gating on a real parse has to be able to read it.
+        """
+        repo = make_git_repo({"notes.rst": "alpha\nbravo\n"})
+        patch = self.write_patch(
+            tmp_path,
+            "### notes.rst\n<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n",
+        )
+        result = self.run_cli("patch", "check", "-f", str(patch), "--repo", str(repo), "--json")
+
+        (check,) = json.loads(result.stdout)["files"]
+        assert check["verdict"]["ok"] is True
+        assert check["verdict"]["checked"] is False
+        assert "not checked" in check["verdict"]["detail"]
+
+    def test_apply_json_carries_the_diff_and_the_base_it_applied_against(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert document["diff"].startswith("diff --git a/core.py b/core.py")
+        assert "+    return RATE * 2" in document["diff"]
+        assert document["in_place"] is False
+        assert document["base"].startswith("HEAD (")
+        assert document["changed_files"] == ["core.py"]
+
+    def test_normalize_json_carries_a_key_per_file_and_one_for_the_whole(self, git_repo, tmp_path):
+        result = self.run_cli(
+            "patch",
+            "normalize",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 0
+        assert len(document["key"]) == 64
+        assert set(document["file_keys"]) == {"core.py"}
+        assert len(document["file_keys"]["core.py"]) == 64
+
+    def test_a_failing_check_still_emits_a_document_and_exits_one(self, git_repo, tmp_path):
+        # The failure path is the one an agent has to parse, so it must be a
+        # document rather than a message: status and reason per edit.
+        missing = (
+            "### core.py\n<<<<<<< SEARCH\n    return NOPE\n=======\n    return 1\n>>>>>>> REPLACE\n"
+        )
+        result = self.run_cli(
+            "patch",
+            "check",
+            "-f",
+            str(self.write_patch(tmp_path, missing)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert result.returncode == 1
+        assert document["ok"] is False
+        assert document["files"] == []
+        assert document["outcomes"][0]["status"] == "not_found"
+        assert document["outcomes"][0]["reason"] == "search text not found"
+
+    def test_the_receipt_never_enters_the_json_document(self, git_repo, tmp_path):
+        # stdout is the document, stderr is the receipt. A receipt merged into
+        # the payload would make every patch answer unparsable by whatever
+        # reads it, so the split is the contract.
+        result = self.run_cli(
+            "patch",
+            "apply",
+            "-f",
+            str(self.write_patch(tmp_path)),
+            "--repo",
+            str(git_repo),
+            "--json",
+        )
+        document = json.loads(result.stdout)
+
+        assert "receipt" not in document
+        assert result.stderr.startswith("# agentless-mcp receipt")
 
 
 # The phase-3 candidate set, three spellings of two distinct fixes plus one
@@ -1162,13 +1554,7 @@ class TestValidateAndVoteSubprocess:
     """
 
     def run_cli(self, *arguments):
-        return subprocess.run(
-            [sys.executable, "-m", "agentless_mcp", *arguments],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
+        return console_script(*arguments, timeout=300)
 
     def validate(self, repo, candidates, output, python_cmd, *extra):
         return self.run_cli(
@@ -1406,7 +1792,7 @@ class TestGuide:
     def test_a_broken_install_raises_rather_than_printing_an_empty_guide(
         self, services, monkeypatch
     ):
-        """``run`` catches AtlasError only, so this propagates as a traceback."""
+        """``run`` catches AgentlessError only, so this propagates as a traceback."""
         absent = "agent-guide.md"
 
         def missing(*_args, **_kwargs):

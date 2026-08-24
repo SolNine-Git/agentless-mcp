@@ -15,8 +15,9 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
+from agentless_mcp.core.projectconfig import MIN_BUDGET
 from agentless_mcp.core.symbols import SIGNATURE_MAX_CHARS
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
 from agentless_mcp.util.tokens import Chars4Counter
 
 CORE = '''\
@@ -211,9 +212,27 @@ class TestMapService:
         result = MapService(extractor, counter).build(repo, MapRequest())
         assert AUTO_BUDGET_MIN <= result.budget <= AUTO_BUDGET_MAX
 
-    def test_a_file_reports_the_symbols_that_did_not_fit(self, repo, extractor, counter):
-        result = MapService(extractor, counter).build(repo, MapRequest(budget=120))
-        assert result.included < result.candidates
+    def test_a_file_reports_the_symbols_that_did_not_fit(self, tmp_path, extractor, counter):
+        """Partial packing still reports what it left out, at a legal budget.
+
+        This asked for ``budget=120``, which no door accepts any more:
+        ``projectconfig`` declares 200..64000 and ``MapService`` now holds
+        callers to it. The behaviour under test is unaffected -- a budget can
+        still fit some symbols and not others -- so the repository grows until
+        the smallest legal budget lands mid-way through it. Raising the floor
+        did not make this path unreachable, and this test is the evidence.
+        """
+        for index in range(12):
+            body = "".join(
+                f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
+                for inner in range(12)
+            )
+            (tmp_path / f"module_{index:02d}.py").write_text(body, encoding="utf-8")
+        repo = resolve_repo(tmp_path, None)
+
+        result = MapService(extractor, counter).build(repo, MapRequest(budget=MIN_BUDGET))
+
+        assert 0 < result.included < result.candidates
         assert sum(entry.omitted for entry in result.files) > 0
 
     def test_two_builds_of_an_unchanged_repository_are_identical(self, repo, extractor, counter):
@@ -229,9 +248,28 @@ class TestViewService:
         assert "def quote(sku):" in view.text
         assert "return RATE" not in view.text
 
-    def test_a_path_outside_the_repository_is_refused(self, repo, extractor):
-        with pytest.raises(SecurityRefusal):
-            ViewService(extractor).skeleton(repo, ["../escape.py"])
+    def test_a_path_outside_the_repository_is_refused_per_file(self, repo, extractor):
+        """A batch reports the refusal; it does not throw away the batch.
+
+        `skeleton` used to raise, so one bad path discarded every other file
+        the caller named and left them unable to tell which one did it. The
+        rule `SymbolService._card` states over the same containment check --
+        a batch reports per item, a single-target view raises -- now holds
+        here too.
+        """
+        views = ViewService(extractor).skeleton(repo, ["core.py", "../escape.py"])
+
+        assert [view.path for view in views] == ["core.py", "../escape.py"]
+        assert "def quote(sku):" in views[0].text
+        assert views[1].refused
+        assert not views[0].refused
+
+    def test_a_refusal_is_marked_apart_from_a_file_that_cannot_be_read(self, repo, extractor):
+        """The two are different outcomes and the adapter maps them differently."""
+        views = ViewService(extractor).skeleton(repo, ["../escape.py", "gone.py"])
+
+        assert [view.refused for view in views] == [True, False]
+        assert all(view.error for view in views)
 
     def test_an_unparseable_file_type_is_reported_per_file(self, repo, extractor):
         (repo.root / "notes.md").write_text("# hi\n", encoding="utf-8")
@@ -257,20 +295,20 @@ class TestViewService:
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(9, 9000)], context=0
         )
-        assert "9|        return quote(item)" in view.text
+        assert "9|         return quote(item)" in view.text
         assert "unsatisfiable" not in view.text
 
     def test_a_bad_interval_does_not_hide_the_good_ones(self, repo, extractor):
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(6, 6), (9000, 9050)], context=0
         )
-        assert "6|        return normalise(quote(item))" in view.text
+        assert "6|         return normalise(quote(item))" in view.text
         assert "unsatisfiable: line range 9000-9050 is beyond ledger.py (9 lines)" in view.text
 
     def test_a_slice_with_no_ranges_still_returns_the_whole_file(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py")
-        assert "1|from core import normalise, quote" in view.text
-        assert "9|        return quote(item)" in view.text
+        assert "1| from core import normalise, quote" in view.text
+        assert "9|         return quote(item)" in view.text
 
     def test_resolve_locations_returns_ids_intervals_and_reasons(self, repo, extractor):
         view = ViewService(extractor).resolve_locations(
@@ -293,26 +331,26 @@ class TestSliceRangesAreValidatedHere:
     def test_a_transposed_range_is_refused_rather_than_rendered_whole(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(8, 3)], context=0)
         assert "line range 8-3 is not a range" in view.text
-        assert "1|from core import normalise, quote" not in view.text
+        assert "1| from core import normalise, quote" not in view.text
 
     def test_a_range_starting_below_one_is_refused(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(-5, -1)], context=0)
         assert "line range -5--1 is not a range" in view.text
-        assert "1|from core import normalise, quote" not in view.text
+        assert "1| from core import normalise, quote" not in view.text
 
     def test_a_negative_context_is_refused_by_name(self, repo, extractor):
-        with pytest.raises(AtlasError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context takes a value from 0 through 200"):
             ViewService(extractor).read_slice(repo, "ledger.py", intervals=[(5, 5)], context=-50)
 
     def test_resolve_locations_refuses_a_negative_context_too(self, repo, extractor):
-        with pytest.raises(AtlasError, match="context must not be negative"):
+        with pytest.raises(AgentlessError, match="context takes a value from 0 through 200"):
             ViewService(extractor).resolve_locations(repo, "core.py", ["line: 10"], context=-50)
 
     def test_one_bad_range_beside_a_good_one_still_renders_the_good_one(self, repo, extractor):
         view = ViewService(extractor).read_slice(
             repo, "ledger.py", intervals=[(6, 6), (8, 3)], context=0
         )
-        assert "6|        return normalise(quote(item))" in view.text
+        assert "6|         return normalise(quote(item))" in view.text
         assert "line range 8-3 is not a range" in view.text
 
 
@@ -327,7 +365,7 @@ class TestTheReportedLineCountIsTheFilesOwn:
 
     def test_a_whole_file_slice_has_no_phantom_last_line(self, repo, extractor):
         view = ViewService(extractor).read_slice(repo, "ledger.py")
-        assert view.text.rstrip("\n").endswith("9|        return quote(item)")
+        assert view.text.rstrip("\n").endswith("9|         return quote(item)")
         assert "10|" not in view.text
 
     def test_the_out_of_range_message_states_the_real_count(self, repo, extractor):
@@ -488,17 +526,17 @@ class TestALimitThatBoundsNothingIsRefused:
     """`limit=0` used to answer "no references" for a symbol with fifty-two."""
 
     def test_find_symbol_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", limit=0)
 
     def test_fan_in_refuses_a_zero_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
                 repo, "quote", limit=0
             )
 
     def test_expand_refuses_a_negative_limit(self, repo, extractor):
-        with pytest.raises(AtlasError, match="limit must be at least 1"):
+        with pytest.raises(AgentlessError, match="limit takes a value from 1 through 500"):
             SymbolService(extractor, Chars4Counter()).expand_symbols(
                 repo, ["py:core.py::quote"], limit=-1
             )

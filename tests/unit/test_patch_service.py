@@ -9,6 +9,8 @@ move -- rather than on which internal function was called.
 """
 
 import json
+import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -20,7 +22,7 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import sandbox
 from agentless_mcp.core.normalize import file_key
 from agentless_mcp.core.patches import EditStatus, parse_blocks
-from agentless_mcp.util.errors import AtlasError, SecurityRefusal
+from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
 
 APP = """\
 def add(left, right):
@@ -203,6 +205,45 @@ class TestApply:
         assert "a/app.py" in report.diff
         assert "a/util.py" in report.diff
 
+    def test_two_edits_naming_one_file_both_land(self, service, ctx):
+        """The ordinary shape of a real patch, and it reached no test before.
+
+        ``_read`` deduplicates by path so the file is read once, and the
+        edits then run against one accumulating copy. Two independent hunks
+        in one file is what an agent produces most of the time.
+        """
+        text = (
+            "### app.py\n<<<<<<< SEARCH\n    return left + right\n"
+            "=======\n    return left + right + 0\n>>>>>>> REPLACE\n"
+            "### app.py\n<<<<<<< SEARCH\n    return left - right\n"
+            "=======\n    return left - right - 0\n>>>>>>> REPLACE\n"
+        )
+        report = service.apply(edits_of(text), ctx)
+
+        assert report.ok
+        assert len(report.result.outcomes) == 2
+        assert "+    return left + right + 0" in report.diff
+        assert "+    return left - right - 0" in report.diff
+
+    def test_a_later_edit_sees_what_an_earlier_one_wrote(self, service, ctx):
+        """Order is meaningful within a file, so it has to be pinned.
+
+        The second block below searches for text that only exists because the
+        first block created it. If the edits ran against independent copies of
+        the original, the second would report `not_found`.
+        """
+        text = (
+            "### app.py\n<<<<<<< SEARCH\n    return left + right\n"
+            "=======\n    return MARKER\n>>>>>>> REPLACE\n"
+            "### app.py\n<<<<<<< SEARCH\n    return MARKER\n"
+            "=======\n    return left + right + 1\n>>>>>>> REPLACE\n"
+        )
+        report = service.apply(edits_of(text), ctx)
+
+        assert report.ok
+        assert "MARKER" not in report.diff
+        assert "+    return left + right + 1" in report.diff
+
     def test_a_missing_file_is_reported_as_missing_not_as_unreadable(self, service, ctx):
         """``apply`` names the same cause ``check`` does, for the same file."""
         text = PATCH.replace("### app.py", "### nowhere.py")
@@ -256,7 +297,7 @@ class TestApplyInPlace:
 
         monkeypatch.setattr(patch_service, "_stage_file", refuse)
 
-        with pytest.raises(AtlasError, match=r"util\.py"):
+        with pytest.raises(AgentlessError, match=r"util\.py"):
             service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
@@ -296,11 +337,248 @@ class TestApplyInPlace:
 
         monkeypatch.setattr(Path, "replace", fail_second_staging)
 
-        with pytest.raises(AtlasError, match="every original was restored"):
+        with pytest.raises(AgentlessError, match="every original was restored"):
             patch_service._write_all(repo, {"app.py": "new app\n", "util.py": "new util\n"})
 
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
         assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_a_failure_at_the_third_of_five_leaves_no_residue(self, tmp_path, monkeypatch):
+        """Rollback has to undo a prefix and discard a suffix in one pass.
+
+        The two-file case above proves the prefix restores. Five files with
+        the failure in the middle is what proves the *suffix* is discarded
+        too: staging siblings for files four and five were created before the
+        third one failed, and a leftover `.agentless-mcp-staging` file in a
+        checkout is a patch that half-happened.
+        """
+        originals = {f"m{index}.py": f"VALUE = {index}\n" for index in range(5)}
+        for name, content in originals.items():
+            (tmp_path / name).write_text(content, encoding="utf-8")
+
+        real = Path.replace
+        replacements = 0
+
+        def fail_third_staging(staging, target):
+            nonlocal replacements
+            if staging.name.endswith(patch_service.STAGING_SUFFIX):
+                replacements += 1
+                if replacements == 3:
+                    message = "simulated replace failure"
+                    raise OSError(message)
+            return real(staging, target)
+
+        monkeypatch.setattr(Path, "replace", fail_third_staging)
+
+        with pytest.raises(AgentlessError, match="every original was restored"):
+            patch_service._write_all(
+                tmp_path, {name: f"REWRITTEN = {index}\n" for index, name in enumerate(originals)}
+            )
+
+        assert {path.name for path in tmp_path.iterdir()} == set(originals)
+        for name, content in originals.items():
+            assert (tmp_path / name).read_text(encoding="utf-8") == content
+
+    def test_a_rollback_that_also_fails_names_every_surviving_backup(self, repo, monkeypatch):
+        """The one state that leaves a file missing from its own name.
+
+        `_write_all` moves each original to its reserved backup before moving
+        the staged replacement in. When a later replacement fails and the
+        *restore* fails too, that file exists only as a backup sibling, and
+        the message naming those paths is the whole recovery procedure. The
+        adjacent test exercises the successful rollback; this is the branch
+        the three-phase design exists for, and it had no test at all.
+        """
+        real = Path.replace
+        staged = 0
+
+        def fail_the_second_move_and_every_restore(source, destination):
+            nonlocal staged
+            if source.name.endswith(patch_service.BACKUP_SUFFIX):
+                message = "simulated restore failure"
+                raise OSError(message)
+            if source.name.endswith(patch_service.STAGING_SUFFIX):
+                staged += 1
+                if staged == 2:
+                    message = "simulated replace failure"
+                    raise OSError(message)
+            return real(source, destination)
+
+        monkeypatch.setattr(Path, "replace", fail_the_second_move_and_every_restore)
+
+        with pytest.raises(AgentlessError) as caught:
+            patch_service._write_all(repo, {"app.py": "new app\n", "util.py": "new util\n"})
+
+        message = str(caught.value)
+        assert "patch partly applied: cannot replace util.py" in message
+        assert "rollback failed; originals retained at:" in message
+
+        backups = {
+            path.name.split(".")[1]: path for path in repo.glob(f"*{patch_service.BACKUP_SUFFIX}")
+        }
+        assert set(backups) == {"app", "util"}
+        # util.py is not at its own name any more: it is only the backup.
+        assert not (repo / "util.py").exists()
+        assert backups["util"].read_text(encoding="utf-8") == UTIL
+        assert (repo / "app.py").read_text(encoding="utf-8") == "new app\n"
+        assert backups["app"].read_text(encoding="utf-8") == APP
+        # Restored in reverse order, so the message names them that way.
+        assert message.index(str(backups["util"])) < message.index(str(backups["app"]))
+        # A failed staging move leaves no staging file behind either.
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+
+    def test_a_staging_write_that_fails_leaves_no_staging_file(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """Fault-injected below `_stage_file`, so its own cleanup runs.
+
+        The neighbouring test monkeypatches `_stage_file` wholesale, which
+        proves the outer contract and never enters the resource-safety code
+        inside it.
+        """
+
+        def refuse(descriptor, content, target_name):
+            _ = (descriptor, content)
+            message = "no space left on device"
+            raise OSError(28, message, target_name)
+
+        monkeypatch.setattr(patch_service, "_write_descriptor", refuse)
+
+        with pytest.raises(AgentlessError, match=r"cannot write app\.py"):
+            service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+
+    def test_an_interrupt_mid_write_still_removes_the_staging_file(self, repo, monkeypatch):
+        """`except BaseException` rather than `except Exception`, pinned.
+
+        A KeyboardInterrupt is the case the broader clause exists for: an
+        `except Exception` would let it past and leave both the descriptor and
+        the staging file behind.
+        """
+
+        def interrupt(descriptor, content, target_name):
+            _ = (descriptor, content, target_name)
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(patch_service, "_write_descriptor", interrupt)
+
+        with pytest.raises(KeyboardInterrupt):
+            patch_service._stage_file(repo / "app.py", "new app\n")
+
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+
+    def test_a_temporary_file_that_cannot_be_removed_is_recorded(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Not raising is right here; not recording it was not.
+
+        `_discard` runs on a path that is already failing, so the failure the
+        caller needs to see is the other one. But the file left behind is a
+        staged or backup sibling inside the caller's own repository, and
+        nothing else anywhere names it -- swallowing the error left litter no
+        one could be told about.
+        """
+        litter = tmp_path / f"app.py{patch_service.STAGING_SUFFIX}"
+        litter.write_text("staged", encoding="utf-8")
+
+        def refuse(self, missing_ok=False):
+            _ = missing_ok
+            message = "read-only file system"
+            raise OSError(30, message, str(self))
+
+        monkeypatch.setattr(Path, "unlink", refuse)
+
+        with caplog.at_level(logging.WARNING, logger=patch_service.logger.name):
+            patch_service._discard([litter])
+
+        (record,) = caplog.records
+        assert record.levelno == logging.WARNING
+        assert str(litter) in record.getMessage()
+        assert "read-only file system" in record.getMessage()
+
+    def test_a_backup_that_cannot_be_reserved_changes_nothing(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """The second phase's own failure: nothing is moved, nothing is left."""
+
+        def refuse(target, suffix):
+            _ = suffix
+            message = "read-only file system"
+            raise OSError(30, message, str(target))
+
+        monkeypatch.setattr(patch_service, "_reserve_sibling", refuse)
+
+        with pytest.raises(AgentlessError, match="cannot reserve rollback files"):
+            service.apply(edits_of(MULTI_FILE_PATCH), ctx, in_place=True)
+
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP
+        assert (repo / "util.py").read_text(encoding="utf-8") == UTIL
+        assert not list(repo.glob(f"*{patch_service.STAGING_SUFFIX}"))
+        assert not list(repo.glob(f"*{patch_service.BACKUP_SUFFIX}"))
+
+    def test_a_short_write_is_an_error_rather_than_a_truncated_file(self, tmp_path, monkeypatch):
+        """`os.write` may write fewer bytes than it was given, and returning
+        zero forever is the case the loop cannot make progress against."""
+        descriptor = os.open(tmp_path / "sink.txt", os.O_WRONLY | os.O_CREAT, 0o600)
+        real_write = os.write
+
+        def write_nothing(fileno, data):
+            # Only this descriptor: pytest captures output through os.write.
+            return 0 if fileno == descriptor else real_write(fileno, data)
+
+        monkeypatch.setattr(os, "write", write_nothing)
+        try:
+            with pytest.raises(OSError, match=r"write returned zero bytes for app\.py"):
+                patch_service._write_descriptor(descriptor, b"content", "app.py")
+        finally:
+            os.close(descriptor)
+
+    def test_a_file_that_genuinely_holds_u_fffd_is_still_editable(self, service, repo):
+        """The strict decode decides, so a real U+FFFD is not a lossy decode.
+
+        `read_bounded` maps every undecodable byte to U+FFFD, which is why the
+        write side treats the character as the sign of a lossy read -- and why
+        it then has to check the bytes rather than trust the sign. A file that
+        contains the character legitimately must stay editable, and its bytes
+        must come back unchanged.
+        """
+        original = 'VERSION = "1"  # \ufffd marker\n'
+        patched = 'VERSION = "2"  # \ufffd marker\n'
+        (repo / "util.py").write_text(original, encoding="utf-8")
+        git(repo, "commit", "-am", "a real replacement character")
+        clean = resolve_repo(repo, None)
+        text = f"### util.py\n<<<<<<< SEARCH\n{original}=======\n{patched}>>>>>>> REPLACE\n"
+
+        report = service.apply(edits_of(text), clean, in_place=True)
+
+        assert report.ok, [outcome.reason for outcome in report.result.outcomes]
+        assert (repo / "util.py").read_bytes() == patched.encode("utf-8")
+
+    def test_a_file_whose_bytes_cannot_be_reread_is_reported_unreadable(
+        self, service, ctx, repo, monkeypatch
+    ):
+        """The strict re-read is IO, so it has its own failure to report."""
+        (repo / "app.py").write_text(APP + "# \ufffd\n", encoding="utf-8")
+        git(repo, "commit", "-am", "a real replacement character")
+        clean = resolve_repo(repo, None)
+        _ = ctx
+        real = Path.read_bytes
+
+        def refuse(path):
+            if path.name == "app.py":
+                message = "permission denied"
+                raise OSError(13, message, str(path))
+            return real(path)
+
+        monkeypatch.setattr(Path, "read_bytes", refuse)
+
+        report = service.apply(edits_of(PATCH), clean, in_place=True)
+
+        assert not report.ok
+        assert "unreadable: permission denied" in report.result.outcomes[0].reason
 
     def test_crlf_bytes_survive_the_write(self, service, repo):
         """The writer performs no newline translation, on any platform.
@@ -324,7 +602,7 @@ class TestApplyInPlace:
     def test_a_dirty_tree_is_refused_with_the_count(self, service, repo):
         (repo / "app.py").write_text(APP + "\n# scratch\n", encoding="utf-8")
         dirty = resolve_repo(repo, None)
-        with pytest.raises(AtlasError, match="1 files are modified"):
+        with pytest.raises(AgentlessError, match="1 files are modified"):
             service.apply(edits_of(PATCH), dirty, in_place=True)
 
     def test_a_clean_tree_is_written_and_diffed(self, service, ctx, repo):
@@ -338,7 +616,7 @@ class TestApplyInPlace:
         plain.mkdir()
         (plain / "app.py").write_text(APP, encoding="utf-8")
         outside = resolve_repo(plain, None)
-        with pytest.raises(AtlasError, match="could not be read"):
+        with pytest.raises(AgentlessError, match="could not be read"):
             service.apply(edits_of(PATCH), outside, in_place=True)
 
 
@@ -385,13 +663,41 @@ class TestLoadEdits:
         assert reloaded.edits == parsed.edits
 
     def test_a_json_document_missing_a_field_is_refused(self):
-        with pytest.raises(AtlasError, match="missing a string 'search'"):
+        with pytest.raises(AgentlessError, match="missing a string 'search'"):
             load_edits('{"edits": [{"path": "a.py", "replace": "x"}]}')
 
     def test_a_document_without_an_edits_list_is_refused(self):
-        with pytest.raises(AtlasError, match="'edits' list"):
+        with pytest.raises(AgentlessError, match="'edits' list"):
             load_edits('{"blocks": []}')
 
     def test_invalid_json_is_refused_with_the_parse_error(self):
-        with pytest.raises(AtlasError, match="not valid JSON"):
+        with pytest.raises(AgentlessError, match="not valid JSON"):
             load_edits('{"edits": [')
+
+    def test_an_edits_field_that_is_not_a_list_is_refused(self):
+        with pytest.raises(AgentlessError, match="must be a list of edit objects"):
+            load_edits('{"edits": {"path": "a.py"}}')
+
+    def test_a_list_entry_that_is_not_an_object_is_refused(self):
+        with pytest.raises(AgentlessError, match="edit 0 is not a JSON object"):
+            load_edits('{"edits": ["### a.py"]}')
+
+    def test_a_non_integer_index_is_refused(self):
+        document = '{"edits": [{"path": "a.py", "search": "x", "replace": "y", "index": "1"}]}'
+        with pytest.raises(AgentlessError, match="edit 0 has a non-integer 'index'"):
+            load_edits(document)
+
+    def test_an_empty_search_never_reaches_the_write(self, service, ctx, repo):
+        """An empty pre-image matches nothing; it used to append at end of file.
+
+        Refused in `core.patches._apply_one`, the one function in the package
+        that can write, so both the JSON form and raw blocks reach the same
+        answer. Pinned from the service because the write is what it costs.
+        """
+        parsed = load_edits('{"edits": [{"path": "app.py", "search": "", "replace": "X"}]}')
+
+        report = service.apply(parsed.edits, ctx, in_place=True)
+
+        assert not report.ok
+        assert "the SEARCH side is empty" in report.result.outcomes[0].reason
+        assert (repo / "app.py").read_text(encoding="utf-8") == APP

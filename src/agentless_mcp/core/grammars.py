@@ -36,7 +36,7 @@ import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import cache, lru_cache
+from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 
@@ -44,7 +44,7 @@ import tree_sitter_language_pack as pack
 from tree_sitter import Language, Parser
 from tree_sitter_language_pack import PackConfig
 
-from agentless_mcp.util.errors import AtlasError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, OperationFailed
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,15 @@ ENV_CACHE_DIR = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
 ENV_NO_AUTO_WARM = "AGENTLESS_MCP_NO_AUTO_WARM"
 
 # The background warm stops starting new languages once this much time has
-# passed. Local extraction of the full supported set measures ~3s from a cold
-# cache; the bound exists for the fetch path a future pack version could
-# reintroduce, so a dead network cannot hold a one-shot CLI exit open.
+# passed. That is the whole of what it does: `_auto_warm` reads it between
+# languages, so it cannot interrupt a fetch already in flight. `pack.prefetch`
+# is a Rust extension entry point that takes no timeout at all (checked against
+# tree-sitter-language-pack 1.14.3: no timeout parameter in `api.py`,
+# `options.py` or `_native.pyi`). What keeps a dead network from holding a
+# one-shot CLI exit open is the pair below -- `daemon=True` on the warm thread
+# plus AUTO_WARM_JOIN_SECONDS -- and not this constant. Local extraction of the
+# full supported set measures ~3s from a cold cache, so this only ever bites on
+# a fetch.
 AUTO_WARM_DEADLINE_SECONDS = 30.0
 
 # How long a caller waiting for the warm to finish will hold still. Counted
@@ -140,7 +146,16 @@ _PROBE_SAMPLES: dict[str, str] = {
 
 @dataclass(frozen=True)
 class LanguageCapability:
-    """What is actually available for one language, right now."""
+    """What is actually available for one language, right now.
+
+    A grammar that is cached and will not load carries no field of its own.
+    The two states it has to be told apart from -- never fetched, and fetched
+    but broken -- differ in the remediation and not in the booleans, and the
+    remediation is what ``detail`` holds: :func:`unloadable_reason` for the
+    second, :func:`unavailable_reason` for the first. A boolean would have to
+    reach a reader through the capability report to say anything the text does
+    not already say there.
+    """
 
     name: str
     abi_version: int | None
@@ -219,18 +234,35 @@ class _AutoWarmState:
 
     The handle outlives the thread so a second start is a no-op and the
     "warm in progress" probe stays a liveness check.
+
+    Every read and write of these two fields goes through
+    :data:`_AUTO_WARM_LOCK`, with one deliberate exception: ``_auto_warm``
+    reads ``deadline`` from inside the warm thread without it. That read must
+    stay unlocked, because the thread is started while the lock is held and
+    taking it from the target would deadlock. The write that publishes the
+    deadline happens before ``start()``, so the thread cannot observe a zero.
     """
 
     thread: threading.Thread | None = None
     deadline: float = 0.0
 
 
+# The state and the lock that publishes it. `core/cache.py`'s
+# `_AUTO_INDEX_RUNS` is the house pattern for a one-per-process background
+# registry and this is the same shape: the check and the set happen together,
+# and the thread is started while the lock is still held. Two callers reaching
+# the unguarded check at once each saw no warm running and each started one,
+# and two concurrent warms write the same grammar into the same cache
+# directory -- the truncated-grammar failure `wait_for_auto_warm` exists to
+# prevent, reached by a different route.
+_AUTO_WARM_LOCK = threading.Lock()
 _AUTO_WARM = _AutoWarmState()
 
 
 def auto_warm_in_progress() -> bool:
     """True while the startup background warm is still running."""
-    thread = _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        thread = _AUTO_WARM.thread
     return thread is not None and thread.is_alive()
 
 
@@ -251,8 +283,10 @@ def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread 
     """
     if auto_warm_disabled() or no_download_requested():
         return None
-    if _AUTO_WARM.thread is not None:
-        return _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        running = _AUTO_WARM.thread
+    if running is not None:
+        return running
 
     try:
         warmed = warmed_languages()
@@ -266,12 +300,25 @@ def start_auto_warm(languages: Sequence[str] | None = None) -> threading.Thread 
     # Daemon so a closing transport is never held open by a warm; the one-shot
     # CLI pairs the start with wait_for_auto_warm so extraction is not killed
     # mid-write by interpreter shutdown.
-    thread = threading.Thread(
-        target=_auto_warm, args=(cold,), name="grammar-auto-warm", daemon=True
-    )
-    _AUTO_WARM.deadline = time.monotonic() + AUTO_WARM_DEADLINE_SECONDS
-    _AUTO_WARM.thread = thread
-    thread.start()
+    with _AUTO_WARM_LOCK:
+        # Re-checked rather than held from the first check: the probe above
+        # reads the cache directory, and holding the lock across filesystem
+        # work would queue every caller behind it on a cold cache.
+        raced = _AUTO_WARM.thread
+        if raced is not None:
+            return raced
+        thread = threading.Thread(
+            target=_auto_warm, args=(cold,), name="grammar-auto-warm", daemon=True
+        )
+        # The deadline is set before the thread starts, so the warm cannot
+        # read a zero and stop before it has warmed anything.
+        _AUTO_WARM.deadline = time.monotonic() + AUTO_WARM_DEADLINE_SECONDS
+        _AUTO_WARM.thread = thread
+        # Started under the lock, for the reason `core/cache.py` records: a
+        # thread that is registered but not yet started reads as
+        # `is_alive() == False`, so a caller probing liveness in that window
+        # sees no warm and starts a second one.
+        thread.start()
     return thread
 
 
@@ -293,9 +340,12 @@ def wait_for_auto_warm() -> None:
     deadline, so the only thing this waits out is the one extraction already
     running.
     """
-    thread = _AUTO_WARM.thread
+    with _AUTO_WARM_LOCK:
+        thread = _AUTO_WARM.thread
     if thread is None:
         return
+    # Joined outside the lock. `_auto_warm` never takes it, but a join held
+    # under it would block every other caller for the whole join budget.
     thread.join(AUTO_WARM_JOIN_SECONDS)
     if thread.is_alive():
         logger.warning(
@@ -321,15 +371,17 @@ def _auto_warm(names: Sequence[str]) -> None:
                 break
             report = warmup([name])
             (warmed if report.ok else degraded).append(name)
-    except (AtlasError, pack.Error, RuntimeError, OSError) as error:
+    except (AgentlessError, pack.Error, RuntimeError, OSError) as error:
         # The contract is one log line and today's labeled-skip behavior,
         # never a crashed process or a traceback mid-session.
         logger.warning("background grammar warm failed: %s", error)
         return
 
-    fetched = sorted(_bundle_archives() - bundles_before)
+    bundles_after = _bundle_archives()
     notes = ""
-    if fetched:
+    if bundles_before is None or bundles_after is None:
+        notes = "; the bundle scan failed, so whether anything was downloaded is unknown"
+    elif fetched := sorted(bundles_after - bundles_before):
         notes = f"; fetched {', '.join(fetched)} (sha-256 in name, verified by the pack)"
     if degraded:
         notes += f"; degraded: {', '.join(degraded)} (those languages stay labeled skips)"
@@ -344,17 +396,31 @@ def _auto_warm(names: Sequence[str]) -> None:
     )
 
 
-def _bundle_archives() -> frozenset[str]:
-    """Names of downloaded bundle archives, digest and all.
+def _bundle_archives() -> frozenset[str] | None:
+    """Names of downloaded bundle archives, or None when the scan did not run.
 
     The pack stores ``bundles/`` and ``manifest.json`` in the parent of the
     libs directory that ``cache_dir()`` names, in both the default and the
     overridden layout (verified 2026-08-22), so the scan starts one level up.
+
+    One non-recursive glob of that one directory. It was ``rglob`` over the
+    whole parent, which is not a bounded place: the cache directory is
+    operator-supplied through ``TREE_SITTER_LANGUAGE_PACK_CACHE_DIR``, so its
+    parent is whatever encloses it, and setting the variable to
+    ``$HOME/.grammars`` turned a log detail into two full recursive walks of
+    the home directory at process start.
+
+    None rather than an empty set when the scan fails, because the caller
+    subtracts two of these: an empty set would read as "nothing was fetched"
+    for a scan that never ran. ``Path.glob`` itself swallows a missing or
+    unreadable directory and yields nothing, so what the guard catches is
+    :func:`cache_dir` failing to answer.
     """
     try:
-        return frozenset(path.name for path in Path(cache_dir()).parent.rglob("*.tar.zst"))
-    except OSError:
-        return frozenset()
+        bundles = Path(cache_dir()).parent / "bundles"
+        return frozenset(path.name for path in bundles.glob("*.tar.zst"))
+    except (pack.Error, RuntimeError, OSError):
+        return None
 
 
 def warmed_languages() -> frozenset[str]:
@@ -378,6 +444,22 @@ def unavailable_reason(name: str) -> str:
     return f"language '{name}' not warmed: run agentless-mcp warmup"
 
 
+def unloadable_reason(name: str, cause: str) -> str:
+    """The reason for a grammar the pack has cached but cannot load.
+
+    Kept apart from :func:`unavailable_reason` because the usual remedy is a
+    no-op here: :func:`_warm_one` fetches nothing for a language
+    ``downloaded_languages()`` already lists, so a reader told to run warmup
+    runs it, nothing is fetched, and the report comes back word for word the
+    same. The library on disk has to go before a fetch will replace it.
+    """
+    return (
+        f"language '{name}' is cached in {cache_dir()} but failed to load: {cause}. "
+        "Warmup will not refetch it: delete the cached library for this language, "
+        "or reinstall tree-sitter-language-pack."
+    )
+
+
 def get_language(name: str) -> Language:
     """Return the grammar for ``name`` without ever fetching it.
 
@@ -397,13 +479,27 @@ def get_language(name: str) -> Language:
     try:
         return pack.get_language(name)
     except (pack.Error, RuntimeError) as exc:
-        message = f"language '{name}' failed to load from {cache_dir()}: {exc}"
-        raise LanguageUnavailable(message) from exc
+        raise LanguageUnavailable(unloadable_reason(name, str(exc))) from exc
 
 
-@cache
 def get_parser(name: str) -> Parser:
-    """Return a memoized parser for ``name``. Never fetches."""
+    """Return a fresh parser for ``name``. Never fetches.
+
+    Fresh rather than memoized, deliberately. A ``Parser`` carries mutable
+    state across ``parse`` calls, and this function is reached from four
+    parse sites while the background index thread is running -- so one shared
+    instance is one object being driven by two threads at once. It is safe
+    today only because py-tree-sitter 0.26 holds the GIL for the whole of
+    ``parse``; the ``>=0.25,<0.27`` pin does not promise that, and a
+    free-threaded build removes it.
+
+    The memo bought nothing to weigh against that. Measured on this machine:
+    constructing a ``Parser`` costs 0.2 us against 405 us to parse 4.6 KB,
+    three orders of magnitude apart, and the grammar itself -- the expensive,
+    immutable half -- is still shared through :func:`get_language`.
+    :func:`_probe` already built one per call, which is the codebase's own
+    evidence that nothing depended on the identity.
+    """
     return Parser(get_language(name))
 
 
@@ -415,10 +511,15 @@ def warmup(
     """Fetch, load and probe-parse each language; report per language.
 
     This is the only function that downloads. A language that fails to fetch,
-    load or probe is reported as degraded; the run continues. The single case
-    that raises is a refusal: a fetch is required but downloads are forbidden,
-    which is a configuration decision the caller must see, not a degraded row
-    they might page past.
+    load or probe is reported as degraded; the run continues. The one case
+    this function raises deliberately is a refusal: a fetch is required but
+    downloads are forbidden, which is a configuration decision the caller must
+    see, not a degraded row they might page past.
+
+    A cache directory that cannot be read or written raises ``OSError`` out of
+    the pack on top of that. It is the whole local cache failing rather than
+    one language, so a caller that must not fail -- :func:`_auto_warm` --
+    catches it around this call.
     """
     names = tuple(languages) if languages is not None else ALL_LANGUAGES
     blocked = no_download or no_download_requested()
@@ -462,8 +563,17 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
                 f"Warm it on a networked machine and copy {cache_dir()} across, "
                 f"or clear the flag and run warmup again."
             )
-            raise AtlasError(message)
+            raise OperationFailed(message)
         try:
+            # Unbounded, deliberately. `pack.prefetch` takes no timeout, and
+            # both ways to impose one -- killing a worker thread or a
+            # subprocess partway through -- leave a half-written file in a
+            # cache other processes read, which is the failure
+            # `wait_for_auto_warm` exists to prevent. Its two callers are
+            # bounded where the bound is safe: the background warm runs on a
+            # daemon thread that process exit joins for AUTO_WARM_JOIN_SECONDS,
+            # and `agentless-mcp warmup` is a foreground command a person typed
+            # whose whole job is to download.
             pack.prefetch([name])
         except (pack.Error, RuntimeError) as exc:
             return LanguageCapability(
@@ -479,7 +589,12 @@ def _warm_one(name: str, version: str, *, blocked: bool) -> LanguageCapability:
 
 
 def _load_and_probe(name: str, version: str) -> LanguageCapability:
-    """Load a warmed grammar and parse its probe sample."""
+    """Load a warmed grammar and parse its probe sample.
+
+    A load that fails is reported with :func:`unloadable_reason` as its
+    detail, which is what separates it from a language that was never
+    fetched: the pack has this one on disk, and warmup will not replace it.
+    """
     try:
         language = get_language(name)
     except LanguageUnavailable as exc:

@@ -364,76 +364,34 @@ class TestApply:
 LONG_SOURCE = "one\ntwo\nthree\nfour\ntarget\nsix\n"
 
 
-class TestIntervals:
-    def test_an_edit_inside_its_interval_applies(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(4, 6)]},
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "one\ntwo\nthree\nfour\nTARGET\nsix\n"}
+class TestTheRemovedIntervalScoping:
+    """The Agentless ``context_segment`` scoping is gone, not merely unused.
 
-    def test_an_edit_outside_its_interval_is_refused_with_that_reason(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(1, 3)]},
-        )
+    No surface ever supplied it: the CLI patch commands took no line ranges,
+    the MCP server exposes no patch tool, and ``patchlint`` matched whole
+    files. It left a serialised ``outside_intervals`` status no caller could
+    ever receive, and the ``...`` anchor stayed file-wide either way.
+    """
+
+    def test_apply_edits_takes_no_scoping_keyword(self):
+        with pytest.raises(TypeError):
+            apply_edits(
+                [edit("a.py", "target", "TARGET")],
+                {"a.py": LONG_SOURCE},
+                intervals={"a.py": [(4, 6)]},
+            )
+
+    def test_the_status_a_scope_used_to_produce_is_gone(self):
+        assert not hasattr(EditStatus, "OUTSIDE_INTERVALS")
+        assert "outside_intervals" not in {status.value for status in EditStatus}
+
+    def test_a_repeated_line_is_refused_rather_than_narrowed_by_a_range(self):
+        """What a scope used to resolve, an ambiguity refusal now reports."""
+        result = apply_edits([edit("a.py", "x", "X")], {"a.py": "x\nkeep\nx\n"})
         (outcome,) = result.outcomes
-        assert outcome.status is EditStatus.OUTSIDE_INTERVALS
-        assert "scoped to" in outcome.reason
+        assert outcome.status is EditStatus.AMBIGUOUS
+        assert outcome.matches == 2
         assert result.new_contents == {}
-
-    def test_an_interval_disambiguates_a_repeated_line(self):
-        content = "x\nkeep\nx\n"
-        result = apply_edits(
-            [edit("a.py", "x", "X")], {"a.py": content}, intervals={"a.py": [(3, 3)]}
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "x\nkeep\nX\n"}
-
-    def test_a_later_interval_survives_an_earlier_edit_changing_the_length(self):
-        """Scopes are tracked as offsets, so a growing edit does not shift them."""
-        content = "a\nb\nc\nd\n"
-        edits = [
-            edit("a.py", "a", "a1\na2\na3", 0),
-            edit("a.py", "d", "D", 1),
-        ]
-        result = apply_edits(edits, {"a.py": content}, intervals={"a.py": [(1, 1), (4, 4)]})
-        assert result.ok, [outcome.reason for outcome in result.outcomes]
-        assert result.new_contents == {"a.py": "a1\na2\na3\nb\nc\nD\n"}
-
-    def test_empty_intervals_search_the_whole_file(self):
-        """Regression: Agentless raised NameError on this path (postprocess_data.py:747).
-
-        ``file_loc_intervals == []`` referenced ``original`` and ``replace``
-        before assignment, so a patch with no localization intervals crashed
-        instead of applying. Empty means unscoped here.
-        """
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": []},
-        )
-        assert result.ok
-        assert result.new_contents == {"a.py": "one\ntwo\nthree\nfour\nTARGET\nsix\n"}
-
-    def test_a_path_absent_from_the_intervals_map_is_unscoped(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"other.py": [(1, 1)]},
-        )
-        assert result.ok
-
-    def test_an_out_of_range_interval_is_dropped_not_clamped_open(self):
-        result = apply_edits(
-            [edit("a.py", "target", "TARGET")],
-            {"a.py": LONG_SOURCE},
-            intervals={"a.py": [(90, 99)]},
-        )
-        assert result.outcomes[0].status is EditStatus.OUTSIDE_INTERVALS
 
 
 ELIDED_SOURCE = "import os\n\n\ndef helper():\n    return 1\n"
@@ -473,3 +431,254 @@ class TestElisions:
         (outcome,) = result.outcomes
         assert outcome.status is EditStatus.NO_ANCHOR
         assert "anchor" in outcome.reason
+
+
+class TestAnEmptySearchCannotWrite:
+    """The guard lived in the two modules that cannot write, not in this one.
+
+    ``core/unidiff`` refuses an empty pre-image against an existing file and
+    ``core/patchlint`` refuses it too. Both read; neither writes.
+    ``apply_edits`` is the function that produces the new file contents, and
+    it accepted the same edit: the empty needle pads to ``"\\n\\n"``, matches
+    the first blank line -- or the file's end when there is none -- and the
+    replacement is written with the outcome reported as ``applied``.
+    """
+
+    def test_an_empty_search_against_an_existing_file_is_refused(self):
+        result = apply_edits(
+            [Edit(index=0, path="a.py", search="", replace="INJECTED\n")],
+            {"a.py": "line one\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.outcomes[0].status is EditStatus.NO_ANCHOR
+        assert "anchors nowhere" in result.outcomes[0].reason
+        assert result.new_contents == {}
+
+    def test_it_is_refused_before_a_blank_line_can_anchor_it(self):
+        # The file with a blank line in it is the worse case: the padded
+        # needle matches there, so the text lands in the middle rather than
+        # at the end, which reads as a deliberate hunk.
+        result = apply_edits(
+            [Edit(index=0, path="a.py", search="", replace="INJECTED\n")],
+            {"a.py": "line one\n\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.new_contents == {}
+
+    def test_a_sibling_edit_in_the_same_patch_is_cancelled_with_it(self):
+        # The write is all or nothing, so one refused block cancels the patch
+        # rather than leaving the other half on disk.
+        result = apply_edits(
+            [
+                Edit(index=0, path="a.py", search="line one", replace="LINE ONE"),
+                Edit(index=1, path="a.py", search="", replace="INJECTED\n"),
+            ],
+            {"a.py": "line one\nline two\n"},
+        )
+
+        assert not result.ok
+        assert result.outcomes[0].status is EditStatus.APPLIED
+        assert result.outcomes[1].status is EditStatus.NO_ANCHOR
+
+
+class TestAOneWordPathHeader:
+    """Path inheritance makes a wrong header worse than a missing one.
+
+    Every single word counted as a path, so a one-word line of prose became
+    the filename and the block under it was attributed to that name instead
+    of inheriting the correct one. Skipping the prose line is what the
+    docstring always claimed and now what the parser does.
+    """
+
+    ONE_WORD_PROSE = (
+        "### src/a.py\n"
+        "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        "Done!\n"
+        "<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n"
+    )
+
+    def test_prose_between_blocks_does_not_capture_the_inherited_path(self):
+        result = parse_blocks(self.ONE_WORD_PROSE)
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+    @pytest.mark.parametrize("word", ["Done!", "Next:", "Also,", "Fixed."])
+    def test_a_word_ending_in_sentence_punctuation_is_prose(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (error,) = parse_blocks(text).errors
+        assert error.path is None
+        assert "names no file" in error.reason
+
+    @pytest.mark.parametrize(
+        "word", ["Makefile", ".gitignore", "src/app.py", "../pkg/mod.rs", "/etc/passwd"]
+    )
+    def test_a_word_spelled_like_a_filename_is_still_a_path(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.path == word
+
+
+class TestANonAsciiPathHeader:
+    """A filename is not an ASCII string, and reading it as prose wrote elsewhere.
+
+    The shape test enumerated the characters a path may contain, in ASCII, so
+    every accented or non-Latin filename failed it, was skipped as prose, and
+    the block under it silently inherited the *previous* block's path. Parse
+    reported two edits and no errors, both naming the wrong file.
+    """
+
+    TWO_FILES = (
+        "src/app.py\n"
+        "<<<<<<< SEARCH\nold one\n=======\nnew one\n>>>>>>> REPLACE\n"
+        "src/naïve.py\n"
+        "<<<<<<< SEARCH\nold two\n=======\nnew two\n>>>>>>> REPLACE\n"
+    )
+
+    def test_a_non_ascii_header_is_not_absorbed_by_the_block_above_it(self):
+        result = parse_blocks(self.TWO_FILES)
+        assert result.errors == ()
+        assert [block.path for block in result.edits] == ["src/app.py", "src/naïve.py"]
+
+    @pytest.mark.parametrize(
+        "word", ["src/naïve.py", "src/café/app.py", "日本語.py", "über.rs", "naïve.py"]
+    )
+    def test_a_non_ascii_word_is_a_path(self, word):
+        text = f"{word}\n<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.path == word
+
+
+class TestAnUnreadableHeaderIsRefused:
+    """Inheritance is right for a header holding nothing, wrong for one it cannot read.
+
+    Both used to answer None, so a header line the shape test rejected made
+    the block below it take the path above it. That is what turned one
+    over-narrow character class into a wrong file. A rejected line now has to
+    carry evidence of prose -- the punctuation a sentence ends on -- to be
+    skipped; anything else is reported against the block it would have
+    mis-attributed.
+    """
+
+    @staticmethod
+    def _two_blocks(header: str) -> str:
+        return (
+            "### src/a.py\n"
+            "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n"
+            f"{header}\n"
+            "<<<<<<< SEARCH\nbravo\n=======\nBRAVO\n>>>>>>> REPLACE\n"
+        )
+
+    @pytest.mark.parametrize(
+        "header",
+        ['"src/b.py', "'src/b.py", "(see src/b.py", "[src/b.py", "{src/b.py"],
+    )
+    def test_a_header_opening_on_a_delimiter_is_reported(self, header):
+        # The one shape that is neither a path nor evidence of prose. A
+        # filename opens with `.`, `/`, `~` or `-`, never with a quote or a
+        # bracket, and "(see src/b.py" carries an extension on its last
+        # component, so no prose test below reaches it.
+        result = parse_blocks(self._two_blocks(header))
+        assert [block.path for block in result.edits] == ["src/a.py"]
+        (error,) = result.errors
+        assert error.index == 1
+        assert "neither a path nor a sentence" in error.reason
+        assert repr(header) in error.reason
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            # Punctuated like prose.
+            "Done!",
+            "Next:",
+            "Also,",
+            "Fixed.",
+            "I will now fix the rounding in src/app.py:",
+            # More words than a filename carries, punctuation or not. A model
+            # narrating between its blocks writes these, so refusing them
+            # would lose the header above far more often than the bug this
+            # class exists for ever mis-attributed it.
+            "Here is the change",
+            "I will now fix the rounding in src/app.py",
+            "Next I update the parser",
+            # Few enough words, but a last component with no extension.
+            "Now fixing",
+            "and then",
+        ],
+    )
+    def test_a_header_carrying_evidence_of_prose_is_skipped(self, header):
+        result = parse_blocks(self._two_blocks(header))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "src/b.py",
+            "src/naïve.py",
+            "src/café/app.py",
+            "日本語.py",
+            "über.rs",
+            "Makefile",
+            ".gitignore",
+            "my dir/my file.py",
+        ],
+    )
+    def test_a_header_spelled_like_a_path_names_its_own_file(self, header):
+        result = parse_blocks(self._two_blocks(header))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", header]
+
+    def test_a_header_holding_nothing_still_inherits(self):
+        result = parse_blocks(self._two_blocks("```"))
+        assert result.ok
+        assert [block.path for block in result.edits] == ["src/a.py", "src/a.py"]
+
+
+class TestCrlfIsDiagnosed:
+    """A CRLF patch against an LF checkout is a line-ending problem.
+
+    Every content line carried a trailing carriage return into the needle, so
+    every block reported "search text not found" -- which reads as a wrong
+    search string. ``core.unidiff`` already refuses a structural carriage
+    return and says why; this parser now gives the same cause one diagnosis.
+    """
+
+    CRLF = "### a.py\r\n<<<<<<< SEARCH\r\nreturn 1\r\n=======\r\nreturn 2\r\n>>>>>>> REPLACE\r\n"
+
+    def test_a_crlf_block_is_refused_by_line_endings_not_by_a_failed_search(self):
+        result = parse_blocks(self.CRLF)
+        assert result.edits == ()
+        (error,) = result.errors
+        assert error.path == "a.py"
+        assert "CRLF line endings" in error.reason
+
+    def test_a_carriage_return_inside_content_is_kept(self):
+        text = "### a.py\n<<<<<<< SEARCH\nreturn 1\r\n=======\nreturn 2\n>>>>>>> REPLACE\n"
+        (parsed,) = parse_blocks(text).edits
+        assert parsed.search == "return 1\r"
+
+
+class TestABareElisionSaysWhereItLanded:
+    """`...` alone expresses no location, so the outcome has to name one.
+
+    The anchor is chosen from the file rather than from anything the author
+    wrote, and reporting only `applied` made the caller accept a placement it
+    could not see.
+    """
+
+    DOC_FIRST = '"""Doc."""\n\nimport os\n\n\ndef main():\n    return os.getcwd()\n'
+
+    def test_the_anchor_line_is_reported_on_the_applied_outcome(self):
+        result = apply_edits(
+            [edit("a.py", "...", "def helper():\n    return 2")],
+            {"a.py": self.DOC_FIRST},
+        )
+        (outcome,) = result.outcomes
+        assert outcome.status is EditStatus.APPLIED
+        assert outcome.reason == 'inserted above line 1: \'"""Doc."""\''
+
+    def test_an_ordinary_edit_still_reports_no_reason(self):
+        result = apply_edits([edit("a.py", "import os", "import sys")], {"a.py": self.DOC_FIRST})
+        assert result.outcomes[0].reason == ""

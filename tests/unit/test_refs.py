@@ -3,9 +3,11 @@
 from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
     build_ref_index,
+    definitions_for,
     enclosing_symbol,
     line_owners,
     references_to,
+    resolve_definitions,
     scan_repo,
 )
 from agentless_mcp.core.symbols import qualname
@@ -157,7 +159,16 @@ class TestCollectRefs:
         assert by_name["write"].role is IdentifierRole.ATTRIBUTE
         assert not by_name["write"].is_resolvable
 
-    def test_an_import_alias_preserves_the_source_qualifier(self):
+    def test_an_import_alias_records_the_name_the_source_spells(self):
+        """The qualifier was the source module; since stage 6c it is the alias.
+
+        `core` and `c` were interchangeable only while both sides of the
+        lookup agreed to key on the module's first segment. They stop being
+        interchangeable at `import a.b as ab`, where the first segment names
+        the package and the alias names the submodule -- so the qualifier is
+        now what a reference in this file actually writes, and
+        `core/resolve` keys its module bindings on the same name.
+        """
         refs = collect_refs(
             "import core as c\nc.only_once()\n",
             "python",
@@ -167,7 +178,7 @@ class TestCollectRefs:
 
         assert by_name["c"].role is IdentifierRole.MODULE_QUALIFIER
         assert by_name["only_once"].role is IdentifierRole.MODULE_ATTRIBUTE
-        assert by_name["only_once"].qualifier == "core"
+        assert by_name["only_once"].qualifier == "c"
 
     def test_a_local_binding_shadows_an_imported_module(self):
         refs = collect_refs(
@@ -320,3 +331,107 @@ class TestIndex:
     def test_defining_paths_are_sorted_and_deduplicated(self, tmp_path, extractor):
         index = build_ref_index(scan_repo(build(tmp_path), extractor))
         assert index.defining_paths("quote") == ("library.py",)
+
+
+class TestLookupTargets:
+    """A dotted target is the least ambiguous input this surface takes."""
+
+    def two_modules(self, tmp_path, extractor):
+        """Two files defining one name, so a qualification has something to do."""
+        (tmp_path / "pricing.py").write_text("def total():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "reports.py").write_text("def total():\n    return 2\n", encoding="utf-8")
+        return build_ref_index(scan_repo(tmp_path, extractor))
+
+    def test_a_bare_name_still_returns_every_definition(self, tmp_path, extractor):
+        index = self.two_modules(tmp_path, extractor)
+        found = {definition.path for definition in definitions_for(index, "total")}
+        assert found == {"pricing.py", "reports.py"}
+
+    def test_a_dotted_target_keeps_only_the_module_it_names(self, tmp_path, extractor):
+        index = self.two_modules(tmp_path, extractor)
+        found = [definition.path for definition in definitions_for(index, "pricing.total")]
+        assert found == ["pricing.py"]
+
+    def test_a_qualification_nothing_matches_widens_rather_than_empties(self, tmp_path, extractor):
+        """Over-reporting by name is the documented posture; an empty answer is not."""
+        index = self.two_modules(tmp_path, extractor)
+        found = {definition.path for definition in definitions_for(index, "elsewhere.total")}
+        assert found == {"pricing.py", "reports.py"}
+
+    def classes(self, tmp_path, extractor):
+        """One file, two classes, one method name."""
+        (tmp_path / "book.py").write_text(
+            "class Invoice:\n"
+            "    def price(self):\n"
+            "        return 1\n"
+            "\n"
+            "\n"
+            "class Quote:\n"
+            "    def price(self):\n"
+            "        return 2\n",
+            encoding="utf-8",
+        )
+        return build_ref_index(scan_repo(tmp_path, extractor))
+
+    def test_a_class_qualification_alone_keeps_every_candidate(self, tmp_path, extractor):
+        """It names no file, and the ranking downstream reports the rest as alternatives."""
+        index = self.classes(tmp_path, extractor)
+        found = definitions_for(index, "Invoice.price")
+        assert [qualname(definition.symbol) for definition in found] == [
+            "Invoice.price",
+            "Quote.price",
+        ]
+
+    def test_a_path_and_class_qualification_narrows(self, tmp_path, extractor):
+        index = self.classes(tmp_path, extractor)
+        found = definitions_for(index, "book.Invoice.price")
+        assert [qualname(definition.symbol) for definition in found] == ["Invoice.price"]
+
+
+class TestADottedTargetReportsWhetherItFoundWhatItNamed:
+    """``scoped`` is what tells a caller its narrowing worked.
+
+    A bare name promises nothing about a file, so it resolves by definition. A
+    dotted one names a path as well, and reporting `scoped=True` after the
+    path narrowing came back empty told the caller the target found what it
+    named while handing back every definition of the last component -- the
+    fall-through the stable-id branch reports honestly.
+    """
+
+    def test_a_bare_name_always_resolves_by_definition(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "quote")
+
+        assert resolution.scoped is True
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_a_dotted_target_whose_path_confirms_is_scoped(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "core.quote")
+
+        assert resolution.scoped is True
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_a_dotted_target_that_no_path_confirms_says_it_fell_through(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        resolution = resolve_definitions(index, "somewhere.else.quote")
+
+        assert resolution.scoped is False
+        # The definitions still come back: over-reporting by name is this
+        # surface's documented posture, and a narrowing that can empty an
+        # answer is worse than one that can widen it.
+        assert [found.path for found in resolution.definitions] == ["core.py"]
+
+    def test_the_convenience_wrapper_still_returns_the_same_definitions(self, tmp_path, extractor):
+        (tmp_path / "core.py").write_text(LIBRARY, encoding="utf-8")
+        index = build_ref_index(scan_repo(tmp_path, extractor))
+
+        assert definitions_for(index, "somewhere.else.quote") == (
+            resolve_definitions(index, "somewhere.else.quote").definitions
+        )

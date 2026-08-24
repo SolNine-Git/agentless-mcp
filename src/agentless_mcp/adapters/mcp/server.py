@@ -20,9 +20,14 @@ allowlist, re-read whenever it changes on disk, so appending a line enrols a
 repository on the next call without a restart. The client's own
 MCP ``roots`` capability -- verified present in the installed FastMCP as
 ``Context.list_roots()`` -- is read, but an advertised root can only *select*
-among the configured ones, never add one. A server started with no configured root
-serves nothing, whatever the client advertises, because otherwise the client
-rather than the operator would be deciding what this process may read. A
+among the configured ones, never add one. Unless the operator says otherwise, a
+server started with no configured root therefore serves nothing, whatever the
+client advertises, because otherwise the client rather than the operator would
+be deciding what this process may read. ``--allow-client-roots`` is that
+"otherwise", and it is the one configuration in which an advertised root
+authorises itself: an operator who passes it under stdio, with no ``--root``,
+has handed the client the whole decision on purpose. The HTTP transport refuses
+the flag outright, because there the client is whatever reaches the port. A
 client that does not implement roots answers "List roots not supported"; that
 is a normal negative, not a failure, and the static roots still apply.
 
@@ -59,6 +64,10 @@ from typing import Annotated, Literal
 from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import FastMCPError, ToolError
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import ToolResult
+from mcp import types as mcp_types
 from mcp.shared.exceptions import McpError
 from pydantic import Field, ValidationError
 
@@ -72,6 +81,7 @@ from agentless_mcp.application.graph_service import (
     DEFAULT_COMMUNITY_LIMIT,
     DEFAULT_CYCLE_LIMIT,
     DEFAULT_EXPLAIN_LIMIT,
+    DiagramRequest,
     GraphService,
     PathOptions,
 )
@@ -84,17 +94,19 @@ from agentless_mcp.application.symbol_service import (
     SymbolService,
     render_expansion,
     render_find,
+    render_refs,
+    unresolved_lines,
 )
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
-from agentless_mcp.core.mermaid import DEFAULT_MAX_NODES
+from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.symbols import SymbolKind, stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
-from agentless_mcp.util import fslimits
-from agentless_mcp.util.errors import AtlasError, SecurityRefusal
+from agentless_mcp.util import bounds, fslimits, textsafe
+from agentless_mcp.util.errors import AgentlessError, OperationFailed, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
 logger = logging.getLogger(__name__)
@@ -142,6 +154,12 @@ TRANSPORTS = (TRANSPORT_STDIO, TRANSPORT_HTTP)
 # deployment that cares passes --port anyway.
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 8000
+
+# The ports an operator may name. Zero is excluded deliberately: it binds an
+# ephemeral port this process never reports, so the operator cannot register a
+# client against it.
+MIN_HTTP_PORT = 1
+MAX_HTTP_PORT = 65535
 
 # A line range arrives as a two-element [start, end] list.
 _RANGE_PAIR_LENGTH = 2
@@ -223,11 +241,23 @@ Locations = Annotated[list[str], Field(description=PARAMETER_DESCRIPTIONS["locat
 # because that schema is the only refusal a model can read before it makes
 # the call -- an out-of-range value comes back as a validation error naming
 # the bound rather than as a nonsense answer from a service that sliced with
-# it. Services keep their own checks; this is the gate in front of them.
-MAX_LIMIT = 500
-MAX_CONTEXT_LINES = 200
-MAX_DIAGRAM_NODES = 500
-MAX_RESOLUTION = 100.0
+# it.
+#
+# The numbers are re-exported from `util.bounds` rather than declared here.
+# Owning them made this adapter the only place a ceiling existed, so the CLI
+# honoured what the wire refused: `cycles --limit 100000` was answered and
+# `orient(operation="cycles", limit=100000)` was not. The services now check
+# the same constants, which leaves this layer advertising a bound rather than
+# deciding one.
+MAX_LIMIT = bounds.MAX_LIMIT
+MAX_CONTEXT_LINES = bounds.MAX_CONTEXT_LINES
+MAX_DIAGRAM_NODES = bounds.MAX_DIAGRAM_NODES
+# Edges are bounded for the same reason nodes are, and at the same number: a
+# flowchart past a few hundred arrows is unreadable whatever its node count,
+# so a larger ceiling would only let a caller ask for a picture nobody can
+# use. The default sits far below this; the ceiling exists to refuse nonsense.
+MAX_DIAGRAM_EDGES = bounds.MAX_DIAGRAM_EDGES
+MAX_RESOLUTION = bounds.MAX_RESOLUTION
 
 # ``limit`` is nullable on every tool that carries it because it is nullable
 # on analyze_structure, whose default depends on the operation. A client that
@@ -273,7 +303,7 @@ MaxEntries = Annotated[
     int,
     Field(
         ge=1,
-        le=fslimits.DEFAULT_MAX_FILES,
+        le=fslimits.DEFAULT_MAX_WALK_FILES,
         description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
     ),
 ]
@@ -299,6 +329,18 @@ MaxNodes = Annotated[
         ge=1,
         le=MAX_DIAGRAM_NODES,
         description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"],
+    ),
+]
+# ``ge=0`` and not ``ge=1``: no reference edges is a legible diagram -- the
+# declared imports still draw -- where no nodes is not a diagram at all. The
+# service has always allowed zero, so ``ge=1`` here refused over MCP a call
+# the command line answered.
+MaxEdges = Annotated[
+    int,
+    Field(
+        ge=0,
+        le=MAX_DIAGRAM_EDGES,
+        description=PARAMETER_DESCRIPTIONS["diagram_max_edges"],
     ),
 ]
 Resolution = Annotated[
@@ -361,6 +403,10 @@ OptionalMaxNodes = Annotated[
     int | None,
     Field(ge=1, le=MAX_DIAGRAM_NODES, description=PARAMETER_DESCRIPTIONS["diagram_max_nodes"]),
 ]
+OptionalMaxEdges = Annotated[
+    int | None,
+    Field(ge=0, le=MAX_DIAGRAM_EDGES, description=PARAMETER_DESCRIPTIONS["diagram_max_edges"]),
+]
 OptionalFindName = Annotated[str | None, Field(description=PARAMETER_DESCRIPTIONS["find_name"])]
 OptionalOverviewPaths = Annotated[
     list[str] | None,
@@ -392,7 +438,7 @@ OptionalMaxEntries = Annotated[
     int | None,
     Field(
         ge=1,
-        le=fslimits.DEFAULT_MAX_FILES,
+        le=fslimits.DEFAULT_MAX_WALK_FILES,
         description=PARAMETER_DESCRIPTIONS["tree_max_entries"],
     ),
 ]
@@ -504,8 +550,13 @@ class StructureRequest:
     limit: int | None = None
     resolution: float | None = None
     focus: str = ""
-    max_nodes: int = DEFAULT_MAX_NODES
+    max_nodes: int = DEFAULT_DIAGRAM_NODES
+    max_edges: int = DEFAULT_DIAGRAM_EDGES
     group_by_communities: bool = False
+    # Which published tool this call came in through. Two surfaces route here
+    # and a refusal has to name the one the caller can retry, the way
+    # unknown_operation and op_requires_parameters already do.
+    tool: str = "analyze_structure"
 
 
 @dataclass(frozen=True)
@@ -558,6 +609,29 @@ class ToolHandlers:
         """
         merged = [*self._roots, *chain.from_iterable(f.current() for f in self._roots_files)]
         return tuple(dict.fromkeys(merged))
+
+    def needs_client_roots(self, repo_root: str | None) -> bool:
+        """Can what the client advertises change how this call resolves?
+
+        Asking the client for its roots is an out-of-process round trip on the
+        critical path of every tool, bounded at
+        :data:`_LIST_ROOTS_TIMEOUT_SECONDS`, and :meth:`resolve` reads the
+        answer in exactly two places: the ``--allow-client-roots`` merge, and
+        the selection among several roots for a call that named none. In the
+        two ordinary deployments -- a client that always sends ``repo_root``,
+        and a server holding one repository -- the answer is discarded, so a
+        slow client used to pay up to two seconds per navigation call for it.
+
+        ``capabilities`` reports the advertised roots as part of its answer and
+        so asks unconditionally; this is only about the resolution path.
+        """
+        if self._allow_client_roots:
+            return True
+        if repo_root is not None and repo_root.strip():
+            return False
+        # With no root there is nothing to select among and resolve refuses;
+        # with exactly one, _sole_selection returns it without looking.
+        return len(self.roots) > 1
 
     def _hinted(self, message: str) -> str:
         """Append the enrolment hint when an operator-editable roots file exists.
@@ -619,19 +693,30 @@ class ToolHandlers:
             tree_oid=ctx.tree_oid,
             no_cache=no_cache,
         )
-        # First use of a repository is the auto-index trigger: per repo rather
-        # than at startup because a server can hold many roots, and a stale
-        # cache costs performance only -- this call is already served live
-        # from ``source`` while the refresh lands for the ones after it.
-        # A --no-cache call opts out of the cache and is taken at its word.
-        if self._auto_index and not no_cache:
-            cache.start_auto_index(
-                ctx.root,
-                self._services.extractor,
-                tree_oid=ctx.tree_oid,
-                head_sha=ctx.head_sha,
-            )
         return replace(ctx, symbols=source)
+
+    def refresh_in_background(self, ctx: RepoContext, *, no_cache: bool = False) -> None:
+        """Arm the background index for a repository this call is about to read.
+
+        First use of a repository is the auto-index trigger: per repo rather
+        than at startup because a server can hold many roots, and a stale cache
+        costs performance only -- the call that armed it is already served live
+        while the refresh lands for the ones after it. A ``--no-cache`` call
+        opts out of the cache and is taken at its word.
+
+        Separate from :meth:`resolve` on purpose. Authorising a repository is a
+        question with an answer; scheduling work on it is a decision, and
+        folding the second into the first made the arming invisible at every
+        call site and impossible to skip.
+        """
+        if not self._auto_index or no_cache:
+            return
+        cache.start_auto_index(
+            ctx.root,
+            self._services.extractor,
+            tree_oid=ctx.tree_oid,
+            head_sha=ctx.head_sha,
+        )
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
         """Render a ranked, budgeted repository map.
@@ -693,9 +778,15 @@ class ToolHandlers:
         return self._wrap(ctx, "\n".join(blocks))
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:
-        """Render bodies for the named stable ids, marking whatever was shortened."""
+        """Render bodies for the named stable ids, marking whatever was shortened.
+
+        A tool call has one channel, so the ids that missed are appended to
+        the body here rather than raised. The CLI puts the same rows on
+        stderr, which is the split described on :func:`render_expansion`.
+        """
         result = self._services.symbols.expand_symbols(ctx, list(stable_ids), limit=limit)
-        return self._wrap(ctx, render_expansion(result))
+        body = "\n".join([render_expansion(result), *unresolved_lines(result)])
+        return self._wrap(ctx, body)
 
     def read_slice(
         self,
@@ -727,12 +818,7 @@ class ToolHandlers:
         result = self._services.symbols.find_referencing_symbols(
             ctx, target, limit=limit, shared_callers=shared_callers
         )
-        body = (
-            render.render_shared_callers(result.shared, target)
-            if shared_callers
-            else render.render_ref_groups(result.groups, target)
-        )
-        return self._wrap(ctx, body)
+        return self._wrap(ctx, render_refs(result, shared_callers=shared_callers))
 
     def explain_symbol(self, ctx: RepoContext, target: str, limit: int) -> str:
         """Render one symbol's definition site with its tiered fan-out and fan-in."""
@@ -757,7 +843,7 @@ class ToolHandlers:
             message = MESSAGES.unknown_operation.format(
                 tool="analyze_structure", operation=request.operation, operations=listed
             )
-            raise AtlasError(message)
+            raise OperationFailed(message)
         return self._wrap(ctx, handler(self._services.graphs, ctx, request))
 
     def resolve_locations(
@@ -800,8 +886,8 @@ class ToolHandlers:
 def _operation_path(graphs: GraphService, ctx: RepoContext, request: StructureRequest) -> str:
     """Render the shortest resolved path between two named endpoints."""
     if not request.source.strip() or not request.target.strip():
-        message = MESSAGES.path_needs_endpoints
-        raise AtlasError(message)
+        message = MESSAGES.path_needs_endpoints.format(tool=request.tool)
+        raise OperationFailed(message)
     trace = graphs.path(
         ctx,
         request.source,
@@ -846,10 +932,13 @@ def _operation_diagram(graphs: GraphService, ctx: RepoContext, request: Structur
     """Render the module graph as fenced mermaid text."""
     view = graphs.diagram(
         ctx,
-        focus=request.focus or None,
-        max_nodes=request.max_nodes,
-        group_by_communities=request.group_by_communities,
-        resolution=request.resolution,
+        DiagramRequest(
+            focus=request.focus or None,
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+            group_by_communities=request.group_by_communities,
+            resolution=request.resolution,
+        ),
     )
     return render.render_diagram(view)
 
@@ -874,10 +963,12 @@ async def effective_client_roots(context: Context) -> list[Path]:
     Asking is an out-of-process round trip to the client, on the critical path
     of every tool, so it is bounded: a capability query that has not answered
     in seconds is not going to, and a client that never answers must not hang
-    the tool that asked on its behalf. Every way the call can fail --
-    unimplemented, timed out, malformed payload, dead transport -- means the
-    same thing here, "no advertised roots", and leaves the static roots
-    standing.
+    the tool that asked on its behalf. The failures converted here --
+    unimplemented, timed out, malformed payload, socket error -- all mean the
+    same thing, "no advertised roots", and leave the static roots standing. A
+    transport torn down mid-call is not one of them: anyio raises its own
+    stream errors, which derive from Exception rather than OSError, and a call
+    whose transport is gone has nowhere to return an answer anyway.
     """
     try:
         roots = await asyncio.wait_for(context.list_roots(), _LIST_ROOTS_TIMEOUT_SECONDS)
@@ -922,7 +1013,18 @@ def _resolved_client_root(uri: object) -> Path:
         message = "has no path"
         raise ValueError(message)
 
-    path = Path(unquote(parsed.path))
+    decoded = unquote(parsed.path)
+    # Checked on the DECODED form, before the path is built: `%0A` survives
+    # percent-decoding as a real newline, and a root carrying one reaches the
+    # receipt, which is the tool's own framing above the trust banner. Refused
+    # rather than escaped -- at an entry point a control character in a
+    # directory name is invalid input, and rejecting says so; escaping here
+    # would double up against the escape the receipt already applies.
+    if textsafe.has_line_break(decoded):
+        message = "path contains a control character"
+        raise ValueError(message)
+
+    path = Path(decoded)
     if not path.is_absolute():
         message = "path is not absolute"
         raise ValueError(message)
@@ -956,7 +1058,7 @@ def _intervals(
                 f"{tool} range [{listed}] is not a line range: each one is "
                 "[start, end], 1-based and inclusive, with end at or after start."
             )
-            raise AtlasError(message)
+            raise OperationFailed(message)
         intervals.append((pair[0], pair[1]))
     return intervals
 
@@ -1001,10 +1103,10 @@ def _slice_intervals(
     """Parse an explicit bounded slice or an explicit whole-file request."""
     if ranges is not None and whole_file:
         message = f"{tool} accepts lines or whole_file=true, not both"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     if ranges is None and not whole_file:
         message = f"{tool} requires non-empty lines or explicit whole_file=true"
-        raise AtlasError(message)
+        raise OperationFailed(message)
     return [] if ranges is None else _intervals(ranges, tool=tool)
 
 
@@ -1017,6 +1119,59 @@ ALWAYS_LOAD_META = {"anthropic/alwaysLoad": True}
 # What a registrar needs to open one call's repository: the context_for
 # closure build_server makes over its handlers.
 RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
+
+
+# The exceptions whose own text was written for a caller to read: this
+# package's refusals, and the framework's own -- a wire-schema rejection
+# naming the values a parameter accepts is FastMCP speaking, and that is
+# exactly the message an agent needs to correct its call.
+_DELIBERATE_ERRORS = (AgentlessError, FastMCPError, ValidationError)
+
+_UNPLANNED_ERROR_MESSAGE = (
+    "the tool failed for a reason it does not handle; the server log has the detail. "
+    "This is a defect in agentless-mcp, not something the call can be corrected to avoid."
+)
+
+
+class _DeliberateErrorsOnly(Middleware):
+    """Let this package's own refusals through; replace anything else.
+
+    With ``mask_error_details=False`` an unhandled exception's text is what
+    reaches the client, and the exceptions this package does not plan for
+    carry local detail: a ``sqlite3`` failure names the absolute path of the
+    tag cache, an ``OSError`` names the file it could not open. Neither is
+    something to hand to a caller across a transport (CWE-209).
+
+    The split is by *authorship*, not by severity. A message this package or
+    FastMCP wrote is a message a caller can act on -- it names the operation,
+    what it accepts, what it requires. Everything else is a defect, and a
+    defect's own words were written for whoever reads the log. So the log gets
+    them, in full and with the traceback, and the caller gets a sentence that
+    says a defect happened.
+
+    The test is on ``__cause__`` rather than on the exception itself because
+    FastMCP wraps whatever a tool raises into a ``ToolError`` before any
+    middleware sees it. A ``ToolError`` with no cause is the framework
+    speaking for itself, which is deliberate too.
+    """
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[mcp_types.CallToolRequestParams],
+        call_next: CallNext[mcp_types.CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        """Run one tool call, converting an unplanned failure at the boundary."""
+        try:
+            return await call_next(context)
+        except _DELIBERATE_ERRORS as error:
+            cause = error.__cause__
+            if cause is None or isinstance(cause, _DELIBERATE_ERRORS):
+                raise
+            logger.exception("unhandled error in an agentless-mcp tool call")
+            raise ToolError(_UNPLANNED_ERROR_MESSAGE) from None
+        except Exception:
+            logger.exception("unhandled error in an agentless-mcp tool call")
+            raise ToolError(_UNPLANNED_ERROR_MESSAGE) from None
 
 
 def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastMCP[None]:
@@ -1034,7 +1189,20 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
     # of this server.
-    mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version())
+    # `mask_error_details` is pinned rather than left to FastMCP's default,
+    # which reads FASTMCP_MASK_ERROR_DETAILS from the environment. Measured:
+    # 243 of these tests pass with the variable unset and 22 fail with it set
+    # to true, because a masked error replaces this package's own refusal
+    # text -- which names the operation, what it accepts and what it requires
+    # -- with a generic message. The refusal wording is the contract an agent
+    # reads to correct its own call, so whether it survives must not depend
+    # on an operator's shell.
+    #
+    # False is safe here because every message that reaches this boundary is
+    # written by this package: `_safe_tool_error` below turns anything else
+    # into a deliberately worded error before FastMCP sees it.
+    mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version(), mask_error_details=False)
+    mcp.add_middleware(_DeliberateErrorsOnly())
 
     @asynccontextmanager
     async def context_for(
@@ -1043,8 +1211,11 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
         *,
         no_cache: bool = False,
     ) -> AsyncIterator[RepoContext]:
-        roots = await effective_client_roots(context)
+        roots: list[Path] = []
+        if handlers.needs_client_roots(repo_root):
+            roots = await effective_client_roots(context)
         ctx = handlers.resolve(repo_root, roots, no_cache=no_cache)
+        handlers.refresh_in_background(ctx, no_cache=no_cache)
         try:
             yield ctx
         finally:
@@ -1202,7 +1373,8 @@ def _register_v1(
         limit: StructureLimit = None,
         resolution: Resolution = None,
         focus: DiagramFocus = None,
-        max_nodes: MaxNodes = DEFAULT_MAX_NODES,
+        max_nodes: MaxNodes = DEFAULT_DIAGRAM_NODES,
+        max_edges: MaxEdges = DEFAULT_DIAGRAM_EDGES,
         group_by_communities: GroupByCommunities = False,
         no_cache: NoCache = False,
     ) -> str:
@@ -1220,6 +1392,7 @@ def _register_v1(
                     resolution=resolution,
                     focus=_sole_focus(focus),
                     max_nodes=max_nodes,
+                    max_edges=max_edges,
                     group_by_communities=group_by_communities,
                 ),
             )
@@ -1281,6 +1454,7 @@ def _register_shared(
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)
         ctx = handlers.resolve(repo_root, roots)
+        handlers.refresh_in_background(ctx)
         try:
             return handlers.capabilities(ctx, roots)
         finally:
@@ -1316,7 +1490,7 @@ ORIENT_OPERATIONS: dict[str, OperationSpec] = {
     OPERATION_COMMUNITIES: OperationSpec(accepted=("resolution", "limit")),
     OPERATION_CYCLES: OperationSpec(accepted=("limit",)),
     OPERATION_DIAGRAM: OperationSpec(
-        accepted=("focus", "max_nodes", "group_by_communities", "resolution")
+        accepted=("focus", "max_nodes", "max_edges", "group_by_communities", "resolution")
     ),
     OPERATION_PATH: OperationSpec(
         accepted=("source", "target", "include_unique", "include_ambiguous"),
@@ -1345,16 +1519,25 @@ READ_OPERATIONS: dict[str, OperationSpec] = {
 def _omitted(value: object) -> bool:
     """Was this per-operation parameter left unset?
 
-    One definition for both halves of the check. A blank string counts, and so
-    does ``False`` on a flag: neither carries an instruction, and a client that
-    fills every declared optional with a zero value -- the ordinary shape of a
-    generated call -- is saying nothing by them. Refusing such a value as a
-    stray parameter refuses a call that asked for nothing unusual, and for a
-    flag whose v1 counterpart defaulted to ``False`` it refuses the default.
+    One rule for the zero value of every shape, rather than a special case per
+    type. A client that fills every declared optional with a zero value -- the
+    ordinary shape of a generated call -- is saying nothing by them, so
+    ``None``, ``False``, a blank string, an empty sequence and a zero number
+    all read the same way here. Recognising only three of those was how
+    ``paths=[]`` came to satisfy ``required=("paths",)`` while ``paths=[]``
+    beside another operation was refused as a stray parameter.
+
+    This decides only whether a parameter was *given*. What a zero the caller
+    did mean goes on to the handler untouched: ``context_lines=0`` still
+    reaches ``read_slice`` as zero.
     """
     if value is None or value is False:
         return True
-    return isinstance(value, str) and not value.strip()
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, int | float):
+        return value == 0
+    return isinstance(value, Sequence) and len(value) == 0
 
 
 def _checked_map_limit(operation: str, limit: int | None) -> None:
@@ -1376,7 +1559,7 @@ def _checked_map_limit(operation: str, limit: int | None) -> None:
             minimum=projectconfig.MIN_MAX_FILES,
             maximum=projectconfig.MAX_MAX_FILES,
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
 
 def _checked_operation(
@@ -1400,7 +1583,7 @@ def _checked_operation(
         message = MESSAGES.unknown_operation.format(
             tool=tool, operation=operation, operations=", ".join(sorted(specs))
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
     accepted = ", ".join(spec.accepted)
     required = ", ".join(spec.required) or "none"
     stray = sorted(
@@ -1416,7 +1599,7 @@ def _checked_operation(
             accepted=accepted,
             required=required,
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
     missing = [name for name in spec.required if _omitted(provided.get(name))]
     if missing:
         message = MESSAGES.op_requires_parameters.format(
@@ -1426,7 +1609,7 @@ def _checked_operation(
             accepted=accepted,
             required=required,
         )
-        raise AtlasError(message)
+        raise OperationFailed(message)
 
 
 def _register_v2(
@@ -1460,6 +1643,7 @@ def _register_v2(
         include_unique: OptionalIncludeUnique = None,
         include_ambiguous: OptionalIncludeAmbiguous = None,
         max_nodes: OptionalMaxNodes = None,
+        max_edges: OptionalMaxEdges = None,
         group_by_communities: OptionalGroupByCommunities = None,
         no_cache: NoCache = False,
     ) -> str:
@@ -1479,6 +1663,7 @@ def _register_v2(
                 "include_unique": include_unique,
                 "include_ambiguous": include_ambiguous,
                 "max_nodes": max_nodes,
+                "max_edges": max_edges,
                 "group_by_communities": group_by_communities,
             },
         )
@@ -1498,6 +1683,7 @@ def _register_v2(
                 ctx,
                 StructureRequest(
                     operation=operation,
+                    tool="orient",
                     source=source or "",
                     target=target or "",
                     include_unique=bool(include_unique),
@@ -1505,7 +1691,8 @@ def _register_v2(
                     limit=limit,
                     resolution=resolution,
                     focus=_sole_focus(focus),
-                    max_nodes=_or_default(max_nodes, DEFAULT_MAX_NODES),
+                    max_nodes=_or_default(max_nodes, DEFAULT_DIAGRAM_NODES),
+                    max_edges=_or_default(max_edges, DEFAULT_DIAGRAM_EDGES),
                     group_by_communities=bool(group_by_communities),
                 ),
             )
@@ -1564,6 +1751,11 @@ def _register_v2(
                 return handlers.explain_symbol(
                     ctx, target or "", _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
                 )
+            # The remaining table entry is OPERATION_LOCATE. _checked_operation
+            # has already refused anything outside SYMBOLS_OPERATIONS, and the
+            # parity table pairs every table entry with its CLI rendering, so an
+            # operation added to the table without a branch fails there rather
+            # than silently landing on this arm.
             return handlers.resolve_locations(
                 ctx,
                 path or "",
@@ -1610,6 +1802,8 @@ def _register_v2(
                     intervals,
                     _or_default(context_lines, DEFAULT_CONTEXT_LINES),
                 )
+            # The remaining table entry is OPERATION_DIR; the note on the same
+            # arm of `symbols` says what keeps this fall-through honest.
             return handlers.list_dir(
                 ctx,
                 path,
@@ -1649,6 +1843,32 @@ def roots_file(raw: str) -> RootsFile:
     )
 
 
+def root_dir(raw: str) -> Path:
+    """Resolve one ``--root`` flag to an existing directory, or refuse it here.
+
+    A mistyped ``--root`` used to start the server and fail on every tool call
+    with "not a directory", which under an MCP client surfaces per call rather
+    than at spawn -- a wiring error found at first use instead of at startup.
+    ``--roots-from`` already stats and reads its file at parse time; this is
+    the same standard for the flag beside it.
+
+    The *contents* of a roots file stay unchecked on purpose: that file is
+    re-read live, so a line naming a repository nobody has cloned yet is a
+    defensible thing to write. A flag is fixed for the process lifetime and
+    has no such second chance.
+    """
+    path = Path(raw).expanduser()
+    try:
+        resolved = path.resolve()
+    except OSError as exc:
+        message = f"--root {raw}: {exc}"
+        raise argparse.ArgumentTypeError(message) from exc
+    if not resolved.is_dir():
+        message = f"--root {raw} is not a directory: {resolved}"
+        raise argparse.ArgumentTypeError(message)
+    return resolved
+
+
 def _looks_unsplit(element: str) -> bool:
     """Is this one argv element an option flag glued to its own value(s)?
 
@@ -1679,22 +1899,30 @@ def _report_argv(argv: Sequence[str]) -> None:
         )
 
 
-def _loopback_only(host: str) -> bool:
-    """Does every address ``host`` resolves to sit on the loopback interface?
+def _loopback_literal(host: str) -> str | None:
+    """The IP literal to bind for ``host``, or None when it is not loopback-only.
 
     Resolution rather than a string comparison: ``localhost``, ``127.0.0.1``,
     ``::1`` and a hosts-file alias are all the same decision, and a name that
     resolves to a routable address is that decision's opposite however
     local it looks. A name that resolves to nothing is not loopback either --
     the caller reports it as a refusal rather than binding something else.
+
+    One lookup, and the literal it returns is the one that gets bound.
+    Checking with one ``getaddrinfo`` and binding after another left a window
+    in which the records could change between the two, so a name that passed
+    the check could still put a routable address on the socket.
     """
     try:
         candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        return False
-    if not candidates:
-        return False
-    return all(ipaddress.ip_address(info[4][0]).is_loopback for info in candidates)
+        return None
+    addresses = [str(info[4][0]) for info in candidates]
+    if not addresses:
+        return None
+    if not all(ipaddress.ip_address(address).is_loopback for address in addresses):
+        return None
+    return addresses[0]
 
 
 def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -1715,7 +1943,18 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     unauthenticated read access to the source of every enrolled repository.
     Anything wider than loopback therefore needs an authenticating proxy in
     front, which is a deployment decision this process cannot make for itself.
+
+    The port is held to the same standard as the host beside it: ``--port
+    99999`` used to fail inside ``server.run`` as an opaque bind error, and
+    ``--port 0`` used to bind an ephemeral port the operator cannot predict
+    and was never told about.
+
+    The verified host literal is stashed on the namespace here so that
+    :func:`http_binding` binds the address this check resolved rather than
+    resolving the name a second time.
     """
+    # Always present, so a reader never has to know which branch ran.
+    args.host_literal = None
     if args.transport == TRANSPORT_STDIO:
         passed = (("--host", args.host), ("--port", args.port))
         given = [flag for flag, value in passed if value is not None]
@@ -1738,8 +1977,17 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             "--allow-client-roots and enrol the repositories with --root or "
             "--roots-from."
         )
+    port = args.port if args.port is not None else DEFAULT_HTTP_PORT
+    if not MIN_HTTP_PORT <= port <= MAX_HTTP_PORT:
+        parser.error(
+            f"--port {port} is outside {MIN_HTTP_PORT}-{MAX_HTTP_PORT}. Port 0 binds an "
+            "ephemeral port this process never reports, and anything above the range "
+            "fails inside the transport as an opaque bind error. Name a port a client "
+            "can be registered against."
+        )
     host = args.host if args.host is not None else DEFAULT_HTTP_HOST
-    if not _loopback_only(host):
+    literal = _loopback_literal(host)
+    if literal is None:
         parser.error(
             f"--host {host!r} is not a loopback address. This server authenticates no "
             "one: the --root allowlist decides which repositories are readable, not who "
@@ -1747,6 +1995,7 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
             f"enrolled repository. Bind {DEFAULT_HTTP_HOST} and put an authenticating "
             "proxy in front if you need it off-host."
         )
+    args.host_literal = literal
 
 
 def http_binding(args: argparse.Namespace) -> tuple[str, int]:
@@ -1756,35 +2005,17 @@ def http_binding(args: argparse.Namespace) -> tuple[str, int]:
     tell "the operator passed this" from "the operator said nothing", so the
     listener and the refusal can never disagree about what the default is.
 
-    A hostname is resolved here to the literal that was checked, and the
-    literal is what gets bound. Passing the name through would leave two
-    independent lookups between the loopback check and the socket -- this
-    one and the server stack's own at bind time -- and a name whose records
-    change in between (a short TTL, a round-robin mixing loopback with a
-    routable address) would pass the check and bind the other answer. What
-    was verified has to be what is used.
+    The host is the literal :func:`_check_transport` resolved and approved,
+    carried on the namespace rather than resolved again. Two independent
+    lookups between the loopback check and the socket -- this one and the
+    server stack's own at bind time -- would let a name whose records change
+    in between (a short TTL, a round-robin mixing loopback with a routable
+    address) pass the check and bind the other answer. What was verified has
+    to be what is used, so there is exactly one lookup and this reads its
+    result.
     """
-    host = args.host if args.host is not None else DEFAULT_HTTP_HOST
     port = args.port if args.port is not None else DEFAULT_HTTP_PORT
-    return _loopback_literal(host), port
-
-
-def _loopback_literal(host: str) -> str:
-    """The checked loopback address for ``host`` as an IP literal.
-
-    Falls back to the name only when it resolves to nothing at all, which
-    ``_check_transport`` has already refused for every path that reaches
-    here; returning it unchanged keeps this from inventing an address.
-    """
-    try:
-        candidates = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        return host
-    for info in candidates:
-        address = str(info[4][0])
-        if ipaddress.ip_address(address).is_loopback:
-            return address
-    return host
+    return args.host_literal, port
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -1798,7 +2029,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="DIR",
-        help="a repository this server may serve; repeatable",
+        type=root_dir,
+        help="a repository this server may serve; must exist at startup; repeatable",
     )
     parser.add_argument(
         "--roots-from",
@@ -1879,7 +2111,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=None,
         type=int,
         metavar="N",
-        help=f"port --transport {TRANSPORT_HTTP} binds; default {DEFAULT_HTTP_PORT}",
+        help=f"port --transport {TRANSPORT_HTTP} binds; {MIN_HTTP_PORT}-{MAX_HTTP_PORT}, "
+        f"default {DEFAULT_HTTP_PORT}",
     )
     try:
         args = parser.parse_args(argv)

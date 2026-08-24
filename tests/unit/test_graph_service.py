@@ -14,9 +14,9 @@ from dataclasses import replace
 import pytest
 
 from agentless_mcp.application import render
-from agentless_mcp.application.graph_service import GraphService, PathOptions
+from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 CORE = """\
 def helper(value):
@@ -138,7 +138,7 @@ def imported(tmp_path):
 
 def elided_in(diagram):
     """The count the diagram's own elision node carries, or zero."""
-    found = re.search(r'"\.\.\. (\d+) more modules"', diagram)
+    found = re.search(r'"\.\.\. (\d+) more modules?"', diagram)
     return int(found.group(1)) if found else 0
 
 
@@ -218,7 +218,7 @@ class TestExplain:
 
         assert (group.tier, group.total, len(group.rows)) == ("same_file", 3, 1)
         assert group.omitted == 2
-        assert "... 2 more at this tier" in render.render_explanation(explained)
+        assert "... 2 more edges at this tier not listed" in render.render_explanation(explained)
 
     def test_the_import_section_says_how_many_importers_it_left_out(self, graphs, imported):
         """The one bounded section in this module that never counted at all."""
@@ -227,7 +227,7 @@ class TestExplain:
 
         assert explained.imports_in.total == IMPORTER_FILES
         assert explained.imports_in.omitted == IMPORTER_FILES - 2
-        assert f"... {IMPORTER_FILES - 2} more importers, not listed" in rendered
+        assert f"... {IMPORTER_FILES - 2} more importers not listed (limit 2)" in rendered
 
     def test_the_import_section_carries_its_count_into_the_json_too(self, graphs, imported):
         document = graphs.explain(imported, "helper", limit=2).as_dict()
@@ -252,13 +252,13 @@ class TestResolutionIsParsedNotCoerced:
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), -5.0, 0.0])
     def test_communities_refuses_a_resolution_that_is_not_one(self, graphs, repo, value):
-        with pytest.raises(AtlasError, match="resolution must be a finite number"):
+        with pytest.raises(AgentlessError, match="resolution must be a finite number"):
             graphs.communities(repo, resolution=value)
 
     @pytest.mark.parametrize("value", [float("nan"), -5.0])
     def test_the_diagram_refuses_the_same_values(self, graphs, repo, value):
-        with pytest.raises(AtlasError, match="resolution must be a finite number"):
-            graphs.diagram(repo, group_by_communities=True, resolution=value)
+        with pytest.raises(AgentlessError, match="resolution must be a finite number"):
+            graphs.diagram(repo, DiagramRequest(group_by_communities=True, resolution=value))
 
     def test_a_finite_positive_resolution_is_still_accepted(self, graphs, repo):
         report = graphs.communities(repo, resolution=0.5)
@@ -336,12 +336,49 @@ class TestPath:
         assert trace.exhausted
         assert "search bound" in trace.message
 
+    def test_the_advice_names_the_flag_that_carries_the_bound(self, graphs, repo):
+        """The MCP `path` operation does not publish `max_visited`.
+
+        The message used to say "raise the bound" without saying where the
+        bound lives, so an agent that could not reach it followed the advice
+        by reissuing the identical call.
+        """
+        trace = graphs.path(repo, "use", "caller", PathOptions(max_visited=1))
+
+        assert "--max-visited" in trace.message
+        assert "pick a nearer pair of endpoints" in trace.message
+
 
 class TestCycles:
     def test_a_repository_without_cycles_answers_plainly(self, graphs, repo):
         report = graphs.cycles(repo)
         assert report.total == 0
-        assert render.render_cycles(report) == "no import cycles\n"
+        assert render.render_cycles(report).startswith("no import cycles\n")
+
+    def test_an_empty_cycle_list_says_how_much_of_the_graph_was_searched(self, graphs, tmp_path):
+        """ "No import cycles" and "few imports resolved" used to render alike.
+
+        The count already existed on `ResolvedGraph`, populated and tested,
+        and nothing showed it to a caller -- so the strongest claim this view
+        makes was the one with nothing qualifying it.
+        """
+        files = {
+            "a.py": "import json\nimport os\n\n\ndef only():\n    return json, os\n",
+        }
+        report = graphs.cycles(build(tmp_path, files))
+
+        assert report.total == 0
+        assert report.unresolved_imports == 2
+        assert report.as_dict()["unresolved_imports"] == 2
+        assert "2 import statements named no file in this repository" in render.render_cycles(
+            report
+        )
+
+    def test_a_fully_resolved_import_graph_carries_no_qualification(self, graphs, tmp_path):
+        report = graphs.cycles(build(tmp_path, CYCLE_FILES))
+
+        assert report.unresolved_imports == 0
+        assert "named no file" not in render.render_cycles(report)
 
     def test_a_cycle_is_rendered_as_a_chain(self, graphs, tmp_path):
         report = graphs.cycles(build(tmp_path, CYCLE_FILES))
@@ -443,12 +480,47 @@ class TestCommunities:
         assert report.files == len(FILES)
 
     def test_a_weak_partition_is_labeled_as_a_hint(self, graphs, repo):
-        report = replace(graphs.communities(repo), modularity=0.253)
+        report = replace(graphs.communities(repo), modularity=0.253, standard_modularity=0.253)
 
         assert report.as_dict()["weak_partition"] is True
         assert "weak partition; use these communities as a hint" in render.render_communities(
             report
         )
+
+    def test_the_resolution_knob_cannot_switch_the_weak_note_off(self, graphs, repo):
+        """The note is a claim about the repository, so a caller may not scale it.
+
+        `_partition` reports the resolution-scaled generalized modularity, so
+        a lower resolution raises the printed score for an unchanged tree.
+        Compared against the fixed 0.3, `--resolution 0.25` used to suppress
+        this note on a tree that had gained nothing.
+        """
+        report = replace(
+            graphs.communities(repo, resolution=0.25),
+            modularity=0.72,
+            standard_modularity=0.16,
+        )
+
+        assert report.weak_partition
+        assert "weak partition" in render.render_communities(report)
+
+    def test_a_scaled_score_names_the_number_the_threshold_is_read_on(self, graphs, repo):
+        report = replace(
+            graphs.communities(repo, resolution=0.25),
+            modularity=0.72,
+            standard_modularity=0.16,
+        )
+
+        listed = render.render_communities(report)
+
+        assert "modularity 0.720 at resolution 0.25" in listed
+        assert "modularity at resolution 1: 0.160" in listed
+
+    def test_an_unscaled_score_is_not_printed_twice(self, graphs, repo):
+        listed = render.render_communities(graphs.communities(repo))
+
+        assert "at resolution 1)" in listed
+        assert "modularity at resolution 1:" not in listed
 
     def test_the_limit_caps_the_listing_and_says_so(self, graphs, repo):
         report = graphs.communities(repo, limit=1)
@@ -462,7 +534,15 @@ class TestCommunities:
 
         listed = render.render_communities(report)
         assert any(row.omitted for row in report.communities)
-        assert "more files in this community" in listed
+        assert "more files in this community not listed (limit 1)" in listed
+
+    def test_a_rows_omitted_count_is_derived_from_the_size_it_was_cut_from(self, graphs, repo):
+        """Hand-passed, the two granularities took it against two denominators."""
+        report = graphs.communities(repo, members=1)
+
+        for row in report.communities:
+            assert row.omitted == row.size - len(row.members)
+            assert row.as_dict()["omitted"] == row.omitted
 
     def test_two_runs_over_one_tree_agree(self, graphs, repo):
         assert graphs.communities(repo).as_dict() == graphs.communities(repo).as_dict()
@@ -476,20 +556,20 @@ class TestDiagram:
         assert "```" not in view.text
 
     def test_the_node_bound_is_counted_and_announced(self, graphs, repo):
-        view = graphs.diagram(repo, max_nodes=2)
+        view = graphs.diagram(repo, DiagramRequest(max_nodes=2))
 
         assert view.nodes == 2
         assert view.elided == len(FILES) - 2
         assert "more modules" in view.text
 
     def test_an_unbounded_diagram_carries_no_caveat(self, graphs, repo):
-        view = graphs.diagram(repo, group_by_communities=True)
+        view = graphs.diagram(repo, DiagramRequest(group_by_communities=True))
 
         assert view.elided == 0
         assert view.caveat == ""
 
     def test_a_grouped_bounded_diagram_says_titles_cover_elided_members(self, graphs, repo):
-        view = graphs.diagram(repo, max_nodes=2, group_by_communities=True)
+        view = graphs.diagram(repo, DiagramRequest(max_nodes=2, group_by_communities=True))
 
         assert "whole communities" in view.caveat
         assert view.caveat in render.render_diagram(view)
@@ -509,44 +589,44 @@ class TestDiagram:
         had dropped nothing -- and a reader who trusted the number raised
         `max_nodes` for modules no bound had removed.
         """
-        view = graphs.diagram(repo, focus="island.py")
+        view = graphs.diagram(repo, DiagramRequest(focus="island.py"))
 
         assert view.nodes == 1
         assert view.elided == 0
         assert "more modules" not in view.text
 
     def test_a_focused_diagram_that_does_bound_agrees_with_its_own_marker(self, graphs, repo):
-        view = graphs.diagram(repo, focus="user.py", max_nodes=1)
+        view = graphs.diagram(repo, DiagramRequest(focus="user.py", max_nodes=1))
 
         assert view.nodes == 1
         assert view.elided == elided_in(view.text)
         assert view.elided > 0
 
     def test_an_unfocused_diagram_still_counts_the_whole_repository(self, graphs, repo):
-        view = graphs.diagram(repo, max_nodes=2)
+        view = graphs.diagram(repo, DiagramRequest(max_nodes=2))
         assert view.elided == len(FILES) - 2 == elided_in(view.text)
 
     def test_a_focus_keeps_the_seed_and_its_neighbourhood(self, graphs, repo):
-        view = graphs.diagram(repo, focus="user.py", max_nodes=3)
+        view = graphs.diagram(repo, DiagramRequest(focus="user.py", max_nodes=3))
 
         assert view.focus == "user.py"
         assert "user.py" in view.text
 
     def test_a_focus_naming_nothing_is_a_message_not_an_exception(self, graphs, repo):
-        view = graphs.diagram(repo, focus="nowhere.py")
+        view = graphs.diagram(repo, DiagramRequest(focus="nowhere.py"))
 
         assert view.text == ""
         assert "no module matches nowhere.py" in view.message
 
     def test_a_bare_module_stem_focuses_the_diagram(self, graphs, repo):
-        view = graphs.diagram(repo, focus="user")
+        view = graphs.diagram(repo, DiagramRequest(focus="user"))
 
         assert view.focus == "user.py"
         assert view.message == ""
         assert "user.py" in view.text
 
     def test_a_stem_matching_nothing_is_still_reported(self, graphs, repo):
-        view = graphs.diagram(repo, focus="quasar")
+        view = graphs.diagram(repo, DiagramRequest(focus="quasar"))
 
         assert view.text == ""
         assert "no module matches quasar" in view.message
@@ -560,6 +640,42 @@ class TestDiagram:
 
     def test_two_renders_of_one_tree_are_byte_identical(self, graphs, repo):
         assert graphs.diagram(repo).text == graphs.diagram(repo).text
+
+    def test_the_edge_bound_is_reported_beside_the_node_bound(self, graphs, repo):
+        """Two cuts, two numbers, so a reader raises the knob that cut.
+
+        `max_edges` had no production caller at all before it reached the
+        service through `DiagramRequest`, so the diagram drew at the module
+        default and said nothing about it outside the mermaid comment.
+        """
+        view = graphs.diagram(repo, DiagramRequest(max_edges=0))
+
+        assert view.edges_over_bound > 0
+        assert view.elided == 0
+        assert view.as_dict()["edges_over_bound"] == view.edges_over_bound
+        assert f"{view.edges_over_bound} reference edges not drawn" in view.text
+
+    def test_an_edge_bound_the_diagram_fits_inside_reports_nothing(self, graphs, repo):
+        view = graphs.diagram(repo)
+
+        assert view.edges_over_bound == 0
+
+    def test_a_negative_edge_bound_is_refused(self, graphs, repo):
+        with pytest.raises(AgentlessError, match="max_edges"):
+            graphs.diagram(repo, DiagramRequest(max_edges=-1))
+
+    def test_the_view_says_whether_the_ranking_behind_it_settled(self, graphs, repo):
+        view = graphs.diagram(repo)
+
+        assert view.rank_converged
+        assert view.as_dict()["rank_converged"] is True
+        assert "did not converge" not in view.caveat
+
+    def test_an_unsettled_ranking_is_a_caveat_on_the_picture(self, graphs, repo):
+        view = replace(graphs.diagram(repo), rank_converged=False)
+
+        assert "did not converge" in view.caveat
+        assert view.caveat in render.render_diagram(view)
 
     def test_a_submodule_import_draws_a_solid_edge(self, graphs, tmp_path):
         (tmp_path / "pkg").mkdir()

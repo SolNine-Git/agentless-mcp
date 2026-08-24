@@ -31,16 +31,26 @@ def uniform_rank(graph):
     return dict.fromkeys(graph.nodes, 1.0)
 
 
+def flowchart_text(*args, **kwargs):
+    """The rendered text alone, for the assertions that read the diagram.
+
+    `render_flowchart` returns the text together with the counts behind it, so
+    the tests that read a bound rather than a line go through
+    :class:`FlowchartExport` directly -- see `TestReportedBounds`.
+    """
+    return render_flowchart(*args, **kwargs).text
+
+
 class TestShape:
     def test_the_header_names_the_direction(self):
         graph = chain_graph(3)
 
-        assert render_flowchart(graph, uniform_rank(graph)).startswith("flowchart LR\n")
+        assert flowchart_text(graph, uniform_rank(graph)).startswith("flowchart LR\n")
 
     def test_ids_are_generated_in_sorted_path_order(self):
         graph = RefGraph(nodes=("b.py", "a.py"), edges={})
 
-        rendered = render_flowchart(graph, uniform_rank(graph))
+        rendered = flowchart_text(graph, uniform_rank(graph))
 
         assert '    n0["a.py"]' in rendered
         assert '    n1["b.py"]' in rendered
@@ -48,32 +58,32 @@ class TestShape:
     def test_edges_are_rendered_between_generated_ids(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
 
-        assert "    n0 --> n1" in render_flowchart(graph, uniform_rank(graph))
+        assert "    n0 --> n1" in flowchart_text(graph, uniform_rank(graph))
 
     def test_edge_weights_are_never_printed(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 3.5})
 
-        assert "3.5" not in render_flowchart(graph, uniform_rank(graph))
+        assert "3.5" not in flowchart_text(graph, uniform_rank(graph))
 
     def test_edges_to_elided_nodes_are_dropped(self):
         graph = chain_graph(6)
 
-        rendered = render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=2))
+        rendered = flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=2))
 
         assert rendered.count(" --> ") == 1
 
     def test_output_carries_no_markdown_fence(self):
         graph = chain_graph(3)
 
-        assert "```" not in render_flowchart(graph, uniform_rank(graph))
+        assert "```" not in flowchart_text(graph, uniform_rank(graph))
 
     def test_an_empty_graph_renders_only_the_header(self):
-        assert render_flowchart(RefGraph(nodes=(), edges={}), {}) == "flowchart LR\n"
+        assert flowchart_text(RefGraph(nodes=(), edges={}), {}) == "flowchart LR\n"
 
     def test_a_node_the_ranking_forgot_is_still_a_candidate(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={})
 
-        rendered = render_flowchart(graph, {"a.py": 1.0})
+        rendered = flowchart_text(graph, {"a.py": 1.0})
 
         assert '"b.py"' in rendered
 
@@ -85,9 +95,7 @@ class TestEdgeKinds:
             edges={("a.py", "b.py"): 4.0, ("b.py", "a.py"): 1.0},
         )
 
-        rendered = render_flowchart(
-            graph, uniform_rank(graph), imports=frozenset({("a.py", "b.py")})
-        )
+        rendered = flowchart_text(graph, uniform_rank(graph), imports=frozenset({("a.py", "b.py")}))
 
         assert "    n0 --> n1" in rendered
         assert "    n1 -.-> n0" in rendered
@@ -95,7 +103,7 @@ class TestEdgeKinds:
     def test_the_legend_names_the_encoding(self):
         graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
 
-        rendered = render_flowchart(graph, uniform_rank(graph), imports=frozenset())
+        rendered = flowchart_text(graph, uniform_rank(graph), imports=frozenset())
 
         assert f"    {EDGE_LEGEND}" in rendered
         assert "solid: imports, dashed: references" in rendered
@@ -106,7 +114,7 @@ class TestEdgeKinds:
             edges={("a.py", "b.py"): 1.0, ("b.py", "a.py"): 1.0},
         )
 
-        rendered = render_flowchart(graph, uniform_rank(graph))
+        rendered = flowchart_text(graph, uniform_rank(graph))
 
         assert "-.->" not in rendered
         assert EDGE_LEGEND not in rendered
@@ -115,7 +123,7 @@ class TestEdgeKinds:
     def test_reference_edges_over_the_bound_are_counted_not_drawn(self):
         graph = chain_graph(6)
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             uniform_rank(graph),
             options=DiagramOptions(max_edges=3),
@@ -128,7 +136,7 @@ class TestEdgeKinds:
     def test_import_edges_survive_the_edge_bound(self):
         graph = chain_graph(6)
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             uniform_rank(graph),
             options=DiagramOptions(max_edges=1),
@@ -142,15 +150,31 @@ class TestEdgeKinds:
     def test_an_edgeless_diagram_carries_no_legend(self):
         graph = RefGraph(nodes=("a.py",), edges={})
 
-        rendered = render_flowchart(graph, uniform_rank(graph), imports=frozenset())
+        rendered = flowchart_text(graph, uniform_rank(graph), imports=frozenset())
 
+        assert EDGE_LEGEND not in rendered
+
+    def test_a_diagram_whose_every_edge_was_counted_carries_no_legend(self):
+        # Every edge is a reference and none fit the bound, so the only edge
+        # line is the comment counting them. A legend naming two arrow styles
+        # would sit above a diagram that draws neither.
+        graph = chain_graph(6)
+
+        rendered = flowchart_text(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_edges=1),
+            imports=frozenset(),
+        )
+
+        assert "%% 5 reference edges not drawn (edge bound 1)" in rendered
         assert EDGE_LEGEND not in rendered
 
     def test_a_negative_edge_bound_is_refused(self):
         graph = chain_graph(3)
 
         with pytest.raises(ValueError, match="max_edges"):
-            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_edges=-1))
+            flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_edges=-1))
 
 
 class TestBounding:
@@ -158,7 +182,7 @@ class TestBounding:
         graph = chain_graph(5)
         rank = {node: float(index) for index, node in enumerate(graph.nodes)}
 
-        rendered = render_flowchart(graph, rank, options=DiagramOptions(max_nodes=2))
+        rendered = flowchart_text(graph, rank, options=DiagramOptions(max_nodes=2))
 
         assert '"src/m04.py"' in rendered
         assert '"src/m00.py"' not in rendered
@@ -166,42 +190,107 @@ class TestBounding:
     def test_the_elision_line_counts_what_was_left_out(self):
         graph = chain_graph(10)
 
-        rendered = render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=4))
+        rendered = flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=4))
 
         assert f'{ELISION_ID}["... 6 more modules"]' in rendered
+
+    def test_one_elided_module_is_counted_in_the_singular(self):
+        graph = chain_graph(3)
+
+        rendered = flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=2))
+
+        assert f'{ELISION_ID}["... 1 more module"]' in rendered
 
     def test_a_complete_diagram_carries_no_elision_line(self):
         graph = chain_graph(3)
 
-        assert ELISION_ID not in render_flowchart(graph, uniform_rank(graph))
+        assert ELISION_ID not in flowchart_text(graph, uniform_rank(graph))
 
     def test_max_nodes_must_be_positive(self):
         graph = chain_graph(3)
 
         with pytest.raises(ValueError, match="max_nodes"):
-            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=0))
+            flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=0))
 
-    def test_an_unknown_direction_is_refused(self):
-        graph = chain_graph(3)
 
-        with pytest.raises(ValueError, match="direction"):
-            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(direction="UP"))
+class TestReportedBounds:
+    """What the render hands back, so no caller has to derive it again."""
 
-    def test_a_valid_direction_reaches_the_header(self):
-        graph = chain_graph(2)
+    def test_the_export_counts_the_nodes_it_drew(self):
+        graph = chain_graph(5)
 
-        rendered = render_flowchart(
-            graph, uniform_rank(graph), options=DiagramOptions(direction="TD")
+        drawn = render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=2))
+
+        assert drawn.nodes == 2
+        assert drawn.elided_nodes == 3
+
+    def test_the_reported_elision_is_the_number_in_the_picture(self):
+        graph = chain_graph(10)
+
+        drawn = render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=4))
+
+        assert f'{ELISION_ID}["... {drawn.elided_nodes} more modules"]' in drawn.text
+
+    def test_the_elision_is_counted_against_the_focus_neighbourhood(self):
+        """A focus cuts the candidate set before the rank bound sees it.
+
+        Counted against the whole graph instead, a focused diagram that
+        dropped nothing still reported modules elided, and a reader raised
+        `max_nodes` for modules no bound had removed.
+        """
+        graph = chain_graph(6)
+        options = DiagramOptions(focus="src/m00.py", focus_distance=1)
+
+        drawn = render_flowchart(graph, uniform_rank(graph), options=options)
+
+        assert drawn.nodes == 2
+        assert drawn.elided_nodes == 0
+
+    def test_the_export_counts_the_reference_edges_the_bound_cut(self):
+        graph = chain_graph(4)
+
+        drawn = render_flowchart(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_edges=1),
+            imports=frozenset(),
         )
 
-        assert rendered.startswith("flowchart TD\n")
+        assert drawn.edges_over_bound == 3
+        assert "3 reference edges not drawn (edge bound 1)" in drawn.text
+
+    def test_a_diagram_inside_its_edge_bound_reports_no_edge_elision(self):
+        graph = chain_graph(4)
+
+        drawn = render_flowchart(graph, uniform_rank(graph), imports=frozenset())
+
+        assert drawn.edges_over_bound == 0
+
+    def test_an_edge_dropped_with_its_endpoint_is_not_an_edge_bound_cut(self):
+        """The two cuts stay apart, so a reader raises the knob that cut.
+
+        Three of these edges lose an endpoint to `max_nodes`. None of them
+        was cut by `max_edges`, and reporting them together would send a
+        reader to a bound that removed nothing.
+        """
+        graph = chain_graph(5)
+
+        drawn = render_flowchart(
+            graph,
+            uniform_rank(graph),
+            options=DiagramOptions(max_nodes=2),
+            imports=frozenset(),
+        )
+
+        assert drawn.elided_nodes == 3
+        assert drawn.edges_over_bound == 0
 
 
 class TestFocus:
     def test_only_the_seed_neighbourhood_is_drawn(self):
         graph = chain_graph(6)
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             uniform_rank(graph),
             options=DiagramOptions(focus="src/m00.py", focus_distance=2),
@@ -213,7 +302,7 @@ class TestFocus:
     def test_focus_reaches_backwards_along_edges_too(self):
         graph = chain_graph(6)
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             uniform_rank(graph),
             options=DiagramOptions(focus="src/m03.py", focus_distance=1),
@@ -227,7 +316,7 @@ class TestFocus:
         rank = dict.fromkeys(graph.nodes, 0.0)
         rank["src/m02.py"] = 5.0
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             rank,
             options=DiagramOptions(focus="src/m00.py", max_nodes=1),
@@ -238,7 +327,7 @@ class TestFocus:
     def test_the_elision_counts_only_the_neighbourhood(self):
         graph = chain_graph(20)
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph,
             uniform_rank(graph),
             options=DiagramOptions(focus="src/m10.py", focus_distance=2, max_nodes=3),
@@ -246,11 +335,17 @@ class TestFocus:
 
         assert f'{ELISION_ID}["... 2 more modules"]' in rendered
 
+    def test_a_negative_focus_distance_is_refused(self):
+        graph = chain_graph(3)
+
+        with pytest.raises(ValueError, match="focus_distance"):
+            flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(focus_distance=-1))
+
     def test_a_focus_outside_the_graph_is_refused(self):
         graph = chain_graph(3)
 
         with pytest.raises(ValueError, match="focus"):
-            render_flowchart(graph, uniform_rank(graph), options=DiagramOptions(focus="nowhere.py"))
+            flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(focus="nowhere.py"))
 
 
 class TestCommunities:
@@ -267,7 +362,7 @@ class TestCommunities:
         )
         partition = detect_communities(graph)
 
-        rendered = render_flowchart(graph, personalized_pagerank(graph), partition=partition)
+        rendered = flowchart_text(graph, personalized_pagerank(graph).rank, partition=partition)
 
         assert 'subgraph s0["src/a"]' in rendered
         assert 'subgraph s1["src/b"]' in rendered
@@ -287,7 +382,7 @@ class TestCommunities:
         )
         partition = detect_communities(graph)
 
-        rendered = render_flowchart(graph, personalized_pagerank(graph), partition=partition)
+        rendered = flowchart_text(graph, personalized_pagerank(graph).rank, partition=partition)
 
         assert 'subgraph s0["repository root"]' in rendered
         assert 'subgraph s1["repository root 2"]' in rendered
@@ -299,7 +394,7 @@ class TestCommunities:
         )
         partition = detect_communities(graph)
 
-        rendered = render_flowchart(graph, personalized_pagerank(graph), partition=partition)
+        rendered = flowchart_text(graph, personalized_pagerank(graph).rank, partition=partition)
 
         assert 'subgraph s0["src/a"]' in rendered
         assert "src/a 2" not in rendered
@@ -309,7 +404,7 @@ class TestCommunities:
         partition = detect_communities(graph)
         rank = {node: float(index) for index, node in enumerate(graph.nodes)}
 
-        rendered = render_flowchart(
+        rendered = flowchart_text(
             graph, rank, partition=partition, options=DiagramOptions(max_nodes=1)
         )
 
@@ -319,7 +414,7 @@ class TestCommunities:
         graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
         partition = detect_communities(RefGraph(nodes=("a.py",), edges={}))
 
-        rendered = render_flowchart(graph, uniform_rank(graph), partition=partition)
+        rendered = flowchart_text(graph, uniform_rank(graph), partition=partition)
 
         assert '    n1["b.py"]' in rendered
 
@@ -327,11 +422,11 @@ class TestCommunities:
 class TestDeterminism:
     def test_two_renders_are_byte_identical(self):
         graph = chain_graph(12)
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
         options = DiagramOptions(max_nodes=8)
 
-        first = render_flowchart(graph, rank, options=options)
-        second = render_flowchart(graph, rank, options=options)
+        first = flowchart_text(graph, rank, options=options)
+        second = flowchart_text(graph, rank, options=options)
 
         assert first == second
 
@@ -342,17 +437,17 @@ class TestDeterminism:
             edges=dict(reversed(list(forward.edges.items()))),
         )
 
-        assert render_flowchart(backward, uniform_rank(backward)) == render_flowchart(
+        assert flowchart_text(backward, uniform_rank(backward)) == flowchart_text(
             forward, uniform_rank(forward)
         )
 
     def test_grouped_renders_are_byte_identical(self):
         graph = chain_graph(9)
-        rank = personalized_pagerank(graph)
+        rank = personalized_pagerank(graph).rank
         partition = detect_communities(graph)
 
-        first = render_flowchart(graph, rank, partition=partition)
-        second = render_flowchart(graph, rank, partition=partition)
+        first = flowchart_text(graph, rank, partition=partition)
+        second = flowchart_text(graph, rank, partition=partition)
 
         assert first == second
 
@@ -361,14 +456,14 @@ class TestLabelSafety:
     def test_an_injected_filename_renders_as_an_inert_label(self):
         graph = RefGraph(nodes=(HOSTILE_NAME,), edges={})
 
-        rendered = render_flowchart(graph, uniform_rank(graph))
+        rendered = flowchart_text(graph, uniform_rank(graph))
 
         assert rendered == 'flowchart LR\n    n0["end_ click n0 href _x.py"]\n'
 
     def test_no_statement_begins_with_a_mermaid_directive(self):
         graph = RefGraph(nodes=(HOSTILE_NAME, "click.py", "style.py"), edges={})
 
-        rendered = render_flowchart(graph, uniform_rank(graph))
+        rendered = flowchart_text(graph, uniform_rank(graph))
 
         first_words = [line.split(" ")[0] for line in rendered.splitlines()[1:]]
         assert not [word for word in first_words if word.lower() in MERMAID_RESERVED_IDS - {"end"}]
@@ -397,20 +492,72 @@ class TestLabelSafety:
     def test_ordinary_paths_pass_through_untouched(self):
         assert safe_label("src/agentless_mcp/core/graph.py") == "src/agentless_mcp/core/graph.py"
 
+    def test_two_modules_that_reduce_to_one_label_are_still_told_apart(self):
+        """`safe_label` is an allowlist, so it is many-to-one.
+
+        Two directory names that differ only outside the allowlist reduce to
+        the same underscore. The nodes stay distinct, so the graph is right;
+        without an ordinal the reader cannot say which box is which, which is
+        what the diagram is for.
+        """
+        graph = RefGraph(nodes=("src/日本語/mod.py", "src/中文字/mod.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+
+        assert '["src/_/mod.py"]' in rendered
+        assert '["src/_/mod.py 2"]' in rendered
+
+    def test_two_long_paths_sharing_a_prefix_are_still_told_apart(self):
+        """The other many-to-one step: the 60-character truncation."""
+        stem = "src/" + "a" * 70
+        graph = RefGraph(nodes=(f"{stem}/one.py", f"{stem}/two.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+        labels = [line.split('["')[1] for line in rendered.splitlines() if '["' in line]
+
+        assert len(set(labels)) == len(labels)
+
+    def test_a_label_that_occurs_once_carries_no_ordinal(self):
+        """The common case reads as the paths do."""
+        graph = RefGraph(nodes=("src/a.py", "src/b.py"), edges={})
+
+        rendered = flowchart_text(graph, uniform_rank(graph))
+
+        assert rendered == 'flowchart LR\n    n0["src/a.py"]\n    n1["src/b.py"]\n'
+
+    def test_a_module_keeps_its_label_whether_or_not_it_is_grouped(self):
+        """The ordinal is assigned over the whole drawn set, once.
+
+        A subgraph draws some modules and leaves the rest beside it, so an
+        ordinal counted per emission site would give one module two labels
+        across two renders of the same graph.
+        """
+        nodes = ("src/日本語/mod.py", "src/中文字/mod.py")
+        graph = RefGraph(nodes=nodes, edges={})
+        partition = detect_communities(graph)
+
+        plain = flowchart_text(graph, uniform_rank(graph))
+        grouped = flowchart_text(graph, uniform_rank(graph), partition=partition)
+
+        for identifier in ("n0", "n1"):
+            bare = next(line for line in plain.splitlines() if line.strip().startswith(identifier))
+            boxed = next(
+                line for line in grouped.splitlines() if line.strip().startswith(identifier)
+            )
+            assert bare.strip() == boxed.strip()
+
     def test_a_community_label_is_sanitised_too(self):
         graph = RefGraph(nodes=(f"{HOSTILE_NAME}/inner.py",), edges={})
         partition = detect_communities(graph)
 
-        rendered = render_flowchart(graph, uniform_rank(graph), partition=partition)
+        rendered = flowchart_text(graph, uniform_rank(graph), partition=partition)
 
         assert '"' not in rendered.replace('["', "").replace('"]', "")
 
     def test_generated_ids_are_never_mermaid_reserved_words(self):
         graph = RefGraph(nodes=tuple(f"m{index}.py" for index in range(50)), edges={})
 
-        rendered = render_flowchart(
-            graph, uniform_rank(graph), options=DiagramOptions(max_nodes=50)
-        )
+        rendered = flowchart_text(graph, uniform_rank(graph), options=DiagramOptions(max_nodes=50))
 
         identifiers = [line.strip().split("[")[0] for line in rendered.splitlines()[1:]]
         assert not [name for name in identifiers if name.lower() in MERMAID_RESERVED_IDS]

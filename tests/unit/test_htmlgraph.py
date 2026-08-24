@@ -1,7 +1,28 @@
 """The HTML graph export is bounded, deterministic, and inert to path text."""
 
+import pytest
+
+from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import communities, htmlgraph
 from agentless_mcp.core.graph import RefGraph
+from agentless_mcp.util.errors import OperationFailed
+
+# Every way this document could reach the network. The old gate asserted that
+# `https://` was absent, which the document never contained: it names
+# `http://www.w3.org/2000/svg`, so the assertion checked a scheme the text
+# provably never uses and would have passed against a remote script tag.
+NETWORK_SINKS = (
+    "src=",
+    "href=",
+    "@import",
+    "url(http",
+    "fetch(",
+    "XMLHttpRequest",
+    "WebSocket",
+    "EventSource",
+    "importScripts",
+)
 
 
 def test_export_is_self_contained_searchable_and_clickable():
@@ -23,7 +44,36 @@ def test_export_is_self_contained_searchable_and_clickable():
     assert 'id="search"' in exported.text
     assert 'group.addEventListener("click"' in exported.text
     assert "function colour(community)" in exported.text
-    assert "https://" not in exported.text
+
+
+def test_no_sink_in_the_document_can_reach_the_network():
+    graph = RefGraph(nodes=("a.py",), edges={})
+
+    exported = htmlgraph.render_html(
+        graph,
+        {"a.py": 1.0},
+        communities.detect_communities(graph),
+        imports=set(),
+    )
+
+    for sink in NETWORK_SINKS:
+        assert sink not in exported.text, sink
+
+
+def test_the_document_carries_a_policy_that_refuses_a_fetch():
+    # The assertion above is a text check over the document this module
+    # writes. The policy is the gate that holds when someone edits it.
+    graph = RefGraph(nodes=("a.py",), edges={})
+
+    exported = htmlgraph.render_html(
+        graph,
+        {"a.py": 1.0},
+        communities.detect_communities(graph),
+        imports=set(),
+    )
+
+    assert 'http-equiv="Content-Security-Policy"' in exported.text
+    assert "default-src 'none'" in exported.text
 
 
 def test_repository_text_cannot_close_the_script_element():
@@ -64,6 +114,97 @@ def test_node_and_edge_bounds_are_reported():
     assert exported.edges == 1
     assert exported.elided_nodes == 1
     assert exported.elided_edges == 2
+
+
+def test_the_two_edge_cuts_are_counted_apart():
+    # `a.py -> c.py` went with the node bound; one of the two edges between
+    # the drawn pair went to the edge bound. One number for both sends a
+    # reader to the wrong flag.
+    graph = RefGraph(
+        nodes=("a.py", "b.py", "c.py"),
+        edges={
+            ("a.py", "b.py"): 3.0,
+            ("a.py", "c.py"): 2.0,
+            ("b.py", "a.py"): 1.0,
+        },
+    )
+
+    exported = htmlgraph.render_html(
+        graph,
+        {"a.py": 0.5, "b.py": 0.3, "c.py": 0.2},
+        communities.detect_communities(graph),
+        imports=set(),
+        options=htmlgraph.HtmlOptions(max_nodes=2, max_edges=1),
+    )
+
+    assert exported.edges_without_both_nodes == 1
+    assert exported.edges_over_bound == 1
+    assert "edges past the edge bound (${DATA.edgeBound})" in exported.text
+
+
+def test_a_self_reference_is_not_drawn():
+    graph = RefGraph(
+        nodes=("a.py", "b.py"),
+        edges={("a.py", "a.py"): 4.0, ("a.py", "b.py"): 1.0},
+    )
+
+    exported = htmlgraph.render_html(
+        graph,
+        {"a.py": 0.6, "b.py": 0.4},
+        communities.detect_communities(graph),
+        imports=set(),
+    )
+
+    assert exported.edges == 1
+    assert exported.edges_without_both_nodes == 1
+
+
+def test_the_payload_ships_no_field_the_script_never_reads():
+    graph = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
+
+    exported = htmlgraph.render_html(
+        graph,
+        {"a.py": 0.6, "b.py": 0.4},
+        communities.detect_communities(graph),
+        imports=set(),
+    )
+
+    assert '"rank"' not in exported.text
+
+
+def test_a_partition_from_another_graph_is_refused():
+    graph = RefGraph(nodes=("a.py",), edges={})
+    elsewhere = communities.detect_communities(RefGraph(nodes=("z.py",), edges={}))
+
+    with pytest.raises(ValueError, match="partition does not cover"):
+        htmlgraph.render_html(graph, {"a.py": 1.0}, elsewhere, imports=set())
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"max_nodes": 0}, "max_nodes takes a value from 1 through 1000"),
+        ({"max_nodes": htmlgraph.MAX_HTML_NODES + 1}, "max_nodes takes a value from 1 through"),
+        ({"max_edges": -1}, "max_edges takes a value from 0 through 5000"),
+        ({"max_edges": htmlgraph.MAX_HTML_EDGES + 1}, "max_edges takes a value from 0 through"),
+    ],
+    ids=["nodes-zero", "nodes-over", "edges-negative", "edges-over"],
+)
+def test_a_bound_outside_the_ceiling_is_refused(extractor, tmp_path, kwargs, message):
+    """The ceiling is refused by the service that owns it.
+
+    It used to be refused twice: once here in `_validate` and once in
+    `GraphService.html`, with the same two numbers written out in both
+    places. The copy in this module raised `ValueError`, which is not an
+    `AgentlessError`, so had the two ever drifted the surviving check would
+    have escaped the CLI's handler as a traceback rather than a refusal.
+    `_validate` is gone and this asserts the one rule that remains.
+    """
+    (tmp_path / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+    service = GraphService(extractor)
+
+    with pytest.raises(OperationFailed, match=message):
+        service.html(resolve_repo(tmp_path, None), **kwargs)
 
 
 def test_two_exports_of_one_graph_are_byte_identical():

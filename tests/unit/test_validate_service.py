@@ -39,7 +39,7 @@ from agentless_mcp.application.validate_service import (
 )
 from agentless_mcp.core import vote
 from agentless_mcp.core.sandbox import RunResult, RunStatus
-from agentless_mcp.util.errors import AtlasError
+from agentless_mcp.util.errors import AgentlessError
 
 PLUS = """\
 ### app.py
@@ -174,16 +174,16 @@ class TestLoadCandidates:
         assert [candidate.index for candidate in candidates] == [0, 1, 2, 3]
 
     def test_an_empty_directory_is_refused(self, candidates_dir):
-        with pytest.raises(AtlasError, match="no candidate files"):
+        with pytest.raises(AgentlessError, match="no candidate files"):
             load_candidates(candidates_dir({}))
 
     def test_a_missing_directory_is_refused(self, tmp_path):
-        with pytest.raises(AtlasError, match="not one"):
+        with pytest.raises(AgentlessError, match="not one"):
             load_candidates(tmp_path / "nowhere")
 
     def test_two_candidates_sharing_a_stem_are_refused(self, candidates_dir):
         directory = candidates_dir({"fix.txt": PLUS, "fix.json": '{"edits": []}'})
-        with pytest.raises(AtlasError, match="share the id"):
+        with pytest.raises(AgentlessError, match="share the id"):
             load_candidates(directory)
 
 
@@ -596,6 +596,34 @@ class TestNothingWasMeasured:
         assert not Verdict.ERROR.measured
         assert not Verdict.NOT_EVALUATED.measured
 
+    def test_a_candidate_the_budget_abandoned_is_not_a_command_that_never_started(self):
+        # `never_measured` feeds a warning that says the command could not be
+        # started at all. That is false about a command the run budget never
+        # reached: the patch applied, and nothing was run because the clock
+        # ran out. The BUDGET warning is what names those, and counting them
+        # here sent a reader to look for a spawn failure that did not happen.
+        report = ValidateReport(
+            header=a_run_where_nothing_started(count=1).header,
+            verdicts=(
+                CandidateVerdict(
+                    id="abandoned",
+                    index=0,
+                    apply_status=ApplyStatus.OK,
+                    apply_reasons=("applied, then not evaluated: the run's 60s budget expired",),
+                    equivalence_key="shared-key",
+                    regression=Verdict.NOT_EVALUATED,
+                    reproduction=None,
+                    duration=0.1,
+                    budget_truncated=True,
+                ),
+            ),
+        )
+
+        assert report.never_measured == ()
+        warnings = report.warnings()
+        assert not any("NOTHING WAS MEASURED" in warning for warning in warnings)
+        assert any(warning.startswith("BUDGET:") for warning in warnings)
+
     def test_an_unverified_baseline_does_not_claim_the_patches_failed(
         self, seeded_bug_repo, candidates_dir, validate
     ):
@@ -611,7 +639,7 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
     ):
         repo = seeded_bug_repo()
 
-        with pytest.raises(AtlasError, match="came from the repository under analysis"):
+        with pytest.raises(AgentlessError, match="came from the repository under analysis"):
             service.validate(
                 resolve_repo(repo, None),
                 ValidateRequest(
@@ -647,10 +675,127 @@ class TestTheRepositoryDoesNotNominateItsOwnJudge:
         assert report.any_passed
 
 
+# A conftest the fixture repository really carries, so the candidate below
+# would apply cleanly. The refusal has to be the reason it does not land, not
+# a search string that was never going to match.
+SEEDED_CONFTEST = "COLLECT_IGNORE = []\n"
+
+EDITS_CONFTEST = """\
+### conftest.py
+<<<<<<< SEARCH
+COLLECT_IGNORE = []
+=======
+COLLECT_IGNORE = ["check_regression.py"]
+>>>>>>> REPLACE
+"""
+
+
+class TestACandidateDoesNotRewriteItsOwnJudge:
+    """The write-side twin of the command-provenance rule."""
+
+    @pytest.fixture
+    def repo_with_conftest(self, seeded_bug_repo):
+        return seeded_bug_repo(overrides={"conftest.py": SEEDED_CONFTEST})
+
+    def test_a_candidate_editing_conftest_is_refused(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        report = validate(repo_with_conftest, candidates_dir({"06-conftest.txt": EDITS_CONFTEST}))
+        verdict = by_id(report)["06-conftest"]
+
+        assert verdict.apply_status is ApplyStatus.FAILED
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert verdict.equivalence_key is None
+        assert len(verdict.apply_reasons) == 1
+        assert "conftest.py" in verdict.apply_reasons[0]
+        assert "--allow-test-config-edits" in verdict.apply_reasons[0]
+
+    def test_the_opt_in_applies_the_same_candidate(
+        self, repo_with_conftest, candidates_dir, service, python_cmd
+    ):
+        report = service.validate(
+            resolve_repo(repo_with_conftest, None),
+            ValidateRequest(
+                candidates=candidates_dir({"06-conftest.txt": EDITS_CONFTEST}),
+                test_cmd=python_cmd("check_regression.py"),
+                timeout=60,
+                allow_test_config_edits=True,
+            ),
+        )
+
+        assert by_id(report)["06-conftest"].apply_status is ApplyStatus.OK
+
+    def test_an_ordinary_source_edit_needs_no_opt_in(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        report = validate(repo_with_conftest, candidates_dir({"01-plus.txt": PLUS}))
+
+        assert by_id(report)["01-plus"].apply_status is ApplyStatus.OK
+
+    def test_the_run_record_says_whether_the_opt_in_was_given(
+        self, repo_with_conftest, candidates_dir, validate
+    ):
+        # A verdict document read back weeks later has to say whether a
+        # candidate was allowed to rewrite its own judge.
+        report = validate(repo_with_conftest, candidates_dir({"01-plus.txt": PLUS}))
+
+        assert report.header.as_dict()["allow_test_config_edits"] is False
+
+    @pytest.mark.parametrize(
+        ("path", "named"),
+        [
+            ("conftest.py", True),
+            ("tests/unit/conftest.py", True),
+            (".github/workflows/ci.yml", True),
+            ("Makefile", True),
+            ("pyproject.toml", True),
+            ("src/app.py", False),
+            ("docs/conftest.py.md", False),
+            ("src/pytest_helpers.py", False),
+        ],
+    )
+    def test_which_paths_name_what_the_tests_run(self, path, named):
+        # A nested conftest collects exactly as hard as a root one, and a file
+        # whose name merely contains one of the words does not collect at all.
+        assert bool(validate_module.test_config_paths([path])) is named
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "./.github/workflows/ci.yml",
+            "src/../.github/workflows/ci.yml",
+            "tests/../.github/workflows/ci.yml",
+            "a/b/../../.github/dependabot.yml",
+            "./conftest.py",
+        ],
+    )
+    def test_a_path_spelled_around_the_guard_is_still_named(self, path):
+        # The applier resolves every path before it writes, so all of these
+        # land on a file that decides what runs. A prefix test on the raw
+        # string matched none of the `.github/` ones: the guard read the
+        # spelling rather than the file, which reads as enforcement and is
+        # not.
+        assert validate_module.test_config_paths([path])
+
+    @pytest.mark.parametrize(
+        "path",
+        ["docs/github/notes.md", "src/mygithub/x.py", "src/.github_helpers.py"],
+    )
+    def test_normalising_does_not_widen_the_guard(self, path):
+        assert validate_module.test_config_paths([path]) == ()
+
+
 class TestRunBudget:
-    def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
+    def test_a_baseline_the_budget_cut_short_says_which_bound_stopped_it(
         self, seeded_bug_repo, candidates_dir, validate, monkeypatch
     ):
+        """A timeout at 1s under `--timeout 60` is a fact about the budget.
+
+        The baseline command here is clamped to the one second the run budget
+        had left, and it times out there. Reported as a bare "timed out after
+        1.0s" it reads as a fact about the suite, so the detail names the
+        bound and the warning names the run that imposed it.
+        """
         moments = iter((0.0, 0.0, 1.0, 1.0))
         current = 0.0
 
@@ -676,11 +821,129 @@ class TestRunBudget:
 
         assert seen_timeouts == [1.0]
         assert report.header.baseline is BaselineStatus.UNVERIFIED
+        assert report.header.budget_truncated
+        assert "bounded by the run's remaining budget" in report.header.baseline_detail
+        assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
+        assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
+        assert not report.any_passed
+        assert any(warning.startswith("BUDGET:") for warning in report.warnings())
+        # Nothing was abandoned: the baseline ran every repeat it was asked
+        # for and answered UNVERIFIED. The flag is about work not reached.
+        assert not report.deadline_expired
+
+    def test_the_candidates_a_spent_budget_did_not_reach_are_not_evaluated(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """The budget expires after a green baseline and before any candidate."""
+        moments = iter((0.0, 1.0, 2.0, 20.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = (timeout, passthrough_env)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir(FOUR_CANDIDATES),
+            run_timeout=10,
+        )
+
+        assert report.header.baseline is BaselineStatus.OK
         assert report.deadline_expired
         assert all(verdict.apply_status is ApplyStatus.NOT_EVALUATED for verdict in report.verdicts)
         assert all(verdict.regression is Verdict.NOT_EVALUATED for verdict in report.verdicts)
         assert not report.any_passed
         assert any("DEADLINE" in warning for warning in report.warnings())
+
+    def test_a_candidate_that_applied_before_the_budget_ran_out_says_it_applied(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """ "Applied, then unmeasured" is not "the patch did not apply".
+
+        The budget expires between the apply and the test command. Reporting
+        `apply_status=not_evaluated` made the vote exclude the candidate with
+        "the patch did not apply", which sent an agent to fix a patch that
+        had just landed cleanly.
+        """
+        moments = iter((0.0, 1.0, 2.0, 3.0, 4.0, 20.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = (timeout, passthrough_env)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS}),
+            run_timeout=10,
+        )
+
+        (verdict,) = report.verdicts
+        assert verdict.apply_status is ApplyStatus.OK
+        assert verdict.equivalence_key
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert verdict.budget_truncated
+        assert "applied, then not evaluated" in verdict.apply_reasons[0]
+        assert report.deadline_expired
+
+        excluded = dict(
+            vote.rank([v.as_vote_candidate() for v in report.verdicts], repro_valid=False).excluded
+        )
+        assert "did not apply" not in excluded["01-plus"]
+        assert "nothing was measured" in excluded["01-plus"]
+
+    def test_a_candidate_whose_slice_of_the_budget_is_too_small_is_not_evaluated(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """A fraction of a second measures nothing, so it buys no verdict.
+
+        The clamp had no floor, so a nearly-spent budget handed the command a
+        sliver and delivered the answer as `timeout` -- which `Verdict.measured`
+        counts, so the candidate entered the vote ladder on evidence the caller
+        never asked for.
+        """
+        moments = iter((0.0, 1.0, 2.0, 3.0, 4.0, 9.7))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        seen_timeouts = []
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = passthrough_env
+            seen_timeouts.append(timeout)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS}),
+            run_timeout=10,
+        )
+
+        # Only the baseline ran: 0.3s left is below the floor.
+        assert seen_timeouts == [9.0]
+        (verdict,) = report.verdicts
+        assert verdict.regression is Verdict.NOT_EVALUATED
+        assert not verdict.regression.measured
 
     def test_every_command_is_clamped_to_the_aggregate_time_left(
         self, seeded_bug_repo, candidates_dir, validate, python_cmd, monkeypatch
@@ -714,14 +977,18 @@ class TestRunBudget:
             run_timeout=10,
         )
 
-        assert seen_timeouts == [9.0, 7.0, 4.0, 2.0]
+        assert seen_timeouts == [9.0, 7.0, 5.0, 4.0]
         assert not report.deadline_expired
         assert report.any_passed
+        # Every bound came from the budget and every command finished inside
+        # it. A clamp that nothing ran into is not a truncation.
+        assert not report.header.budget_truncated
+        assert not any(verdict.budget_truncated for verdict in report.verdicts)
 
     def test_a_budget_that_is_not_positive_is_refused(
         self, seeded_bug_repo, candidates_dir, validate
     ):
-        with pytest.raises(AtlasError, match="positive number of seconds"):
+        with pytest.raises(AgentlessError, match="run_timeout must be at least 1"):
             validate(seeded_bug_repo(), candidates_dir({"01-plus.txt": PLUS}), run_timeout=0)
 
     def test_a_budget_nobody_spends_changes_nothing(
@@ -733,22 +1000,75 @@ class TestRunBudget:
         assert report.any_passed
 
 
+class TestTheRequestsNumbersAreCheckedInOnePlace:
+    """Every numeric field of the request, refused rather than coerced."""
+
+    # Refused before the candidates are even listed, so the repository and the
+    # candidate directory here are never read.
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            ({"jobs": 0}, f"jobs takes a value from 1 through {validate_module.MAX_JOBS}"),
+            (
+                {"jobs": validate_module.MAX_JOBS + 1},
+                f"jobs takes a value from 1 through {validate_module.MAX_JOBS}",
+            ),
+            ({"timeout": 0}, "timeout must be at least 1"),
+            ({"repeat_baseline": 0}, "repeat_baseline must be at least 1"),
+            ({"run_timeout": -5}, "run_timeout must be at least 1"),
+        ],
+    )
+    def test_a_bound_that_cannot_bound_anything_is_refused(
+        self, tmp_path, validate, field, expected
+    ):
+        with pytest.raises(AgentlessError, match=expected):
+            validate(tmp_path, tmp_path, **field)
+
+
+class TestTheCandidateSetIsBounded:
+    """A `--candidates` naming something else is refused, not run.
+
+    Every candidate file is read whole and each one costs two test runs, so
+    without a cap a mis-typed path turned into hours of suite over a source
+    tree. The aggregate time budget is opt-in; these two bounds are not.
+    """
+
+    def test_more_candidates_than_a_run_takes_are_refused(self, candidates_dir):
+        directory = candidates_dir(
+            {f"{index:04d}.txt": PLUS for index in range(validate_module.MAX_CANDIDATES + 1)}
+        )
+        with pytest.raises(AgentlessError, match="probably not a candidate set"):
+            load_candidates(directory)
+
+    def test_the_largest_accepted_candidate_set_still_loads(self, candidates_dir):
+        directory = candidates_dir(
+            {f"{index:04d}.txt": PLUS for index in range(validate_module.MAX_CANDIDATES)}
+        )
+        assert len(load_candidates(directory)) == validate_module.MAX_CANDIDATES
+
+    def test_a_candidate_larger_than_the_file_bound_is_refused(self, candidates_dir):
+        oversized = "#" * (validate_module.MAX_CANDIDATE_BYTES + 1)
+        directory = candidates_dir({"01-plus.txt": PLUS, "02-huge.txt": oversized})
+        with pytest.raises(AgentlessError, match="is not a patch"):
+            load_candidates(directory)
+
+
 class TestLoadVerdicts:
     def test_an_empty_document_is_refused(self):
-        with pytest.raises(AtlasError, match="empty"):
+        with pytest.raises(AgentlessError, match="empty"):
             load_verdicts("\n \n")
 
     def test_a_non_json_line_is_refused_with_its_number(self):
-        with pytest.raises(AtlasError, match=r"line 1 .* not valid JSON"):
+        with pytest.raises(AgentlessError, match=r"line 1 .* not valid JSON"):
             load_verdicts("not json at all\n")
 
     def test_a_document_that_does_not_start_with_a_run_record_is_refused(self):
-        with pytest.raises(AtlasError, match=r"must be a 'run' record"):
+        with pytest.raises(AgentlessError, match=r"must be a 'run' record"):
             load_verdicts(json.dumps({"record": "candidate", "id": "a"}) + "\n")
 
     def test_a_header_missing_repro_valid_is_refused_rather_than_defaulted(self):
         header = {"record": "run", "baseline": "ok", "test_cmd": "x", "repro_cmd": None}
-        with pytest.raises(AtlasError, match="repro_valid"):
+        with pytest.raises(AgentlessError, match="repro_valid"):
             load_verdicts(json.dumps(header) + "\n")
 
     def test_a_candidate_missing_its_apply_object_is_refused(self):
@@ -762,7 +1082,7 @@ class TestLoadVerdicts:
         candidate = {"record": "candidate", "id": "a", "index": 0, "regression": "passed"}
         text = json.dumps(header) + "\n" + json.dumps(candidate) + "\n"
 
-        with pytest.raises(AtlasError, match=r"no 'apply' object"):
+        with pytest.raises(AgentlessError, match=r"no 'apply' object"):
             load_verdicts(text)
 
 
@@ -789,6 +1109,46 @@ def document(*, header=None, candidate=None):
     """Render one header and one candidate record as a verdicts document."""
     records = [{**HEADER, **(header or {})}, {**CANDIDATE, **(candidate or {})}]
     return "".join(json.dumps(record) + "\n" for record in records)
+
+
+def stuffed(*candidates):
+    """Render one header and the given candidate records as a document."""
+    records = [HEADER, *({**CANDIDATE, **override} for override in candidates)]
+    return "".join(json.dumps(record) + "\n" for record in records)
+
+
+class TestOneIdIsOneCandidate:
+    """The reader guards identity, not only spelling.
+
+    The writer refuses two candidates sharing an id because one candidate's
+    verdict would appear to be the other's. A reader that accepts what the
+    writer refuses is a ballot anyone can stuff by concatenating two
+    documents, and `vote` counts cluster size.
+    """
+
+    def test_a_repeated_id_is_refused_with_both_lines(self):
+        text = stuffed({"id": "c1", "index": 0}, {"id": "c1", "index": 1})
+        with pytest.raises(AgentlessError, match=r"line 3: candidate id 'c1' was already read"):
+            load_verdicts(text)
+
+    def test_a_repeated_index_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}, {"id": "c2", "index": 0})
+        with pytest.raises(AgentlessError, match=r"line 3: candidate index 0 was already read"):
+            load_verdicts(text)
+
+    def test_a_second_run_record_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}) + json.dumps(HEADER) + "\n"
+        with pytest.raises(AgentlessError, match=r"line 3: a second 'run' record"):
+            load_verdicts(text)
+
+    def test_a_record_kind_this_build_does_not_know_is_refused(self):
+        text = stuffed({"id": "c1", "index": 0}, {"record": "summary", "id": "c2", "index": 1})
+        with pytest.raises(AgentlessError, match=r"line 3: 'record' is 'summary'"):
+            load_verdicts(text)
+
+    def test_distinct_candidates_still_read(self):
+        loaded = load_verdicts(stuffed({"id": "c1", "index": 0}, {"id": "c2", "index": 1}))
+        assert [candidate.id for candidate in loaded.candidates] == ["c1", "c2"]
 
 
 class TestVerdictValuesAreReadThroughTheirEnums:
@@ -820,7 +1180,7 @@ class TestVerdictValuesAreReadThroughTheirEnums:
         ],
     )
     def test_an_unrecognised_value_is_refused_with_its_line(self, label, text, expected):
-        with pytest.raises(AtlasError, match=expected):
+        with pytest.raises(AgentlessError, match=expected):
             load_verdicts(text)
 
     def test_a_recognised_document_still_reads(self):

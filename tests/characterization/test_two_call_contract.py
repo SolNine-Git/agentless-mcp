@@ -95,8 +95,9 @@ def test_the_expand_limit_reports_the_ids_it_did_not_expand(extractor, counter):
 
     expanded = SymbolService(extractor, Chars4Counter()).expand_symbols(ctx, ids, limit=10)
     assert len(expanded.cards) == 10
-    assert len(expanded.unresolved) == 2
-    assert all("per-call limit" in reason for _, reason in expanded.unresolved)
+    # The ids past the limit collapse to one counted row: naming each of them
+    # spends the answer's budget on the refusal instead of on the bodies.
+    assert expanded.unresolved == (("(2 ids)", "not expanded: the per-call limit is 10 symbols"),)
 
 
 class TestFairDegradation:
@@ -157,7 +158,7 @@ class TestFairDegradation:
         assert cut, "the tight budget cut nothing, so there is nothing to check"
         assert not whole or max(whole) <= min(cut)
 
-    def test_an_id_batch_too_large_to_seat_is_refused_by_name(self, tmp_path, extractor, counter):
+    def test_an_id_batch_too_large_to_seat_is_refused_by_count(self, tmp_path, extractor, counter):
         """More ids than one response can carry is answered, not half-answered."""
         wanted = EXPAND_MAX_SEATS + 5
         source = "\n\n\n".join(f"def f_{index}():\n    return {index}" for index in range(wanted))
@@ -168,7 +169,8 @@ class TestFairDegradation:
         result = SymbolService(extractor, counter).expand_symbols(ctx, ids, limit=wanted)
 
         assert len(result.cards) == EXPAND_MAX_SEATS
-        assert len(result.unresolved) == 5
+        assert len(result.unresolved) == 1
+        assert result.unresolved[0][0] == "(5 ids)"
         assert all("retry with at most" in reason for _, reason in result.unresolved)
         assert all(card.body for card in result.cards)
 
