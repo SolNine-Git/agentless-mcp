@@ -400,6 +400,7 @@
     "total": 2,
     "limit": 5,
     "omitted": 0,
+    "exhausted": false,
     "rows": [
       {
         "path": "tests/test_pricing.py",

@@ -145,7 +145,42 @@ class TestTestCompanions:
     def test_a_row_carries_a_span_and_the_files_it_covers(self):
         text = render.render_test_companions(self.listing())
 
-        assert "  tests/test_quote.py:12-18  covers core.py, book.py" in text
+        assert "  tests/test_quote.py:12-18  -- file references core.py, book.py" in text
+
+    def test_the_coverage_clause_names_the_file_not_the_span(self):
+        """The span is one symbol; the covered files are the whole file's.
+
+        Run together as "span covers a, b" the row promises those lines
+        mention every name beside them, which a test whose second function
+        reaches the second file does not do. The clause has to say which
+        extent it was measured over.
+        """
+        text = render.render_test_companions(self.listing())
+
+        assert "file references" in text
+        assert ":12-18  covers" not in text
+
+    def test_a_capped_walk_says_the_section_is_a_floor(self):
+        """A bounded walk that reads as a complete one is the failure the
+        flag exists to prevent: it reports a test as absent that nobody
+        looked for.
+        """
+        text = render.render_test_companions(self.listing(exhausted=True))
+
+        assert "node bound" in text
+        assert "floor rather than every test" in text
+
+    def test_an_empty_section_still_says_the_walk_was_capped(self):
+        """The empty section needs the note most. "No test exercises these
+        files" is the reading an agent stops on, and a capped walk did not
+        earn it.
+        """
+        text = render.render_test_companions(render.TestCompanionListing(exhausted=True))
+
+        assert "node bound" in text
+
+    def test_a_finished_walk_says_nothing_about_a_bound(self):
+        assert "node bound" not in render.render_test_companions(self.listing())
 
     def test_the_section_names_itself_before_its_first_row(self):
         text = render.render_test_companions(self.listing())

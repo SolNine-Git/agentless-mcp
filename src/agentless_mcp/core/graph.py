@@ -311,6 +311,11 @@ def build_graph(
     index_of_paths = PathIndex.build(known)
     edges: dict[tuple[str, str], float] = {}
     import_weight = RELATION_WEIGHTS["imports"] if relation_weights else IMPORT_EDGE_WEIGHT
+    # Both branches are 1.0 today, because ``RELATION_WEIGHTS["references"]``
+    # and the shipped reference weight happen to agree. Kept as a branch rather
+    # than folded away: it is the seam the two weightings meet at, exactly as
+    # ``import_weight`` above is, and raising the table entry is what makes it
+    # bite. Folding it would hide that the table no longer reaches this edge.
     reference_weight = RELATION_WEIGHTS["references"] if relation_weights else 1.0
 
     for facts in scan.files:

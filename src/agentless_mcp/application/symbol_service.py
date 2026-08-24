@@ -78,6 +78,15 @@ DEFAULT_EXPAND_LIMIT = 10
 # Directory names that mark a test tree. Matched as whole path segments by
 # :func:`is_test_path`, never as substrings: a substring rule reads ``spec``
 # out of ``introspection.py`` and ``test`` out of ``latest/``.
+#
+# ``spec`` and ``specs`` are here for RSpec and for the Jasmine-style trees
+# that name themselves that, and they are the entries that can misfire: a
+# repository that keeps OpenAPI or protocol documents under ``spec/`` has
+# those files read as tests. The cost is not cosmetic -- a test path is
+# excluded from :func:`~agentless_mcp.application.graph_service.health_report`
+# outright and ranks below production among shared-caller candidates -- so a
+# repository shaped that way sees them quietly leave both views. Splitting the
+# entry by language needs a language the path alone does not carry.
 TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs", "__tests__"})
 
 # Directory names that hold test data rather than code anyone calls. Kept

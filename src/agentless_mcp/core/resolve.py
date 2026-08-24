@@ -71,10 +71,6 @@ DEFAULT_MAX_VISITED = 20_000
 # typo, not a dependency knot, and the import pass drops that edge anyway.
 _SMALLEST_CYCLE = 2
 
-# Bases arrive as source text: `Generic[T]`, `enum.Enum`, `metaclass=ABCMeta`.
-# Only the last dotted component of the un-subscripted head is a name this
-# module can look up.
-
 
 class FileImports(Protocol):
     """The two facts import resolution reads off a file.

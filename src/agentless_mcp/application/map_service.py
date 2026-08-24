@@ -457,15 +457,28 @@ def companions_for(
     reach = flood(graph, wanted, backward=True, max_depth=TEST_COMPANION_DEPTH)
     depths = {row.path: row.depth for row in reach.reached}
 
+    # Everything a file at one depth could have come through: the targets, plus
+    # whatever the walk placed strictly nearer them. A one-hop test references
+    # a target directly; a two-hop test references the helper that does, and
+    # that helper is the file its span has to point at.
+    #
+    # Built once per depth rather than once per test file. The set depends only
+    # on the depth, so recomputing it per row walked the whole reach set again
+    # for every test in it -- quadratic in a reach set the flood bounds at
+    # `DEFAULT_MAX_FLOOD_VISITED`, on the hot path of every map. Accumulated as
+    # a running union rather than read from one bucket, so the meaning stays
+    # "every shallower file" if `TEST_COMPANION_DEPTH` is ever raised past two.
+    by_depth: dict[int, frozenset[str]] = {}
+    nearer = set(wanted)
+    for hops in sorted(set(depths.values())):
+        by_depth[hops] = frozenset(nearer)
+        nearer.update(other for other, other_hops in depths.items() if other_hops == hops)
+
     rows: list[render.TestCompanion] = []
     for path, depth in depths.items():
         if not is_test_path(path):
             continue
-        # Everything this file could have come through: the targets, plus
-        # whatever the walk placed strictly nearer them. A one-hop test
-        # references a target directly; a two-hop test references the helper
-        # that does, and that helper is the file its span has to point at.
-        closer = wanted | {other for other, hops in depths.items() if hops < depth}
+        closer = by_depth[depth]
         # `depths` is keyed by graph node and the graph's nodes are this
         # scan's files, so a missing key is a desynchronisation to raise on.
         found = _companion_reference(by_path[path], index, closer)
@@ -491,7 +504,12 @@ def companions_for(
             row.path,
         )
     )
-    return render.TestCompanionListing(rows=tuple(rows[:limit]), total=len(rows), limit=limit)
+    return render.TestCompanionListing(
+        rows=tuple(rows[:limit]),
+        total=len(rows),
+        limit=limit,
+        exhausted=reach.exhausted,
+    )
 
 
 def _companion_reference(

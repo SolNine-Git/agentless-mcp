@@ -323,6 +323,20 @@ IMPORT_FAN_OUT = {
 }
 
 
+# One test file whose two functions reach one target each. Every other fixture
+# here has a single referencing symbol per test, so this is the only shape that
+# separates "what the file reaches" from "what the reported span reaches".
+TWO_SPANS = {
+    "alpha.py": "def alpha(job):\n    return job\n",
+    "bravo.py": "def bravo(job):\n    return job\n",
+    "tests/test_split.py": (
+        "from alpha import alpha\nfrom bravo import bravo\n\n\n"
+        "def test_alpha():\n    assert alpha(1) == 1\n\n\n"
+        "def test_bravo():\n    assert bravo(2) == 2\n"
+    ),
+}
+
+
 def written(tmp_path, files):
     """Write a repository out and resolve it."""
     for relative, text in files.items():
@@ -557,7 +571,7 @@ class TestEveryRowCarriesARealSpan:
     def test_the_render_spells_the_span_the_way_the_contract_wants_it(self, spanned, maps):
         result = maps.build(spanned, MapRequest(max_files=1))
 
-        assert "  tests/test_app.py:10-12  covers app.py" in maps.render_text(result)
+        assert "  tests/test_app.py:10-12  -- file references app.py" in maps.render_text(result)
 
 
 class TestASeededFileCountsAsATarget:
@@ -611,3 +625,76 @@ class TestTheCompanionsTravelInBothForms:
         files = maps.build(repo, MapRequest(max_files=3, granularity=GRANULARITY_FILE))
 
         assert files.test_companions == symbols.test_companions
+
+
+class TestTheCompanionWalkReportsItsOwnBound:
+    """A walk that stopped looking must not read as a walk that found nothing.
+
+    The section is bounded twice and the two cuts are different facts. The row
+    cap trims after every test is found, so what it drops is counted. The
+    flood's node bound stops the search itself, so what it drops was never
+    seen and the total is a floor.
+    """
+
+    def test_a_finished_walk_reports_no_exhaustion(self, tmp_path, maps):
+        repo = written(tmp_path, MIXED_LANGUAGES)
+
+        result = maps.build(repo, MapRequest(max_files=3))
+
+        assert result.test_companions.exhausted is False
+
+    def test_a_capped_walk_says_so_in_the_listing(self, tmp_path, maps, monkeypatch):
+        """The bound is the flood's, so it is forced there rather than faked
+        on the listing: this pins the wiring, not the dataclass default.
+        """
+        real = map_service.flood
+        monkeypatch.setattr(
+            map_service,
+            "flood",
+            lambda *args, **kwargs: dataclasses.replace(real(*args, **kwargs), exhausted=True),
+        )
+        repo = written(tmp_path, MIXED_LANGUAGES)
+
+        result = maps.build(repo, MapRequest(max_files=3))
+
+        assert result.test_companions.exhausted is True
+        assert "node bound" in maps.render_text(result)
+
+    def test_the_json_carries_the_flag(self, tmp_path, maps):
+        repo = written(tmp_path, MIXED_LANGUAGES)
+
+        listed = maps.build(repo, MapRequest(max_files=3)).as_dict()["test_companions"]
+
+        assert listed["exhausted"] is False
+
+
+class TestCoversIsMeasuredOverTheWholeFile:
+    """A guard on a contract nothing else pins.
+
+    ``covers`` is the whole file's reach while the span is one symbol's, and
+    the two are deliberately different extents. Narrowing ``covers`` to the
+    chosen span would also change the ranking key in `companions_for`, which
+    sorts on how many targets a row covers -- so a later "tidy-up" that made
+    the two agree would silently reorder the section. Every existing fixture
+    has one referencing symbol per test file, so nothing else would catch it.
+    """
+
+    def test_a_file_whose_two_functions_split_the_targets_covers_both(self, tmp_path, maps):
+        repo = written(tmp_path, TWO_SPANS)
+
+        result = maps.build(repo, MapRequest(max_files=2))
+        row = companion(result, "tests/test_split.py")
+
+        assert row is not None
+        assert row.covers == ("alpha.py", "bravo.py")
+
+    def test_the_span_is_one_function_not_the_hull_of_both(self, tmp_path, maps):
+        """Which is exactly why the render must not read the span as the
+        evidence for every name in ``covers``.
+        """
+        repo = written(tmp_path, TWO_SPANS)
+
+        row = companion(maps.build(repo, MapRequest(max_files=2)), "tests/test_split.py")
+
+        assert row is not None
+        assert row.end - row.start < 4

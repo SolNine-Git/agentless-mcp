@@ -73,5 +73,5 @@ catalog.py  (rank 0.0462)
    16| def headline_sku(prices: PriceBook, tier: Tier) -> str  [py:catalog.py::headline_sku]
 
 tests exercising the files above:
-  tests/test_pricing.py:37-41  covers inventory.py, pricing.py, reports.py
-  tests/test_cli.py:13-19  covers cli.py, pricing.py
+  tests/test_pricing.py:37-41  -- file references inventory.py, pricing.py, reports.py
+  tests/test_cli.py:13-19  -- file references cli.py, pricing.py

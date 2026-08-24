@@ -298,11 +298,21 @@ class TestCompanionListing(_Bounded):
     :class:`SharedCallerListing` gives: the renderer is handed nothing else,
     and a section that cannot say what it left out is read as the complete
     set of tests for the files above it.
+
+    Two different cuts can shorten this section and they are not the same
+    fact. ``limit`` and ``omitted`` say the rows were trimmed *after* every
+    test was found, so what is missing is known and counted. ``exhausted``
+    says the backward walk stopped before it finished looking, so what is
+    missing was never counted and ``total`` is a floor rather than a total.
+    A reader told only the first reads a truncated walk as a complete one,
+    which is the failure :class:`~agentless_mcp.core.graph.Flood` carries the
+    flag to prevent.
     """
 
     rows: tuple[TestCompanion, ...] = ()
     total: int = 0
     limit: int = 0
+    exhausted: bool = False
 
     @property
     def shown(self) -> int:
@@ -315,6 +325,7 @@ class TestCompanionListing(_Bounded):
             "total": self.total,
             "limit": self.limit,
             "omitted": self.omitted,
+            "exhausted": self.exhausted,
             "rows": [row.as_dict() for row in self.rows],
         }
 
@@ -1597,18 +1608,46 @@ def render_test_companions(listing: TestCompanionListing) -> str:
     Each row is one test file: its span, then the ranked files it covers. The
     span comes first because it is the part a caller pastes into a read, and
     the covered files explain why the row is here at all.
+
+    The two are stated as separate clauses because they are measured over
+    different extents. The span is one referencing symbol; the covered files
+    are everything the *whole file* reaches. A row that ran them together as
+    "``path:50-60`` covers a, b, c" reads as a promise that lines 50 to 60
+    mention all three, and a test whose other function is what reaches ``a``
+    breaks that promise. Naming the file as the subject of the coverage
+    clause keeps the span honest about being an entry point rather than the
+    evidence for every name beside it.
     """
     if not listing.rows:
-        return ""
+        return "".join(_reach_exhausted_note(listing.exhausted))
 
     lines = ["tests exercising the files above:"]
     for row in listing.rows:
         covers = ", ".join(one_line(path) for path in row.covers)
         located = f"{one_line(row.path)}:{row.start}-{row.end}"
-        lines.append(f"  {located}  covers {covers}" if covers else f"  {located}")
+        lines.append(f"  {located}  -- file references {covers}" if covers else f"  {located}")
     if listing.omitted:
         lines.append(_omitted_line(listing.omitted, "test files", limit=listing.limit))
+    lines.extend(_reach_exhausted_note(listing.exhausted))
     return "\n".join(lines) + "\n"
+
+
+def _reach_exhausted_note(exhausted: bool) -> list[str]:
+    """Say that the walk behind this section stopped before it finished.
+
+    Returned as a list so the caller can splice it into either branch, for the
+    reason :func:`_unresolved_imports_note` gives: the empty section needs the
+    line more than the populated one does, because "no tests exercise these
+    files" is the reading an agent stops on, and a capped walk did not earn it.
+    """
+    if not exhausted:
+        return []
+    return [
+        (
+            "  note: the walk out to these tests hit its node bound before it "
+            "finished, so this section is a floor rather than every test"
+        )
+    ]
 
 
 def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:

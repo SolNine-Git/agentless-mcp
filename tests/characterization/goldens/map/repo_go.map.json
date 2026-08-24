@@ -171,6 +171,7 @@
     "total": 0,
     "limit": 5,
     "omitted": 0,
+    "exhausted": false,
     "rows": []
   }
 }

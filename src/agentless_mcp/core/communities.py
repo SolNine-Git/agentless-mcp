@@ -330,7 +330,11 @@ def community_hash(members: Sequence[str]) -> str:
     digest = hashlib.sha256()
     digest.update(HASH_VERSION.encode("utf-8"))
     digest.update(_HASH_SEPARATOR)
-    digest.update(_HASH_SEPARATOR.join(member.encode("utf-8") for member in sorted(members)))
+    # Deduplicated as well as sorted, so the digest is a function of the member
+    # *set* the way this docstring promises. Every partition this package builds
+    # already hands over distinct members, so nothing here changes today; the
+    # call is what keeps the promise true for a caller that does not.
+    digest.update(_HASH_SEPARATOR.join(member.encode("utf-8") for member in sorted(set(members))))
     return digest.hexdigest()
 
 
