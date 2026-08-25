@@ -7,8 +7,19 @@ that ``agentless_gate_mark.py`` writes for the calling session:
 * marker present -- exit 0, and the call proceeds;
 * an exact-file ``Grep`` -- exit 0 even without a marker, because the caller
   has already localized the search;
-* any broader ``Grep`` or ``Glob`` without a marker -- exit 2, which blocks
-  the call and returns this hook's stderr as a just-in-time instruction.
+* a ``Bash`` command that does not parse as a tree search -- exit 0, which is
+  most of them: a ``grep`` in a shell session usually filters the output of
+  the command before it;
+* any broader ``Grep``, ``Glob`` or tree-searching ``Bash`` command without a
+  marker -- exit 2, which blocks the call and returns this hook's stderr as a
+  just-in-time instruction.
+
+Search reaches this hook in two shapes and both are covered. A native tool
+names itself. A shell tool carries the search as a string, so ``Bash`` is read
+for the search rather than trusted for its name -- a harness that instructs
+the model to search with ``grep`` or ``rg`` inside ``Bash`` produces payloads
+whose tool name is always ``Bash``, and keying on ``Grep``/``Glob`` alone left
+that whole mode ungated.
 
 The gate fires once per session. ``agentless_gate_mark.py`` writes the marker
 only after an operation that localizes code structure; diagnostics and raw
@@ -35,6 +46,7 @@ import contextlib
 import hashlib
 import json
 import os
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -49,7 +61,15 @@ DENY = 2
 
 # The tools this gate governs. Anything else reaching this hook was matched by
 # a settings entry wider than the gate, and is allowed unchanged.
-SEARCH_TOOLS = frozenset({"Grep", "Glob"})
+#
+# Two families, because the search arrives in two shapes. A native tool names
+# itself, so the tool name is the whole decision. A shell tool carries the
+# search as a string, so the command has to be read. Keying on the native
+# names alone left the second shape ungated: a harness that tells the model to
+# search with `grep` inside `Bash` never reached this hook at all.
+NATIVE_SEARCH_TOOLS = frozenset({"Grep", "Glob"})
+SHELL_TOOLS = frozenset({"Bash"})
+SEARCH_TOOLS = NATIVE_SEARCH_TOOLS | SHELL_TOOLS
 
 DENY_MESSAGE = """Structural pass first: this session has not localized with agentless yet.
 
@@ -57,9 +77,11 @@ Call mcp__agentless__orient with operation="map" and focus seeds from the task \
 (file paths or symbol names). Escalate with mcp__agentless__symbols \
 operation="expand" on the stable ids it returns.
 
-Broad Grep and Glob unlock after that call. Grep scoped to one existing file \
-is already allowed; use broad text search afterwards for string literals, \
-error messages, config keys, and test names.
+Broad text search unlocks after that call, whether it runs as Grep, Glob, or \
+grep/rg/find inside Bash. A Grep scoped to one existing file is already \
+allowed, and so is a shell command that filters another command's output. Use \
+broad search afterwards for string literals, error messages, config keys, and \
+test names.
 """
 
 
@@ -95,6 +117,119 @@ def _exact_file_grep(payload: dict[str, object]) -> bool:
     cwd = Path(raw_cwd) if isinstance(raw_cwd, str) and raw_cwd else Path.cwd()
     candidate = path if path.is_absolute() else cwd / path
     return candidate.is_file()
+
+
+# Commands whose whole job is to search a tree. `grep` needs an explicit
+# recursive flag to walk one; `rg` walks the working directory by default, so
+# the two are classified by different rules below.
+_GREP_NAMES = frozenset({"grep", "egrep", "fgrep"})
+_RG_NAMES = frozenset({"rg", "ripgrep"})
+_FIND_NAMES = frozenset({"find", "fd", "fdfind"})
+_RECURSIVE_FLAGS = frozenset({"-r", "-R", "--recursive", "--dereference-recursive"})
+_FIND_SEARCH_FLAGS = frozenset({"-name", "-iname", "-path", "-ipath", "-regex", "-iregex"})
+# Splitting a command line here, not running one: these separate one command
+# from the next. A segment after `|` is a filter over the previous command's
+# output, which touches no repository file and is never denied.
+_PIPE = "|"
+_SEPARATORS = frozenset({"|", "||", "&&", ";", "&"})
+
+
+def _segments(tokens: list[str]) -> list[tuple[bool, list[str]]]:
+    """Split tokens into (is_pipe_filter, argv) commands.
+
+    ``is_pipe_filter`` marks a command reading the previous one's stdout. A
+    ``grep`` there filters console output rather than searching the tree, and
+    that is the common case in a shell session -- denying it would spend the
+    gate's whole credibility on false positives.
+    """
+    out: list[tuple[bool, list[str]]] = []
+    current: list[str] = []
+    piped = False
+    for token in tokens:
+        if token in _SEPARATORS:
+            out.append((piped, current))
+            piped = token == _PIPE
+            current = []
+            continue
+        current.append(token)
+    out.append((piped, current))
+    return [(is_pipe, argv) for is_pipe, argv in out if argv]
+
+
+def _paths_after_pattern(argv: list[str]) -> list[str]:
+    """Return the operands a search command was pointed at, pattern excluded."""
+    operands = [t for t in argv[1:] if not t.startswith("-")]
+    return operands[1:]
+
+
+def _bundled_recursive(token: str) -> bool:
+    """True for a short cluster such as ``-rn``.
+
+    Long options are excluded on purpose: ``--regexp`` contains an ``r`` and
+    means nothing of the sort.
+    """
+    return (
+        token.startswith("-")
+        and not token.startswith("--")
+        and len(token) > 1
+        and any(flag in token[1:] for flag in ("r", "R"))
+    )
+
+
+def _grep_walks_a_tree(argv: list[str]) -> bool:
+    """``grep`` reads stdin or its file operands; only ``-r`` makes it recurse."""
+    return any(t in _RECURSIVE_FLAGS or _bundled_recursive(t) for t in argv[1:])
+
+
+def _rg_walks_a_tree(argv: list[str], cwd: Path) -> bool:
+    """``rg`` walks the working directory unless pointed at a file."""
+    paths = _paths_after_pattern(argv)
+    return not paths or any((cwd / p).is_dir() for p in paths)
+
+
+def _searches_a_tree(argv: list[str], cwd: Path) -> bool:
+    """True only when *argv* parses cleanly as a search over a directory tree.
+
+    Every uncertain shape returns False. An operand resolving to neither an
+    existing file nor an existing directory is doubt, not evidence: the tokens
+    after a value-taking flag cannot be told from real operands without
+    reimplementing each tool's option table.
+    """
+    name = Path(argv[0]).name
+    if name in _GREP_NAMES:
+        return _grep_walks_a_tree(argv)
+    if name in _RG_NAMES:
+        return _rg_walks_a_tree(argv, cwd)
+    if name in _FIND_NAMES:
+        return any(token in _FIND_SEARCH_FLAGS for token in argv[1:])
+    return False
+
+
+def broad_shell_search(command: str, cwd: Path) -> bool:
+    """True when *command* unambiguously searches the repository tree.
+
+    Shell text cannot be parsed in general -- quoting, ``xargs``, subshells and
+    command substitution all defeat it -- so this answers only the question it
+    can answer honestly, and every other shape reads as False. Known shapes
+    that slip through and are accepted as the cost of that posture: ``git
+    grep``, a search built by ``xargs`` or a subshell, and any command whose
+    name reaches the shell through a variable.
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        # Unbalanced quoting. The command may not even run; do not guess.
+        return False
+    return any(
+        not is_pipe_filter and _searches_a_tree(argv, cwd)
+        for is_pipe_filter, argv in _segments(tokens)
+    )
+
+
+def _payload_cwd(payload: dict[str, object]) -> Path:
+    """Return the directory a relative operand in this payload resolves against."""
+    raw_cwd = payload.get("cwd")
+    return Path(raw_cwd) if isinstance(raw_cwd, str) and raw_cwd else Path.cwd()
 
 
 def _marker_storage_ready() -> bool:
@@ -142,6 +277,16 @@ def decide() -> int:
     if tool_name not in SEARCH_TOOLS:
         append_log({**entry, "event": "native_search_allowed", "reason": "not_a_search_tool"})
         return ALLOW
+    if tool_name in SHELL_TOOLS:
+        return _decide_shell(payload, session_id, entry)
+    return _decide_native(payload, session_id, entry, str(tool_name))
+
+
+def _decide_native(
+    payload: dict[str, object], session_id: str, entry: dict[str, object], tool_name: str
+) -> int:
+    """Decide one ``Grep`` or ``Glob`` payload, where the tool names itself."""
+    tool_input = payload.get("tool_input")
     pattern = tool_input.get("pattern") if isinstance(tool_input, dict) else None
     if not isinstance(pattern, str) or not pattern:
         append_log({**entry, "event": "native_search_allowed", "reason": "malformed_payload"})
@@ -158,6 +303,33 @@ def decide() -> int:
         return ALLOW
     reason = "glob_before_structure" if tool_name == "Glob" else "broad_grep_before_structure"
     append_log({**entry, "event": "denied", "reason": reason})
+    sys.stderr.write(DENY_MESSAGE)
+    return DENY
+
+
+def _decide_shell(payload: dict[str, object], session_id: str, entry: dict[str, object]) -> int:
+    """Decide one shell-tool payload, where the search is a string not a tool.
+
+    A session that routes search through the shell reaches the gate as one
+    opaque command, so the tool name says nothing and the command has to. The
+    marker is checked first: after unlock nothing here is parsed at all.
+    """
+    tool_input = payload.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if not isinstance(command, str) or not command:
+        append_log({**entry, "event": "native_search_allowed", "reason": "malformed_payload"})
+        return ALLOW
+    allow_reason = None
+    if marker_path(session_id).exists():
+        allow_reason = "already_unlocked"
+    elif not broad_shell_search(command, _payload_cwd(payload)):
+        allow_reason = "not_a_tree_search"
+    elif not _marker_storage_ready():
+        allow_reason = "marker_storage_unavailable"
+    if allow_reason is not None:
+        append_log({**entry, "event": "native_search_allowed", "reason": allow_reason})
+        return ALLOW
+    append_log({**entry, "event": "denied", "reason": "shell_search_before_structure"})
     sys.stderr.write(DENY_MESSAGE)
     return DENY
 

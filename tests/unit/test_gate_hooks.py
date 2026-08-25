@@ -245,6 +245,130 @@ def test_the_log_records_which_operation_was_refused(hooks, monkeypatch, tmp_pat
     ]
 
 
+# The Bash bypass (issue #33). A harness that tells the model to search with
+# `grep`/`rg`/`find` as shell strings produces payloads whose tool name is
+# always `Bash`, so a gate keyed on `Grep|Glob` never saw them.
+BASH_DENIED = [
+    ("rg with no path operand walks the cwd", "rg DEADLINE"),
+    ("rg pointed at a directory", "rg DEADLINE src"),
+    ("grep with a recursive flag", "grep -r DEADLINE ."),
+    ("grep with a bundled recursive cluster", "grep -rn DEADLINE ."),
+    ("grep with the long recursive flag", "grep --recursive DEADLINE ."),
+    ("find by name", "find . -name '*.py'"),
+    ("a tree search after && is still a tree search", "cd src && rg DEADLINE"),
+]
+BASH_ALLOWED = [
+    ("a pipe filter over another command's output", "cat notes.txt | grep DEADLINE"),
+    ("a pipe filter after a long pipeline", "git log --oneline | head -20 | grep fix"),
+    ("grep reading stdin", "grep DEADLINE"),
+    ("an ordinary command that is not a search", "python -m pytest -q"),
+    ("a bare listing", "ls -la"),
+    ("unbalanced quoting is doubt, not evidence", "rg 'DEADLINE"),
+    ("a long option that merely contains an r", "grep --regexp=DEADLINE notes.txt"),
+]
+
+
+@pytest.mark.parametrize(("label", "command"), BASH_DENIED, ids=[c[0] for c in BASH_DENIED])
+def test_a_bash_tree_search_is_denied_before_localization(
+    hooks, monkeypatch, tmp_path, label, command
+):
+    """The gate reads the command, because the tool name only ever says Bash."""
+    _ = label
+    check, _mark = hooks
+    (tmp_path / "src").mkdir(exist_ok=True)
+    payload = {
+        "session_id": "bash-deny",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.DENY
+
+
+@pytest.mark.parametrize(("label", "command"), BASH_ALLOWED, ids=[c[0] for c in BASH_ALLOWED])
+def test_bash_commands_that_are_not_tree_searches_pass(
+    hooks, monkeypatch, tmp_path, label, command
+):
+    """The false-positive budget: most shell `grep` filters output, not files.
+
+    Denying those would spend the gate's credibility on calls that touch no
+    repository file, so anything that does not parse cleanly as a tree search
+    is allowed.
+    """
+    _ = label
+    check, _mark = hooks
+    payload = {
+        "session_id": "bash-allow",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.ALLOW
+
+
+def test_a_bash_search_scoped_to_one_file_passes(hooks, monkeypatch, tmp_path):
+    """`rg PATTERN path/to/file` is the shell spelling of an exact-file Grep."""
+    check, _mark = hooks
+    target = tmp_path / "app.py"
+    target.write_text("DEADLINE = 1\n", encoding="utf-8")
+    payload = {
+        "session_id": "bash-file",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rg DEADLINE app.py"},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.ALLOW
+
+
+def test_bash_search_unlocks_with_the_same_marker(hooks, monkeypatch, tmp_path):
+    """One gate, one marker: a structural call frees the shell path too."""
+    check, mark = hooks
+    payload = {
+        "session_id": "bash-unlock",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rg DEADLINE"},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.DENY
+
+    call(
+        mark,
+        monkeypatch,
+        {
+            "session_id": "bash-unlock",
+            "tool_name": "mcp__agentless__orient",
+            "tool_input": {"operation": "map"},
+        },
+        mark.mark,
+    )
+
+    assert call(check, monkeypatch, payload, check.decide) == check.ALLOW
+
+
+def test_the_denial_names_the_shell_route_in_the_log(hooks, monkeypatch, tmp_path):
+    """A Bash denial is a different event from a Grep denial, and says so."""
+    check, _mark = hooks
+    log = tmp_path / "gate.jsonl"
+    monkeypatch.setenv(check.LOG_ENV, str(log))
+    payload = {
+        "session_id": "bash-log",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rg DEADLINE"},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.DENY
+
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [(r["event"], r["reason"]) for r in rows] == [
+        ("denied", "shell_search_before_structure")
+    ]
+
+
 def test_sessions_do_not_unlock_each_other(hooks, monkeypatch):
     check, mark = hooks
     call(

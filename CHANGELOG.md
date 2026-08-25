@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.6.6 -- 2026-08-25
+
+The gate covers search routed through the shell. Closes #33.
+
+### Fixed
+
+- **A `Bash` command that searches the tree is gated like a `Grep`.** The
+  PreToolUse matcher keyed on the tool names `Grep|Glob`, but a harness that
+  instructs the model to search with `grep`, `rg` or `find` as shell strings
+  produces payloads whose tool name is always `Bash`. Those never reached the
+  check hook, so in that mode the deny half of the gate was dormant and the
+  ordering constraint failed open. This is the gate's own rule -- condition on
+  the invariant, not a proxy -- applied to the gate itself: the invariant is
+  "no broad text search before localization" and two tool names were the
+  proxy. The recommended matcher is now `Grep|Glob|Bash`.
+- **The heuristic denies only what parses cleanly as a tree search.** `rg`
+  with no path operand or a directory operand, `grep` with a recursive flag
+  (including a bundled cluster such as `-rn`), and `find` with
+  `-name`/`-path`/`-regex`. Everything else passes: a pipe filter over another
+  command's output, `grep` reading stdin, a search scoped to one existing
+  file, a command that cannot be parsed, and any command that is not a search. Most
+  `grep` in a shell session filters console output and touches no repository
+  file, so that is the false-positive budget the rule is built around.
+- **One marker still governs both routes.** A structural call unlocks the
+  shell path and the native path together, and after unlock no command is
+  parsed at all.
+
+### Known gaps
+
+- **This half of the gate is a weaker guard and fails open by design.** Shell
+  text cannot be parsed in general. `git grep`, a search assembled through
+  `xargs` or a subshell, and any command whose name arrives through a variable
+  all pass unexamined. Denying on doubt would spend the gate's credibility on
+  calls that touch no repository file, so doubt reads as allow.
+- **The shell heuristic is unmeasured.** The paired benchmark behind the
+  "recommended install" claim covered the tool-name matchers. This rule has a
+  different error profile, and a Bash-first arm should be measured before the
+  claim is extended to it.
+
 ## 0.6.5 -- 2026-08-25
 
 The gate's two halves now agree on what counts as already localized, and every
