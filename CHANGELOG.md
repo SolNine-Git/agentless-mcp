@@ -91,6 +91,21 @@ what the focus reached.
   `run agentless-mcp index --repo <path> for performance`, matching the
   wording the empty-cache hint already used, with the path shell-quoted. (#38)
 
+- **A map budget says which unit it is counted in.** The tool description
+  advertised "a 2000-8000 token band" and the guide "2k-8k tokens" without
+  naming the counter. This package is model-free and its default estimator is
+  chars/4, so those are estimator tokens rather than a model's. Measured
+  2026-08-25 against `cl100k_base` on this package's own output, chars/4
+  counts 11-18% under: a focused map of 2383 real tokens estimates at 1949, a
+  fan-in of 570 at 504. These views are punctuation-dense with stable ids,
+  type annotations and path separators, and punctuation tokenizes to well
+  under four characters a token, so the estimator is furthest off exactly
+  where the output is densest -- an 8k budget can land near 9.4k real tokens.
+  No behaviour changed: the band stays in the unit the token regression pins
+  measure, which is why that unit was chosen. The description, the guide, the
+  service docstring and `Chars4Counter` now say so, and name `--counter
+  tiktoken` for a caller sizing a real context window.
+
 ### Added
 
 - **`PageRank.support`.** The set of files the walk can reach from the
