@@ -15,12 +15,20 @@ flowchart TD
     B -->|"green"| RP{"--repro-cmd given?"}
 
     RP -->|"passes on\nunpatched HEAD"| DNR["does_not_reproduce\nthe repro test pins nothing;\nrepro rung removed, regression still runs"]
-    RP -->|"fails on HEAD\n(good: it reproduces)"| RUN
-    RP -->|"none given"| RUN
+    RP -->|"fails on HEAD\n(good: it reproduces)"| PLAN
+    RP -->|"none given"| PLAN
+    DNR --> PLAN
 
-    RUN["Each candidate:\nfresh throwaway worktree at HEAD,\napply -> test, hard timeout,\nhang = FAILURE, checkout never touched"]
+    PLAN["Normalize every candidate against HEAD;\nbyte-identical resulting file states form\none execution group, while every id and vote remains"]
+    PLAN --> RUN["Each execution-group representative:\nfresh throwaway worktree at HEAD,\napply -> regression, hard timeout,\nhang = FAILURE, checkout never touched"]
 
-    RUN --> J["verdicts.jsonl\napply status, regression, reproduction,\nAST-equivalence key per candidate"]
+    RUN -->|"regression fails"| SKIP["reproduction = not_evaluated\nno reproduction command is spent"]
+    RUN -->|"regression passes and\nrepro is valid"| REPRO["run reproduction command"]
+    RUN -->|"no valid repro"| J
+    SKIP --> J
+    REPRO --> J
+
+    J["verdicts.jsonl\napply status, regression, reproduction,\nAST-equivalence key, execution_group, executed_as"]
 
     J --> V["vote: strongest non-empty tier wins"]
     V --> T1["regression + reproduction\nfixed the bug, broke nothing"]

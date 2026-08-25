@@ -88,8 +88,10 @@ agentless-mcp vote --verdicts verdicts.jsonl
 ```
 
 Patch candidates can use SEARCH/REPLACE text or the package's `edits.json`
-format. `validate` runs candidates against the repository tests, and `vote`
-ranks the candidates that pass.
+format. `validate` normalizes them against HEAD, runs byte-identical resulting
+file states once while preserving every candidate's vote, and skips a
+reproduction command when regression has already failed. `vote` ranks the
+candidates that pass.
 
 `lint --diff` runs the same checks over a branch's or a pull request's unified
 diff, so a change that already exists does not have to be hand-converted first.
@@ -294,11 +296,19 @@ the ordering is enforced.
 ### Structural-first gate (recommended Claude Code hooks)
 
 Prose asks for the structural pass. A hook enforces it. Two scripts in
-`contrib/hooks/` deny `Grep` and `Glob` until the session has made one
-`mcp__agentless__*` call, and unlock them permanently after that call. The
-constraint is an order, not a ban: once the gate opens, `Grep` keeps the one
-job a symbol map cannot do, which is string literals, error messages, config
-keys, and fixtures. The gate fires once per session and costs one denied call.
+`contrib/hooks/` deny repository-wide or directory-wide `Grep` and every
+`Glob` until the session has made a localizing Agentless call.
+`orient(map|path)`, `symbols(find|overview|expand|explain)`, and
+`find_referencing_symbols` unlock the session; diagnostics, raw reads,
+`symbols(locate)`, and the shape listings `orient(communities|cycles|diagram|health)`
+do not. The equivalent v1 tools unlock servers running the temporary
+compatibility surface. `Grep` scoped to one existing file remains available
+before unlock because the caller has already localized that search. The mark
+hook reads the call and not its result, so an Agentless call that errored
+still unlocks.
+The constraint is an order, not a ban: once the gate opens, broad `Grep` keeps
+the one job a symbol map cannot do, which is string literals, error messages,
+config keys, and fixtures.
 
 This is the recommended install rather than an optional extra. The server
 assumes the ordering mechanism lives client-side: the schemas it asks a client
@@ -379,15 +389,15 @@ on stdin and read the exit code:
 rm -rf /tmp/agentless_gate
 
 # No structural call yet: exit 2, and the denial text goes to stderr.
-echo '{"session_id":"probe","tool_name":"Grep"}' \
+echo '{"session_id":"probe","tool_name":"Grep","tool_input":{"pattern":"needle"}}' \
   | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
 
-# One structural call marks the session.
-echo '{"session_id":"probe","tool_name":"mcp__agentless__orient"}' \
+# One localizing structural call marks the session.
+echo '{"session_id":"probe","tool_name":"mcp__agentless__orient","tool_input":{"operation":"map"}}' \
   | python3 ~/.claude/hooks/agentless_gate_mark.py
 
 # Now the same Grep is allowed: exit 0, no output.
-echo '{"session_id":"probe","tool_name":"Grep"}' \
+echo '{"session_id":"probe","tool_name":"Grep","tool_input":{"pattern":"needle"}}' \
   | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
 
 rm -rf /tmp/agentless_gate
@@ -397,8 +407,9 @@ The first call prints the denial text and reports `exit=2`. The third call
 prints nothing and reports `exit=0`. Inside a session, a denied `Grep` shows
 as a blocked tool call, and the model receives the same denial text as an
 instruction to call `orient` first. The unlock marker is
-`/tmp/agentless_gate/<session_id>.ok`, so its presence tells you which sessions
-have passed the gate.
+`/tmp/agentless_gate/<sha256(session_id)>.json`; its receipt names the tool and
+operation that unlocked broad search without placing the untrusted session id
+in a filesystem path.
 
 **Both hooks fail open.** Malformed stdin, a payload with no session id, an
 unwritable `/tmp`, or any other internal error exits 0 and allows the call. A
