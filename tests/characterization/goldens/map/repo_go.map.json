@@ -19,8 +19,51 @@
   "unresolved_seeds": [],
   "files": [
     {
+      "path": "reports.go",
+      "rank": 0.486487,
+      "symbols": [
+        {
+          "line": 16,
+          "signature": "type ReportError",
+          "stable_id": "go:reports.go::ReportError",
+          "depth": 0
+        },
+        {
+          "line": 21,
+          "signature": "fn Error() -> string",
+          "stable_id": "go:reports.go::ReportError.Error",
+          "depth": 1
+        },
+        {
+          "line": 30,
+          "signature": "fn StockValue(inv *Inventory, prices *PriceBook, tier Tier) -> (float64, error)",
+          "stable_id": "go:reports.go::StockValue",
+          "depth": 0
+        },
+        {
+          "line": 47,
+          "signature": "fn ReorderReport(inv *Inventory, prices *PriceBook) -> (string, error)",
+          "stable_id": "go:reports.go::ReorderReport",
+          "depth": 0
+        },
+        {
+          "line": 72,
+          "signature": "fn formatRow(item Item, lineTotal float64) -> string",
+          "stable_id": "go:reports.go::formatRow",
+          "depth": 0
+        },
+        {
+          "line": 79,
+          "signature": "fn CheckReportInputs(inv *Inventory, prices *PriceBook) -> error",
+          "stable_id": "go:reports.go::CheckReportInputs",
+          "depth": 0
+        }
+      ],
+      "omitted": 0
+    },
+    {
       "path": "pricing.go",
-      "rank": 0.383929,
+      "rank": 0.282601,
       "symbols": [
         {
           "line": 17,
@@ -69,7 +112,7 @@
     },
     {
       "path": "inventory.go",
-      "rank": 0.356331,
+      "rank": 0.230912,
       "symbols": [
         {
           "line": 24,
@@ -118,49 +161,6 @@
           "signature": "fn AuditTrail() -> []string",
           "stable_id": "go:inventory.go::Inventory.AuditTrail",
           "depth": 1
-        }
-      ],
-      "omitted": 0
-    },
-    {
-      "path": "reports.go",
-      "rank": 0.25974,
-      "symbols": [
-        {
-          "line": 16,
-          "signature": "type ReportError",
-          "stable_id": "go:reports.go::ReportError",
-          "depth": 0
-        },
-        {
-          "line": 21,
-          "signature": "fn Error() -> string",
-          "stable_id": "go:reports.go::ReportError.Error",
-          "depth": 1
-        },
-        {
-          "line": 30,
-          "signature": "fn StockValue(inv *Inventory, prices *PriceBook, tier Tier) -> (float64, error)",
-          "stable_id": "go:reports.go::StockValue",
-          "depth": 0
-        },
-        {
-          "line": 47,
-          "signature": "fn ReorderReport(inv *Inventory, prices *PriceBook) -> (string, error)",
-          "stable_id": "go:reports.go::ReorderReport",
-          "depth": 0
-        },
-        {
-          "line": 72,
-          "signature": "fn formatRow(item Item, lineTotal float64) -> string",
-          "stable_id": "go:reports.go::formatRow",
-          "depth": 0
-        },
-        {
-          "line": 79,
-          "signature": "fn CheckReportInputs(inv *Inventory, prices *PriceBook) -> error",
-          "stable_id": "go:reports.go::CheckReportInputs",
-          "depth": 0
         }
       ],
       "omitted": 0

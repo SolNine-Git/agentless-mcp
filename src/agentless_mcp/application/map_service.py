@@ -236,9 +236,14 @@ class MapService:
 
         seeding = seed_weights(request.focus, scan, index)
         seeds = seeding.weights
-        ranking = personalized_pagerank(graph, seeds or None)
+        # Tests reach the code they exercise and are never what it is about,
+        # so they stay pure sources of rank and are reported below as
+        # companions instead. `companions_for` reads the same graph backwards
+        # to find them, which is the channel this keeps them in.
+        tests = {path for path in graph.nodes if is_test_path(path)}
+        ranking = personalized_pagerank(graph, seeds or None, pure_sources=tests)
         rank = ranking.rank
-        chosen = rank_order(rank)[: max(0, max_files)]
+        chosen = rank_order(rank, set(seeds))[: max(0, max_files)]
 
         # `chosen` is keyed the same way as `by_path` and `rank`: all three
         # come from this one scan, so a missing key is a desynchronisation

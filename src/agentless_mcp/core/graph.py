@@ -1,7 +1,7 @@
 """File-level relevance graph and personalized PageRank over it.
 
 The map primitive is a ranking, and the ranking is a random walk over "file A
-mentions a name file B defines". Three deliberate weightings shape it:
+mentions a name file B defines". Five deliberate weightings shape it:
 
 * **Log damping on common names.** A name referenced in fifty files says
   almost nothing about which file matters; a name referenced in two says a
@@ -18,6 +18,12 @@ mentions a name file B defines". Three deliberate weightings shape it:
 * **Import edges weighted 3x.** An import is a declared dependency rather
   than a coincidence of spelling, so it is worth several accidental name
   matches.
+* **The walk steps both ways.** Edges run referrer to definer, so a walk that
+  only follows them drains into whatever the repository imports most -- its
+  utility hubs -- whichever file the caller asked about. The walk therefore
+  also steps referrer-wards at ``BACKFLOW_WEIGHT``, which is what stops a
+  seeded map from padding rank two onward with high-centrality noise. The
+  graph stays directed; only this walk reads it as undirected.
 
 Personalization is how ``--focus`` works: seeds take the entire teleport mass,
 so rank flows outward from the files the caller named instead of being spread
@@ -51,6 +57,29 @@ from agentless_mcp.core.symbols import base_name
 DEFAULT_DAMPING = 0.85
 DEFAULT_EPSILON = 1e-6
 DEFAULT_MAX_ITERATIONS = 100
+
+# How much of a reference edge the ranking walk also carries backwards.
+#
+# Reference edges run referrer to definer, so a walk that only follows them
+# leaves any seed heading downhill into whatever that file imports. Those are
+# the repository's utility hubs -- a translation module, a logging module --
+# which every file imports and which are therefore high-rank under any
+# personalization. A seeded map used to answer with its seed at rank one and
+# that hub at rank two, which is a fact about the repository rather than an
+# answer to the question asked.
+#
+# Relatedness across a reference is not one-way: the files that mention a
+# symbol are as much "about" it as the files it mentions. The walk therefore
+# also steps referrer-wards, at half weight, because a definer is still the
+# stronger claim of the two. Half is a statement about which direction carries
+# more evidence, not a tuned constant: measured on 50 Loc-Bench V1 instances,
+# every weight from 0.2 to 1.0 beat 0.0 on MAP, nDCG@10, acc_any@1 and
+# acc_any@5, so the ranking improves across the range rather than at a point.
+#
+# The graph itself keeps its direction. A flood still answers "what does this
+# file reach" and ``reverse_adjacency`` still answers "who mentions this
+# file"; only the ranking walk reads the graph as undirected.
+BACKFLOW_WEIGHT = 0.5
 
 # An import is a declared edge, not an inferred one.
 IMPORT_EDGE_WEIGHT = 3.0
@@ -409,6 +438,24 @@ def _inheritance_targets(facts: FileFacts, index: RefIndex, known: frozenset[str
 
 
 @dataclass(frozen=True)
+class Convergence:
+    """When the power iteration stops: a tolerance, and a hard cap on passes.
+
+    One value rather than two arguments because the two are one decision. A
+    caller that tightens the tolerance without raising the cap has not asked
+    for a more exact ranking; it has asked for a run that reports itself
+    unconverged, and a signature that takes them together is the place a
+    reader sees that.
+    """
+
+    epsilon: float = DEFAULT_EPSILON
+    max_iterations: int = DEFAULT_MAX_ITERATIONS
+
+
+DEFAULT_CONVERGENCE = Convergence()
+
+
+@dataclass(frozen=True)
 class PageRank:
     """A ranking, and whether the power iteration behind it finished.
 
@@ -431,9 +478,9 @@ def personalized_pagerank(
     graph: RefGraph,
     seeds: Mapping[str, float] | None = None,
     *,
+    pure_sources: Set[str] = frozenset(),
     damping: float = DEFAULT_DAMPING,
-    epsilon: float = DEFAULT_EPSILON,
-    max_iterations: int = DEFAULT_MAX_ITERATIONS,
+    limits: Convergence = DEFAULT_CONVERGENCE,
 ) -> PageRank:
     """Rank the graph's files, teleporting to ``seeds`` instead of uniformly.
 
@@ -442,7 +489,18 @@ def personalized_pagerank(
     distribution, which is what makes a focused map stay focused instead of
     leaking rank into every leaf file.
 
-    A run that spends ``max_iterations`` without settling returns the vector
+    ``pure_sources`` names the files that must not gain from
+    ``BACKFLOW_WEIGHT``: the walk still follows their outgoing edges, and
+    nothing flows back along one. A test file is the case that matters. It
+    exercises the code it references and is never what that code is about, so
+    it belongs in the map's companion listing rather than in its ranking --
+    and a walk that stepped backwards into it would rank the suite above the
+    subject, because a test references many files and a leaf they reference
+    has nowhere else to send its rank. Which paths those are is a question
+    about naming conventions rather than about graphs, so the caller answers
+    it.
+
+    A run that spends ``limits.max_iterations`` without settling returns the vector
     it reached and says so on :attr:`PageRank.converged`, because a partial
     ranking rendered as a finished one is the failure this package exists to
     prevent.
@@ -452,7 +510,7 @@ def personalized_pagerank(
         return PageRank(rank={}, iterations=0, converged=True)
 
     personalization = _personalization(nodes, seeds)
-    adjacency = graph.adjacency()
+    adjacency = _walk_adjacency(graph, pure_sources)
     totals = {node: sum(weight for _, weight in adjacency[node]) for node in nodes}
 
     start = 1.0 / len(nodes)
@@ -460,7 +518,7 @@ def personalized_pagerank(
 
     iterations = 0
     converged = False
-    while iterations < max_iterations:
+    while iterations < limits.max_iterations:
         iterations += 1
         incoming = dict.fromkeys(nodes, 0.0)
         dangling = 0.0
@@ -480,16 +538,59 @@ def personalized_pagerank(
         }
         delta = sum(abs(updated[node] - rank[node]) for node in nodes)
         rank = updated
-        if delta < epsilon:
+        if delta < limits.epsilon:
             converged = True
             break
 
     return PageRank(rank=rank, iterations=iterations, converged=converged)
 
 
-def rank_order(rank: Mapping[str, float]) -> list[str]:
-    """Return the ranked paths, highest first, ties broken by path order."""
-    return sorted(rank, key=lambda path: (-rank[path], path))
+def _walk_adjacency(
+    graph: RefGraph, pure_sources: Set[str] = frozenset()
+) -> dict[str, tuple[tuple[str, float], ...]]:
+    """Return the adjacency the ranking walk uses: forward edges plus backflow.
+
+    An edge ``(a, b)`` of weight ``w`` contributes ``w`` from ``a`` to ``b``
+    and ``w * BACKFLOW_WEIGHT`` from ``b`` to ``a``. A pair joined in both
+    directions accumulates both contributions, so a mutual reference is a
+    heavier step than a one-way one -- which is what a mutual reference means.
+    An edge out of a path in ``pure_sources`` contributes its forward half
+    only, which is what keeps that path a pure source of rank.
+
+    Built in one pass over the edge map for the same reason
+    :meth:`RefGraph.adjacency` is: a per-node filter costs one walk of every
+    edge per node.
+    """
+    collected: dict[str, dict[str, float]] = {node: {} for node in graph.nodes}
+    for (source, target), weight in graph.edges.items():
+        forward = collected[source]
+        forward[target] = forward.get(target, 0.0) + weight
+        if BACKFLOW_WEIGHT > 0.0 and source not in pure_sources:
+            backward = collected[target]
+            backward[source] = backward.get(source, 0.0) + weight * BACKFLOW_WEIGHT
+    return {node: tuple(sorted(pairs.items())) for node, pairs in collected.items()}
+
+
+def rank_order(rank: Mapping[str, float], seeds: Set[str] = frozenset()) -> list[str]:
+    """Return the ranked paths, highest first, ties broken by path order.
+
+    A path in *seeds* leads the list, because a resolved seed is the file the
+    caller named and the walk is the map's guess about what else is relevant.
+    Direct evidence outranks inferred evidence, so the answer opens with what
+    was asked about rather than with whatever the walk happened to pool rank
+    on. Seeds are ordered among themselves by the same rank, so the rule
+    reorders the list and never invents an order of its own.
+
+    Without this the walk decides, and it does not always decide for the seed:
+    a seed whose own neighbourhood is small loses rank one to a better-connected
+    file nearby, which reads to the caller as the map ignoring the focus.
+    """
+    ordered = sorted(rank, key=lambda path: (-rank[path], path))
+    if not seeds:
+        return ordered
+    return [path for path in ordered if path in seeds] + [
+        path for path in ordered if path not in seeds
+    ]
 
 
 @dataclass(frozen=True)

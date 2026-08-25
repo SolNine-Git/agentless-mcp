@@ -445,7 +445,10 @@ class GraphService:
         return _Ranked(
             index=index,
             graph=built,
-            ranking=graph.personalized_pagerank(built),
+            ranking=graph.personalized_pagerank(
+                built,
+                pure_sources={path for path in built.nodes if is_test_path(path)},
+            ),
             imports=_import_pairs(scan),
         )
 

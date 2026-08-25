@@ -19,8 +19,63 @@
   "unresolved_seeds": [],
   "files": [
     {
+      "path": "reports.py",
+      "rank": 0.486487,
+      "symbols": [
+        {
+          "line": 8,
+          "signature": "REPORT_WIDTH = 72",
+          "stable_id": "py:reports.py::REPORT_WIDTH",
+          "depth": 0
+        },
+        {
+          "line": 9,
+          "signature": "SEPARATOR = \"-\" * REPORT_WIDTH",
+          "stable_id": "py:reports.py::SEPARATOR",
+          "depth": 0
+        },
+        {
+          "line": 12,
+          "signature": "class ReportError(Exception)",
+          "stable_id": "py:reports.py::ReportError",
+          "depth": 0
+        },
+        {
+          "line": 16,
+          "signature": "def stock_value(inventory: Inventory, prices: PriceBook, tier: Tier) -> Decimal",
+          "stable_id": "py:reports.py::stock_value",
+          "depth": 0
+        },
+        {
+          "line": 29,
+          "signature": "def reorder_report(inventory: Inventory, prices: PriceBook) -> str",
+          "stable_id": "py:reports.py::reorder_report",
+          "depth": 0
+        },
+        {
+          "line": 47,
+          "signature": "def _format_row(item: Item, line_total: Decimal) -> str",
+          "stable_id": "py:reports.py::_format_row",
+          "depth": 0
+        },
+        {
+          "line": 55,
+          "signature": "def check_report_inputs(inventory: Inventory, prices: PriceBook) -> None",
+          "stable_id": "py:reports.py::check_report_inputs",
+          "depth": 0
+        },
+        {
+          "line": 69,
+          "signature": "def summarise(inventory: Inventory, prices: PriceBook) -> dict[str, str]",
+          "stable_id": "py:reports.py::summarise",
+          "depth": 0
+        }
+      ],
+      "omitted": 0
+    },
+    {
       "path": "pricing.py",
-      "rank": 0.378066,
+      "rank": 0.271622,
       "symbols": [
         {
           "line": 6,
@@ -99,7 +154,7 @@
     },
     {
       "path": "inventory.py",
-      "rank": 0.362193,
+      "rank": 0.241892,
       "symbols": [
         {
           "line": 12,
@@ -177,61 +232,6 @@
           "line": 118,
           "signature": "def dump_inventory(inventory: Inventory, path: Path) -> None",
           "stable_id": "py:inventory.py::dump_inventory",
-          "depth": 0
-        }
-      ],
-      "omitted": 0
-    },
-    {
-      "path": "reports.py",
-      "rank": 0.25974,
-      "symbols": [
-        {
-          "line": 8,
-          "signature": "REPORT_WIDTH = 72",
-          "stable_id": "py:reports.py::REPORT_WIDTH",
-          "depth": 0
-        },
-        {
-          "line": 9,
-          "signature": "SEPARATOR = \"-\" * REPORT_WIDTH",
-          "stable_id": "py:reports.py::SEPARATOR",
-          "depth": 0
-        },
-        {
-          "line": 12,
-          "signature": "class ReportError(Exception)",
-          "stable_id": "py:reports.py::ReportError",
-          "depth": 0
-        },
-        {
-          "line": 16,
-          "signature": "def stock_value(inventory: Inventory, prices: PriceBook, tier: Tier) -> Decimal",
-          "stable_id": "py:reports.py::stock_value",
-          "depth": 0
-        },
-        {
-          "line": 29,
-          "signature": "def reorder_report(inventory: Inventory, prices: PriceBook) -> str",
-          "stable_id": "py:reports.py::reorder_report",
-          "depth": 0
-        },
-        {
-          "line": 47,
-          "signature": "def _format_row(item: Item, line_total: Decimal) -> str",
-          "stable_id": "py:reports.py::_format_row",
-          "depth": 0
-        },
-        {
-          "line": 55,
-          "signature": "def check_report_inputs(inventory: Inventory, prices: PriceBook) -> None",
-          "stable_id": "py:reports.py::check_report_inputs",
-          "depth": 0
-        },
-        {
-          "line": 69,
-          "signature": "def summarise(inventory: Inventory, prices: PriceBook) -> dict[str, str]",
-          "stable_id": "py:reports.py::summarise",
           "depth": 0
         }
       ],

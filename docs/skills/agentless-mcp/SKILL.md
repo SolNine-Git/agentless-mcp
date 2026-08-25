@@ -55,10 +55,11 @@ A skill that consumes this server should carry the five tools --
 `mcp__agentless__orient`, `mcp__agentless__symbols`,
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities` -- in its own allowed-tools and call them
-directly. This server has no write, exec or fetch tools. A client may publish
-these tools as deferred schemas, so a dispatch prompt should name them and the
-order to use them in. The structural-first gate in `contrib/hooks/` enforces
-that order: it denies Grep and Glob until one structural call has happened.
+directly. This server has no write, exec or fetch tools. These tools ask to be
+loaded eagerly by a client that defers schemas, so an agent knows them before
+it chooses; a dispatch prompt should still name them and the order to use them
+in. The structural-first gate in `contrib/hooks/` enforces that order: it
+denies Grep and Glob until one structural call has happened.
 See `agentless-mcp guide --section claude-code-specifics` for both.
 
 These are the v2 names, the default surface. A server started with

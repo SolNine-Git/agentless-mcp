@@ -13,14 +13,14 @@
   "symbols_included": 51,
   "symbols_available": 51,
   "files_ranked": 13,
-  "rendered_tokens": 1144,
+  "rendered_tokens": 1132,
   "rank_converged": true,
   "seeds": [],
   "unresolved_seeds": [],
   "files": [
     {
       "path": "pricing.py",
-      "rank": 0.24817,
+      "rank": 0.169617,
       "symbols": [
         {
           "line": 6,
@@ -99,7 +99,7 @@
     },
     {
       "path": "inventory.py",
-      "rank": 0.176993,
+      "rank": 0.136043,
       "symbols": [
         {
           "line": 12,
@@ -183,8 +183,65 @@
       "omitted": 0
     },
     {
+      "path": "cli.py",
+      "rank": 0.10729,
+      "symbols": [
+        {
+          "line": 12,
+          "signature": "def run_cli(inventory: Inventory, prices: PriceBook, command: str) -> str",
+          "stable_id": "py:cli.py::run_cli",
+          "depth": 0
+        }
+      ],
+      "omitted": 0
+    },
+    {
+      "path": "audit.py",
+      "rank": 0.095807,
+      "symbols": [
+        {
+          "line": 9,
+          "signature": "AUDIT_HEADER = \"audit\"",
+          "stable_id": "py:audit.py::AUDIT_HEADER",
+          "depth": 0
+        },
+        {
+          "line": 12,
+          "signature": "def audit_lines(inventory: Inventory, prices: PriceBook, customer: Customer) ...",
+          "stable_id": "py:audit.py::audit_lines",
+          "depth": 0
+        }
+      ],
+      "omitted": 0
+    },
+    {
+      "path": "orders.py",
+      "rank": 0.09018,
+      "symbols": [
+        {
+          "line": 7,
+          "signature": "ORDER_PREFIX = \"PO\"",
+          "stable_id": "py:orders.py::ORDER_PREFIX",
+          "depth": 0
+        },
+        {
+          "line": 10,
+          "signature": "def raise_order(inventory: Inventory, prices: PriceBook, number: int) -> str",
+          "stable_id": "py:orders.py::raise_order",
+          "depth": 0
+        },
+        {
+          "line": 16,
+          "signature": "def order_count(inventory: Inventory) -> int",
+          "stable_id": "py:orders.py::order_count",
+          "depth": 0
+        }
+      ],
+      "omitted": 0
+    },
+    {
       "path": "customers.py",
-      "rank": 0.074737,
+      "rank": 0.081495,
       "symbols": [
         {
           "line": 7,
@@ -215,7 +272,7 @@
     },
     {
       "path": "reports.py",
-      "rank": 0.065621,
+      "rank": 0.07791,
       "symbols": [
         {
           "line": 8,
@@ -269,71 +326,8 @@
       "omitted": 0
     },
     {
-      "path": "shipping.py",
-      "rank": 0.059407,
-      "symbols": [
-        {
-          "line": 5,
-          "signature": "MAX_PER_CRATE = 24",
-          "stable_id": "py:shipping.py::MAX_PER_CRATE",
-          "depth": 0
-        },
-        {
-          "line": 8,
-          "signature": "def crates_for(item: Item) -> int",
-          "stable_id": "py:shipping.py::crates_for",
-          "depth": 0
-        },
-        {
-          "line": 14,
-          "signature": "def shipment_plan(inventory: Inventory) -> list[tuple[str, int]]",
-          "stable_id": "py:shipping.py::shipment_plan",
-          "depth": 0
-        }
-      ],
-      "omitted": 0
-    },
-    {
-      "path": "cli.py",
-      "rank": 0.056243,
-      "symbols": [
-        {
-          "line": 12,
-          "signature": "def run_cli(inventory: Inventory, prices: PriceBook, command: str) -> str",
-          "stable_id": "py:cli.py::run_cli",
-          "depth": 0
-        }
-      ],
-      "omitted": 0
-    },
-    {
-      "path": "orders.py",
-      "rank": 0.054182,
-      "symbols": [
-        {
-          "line": 7,
-          "signature": "ORDER_PREFIX = \"PO\"",
-          "stable_id": "py:orders.py::ORDER_PREFIX",
-          "depth": 0
-        },
-        {
-          "line": 10,
-          "signature": "def raise_order(inventory: Inventory, prices: PriceBook, number: int) -> str",
-          "stable_id": "py:orders.py::raise_order",
-          "depth": 0
-        },
-        {
-          "line": 16,
-          "signature": "def order_count(inventory: Inventory) -> int",
-          "stable_id": "py:orders.py::order_count",
-          "depth": 0
-        }
-      ],
-      "omitted": 0
-    },
-    {
       "path": "billing.py",
-      "rank": 0.047293,
+      "rank": 0.062097,
       "symbols": [
         {
           "line": 9,
@@ -351,44 +345,50 @@
       "omitted": 0
     },
     {
-      "path": "audit.py",
-      "rank": 0.046227,
+      "path": "warehouse.py",
+      "rank": 0.05874,
       "symbols": [
         {
-          "line": 9,
-          "signature": "AUDIT_HEADER = \"audit\"",
-          "stable_id": "py:audit.py::AUDIT_HEADER",
+          "line": 6,
+          "signature": "FLOOR_LABEL = \"floor\"",
+          "stable_id": "py:warehouse.py::FLOOR_LABEL",
           "depth": 0
         },
         {
-          "line": 12,
-          "signature": "def audit_lines(inventory: Inventory, prices: PriceBook, customer: Customer) ...",
-          "stable_id": "py:audit.py::audit_lines",
+          "line": 9,
+          "signature": "def floor_summary(inventory: Inventory) -> str",
+          "stable_id": "py:warehouse.py::floor_summary",
+          "depth": 0
+        },
+        {
+          "line": 16,
+          "signature": "def is_busy(inventory: Inventory) -> bool",
+          "stable_id": "py:warehouse.py::is_busy",
           "depth": 0
         }
       ],
       "omitted": 0
     },
     {
-      "path": "catalog.py",
-      "rank": 0.046227,
+      "path": "shipping.py",
+      "rank": 0.051305,
       "symbols": [
         {
           "line": 5,
-          "signature": "CATALOG_TITLE = \"Warehouse catalogue\"",
-          "stable_id": "py:catalog.py::CATALOG_TITLE",
+          "signature": "MAX_PER_CRATE = 24",
+          "stable_id": "py:shipping.py::MAX_PER_CRATE",
           "depth": 0
         },
         {
           "line": 8,
-          "signature": "def catalogue_lines(prices: PriceBook, tier: Tier) -> list[str]",
-          "stable_id": "py:catalog.py::catalogue_lines",
+          "signature": "def crates_for(item: Item) -> int",
+          "stable_id": "py:shipping.py::crates_for",
           "depth": 0
         },
         {
-          "line": 16,
-          "signature": "def headline_sku(prices: PriceBook, tier: Tier) -> str",
-          "stable_id": "py:catalog.py::headline_sku",
+          "line": 14,
+          "signature": "def shipment_plan(inventory: Inventory) -> list[tuple[str, int]]",
+          "stable_id": "py:shipping.py::shipment_plan",
           "depth": 0
         }
       ],

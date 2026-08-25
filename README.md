@@ -265,29 +265,31 @@ well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
 `read_slice`, `find_symbol`, `explain_symbol`, `analyze_structure`, and
 `resolve_locations`.
 
-### Deferred tool schemas
+### Eager tool schemas
 
 Approval is not the only way a session loses the server. Claude
 Code can also defer an MCP server's tools: they arrive as bare names, and the
 schema is fetched before the tool can be called. A deferred tool is not a
 callable tool, and `Grep` loads from the first turn.
 
-These five tools ship deferred, and nothing here asks a client to preload
-them. A client that defers holds none of their schemas until the session needs
-one, and loads it on demand at that moment. In Claude Code the mechanism is
-tool search: one `ToolSearch` call naming the tools makes those schemas
-callable for the rest of the session, and the client issues it when the model
-reaches for a deferred tool.
+These five tools therefore publish an `alwaysLoad` hint, which asks a
+deferring client to hold all five schemas from the first turn. The reason is
+what the hint buys at the moment the gate in the next section fires: the
+denial redirects an agent that already knows these tools exist and what each
+one answers, rather than one meeting them for the first time because it was
+blocked. Loading a schema on demand makes the tool callable; loading it up
+front makes the tool *considered*.
 
-What decides whether that moment arrives is the ordering, not the schema
-budget. With the gate in the next section installed, the first native search
-of a code-locating session is denied and redirected to `orient`, and the
-schema loads there. Without it, nothing interrupts a model that reaches for
-`Grep` first, so install the gate.
+The obvious objection is that preloading five schemas costs context in every
+session. Measured on the benchmark below, it does not: the deferred arm spent
+*more* than the eager arm on cache-creation tokens, cache-read tokens, turns,
+output tokens and wall time, though no interval excluded zero. Deferral does
+not keep the schemas out of context; it makes the agent spend a round trip
+fetching them first.
 
-Releases 0.5.0 through 0.6.1 published an `alwaysLoad` hint that asked a
-deferring client for all five schemas at session start. 0.6.2 removed it: it
-charged every session a context cost for adoption the gate enforces directly.
+The gate remains the load-bearing part either way. Ordering is what earned the
+measured gains; the hint only ensures the agent understands its options before
+the ordering is enforced.
 
 ### Structural-first gate (recommended Claude Code hooks)
 
@@ -299,9 +301,9 @@ job a symbol map cannot do, which is string literals, error messages, config
 keys, and fixtures. The gate fires once per session and costs one denied call.
 
 This is the recommended install rather than an optional extra. The server
-assumes the ordering mechanism lives client-side, which is why it no longer
-asks for eager schema loading. With the gate in place the denied call is also
-what loads the deferred schemas, so deferral costs the session nothing.
+assumes the ordering mechanism lives client-side: the schemas it asks a client
+to preload say what the tools do, and the gate is what decides when they are
+reached for.
 
 The measured reason is a paired comparison on SWE-Explore-Bench, run against
 agentless-mcp 0.6.1 with n=60 issue-localization tasks on Sonnet. An arm
@@ -313,11 +315,13 @@ ordering discipline in the free-choice arm. Read the numbers as evidence for
 the ordering, not as a prediction for your repository: the measured arm removed
 the native search tools, and this gate only defers them.
 
-The shipped configuration -- this gate against this release's deferred
-schemas -- was then measured as its own arm. It matches the restricted arm
-within every confidence interval except precision, keeps native search after
-unlock, and matches its recall@100 (0.1345 against 0.1351), so the ordering
-survives deferral with the tools still available.
+Both schema policies were then measured as their own arms, on the same 60
+tasks with the same gate and prompt, differing only in whether the client
+preloaded the schemas. They are indistinguishable on every metric except
+`recall@100`, where deferral led by 0.017 -- one significant result among
+roughly 22 tests, and the tools-only arm holds the highest `recall@100` of any
+arm while being eager-loaded, so the exception does not track schema policy.
+Eager loading is what ships; the gate is what earned the gains in either case.
 
 How that comparison is run, which guardrails it carries and why, and what the
 gated arm itself measured are in
@@ -419,18 +423,19 @@ configuring an agent, or paste it into `CLAUDE.md` or a dispatch prompt.
 **Seed the map with what the task already names.** `orient(operation="map",
 focus=[...])` ranks every file by personalized PageRank over the reference
 graph, and the seeds take the whole teleport mass, so the ranking flows
-outward from what you name. A seed resolves as a repository-relative path
-(`src/billing/invoice.py`), a path suffix (`invoice.py`), a bare module stem
-(`invoice`), a qualified symbol name (`Invoice.total`), or a bare symbol name
-(`quote`). Lift them from the task: the file in the traceback, the class in
-the ticket, the function in the error message. Each seed carries one vote,
-split across the files it matched, so one exact path outweighs a name that
-matched twenty files. A seed that matches nothing does not fail the call and
-does not disappear. It comes back in `unresolved_seeds`, and as a `# note:`
-line above the map. Read that note: the ranking under it is not focused the
-way you asked. The usual cause is that the name is a parameter, an attribute
-or a DSL keyword rather than a declared symbol, and
-`symbols(operation="find")` says which.
+outward from what you name. A seed that resolved leads the ranked list, and
+the files that reference it rank above the utilities it imports. A seed
+resolves as a repository-relative path (`src/billing/invoice.py`), a path
+suffix (`invoice.py`), a bare module stem (`invoice`), a qualified symbol
+name (`Invoice.total`), or a bare symbol name (`quote`). Lift them from the
+task: the file in the traceback, the class in the ticket, the function in
+the error message. Each seed carries one vote, split across the files it
+matched, so one exact path outweighs a name that matched twenty files. A
+seed that matches nothing does not fail the call and does not disappear. It
+comes back in `unresolved_seeds`, and as a `# note:` line above the map.
+Read that note: the ranking under it is not focused the way you asked. The
+usual cause is that the name is a parameter, an attribute or a DSL keyword
+rather than a declared symbol, and `symbols(operation="find")` says which.
 
 **Escalate one rung at a time, and stop at the rung that answers.** Each rung
 costs more than the one above it.
@@ -438,8 +443,8 @@ costs more than the one above it.
 1. `orient(operation="map")` answers *where this lives*. It returns ten ranked
    files by default however large the repository is: it localizes, it does not
    enumerate. Below the ranked files it may list the tests that exercise them,
-   which the ranking itself cannot surface, because a test file carries no
-   inbound reference weight.
+   which the ranking itself does not surface, because a test file is held out
+   of the ranking as a pure source of rank.
 2. `symbols(operation="overview", paths=[...])` answers *what this file
    declares*. Signatures with the bodies elided, plus the stable-id pattern for
    that file. It is cheap, and it replaces reading the file.

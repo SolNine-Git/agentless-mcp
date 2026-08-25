@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.6.3 -- 2026-08-25
+
+One ranking fix and one reversal: the map answers with relatives of the seed
+instead of the repository's hubs, and the five MCP tools ask for eager schema
+loading again.
+
+### Fixed
+
+- **The ranking walk steps both ways, so a seeded map stops padding rank two
+  onward with high-centrality noise.** Reference edges run referrer to
+  definer, so a walk that only followed them left every seed heading downhill
+  into whatever that file imports -- the utility modules every file imports
+  and which therefore rank high under any personalization. `map --focus
+  UnicodeUsernameValidator` on Django answered with the class's own file at
+  rank one and `django/utils/translation/__init__.py`, 30-plus irrelevant
+  symbols of it, at rank two. The walk now also steps referrer-wards at half
+  weight (`BACKFLOW_WEIGHT`), which is what makes the files that *use* a seed
+  reachable from it: before, a file referencing the seed scored exactly zero,
+  the same as a file with no connection to it at all. The graph itself keeps
+  its direction -- `flood` and `reverse_adjacency` are unchanged; only the
+  ranking walk reads it as undirected.
+- **A resolved seed leads the ranked list.** It is the file the caller named,
+  and the walk is the map's guess about what else is relevant, so direct
+  evidence opens the answer. This was already wrong before the change above:
+  on 5 of 24 seeded Loc-Bench instances the walk gave rank one to some other
+  file, which reads as the map ignoring the focus.
+- **Test files are held out of the ranking rather than merely absent from
+  it.** The test companion section exists because a test was a pure source of
+  rank, which backflow would have undone -- a suite references many files, and
+  a leaf they reference has nowhere else to send its rank, so tests would have
+  ranked above their subjects. `personalized_pagerank` now takes the pure
+  sources explicitly and the map passes its test paths. Measured: without the
+  rule, test files took 30 of 250 top-5 slots on the Loc-Bench subset, against
+  9 before the change; with it, 7.
+- **Measured on 50 Loc-Bench V1 instances, deterministic and model-free.**
+  Seeded: `acc_any@5` 0.540 to 0.660, `nDCG@10` 0.370 to 0.430, MAP 0.295 to
+  0.374. Unseeded: `acc_any@5` 0.340 to 0.480, `nDCG@10` 0.194 to 0.253, MAP
+  0.136 to 0.199. Paired over instances with a 10,000-sample bootstrap, MAP
+  gains +0.079 (95% CI +0.029 to +0.132, 29 instances better and 10 worse) and
+  `nDCG@10` +0.060 (95% CI +0.009 to +0.112). `recall@10` moves +0.006 (95% CI
+  -0.071 to +0.084), so this buys precision at the top of the list and costs
+  no coverage -- unlike the span-cropping arms tried earlier, which bought
+  precision by losing it. Two consecutive runs differed on 0 of 50 instances.
+
+### Changed
+
+- **`anthropic/alwaysLoad` is restored on the five v2 tools.** 0.6.2 removed
+  it on the reasoning that the structural-first gate's own denial loads each
+  schema on demand, so eager loading charged every session a context cost for
+  adoption the gate already guaranteed. The premise was not measured, and it
+  is wrong. Reading the harness token accounting for the two arms -- same 60
+  tasks, same gate, same prompt, differing only in schema policy -- deferral
+  cost *more* on every measure: cache-creation tokens +2,563, cache-read
+  tokens +19,014, turns +0.67, output tokens +303, wall +4.9s, all paired
+  per-instance. No interval excludes zero, so the honest claim is that
+  deferral bought no measurable saving, not that it was significantly worse.
+  The mechanism explains the direction: deferring does not keep the schemas
+  out of context, it makes the agent spend a round trip fetching them first.
+- **The quality metrics were indistinguishable, and the one exception does not
+  track schema policy.** Across the same paired comparison, every metric sat
+  inside its interval except `recall@100`, where deferral led by 0.017 -- one
+  significant result among roughly 22 tests at n=60. It reads as noise rather
+  than an effect, and the arm ranking says the same thing: the tools-only arm
+  is eager-loaded and holds the highest `recall@100` of any arm (0.1351),
+  which a context-pressure story cannot produce.
+- **What eager loading buys is state at the moment the gate fires.** Loading a
+  schema because a call was blocked makes the tool callable; holding it from
+  the first turn makes the tool considered, by an agent that knows what it
+  answers before it picks a first move. That is a reasoning argument, not a
+  measured one, and it is the tie-breaker rather than the case: the case is
+  that deferral cost a round trip and returned nothing.
+- **The shipped prose matches the server again.** The README section is now
+  "Eager tool schemas" and states the cost as well as the reason; the packaged
+  agent guide and the skill say the tools ask to be loaded eagerly. The gate
+  remains the load-bearing mechanism in both policies, and the sections that
+  describe it are unchanged.
+
 ## 0.6.2 -- 2026-08-24
 
 A packaging-level change to how the MCP tools reach an agent. Nothing inside

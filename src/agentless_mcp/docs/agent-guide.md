@@ -213,14 +213,15 @@ First, allowlist the five read tools in `~/.claude/settings.json` permissions
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities`) so calls run without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
-may publish these tools as deferred schemas, in a main session and in a
-subagent alike, and a deferred tool is not callable until the client loads its
-schema. Grep is loaded from the first turn, so the order in which an agent
-reaches for the two decides which one it uses. Install the structural-first
-gate in `contrib/hooks/`: it denies Grep and Glob until one `mcp__agentless__`
-call has happened, which both fixes the order and is where the deferred schema
-loads. Name the tools and the order in a dispatch prompt as well. A worker told
-only to navigate the repository defaults to Grep.
+may defer tool schemas, in a main session and in a subagent alike, and a
+deferred tool is not callable until its schema loads. These five ask to be
+loaded eagerly for that reason, so an agent knows what they answer before it
+picks its first move. Grep is loaded from the first turn either way, so the
+order in which an agent reaches for the two decides which one it uses. Install
+the structural-first gate in `contrib/hooks/`: it denies Grep and Glob until
+one `mcp__agentless__` call has happened, which fixes that order. Name the
+tools and the order in a dispatch prompt as well. A worker told only to
+navigate the repository defaults to Grep.
 
 ### `map` (`orient` operation `map`) -- where does this live
 
@@ -265,11 +266,11 @@ Output is one block per file: `NN| signature  [stable_id]`, plus a count of
 the symbols that did not fit.
 
 Below the ranked files the map may add a **test companion section**. The
-ranking cannot produce that section. Edges run referrer to definer, so a test
-file is a pure source in the reference graph: it carries no inbound weight,
-personalized PageRank scores inbound weight, and a test therefore never enters
-the ranked map however directly it exercises the files in it. The companion
-section is how a test file reaches the answer at all.
+ranking does not produce that section. A test file is held out of the ranking
+as a pure source: the walk follows its references and no rank flows back
+along one, so a test never enters the ranked map however directly it
+exercises the files in it. It exercises the code and is never what the code
+is about, and the companion section is how it reaches the answer at all.
 
 ```
 tests exercising the files above:

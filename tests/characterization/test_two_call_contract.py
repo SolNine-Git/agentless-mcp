@@ -114,6 +114,20 @@ class TestFairDegradation:
         assert len(ids) >= 10
         return ctx, ids[:10]
 
+    def _tight_budget(self, ctx, ids, extractor):
+        """Half of what these bodies need whole, so the batch has to degrade.
+
+        Measured rather than hard-coded. The literal that used to sit here was
+        tight only for the ten symbols the map happened to rank first, so any
+        change to the ranking turned all three degradation tests below into
+        tests of a budget that fit -- which they would have passed by
+        asserting nothing had this one not asserted that something was cut.
+        """
+        whole = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            ctx, ids, limit=10, budget=EXPAND_BUDGET_TOKENS
+        )
+        return Chars4Counter().count(render_expansion(whole)) // 2
+
     def test_a_generous_budget_returns_every_body_whole(self, extractor, counter):
         ctx, ids = self._ten_ids(extractor, counter)
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(
@@ -127,7 +141,7 @@ class TestFairDegradation:
     def test_a_tight_budget_still_answers_every_requested_id(self, extractor, counter):
         ctx, ids = self._ten_ids(extractor, counter)
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(
-            ctx, ids, limit=10, budget=900
+            ctx, ids, limit=10, budget=self._tight_budget(ctx, ids, extractor)
         )
         assert [card.stable_id for card in result.cards] == ids
         assert all(card.body for card in result.cards)
@@ -136,7 +150,7 @@ class TestFairDegradation:
     def test_every_shortened_body_is_marked_and_counted(self, extractor, counter):
         ctx, ids = self._ten_ids(extractor, counter)
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(
-            ctx, ids, limit=10, budget=900
+            ctx, ids, limit=10, budget=self._tight_budget(ctx, ids, extractor)
         )
         assert result.shortened > 0
         for card in result.cards:
@@ -151,7 +165,7 @@ class TestFairDegradation:
         """Max-min fairness, stated as the property a reader can check."""
         ctx, ids = self._ten_ids(extractor, counter)
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(
-            ctx, ids, limit=10, budget=900
+            ctx, ids, limit=10, budget=self._tight_budget(ctx, ids, extractor)
         )
         cut = [card.body_total for card in result.cards if card.body_shown < card.body_total]
         whole = [card.body_total for card in result.cards if card.body_shown == card.body_total]
