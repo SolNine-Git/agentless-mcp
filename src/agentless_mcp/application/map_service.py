@@ -781,6 +781,7 @@ def _group(
                 stable_id=symbol_stable_id(candidate.symbol),
                 depth=1 if candidate.symbol.parent_class else 0,
                 rationales=rationale_nodes(candidate.symbol),
+                end_line=candidate.symbol.end_line_number,
             )
             for candidate in chosen
         )

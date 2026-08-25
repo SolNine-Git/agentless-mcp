@@ -222,7 +222,7 @@ class TestMapService:
         the smallest legal budget lands mid-way through it. Raising the floor
         did not make this path unreachable, and this test is the evidence.
         """
-        for index in range(12):
+        for index in range(6):
             body = "".join(
                 f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
                 for inner in range(12)

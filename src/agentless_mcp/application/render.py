@@ -207,6 +207,7 @@ class MapEntry:
     stable_id: str
     depth: int = 0
     rationales: tuple[RationaleNode, ...] = ()
+    end_line: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this entry."""
@@ -216,6 +217,8 @@ class MapEntry:
             "stable_id": self.stable_id,
             "depth": self.depth,
         }
+        if self.end_line is not None:
+            record["end_line"] = self.end_line
         if self.rationales:
             record["rationales"] = [rationale.as_dict() for rationale in self.rationales]
         return record
@@ -1579,10 +1582,17 @@ def render_map(files: Sequence[MapFile]) -> str:
     for map_file in files:
         lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f})"]
         for entry in map_file.entries:
+            # The span, not just the start line: a reader citing this symbol
+            # should copy its exact interval instead of inventing one.
+            span = (
+                f"{entry.line}-{entry.end_line}"
+                if entry.end_line is not None and entry.end_line != entry.line
+                else None
+            )
             lines.append(
                 f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
                 f"{'    ' * entry.depth}{one_line(entry.signature)}  "
-                f"{_locator(entry.stable_id)}"
+                f"{_locator(entry.stable_id, line=span)}"
             )
             lines.extend(
                 f"{line_prefix(node.line, LINE_NUMBER_WIDTH)}"

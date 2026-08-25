@@ -767,7 +767,9 @@ class ToolHandlers:
         prefix differs from its name stays truthful.
         """
         keep = projectconfig.resolve(docs, ctx.config.docstrings, False)
-        views = self._services.views.skeleton(ctx, paths, docstrings=keep)
+        # Numbered so a reader citing a symbol from the overview has its true
+        # start line in hand instead of a signature with no location.
+        views = self._services.views.skeleton(ctx, paths, docstrings=keep, numbered=True)
         blocks = []
         for view in views:
             if view.error:
