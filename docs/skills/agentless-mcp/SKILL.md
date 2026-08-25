@@ -60,9 +60,10 @@ loaded eagerly by a client that defers schemas, so an agent knows them before
 it chooses; a dispatch prompt should still name them and the order to use them
 in. The structural-first gate in `contrib/hooks/` enforces that order: it
 denies broad Grep and Glob until `orient(map|path)`,
-`symbols(find|overview|expand|explain)`, or `find_referencing_symbols` has
-localized the session. Exact-file Grep remains available; diagnostics, raw
-reads and the shape listings do not unlock broad discovery. Equivalent v1
+`symbols(find|overview|expand|explain)`, `read(slice)` or
+`find_referencing_symbols` has localized the session. Exact-file Grep remains
+available; diagnostics, `read(dir)` and the shape listings do not unlock broad
+discovery. Equivalent v1
 tools also unlock the temporary compatibility surface.
 See `agentless-mcp guide --section claude-code-specifics` for both.
 

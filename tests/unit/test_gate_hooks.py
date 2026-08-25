@@ -80,6 +80,8 @@ def test_broad_discovery_is_denied_before_localization(hooks, monkeypatch, tmp_p
     [
         ("mcp__agentless__orient", {"operation": "map"}, "orient.map"),
         ("mcp__agentless__orient", {"operation": "path"}, "orient.path"),
+        ("mcp__agentless__read", {"operation": "slice"}, "read.slice"),
+        ("mcp__agentless__read_slice", {}, "read_slice"),
         ("mcp__agentless__symbols", {"operation": "find"}, "symbols.find"),
         ("mcp__agentless__symbols", {"operation": "overview"}, "symbols.overview"),
         ("mcp__agentless__symbols", {"operation": "expand"}, "symbols.expand"),
@@ -124,7 +126,6 @@ def test_localizing_operations_unlock_broad_search(
         ("mcp__agentless__orient", {"operation": "communities"}),
         ("mcp__agentless__orient", {"operation": "cycles"}),
         ("mcp__agentless__orient", {"operation": "diagram"}),
-        ("mcp__agentless__read", {"operation": "slice"}),
         ("mcp__agentless__read", {"operation": "dir"}),
         ("mcp__agentless__symbols", {"operation": "locate"}),
         ("mcp__agentless__list_dir", {}),
@@ -149,6 +150,99 @@ def test_non_localizing_calls_do_not_unlock_broad_search(hooks, monkeypatch, too
 
     assert not mark.marker_path("diagnostic").exists()
     assert call(check, monkeypatch, broad, check.decide) == check.DENY
+
+
+def test_naming_a_file_and_a_range_unlocks_like_an_exact_file_grep(hooks, monkeypatch, tmp_path):
+    """The two halves of the gate agree on what counts as already localized.
+
+    The check hook lets an exact-file Grep through because the caller has
+    localized that search itself. `read(slice)` names a file *and* a line
+    range, so refusing it while allowing the weaker Grep was a contradiction.
+    """
+    check, mark = hooks
+    target = tmp_path / "app.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    broad = {"session_id": "sliced", "tool_name": "Grep", "tool_input": {"pattern": "VALUE"}}
+    scoped = {
+        "session_id": "sliced",
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "VALUE", "path": str(target)},
+    }
+
+    # Before any unlock the scoped Grep is allowed and the broad one is not.
+    assert call(check, monkeypatch, scoped, check.decide) == check.ALLOW
+    assert call(check, monkeypatch, broad, check.decide) == check.DENY
+
+    # A read(slice) is at least as much evidence, so it opens the gate.
+    call(
+        mark,
+        monkeypatch,
+        {
+            "session_id": "sliced",
+            "tool_name": "mcp__agentless__read",
+            "tool_input": {"operation": "slice", "path": "app.py", "lines": [[1, 5]]},
+        },
+        mark.mark,
+    )
+    assert call(check, monkeypatch, broad, check.decide) == check.ALLOW
+
+
+def test_a_listing_is_how_you_look_not_proof_you_found(hooks, monkeypatch):
+    """`read(dir)` stays out: it is discovery, not localization."""
+    check, mark = hooks
+    broad = {"session_id": "listing", "tool_name": "Grep", "tool_input": {"pattern": "VALUE"}}
+
+    call(
+        mark,
+        monkeypatch,
+        {
+            "session_id": "listing",
+            "tool_name": "mcp__agentless__read",
+            "tool_input": {"operation": "dir"},
+        },
+        mark.mark,
+    )
+
+    assert not mark.marker_path("listing").exists()
+    assert call(check, monkeypatch, broad, check.decide) == check.DENY
+
+
+def test_the_log_records_which_operation_was_refused(hooks, monkeypatch, tmp_path):
+    """A refusal that names only the tool cannot be analysed afterwards.
+
+    `read(slice)` and `read(dir)` are treated differently, so a log that kept
+    only `read` could not say which one a session was denied.
+    """
+    _, mark = hooks
+    log = tmp_path / "gate.jsonl"
+    monkeypatch.setenv(mark.LOG_ENV, str(log))
+
+    call(
+        mark,
+        monkeypatch,
+        {
+            "session_id": "logged",
+            "tool_name": "mcp__agentless__read",
+            "tool_input": {"operation": "dir"},
+        },
+        mark.mark,
+    )
+    call(
+        mark,
+        monkeypatch,
+        {
+            "session_id": "logged",
+            "tool_name": "mcp__agentless__read",
+            "tool_input": {"operation": "slice"},
+        },
+        mark.mark,
+    )
+
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [(r["event"], r["operation"]) for r in rows] == [
+        ("agentless_call_ignored", "dir"),
+        ("structural_call", "slice"),
+    ]
 
 
 def test_sessions_do_not_unlock_each_other(hooks, monkeypatch):
