@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.7.0 -- 2026-08-25
+
+Responses are text and nothing else, and a focused map spends its budget on
+what the focus reached.
+
+### Changed
+
+- **`structuredContent` is gone; read `content[0].text`.** Every handler
+  returns `str`, and FastMCP's default for a non-object return type is to
+  generate a wrapping output schema and emit
+  `structured_content={"result": <the string>}` beside the text block. That
+  copy was never a structured view of the answer: it held one field carrying
+  the whole receipt as an escaped string, so a client that prefers structured
+  content rendered a multi-line receipt as a single line with `\n` and `\"`
+  in it, and every answer crossed the wire twice. All fourteen registrations
+  now pass `output_schema=None`. A client that read `structuredContent.result`
+  must read `content[0].text`; both carried identical text, so the migration
+  is the field name and nothing else. This is why the minor version moves
+  rather than the patch: the guide previously reserved this removal for a
+  versioned boundary, and this is it. (#39)
+
+- **A focused map no longer spends its budget on files the focus never
+  reached.** A seeded ranking teleports to the seeds alone, so a file no
+  reference path connects to them earns nothing from the walk -- it holds
+  only the residue of the uniform vector the power iteration starts from,
+  which renders as rank `0.0000` and is not zero. Those files were ranked
+  into the answer and their symbols competed for and won the token budget.
+  Measured on this repository at `--focus contrib/hooks/agentless_gate_mark.py
+  --max-files 10`: 13330 characters before, 3585 after, with the same ten
+  files listed both times.
+
+  The files stay listed, with the true count of what each holds. Dropping
+  them would be the bounded-view-mistaken-for-complete failure, and the tool
+  description publishes a top-N of ten however large the repository is. What
+  changed is where the budget goes. `symbols_available` in the JSON now
+  counts what competed for the budget, because the banner offers "raise the
+  budget for the rest" and no budget renders a symbol in an unreached file.
+  An unfocused map teleports uniformly, reaches everything, and is
+  byte-identical to 0.6.7. (#38)
+
+- **The stale-cache receipt names the repository to reindex.** It read
+  `run agentless-mcp index for performance`. An agent following that hint
+  from a shell whose working directory is not the repository indexes the
+  wrong tree, and the natural guess `--root` is not the flag. It now reads
+  `run agentless-mcp index --repo <path> for performance`, matching the
+  wording the empty-cache hint already used, with the path shell-quoted. (#38)
+
+### Added
+
+- **`PageRank.support`.** The set of files the walk can reach from the
+  teleport vector's support, over the same augmented adjacency the iteration
+  steps along -- backflow edges included, so a file that references the seed
+  counts as reached. This is the invariant behind the map change. A threshold
+  on the rank itself would not work: measured 2026-08-25, a twenty-node
+  component disconnected from the seed converged at 1.2e-7 per node, which
+  renders as `0.0000` and passes `> 0.0`.
+
+- **A test pinning the gate hook's operation set to the server's tables.**
+  `contrib/hooks/agentless_gate_mark.py` hand-mirrors the v2 operations that
+  unlock broad search. The hooks fail open, so drift was silent: a renamed
+  operation would leave the hook unlocking on a spelling the server no longer
+  serves, and the only symptom is an unexplained early `Grep` denial in a
+  session that did localize. The test also asserts that the six deliberately
+  excluded operations still exist, so a removal upstream is not mistaken for
+  the exclusion. (#37)
+
+### Not changed
+
+- **The gate still unlocks once per session.** Filed as item 3 of #38 and
+  labelled there as a design observation rather than a bug. Both directions
+  it suggests -- expiring the marker, re-locking on a repository change --
+  add complexity, and the issue asks for a paired run showing the need before
+  either ships. No such measurement exists yet.
+
 ## 0.6.7 -- 2026-08-25
 
 Codex CLI runs the same gate.
