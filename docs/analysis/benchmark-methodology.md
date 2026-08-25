@@ -142,8 +142,7 @@ significant, while the arm made 174 post-unlock `Grep` and `Glob` calls across
 (0.645) and a `first_useful_hit` of 1.000. The gate denied a call in only 7 of
 60 instances, so the cost of the mechanism is roughly one denied call per eight
 sessions. One residual gap against forced remains: `recall@100` is -0.018
-(interval -0.036 to -0.004). That gap is what the craft arm was built to
-address.
+(interval -0.036 to -0.004). The deferred arm closed that gap; see below.
 
 **The 0.6.0 test-file claim is withdrawn, not confirmed.** 0.6.0 claimed that
 widening test-file recognition "recovers test-file localization". The intervals
@@ -158,11 +157,28 @@ instrument could not have resolved an effect this size in either direction.
 a property of the predicate, checked independently of the benchmark, and it does
 not depend on any arm's score.
 
-**The deferred and craft arms are in measurement at the time of writing.** Do
-not quote a number for `claude_code_agentless_hooked_deferred` or
-`claude_code_agentless_gated_craft` from this document. Their results land in
-`CHANGELOG.md` and the README when they are final, and this section is updated
-then.
+**Deferring the schemas costs nothing and closes the hooked arm's one gap.**
+The deferred arm (60/60, zero errors) is inside every interval against the
+hooked arm except `recall@100`, which moves +0.017 *in the deferred arm's
+favour* -- one significant result among roughly 22 tests, so read it as "no
+cost, possibly a small benefit". Its `recall@100` of 0.1345 matches forced
+(0.1351, delta -0.001, not significant), so the hooked arm's -0.018 gap does
+not survive deferral. Against the baseline it is significantly better on
+`hit_region_rate` (+0.041), `recall@100` (+0.016) and `recall@500` (+0.033),
+and significantly worse on precision (-0.052), the cost of mixing native
+search back in after unlock. This is the configuration 0.6.2 ships.
+
+**The emission-discipline prompt made the agent worse, and is not shipped.**
+The craft arm added a prompt block asking for line-anchored citations, root
+cause first, narrow spans, and text-search finds ranked last -- on top of the
+deferred configuration, changing nothing else. Against deferred it lost
+`hit_file_rate` (-0.058, interval -0.102 to -0.017), `hit_region_rate`
+(-0.054, interval -0.094 to -0.017) and `recall@100` (-0.020, interval -0.040
+to -0.005), with no significant gain anywhere; against forced it shows the
+same three losses. Its nominal precision and lowest noise rate did not reach
+significance. The reporting constraints appear to buy caution with coverage:
+the agent cites fewer files and misses more of the core. The prompt is
+recorded here as a negative result and does not ship in any surface.
 
 ## How to re-run
 

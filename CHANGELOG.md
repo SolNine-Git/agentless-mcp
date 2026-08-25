@@ -25,11 +25,28 @@ the tools behaves differently.
   recall (+0.041) and F1 (+0.040), with every 95% confidence interval excluding
   0. What moved those numbers was the ordering, which the gate enforces, not
   the schema budget the hint spent.
+- **The shipped configuration was measured as its own arm before release.**
+  The gate against this release's deferred schemas, on the same 60 tasks,
+  matches the eager-schema gated arm within every confidence interval except
+  `recall@100`, which moves +0.017 in the deferred arm's favour -- one
+  significant result among roughly 22 tests, so read it as no cost and
+  possibly a small benefit. Full numbers and the arm definitions are in
+  `docs/analysis/benchmark-methodology.md`.
 - **Without the gate installed, the deferred schemas make native search the
   path of least resistance again.** A deferred tool is not a callable tool, and
   `Grep` loads from the first turn. Install the gate. The README section
   "Structural-first gate" is the recommended setup, and this release assumes an
   ordering mechanism of that kind exists client-side.
+
+### Fixed
+
+- **The test suite scrubs ambient `GIT_*` variables before any test runs.**
+  Git exports `GIT_DIR` to hook processes, and `GIT_DIR` overrides the `-C` a
+  fixture git call is given: a suite run from inside a pre-push hook
+  reinitialized the enclosing repository as bare and rewrote its index with
+  fixture files. The package's own git calls already scrubbed the family
+  (`core.gitinfo.subprocess_env`); `tests/conftest.py` now applies the same
+  scrub once at import.
 
 ### Kept
 

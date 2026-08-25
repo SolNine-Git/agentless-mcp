@@ -313,6 +313,12 @@ ordering discipline in the free-choice arm. Read the numbers as evidence for
 the ordering, not as a prediction for your repository: the measured arm removed
 the native search tools, and this gate only defers them.
 
+The shipped configuration -- this gate against this release's deferred
+schemas -- was then measured as its own arm. It matches the restricted arm
+within every confidence interval except precision, keeps native search after
+unlock, and matches its recall@100 (0.1345 against 0.1351), so the ordering
+survives deferral with the tools still available.
+
 How that comparison is run, which guardrails it carries and why, and what the
 gated arm itself measured are in
 [`docs/analysis/benchmark-methodology.md`](docs/analysis/benchmark-methodology.md).
