@@ -424,18 +424,18 @@ configuring an agent, or paste it into `CLAUDE.md` or a dispatch prompt.
 focus=[...])` ranks every file by personalized PageRank over the reference
 graph, and the seeds take the whole teleport mass, so the ranking flows
 outward from what you name. A seed that resolved leads the ranked list, and
-the files that reference it rank above the utilities it imports. A seed resolves as a repository-relative path
-(`src/billing/invoice.py`), a path suffix (`invoice.py`), a bare module stem
-(`invoice`), a qualified symbol name (`Invoice.total`), or a bare symbol name
-(`quote`). Lift them from the task: the file in the traceback, the class in
-the ticket, the function in the error message. Each seed carries one vote,
-split across the files it matched, so one exact path outweighs a name that
-matched twenty files. A seed that matches nothing does not fail the call and
-does not disappear. It comes back in `unresolved_seeds`, and as a `# note:`
-line above the map. Read that note: the ranking under it is not focused the
-way you asked. The usual cause is that the name is a parameter, an attribute
-or a DSL keyword rather than a declared symbol, and
-`symbols(operation="find")` says which.
+the files that reference it rank above the utilities it imports. A seed
+resolves as a repository-relative path (`src/billing/invoice.py`), a path
+suffix (`invoice.py`), a bare module stem (`invoice`), a qualified symbol
+name (`Invoice.total`), or a bare symbol name (`quote`). Lift them from the
+task: the file in the traceback, the class in the ticket, the function in
+the error message. Each seed carries one vote, split across the files it
+matched, so one exact path outweighs a name that matched twenty files. A
+seed that matches nothing does not fail the call and does not disappear. It
+comes back in `unresolved_seeds`, and as a `# note:` line above the map.
+Read that note: the ranking under it is not focused the way you asked. The
+usual cause is that the name is a parameter, an attribute or a DSL keyword
+rather than a declared symbol, and `symbols(operation="find")` says which.
 
 **Escalate one rung at a time, and stop at the rung that answers.** Each rung
 costs more than the one above it.
