@@ -53,11 +53,16 @@ class Chars4Counter:
     four.
 
     ``TestTheEstimatorAgainstARealTokenizer`` in
-    ``tests/unit/test_token_counter.py`` pins the map goldens' ratio, so a
-    rendering change that moves this materially fails there instead of leaving
-    a stale number in this docstring. The CLI's ``--token-counter tiktoken``
-    swaps in the real counter; the MCP server declares no such flag and always
-    counts with this one.
+    ``tests/unit/test_token_counter.py`` pins the map goldens' ratio to
+    1.10-1.35 and pins that the spread still runs in both directions, so a
+    rendering change that moves either fails there instead of leaving a stale
+    number in this docstring. That band, and not the 1.170-1.264 measured
+    inside it, is what the ``repo_map`` and ``orient`` tool descriptions
+    publish as "10-35% higher": a model-facing promise states the number a
+    test enforces, or a renderer tweak makes a liar of it. The same test
+    asserts the two agree. The CLI's ``--token-counter tiktoken`` swaps in the
+    real counter; the MCP server declares no such flag and always counts with
+    this one.
 
     Floor division means any text shorter than four characters costs nothing,
     so a non-empty string can be free against a budget. That is safe for the

@@ -56,14 +56,16 @@ def line_count(text: str) -> int:
     return len(lines)
 
 
-def line_prefix(number: int, width: int = 0) -> str:
+def line_prefix(number: int) -> str:
     """Render the ``N| `` prefix one line-numbered source line carries.
 
     One home for the prefix: a response that spells it two ways in two
-    sections reads as though one of them were the file's own text. ``width``
-    right-aligns the number for the views that render a column of them.
+    sections reads as though one of them were the file's own text. The prefix
+    means one thing and only that -- this line is verbatim repository content
+    -- so it belongs to the views that quote a file, and a view that cites a
+    position appends ``@line`` instead.
     """
-    return f"{number:>{width}}| "
+    return f"{number}| "
 
 
 def span_end(symbol: ASTSymbol) -> int:

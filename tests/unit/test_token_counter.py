@@ -18,6 +18,7 @@ import pytest
 
 from agentless_mcp import bootstrap
 from agentless_mcp.adapters.cli.main import build_parser
+from agentless_mcp.prompts import TOOL_DESCRIPTIONS
 from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
@@ -135,6 +136,30 @@ class TestTheEstimatorAgainstARealTokenizer:
                 f"{self.MAP_RATIO_FLOOR}-{self.MAP_RATIO_CEILING} this package documents. "
                 "Re-measure the figures in util/tokens.py, the agent guide and the "
                 "repo_map and orient tool descriptions, then move this pin."
+            )
+
+    def test_the_published_band_is_the_band_under_test(self):
+        """The number an agent reads at call time is the number this pins.
+
+        The figure had been stated wrongly twice in prose -- 11-18%, then
+        13-15% -- and a third time as "roughly 15-20%", which the guide's own
+        measured table contradicted on two rows. Prose cannot hold a number
+        that moves whenever the renderer does, and a band nothing checks is
+        the same defect wearing a percent sign. So the tool descriptions
+        publish the band this class enforces, and this is the join.
+
+        Deliberately a string match on the descriptions rather than a
+        recomputation: what ships to a model is the sentence, and a sentence
+        is what goes stale.
+        """
+        low = round((self.MAP_RATIO_FLOOR - 1) * 100)
+        high = round((self.MAP_RATIO_CEILING - 1) * 100)
+        published = f"a real BPE count runs {low}-{high}% higher"
+
+        for key in ("repo_map", "orient"):
+            assert published in TOOL_DESCRIPTIONS[key], (
+                f"{key} no longer publishes the {published!r} this test pins. "
+                "Move both together or move neither."
             )
 
     def test_the_estimator_is_not_uniformly_low(self):

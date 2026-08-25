@@ -1772,8 +1772,10 @@ class TestOverviewStableIds:
 
         # One file-header grammar across the grouped views: the path, and
         # whatever the view knows about it. The markdown heading `###` cost
-        # four characters a file and said nothing the path did not.
-        assert "\ncore.py\n" in text
+        # four characters a file and said nothing the path did not; the
+        # language is the fact this view knows, and it is what keeps the
+        # header from being a repository value alone on a line.
+        assert "\ncore.py  (python)\n" in text
         assert "###" not in text
         # The prefix and separator come from core.symbols.stable_id, so the
         # line matches the ids the other tools mint for this file.
@@ -1795,6 +1797,14 @@ class TestOverviewStableIds:
 
         assert "no grammar" in text
         assert "stable ids:" not in text
+        # The error path is the one an untrusted repository steers: any name
+        # at all reaches it, because reaching no grammar is what puts it
+        # here. So it keeps the header grammar rather than degrading to a
+        # bare path -- a file with no language still names one.
+        assert "\nnotes.md  (unknown)\n" in text
+        # The reason is indented under the header, where it cannot be read as
+        # the file's contents.
+        assert "\n  notes.md: no grammar" in text
 
 
 class TestAutoWarmStartup:

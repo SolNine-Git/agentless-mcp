@@ -291,6 +291,13 @@ class MapService:
                     path=path,
                     rank=rank[path],
                     total=len(by_path[path].symbols),
+                    # Every file here has its whole symbol count omitted, so
+                    # every one of them takes an omission line -- which makes
+                    # this the granularity where the wrong line is offered
+                    # most often, not least. Left to the default, a focused
+                    # file map told a caller to raise a budget this view does
+                    # not have, about a file no budget could reach.
+                    reached=path in ranking.support,
                 )
                 for path in chosen
             )

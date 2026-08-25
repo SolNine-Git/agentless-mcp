@@ -43,7 +43,8 @@ what the focus reached.
   The files stay listed, with the true count of what each holds. Dropping
   them would be the bounded-view-mistaken-for-complete failure, and the tool
   description publishes a top-N of ten however large the repository is. What
-  changed is where the budget goes. Two places had to say so rather than one.
+  changed is where the budget goes. Every door onto the map had to say so,
+  not one of them.
   `symbols_available` in the JSON counts what competed for the budget,
   because the banner offers "raise the budget for the rest" and no budget
   renders a symbol in an unreached file. Each unreached file's own row says
@@ -51,7 +52,11 @@ what the focus reached.
   path to it, so no budget shows them` instead of the ordinary
   `... N more ... not listed`, which offers the same rest the banner had
   already stopped offering. A file that lost its symbols to the budget keeps
-  the ordinary wording, because for that file the offer is true.
+  the ordinary wording, because for that file the offer is true. The JSON
+  form carries the same fact as `reached` on each file, so a caller reading
+  the map as data can tell the two apart without matching on a message; and
+  `granularity: file` sets it too, which is the granularity where every file
+  takes an omission line and the wrong one was therefore offered most often.
 
   An unfocused map teleports uniformly and reaches everything, so no file
   takes the second wording and the ranking is unchanged from 0.6.7. (#38)
@@ -78,9 +83,10 @@ what the focus reached.
   --budget 8000` returned 257 symbols in 33752 characters and now returns 386
   in 33756 -- 131 characters a symbol down to 87. At `--budget 2000` the same
   command goes from 59 symbols to 84. `agentless-mcp refs render_map
-  --limit 20 --no-cache` went from 2264 characters to 1239. The JSON is
-  unchanged: it still carries whole ids, because nothing there repeats a
-  header.
+  --limit 20 --no-cache` went from 2264 characters to 1239, that pair taken
+  at `0b50774` because a fan-in count moves when the repository gains a
+  caller and this one has since gained a test. The JSON is unchanged: it
+  still carries whole ids, because nothing there repeats a header.
 
 - **A position is an `@line` suffix; the `N| ` gutter means verbatim text.**
   The map and fan-in rows spelled a position with the same `N| ` gutter that
@@ -97,13 +103,26 @@ what the focus reached.
   `ROW_INDENT` replaces the gutter as the map and fan-in row indent. That is
   load-bearing rather than cosmetic: an unindented first column is the one
   line repository text on a row cannot forge, and the gutter had been
-  providing that indent.
+  providing that indent. `core.slices.line_prefix` loses its `width`
+  argument with the gutter: the map renderer was its only non-default
+  caller, and a parameter no caller passes is a docstring promising a column
+  view that does not exist.
 
 - **One file-header grammar across the grouped views, and one function that
   renders it.** `symbols(overview)` headed each block with a markdown
   `### <path>`; the map and fan-in headed theirs with the path and what the
   view knows about it. The heading is gone. It cost four characters a file
-  and said nothing the path did not.
+  and said nothing the path did not, and it rendered heading-sized in any
+  client that reads tool output as Markdown.
+
+  What replaces it is the grammar the other two already used, not a bare
+  path: `src/app/svc.py  (python)`. A header is the one line in a grouped
+  view that is not indented, so the parenthesized fact is what keeps it from
+  being a repository value alone on a line -- a file named
+  `... 7 more matches not listed (limit 3)` would otherwise render a header
+  this package's own omission marker could not be told from, and the error
+  block, whose path never reaches a grammar, is exactly where an untrusted
+  repository can put one. A file with no language reads `(unknown)`.
 
   The overview had two implementations of that header -- the MCP handler and
   `agentless-mcp skeleton` -- and they had already drifted: the CLI printed
@@ -136,9 +155,17 @@ what the focus reached.
   from a shell whose working directory is not the repository indexes the
   wrong tree, and the natural guess `--root` is not the flag. It now reads
   `run agentless-mcp index --repo <path> for performance`, matching the
-  wording the empty-cache hint already used. Both hints shell-quote the path:
-  they build the same command, and one of them spelling a path with a space
-  unquoted makes `--repo` take the first word. (#38)
+  wording the empty-cache hint already used. Both hints quote the path with
+  `shlex.quote`: they build the same command, and one of them spelling a
+  path with a space unquoted makes `--repo` take the first word.
+
+  `shlex.quote` is POSIX shell quoting and nothing else. On Windows the
+  single quotes it emits are literal to `cmd.exe`, so a path needing them
+  produces a command to read rather than to paste. That is the same
+  correctness the pre-0.7.0 empty-cache hint had, not a regression, and the
+  fix is a per-shell rendering rather than a different quoter -- deferred
+  until a Windows job runs the suite, because a quoting rule no CI executes
+  is a guess. (#38)
 
 - **The `repo_map` and `orient` descriptions no longer name a flag their
   reader cannot reach.** They said the budget was counted "chars/4 unless it
@@ -151,19 +178,23 @@ what the focus reached.
 - **A map budget says which unit it is counted in.** The tool description
   advertised "a 2000-8000 token band" and the guide "2k-8k tokens" without
   naming the counter. This package is model-free and its default estimator is
-  chars/4, so those are estimator tokens rather than a model's. Measured
-  2026-08-25 against `cl100k_base` on this package's own output, chars/4
-  counts 13-15% under on the map and fan-in views: an unfocused map of 2851
-  real tokens estimates at 2473, a focused one of 1051 at 897, a fan-in of
-  358 at 309. An overview is the mildest at about 10%, its body being
-  ordinary source rather than rows of ids. These views are punctuation-dense with stable ids, type annotations
-  and path separators, and punctuation tokenizes to well under four
-  characters a token, so the estimator is furthest off exactly where the
-  output is densest -- an 8k budget can land near 9.2k real tokens.
-  No behaviour changed: the band stays in the unit the token regression pins
-  measure, which is why that unit was chosen. The description, the guide, the
-  service docstring and `Chars4Counter` now say so, and name
-  `--token-counter tiktoken` for a caller sizing a real context window.
+  chars/4, so those are estimator tokens rather than a model's. These views
+  are punctuation-dense with stable ids, type annotations and path
+  separators, and punctuation tokenizes to well under four characters a
+  token, so the estimator is furthest off exactly where the output is
+  densest.
+
+  How far off is view-dependent and no single band describes it, so the
+  figure the `repo_map` and `orient` descriptions publish is the one a test
+  holds: a real BPE count runs 10-35% higher on this output, which is the
+  ratio band `TestTheEstimatorAgainstARealTokenizer` pins. The guide carries
+  the measurements inside that band, one row per view, each naming the
+  command behind it, and that table is what to size a real context window
+  against. No behaviour changed: the budget stays in the unit the token
+  regression pins measure, which is why that unit was chosen. The
+  description, the guide, the service docstring and `Chars4Counter` now say
+  so, and name `--token-counter tiktoken` for a caller who wants the real
+  count.
 
 ### Added
 
@@ -173,10 +204,13 @@ what the focus reached.
   the committed goldens the ratio runs 0.979 to 1.264, so no single band
   describes the package and the `lint` view is one where chars/4 counts
   *over*. `TestTheEstimatorAgainstARealTokenizer` pins the map goldens'
-  ratio and pins that the spread still runs in both directions, so a
-  rendering change that moves either fails there instead of leaving a stale
-  number in the docs. The guide now gives one measured row per view, each
-  naming the command behind it.
+  ratio to 1.10-1.35 and pins that the spread still runs in both directions,
+  so a rendering change that moves either fails there instead of leaving a
+  stale number in the docs. It also asserts that the band the `repo_map` and
+  `orient` descriptions publish is that same band, so the one figure an
+  agent reads at call time cannot drift from the one under test. The guide
+  gives one measured row per view inside it, each naming the command behind
+  it.
 
 - **`PageRank.support`.** The set of files the walk can reach from the
   teleport vector's support, over the same augmented adjacency the iteration

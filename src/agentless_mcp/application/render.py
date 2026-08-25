@@ -91,6 +91,12 @@ MODULE_LEVEL = "(module level)"
 # pattern line and the guide agree.
 QUALIFIED_NAME_PLACEHOLDER = "<QualifiedName>"
 
+# What an overview header names when the file has no language: a path that
+# reached no grammar, or one the walk refused. The header needs *some*
+# tool-authored fact -- see :func:`_omitted_line` for why every grouped header
+# carries one -- and "the view could not say" is the honest one here.
+UNKNOWN_LANGUAGE = "unknown"
+
 # How many of a candidate's shared callers the text render lists before
 # cutting to a count. The callers are evidence for the overlap number, and a
 # handful proves it; the full list is what let one adjacency listing approach
@@ -138,6 +144,17 @@ def _omitted_line(omitted: int, noun: str, *, limit: int = 0) -> str:
     fan-in rows used to be indented by the width of their line-number gutter,
     and dropping the gutter without replacing the indent would have put
     repository-derived text in the first column.
+
+    A grouped view's *file header* is the exception to the indent, so it
+    carries the other half of the rule instead: every one of them appends a
+    tool-authored ``  (fact)`` -- the rank on a map, the reference count and
+    tier on a fan-in, the language on an overview. A header is therefore
+    never a bare repository value, and no filename can spell a whole line
+    this function could have written. :func:`overview_block` shipped for one
+    release without that suffix, and a file named
+    ``... 7 more matches not listed (limit 3)`` rendered a header byte-identical
+    to this marker.
+
     Eleven hand-spelled variants used to differ in whether they named the
     limit and in where they put the comma, so an agent asking how much was
     left out had eleven patterns to match.
@@ -186,11 +203,12 @@ def _stable_ids_line(id_prefix: str, path: str) -> str:
 def overview_block(path: str, language: str, error: str, text: str) -> str:
     """Render one file's overview block: the header, the id pattern, the body.
 
-    One home because there were two, and they had drifted. The MCP handler
-    headed each block with the bare path; the CLI kept a markdown ``###`` no
-    other grouped view in this package uses, and printed no pattern line at
-    all, so the same view answered differently depending on which door you
-    came through.
+    One home because there were two, and they had drifted. Both adapters
+    headed the block with a markdown ``###`` no other grouped view in this
+    package uses, and only the MCP one printed the ``stable ids:`` pattern
+    line -- so an agent that reached this view through the CLI had no id to
+    escalate with, and the same view answered differently depending on which
+    door you came through.
 
     The escaping travels with it. A header sits in the first column and a
     newline is legal in a POSIX filename, so ``path`` has to reach
@@ -199,10 +217,22 @@ def overview_block(path: str, language: str, error: str, text: str) -> str:
     ``text`` does not: it is a rendered file body, which owns its own line
     grammar and carries a line-number gutter to say so.
 
+    ``one_line`` is not enough on its own. Dropping the ``###`` left the
+    header a bare repository value alone on a line, and this is the one
+    grouped header with nothing after the path, so a file could be named for
+    a whole tool-authored line: ``... 7 more matches not listed (limit 3)``
+    rendered a header this module's own omission marker could not be told
+    from. The language suffix closes that, and puts this header in the
+    grammar the map and fan-in headers already use -- the path, then a
+    parenthesized fact the view knows. See :func:`_omitted_line`.
+
     An errored file keeps its block, with the reason indented under the
-    header where a reader cannot mistake it for the file's contents.
+    header where a reader cannot mistake it for the file's contents. Its
+    language is often empty -- a path that reached no grammar has none -- so
+    the suffix reads :data:`UNKNOWN_LANGUAGE` rather than going missing on
+    exactly the paths an untrusted repository controls.
     """
-    header = one_line(path)
+    header = f"{one_line(path)}  ({one_line(language) or UNKNOWN_LANGUAGE})"
     if error:
         return f"{header}\n{ROW_INDENT}{one_line(error)}"
     pattern = str(StableId(language_prefix(language), path, QUALIFIED_NAME_PLACEHOLDER))
@@ -328,12 +358,22 @@ class MapFile(_Bounded):
         return len(self.entries)
 
     def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this file."""
+        """Return the JSON form of this file.
+
+        ``reached`` is here because ``omitted`` alone cannot answer the one
+        question a caller asks it: would raising the budget show the rest? The
+        text render answers that by branching on ``reached`` for its omission
+        line, and for one release the JSON form did not carry the fact at all,
+        so the two doors onto the same map disagreed. ``id_prefix`` is not
+        here and does not belong here: it compresses a *rendered* row, and
+        every symbol entry below still carries its whole stable id.
+        """
         return {
             "path": self.path,
             "rank": round(self.rank, 6),
             "symbols": [entry.as_dict() for entry in self.entries],
             "omitted": self.omitted,
+            "reached": self.reached,
         }
 
 

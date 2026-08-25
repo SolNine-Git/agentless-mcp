@@ -71,7 +71,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "pricing.py",
@@ -150,7 +151,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "inventory.py",
@@ -235,7 +237,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     }
   ],
   "skipped": [],

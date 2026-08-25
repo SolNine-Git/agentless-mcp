@@ -239,6 +239,49 @@ class TestMapService:
         # goldens, all unfocused, unchanged.
         assert unfocused.candidates == sum(entry.shown + entry.omitted for entry in unfocused.files)
 
+    def test_the_json_form_says_which_files_the_focus_reached(self, repo, extractor, counter):
+        """Text and JSON are two doors onto one map, so both carry the fact.
+
+        `omitted` alone cannot answer what a caller asks it -- would a bigger
+        budget show the rest? The text render answers by branching on
+        `reached` for its omission line; for one release the JSON emitted the
+        same shape either way, so a consumer reading the map as data (the
+        ranking harness does) had to match on a message to tell them apart.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("lonely",)))
+        by_path = {entry["path"]: entry for entry in result.as_dict()["files"]}
+
+        assert by_path["orphan.py"]["reached"] is True
+        for path in ("core.py", "billing.py", "ledger.py"):
+            assert by_path[path]["reached"] is False, path
+            assert by_path[path]["omitted"] > 0, path
+
+    def test_a_file_granularity_map_marks_an_unreached_file_too(self, repo, extractor, counter):
+        """The granularity where the wrong line was offered most, not least.
+
+        Every file here has its whole symbol count omitted, so every file
+        takes an omission line -- and this view has no budget at all to
+        raise. Left to `MapFile.reached`'s default the answer told a caller
+        to raise one, about a file no budget could reach.
+        """
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(focus=("lonely",), granularity=GRANULARITY_FILE))
+        by_path = {entry.path: entry for entry in result.files}
+
+        assert by_path["orphan.py"].reached is True
+        assert "the focus has no reference path to it" in maps.render_text(result)
+        for path in ("core.py", "billing.py", "ledger.py"):
+            assert by_path[path].reached is False, path
+        assert [entry["reached"] for entry in result.as_dict()["files"]].count(False) == 3
+
+    def test_an_unfocused_file_granularity_map_reaches_everything(self, repo, extractor, counter):
+        """The uniform walk reaches every file, so none takes the other line."""
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(granularity=GRANULARITY_FILE))
+
+        assert all(entry.reached for entry in result.files)
+        assert "the focus has no reference path to it" not in maps.render_text(result)
+
     def test_a_fully_resolved_focus_adds_no_note(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely",)))

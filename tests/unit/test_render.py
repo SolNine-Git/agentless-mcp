@@ -36,6 +36,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.refs import SkippedFile
+from agentless_mcp.prompts import MESSAGES
 
 # The filename the audit reproduced the forgery with. A newline is legal in a
 # POSIX filename, so this is a repository the tool has to be able to index --
@@ -966,6 +967,14 @@ class TestTheForgeryEndToEnd:
             # gate driven by reflection over view models cannot reach an
             # adapter. It renders through `render.overview_block` now.
             ["skeleton", FORGED_NAME],
+            # `capabilities` is the fourth, and it is here before it is a
+            # defect rather than after. It renders in `capability_service`
+            # with plain f-strings, and the values it prints are safe only
+            # because three unrelated call sites validate them first --
+            # `projectconfig` allowlists the config fields, and the server
+            # refuses a client root carrying a line break. A field added to
+            # the report from anywhere else would land outside all three.
+            ["capabilities"],
         ],
         ids=[
             "map",
@@ -978,6 +987,7 @@ class TestTheForgeryEndToEnd:
             "path",
             "diagram",
             "skeleton",
+            "capabilities",
         ],
     )
     def test_no_command_lets_the_forged_row_occupy_a_line(
@@ -996,3 +1006,51 @@ class TestTheForgeryEndToEnd:
         run(["tree", "--repo", str(forged_repo)], services)
 
         assert "forged_symbol" in capsys.readouterr().out
+
+
+class TestAFilenameCannotSpellAWholeMarker:
+    """The other half of the rule the escaping alone does not hold.
+
+    ``one_line`` stops a value from *ending* a line. It cannot stop a value
+    from *being* one, and a file header is the one line in a grouped view
+    that carries no indent. `overview_block` shipped for a release with the
+    bare path as its whole header, so a file named for an omission marker
+    rendered a line this module could have written -- and an agent reads
+    those markers to decide whether to ask for more.
+
+    Every grouped header answers it the same way: the path, then a
+    tool-authored ``  (fact)`` that a filename cannot be responsible for.
+    Driven over the markers themselves rather than one sample, so a reworded
+    noun is covered by the same test.
+    """
+
+    MARKERS = (
+        render._omitted_line(7, "matches", limit=3),
+        render._omitted_line(9, "symbols in this file"),
+        MESSAGES.map_file_unreached.format(count=4),
+    )
+
+    HEADERS = (
+        # The overview reaches this through its error path, which is the one
+        # an untrusted repository steers: a name shaped like a marker carries
+        # no extension, so it reaches no grammar and lands there.
+        ("overview", lambda path: render.overview_block(path, "", "no grammar", "")),
+        ("map", lambda path: render.render_map((render.MapFile(path=path, rank=0.5),))),
+        (
+            "refs",
+            lambda path: render.render_ref_groups((render.RefGroup(path=path),), "target"),
+        ),
+    )
+
+    @pytest.mark.parametrize("marker", MARKERS)
+    @pytest.mark.parametrize(("label", "render_one"), HEADERS, ids=[name for name, _ in HEADERS])
+    def test_a_header_named_for_a_marker_is_not_one(self, label, render_one, marker):
+        rendered = render_one(marker)
+        headers = [line for line in rendered.splitlines() if line and not line.startswith(" ")]
+
+        assert headers, f"{label} rendered no header"
+        for header in headers:
+            assert header != marker, f"{label} rendered a header equal to {marker!r}"
+        # Escaped, not dropped: the file stays navigable. The suffix is what
+        # makes the line the tool's rather than the repository's.
+        assert marker in rendered, label

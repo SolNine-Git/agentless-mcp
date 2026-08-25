@@ -1103,11 +1103,11 @@ class TestExpandReportsAPartialBatchAsAFailure:
 class TestTheOverviewRendersTheSameBlockOnBothDoors:
     """The CLI and the MCP operation render one view, so they render it once.
 
-    They had drifted. The MCP handler headed each block with the bare path
-    and printed the `stable ids:` pattern line; the CLI kept a markdown
-    `###` no other grouped view in this package uses and printed no pattern
-    at all, so an agent that read the CLI answer had no id to escalate with.
-    Both now call `render.overview_block`, and this is what says so.
+    They had drifted. Both adapters headed each block with a markdown `###`
+    no other grouped view in this package uses, and only the MCP one printed
+    the `stable ids:` pattern line -- so an agent that read the CLI answer
+    had no id to escalate with. Both now call `render.overview_block`, and
+    this is what says so.
     """
 
     def test_the_cli_block_is_the_one_render_builds(self, services, repo_path, capsys):
@@ -1115,6 +1115,7 @@ class TestTheOverviewRendersTheSameBlockOnBothDoors:
         out = capsys.readouterr().out
 
         assert render.overview_block("core.py", "python", "", "").splitlines()[0] in out
+        assert "core.py  (python)" in out
         assert "stable ids: py:core.py::<QualifiedName>" in out
         # The heading is gone, not moved: it cost four characters a file and
         # said nothing the path did not.
