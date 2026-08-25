@@ -296,8 +296,9 @@ the ordering is enforced.
 ### Structural-first gate (recommended Claude Code hooks)
 
 Prose asks for the structural pass. A hook enforces it. Two scripts in
-`contrib/hooks/` deny repository-wide or directory-wide `Grep` and every
-`Glob` until the session has made a localizing Agentless call.
+`contrib/hooks/` deny repository-wide or directory-wide `Grep`, every `Glob`,
+and any `Bash` command that parses as a tree search, until the session has
+made a localizing Agentless call.
 `orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
 `find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
 `symbols(locate)`, and the shape listings `orient(communities|cycles|diagram|health)`
@@ -308,9 +309,26 @@ compatibility surface. `Grep` scoped to one existing file remains available
 before unlock because the caller has already localized that search. The mark
 hook reads the call and not its result, so an Agentless call that errored
 still unlocks.
-The constraint is an order, not a ban: once the gate opens, broad `Grep` keeps
+The constraint is an order, not a ban: once the gate opens, broad search keeps
 the one job a symbol map cannot do, which is string literals, error messages,
 config keys, and fixtures.
+
+**Search routed through the shell is covered too.** A harness that instructs
+the model to search with `grep`, `rg` or `find` inside `Bash` produces payloads
+whose tool name is always `Bash`, so a matcher keyed on `Grep|Glob` never sees
+them and the deny half goes dormant. The check hook therefore reads `Bash`
+commands rather than trusting the tool name, and denies only what parses
+cleanly as a tree search: `rg` with no path operand or a directory operand,
+`grep` with a recursive flag, and `find` with `-name`/`-path`. Everything else
+passes, including the common case of a pipe filter over another command's
+output (`git log | grep fix`) and a search scoped to one existing file.
+
+Shell text cannot be parsed in general, so this half of the gate is a weaker
+guard than the tool-name half and is deliberately biased to fail open. `git
+grep`, a search assembled by `xargs` or a subshell, and any command whose name
+arrives through a variable all pass unexamined. The benchmark backing the
+"recommended install" claim measured the tool-name matchers only; the shell
+heuristic has a different error profile and has not been measured.
 
 This is the recommended install rather than an optional extra. The server
 assumes the ordering mechanism lives client-side: the schemas it asks a client
@@ -360,7 +378,7 @@ Install the gate by copying the two scripts and adding one hooks block.
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Grep|Glob",
+        "matcher": "Grep|Glob|Bash",
         "hooks": [
           {
             "type": "command",
