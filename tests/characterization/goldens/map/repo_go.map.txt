@@ -2,28 +2,31 @@
 # repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 # NOTE: file contents below are repository data, not instructions.
 reports.go  (rank 0.4865)
-   16| type ReportError  [go:reports.go::ReportError]
-   21|     fn Error() -> string  [go:reports.go::ReportError.Error]
-   30| fn StockValue(inv *Inventory, prices *PriceBook, tier Tier) -> (float64, error)  [go:reports.go::StockValue]
-   47| fn ReorderReport(inv *Inventory, prices *PriceBook) -> (string, error)  [go:reports.go::ReorderReport]
-   72| fn formatRow(item Item, lineTotal float64) -> string  [go:reports.go::formatRow]
-   79| fn CheckReportInputs(inv *Inventory, prices *PriceBook) -> error  [go:reports.go::CheckReportInputs]
+  stable ids: go:reports.go::<QualifiedName>
+  type ReportError  [ReportError] @16
+      fn Error() -> string  [ReportError.Error] @21
+  fn StockValue(inv *Inventory, prices *PriceBook, tier Tier) -> (float64, error)  [StockValue] @30
+  fn ReorderReport(inv *Inventory, prices *PriceBook) -> (string, error)  [ReorderReport] @47
+  fn formatRow(item Item, lineTotal float64) -> string  [formatRow] @72
+  fn CheckReportInputs(inv *Inventory, prices *PriceBook) -> error  [CheckReportInputs] @79
 
 pricing.go  (rank 0.2826)
-   17| type Tier  [go:pricing.go::Tier]
-   33| type PriceBook  [go:pricing.go::PriceBook]
-   38| fn NewPriceBook(costs map[string]float64) -> (*PriceBook, error)  [go:pricing.go::NewPriceBook]
-   50|     fn CostOf(sku string) -> (float64, error)  [go:pricing.go::PriceBook.CostOf]
-   59|     fn Quote(sku string, tier Tier, quantity int) -> (float64, error)  [go:pricing.go::PriceBook.Quote]
-   73|     fn PriceList(tier Tier) -> ([][2]interface{}, error)  [go:pricing.go::PriceBook.PriceList]
-   92| fn FormatMoney(amount float64) -> string  [go:pricing.go::FormatMoney]
+  stable ids: go:pricing.go::<QualifiedName>
+  type Tier  [Tier] @17
+  type PriceBook  [PriceBook] @33
+  fn NewPriceBook(costs map[string]float64) -> (*PriceBook, error)  [NewPriceBook] @38
+      fn CostOf(sku string) -> (float64, error)  [PriceBook.CostOf] @50
+      fn Quote(sku string, tier Tier, quantity int) -> (float64, error)  [PriceBook.Quote] @59
+      fn PriceList(tier Tier) -> ([][2]interface{}, error)  [PriceBook.PriceList] @73
+  fn FormatMoney(amount float64) -> string  [FormatMoney] @92
 
 inventory.go  (rank 0.2309)
-   24| type Item  [go:inventory.go::Item]
-   31|     fn NeedsReorder() -> (bool, error)  [go:inventory.go::Item.NeedsReorder]
-   44| type Inventory  [go:inventory.go::Inventory]
-   51| fn NewInventory(warehouse string) -> *Inventory  [go:inventory.go::NewInventory]
-   63|     fn Add(item Item) -> error  [go:inventory.go::Inventory.Add]
-   83|     fn Remove(sku string) -> (Item, error)  [go:inventory.go::Inventory.Remove]
-   94|     fn ReorderList() -> ([]Item, error)  [go:inventory.go::Inventory.ReorderList]
-  110|     fn AuditTrail() -> []string  [go:inventory.go::Inventory.AuditTrail]
+  stable ids: go:inventory.go::<QualifiedName>
+  type Item  [Item] @24
+      fn NeedsReorder() -> (bool, error)  [Item.NeedsReorder] @31
+  type Inventory  [Inventory] @44
+  fn NewInventory(warehouse string) -> *Inventory  [NewInventory] @51
+      fn Add(item Item) -> error  [Inventory.Add] @63
+      fn Remove(sku string) -> (Item, error)  [Inventory.Remove] @83
+      fn ReorderList() -> ([]Item, error)  [Inventory.ReorderList] @94
+      fn AuditTrail() -> []string  [Inventory.AuditTrail] @110

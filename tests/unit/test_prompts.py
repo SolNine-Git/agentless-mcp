@@ -105,6 +105,7 @@ MESSAGE_ARGUMENTS = {
     "expand_no_room": {"requested": 400, "seats": 40},
     "grouped_ids": {"count": 12},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
+    "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
     "slice_range_not_a_range": {"start": 60, "end": 30, "path": "src/app/svc.py"},

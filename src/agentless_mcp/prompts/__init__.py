@@ -94,6 +94,12 @@ class MessageText:
     expand_no_room: str
     grouped_ids: str
     refs_target_unresolved: str
+    # Two spellings, because two views need different amounts of it. A
+    # grouped view whose rows show `[Class.method]` demonstrates the
+    # nesting rule on every line, so it prints the pattern alone. The
+    # overview body carries no ids at all, so it keeps the sentence that
+    # says how a nested name is spelled.
+    stable_ids_pattern: str
     overview_stable_ids: str
     slice_range_beyond_file: str
     slice_range_not_a_range: str

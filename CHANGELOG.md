@@ -40,6 +40,50 @@ what the focus reached.
   An unfocused map teleports uniformly, reaches everything, and is
   byte-identical to 0.6.7. (#38)
 
+- **Grouped views spell a stable id once per file, not once per row.** A map
+  row carried the whole id, and the whole id opens with the language and the
+  repository-relative path -- the path the file header directly above it
+  already spells. Measured 2026-08-25 on this repository: that repeated
+  prefix was 28% of an `orient(map)` answer. Each file's block now opens with
+  the `stable ids:` pattern line `symbols(overview)` has printed since it
+  shipped, and every row below carries the qualified name alone. Join the two
+  to build an id `expand` accepts.
+
+  `find_referencing_symbols` gets the same treatment, and loses a second
+  redundancy with it: its rows carried the enclosing symbol's name *and* an
+  id whose tail was that same name. The two differ only when a file spells
+  one name twice and the id takes a `#2` ordinal, which is the spelling the
+  row should have carried all along.
+
+  Measured, same command before and after: a focused map went from 70 of 89
+  symbols in 8883 characters to all 89 in 7924 -- 127 characters a symbol
+  down to 89. `refs --limit 20` went from 3064 characters to 2228. The JSON
+  is unchanged: it still carries whole ids, because nothing there repeats a
+  header.
+
+- **A position is an `@line` suffix; the `N| ` gutter means verbatim text.**
+  The map and fan-in rows spelled a position with the same `N| ` gutter that
+  `read(slice)` uses to mean "this is that line of the file". A map row is a
+  normalized signature, so the two disagreed: `RELATION_WEIGHTS` is declared
+  across lines 97-104 of `core/graph.py` and was rendered on one line behind
+  a `97|` that promised text line 97 does not carry. An agent that trusted
+  the gutter and searched for that text found nothing. The gutter now belongs
+  to the views that quote a file -- `read(slice)`, `symbols(expand)`,
+  `symbols(locate)`, the overview body -- and every view that cites a
+  position appends `@line` or `@start-end`, which is what
+  `application/render.py` already documented as the rule.
+
+  `ROW_INDENT` replaces the gutter as the map and fan-in row indent. That is
+  load-bearing rather than cosmetic: an unindented first column is the one
+  line repository text on a row cannot forge, and the gutter had been
+  providing that indent.
+
+- **One file-header grammar across the grouped views.**
+  `symbols(overview)` headed each block with a markdown `### <path>`; the map
+  and fan-in headed theirs with the path and what the view knows about it.
+  The heading is gone. It cost four characters a file and said nothing the
+  path did not.
+
 - **The stale-cache receipt names the repository to reindex.** It read
   `run agentless-mcp index for performance`. An agent following that hint
   from a shell whose working directory is not the repository indexes the
@@ -56,6 +100,11 @@ what the focus reached.
   on the rank itself would not work: measured 2026-08-25, a twenty-node
   component disconnected from the seed converged at 1.2e-7 per node, which
   renders as `0.0000` and passes `> 0.0`.
+
+- **`render.ROW_INDENT` and `render._stable_ids_line`.** One home for the row
+  indent every grouped view shares, and one for the id pattern line the map,
+  fan-in and overview now all print. The pattern is built through
+  `core.symbols.StableId`, so it and a real id come out of one grammar.
 
 - **A test pinning the gate hook's operation set to the server's tables.**
   `contrib/hooks/agentless_gate_mark.py` hand-mirrors the v2 operations that

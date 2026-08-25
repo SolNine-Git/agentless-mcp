@@ -240,6 +240,30 @@ navigate the repository defaults to Grep.
 agentless-mcp map --focus src/billing/invoice.py --focus quote --max-files 10
 ```
 
+Rows look like this:
+
+```
+src/billing/invoice.py  (rank 0.4865)
+  stable ids: py:src/billing/invoice.py::<QualifiedName>
+  class Invoice  [Invoice] @16
+      def total(self) -> Money  [Invoice.total] @21
+  def quote(sku)  [quote] @47
+... 9 more symbols in this file not listed
+```
+
+The file header spells the path, so the rows below it do not. Each file's
+block opens with a `stable ids:` line naming the id pattern for that file,
+and every bracket below carries the qualified name alone. Join the two to
+build an id `expand` accepts: `py:src/billing/invoice.py::Invoice.total`.
+
+`@21` is where the symbol is defined. A position is always an `@line` or
+`@start-end` suffix. The `N| ` gutter means a different thing and only that
+-- this line is verbatim repository content -- so you will see it in `slice`,
+`expand`, `locate` and the `skeleton` body, and never on a map or `refs` row.
+A map row is a *normalized* signature: a declaration spanning eight lines is
+rendered on one, so it is not the text at that line, and it must not be
+dressed as though it were.
+
 The command ranks every file by personalized PageRank over the reference
 graph. It then spends a token budget on the highest-scoring symbols inside
 the top files. `--focus` is not a filter. Seeds take the entire teleport
@@ -335,11 +359,11 @@ The output holds signatures, class attributes, constants and imports. Bodies
 become `...`. The command strips comments and docstrings. It preserves
 original line numbers, so a line you see here is a line you can slice.
 
-The MCP operation opens each file's block with a `stable ids:` line that
-names the id pattern for that file -- e.g. `py:src/app/svc.py::<QualifiedName>`.
-The prefix derives from the file's language. Nested symbols qualify as
-`Class.method`. To escalate to `expand` is therefore a read off the overview,
-not a separate id lookup.
+The MCP operation opens each file's block with the same `stable ids:` line
+the map uses -- e.g. `py:src/app/svc.py::<QualifiedName>`. The prefix derives
+from the file's language. Nested symbols qualify as `Class.method`. To
+escalate to `expand` is therefore a read off the overview, not a separate id
+lookup. The block is headed by the path alone; there is no markdown heading.
 
 ### `expand` (`symbols` operation `expand`) -- the escalation
 
@@ -415,7 +439,16 @@ agentless-mcp refs Invoice.total --shared-callers
 ```
 
 The command lists callers, grouped by file. It attributes each caller to the
-symbol whose body contains the reference. You get callees for free when you
+symbol whose body contains the reference. Rows carry that symbol and its
+position, under the same `stable ids:` pattern line the map prints:
+
+```
+src/app/report.py  (2 references, resolved-via-import)
+  stable ids: py:src/app/report.py::<QualifiedName>
+  [Report.render] @88
+  [build_rows] @140
+```
+ You get callees for free when you
 read a body. You do not get callers that way, and callers are what an
 error-path review or a blast-radius question needs.
 

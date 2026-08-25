@@ -263,11 +263,20 @@ class TestMapService:
         This asked for ``budget=120``, which no door accepts any more:
         ``projectconfig`` declares 200..64000 and ``MapService`` now holds
         callers to it. The behaviour under test is unaffected -- a budget can
-        still fit some symbols and not others -- so the repository grows until
-        the smallest legal budget lands mid-way through it. Raising the floor
-        did not make this path unreachable, and this test is the evidence.
+        still fit some symbols and not others -- so the repository is sized so
+        that the smallest legal budget lands mid-way through it. Raising the
+        floor did not make this path unreachable, and this test is the
+        evidence.
+
+        Resized from twelve files to six when the map dropped its line-number
+        gutter for an ``@line`` suffix and gained a per-file id-pattern line.
+        Twelve file headers plus their omission lines render to 182 of the 200
+        tokens on their own, which left less than one symbol *and* its file's
+        pattern line of room -- the budget stopped landing mid-way and started
+        landing before the first symbol. Six files restore the boundary this
+        pins: measured 5 of 72 symbols included at 188 tokens.
         """
-        for index in range(12):
+        for index in range(6):
             body = "".join(
                 f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
                 for inner in range(12)

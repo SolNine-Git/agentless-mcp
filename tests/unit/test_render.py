@@ -104,16 +104,46 @@ class TestMap:
         assert text.splitlines()[0] == "core.py  (rank 0.6491)"
 
     def test_a_symbol_row_carries_its_signature_and_stable_id(self):
+        """The position is an ``@line`` suffix, not a line-number gutter.
+
+        The gutter says "this line is verbatim repository content" and a map
+        row is a normalized signature: a definition spanning eight lines is
+        rendered on one, so a gutter number in front of it promised text the
+        file does not carry at that line.
+        """
         entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
         text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
-        assert "    4| def quote(sku)  [py:core.py::quote]" in text
+        assert "  def quote(sku)  [py:core.py::quote] @4" in text
 
     def test_depth_is_four_spaces_per_level(self):
         entry = render.MapEntry(
             line=9, signature="def price(self)", stable_id="py:core.py::Book.price", depth=1
         )
         text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
-        assert "    9|     def price(self)  [py:core.py::Book.price]" in text
+        assert "      def price(self)  [py:core.py::Book.price] @9" in text
+
+    def test_a_row_keeps_the_whole_id_when_the_file_names_no_prefix(self):
+        """No pattern line means no way to rebuild a shortened id, so none is cut."""
+        entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
+        text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
+
+        assert "stable ids:" not in text
+        assert "[py:core.py::quote]" in text
+
+    def test_a_file_that_names_its_prefix_prints_the_pattern_once(self):
+        """The prefix leaves every row and appears once under the header."""
+        entries = (
+            render.MapEntry(line=4, signature="def quote(sku)", stable_id="x", name="quote"),
+            render.MapEntry(line=9, signature="def rate()", stable_id="y", name="rate"),
+        )
+        text = render.render_map(
+            [render.MapFile(path="core.py", rank=1.0, entries=entries, id_prefix="py")]
+        )
+
+        assert text.count("stable ids: py:core.py::<QualifiedName>") == 1
+        assert "  def quote(sku)  [quote] @4" in text
+        assert "  def rate()  [rate] @9" in text
+        assert "py:core.py::quote" not in text
 
 
 class TestTestCompanions:
@@ -332,13 +362,40 @@ class TestRefGroups:
         text = render.render_ref_groups([group], "quote")
         assert "caller.py  (1 reference, resolved via import)" in text
 
-    def test_a_site_row_is_a_line_number_then_its_enclosing_symbol(self):
+    def test_a_site_row_is_its_enclosing_symbol_then_an_at_line(self):
         group = render.RefGroup(
             path="caller.py",
             sites=(render.RefSite(line=5, enclosing="def ask()", stable_id="py:caller.py::ask"),),
         )
         text = render.render_ref_groups([group], "quote")
-        assert "    5| def ask()  [py:caller.py::ask]" in text
+        assert "  [py:caller.py::ask] @5" in text
+
+    def test_a_site_row_names_the_symbol_once(self):
+        """The enclosing name and the id's tail are the same string.
+
+        They differ only when a file spells one name twice and the id takes a
+        ``#2`` ordinal, which is the spelling the row should carry. Printing
+        both put the same name on the row twice.
+        """
+        group = render.RefGroup(
+            path="caller.py",
+            id_prefix="py",
+            sites=(
+                render.RefSite(line=5, enclosing="ask", stable_id="py:caller.py::ask", name="ask"),
+            ),
+        )
+        text = render.render_ref_groups([group], "quote")
+
+        assert "  [ask] @5" in text
+        assert text.count("ask") == 1  # the row, and nowhere else
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
+
+    def test_a_module_level_site_carries_no_id(self):
+        group = render.RefGroup(
+            path="caller.py", sites=(render.RefSite(line=5, enclosing=render.MODULE_LEVEL),)
+        )
+        text = render.render_ref_groups([group], "quote")
+        assert f"  {render.MODULE_LEVEL} @5" in text
 
 
 class TestOmissionLines:

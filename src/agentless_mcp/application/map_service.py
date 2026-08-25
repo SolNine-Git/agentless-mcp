@@ -46,7 +46,13 @@ from agentless_mcp.core.graph import (
     rank_order,
 )
 from agentless_mcp.core.projectconfig import MAX_MAX_FILES, MIN_MAX_FILES
-from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
+from agentless_mcp.core.symbols import (
+    ASTSymbol,
+    id_qualname,
+    language_prefix,
+    qualname,
+    symbol_stable_id,
+)
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
 from agentless_mcp.util.tokens import TokenCounter
@@ -819,6 +825,7 @@ def _group(
                 stable_id=symbol_stable_id(candidate.symbol),
                 depth=1 if candidate.symbol.parent_class else 0,
                 rationales=rationale_nodes(candidate.symbol),
+                name=id_qualname(candidate.symbol),
             )
             for candidate in chosen
         )
@@ -828,6 +835,7 @@ def _group(
                 rank=rank[path],
                 entries=entries,
                 total=totals.get(path, 0),
+                id_prefix=language_prefix(chosen[0].symbol.language) if chosen else "",
             )
         )
     return tuple(files)

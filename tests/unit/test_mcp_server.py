@@ -527,7 +527,11 @@ class TestRoundTrip:
         text = result.content[0].text
 
         assert text.startswith("# agentless-mcp receipt\n")
-        assert "py:core.py::quote" in text
+        # The id is spelled once per file as a pattern, and each row carries
+        # the qualified name it addresses. Both halves are pinned: a row that
+        # lost its pattern line is an id an agent cannot rebuild.
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
         assert result.structured_content is None
 
     def test_an_omitted_repo_root_defaults_when_there_is_one_root(self, services, one_repo):
@@ -957,9 +961,11 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
 
-        # File granularity renders paths without symbol lines.
+        # File granularity renders paths without symbol lines, so it prints no
+        # id pattern: a pattern under a block with no ids under it is noise.
         assert "core.py" in text
-        assert "py:core.py::quote" not in text
+        assert "stable ids:" not in text
+        assert "[quote]" not in text
 
     def test_an_explicit_argument_beats_the_config(self, services, one_repo):
         self.write_config(one_repo, {"granularity": "file"})
@@ -971,7 +977,8 @@ class TestProjectConfigOverMcp:
             .text
         )
 
-        assert "py:core.py::quote" in text
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
 
     def test_the_receipt_names_the_config_and_its_warnings(self, services, one_repo):
         self.write_config(one_repo, {"nonsense": 1})
@@ -1030,7 +1037,8 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
 
-        assert "py:core.py::quote" in text
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
         assert "config warning" in text
 
 
@@ -1762,7 +1770,11 @@ class TestOverviewStableIds:
             .text
         )
 
-        assert "### core.py" in text
+        # One file-header grammar across the grouped views: the path, and
+        # whatever the view knows about it. The markdown heading `###` cost
+        # four characters a file and said nothing the path did not.
+        assert "\ncore.py\n" in text
+        assert "###" not in text
         # The prefix and separator come from core.symbols.stable_id, so the
         # line matches the ids the other tools mint for this file.
         assert "stable ids: py:core.py::<QualifiedName>" in text

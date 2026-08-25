@@ -771,12 +771,12 @@ class ToolHandlers:
         blocks = []
         for view in views:
             if view.error:
-                blocks.append(f"### {view.path}\n{view.error}")
+                blocks.append(f"{view.path}\n{render.ROW_INDENT}{view.error}")
                 continue
             ids_line = MESSAGES.overview_stable_ids.format(
-                pattern=stable_id(view.language, view.path, "<QualifiedName>")
+                pattern=stable_id(view.language, view.path, render.QUALIFIED_NAME_PLACEHOLDER)
             )
-            blocks.append(f"### {view.path}\n{ids_line}\n{view.text}")
+            blocks.append(f"{view.path}\n{render.ROW_INDENT}{ids_line}\n{view.text}")
         return self._wrap(ctx, "\n".join(blocks))
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:

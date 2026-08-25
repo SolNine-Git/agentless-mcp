@@ -125,7 +125,8 @@ class TestInProcess:
         assert invoke(services, repo_path, "map") == EXIT_OK
         out = capsys.readouterr().out
         assert out.startswith("# agentless-mcp receipt\n")
-        assert "py:core.py::quote" in out
+        assert "stable ids: py:core.py::<QualifiedName>" in out
+        assert "[quote] @" in out
 
     def test_a_repository_context_is_closed_after_dispatch(self, services, repo_path, monkeypatch):
         real = RepoContext.close
