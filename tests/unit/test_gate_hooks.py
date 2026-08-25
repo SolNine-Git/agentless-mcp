@@ -369,6 +369,24 @@ def test_the_denial_names_the_shell_route_in_the_log(hooks, monkeypatch, tmp_pat
     ]
 
 
+@pytest.mark.parametrize("tool_name", ["Bash", "exec_command"])
+def test_every_shell_tool_name_is_gated(hooks, monkeypatch, tmp_path, tool_name):
+    """Codex names its unified-exec wrapper `exec_command`, not `Bash`.
+
+    A shell tool the hook does not recognise falls through as "not a search
+    tool" and every search in that client walks past the gate.
+    """
+    check, _mark = hooks
+    payload = {
+        "session_id": f"shell-{tool_name}",
+        "tool_name": tool_name,
+        "tool_input": {"command": "rg DEADLINE"},
+        "cwd": str(tmp_path),
+    }
+
+    assert call(check, monkeypatch, payload, check.decide) == check.DENY
+
+
 def test_sessions_do_not_unlock_each_other(hooks, monkeypatch):
     check, mark = hooks
     call(

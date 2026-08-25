@@ -373,6 +373,66 @@ Install the gate by copying the two scripts and adding one hooks block.
    be named.
 5. Start a new session. Claude Code reads `settings.json` at session start.
 
+#### Codex CLI
+
+The two scripts are unchanged between clients. Codex uses the same
+`PreToolUse` and `PostToolUse` events, the same `session_id`, `tool_name` and
+`tool_input` payload fields, and the same exit-2-blocks-with-stderr contract.
+Three things differ, and all three are configuration.
+
+1. **Name the MCP server `agentless`.** The server name is the tool-name
+   prefix: an entry named `agentless-mcp` produces `mcp__agentless-mcp__orient`,
+   which the mark hook's `mcp__agentless__.*` matcher never sees, and the
+   unlock half goes dormant.
+
+   ```toml
+   [mcp_servers.agentless]
+   command = "/ABSOLUTE/PATH/TO/agentless-mcp-server"
+   args = ["--allow-client-roots", "--root", "/ABSOLUTE/PATH/TO/repo"]
+   ```
+
+   Pass every repository you work in as a `--root`. A server given one root is
+   blind in every other repository, and answers there look like an empty map
+   rather than a misconfiguration.
+
+2. **Write `~/.codex/hooks.json`** (or the same block inline under `[hooks]`
+   in `~/.codex/config.toml`; a repository-local `.codex/hooks.json` also
+   works). The `PreToolUse` matcher gains `exec_command`, Codex's unified-exec
+   tool name.
+
+   ```json
+   {
+     "hooks": {
+       "PreToolUse": [
+         { "matcher": "Grep|Glob|Bash|exec_command",
+           "hooks": [{ "type": "command",
+                       "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/agentless_gate_check.py" }] }
+       ],
+       "PostToolUse": [
+         { "matcher": "mcp__agentless__.*",
+           "hooks": [{ "type": "command",
+                       "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/agentless_gate_mark.py" }] }
+       ]
+     }
+   }
+   ```
+
+3. **Trust the hooks once.** Codex does not run a non-managed hook until it has
+   been reviewed. Open the TUI and run `/hooks` to inspect and trust both. Until
+   then they are skipped silently -- no error, no log line, and the gate simply
+   does not fire.
+
+Codex searches by running `rg`, `grep` and `find` through its shell tool
+rather than through a `Grep` tool, so on that client the shell half of the
+gate does the work and the tool-name half rarely fires.
+
+**Eager schema loading does not port.** The `anthropic/alwaysLoad` hint this
+server sets is Anthropic-specific and does not appear in Codex; Codex's own
+`tool_search_always_defer_mcp_tools` is fixed on and cannot be overridden. So
+Codex runs deferred schemas plus the gate. That is the 0.6.2 configuration,
+which measured indistinguishable from eager on every metric, so the cost is
+a round trip rather than a capability.
+
 ```json
 {
   "hooks": {
