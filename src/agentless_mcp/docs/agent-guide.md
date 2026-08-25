@@ -219,10 +219,10 @@ loaded eagerly for that reason, so an agent knows what they answer before it
 picks its first move. Grep is loaded from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
 the structural-first gate in `contrib/hooks/`: it denies broad Grep and Glob
-until `orient(map|path)`, `symbols(find|overview|expand|explain)`, or
-`find_referencing_symbols` has localized the session. Exact-file Grep remains
-available, while diagnostics, raw reads and the shape listings do not unlock
-broad discovery. The equivalent v1 tools also unlock the temporary
+until `orient(map|path)`, `symbols(find|overview|expand|explain)`,
+`read(slice)` or `find_referencing_symbols` has localized the session.
+Exact-file Grep remains available, while diagnostics, `read(dir)` and the shape
+listings do not unlock broad discovery. The equivalent v1 tools also unlock the temporary
 compatibility surface. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.

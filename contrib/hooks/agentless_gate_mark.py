@@ -2,10 +2,15 @@
 """PostToolUse hook: record meaningful structural localization.
 
 This is the observing half of the structural-first gate. It writes a marker
-after an operation that localizes code structure. Diagnostics and raw reads do
-not qualify, so calling ``capabilities`` cannot unlock broad native search. The
-marker filename is a digest of the session id, so one session never unlocks
-another and untrusted ids never become path components.
+after a call that proves the caller knows where to look. Diagnostics and
+directory listings do not qualify, so calling ``capabilities`` cannot unlock
+broad native search. The marker filename is a digest of the session id, so one
+session never unlocks another and untrusted ids never become path components.
+
+Every decision is logged with the ``operation`` argument, not only the tool
+name. The gate treats ``read(slice)`` and ``read(dir)`` differently, and a log
+that recorded neither could not tell afterwards which of them a session was
+refused.
 
 The hook reads the call, not its result. ``tool_response`` has no shape this
 hook can read a success out of across every tool it matches, and guessing one
@@ -44,14 +49,22 @@ from pathlib import Path
 MARKER_DIR = Path("/tmp/agentless_gate")
 LOG_ENV = "AGENTLESS_GATE_LOG"
 
-# `orient(path)` belongs here for the same reason `symbols(find)` does: it
-# returns resolved relationships between two named symbols, which is stronger
-# localization than a substring name lookup. The listings that answer "how is
-# this repository shaped" -- communities, cycles, diagram, health -- and the
-# raw reads do not localize a change, so they do not unlock broad search.
+# What unlocks is a call that proves the caller knows where to look.
+#
+# `orient(path)` qualifies for the same reason `symbols(find)` does: it returns
+# resolved relationships between two named symbols, which is stronger evidence
+# than a substring name lookup. `read(slice)` qualifies on the rule the check
+# hook already applies to an exact-file Grep -- naming a file and a line range
+# IS the localization, and refusing it while allowing the weaker Grep was a
+# contradiction between the two halves of one gate.
+#
+# `read(dir)` stays out: a directory listing is how you look for a file, not
+# evidence that you found one. So do the listings that answer "how is this
+# repository shaped" -- communities, cycles, diagram, health.
 LOCALIZING_OPERATIONS = {
     "mcp__agentless__orient": frozenset({"map", "path"}),
     "mcp__agentless__symbols": frozenset({"find", "overview", "expand", "explain"}),
+    "mcp__agentless__read": frozenset({"slice"}),
 }
 LOCALIZING_TOOLS = frozenset(
     {
@@ -60,6 +73,9 @@ LOCALIZING_TOOLS = frozenset(
         "mcp__agentless__expand_symbols",
         "mcp__agentless__find_symbol",
         "mcp__agentless__explain_symbol",
+        # The v1 spelling of `read(slice)`; v1's `list_dir` is `read(dir)` and
+        # is deliberately absent.
+        "mcp__agentless__read_slice",
     }
 )
 REFERENCE_TOOL = "mcp__agentless__find_referencing_symbols"
@@ -82,6 +98,21 @@ def marker_path(session_id: str) -> Path:
     return MARKER_DIR / f"{digest}.json"
 
 
+def operation_of(payload: dict[str, object]) -> str | None:
+    """Return the grouped tool's ``operation`` argument, or None.
+
+    Logged on every decision, unlocking or not. Without it a refusal records
+    only that some ``read`` was ignored, and ``read(slice)`` and ``read(dir)``
+    -- which this gate now treats differently -- are indistinguishable after
+    the fact. A measurement run cannot recover what the log did not keep.
+    """
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return None
+    operation = tool_input.get("operation")
+    return operation if isinstance(operation, str) else None
+
+
 def unlock_reason(payload: dict[str, object]) -> str | None:
     """Name the localizing operation, or return none for a non-localizing call."""
     tool = payload.get("tool_name")
@@ -90,8 +121,7 @@ def unlock_reason(payload: dict[str, object]) -> str | None:
     if tool in LOCALIZING_TOOLS:
         return str(tool).rsplit("__", 1)[-1]
     operations = LOCALIZING_OPERATIONS.get(tool)
-    tool_input = payload.get("tool_input")
-    operation = tool_input.get("operation") if isinstance(tool_input, dict) else None
+    operation = operation_of(payload)
     if operations is not None and operation in operations:
         return f"{tool.rsplit('__', 1)[-1]}.{operation}"
     return None
@@ -111,6 +141,7 @@ def mark() -> None:
                 "session_id": session_id,
                 "event": "agentless_call_ignored",
                 "tool": payload.get("tool_name"),
+                "operation": operation_of(payload),
                 "reason": "non_localizing_operation",
             }
         )
@@ -132,6 +163,7 @@ def mark() -> None:
             "session_id": session_id,
             "event": "structural_call",
             "tool": payload.get("tool_name"),
+            "operation": operation_of(payload),
             "reason": reason,
         }
     )

@@ -298,10 +298,12 @@ the ordering is enforced.
 Prose asks for the structural pass. A hook enforces it. Two scripts in
 `contrib/hooks/` deny repository-wide or directory-wide `Grep` and every
 `Glob` until the session has made a localizing Agentless call.
-`orient(map|path)`, `symbols(find|overview|expand|explain)`, and
-`find_referencing_symbols` unlock the session; diagnostics, raw reads,
+`orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
+`find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
 `symbols(locate)`, and the shape listings `orient(communities|cycles|diagram|health)`
-do not. The equivalent v1 tools unlock servers running the temporary
+do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
+naming a file and a line range is the localization. A directory listing is how
+you look for a file, not evidence that you found one. The equivalent v1 tools unlock servers running the temporary
 compatibility surface. `Grep` scoped to one existing file remains available
 before unlock because the caller has already localized that search. The mark
 hook reads the call and not its result, so an Agentless call that errored

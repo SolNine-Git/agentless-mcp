@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.6.5 -- 2026-08-25
+
+The gate's two halves now agree on what counts as already localized, and every
+decision logs the operation it acted on.
+
+### Fixed
+
+- **`read(slice)` unlocks broad search.** The check hook already lets an
+  exact-file `Grep` through before any unlock, on the grounds that the caller
+  has localized that search itself. `read(slice)` names a file *and* a line
+  range, which is stronger evidence of the same thing, yet 0.6.4 refused it as
+  a "raw read". The two halves of one gate disagreed about the same rule. The
+  v1 spelling `read_slice` unlocks with it. `read(dir)` stays out on the
+  distinction that does hold: a directory listing is how you look for a file,
+  not evidence that you found one.
+- **The gate log records the `operation`, not only the tool.** Now that
+  `read(slice)` and `read(dir)` are treated differently, a log naming only
+  `read` could not say afterwards which one a session was refused. A benchmark
+  run against 0.6.4 hit exactly that: 32 refused `read` calls that could not be
+  split. Both `structural_call` and `agentless_call_ignored` records carry the
+  field.
+
+### Measured
+
+- **The 0.6.4 gate narrowing has no detectable effect on retrieval, and the
+  method that would have reported one is unreliable at this sample size.** A
+  paired 60-instance run on SWE-Explore-Bench, both arms on the same build,
+  differing only in the unlock rule, returned three significant losses out of
+  seventeen metrics. Splitting the instances by whether the gate ever fired
+  dissolves them: the gate fired in 12 of 60, and `hit_file_rate`'s loss is
+  *larger* in the 48 instances it never touched (-0.068) than overall (-0.054).
+  In those 48 the two arms were the same configuration, so that figure is the
+  benchmark's noise floor rather than an effect. Counting which arm each metric
+  favours makes the point plainly: 16 of 17 favour the old gate overall, and 13
+  of 17 still favour it in the subset where nothing was ever denied.
+- **Consequence for earlier releases.** The paired bootstrap resamples
+  instances and treats each score as fixed, so it never modelled the agent's
+  run-to-run variance. Effects at or below roughly 0.05 on these metrics are
+  not resolvable at n=60 without a same-arm replicate, which includes the
+  gate's own founding result against the grep baseline (+0.052
+  `weighted_core_coverage`). Those results are not withdrawn; they are
+  unreplicated, and future arms should quote a measured noise floor beside the
+  effect.
+
+### Kept
+
+- **The gate still fires on the rule 0.6.4 introduced.** `capabilities`,
+  `symbols(locate)` and the shape listings do not unlock broad search, and the
+  marker is still a digest of the session id. Nothing in the measurement
+  disconfirmed the narrowing; it closed a real hole and a real path-escape, and
+  it is kept on those grounds rather than on a retrieval claim.
+
 ## 0.6.4 -- 2026-08-25
 
 `validate` runs one command batch per distinct result rather than per
