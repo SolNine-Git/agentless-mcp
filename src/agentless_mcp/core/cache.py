@@ -52,6 +52,7 @@ import hashlib
 import json
 import logging
 import os
+import shlex
 import sqlite3
 import sys
 import threading
@@ -224,6 +225,12 @@ class CacheStatus:
     files: int
     tags: int
     note: str
+    # The repository this cache describes, or None when there is no cache to
+    # describe. Only the generation-mismatch receipt reads it, and that branch
+    # requires a generation, which the absent and bypassed statuses do not
+    # have. Appended with a default rather than placed by meaning: this is a
+    # shipped dataclass and a positional insertion would break its callers.
+    repo_root: Path | None = None
 
     @property
     def receipt(self) -> str:
@@ -243,9 +250,14 @@ class CacheStatus:
             return f"{RECEIPT_NONE} ({notes})" if notes else RECEIPT_NONE
         if self.generation_matches:
             return f"g:{self.generation} fresh"
+        remediation = (
+            STALE_REFRESHING
+            if refreshing
+            else REMEDIATION.format(repo_root=shlex.quote(str(self.repo_root)))
+        )
         return (
             f"g:{self.generation} generation mismatch (repo g:{self.repo_generation}); "
-            f"{STALE_REFRESHING if refreshing else REMEDIATION}"
+            f"{remediation}"
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -366,6 +378,12 @@ class _CacheState:
     generation: str
     repo_generation: str
     grammar_version: str
+    # The repository this cache was built for. Carried so the stale receipt
+    # can name it in the command it recommends: the receipt is read by an
+    # agent whose working directory is often not the repository, and
+    # ``agentless-mcp index`` with no argument then indexes the wrong tree
+    # or refuses.
+    repo_root: Path
 
 
 class CachedSource:
@@ -464,6 +482,7 @@ class CachedSource:
             files=counts.files,
             tags=counts.tags,
             note="",
+            repo_root=self._state.repo_root,
         )
 
     def close(self) -> None:
@@ -706,6 +725,7 @@ def _open_indexed(
             generation=meta.generation,
             repo_generation=repo_generation(repo_root, tree_oid),
             grammar_version=grammars.pack_version(),
+            repo_root=repo_root,
         ),
     )
 

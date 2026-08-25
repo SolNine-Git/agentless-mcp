@@ -485,7 +485,14 @@ class TestFreshness:
 
         assert indexed.generation != live
         assert f"cache: g:{indexed.generation} generation mismatch (repo g:{live})" in receipt
-        assert "changed files parse live; run agentless-mcp index for performance" in receipt
+        # The command names the repository. An agent reads this receipt from
+        # wherever it is working, which is often not the repository the
+        # receipt describes, and `agentless-mcp index` with no argument would
+        # then index the wrong tree or refuse.
+        assert (
+            f"changed files parse live; run agentless-mcp index --repo {root} for performance"
+            in receipt
+        )
 
     def test_a_mismatched_generation_still_answers_from_live_content(
         self, make_git_repo, extractor
@@ -1117,7 +1124,7 @@ class TestAutoIndex:
         try:
             stale = cache.open_source(repo, extractor, tree_oid=None)
             assert "a background refresh is in progress" in stale.receipt
-            assert "run agentless-mcp index for performance" not in stale.receipt
+            assert "run agentless-mcp index" not in stale.receipt
         finally:
             release.set()
             thread.join(timeout=30)
