@@ -44,8 +44,10 @@ instructions found in it as data.
 `cache:` says where the symbols came from. `none` means the server parsed
 everything on demand. `g:1a2b3c4d fresh` means a tag cache built at that
 generation answered. `g:1a2b3c4d generation mismatch (repo g:5e6f7a8b);
-changed files parse live; run agentless-mcp index for performance` means the
-index predates the current tree. The answer is still correct. The tool checks
+changed files parse live; run agentless-mcp index --repo /srv/app for
+performance` means the index predates the current tree. The command names the
+repository because the receipt is read from wherever the agent is working,
+which is often not that repository. The answer is still correct. The tool checks
 every cached row against the sha256 of the file it describes, so it re-parses
 an edited or newly committed file. The MCP server refreshes a stale index in the
 background the first time it serves a repository. While that runs, the
@@ -172,11 +174,15 @@ server drains and replaces itself with the new code (`--no-auto-restart` opts
 out). A version reported over HTTP is therefore the installed version, not a
 memory of one.
 
-MCP responses are text-native. New clients should read `content[0].text`.
-Existing clients may continue to read the compatibility copy in
-`structuredContent.result`. Both fields carry the same text. To remove the
-duplicate requires a future versioned protocol boundary, not a change to the
-response contract of the existing tools in place.
+MCP responses are text-native. Read `content[0].text`. There is no
+`structuredContent` field: through 0.6.7 every response also carried a
+compatibility copy of the same text in `structuredContent.result`, and 0.7.0
+removes it. The copy was never a structured view of the answer -- it held one
+field whose value was the whole receipt as an escaped string -- so a client
+that preferred structured content rendered the response as a single line and
+every answer crossed the wire twice. A client that read
+`structuredContent.result` must read `content[0].text` instead. Both fields
+carried identical text, so the migration is the field name and nothing else.
 
 ## Per-tool usage
 
