@@ -15,6 +15,7 @@ from agentless_mcp.core.graph import (
     NOISE_NAME_MULTIPLIER,
     RELATION_WEIGHTS,
     UNIQUE_MATCH_MULTIPLIER,
+    Convergence,
     PathIndex,
     Reached,
     RefGraph,
@@ -223,17 +224,89 @@ class TestPageRank:
     def test_the_default_damping_is_the_one_the_rankings_were_tuned_against(self):
         """Pin what 0.85 *does*, so changing it fails here rather than silently.
 
-        ``a.py`` references ``b.py`` and nothing references back, so the fixed
-        point is closed-form: with a uniform teleport vector and ``b.py``'s
-        dangling mass returned to it, ``a.py`` settles at
-        ``0.5 / (1 + damping / 2)``, which is 0.350877 at 0.85 and moves for
-        any other damping.
+        A two-node line will not do it any more. Backflow makes ``a.py`` and
+        ``b.py`` a mutual pair, and a mutual pair splits evenly whatever the
+        damping, so the fixture would pin nothing. A fork does: ``a.py``
+        references ``b.py`` and ``c.py``, each of which reaches only back to
+        ``a.py``, so by symmetry ``b.py`` and ``c.py`` are level and ``a.py``
+        settles at ``((1 - damping) / 3 + damping) / (1 + damping)`` -- which
+        is 0.486486 at 0.85 and moves for any other damping.
         """
-        graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
+        graph = RefGraph(
+            nodes=("a.py", "b.py", "c.py"),
+            edges=line(("a.py", "b.py", 1.0), ("a.py", "c.py", 1.0)),
+        )
         rank = personalized_pagerank(graph).rank
 
-        assert math.isclose(rank["a.py"], 0.3508771, abs_tol=1e-6)
-        assert math.isclose(rank["b.py"], 0.6491228, abs_tol=1e-6)
+        assert math.isclose(rank["a.py"], 0.4864865, abs_tol=1e-6)
+        assert math.isclose(rank["b.py"], 0.2567568, abs_tol=1e-6)
+        assert math.isclose(rank["c.py"], 0.2567568, abs_tol=1e-6)
+
+
+class TestTheWalkStepsBothWays:
+    """Backflow, and the one kind of file it must not reach."""
+
+    def test_a_referrer_of_the_seed_outranks_a_file_unrelated_to_it(self):
+        """The defect this exists for: a caller scored as low as a stranger.
+
+        ``caller.py`` references the seed and ``island.py`` has no edge at
+        all. A forward-only walk scores both of them at exactly zero, because
+        rank flows only toward a definer and neither file is one -- so the
+        ranking past the seed was decided by files the seed *imports*, and
+        the one file that uses it could not be told from an unconnected one.
+        """
+        graph = RefGraph(
+            nodes=("seed.py", "caller.py", "hub.py", "island.py"),
+            edges=line(("seed.py", "hub.py", 1.0), ("caller.py", "seed.py", 1.0)),
+        )
+        rank = personalized_pagerank(graph, {"seed.py": 1.0}).rank
+
+        assert rank_order(rank)[0] == "seed.py"
+        assert rank["caller.py"] > 0.0
+        assert math.isclose(rank["island.py"], 0.0, abs_tol=1e-9)
+
+    def test_a_pure_source_does_not_gain_from_the_files_it_references(self):
+        """A test suite references many files; that never makes it the answer."""
+        edges = line(
+            ("tests/test_all.py", "alpha.py", 1.0),
+            ("tests/test_all.py", "bravo.py", 1.0),
+            ("tests/test_all.py", "chose.py", 1.0),
+        )
+        nodes = ("alpha.py", "bravo.py", "chose.py", "tests/test_all.py")
+        graph = RefGraph(nodes=nodes, edges=edges)
+
+        unguarded = personalized_pagerank(graph).rank
+        guarded = personalized_pagerank(graph, pure_sources={"tests/test_all.py"}).rank
+
+        assert rank_order(unguarded)[0] == "tests/test_all.py"
+        assert rank_order(guarded)[0] != "tests/test_all.py"
+        assert guarded["tests/test_all.py"] < unguarded["tests/test_all.py"]
+
+    def test_the_graph_itself_keeps_its_direction(self):
+        """Only the walk reads the graph both ways; the edge map does not."""
+        graph = RefGraph(nodes=("a.py", "b.py"), edges=line(("a.py", "b.py", 1.0)))
+
+        assert graph.adjacency()["b.py"] == ()
+        assert graph.reverse_adjacency()["a.py"] == ()
+
+
+class TestSeedsLeadTheOrder:
+    """A resolved seed is the file the caller named, so it opens the answer."""
+
+    def test_a_seed_leads_even_when_the_walk_ranks_another_file_higher(self):
+        rank = {"hub.py": 0.6, "seed.py": 0.3, "leaf.py": 0.1}
+
+        assert rank_order(rank, {"seed.py"}) == ["seed.py", "hub.py", "leaf.py"]
+
+    def test_seeds_keep_the_walk_order_among_themselves(self):
+        rank = {"hub.py": 0.6, "low.py": 0.1, "high.py": 0.3}
+
+        assert rank_order(rank, {"low.py", "high.py"}) == ["high.py", "low.py", "hub.py"]
+
+    def test_no_seeds_is_the_plain_ranking(self):
+        rank = {"a.py": 0.2, "b.py": 0.5}
+
+        assert rank_order(rank) == rank_order(rank, frozenset()) == ["b.py", "a.py"]
 
 
 class TestConvergenceIsReported:
@@ -281,10 +354,10 @@ class TestConvergenceIsReported:
         edges = {(nodes[index], nodes[index + 1]): 1.0 for index in range(len(nodes) - 1)}
         graph = RefGraph(nodes=nodes, edges=edges)
 
-        ranking = personalized_pagerank(graph, damping=0.99, max_iterations=500)
+        ranking = personalized_pagerank(graph, damping=0.99, limits=Convergence(max_iterations=500))
 
         assert ranking.converged
-        assert ranking.iterations == 191
+        assert ranking.iterations == 252
 
 
 class TestNameWeighting:

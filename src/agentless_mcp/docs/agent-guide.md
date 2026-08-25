@@ -266,11 +266,11 @@ Output is one block per file: `NN| signature  [stable_id]`, plus a count of
 the symbols that did not fit.
 
 Below the ranked files the map may add a **test companion section**. The
-ranking cannot produce that section. Edges run referrer to definer, so a test
-file is a pure source in the reference graph: it carries no inbound weight,
-personalized PageRank scores inbound weight, and a test therefore never enters
-the ranked map however directly it exercises the files in it. The companion
-section is how a test file reaches the answer at all.
+ranking does not produce that section. A test file is held out of the ranking
+as a pure source: the walk follows its references and no rank flows back
+along one, so a test never enters the ranked map however directly it
+exercises the files in it. It exercises the code and is never what the code
+is about, and the companion section is how it reaches the answer at all.
 
 ```
 tests exercising the files above:

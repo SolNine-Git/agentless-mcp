@@ -423,7 +423,8 @@ configuring an agent, or paste it into `CLAUDE.md` or a dispatch prompt.
 **Seed the map with what the task already names.** `orient(operation="map",
 focus=[...])` ranks every file by personalized PageRank over the reference
 graph, and the seeds take the whole teleport mass, so the ranking flows
-outward from what you name. A seed resolves as a repository-relative path
+outward from what you name. A seed that resolved leads the ranked list, and
+the files that reference it rank above the utilities it imports. A seed resolves as a repository-relative path
 (`src/billing/invoice.py`), a path suffix (`invoice.py`), a bare module stem
 (`invoice`), a qualified symbol name (`Invoice.total`), or a bare symbol name
 (`quote`). Lift them from the task: the file in the traceback, the class in
@@ -442,8 +443,8 @@ costs more than the one above it.
 1. `orient(operation="map")` answers *where this lives*. It returns ten ranked
    files by default however large the repository is: it localizes, it does not
    enumerate. Below the ranked files it may list the tests that exercise them,
-   which the ranking itself cannot surface, because a test file carries no
-   inbound reference weight.
+   which the ranking itself does not surface, because a test file is held out
+   of the ranking as a pure source of rank.
 2. `symbols(operation="overview", paths=[...])` answers *what this file
    declares*. Signatures with the bodies elided, plus the stable-id pattern for
    that file. It is cheap, and it replaces reading the file.

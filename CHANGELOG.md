@@ -2,7 +2,47 @@
 
 ## 0.6.3 -- 2026-08-25
 
-One reversal: the five MCP tools ask for eager schema loading again.
+One ranking fix and one reversal: the map answers with relatives of the seed
+instead of the repository's hubs, and the five MCP tools ask for eager schema
+loading again.
+
+### Fixed
+
+- **The ranking walk steps both ways, so a seeded map stops padding rank two
+  onward with high-centrality noise.** Reference edges run referrer to
+  definer, so a walk that only followed them left every seed heading downhill
+  into whatever that file imports -- the utility modules every file imports
+  and which therefore rank high under any personalization. `map --focus
+  UnicodeUsernameValidator` on Django answered with the class's own file at
+  rank one and `django/utils/translation/__init__.py`, 30-plus irrelevant
+  symbols of it, at rank two. The walk now also steps referrer-wards at half
+  weight (`BACKFLOW_WEIGHT`), which is what makes the files that *use* a seed
+  reachable from it: before, a file referencing the seed scored exactly zero,
+  the same as a file with no connection to it at all. The graph itself keeps
+  its direction -- `flood` and `reverse_adjacency` are unchanged; only the
+  ranking walk reads it as undirected.
+- **A resolved seed leads the ranked list.** It is the file the caller named,
+  and the walk is the map's guess about what else is relevant, so direct
+  evidence opens the answer. This was already wrong before the change above:
+  on 5 of 24 seeded Loc-Bench instances the walk gave rank one to some other
+  file, which reads as the map ignoring the focus.
+- **Test files are held out of the ranking rather than merely absent from
+  it.** The test companion section exists because a test was a pure source of
+  rank, which backflow would have undone -- a suite references many files, and
+  a leaf they reference has nowhere else to send its rank, so tests would have
+  ranked above their subjects. `personalized_pagerank` now takes the pure
+  sources explicitly and the map passes its test paths. Measured: without the
+  rule, test files took 30 of 250 top-5 slots on the Loc-Bench subset, against
+  9 before the change; with it, 7.
+- **Measured on 50 Loc-Bench V1 instances, deterministic and model-free.**
+  Seeded: `acc_any@5` 0.540 to 0.660, `nDCG@10` 0.370 to 0.430, MAP 0.295 to
+  0.374. Unseeded: `acc_any@5` 0.340 to 0.480, `nDCG@10` 0.194 to 0.253, MAP
+  0.136 to 0.199. Paired over instances with a 10,000-sample bootstrap, MAP
+  gains +0.079 (95% CI +0.029 to +0.132, 29 instances better and 10 worse) and
+  `nDCG@10` +0.060 (95% CI +0.009 to +0.112). `recall@10` moves +0.006 (95% CI
+  -0.071 to +0.084), so this buys precision at the top of the list and costs
+  no coverage -- unlike the span-cropping arms tried earlier, which bought
+  precision by losing it. Two consecutive runs differed on 0 of 50 instances.
 
 ### Changed
 
