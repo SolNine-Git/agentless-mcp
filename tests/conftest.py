@@ -24,6 +24,15 @@ from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util import cachedir
 from agentless_mcp.util.tokens import Chars4Counter
 
+# Git exports GIT_DIR to hook processes, and GIT_DIR overrides the -C every
+# fixture git call is given: under a pre-push hook, a fixture's `git init`
+# reinitializes the *enclosing* repository as bare and `git add -A` rewrites
+# its index. Scrubbing the family here, before any test runs a subprocess,
+# keeps every git the suite spawns inside its tmp_path -- the same invariant
+# core.gitinfo.subprocess_env enforces for the package's own calls.
+for _name in [name for name in os.environ if name.startswith("GIT_")]:
+    del os.environ[_name]
+
 # The languages the suite actually parses. Kept short on purpose: warming the
 # full tier-1 set would slow a cold run down for no coverage gain.
 TEST_LANGUAGES = ("python", "javascript", "typescript", "go")
