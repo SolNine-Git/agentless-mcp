@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.7 -- 2026-08-25
+
+Codex CLI runs the same gate.
+
+### Fixed
+
+- **Codex's unified-exec wrapper is gated.** Codex reports the canonical name
+  `Bash` for ordinary shell calls, which 0.6.6 already covers, but names its
+  unified-exec tool `exec_command`. That name fell through the hook as "not a
+  search tool", so a client with unified exec enabled routed every search past
+  the gate. `SHELL_TOOLS` now holds both names.
+
+### Added
+
+- **Codex CLI install instructions.** The two hook scripts are unchanged
+  between clients: Codex uses the same `PreToolUse`/`PostToolUse` events, the
+  same `session_id` / `tool_name` / `tool_input` payload fields, and the same
+  exit-2-blocks-with-stderr contract. Three things differ and all three are
+  configuration: the MCP server entry must be named `agentless` because the
+  server name is the tool-name prefix the mark hook matches, the recommended
+  matcher gains `exec_command`, and Codex requires the hooks to be reviewed
+  once with `/hooks` before it will run them.
+
+### Known gaps
+
+- **Codex defers MCP tool schemas and offers no eager-loading control.** The
+  `anthropic/alwaysLoad` hint the server sets is Anthropic-specific and absent
+  from Codex; its own `tool_search_always_defer_mcp_tools` is fixed on. Codex
+  therefore runs the deferred-plus-gate configuration, which 0.6.2 measured as
+  indistinguishable from eager on every metric, rather than the eager one
+  0.6.3 chose.
+- **`exec_command` gating is untested against a live unified-exec session.**
+  The name comes from Codex's hook documentation and is covered by a unit
+  test; no run with that feature enabled has exercised it.
+
 ## 0.6.6 -- 2026-08-25
 
 The gate covers search routed through the shell. Closes #33.

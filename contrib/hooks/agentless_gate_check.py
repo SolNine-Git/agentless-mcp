@@ -68,7 +68,11 @@ DENY = 2
 # names alone left the second shape ungated: a harness that tells the model to
 # search with `grep` inside `Bash` never reached this hook at all.
 NATIVE_SEARCH_TOOLS = frozenset({"Grep", "Glob"})
-SHELL_TOOLS = frozenset({"Bash"})
+# ``Bash`` is the canonical shell-tool name in both Claude Code and Codex
+# payloads. ``exec_command`` is Codex's unified-exec wrapper, which reports its
+# own name and carries the same ``tool_input.command`` string; without it here
+# a client that enables unified exec routes every search past the gate.
+SHELL_TOOLS = frozenset({"Bash", "exec_command"})
 SEARCH_TOOLS = NATIVE_SEARCH_TOOLS | SHELL_TOOLS
 
 DENY_MESSAGE = """Structural pass first: this session has not localized with agentless yet.
