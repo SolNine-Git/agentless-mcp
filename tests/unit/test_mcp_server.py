@@ -479,12 +479,20 @@ class TestAnnotations:
             assert annotations.openWorldHint is False, tool.name
             assert annotations.idempotentHint is True, tool.name
 
-    def test_text_tools_keep_the_compatible_result_schema(self, services, one_repo):
+    def test_no_tool_publishes_an_output_schema(self, services, one_repo):
+        """Every answer is text, so no tool declares a structured shape.
+
+        A schema here is what makes FastMCP emit a second copy of the answer
+        in ``structuredContent.result``: one field holding the whole receipt
+        as an escaped string. A client that prefers structured content then
+        renders the response as a single line, and every answer crosses the
+        wire twice. Pinned per tool rather than in aggregate so a new
+        registration that forgets ``output_schema=None`` names itself.
+        """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
 
         for tool in tools:
-            assert tool.outputSchema is not None, tool.name
-            assert tool.outputSchema["properties"]["result"]["type"] == "string", tool.name
+            assert tool.outputSchema is None, tool.name
 
     def test_the_annotation_helper_carries_the_documented_hints(self):
         assert read_only("X") == {
@@ -520,7 +528,7 @@ class TestRoundTrip:
 
         assert text.startswith("# agentless-mcp receipt\n")
         assert "py:core.py::quote" in text
-        assert result.structured_content == {"result": text}
+        assert result.structured_content is None
 
     def test_an_omitted_repo_root_defaults_when_there_is_one_root(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))

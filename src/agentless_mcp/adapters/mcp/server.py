@@ -1194,6 +1194,17 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     every surface: the expensive fan-in call keeps its own decision point and
     cost warning on v2 deliberately, and the capability report is the same
     contract either way.
+
+    Every registration passes ``output_schema=None``, which is why the literal
+    repeats fourteen times below. Each handler returns ``str``, and FastMCP's
+    default for a non-object return type is to generate a wrapping schema and
+    emit ``structured_content={"result": <the string>}`` beside the
+    ``TextContent`` block. That second copy is not a structured view of the
+    answer: it holds one field carrying the same text, escaped, so a client
+    that prefers structured content renders the receipt as a single line with
+    ``\n`` and ``\"`` in it and every response crosses the wire twice.
+    Passing ``None`` disables the schema, and a ``str`` return then travels as
+    the text block alone.
     """
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
@@ -1244,6 +1255,7 @@ def _register_v1(
     """Register the v1-only tools: one tool per question, nine of them."""
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["repo_map"],
         annotations=read_only("Repository map"),
     )
@@ -1269,6 +1281,7 @@ def _register_v1(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["list_dir"],
         annotations=read_only("Directory tree"),
     )
@@ -1284,6 +1297,7 @@ def _register_v1(
             return handlers.list_dir(ctx, path, depth, max_entries)
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["get_symbols_overview"],
         annotations=read_only("Symbols overview"),
     )
@@ -1299,6 +1313,7 @@ def _register_v1(
             return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["expand_symbols"],
         annotations=read_only("Expand symbols"),
     )
@@ -1316,6 +1331,7 @@ def _register_v1(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["read_slice"],
         annotations=read_only("Read slice"),
     )
@@ -1337,6 +1353,7 @@ def _register_v1(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["find_symbol"],
         annotations=read_only("Find symbol"),
     )
@@ -1353,6 +1370,7 @@ def _register_v1(
             return handlers.find_symbol(ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT))
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["explain_symbol"],
         annotations=read_only("Explain symbol"),
     )
@@ -1368,6 +1386,7 @@ def _register_v1(
             return handlers.explain_symbol(ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT))
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["analyze_structure"],
         annotations=read_only("Analyze structure"),
     )
@@ -1410,6 +1429,7 @@ def _register_v1(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["resolve_locations"],
         annotations=read_only("Resolve locations"),
     )
@@ -1437,6 +1457,7 @@ def _register_shared(
     """
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["find_referencing_symbols"],
         annotations=read_only("Find referencing symbols"),
         meta=ALWAYS_LOAD_META,
@@ -1458,6 +1479,7 @@ def _register_shared(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["capabilities"],
         annotations=read_only("Capabilities"),
         meta=ALWAYS_LOAD_META,
@@ -1638,6 +1660,7 @@ def _register_v2(
     """
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["orient"],
         annotations=read_only("Orient"),
         meta=ALWAYS_LOAD_META,
@@ -1711,6 +1734,7 @@ def _register_v2(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["symbols"],
         annotations=read_only("Symbols"),
         meta=ALWAYS_LOAD_META,
@@ -1777,6 +1801,7 @@ def _register_v2(
             )
 
     @mcp.tool(
+        output_schema=None,
         description=TOOL_DESCRIPTIONS["read"],
         annotations=read_only("Read"),
         meta=ALWAYS_LOAD_META,
