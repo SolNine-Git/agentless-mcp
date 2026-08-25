@@ -297,6 +297,15 @@ declared symbol. `find-symbol` will tell you which.
 `--budget auto` (the default) sizes the budget from the repository itself and
 clamps it to 2k-8k tokens. Pass an integer to pin it.
 
+Those tokens are the server's own estimator, not your model's tokenizer. The
+default estimator is chars/4; `--counter tiktoken` swaps in a real BPE one.
+Measured 2026-08-25 on this package's own output, chars/4 counts **11-18%
+under** `cl100k_base` -- the map is punctuation-dense, and punctuation
+tokenizes worse than four characters each. So an 8k budget can land near 9.4k
+real tokens. The unit is chosen for reproducibility: it is what the token
+regression pins measure, and installing an extra must not silently move them.
+Treat the band as a stable knob, not as a bill.
+
 Output is one block per file: `NN| signature  [stable_id]`, plus a count of
 the symbols that did not fit.
 

@@ -12,7 +12,9 @@ a number rather than a knob-with-no-answer:
   file-level and line-level (45.6% / 42.6% / 43.6%), and the file stage is
   capped at ten because a longer list stops being a funnel.
 * **A budget that scales with the repository.** ``auto`` is the candidate
-  set's own size divided by six, clamped to 2k-8k tokens. Roughly 6x
+  set's own size divided by six, clamped to 2k-8k tokens as the configured
+  :class:`~agentless_mcp.util.tokens.TokenCounter` counts them -- see that
+  module for what the default unit is worth against a real tokenizer. Roughly 6x
   compression measurably *raises* resolve rate over full context, while 22-50x
   is worse than either -- so the objective is minimal sufficient context, not
   the highest ratio available.

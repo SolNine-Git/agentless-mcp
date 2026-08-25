@@ -36,6 +36,16 @@ class Chars4Counter:
     Deliberately crude and deliberately pinned by tests. Its job is to make
     budgets reproducible, not to match any particular vocabulary.
 
+    **It is not a model's tokenizer and does not track one.** Measured
+    2026-08-25 against ``cl100k_base`` on this package's own output, it counts
+    11-18% under: a map answer of 2383 real tokens estimates at 1949, a fan-in
+    of 570 at 504. The gap is one-directional and structural rather than
+    noise. Stable ids, type annotations and path separators make these views
+    punctuation-dense, and a run of punctuation tokenizes to well under four
+    characters a token, so the estimator is most wrong exactly where the
+    output is densest. A caller sizing a real context window should pass
+    ``--counter tiktoken`` and re-measure rather than scale this number.
+
     Floor division means any text shorter than four characters costs nothing,
     so a non-empty string can be free against a budget. That is safe for the
     consumers there are: ``map_service._pack`` is a bisection over a finite
