@@ -213,14 +213,15 @@ First, allowlist the five read tools in `~/.claude/settings.json` permissions
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities`) so calls run without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
-may publish these tools as deferred schemas, in a main session and in a
-subagent alike, and a deferred tool is not callable until the client loads its
-schema. Grep is loaded from the first turn, so the order in which an agent
-reaches for the two decides which one it uses. Install the structural-first
-gate in `contrib/hooks/`: it denies Grep and Glob until one `mcp__agentless__`
-call has happened, which both fixes the order and is where the deferred schema
-loads. Name the tools and the order in a dispatch prompt as well. A worker told
-only to navigate the repository defaults to Grep.
+may defer tool schemas, in a main session and in a subagent alike, and a
+deferred tool is not callable until its schema loads. These five ask to be
+loaded eagerly for that reason, so an agent knows what they answer before it
+picks its first move. Grep is loaded from the first turn either way, so the
+order in which an agent reaches for the two decides which one it uses. Install
+the structural-first gate in `contrib/hooks/`: it denies Grep and Glob until
+one `mcp__agentless__` call has happened, which fixes that order. Name the
+tools and the order in a dispatch prompt as well. A worker told only to
+navigate the repository defaults to Grep.
 
 ### `map` (`orient` operation `map`) -- where does this live
 

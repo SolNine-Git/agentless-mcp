@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.3 -- 2026-08-25
+
+One reversal: the five MCP tools ask for eager schema loading again.
+
+### Changed
+
+- **`anthropic/alwaysLoad` is restored on the five v2 tools.** 0.6.2 removed
+  it on the reasoning that the structural-first gate's own denial loads each
+  schema on demand, so eager loading charged every session a context cost for
+  adoption the gate already guaranteed. The premise was not measured, and it
+  is wrong. Reading the harness token accounting for the two arms -- same 60
+  tasks, same gate, same prompt, differing only in schema policy -- deferral
+  cost *more* on every measure: cache-creation tokens +2,563, cache-read
+  tokens +19,014, turns +0.67, output tokens +303, wall +4.9s, all paired
+  per-instance. No interval excludes zero, so the honest claim is that
+  deferral bought no measurable saving, not that it was significantly worse.
+  The mechanism explains the direction: deferring does not keep the schemas
+  out of context, it makes the agent spend a round trip fetching them first.
+- **The quality metrics were indistinguishable, and the one exception does not
+  track schema policy.** Across the same paired comparison, every metric sat
+  inside its interval except `recall@100`, where deferral led by 0.017 -- one
+  significant result among roughly 22 tests at n=60. It reads as noise rather
+  than an effect, and the arm ranking says the same thing: the tools-only arm
+  is eager-loaded and holds the highest `recall@100` of any arm (0.1351),
+  which a context-pressure story cannot produce.
+- **What eager loading buys is state at the moment the gate fires.** Loading a
+  schema because a call was blocked makes the tool callable; holding it from
+  the first turn makes the tool considered, by an agent that knows what it
+  answers before it picks a first move. That is a reasoning argument, not a
+  measured one, and it is the tie-breaker rather than the case: the case is
+  that deferral cost a round trip and returned nothing.
+- **The shipped prose matches the server again.** The README section is now
+  "Eager tool schemas" and states the cost as well as the reason; the packaged
+  agent guide and the skill say the tools ask to be loaded eagerly. The gate
+  remains the load-bearing mechanism in both policies, and the sections that
+  describe it are unchanged.
+
 ## 0.6.2 -- 2026-08-24
 
 A packaging-level change to how the MCP tools reach an agent. Nothing inside
