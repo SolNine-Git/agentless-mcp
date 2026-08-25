@@ -243,6 +243,63 @@ class TestPageRank:
         assert math.isclose(rank["c.py"], 0.2567568, abs_tol=1e-6)
 
 
+class TestTheSupportOfARanking:
+    """Which files the walk can reach, as a set rather than a threshold."""
+
+    def test_a_component_the_seed_cannot_reach_stays_out_of_the_support(self):
+        """The defect this exists for: unreached files do not score zero.
+
+        A focused ranking teleports to the seeds alone, so a file no path
+        connects to them earns nothing. It does not *hold* nothing. The
+        iteration starts every node at the uniform share and stops when the
+        vector moves less than ``epsilon`` in a pass, which leaves a whole
+        unreached component holding the residue of that start -- small enough
+        to render as ``0.0000`` and larger than zero. Measured here rather
+        than asserted: a caller filtering on ``rank > 0.0`` keeps every one of
+        these twenty files.
+        """
+        ring = [f"r{index}.py" for index in range(20)]
+        edges = line(("caller.py", "seed.py", 1.0))
+        edges.update({(ring[i], ring[(i + 1) % len(ring)]): 1.0 for i in range(len(ring))})
+        ranking = personalized_pagerank(
+            RefGraph(nodes=("seed.py", "caller.py", *ring), edges=edges),
+            {"seed.py": 1.0},
+        )
+
+        assert ranking.support == frozenset({"seed.py", "caller.py"})
+        # Every ring file renders as zero and is not zero, which is why the
+        # support is a set and not a comparison.
+        for path in ring:
+            assert f"{ranking.rank[path]:.4f}" == "0.0000"
+            assert ranking.rank[path] > 0.0
+
+    def test_the_support_follows_backflow_as_the_walk_does(self):
+        """A file the seed does not reference is still reached through it.
+
+        Reachability is over the augmented adjacency, so it answers the same
+        question the ranking does. ``caller.py`` references the seed and has
+        no inbound edge of its own; a forward-only rule would call it
+        unreached and drop the one file that uses what was asked about.
+        """
+        ranking = personalized_pagerank(
+            RefGraph(
+                nodes=("seed.py", "caller.py", "island.py"),
+                edges=line(("caller.py", "seed.py", 1.0)),
+            ),
+            {"seed.py": 1.0},
+        )
+
+        assert "caller.py" in ranking.support
+        assert "island.py" not in ranking.support
+
+    def test_an_unfocused_ranking_supports_every_file(self):
+        """Uniform teleport reaches everything, so nothing is ever held back."""
+        nodes = ("a.py", "b.py", "island.py")
+        ranking = personalized_pagerank(RefGraph(nodes=nodes, edges=line(("a.py", "b.py", 1.0))))
+
+        assert ranking.support == frozenset(nodes)
+
+
 class TestTheWalkStepsBothWays:
     """Backflow, and the one kind of file it must not reach."""
 

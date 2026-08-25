@@ -283,19 +283,42 @@ class MapService:
             )
 
         candidates = _score_symbols(chosen, by_path, index, rank, ctx.config.stoplist)
+        # Only the files the focus actually reaches compete for the budget.
+        # A seeded map teleports to the seeds alone, so a file no reference
+        # path connects to them holds nothing but the residue of the uniform
+        # vector the iteration started from -- it renders as rank 0.0000 and
+        # is not zero, so the test is reachability rather than a threshold on
+        # the number. Measured on this repository: an exact-path seed ranked
+        # one file and padded the answer with nine unreached ones that took
+        # most of the budget.
+        #
+        # The unreached files are still listed. `_group` gives every ranked
+        # file a row with the count of what it holds, and dropping them would
+        # be the bounded-view-mistaken-for-complete failure that function
+        # exists to prevent -- as well as breaking the top-N contract the
+        # tool description publishes. What changes is where the budget goes,
+        # not how many files come back.
+        eligible = [entry for entry in candidates if entry.path in ranking.support]
         budget = (
             request.budget
             if request.budget is not None
-            else self._auto_budget(candidates, chosen, rank)
+            else self._auto_budget(eligible, candidates, chosen, rank)
         )
-        included = self._pack(candidates, chosen, rank, budget)
-        grouped = _group(candidates[:included], candidates, chosen, rank)
+        included = self._pack(eligible, candidates, chosen, rank, budget)
+        grouped = _group(eligible[:included], candidates, chosen, rank)
 
         return MapResult(
             files=grouped,
             budget=budget,
             included=included,
-            candidates=len(candidates),
+            # What competed for the budget, not every symbol under a ranked
+            # file. The banner reads "N of M symbols shown (narrow the request
+            # or raise the budget for the rest)", and no budget shows a symbol
+            # in a file the focus never reached, so counting those in M makes
+            # that advice false. Each unreached file still carries its own
+            # count on its row. Equal to the whole set on an unfocused map,
+            # where the walk reaches everything.
+            candidates=len(eligible),
             ranked=len(rank),
             seeds=tuple(sorted(seeds)),
             skipped=scan.skipped,
@@ -373,6 +396,7 @@ class MapService:
 
     def _auto_budget(
         self,
+        eligible: list[_Candidate],
         candidates: list[_Candidate],
         paths: Sequence[str],
         rank: Mapping[str, float],
@@ -389,30 +413,39 @@ class MapService:
         """
         size = AUTO_BUDGET_PROBE
         while True:
-            prefix = candidates[:size]
-            rendered = self._counter.count(render.render_map(_group(prefix, prefix, paths, rank)))
+            prefix = eligible[:size]
+            rendered = self._counter.count(
+                render.render_map(_group(prefix, candidates, paths, rank))
+            )
             if rendered > AUTO_BUDGET_CEILING:
                 return AUTO_BUDGET_MAX
-            if size >= len(candidates):
+            if size >= len(eligible):
                 estimate = rendered // AUTO_BUDGET_DIVISOR
                 return max(AUTO_BUDGET_MIN, min(AUTO_BUDGET_MAX, estimate))
             size *= AUTO_BUDGET_PROBE_GROWTH
 
     def _pack(
         self,
+        eligible: list[_Candidate],
         candidates: list[_Candidate],
         paths: Sequence[str],
         rank: Mapping[str, float],
         budget: int,
     ) -> int:
-        """Return the largest number of symbols whose render fits ``budget``."""
-        if not candidates:
+        """Return the largest number of eligible symbols whose render fits ``budget``.
+
+        ``candidates`` is the whole scored set and is not searched over: it is
+        what tells :func:`_group` how many symbols each ranked file holds, so
+        the render measured here is the render the caller gets, file rows for
+        the unreached files included.
+        """
+        if not eligible:
             return 0
 
-        low, high = 0, len(candidates)
+        low, high = 0, len(eligible)
         while low < high:
             middle = (low + high + 1) // 2
-            text = render.render_map(_group(candidates[:middle], candidates, paths, rank))
+            text = render.render_map(_group(eligible[:middle], candidates, paths, rank))
             if self._counter.count(text) <= budget:
                 low = middle
             else:

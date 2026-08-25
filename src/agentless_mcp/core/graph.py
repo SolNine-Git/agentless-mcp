@@ -472,6 +472,18 @@ class PageRank:
     rank: Mapping[str, float]
     iterations: int
     converged: bool
+    # The nodes the walk can actually reach from the teleport vector's
+    # support, over the same adjacency the iteration steps along. Every other
+    # node scores the residual of the uniform vector the iteration starts
+    # from rather than any evidence about the seeds, and a caller that wants
+    # "did the focus reach this file" must ask this rather than compare the
+    # rank against zero: measured 2026-08-25, a twenty-node component
+    # disconnected from the seed converged at 1.2e-7 per node, which renders
+    # as 0.0000 and is not zero.
+    #
+    # An unfocused ranking teleports uniformly, so its support is every node
+    # and this set is every node with it.
+    support: frozenset[str] = frozenset()
 
 
 def personalized_pagerank(
@@ -511,6 +523,9 @@ def personalized_pagerank(
 
     personalization = _personalization(nodes, seeds)
     adjacency = _walk_adjacency(graph, pure_sources)
+    support = _reachable(
+        adjacency, {node for node, share in personalization.items() if share > 0.0}
+    )
     totals = {node: sum(weight for _, weight in adjacency[node]) for node in nodes}
 
     start = 1.0 / len(nodes)
@@ -542,7 +557,28 @@ def personalized_pagerank(
             converged = True
             break
 
-    return PageRank(rank=rank, iterations=iterations, converged=converged)
+    return PageRank(rank=rank, iterations=iterations, converged=converged, support=support)
+
+
+def _reachable(
+    adjacency: Mapping[str, tuple[tuple[str, float], ...]], sources: Set[str]
+) -> frozenset[str]:
+    """Return the nodes a walk from ``sources`` can arrive at, sources included.
+
+    Plain reachability over the walk adjacency, which is the augmented one:
+    backflow edges are steps the ranking takes, so a file the seed references
+    is reachable even though the reference points the other way. Anything this
+    leaves out is a file the focus has no path to at any number of hops.
+    """
+    seen = set(sources)
+    frontier = list(seen)
+    while frontier:
+        node = frontier.pop()
+        for target, _ in adjacency.get(node, ()):
+            if target not in seen:
+                seen.add(target)
+                frontier.append(target)
+    return frozenset(seen)
 
 
 def _walk_adjacency(

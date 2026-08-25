@@ -169,6 +169,51 @@ class TestMapService:
         assert result.as_dict()["seeds"] == ["orphan.py"]
         assert result.as_dict()["unresolved_seeds"] == ["rotate_age"]
 
+    def test_the_budget_skips_files_the_focus_never_reaches(self, repo, extractor, counter):
+        """A file no path connects to the seed is listed, not expanded.
+
+        ``orphan.py`` has no edge to the other three, which form their own
+        connected component. Before this, the ranking put all four in the
+        answer and the packing search spent the budget expanding symbols from
+        the three the caller had not asked about -- measured on this
+        repository at ten files, 13330 characters against 3585.
+
+        The files stay. Dropping them would be the bounded-view-mistaken-for-
+        complete failure ``_group`` exists to prevent, and the tool
+        description publishes a top-N of ten however large the repository is.
+        What changes is where the budget goes.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("lonely",)))
+        by_path = {entry.path: entry for entry in result.files}
+
+        assert result.seeds == ("orphan.py",)
+        assert set(by_path) == {"orphan.py", "core.py", "billing.py", "ledger.py"}
+        assert by_path["orphan.py"].shown > 0
+        for path in ("core.py", "billing.py", "ledger.py"):
+            # Listed, with a true count of what it holds, and no symbol of it
+            # rendered.
+            assert by_path[path].shown == 0, path
+            assert by_path[path].omitted > 0, path
+
+    def test_the_shown_of_total_count_describes_only_what_competed(self, repo, extractor, counter):
+        """The banner offers "raise the budget for the rest", so the rest must exist.
+
+        No budget renders a symbol in a file the focus never reached, so
+        counting those in the total makes that advice false.
+        """
+        maps = MapService(extractor, counter)
+        focused = maps.build(repo, MapRequest(focus=("lonely",)))
+        unfocused = maps.build(repo, MapRequest())
+
+        orphan_symbols = sum(
+            entry.shown + entry.omitted for entry in focused.files if entry.path == "orphan.py"
+        )
+        assert focused.candidates == orphan_symbols
+        # An unfocused walk reaches every file, so nothing is held back and
+        # the number is the whole scored set -- which is what keeps the
+        # goldens, all unfocused, unchanged.
+        assert unfocused.candidates == sum(entry.shown + entry.omitted for entry in unfocused.files)
+
     def test_a_fully_resolved_focus_adds_no_note(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely",)))
