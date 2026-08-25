@@ -265,53 +265,226 @@ well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
 `read_slice`, `find_symbol`, `explain_symbol`, `analyze_structure`, and
 `resolve_locations`.
 
-### Loading the tool schemas at session start
+### Deferred tool schemas
 
-Approval is not the only way a session loses the server. Claude Code can
-also defer an MCP server's tools: they arrive as bare names, and the model
-must fetch each schema before it can call the tool. A deferred tool is not a
-callable tool. `Grep` loads from the first turn, so the model routes a
-locate step to `Grep` and never reaches this server.
+Approval is not the only way a session loses the server. Claude
+Code can also defer an MCP server's tools: they arrive as bare names, and the
+schema is fetched before the tool can be called. A deferred tool is not a
+callable tool, and `Grep` loads from the first turn.
 
-Tell the model to load the schemas first, and tell it when to prefer them.
-Both instructions belong in `CLAUDE.md`: use `~/.claude/CLAUDE.md` for every
-project, or the repository's own `CLAUDE.md` for one.
+These five tools ship deferred, and nothing here asks a client to preload
+them. A client that defers holds none of their schemas until the session needs
+one, and loads it on demand at that moment. In Claude Code the mechanism is
+tool search: one `ToolSearch` call naming the tools makes those schemas
+callable for the rest of the session, and the client issues it when the model
+reaches for a deferred tool.
 
-````markdown
-## Session Start
+What decides whether that moment arrives is the ordering, not the schema
+budget. With the gate in the next section installed, the first native search
+of a code-locating session is denied and redirected to `orient`, and the
+schema loads there. Without it, nothing interrupts a model that reaches for
+`Grep` first, so install the gate.
 
-If the `mcp__agentless__*` tools show as deferred names rather than loaded
-tools, load their schemas before the first code-locating action of the
-session:
+Releases 0.5.0 through 0.6.1 published an `alwaysLoad` hint that asked a
+deferring client for all five schemas at session start. 0.6.2 removed it: it
+charged every session a context cost for adoption the gate enforces directly.
 
-`ToolSearch(query="select:mcp__agentless__orient,mcp__agentless__symbols,mcp__agentless__find_referencing_symbols,mcp__agentless__read")`
+### Structural-first gate (recommended Claude Code hooks)
 
-A grep issued while these schemas sit unloaded is a routing failure, not a
-neutral default. Every subagent dispatch prompt that navigates code must
-include the same ToolSearch line. A worker without loaded schemas defaults
-to `Grep`, because `Grep` is loaded from the start.
+Prose asks for the structural pass. A hook enforces it. Two scripts in
+`contrib/hooks/` deny `Grep` and `Glob` until the session has made one
+`mcp__agentless__*` call, and unlock them permanently after that call. The
+constraint is an order, not a ban: once the gate opens, `Grep` keeps the one
+job a symbol map cannot do, which is string literals, error messages, config
+keys, and fixtures. The gate fires once per session and costs one denied call.
 
-## Repo Navigation
+This is the recommended install rather than an optional extra. The server
+assumes the ordering mechanism lives client-side, which is why it no longer
+asks for eager schema loading. With the gate in place the denied call is also
+what loads the deferred schemas, so deferral costs the session nothing.
 
-The `agentless` MCP server owns structural navigation: where code lives,
-what a file declares, who calls a symbol. Use it for every locate, trace,
-or orient step in a repository it covers. `Grep` owns exact text: string
-literals, error messages, config keys, and comments. A name that lives in
-configuration or a fixture never appears in a symbol map, so run both
-passes.
+The measured reason is a paired comparison on SWE-Explore-Bench, run against
+agentless-mcp 0.6.1 with n=60 issue-localization tasks on Sonnet. An arm
+restricted to the agentless tools plus `Read` beat an arm with every tool
+available on all six metrics: precision +0.062, recall +0.041, F1 +0.040,
+hit-region rate +0.052, WCC +0.043, and recall@100 +0.011, with every 95%
+confidence interval excluding 0. Prompt steering alone did not produce that
+ordering discipline in the free-choice arm. Read the numbers as evidence for
+the ordering, not as a prediction for your repository: the measured arm removed
+the native search tools, and this gate only defers them.
 
-- Locate a bug or feature: `orient` (map) with focus seeds from the ask,
-  then `symbols` (expand) for the few bodies that matter.
-- See what a file declares: `symbols` (overview), never a whole-file read.
-- Trace callers and blast radius: `find_referencing_symbols`.
-- Check whether a symbol or utility exists: `symbols` (find).
-- Orient in an unfamiliar repository: `orient` (communities), then `read`
-  (dir). The map returns ten ranked files. It localizes, it does not
-  enumerate.
-````
+The shipped configuration -- this gate against this release's deferred
+schemas -- was then measured as its own arm. It matches the restricted arm
+within every confidence interval except precision, keeps native search after
+unlock, and matches its recall@100 (0.1345 against 0.1351), so the ordering
+survives deferral with the tools still available.
 
-Write the routing half as well as the loading half. A model that loads the
-schemas and reads no routing rule still reaches for `Grep`.
+How that comparison is run, which guardrails it carries and why, and what the
+gated arm itself measured are in
+[`docs/analysis/benchmark-methodology.md`](docs/analysis/benchmark-methodology.md).
+
+Install the gate by copying the two scripts and adding one hooks block.
+
+1. Copy `contrib/hooks/agentless_gate_check.py` and
+   `contrib/hooks/agentless_gate_mark.py` to a stable path, for example
+   `~/.claude/hooks/`.
+2. Merge the block in `contrib/hooks/settings-example.json` into
+   `~/.claude/settings.json` for every project, or into the repository's
+   `.claude/settings.json` for one. JSON allows no comments, so the file
+   carries placeholder paths and this section carries the explanation.
+3. Replace each `/ABSOLUTE/PATH/TO/...` placeholder with the absolute path of
+   the copied script. A relative path does not resolve.
+4. Keep the `/usr/bin/env python3` prefix. Claude Code runs the `command`
+   string as a shell command, not as an argv list, so the interpreter has to
+   be named.
+5. Start a new session. Claude Code reads `settings.json` at session start.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_check.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__agentless__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_mark.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Verify the scripts outside a session first. Feed each one a fake hook payload
+on stdin and read the exit code:
+
+```sh
+rm -rf /tmp/agentless_gate
+
+# No structural call yet: exit 2, and the denial text goes to stderr.
+echo '{"session_id":"probe","tool_name":"Grep"}' \
+  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+
+# One structural call marks the session.
+echo '{"session_id":"probe","tool_name":"mcp__agentless__orient"}' \
+  | python3 ~/.claude/hooks/agentless_gate_mark.py
+
+# Now the same Grep is allowed: exit 0, no output.
+echo '{"session_id":"probe","tool_name":"Grep"}' \
+  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+
+rm -rf /tmp/agentless_gate
+```
+
+The first call prints the denial text and reports `exit=2`. The third call
+prints nothing and reports `exit=0`. Inside a session, a denied `Grep` shows
+as a blocked tool call, and the model receives the same denial text as an
+instruction to call `orient` first. The unlock marker is
+`/tmp/agentless_gate/<session_id>.ok`, so its presence tells you which sessions
+have passed the gate.
+
+**Both hooks fail open.** Malformed stdin, a payload with no session id, an
+unwritable `/tmp`, or any other internal error exits 0 and allows the call. A
+gate that breaks an unrelated session is worse than a gate that misses one
+call. The failure mode to expect is a `Grep` that runs early, never a session
+that cannot search.
+
+Set `AGENTLESS_GATE_LOG` to a file path to append one JSONL line per decision.
+The variable is optional and unset by default. Use it to confirm that the gate
+fired rather than assuming it did.
+
+Remove the gate by deleting the `PreToolUse` and `PostToolUse` blocks from
+`settings.json` and starting a new session. Delete `/tmp/agentless_gate` and
+the copied scripts afterwards. Nothing else on disk changes.
+
+### Navigation craft for the agent
+
+The gate decides *when* the structural pass happens. It does not teach the
+pass. This section is the routing knowledge behind it. Read it while
+configuring an agent, or paste it into `CLAUDE.md` or a dispatch prompt.
+
+**Seed the map with what the task already names.** `orient(operation="map",
+focus=[...])` ranks every file by personalized PageRank over the reference
+graph, and the seeds take the whole teleport mass, so the ranking flows
+outward from what you name. A seed resolves as a repository-relative path
+(`src/billing/invoice.py`), a path suffix (`invoice.py`), a bare module stem
+(`invoice`), a qualified symbol name (`Invoice.total`), or a bare symbol name
+(`quote`). Lift them from the task: the file in the traceback, the class in
+the ticket, the function in the error message. Each seed carries one vote,
+split across the files it matched, so one exact path outweighs a name that
+matched twenty files. A seed that matches nothing does not fail the call and
+does not disappear. It comes back in `unresolved_seeds`, and as a `# note:`
+line above the map. Read that note: the ranking under it is not focused the
+way you asked. The usual cause is that the name is a parameter, an attribute
+or a DSL keyword rather than a declared symbol, and
+`symbols(operation="find")` says which.
+
+**Escalate one rung at a time, and stop at the rung that answers.** Each rung
+costs more than the one above it.
+
+1. `orient(operation="map")` answers *where this lives*. It returns ten ranked
+   files by default however large the repository is: it localizes, it does not
+   enumerate. Below the ranked files it may list the tests that exercise them,
+   which the ranking itself cannot surface, because a test file carries no
+   inbound reference weight.
+2. `symbols(operation="overview", paths=[...])` answers *what this file
+   declares*. Signatures with the bodies elided, plus the stable-id pattern for
+   that file. It is cheap, and it replaces reading the file.
+3. `symbols(operation="expand", stable_ids=[...])` answers *what this code
+   does*. Line-numbered bodies for the few symbols that matter. Batch the short
+   ones; expand a long one on its own, because a batch over the output budget
+   cuts the longest bodies to their leading lines and marks the cut.
+4. `symbols(operation="explain", target=...)` is the one-call card for a single
+   suspect symbol you have not seen: definition site, signature, linked
+   rationale comments, fan-out and fan-in by evidence tier, and the file's
+   imports. It replaces a `find` followed by a reference listing.
+5. `find_referencing_symbols` answers *who calls this, and what breaks if it
+   changes*. Pay for it when the answer depends on the callers -- a blast
+   radius, an error path, a signature change -- not as a routine confirmation
+   of something a map already showed. It is the expensive tool here, and
+   fan-in across a large repository can take minutes.
+6. `read(operation="slice")` is the last rung. Use explicit line ranges when no
+   symbol boundary fits the region you need.
+
+Weigh the reference rows rather than trusting them equally. `same-file` and
+`resolved-via-import` are resolved bindings. `unique` means only that the
+repository spells that name once, which is retrieval evidence and not a link
+between the two files. `name-only-ambiguous` is a candidate to inspect.
+
+**Run `Grep` after the structural pass, for what a symbol map cannot hold.**
+These tools rank symbols, so a file that matches the task only as text never
+enters a map, whatever you seed it with: string literals, error messages,
+config keys, fixtures, templates, and the wiring in YAML or JSON. The two
+passes are not alternatives. The structural pass finds the code and gives you
+the exact names to search for; the text pass then finds everything about those
+names that is not code. Going in the other order costs the map's ranking,
+which is the part a text search cannot reproduce.
+
+**Read an empty or thin map as a report, not as an absence.** When nothing
+ranks, the map says which of three things happened: nothing in the repository
+parsed into symbols, the file cap kept none of the ranked files, or the token
+budget left room for none of the candidate symbols. Only the first is a
+statement about the repository. When a view stops short, call `capabilities`:
+it reports the server version, the loaded grammars and their warm state, the
+cache generation, the configured and client-advertised roots, and the caps in
+force, and it names the exact index command when the tag cache is absent. That
+is what separates "this repository was never parsed" -- an unsupported
+language, a cold cache, or a root that is not the one you meant -- from "this
+repository genuinely declares nothing here". An agent that skips the check
+reads the second when the first is true, and stops looking.
 
 ## Supported languages
 

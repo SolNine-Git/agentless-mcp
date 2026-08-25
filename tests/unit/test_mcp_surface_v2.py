@@ -343,18 +343,33 @@ class TestSurfaceListing:
                 rendered = json.dumps(schema)
                 assert '"description"' in rendered, f"{tool.name}.{name}"
 
-    def test_every_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
-        # Deferral-capable clients keep these five schemas out of context
-        # without this hint, and an unloaded schema routes agents to grep.
+    def test_no_v2_tool_asks_clients_to_load_its_schema_eagerly(self, services, one_repo):
+        """The v2 surface defers, and 0.6.2 reversed the 0.5.0 contract.
+
+        0.5.0 published ``anthropic/alwaysLoad`` on these five tools because a
+        deferring client (Claude Code tool search) keeps an unloaded schema out
+        of context, and an agent that cannot call these tools routes the locate
+        step to native search instead. The structural-first gate in
+        ``contrib/hooks/`` fixes that order client-side: it denies the first
+        ``Grep`` or ``Glob`` until one ``mcp__agentless__`` call has happened,
+        and the client loads the deferred schema at that moment. Eager loading
+        therefore charged every session a context cost for adoption the gate
+        already guarantees, so this test pins the absence of the hint.
+        """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
         for tool in tools:
-            assert (tool.meta or {}).get("anthropic/alwaysLoad") is True, tool.name
+            meta = tool.meta or {}
+            assert "anthropic/alwaysLoad" not in meta, tool.name
 
-    def test_v1_only_tools_never_ask_for_always_load(self, services, one_repo):
+    def test_no_tool_on_either_surface_asks_for_always_load(self, services, one_repo):
+        """The union carries the hint nowhere, for one reason on both halves.
+
+        The v1 tools never asked: that surface is kept for migration only. The
+        v2 tools stopped asking in 0.6.2, for the reason above. A server that
+        publishes both therefore leaves every schema deferred.
+        """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
         for tool in tools:
-            if tool.name in EXPECTED_TOOLS_V2:
-                continue
             meta = tool.meta or {}
             assert "anthropic/alwaysLoad" not in meta, tool.name
 

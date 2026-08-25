@@ -1,3 +1,6 @@
+> Archived 2026-08-24: superseded by
+> [`docs/analysis/benchmark-methodology.md`](../benchmark-methodology.md).
+
 # Navigation evidence
 
 ## Correction, 2026-08-24: every figure below is invalid

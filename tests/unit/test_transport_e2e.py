@@ -5,8 +5,9 @@ transport, which proves registration and dispatch but not the wire. These
 tests spawn the installed ``agentless-mcp-server`` console script, complete
 the MCP initialize handshake over each shipped transport, assert the
 advertised tool set matches the in-memory listing, and make one bounded call.
-This is the gate docs/functional-assessment.md (M3) found missing when the
-packaged stdio server hung undetected under the locked dependency stack.
+This is the gate docs/analysis/archive/functional-assessment.md (M3) found
+missing when the packaged stdio server hung undetected under the locked
+dependency stack.
 
 Every subprocess interaction is bounded well below pytest-timeout's 60s
 ceiling, so a hang fails inside the test with the server's captured stderr

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_gate_check.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__agentless__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_gate_mark.py"
+          }
+        ]
+      }
+    ]
+  }
+}

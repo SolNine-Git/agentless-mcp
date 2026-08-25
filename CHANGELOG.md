@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.6.2 -- 2026-08-24
+
+A packaging-level change to how the MCP tools reach an agent. Nothing inside
+the tools behaves differently.
+
+### Changed
+
+- **The five MCP tools no longer request eager schema loading.** 0.5.0
+  published `anthropic/alwaysLoad` on `orient`, `symbols`,
+  `find_referencing_symbols`, `read` and `capabilities`, so that a client which
+  defers tool schemas behind a search step -- Claude Code tool search -- held
+  all five in context from the first turn. The tools now publish no such hint,
+  and a deferring client loads each schema when a session first needs it. The
+  reason is the structural-first gate in `contrib/hooks/`: it denies `Grep` and
+  `Glob` until the session has made one `mcp__agentless__` call, so an agent's
+  first native search is redirected to these tools and the client loads the
+  deferred schema at that moment. Eager loading paid a per-session context cost
+  for the adoption the gate now guarantees.
+- **This reverses the 0.5.0 `alwaysLoad` decision deliberately, on
+  measurement.** In a paired comparison on SWE-Explore-Bench against a healthy
+  server -- n=60 issue-localization tasks on Sonnet -- an arm restricted to the
+  agentless tools beat a free-choice arm head to head on precision (+0.062),
+  recall (+0.041) and F1 (+0.040), with every 95% confidence interval excluding
+  0. What moved those numbers was the ordering, which the gate enforces, not
+  the schema budget the hint spent.
+- **The shipped configuration was measured as its own arm before release.**
+  The gate against this release's deferred schemas, on the same 60 tasks,
+  matches the eager-schema gated arm within every confidence interval except
+  `recall@100`, which moves +0.017 in the deferred arm's favour -- one
+  significant result among roughly 22 tests, so read it as no cost and
+  possibly a small benefit. Full numbers and the arm definitions are in
+  `docs/analysis/benchmark-methodology.md`.
+- **Without the gate installed, the deferred schemas make native search the
+  path of least resistance again.** A deferred tool is not a callable tool, and
+  `Grep` loads from the first turn. Install the gate. The README section
+  "Structural-first gate" is the recommended setup, and this release assumes an
+  ordering mechanism of that kind exists client-side.
+
+### Fixed
+
+- **The test suite scrubs ambient `GIT_*` variables before any test runs.**
+  Git exports `GIT_DIR` to hook processes, and `GIT_DIR` overrides the `-C` a
+  fixture git call is given: a suite run from inside a pre-push hook
+  reinitialized the enclosing repository as bare and rewrote its index with
+  fixture files. The package's own git calls already scrubbed the family
+  (`core.gitinfo.subprocess_env`); `tests/conftest.py` now applies the same
+  scrub once at import.
+
+### Kept
+
+- **The five-tool surface, including `capabilities`.** It is the diagnostic for
+  the degraded path: agents never reached for it against a healthy server (0 of
+  60 tasks) and called it in 46 of 60 tasks against a server that answered
+  about empty repositories, which makes its usage rate a distress signal worth
+  publishing. Deferred, it costs a session nothing until something goes wrong.
+
 ## 0.6.1 -- 2026-08-24
 
 A correctness release with one fix, and a correction to what 0.6.0 claimed.
