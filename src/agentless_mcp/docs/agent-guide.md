@@ -303,14 +303,33 @@ declared symbol. `find-symbol` will tell you which.
 clamps it to 2k-8k tokens. Pass an integer to pin it.
 
 Those tokens are the server's own estimator, not your model's tokenizer. The
-default estimator is chars/4; `--token-counter tiktoken` swaps in a real BPE one.
-Measured 2026-08-25 on this package's own output, chars/4 counts **13-15%
-under** `cl100k_base` on the map and fan-in views, and about 10% under on an
-overview -- those views are punctuation-dense with ids and paths, and
-punctuation tokenizes worse than four characters each. So an 8k budget can
-land near 9.2k real tokens. The unit is chosen for reproducibility: it is what the token
-regression pins measure, and installing an extra must not silently move them.
-Treat the band as a stable knob, not as a bill.
+default estimator is chars/4; `--token-counter tiktoken` swaps in a real BPE
+one (CLI only -- the MCP server declares no such flag and always counts with
+chars/4).
+
+The gap between the two is **view-dependent, so there is no single band**.
+Punctuation tokenizes to well under four characters a token, which is why the
+id-dense views drift furthest. Measured 2026-08-25 against `cl100k_base`, each
+row naming the command that produced it:
+
+| Command | chars/4 | `cl100k_base` | estimator is under by |
+|---|---|---|---|
+| `map --focus src/agentless_mcp/core/graph.py --max-files 3` | 1950 | 2383 | 18.2% |
+| `map --max-files 10` | 2472 | 2853 | 13.4% |
+| `refs one_line --limit 50` | 723 | 904 | 20.0% |
+| `refs personalized_pagerank --limit 20` | 505 | 570 | 11.4% |
+| `skeleton src/agentless_mcp/core/slices.py` | 358 | 377 | 5.0% |
+
+Across the committed goldens the ratio runs 0.979 to 1.264: `lint` output is
+the one view where chars/4 *over*counts. So an 8k budget buys somewhere near
+9k real tokens on a map and roughly 8k on a lint report, and neither number
+generalizes to the other.
+
+`tests/unit/test_token_counter.py` pins the map goldens' ratio, so a rendering
+change that moves this materially fails there rather than rotting this table.
+The unit is chosen for reproducibility: it is what the token regression pins
+measure, and installing an extra must not silently move them. Treat the band
+as a stable knob, not as a bill.
 
 Output is one block per file, in the shape shown above: a header, a
 `stable ids:` pattern line, then `signature  [QualifiedName] @line` rows, and

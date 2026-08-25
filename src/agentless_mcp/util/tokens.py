@@ -36,18 +36,28 @@ class Chars4Counter:
     Deliberately crude and deliberately pinned by tests. Its job is to make
     budgets reproducible, not to match any particular vocabulary.
 
-    **It is not a model's tokenizer and does not track one.** Measured
-    2026-08-25 against ``cl100k_base`` on this package's own output, it counts
-    under, one-directionally and structurally rather than as noise: an
-    unfocused map of 2851 real tokens estimates at 2473 (13.3% under), a
-    focused one of 1051 at 897 (14.7%), a fan-in of 358 at 309 (13.7%). An
-    overview is the mildest, around 10%, because its body is ordinary source
-    rather than rows of ids. Stable ids, type annotations and path separators
-    make the other views punctuation-dense, and a run of punctuation tokenizes
-    to well under four characters a token, so the estimator is most wrong
-    exactly where the output is densest -- an 8000-token budget lands near
-    9200 real ones. A caller sizing a real context window should pass
-    ``--token-counter tiktoken`` and re-measure rather than scale this number.
+    **It is not a model's tokenizer and does not track one, and how far it
+    misses depends on the view.** Measured 2026-08-25 against ``cl100k_base``
+    over the committed goldens, the real-to-estimated ratio runs 0.979 to
+    1.264. The id-dense views drift furthest and always upward -- a map golden
+    reaches 1.264, so an 8000-token budget buys near 10,000 real ones -- while
+    ``lint`` output sits at 0.979, where the estimator counts *over*. There is
+    therefore no single correction factor, and a caller sizing a real context
+    window should measure the view they actually call rather than scale this
+    number by a constant.
+
+    Stable ids, type annotations and path separators are what make the dense
+    views dense: a run of punctuation tokenizes to well under four characters
+    a token, so the estimator is most wrong exactly where the output is
+    densest. Ordinary source, which is most of an overview body, is closest to
+    four.
+
+    ``TestTheEstimatorAgainstARealTokenizer`` in
+    ``tests/unit/test_token_counter.py`` pins the map goldens' ratio, so a
+    rendering change that moves this materially fails there instead of leaving
+    a stale number in this docstring. The CLI's ``--token-counter tiktoken``
+    swaps in the real counter; the MCP server declares no such flag and always
+    counts with this one.
 
     Floor division means any text shorter than four characters costs nothing,
     so a non-empty string can be free against a budget. That is safe for the

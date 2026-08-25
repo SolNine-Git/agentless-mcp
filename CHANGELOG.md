@@ -140,6 +140,14 @@ what the focus reached.
   they build the same command, and one of them spelling a path with a space
   unquoted makes `--repo` take the first word. (#38)
 
+- **The `repo_map` and `orient` descriptions no longer name a flag their
+  reader cannot reach.** They said the budget was counted "chars/4 unless it
+  was started with `--token-counter tiktoken`". `bootstrap` is explicit that
+  only the CLI can ask for that: the MCP server declares no such flag and
+  always ends up with chars/4, so over MCP -- the only place these two
+  descriptions are read -- the clause was unconditionally false. It is gone,
+  and the guide marks the flag CLI-only where it is genuinely reachable.
+
 - **A map budget says which unit it is counted in.** The tool description
   advertised "a 2000-8000 token band" and the guide "2k-8k tokens" without
   naming the counter. This package is model-free and its default estimator is
@@ -158,6 +166,17 @@ what the focus reached.
   `--token-counter tiktoken` for a caller sizing a real context window.
 
 ### Added
+
+- **A gate on the estimator-versus-tokenizer figure.** That number has now
+  been stated wrongly twice -- once as 11-18%, once as 13-15% -- because it
+  lived only in prose and moves whenever the renderer does. Measured across
+  the committed goldens the ratio runs 0.979 to 1.264, so no single band
+  describes the package and the `lint` view is one where chars/4 counts
+  *over*. `TestTheEstimatorAgainstARealTokenizer` pins the map goldens'
+  ratio and pins that the spread still runs in both directions, so a
+  rendering change that moves either fails there instead of leaving a stale
+  number in the docs. The guide now gives one measured row per view, each
+  naming the command behind it.
 
 - **`PageRank.support`.** The set of files the walk can reach from the
   teleport vector's support, over the same augmented adjacency the iteration
