@@ -103,7 +103,7 @@ from agentless_mcp.core import cache, grammars, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
-from agentless_mcp.core.symbols import SymbolKind, stable_id
+from agentless_mcp.core.symbols import SymbolKind
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
 from agentless_mcp.util import bounds, fslimits, textsafe
@@ -768,15 +768,9 @@ class ToolHandlers:
         """
         keep = projectconfig.resolve(docs, ctx.config.docstrings, False)
         views = self._services.views.skeleton(ctx, paths, docstrings=keep)
-        blocks = []
-        for view in views:
-            if view.error:
-                blocks.append(f"{view.path}\n{render.ROW_INDENT}{view.error}")
-                continue
-            ids_line = MESSAGES.overview_stable_ids.format(
-                pattern=stable_id(view.language, view.path, render.QUALIFIED_NAME_PLACEHOLDER)
-            )
-            blocks.append(f"{view.path}\n{render.ROW_INDENT}{ids_line}\n{view.text}")
+        blocks = [
+            render.overview_block(view.path, view.language, view.error, view.text) for view in views
+        ]
         return self._wrap(ctx, "\n".join(blocks))
 
     def expand_symbols(self, ctx: RepoContext, stable_ids: Sequence[str], limit: int) -> str:

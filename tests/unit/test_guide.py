@@ -145,11 +145,41 @@ class TestSectionCensus:
         assert levels == EXPECTED_LEVELS
 
     def test_hashes_inside_a_fenced_block_are_not_headings(self):
-        """The receipt example in the guide opens with three '#' lines."""
+        """A fenced sample is content, and content has no structure.
+
+        The guide's own receipt example used to supply this case: it opened
+        with three `#` lines that a naive heading scan counted as three H1s.
+        The receipt marker is `//` now, so the document no longer happens to
+        carry one. Pinned against a fixture rather than against whatever the
+        guide currently holds -- the next fenced shell or Python sample
+        brings the hazard straight back, and a test that reads the real
+        document would have gone quietly true in the meantime.
+        """
+        lines = [
+            "# Real title",
+            "",
+            "```",
+            "// agentless-mcp receipt",
+            "# a comment in a sample, not a heading",
+            "### neither is this",
+            "```",
+            "",
+            "## Real section",
+        ]
+        naive = sum(1 for line in lines if re.match(r"^ {0,3}#{1,6}\s+", line))
+
+        assert naive == 4
+        assert [(level, text) for _index, level, text in guide._headings(lines)] == [
+            (1, "Real title"),
+            (2, "Real section"),
+        ]
+
+    def test_no_fenced_line_in_the_guide_is_mistaken_for_a_heading(self):
+        """The same rule, over the real document, as a census rather than a count."""
         lines = guide.guide_text().splitlines()
         naive = sum(1 for line in lines if re.match(r"^ {0,3}#{1,6}\s+", line))
-        found = len(guide._headings(lines))
-        assert naive - found == 3
+
+        assert naive == len(guide._headings(lines))
         assert "agentless-mcp-receipt" not in guide.section_names()
 
 

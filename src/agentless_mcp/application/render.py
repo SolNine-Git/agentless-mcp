@@ -68,7 +68,7 @@ from typing import Any, overload
 
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
-from agentless_mcp.core.symbols import StableId
+from agentless_mcp.core.symbols import StableId, language_prefix
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.textsafe import one_line
 
@@ -86,11 +86,6 @@ def _no_negative_zero(value: float) -> float:
 
 
 MODULE_LEVEL = "(module level)"
-
-# How wide the line-number column of a row-per-line view is. The prefix
-# itself is `core.slices.line_prefix`, which every line-numbered view in the
-# package renders through.
-LINE_NUMBER_WIDTH = 5
 
 # What the id pattern stands the symbol's own name in for. Spelled once so the
 # pattern line and the guide agree.
@@ -172,8 +167,9 @@ def _stable_ids_line(id_prefix: str, path: str) -> str:
     The rows below it then carry the qualified name alone. A stable id spells
     the language and the repository-relative path, and the header directly
     above the rows already spells the path, so repeating both on every row
-    bought nothing: measured 2026-08-25 on this repository, that prefix was
-    28% of an ``orient(map)`` answer. ``symbols(overview)`` has printed this
+    bought nothing: measured 2026-08-25 on this repository with
+    ``agentless-mcp map --no-cache --max-files 10``, that prefix was 3855 of
+    13628 characters, 28% of the answer. ``symbols(overview)`` has printed this
     line and no per-row id since it shipped; this is the same line.
 
     Empty when the caller knows no prefix, which keeps the whole id on the row
@@ -185,6 +181,33 @@ def _stable_ids_line(id_prefix: str, path: str) -> str:
         return ""
     pattern = str(StableId(id_prefix, path, QUALIFIED_NAME_PLACEHOLDER))
     return f"{ROW_INDENT}{MESSAGES.stable_ids_pattern.format(pattern=one_line(pattern))}"
+
+
+def overview_block(path: str, language: str, error: str, text: str) -> str:
+    """Render one file's overview block: the header, the id pattern, the body.
+
+    One home because there were two, and they had drifted. The MCP handler
+    headed each block with the bare path; the CLI kept a markdown ``###`` no
+    other grouped view in this package uses, and printed no pattern line at
+    all, so the same view answered differently depending on which door you
+    came through.
+
+    The escaping travels with it. A header sits in the first column and a
+    newline is legal in a POSIX filename, so ``path`` has to reach
+    :func:`one_line` exactly like every other repository-derived value on a
+    row -- the rule this module states and the adapters were outside of.
+    ``text`` does not: it is a rendered file body, which owns its own line
+    grammar and carries a line-number gutter to say so.
+
+    An errored file keeps its block, with the reason indented under the
+    header where a reader cannot mistake it for the file's contents.
+    """
+    header = one_line(path)
+    if error:
+        return f"{header}\n{ROW_INDENT}{one_line(error)}"
+    pattern = str(StableId(language_prefix(language), path, QUALIFIED_NAME_PLACEHOLDER))
+    ids_line = MESSAGES.overview_stable_ids.format(pattern=one_line(pattern))
+    return f"{header}\n{ROW_INDENT}{ids_line}\n{text}"
 
 
 def _file_site(path: str, line: int) -> str:
@@ -291,6 +314,13 @@ class MapFile(_Bounded):
     # what lets every row below drop the prefix. Empty keeps the whole id on
     # each row.
     id_prefix: str = ""
+    # Whether the ranking walk reached this file from the focus. False is what
+    # makes the omission line say so instead of offering a bigger budget: no
+    # budget renders a symbol the focus has no path to, so the ordinary
+    # wording would be advice that cannot work. Defaults to True because an
+    # unfocused walk reaches every file, and because a caller building one of
+    # these by hand is describing a file it chose to include.
+    reached: bool = True
 
     @property
     def shown(self) -> int:
@@ -1657,7 +1687,14 @@ def render_map(files: Sequence[MapFile]) -> str:
                 f"{_locator(node.stable_id, parent=node.parent_id, line=node.line)}"
                 for node in entry.rationales
             )
-        if map_file.omitted:
+        if map_file.omitted and not map_file.reached:
+            # A different fact, so a different line. The ordinary marker says
+            # "more ... not listed", which an agent reads as an invitation to
+            # ask for the rest; here there is no budget that would produce
+            # them, and saying so is the whole point of ranking this file
+            # without expanding it.
+            lines.append(MESSAGES.map_file_unreached.format(count=map_file.omitted))
+        elif map_file.omitted:
             lines.append(_omitted_line(map_file.omitted, "symbols in this file"))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"

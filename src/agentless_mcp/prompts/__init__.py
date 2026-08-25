@@ -64,6 +64,7 @@ class EnvelopeText:
     receipt_note: str
     receipt_config: str
     receipt_config_warning: str
+    receipt_summary: str
     banner: str
     notice: str
     service_truncation: str
@@ -93,6 +94,10 @@ class MessageText:
     expand_batch_shortened: str
     expand_no_room: str
     grouped_ids: str
+    # Not `_omitted_line`'s wording, deliberately. That line ends "more ...
+    # not listed", which offers the rest to anyone who raises the budget; a
+    # file the focus never reached has no budget that would produce it.
+    map_file_unreached: str
     refs_target_unresolved: str
     # Two spellings, because two views need different amounts of it. A
     # grouped view whose rows show `[Class.method]` demonstrates the

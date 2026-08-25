@@ -21,30 +21,47 @@ what the focus reached.
   rather than the patch: the guide previously reserved this removal for a
   versioned boundary, and this is it. (#39)
 
+  `--surface v1` does not opt out of this. That surface keeps the original
+  eleven tool names for un-migrated operators, but the removal is in the
+  handlers rather than in a surface, so a v1 server on 0.7.0 answers with the
+  same text-only shape. An operator pinning v1 to keep a client working is
+  buying the old tool names and not the old response envelope; a client that
+  reads `structuredContent.result` has to be migrated either way, or the
+  server held at 0.6.7.
+
 - **A focused map no longer spends its budget on files the focus never
   reached.** A seeded ranking teleports to the seeds alone, so a file no
   reference path connects to them earns nothing from the walk -- it holds
   only the residue of the uniform vector the power iteration starts from,
   which renders as rank `0.0000` and is not zero. Those files were ranked
   into the answer and their symbols competed for and won the token budget.
-  Measured on this repository at `--focus contrib/hooks/agentless_gate_mark.py
-  --max-files 10`: 13330 characters before, 3585 after, with the same ten
-  files listed both times.
+  Measured on this repository with
+  `agentless-mcp map --no-cache --focus contrib/hooks/agentless_gate_mark.py
+  --max-files 10`, 0.6.7 against this release: 13053 characters before, 3590
+  after, with the same ten files listed both times.
 
   The files stay listed, with the true count of what each holds. Dropping
   them would be the bounded-view-mistaken-for-complete failure, and the tool
   description publishes a top-N of ten however large the repository is. What
-  changed is where the budget goes. `symbols_available` in the JSON now
-  counts what competed for the budget, because the banner offers "raise the
-  budget for the rest" and no budget renders a symbol in an unreached file.
-  An unfocused map teleports uniformly, reaches everything, and is
-  byte-identical to 0.6.7. (#38)
+  changed is where the budget goes. Two places had to say so rather than one.
+  `symbols_available` in the JSON counts what competed for the budget,
+  because the banner offers "raise the budget for the rest" and no budget
+  renders a symbol in an unreached file. Each unreached file's own row says
+  it too: it carries `... N symbols in this file; the focus has no reference
+  path to it, so no budget shows them` instead of the ordinary
+  `... N more ... not listed`, which offers the same rest the banner had
+  already stopped offering. A file that lost its symbols to the budget keeps
+  the ordinary wording, because for that file the offer is true.
+
+  An unfocused map teleports uniformly and reaches everything, so no file
+  takes the second wording and the ranking is unchanged from 0.6.7. (#38)
 
 - **Grouped views spell a stable id once per file, not once per row.** A map
   row carried the whole id, and the whole id opens with the language and the
   repository-relative path -- the path the file header directly above it
-  already spells. Measured 2026-08-25 on this repository: that repeated
-  prefix was 28% of an `orient(map)` answer. Each file's block now opens with
+  already spells. Measured 2026-08-25 on this repository with
+  `agentless-mcp map --no-cache --max-files 10`: that repeated prefix was
+  3855 of 13628 characters, 28% of the answer. Each file's block now opens with
   the `stable ids:` pattern line `symbols(overview)` has printed since it
   shipped, and every row below carries the qualified name alone. Join the two
   to build an id `expand` accepts.
@@ -55,10 +72,14 @@ what the focus reached.
   one name twice and the id takes a `#2` ordinal, which is the spelling the
   row should have carried all along.
 
-  Measured, same command before and after: a focused map went from 70 of 89
-  symbols in 8883 characters to all 89 in 7924 -- 127 characters a symbol
-  down to 89. `refs --limit 20` went from 3064 characters to 2228. The JSON
-  is unchanged: it still carries whole ids, because nothing there repeats a
+  Measured on this repository, 0.6.7 against this release. Pinning the budget
+  holds the character count still and lets the symbol count move, which is
+  the comparison worth making: `agentless-mcp map --no-cache --max-files 10
+  --budget 8000` returned 257 symbols in 33752 characters and now returns 386
+  in 33756 -- 131 characters a symbol down to 87. At `--budget 2000` the same
+  command goes from 59 symbols to 84. `agentless-mcp refs render_map
+  --limit 20 --no-cache` went from 2264 characters to 1239. The JSON is
+  unchanged: it still carries whole ids, because nothing there repeats a
   header.
 
 - **A position is an `@line` suffix; the `N| ` gutter means verbatim text.**
@@ -78,33 +99,63 @@ what the focus reached.
   line repository text on a row cannot forge, and the gutter had been
   providing that indent.
 
-- **One file-header grammar across the grouped views.**
-  `symbols(overview)` headed each block with a markdown `### <path>`; the map
-  and fan-in headed theirs with the path and what the view knows about it.
-  The heading is gone. It cost four characters a file and said nothing the
-  path did not.
+- **One file-header grammar across the grouped views, and one function that
+  renders it.** `symbols(overview)` headed each block with a markdown
+  `### <path>`; the map and fan-in headed theirs with the path and what the
+  view knows about it. The heading is gone. It cost four characters a file
+  and said nothing the path did not.
+
+  The overview had two implementations of that header -- the MCP handler and
+  `agentless-mcp skeleton` -- and they had already drifted: the CLI printed
+  no `stable ids:` line at all, so an agent that reached this view through
+  the CLI had no id to escalate with. Both now call
+  `render.overview_block`.
+
+- **The receipt marker is `//`, not `#`.** Every response opens with three
+  receipt lines, and `#` at the start of a line is a Markdown ATX heading:
+  in any client that renders tool output as Markdown -- which is most of them
+  -- all three came out heading-sized, on every single answer. The marker
+  meant to be the quietest thing on screen was the loudest.
+
+  This is the same defect as the `### <path>` file header removed above, and
+  a worse instance of it: `#` is an H1 rather than an H3, and it rode on every
+  call rather than on one view. `//` reads as a comment in the same way and
+  renders as plain text. `receipt_header`, `receipt_line`, `receipt_note`,
+  `receipt_config`, `receipt_config_warning` and `banner` all move, and the
+  summary line -- the one receipt line that had spelled its own marker in
+  Python -- becomes `receipt_summary` in `envelope.json` so no marker is
+  written twice. A client matching `^# agentless-mcp receipt` must match
+  `^// agentless-mcp receipt`; nothing else about the receipt changed.
+
+  The rationale rows inside a map keep `#`: they render a source comment
+  rather than tool framing, and they carry at least six spaces of indent,
+  which Markdown reads as a code block rather than a heading.
 
 - **The stale-cache receipt names the repository to reindex.** It read
   `run agentless-mcp index for performance`. An agent following that hint
   from a shell whose working directory is not the repository indexes the
   wrong tree, and the natural guess `--root` is not the flag. It now reads
   `run agentless-mcp index --repo <path> for performance`, matching the
-  wording the empty-cache hint already used, with the path shell-quoted. (#38)
+  wording the empty-cache hint already used. Both hints shell-quote the path:
+  they build the same command, and one of them spelling a path with a space
+  unquoted makes `--repo` take the first word. (#38)
 
 - **A map budget says which unit it is counted in.** The tool description
   advertised "a 2000-8000 token band" and the guide "2k-8k tokens" without
   naming the counter. This package is model-free and its default estimator is
   chars/4, so those are estimator tokens rather than a model's. Measured
   2026-08-25 against `cl100k_base` on this package's own output, chars/4
-  counts 11-18% under: a focused map of 2383 real tokens estimates at 1949, a
-  fan-in of 570 at 504. These views are punctuation-dense with stable ids,
-  type annotations and path separators, and punctuation tokenizes to well
-  under four characters a token, so the estimator is furthest off exactly
-  where the output is densest -- an 8k budget can land near 9.4k real tokens.
+  counts 13-15% under on the map and fan-in views: an unfocused map of 2851
+  real tokens estimates at 2473, a focused one of 1051 at 897, a fan-in of
+  358 at 309. An overview is the mildest at about 10%, its body being
+  ordinary source rather than rows of ids. These views are punctuation-dense with stable ids, type annotations
+  and path separators, and punctuation tokenizes to well under four
+  characters a token, so the estimator is furthest off exactly where the
+  output is densest -- an 8k budget can land near 9.2k real tokens.
   No behaviour changed: the band stays in the unit the token regression pins
   measure, which is why that unit was chosen. The description, the guide, the
-  service docstring and `Chars4Counter` now say so, and name `--counter
-  tiktoken` for a caller sizing a real context window.
+  service docstring and `Chars4Counter` now say so, and name
+  `--token-counter tiktoken` for a caller sizing a real context window.
 
 ### Added
 
@@ -116,10 +167,15 @@ what the focus reached.
   component disconnected from the seed converged at 1.2e-7 per node, which
   renders as `0.0000` and passes `> 0.0`.
 
-- **`render.ROW_INDENT` and `render._stable_ids_line`.** One home for the row
-  indent every grouped view shares, and one for the id pattern line the map,
-  fan-in and overview now all print. The pattern is built through
-  `core.symbols.StableId`, so it and a real id come out of one grammar.
+- **`render.ROW_INDENT`, `render._stable_ids_line` and
+  `render.overview_block`.** One home for the row indent every grouped view
+  shares, one for the id pattern line the map, fan-in and overview now all
+  print, and one for the overview block both adapters render. The pattern is
+  built through `core.symbols.StableId`, so it and a real id come out of one
+  grammar. `overview_block` also brings that view inside this module's
+  escaping rule: both adapters had built its header with an f-string over the
+  raw path, which made it the one grouped file header a newline in a filename
+  could still open a line from.
 
 - **A test pinning the gate hook's operation set to the server's tables.**
   `contrib/hooks/agentless_gate_mark.py` hand-mirrors the v2 operations that

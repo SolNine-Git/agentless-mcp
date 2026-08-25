@@ -145,6 +145,29 @@ class TestMap:
         assert "  def rate()  [rate] @9" in text
         assert "py:core.py::quote" not in text
 
+    def test_a_budget_cut_file_offers_the_rest(self):
+        """The ordinary marker: more exist, and a bigger budget shows them."""
+        entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
+        text = render.render_map(
+            [render.MapFile(path="core.py", rank=1.0, entries=(entry,), total=9)]
+        )
+
+        assert "... 8 more symbols in this file not listed" in text
+
+    def test_an_unreached_file_says_no_budget_will_show_them(self):
+        """A different fact needs a different line.
+
+        The focus reached no reference path to this file, so no budget
+        renders a symbol of it. The ordinary marker ends "more ... not
+        listed", which an agent reads as an invitation to ask for the rest
+        -- advice that cannot work here, and the reason the banner already
+        excludes these symbols from its own total.
+        """
+        text = render.render_map([render.MapFile(path="far.py", rank=0.0, total=86, reached=False)])
+
+        assert "the focus has no reference path to it" in text
+        assert "more symbols in this file not listed" not in text
+
 
 class TestTestCompanions:
     """The section the ranking cannot produce, so nothing else pins its shape."""
@@ -936,6 +959,13 @@ class TestTheForgeryEndToEnd:
             ["explain", "hidden"],
             ["path", "hidden", "real"],
             ["diagram", "--focus", "hidden"],
+            # `skeleton` is the third sink, found the way `tree` was: it is
+            # not in this module. Both adapters built its file header with an
+            # f-string over the raw path, so it was the one grouped header
+            # outside the rule the per-field gate above enforces -- and a
+            # gate driven by reflection over view models cannot reach an
+            # adapter. It renders through `render.overview_block` now.
+            ["skeleton", FORGED_NAME],
         ],
         ids=[
             "map",
@@ -947,6 +977,7 @@ class TestTheForgeryEndToEnd:
             "explain",
             "path",
             "diagram",
+            "skeleton",
         ],
     )
     def test_no_command_lets_the_forged_row_occupy_a_line(

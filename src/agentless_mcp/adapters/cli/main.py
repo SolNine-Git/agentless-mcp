@@ -879,7 +879,15 @@ def _cmd_skeleton(args: argparse.Namespace, services: CliServices) -> int:
     # contents of b.py, behind exit 0. The JSON form keeps the per-file error
     # as its own field, which is a structure a reader can tell apart.
     failed = [view for view in views if view.error]
-    text = "\n".join(f"### {view.path}\n{view.text}" for view in views if not view.error)
+    # `render.overview_block` is the same block the MCP operation renders, so
+    # the two doors onto this view cannot drift again. The error argument is
+    # empty here on purpose: the reason goes to stderr below, which is the
+    # split this function's comment above describes.
+    text = "\n".join(
+        render.overview_block(view.path, view.language, "", view.text)
+        for view in views
+        if not view.error
+    )
     _emit(args, ctx, services, _Answer(text, {"files": [v.as_dict() for v in views]}, "files"))
     for view in failed:
         # The same wording `slice` uses for the identical FileView.error: the

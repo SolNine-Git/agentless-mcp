@@ -38,13 +38,16 @@ class Chars4Counter:
 
     **It is not a model's tokenizer and does not track one.** Measured
     2026-08-25 against ``cl100k_base`` on this package's own output, it counts
-    11-18% under: a map answer of 2383 real tokens estimates at 1949, a fan-in
-    of 570 at 504. The gap is one-directional and structural rather than
-    noise. Stable ids, type annotations and path separators make these views
-    punctuation-dense, and a run of punctuation tokenizes to well under four
-    characters a token, so the estimator is most wrong exactly where the
-    output is densest. A caller sizing a real context window should pass
-    ``--counter tiktoken`` and re-measure rather than scale this number.
+    under, one-directionally and structurally rather than as noise: an
+    unfocused map of 2851 real tokens estimates at 2473 (13.3% under), a
+    focused one of 1051 at 897 (14.7%), a fan-in of 358 at 309 (13.7%). An
+    overview is the mildest, around 10%, because its body is ordinary source
+    rather than rows of ids. Stable ids, type annotations and path separators
+    make the other views punctuation-dense, and a run of punctuation tokenizes
+    to well under four characters a token, so the estimator is most wrong
+    exactly where the output is densest -- an 8000-token budget lands near
+    9200 real ones. A caller sizing a real context window should pass
+    ``--token-counter tiktoken`` and re-measure rather than scale this number.
 
     Floor division means any text shorter than four characters costs nothing,
     so a non-empty string can be free against a budget. That is safe for the

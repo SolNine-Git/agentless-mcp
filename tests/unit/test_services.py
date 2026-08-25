@@ -176,7 +176,9 @@ class TestMapService:
         connected component. Before this, the ranking put all four in the
         answer and the packing search spent the budget expanding symbols from
         the three the caller had not asked about -- measured on this
-        repository at ten files, 13330 characters against 3585.
+        repository with `map --no-cache --focus
+        contrib/hooks/agentless_gate_mark.py --max-files 10`, 13053
+        characters against 3590.
 
         The files stay. Dropping them would be the bounded-view-mistaken-for-
         complete failure ``_group`` exists to prevent, and the tool
@@ -194,6 +196,29 @@ class TestMapService:
             # rendered.
             assert by_path[path].shown == 0, path
             assert by_path[path].omitted > 0, path
+
+    def test_an_unreached_file_does_not_offer_the_budget_that_cannot_help(
+        self, repo, extractor, counter
+    ):
+        """The per-file line has to agree with the banner above it.
+
+        Excluding these symbols from `symbols_available` fixed the banner's
+        "raise the budget for the rest" and left each unreached file's own
+        row saying the same false thing in the ordinary omission wording.
+        Both now say what is true of the file they describe.
+        """
+        maps = MapService(extractor, counter)
+        text = maps.render_text(maps.build(repo, MapRequest(focus=("lonely",))))
+
+        assert "the focus has no reference path to it" in text
+        assert "more symbols in this file not listed" not in text
+
+    def test_an_unfocused_map_keeps_the_ordinary_omission_wording(self, repo, extractor, counter):
+        """A uniform walk reaches everything, so no file gets the other line."""
+        maps = MapService(extractor, counter)
+        text = maps.render_text(maps.build(repo, MapRequest(budget=200)))
+
+        assert "the focus has no reference path to it" not in text
 
     def test_the_shown_of_total_count_describes_only_what_competed(self, repo, extractor, counter):
         """The banner offers "raise the budget for the rest", so the rest must exist.
@@ -218,7 +243,7 @@ class TestMapService:
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely",)))
         assert result.unresolved_seeds == ()
-        assert not maps.render_text(result).startswith("# note:")
+        assert not maps.render_text(result).startswith("// note:")
 
     def test_a_mistyped_path_does_not_resolve_through_its_extension(self, repo, extractor, counter):
         """`lib/nope.py` must not seed on a symbol that happens to be named `py`."""
@@ -466,6 +491,61 @@ class TestSymbolService:
         assert ("billing.py", "run_billing") in callers
         assert ("ledger.py", "Ledger.post") in callers
         assert ("core.py", "PriceBook.cost_of") in callers
+
+    def test_a_group_mixing_module_level_and_symbol_sites_still_prints_one_pattern(
+        self, tmp_path, extractor
+    ):
+        """The prefix is read off whichever site has a symbol, not the first one.
+
+        `caller.py` references the target twice: once from its import line,
+        which sits inside no symbol, and once from a function. The
+        module-level row is first, and it carries no symbol to take a
+        language prefix from -- so a pattern line built from site one alone
+        would be missing, and the function row below it would have no id an
+        agent could rebuild.
+        """
+        (tmp_path / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        (tmp_path / "caller.py").write_text(
+            "from core import quote\n\n\ndef ask():\n    return quote('a')\n", encoding="utf-8"
+        )
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(ctx, "quote")
+        group = next(entry for entry in result.groups if entry.path == "caller.py")
+        text = render.render_ref_groups(list(result.groups), "quote")
+
+        assert group.id_prefix == "py"
+        assert [site.enclosing for site in group.sites] == [render.MODULE_LEVEL, "ask"]
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
+        # The row with no symbol has no id to shorten, and says so rather
+        # than printing a name the pattern cannot complete.
+        assert f"  {render.MODULE_LEVEL} @1" in text
+        assert "  [ask] @5" in text
+
+    def test_a_name_spelled_twice_in_one_file_keeps_its_ordinal_on_the_row(
+        self, tmp_path, extractor
+    ):
+        """The one case where the row's name and the enclosing name differ.
+
+        A second `quote` takes a `#2` ordinal in its id, and that is the
+        spelling the row has to carry: the pattern line plus a bare `quote`
+        would rebuild the id of the *first* one. Driven through the service
+        rather than the renderer, because the ordinal is minted upstream.
+        """
+        (tmp_path / "core.py").write_text(
+            "def helper():\n    return 1\n\n\n"
+            "def quote(sku):\n    return helper()\n\n\n"
+            "def quote(sku, tier):\n    return helper()\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(ctx, "helper")
+        names = {site.name for group in result.groups for site in group.sites}
+        text = render.render_ref_groups(list(result.groups), "helper")
+
+        assert {"quote", "quote#2"} <= names
+        assert "  [quote#2] @" in text
 
     def test_refs_accept_a_stable_id_as_the_target(self, repo, extractor):
         by_name = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(repo, "quote")

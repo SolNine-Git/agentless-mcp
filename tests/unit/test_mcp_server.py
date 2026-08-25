@@ -526,7 +526,7 @@ class TestRoundTrip:
         result = self.call(server, "repo_map", {"repo_root": str(one_repo)})
         text = result.content[0].text
 
-        assert text.startswith("# agentless-mcp receipt\n")
+        assert text.startswith("// agentless-mcp receipt\n")
         # The id is spelled once per file as a pattern, and each row carries
         # the qualified name it addresses. Both halves are pinned: a row that
         # lost its pattern line is an id an agent cannot rebuild.
@@ -986,7 +986,7 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "list_dir", {"repo_root": str(one_repo)}).content[0].text
 
-        assert f"# config: {one_repo / projectconfig.CONFIG_FILENAME}" in text
+        assert f"// config: {one_repo / projectconfig.CONFIG_FILENAME}" in text
         assert "config warning: unknown key 'nonsense'" in text
 
     def test_list_dir_can_render_one_repository_subtree(self, services, one_repo):

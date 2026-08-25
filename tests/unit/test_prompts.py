@@ -59,6 +59,7 @@ ENVELOPE_ARGUMENTS = {
     "receipt_note": {"note": "git status timed out"},
     "receipt_config": {"path": "/srv/app/.agentless-mcp.json"},
     "receipt_config_warning": {"warning": "map_budget is not an integer"},
+    "receipt_summary": {"summary": "12 files, 3 skipped"},
     "banner": {},
     "notice": {},
     "service_truncation": {"shown": 12, "total": 40, "unit": "symbols"},
@@ -104,6 +105,7 @@ MESSAGE_ARGUMENTS = {
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
     "grouped_ids": {"count": 12},
+    "map_file_unreached": {"count": 9},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
     "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
@@ -148,8 +150,8 @@ class TestLoadedData:
             record.banner = "x"
 
     def test_the_envelope_carries_the_documented_wording(self):
-        assert ENVELOPE.receipt_header == "# agentless-mcp receipt"
-        assert ENVELOPE.banner.startswith("# NOTE:")
+        assert ENVELOPE.receipt_header == "// agentless-mcp receipt"
+        assert ENVELOPE.banner.startswith("// NOTE:")
         assert ENVELOPE.notice in ENVELOPE.banner
 
 

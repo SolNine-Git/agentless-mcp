@@ -162,7 +162,7 @@ def invoke(services, root, *arguments):
 
 def body(output: str) -> str:
     """Drop the receipt line, whose cache field is what deliberately differs."""
-    return "\n".join(line for line in output.splitlines() if not line.startswith("# repo:"))
+    return "\n".join(line for line in output.splitlines() if not line.startswith("// repo:"))
 
 
 def git(root, *arguments):
@@ -493,6 +493,48 @@ class TestFreshness:
             f"changed files parse live; run agentless-mcp index --repo {root} for performance"
             in receipt
         )
+
+    def test_the_named_repository_is_quoted_for_a_shell(self):
+        """The receipt hands an agent a command, so the path has to survive a paste.
+
+        `tmp_path` has no space in it, so every other test here passes with
+        or without the quoting -- which is what let this ship unpinned. A
+        path with a space unquoted makes `--repo` take the first word and
+        the rest become stray arguments, and the agent indexes nothing.
+        """
+        status = cache.CacheStatus(
+            path=Path("/tmp/cache.db"),
+            generation="aaaa1111",
+            repo_generation="bbbb2222",
+            generation_matches=False,
+            enabled=True,
+            files=1,
+            tags=1,
+            note="",
+            repo_root=Path("/srv/my app"),
+        )
+
+        assert "run agentless-mcp index --repo '/srv/my app' for performance" in status.receipt
+
+    def test_a_status_carrying_a_generation_must_name_its_repository(self):
+        """The pairing the type cannot express, refused where it is made.
+
+        `repo_root` is optional because the absent and bypassed statuses
+        describe no cache and have no repository to name. A status that
+        carries a generation does, and one that did not would have rendered
+        `agentless-mcp index --repo None` into a receipt an agent then runs.
+        """
+        with pytest.raises(ValueError, match="must name its repository"):
+            cache.CacheStatus(
+                path=Path("/tmp/cache.db"),
+                generation="aaaa1111",
+                repo_generation="bbbb2222",
+                generation_matches=False,
+                enabled=True,
+                files=1,
+                tags=1,
+                note="",
+            )
 
     def test_a_mismatched_generation_still_answers_from_live_content(
         self, make_git_repo, extractor
@@ -971,7 +1013,7 @@ class TestRefsEquivalence:
 
 def _receipt(output: str) -> str:
     """Return the receipt line of one rendered answer."""
-    return next(line for line in output.splitlines() if line.startswith("# repo:"))
+    return next(line for line in output.splitlines() if line.startswith("// repo:"))
 
 
 def _tree_oid(root) -> str:

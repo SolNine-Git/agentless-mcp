@@ -1,5 +1,6 @@
 """Build and render the runtime capability contract shared by both adapters."""
 
+import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from importlib import metadata
@@ -122,7 +123,11 @@ def build_capability_report(
     """
     status = _cache_status(ctx, extractor)
     hint = (
-        MESSAGES.cache_build_hint.format(repo_root=ctx.root)
+        # Quoted for the same reason the stale-cache remediation quotes its
+        # path: both hints hand an agent a command to run, and one of them
+        # spelling a path with a space unquoted makes `--repo` take the first
+        # word and the rest become stray arguments.
+        MESSAGES.cache_build_hint.format(repo_root=shlex.quote(str(ctx.root)))
         if status.enabled and status.generation is None
         else ""
     )

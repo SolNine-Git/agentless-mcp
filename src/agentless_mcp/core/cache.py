@@ -232,6 +232,20 @@ class CacheStatus:
     # shipped dataclass and a positional insertion would break its callers.
     repo_root: Path | None = None
 
+    def __post_init__(self) -> None:
+        """Refuse a status that describes a cache without naming its repository.
+
+        The type cannot say "optional, except when there is a generation", so
+        the pairing is checked here instead of trusted to the construction
+        sites. Held at construction rather than in :attr:`receipt`, because a
+        receipt that discovers the gap has no honest line to print: it would
+        either raise from a status line or recommend
+        ``agentless-mcp index --repo None``.
+        """
+        if self.generation is not None and self.repo_root is None:
+            message = "a cache status carrying a generation must name its repository"
+            raise ValueError(message)
+
     @property
     def receipt(self) -> str:
         """Return the ``cache:`` field of the response receipt.

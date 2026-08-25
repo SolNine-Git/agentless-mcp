@@ -16,6 +16,7 @@
   "expand_batch_shortened": "note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
   "expand_no_room": "not expanded: {requested} ids exceed the {seats} one call can answer; retry with at most that many.",
   "grouped_ids": "({count} ids)",
+  "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
   "stable_ids_pattern": "stable ids: {pattern}",
   "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",
