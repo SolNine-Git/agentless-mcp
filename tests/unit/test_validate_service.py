@@ -375,7 +375,8 @@ class TestCandidates:
 
         assert bad.apply_status is ApplyStatus.OK
         assert bad.regression is Verdict.FAILED
-        assert bad.reproduction is Verdict.FAILED
+        assert bad.reproduction is Verdict.NOT_EVALUATED
+        assert bad.reproduction_run is None
         assert "add(1, 0) == 0" in bad.regression_run.stderr_tail
 
     def test_the_two_spellings_of_one_fix_share_an_equivalence_key(self, report):
@@ -439,6 +440,150 @@ class TestCandidates:
         report = validate(seeded_bug_repo(), candidates_dir({"01-json.json": document}))
 
         assert by_id(report)["01-json"].regression is Verdict.PASSED
+
+
+class TestExecutionReuse:
+    def test_exact_results_share_one_command_execution(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        document = json.dumps(
+            {
+                "edits": [
+                    {
+                        "index": 0,
+                        "path": "app.py",
+                        "search": "    return a - b",
+                        "replace": "    return a + b",
+                    }
+                ]
+            }
+        )
+        calls = []
+        run_command = validate_module.sandbox.run_command
+
+        def counted(*args, **kwargs):
+            calls.append((args, kwargs))
+            return run_command(*args, **kwargs)
+
+        monkeypatch.setattr(validate_module.sandbox, "run_command", counted)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS, "02-json.json": document}),
+            repro="check_repro.py",
+        )
+        verdicts = by_id(report)
+
+        assert len(calls) == 4
+        assert verdicts["01-plus"].execution_group == verdicts["02-json"].execution_group
+        assert verdicts["01-plus"].executed_as == "01-plus"
+        assert verdicts["02-json"].executed_as == "01-plus"
+        assert verdicts["02-json"].duration == 0.0
+        assert verdicts["02-json"].regression is Verdict.PASSED
+        assert verdicts["02-json"].reproduction is Verdict.PASSED
+        assert [candidate.id for candidate in load_verdicts(report.jsonl()).candidates] == [
+            "01-plus",
+            "02-json",
+        ]
+
+    def test_ast_equivalent_but_source_different_results_execute_separately(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        calls = []
+        run_command = validate_module.sandbox.run_command
+
+        def counted(*args, **kwargs):
+            calls.append((args, kwargs))
+            return run_command(*args, **kwargs)
+
+        monkeypatch.setattr(validate_module.sandbox, "run_command", counted)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir(
+                {
+                    "01-plus.txt": PLUS,
+                    "02-plus-commented.txt": PLUS_COMMENTED,
+                }
+            ),
+            repro="check_repro.py",
+        )
+        verdicts = by_id(report)
+
+        assert len(calls) == 6
+        assert verdicts["01-plus"].equivalence_key == verdicts["02-plus-commented"].equivalence_key
+        assert verdicts["01-plus"].execution_group != verdicts["02-plus-commented"].execution_group
+        assert verdicts["01-plus"].executed_as == "01-plus"
+        assert verdicts["02-plus-commented"].executed_as == "02-plus-commented"
+
+    def test_failed_regression_skips_reproduction(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        calls = []
+        run_command = validate_module.sandbox.run_command
+
+        def counted(*args, **kwargs):
+            calls.append((args, kwargs))
+            return run_command(*args, **kwargs)
+
+        monkeypatch.setattr(validate_module.sandbox, "run_command", counted)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-times.txt": TIMES}),
+            repro="check_repro.py",
+        )
+        verdict = by_id(report)["01-times"]
+
+        assert len(calls) == 3
+        assert verdict.regression is Verdict.FAILED
+        assert verdict.reproduction is Verdict.NOT_EVALUATED
+        assert verdict.reproduction_run is None
+
+    def test_a_shared_group_that_never_ran_carries_no_equivalence_key(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        """Planning computes a key early; a record that did not apply must not carry it.
+
+        `apply.status` and `equivalence_key` answer different questions, and a
+        receipt that says `not_evaluated` beside a real key states two
+        incompatible things about one candidate.
+        """
+        document = json.dumps(
+            {
+                "edits": [
+                    {
+                        "index": 0,
+                        "path": "app.py",
+                        "search": "    return a - b",
+                        "replace": "    return a + b",
+                    }
+                ]
+            }
+        )
+        moments = iter((0.0, 1.0, 2.0, 20.0))
+        current = 0.0
+
+        def now():
+            nonlocal current
+            current = next(moments, current)
+            return current
+
+        def passed(_cwd, _cmd, *, timeout, passthrough_env):
+            _ = (timeout, passthrough_env)
+            return RunResult(RunStatus.PASSED, 0, 0.0, "", "")
+
+        monkeypatch.setattr(validate_module, "_monotonic", now)
+        monkeypatch.setattr(validate_module.sandbox, "run_command", passed)
+        report = validate(
+            seeded_bug_repo(),
+            candidates_dir({"01-plus.txt": PLUS, "02-json.json": document}),
+            run_timeout=10,
+        )
+        verdicts = by_id(report)
+
+        assert report.deadline_expired
+        assert verdicts["01-plus"].execution_group == verdicts["02-json"].execution_group
+        for verdict in verdicts.values():
+            assert verdict.apply_status is ApplyStatus.NOT_EVALUATED
+            assert verdict.equivalence_key is None
 
 
 class TestParallelism:
@@ -1028,9 +1173,10 @@ class TestTheRequestsNumbersAreCheckedInOnePlace:
 class TestTheCandidateSetIsBounded:
     """A `--candidates` naming something else is refused, not run.
 
-    Every candidate file is read whole and each one costs two test runs, so
-    without a cap a mis-typed path turned into hours of suite over a source
-    tree. The aggregate time budget is opt-in; these two bounds are not.
+    Every candidate file is read whole and each distinct result can cost two
+    test runs, so without a cap a mis-typed path turned into hours of suite
+    over a source tree. The aggregate time budget is opt-in; these two bounds
+    are not.
     """
 
     def test_more_candidates_than_a_run_takes_are_refused(self, candidates_dir):

@@ -218,8 +218,12 @@ deferred tool is not callable until its schema loads. These five ask to be
 loaded eagerly for that reason, so an agent knows what they answer before it
 picks its first move. Grep is loaded from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
-the structural-first gate in `contrib/hooks/`: it denies Grep and Glob until
-one `mcp__agentless__` call has happened, which fixes that order. Name the
+the structural-first gate in `contrib/hooks/`: it denies broad Grep and Glob
+until `orient(map|path)`, `symbols(find|overview|expand|explain)`, or
+`find_referencing_symbols` has localized the session. Exact-file Grep remains
+available, while diagnostics, raw reads and the shape listings do not unlock
+broad discovery. The equivalent v1 tools also unlock the temporary
+compatibility surface. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
 
@@ -984,12 +988,17 @@ changing between them), the whole validation is `UNVERIFIED`, with a flaky
 message that names how many failed. The run evaluates no candidate. A suite
 that answers differently on identical input cannot tell a regression your
 patch caused from its own noise. All N failing is the ordinary
-broken-baseline case. All N passing proceeds. Candidates still run once each.
+broken-baseline case. All N passing proceeds to candidate normalization and
+execution grouping.
 
-**Every candidate runs in its own throwaway worktree** at HEAD. The tool
-never writes to your checkout, and no candidate can see what the previous one
-left behind. `--jobs N` runs N of them at once. The verdicts document is
-identical either way, because output order is sorted rather than
+**Every distinct resulting file state runs in its own throwaway worktree** at
+HEAD. Before commands are scheduled, the tool normalizes every candidate
+against HEAD and groups only byte-identical changed paths and contents. One
+representative runs for each group; every candidate id and vote remains in the
+report. AST-equivalent but source-different results do not share execution.
+The tool never writes to your checkout, and no group can see what the previous
+one left behind. `--jobs N` runs N representatives at once. The verdicts
+document is identical either way, because output order is sorted rather than
 completion-ordered.
 
 **`--timeout` is a hard bound and a hang is a FAILURE.** The tool kills the
@@ -1045,7 +1054,8 @@ first-appearance order.
  "baseline": "ok", "repro_verdict": "reproduces", "repro_valid": true, ...}
 {"record": "candidate", "id": "01-plus", "index": 0,
  "apply": {"status": "ok", "reasons": []}, "regression": "passed",
- "reproduction": "passed", "equivalence_key": "8f3a...", "duration": 2.41}
+ "reproduction": "passed", "equivalence_key": "8f3a...",
+ "execution_group": "sha256:91c...", "executed_as": "01-plus", "duration": 2.41}
 ```
 
 `apply.status` is `ok`, `failed`, or `not_evaluated`. A failed apply carries
@@ -1060,6 +1070,12 @@ the vote ladder rather than ranked, and the run says so.
 / `not_evaluated`. Note that `timeout` counts as measured (the command ran),
 while `error` does not (it never started). Output tails appear under `tails`
 only when a run did not pass.
+
+When regression does not pass, reproduction is `not_evaluated` and its
+command is not run: that candidate cannot reach the reproduction vote tier,
+so the extra command cannot change its rank. Exact-result groups additionally
+carry `execution_group` and `executed_as`; duplicate candidates point to the
+representative whose command evidence they reuse.
 
 The reader refuses any spelling it does not recognise, and names the line and
 the allowed set. A verdicts file written by a different version therefore

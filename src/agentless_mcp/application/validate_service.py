@@ -19,12 +19,13 @@ test fail again. One that already passes proves nothing about any candidate,
 so it is reported ``does_not_reproduce`` and its rung is removed from the vote
 ladder rather than being counted as a pass everybody gets for free.
 
-**Every candidate gets its own worktree.** Even at ``jobs=1``, because a
-candidate that leaves a file behind must not be able to change the next
-candidate's answer, and residue between runs is the classic way a validation
-harness starts handing out a different result on every run. At ``jobs>1`` the
-worktrees are genuinely concurrent; the git bookkeeping that creates and
-removes them is serialised inside :mod:`agentless_mcp.core.sandbox`.
+**Every distinct result gets its own worktree.** Candidates are first applied
+in memory to unpatched HEAD. Candidates that produce byte-identical changed
+files share one command execution while retaining their own ids and vote
+multiplicity; source-different results never share execution, even when their
+AST equivalence keys match. At ``jobs>1`` the representative worktrees are
+genuinely concurrent; the git bookkeeping that creates and removes them is
+serialised inside :mod:`agentless_mcp.core.sandbox`.
 
 **The commands come from the invocation, and a command out of the repository
 is opt-in.** Nothing here looks a command up: there is no config file lookup,
@@ -55,14 +56,14 @@ refusal protects is narrower and real: a candidate cannot silently change
 that decide what runs rather than what the code does.
 
 **A run's aggregate bound is opt-in.** ``timeout`` bounds one command and is
-always in force; ``run_timeout`` bounds the whole run and defaults to none. A
-batch is ``repeat_baseline + 1 + candidates x 2`` commands, so per-command
-bounds multiply into hours and only ``run_timeout`` stops that. Past the
-deadline the remaining candidates are reported ``not_evaluated`` rather than
-skipped silently -- an unevaluated candidate and a failed one are different
-answers. What is always in force is the size of the input: the candidate count
-and each candidate's byte size are capped, so a mis-typed ``--candidates``
-naming a source tree is refused rather than run.
+always in force; ``run_timeout`` bounds the whole run and defaults to none.
+The worst case is ``repeat_baseline + 1 + candidates x 2`` commands, while
+exact-result groups and regression failures reduce it. Past the deadline the
+remaining candidates are reported ``not_evaluated`` rather than skipped
+silently -- an unevaluated candidate and a failed one are different answers.
+What is always in force is the size of the input: the candidate count and each
+candidate's byte size are capped, so a mis-typed ``--candidates`` naming a
+source tree is refused rather than run.
 
 The output is one JSON Lines document: a ``run`` record carrying the receipt,
 the commands and the baseline outcome, then a ``candidate`` record per
@@ -70,10 +71,11 @@ candidate. ``vote`` reads it back through :func:`load_verdicts`, which is the
 only place that format is parsed and the only place it is written.
 """
 
+import hashlib
 import json
 import posixpath
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -292,6 +294,17 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class _CandidatePlan:
+    """One candidate normalized against HEAD before commands are scheduled."""
+
+    candidate: Candidate
+    edits: tuple[Edit, ...]
+    equivalence_key: str | None
+    execution_key: tuple[tuple[str, str], ...]
+    execution_group: str
+
+
+@dataclass(frozen=True)
 class CandidateVerdict:
     """Everything one candidate produced, including why it produced nothing."""
 
@@ -310,6 +323,11 @@ class CandidateVerdict:
     # caller never chose reads exactly like one they did, so which bound
     # applied travels with the verdict rather than being lost in the number.
     budget_truncated: bool = False
+    # Candidates producing byte-identical changed files share one command
+    # execution. `executed_as` names the representative whose evidence this
+    # record carries; both fields are additive to the verdicts wire format.
+    execution_group: str | None = None
+    executed_as: str | None = None
 
     @property
     def usable(self) -> bool:
@@ -359,6 +377,10 @@ class CandidateVerdict:
         }
         if tails:
             record["tails"] = tails
+        if self.execution_group is not None:
+            record["execution_group"] = self.execution_group
+        if self.executed_as is not None:
+            record["executed_as"] = self.executed_as
         return record
 
 
@@ -710,27 +732,74 @@ class ValidateService:
         reach, and used to raise the DEADLINE warning anyway.
         """
 
-        def evaluate(candidate: Candidate) -> tuple[CandidateVerdict, bool]:
+        plans, immediate = self._plan_candidates(ctx, request, candidates)
+        groups = _execution_groups(plans)
+        representatives = tuple(group[0] for group in groups)
+
+        def evaluate(plan: _CandidatePlan) -> tuple[CandidateVerdict, bool]:
             if _deadline_reached(deadline):
-                return _deadline_expired(candidate, request.run_timeout), True
-            return self._evaluate(
-                ctx, request, candidate, repro_valid=repro_valid, deadline=deadline
-            )
+                return _deadline_expired(plan.candidate, request.run_timeout), True
+            return self._evaluate(ctx, request, plan, repro_valid=repro_valid, deadline=deadline)
 
-        if request.jobs > 1 and len(candidates) > 1:
+        if request.jobs > 1 and len(representatives) > 1:
             with ThreadPoolExecutor(max_workers=request.jobs) as pool:
-                evaluations = list(pool.map(evaluate, candidates))
+                evaluations = list(pool.map(evaluate, representatives))
         else:
-            evaluations = [evaluate(candidate) for candidate in candidates]
+            evaluations = [evaluate(plan) for plan in representatives]
 
-        verdicts = tuple(sorted((item[0] for item in evaluations), key=lambda item: item.index))
-        return verdicts, any(item[1] for item in evaluations)
+        verdicts = list(immediate)
+        for group, evaluation in zip(groups, evaluations, strict=True):
+            representative = group[0].candidate.id
+            verdicts.extend(_share_execution(evaluation[0], plan, representative) for plan in group)
+
+        return tuple(sorted(verdicts, key=lambda item: item.index)), any(
+            item[1] for item in evaluations
+        )
+
+    def _plan_candidates(
+        self,
+        ctx: RepoContext,
+        request: ValidateRequest,
+        candidates: Sequence[Candidate],
+    ) -> tuple[tuple[_CandidatePlan, ...], tuple[CandidateVerdict, ...]]:
+        """Normalize candidates once and group byte-identical results."""
+        plans: list[_CandidatePlan] = []
+        failures: list[CandidateVerdict] = []
+
+        with sandbox.worktree(ctx.root) as tree:
+            scoped = resolve_repo(tree, None)
+            for candidate in candidates:
+                edits, reasons = _candidate_edits(candidate, request)
+                if reasons is not None:
+                    failures.append(_apply_failed(candidate, reasons, _monotonic()))
+                    continue
+
+                normalized = self._patches.normalize(edits, scoped)
+                if not normalized.ok:
+                    failures.append(
+                        _apply_failed(candidate, _reasons(normalized.result), _monotonic())
+                    )
+                    continue
+
+                key = normalized.key if normalized.result.new_contents else None
+                execution_key = _execution_key(normalized.result.new_contents)
+                plans.append(
+                    _CandidatePlan(
+                        candidate=candidate,
+                        edits=edits,
+                        equivalence_key=key,
+                        execution_key=execution_key,
+                        execution_group=_execution_fingerprint(execution_key),
+                    )
+                )
+
+        return tuple(plans), tuple(failures)
 
     def _evaluate(
         self,
         ctx: RepoContext,
         request: ValidateRequest,
-        candidate: Candidate,
+        plan: _CandidatePlan,
         *,
         repro_valid: bool,
         deadline: float | None,
@@ -741,6 +810,7 @@ class ValidateService:
         this candidate would otherwise have had. It is set where the work is
         abandoned, which is the only place that knows.
         """
+        candidate = plan.candidate
         started = _monotonic()
         with sandbox.worktree(ctx.root) as tree:
             # The worktree is the repository this candidate is judged in, so
@@ -750,30 +820,21 @@ class ValidateService:
             # it is a refused invocation.
             scoped = resolve_repo(tree, None)
 
-            edits, refusal = _candidate_edits(candidate, request, started)
-            if refusal is not None:
-                return refusal, False
-
-            # Normalising first computes the equivalence key against the same
-            # unpatched content the apply is about to match against, and
-            # reports every block that would not land -- so a candidate that
-            # cannot apply costs no test run at all.
-            normalized = self._patches.normalize(edits, scoped)
-            if not normalized.ok:
-                return _apply_failed(candidate, _reasons(normalized.result), started), False
-
-            applied = self._patches.apply(edits, scoped, in_place=True)
+            applied = self._patches.apply(plan.edits, scoped, in_place=True)
             if not applied.ok:
                 return _apply_failed(candidate, _reasons(applied.result), started), False
 
-            # A patch that applied and changed nothing has no equivalence
-            # class to vote in: the Agentless ladder's `patch_key.strip()`
-            # guard, kept in every tier.
-            key = normalized.key if normalized.result.new_contents else None
-
             bound = _command_bound(request.timeout, deadline)
             if bound is None:
-                return _applied_but_unmeasured(candidate, key, request.run_timeout, started), True
+                return (
+                    _applied_but_unmeasured(
+                        candidate,
+                        plan.equivalence_key,
+                        request.run_timeout,
+                        started,
+                    ),
+                    True,
+                )
             regression_run = sandbox.run_command(
                 tree,
                 request.test_cmd,
@@ -786,19 +847,22 @@ class ValidateService:
             reproduction_run = None
             reproduction_verdict = None
             if repro_valid and request.repro_cmd is not None:
-                repro_bound = _command_bound(request.timeout, deadline)
-                if repro_bound is None:
+                if not regression_run.passed:
                     reproduction_verdict = Verdict.NOT_EVALUATED
-                    abandoned = True
                 else:
-                    reproduction_run = sandbox.run_command(
-                        tree,
-                        request.repro_cmd,
-                        timeout=repro_bound.seconds,
-                        passthrough_env=request.passthrough_env,
-                    )
-                    reproduction_verdict = Verdict.of(reproduction_run)
-                    truncated = truncated or _truncated(repro_bound, reproduction_run)
+                    repro_bound = _command_bound(request.timeout, deadline)
+                    if repro_bound is None:
+                        reproduction_verdict = Verdict.NOT_EVALUATED
+                        abandoned = True
+                    else:
+                        reproduction_run = sandbox.run_command(
+                            tree,
+                            request.repro_cmd,
+                            timeout=repro_bound.seconds,
+                            passthrough_env=request.passthrough_env,
+                        )
+                        reproduction_verdict = Verdict.of(reproduction_run)
+                        truncated = truncated or _truncated(repro_bound, reproduction_run)
 
             return (
                 CandidateVerdict(
@@ -806,7 +870,7 @@ class ValidateService:
                     index=candidate.index,
                     apply_status=ApplyStatus.OK,
                     apply_reasons=(),
-                    equivalence_key=key,
+                    equivalence_key=plan.equivalence_key,
                     regression=Verdict.of(regression_run),
                     reproduction=reproduction_verdict,
                     duration=round(_monotonic() - started, 3),
@@ -1110,9 +1174,67 @@ def _integer(record: dict[str, Any], field: str, position: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _execution_key(new_contents: Mapping[str, str]) -> tuple[tuple[str, str], ...]:
+    """Return exact changed paths and contents for collision-free grouping."""
+    return tuple(sorted(new_contents.items()))
+
+
+def _execution_fingerprint(execution_key: Sequence[tuple[str, str]]) -> str:
+    """Hash an exact execution key for the additive verdict receipt."""
+    document = json.dumps(
+        execution_key,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(document.encode()).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _execution_groups(
+    plans: Sequence[_CandidatePlan],
+) -> tuple[tuple[_CandidatePlan, ...], ...]:
+    """Group exact results while preserving candidate first appearance."""
+    grouped: dict[tuple[tuple[str, str], ...], list[_CandidatePlan]] = {}
+    for plan in plans:
+        grouped.setdefault(plan.execution_key, []).append(plan)
+    return tuple(tuple(group) for group in grouped.values())
+
+
+def _share_execution(
+    verdict: CandidateVerdict,
+    plan: _CandidatePlan,
+    representative: str,
+) -> CandidateVerdict:
+    """Project one representative execution onto a candidate record.
+
+    The planned equivalence key travels only with a verdict whose patch
+    actually applied. A record that says ``failed`` or ``not_evaluated`` and
+    still carries a key states two incompatible things about the same
+    candidate, and the receipt is the thing a reader trusts when the vote
+    disagrees with it.
+    """
+    applied = verdict.apply_status is ApplyStatus.OK
+    shared = replace(
+        verdict,
+        id=plan.candidate.id,
+        index=plan.candidate.index,
+        equivalence_key=plan.equivalence_key if applied else verdict.equivalence_key,
+        execution_group=plan.execution_group,
+        executed_as=representative,
+    )
+    if plan.candidate.id == representative:
+        return shared
+    return replace(
+        shared,
+        duration=0.0,
+        regression_run=None,
+        reproduction_run=None,
+    )
+
+
 def _candidate_edits(
-    candidate: Candidate, request: ValidateRequest, started: float
-) -> tuple[tuple[Edit, ...], CandidateVerdict | None]:
+    candidate: Candidate, request: ValidateRequest
+) -> tuple[tuple[Edit, ...], tuple[str, ...] | None]:
     """Parse one candidate's edits, or say why it cannot be applied at all.
 
     Every refusal here happens before the worktree is written to, so a
@@ -1125,21 +1247,21 @@ def _candidate_edits(
     try:
         parsed = load_edits(candidate.text)
     except AgentlessError as error:
-        return (), _apply_failed(candidate, (str(error),), started)
+        return (), (str(error),)
 
     if parsed.errors:
         reasons = tuple(
             f"block {error.index} ({error.path or 'no path'}): {error.reason}"
             for error in parsed.errors
         )
-        return (), _apply_failed(candidate, reasons, started)
+        return (), reasons
     if not parsed.edits:
-        return (), _apply_failed(candidate, ("the candidate contains no edits",), started)
+        return (), ("the candidate contains no edits",)
 
     if not request.allow_test_config_edits:
         rewritten = test_config_paths(edit.path for edit in parsed.edits)
         if rewritten:
-            return (), _apply_failed(candidate, _test_config_reasons(rewritten), started)
+            return (), _test_config_reasons(rewritten)
 
     return tuple(parsed.edits), None
 

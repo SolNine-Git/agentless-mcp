@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.6.4 -- 2026-08-25
+
+`validate` runs one command batch per distinct result rather than per
+candidate, and the structural-first gate distinguishes localizing calls from
+diagnostics.
+
+### Changed
+
+- **`validate` groups candidates by their exact resulting file state and runs
+  each group once.** Every candidate is normalized against unpatched HEAD
+  before any command is scheduled; candidates whose changed paths and contents
+  are byte-identical share one worktree and one command batch, while each
+  keeps its own id, index and vote multiplicity. Sampling the same fix twice
+  used to cost two full suite runs. Grouping keys on the exact tree delta and
+  never on the AST equivalence key: two candidates that are AST-equivalent but
+  source-different still execute separately, because only byte-identical
+  content proves the two worktrees are the same.
+- **A candidate whose regression command fails no longer spends a reproduction
+  command.** The vote's reproduction rung requires `regression_passed and
+  reproduction_passed`, and the regression rung ignores reproduction
+  entirely, so the second command cannot change that candidate's rank. Its
+  `reproduction` is reported `not_evaluated` rather than guessed.
+- **Verdict records carry `execution_group` and `executed_as`.** Both fields
+  are additive: `load_verdicts` reads named fields, so an older reader is
+  unaffected. `executed_as` names the representative whose command evidence a
+  record reuses, and output tails ride with that representative rather than
+  being copied onto every member.
+- **A candidate that cannot be parsed or normalized costs no worktree.** The
+  refusal now happens in the planning pass, not inside a worktree created for
+  it.
+- **The structural-first gate keys on localization, not on any Agentless
+  call.** `orient(map|path)`, `symbols(find|overview|expand|explain)` and
+  `find_referencing_symbols` unlock broad search. Diagnostics, raw reads,
+  `symbols(locate)` and the shape listings
+  `orient(communities|cycles|diagram|health)` do not, so `capabilities` can no
+  longer unlock `Grep`. A `Grep` scoped to one existing file is allowed before
+  unlock, because the caller has already localized that search.
+
+### Fixed
+
+- **An untrusted `session_id` no longer becomes a filesystem path component.**
+  The gate marker is now `/tmp/agentless_gate/<sha256(session_id)>.json`
+  carrying an unlock receipt, where it was `<session_id>.ok`. A session id
+  containing path separators previously escaped the marker directory.
+- **A verdict that did not apply no longer carries an equivalence key.** The
+  planning pass computes a key before the run, and projecting it onto a
+  representative's `failed` or `not_evaluated` record made the receipt state
+  two incompatible things about one candidate. The vote excluded those
+  candidates on `applied` and `measured` first, so no ranking was affected.
+- **The check hook logs a tool it does not govern as `not_a_search_tool`.** It
+  read as `malformed_payload`, which named a broken `Grep` rather than a hook
+  matched more widely than the gate.
+- **The gate fails open when `/tmp` cannot hold session state.** The check
+  hook proves it can write a marker before it enforces one's absence;
+  otherwise a read-only `/tmp` denied every search for the whole session.
+
+### Kept
+
+- **Both hooks still fail open.** Malformed stdin, a payload with no session
+  id, or any internal error exits 0 and allows the call. The mark hook reads
+  the call and not its result: `tool_response` has no shape it can read a
+  success out of across every tool it matches, so an Agentless call that
+  errored still unlocks.
+- **`--jobs` still produces the same verdicts document at any value.** Output
+  order is sorted by candidate index, not by completion.
+
 ## 0.6.3 -- 2026-08-25
 
 One ranking fix and one reversal: the map answers with relatives of the seed

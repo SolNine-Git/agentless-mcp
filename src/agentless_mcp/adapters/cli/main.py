@@ -734,7 +734,7 @@ def _add_validate(subparsers: Any) -> None:
         "--jobs",
         type=int,
         default=DEFAULT_JOBS,
-        help=f"candidates to run concurrently, each in its own worktree (default: {DEFAULT_JOBS})",
+        help=f"distinct candidate results to run concurrently (default: {DEFAULT_JOBS})",
     )
     parser.add_argument(
         "--run-timeout",
@@ -742,8 +742,9 @@ def _add_validate(subparsers: Any) -> None:
         default=None,
         metavar="SECONDS",
         help="bound the whole run, not one command (default: unbounded). A batch is "
-        "repeat_baseline + 1 + candidates x 2 commands, so per-command bounds multiply; "
-        "candidates the deadline never reached are reported not_evaluated",
+        "at most repeat_baseline + 1 + candidates x 2 commands; exact-result groups and "
+        "regression failures reduce it; candidates the deadline never reached are reported "
+        "not_evaluated",
     )
     parser.add_argument(
         "--repeat-baseline",
