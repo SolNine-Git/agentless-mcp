@@ -62,6 +62,23 @@ class TestTheCacheStatusIsMeasured:
         assert document["cache"]["files"] == 0
         assert "agentless-mcp index" in document["cache_hint"]
 
+    def test_the_hint_quotes_the_repository_the_way_the_receipt_does(self, tmp_path, extractor):
+        """Two hints, one command, one spelling.
+
+        The stale-cache receipt shell-quotes the path it names; this hint
+        built the same `agentless-mcp index --repo <path>` command by
+        interpolation, so a repository under a directory with a space gave
+        an agent a working command from one and a broken one from the other.
+        """
+        spaced = tmp_path / "my repo"
+        spaced.mkdir()
+        (spaced / "sample.py").write_text("value = 1\n", encoding="utf-8")
+        ctx = resolve_repo(spaced, None)
+
+        hint = build_capability_report(ctx, extractor).cache_hint
+
+        assert f"--repo '{ctx.root}'" in hint
+
     def test_an_opened_source_reports_its_own_generation(self, tmp_path, extractor):
         (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
         built = cache.build_index(tmp_path, extractor)

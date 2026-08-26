@@ -36,6 +36,34 @@ class Chars4Counter:
     Deliberately crude and deliberately pinned by tests. Its job is to make
     budgets reproducible, not to match any particular vocabulary.
 
+    **It is not a model's tokenizer and does not track one, and how far it
+    misses depends on the view.** Measured 2026-08-25 against ``cl100k_base``
+    over the committed goldens, the real-to-estimated ratio runs 0.979 to
+    1.264. The id-dense views drift furthest and always upward -- a map golden
+    reaches 1.264, so an 8000-token budget buys near 10,000 real ones -- while
+    ``lint`` output sits at 0.979, where the estimator counts *over*. There is
+    therefore no single correction factor, and a caller sizing a real context
+    window should measure the view they actually call rather than scale this
+    number by a constant.
+
+    Stable ids, type annotations and path separators are what make the dense
+    views dense: a run of punctuation tokenizes to well under four characters
+    a token, so the estimator is most wrong exactly where the output is
+    densest. Ordinary source, which is most of an overview body, is closest to
+    four.
+
+    ``TestTheEstimatorAgainstARealTokenizer`` in
+    ``tests/unit/test_token_counter.py`` pins the map goldens' ratio to
+    1.10-1.35 and pins that the spread still runs in both directions, so a
+    rendering change that moves either fails there instead of leaving a stale
+    number in this docstring. That band, and not the 1.170-1.264 measured
+    inside it, is what the ``repo_map`` and ``orient`` tool descriptions
+    publish as "10-35% higher": a model-facing promise states the number a
+    test enforces, or a renderer tweak makes a liar of it. The same test
+    asserts the two agree. The CLI's ``--token-counter tiktoken`` swaps in the
+    real counter; the MCP server declares no such flag and always counts with
+    this one.
+
     Floor division means any text shorter than four characters costs nothing,
     so a non-empty string can be free against a budget. That is safe for the
     consumers there are: ``map_service._pack`` is a bisection over a finite

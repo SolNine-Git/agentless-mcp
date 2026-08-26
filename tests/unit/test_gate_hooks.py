@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from agentless_mcp.adapters.mcp import server
+
 ROOT = Path(__file__).parents[2]
 
 
@@ -466,3 +468,52 @@ def test_unavailable_marker_storage_fails_open(hooks, monkeypatch):
     }
 
     assert call(check, monkeypatch, payload, check.decide) == check.ALLOW
+
+
+class TestTheHookAndTheServerAgreeOnOperationNames:
+    """The mark hook hand-mirrors the server's v2 operation vocabulary.
+
+    The hooks fail open, so drift between the two is silent. A renamed
+    operation would leave the hook unlocking on a spelling the server no
+    longer serves and never unlocking on the one it does; the only symptom is
+    an unexplained early `Grep` denial in a session that did localize, and the
+    measurement log records the refusal without being able to say why.
+    """
+
+    def test_every_unlocking_operation_exists_on_the_server(self):
+        mark = load_hook("agentless_gate_mark")
+        tables = {
+            "mcp__agentless__orient": server.ORIENT_OPERATIONS,
+            "mcp__agentless__symbols": server.SYMBOLS_OPERATIONS,
+            "mcp__agentless__read": server.READ_OPERATIONS,
+        }
+
+        assert set(mark.LOCALIZING_OPERATIONS) == set(tables)
+        for tool, operations in mark.LOCALIZING_OPERATIONS.items():
+            assert operations <= set(tables[tool]), tool
+
+    def test_the_operations_held_back_still_exist_to_be_held_back(self):
+        """A deliberate exclusion and a vanished operation must not look alike.
+
+        `read(dir)` and the four shaping listings are out because a listing is
+        how you look for a file rather than evidence you found one, and
+        `symbols(locate)` resolves selectors inside a file you already named.
+        If one were removed upstream, the omission would still read as that
+        decision.
+        """
+        excluded = {
+            "communities": server.ORIENT_OPERATIONS,
+            "cycles": server.ORIENT_OPERATIONS,
+            "health": server.ORIENT_OPERATIONS,
+            "diagram": server.ORIENT_OPERATIONS,
+            "locate": server.SYMBOLS_OPERATIONS,
+            "dir": server.READ_OPERATIONS,
+        }
+        mark = load_hook("agentless_gate_mark")
+        unlocked = {
+            name for operations in mark.LOCALIZING_OPERATIONS.values() for name in operations
+        }
+
+        for operation, table in excluded.items():
+            assert operation in table, operation
+            assert operation not in unlocked, operation

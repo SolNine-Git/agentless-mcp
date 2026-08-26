@@ -59,12 +59,14 @@ ENVELOPE_ARGUMENTS = {
     "receipt_note": {"note": "git status timed out"},
     "receipt_config": {"path": "/srv/app/.agentless-mcp.json"},
     "receipt_config_warning": {"warning": "map_budget is not an integer"},
+    "receipt_summary": {"summary": "12 files, 3 skipped"},
     "banner": {},
     "notice": {},
     "service_truncation": {"shown": 12, "total": 40, "unit": "symbols"},
     "ceiling_truncation": {"max_tokens": 16_000, "dropped": 7, "total": 900},
     "json_ceiling_untrimmable": {"max_tokens": 16_000},
     "json_ceiling_trimmed": {"max_tokens": 16_000},
+    "json_ceiling_oversized_item": {"max_tokens": 16_000},
 }
 
 MESSAGE_ARGUMENTS = {
@@ -104,11 +106,13 @@ MESSAGE_ARGUMENTS = {
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},
     "grouped_ids": {"count": 12},
+    "map_file_unreached": {"count": 9},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
+    "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
     "slice_range_not_a_range": {"start": 60, "end": 30, "path": "src/app/svc.py"},
-    "cache_stale_remediation": {},
+    "cache_stale_remediation": {"repo_root": "/srv/app"},
     "cache_stale_refreshing": {},
     "cache_absent_refreshing": {},
     "cache_build_hint": {"repo_root": "/srv/app"},
@@ -147,8 +151,8 @@ class TestLoadedData:
             record.banner = "x"
 
     def test_the_envelope_carries_the_documented_wording(self):
-        assert ENVELOPE.receipt_header == "# agentless-mcp receipt"
-        assert ENVELOPE.banner.startswith("# NOTE:")
+        assert ENVELOPE.receipt_header == "// agentless-mcp receipt"
+        assert ENVELOPE.banner.startswith("// NOTE:")
         assert ENVELOPE.notice in ENVELOPE.banner
 
 

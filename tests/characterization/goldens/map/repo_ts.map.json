@@ -13,7 +13,7 @@
   "symbols_included": 29,
   "symbols_available": 29,
   "files_ranked": 4,
-  "rendered_tokens": 633,
+  "rendered_tokens": 560,
   "rank_converged": true,
   "seeds": [],
   "unresolved_seeds": [],
@@ -59,7 +59,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "pricing.ts",
@@ -114,7 +115,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "inventory.ts",
@@ -175,7 +177,8 @@
           "depth": 1
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "reports.ts",
@@ -218,7 +221,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     }
   ],
   "skipped": [],

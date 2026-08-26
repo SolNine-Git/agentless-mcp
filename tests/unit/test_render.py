@@ -36,6 +36,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.refs import SkippedFile
+from agentless_mcp.prompts import MESSAGES
 
 # The filename the audit reproduced the forgery with. A newline is legal in a
 # POSIX filename, so this is a repository the tool has to be able to index --
@@ -104,16 +105,69 @@ class TestMap:
         assert text.splitlines()[0] == "core.py  (rank 0.6491)"
 
     def test_a_symbol_row_carries_its_signature_and_stable_id(self):
+        """The position is an ``@line`` suffix, not a line-number gutter.
+
+        The gutter says "this line is verbatim repository content" and a map
+        row is a normalized signature: a definition spanning eight lines is
+        rendered on one, so a gutter number in front of it promised text the
+        file does not carry at that line.
+        """
         entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
         text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
-        assert "    4| def quote(sku)  [py:core.py::quote]" in text
+        assert "  def quote(sku)  [py:core.py::quote] @4" in text
 
     def test_depth_is_four_spaces_per_level(self):
         entry = render.MapEntry(
             line=9, signature="def price(self)", stable_id="py:core.py::Book.price", depth=1
         )
         text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
-        assert "    9|     def price(self)  [py:core.py::Book.price]" in text
+        assert "      def price(self)  [py:core.py::Book.price] @9" in text
+
+    def test_a_row_keeps_the_whole_id_when_the_file_names_no_prefix(self):
+        """No pattern line means no way to rebuild a shortened id, so none is cut."""
+        entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
+        text = render.render_map([render.MapFile(path="core.py", rank=1.0, entries=(entry,))])
+
+        assert "stable ids:" not in text
+        assert "[py:core.py::quote]" in text
+
+    def test_a_file_that_names_its_prefix_prints_the_pattern_once(self):
+        """The prefix leaves every row and appears once under the header."""
+        entries = (
+            render.MapEntry(line=4, signature="def quote(sku)", stable_id="x", name="quote"),
+            render.MapEntry(line=9, signature="def rate()", stable_id="y", name="rate"),
+        )
+        text = render.render_map(
+            [render.MapFile(path="core.py", rank=1.0, entries=entries, id_prefix="py")]
+        )
+
+        assert text.count("stable ids: py:core.py::<QualifiedName>") == 1
+        assert "  def quote(sku)  [quote] @4" in text
+        assert "  def rate()  [rate] @9" in text
+        assert "py:core.py::quote" not in text
+
+    def test_a_budget_cut_file_offers_the_rest(self):
+        """The ordinary marker: more exist, and a bigger budget shows them."""
+        entry = render.MapEntry(line=4, signature="def quote(sku)", stable_id="py:core.py::quote")
+        text = render.render_map(
+            [render.MapFile(path="core.py", rank=1.0, entries=(entry,), total=9)]
+        )
+
+        assert "... 8 more symbols in this file not listed" in text
+
+    def test_an_unreached_file_says_no_budget_will_show_them(self):
+        """A different fact needs a different line.
+
+        The focus reached no reference path to this file, so no budget
+        renders a symbol of it. The ordinary marker ends "more ... not
+        listed", which an agent reads as an invitation to ask for the rest
+        -- advice that cannot work here, and the reason the banner already
+        excludes these symbols from its own total.
+        """
+        text = render.render_map([render.MapFile(path="far.py", rank=0.0, total=86, reached=False)])
+
+        assert "the focus has no reference path to it" in text
+        assert "more symbols in this file not listed" not in text
 
 
 class TestTestCompanions:
@@ -332,13 +386,40 @@ class TestRefGroups:
         text = render.render_ref_groups([group], "quote")
         assert "caller.py  (1 reference, resolved via import)" in text
 
-    def test_a_site_row_is_a_line_number_then_its_enclosing_symbol(self):
+    def test_a_site_row_is_its_enclosing_symbol_then_an_at_line(self):
         group = render.RefGroup(
             path="caller.py",
             sites=(render.RefSite(line=5, enclosing="def ask()", stable_id="py:caller.py::ask"),),
         )
         text = render.render_ref_groups([group], "quote")
-        assert "    5| def ask()  [py:caller.py::ask]" in text
+        assert "  [py:caller.py::ask] @5" in text
+
+    def test_a_site_row_names_the_symbol_once(self):
+        """The enclosing name and the id's tail are the same string.
+
+        They differ only when a file spells one name twice and the id takes a
+        ``#2`` ordinal, which is the spelling the row should carry. Printing
+        both put the same name on the row twice.
+        """
+        group = render.RefGroup(
+            path="caller.py",
+            id_prefix="py",
+            sites=(
+                render.RefSite(line=5, enclosing="ask", stable_id="py:caller.py::ask", name="ask"),
+            ),
+        )
+        text = render.render_ref_groups([group], "quote")
+
+        assert "  [ask] @5" in text
+        assert text.count("ask") == 1  # the row, and nowhere else
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
+
+    def test_a_module_level_site_carries_no_id(self):
+        group = render.RefGroup(
+            path="caller.py", sites=(render.RefSite(line=5, enclosing=render.MODULE_LEVEL),)
+        )
+        text = render.render_ref_groups([group], "quote")
+        assert f"  {render.MODULE_LEVEL} @5" in text
 
 
 class TestOmissionLines:
@@ -879,6 +960,21 @@ class TestTheForgeryEndToEnd:
             ["explain", "hidden"],
             ["path", "hidden", "real"],
             ["diagram", "--focus", "hidden"],
+            # `skeleton` is the third sink, found the way `tree` was: it is
+            # not in this module. Both adapters built its file header with an
+            # f-string over the raw path, so it was the one grouped header
+            # outside the rule the per-field gate above enforces -- and a
+            # gate driven by reflection over view models cannot reach an
+            # adapter. It renders through `render.overview_block` now.
+            ["skeleton", FORGED_NAME],
+            # `capabilities` is the fourth, and it is here before it is a
+            # defect rather than after. It renders in `capability_service`
+            # with plain f-strings, and the values it prints are safe only
+            # because three unrelated call sites validate them first --
+            # `projectconfig` allowlists the config fields, and the server
+            # refuses a client root carrying a line break. A field added to
+            # the report from anywhere else would land outside all three.
+            ["capabilities"],
         ],
         ids=[
             "map",
@@ -890,6 +986,8 @@ class TestTheForgeryEndToEnd:
             "explain",
             "path",
             "diagram",
+            "skeleton",
+            "capabilities",
         ],
     )
     def test_no_command_lets_the_forged_row_occupy_a_line(
@@ -908,3 +1006,51 @@ class TestTheForgeryEndToEnd:
         run(["tree", "--repo", str(forged_repo)], services)
 
         assert "forged_symbol" in capsys.readouterr().out
+
+
+class TestAFilenameCannotSpellAWholeMarker:
+    """The other half of the rule the escaping alone does not hold.
+
+    ``one_line`` stops a value from *ending* a line. It cannot stop a value
+    from *being* one, and a file header is the one line in a grouped view
+    that carries no indent. `overview_block` shipped for a release with the
+    bare path as its whole header, so a file named for an omission marker
+    rendered a line this module could have written -- and an agent reads
+    those markers to decide whether to ask for more.
+
+    Every grouped header answers it the same way: the path, then a
+    tool-authored ``  (fact)`` that a filename cannot be responsible for.
+    Driven over the markers themselves rather than one sample, so a reworded
+    noun is covered by the same test.
+    """
+
+    MARKERS = (
+        render._omitted_line(7, "matches", limit=3),
+        render._omitted_line(9, "symbols in this file"),
+        MESSAGES.map_file_unreached.format(count=4),
+    )
+
+    HEADERS = (
+        # The overview reaches this through its error path, which is the one
+        # an untrusted repository steers: a name shaped like a marker carries
+        # no extension, so it reaches no grammar and lands there.
+        ("overview", lambda path: render.overview_block(path, "", "no grammar", "")),
+        ("map", lambda path: render.render_map((render.MapFile(path=path, rank=0.5),))),
+        (
+            "refs",
+            lambda path: render.render_ref_groups((render.RefGroup(path=path),), "target"),
+        ),
+    )
+
+    @pytest.mark.parametrize("marker", MARKERS)
+    @pytest.mark.parametrize(("label", "render_one"), HEADERS, ids=[name for name, _ in HEADERS])
+    def test_a_header_named_for_a_marker_is_not_one(self, label, render_one, marker):
+        rendered = render_one(marker)
+        headers = [line for line in rendered.splitlines() if line and not line.startswith(" ")]
+
+        assert headers, f"{label} rendered no header"
+        for header in headers:
+            assert header != marker, f"{label} rendered a header equal to {marker!r}"
+        # Escaped, not dropped: the file stays navigable. The suffix is what
+        # makes the line the tool's rather than the repository's.
+        assert marker in rendered, label

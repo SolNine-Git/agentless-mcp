@@ -479,12 +479,20 @@ class TestAnnotations:
             assert annotations.openWorldHint is False, tool.name
             assert annotations.idempotentHint is True, tool.name
 
-    def test_text_tools_keep_the_compatible_result_schema(self, services, one_repo):
+    def test_no_tool_publishes_an_output_schema(self, services, one_repo):
+        """Every answer is text, so no tool declares a structured shape.
+
+        A schema here is what makes FastMCP emit a second copy of the answer
+        in ``structuredContent.result``: one field holding the whole receipt
+        as an escaped string. A client that prefers structured content then
+        renders the response as a single line, and every answer crosses the
+        wire twice. Pinned per tool rather than in aggregate so a new
+        registration that forgets ``output_schema=None`` names itself.
+        """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
 
         for tool in tools:
-            assert tool.outputSchema is not None, tool.name
-            assert tool.outputSchema["properties"]["result"]["type"] == "string", tool.name
+            assert tool.outputSchema is None, tool.name
 
     def test_the_annotation_helper_carries_the_documented_hints(self):
         assert read_only("X") == {
@@ -518,9 +526,13 @@ class TestRoundTrip:
         result = self.call(server, "repo_map", {"repo_root": str(one_repo)})
         text = result.content[0].text
 
-        assert text.startswith("# agentless-mcp receipt\n")
-        assert "py:core.py::quote" in text
-        assert result.structured_content == {"result": text}
+        assert text.startswith("// agentless-mcp receipt\n")
+        # The id is spelled once per file as a pattern, and each row carries
+        # the qualified name it addresses. Both halves are pinned: a row that
+        # lost its pattern line is an id an agent cannot rebuild.
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
+        assert result.structured_content is None
 
     def test_an_omitted_repo_root_defaults_when_there_is_one_root(self, services, one_repo):
         server = build_server(ToolHandlers([one_repo], services))
@@ -949,9 +961,11 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
 
-        # File granularity renders paths without symbol lines.
+        # File granularity renders paths without symbol lines, so it prints no
+        # id pattern: a pattern under a block with no ids under it is noise.
         assert "core.py" in text
-        assert "py:core.py::quote" not in text
+        assert "stable ids:" not in text
+        assert "[quote]" not in text
 
     def test_an_explicit_argument_beats_the_config(self, services, one_repo):
         self.write_config(one_repo, {"granularity": "file"})
@@ -963,7 +977,8 @@ class TestProjectConfigOverMcp:
             .text
         )
 
-        assert "py:core.py::quote" in text
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
 
     def test_the_receipt_names_the_config_and_its_warnings(self, services, one_repo):
         self.write_config(one_repo, {"nonsense": 1})
@@ -971,7 +986,7 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "list_dir", {"repo_root": str(one_repo)}).content[0].text
 
-        assert f"# config: {one_repo / projectconfig.CONFIG_FILENAME}" in text
+        assert f"// config: {one_repo / projectconfig.CONFIG_FILENAME}" in text
         assert "config warning: unknown key 'nonsense'" in text
 
     def test_list_dir_can_render_one_repository_subtree(self, services, one_repo):
@@ -1022,7 +1037,8 @@ class TestProjectConfigOverMcp:
 
         text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
 
-        assert "py:core.py::quote" in text
+        assert "stable ids: py:core.py::<QualifiedName>" in text
+        assert "[quote] @" in text
         assert "config warning" in text
 
 
@@ -1754,7 +1770,13 @@ class TestOverviewStableIds:
             .text
         )
 
-        assert "### core.py" in text
+        # One file-header grammar across the grouped views: the path, and
+        # whatever the view knows about it. The markdown heading `###` cost
+        # four characters a file and said nothing the path did not; the
+        # language is the fact this view knows, and it is what keeps the
+        # header from being a repository value alone on a line.
+        assert "\ncore.py  (python)\n" in text
+        assert "###" not in text
         # The prefix and separator come from core.symbols.stable_id, so the
         # line matches the ids the other tools mint for this file.
         assert "stable ids: py:core.py::<QualifiedName>" in text
@@ -1775,6 +1797,14 @@ class TestOverviewStableIds:
 
         assert "no grammar" in text
         assert "stable ids:" not in text
+        # The error path is the one an untrusted repository steers: any name
+        # at all reaches it, because reaching no grammar is what puts it
+        # here. So it keeps the header grammar rather than degrading to a
+        # bare path -- a file with no language still names one.
+        assert "\nnotes.md  (unknown)\n" in text
+        # The reason is indented under the header, where it cannot be read as
+        # the file's contents.
+        assert "\n  notes.md: no grammar" in text
 
 
 class TestAutoWarmStartup:

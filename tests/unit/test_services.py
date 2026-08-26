@@ -169,11 +169,124 @@ class TestMapService:
         assert result.as_dict()["seeds"] == ["orphan.py"]
         assert result.as_dict()["unresolved_seeds"] == ["rotate_age"]
 
+    def test_the_budget_skips_files_the_focus_never_reaches(self, repo, extractor, counter):
+        """A file no path connects to the seed is listed, not expanded.
+
+        ``orphan.py`` has no edge to the other three, which form their own
+        connected component. Before this, the ranking put all four in the
+        answer and the packing search spent the budget expanding symbols from
+        the three the caller had not asked about -- measured on this
+        repository with `map --no-cache --focus
+        contrib/hooks/agentless_gate_mark.py --max-files 10`, 13053
+        characters against 3590.
+
+        The files stay. Dropping them would be the bounded-view-mistaken-for-
+        complete failure ``_group`` exists to prevent, and the tool
+        description publishes a top-N of ten however large the repository is.
+        What changes is where the budget goes.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("lonely",)))
+        by_path = {entry.path: entry for entry in result.files}
+
+        assert result.seeds == ("orphan.py",)
+        assert set(by_path) == {"orphan.py", "core.py", "billing.py", "ledger.py"}
+        assert by_path["orphan.py"].shown > 0
+        for path in ("core.py", "billing.py", "ledger.py"):
+            # Listed, with a true count of what it holds, and no symbol of it
+            # rendered.
+            assert by_path[path].shown == 0, path
+            assert by_path[path].omitted > 0, path
+
+    def test_an_unreached_file_does_not_offer_the_budget_that_cannot_help(
+        self, repo, extractor, counter
+    ):
+        """The per-file line has to agree with the banner above it.
+
+        Excluding these symbols from `symbols_available` fixed the banner's
+        "raise the budget for the rest" and left each unreached file's own
+        row saying the same false thing in the ordinary omission wording.
+        Both now say what is true of the file they describe.
+        """
+        maps = MapService(extractor, counter)
+        text = maps.render_text(maps.build(repo, MapRequest(focus=("lonely",))))
+
+        assert "the focus has no reference path to it" in text
+        assert "more symbols in this file not listed" not in text
+
+    def test_an_unfocused_map_keeps_the_ordinary_omission_wording(self, repo, extractor, counter):
+        """A uniform walk reaches everything, so no file gets the other line."""
+        maps = MapService(extractor, counter)
+        text = maps.render_text(maps.build(repo, MapRequest(budget=200)))
+
+        assert "the focus has no reference path to it" not in text
+
+    def test_the_shown_of_total_count_describes_only_what_competed(self, repo, extractor, counter):
+        """The banner offers "raise the budget for the rest", so the rest must exist.
+
+        No budget renders a symbol in a file the focus never reached, so
+        counting those in the total makes that advice false.
+        """
+        maps = MapService(extractor, counter)
+        focused = maps.build(repo, MapRequest(focus=("lonely",)))
+        unfocused = maps.build(repo, MapRequest())
+
+        orphan_symbols = sum(
+            entry.shown + entry.omitted for entry in focused.files if entry.path == "orphan.py"
+        )
+        assert focused.candidates == orphan_symbols
+        # An unfocused walk reaches every file, so nothing is held back and
+        # the number is the whole scored set -- which is what keeps the
+        # goldens, all unfocused, unchanged.
+        assert unfocused.candidates == sum(entry.shown + entry.omitted for entry in unfocused.files)
+
+    def test_the_json_form_says_which_files_the_focus_reached(self, repo, extractor, counter):
+        """Text and JSON are two doors onto one map, so both carry the fact.
+
+        `omitted` alone cannot answer what a caller asks it -- would a bigger
+        budget show the rest? The text render answers by branching on
+        `reached` for its omission line; for one release the JSON emitted the
+        same shape either way, so a consumer reading the map as data (the
+        ranking harness does) had to match on a message to tell them apart.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("lonely",)))
+        by_path = {entry["path"]: entry for entry in result.as_dict()["files"]}
+
+        assert by_path["orphan.py"]["reached"] is True
+        for path in ("core.py", "billing.py", "ledger.py"):
+            assert by_path[path]["reached"] is False, path
+            assert by_path[path]["omitted"] > 0, path
+
+    def test_a_file_granularity_map_marks_an_unreached_file_too(self, repo, extractor, counter):
+        """The granularity where the wrong line was offered most, not least.
+
+        Every file here has its whole symbol count omitted, so every file
+        takes an omission line -- and this view has no budget at all to
+        raise. Left to `MapFile.reached`'s default the answer told a caller
+        to raise one, about a file no budget could reach.
+        """
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(focus=("lonely",), granularity=GRANULARITY_FILE))
+        by_path = {entry.path: entry for entry in result.files}
+
+        assert by_path["orphan.py"].reached is True
+        assert "the focus has no reference path to it" in maps.render_text(result)
+        for path in ("core.py", "billing.py", "ledger.py"):
+            assert by_path[path].reached is False, path
+        assert [entry["reached"] for entry in result.as_dict()["files"]].count(False) == 3
+
+    def test_an_unfocused_file_granularity_map_reaches_everything(self, repo, extractor, counter):
+        """The uniform walk reaches every file, so none takes the other line."""
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest(granularity=GRANULARITY_FILE))
+
+        assert all(entry.reached for entry in result.files)
+        assert "the focus has no reference path to it" not in maps.render_text(result)
+
     def test_a_fully_resolved_focus_adds_no_note(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely",)))
         assert result.unresolved_seeds == ()
-        assert not maps.render_text(result).startswith("# note:")
+        assert not maps.render_text(result).startswith("// note:")
 
     def test_a_mistyped_path_does_not_resolve_through_its_extension(self, repo, extractor, counter):
         """`lib/nope.py` must not seed on a symbol that happens to be named `py`."""
@@ -218,11 +331,20 @@ class TestMapService:
         This asked for ``budget=120``, which no door accepts any more:
         ``projectconfig`` declares 200..64000 and ``MapService`` now holds
         callers to it. The behaviour under test is unaffected -- a budget can
-        still fit some symbols and not others -- so the repository grows until
-        the smallest legal budget lands mid-way through it. Raising the floor
-        did not make this path unreachable, and this test is the evidence.
+        still fit some symbols and not others -- so the repository is sized so
+        that the smallest legal budget lands mid-way through it. Raising the
+        floor did not make this path unreachable, and this test is the
+        evidence.
+
+        Resized from twelve files to six when the map dropped its line-number
+        gutter for an ``@line`` suffix and gained a per-file id-pattern line.
+        Twelve file headers plus their omission lines render to 182 of the 200
+        tokens on their own, which left less than one symbol *and* its file's
+        pattern line of room -- the budget stopped landing mid-way and started
+        landing before the first symbol. Six files restore the boundary this
+        pins: measured 5 of 72 symbols included at 188 tokens.
         """
-        for index in range(12):
+        for index in range(6):
             body = "".join(
                 f"def function_number_{index}_{inner}():\n    return {inner}\n\n"
                 for inner in range(12)
@@ -412,6 +534,61 @@ class TestSymbolService:
         assert ("billing.py", "run_billing") in callers
         assert ("ledger.py", "Ledger.post") in callers
         assert ("core.py", "PriceBook.cost_of") in callers
+
+    def test_a_group_mixing_module_level_and_symbol_sites_still_prints_one_pattern(
+        self, tmp_path, extractor
+    ):
+        """The prefix is read off whichever site has a symbol, not the first one.
+
+        `caller.py` references the target twice: once from its import line,
+        which sits inside no symbol, and once from a function. The
+        module-level row is first, and it carries no symbol to take a
+        language prefix from -- so a pattern line built from site one alone
+        would be missing, and the function row below it would have no id an
+        agent could rebuild.
+        """
+        (tmp_path / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        (tmp_path / "caller.py").write_text(
+            "from core import quote\n\n\ndef ask():\n    return quote('a')\n", encoding="utf-8"
+        )
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(ctx, "quote")
+        group = next(entry for entry in result.groups if entry.path == "caller.py")
+        text = render.render_ref_groups(list(result.groups), "quote")
+
+        assert group.id_prefix == "py"
+        assert [site.enclosing for site in group.sites] == [render.MODULE_LEVEL, "ask"]
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
+        # The row with no symbol has no id to shorten, and says so rather
+        # than printing a name the pattern cannot complete.
+        assert f"  {render.MODULE_LEVEL} @1" in text
+        assert "  [ask] @5" in text
+
+    def test_a_name_spelled_twice_in_one_file_keeps_its_ordinal_on_the_row(
+        self, tmp_path, extractor
+    ):
+        """The one case where the row's name and the enclosing name differ.
+
+        A second `quote` takes a `#2` ordinal in its id, and that is the
+        spelling the row has to carry: the pattern line plus a bare `quote`
+        would rebuild the id of the *first* one. Driven through the service
+        rather than the renderer, because the ordinal is minted upstream.
+        """
+        (tmp_path / "core.py").write_text(
+            "def helper():\n    return 1\n\n\n"
+            "def quote(sku):\n    return helper()\n\n\n"
+            "def quote(sku, tier):\n    return helper()\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(ctx, "helper")
+        names = {site.name for group in result.groups for site in group.sites}
+        text = render.render_ref_groups(list(result.groups), "helper")
+
+        assert {"quote", "quote#2"} <= names
+        assert "  [quote#2] @" in text
 
     def test_refs_accept_a_stable_id_as_the_target(self, repo, extractor):
         by_name = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(repo, "quote")

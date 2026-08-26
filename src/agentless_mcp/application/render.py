@@ -15,6 +15,19 @@ what it looks like. Nothing here reads the filesystem or parses anything.
 Every path is repository-relative with forward slashes, and every navigable
 row carries a stable id plus an exact line or span.
 
+A position is spelled one way: ``@line`` or ``@start-end``, appended to the
+row. The ``N| `` gutter means something else and only that -- this line is
+verbatim repository content -- so it belongs to the views that quote a file
+(``read(slice)``, ``symbols(expand)``, ``symbols(locate)``, the overview
+body) and not to the views that cite a position. The map and fan-in rows used
+the gutter for a citation, which read as a promise of verbatim text that a
+normalized signature does not keep: a symbol whose definition spans eight
+lines was rendered on one, behind a number that said it was that line.
+
+In a view grouped under a file header, the header spells the path and the
+rows below carry the qualified name alone. The id pattern is printed once,
+under the header, by :func:`_stable_ids_line`.
+
 **This module owns the line grammar, so it is where repository text is made
 safe for a row.** Every field that carries a repository-derived value --
 paths, signatures, stable ids, qualified names, module strings, rationale
@@ -55,7 +68,7 @@ from typing import Any, overload
 
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
-from agentless_mcp.core.slices import line_prefix
+from agentless_mcp.core.symbols import StableId, language_prefix
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.textsafe import one_line
 
@@ -74,10 +87,15 @@ def _no_negative_zero(value: float) -> float:
 
 MODULE_LEVEL = "(module level)"
 
-# How wide the line-number column of a row-per-line view is. The prefix
-# itself is `core.slices.line_prefix`, which every line-numbered view in the
-# package renders through.
-LINE_NUMBER_WIDTH = 5
+# What the id pattern stands the symbol's own name in for. Spelled once so the
+# pattern line and the guide agree.
+QUALIFIED_NAME_PLACEHOLDER = "<QualifiedName>"
+
+# What an overview header names when the file has no language: a path that
+# reached no grammar, or one the walk refused. The header needs *some*
+# tool-authored fact -- see :func:`_omitted_line` for why every grouped header
+# carries one -- and "the view could not say" is the honest one here.
+UNKNOWN_LANGUAGE = "unknown"
 
 # How many of a candidate's shared callers the text render lists before
 # cutting to a count. The callers are evidence for the overlap number, and a
@@ -120,8 +138,23 @@ def _omitted_line(omitted: int, noun: str, *, limit: int = 0) -> str:
 
     One spelling for every listing in this module, and no indent. Every row
     rendered here is indented -- a card body by two spaces, a community member
-    by seven, a map symbol behind a ``line_prefix`` -- so a marker in the
-    first column is the one line repository text placed on a row cannot forge.
+    by seven, a map symbol or reference row by :data:`ROW_INDENT` -- so a
+    marker in the first column is the one line repository text placed on a row
+    cannot forge. ``ROW_INDENT`` is load-bearing for that reason: the map and
+    fan-in rows used to be indented by the width of their line-number gutter,
+    and dropping the gutter without replacing the indent would have put
+    repository-derived text in the first column.
+
+    A grouped view's *file header* is the exception to the indent, so it
+    carries the other half of the rule instead: every one of them appends a
+    tool-authored ``  (fact)`` -- the rank on a map, the reference count and
+    tier on a fan-in, the language on an overview. A header is therefore
+    never a bare repository value, and no filename can spell a whole line
+    this function could have written. :func:`overview_block` shipped for one
+    release without that suffix, and a file named
+    ``... 7 more matches not listed (limit 3)`` rendered a header byte-identical
+    to this marker.
+
     Eleven hand-spelled variants used to differ in whether they named the
     limit and in where they put the comma, so an agent asking how much was
     left out had eleven patterns to match.
@@ -140,6 +173,71 @@ def _locator(stable_id: str, *, parent: str = "", line: int | str | None = None)
     """
     named = one_line(stable_id) if not parent else f"{one_line(stable_id)} -> {one_line(parent)}"
     return f"[{named}]" if line is None else f"[{named}] @{line}"
+
+
+ROW_INDENT = "  "
+
+
+def _stable_ids_line(id_prefix: str, path: str) -> str:
+    """Render the id pattern a grouped view prints once under its file header.
+
+    The rows below it then carry the qualified name alone. A stable id spells
+    the language and the repository-relative path, and the header directly
+    above the rows already spells the path, so repeating both on every row
+    bought nothing: measured 2026-08-25 on this repository with
+    ``agentless-mcp map --no-cache --max-files 10``, that prefix was 3855 of
+    13628 characters, 28% of the answer. ``symbols(overview)`` has printed this
+    line and no per-row id since it shipped; this is the same line.
+
+    Empty when the caller knows no prefix, which keeps the whole id on the row
+    rather than printing a pattern that cannot rebuild one. Built through
+    :class:`~agentless_mcp.core.symbols.StableId` so the pattern and a real id
+    come out of the same grammar.
+    """
+    if not id_prefix:
+        return ""
+    pattern = str(StableId(id_prefix, path, QUALIFIED_NAME_PLACEHOLDER))
+    return f"{ROW_INDENT}{MESSAGES.stable_ids_pattern.format(pattern=one_line(pattern))}"
+
+
+def overview_block(path: str, language: str, error: str, text: str) -> str:
+    """Render one file's overview block: the header, the id pattern, the body.
+
+    One home because there were two, and they had drifted. Both adapters
+    headed the block with a markdown ``###`` no other grouped view in this
+    package uses, and only the MCP one printed the ``stable ids:`` pattern
+    line -- so an agent that reached this view through the CLI had no id to
+    escalate with, and the same view answered differently depending on which
+    door you came through.
+
+    The escaping travels with it. A header sits in the first column and a
+    newline is legal in a POSIX filename, so ``path`` has to reach
+    :func:`one_line` exactly like every other repository-derived value on a
+    row -- the rule this module states and the adapters were outside of.
+    ``text`` does not: it is a rendered file body, which owns its own line
+    grammar and carries a line-number gutter to say so.
+
+    ``one_line`` is not enough on its own. Dropping the ``###`` left the
+    header a bare repository value alone on a line, and this is the one
+    grouped header with nothing after the path, so a file could be named for
+    a whole tool-authored line: ``... 7 more matches not listed (limit 3)``
+    rendered a header this module's own omission marker could not be told
+    from. The language suffix closes that, and puts this header in the
+    grammar the map and fan-in headers already use -- the path, then a
+    parenthesized fact the view knows. See :func:`_omitted_line`.
+
+    An errored file keeps its block, with the reason indented under the
+    header where a reader cannot mistake it for the file's contents. Its
+    language is often empty -- a path that reached no grammar has none -- so
+    the suffix reads :data:`UNKNOWN_LANGUAGE` rather than going missing on
+    exactly the paths an untrusted repository controls.
+    """
+    header = f"{one_line(path)}  ({one_line(language) or UNKNOWN_LANGUAGE})"
+    if error:
+        return f"{header}\n{ROW_INDENT}{one_line(error)}"
+    pattern = str(StableId(language_prefix(language), path, QUALIFIED_NAME_PLACEHOLDER))
+    ids_line = MESSAGES.overview_stable_ids.format(pattern=one_line(pattern))
+    return f"{header}\n{ROW_INDENT}{ids_line}\n{text}"
 
 
 def _file_site(path: str, line: int) -> str:
@@ -207,6 +305,12 @@ class MapEntry:
     stable_id: str
     depth: int = 0
     rationales: tuple[RationaleNode, ...] = ()
+    # The qualified name the stable id addresses this symbol by, which is the
+    # id with its language and path prefix removed. Carried rather than
+    # sliced off ``stable_id`` here: this module renders and does not parse,
+    # and the prefix is exactly what the file header above the row already
+    # spells. Empty falls the row back to the whole id.
+    name: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this entry."""
@@ -235,6 +339,18 @@ class MapFile(_Bounded):
     rank: float
     entries: tuple[MapEntry, ...] = ()
     total: int = 0
+    # The id prefix this file's stable ids carry ("py", "ts", ...). With the
+    # path it spells the id pattern printed once under the header, which is
+    # what lets every row below drop the prefix. Empty keeps the whole id on
+    # each row.
+    id_prefix: str = ""
+    # Whether the ranking walk reached this file from the focus. False is what
+    # makes the omission line say so instead of offering a bigger budget: no
+    # budget renders a symbol the focus has no path to, so the ordinary
+    # wording would be advice that cannot work. Defaults to True because an
+    # unfocused walk reaches every file, and because a caller building one of
+    # these by hand is describing a file it chose to include.
+    reached: bool = True
 
     @property
     def shown(self) -> int:
@@ -242,12 +358,22 @@ class MapFile(_Bounded):
         return len(self.entries)
 
     def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this file."""
+        """Return the JSON form of this file.
+
+        ``reached`` is here because ``omitted`` alone cannot answer the one
+        question a caller asks it: would raising the budget show the rest? The
+        text render answers that by branching on ``reached`` for its omission
+        line, and for one release the JSON form did not carry the fact at all,
+        so the two doors onto the same map disagreed. ``id_prefix`` is not
+        here and does not belong here: it compresses a *rendered* row, and
+        every symbol entry below still carries its whole stable id.
+        """
         return {
             "path": self.path,
             "rank": round(self.rank, 6),
             "symbols": [entry.as_dict() for entry in self.entries],
             "omitted": self.omitted,
+            "reached": self.reached,
         }
 
 
@@ -378,6 +504,12 @@ class RefSite:
     line: int
     enclosing: str
     stable_id: str | None = None
+    # The qualified name the stable id addresses this site's symbol by. It is
+    # ``enclosing`` for everything unique in its file and ``enclosing`` plus a
+    # ``#2`` ordinal for a collision, which is the only case where the two
+    # differ -- and the case where the id's spelling is the precise one. The
+    # row prints this alone; printing both spelled the same string twice.
+    name: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this reference site."""
@@ -400,6 +532,9 @@ class RefGroup:
     sites: tuple[RefSite, ...] = ()
     tier: str = ""
     tier_label: str = ""
+    # As on :class:`MapFile`: with the path, the id pattern this group prints
+    # once so its rows carry the qualified name alone.
+    id_prefix: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this group."""
@@ -1578,20 +1713,28 @@ def render_map(files: Sequence[MapFile]) -> str:
     blocks: list[str] = []
     for map_file in files:
         lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f})"]
+        pattern = _stable_ids_line(map_file.id_prefix, map_file.path)
+        if pattern:
+            lines.append(pattern)
         for entry in map_file.entries:
             lines.append(
-                f"{line_prefix(entry.line, LINE_NUMBER_WIDTH)}"
-                f"{'    ' * entry.depth}{one_line(entry.signature)}  "
-                f"{_locator(entry.stable_id)}"
+                f"{ROW_INDENT}{'    ' * entry.depth}{one_line(entry.signature)}  "
+                f"{_locator(entry.name or entry.stable_id, line=entry.line)}"
             )
             lines.extend(
-                f"{line_prefix(node.line, LINE_NUMBER_WIDTH)}"
-                f"{'    ' * (entry.depth + 1)}# {one_line(node.kind).upper()}: "
-                f"{one_line(node.text)}  "
-                f"{_locator(node.stable_id, parent=node.parent_id)}"
+                f"{ROW_INDENT}{'    ' * (entry.depth + 1)}"
+                f"# {one_line(node.kind).upper()}: {one_line(node.text)}  "
+                f"{_locator(node.stable_id, parent=node.parent_id, line=node.line)}"
                 for node in entry.rationales
             )
-        if map_file.omitted:
+        if map_file.omitted and not map_file.reached:
+            # A different fact, so a different line. The ordinary marker says
+            # "more ... not listed", which an agent reads as an invitation to
+            # ask for the rest; here there is no budget that would produce
+            # them, and saying so is the whole point of ranking this file
+            # without expanding it.
+            lines.append(MESSAGES.map_file_unreached.format(count=map_file.omitted))
+        elif map_file.omitted:
             lines.append(_omitted_line(map_file.omitted, "symbols in this file"))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"
@@ -1696,6 +1839,9 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
         labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
         sites = len(group.sites)
         lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
+        pattern = _stable_ids_line(group.id_prefix, group.path)
+        if pattern:
+            lines.append(pattern)
         lines.extend(_render_site(site) for site in group.sites)
         blocks.append("\n".join(lines))
     if isinstance(groups, _Bounded) and groups.omitted:
@@ -1776,7 +1922,15 @@ def _render_card(card: SymbolCard) -> str:
 
 
 def _render_site(site: RefSite) -> str:
-    """Render one reference row beneath the file header that locates it."""
-    suffix = f"  {_locator(site.stable_id)}" if site.stable_id else ""
-    prefix = line_prefix(site.line, LINE_NUMBER_WIDTH)
-    return f"{prefix}{one_line(site.enclosing)}{suffix}"
+    """Render one reference row beneath the file header that locates it.
+
+    One name and one position. The row used to carry the enclosing symbol's
+    name and, beside it, a stable id whose tail was that same name -- the two
+    differ only when a file spells one name twice and the id takes a ``#2``
+    ordinal, which is the case where the id's spelling is the precise one. So
+    the id's name is what the row prints, and the file header's pattern line
+    rebuilds the whole id from it.
+    """
+    if not site.stable_id:
+        return f"{ROW_INDENT}{one_line(site.enclosing)} @{site.line}"
+    return f"{ROW_INDENT}{_locator(site.name or site.stable_id, line=site.line)}"

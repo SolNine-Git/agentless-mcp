@@ -318,6 +318,20 @@ class TestSurfaceListing:
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
         assert {tool.name for tool in tools} == EXPECTED_TOOLS_V2
 
+    def test_no_tool_on_either_surface_publishes_an_output_schema(self, services, one_repo):
+        """All fourteen answer in text, so none declares a structured shape.
+
+        Built on ``SURFACE_BOTH`` rather than the default: the default
+        registers five tools, and the nine v1 registrations return ``str``
+        the same way and carry the same defect if one of them forgets
+        ``output_schema=None``.
+        """
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
+
+        assert len(tools) == 14
+        for tool in tools:
+            assert tool.outputSchema is None, tool.name
+
     def test_both_publishes_the_union_of_the_surfaces(self, services, one_repo):
         # find_referencing_symbols and capabilities are shared, so the union
         # is fourteen names rather than sixteen.

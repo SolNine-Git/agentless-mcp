@@ -48,13 +48,19 @@ REPOS = ("repo_py", "repo_ts", "repo_go", "repo_py_tests")
 # language's methods already had. That is 8.7% of this fixture's map and it
 # buys stable-id uniqueness -- `Validate` on four receivers used to be one id
 # four times. Nothing else in the map's shape moved.
+# Repinned 2026-08-25, when the map dropped the repeated ``lang:path::``
+# prefix from every symbol row for one pattern line per file, and moved the
+# position from an ``N| `` gutter to an ``@line`` suffix. Every fixture got
+# smaller and none changed what it lists: repo_py 711 -> 606, repo_ts
+# 630 -> 560, repo_go 449 -> 394, repo_py_tests 1185 -> 1077. Measured on the
+# same command the goldens are built from.
 TOKEN_PINS = {
-    "repo_py": 711,
-    "repo_ts": 630,
+    "repo_py": 606,
+    "repo_ts": 560,
     # 388 before stage 6c. Go type declarations became symbols of their own
     # there, so this repository gained six: the receiver type every method
     # names now has a line the map can point at.
-    "repo_go": 449,
+    "repo_go": 394,
     # Pinned 2026-08-23 with the companion section. This repository holds
     # twelve files against a ten-file map on purpose: the two test files fall
     # outside the ranking, which is the only state in which the companion
@@ -62,7 +68,7 @@ TOKEN_PINS = {
     # limit entirely, so every file is ranked and no test is ever left over
     # to be a companion -- which is why they pin nothing about this feature
     # and this repository had to exist.
-    "repo_py_tests": 1185,
+    "repo_py_tests": 1077,
 }
 TOKEN_TOLERANCE = 0.05
 

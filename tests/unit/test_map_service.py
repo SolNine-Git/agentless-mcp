@@ -270,9 +270,9 @@ class TestTheAutoBudgetStopsWhenTheAnswerIsSettled:
         grouped: list[int] = []
         original = map_service._group
 
-        def counting(included, candidates, paths, rank):
-            grouped.append(len(included))
-            return original(included, candidates, paths, rank)
+        def counting(shown, packing):
+            grouped.append(shown)
+            return original(shown, packing)
 
         monkeypatch.setattr(map_service, "AUTO_BUDGET_PROBE", 1)
         monkeypatch.setattr(map_service, "AUTO_BUDGET_CEILING", 0)

@@ -13,7 +13,7 @@
   "symbols_included": 33,
   "symbols_available": 33,
   "files_ranked": 3,
-  "rendered_tokens": 711,
+  "rendered_tokens": 606,
   "rank_converged": true,
   "seeds": [],
   "unresolved_seeds": [],
@@ -71,7 +71,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "pricing.py",
@@ -150,7 +151,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "inventory.py",
@@ -235,7 +237,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     }
   ],
   "skipped": [],

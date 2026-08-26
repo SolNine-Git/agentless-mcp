@@ -13,7 +13,7 @@
   "symbols_included": 21,
   "symbols_available": 21,
   "files_ranked": 3,
-  "rendered_tokens": 448,
+  "rendered_tokens": 394,
   "rank_converged": true,
   "seeds": [],
   "unresolved_seeds": [],
@@ -59,7 +59,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "pricing.go",
@@ -108,7 +109,8 @@
           "depth": 0
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     },
     {
       "path": "inventory.go",
@@ -163,7 +165,8 @@
           "depth": 1
         }
       ],
-      "omitted": 0
+      "omitted": 0,
+      "reached": true
     }
   ],
   "skipped": [],

@@ -770,32 +770,50 @@ def _group_sites(
     """Group reference sites by file, attributing and tiering each group."""
     grouped: dict[str, list[render.RefSite]] = {}
     names: dict[str, str] = {}
+    # Taken from the symbol, never parsed back out of the id this loop just
+    # minted. `parse_stable_id` refuses an id carrying a control character,
+    # and a newline is legal in a POSIX filename, so round-tripping here let
+    # one hostile filename raise out of the whole fan-in instead of rendering
+    # as a safe row. `tests/unit/test_render.py::TestTheForgeryEndToEnd`
+    # covers it.
+    prefixes: dict[str, str] = {}
     for site in sites:
         facts = by_path.get(site.path)
         symbol = refs.enclosing_symbol(facts, site.line) if facts else None
         names.setdefault(site.path, site.name)
+        if symbol is not None:
+            prefixes.setdefault(site.path, language_prefix(symbol.language))
         grouped.setdefault(site.path, []).append(
             render.RefSite(
                 line=site.line,
                 enclosing=qualname(symbol) if symbol else render.MODULE_LEVEL,
                 stable_id=symbol_stable_id(symbol) if symbol else None,
+                name=id_qualname(symbol) if symbol else "",
             )
         )
 
-    return tuple(
-        _ref_group(path, tuple(grouped[path]), names[path], resolver, target_ids)
-        for path in sorted(grouped)
-    )
+    groups = []
+    for path in sorted(grouped):
+        tier = _ref_tier(path, names[path], resolver, target_ids)
+        groups.append(
+            render.RefGroup(
+                path=path,
+                sites=tuple(grouped[path]),
+                tier=tier.value,
+                tier_label=tier.label,
+                id_prefix=prefixes.get(path, ""),
+            )
+        )
+    return tuple(groups)
 
 
-def _ref_group(
+def _ref_tier(
     path: str,
-    sites: tuple[render.RefSite, ...],
     name: str,
     resolver: resolve.Resolver,
     target_ids: set[str],
-) -> render.RefGroup:
-    """Label one file's references with the evidence tier behind them.
+) -> resolve.Tier:
+    """Return the evidence tier behind one file's references.
 
     The tier is the tier at which *this file* resolves the name -- and it is
     reported only when the resolution actually lands on the target. A file
@@ -803,14 +821,16 @@ def _ref_group(
     its rows are name-only evidence about somebody else's ``quote`` no matter
     how strong the local binding is; labelling them ``name-only-ambiguous`` is
     what tells a reader that the shadowing happened.
+
+    Returns the tier rather than a finished :class:`~render.RefGroup`: naming
+    the evidence is the one judgement here, and the group is five fields the
+    caller already holds.
     """
     resolution = resolver.resolve(name, path)
-    tier = resolve.Tier.AMBIGUOUS
-    if resolution is not None:
-        resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}
-        if resolved_ids & target_ids:
-            tier = resolution.tier
-    return render.RefGroup(path=path, sites=sites, tier=tier.value, tier_label=tier.label)
+    if resolution is None:
+        return resolve.Tier.AMBIGUOUS
+    resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}
+    return resolution.tier if resolved_ids & target_ids else resolve.Tier.AMBIGUOUS
 
 
 @dataclass

@@ -140,7 +140,7 @@ class TestStdio:
         tools, body = _run_bounded(Client(transport), stderr_text)
 
         assert tools == in_memory_tools, f"server stderr:\n{stderr_text()}"
-        assert body.startswith("# agentless-mcp receipt"), body
+        assert body.startswith("// agentless-mcp receipt"), body
 
 
 class TestHttp:
@@ -186,7 +186,7 @@ class TestHttp:
                 sys.stderr.write(f"server stderr:\n{stderr}\n")
 
         assert tools == in_memory_tools, f"server stderr:\n{stderr}"
-        assert body.startswith("# agentless-mcp receipt"), body
+        assert body.startswith("// agentless-mcp receipt"), body
 
 
 def _free_port():

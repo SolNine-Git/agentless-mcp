@@ -12,7 +12,9 @@ a number rather than a knob-with-no-answer:
   file-level and line-level (45.6% / 42.6% / 43.6%), and the file stage is
   capped at ten because a longer list stops being a funnel.
 * **A budget that scales with the repository.** ``auto`` is the candidate
-  set's own size divided by six, clamped to 2k-8k tokens. Roughly 6x
+  set's own size divided by six, clamped to 2k-8k tokens as the configured
+  :class:`~agentless_mcp.util.tokens.TokenCounter` counts them -- see that
+  module for what the default unit is worth against a real tokenizer. Roughly 6x
   compression measurably *raises* resolve rate over full context, while 22-50x
   is worse than either -- so the objective is minimal sufficient context, not
   the highest ratio available.
@@ -26,7 +28,7 @@ greedy fill, so the answer is the largest prefix of the score ordering that
 fits -- deterministic, and independent of the order files were walked in.
 """
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -46,7 +48,13 @@ from agentless_mcp.core.graph import (
     rank_order,
 )
 from agentless_mcp.core.projectconfig import MAX_MAX_FILES, MIN_MAX_FILES
-from agentless_mcp.core.symbols import ASTSymbol, qualname, symbol_stable_id
+from agentless_mcp.core.symbols import (
+    ASTSymbol,
+    id_qualname,
+    language_prefix,
+    qualname,
+    symbol_stable_id,
+)
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
 from agentless_mcp.util.tokens import TokenCounter
@@ -178,6 +186,30 @@ class _Candidate:
     symbol: ASTSymbol
 
 
+@dataclass(frozen=True)
+class _Packing:
+    """Everything the budget search renders against, in one value.
+
+    The five fields do not vary independently -- one ranking produces all of
+    them, and :func:`_group`, :meth:`MapService._auto_budget` and
+    :meth:`MapService._pack` each need every one -- so they travel together
+    rather than as a parameter list three functions repeat.
+
+    ``eligible`` is what competes for the budget: the scored symbols in files
+    the focus reached. ``candidates`` is the whole scored set and is read only
+    for the per-file totals, which is what lets an unreached file state how
+    much it holds without any of it being rendered. ``paths`` is the ranked
+    file order, ``rank`` the number each row prints, and ``reached`` the set
+    that decides which of the two omission lines a file gets.
+    """
+
+    eligible: list[_Candidate]
+    candidates: list[_Candidate]
+    paths: Sequence[str]
+    rank: Mapping[str, float]
+    reached: Set[str]
+
+
 class MapService:
     """Builds repository maps. Holds no per-repository state."""
 
@@ -259,6 +291,13 @@ class MapService:
                     path=path,
                     rank=rank[path],
                     total=len(by_path[path].symbols),
+                    # Every file here has its whole symbol count omitted, so
+                    # every one of them takes an omission line -- which makes
+                    # this the granularity where the wrong line is offered
+                    # most often, not least. Left to the default, a focused
+                    # file map told a caller to raise a budget this view does
+                    # not have, about a file no budget could reach.
+                    reached=path in ranking.support,
                 )
                 for path in chosen
             )
@@ -283,19 +322,45 @@ class MapService:
             )
 
         candidates = _score_symbols(chosen, by_path, index, rank, ctx.config.stoplist)
-        budget = (
-            request.budget
-            if request.budget is not None
-            else self._auto_budget(candidates, chosen, rank)
+        # Only the files the focus actually reaches compete for the budget.
+        # A seeded map teleports to the seeds alone, so a file no reference
+        # path connects to them holds nothing but the residue of the uniform
+        # vector the iteration started from -- it renders as rank 0.0000 and
+        # is not zero, so the test is reachability rather than a threshold on
+        # the number. Measured on this repository: an exact-path seed ranked
+        # one file and padded the answer with nine unreached ones that took
+        # most of the budget.
+        #
+        # The unreached files are still listed. `_group` gives every ranked
+        # file a row with the count of what it holds, and dropping them would
+        # be the bounded-view-mistaken-for-complete failure that function
+        # exists to prevent -- as well as breaking the top-N contract the
+        # tool description publishes. What changes is where the budget goes,
+        # not how many files come back.
+        eligible = [entry for entry in candidates if entry.path in ranking.support]
+        packing = _Packing(
+            eligible=eligible,
+            candidates=candidates,
+            paths=chosen,
+            rank=rank,
+            reached=ranking.support,
         )
-        included = self._pack(candidates, chosen, rank, budget)
-        grouped = _group(candidates[:included], candidates, chosen, rank)
+        budget = request.budget if request.budget is not None else self._auto_budget(packing)
+        included = self._pack(packing, budget)
+        grouped = _group(included, packing)
 
         return MapResult(
             files=grouped,
             budget=budget,
             included=included,
-            candidates=len(candidates),
+            # What competed for the budget, not every symbol under a ranked
+            # file. The banner reads "N of M symbols shown (narrow the request
+            # or raise the budget for the rest)", and no budget shows a symbol
+            # in a file the focus never reached, so counting those in M makes
+            # that advice false. Each unreached file still carries its own
+            # count on its row. Equal to the whole set on an unfocused map,
+            # where the walk reaches everything.
+            candidates=len(eligible),
             ranked=len(rank),
             seeds=tuple(sorted(seeds)),
             skipped=scan.skipped,
@@ -371,12 +436,7 @@ class MapService:
             f"{result.candidates} symbols; raise --budget"
         )
 
-    def _auto_budget(
-        self,
-        candidates: list[_Candidate],
-        paths: Sequence[str],
-        rank: Mapping[str, float],
-    ) -> int:
+    def _auto_budget(self, packing: "_Packing") -> int:
         """Size the budget from the candidate set, clamped to the useful band.
 
         Rendered in growing prefixes rather than whole. The estimate is
@@ -389,30 +449,30 @@ class MapService:
         """
         size = AUTO_BUDGET_PROBE
         while True:
-            prefix = candidates[:size]
-            rendered = self._counter.count(render.render_map(_group(prefix, prefix, paths, rank)))
+            rendered = self._counter.count(render.render_map(_group(size, packing)))
             if rendered > AUTO_BUDGET_CEILING:
                 return AUTO_BUDGET_MAX
-            if size >= len(candidates):
+            if size >= len(packing.eligible):
                 estimate = rendered // AUTO_BUDGET_DIVISOR
                 return max(AUTO_BUDGET_MIN, min(AUTO_BUDGET_MAX, estimate))
             size *= AUTO_BUDGET_PROBE_GROWTH
 
-    def _pack(
-        self,
-        candidates: list[_Candidate],
-        paths: Sequence[str],
-        rank: Mapping[str, float],
-        budget: int,
-    ) -> int:
-        """Return the largest number of symbols whose render fits ``budget``."""
-        if not candidates:
+    def _pack(self, packing: "_Packing", budget: int) -> int:
+        """Return the largest number of eligible symbols whose render fits ``budget``.
+
+        The search is over :attr:`_Packing.eligible` alone.
+        :attr:`_Packing.candidates` is the whole scored set and is never
+        searched: it is what tells :func:`_group` how many symbols each ranked
+        file holds, so the render measured here is the render the caller gets,
+        file rows for the unreached files included.
+        """
+        if not packing.eligible:
             return 0
 
-        low, high = 0, len(candidates)
+        low, high = 0, len(packing.eligible)
         while low < high:
             middle = (low + high + 1) // 2
-            text = render.render_map(_group(candidates[:middle], candidates, paths, rank))
+            text = render.render_map(_group(middle, packing))
             if self._counter.count(text) <= budget:
                 low = middle
             else:
@@ -746,12 +806,7 @@ def _score_symbols(
     return candidates
 
 
-def _group(
-    included: list[_Candidate],
-    candidates: list[_Candidate],
-    paths: Sequence[str],
-    rank: Mapping[str, float],
-) -> tuple[render.MapFile, ...]:
+def _group(shown: int, packing: "_Packing") -> tuple[render.MapFile, ...]:
     """Group the included symbols back into the ranked files that hold them.
 
     Every ranked file is listed, including the ones whose symbols all lost the
@@ -760,24 +815,28 @@ def _group(
     it placed no symbols is the bounded-view-mistaken-for-complete failure --
     the reader would have no way to know it was ever ranked.
 
-    ``paths`` is the ranked file list rather than the paths the candidates
-    happen to name, and that is the whole point of the argument. Built from
-    the candidates, this function dropped every ranked file with no extracted
-    symbol -- systematically ``__init__.py`` and ``index.ts``, the files that
-    name a package's public surface -- and neither the text nor the JSON said
-    a file had gone. The list arrives already in rank order, so the order here
-    is the ranking's, not one re-derived from a subset of it.
+    ``shown`` is how many of the eligible symbols to render, which is what
+    the packing search bisects over -- the prefix, not a set, so a caller
+    cannot ask for a selection the score ordering does not produce.
+
+    :attr:`_Packing.paths` is the ranked file list rather than the paths the
+    candidates happen to name, and that is the whole point of the field.
+    Built from the candidates, this function dropped every ranked file with no
+    extracted symbol -- systematically ``__init__.py`` and ``index.ts``, the
+    files that name a package's public surface -- and neither the text nor the
+    JSON said a file had gone. The list arrives already in rank order, so the
+    order here is the ranking's, not one re-derived from a subset of it.
     """
     per_file: dict[str, list[_Candidate]] = {}
-    for candidate in included:
+    for candidate in packing.eligible[:shown]:
         per_file.setdefault(candidate.path, []).append(candidate)
 
     totals: dict[str, int] = {}
-    for candidate in candidates:
+    for candidate in packing.candidates:
         totals[candidate.path] = totals.get(candidate.path, 0) + 1
 
     files: list[render.MapFile] = []
-    for path in paths:
+    for path in packing.paths:
         chosen = sorted(per_file.get(path, []), key=lambda item: item.symbol.line_number)
         entries = tuple(
             render.MapEntry(
@@ -786,15 +845,18 @@ def _group(
                 stable_id=symbol_stable_id(candidate.symbol),
                 depth=1 if candidate.symbol.parent_class else 0,
                 rationales=rationale_nodes(candidate.symbol),
+                name=id_qualname(candidate.symbol),
             )
             for candidate in chosen
         )
         files.append(
             render.MapFile(
                 path=path,
-                rank=rank[path],
+                rank=packing.rank[path],
                 entries=entries,
                 total=totals.get(path, 0),
+                id_prefix=language_prefix(chosen[0].symbol.language) if chosen else "",
+                reached=path in packing.reached,
             )
         )
     return tuple(files)

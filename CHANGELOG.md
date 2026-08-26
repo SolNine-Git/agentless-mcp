@@ -1,5 +1,277 @@
 # Changelog
 
+## 0.7.0 -- 2026-08-25
+
+Responses are text and nothing else, and a focused map spends its budget on
+what the focus reached.
+
+### Changed
+
+- **`structuredContent` is gone; read `content[0].text`.** Every handler
+  returns `str`, and FastMCP's default for a non-object return type is to
+  generate a wrapping output schema and emit
+  `structured_content={"result": <the string>}` beside the text block. That
+  copy was never a structured view of the answer: it held one field carrying
+  the whole receipt as an escaped string, so a client that prefers structured
+  content rendered a multi-line receipt as a single line with `\n` and `\"`
+  in it, and every answer crossed the wire twice. All fourteen registrations
+  now pass `output_schema=None`. A client that read `structuredContent.result`
+  must read `content[0].text`; both carried identical text, so the migration
+  is the field name and nothing else. This is why the minor version moves
+  rather than the patch: the guide previously reserved this removal for a
+  versioned boundary, and this is it. (#39)
+
+  `--surface v1` does not opt out of this. That surface keeps the original
+  eleven tool names for un-migrated operators, but the removal is in the
+  handlers rather than in a surface, so a v1 server on 0.7.0 answers with the
+  same text-only shape. An operator pinning v1 to keep a client working is
+  buying the old tool names and not the old response envelope; a client that
+  reads `structuredContent.result` has to be migrated either way, or the
+  server held at 0.6.7.
+
+- **A focused map no longer spends its budget on files the focus never
+  reached.** A seeded ranking teleports to the seeds alone, so a file no
+  reference path connects to them earns nothing from the walk -- it holds
+  only the residue of the uniform vector the power iteration starts from,
+  which renders as rank `0.0000` and is not zero. Those files were ranked
+  into the answer and their symbols competed for and won the token budget.
+  Measured on this repository with
+  `agentless-mcp map --no-cache --focus contrib/hooks/agentless_gate_mark.py
+  --max-files 10`, 0.6.7 against this release: 13053 characters before, 3590
+  after, with the same ten files listed both times.
+
+  The files stay listed, with the true count of what each holds. Dropping
+  them would be the bounded-view-mistaken-for-complete failure, and the tool
+  description publishes a top-N of ten however large the repository is. What
+  changed is where the budget goes. Every door onto the map had to say so,
+  not one of them.
+  `symbols_available` in the JSON counts what competed for the budget,
+  because the banner offers "raise the budget for the rest" and no budget
+  renders a symbol in an unreached file. Each unreached file's own row says
+  it too: it carries `... N symbols in this file; the focus has no reference
+  path to it, so no budget shows them` instead of the ordinary
+  `... N more ... not listed`, which offers the same rest the banner had
+  already stopped offering. A file that lost its symbols to the budget keeps
+  the ordinary wording, because for that file the offer is true. The JSON
+  form carries the same fact as `reached` on each file, so a caller reading
+  the map as data can tell the two apart without matching on a message; and
+  `granularity: file` sets it too, which is the granularity where every file
+  takes an omission line and the wrong one was therefore offered most often.
+
+  An unfocused map teleports uniformly and reaches everything, so no file
+  takes the second wording and the ranking is unchanged from 0.6.7. (#38)
+
+- **Grouped views spell a stable id once per file, not once per row.** A map
+  row carried the whole id, and the whole id opens with the language and the
+  repository-relative path -- the path the file header directly above it
+  already spells. Measured 2026-08-25 on this repository with
+  `agentless-mcp map --no-cache --max-files 10`: that repeated prefix was
+  3855 of 13628 characters, 28% of the answer. Each file's block now opens with
+  the `stable ids:` pattern line `symbols(overview)` has printed since it
+  shipped, and every row below carries the qualified name alone. Join the two
+  to build an id `expand` accepts.
+
+  `find_referencing_symbols` gets the same treatment, and loses a second
+  redundancy with it: its rows carried the enclosing symbol's name *and* an
+  id whose tail was that same name. The two differ only when a file spells
+  one name twice and the id takes a `#2` ordinal, which is the spelling the
+  row should have carried all along.
+
+  Measured on this repository, 0.6.7 against this release. Pinning the budget
+  holds the character count still and lets the symbol count move, which is
+  the comparison worth making: `agentless-mcp map --no-cache --max-files 10
+  --budget 8000` returned 257 symbols in 33752 characters and now returns 386
+  in 33756 -- 131 characters a symbol down to 87. At `--budget 2000` the same
+  command goes from 59 symbols to 84. `agentless-mcp refs render_map
+  --limit 20 --no-cache` went from 2264 characters to 1239, that pair taken
+  at `0b50774` because a fan-in count moves when the repository gains a
+  caller and this one has since gained a test. The JSON is unchanged: it
+  still carries whole ids, because nothing there repeats a header.
+
+- **A position is an `@line` suffix; the `N| ` gutter means verbatim text.**
+  The map and fan-in rows spelled a position with the same `N| ` gutter that
+  `read(slice)` uses to mean "this is that line of the file". A map row is a
+  normalized signature, so the two disagreed: `RELATION_WEIGHTS` is declared
+  across lines 97-104 of `core/graph.py` and was rendered on one line behind
+  a `97|` that promised text line 97 does not carry. An agent that trusted
+  the gutter and searched for that text found nothing. The gutter now belongs
+  to the views that quote a file -- `read(slice)`, `symbols(expand)`,
+  `symbols(locate)`, the overview body -- and every view that cites a
+  position appends `@line` or `@start-end`, which is what
+  `application/render.py` already documented as the rule.
+
+  `ROW_INDENT` replaces the gutter as the map and fan-in row indent. That is
+  load-bearing rather than cosmetic: an unindented first column is the one
+  line repository text on a row cannot forge, and the gutter had been
+  providing that indent. `core.slices.line_prefix` loses its `width`
+  argument with the gutter: the map renderer was its only non-default
+  caller, and a parameter no caller passes is a docstring promising a column
+  view that does not exist.
+
+- **One file-header grammar across the grouped views, and one function that
+  renders it.** `symbols(overview)` headed each block with a markdown
+  `### <path>`; the map and fan-in headed theirs with the path and what the
+  view knows about it. The heading is gone. It cost four characters a file
+  and said nothing the path did not, and it rendered heading-sized in any
+  client that reads tool output as Markdown.
+
+  What replaces it is the grammar the other two already used, not a bare
+  path: `src/app/svc.py  (python)`. A header is the one line in a grouped
+  view that is not indented, so the parenthesized fact is what keeps it from
+  being a repository value alone on a line -- a file named
+  `... 7 more matches not listed (limit 3)` would otherwise render a header
+  this package's own omission marker could not be told from, and the error
+  block, whose path never reaches a grammar, is exactly where an untrusted
+  repository can put one. A file with no language reads `(unknown)`.
+
+  The overview had two implementations of that header -- the MCP handler and
+  `agentless-mcp skeleton` -- and they had already drifted: the CLI printed
+  no `stable ids:` line at all, so an agent that reached this view through
+  the CLI had no id to escalate with. Both now call
+  `render.overview_block`.
+
+- **The receipt marker is `//`, not `#`.** Every response opens with three
+  receipt lines, and `#` at the start of a line is a Markdown ATX heading:
+  in any client that renders tool output as Markdown -- which is most of them
+  -- all three came out heading-sized, on every single answer. The marker
+  meant to be the quietest thing on screen was the loudest.
+
+  This is the same defect as the `### <path>` file header removed above, and
+  a worse instance of it: `#` is an H1 rather than an H3, and it rode on every
+  call rather than on one view. `//` reads as a comment in the same way and
+  renders as plain text. `receipt_header`, `receipt_line`, `receipt_note`,
+  `receipt_config`, `receipt_config_warning` and `banner` all move, and the
+  summary line -- the one receipt line that had spelled its own marker in
+  Python -- becomes `receipt_summary` in `envelope.json` so no marker is
+  written twice. A client matching `^# agentless-mcp receipt` must match
+  `^// agentless-mcp receipt`; nothing else about the receipt changed.
+
+  The rationale rows inside a map keep `#`: they render a source comment
+  rather than tool framing, and they carry at least six spaces of indent,
+  which Markdown reads as a code block rather than a heading.
+
+- **The stale-cache receipt names the repository to reindex.** It read
+  `run agentless-mcp index for performance`. An agent following that hint
+  from a shell whose working directory is not the repository indexes the
+  wrong tree, and the natural guess `--root` is not the flag. It now reads
+  `run agentless-mcp index --repo <path> for performance`, matching the
+  wording the empty-cache hint already used. Both hints quote the path with
+  `shlex.quote`: they build the same command, and one of them spelling a
+  path with a space unquoted makes `--repo` take the first word.
+
+  `shlex.quote` is POSIX shell quoting and nothing else. On Windows the
+  single quotes it emits are literal to `cmd.exe`, so a path needing them
+  produces a command to read rather than to paste. That is the same
+  correctness the pre-0.7.0 empty-cache hint had, not a regression, and the
+  fix is a per-shell rendering rather than a different quoter -- deferred
+  until a Windows job runs the suite, because a quoting rule no CI executes
+  is a guess. (#38)
+
+- **The `repo_map` and `orient` descriptions no longer name a flag their
+  reader cannot reach.** They said the budget was counted "chars/4 unless it
+  was started with `--token-counter tiktoken`". `bootstrap` is explicit that
+  only the CLI can ask for that: the MCP server declares no such flag and
+  always ends up with chars/4, so over MCP -- the only place these two
+  descriptions are read -- the clause was unconditionally false. It is gone,
+  and the guide marks the flag CLI-only where it is genuinely reachable.
+
+- **A map budget says which unit it is counted in.** The tool description
+  advertised "a 2000-8000 token band" and the guide "2k-8k tokens" without
+  naming the counter. This package is model-free and its default estimator is
+  chars/4, so those are estimator tokens rather than a model's. These views
+  are punctuation-dense with stable ids, type annotations and path
+  separators, and punctuation tokenizes to well under four characters a
+  token, so the estimator is furthest off exactly where the output is
+  densest.
+
+  How far off is view-dependent and no single band describes it, so the
+  figure the `repo_map` and `orient` descriptions publish is the one a test
+  holds: a real BPE count runs 10-35% higher on this output, which is the
+  ratio band `TestTheEstimatorAgainstARealTokenizer` pins. The guide carries
+  the measurements inside that band, one row per view, each naming the
+  command behind it, and that table is what to size a real context window
+  against. No behaviour changed: the budget stays in the unit the token
+  regression pins measure, which is why that unit was chosen. The
+  description, the guide, the service docstring and `Chars4Counter` now say
+  so, and name `--token-counter tiktoken` for a caller who wants the real
+  count.
+
+### Added
+
+- **A gate on the estimator-versus-tokenizer figure.** That number has now
+  been stated wrongly twice -- once as 11-18%, once as 13-15% -- because it
+  lived only in prose and moves whenever the renderer does. Measured across
+  the committed goldens the ratio runs 0.979 to 1.264, so no single band
+  describes the package and the `lint` view is one where chars/4 counts
+  *over*. `TestTheEstimatorAgainstARealTokenizer` pins the map goldens'
+  ratio to 1.10-1.35 and pins that the spread still runs in both directions,
+  so a rendering change that moves either fails there instead of leaving a
+  stale number in the docs. It also asserts that the band the `repo_map` and
+  `orient` descriptions publish is that same band, so the one figure an
+  agent reads at call time cannot drift from the one under test. The guide
+  gives one measured row per view inside it, each naming the command behind
+  it.
+
+- **`PageRank.support`.** The set of files the walk can reach from the
+  teleport vector's support, over the same augmented adjacency the iteration
+  steps along -- backflow edges included, so a file that references the seed
+  counts as reached. This is the invariant behind the map change. A threshold
+  on the rank itself would not work: measured 2026-08-25, a twenty-node
+  component disconnected from the seed converged at 1.2e-7 per node, which
+  renders as `0.0000` and passes `> 0.0`.
+
+- **`render.ROW_INDENT`, `render._stable_ids_line` and
+  `render.overview_block`.** One home for the row indent every grouped view
+  shares, one for the id pattern line the map, fan-in and overview now all
+  print, and one for the overview block both adapters render. The pattern is
+  built through `core.symbols.StableId`, so it and a real id come out of one
+  grammar. `overview_block` also brings that view inside this module's
+  escaping rule: both adapters had built its header with an f-string over the
+  raw path, which made it the one grouped file header a newline in a filename
+  could still open a line from.
+
+- **A test pinning the gate hook's operation set to the server's tables.**
+  `contrib/hooks/agentless_gate_mark.py` hand-mirrors the v2 operations that
+  unlock broad search. The hooks fail open, so drift was silent: a renamed
+  operation would leave the hook unlocking on a spelling the server no longer
+  serves, and the only symptom is an unexplained early `Grep` denial in a
+  session that did localize. The test also asserts that the six deliberately
+  excluded operations still exist, so a removal upstream is not mistaken for
+  the exclusion. (#37)
+
+### Fixed
+
+- **A JSON answer whose first item exceeds the output ceiling is no longer
+  returned as an empty list.** `wrap_json` trims an oversized payload by
+  keeping the longest prefix of its item list that fits, and the search
+  returns zero when the first item alone is over the ceiling. The document
+  then carried `"files": []`, which no consumer can tell from a map that
+  ranked nothing: the metadata beside it read `shown: 0`, and a reader takes
+  that as a fact about the repository rather than about the ceiling. The
+  first item is now returned whole and the payload is marked as knowingly
+  over the ceiling, which is the trade the untrimmable branch already took --
+  an honest oversized answer beats a silently mangled one. `truncated.reason`
+  distinguishes the two, so a caller sizing its own context can still tell
+  which it received.
+
+  The defect predates this release and is not caused by the row grammar:
+  0.6.7 reproduces it at `--budget 12000`. What changed is how often it
+  fires. Denser rows fit more symbols into the same text budget -- 421
+  against 280 on one measured map -- and the JSON form of those extra
+  symbols crosses the 16000-token ceiling at the default auto budget, where
+  the sparser rows stayed under it. Measured on the 60-instance deterministic
+  arm of swe-explore-bench: three instances returned a collapsed map and one
+  returned no regions at all, including one whose gold file the map had
+  ranked first.
+
+### Not changed
+
+- **The gate still unlocks once per session.** Filed as item 3 of #38 and
+  labelled there as a design observation rather than a bug. Both directions
+  it suggests -- expiring the marker, re-locking on a repository change --
+  add complexity, and the issue asks for a paired run showing the need before
+  either ships. No such measurement exists yet.
+
 ## 0.6.7 -- 2026-08-25
 
 Codex CLI runs the same gate.
