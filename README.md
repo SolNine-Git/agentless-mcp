@@ -128,9 +128,11 @@ the first time it serves a repository whose index is absent or stale
 indexes only through the explicit command above. Use `--no-cache` on
 repository-scoped commands to bypass the cache.
 
-Every index run then trims `$XDG_CACHE_HOME/agentless-mcp/` back to 4 GiB,
-deleting whole repository caches least-recently-used first. Because the
-server indexes on its own, nothing else bounds that directory. Set
+Every index run then releases cold repository caches until
+`$XDG_CACHE_HOME/agentless-mcp/` fits under 5 GiB, least-recently-used first.
+Because the server indexes on its own, nothing else bounds that directory.
+Caches used in the last 24 hours are never released, so a working set larger
+than the ceiling exceeds it instead of thrashing. Set
 `AGENTLESS_MCP_MAX_CACHE_BYTES` to another ceiling, or to `0` to keep every
 cache forever. An evicted repository loses no answers, only the speed: the
 next call parses on demand and the one after that re-indexes.

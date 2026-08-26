@@ -1875,6 +1875,12 @@ def _read_schema_version(connection):
     return connection.execute("SELECT schema_version FROM meta WHERE id = 1").fetchone()[0]
 
 
+# A fixed "now" for the plan tests, far enough above the synthetic timestamps
+# that every one of them reads as cold. Hermetic on purpose: the plan takes its
+# clock as an argument precisely so no test here depends on the real one.
+NOW = 10 * cache.PROTECTED_SECONDS
+
+
 def _entry(name, size, used_at):
     """One synthetic cache entry, for the tests that exercise the plan alone."""
     return cache._CacheEntry(database=Path(name) / cache.DATABASE_NAME, size=size, used_at=used_at)
@@ -1898,14 +1904,14 @@ class TestCacheCeiling:
             _entry("recent", size=100, used_at=3.0),
         ]
 
-        evicted = cache._eviction_plan(entries, limit=200, keep=Path("nothing"))
+        evicted = cache._eviction_plan(entries, now=NOW, limit=200, keep=Path("nothing"))
 
         assert [entry.database.parent.name for entry in evicted] == ["old"]
 
     def test_everything_over_the_ceiling_goes_not_just_enough_to_fit(self):
         entries = [_entry(str(index), size=100, used_at=float(index)) for index in range(5)]
 
-        evicted = cache._eviction_plan(entries, limit=250, keep=Path("nothing"))
+        evicted = cache._eviction_plan(entries, now=NOW, limit=250, keep=Path("nothing"))
 
         assert sorted(entry.database.parent.name for entry in evicted) == ["0", "1", "2"]
 
@@ -1919,9 +1925,55 @@ class TestCacheCeiling:
         mine = _entry("mine", size=10_000, used_at=1.0)
         entries = [mine, _entry("other", size=10, used_at=2.0)]
 
-        evicted = cache._eviction_plan(entries, limit=100, keep=mine.database)
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=mine.database)
 
         assert evicted == []
+
+    def test_a_live_working_set_is_never_evicted_to_meet_the_ceiling(self):
+        """The regression that shipped in the first version of this sweep.
+
+        Sixty repositories in active use, whose caches together exceed the
+        ceiling, must not evict each other. Each eviction costs a full
+        re-index of a repository about to be used again, so the sweep spends
+        more than it reclaims and the ceiling is never actually met. Measured
+        when it shipped: a benchmark's 60 caches totalling 4.66 GiB against a
+        4.00 GiB ceiling drove the database count from 239 to 102 mid-run and
+        cost 37.0s -> 49.0s per instance.
+        """
+        live = [_entry(str(i), size=100, used_at=NOW - 60.0) for i in range(60)]
+
+        evicted = cache._eviction_plan(live, now=NOW, limit=1000, keep=Path("nothing"))
+
+        assert evicted == []
+
+    def test_cold_entries_are_released_even_when_a_live_set_fills_the_ceiling(self):
+        """The window must not turn the sweep off; it must aim it.
+
+        The directory this bound exists for held 490 databases of which 430
+        had gone untouched for over a day. Protecting the live set has to
+        leave every one of those releasable, or the ceiling stops meaning
+        anything the moment somebody opens a repository.
+        """
+        entries = [_entry("hot", size=5000, used_at=NOW - 60.0)]
+        entries += [
+            _entry(f"cold{i}", size=100, used_at=NOW - 5 * cache.PROTECTED_SECONDS)
+            for i in range(10)
+        ]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=1000, keep=Path("nothing"))
+
+        assert sorted(e.database.parent.name for e in evicted) == sorted(
+            f"cold{i}" for i in range(10)
+        )
+
+    def test_an_entry_is_protected_right_up_to_the_window_and_not_past_it(self):
+        cold = _entry("cold", size=100, used_at=NOW - cache.PROTECTED_SECONDS - 1)
+        warm = _entry("warm", size=100, used_at=NOW - cache.PROTECTED_SECONDS + 1)
+        anchor = _entry("anchor", size=100, used_at=NOW)
+
+        evicted = cache._eviction_plan([anchor, warm, cold], now=NOW, limit=1, keep=Path("x"))
+
+        assert [e.database.parent.name for e in evicted] == ["cold"]
 
     def test_the_most_recently_used_database_is_never_evicted(self):
         """The same rebuild loop, reached from the other direction.
@@ -1933,7 +1985,7 @@ class TestCacheCeiling:
         """
         entries = [_entry("huge", size=10_000, used_at=2.0), _entry("small", size=10, used_at=1.0)]
 
-        evicted = cache._eviction_plan(entries, limit=100, keep=Path("nothing"))
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=Path("nothing"))
 
         assert [entry.database.parent.name for entry in evicted] == ["small"]
 
@@ -1955,7 +2007,7 @@ class TestCacheCeiling:
 
         cache.touch_database(read)
         entries = cache._cache_entries(tmp_path)
-        evicted = cache._eviction_plan(entries, limit=100, keep=Path("nothing"))
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=Path("nothing"))
 
         assert [entry.database.parent.name for entry in evicted] == ["built"]
 

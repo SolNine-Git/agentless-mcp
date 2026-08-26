@@ -79,10 +79,28 @@ the files it counted.
   background indexing rather than through a command anybody types, so no
   operator was ever in a position to notice: one developer machine held **490
   databases and 5.67 GB**, the largest 644 MB and the median under a
-  megabyte. Each index run now trims the root back to 4 GiB, deleting whole
-  repository caches least-recently-used first, and names them on the summary
-  line when it deletes any. `AGENTLESS_MCP_MAX_CACHE_BYTES` sets another
+  megabyte. Each index run now releases cold repository caches until the root
+  fits under 5 GiB, least-recently-used first, and names them on the summary
+  line when it releases any. `AGENTLESS_MCP_MAX_CACHE_BYTES` sets another
   ceiling, or `0` restores the unbounded behaviour.
+
+  **Nothing used in the last 24 hours is released, whatever that does to the
+  total.** A first version of this sweep had no such window and enforced the
+  ceiling against live databases. Measured: a 60-repository benchmark whose
+  caches total 4.66 GiB ran against a 4 GiB ceiling, drove the database count
+  from 239 to 102 mid-run, evicted 8 of the 60 repositories it was actively
+  using, and cost **37.0s to 49.0s per instance** against the same benchmark
+  on the unbounded build. Every eviction bought bytes at the price of a full
+  re-index of a repository about to be used again -- the exact work the cache
+  exists to remove.
+
+  The two populations are nothing alike, which is what makes a window work: on
+  the machine that motivated the ceiling, 430 of 490 databases had gone
+  untouched for over a day while the benchmark touched all 60 of its own
+  inside one hour. Replayed against that same cache, the new policy puts 0 of
+  the 60 benchmark repositories in its release plan. The ceiling is now a
+  bound on cold accumulation rather than a hard cap, and a root the live set
+  alone fills is reported rather than enforced.
 
   A size cap rather than an age cap, decided on that distribution: nothing in
   those 490 databases was older than fourteen days, so any defensible age rule

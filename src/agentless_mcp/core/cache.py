@@ -172,11 +172,37 @@ LOCK_NAME = "write.lock"
 # defensible age rule would have evicted nothing at all while the directory
 # kept growing.
 #
-# 4 GiB holds the largest repository observed six times over, so a working set
-# of several large repositories survives a sweep, and it is below what the
-# unbounded directory had already reached. Set ``AGENTLESS_MCP_MAX_CACHE_BYTES``
-# to raise it, or to 0 to keep the old unbounded behaviour.
-DEFAULT_MAX_CACHE_BYTES = 4 * 1024**3
+# 5 GiB. Two measurements set it. It holds the largest single repository
+# observed (644 MB) with room to spare, and it clears the largest working set
+# measured here -- a 60-repository benchmark whose caches total 4.66 GiB, which
+# a 4 GiB ceiling could not hold and thrashed against. It also sits under the
+# 5.67 GB the unbounded directory had reached, so the sweep still has work to
+# do. Set ``AGENTLESS_MCP_MAX_CACHE_BYTES`` to another value, or to 0 to keep
+# the old unbounded behaviour.
+DEFAULT_MAX_CACHE_BYTES = 5 * 1024**3
+
+# How recently a database must have been used to be exempt from the sweep.
+#
+# The ceiling alone was wrong, and measurably so. It treats hot and cold
+# databases alike, so a working set larger than the ceiling makes each newly
+# indexed repository evict one that is about to be needed again -- and every
+# eviction costs a full re-index, which is the exact work the cache exists to
+# remove. Measured on 2026-08-26: a 60-repository benchmark whose caches total
+# 4.66 GiB ran against the 4.00 GiB ceiling, drove the database count from 239
+# to 102 mid-run, evicted 8 of the 60 repositories it was actively using, and
+# came out 37.0s -> 49.0s per instance against the same benchmark on the
+# unbounded build. Thrash, not reclamation.
+#
+# The two populations are nothing alike, which is what makes a window work. On
+# the machine that motivated the ceiling, 430 of 490 databases had gone
+# untouched for over a day while the benchmark touched all 60 of its own inside
+# one hour. A day-long window would have released essentially all of the dead
+# weight and none of the live set.
+#
+# So the ceiling bounds cold accumulation and never arbitrates between hot
+# entries. A working set that exceeds it on its own exceeds it: deleting a
+# database somebody is still using costs more than it reclaims.
+PROTECTED_SECONDS = 24 * 60 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -1998,27 +2024,39 @@ def _cache_entries(root: Path) -> list[_CacheEntry]:
     return entries
 
 
-def _eviction_plan(entries: Sequence[_CacheEntry], limit: int, *, keep: Path) -> list[_CacheEntry]:
+def _eviction_plan(
+    entries: Sequence[_CacheEntry], limit: int, *, keep: Path, now: float
+) -> list[_CacheEntry]:
     """Return the databases to delete, in the order the sweep should delete them.
 
     Least recently used first, which is the whole policy: walk the entries
     most-recent first, keep them while the running total fits under ``limit``,
     and evict the rest.
 
-    Two entries are never candidates. ``keep`` is the database the calling
-    index run just built, and evicting it would make a repository larger than
-    the ceiling delete its own index at the end of every run and rebuild it at
-    the start of the next one. The most recently used entry is spared for the
-    same reason from the other direction: without it, one repository bigger
-    than the whole ceiling would be evicted by any other repository's sweep and
-    rebuilt on its next call, forever. In both cases the ceiling is exceeded on
-    purpose, and the alternative is a sweep that never converges.
+    Nothing used within :data:`PROTECTED_SECONDS` of ``now`` is a candidate,
+    whatever that does to the total. That is the rule that makes the sweep safe
+    to run against a live machine rather than only against an idle one: an
+    entry still in use is not spare capacity, and reclaiming it buys bytes at
+    the price of the re-index it forces. The constant carries the measurement.
+
+    Two further entries are never candidates, and both key on identity rather
+    than on a clock, so they still hold when mtimes do not -- a filesystem that
+    does not keep them, a tree restored from an archive, a skewed clock.
+    ``keep`` is the database the calling index run just built. The most
+    recently used entry is spared from the other direction: without it, one
+    repository bigger than the whole ceiling would be evicted by any other
+    repository's sweep and rebuilt on its next call, forever.
+
+    The ceiling is therefore a bound on what has gone cold, not a hard cap. It
+    is exceeded on purpose whenever the live set alone fills it, and
+    :func:`enforce_cache_limit` says so rather than evicting into a live set.
     """
     ordered = sorted(entries, key=lambda entry: entry.used_at, reverse=True)
+    protected_after = now - PROTECTED_SECONDS
     evict: list[_CacheEntry] = []
     total = 0
     for position, entry in enumerate(ordered):
-        if entry.database == keep or position == 0:
+        if entry.database == keep or position == 0 or entry.used_at >= protected_after:
             total += entry.size
             continue
         if total + entry.size <= limit:
@@ -2043,6 +2081,11 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
     unlinked inode until it closes. The write lock is still taken per victim,
     so a concurrent index run is never deleted out from underneath.
 
+    A ceiling the live set alone exceeds is reported and not enforced. That is
+    the whole correction to the first version of this sweep, which enforced it
+    by evicting databases it was about to need again -- see
+    :data:`PROTECTED_SECONDS` for what that cost when measured.
+
     ``write.lock`` and the directory holding it stay.
     :mod:`agentless_mcp.util.filelock` documents why the lock file is never
     unlinked: a second process would create and lock a *different* file of the
@@ -2054,8 +2097,10 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
     if limit is None:
         return NOTHING_EVICTED
 
-    victims = _eviction_plan(_cache_entries(cache_root()), limit, keep=keep)
+    entries = _cache_entries(cache_root())
+    victims = _eviction_plan(entries, limit, keep=keep, now=time.time())
     if not victims:
+        _report_unreclaimable(entries, limit)
         return NOTHING_EVICTED
 
     deleted = 0
@@ -2085,6 +2130,28 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
             freed,
         )
     return EvictionReport(databases=deleted, size=freed)
+
+
+def _report_unreclaimable(entries: Sequence[_CacheEntry], limit: int) -> None:
+    """Say when the cache root is over its ceiling with nothing cold to release.
+
+    Silence here would be the first version's mistake wearing a different
+    face. That build met the ceiling by evicting live databases, and the only
+    signal was a benchmark that got slower. This one keeps them and says why,
+    so the condition is a line in a log rather than an unexplained slowdown.
+    """
+    total = sum(entry.size for entry in entries)
+    if total <= limit:
+        return
+    logger.info(
+        "cache root is %d bytes against a %d byte ceiling and nothing is cold enough to "
+        "release: %d databases were all used within the last %d seconds. Evicting one would "
+        "force a re-index of a repository still in use, which costs more than it reclaims",
+        total,
+        limit,
+        len(entries),
+        PROTECTED_SECONDS,
+    )
 
 
 def touch_database(database: Path) -> None:
