@@ -59,7 +59,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -154,7 +154,17 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   pre-fix extractor wrote. That is the exact failure this package exists to
 #   refuse -- a confident answer built from facts nobody re-derived -- and it
 #   is worth one rebuild by the handful of people who tested mid-branch.
-SCHEMA_VERSION = 12
+# 13 (2026-08-26): every row is keyed on ``files.id`` rather than on the
+#   ``(path, sha256)`` pair it used to repeat. Measured with ``dbstat`` on the
+#   largest cache on one developer machine -- 9,045 files, 2.75M rows -- the
+#   repeated key text was 387.6 MB of a 538.4 MB ``refs`` table, and 83.6% of
+#   the 643.9 MB file was that one table. Rebuilt against the same data the
+#   file is 110.9 MB: 83% smaller, reads 1.20x faster, writes 1.78x faster,
+#   and 363,267 rows compared tuple for tuple with no mismatch.
+#
+#   Every table changes shape, so there is nothing here an older reader could
+#   partially understand -- which is exactly what the version gate is for.
+SCHEMA_VERSION = 13
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
@@ -411,10 +421,19 @@ class _RowCounts:
 
 @dataclass(frozen=True)
 class _FileEntry:
-    """The digest and grammar version one indexed file was recorded with."""
+    """The digest and grammar version one indexed file was recorded with.
+
+    ``file_id`` is excluded from equality on purpose. The two sites that
+    compare an entry are asking one question -- same content, same grammar --
+    and the row identifier is not part of it. Comparing it would make every
+    reuse check fail against a freshly loaded entry and re-extract the whole
+    repository on every run. The default is 0, which no AUTOINCREMENT id can
+    ever be, so a constructed-for-comparison entry cannot alias a real row.
+    """
 
     digest: str
     grammar_version: str
+    file_id: int = field(compare=False, default=0)
 
 
 @dataclass(frozen=True)
@@ -491,7 +510,7 @@ class CachedSource:
 
     def _rows_or_none(
         self,
-        read: "Callable[[str, str], list[Any]]",
+        read: "Callable[[str, int], list[Any]]",
         text: str,
         path: str,
         kind: str,
@@ -513,11 +532,11 @@ class CachedSource:
         IndexError and KeyError for a row or document missing a field this
         build reads. A defect in this module still raises.
         """
-        digest = self._fresh_digest(text, path)
-        if digest is None:
+        file_id = self._fresh_file_id(text, path)
+        if file_id is None:
             return None
         try:
-            return read(path, digest)
+            return read(path, file_id)
         except (sqlite3.DatabaseError, ValueError, TypeError, IndexError, KeyError) as exc:
             logger.warning(
                 "tag cache %s: %s rows for %s are unreadable (%r); parsing the file instead",
@@ -557,20 +576,26 @@ class CachedSource:
             logger.debug("read snapshot for %s was already gone: %r", self._state.database, exc)
         self._connection.close()
 
-    def _fresh_digest(self, text: str, path: str) -> str | None:
-        """Return the digest to read rows at, or None when they cannot be used.
+    def _fresh_file_id(self, text: str, path: str) -> int | None:
+        """Return the id to read rows at, or None when they cannot be used.
 
         One gate for all three row kinds: the file must be indexed, indexed by
         the grammar pack that is installed now, and indexed from exactly this
         content. Anything else and the caller parses.
+
+        Returning the id rather than the digest is what lets the fact tables
+        stop repeating the digest on every row without weakening anything. The
+        id is reachable only through this function and only when the content
+        matched, so a caller that skips the check has no key to query with.
+        The guarantee is unchanged; it is simply established once per file
+        instead of once per row.
         """
         entry = self._state.entries.get(path)
         if entry is None or entry.grammar_version != self._state.grammar_version:
             return None
-        digest = content_digest(text)
-        return digest if entry.digest == digest else None
+        return entry.file_id if entry.digest == content_digest(text) else None
 
-    def _symbol_rows(self, path: str, digest: str) -> list[ASTSymbol]:
+    def _symbol_rows(self, path: str, file_id: int) -> list[ASTSymbol]:
         """Rebuild one file's symbols from its tag rows, in extraction order.
 
         The collision ordinal is recomputed rather than stored: it is a pure
@@ -581,27 +606,31 @@ class CachedSource:
         cursor = self._connection.execute(
             "SELECT name, kind, start_line, end_line, signature, parent, docstring, "
             "decorators, bases, language, is_public, is_async, rationales "
-            "FROM tags WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "FROM tags WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return disambiguate([_symbol_from_row(row, path) for row in cursor.fetchall()])
 
-    def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
-        """Rebuild one file's import statements from its rows, in extraction order."""
+    def _import_rows(self, _path: str, file_id: int) -> list[ImportStatement]:
+        """Rebuild one file's import statements from its rows, in extraction order.
+
+        Takes the path it does not use because :meth:`_rows_or_none` calls all
+        three readers through one signature. The other two need it: symbols to
+        build their stable ids, references to name the file they were found in.
+        """
         cursor = self._connection.execute(
             "SELECT module, names, is_relative, relative_level, line, "
             "binds_all, alias, local_names FROM imports "
-            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return [_import_from_row(row) for row in cursor.fetchall()]
 
-    def _ref_rows(self, path: str, digest: str) -> list[Ref]:
+    def _ref_rows(self, path: str, file_id: int) -> list[Ref]:
         """Rebuild one file's identifier references from its rows, in order."""
         cursor = self._connection.execute(
-            "SELECT name, line, role, qualifier FROM refs "
-            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "SELECT name, line, role, qualifier FROM refs WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return [
             Ref(
@@ -1436,51 +1465,52 @@ def _apply_plan(
     connection.execute("BEGIN IMMEDIATE")
     try:
         for path in (*vanished, *touched):
-            # Spelled out rather than looped over a table-name list: a query
-            # built by interpolating a name is the shape of an injection even
-            # when today's names are constants.
-            connection.execute("DELETE FROM tags WHERE path = ?", (path,))
-            connection.execute("DELETE FROM imports WHERE path = ?", (path,))
-            connection.execute("DELETE FROM refs WHERE path = ?", (path,))
+            # Children before the parent, and by the id the parent owns. The
+            # order is load-bearing rather than tidy: the fact rows are keyed
+            # on ``files.id``, so deleting the ``files`` row first would take
+            # away the only key that reaches them and leave them orphaned in a
+            # table nothing would ever clean.
+            #
+            # A path absent from ``previous`` is a file this index has never
+            # recorded, so it owns no id and no rows. Its ``files`` delete is
+            # still issued, because ``vanished`` and ``touched`` are the paths
+            # to clear and not the paths known to be present.
+            recorded = previous.get(path)
+            if recorded is not None:
+                # Spelled out rather than looped over a table-name list: a
+                # query built by interpolating a name is the shape of an
+                # injection even when today's names are constants.
+                connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
             connection.execute("DELETE FROM files WHERE path = ?", (path,))
 
         for entry in plan.writes:
-            connection.execute(
-                "INSERT INTO files (path, sha256, grammar_version) VALUES (?, ?, ?)",
-                (entry.path, entry.digest, entry.grammar_version),
-            )
+            file_id = _insert_file(connection, entry)
             connection.executemany(
-                "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, "
+                "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
                 "signature, parent, docstring, decorators, bases, language, "
-                "is_public, is_async, rationales, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "is_public, is_async, rationales) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    _tag_row(entry.path, entry.digest, ordinal, symbol)
+                    _tag_row(file_id, ordinal, symbol)
                     for ordinal, symbol in enumerate(entry.symbols)
                 ],
             )
             connection.executemany(
-                "INSERT INTO imports (path, sha256, module, names, is_relative, "
-                "relative_level, line, binds_all, alias, local_names, "
-                "ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
+                "relative_level, line, binds_all, alias, local_names) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    _import_row(entry.path, entry.digest, ordinal, statement)
+                    _import_row(file_id, ordinal, statement)
                     for ordinal, statement in enumerate(entry.imports)
                 ],
             )
             connection.executemany(
-                "INSERT INTO refs (path, sha256, name, line, role, qualifier, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (
-                        entry.path,
-                        entry.digest,
-                        ref.name,
-                        ref.line,
-                        ref.role.value,
-                        ref.qualifier,
-                        ordinal,
-                    )
+                    (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
                     for ordinal, ref in enumerate(entry.refs)
                 ],
             )
@@ -1503,11 +1533,35 @@ def _apply_plan(
     connection.commit()
 
 
-def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
+def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
+    """Insert one file's row and return the id its fact rows are keyed on.
+
+    Read from the insert that minted it rather than selected back:
+    AUTOINCREMENT guarantees the id is new, and a second query would only be a
+    slower way to learn what the cursor already knows.
+
+    ``lastrowid`` is typed optional because it is None for statements that
+    insert nothing, which an INSERT that did not raise is not. Asserted rather
+    than defaulted: a zero or a None flowing into ``file_id`` would key every
+    one of this file's rows onto an id no ``files`` row owns, and they would
+    read back as somebody else's symbols rather than as an error.
+    """
+    cursor = connection.execute(
+        "INSERT INTO files (path, sha256, grammar_version) VALUES (?, ?, ?)",
+        (entry.path, entry.digest, entry.grammar_version),
+    )
+    file_id = cursor.lastrowid
+    if file_id is None:
+        unreachable = "an INSERT that did not raise always reports a row id"
+        raise AssertionError(unreachable)
+    return file_id
+
+
+def _tag_row(file_id: int, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
     """Flatten one symbol into its tag row."""
     return (
-        path,
-        digest,
+        file_id,
+        ordinal,
         symbol.name,
         symbol.kind.value,
         symbol.line_number,
@@ -1532,17 +1586,14 @@ def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[A
                 for rationale in symbol.rationales
             ]
         ),
-        ordinal,
     )
 
 
-def _import_row(
-    path: str, digest: str, ordinal: int, statement: ImportStatement
-) -> tuple[Any, ...]:
+def _import_row(file_id: int, ordinal: int, statement: ImportStatement) -> tuple[Any, ...]:
     """Flatten one import statement into its row."""
     return (
-        path,
-        digest,
+        file_id,
+        ordinal,
         statement.module,
         json.dumps(list(statement.names)),
         int(statement.is_relative),
@@ -1551,7 +1602,6 @@ def _import_row(
         int(statement.binds_all),
         statement.alias,
         json.dumps(list(statement.local_names)),
-        ordinal,
     )
 
 
@@ -1675,6 +1725,41 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
     meta = _read_meta(connection)
     stale = meta is not None and meta.schema_version != SCHEMA_VERSION
     connection.executescript(_MIGRATE_SCHEMA if stale else _CREATE_SCHEMA)
+    if stale:
+        _reclaim(connection)
+
+
+def _reclaim(connection: sqlite3.Connection) -> None:
+    """Return a migrated database's freed pages to the filesystem.
+
+    Dropping a table frees its pages inside the file and never shrinks the
+    file: SQLite keeps them on a freelist and spends them on the next thing
+    that grows. Without this, a migration that genuinely shrinks the data
+    leaves the old size on disk. Measured on the largest cache here when v13
+    landed -- 643.9 MB of file holding 125.2 MB of data and 518.8 MB of
+    freelist, so the entire storage change was invisible.
+
+    It matters twice over, because the size the cache ceiling reads is the
+    size on disk. A database that never gives its pages back is counted at its
+    high-water mark forever, and would be evicted for space it is not using.
+
+    Outside a transaction, because VACUUM cannot run inside one --
+    ``executescript`` has already committed the migration by the time this
+    runs. Failure is reported and not raised: the migration itself succeeded,
+    the database is correct, and a file that is larger than it needs to be is
+    a cost rather than a fault. The usual cause is the one worth naming, which
+    is why the message names it -- VACUUM rebuilds the database beside itself
+    and needs room for a second copy.
+    """
+    try:
+        connection.execute("VACUUM")
+    except sqlite3.DatabaseError as exc:
+        logger.warning(
+            "could not reclaim free pages after the schema migration (%r); the database is "
+            "correct but still holds the space the old schema used. A VACUUM needs free disk "
+            "for a second copy of the file",
+            exc,
+        )
 
 
 # A version bump drops every table this package owns and rebuilds them. The
@@ -1704,14 +1789,33 @@ CREATE TABLE IF NOT EXISTS meta (
 -- and no reader ever selects is storage and write time spent on nothing, and
 -- the migration policy -- bump and rebuild -- makes adding one back free on
 -- the day a reader wants it.
+-- ``id`` is what every other table keys on, and it is AUTOINCREMENT rather
+-- than a plain rowid on purpose. A plain rowid is reused after a delete, so a
+-- newly indexed file could inherit the id of one just removed -- and if any
+-- child row had survived that delete it would be served for the wrong file,
+-- silently, with the digest gate satisfied because the gate reads this table.
+-- The monotonic counter costs one row in ``sqlite_sequence`` and removes the
+-- whole class.
 CREATE TABLE IF NOT EXISTS files (
-    path TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
     sha256 TEXT NOT NULL,
     grammar_version TEXT NOT NULL
 );
+-- The three fact tables share one shape: keyed on ``(file_id, ordinal)``,
+-- WITHOUT ROWID, no secondary index. Every read of them is "one file, in
+-- extraction order", so that key clusters the rows the way they are read and
+-- the primary key alone answers the query.
+--
+-- They used to repeat ``(path, sha256)`` on every row and carry a separate
+-- index over it. On one real repository that was 387.6 MB of duplicated path
+-- and digest text in ``refs`` alone, plus 42.6 MB of index that the clustering
+-- key now makes redundant. The digest did not have to live here to be
+-- load-bearing: ``CachedSource._fresh_file_id`` checks it once per file, and a
+-- caller whose content does not match never obtains an id to query with.
 CREATE TABLE IF NOT EXISTS tags (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     name TEXT NOT NULL,
     kind TEXT NOT NULL,
     start_line INTEGER NOT NULL,
@@ -1725,16 +1829,11 @@ CREATE TABLE IF NOT EXISTS tags (
     is_public INTEGER NOT NULL,
     is_async INTEGER NOT NULL,
     rationales TEXT NOT NULL,
-    ordinal INTEGER NOT NULL
-);
--- References are by far the largest table (tens of thousands of rows per
--- repository against hundreds of symbols), and every read of them is
--- "one file, one digest, in order". A WITHOUT ROWID table keyed on exactly
--- that clusters the rows the way they are read and removes the separate
--- (path, sha256) index, which measured the same size as the table it indexed.
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS imports (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     module TEXT NOT NULL,
     names TEXT NOT NULL,
     is_relative INTEGER NOT NULL,
@@ -1743,20 +1842,20 @@ CREATE TABLE IF NOT EXISTS imports (
     binds_all INTEGER NOT NULL,
     alias TEXT NOT NULL,
     local_names TEXT NOT NULL,
-    ordinal INTEGER NOT NULL
-);
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+-- By far the largest table: millions of rows per repository against thousands
+-- of symbols, which is why the key it repeats is the one that decides the size
+-- of the whole file.
 CREATE TABLE IF NOT EXISTS refs (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     name TEXT NOT NULL,
     line INTEGER NOT NULL,
     role TEXT NOT NULL,
     qualifier TEXT NOT NULL,
-    ordinal INTEGER NOT NULL,
-    PRIMARY KEY (path, sha256, ordinal)
+    PRIMARY KEY (file_id, ordinal)
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS tags_path_sha256 ON tags (path, sha256);
-CREATE INDEX IF NOT EXISTS imports_path_sha256 ON imports (path, sha256);
 """
 
 # The two scripts :func:`_ensure_schema` runs, each one transaction.
@@ -1846,9 +1945,12 @@ def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
     to :func:`_open_indexed`, which reports ``cache unreadable`` and leaves
     the file in place. This is the same rule :func:`_read_meta` states.
     """
-    rows = connection.execute("SELECT path, sha256, grammar_version FROM files").fetchall()
+    rows = connection.execute("SELECT path, sha256, grammar_version, id FROM files").fetchall()
     return {
-        str(row[0]): _FileEntry(digest=str(row[1]), grammar_version=str(row[2])) for row in rows
+        str(row[0]): _FileEntry(
+            digest=str(row[1]), grammar_version=str(row[2]), file_id=int(row[3])
+        )
+        for row in rows
     }
 
 

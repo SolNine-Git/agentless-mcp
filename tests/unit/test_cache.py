@@ -253,7 +253,9 @@ class TestIncrementalTriad:
                 "SELECT COUNT(*) FROM files WHERE path = ?", ("empty.py",)
             ).fetchone()
             tagged = connection.execute(
-                "SELECT COUNT(*) FROM tags WHERE path = ?", ("empty.py",)
+                "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id "
+                "WHERE files.path = ?",
+                ("empty.py",),
             ).fetchone()
 
         assert (recorded[0], tagged[0]) == (1, 0)
@@ -270,7 +272,9 @@ class TestIncrementalTriad:
         assert report.files == 2
         with closing(sqlite3.connect(report.database)) as connection:
             rows = connection.execute(
-                "SELECT COUNT(*) FROM tags WHERE path = ?", ("billing.py",)
+                "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id "
+                "WHERE files.path = ?",
+                ("billing.py",),
             ).fetchone()
         assert rows[0] == 0
 
@@ -606,10 +610,73 @@ class TestSchemaVersion:
         with closing(sqlite3.connect(report.database)) as connection:
             files = {row[1] for row in connection.execute("PRAGMA table_info(files)")}
             tags = {row[1] for row in connection.execute("PRAGMA table_info(tags)")}
+            refs = {row[1] for row in connection.execute("PRAGMA table_info(refs)")}
+            imports = {row[1] for row in connection.execute("PRAGMA table_info(imports)")}
 
-        assert files == {"path", "sha256", "grammar_version"}
+        assert files == {"id", "path", "sha256", "grammar_version"}
         assert "qualname" not in tags
         assert "is_def" not in tags
+        # The v13 rule, and the reason the file is 83% smaller: a fact row
+        # names the file it belongs to once, by id, and never repeats the
+        # path or the digest it was extracted from.
+        for columns in (tags, imports, refs):
+            assert "path" not in columns
+            assert "sha256" not in columns
+            assert "file_id" in columns
+
+    def test_a_re_indexed_file_never_inherits_a_retired_id(self, repo, extractor):
+        """Ids are minted, never recycled, which is what AUTOINCREMENT buys.
+
+        A plain rowid is reused after a delete. A file indexed after another
+        was removed would then take the departed file's id, and any fact row
+        that survived that delete would be served for the wrong file --
+        silently, and past the freshness gate, because the gate reads the
+        ``files`` row and would find a perfectly valid one.
+
+        The scenario is built the way it would really happen: index, delete a
+        file, re-index, add a new file, index again. The new file must not be
+        wearing the deleted one's number.
+        """
+        report = cache.build_index(repo, extractor)
+        with closing(sqlite3.connect(report.database)) as connection:
+            retired = {
+                row[0]
+                for row in connection.execute("SELECT id FROM files WHERE path = 'billing.py'")
+            }
+
+        (repo / "billing.py").unlink()
+        cache.build_index(repo, extractor)
+        (repo / "shipping.py").write_text("def ship(sku):\n    return sku\n", encoding="utf-8")
+        final = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(final.database)) as connection:
+            fresh = {
+                row[0]
+                for row in connection.execute("SELECT id FROM files WHERE path = 'shipping.py'")
+            }
+            orphans = connection.execute(ORPHAN_QUERIES[2]).fetchone()[0]
+
+        assert retired
+        assert fresh
+        assert not (retired & fresh)
+        assert orphans == 0
+
+    def test_no_fact_row_outlives_the_file_that_owns_it(self, repo, extractor):
+        """The delete order is load-bearing now, so it gets an assertion.
+
+        Fact rows are keyed on ``files.id``. Removing the ``files`` row before
+        its children would take away the only key that reaches them, and they
+        would sit in the table forever with nothing to clean them.
+        """
+        cache.build_index(repo, extractor)
+        (repo / "billing.py").unlink()
+        (repo / "core.py").write_text(CORE + "\n\ndef extra():\n    return 1\n", "utf-8")
+
+        report = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(report.database)) as connection:
+            for query in ORPHAN_QUERIES:
+                assert connection.execute(query).fetchone()[0] == 0, query
 
     def test_a_corrupt_database_is_discarded_by_both_readers_and_writers(self, repo, extractor):
         database = cache.build_index(repo, extractor).database
@@ -984,14 +1051,8 @@ class TestRefsAndImportsRows:
         second = cache.build_index(repo, extractor)
 
         assert second.pruned == 1
-        queries = (
-            "SELECT COUNT(*) FROM tags WHERE path = ?",
-            "SELECT COUNT(*) FROM imports WHERE path = ?",
-            "SELECT COUNT(*) FROM refs WHERE path = ?",
-            "SELECT COUNT(*) FROM files WHERE path = ?",
-        )
         with closing(sqlite3.connect(second.database)) as connection:
-            for query in queries:
+            for query in ROWS_FOR_PATH_QUERIES:
                 assert connection.execute(query, ("billing.py",)).fetchone()[0] == 0
         assert first.files == 3
 
@@ -1584,12 +1645,35 @@ class TestMigrationFromEveryOlderSchema:
 
         assert report.files == 3
         with closing(sqlite3.connect(database)) as connection:
-            assert _columns(connection, "files") == {"path", "sha256", "grammar_version"}
+            assert _columns(connection, "files") == {"id", "path", "sha256", "grammar_version"}
             assert {"qualname", "is_def"}.isdisjoint(_columns(connection, "tags"))
             imports = _columns(connection, "imports")
             assert "resolved_path" not in imports
             assert {"binds_all", "alias", "local_names"} <= imports
             assert _read_schema_version(connection) == cache.SCHEMA_VERSION
+
+    @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
+    def test_a_migration_gives_the_old_schema_s_pages_back(self, repo, extractor, version):
+        """Dropping tables frees pages inside the file and never shrinks it.
+
+        Without the reclaim the migration is correct and invisible: measured
+        on the largest real cache when v13 landed, 643.9 MB of file holding
+        125.2 MB of data and 518.8 MB of freelist. It matters twice, because
+        the size the eviction ceiling reads is the size on disk -- a database
+        that never returns its pages is counted at its high-water mark and
+        evicted for space it is not using.
+        """
+        database = _write_historic_database(repo, version)
+        before = database.stat().st_size
+
+        cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(database)) as connection:
+            free = connection.execute("PRAGMA freelist_count").fetchone()[0]
+            pages = connection.execute("PRAGMA page_count").fetchone()[0]
+        assert free == 0
+        assert database.stat().st_size <= before
+        assert pages > 0
 
     @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
     def test_the_rebuilt_database_reads_back_as_fresh(self, repo, extractor, version):
@@ -1649,11 +1733,11 @@ def _seed_reusable_database(repo, version):
             (digest, grammars.pack_version()),
         )
         connection.execute(
-            "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, signature, "
-            "parent, docstring, decorators, bases, language, is_public, is_async, rationales, "
-            "ordinal) VALUES ('core.py', ?, ?, 'function', 1, 1, 'def stale()', '', '', "
-            "'[]', '[]', 'python', 1, 0, '[]', 0)",
-            (digest, STALE_TAG_NAME),
+            "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, signature, "
+            "parent, docstring, decorators, bases, language, is_public, is_async, rationales) "
+            "VALUES ((SELECT id FROM files WHERE path = 'core.py'), 0, ?, 'function', 1, 1, "
+            "'def stale()', '', '', '[]', '[]', 'python', 1, 0, '[]')",
+            (STALE_TAG_NAME,),
         )
     return database
 
@@ -1879,6 +1963,26 @@ def _read_schema_version(connection):
 # that every one of them reads as cold. Hermetic on purpose: the plan takes its
 # clock as an argument precisely so no test here depends on the real one.
 NOW = 10 * cache.PROTECTED_SECONDS
+
+
+# Spelled out rather than built by interpolating a table name, for the reason
+# ``_apply_plan`` gives: that shape is an injection even when today's names are
+# constants.
+# Counting one path's rows in each table. A fact row is reached through the
+# file that owns it now, so these join rather than filter on a column the fact
+# tables no longer carry.
+ROWS_FOR_PATH_QUERIES = (
+    "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM imports JOIN files ON files.id = imports.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM refs JOIN files ON files.id = refs.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM files WHERE path = ?",
+)
+
+ORPHAN_QUERIES = (
+    "SELECT COUNT(*) FROM tags WHERE file_id NOT IN (SELECT id FROM files)",
+    "SELECT COUNT(*) FROM imports WHERE file_id NOT IN (SELECT id FROM files)",
+    "SELECT COUNT(*) FROM refs WHERE file_id NOT IN (SELECT id FROM files)",
+)
 
 
 def _entry(name, size, used_at):

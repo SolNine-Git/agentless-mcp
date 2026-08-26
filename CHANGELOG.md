@@ -7,6 +7,48 @@ the files it counted.
 
 ### Added
 
+- **Every cached row is keyed on `files.id`, not on the path and digest it used
+  to repeat.** Measured with `dbstat` on the largest cache on one developer
+  machine -- 9,045 files, 2.75M rows -- 83.6% of the 643.9 MB file was the
+  `refs` table, and 387.6 MB of that one table was the same 90-byte path and
+  64-character digest written again on every row.
+
+  The three fact tables now share one shape: `(file_id, ordinal)`, `WITHOUT
+  ROWID`, no secondary index. The clustering key answers the only query these
+  tables ever get -- one file, in extraction order -- so `tags_path_sha256` and
+  `imports_path_sha256` are gone as well, another 42.6 MB of pure redundancy.
+  `refs` already had this shape; the change extends it to the two tables it had
+  never been applied to.
+
+  Rebuilt against that same repository the database is **615 MB to 120 MB**,
+  with identical row counts. Reads are 1.20x faster and writes 1.78x, and
+  363,267 rows were compared tuple for tuple between the two schemas with no
+  mismatch.
+
+  **The freshness guarantee is unchanged, and is now established once per file
+  rather than once per row.** It never depended on the digest living in the
+  row: `CachedSource._fresh_file_id` is the single gate, and it hands back an
+  id only when the content digest and the grammar version both match. A caller
+  that skips the check has no key to query with.
+
+  `files.id` is `AUTOINCREMENT` rather than a plain rowid. A plain rowid is
+  reused after a delete, so a newly indexed file could inherit the id of one
+  just removed -- and a fact row that survived that delete would then be served
+  for the wrong file, silently, past a freshness gate that reads the very
+  `files` row that made it look valid. The delete order is load-bearing for the
+  same reason and now carries its own test: children first, by the id their
+  parent owns.
+
+- **A schema migration gives the old schema's pages back to the filesystem.**
+  Dropping a table frees its pages inside the database and never shrinks the
+  file; SQLite keeps them on a freelist. Without a `VACUUM` the v13 migration
+  was correct and completely invisible -- 643.9 MB of file holding 125.2 MB of
+  data and 518.8 MB of freelist. It matters twice, because the size the
+  eviction ceiling reads is the size on disk: a database that never returns its
+  pages is counted at its high-water mark and evicted for space it is not
+  using.
+
+
 - **`class_scope`: `self.n` and `cls.n` bind to the enclosing class.** A
   method called through `self` produced no edge at all -- an attribute member
   is not a bare name, so the reference pass dropped it, and every same-file
