@@ -977,6 +977,14 @@ repository being analyzed. One line reports what happened:
 indexed 42, reused 517, pruned 3, skipped 0, errors 0: 559 files, 17740 tags, 1204 imports, 98311 refs at g:1a2b3c4d in /home/you/.cache/agentless-mcp/9f2c.../tags.db
 ```
 
+Each run ends by trimming the cache root as a whole back to 4 GiB, deleting
+whole repository caches least-recently-used first and reporting them on the
+summary line when it deletes any. The repository just indexed is never one of
+them. Set `AGENTLESS_MCP_MAX_CACHE_BYTES` to another ceiling, or to `0` to
+disable the trim. Eviction costs speed and never correctness: a read against
+an evicted repository parses on demand, exactly as it does before the first
+index.
+
 An error is a file the run could not record (unreadable, over the size cap, a
 parse crash). Any error exits 1. A skip is a known language whose grammar is
 not warmed. The run records the file with its digest, lists it as a

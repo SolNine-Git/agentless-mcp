@@ -13,6 +13,7 @@ developer's real cache.
 
 import json
 import logging
+import os
 import sqlite3
 import stat
 import subprocess
@@ -35,7 +36,7 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, grammars, patchlint, refs
 from agentless_mcp.core.symbols import symbol_stable_id
-from agentless_mcp.util import cachedir, filelock, fslimits
+from agentless_mcp.util import cachedir, filelock, fslimits, platforms
 from agentless_mcp.util.errors import CacheLocked, OperationFailed
 
 CORE = '''\
@@ -1872,3 +1873,252 @@ def test_the_two_copies_of_the_degraded_error_list_agree():
 def _read_schema_version(connection):
     """The schema version the meta row records."""
     return connection.execute("SELECT schema_version FROM meta WHERE id = 1").fetchone()[0]
+
+
+def _entry(name, size, used_at):
+    """One synthetic cache entry, for the tests that exercise the plan alone."""
+    return cache._CacheEntry(database=Path(name) / cache.DATABASE_NAME, size=size, used_at=used_at)
+
+
+class TestCacheCeiling:
+    """The bound on the cache root as a whole, which nothing enforced before.
+
+    The cache root grows by auto-indexing rather than by a command anybody
+    types, so it had no owner and no ceiling: one developer machine reached
+    490 databases and 5.67 GB. These tests hold the two halves that make a
+    sweep safe to run unattended -- it evicts in least-recently-*used* order,
+    and there are two entries it will never evict however far over the ceiling
+    the directory is.
+    """
+
+    def test_the_least_recently_used_databases_go_first(self):
+        entries = [
+            _entry("old", size=100, used_at=1.0),
+            _entry("middle", size=100, used_at=2.0),
+            _entry("recent", size=100, used_at=3.0),
+        ]
+
+        evicted = cache._eviction_plan(entries, limit=200, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["old"]
+
+    def test_everything_over_the_ceiling_goes_not_just_enough_to_fit(self):
+        entries = [_entry(str(index), size=100, used_at=float(index)) for index in range(5)]
+
+        evicted = cache._eviction_plan(entries, limit=250, keep=Path("nothing"))
+
+        assert sorted(entry.database.parent.name for entry in evicted) == ["0", "1", "2"]
+
+    def test_the_database_the_calling_run_just_built_is_never_evicted(self):
+        """Otherwise a repository larger than the ceiling deletes its own index.
+
+        It would be rebuilt at the start of the next call and deleted again at
+        the end of it, forever, and every call would pay a full index for a
+        cache it never gets to use.
+        """
+        mine = _entry("mine", size=10_000, used_at=1.0)
+        entries = [mine, _entry("other", size=10, used_at=2.0)]
+
+        evicted = cache._eviction_plan(entries, limit=100, keep=mine.database)
+
+        assert evicted == []
+
+    def test_the_most_recently_used_database_is_never_evicted(self):
+        """The same rebuild loop, reached from the other direction.
+
+        One repository bigger than the whole ceiling would be evicted by any
+        other repository's sweep and rebuilt on its next call. Exceeding the
+        ceiling is the deliberate choice here; a sweep that never converges is
+        not.
+        """
+        entries = [_entry("huge", size=10_000, used_at=2.0), _entry("small", size=10, used_at=1.0)]
+
+        evicted = cache._eviction_plan(entries, limit=100, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["small"]
+
+    def test_a_reading_repository_outlives_a_more_recently_indexed_one(self, tmp_path):
+        """The point of stamping the database on every successful open.
+
+        Ordered by last *write*, a repository that is read constantly but has
+        not changed in a month looks abandoned -- and its index is the
+        expensive one to rebuild. ``read`` here is older by mtime than
+        ``built`` until the stamp lands, and newer after it.
+        """
+        read = tmp_path / "read" / cache.DATABASE_NAME
+        built = tmp_path / "built" / cache.DATABASE_NAME
+        for database in (read, built):
+            database.parent.mkdir()
+            database.write_bytes(b"x" * 100)
+        os.utime(read, (1.0, 1.0))
+        os.utime(built, (2.0, 2.0))
+
+        cache.touch_database(read)
+        entries = cache._cache_entries(tmp_path)
+        evicted = cache._eviction_plan(entries, limit=100, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["built"]
+
+    def test_a_directory_whose_database_already_went_is_not_weighed_again(self, tmp_path):
+        """The sweep leaves ``write.lock`` behind, so evicted repositories stay listed."""
+        evicted_repo = tmp_path / "evicted"
+        evicted_repo.mkdir()
+        (evicted_repo / cache.LOCK_NAME).write_text("", encoding="utf-8")
+
+        assert cache._cache_entries(tmp_path) == []
+
+    def test_an_unlistable_cache_root_evicts_nothing_and_says_so(self, tmp_path, caplog):
+        missing = tmp_path / "not-here"
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._cache_entries(missing) == []
+
+        assert str(missing) in caplog.text
+
+
+class TestCacheCeilingConfiguration:
+    def test_the_ceiling_defaults_to_the_documented_size(self, monkeypatch):
+        monkeypatch.delenv(cache.ENV_MAX_CACHE_BYTES, raising=False)
+
+        assert cache.max_cache_bytes() == cache.DEFAULT_MAX_CACHE_BYTES
+
+    def test_an_explicit_ceiling_is_honoured(self, monkeypatch):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "512")
+
+        assert cache.max_cache_bytes() == 512
+
+    def test_zero_disables_the_sweep_rather_than_evicting_everything(self, monkeypatch):
+        """The two instructions a single integer would have conflated.
+
+        A ceiling of zero, read literally, deletes every database on the
+        machine after every index run.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+
+        assert cache.max_cache_bytes() is None
+
+    @pytest.mark.parametrize("value", ["4GB", "-1", "", "  "])
+    def test_a_value_that_is_not_a_byte_count_is_reported_and_ignored(
+        self, monkeypatch, caplog, value
+    ):
+        """Reading a typo as "no ceiling" is the exact failure this bound removes.
+
+        It would also be invisible: the sweep would never fire and the
+        directory would grow exactly as it did before anybody set the variable.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, value)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache.max_cache_bytes() == cache.DEFAULT_MAX_CACHE_BYTES
+
+        assert (cache.ENV_MAX_CACHE_BYTES in caplog.text) is bool(value.strip())
+
+
+class TestCacheCeilingEnforcement:
+    """The sweep against real databases, run from the index path that owns it."""
+
+    @pytest.fixture
+    def victim(self, tmp_path, extractor):
+        """A second indexed repository, backdated so any sweep evicts it first.
+
+        Backdated with ``utime`` rather than by indexing it earlier: mtime
+        ordering between two operations in one test is a fact about the
+        filesystem's timestamp resolution, and a test resting on that answers
+        differently on a filesystem with coarser stamps.
+        """
+        root = tmp_path / "other"
+        root.mkdir()
+        (root / "core.py").write_text(CORE, encoding="utf-8")
+        os.utime(cache.build_index(root, extractor).database, (1.0, 1.0))
+        return root
+
+    def test_an_index_run_evicts_another_repository_over_the_ceiling(
+        self, repo, extractor, victim, monkeypatch
+    ):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+
+        report = cache.build_index(repo, extractor)
+
+        assert not cache.cache_path(victim.resolve()).exists()
+        assert report.database.exists()
+        assert report.evicted.databases == 1
+        assert report.evicted.size > 0
+
+    def test_the_evicted_directory_keeps_its_lock_file(self, repo, extractor, victim, monkeypatch):
+        """Unlinking it would let a second process lock a different file of the same name.
+
+        :mod:`agentless_mcp.util.filelock` states the rule; the sweep is the
+        one caller that would plausibly break it, because it is deleting the
+        directory's whole reason to exist.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        database = cache.cache_path(victim.resolve())
+
+        cache.build_index(repo, extractor)
+
+        assert not database.exists()
+        assert (database.parent / cache.LOCK_NAME).exists()
+
+    def test_an_evicted_repository_still_answers_the_same_map(
+        self, repo, victim, services, capsys, monkeypatch
+    ):
+        """Eviction is a cost, never a wrong answer, which is what makes it safe.
+
+        A reader that opens an evicted database finds nothing and takes the
+        same degradation the package already takes for a missing index: it
+        parses on demand, and renders the identical map from it.
+        """
+        database = cache.cache_path(victim.resolve())
+        assert invoke(services, victim, "map") == EXIT_OK
+        cached = capsys.readouterr().out
+        # That read stamped the database as used, which is the sweep's entire
+        # ordering signal. Backdated again, so this test is about eviction and
+        # not about the stamp.
+        os.utime(database, (1.0, 1.0))
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+
+        cache.build_index(repo, services.extractor)
+
+        assert not database.exists()
+        assert invoke(services, victim, "map") == EXIT_OK
+        assert body(capsys.readouterr().out) == body(cached)
+
+    def test_a_database_a_concurrent_run_holds_the_lock_on_is_kept(
+        self, repo, extractor, victim, monkeypatch, caplog
+    ):
+        """A live index run is never deleted out from underneath itself."""
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        database = cache.cache_path(victim.resolve())
+        flavour = platforms.family(sys.platform)
+
+        with (
+            filelock.exclusive(database.parent / cache.LOCK_NAME, flavour=flavour),
+            caplog.at_level(logging.INFO, logger=cache.logger.name),
+        ):
+            report = cache.build_index(repo, extractor)
+
+        assert database.exists()
+        assert report.evicted.databases == 0
+        assert str(database) in caplog.text
+
+    def test_a_disabled_ceiling_evicts_nothing(self, repo, extractor, victim, monkeypatch):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+
+        report = cache.build_index(repo, extractor)
+
+        assert cache.cache_path(victim.resolve()).exists()
+        assert report.evicted == cache.NOTHING_EVICTED
+
+    def test_the_summary_line_names_an_eviction_only_when_one_happened(
+        self, repo, extractor, victim, monkeypatch
+    ):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+        quiet = cache.build_index(repo, extractor)
+        assert "evicted" not in quiet.summary_line()
+        assert quiet.as_dict()["evicted"] == {"databases": 0, "bytes": 0}
+
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        loud = cache.build_index(repo, extractor, force=True)
+
+        assert "evicted 1 cached repositories" in loud.summary_line()
+        assert loud.as_dict()["evicted"]["databases"] == 1

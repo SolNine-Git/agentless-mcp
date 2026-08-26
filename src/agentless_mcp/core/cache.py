@@ -157,8 +157,26 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 SCHEMA_VERSION = 12
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
+ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
 DATABASE_NAME = "tags.db"
 LOCK_NAME = "write.lock"
+
+# The byte ceiling on the whole cache root, enforced after every index run.
+#
+# There was no ceiling before, and the cache root is written by auto-indexing
+# rather than by a command anybody types, so nothing bounded it. Measured on
+# one developer machine on 2026-08-26: 490 databases, 5.67 GB, the largest
+# 644 MB and the median under a megabyte. The mass is in a few dozen entries
+# and the long tail is nearly free, which is why this is a size cap and not an
+# age cap -- on that same machine nothing was older than fourteen days, so any
+# defensible age rule would have evicted nothing at all while the directory
+# kept growing.
+#
+# 4 GiB holds the largest repository observed six times over, so a working set
+# of several large repositories survives a sweep, and it is below what the
+# unbounded directory had already reached. Set ``AGENTLESS_MCP_MAX_CACHE_BYTES``
+# to raise it, or to 0 to keep the old unbounded behaviour.
+DEFAULT_MAX_CACHE_BYTES = 4 * 1024**3
 
 logger = logging.getLogger(__name__)
 
@@ -730,6 +748,12 @@ def _open_indexed(
         _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, opened.note))
 
+    # Stamped here, at the one point that proves the index was both usable and
+    # actually used: past the schema, repository and generation checks, and
+    # about to be handed to a caller as its source of facts. Stamping on entry
+    # would keep a database alive for being probed and rejected.
+    touch_database(database)
+
     return CachedSource(
         connection,
         extractor,
@@ -778,6 +802,44 @@ class IndexSkip:
     reason: str
 
 
+# The sidecars a database is accounted for and deleted with. One tuple rather
+# than the literal repeated in ``_discard`` and ``_entry_bytes``, because the
+# sweep's arithmetic is a promise about what the delete reclaims: if the two
+# lists drift, the report says it freed bytes that are still on the disk.
+DATABASE_SUFFIXES = ("", "-wal", "-shm")
+
+
+@dataclass(frozen=True)
+class _CacheEntry:
+    """One repository's cached database, as the sweep weighs it.
+
+    ``used_at`` is the database's mtime, which :func:`touch_database` refreshes
+    on every successful open. Without that refresh it would mean "last
+    written", and a repository that is read constantly but has not changed in
+    a month is exactly the one an index is most worth keeping.
+    """
+
+    database: Path
+    size: int
+    used_at: float
+
+
+@dataclass(frozen=True)
+class EvictionReport:
+    """What one sweep of the cache root deleted."""
+
+    databases: int
+    size: int
+
+    @property
+    def happened(self) -> bool:
+        """True when the sweep deleted anything."""
+        return self.databases > 0
+
+
+NOTHING_EVICTED = EvictionReport(databases=0, size=0)
+
+
 @dataclass(frozen=True)
 class IndexReport:
     """What one index run did, in the numbers its summary line prints."""
@@ -793,6 +855,11 @@ class IndexReport:
     refs: int
     failures: tuple[IndexFailure, ...]
     skipped_files: tuple[IndexSkip, ...]
+    # What the ceiling sweep deleted from other repositories after this run.
+    # Appended with a default rather than placed by meaning, for the reason
+    # ``CacheStatus.repo_root`` gives: this is a shipped dataclass and a
+    # positional insertion would break its callers.
+    evicted: EvictionReport = NOTHING_EVICTED
 
     @property
     def errors(self) -> int:
@@ -805,22 +872,42 @@ class IndexReport:
         return len(self.skipped_files)
 
     def summary_line(self) -> str:
-        """Return the one-line summary the CLI prints."""
+        """Return the one-line summary the CLI prints.
+
+        The eviction clause appears only when a sweep deleted something.
+        Printing "evicted 0" on every run would train a reader to skip the
+        field, and this is the one number on the line that describes a
+        deletion outside the repository being indexed.
+        """
+        trimmed = (
+            f", evicted {self.evicted.databases} cached repositories ({self.evicted.size} bytes)"
+            if self.evicted.happened
+            else ""
+        )
         return (
             f"indexed {self.indexed}, reused {self.reused}, pruned {self.pruned}, "
             f"skipped {self.skipped}, errors {self.errors}: {self.files} files, "
             f"{self.tags} tags, {self.imports} imports, {self.refs} refs "
-            f"at g:{self.generation} in {self.database}"
+            f"at g:{self.generation} in {self.database}{trimmed}"
         )
 
     def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this report."""
+        """Return the JSON form of this report.
+
+        ``evicted`` is always present here, unlike in the summary line: a JSON
+        consumer reads a key it looked up, so a field that appears only
+        sometimes is a field it has to guard for no gain.
+        """
         return {
             "database": str(self.database),
             "generation": self.generation,
             "indexed": self.indexed,
             "reused": self.reused,
             "pruned": self.pruned,
+            "evicted": {
+                "databases": self.evicted.databases,
+                "bytes": self.evicted.size,
+            },
             "errors": self.errors,
             "files": self.files,
             "tags": self.tags,
@@ -871,6 +958,40 @@ class _IndexPlan:
 def auto_index_disabled() -> bool:
     """True when the environment opts out of the background index refresh."""
     return os.environ.get(ENV_NO_AUTO_INDEX, "") not in ("", "0", "false", "False")
+
+
+def max_cache_bytes() -> int | None:
+    """Return the byte ceiling on the cache root, or None when it is disabled.
+
+    ``0`` disables the sweep and restores the unbounded behaviour, which is
+    the reason this returns an option rather than a very large number: "do not
+    enforce a ceiling" and "enforce a ceiling of zero" are different
+    instructions, and the second one would delete every database on the
+    machine after every index run.
+
+    A value that is not a non-negative integer is reported and ignored. The
+    alternative -- reading a typo as "no ceiling" -- is the failure mode this
+    whole function exists to remove, and it would be invisible: the sweep
+    would simply never fire and the directory would grow exactly as it did
+    before anybody set the variable.
+    """
+    configured = os.environ.get(ENV_MAX_CACHE_BYTES, "").strip()
+    if not configured:
+        return DEFAULT_MAX_CACHE_BYTES
+    try:
+        limit = int(configured)
+    except ValueError:
+        limit = -1
+    if limit < 0:
+        logger.warning(
+            "%s=%r is not a non-negative integer and was ignored; the default ceiling of "
+            "%d bytes applies. Set it to 0 to disable the sweep",
+            ENV_MAX_CACHE_BYTES,
+            configured,
+            DEFAULT_MAX_CACHE_BYTES,
+        )
+        return DEFAULT_MAX_CACHE_BYTES
+    return limit or None
 
 
 # The generation recorded for an attempt that never got far enough to read
@@ -1143,6 +1264,12 @@ def build_index(
     # ``errors`` and ``pruned`` on the same summary line and made ``pruned``
     # stop meaning "files that left the repository".
     pruned = len([path for path in previous if path not in plan.present])
+
+    # After the lock is released, not inside it. The sweep takes the write
+    # lock of every database it deletes, and this run's own lock is one it
+    # would otherwise be holding while asking for it again.
+    evicted = enforce_cache_limit(keep=database)
+
     return IndexReport(
         database=database,
         generation=generation,
@@ -1155,6 +1282,7 @@ def build_index(
         refs=counts.refs,
         failures=plan.failures,
         skipped_files=plan.skips,
+        evicted=evicted,
     )
 
 
@@ -1795,7 +1923,7 @@ def _discard(database: Path) -> None:
     Callers must already hold the write lock. The read path calls
     :func:`_discard_unlocked` instead, which takes it.
     """
-    for suffix in ("", "-wal", "-shm"):
+    for suffix in DATABASE_SUFFIXES:
         Path(str(database) + suffix).unlink(missing_ok=True)
 
 
@@ -1824,3 +1952,155 @@ def _discard_unlocked(database: Path, repo_root: Path) -> None:
         )
     except OSError as exc:
         logger.warning("tag cache %s could not be discarded: %r", database, exc)
+
+
+def _entry_bytes(database: Path) -> int:
+    """Return what deleting ``database`` and its sidecars would reclaim.
+
+    A missing sidecar contributes nothing rather than raising: a database
+    checkpointed since the scan has no ``-wal``, and that is the normal
+    resting state, not a fault.
+    """
+    total = 0
+    for suffix in DATABASE_SUFFIXES:
+        try:
+            total += Path(str(database) + suffix).stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _cache_entries(root: Path) -> list[_CacheEntry]:
+    """List every cached database under ``root``, with its size and last use.
+
+    A directory whose database has already gone contributes nothing: the sweep
+    leaves ``write.lock`` behind (see :func:`enforce_cache_limit`), so an
+    evicted repository stays in the listing as an empty directory and must not
+    be weighed or deleted a second time.
+    """
+    entries: list[_CacheEntry] = []
+    try:
+        candidates = sorted(root.iterdir())
+    except OSError as exc:
+        # Not fatal and not silent. The sweep is an optimization on an
+        # optimization; a cache root that cannot be listed means no eviction
+        # this run, and the run that produced a usable index still succeeded.
+        logger.warning("cache root %s could not be listed, so nothing was evicted: %r", root, exc)
+        return []
+
+    for directory in candidates:
+        database = directory / DATABASE_NAME
+        try:
+            used_at = database.stat().st_mtime
+        except OSError:
+            continue
+        entries.append(_CacheEntry(database=database, size=_entry_bytes(database), used_at=used_at))
+    return entries
+
+
+def _eviction_plan(entries: Sequence[_CacheEntry], limit: int, *, keep: Path) -> list[_CacheEntry]:
+    """Return the databases to delete, in the order the sweep should delete them.
+
+    Least recently used first, which is the whole policy: walk the entries
+    most-recent first, keep them while the running total fits under ``limit``,
+    and evict the rest.
+
+    Two entries are never candidates. ``keep`` is the database the calling
+    index run just built, and evicting it would make a repository larger than
+    the ceiling delete its own index at the end of every run and rebuild it at
+    the start of the next one. The most recently used entry is spared for the
+    same reason from the other direction: without it, one repository bigger
+    than the whole ceiling would be evicted by any other repository's sweep and
+    rebuilt on its next call, forever. In both cases the ceiling is exceeded on
+    purpose, and the alternative is a sweep that never converges.
+    """
+    ordered = sorted(entries, key=lambda entry: entry.used_at, reverse=True)
+    evict: list[_CacheEntry] = []
+    total = 0
+    for position, entry in enumerate(ordered):
+        if entry.database == keep or position == 0:
+            total += entry.size
+            continue
+        if total + entry.size <= limit:
+            total += entry.size
+            continue
+        evict.append(entry)
+    return evict
+
+
+def enforce_cache_limit(*, keep: Path) -> EvictionReport:
+    """Delete least-recently-used databases until the cache root fits its ceiling.
+
+    Called after an index run rather than on the read path, because indexing is
+    the only thing that makes the cache grow and the read path is the hot one.
+    That also makes the owner of the growth the owner of the bound.
+
+    Evicting a cache is always safe, which is what lets this run without
+    coordinating with readers. A reader that opens a database after the delete
+    finds nothing, reports ``cache: none`` and parses on demand -- the same
+    degradation the package already takes for a missing, corrupt or
+    older-schema index -- and a reader holding the file open keeps reading the
+    unlinked inode until it closes. The write lock is still taken per victim,
+    so a concurrent index run is never deleted out from underneath.
+
+    ``write.lock`` and the directory holding it stay.
+    :mod:`agentless_mcp.util.filelock` documents why the lock file is never
+    unlinked: a second process would create and lock a *different* file of the
+    same name while the first still holds the old one, and the mutual exclusion
+    the index depends on would quietly stop existing. An empty directory with a
+    zero-byte lock file costs an inode, and this sweep is about gigabytes.
+    """
+    limit = max_cache_bytes()
+    if limit is None:
+        return NOTHING_EVICTED
+
+    victims = _eviction_plan(_cache_entries(cache_root()), limit, keep=keep)
+    if not victims:
+        return NOTHING_EVICTED
+
+    deleted = 0
+    freed = 0
+    for entry in victims:
+        # The lock's subject is the cache directory, not a repository: the
+        # sweep never resolves the repository a victim describes, and reading
+        # it back out of ``meta`` would mean opening every database it is
+        # about to delete.
+        try:
+            with _write_lock(entry.database.parent, entry.database.parent):
+                _discard(entry.database)
+        except CacheLocked as exc:
+            logger.info("kept %s: an index run holds its write lock (%s)", entry.database, exc)
+            continue
+        except OSError as exc:
+            logger.warning("could not evict %s: %r", entry.database, exc)
+            continue
+        deleted += 1
+        freed += entry.size
+
+    if deleted:
+        logger.info(
+            "cache root trimmed to its %d byte ceiling: %d databases deleted, %d bytes freed",
+            limit,
+            deleted,
+            freed,
+        )
+    return EvictionReport(databases=deleted, size=freed)
+
+
+def touch_database(database: Path) -> None:
+    """Record that ``database`` was used now, for the eviction sweep's ordering.
+
+    One ``utime`` on a file the caller has already opened, which is what turns
+    :func:`enforce_cache_limit` from least-recently-*written* into least
+    recently *used*. Without it a repository nobody has committed to in a month
+    looks abandoned to the sweep however often it is read, and its index -- the
+    expensive one to rebuild -- is the first thing deleted.
+
+    A failure degrades the ordering and nothing else, so it is logged at debug
+    and not raised: a cache on a read-only mount cannot grow, so a sweep that
+    mis-orders it has nothing to delete anyway.
+    """
+    try:
+        os.utime(database)
+    except OSError as exc:
+        logger.debug("could not stamp %s as used: %r", database, exc)

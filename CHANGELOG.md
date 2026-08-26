@@ -74,7 +74,77 @@ the files it counted.
   keeps its own row. One group of 53 references rendered 53 rows and now
   renders 24.
 
+- **The cache root has a size ceiling, enforced after every index run.**
+  Nothing bounded it before. The cache root grows through the server's own
+  background indexing rather than through a command anybody types, so no
+  operator was ever in a position to notice: one developer machine held **490
+  databases and 5.67 GB**, the largest 644 MB and the median under a
+  megabyte. Each index run now trims the root back to 4 GiB, deleting whole
+  repository caches least-recently-used first, and names them on the summary
+  line when it deletes any. `AGENTLESS_MCP_MAX_CACHE_BYTES` sets another
+  ceiling, or `0` restores the unbounded behaviour.
+
+  A size cap rather than an age cap, decided on that distribution: nothing in
+  those 490 databases was older than fourteen days, so any defensible age rule
+  would have evicted nothing while the directory kept growing. The mass is in
+  a few dozen entries and the long tail is nearly free.
+
+  Eviction is a cost and never a wrong answer, which is what makes it safe to
+  run unattended. A reader that opens an evicted database finds nothing and
+  takes the degradation the package already takes for a missing index: it
+  parses on demand and renders the identical output. Two entries are never
+  evicted -- the database the calling run just built, and the most recently
+  used one -- because a repository larger than the whole ceiling would
+  otherwise delete its own index at the end of every run and rebuild it at the
+  start of the next. The write lock is taken per victim, so a concurrent index
+  run is never deleted out from underneath, and `write.lock` itself is left in
+  place, because unlinking it would let a second process lock a *different*
+  file of the same name.
+
+  Ordering is least-recently-*used*, not least-recently-written: a successful
+  cached open stamps the database. Without that, a repository read constantly
+  but not committed to in a month looks abandoned, and its index is the
+  expensive one to rebuild.
+
 ### Changed
+
+- **`walk_nodes` traverses with a cursor instead of `node.children`.** It is
+  the hottest function in the package, and reading `.children` materializes a
+  Python `Node` object for every child of every node visited -- so the walk
+  allocated the whole tree twice and paid an FFI crossing per level. A
+  `TreeCursor` moves inside the C tree and crosses once per node.
+
+  Measured on this repository's own `core/extractor.py`, 28,546 nodes,
+  tree-sitter 0.26: **5.18 ms to 1.75 ms**, against a 7.52 ms native parse of
+  the same file. End to end an uncached `map` of this repository went from
+  1.64 s to 1.48 s, and an uncached `refs` from 2.57 s to 2.38 s -- about
+  10%, because tree-sitter's own parse is C already and is the floor. Order
+  and output are unchanged, which they had to be: callers index into the list
+  and read the first match.
+
+- **`_scope_tree` traverses with a cursor too, and reads `Node.id` once.** It
+  is the second `.children` walk over the same tree: `_python_roles` calls
+  `walk_nodes` for the flat list and then `_scope_tree` for the scope index,
+  so every Python file was fully materialized twice. The old stack carried
+  `(node, boundary)` pairs to push the enclosing scope downward; a cursor
+  reports a position rather than a payload per child, so the boundary in force
+  is now a stack parallel to the descent -- pushed on a move to a first child,
+  popped on a move back to a parent. Siblings share a parent and so share an
+  inherited boundary, which is why moving between them touches nothing.
+
+  Measured on the same 28,546-node file: **6.25 ms to 4.07 ms**, of which
+  0.37 ms is reading `node.id` once per node instead of four times -- it is a
+  binding property, not an attribute, so each read was a crossing for a value
+  that cannot change. Output is identical, checked field by field against the
+  old implementation over all 152 Python files in this repository, over 300
+  random subnode roots, and over the empty-boundary case.
+
+  Cumulatively with `walk_nodes`, an uncached `map` of this repository went
+  from **1.64 s to 1.35 s** and an uncached `refs` from **2.57 s to 2.25 s**.
+  Fusing the two walks into one pass was measured and rejected: a bare cursor
+  traversal of that file costs 1.24 ms, which is the ceiling on what fusing
+  could save, and it would couple `walk_nodes` -- a general utility with about
+  twenty callers -- to one language's scope rules.
 
 - **Declaration identifiers are marked in the extractor for every language,
   not inferred from a line.** `_reference_edges` refused every occurrence of a

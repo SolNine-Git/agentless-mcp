@@ -705,27 +705,64 @@ class _ScopeTree:
             boundary = self.outer_of[boundary]
 
 
+# Asserted by both cursor walks in this module. One constant so the two agree,
+# and inline at each site rather than behind a helper: these are the two
+# hottest loops here, and a Python call per node would cost more than the
+# traversal it guards. :func:`walk_nodes` carries the reasoning.
+CURSOR_NODE_MISSING = "a cursor positioned on a parsed tree always has a node"
+
+
 def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
     """Index every node under ``root`` by the scope boundaries above it.
 
-    One pre-order walk carrying the innermost boundary downward, the same
-    shape as :func:`declarations_under`, and iterative for the same reason: a
-    deep chain of nodes must not exhaust the interpreter's stack.
+    One pre-order walk carrying the innermost boundary downward, and iterative
+    for the reason :func:`walk_nodes` gives: a deep chain of nodes must not
+    exhaust the interpreter's stack.
+
+    Over a ``TreeCursor`` for the reason :func:`walk_nodes` gives as well, and
+    this is the site that paid most for it. The walk visits exactly the nodes
+    ``walk_nodes`` has already visited for the same file, so every
+    ``node.children`` access here rebuilt a Python ``Node`` that call had just
+    built and dropped. Measured on this repository's own ``core/extractor.py``
+    (28,546 nodes): 6.25 ms against 1.91 ms for the cursor walk over the same
+    tree.
+
+    ``enclosing`` replaces the ``(node, boundary)`` pairs the old stack held.
+    A cursor reports a position rather than a payload per child, so the
+    boundary in force is kept as a stack parallel to the descent: pushed when
+    the cursor moves to a first child, popped when it moves back to a parent.
+    Siblings share a parent and therefore share an inherited boundary, which
+    is why moving between them touches nothing. That is the same information
+    the pairs carried, without a tuple per node.
     """
     boundary_of: dict[int, int | None] = {}
     outer_of: dict[int, int | None] = {}
     node_of: dict[int, Node] = {}
-    stack: list[tuple[Node, int | None]] = [(root, None)]
-    while stack:
-        node, enclosing = stack.pop()
-        innermost = enclosing
-        if node.id in boundary_ids:
-            outer_of[node.id] = enclosing
-            node_of[node.id] = node
-            innermost = node.id
-        boundary_of[node.id] = innermost
-        stack.extend((child, innermost) for child in reversed(node.children))
-    return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+    cursor = root.walk()
+    enclosing: list[int | None] = [None]
+    while True:
+        node = cursor.node
+        if node is None:
+            raise AssertionError(CURSOR_NODE_MISSING)
+        # Read once. ``Node.id`` is a binding property rather than an
+        # attribute, so the four reads this loop used to make were four
+        # crossings per node for a value that cannot change: 4.44 ms to
+        # 4.07 ms on the file measured above.
+        node_id = node.id
+        inherited = enclosing[-1]
+        innermost = inherited
+        if node_id in boundary_ids:
+            outer_of[node_id] = inherited
+            node_of[node_id] = node
+            innermost = node_id
+        boundary_of[node_id] = innermost
+        if cursor.goto_first_child():
+            enclosing.append(innermost)
+            continue
+        while not cursor.goto_next_sibling():
+            if not cursor.goto_parent():
+                return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+            enclosing.pop()
 
 
 @dataclass(frozen=True)
@@ -1513,8 +1550,8 @@ def walk_nodes(root: Node) -> list[Node]:
     ``found`` -- and paid an FFI crossing per level. The cursor moves inside
     the C tree and only ``cursor.node`` crosses, which is one object per node
     and no allocation for the traversal itself. Measured on this repository's
-    own ``core/extractor.py`` (28,499 nodes, tree-sitter 0.26): 5.27 ms for
-    the ``.children`` walk against 1.63 ms for this one, beside a 7.66 ms
+    own ``core/extractor.py`` (28,546 nodes, tree-sitter 0.26): 5.18 ms for
+    the ``.children`` walk against 1.75 ms for this one, beside a 7.52 ms
     native parse of the same file.
 
     The order is unchanged, and it has to be: callers index into this list and
@@ -1540,8 +1577,7 @@ def walk_nodes(root: Node) -> list[Node]:
             # would know to look for. ``AssertionError`` is deliberately
             # outside ``cache.EXTRACTION_FAILURES``, so this surfaces as the
             # defect it would be and not as one file quietly skipped.
-            unreachable = "a cursor positioned on a parsed tree always has a node"
-            raise AssertionError(unreachable)
+            raise AssertionError(CURSOR_NODE_MISSING)
         found.append(node)
         if cursor.goto_first_child():
             continue
