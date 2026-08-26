@@ -44,6 +44,37 @@ class TestSnapshot:
 
         assert gitinfo.dirty_count(root) == 2
 
+    def test_an_unstaged_modification_keeps_its_whole_path(self, make_git_repo):
+        """The porcelain status of an unstaged edit opens with a space.
+
+        Stripping the output would delete that space and shift the path one
+        character left, so the receipt would name ``.py`` files that are not
+        the ones that changed.
+        """
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+
+        assert gitinfo.snapshot(root).dirty_paths == ("a.py",)
+
+    def test_a_rename_is_one_entry_naming_its_destination(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        sandbox.run_git(root, ["mv", "a.py", "renamed.py"])
+        snapshot = gitinfo.snapshot(root)
+
+        assert snapshot.dirty_paths == ("renamed.py",)
+        assert snapshot.dirty_count == 1
+
+    def test_a_path_holding_the_rename_arrow_is_still_one_path(self, make_git_repo):
+        """``a -> b`` is a legal filename and git does not quote it.
+
+        Without ``-z`` this file and a rename are spelled identically, so the
+        parse would report a path that never existed.
+        """
+        root = make_git_repo(SAMPLE)
+        (root / "a -> b.py").write_text("y = 1\n", encoding="utf-8")
+
+        assert gitinfo.snapshot(root).dirty_paths == ("a -> b.py",)
+
     def test_non_git_directory_is_all_unknown_with_a_note(self, tmp_path):
         plain = tmp_path / "plain"
         plain.mkdir()

@@ -1,4 +1,4 @@
-"""Git state for the response receipt: root, HEAD, tree OID and dirty count.
+"""Git state for the response receipt: root, HEAD, tree OID and dirty paths.
 
 Every answer this package produces carries the state of the repository it was
 computed from, so an agent can tell a stale answer from a fresh one and a
@@ -92,6 +92,7 @@ class GitSnapshot:
     tree_oid: str | None
     dirty_count: int | None
     note: str
+    dirty_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -123,7 +124,7 @@ def tree_oid(root: Path) -> str | None:
 
 def dirty_count(root: Path) -> int | None:
     """Return the number of modified or untracked paths; None when unknown."""
-    return _parse_dirty(_run(root, ["status", "--porcelain"])).count
+    return _parse_dirty(_run(root, ["status", "--porcelain", "-z"], strip=False)).count
 
 
 def snapshot(root: Path) -> GitSnapshot:
@@ -138,35 +139,73 @@ def snapshot(root: Path) -> GitSnapshot:
 
     head = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD"])
     tree = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD^{tree}"])
-    status = _parse_dirty(_run(root, ["status", "--porcelain"]))
+    status = _parse_dirty(_run(root, ["status", "--porcelain", "-z"], strip=False))
 
     notes = [note for note in (head.note, tree.note, status.note) if note]
     return GitSnapshot(
         head_sha=head.text,
         tree_oid=tree.text,
         dirty_count=status.count,
+        dirty_paths=status.paths,
         note="; ".join(notes),
     )
 
 
 @dataclass(frozen=True)
 class _DirtyOutcome:
-    """A porcelain status parsed into a count, or the reason it has none."""
+    """A porcelain status parsed into a count and its paths, or why it has none."""
 
     count: int | None
+    paths: tuple[str, ...]
     note: str
 
 
+# A porcelain entry is two status characters, a space, then the path, so a
+# record shorter than this carries no path to read.
+_SHORTEST_ENTRY = 4
+
+
 def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
-    """Count the porcelain lines; unknown stays unknown."""
+    """Parse one porcelain status into an entry count and the paths; unknown stays unknown.
+
+    Records are NUL-separated because NUL is the one byte a path cannot
+    contain. Without ``-z`` git renders a rename as ``R  old -> new``, and a
+    file genuinely named ``old -> new`` is spelled identically, so the paths
+    would be a guess on exactly the tree that needs them named.
+
+    A rename or a copy emits its destination as the entry and its source as
+    the record straight after. The destination is the path that now exists, so
+    the source is consumed here rather than counted as a second change.
+    """
     if outcome.text is None:
-        return _DirtyOutcome(count=None, note=outcome.note)
-    lines = [line for line in outcome.text.splitlines() if line.strip()]
-    return _DirtyOutcome(count=len(lines), note=outcome.note)
+        return _DirtyOutcome(count=None, paths=(), note=outcome.note)
+
+    records = [record for record in outcome.text.split("\0") if record]
+    paths: list[str] = []
+    entries = 0
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        entries += 1
+        if len(record) >= _SHORTEST_ENTRY:
+            paths.append(record[3:])
+        if "R" in record[:2] or "C" in record[:2]:
+            # The source record belongs to the entry just read, not to a
+            # change of its own.
+            index += 1
+    return _DirtyOutcome(count=entries, paths=tuple(paths), note=outcome.note)
 
 
-def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
-    """Run one bounded git command; every failure becomes a note, never a raise."""
+def _run(cwd: Path, arguments: Sequence[str], *, strip: bool = True) -> _Outcome:
+    """Run one bounded git command; every failure becomes a note, never a raise.
+
+    ``strip`` is what a one-value read wants: a SHA arrives with a trailing
+    newline that nothing downstream should carry. A porcelain status wants the
+    opposite. Its first record opens with the two status characters, and an
+    unstaged modification spells the first of them as a space, so stripping
+    the output deletes half the status and shifts the path it precedes.
+    """
     subcommand = arguments[0] if arguments else "git"
     command = ["git", *HARDENING_PREFIX, "-C", str(cwd), *arguments]
     try:
@@ -197,4 +236,5 @@ def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
         first = detail[0] if detail else "no detail"
         return _Outcome(None, f"git {subcommand} exited {completed.returncode}: {first}")
 
-    return _Outcome(completed.stdout.decode("utf-8", errors="replace").strip(), "")
+    text = completed.stdout.decode("utf-8", errors="replace")
+    return _Outcome(text.strip() if strip else text, "")

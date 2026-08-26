@@ -188,7 +188,7 @@ class TestSectionText:
         text = guide.section_text("refs")
         assert text is not None
         assert text.splitlines()[0].startswith("### `refs`")
-        assert "Read the top two tiers as callers" in text
+        assert "Read the top four tiers as callers" in text
 
     def test_a_parent_section_contains_its_children(self):
         """The overlap is deliberate: the reference and one entry in it."""

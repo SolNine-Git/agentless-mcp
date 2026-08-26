@@ -535,6 +535,24 @@ class TestSymbolService:
         assert ("ledger.py", "Ledger.post") in callers
         assert ("core.py", "PriceBook.cost_of") in callers
 
+    def test_an_unsubstituted_path_placeholder_is_refused_by_name(self, tmp_path, extractor):
+        """The one failure the shared id pattern can cause, made self-correcting.
+
+        `py:<file>::quote` parses, and the file it names does not exist, so
+        this used to answer "no matching symbols" -- which reads as "that
+        symbol is gone" rather than "that id was never finished". (#43)
+        """
+        (tmp_path / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            ctx, [f"py:{render.PATH_PLACEHOLDER}::quote"]
+        )
+
+        assert result.cards == ()
+        assert len(result.unresolved) == 1
+        assert "still carries the <file> placeholder" in result.unresolved[0][1]
+
     def test_a_group_mixing_module_level_and_symbol_sites_still_prints_one_pattern(
         self, tmp_path, extractor
     ):
@@ -559,7 +577,7 @@ class TestSymbolService:
 
         assert group.id_prefix == "py"
         assert [site.enclosing for site in group.sites] == [render.MODULE_LEVEL, "ask"]
-        assert "stable ids: py:caller.py::<QualifiedName>" in text
+        assert "stable ids: py:<file>::<QualifiedName>" in text
         # The row with no symbol has no id to shorten, and says so rather
         # than printing a name the pattern cannot complete.
         assert f"  {render.MODULE_LEVEL} @1" in text

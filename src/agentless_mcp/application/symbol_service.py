@@ -530,6 +530,16 @@ class SymbolService:
         reinterpreted, with the correction shown as though it had been asked
         for.
         """
+        if render.PATH_PLACEHOLDER in raw:
+            # An unsubstituted placeholder parses, and the file it names does
+            # not exist, so this would otherwise answer "no matching symbols"
+            # -- which reads as "that symbol is gone" rather than "that id was
+            # never finished". The one failure the shared id pattern can cause
+            # is therefore the one failure that says what to do about it.
+            return None, MESSAGES.stable_id_placeholder.format(
+                id=raw, placeholder=render.PATH_PLACEHOLDER
+            )
+
         try:
             parsed = parse_stable_id(raw)
         except ValueError as exc:
@@ -826,7 +836,7 @@ def _ref_tier(
     the evidence is the one judgement here, and the group is five fields the
     caller already holds.
     """
-    resolution = resolver.resolve(name, path)
+    resolution = resolver.resolve_reference(name, path)
     if resolution is None:
         return resolve.Tier.AMBIGUOUS
     resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}

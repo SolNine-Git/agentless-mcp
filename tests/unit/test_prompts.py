@@ -109,6 +109,8 @@ MESSAGE_ARGUMENTS = {
     "map_file_unreached": {"count": 9},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
     "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
+    "stable_ids_shared": {"pattern": "py:<file>::<QualifiedName>", "placeholder": "<file>"},
+    "stable_id_placeholder": {"id": "py:<file>::App.run", "placeholder": "<file>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},
     "slice_range_not_a_range": {"start": 60, "end": 30, "path": "src/app/svc.py"},

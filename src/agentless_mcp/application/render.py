@@ -68,6 +68,7 @@ from typing import Any, overload
 
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
+from agentless_mcp.core.resolve import TIER_ORDER
 from agentless_mcp.core.symbols import StableId, language_prefix
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.textsafe import one_line
@@ -90,6 +91,15 @@ MODULE_LEVEL = "(module level)"
 # What the id pattern stands the symbol's own name in for. Spelled once so the
 # pattern line and the guide agree.
 QUALIFIED_NAME_PLACEHOLDER = "<QualifiedName>"
+
+# Stands in for the repository-relative path in the one id pattern a fan-in
+# listing prints for the whole answer. The path is on each group's own header,
+# so respelling it under every header cost a path per group and said nothing
+# the line above had not. Public because `symbol_service` refuses an id that
+# still carries it: an unsubstituted placeholder parses, and an id naming a
+# file that does not exist answers "no matching symbols", which reads as "this
+# symbol is gone" rather than "you built the id wrong".
+PATH_PLACEHOLDER = "<file>"
 
 # What an overview header names when the file has no language: a path that
 # reached no grammar, or one the walk refused. The header needs *some*
@@ -1835,14 +1845,15 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     files_omitted = groups.files_omitted if isinstance(groups, RefListing) else 0
     limit = groups.limit if isinstance(groups, RefListing) else 0
     blocks = [f"{total} {_references(total)} to {one_line(target)}"]
-    for group in groups:
-        labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
-        sites = len(group.sites)
-        lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
-        pattern = _stable_ids_line(group.id_prefix, group.path)
-        if pattern:
-            lines.append(pattern)
-        lines.extend(_render_site(site) for site in group.sites)
+    shared = _shared_ids_line(groups)
+    if shared:
+        blocks[0] = f"{blocks[0]}\n{shared}"
+    for tier_label, tier_groups in _by_tier(groups):
+        lines = [one_line(tier_label)] if tier_label else []
+        for group in tier_groups:
+            lines.extend(
+                _group_block(group, shared_pattern=bool(shared), indented=bool(tier_label))
+            )
         blocks.append("\n".join(lines))
     if isinstance(groups, _Bounded) and groups.omitted:
         note = _omitted_line(groups.omitted, "references", limit=limit)
@@ -1921,16 +1932,102 @@ def _render_card(card: SymbolCard) -> str:
     return "\n".join(lines)
 
 
-def _render_site(site: RefSite) -> str:
-    """Render one reference row beneath the file header that locates it.
+def _shared_ids_line(groups: Sequence[RefGroup]) -> str:
+    """Render the one id pattern a whole fan-in listing can share, or nothing.
 
-    One name and one position. The row used to carry the enclosing symbol's
+    Shared only when every group that carries an id agrees on the language
+    prefix, which is what the pattern's first field spells. A listing that
+    mixes languages gets no shared line and each group keeps its own, because
+    one pattern cannot describe two prefixes and guessing which to print would
+    hand back ids that address the wrong language.
+    """
+    prefixes = {group.id_prefix for group in groups if group.id_prefix}
+    if len(prefixes) != 1:
+        return ""
+    pattern = str(StableId(prefixes.pop(), PATH_PLACEHOLDER, QUALIFIED_NAME_PLACEHOLDER))
+    return MESSAGES.stable_ids_shared.format(
+        pattern=one_line(pattern), placeholder=PATH_PLACEHOLDER
+    )
+
+
+def _by_tier(groups: Sequence[RefGroup]) -> list[tuple[str, list[RefGroup]]]:
+    """Bucket the groups by evidence tier, strongest first.
+
+    The tier is stated once for the files that share it rather than on each
+    file header, and the strongest evidence leads: the rows a reader is told
+    to treat as callers come before the rows they are told to treat as
+    candidates, instead of being scattered through a path-sorted list.
+
+    Groups keep their order inside a bucket, so the file ordering a caller
+    established still holds. A listing whose groups carry no tier at all --
+    which the renderer's own unit fixtures build -- gets one unlabelled
+    bucket and the flat shape it had before.
+    """
+    order = [tier.label for tier in TIER_ORDER]
+    buckets: dict[str, list[RefGroup]] = {}
+    for group in groups:
+        buckets.setdefault(group.tier_label, []).append(group)
+    if len(buckets) == 1 and not next(iter(buckets)):
+        return [("", list(groups))]
+    ranked = sorted(buckets, key=lambda label: order.index(label) if label in order else len(order))
+    return [(label, buckets[label]) for label in ranked]
+
+
+def _group_block(group: RefGroup, *, shared_pattern: bool, indented: bool) -> list[str]:
+    """Render one file's header, its id pattern when it needs its own, and its rows.
+
+    The header keeps a tool-authored ``(N references)`` suffix even when the
+    tier moved to the section above it. That suffix is not decoration: a file
+    header is the one line in this view with no indent, so the parenthesised
+    fact after the path is what stops a repository from spelling a filename
+    that renders byte-identical to this package's own omission marker.
+    """
+    indent = ROW_INDENT if indented else ""
+    sites = len(group.sites)
+    lines = [f"{indent}{one_line(group.path)}  ({sites} {_references(sites)})"]
+    if not shared_pattern:
+        pattern = _stable_ids_line(group.id_prefix, group.path)
+        if pattern:
+            lines.append(f"{indent}{pattern}")
+    lines.extend(f"{indent}{_render_site(same)}" for same in _by_symbol(group.sites))
+    return lines
+
+
+def _by_symbol(sites: Sequence[RefSite]) -> list[list[RefSite]]:
+    """Group a file's reference sites by the symbol each one is inside.
+
+    Keyed on the stable id rather than on the displayed name, which is what
+    keeps the ``#2`` case apart: a file that spells one name twice gives its
+    two symbols distinct ids, and merging their rows would offer one name for
+    two addresses. Sites outside every symbol carry no id and share one row
+    per file, which is the truth -- they are all attributed to that file.
+
+    First-appearance order, so the merged listing reads in the same order the
+    unmerged one did.
+    """
+    grouped: dict[str | None, list[RefSite]] = {}
+    for site in sites:
+        grouped.setdefault(site.stable_id, []).append(site)
+    return list(grouped.values())
+
+
+def _render_site(sites: Sequence[RefSite]) -> str:
+    """Render one row for every reference inside one symbol.
+
+    One name and its positions. The row used to carry the enclosing symbol's
     name and, beside it, a stable id whose tail was that same name -- the two
     differ only when a file spells one name twice and the id takes a ``#2``
     ordinal, which is the case where the id's spelling is the precise one. So
     the id's name is what the row prints, and the file header's pattern line
     rebuilds the whole id from it.
+
+    The positions then merge onto that one name. A test file calling the
+    target eleven times from one function used to spell that function's name
+    eleven times; the name locates the caller and the lines locate the calls,
+    so the name is worth printing once.
     """
-    if not site.stable_id:
-        return f"{ROW_INDENT}{one_line(site.enclosing)} @{site.line}"
-    return f"{ROW_INDENT}{_locator(site.name or site.stable_id, line=site.line)}"
+    first = sites[0]
+    lines = ",".join(str(site.line) for site in sites)
+    if not first.stable_id:
+        return f"{ROW_INDENT}{one_line(first.enclosing)} @{lines}"
+    return f"{ROW_INDENT}[{one_line(first.name or first.stable_id)}] @{lines}"

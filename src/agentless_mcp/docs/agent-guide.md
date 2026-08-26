@@ -514,16 +514,28 @@ agentless-mcp refs Invoice.total --limit 50
 agentless-mcp refs Invoice.total --shared-callers
 ```
 
-The command lists callers, grouped by file. It attributes each caller to the
-symbol whose body contains the reference. Rows carry that symbol and its
-position, under the same `stable ids:` pattern line the map prints:
+The command lists callers, grouped by file, and the files grouped by evidence
+tier with the strongest first. It attributes each caller to the symbol whose
+body contains the reference. Rows carry that symbol and its positions:
 
 ```
-src/app/report.py  (2 references, resolved-via-import)
-  stable ids: py:src/app/report.py::<QualifiedName>
-  [Report.render] @88
-  [build_rows] @140
+6 references to render_rows
+stable ids: py:<file>::<QualifiedName>   -- <file> is the path on each file header below
+
+resolved-via-import
+  src/app/report.py  (4 references)
+    [Report.render] @88,94,101
+    [build_rows] @140
 ```
+
+Two things are stated once rather than per row. **The id pattern** is one line
+for the whole answer: build an id by putting the file header's path where
+`<file>` is and the row's name where `<QualifiedName>` is. Sending an id that
+still carries `<file>` is refused by name rather than answered with "no
+matching symbols". A listing that mixes languages gets no shared line, because
+one pattern cannot describe two prefixes; each file header then carries its
+own. **The positions merge** onto one row per symbol -- the name locates the
+caller and the lines locate the calls.
 
 A reference that sits outside every symbol -- an import, a module-level call
 -- reads `(module level) @line` and carries no id. There is nothing to expand
@@ -541,19 +553,26 @@ The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing:
 
 ```
-core.py  (1 references, same-file)
-user.py  (2 references, resolved-via-import)
-shadow.py  (2 references, name-only-ambiguous)
+same-file
+  core.py  (1 reference)
+
+resolved-via-import
+  user.py  (2 references)
+
+name-only-ambiguous
+  shadow.py  (2 references)
 ```
 
 | Tier | What it means |
 |---|---|
-| `same-file` | the referencing file defines the target itself |
+| `class-scope` | the reference is `self.n` or `cls.n` inside a class that declares `n` — the one receiver whose type the language fixes, so this is a binding rather than evidence about one |
+| `same-file` | the referencing file defines the target itself, at module scope, where a bare name reaches it |
+| `same-file member` | the referencing file defines the target itself as a class member, and the repository defines that name exactly once — so a call through any receiver in this file reaches it |
 | `resolved-via-import` | the referencing file imports the file the target is defined in, by name or as a whole module |
 | `unique` | nothing connects the two files, but the repository defines that name exactly once |
 | `name-only-ambiguous` | the name matched and nothing else did — including the shadowing case, where the file has its own definition of the name and its references bind to that one, not to your target |
 
-Read the top two tiers as callers and the bottom two as candidates. The tool
+Read the top four tiers as callers and the bottom two as candidates. The tool
 never drops a row for a weak tier. The label is there so you can weigh the
 rows.
 

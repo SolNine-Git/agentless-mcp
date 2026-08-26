@@ -87,6 +87,7 @@ class RepoContext:
     tree_oid: str | None
     dirty_count: int | None
     note: str = ""
+    dirty_paths: tuple[str, ...] = ()
     symbols: FileSource | None = None
     config: ProjectConfig = projectconfig.EMPTY
     cache_receipt: str = field(init=False, default=CACHE_NONE)
@@ -125,6 +126,7 @@ def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> Repo
         head_sha=snapshot.head_sha,
         tree_oid=snapshot.tree_oid,
         dirty_count=snapshot.dirty_count,
+        dirty_paths=snapshot.dirty_paths,
         note=snapshot.note,
         config=projectconfig.load(resolved),
     )

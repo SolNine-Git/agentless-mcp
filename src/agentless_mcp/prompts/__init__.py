@@ -106,6 +106,8 @@ class MessageText:
     # overview body carries no ids at all, so it keeps the sentence that
     # says how a nested name is spelled.
     stable_ids_pattern: str
+    stable_ids_shared: str
+    stable_id_placeholder: str
     overview_stable_ids: str
     slice_range_beyond_file: str
     slice_range_not_a_range: str

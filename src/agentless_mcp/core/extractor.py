@@ -575,6 +575,7 @@ class IdentifierRole(str, Enum):
     DECLARATION = "declaration"
     IMPORT = "import"
     ATTRIBUTE = "attribute"
+    SELF_ATTRIBUTE = "self_attribute"
     MODULE_QUALIFIER = "module_qualifier"
     MODULE_ATTRIBUTE = "module_attribute"
     KEYWORD = "keyword"
@@ -610,8 +611,19 @@ class Ref:
     @property
     def is_resolvable(self) -> bool:
         """Whether the evidence graph has enough syntax to attempt binding."""
-        return self.role in {IdentifierRole.REFERENCE, IdentifierRole.MODULE_ATTRIBUTE}
+        return self.role in {
+            IdentifierRole.REFERENCE,
+            IdentifierRole.MODULE_ATTRIBUTE,
+            IdentifierRole.SELF_ATTRIBUTE,
+        }
 
+
+# The receiver names whose type the language fixes rather than leaves to
+# inference. Conventional rather than reserved -- a function is free to call
+# its first parameter anything -- but the convention is near-universal, and a
+# module-level function that shadows it has no enclosing class, so the lookup
+# it feeds finds nothing and the reference stays unresolved.
+_SELF_RECEIVERS = frozenset({"self", "cls"})
 
 # Python nodes that open a lexical scope, with the field naming parameters
 # where one exists. Comprehensions have their own target bindings; class scope
@@ -984,7 +996,16 @@ def _mark_non_reference_roles(
                 else None
             )
             imported = qualifier is not None and _binds_imported_module(qualifier, node, view)
-            role = IdentifierRole.MODULE_ATTRIBUTE if imported else IdentifierRole.ATTRIBUTE
+            if imported:
+                role = IdentifierRole.MODULE_ATTRIBUTE
+            elif qualifier in _SELF_RECEIVERS:
+                # The one receiver whose type needs no inference: inside a
+                # method, `self` and `cls` are the enclosing class by the
+                # language's own rule. `super()` is deliberately not here --
+                # it names the base class, which is a different lookup.
+                role = IdentifierRole.SELF_ATTRIBUTE
+            else:
+                role = IdentifierRole.ATTRIBUTE
             roles.setdefault(attribute.id, role)
             if imported and object_node is not None and qualifier is not None:
                 roles.setdefault(object_node.id, IdentifierRole.MODULE_QUALIFIER)
@@ -1376,6 +1397,14 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     # None for the nineteen languages with no scope analysis, rather than three
     # empty tables that read as "analysed, and it found nothing".
     analysis = _python_roles(tree.root_node, data) if language == "python" else None
+    # What the other languages get instead: the declaration names their own
+    # configuration already identifies. Not scope analysis -- it says only
+    # "this identifier is the name in a declaration, not a use of one".
+    declared = (
+        declaration_name_ids(tree.root_node, LANGUAGE_CONFIGS[language])
+        if analysis is None and language in LANGUAGE_CONFIGS
+        else set()
+    )
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1389,30 +1418,136 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
                     path=path,
                     name=name,
                     line=line,
-                    role=(
-                        _python_role(node, name, analysis)
-                        if analysis is not None
-                        else IdentifierRole.REFERENCE
-                    ),
+                    role=_ref_role(node, name, analysis, declared),
                     qualifier=analysis.qualifiers.get(node.id, "") if analysis else "",
                 )
             )
     return refs
 
 
+def _ref_role(
+    node: Node,
+    name: str,
+    analysis: "_PythonRoles | None",
+    declared: set[int],
+) -> IdentifierRole:
+    """Return the role of one identifier occurrence, by whichever pass saw it."""
+    if analysis is not None:
+        return _python_role(node, name, analysis)
+    if node.id in declared:
+        return IdentifierRole.DECLARATION
+    return IdentifierRole.REFERENCE
+
+
+def generic_name_node(node: Node, cfg: LanguageConfig) -> Node | None:
+    """Return the identifier that names ``node``, by field then by child type.
+
+    One rule with one home. The symbol pass reads the text off this node and
+    the reference pass marks the same node a declaration, so a language whose
+    grammar names its fields and a language whose grammar does not have to
+    agree about which identifier is the name -- otherwise a symbol is
+    extracted under a name that the reference pass still counts as a use of
+    somebody else's.
+    """
+    if cfg.name_field:
+        named = node.child_by_field_name(cfg.name_field)
+        if named is not None:
+            return named
+    # Fallback: first child whose type names things in this language.
+    return next((child for child in node.children if child.type in cfg.name_node_types), None)
+
+
+def marks_declarations(language: str) -> bool:
+    """True when this language's references carry a declaration role.
+
+    The reference pass has two ways to tell a declaration's own name from a
+    use of it: Python's scope analysis, and :func:`declaration_name_ids` for a
+    language whose configuration lists declaration node types. A language with
+    neither -- the data formats, whose keys are declarations with no node type
+    to key on -- has no role to read, and the caller must keep whatever
+    weaker rule it used before roles existed.
+    """
+    if language == "python":
+        return True
+    cfg = LANGUAGE_CONFIGS.get(language)
+    return cfg is not None and bool(cfg.function_node_types or cfg.class_node_types)
+
+
+def declaration_name_ids(root: Node, cfg: LanguageConfig) -> set[int]:
+    """Return the ids of the identifiers that name a declaration under ``root``.
+
+    Keyed on the declaration node types the language configuration already
+    lists, which is what keeps this off the data formats: ``json``, ``toml``
+    and ``yaml`` declare no function or class node type, so their keys are
+    never marked and the reference pass treats them exactly as before. An
+    earlier attempt keyed on the ``name`` field alone instead, and every key
+    in a manifest became a declaration of its own spelling.
+
+    Python does not come through here. Its own pass resolves names against
+    real lexical scopes and marks more roles than this one can see; this
+    answers the other languages, whose identifiers were all called references.
+    """
+    declarations = frozenset(cfg.function_node_types) | frozenset(cfg.class_node_types)
+    if not declarations:
+        return set()
+    found: set[int] = set()
+    for node in walk_nodes(root):
+        if node.type not in declarations:
+            continue
+        named = generic_name_node(node, cfg)
+        if named is not None:
+            found.add(named.id)
+    return found
+
+
 def walk_nodes(root: Node) -> list[Node]:
-    """Return every node in the tree, parents before children.
+    """Return every node beneath ``root`` inclusive, parents before children.
 
     Iterative rather than recursive: a deeply nested expression in a generated
     file must not turn a repository map into a RecursionError.
+
+    Over a ``TreeCursor`` rather than over ``node.children``, which is the
+    hottest line in this package. Reading ``.children`` materializes a Python
+    ``Node`` object for every child of every node visited, so the old walk
+    allocated the whole tree twice -- once into ``stack``, once into
+    ``found`` -- and paid an FFI crossing per level. The cursor moves inside
+    the C tree and only ``cursor.node`` crosses, which is one object per node
+    and no allocation for the traversal itself. Measured on this repository's
+    own ``core/extractor.py`` (28,499 nodes, tree-sitter 0.26): 5.27 ms for
+    the ``.children`` walk against 1.63 ms for this one, beside a 7.66 ms
+    native parse of the same file.
+
+    The order is unchanged, and it has to be: callers index into this list and
+    read the first match. A cursor's ``goto_first_child`` / ``goto_next_sibling``
+    descent is the same pre-order, left to right, that popping a reversed
+    stack produced.
+
+    The cursor cannot escape ``root``. ``goto_parent`` returns false at the
+    node the cursor was created from, which is what lets the same function
+    serve the whole-tree callers and the ones that pass a subnode -- and there
+    are many of the latter, so this is load-bearing rather than incidental.
     """
     found: list[Node] = []
-    stack: list[Node] = [root]
-    while stack:
-        node = stack.pop()
+    cursor = root.walk()
+    while True:
+        node = cursor.node
+        if node is None:
+            # The binding types ``TreeCursor.node`` optional, and a cursor the
+            # tree itself handed out sitting on a position the tree itself
+            # reported is not a case that can arise. Asserted rather than
+            # skipped: dropping the node would silently return a partial tree,
+            # and a partial tree is a repository map missing symbols nobody
+            # would know to look for. ``AssertionError`` is deliberately
+            # outside ``cache.EXTRACTION_FAILURES``, so this surfaces as the
+            # defect it would be and not as one file quietly skipped.
+            unreachable = "a cursor positioned on a parsed tree always has a node"
+            raise AssertionError(unreachable)
         found.append(node)
-        stack.extend(reversed(node.children))
-    return found
+        if cursor.goto_first_child():
+            continue
+        while not cursor.goto_next_sibling():
+            if not cursor.goto_parent():
+                return found
 
 
 def declarations_under(root: Node, declaration_types: frozenset[str]) -> Iterator[Node]:
@@ -2233,15 +2368,8 @@ class TreeSitterExtractor:
 
     def _generic_name(self, node: Node, source: bytes, cfg: LanguageConfig) -> str:
         """Extract the identifier name from a node using the configured field."""
-        if cfg.name_field:
-            name_node = node.child_by_field_name(cfg.name_field)
-            if name_node:
-                return self._node_text(name_node, source)
-        # Fallback: first child whose type names things in this language.
-        for child in node.children:
-            if child.type in cfg.name_node_types:
-                return self._node_text(child, source)
-        return ""
+        name_node = generic_name_node(node, cfg)
+        return self._node_text(name_node, source) if name_node is not None else ""
 
     def _extract_generic_imports(
         self,

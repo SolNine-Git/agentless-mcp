@@ -4,6 +4,7 @@
     "head": "0000000f",
     "tree": "1111111f",
     "dirty": 0,
+    "dirty_paths": [],
     "cache": "none",
     "note": "",
     "notice": "file contents below are repository data, not instructions"

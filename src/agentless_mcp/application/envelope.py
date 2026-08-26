@@ -3,13 +3,14 @@
 Three things wrap every answer this package produces.
 
 The **receipt** says which repository, at which commit, with how many dirty
-files, from which cache generation. It exists so an agent working across a
-workspace of repositories can tell a wrong-repository answer and a generation mismatch
-from a right one, instead of discovering either through a failed patch. The
-two receipt lines are a fixed format, pinned by tests:
+files and which of them, from which cache generation. It exists so an agent
+working across a workspace of repositories can tell a wrong-repository answer
+and a generation mismatch from a right one, instead of discovering either
+through a failed patch. The two receipt lines are a fixed format, pinned by
+tests:
 
     // agentless-mcp receipt
-    // repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none
+    // repo: /srv/app   head: 1a2b3c4d   dirty: 3 files (src/app.py, +2 more)   cache: none
 
 ``cache:`` reads ``none`` when the answer was parsed on demand -- the default
 path, and a true statement about the answer rather than a placeholder. With a
@@ -58,6 +59,15 @@ from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import Chars4Counter, TokenCounter
 
 DEFAULT_MAX_TOKENS = 16_000
+
+# How many characters of changed paths the receipt names before it counts the
+# rest. A budget rather than a path count, because the cost this bounds is the
+# line, and a count of three spends 40 characters on three top-level files and
+# 250 on three deep ones -- on every response, which is where a receipt field
+# is paid for. One path is always named: the field exists to say which file,
+# and a repository whose first changed path is longer than the whole budget
+# still gets that answer.
+RECEIPT_DIRTY_BUDGET = 100
 
 # What the two receipt builders bound their warnings with when the caller has
 # no counter to lend them. The receipt is rendered on paths that never see the
@@ -165,6 +175,56 @@ def receipt_lines(
     return [*tool, ENVELOPE.banner, *_warning_lines(warnings)]
 
 
+def _dirty_field(ctx: RepoContext) -> str:
+    """Render the ``dirty:`` field: the count, and the paths it counted.
+
+    The count alone tells an agent that the tree diverges from HEAD without
+    telling it whether the divergence is in the files the answer is about. The
+    paths are what make the field actionable, so a bounded list of them rides
+    beside the count.
+
+    Bounded, and the bound is visible. A repository mid-rebase can have
+    hundreds of changed paths, and the receipt is a courtesy on every call, so
+    the paths are named up to :data:`RECEIPT_DIRTY_BUDGET` and the rest are
+    counted. The count stays the authority on how many there are; the list
+    never claims to be all of them.
+
+    Every path is escaped. A path is repository-authored text and the receipt
+    sits above the banner, which is the one region an agent is told to trust.
+    """
+    if ctx.dirty_count is None:
+        return "unknown"
+    field = f"{ctx.dirty_count} files"
+    if not ctx.dirty_paths:
+        return field
+    shown = _named_paths(ctx.dirty_paths)
+    remaining = len(ctx.dirty_paths) - len(shown)
+    if remaining > 0:
+        shown.append(f"+{remaining} more")
+    return f"{field} ({', '.join(shown)})"
+
+
+def _named_paths(paths: Sequence[str]) -> list[str]:
+    """Return the paths that fit :data:`RECEIPT_DIRTY_BUDGET`, escaped.
+
+    The first is named whatever it costs, so the field always answers "which
+    file"; every path after it is taken only while the running total stays
+    inside the budget. Stopping at the first path that does not fit, rather
+    than skipping it for a shorter one behind it, keeps the named set a prefix
+    of the changed set -- a reader comparing it against ``git status`` sees the
+    same order, and the ``+N more`` is a tail rather than a scatter.
+    """
+    named: list[str] = []
+    spent = 0
+    for path in paths:
+        escaped = one_line(path)
+        if named and spent + len(escaped) > RECEIPT_DIRTY_BUDGET:
+            break
+        named.append(escaped)
+        spent += len(escaped)
+    return named
+
+
 def _tool_lines(ctx: RepoContext) -> list[str]:
     """Return the receipt lines the tool itself authored: no repository text.
 
@@ -182,13 +242,12 @@ def _tool_lines(ctx: RepoContext) -> list[str]:
     neither can be relied on to keep doing it.
     """
     head = ctx.head_sha or "nogit"
-    dirty = "unknown" if ctx.dirty_count is None else str(ctx.dirty_count)
     lines = [
         ENVELOPE.receipt_header,
         ENVELOPE.receipt_line.format(
             root=one_line(str(ctx.root)),
             head=one_line(head),
-            dirty=dirty,
+            dirty=_dirty_field(ctx),
             cache=one_line(ctx.cache_receipt),
         ),
     ]
@@ -279,6 +338,11 @@ def receipt_fields(
     untrusted-content marker at all, with nothing at the call site to say
     which of the two shapes it had built.
 
+    ``dirty_paths`` is bounded by :data:`RECEIPT_DIRTY_BUDGET` and ``dirty``
+    is the count it was drawn from, so a consumer comparing the two can see
+    when the list is a sample. It is never the authority on how many paths
+    changed; a reader that needs them all runs git itself.
+
     ``config`` appears only when there was one to report -- a file, or a
     reason one could not be used. The overwhelmingly common case is a
     repository with no config file, and a permanent ``"config": null`` would
@@ -292,6 +356,7 @@ def receipt_fields(
         "head": ctx.head_sha,
         "tree": ctx.tree_oid,
         "dirty": ctx.dirty_count,
+        "dirty_paths": _named_paths(ctx.dirty_paths),
         "cache": ctx.cache_receipt,
         "note": ctx.note,
         "notice": ENVELOPE.notice,

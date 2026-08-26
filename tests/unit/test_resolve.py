@@ -780,16 +780,74 @@ SAME_LINE_FILES = {
 }
 
 
-class TestTheDeclarationGuardCostsBothWays:
-    """What the line-keyed guard drops, and what it lets through.
+SELF_RECEIVER_PY = {
+    "svc.py": (
+        "def emit(value):\n"
+        "    return value\n"
+        "\n"
+        "\n"
+        "class Reporter:\n"
+        "    def emit(self, value):\n"
+        "        return value\n"
+        "\n"
+        "    def run(self, value):\n"
+        "        return self.emit(value)\n"
+        "\n"
+        "\n"
+        "class Other:\n"
+        "    def run(self, value):\n"
+        "        return self.emit(value)\n"
+    ),
+}
 
-    `_reference_edges` refuses every occurrence of a name on the line a symbol
-    of that name starts on. That is a proxy for "this occurrence *is* the
-    declaration identifier", and a proxy has two failure directions. Re-keying
-    it was measured and refused -- marking the tree-sitter `name`-field child a
-    declaration adds tens of thousands of wrong edges, because JSON, YAML and
-    TOML keys sit behind no such field -- so both directions are costs the
-    guard is known to carry, and both are pinned here rather than assumed.
+
+class TestASelfReceiverBindsToItsOwnClass:
+    """The one receiver whose type needs no inference.
+
+    `self.emit()` inside `Reporter` names `Reporter.emit`. Nothing else can
+    satisfy it: not the module-level `emit` in the same file, which a bare
+    name would have reached, and not `Other`, which has no `emit` at all.
+    """
+
+    def test_it_resolves_to_the_enclosing_class_member(self, tmp_path, extractor):
+        _, graph = resolved(write(tmp_path, SELF_RECEIVER_PY), extractor)
+        edges = edges_from(graph, "py:svc.py::Reporter.run", "emit")
+
+        assert [(edge.target.label, edge.tier) for edge in edges] == [
+            ("Reporter.emit", resolve.Tier.CLASS_SCOPE)
+        ]
+
+    def test_it_does_not_reach_the_module_level_function(self, tmp_path, extractor):
+        """A bare `emit` would resolve there; `self.emit` may not."""
+        _, graph = resolved(write(tmp_path, SELF_RECEIVER_PY), extractor)
+        edges = edges_from(graph, "py:svc.py::Reporter.run", "emit")
+
+        assert all(edge.target.label != "emit" for edge in edges)
+
+    def test_a_class_without_the_member_resolves_to_nothing(self, tmp_path, extractor):
+        """`Other` declares no `emit`, and the tier does not fall back.
+
+        Falling back to the module-level `emit` would put a guess behind the
+        strongest label in the model. An unanswered reference is the honest
+        result: the member is inherited, or it is set at runtime.
+        """
+        _, graph = resolved(write(tmp_path, SELF_RECEIVER_PY), extractor)
+
+        assert edges_from(graph, "py:svc.py::Other.run", "emit") == []
+
+
+class TestTheDeclarationGuardCostsBothWays:
+    """What the declaration role keeps, and what the line proxy used to drop.
+
+    `_reference_edges` used to refuse every occurrence of a name on the line a
+    symbol of that name starts on -- a proxy for "this occurrence *is* the
+    declaration identifier", which cost every other occurrence on that line.
+    The extractor now marks the declaration identifier itself, from the
+    declaration node types each language configuration already lists, so the
+    proxy is kept only for the languages that have no such types: the data
+    formats. An earlier attempt keyed on the `name` field alone and turned
+    every JSON, YAML and TOML key into a declaration of its own spelling,
+    which is the failure the node-type key avoids.
 
     In Go, which `tests/conftest.py` warms on every run. The Java pair below
     says the same thing in the language the cost was first measured in, and
@@ -797,16 +855,21 @@ class TestTheDeclarationGuardCostsBothWays:
     the decision unrecorded.
     """
 
-    def test_a_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
-        """Direction one: a real edge lost.
+    def test_a_reference_on_the_declaration_line_now_resolves(self, tmp_path, extractor):
+        """The direction the proxy used to cost: a real edge, recovered.
 
-        The receiver type and the result type on `uses.go` line 3 both name
-        `helper.go`'s `Helper`, and the method declared on that line is also
-        called `Helper`, so all three go.
+        `func (h Helper) Helper() Helper` spells `Helper` four times on one
+        line. The method's own name is the declaration and stays out; the
+        receiver type and the result type are references and now resolve. The
+        tier is `ambiguous` because two files define `Helper`, which is the
+        honest answer rather than a silent pick.
         """
         _, graph = resolved(write(tmp_path, SAME_LINE_GO), extractor)
+        edges = edges_from(graph, "go:uses.go::Helper.Helper", "Helper")
 
-        assert edges_from(graph, "go:uses.go::Helper.Helper", "Helper") == []
+        assert [(edge.target.path, edge.tier) for edge in edges] == [
+            ("helper.go", resolve.Tier.AMBIGUOUS)
+        ]
 
     def test_the_same_reference_one_line_down_resolves(self, tmp_path, extractor):
         """The guard is keyed on the line, so the cost is exactly one line wide."""
@@ -878,16 +941,19 @@ class TestADeclarationSharingALineWithAReference:
     the first match per line keeps the declaration identifier here and drops
     the return type instead, which trades a missing edge for a wrong one.
 
-    So the reference on the declaration's own line is lost. This test exists
-    so that deleting the guard is a visible decision rather than a silent one.
+    The declaration role closed it: the method's own name is marked in the
+    extractor, and every other occurrence on that line is a reference again.
+    This test exists so that the recovery stays a pinned property rather than
+    an incidental one.
     """
 
-    def test_the_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
+    def test_the_reference_on_the_declaration_line_now_resolves(self, tmp_path, extractor):
         if "java" not in grammars.warmed_languages():
             pytest.skip("grammar for java is not in the local pack cache")
         _, graph = resolved(write(tmp_path, SAME_LINE_FILES), extractor)
+        edges = edges_from(graph, "java:Uses.java::Uses.Helper", "Helper")
 
-        assert edges_from(graph, "java:Uses.java::Uses.Helper", "Helper") == []
+        assert [edge.target.path for edge in edges] == ["Helper.java"]
 
     def test_a_reference_on_any_other_line_still_resolves(self, tmp_path, extractor):
         """The guard is keyed on the line, so one line down is enough."""

@@ -52,7 +52,46 @@ def stray(value):
     return only_once(value)
 """
 
-FILES = {"core.py": CORE, "user.py": USER, "shadow.py": SHADOW, "stranger.py": STRANGER}
+# A method reached through a receiver, defined once in the repository and in
+# the calling file itself. A bare `refresh` cannot reach a class member, so
+# the module-scope tier refuses it and `unique` was all that was left (#42).
+SERVICE = """\
+class Handlers:
+    def refresh(self, value):
+        return value
+
+
+def build(handlers, value):
+    return handlers.refresh(value)
+"""
+
+# The same shape with the name defined twice, where co-location narrows
+# nothing without the receiver's type.
+TWICE_HERE = """\
+class Local:
+    def sync(self, value):
+        return value
+
+
+def drive(worker, value):
+    return worker.sync(value)
+"""
+
+TWICE_ELSEWHERE = """\
+class Remote:
+    def sync(self, value):
+        return value * 2
+"""
+
+FILES = {
+    "core.py": CORE,
+    "user.py": USER,
+    "shadow.py": SHADOW,
+    "stranger.py": STRANGER,
+    "service.py": SERVICE,
+    "twice_here.py": TWICE_HERE,
+    "twice_elsewhere.py": TWICE_ELSEWHERE,
+}
 
 
 @pytest.fixture
@@ -99,12 +138,30 @@ class TestTierLabels:
         )
         assert tier_by_path(result)["stranger.py"] == "unique"
 
+    def test_a_co_located_member_is_labelled_same_file_member(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:service.py::Handlers.refresh"
+        )
+        assert tier_by_path(result)["service.py"] == "same_file_member"
+
+    def test_a_member_defined_twice_stays_ambiguous(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:twice_here.py::Local.sync"
+        )
+        assert tier_by_path(result)["twice_here.py"] == "ambiguous"
+
+    def test_a_module_scope_definition_still_outranks_the_member_tier(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
+            repo, "py:core.py::only_once"
+        )
+        assert tier_by_path(result)["stranger.py"] == "unique"
+
     def test_the_label_reaches_the_rendered_rows(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).find_referencing_symbols(
             repo, "py:core.py::helper"
         )
         rendered = render.render_ref_groups(result.groups, "helper")
-        assert "user.py  (2 references, resolved-via-import)" in rendered
+        assert "resolved-via-import\n  user.py  (2 references)" in rendered
         assert "name-only-ambiguous" in rendered
 
     def test_the_json_form_carries_the_tier(self, repo, extractor):
