@@ -58,7 +58,7 @@ that turned out to be the second.
 
 ## Integrity incidents
 
-Two runs produced complete, plausible, and entirely invalid results. Each is
+Three runs produced complete, plausible, and entirely invalid results. Each is
 described with the signature that identifies it, because the signature is what
 a future run checks itself against.
 
@@ -84,7 +84,28 @@ exact server invocation the harness uses, and must answer 5. The run scripts
 call it first and refuse to start otherwise. *Signature of a healthy run:* a
 median of about 5 MCP calls per instance, and `capabilities` called in 0 of 60.
 
-**3. Operational rules.** Each one below was learned by losing a run to it.
+It recurred on 2026-08-25 through a door the guardrail did not cover. Pinning
+an arm to a commit with `git worktree add` creates a worktree whose `.venv` is
+built from scratch and therefore carries no `mcp` extra. Priming it with a CLI
+call succeeds -- the CLI does not need `fastmcp`, only the server path does --
+so the worktree looked ready. Twenty-seven instances then ran against a server
+that exited after `initialize`, fell back to `Bash` and `Grep`, and scored.
+The result read as a plausible finding: +74% turns, +37% cost, -36% tokens per
+turn. Every number was the fallback. *Cheapest post-hoc check:* an arm with
+zero `tools/list` rows in its proof log never had tools, whatever it scored --
+`grep -c '"tools/list"' mcp_proof_<tag>/*.mcp_calls.jsonl`.
+
+**3. The moving tree, 2026-08-25.** An arm was pointed at the live checkout
+rather than a pinned worktree. Another session committed review fixes into
+that checkout eighteen minutes into the run, and because the arm spawns its
+server from the checkout's editable install, instances before and after the
+edit ran different code. Six of twenty-four instances ran the committed
+build and the rest ran a tree that was still changing. *Rule:* both arms of a
+comparison are pinned with `git worktree` to explicit commits, always. The
+control arm was pinned and the treatment arm was not, which is how a
+comparison acquired a moving side without anyone choosing it.
+
+**4. Operational rules.** Each one below was learned by losing a run to it.
 
 - Archive the result directories before any re-run. `--resume` silently
   no-ops over an existing row instead of replacing it.
@@ -95,6 +116,65 @@ median of about 5 MCP calls per instance, and `capabilities` called in 0 of 60.
 - Never edit an arm's fingerprinted treatment files while that arm is running.
 - A parse-failure row, meaning an instance with empty regions, is purged
   per-instance and resumed. It is not a CLI error and it is not a score.
+
+## What each tier can answer
+
+Three instruments measure three different things, and the failure mode is
+letting a cheap one answer an expensive one's question.
+
+| Claim | Instrument | Why it is valid for that claim |
+| --- | --- | --- |
+| the ranking changed | `loc-bench-harness` | scores file ranking with no flattening step; 47 s; records compare byte for byte |
+| the output got denser or cheaper | direct measurement | symbols per rendered token, character counts, token pins -- it measures the thing itself |
+| an agent does better | the agentic arms | an agent chooses what to read; no cheaper tier models that |
+
+**`agentless_deterministic` is a guard, not a scoreboard.** It is the only
+tier that reads the map's JSON, which is why it caught the 2026-08-25 defect
+where a focused `map --json` returned `"files": []` for a file it had ranked
+first. Assert on it: no instance with `num_regions == 0`, no `error` rows, no
+instance losing a gold file it previously found. Do not read its `recall`,
+`precision` or `hit_file_rate` as evidence about a rendering change, for the
+reason below.
+
+**The flattening confound.** The explorer turns a map into a flat ranked
+region list by draining the top-ranked file's symbols before moving to the
+next, then slicing at top-K. Region *order* follows file rank, but the number
+of slots each file consumes is its *symbol count*, which carries no relevance
+information. A symbol-rich file at rank 1 starves a gold file at rank 3 out of
+the cut. Any change to how densely the map renders is therefore measured by
+this arm as though it were a ranking change.
+
+Measured 2026-08-25 on the 60-instance pilot, two commits whose rankings are
+identical (`loc-bench` 50/50):
+
+| Metric | default order | `--interleave` |
+| --- | --- | --- |
+| recall | denser build +0.004 | sparser build +0.010 |
+| precision | denser build +0.017 | sparser build +0.008 |
+| `hit_file_rate` | sparser build +0.017 | sparser build +0.008 |
+| `context_efficiency` | denser build +0.007 | sparser build +0.039 |
+
+The two modes disagree on nearly every metric. Same commits, same instances,
+same maps; only the flattening rule differs. `--interleave` round-robins one
+symbol per file, so a budget of k regions can reach k distinct files -- which
+matters because ground truth spans 4 to 12 files per instance, a spread strict
+rank order cannot cover at small k. Against the agentic arm on the same build
+and instances, interleaved is the better proxy on every metric measured
+(`hit_file_rate` 0.369 against 0.067, recall 0.367 against 0.032), so it is
+the default worth running. Both remain weak proxies at r around 0.37.
+
+**Report both modes or neither.** A single-mode region score is a choice that
+changes which build wins.
+
+**Two metric-hygiene rules.** Report the excluding-bulk-read aggregate beside
+every headline number: about a third of instances have a gold region covering
+90% or more of its file, so reading more scores higher by construction. And
+`weighted_core_coverage` is not a proxy for agent behaviour in either mode --
+measured at 0.020 interleaved and -0.002 in default order.
+
+**The open gap.** The agentic tier has no noise floor recorded here. Until a
+same-arm replicate is run and written into this document, no agentic delta is
+interpretable -- including a favourable one.
 
 ## The arms
 
@@ -188,22 +268,35 @@ it.
 
 1. Rebuild the server under test and confirm the client sees it. A repository
    fix is not live until the `uv tool install` is rebuilt.
-2. Run the preflight: `python3 probe_mcp_server.py repos/<instance_id>`. It must
+2. Pin every arm to a commit with `git worktree add --detach <dir> <sha>`, and
+   point the arm at it with `AGENTLESS_PROJECT`. Never point an arm at the live
+   checkout: another session editing it mid-run splits the arm across two
+   builds, as incident 3 records.
+3. Give each worktree the server extra -- `uv sync --project <dir> --extra mcp`
+   -- because a fresh worktree's `.venv` has none, and a CLI smoke test passes
+   without it.
+4. Run the preflight against each worktree:
+   `python3 probe_mcp_server.py repos/<instance_id> <worktree>`. It must
    print `5`. The run scripts, for example `run_061_agentless.sh`, refuse to
    start otherwise. Confirm separately that an `orient(map)` call against an
    unpacked snapshot lists that snapshot's files.
-3. Archive the previous results. The convention is
+5. Archive the previous results. The convention is
    `archive_v<version>_<date>`, as in `archive_v061toolless_20260824`, and the
    directory name should say why the run was retired.
-4. Run the arms in parallel, batches sequentially, as the run scripts do.
-5. Score. `score_report.py` prints the per-arm means and the per-instance rows.
+6. Run the arms in parallel, batches sequentially, as the run scripts do.
+7. Score. `score_report.py` prints the per-arm means and the per-instance rows.
    `compare_060.py` produces the paired deltas and the bootstrap intervals.
    `calibrate_weights.py` sweeps the WCC weight ratio when a conclusion depends
    on a metric that uses them.
-6. Check the health signature before reading any score: median MCP calls per
+8. Check the health signature before reading any score: median MCP calls per
    instance, and the `capabilities` call rate. A median of 2 to 3 calls, or a
    `capabilities` rate near 46 of 60, means the server was blind and the run is
-   void.
+   void. Check `tools/list` first: an arm with zero of them in
+   its proof log never had tools at all, and no score it produced is about the
+   build. `grep -c '"tools/list"' mcp_proof_<tag>/*.mcp_calls.jsonl`.
+9. Match the tier to the claim before reporting anything. See *What each tier
+   can answer*: region-level scores from `agentless_deterministic` are not
+   evidence about a rendering change, in either flattening mode.
 
 ## The archived analysis record
 
