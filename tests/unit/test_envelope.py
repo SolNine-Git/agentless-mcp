@@ -410,6 +410,50 @@ class TestJson:
         assert document["truncated"]["shown"] == len(document["files"])
         assert counter.count(rendered) <= 1_000
 
+    def test_a_single_oversized_item_is_returned_rather_than_an_empty_list(
+        self, counter, pinned_context
+    ):
+        """One item over the ceiling beats a list that reads as "nothing found".
+
+        Trimming to zero items is indistinguishable, to every JSON consumer,
+        from a genuinely empty answer. Measured on a real map: a focused
+        `agentless-mcp map --json` ranked one file first, that file alone
+        exceeded the ceiling, and the caller received `"files": []` with the
+        ranked file nowhere in the document.
+        """
+        items = [{"path": "huge.py", "text": "x" * 40_000}, {"path": "small.py", "text": "y"}]
+        rendered = envelope.wrap_json(
+            pinned_context(ROOT),
+            {"files": items},
+            counter=counter,
+            max_tokens=1_000,
+            items_key="files",
+        )
+        document = json.loads(rendered)
+
+        assert len(document["files"]) == 1
+        assert document["files"][0]["path"] == "huge.py"
+        assert document["truncated"]["shown"] == 1
+        assert document["truncated"]["total"] == 2
+        # The answer is knowingly over the ceiling, and the reason says which
+        # of the two kinds of trimmed answer this is.
+        assert "first item alone does not fit" in document["truncated"]["reason"]
+        assert counter.count(rendered) > 1_000
+
+    def test_an_empty_item_list_stays_empty(self, counter, pinned_context):
+        """The floor is one *existing* item, never a fabricated one."""
+        document = json.loads(
+            envelope.wrap_json(
+                pinned_context(ROOT),
+                {"files": [], "blob": "x" * 10_000},
+                counter=counter,
+                max_tokens=100,
+                items_key="files",
+            )
+        )
+        assert document["files"] == []
+        assert document["truncated"]["shown"] == 0
+
     @pytest.mark.parametrize("key", ["receipt", "notice", "truncated"])
     def test_a_payload_key_cannot_shadow_an_envelope_field(self, counter, pinned_context, key):
         """The envelope owns these three; a colliding payload is a service bug."""

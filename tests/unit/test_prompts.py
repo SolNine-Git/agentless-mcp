@@ -66,6 +66,7 @@ ENVELOPE_ARGUMENTS = {
     "ceiling_truncation": {"max_tokens": 16_000, "dropped": 7, "total": 900},
     "json_ceiling_untrimmable": {"max_tokens": 16_000},
     "json_ceiling_trimmed": {"max_tokens": 16_000},
+    "json_ceiling_oversized_item": {"max_tokens": 16_000},
 }
 
 MESSAGE_ARGUMENTS = {

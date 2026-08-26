@@ -71,6 +71,7 @@ class EnvelopeText:
     ceiling_truncation: str
     json_ceiling_untrimmable: str
     json_ceiling_trimmed: str
+    json_ceiling_oversized_item: str
 
 
 @dataclass(frozen=True)

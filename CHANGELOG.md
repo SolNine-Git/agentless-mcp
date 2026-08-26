@@ -239,6 +239,31 @@ what the focus reached.
   excluded operations still exist, so a removal upstream is not mistaken for
   the exclusion. (#37)
 
+### Fixed
+
+- **A JSON answer whose first item exceeds the output ceiling is no longer
+  returned as an empty list.** `wrap_json` trims an oversized payload by
+  keeping the longest prefix of its item list that fits, and the search
+  returns zero when the first item alone is over the ceiling. The document
+  then carried `"files": []`, which no consumer can tell from a map that
+  ranked nothing: the metadata beside it read `shown: 0`, and a reader takes
+  that as a fact about the repository rather than about the ceiling. The
+  first item is now returned whole and the payload is marked as knowingly
+  over the ceiling, which is the trade the untrimmable branch already took --
+  an honest oversized answer beats a silently mangled one. `truncated.reason`
+  distinguishes the two, so a caller sizing its own context can still tell
+  which it received.
+
+  The defect predates this release and is not caused by the row grammar:
+  0.6.7 reproduces it at `--budget 12000`. What changed is how often it
+  fires. Denser rows fit more symbols into the same text budget -- 421
+  against 280 on one measured map -- and the JSON form of those extra
+  symbols crosses the 16000-token ceiling at the default auto budget, where
+  the sparser rows stayed under it. Measured on the 60-instance deterministic
+  arm of swe-explore-bench: three instances returned a collapsed map and one
+  returned no regions at all, including one whose gold file the map had
+  ranked first.
+
 ### Not changed
 
 - **The gate still unlocks once per session.** Filed as item 3 of #38 and
