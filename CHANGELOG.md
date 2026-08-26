@@ -115,12 +115,18 @@ the files it counted.
   `TreeCursor` moves inside the C tree and crosses once per node.
 
   Measured on this repository's own `core/extractor.py`, 28,546 nodes,
-  tree-sitter 0.26: **5.18 ms to 1.75 ms**, against a 7.52 ms native parse of
-  the same file. End to end an uncached `map` of this repository went from
-  1.64 s to 1.48 s, and an uncached `refs` from 2.57 s to 2.38 s -- about
-  10%, because tree-sitter's own parse is C already and is the floor. Order
-  and output are unchanged, which they had to be: callers index into the list
-  and read the first match.
+  tree-sitter 0.26, one fresh parse per iteration: **4.23 ms to 1.80 ms**,
+  against a 7.52 ms native parse of the same file. Order and output are
+  unchanged, which they had to be: callers index into the list and read the
+  first match.
+
+  The condition matters and is easy to get wrong. The binding memoizes
+  `.children` per `Node` instance, so a benchmark that walks one retained root
+  object repeatedly measures the *second* walk, not the first, and reports
+  2.28 ms for the old code instead of 4.23. Indexing parses each file once and
+  walks it once, so the fresh-parse figure is the representative one. The
+  cursor walk is 1.74 ms either way -- it never touches `.children`, so it has
+  nothing to memoize.
 
 - **`_scope_tree` traverses with a cursor too, and reads `Node.id` once.** It
   is the second `.children` walk over the same tree: `_python_roles` calls
@@ -132,15 +138,28 @@ the files it counted.
   popped on a move back to a parent. Siblings share a parent and so share an
   inherited boundary, which is why moving between them touches nothing.
 
-  Measured on the same 28,546-node file: **6.25 ms to 4.07 ms**, of which
-  0.37 ms is reading `node.id` once per node instead of four times -- it is a
-  binding property, not an attribute, so each read was a crossing for a value
-  that cannot change. Output is identical, checked field by field against the
-  old implementation over all 152 Python files in this repository, over 300
-  random subnode roots, and over the empty-boundary case.
+  Measured on the same 28,546-node file under the same fresh-parse condition:
+  **8.81 ms to 4.17 ms**, part of which is reading `node.id` once per node
+  instead of four times -- it is a binding property, not an attribute, so each
+  read was a crossing for a value that cannot change. Output is identical,
+  checked field by field against the old implementation over all 152 Python
+  files in this repository, over 300 random subnode roots, and over the
+  empty-boundary case.
 
-  Cumulatively with `walk_nodes`, an uncached `map` of this repository went
-  from **1.64 s to 1.35 s** and an uncached `refs` from **2.57 s to 2.25 s**.
+  End to end, four builds run against one fixed corpus, 7 runs each, minimum:
+
+  | build | `map --no-cache` | `refs --no-cache` |
+  | --- | --- | --- |
+  | `d381eb9`, before both changes | 1642 ms | 2546 ms |
+  | `d381eb9` + the release's other work, no cursor walks | 1653 ms | 2531 ms |
+  | `walk_nodes` on a cursor | 1473 ms | 2364 ms |
+  | `_scope_tree` on a cursor as well | **1356 ms** | **2227 ms** |
+
+  17% and 13%. The second row is a control: the release's other work is
+  performance-neutral, so the whole delta is these two functions. A warm cache
+  is unchanged at 357 ms and 1247 ms, which is the expected result -- these
+  changes are on the parse path, and a fully fresh index parses nothing.
+
   Fusing the two walks into one pass was measured and rejected: a bare cursor
   traversal of that file costs 1.24 ms, which is the ceiling on what fusing
   could save, and it would couple `walk_nodes` -- a general utility with about

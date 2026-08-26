@@ -724,8 +724,8 @@ def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
     ``walk_nodes`` has already visited for the same file, so every
     ``node.children`` access here rebuilt a Python ``Node`` that call had just
     built and dropped. Measured on this repository's own ``core/extractor.py``
-    (28,546 nodes): 6.25 ms against 1.91 ms for the cursor walk over the same
-    tree.
+    (28,546 nodes), one fresh parse per iteration as :func:`walk_nodes`
+    explains: 8.81 ms against 4.17 ms.
 
     ``enclosing`` replaces the ``(node, boundary)`` pairs the old stack held.
     A cursor reports a position rather than a payload per child, so the
@@ -746,8 +746,7 @@ def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
             raise AssertionError(CURSOR_NODE_MISSING)
         # Read once. ``Node.id`` is a binding property rather than an
         # attribute, so the four reads this loop used to make were four
-        # crossings per node for a value that cannot change: 4.44 ms to
-        # 4.07 ms on the file measured above.
+        # crossings per node for a value that cannot change.
         node_id = node.id
         inherited = enclosing[-1]
         innermost = inherited
@@ -1550,9 +1549,15 @@ def walk_nodes(root: Node) -> list[Node]:
     ``found`` -- and paid an FFI crossing per level. The cursor moves inside
     the C tree and only ``cursor.node`` crosses, which is one object per node
     and no allocation for the traversal itself. Measured on this repository's
-    own ``core/extractor.py`` (28,546 nodes, tree-sitter 0.26): 5.18 ms for
-    the ``.children`` walk against 1.75 ms for this one, beside a 7.52 ms
+    own ``core/extractor.py`` (28,546 nodes, tree-sitter 0.26): 4.23 ms for
+    the ``.children`` walk against 1.80 ms for this one, beside a 7.52 ms
     native parse of the same file.
+
+    Measure that with one fresh parse per iteration or the number is wrong.
+    The binding memoizes ``.children`` per ``Node`` instance, so walking one
+    retained root repeatedly times the *second* walk and reports 2.28 ms for
+    the old code. Indexing parses a file once and walks it once. This walk
+    reads 1.74 ms under either condition, having nothing to memoize.
 
     The order is unchanged, and it has to be: callers index into this list and
     read the first match. A cursor's ``goto_first_child`` / ``goto_next_sibling``
