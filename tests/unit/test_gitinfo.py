@@ -44,75 +44,31 @@ class TestSnapshot:
 
         assert gitinfo.dirty_count(root) == 2
 
-    def test_an_unstaged_modification_keeps_its_whole_path(self, make_git_repo):
-        """The porcelain status of an unstaged edit opens with a space.
-
-        Stripping the output would delete that space and shift the path one
-        character left, so the receipt would name ``.py`` files that are not
-        the ones that changed.
-        """
-        root = make_git_repo(SAMPLE)
-        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
-
-        assert gitinfo.snapshot(root).dirty_paths == ("a.py",)
-
-    def test_a_rename_is_one_entry_naming_its_destination(self, make_git_repo):
-        root = make_git_repo(SAMPLE)
-        sandbox.run_git(root, ["mv", "a.py", "renamed.py"])
-        snapshot = gitinfo.snapshot(root)
-
-        assert snapshot.dirty_paths == ("renamed.py",)
-        assert snapshot.dirty_count == 1
-
-    def test_a_path_holding_the_rename_arrow_is_still_one_path(self, make_git_repo):
-        """``a -> b`` is a legal filename and git does not quote it.
-
-        Without ``-z`` this file and a rename are spelled identically, so the
-        parse would report a path that never existed.
-        """
-        root = make_git_repo(SAMPLE)
-        (root / "a -> b.py").write_text("y = 1\n", encoding="utf-8")
-
-        assert gitinfo.snapshot(root).dirty_paths == ("a -> b.py",)
-
-    def test_a_nested_directory_never_names_the_enclosing_repository_s_paths(self, make_git_repo):
-        """A directory inside a larger repository gets that repository's status.
-
-        Its paths are relative to the enclosing top level, so they need not
-        exist under the directory being analysed. Reproduced against a
-        benchmark snapshot with no git of its own, whose every answer named the
-        harness project's own source files as the snapshot's changed paths.
-        """
-        root = make_git_repo(SAMPLE)
-        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
-        snapshot = gitinfo.snapshot(root / "sub")
-
-        assert snapshot.dirty_paths == ()
-
     def test_a_nested_directory_says_whose_state_it_reported(self, make_git_repo):
+        """Git answers for the enclosing repository, and the note says so.
+
+        A directory inside a larger repository -- a vendored tree, a snapshot
+        never given a git of its own -- is served that repository's HEAD and
+        dirty count. A reader with only the receipt cannot tell, so the answer
+        is qualified rather than quietly wrong.
+        """
         root = make_git_repo(SAMPLE)
         snapshot = gitinfo.snapshot(root / "sub")
 
         assert "is not the top of its git repository" in snapshot.note
         assert str(root.resolve()) in snapshot.note
 
-    def test_a_nested_directory_still_reports_the_head_it_would_be_cached_under(
-        self, make_git_repo
-    ):
-        """The SHAs and the count are unchanged; only the paths are withheld."""
+    def test_a_nested_directory_still_reports_the_head_it_is_cached_under(self, make_git_repo):
+        """Only the note is added; the SHAs and count are what they were."""
         root = make_git_repo(SAMPLE)
         (root / "a.py").write_text("x = 2\n", encoding="utf-8")
         nested = gitinfo.snapshot(root / "sub")
 
         assert nested.head_sha == gitinfo.snapshot(root).head_sha
-        assert nested.tree_oid == gitinfo.snapshot(root).tree_oid
         assert nested.dirty_count == 1
 
-    def test_the_repository_root_itself_still_names_its_paths(self, make_git_repo):
+    def test_the_repository_root_itself_carries_no_note(self, make_git_repo):
         root = make_git_repo(SAMPLE)
-        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
-
-        assert gitinfo.snapshot(root).dirty_paths == ("a.py",)
         assert gitinfo.snapshot(root).note == ""
 
     def test_non_git_directory_is_all_unknown_with_a_note(self, tmp_path):

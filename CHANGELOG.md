@@ -2,8 +2,14 @@
 
 ## 0.7.1 -- 2026-08-26
 
-Two evidence tiers the reference model was missing, and a receipt that names
-the files it counted.
+A cache that fits, walks that do not rebuild the tree, and two receipt
+defects. No change to what any view answers.
+
+Two evidence tiers and a denser fan-in were built for this release and are
+not in it. Eight benchmark arms could not attribute a localization difference
+to any of them, and the bench's own arm-to-arm spread proved wide enough that
+the difference may not exist; the work is withdrawn until there is a
+measurement that can resolve it.
 
 ### Added
 
@@ -48,75 +54,6 @@ the files it counted.
   pages is counted at its high-water mark and evicted for space it is not
   using.
 
-
-- **`class_scope`: `self.n` and `cls.n` bind to the enclosing class.** A
-  method called through `self` produced no edge at all -- an attribute member
-  is not a bare name, so the reference pass dropped it, and every same-file
-  method call was invisible to the graph. It is now resolved against the class
-  the reference sits inside, which is the one receiver in this package whose
-  type needs no inference: the language fixes it. The tier outranks
-  `same_file`, because it is a binding rather than evidence about one.
-
-  Measured on this repository, over a fixed snapshot: **516 new edges, +4.8%**
-  on a set of 10,852. The general receiver case is deliberately not
-  implemented. Of 16,082 Python attribute members here, 9% have a receiver
-  whose type is statically known and 91% would need type inference -- chained
-  access, call results, and local variables. Resolving those means scoring
-  candidates, which is the guess the tiers exist to refuse.
-
-  `super()` is not in this tier. It names the base class, which is a different
-  lookup, and the base-chain walk that would answer it is not implemented:
-  measured on this repository it would bind **0** of the 860 `self.n`
-  references that remain unresolved, because 656 classes here declare 18 bases
-  and almost all of them are exception types. A class-heavy corpus is what
-  would settle it, and this repository is not one.
-
-- **`same_file_member`: a co-located method reached through a receiver.**
-  `find_referencing_symbols` labelled the defining file's own call sites
-  `unique` -- the tier a caller is told to read as a candidate -- so a reader
-  re-verified references the file itself already accounts for. The cause was
-  one resolver answering two questions: `Resolver.resolve` refuses a class
-  member because a *bare* name cannot reach one, which is right for an edge
-  and wrong for a fan-in listing. Fan-in now goes through
-  `Resolver.resolve_reference`, and the tier fires on exactly one shape: the
-  repository defines the name once, and that definition is in this file.
-  `ambiguous` is not upgraded -- with the name defined in several files,
-  co-location narrows nothing without the receiver's type. (#42)
-
-- **The receipt names the changed files, not just how many.** `dirty: 3 files`
-  became `dirty: 3 files (src/app.py, src/util.py, +1 more)`, with
-  `dirty_paths` beside `dirty` in the structural receipt. The count stays the
-  authority on how many there are; the list is bounded by a 100-character
-  budget rather than a path count, because the cost being bounded is the line,
-  and it rides on every response.
-
-- **Fan-in orders files by evidence tier and merges a symbol's rows.** (#43)
-
-  File blocks are sorted strongest tier first, so the rows a reader is told to
-  treat as callers come before the rows they are told to treat as candidates.
-  Sites inside one symbol share a row -- `[render_map] @1715,1721,1726` -- keyed
-  on the stable id rather than the displayed name, so the `#2` ordinal case
-  keeps its own row. One group of 53 references rendered 53 rows and now
-  renders 24.
-
-  Each block stays self-contained: the header names the file, its reference
-  count and its tier, and the `stable ids:` line directly beneath spells that
-  file's pattern in full. Two further compressions shipped and were withdrawn
-  before release. Hoisting one `stable ids: py:<file>::<QualifiedName>` to the
-  top of the answer, and moving the tier onto a section heading above the files
-  that shared it, together took five real answers from 14,261 characters to
-  11,214, -21.4%. Both made the reader carry something across the answer to use
-  a row -- a path from a header several lines up, or a heading held in mind --
-  and building an id stopped being a copy. That trade is wrong for a retrieval
-  tool: a wrong-but-well-formed id answers `no matching symbols`, which reads
-  as "that symbol is gone" rather than "that id was built wrong". The saving
-  was real and is not worth a step the reader can silently get wrong.
-
-  `expand` still refuses an id holding an unsubstituted `<QualifiedName>` or
-  `<file>` slot, by name, rather than answering `no matching symbols`. Every
-  pattern line ends in `<QualifiedName>`, so copying one without filling it in
-  stays reachable, and an agent working from the withdrawn shape can still send
-  `<file>`.
 
 - **The cache root has a size ceiling, enforced after every index run.**
   Nothing bounded it before. The cache root grows through the server's own
@@ -227,27 +164,12 @@ the files it counted.
   could save, and it would couple `walk_nodes` -- a general utility with about
   twenty callers -- to one language's scope rules.
 
-- **Declaration identifiers are marked in the extractor for every language,
-  not inferred from a line.** `_reference_edges` refused every occurrence of a
-  name on the line a symbol of that name started on -- a proxy for "this
-  occurrence is the declaration", which also discarded the receiver type and
-  the result type in `func (h Helper) Helper() Helper`. The extractor now
-  marks the declaration identifier itself, driven by the declaration node
-  types each language configuration already lists. Keying on node types rather
-  than on the `name` field is what keeps it off the data formats: `json`,
-  `toml` and `yaml` declare no such types, so their keys are untouched and the
-  line proxy is kept for them alone.
-
-  Measured value is correctness rather than recall: **+8 edges** on this
-  repository. The 1,086 references the proxy dropped are overwhelmingly type
-  names and self-edges that resolve to nothing.
-
 - **`git status` is read with `-z`.** Without it a rename renders as
-  `R  old -> new` and a file genuinely named `old -> new` is spelled
-  identically, so the receipt's new path list would have been a guess on
-  exactly the tree that needs them named. A related fix: the shared git runner
-  stripped its output, which deleted the leading status space of an unstaged
-  modification and shifted every path one character left.
+  `R  old -> new`, and a file genuinely named `old -> new` is spelled
+  identically, so the two could not be told apart and the dirty count was a
+  guess on exactly the tree that needed it. A related fix: the shared git
+  runner stripped its output, which deleted the leading status space of an
+  unstaged modification.
 
 ### Fixed
 

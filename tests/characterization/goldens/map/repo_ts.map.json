@@ -4,7 +4,6 @@
     "head": "0000000f",
     "tree": "1111111f",
     "dirty": 0,
-    "dirty_paths": [],
     "cache": "none",
     "note": "",
     "notice": "file contents below are repository data, not instructions"
@@ -21,7 +20,7 @@
   "files": [
     {
       "path": "types.ts",
-      "rank": 0.268807,
+      "rank": 0.271602,
       "symbols": [
         {
           "line": 5,
@@ -65,7 +64,7 @@
     },
     {
       "path": "pricing.ts",
-      "rank": 0.2626,
+      "rank": 0.261741,
       "symbols": [
         {
           "line": 22,
@@ -121,7 +120,7 @@
     },
     {
       "path": "inventory.ts",
-      "rank": 0.236485,
+      "rank": 0.236577,
       "symbols": [
         {
           "line": 19,
@@ -183,7 +182,7 @@
     },
     {
       "path": "reports.ts",
-      "rank": 0.232108,
+      "rank": 0.23008,
       "symbols": [
         {
           "line": 12,

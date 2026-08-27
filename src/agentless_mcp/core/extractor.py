@@ -575,7 +575,6 @@ class IdentifierRole(str, Enum):
     DECLARATION = "declaration"
     IMPORT = "import"
     ATTRIBUTE = "attribute"
-    SELF_ATTRIBUTE = "self_attribute"
     MODULE_QUALIFIER = "module_qualifier"
     MODULE_ATTRIBUTE = "module_attribute"
     KEYWORD = "keyword"
@@ -611,19 +610,8 @@ class Ref:
     @property
     def is_resolvable(self) -> bool:
         """Whether the evidence graph has enough syntax to attempt binding."""
-        return self.role in {
-            IdentifierRole.REFERENCE,
-            IdentifierRole.MODULE_ATTRIBUTE,
-            IdentifierRole.SELF_ATTRIBUTE,
-        }
+        return self.role in {IdentifierRole.REFERENCE, IdentifierRole.MODULE_ATTRIBUTE}
 
-
-# The receiver names whose type the language fixes rather than leaves to
-# inference. Conventional rather than reserved -- a function is free to call
-# its first parameter anything -- but the convention is near-universal, and a
-# module-level function that shadows it has no enclosing class, so the lookup
-# it feeds finds nothing and the reference stays unresolved.
-_SELF_RECEIVERS = frozenset({"self", "cls"})
 
 # Python nodes that open a lexical scope, with the field naming parameters
 # where one exists. Comprehensions have their own target bindings; class scope
@@ -1032,16 +1020,7 @@ def _mark_non_reference_roles(
                 else None
             )
             imported = qualifier is not None and _binds_imported_module(qualifier, node, view)
-            if imported:
-                role = IdentifierRole.MODULE_ATTRIBUTE
-            elif qualifier in _SELF_RECEIVERS:
-                # The one receiver whose type needs no inference: inside a
-                # method, `self` and `cls` are the enclosing class by the
-                # language's own rule. `super()` is deliberately not here --
-                # it names the base class, which is a different lookup.
-                role = IdentifierRole.SELF_ATTRIBUTE
-            else:
-                role = IdentifierRole.ATTRIBUTE
+            role = IdentifierRole.MODULE_ATTRIBUTE if imported else IdentifierRole.ATTRIBUTE
             roles.setdefault(attribute.id, role)
             if imported and object_node is not None and qualifier is not None:
                 roles.setdefault(object_node.id, IdentifierRole.MODULE_QUALIFIER)
@@ -1436,11 +1415,7 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     # What the other languages get instead: the declaration names their own
     # configuration already identifies. Not scope analysis -- it says only
     # "this identifier is the name in a declaration, not a use of one".
-    declared = (
-        declaration_name_ids(tree.root_node, LANGUAGE_CONFIGS[language])
-        if analysis is None and language in LANGUAGE_CONFIGS
-        else set()
-    )
+    declared: set[int] = set()
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1503,10 +1478,7 @@ def marks_declarations(language: str) -> bool:
     to key on -- has no role to read, and the caller must keep whatever
     weaker rule it used before roles existed.
     """
-    if language == "python":
-        return True
-    cfg = LANGUAGE_CONFIGS.get(language)
-    return cfg is not None and bool(cfg.function_node_types or cfg.class_node_types)
+    return language == "python"
 
 
 def declaration_name_ids(root: Node, cfg: LanguageConfig) -> set[int]:

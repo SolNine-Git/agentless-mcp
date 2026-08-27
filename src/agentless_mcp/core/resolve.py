@@ -7,28 +7,15 @@ travel with each reference, and assignments, parameters, loop targets,
 imports, labels, and unrelated attribute members produce no bare symbol edge.
 This module goes as far past that as
 evidence allows and stops there: it uses the imports the file itself declares,
-and the file the name is spelled in, to sort candidate definitions into six
+and the file the name is spelled in, to sort candidate definitions into four
 **discrete tiers**. There is no score, no threshold and no weighting -- a tier
 is a statement about what kind of evidence exists, and a reader can audit it.
 
 **The tiers, strongest first.**
 
-``class_scope``
-    The reference is ``self.n`` or ``cls.n`` inside a class that declares
-    ``n``. The only receiver whose type this package does not have to infer:
-    the language fixes it, so this is a binding rather than evidence about
-    one, which is why it outranks even a same-file bare name.
 ``same_file``
-    The file spelling the name defines it at module scope, where a bare name
-    reaches it. A local definition shadows an import in every language this
-    package parses, so this outranks everything.
-``same_file_member``
-    The file spelling the name defines it as a class member, and the
-    repository defines that name exactly once. A bare name cannot reach a
-    member, so this is not a binding an edge may rest on; it is what a fan-in
-    listing reports for a method called through a receiver in its own file.
-    :meth:`Resolver.resolve` never returns it -- :meth:`Resolver.resolve_reference`
-    does.
+    The file spelling the name defines it. A local definition shadows an
+    import in every language this package parses, so this outranks everything.
 ``imported``
     A file this file imports defines the name, and the import either names it
     directly (``from x import n``) or brings in the whole module. The
@@ -65,12 +52,11 @@ from enum import Enum
 from typing import Protocol
 
 from agentless_mcp.core import graph
-from agentless_mcp.core.extractor import IdentifierRole, Ref, marks_declarations
+from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
 from agentless_mcp.core.symbols import (
     ASTSymbol,
-    SymbolKind,
     base_name,
     qualname,
     symbol_stable_id,
@@ -126,9 +112,7 @@ class Tier(str, Enum):
     than as "this row matched on the name alone".
     """
 
-    CLASS_SCOPE = "class_scope"
     SAME_FILE = "same_file"
-    SAME_FILE_MEMBER = "same_file_member"
     IMPORTED = "imported"
     UNIQUE = "unique"
     AMBIGUOUS = "ambiguous"
@@ -140,9 +124,7 @@ class Tier(str, Enum):
 
 
 _TIER_LABELS: dict[Tier, str] = {
-    Tier.CLASS_SCOPE: "class-scope",
     Tier.SAME_FILE: "same-file",
-    Tier.SAME_FILE_MEMBER: "same-file member",
     Tier.IMPORTED: "resolved-via-import",
     Tier.UNIQUE: "unique",
     Tier.AMBIGUOUS: "name-only-ambiguous",
@@ -150,14 +132,7 @@ _TIER_LABELS: dict[Tier, str] = {
 
 # Strongest first. The order is the precedence rule, in one place, so a
 # renderer grouping by tier and the resolver choosing one cannot disagree.
-TIER_ORDER: tuple[Tier, ...] = (
-    Tier.CLASS_SCOPE,
-    Tier.SAME_FILE,
-    Tier.SAME_FILE_MEMBER,
-    Tier.IMPORTED,
-    Tier.UNIQUE,
-    Tier.AMBIGUOUS,
-)
+TIER_ORDER: tuple[Tier, ...] = (Tier.SAME_FILE, Tier.IMPORTED, Tier.UNIQUE, Tier.AMBIGUOUS)
 
 _TIER_RANK: dict[Tier, int] = {tier: rank for rank, tier in enumerate(TIER_ORDER)}
 
@@ -349,64 +324,6 @@ class Resolver:
         if not candidates:
             return None
         return Resolution(name=name, tier=Tier.IMPORTED, candidates=candidates)
-
-    def resolve_class_member(self, name: str, path: str, owning_class: str) -> Resolution | None:
-        """Resolve ``self.name`` against the class the reference sits inside.
-
-        The only receiver in this package that carries a type without an
-        inference step. Inside a method, ``self`` and ``cls`` are the enclosing
-        class by the language's rule, so ``self.emit()`` names that class's
-        ``emit`` and nothing else -- no scoring, no candidate set to choose
-        from, and no dependence on the name being unique in the repository.
-
-        Members declared in a base class are not found here. That is the next
-        question, not this one: this resolves what the class itself declares,
-        and a reference it cannot answer stays unresolved rather than falling
-        back to a weaker tier, because a fallback would put a guess behind the
-        strongest label in the model.
-        """
-        candidates = tuple(
-            entry
-            for entry in _ordered(self.index.definitions.get(name, ()))
-            if entry.path == path and entry.symbol.parent_class == owning_class
-        )
-        if not candidates:
-            return None
-        return Resolution(name=name, tier=Tier.CLASS_SCOPE, candidates=candidates)
-
-    def resolve_reference(self, name: str, path: str) -> Resolution | None:
-        """Resolve ``name`` for a fan-in listing, where a receiver may reach a member.
-
-        :meth:`resolve` answers a bare-name binding question, which is what an
-        edge asserts, so :func:`_in_module_scope` refuses a class member: a
-        bare name cannot reach one, and a method must not shadow the candidate
-        a declared import supplies. A fan-in listing asks a different question.
-        Its sites are reference spellings of any form, and ``handlers.refresh``
-        reaches a method of this file through a receiver the parse cannot type.
-
-        Answering the second question with the first labels a co-located method
-        ``unique`` -- the tier a caller is told to treat as a candidate -- so a
-        reader re-verifies a reference the file itself already accounts for
-        (issue #42).
-
-        The upgrade fires on exactly one shape: the repository defines the name
-        once, and that definition is in this file. Then any spelling of it here,
-        through any receiver, reaches the one definition that exists, and the
-        residual is the one ``unique`` already carries -- a receiver typed by
-        something outside the repository. A module-level definition in this file
-        never reaches this arm, because :meth:`resolve` has already answered it
-        at ``same_file``; the member is what is left.
-
-        ``ambiguous`` is deliberately not upgraded. Several files defining the
-        name means co-location narrows nothing without the receiver's type, and
-        naming this file would be the guess the tiers exist to refuse.
-        """
-        resolution = self.resolve(name, path)
-        if resolution is None or resolution.tier is not Tier.UNIQUE:
-            return resolution
-        if any(entry.path != path for entry in resolution.candidates):
-            return resolution
-        return replace(resolution, tier=Tier.SAME_FILE_MEMBER)
 
 
 @dataclass(frozen=True)
@@ -850,57 +767,13 @@ def _names_this_repository(module: str, segments: frozenset[str]) -> bool:
     return bool(lead) and lead in segments
 
 
-def _resolution_for(
-    ref: Ref,
-    path: str,
-    owner: ASTSymbol | None,
-    resolver: Resolver,
-) -> Resolution | None:
-    """Resolve one reference by the role its syntax carries.
-
-    Three questions, kept apart because they take different evidence. A module
-    attribute resolves through the module the file imported. A ``self`` or
-    ``cls`` attribute resolves inside the class the reference sits in, which
-    the enclosing symbol already names. Everything else is a bare name.
-    """
-    if ref.role is IdentifierRole.MODULE_ATTRIBUTE:
-        return resolver.resolve_module_attribute(ref.name, path, ref.qualifier)
-    if ref.role is IdentifierRole.SELF_ATTRIBUTE:
-        owning_class = _owning_class(owner)
-        if not owning_class:
-            # `self` outside a class -- a module-level function that named its
-            # first parameter `self`, or a nested function the owner index
-            # attributes to no symbol. There is no class to look in, and no
-            # weaker answer this role is entitled to.
-            return None
-        return resolver.resolve_class_member(ref.name, path, owning_class)
-    return resolver.resolve(ref.name, path)
-
-
-def _owning_class(owner: ASTSymbol | None) -> str:
-    """Return the class a reference sits inside, by its enclosing symbol."""
-    if owner is None:
-        return ""
-    return owner.parent_class or (owner.name if owner.kind is SymbolKind.CLASS else "")
-
-
 def _reference_edges(
     facts: FileFacts,
     owners: Mapping[int, ASTSymbol],
     resolver: Resolver,
 ) -> list[SymbolEdge]:
     """Resolve one file's identifier references into edges."""
-    # The line proxy answers only for a language whose references carry no
-    # declaration role: the data formats, whose keys are declarations with no
-    # node type to key on. Everywhere else the extractor now marks the
-    # declaration identifier itself, and `is_resolvable` above has already
-    # dropped it -- so keeping the proxy there would go on discarding the
-    # *other* references that share a declaration's line.
-    declarations = (
-        set()
-        if marks_declarations(facts.language)
-        else {(symbol.name, symbol.line_number) for symbol in facts.symbols}
-    )
+    declarations = {(symbol.name, symbol.line_number) for symbol in facts.symbols}
     edges: list[SymbolEdge] = []
 
     for ref in facts.refs:
@@ -931,11 +804,15 @@ def _reference_edges(
             # occurrence sharing a line with a declaration. Closing it for
             # real means recording the role per language in the extractor.
             continue
-        owner = owners.get(ref.line)
-        resolution = _resolution_for(ref, facts.path, owner, resolver)
+        resolution = (
+            resolver.resolve_module_attribute(ref.name, facts.path, ref.qualifier)
+            if ref.role is IdentifierRole.MODULE_ATTRIBUTE
+            else resolver.resolve(ref.name, facts.path)
+        )
         if resolution is None:
             continue
 
+        owner = owners.get(ref.line)
         source = (
             _symbol_endpoint(facts.path, owner)
             if owner is not None

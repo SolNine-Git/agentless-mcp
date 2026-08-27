@@ -258,9 +258,8 @@ src/billing/invoice.py  (rank 0.4865)
 
 The file header spells the path, so the rows below it do not. Each file's
 block opens with a `stable ids:` line naming the id pattern for that file,
-and every bracket below carries the qualified name alone. Put a bracket's
-name where the pattern reads `<QualifiedName>` and you have an id `expand`
-accepts: `py:src/billing/invoice.py::Invoice.total`.
+and every bracket below carries the qualified name alone. Join the two to
+build an id `expand` accepts: `py:src/billing/invoice.py::Invoice.total`.
 
 `@21` is where the symbol is defined. A position is always an `@line` or
 `@start-end` suffix. The `N| ` gutter means a different thing and only that
@@ -515,28 +514,16 @@ agentless-mcp refs Invoice.total --limit 50
 agentless-mcp refs Invoice.total --shared-callers
 ```
 
-The command lists callers grouped by file, with the files ordered by evidence
-tier and the strongest first. It attributes each caller to the symbol whose
-body contains the reference. Rows carry that symbol and its positions:
+The command lists callers, grouped by file. It attributes each caller to the
+symbol whose body contains the reference. Rows carry that symbol and its
+position, under the same `stable ids:` pattern line the map prints:
 
 ```
-6 references to render_rows
-
-src/app/report.py  (4 references, resolved-via-import)
+src/app/report.py  (2 references, resolved-via-import)
   stable ids: py:src/app/report.py::<QualifiedName>
-  [Report.render] @88,94,101
+  [Report.render] @88
   [build_rows] @140
 ```
-
-**Every block is complete on its own.** The header names the file and the tier
-behind it, the `stable ids:` line beneath spells that file's pattern in full,
-and the rows carry the names that pattern takes. Build an id by putting a
-row's name where the pattern reads `<QualifiedName>` -- nothing has to be
-carried from elsewhere in the answer. An id still holding a placeholder is
-refused by name rather than answered with "no matching symbols".
-
-**The positions merge** onto one row per symbol -- the name locates the caller
-and the lines locate the calls.
 
 A reference that sits outside every symbol -- an import, a module-level call
 -- reads `(module level) @line` and carries no id. There is nothing to expand
@@ -554,26 +541,19 @@ The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing:
 
 ```
-same-file
-  core.py  (1 reference)
-
-resolved-via-import
-  user.py  (2 references)
-
-name-only-ambiguous
-  shadow.py  (2 references)
+core.py  (1 references, same-file)
+user.py  (2 references, resolved-via-import)
+shadow.py  (2 references, name-only-ambiguous)
 ```
 
 | Tier | What it means |
 |---|---|
-| `class-scope` | the reference is `self.n` or `cls.n` inside a class that declares `n` — the one receiver whose type the language fixes, so this is a binding rather than evidence about one |
-| `same-file` | the referencing file defines the target itself, at module scope, where a bare name reaches it |
-| `same-file member` | the referencing file defines the target itself as a class member, and the repository defines that name exactly once — so a call through any receiver in this file reaches it |
+| `same-file` | the referencing file defines the target itself |
 | `resolved-via-import` | the referencing file imports the file the target is defined in, by name or as a whole module |
 | `unique` | nothing connects the two files, but the repository defines that name exactly once |
 | `name-only-ambiguous` | the name matched and nothing else did — including the shadowing case, where the file has its own definition of the name and its references bind to that one, not to your target |
 
-Read the top four tiers as callers and the bottom two as candidates. The tool
+Read the top two tiers as callers and the bottom two as candidates. The tool
 never drops a row for a weak tier. The label is there so you can weigh the
 rows.
 

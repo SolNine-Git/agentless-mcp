@@ -376,17 +376,7 @@ class TestSkippedFiles:
 
 
 class TestRefGroups:
-    def test_the_header_carries_the_file_its_count_and_its_tier(self):
-        """One header states everything true of the block beneath it.
-
-        The tier rode a section heading for one release (#43) and is back on
-        the header, so a reader never holds a heading in mind while reading
-        rows several lines below it.
-
-        The header keeps a tool-authored `(N references...)` suffix. A file
-        header is the one unindented line in this view, so the parenthesised
-        fact is what stops a filename from forging an omission marker.
-        """
+    def test_a_file_header_counts_its_sites_and_names_the_tier(self):
         group = render.RefGroup(
             path="caller.py",
             sites=(render.RefSite(line=5, enclosing="def ask()"),),
@@ -394,7 +384,6 @@ class TestRefGroups:
             tier_label="resolved via import",
         )
         text = render.render_ref_groups([group], "quote")
-
         assert "caller.py  (1 reference, resolved via import)" in text
 
     def test_a_site_row_is_its_enclosing_symbol_then_an_at_line(self):
@@ -421,124 +410,9 @@ class TestRefGroups:
         )
         text = render.render_ref_groups([group], "quote")
 
-        assert "[ask] @5" in text
+        assert "  [ask] @5" in text
         assert text.count("ask") == 1  # the row, and nowhere else
         assert "stable ids: py:caller.py::<QualifiedName>" in text
-
-    def test_every_group_spells_its_own_path_in_its_own_pattern(self):
-        """Each block rebuilds an id without reading any other block.
-
-        One shared pattern with a `<file>` slot was tried (#43) and asked the
-        reader to splice a path from a header several lines away into a
-        pattern at the top of the answer. That join is the step a reader gets
-        wrong silently: a well-formed id for a file that has no such symbol
-        answers "no matching symbols", which reads as "the symbol is gone".
-        """
-        groups = [
-            render.RefGroup(
-                path=path,
-                id_prefix="py",
-                tier_label="unique",
-                sites=(render.RefSite(line=5, enclosing="ask", stable_id=f"py:{path}::ask"),),
-            )
-            for path in ("a.py", "b.py")
-        ]
-        text = render.render_ref_groups(groups, "quote")
-
-        assert text.count("stable ids:") == 2
-        assert "stable ids: py:a.py::<QualifiedName>" in text
-        assert "stable ids: py:b.py::<QualifiedName>" in text
-        assert render.PATH_PLACEHOLDER not in text
-
-    def test_a_listing_that_mixes_languages_keeps_a_pattern_per_file(self):
-        """Two prefixes, two patterns, each on the block that needs it."""
-        groups = [
-            render.RefGroup(
-                path="a.py",
-                id_prefix="py",
-                tier_label="unique",
-                sites=(render.RefSite(line=5, enclosing="ask", stable_id="py:a.py::ask"),),
-            ),
-            render.RefGroup(
-                path="b.ts",
-                id_prefix="ts",
-                tier_label="unique",
-                sites=(render.RefSite(line=5, enclosing="ask", stable_id="ts:b.ts::ask"),),
-            ),
-        ]
-        text = render.render_ref_groups(groups, "quote")
-
-        assert "py:<file>::<QualifiedName>" not in text
-        assert "stable ids: py:a.py::<QualifiedName>" in text
-        assert "stable ids: ts:b.ts::<QualifiedName>" in text
-
-    def test_the_strongest_tier_leads(self):
-        """A reader meets the rows they are told to trust before the rest."""
-        groups = [
-            render.RefGroup(
-                path="weak.py",
-                tier_label="name-only-ambiguous",
-                sites=(render.RefSite(line=5, enclosing="ask"),),
-            ),
-            render.RefGroup(
-                path="strong.py",
-                tier_label="same-file",
-                sites=(render.RefSite(line=5, enclosing="ask"),),
-            ),
-        ]
-        text = render.render_ref_groups(groups, "quote")
-
-        assert text.index("same-file") < text.index("name-only-ambiguous")
-
-    def test_sites_inside_one_symbol_share_a_row(self):
-        """The name locates the caller; the lines locate the calls. (#43)"""
-        group = render.RefGroup(
-            path="caller.py",
-            id_prefix="py",
-            sites=tuple(
-                render.RefSite(
-                    line=line, enclosing="ask", stable_id="py:caller.py::ask", name="ask"
-                )
-                for line in (5, 9, 14)
-            ),
-        )
-        text = render.render_ref_groups([group], "quote")
-
-        assert "  [ask] @5,9,14" in text
-        assert text.count("[ask]") == 1
-
-    def test_two_symbols_of_one_name_keep_their_own_rows(self):
-        """The `#2` ordinal is a distinct address, so it is a distinct row.
-
-        Merging on the displayed name would offer one name for two ids, and
-        the row is what the pattern line rebuilds an id from.
-        """
-        group = render.RefGroup(
-            path="caller.py",
-            id_prefix="py",
-            sites=(
-                render.RefSite(line=5, enclosing="ask", stable_id="py:caller.py::ask", name="ask"),
-                render.RefSite(
-                    line=9, enclosing="ask", stable_id="py:caller.py::ask#2", name="ask#2"
-                ),
-            ),
-        )
-        text = render.render_ref_groups([group], "quote")
-
-        assert "  [ask] @5" in text
-        assert "  [ask#2] @9" in text
-
-    def test_module_level_sites_merge_onto_one_row(self):
-        """They are all attributed to the file, which is one symbol."""
-        group = render.RefGroup(
-            path="caller.py",
-            sites=tuple(
-                render.RefSite(line=line, enclosing=render.MODULE_LEVEL) for line in (5, 12)
-            ),
-        )
-        text = render.render_ref_groups([group], "quote")
-
-        assert f"  {render.MODULE_LEVEL} @5,12" in text
 
     def test_a_module_level_site_carries_no_id(self):
         group = render.RefGroup(

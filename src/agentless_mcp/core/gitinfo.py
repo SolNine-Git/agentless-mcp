@@ -1,4 +1,4 @@
-"""Git state for the response receipt: root, HEAD, tree OID and dirty paths.
+"""Git state for the response receipt: root, HEAD, tree OID and dirty count.
 
 Every answer this package produces carries the state of the repository it was
 computed from, so an agent can tell a stale answer from a fresh one and a
@@ -92,7 +92,6 @@ class GitSnapshot:
     tree_oid: str | None
     dirty_count: int | None
     note: str
-    dirty_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -132,16 +131,10 @@ def snapshot(root: Path) -> GitSnapshot:
 
     Git answers for the repository that encloses ``root``, which is not always
     ``root`` itself. A directory analysed inside a larger repository -- a
-    vendored tree, a benchmark snapshot never given a git of its own -- gets
-    that repository's HEAD and that repository's changed paths, and those paths
-    are relative to *its* top level, so they need not exist under ``root`` at
-    all. Reproduced: a snapshot with no ``.git`` reported the enclosing
-    project's own source files as its changed paths, on every answer.
-
-    The count and the SHAs stay, because they are what they always were and the
-    tree OID keys the cache. The paths do not: naming a file that is not in the
-    analysed tree is worse than naming none, and the note says whose state this
-    is so a reader is not left to infer it.
+    vendored tree, a snapshot never given a git of its own -- is served that
+    repository's HEAD and that repository's dirty count, and a reader with only
+    the receipt cannot tell. The note says whose state it is, so the answer is
+    qualified rather than quietly wrong.
     """
     enclosing = git_root(root)
     if enclosing is None:
@@ -158,8 +151,7 @@ def snapshot(root: Path) -> GitSnapshot:
 
     borrowed = enclosing != root.resolve()
     enclosing_note = (
-        f"{root} is not the top of its git repository: HEAD and dirty count "
-        f"describe {enclosing}, and its changed paths are not named here"
+        f"{root} is not the top of its git repository: HEAD and dirty count describe {enclosing}"
     )
     notes = [enclosing_note] if borrowed else []
     notes += [note for note in (head.note, tree.note, status.note) if note]
@@ -167,23 +159,16 @@ def snapshot(root: Path) -> GitSnapshot:
         head_sha=head.text,
         tree_oid=tree.text,
         dirty_count=status.count,
-        dirty_paths=() if borrowed else status.paths,
         note="; ".join(notes),
     )
 
 
 @dataclass(frozen=True)
 class _DirtyOutcome:
-    """A porcelain status parsed into a count and its paths, or why it has none."""
+    """A porcelain status parsed into an entry count, or why it has none."""
 
     count: int | None
-    paths: tuple[str, ...]
     note: str
-
-
-# A porcelain entry is two status characters, a space, then the path, so a
-# record shorter than this carries no path to read.
-_SHORTEST_ENTRY = 4
 
 
 def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
@@ -199,23 +184,20 @@ def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
     the source is consumed here rather than counted as a second change.
     """
     if outcome.text is None:
-        return _DirtyOutcome(count=None, paths=(), note=outcome.note)
+        return _DirtyOutcome(count=None, note=outcome.note)
 
     records = [record for record in outcome.text.split("\0") if record]
-    paths: list[str] = []
     entries = 0
     index = 0
     while index < len(records):
         record = records[index]
         index += 1
         entries += 1
-        if len(record) >= _SHORTEST_ENTRY:
-            paths.append(record[3:])
         if "R" in record[:2] or "C" in record[:2]:
             # The source record belongs to the entry just read, not to a
             # change of its own.
             index += 1
-    return _DirtyOutcome(count=entries, paths=tuple(paths), note=outcome.note)
+    return _DirtyOutcome(count=entries, note=outcome.note)
 
 
 def _run(cwd: Path, arguments: Sequence[str], *, strip: bool = True) -> _Outcome:

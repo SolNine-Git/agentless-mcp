@@ -530,23 +530,6 @@ class SymbolService:
         reinterpreted, with the correction shown as though it had been asked
         for.
         """
-        unfinished = next(
-            ((slot, fill) for slot, fill in render.ID_PLACEHOLDERS.items() if slot in raw),
-            None,
-        )
-        if unfinished is not None:
-            # An unsubstituted placeholder parses, and the symbol it names does
-            # not exist, so this would otherwise answer "no matching symbols"
-            # -- which reads as "that symbol is gone" rather than "that id was
-            # never finished". Every pattern line this package prints ends in
-            # ``<QualifiedName>``, so copying one without filling it in is a
-            # reachable mistake, and it is the one failure here that can say
-            # exactly what to do about it.
-            slot, fill = unfinished
-            return None, MESSAGES.stable_id_placeholder.format(
-                id=raw, placeholder=slot, substitute=fill
-            )
-
         try:
             parsed = parse_stable_id(raw)
         except ValueError as exc:
@@ -843,7 +826,7 @@ def _ref_tier(
     the evidence is the one judgement here, and the group is five fields the
     caller already holds.
     """
-    resolution = resolver.resolve_reference(name, path)
+    resolution = resolver.resolve(name, path)
     if resolution is None:
         return resolve.Tier.AMBIGUOUS
     resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}

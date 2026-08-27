@@ -4,7 +4,6 @@
     "head": "0000000f",
     "tree": "1111111f",
     "dirty": 0,
-    "dirty_paths": [],
     "cache": "none",
     "note": "",
     "notice": "file contents below are repository data, not instructions"
@@ -65,7 +64,7 @@
     },
     {
       "path": "pricing.go",
-      "rank": 0.277923,
+      "rank": 0.282601,
       "symbols": [
         {
           "line": 17,
@@ -115,7 +114,7 @@
     },
     {
       "path": "inventory.go",
-      "rank": 0.235591,
+      "rank": 0.230912,
       "symbols": [
         {
           "line": 24,

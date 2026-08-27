@@ -1,6 +1,6 @@
 {
   "receipt_header": "// agentless-mcp receipt",
-  "receipt_line": "// repo: {root}   head: {head}   dirty: {dirty}   cache: {cache}",
+  "receipt_line": "// repo: {root}   head: {head}   dirty: {dirty} files   cache: {cache}",
   "receipt_note": "// note: {note}",
   "receipt_config": "// config: {path}",
   "receipt_config_warning": "// config warning: {warning}",

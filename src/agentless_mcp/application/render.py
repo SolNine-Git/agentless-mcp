@@ -68,7 +68,6 @@ from typing import Any, overload
 
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
-from agentless_mcp.core.resolve import TIER_ORDER
 from agentless_mcp.core.symbols import StableId, language_prefix
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.textsafe import one_line
@@ -91,24 +90,6 @@ MODULE_LEVEL = "(module level)"
 # What the id pattern stands the symbol's own name in for. Spelled once so the
 # pattern line and the guide agree.
 QUALIFIED_NAME_PLACEHOLDER = "<QualifiedName>"
-
-# Stood in for the repository-relative path in a single fan-in id pattern that
-# every file group shared. No view prints it now -- each group carries its own
-# pattern with the path spelled out -- but it is still refused on the way in,
-# because an agent working from the older shape can still send one.
-PATH_PLACEHOLDER = "<file>"
-
-# Every slot an id pattern can carry, each beside what fills it.
-# `symbol_service` refuses an id that still holds one: an unsubstituted
-# placeholder parses, and an id naming a symbol that does not exist answers
-# "no matching symbols", which reads as "this symbol is gone" rather than "you
-# built the id wrong". The refusal names one substitution -- the one for the
-# slot it found -- because listing both would make the reader pick, which is
-# the work this whole view exists to avoid.
-ID_PLACEHOLDERS: dict[str, str] = {
-    PATH_PLACEHOLDER: MESSAGES.stable_id_slot_file,
-    QUALIFIED_NAME_PLACEHOLDER: MESSAGES.stable_id_slot_qualified_name,
-}
 
 # What an overview header names when the file has no language: a path that
 # reached no grammar, or one the walk refused. The header needs *some*
@@ -1854,7 +1835,15 @@ def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
     files_omitted = groups.files_omitted if isinstance(groups, RefListing) else 0
     limit = groups.limit if isinstance(groups, RefListing) else 0
     blocks = [f"{total} {_references(total)} to {one_line(target)}"]
-    blocks.extend("\n".join(_group_block(group)) for group in _strongest_first(groups))
+    for group in groups:
+        labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
+        sites = len(group.sites)
+        lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
+        pattern = _stable_ids_line(group.id_prefix, group.path)
+        if pattern:
+            lines.append(pattern)
+        lines.extend(_render_site(site) for site in group.sites)
+        blocks.append("\n".join(lines))
     if isinstance(groups, _Bounded) and groups.omitted:
         note = _omitted_line(groups.omitted, "references", limit=limit)
         if files_omitted:
@@ -1932,92 +1921,16 @@ def _render_card(card: SymbolCard) -> str:
     return "\n".join(lines)
 
 
-def _strongest_first(groups: Sequence[RefGroup]) -> list[RefGroup]:
-    """Order the file groups by evidence tier, strongest first.
+def _render_site(site: RefSite) -> str:
+    """Render one reference row beneath the file header that locates it.
 
-    Ordering rather than sectioning. Leading with the rows a reader is told to
-    treat as callers is worth having, but it was bought once by grouping the
-    files under tier headings, and that shape asked the reader to hold a
-    heading in mind while reading rows several lines below it. A sort achieves
-    the same lead and leaves every block a self-contained unit.
-
-    Groups keep their relative order inside a tier, so the file ordering a
-    caller established still holds, and a listing whose groups carry no tier
-    at all -- which the renderer's own unit fixtures build -- keeps the order
-    it arrived in.
-    """
-    order = [tier.label for tier in TIER_ORDER]
-    return sorted(
-        groups,
-        key=lambda group: (
-            order.index(group.tier_label) if group.tier_label in order else len(order)
-        ),
-    )
-
-
-def _group_block(group: RefGroup) -> list[str]:
-    """Render one file: its header, its own id pattern, and its rows.
-
-    Every block is complete on its own. The header names the file and the tier
-    behind it, the pattern line directly beneath spells that file's id prefix
-    in full, and the rows carry the qualified names it takes. Building an id is
-    then a copy of the line above and a substitution of a name on screen --
-    never a join against a pattern printed elsewhere in the answer, which is
-    the one step a reader performs unreliably and which fails silently when it
-    goes wrong, because a wrong-but-well-formed id answers "no matching
-    symbols" rather than refusing.
-
-    The header keeps its tool-authored parenthesised suffix. That is not
-    decoration: a file header is the one line in this view with no indent, so
-    the fact after the path is what stops a repository from spelling a
-    filename that renders byte-identical to this package's own omission
-    marker.
-    """
-    sites = len(group.sites)
-    tier = f", {one_line(group.tier_label)}" if group.tier_label else ""
-    lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{tier})"]
-    pattern = _stable_ids_line(group.id_prefix, group.path)
-    if pattern:
-        lines.append(pattern)
-    lines.extend(_render_site(same) for same in _by_symbol(group.sites))
-    return lines
-
-
-def _by_symbol(sites: Sequence[RefSite]) -> list[list[RefSite]]:
-    """Group a file's reference sites by the symbol each one is inside.
-
-    Keyed on the stable id rather than on the displayed name, which is what
-    keeps the ``#2`` case apart: a file that spells one name twice gives its
-    two symbols distinct ids, and merging their rows would offer one name for
-    two addresses. Sites outside every symbol carry no id and share one row
-    per file, which is the truth -- they are all attributed to that file.
-
-    First-appearance order, so the merged listing reads in the same order the
-    unmerged one did.
-    """
-    grouped: dict[str | None, list[RefSite]] = {}
-    for site in sites:
-        grouped.setdefault(site.stable_id, []).append(site)
-    return list(grouped.values())
-
-
-def _render_site(sites: Sequence[RefSite]) -> str:
-    """Render one row for every reference inside one symbol.
-
-    One name and its positions. The row used to carry the enclosing symbol's
+    One name and one position. The row used to carry the enclosing symbol's
     name and, beside it, a stable id whose tail was that same name -- the two
     differ only when a file spells one name twice and the id takes a ``#2``
     ordinal, which is the case where the id's spelling is the precise one. So
     the id's name is what the row prints, and the file header's pattern line
     rebuilds the whole id from it.
-
-    The positions then merge onto that one name. A test file calling the
-    target eleven times from one function used to spell that function's name
-    eleven times; the name locates the caller and the lines locate the calls,
-    so the name is worth printing once.
     """
-    first = sites[0]
-    lines = ",".join(str(site.line) for site in sites)
-    if not first.stable_id:
-        return f"{ROW_INDENT}{one_line(first.enclosing)} @{lines}"
-    return f"{ROW_INDENT}[{one_line(first.name or first.stable_id)}] @{lines}"
+    if not site.stable_id:
+        return f"{ROW_INDENT}{one_line(site.enclosing)} @{site.line}"
+    return f"{ROW_INDENT}{_locator(site.name or site.stable_id, line=site.line)}"

@@ -10,7 +10,7 @@ reports.go  (rank 0.4865)
   fn formatRow(item Item, lineTotal float64) -> string  [formatRow] @72
   fn CheckReportInputs(inv *Inventory, prices *PriceBook) -> error  [CheckReportInputs] @79
 
-pricing.go  (rank 0.2779)
+pricing.go  (rank 0.2826)
   stable ids: go:pricing.go::<QualifiedName>
   type Tier  [Tier] @17
   type PriceBook  [PriceBook] @33
@@ -20,7 +20,7 @@ pricing.go  (rank 0.2779)
       fn PriceList(tier Tier) -> ([][2]interface{}, error)  [PriceBook.PriceList] @73
   fn FormatMoney(amount float64) -> string  [FormatMoney] @92
 
-inventory.go  (rank 0.2356)
+inventory.go  (rank 0.2309)
   stable ids: go:inventory.go::<QualifiedName>
   type Item  [Item] @24
       fn NeedsReorder() -> (bool, error)  [Item.NeedsReorder] @31
