@@ -376,10 +376,14 @@ class TestSkippedFiles:
 
 
 class TestRefGroups:
-    def test_the_tier_leads_its_section_and_the_header_counts_its_sites(self):
-        """The tier is stated once for the files that share it. (#43)
+    def test_the_header_carries_the_file_its_count_and_its_tier(self):
+        """One header states everything true of the block beneath it.
 
-        The header keeps a tool-authored `(N references)` suffix. A file
+        The tier rode a section heading for one release (#43) and is back on
+        the header, so a reader never holds a heading in mind while reading
+        rows several lines below it.
+
+        The header keeps a tool-authored `(N references...)` suffix. A file
         header is the one unindented line in this view, so the parenthesised
         fact is what stops a filename from forging an omission marker.
         """
@@ -391,7 +395,7 @@ class TestRefGroups:
         )
         text = render.render_ref_groups([group], "quote")
 
-        assert "resolved via import\n  caller.py  (1 reference)" in text
+        assert "caller.py  (1 reference, resolved via import)" in text
 
     def test_a_site_row_is_its_enclosing_symbol_then_an_at_line(self):
         group = render.RefGroup(
@@ -419,10 +423,17 @@ class TestRefGroups:
 
         assert "[ask] @5" in text
         assert text.count("ask") == 1  # the row, and nowhere else
-        assert "stable ids: py:<file>::<QualifiedName>" in text
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
 
-    def test_one_id_pattern_serves_the_whole_listing(self):
-        """The path is on each header, so the pattern names it once. (#43)"""
+    def test_every_group_spells_its_own_path_in_its_own_pattern(self):
+        """Each block rebuilds an id without reading any other block.
+
+        One shared pattern with a `<file>` slot was tried (#43) and asked the
+        reader to splice a path from a header several lines away into a
+        pattern at the top of the answer. That join is the step a reader gets
+        wrong silently: a well-formed id for a file that has no such symbol
+        answers "no matching symbols", which reads as "the symbol is gone".
+        """
         groups = [
             render.RefGroup(
                 path=path,
@@ -434,16 +445,13 @@ class TestRefGroups:
         ]
         text = render.render_ref_groups(groups, "quote")
 
-        assert text.count("stable ids:") == 1
-        assert "stable ids: py:<file>::<QualifiedName>" in text
-        assert "py:a.py::<QualifiedName>" not in text
+        assert text.count("stable ids:") == 2
+        assert "stable ids: py:a.py::<QualifiedName>" in text
+        assert "stable ids: py:b.py::<QualifiedName>" in text
+        assert render.PATH_PLACEHOLDER not in text
 
     def test_a_listing_that_mixes_languages_keeps_a_pattern_per_file(self):
-        """One pattern cannot describe two prefixes, so none is shared.
-
-        Guessing which prefix to print would hand back ids addressing the
-        wrong language, which the id grammar has no way to refuse.
-        """
+        """Two prefixes, two patterns, each on the block that needs it."""
         groups = [
             render.RefGroup(
                 path="a.py",

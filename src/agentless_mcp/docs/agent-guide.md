@@ -258,8 +258,9 @@ src/billing/invoice.py  (rank 0.4865)
 
 The file header spells the path, so the rows below it do not. Each file's
 block opens with a `stable ids:` line naming the id pattern for that file,
-and every bracket below carries the qualified name alone. Join the two to
-build an id `expand` accepts: `py:src/billing/invoice.py::Invoice.total`.
+and every bracket below carries the qualified name alone. Put a bracket's
+name where the pattern reads `<QualifiedName>` and you have an id `expand`
+accepts: `py:src/billing/invoice.py::Invoice.total`.
 
 `@21` is where the symbol is defined. A position is always an `@line` or
 `@start-end` suffix. The `N| ` gutter means a different thing and only that
@@ -514,28 +515,28 @@ agentless-mcp refs Invoice.total --limit 50
 agentless-mcp refs Invoice.total --shared-callers
 ```
 
-The command lists callers, grouped by file, and the files grouped by evidence
-tier with the strongest first. It attributes each caller to the symbol whose
+The command lists callers grouped by file, with the files ordered by evidence
+tier and the strongest first. It attributes each caller to the symbol whose
 body contains the reference. Rows carry that symbol and its positions:
 
 ```
 6 references to render_rows
-stable ids: py:<file>::<QualifiedName>   -- <file> is the path on each file header below
 
-resolved-via-import
-  src/app/report.py  (4 references)
-    [Report.render] @88,94,101
-    [build_rows] @140
+src/app/report.py  (4 references, resolved-via-import)
+  stable ids: py:src/app/report.py::<QualifiedName>
+  [Report.render] @88,94,101
+  [build_rows] @140
 ```
 
-Two things are stated once rather than per row. **The id pattern** is one line
-for the whole answer: build an id by putting the file header's path where
-`<file>` is and the row's name where `<QualifiedName>` is. Sending an id that
-still carries `<file>` is refused by name rather than answered with "no
-matching symbols". A listing that mixes languages gets no shared line, because
-one pattern cannot describe two prefixes; each file header then carries its
-own. **The positions merge** onto one row per symbol -- the name locates the
-caller and the lines locate the calls.
+**Every block is complete on its own.** The header names the file and the tier
+behind it, the `stable ids:` line beneath spells that file's pattern in full,
+and the rows carry the names that pattern takes. Build an id by putting a
+row's name where the pattern reads `<QualifiedName>` -- nothing has to be
+carried from elsewhere in the answer. An id still holding a placeholder is
+refused by name rather than answered with "no matching symbols".
+
+**The positions merge** onto one row per symbol -- the name locates the caller
+and the lines locate the calls.
 
 A reference that sits outside every symbol -- an import, a module-level call
 -- reads `(module level) @line` and carries no id. There is nothing to expand

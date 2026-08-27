@@ -161,7 +161,7 @@ class TestTierLabels:
             repo, "py:core.py::helper"
         )
         rendered = render.render_ref_groups(result.groups, "helper")
-        assert "resolved-via-import\n  user.py  (2 references)" in rendered
+        assert "user.py  (2 references, resolved-via-import)" in rendered
         assert "name-only-ambiguous" in rendered
 
     def test_the_json_form_carries_the_tier(self, repo, extractor):

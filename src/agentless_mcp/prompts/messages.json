@@ -19,7 +19,6 @@
   "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
   "stable_ids_pattern": "stable ids: {pattern}",
-  "stable_ids_shared": "stable ids: {pattern}   -- {placeholder} is the path on each file header below",
   "stable_id_placeholder": "{id} still carries the {placeholder} placeholder from the id pattern. Replace it with the path on the file header the row was listed under, then call again.",
   "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",
   "slice_range_beyond_file": "unsatisfiable: line range {start}-{end} is beyond {path} ({total} lines)",

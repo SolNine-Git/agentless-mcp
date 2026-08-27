@@ -75,6 +75,46 @@ class TestSnapshot:
 
         assert gitinfo.snapshot(root).dirty_paths == ("a -> b.py",)
 
+    def test_a_nested_directory_never_names_the_enclosing_repository_s_paths(self, make_git_repo):
+        """A directory inside a larger repository gets that repository's status.
+
+        Its paths are relative to the enclosing top level, so they need not
+        exist under the directory being analysed. Reproduced against a
+        benchmark snapshot with no git of its own, whose every answer named the
+        harness project's own source files as the snapshot's changed paths.
+        """
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        snapshot = gitinfo.snapshot(root / "sub")
+
+        assert snapshot.dirty_paths == ()
+
+    def test_a_nested_directory_says_whose_state_it_reported(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        snapshot = gitinfo.snapshot(root / "sub")
+
+        assert "is not the top of its git repository" in snapshot.note
+        assert str(root.resolve()) in snapshot.note
+
+    def test_a_nested_directory_still_reports_the_head_it_would_be_cached_under(
+        self, make_git_repo
+    ):
+        """The SHAs and the count are unchanged; only the paths are withheld."""
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        nested = gitinfo.snapshot(root / "sub")
+
+        assert nested.head_sha == gitinfo.snapshot(root).head_sha
+        assert nested.tree_oid == gitinfo.snapshot(root).tree_oid
+        assert nested.dirty_count == 1
+
+    def test_the_repository_root_itself_still_names_its_paths(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+
+        assert gitinfo.snapshot(root).dirty_paths == ("a.py",)
+        assert gitinfo.snapshot(root).note == ""
+
     def test_non_git_directory_is_all_unknown_with_a_note(self, tmp_path):
         plain = tmp_path / "plain"
         plain.mkdir()

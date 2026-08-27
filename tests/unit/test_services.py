@@ -577,7 +577,7 @@ class TestSymbolService:
 
         assert group.id_prefix == "py"
         assert [site.enclosing for site in group.sites] == [render.MODULE_LEVEL, "ask"]
-        assert "stable ids: py:<file>::<QualifiedName>" in text
+        assert "stable ids: py:caller.py::<QualifiedName>" in text
         # The row with no symbol has no id to shorten, and says so rather
         # than printing a name the pattern cannot complete.
         assert f"  {render.MODULE_LEVEL} @1" in text

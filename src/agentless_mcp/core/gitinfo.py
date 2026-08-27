@@ -128,8 +128,23 @@ def dirty_count(root: Path) -> int | None:
 
 
 def snapshot(root: Path) -> GitSnapshot:
-    """Read HEAD, tree OID and dirty count in one pass, notes collected."""
-    if git_root(root) is None:
+    """Read HEAD, tree OID and dirty count in one pass, notes collected.
+
+    Git answers for the repository that encloses ``root``, which is not always
+    ``root`` itself. A directory analysed inside a larger repository -- a
+    vendored tree, a benchmark snapshot never given a git of its own -- gets
+    that repository's HEAD and that repository's changed paths, and those paths
+    are relative to *its* top level, so they need not exist under ``root`` at
+    all. Reproduced: a snapshot with no ``.git`` reported the enclosing
+    project's own source files as its changed paths, on every answer.
+
+    The count and the SHAs stay, because they are what they always were and the
+    tree OID keys the cache. The paths do not: naming a file that is not in the
+    analysed tree is worse than naming none, and the note says whose state this
+    is so a reader is not left to infer it.
+    """
+    enclosing = git_root(root)
+    if enclosing is None:
         return GitSnapshot(
             head_sha=None,
             tree_oid=None,
@@ -141,12 +156,18 @@ def snapshot(root: Path) -> GitSnapshot:
     tree = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD^{tree}"])
     status = _parse_dirty(_run(root, ["status", "--porcelain", "-z"], strip=False))
 
-    notes = [note for note in (head.note, tree.note, status.note) if note]
+    borrowed = enclosing != root.resolve()
+    enclosing_note = (
+        f"{root} is not the top of its git repository: HEAD and dirty count "
+        f"describe {enclosing}, and its changed paths are not named here"
+    )
+    notes = [enclosing_note] if borrowed else []
+    notes += [note for note in (head.note, tree.note, status.note) if note]
     return GitSnapshot(
         head_sha=head.text,
         tree_oid=tree.text,
         dirty_count=status.count,
-        dirty_paths=status.paths,
+        dirty_paths=() if borrowed else status.paths,
         note="; ".join(notes),
     )
 

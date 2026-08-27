@@ -90,31 +90,33 @@ the files it counted.
   budget rather than a path count, because the cost being bounded is the line,
   and it rides on every response.
 
-- **Fan-in states the id pattern once, groups files by tier, and merges a
-  symbol's rows.** Three compressions of the same view, measured together over
-  five real answers on this repository: **14,261 characters to 11,214, -21.4%**.
-  (#43)
+- **Fan-in orders files by evidence tier and merges a symbol's rows.** (#43)
 
-  The id pattern was respelled under every file header, and the header directly
-  above already carried the path. It is now one line for the whole answer --
-  `stable ids: py:<file>::<QualifiedName>` -- with the substitution named. An
-  id that still carries `<file>` parses, and the file it names does not exist,
-  so it used to answer `no matching symbols`, which reads as "that symbol is
-  gone" rather than "that id was never finished"; `expand` now refuses it by
-  name and says what to replace. A listing that mixes languages keeps a pattern
-  per file, because one pattern cannot describe two prefixes.
-
-  File blocks group under a tier heading, strongest first, so each tier is
-  stated once and the rows a reader is told to treat as callers come before the
-  rows they are told to treat as candidates. The file header keeps a
-  tool-authored `(N references)` suffix: it is the one unindented line in the
-  view, and the parenthesised fact is what stops a filename from forging an
-  omission marker.
-
+  File blocks are sorted strongest tier first, so the rows a reader is told to
+  treat as callers come before the rows they are told to treat as candidates.
   Sites inside one symbol share a row -- `[render_map] @1715,1721,1726` -- keyed
   on the stable id rather than the displayed name, so the `#2` ordinal case
   keeps its own row. One group of 53 references rendered 53 rows and now
   renders 24.
+
+  Each block stays self-contained: the header names the file, its reference
+  count and its tier, and the `stable ids:` line directly beneath spells that
+  file's pattern in full. Two further compressions shipped and were withdrawn
+  before release. Hoisting one `stable ids: py:<file>::<QualifiedName>` to the
+  top of the answer, and moving the tier onto a section heading above the files
+  that shared it, together took five real answers from 14,261 characters to
+  11,214, -21.4%. Both made the reader carry something across the answer to use
+  a row -- a path from a header several lines up, or a heading held in mind --
+  and building an id stopped being a copy. That trade is wrong for a retrieval
+  tool: a wrong-but-well-formed id answers `no matching symbols`, which reads
+  as "that symbol is gone" rather than "that id was built wrong". The saving
+  was real and is not worth a step the reader can silently get wrong.
+
+  `expand` still refuses an id holding an unsubstituted `<QualifiedName>` or
+  `<file>` slot, by name, rather than answering `no matching symbols`. Every
+  pattern line ends in `<QualifiedName>`, so copying one without filling it in
+  stays reachable, and an agent working from the withdrawn shape can still send
+  `<file>`.
 
 - **The cache root has a size ceiling, enforced after every index run.**
   Nothing bounded it before. The cache root grows through the server's own
@@ -246,6 +248,21 @@ the files it counted.
   exactly the tree that needs them named. A related fix: the shared git runner
   stripped its output, which deleted the leading status space of an unstaged
   modification and shifted every path one character left.
+
+### Fixed
+
+- **A directory analysed inside a larger repository no longer borrows that
+  repository's changed paths.** Git answers for the repository that encloses
+  the root it is given, and those paths are relative to *its* top level, so
+  they need not exist under the directory being analysed. Found on a benchmark
+  snapshot that was never given a git of its own: every answer for it carried
+  `dirty: 36 files (eval.py, calibrate_weights.py, ...)`, naming the harness
+  project's own source files as the snapshot's changed files.
+
+  The count and the SHAs are unchanged -- they are what they always were, and
+  the tree OID keys the cache -- but the paths are withheld and the note says
+  whose state was reported. Naming a file that is not in the analysed tree is
+  worse than naming none.
 
 ## 0.7.0 -- 2026-08-25
 

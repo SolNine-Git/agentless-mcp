@@ -530,15 +530,16 @@ class SymbolService:
         reinterpreted, with the correction shown as though it had been asked
         for.
         """
-        if render.PATH_PLACEHOLDER in raw:
-            # An unsubstituted placeholder parses, and the file it names does
+        unfinished = next((slot for slot in render.ID_PLACEHOLDERS if slot in raw), "")
+        if unfinished:
+            # An unsubstituted placeholder parses, and the symbol it names does
             # not exist, so this would otherwise answer "no matching symbols"
             # -- which reads as "that symbol is gone" rather than "that id was
-            # never finished". The one failure the shared id pattern can cause
-            # is therefore the one failure that says what to do about it.
-            return None, MESSAGES.stable_id_placeholder.format(
-                id=raw, placeholder=render.PATH_PLACEHOLDER
-            )
+            # never finished". Every pattern line this package prints ends in
+            # ``<QualifiedName>``, so copying one without filling it in is a
+            # reachable mistake, and it is the one failure here that can say
+            # exactly what to do about it.
+            return None, MESSAGES.stable_id_placeholder.format(id=raw, placeholder=unfinished)
 
         try:
             parsed = parse_stable_id(raw)
