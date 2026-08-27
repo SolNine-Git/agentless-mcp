@@ -1415,7 +1415,11 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     # What the other languages get instead: the declaration names their own
     # configuration already identifies. Not scope analysis -- it says only
     # "this identifier is the name in a declaration, not a use of one".
-    declared: set[int] = set()
+    declared = (
+        declaration_name_ids(tree.root_node, LANGUAGE_CONFIGS[language])
+        if analysis is None and language in LANGUAGE_CONFIGS
+        else set()
+    )
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1478,7 +1482,15 @@ def marks_declarations(language: str) -> bool:
     to key on -- has no role to read, and the caller must keep whatever
     weaker rule it used before roles existed.
     """
-    return language == "python"
+    if language == "python":
+        return True
+    cfg = LANGUAGE_CONFIGS.get(language)
+    return cfg is not None and bool(
+        cfg.function_node_types
+        or cfg.class_node_types
+        or cfg.binding_node_types
+        or cfg.constant_node_types
+    )
 
 
 def declaration_name_ids(root: Node, cfg: LanguageConfig) -> set[int]:
@@ -1496,13 +1508,26 @@ def declaration_name_ids(root: Node, cfg: LanguageConfig) -> set[int]:
     answers the other languages, whose identifiers were all called references.
     """
     declarations = frozenset(cfg.function_node_types) | frozenset(cfg.class_node_types)
-    if not declarations:
+    bindings = frozenset(cfg.binding_node_types)
+    fields = frozenset(cfg.constant_node_types)
+    if not declarations and not bindings and not fields:
         return set()
     found: set[int] = set()
     for node in walk_nodes(root):
-        if node.type not in declarations:
+        named: Node | None = None
+        if node.type in declarations:
+            named = generic_name_node(node, cfg)
+        elif node.type in bindings:
+            value = node.child_by_field_name("value")
+            if value is not None and value.type in cfg.function_value_node_types:
+                named = generic_name_node(node, cfg)
+        elif node.type in fields:
+            for declarator in node.children_by_field_name("declarator"):
+                field_name = generic_name_node(declarator, cfg)
+                if field_name is not None:
+                    found.add(field_name.id)
+        else:
             continue
-        named = generic_name_node(node, cfg)
         if named is not None:
             found.add(named.id)
     return found

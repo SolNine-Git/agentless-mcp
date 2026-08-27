@@ -28,23 +28,19 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, guide, selfrestart
 
-# The environment every spawned console script gets. Built here rather than
-# inherited: the three kill switches decide whether a child starts a background
-# grammar warm, a background index or a self-restart monitor, and a suite that
-# is green because of what the developer's shell does not export is not
-# evidence. ``conftest`` assigns the same three for the in-process half; naming
-# them at the spawn as well is what makes the guarantee local to the harness
-# that depends on it.
-CHILD_ENV = {
-    **os.environ,
-    grammars.ENV_NO_AUTO_WARM: "1",
-    cache.ENV_NO_AUTO_INDEX: "1",
-    selfrestart.ENV_NO_AUTO_RESTART: "1",
-}
-
 
 def console_script(*arguments, cwd=None, stdin=None, timeout=120):
     """Run the installed console script with a pinned environment."""
+    # Snapshot at invocation time, after pytest's autouse fixtures have moved
+    # XDG_CACHE_HOME into the current test's temporary directory. A module-level
+    # snapshot leaked the developer cache into every subprocess and made these
+    # tests pass or fail according to ambient machine state.
+    child_env = {
+        **os.environ,
+        grammars.ENV_NO_AUTO_WARM: "1",
+        cache.ENV_NO_AUTO_INDEX: "1",
+        selfrestart.ENV_NO_AUTO_RESTART: "1",
+    }
     return subprocess.run(
         [sys.executable, "-m", "agentless_mcp", *arguments],
         capture_output=True,
@@ -52,7 +48,7 @@ def console_script(*arguments, cwd=None, stdin=None, timeout=120):
         timeout=timeout,
         cwd=cwd,
         input=stdin,
-        env=CHILD_ENV,
+        env=child_env,
         check=False,
     )
 

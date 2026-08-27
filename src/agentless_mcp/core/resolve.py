@@ -774,6 +774,9 @@ def _reference_edges(
 ) -> list[SymbolEdge]:
     """Resolve one file's identifier references into edges."""
     declarations = {(symbol.name, symbol.line_number) for symbol in facts.symbols}
+    marked_declarations = {
+        (ref.name, ref.line) for ref in facts.refs if ref.role is IdentifierRole.DECLARATION
+    }
     edges: list[SymbolEdge] = []
 
     for ref in facts.refs:
@@ -781,11 +784,12 @@ def _reference_edges(
             # A syntactic binding, label, declaration, or attribute member is
             # not a bare repository reference at any evidence tier.
             continue
-        if (ref.name, ref.line) in declarations:
+        if (ref.name, ref.line) in declarations and (ref.name, ref.line) not in marked_declarations:
             # The identifier in `def quote` is the declaration, not a use of
-            # it. Only Python records that as a role the filter above can
-            # read; `collect_refs` calls every other identifier a REFERENCE,
-            # so this is where the other nineteen languages are answered.
+            # it. This fallback remains only when the extractor did not mark a
+            # declaration with this exact name and line. A marked declaration
+            # has already been filtered by ``is_resolvable``; any other same-
+            # line occurrence is therefore a real reference and must survive.
             #
             # It is a proxy -- "a symbol of this name starts on this line" --
             # and two tighter keys were measured against the edge set of this
@@ -799,10 +803,9 @@ def _reference_edges(
             # declaration identifier and drops the return type -- a wrong edge
             # traded for a missing one, which is the wrong direction.
             #
-            # So the cost is paid where it is cheapest: 1,086 of 14,947
-            # resolvable references are dropped, none of them a second
-            # occurrence sharing a line with a declaration. Closing it for
-            # real means recording the role per language in the extractor.
+            # The per-key proof is deliberately narrower than disabling this
+            # fallback for a whole language. Unmodelled declaration forms keep
+            # the conservative guard instead of being promoted to references.
             continue
         resolution = (
             resolver.resolve_module_attribute(ref.name, facts.path, ref.qualifier)

@@ -1,6 +1,11 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
-from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
+from agentless_mcp.core.extractor import (
+    IdentifierRole,
+    collect_refs,
+    identifier_node_types,
+    marks_declarations,
+)
 from agentless_mcp.core.refs import (
     build_ref_index,
     definitions_for,
@@ -75,8 +80,27 @@ class TestCollectRefs:
 
     def test_typescript_sees_names_inside_exported_declarations(self):
         source = "export class Widget {\n  render() {\n    return helper();\n  }\n}\n"
-        names = {ref.name for ref in collect_refs(source, "typescript", "w.ts")}
-        assert {"Widget", "render", "helper"} <= names
+        refs = collect_refs(source, "typescript", "w.ts")
+        roles = {ref.name: ref.role for ref in refs}
+
+        assert roles["Widget"] is IdentifierRole.DECLARATION
+        assert roles["render"] is IdentifierRole.DECLARATION
+        assert roles["helper"] is IdentifierRole.REFERENCE
+
+    def test_a_function_valued_binding_is_a_declaration(self):
+        refs = collect_refs(
+            "export const App = () => helper();\n",
+            "typescript",
+            "app.ts",
+        )
+        roles = {ref.name: ref.role for ref in refs}
+
+        assert roles["App"] is IdentifierRole.DECLARATION
+        assert roles["helper"] is IdentifierRole.REFERENCE
+
+    def test_data_formats_do_not_claim_declaration_roles(self):
+        for language in ("json", "toml", "yaml", "hcl", "sql"):
+            assert marks_declarations(language) is False
 
     def test_a_parameter_s_occurrences_are_marked_local(self):
         refs = collect_refs("def f(quote):\n    return quote\n", "python", "a.py")

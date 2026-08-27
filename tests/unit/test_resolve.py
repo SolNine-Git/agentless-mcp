@@ -772,8 +772,8 @@ UNMODELLED_DECLARATION_GO = {
 }
 
 # `Uses.Helper` names its return type, itself, and a constructor call, all on
-# one line. Only Python records a declaration identifier as a role, so this is
-# where the line-keyed guard in `_reference_edges` is visible.
+# one line. The method name carries a declaration role, so the other two
+# occurrences exercise the per-name/per-line proof in `_reference_edges`.
 SAME_LINE_FILES = {
     "Helper.java": "public class Helper {\n    public int value() { return 1; }\n}\n",
     "Uses.java": ("public class Uses {\n    public Helper Helper() { return new Helper(); }\n}\n"),
@@ -781,15 +781,12 @@ SAME_LINE_FILES = {
 
 
 class TestTheDeclarationGuardCostsBothWays:
-    """What the line-keyed guard drops, and what it lets through.
+    """What the declaration role recovers, and where the fallback remains.
 
-    `_reference_edges` refuses every occurrence of a name on the line a symbol
-    of that name starts on. That is a proxy for "this occurrence *is* the
-    declaration identifier", and a proxy has two failure directions. Re-keying
-    it was measured and refused -- marking the tree-sitter `name`-field child a
-    declaration adds tens of thousands of wrong edges, because JSON, YAML and
-    TOML keys sit behind no such field -- so both directions are costs the
-    guard is known to carry, and both are pinned here rather than assumed.
+    `_reference_edges` keeps its line-keyed proxy unless the extractor marked a
+    declaration with the exact same name and line. That proof recovers other
+    occurrences beside modelled declarations without disabling the fallback
+    for unmodelled forms or for data-format keys.
 
     In Go, which `tests/conftest.py` warms on every run. The Java pair below
     says the same thing in the language the cost was first measured in, and
@@ -797,16 +794,18 @@ class TestTheDeclarationGuardCostsBothWays:
     the decision unrecorded.
     """
 
-    def test_a_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
-        """Direction one: a real edge lost.
+    def test_a_reference_on_the_declaration_line_now_resolves(self, tmp_path, extractor):
+        """A declaration role recovers the real references beside it.
 
         The receiver type and the result type on `uses.go` line 3 both name
-        `helper.go`'s `Helper`, and the method declared on that line is also
-        called `Helper`, so all three go.
+        `helper.go`'s `Helper`; the method's own name stays filtered.
         """
         _, graph = resolved(write(tmp_path, SAME_LINE_GO), extractor)
+        edges = edges_from(graph, "go:uses.go::Helper.Helper", "Helper")
 
-        assert edges_from(graph, "go:uses.go::Helper.Helper", "Helper") == []
+        assert [(edge.target.path, edge.tier) for edge in edges] == [
+            ("helper.go", resolve.Tier.AMBIGUOUS)
+        ]
 
     def test_the_same_reference_one_line_down_resolves(self, tmp_path, extractor):
         """The guard is keyed on the line, so the cost is exactly one line wide."""
@@ -867,27 +866,20 @@ class TestAnOutOfLineDefinitionIsNotAReference:
 
 
 class TestADeclarationSharingALineWithAReference:
-    """What the line-keyed declaration guard costs, pinned rather than assumed.
+    """A modelled declaration no longer hides neighbouring references.
 
-    The guard drops every occurrence of a name on the line a symbol of that
-    name starts on, which is a proxy for "this occurrence IS the declaration
-    identifier". Two tighter keys were measured against this repository's
-    reference edge set and both were refused: marking the tree-sitter
-    `name`-field child a declaration adds tens of thousands of wrong edges,
-    because JSON, YAML and TOML keys sit behind no such field; dropping only
-    the first match per line keeps the declaration identifier here and drops
-    the return type instead, which trades a missing edge for a wrong one.
-
-    So the reference on the declaration's own line is lost. This test exists
-    so that deleting the guard is a visible decision rather than a silent one.
+    The extractor marks only names beneath configured declaration node types;
+    data-format keys never reach this path. The resolver then removes the
+    line-keyed fallback only for that exact declaration key.
     """
 
-    def test_the_reference_on_the_declaration_line_is_dropped(self, tmp_path, extractor):
+    def test_the_reference_on_the_declaration_line_now_resolves(self, tmp_path, extractor):
         if "java" not in grammars.warmed_languages():
             pytest.skip("grammar for java is not in the local pack cache")
         _, graph = resolved(write(tmp_path, SAME_LINE_FILES), extractor)
 
-        assert edges_from(graph, "java:Uses.java::Uses.Helper", "Helper") == []
+        edges = edges_from(graph, "java:Uses.java::Uses.Helper", "Helper")
+        assert [edge.target.path for edge in edges] == ["Helper.java"]
 
     def test_a_reference_on_any_other_line_still_resolves(self, tmp_path, extractor):
         """The guard is keyed on the line, so one line down is enough."""

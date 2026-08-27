@@ -35,6 +35,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, grammars, patchlint, refs
+from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import cachedir, filelock, fslimits, platforms
 from agentless_mcp.util.errors import CacheLocked, OperationFailed
@@ -602,6 +603,28 @@ class TestSchemaVersion:
         assert cache.open_source(repo, extractor, tree_oid=None).receipt == (
             f"g:{rebuilt.generation} fresh"
         )
+
+    def test_v14_reference_roles_are_not_reused(self, repo, extractor):
+        source_text = "export const App = () => helper();\n"
+        path = repo / "app.ts"
+        path.write_text(source_text, encoding="utf-8")
+        cache.build_index(repo, extractor)
+        database = cache.cache_path(repo)
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute("UPDATE meta SET schema_version = 14")
+            connection.execute("UPDATE refs SET role = 'reference' WHERE name = 'App'")
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        try:
+            app = next(
+                ref
+                for ref in source.refs_for(source_text, "typescript", "app.ts")
+                if ref.name == "App"
+            )
+        finally:
+            source.close()
+
+        assert app.role is IdentifierRole.DECLARATION
 
     def test_the_schema_holds_no_write_only_columns(self, repo, extractor):
         """A column written on every row and selected by nobody is not stored."""
