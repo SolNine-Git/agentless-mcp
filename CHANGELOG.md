@@ -164,13 +164,6 @@ measurement that can resolve it.
   could save, and it would couple `walk_nodes` -- a general utility with about
   twenty callers -- to one language's scope rules.
 
-- **`git status` is read with `-z`.** Without it a rename renders as
-  `R  old -> new`, and a file genuinely named `old -> new` is spelled
-  identically, so the two could not be told apart and the dirty count was a
-  guess on exactly the tree that needed it. A related fix: the shared git
-  runner stripped its output, which deleted the leading status space of an
-  unstaged modification.
-
 ### Fixed
 
 - **The cache schema version is 14, because the stored role vocabulary
@@ -182,13 +175,14 @@ measurement that can resolve it.
   version can say a vocabulary moved. Caches written by that build are now
   discarded and rebuilt once.
 
-- **A directory analysed inside a larger repository no longer borrows that
-  repository's changed paths.** Git answers for the repository that encloses
-  the root it is given, and those paths are relative to *its* top level, so
-  they need not exist under the directory being analysed. Found on a benchmark
-  snapshot that was never given a git of its own: every answer for it carried
-  `dirty: 36 files (eval.py, calibrate_weights.py, ...)`, naming the harness
-  project's own source files as the snapshot's changed files.
+- **A directory analysed inside a larger repository now says whose state it
+  was served.** Git answers for the repository that encloses the root it is
+  given, so a vendored tree or a snapshot never given a git of its own gets
+  that repository's HEAD and dirty count presented as its own, with nothing in
+  the receipt to say so. Found on a benchmark snapshot with no `.git`, whose
+  every answer carried the enclosing project's HEAD and a dirty count of 36
+  files that were not in it. The count and the SHAs are unchanged -- the tree
+  OID keys the cache -- and a note now names the repository they describe.
 
   The count and the SHAs are unchanged -- they are what they always were, and
   the tree OID keys the cache -- but the paths are withheld and the note says

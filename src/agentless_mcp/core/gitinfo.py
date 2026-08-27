@@ -123,7 +123,7 @@ def tree_oid(root: Path) -> str | None:
 
 def dirty_count(root: Path) -> int | None:
     """Return the number of modified or untracked paths; None when unknown."""
-    return _parse_dirty(_run(root, ["status", "--porcelain", "-z"], strip=False)).count
+    return _parse_dirty(_run(root, ["status", "--porcelain"])).count
 
 
 def snapshot(root: Path) -> GitSnapshot:
@@ -147,7 +147,7 @@ def snapshot(root: Path) -> GitSnapshot:
 
     head = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD"])
     tree = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD^{tree}"])
-    status = _parse_dirty(_run(root, ["status", "--porcelain", "-z"], strip=False))
+    status = _parse_dirty(_run(root, ["status", "--porcelain"]))
 
     borrowed = enclosing != root.resolve()
     enclosing_note = (
@@ -165,50 +165,22 @@ def snapshot(root: Path) -> GitSnapshot:
 
 @dataclass(frozen=True)
 class _DirtyOutcome:
-    """A porcelain status parsed into an entry count, or why it has none."""
+    """A porcelain status parsed into a count, or the reason it has none."""
 
     count: int | None
     note: str
 
 
 def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
-    """Parse one porcelain status into an entry count and the paths; unknown stays unknown.
-
-    Records are NUL-separated because NUL is the one byte a path cannot
-    contain. Without ``-z`` git renders a rename as ``R  old -> new``, and a
-    file genuinely named ``old -> new`` is spelled identically, so the paths
-    would be a guess on exactly the tree that needs them named.
-
-    A rename or a copy emits its destination as the entry and its source as
-    the record straight after. The destination is the path that now exists, so
-    the source is consumed here rather than counted as a second change.
-    """
+    """Count the porcelain lines; unknown stays unknown."""
     if outcome.text is None:
         return _DirtyOutcome(count=None, note=outcome.note)
-
-    records = [record for record in outcome.text.split("\0") if record]
-    entries = 0
-    index = 0
-    while index < len(records):
-        record = records[index]
-        index += 1
-        entries += 1
-        if "R" in record[:2] or "C" in record[:2]:
-            # The source record belongs to the entry just read, not to a
-            # change of its own.
-            index += 1
-    return _DirtyOutcome(count=entries, note=outcome.note)
+    lines = [line for line in outcome.text.splitlines() if line.strip()]
+    return _DirtyOutcome(count=len(lines), note=outcome.note)
 
 
-def _run(cwd: Path, arguments: Sequence[str], *, strip: bool = True) -> _Outcome:
-    """Run one bounded git command; every failure becomes a note, never a raise.
-
-    ``strip`` is what a one-value read wants: a SHA arrives with a trailing
-    newline that nothing downstream should carry. A porcelain status wants the
-    opposite. Its first record opens with the two status characters, and an
-    unstaged modification spells the first of them as a space, so stripping
-    the output deletes half the status and shifts the path it precedes.
-    """
+def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
+    """Run one bounded git command; every failure becomes a note, never a raise."""
     subcommand = arguments[0] if arguments else "git"
     command = ["git", *HARDENING_PREFIX, "-C", str(cwd), *arguments]
     try:
@@ -239,5 +211,4 @@ def _run(cwd: Path, arguments: Sequence[str], *, strip: bool = True) -> _Outcome
         first = detail[0] if detail else "no detail"
         return _Outcome(None, f"git {subcommand} exited {completed.returncode}: {first}")
 
-    text = completed.stdout.decode("utf-8", errors="replace")
-    return _Outcome(text.strip() if strip else text, "")
+    return _Outcome(completed.stdout.decode("utf-8", errors="replace").strip(), "")
