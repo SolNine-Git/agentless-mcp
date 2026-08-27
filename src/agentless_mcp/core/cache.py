@@ -164,7 +164,14 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #
 #   Every table changes shape, so there is nothing here an older reader could
 #   partially understand -- which is exactly what the version gate is for.
-SCHEMA_VERSION = 13
+#
+# 14: the stored role vocabulary shrank. A build that shipped briefly wrote
+#   ``self_attribute`` into ``refs.role``, and this build has no such member,
+#   so every cached file written by it raised on read and fell back to parsing
+#   -- correct, and one warning per file on every call until something
+#   re-indexed. The row shape is unchanged, which is the trap: only the
+#   version can say the vocabulary moved.
+SCHEMA_VERSION = 14
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"

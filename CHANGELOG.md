@@ -173,6 +173,15 @@ measurement that can resolve it.
 
 ### Fixed
 
+- **The cache schema version is 14, because the stored role vocabulary
+  shrank.** A build that shipped briefly on this branch wrote
+  `self_attribute` into `refs.role`. This build has no such member, so every
+  cached file written by that build raised on read and fell back to parsing
+  the file -- correct, and one warning per file on every call until something
+  re-indexed it. The row shape is unchanged, which is the trap: only the
+  version can say a vocabulary moved. Caches written by that build are now
+  discarded and rebuilt once.
+
 - **A directory analysed inside a larger repository no longer borrows that
   repository's changed paths.** Git answers for the repository that encloses
   the root it is given, and those paths are relative to *its* top level, so
