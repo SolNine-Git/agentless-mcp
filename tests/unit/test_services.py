@@ -583,7 +583,7 @@ class TestSymbolService:
 
         for slot, wanted in (
             (render.QUALIFIED_NAME_PLACEHOLDER, "the name in brackets on the row"),
-            (render.PATH_PLACEHOLDER, "the path on its file header"),
+            (render.PATH_PLACEHOLDER, "the path on the file header the row was listed under"),
         ):
             note = service.expand_symbols(ctx, [f"py:core.py::{slot}"]).unresolved[0][1]
             assert wanted in note, f"{slot} refusal does not say what to substitute"

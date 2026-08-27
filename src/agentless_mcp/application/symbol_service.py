@@ -530,8 +530,11 @@ class SymbolService:
         reinterpreted, with the correction shown as though it had been asked
         for.
         """
-        unfinished = next((slot for slot in render.ID_PLACEHOLDERS if slot in raw), "")
-        if unfinished:
+        unfinished = next(
+            ((slot, fill) for slot, fill in render.ID_PLACEHOLDERS.items() if slot in raw),
+            None,
+        )
+        if unfinished is not None:
             # An unsubstituted placeholder parses, and the symbol it names does
             # not exist, so this would otherwise answer "no matching symbols"
             # -- which reads as "that symbol is gone" rather than "that id was
@@ -539,7 +542,10 @@ class SymbolService:
             # ``<QualifiedName>``, so copying one without filling it in is a
             # reachable mistake, and it is the one failure here that can say
             # exactly what to do about it.
-            return None, MESSAGES.stable_id_placeholder.format(id=raw, placeholder=unfinished)
+            slot, fill = unfinished
+            return None, MESSAGES.stable_id_placeholder.format(
+                id=raw, placeholder=slot, substitute=fill
+            )
 
         try:
             parsed = parse_stable_id(raw)

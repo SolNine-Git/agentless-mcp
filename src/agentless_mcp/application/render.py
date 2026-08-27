@@ -98,11 +98,17 @@ QUALIFIED_NAME_PLACEHOLDER = "<QualifiedName>"
 # because an agent working from the older shape can still send one.
 PATH_PLACEHOLDER = "<file>"
 
-# Every slot an id pattern can carry. `symbol_service` refuses an id that still
-# holds any of them: an unsubstituted placeholder parses, and an id naming a
-# symbol that does not exist answers "no matching symbols", which reads as
-# "this symbol is gone" rather than "you built the id wrong".
-ID_PLACEHOLDERS = (PATH_PLACEHOLDER, QUALIFIED_NAME_PLACEHOLDER)
+# Every slot an id pattern can carry, each beside what fills it.
+# `symbol_service` refuses an id that still holds one: an unsubstituted
+# placeholder parses, and an id naming a symbol that does not exist answers
+# "no matching symbols", which reads as "this symbol is gone" rather than "you
+# built the id wrong". The refusal names one substitution -- the one for the
+# slot it found -- because listing both would make the reader pick, which is
+# the work this whole view exists to avoid.
+ID_PLACEHOLDERS: dict[str, str] = {
+    PATH_PLACEHOLDER: MESSAGES.stable_id_slot_file,
+    QUALIFIED_NAME_PLACEHOLDER: MESSAGES.stable_id_slot_qualified_name,
+}
 
 # What an overview header names when the file has no language: a path that
 # reached no grammar, or one the walk refused. The header needs *some*
