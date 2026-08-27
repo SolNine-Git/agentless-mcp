@@ -553,6 +553,41 @@ class TestSymbolService:
         assert len(result.unresolved) == 1
         assert "still carries the <file> placeholder" in result.unresolved[0][1]
 
+    def test_an_unsubstituted_name_placeholder_is_refused_by_name(self, tmp_path, extractor):
+        """`<QualifiedName>` ends every pattern line this package prints.
+
+        It is therefore the placeholder most likely to be copied unfilled, and
+        for one release it was the one the guard did not catch.
+        """
+        (tmp_path / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, Chars4Counter()).expand_symbols(
+            ctx, [f"py:core.py::{render.QUALIFIED_NAME_PLACEHOLDER}"]
+        )
+
+        assert result.cards == ()
+        assert "still carries the <QualifiedName> placeholder" in result.unresolved[0][1]
+
+    def test_the_refusal_says_what_to_substitute_for_the_slot_it_names(self, tmp_path, extractor):
+        """The remediation must fit the placeholder, not the other one.
+
+        The message was written for `<file>` -- "replace it with the path on
+        the file header" -- and then reused for `<QualifiedName>`, where that
+        instruction is simply wrong. Caught by running the installed binary,
+        not by this suite, which is why it is pinned here.
+        """
+        (tmp_path / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        ctx = resolve_repo(tmp_path, None)
+        service = SymbolService(extractor, Chars4Counter())
+
+        for slot, wanted in (
+            (render.QUALIFIED_NAME_PLACEHOLDER, "the name in brackets on the row"),
+            (render.PATH_PLACEHOLDER, "the path on its file header"),
+        ):
+            note = service.expand_symbols(ctx, [f"py:core.py::{slot}"]).unresolved[0][1]
+            assert wanted in note, f"{slot} refusal does not say what to substitute"
+
     def test_a_group_mixing_module_level_and_symbol_sites_still_prints_one_pattern(
         self, tmp_path, extractor
     ):
