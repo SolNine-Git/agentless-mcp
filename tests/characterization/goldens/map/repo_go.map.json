@@ -64,7 +64,7 @@
     },
     {
       "path": "pricing.go",
-      "rank": 0.277923,
+      "rank": 0.282601,
       "symbols": [
         {
           "line": 17,
@@ -114,7 +114,7 @@
     },
     {
       "path": "inventory.go",
-      "rank": 0.235591,
+      "rank": 0.230912,
       "symbols": [
         {
           "line": 24,

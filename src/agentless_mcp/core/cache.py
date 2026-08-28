@@ -171,11 +171,7 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   -- correct, and one warning per file on every call until something
 #   re-indexed. The row shape is unchanged, which is the trap: only the
 #   version can say the vocabulary moved.
-# 15: unchanged non-Python files now persist declaration roles for the exact
-#   function, class, function-valued binding and field names identified by
-#   their language configuration. Reusing v14 rows would silently restore the
-#   line-wide declaration proxy and drop real references beside declarations.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 14
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
