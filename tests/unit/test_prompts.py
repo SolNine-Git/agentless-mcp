@@ -103,6 +103,8 @@ MESSAGE_ARGUMENTS = {
         "count": 2,
         "listed": "huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes)",
     },
+    "find_no_matches": {"query": "rotate_age"},
+    "find_no_matches_kind": {"kind": "class", "query": "quote", "kinds": "function, method"},
     "expand_body_truncated": {"shown": 12, "total": 340},
     "expand_batch_shortened": {"shortened": 3, "total": 10, "budget": 12_000},
     "expand_no_room": {"requested": 400, "seats": 40},

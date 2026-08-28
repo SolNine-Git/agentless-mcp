@@ -91,6 +91,8 @@ class MessageText:
     roots_file_unreadable: str
     map_unresolved_seeds: str
     scan_skipped_files: str
+    find_no_matches: str
+    find_no_matches_kind: str
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str

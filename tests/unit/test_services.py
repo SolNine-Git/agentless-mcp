@@ -12,7 +12,7 @@ from agentless_mcp.application.map_service import (
     seed_weights,
 )
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.symbol_service import SymbolService, render_find
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
 from agentless_mcp.core.projectconfig import MIN_BUDGET
@@ -513,6 +513,41 @@ class TestSymbolService:
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "", limit=2)
         assert len(result.cards) == 2
         assert result.total > 2
+
+    def test_a_find_miss_names_the_next_step(self, repo, extractor):
+        """A miss with no remediation is the one dead end in the surface.
+
+        Every refusal in the message catalog names what to do next; a bare
+        "no matching symbols" did not. The usual cause is that the name is a
+        parameter, a local variable, an attribute or a string literal rather
+        than a declared symbol, and the remedy for those is a text search.
+        """
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "frobnicate")
+        text = render_find(result)
+        assert "no matching symbols" in text
+        assert "frobnicate" in text
+        assert "grep" in text
+
+    def test_a_kind_blocked_miss_names_the_kinds_that_matched(self, repo, extractor):
+        """The service knows the filter caused the miss, so the answer says so.
+
+        "quote" matches a function; asked for a class, the honest answer is
+        not "no matching symbols" but "not under that kind", naming the kinds
+        the name did match so the next call needs no guessing.
+        """
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", kind="class")
+        assert result.total == 0
+        assert result.other_kinds == ("function",)
+        text = render_find(result)
+        assert "class" in text
+        assert "function" in text
+
+    def test_a_miss_that_no_kind_would_save_takes_the_plain_wording(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(
+            repo, "frobnicate", kind="class"
+        )
+        assert result.other_kinds == ()
+        assert "grep" in render_find(result)
 
     def test_expand_reports_an_id_whose_symbol_is_gone(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(

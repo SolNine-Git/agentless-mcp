@@ -166,6 +166,21 @@ measurement that can resolve it.
 
 ### Fixed
 
+- **A symbol lookup that matches nothing names the next step.** `find`
+  answered a miss with the bare words `no matching symbols` -- the one dead
+  end in a message catalog whose every other refusal says what to do next.
+  The usual cause is that the name is a parameter, a local variable, an
+  attribute or a string literal rather than a declared symbol, and the plain
+  miss now says so and points at grep, which is the tool that finds those.
+  A miss the kind filter caused gets a different answer, because the service
+  can tell the two apart from the scan it already holds: it names the kinds
+  the name did match -- `'build_index' does match symbols of other kinds:
+  function` -- so the retry needs no guessing. The kinds cost one pass over
+  the in-memory scan, only on that miss. The JSON form carries `kind` and
+  `other_kinds` beside `query`, both additive; no existing key changed. The
+  expansion path keeps its own wording, which already names every id it
+  could not answer.
+
 - **The last two `#` framing lines are `//` lines.** 0.7.0 moved the receipt
   marker to `//` because a column-0 `#` renders as a Markdown H1 in most
   clients, and missed two instances: the map's unresolved-seeds note
