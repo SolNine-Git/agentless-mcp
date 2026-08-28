@@ -262,7 +262,7 @@ class TestInProcess:
 
         assert invoke(services, repo_path, "map") == EXIT_OK
         out = capsys.readouterr().out
-        assert "# warning: 1 files were skipped" in out
+        assert "// warning: 1 files were skipped" in out
         assert "huge.py" in out
         assert "exceeds the per-file cap" in out
 
@@ -272,7 +272,7 @@ class TestInProcess:
         assert invoke(services, repo_path, "find-symbol", "at_end") == EXIT_DOMAIN
         out = capsys.readouterr().out
         assert "no matching symbols" in out
-        assert "# warning: 1 files were skipped" in out
+        assert "// warning: 1 files were skipped" in out
         assert "huge.py" in out
 
     def test_find_symbol_json_carries_the_skipped_files(self, services, repo_path, capsys):

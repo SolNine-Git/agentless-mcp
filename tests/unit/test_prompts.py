@@ -21,6 +21,7 @@ listing, not off the JSON they came from.
 
 import asyncio
 import json
+import re
 from string import Formatter
 from typing import Any
 
@@ -200,6 +201,30 @@ class TestTemplates:
         """Stated in roots_file_hint alone, so the two never drift apart."""
         carriers = [name for name in vars(MESSAGES) if "re-read" in getattr(MESSAGES, name)]
         assert carriers == ["roots_file_hint"]
+
+    @pytest.mark.parametrize(
+        ("record", "table"),
+        [(ENVELOPE, ENVELOPE_ARGUMENTS), (MESSAGES, MESSAGE_ARGUMENTS)],
+        ids=["envelope", "messages"],
+    )
+    def test_no_catalog_line_renders_as_a_markdown_heading(self, record, table):
+        """Tool framing must not open a line a Markdown client reads as a heading.
+
+        0.7.0 moved the receipt marker from ``#`` to ``//`` because CommonMark
+        reads up to three spaces of indent, one to six ``#`` and a space -- or
+        the end of the line -- as an ATX heading, so every receipt rendered
+        heading-sized in a client that treats tool output as Markdown. That is
+        a property of every catalog string, not of the receipt alone: any
+        framing line that opens with ``#`` is the same defect. The map's
+        rationale rows keep ``#`` legitimately -- they quote source comments
+        and carry enough indent that Markdown reads them as code -- and they
+        are rendered from repository text, not from these catalogs.
+        """
+        atx_heading = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
+        for name, arguments in sorted(table.items()):
+            rendered = getattr(record, name).format(**arguments)
+            for line in rendered.splitlines():
+                assert not atx_heading.match(line), name
 
 
 class TestEagerValidation:

@@ -166,6 +166,18 @@ measurement that can resolve it.
 
 ### Fixed
 
+- **The last two `#` framing lines are `//` lines.** 0.7.0 moved the receipt
+  marker to `//` because a column-0 `#` renders as a Markdown H1 in most
+  clients, and missed two instances: the map's unresolved-seeds note
+  (`# note:`) and the skipped-files warning (`# warning:`). Both are tool
+  framing at column 0 and rendered heading-sized. They now open with `//`,
+  matching every other framing line. A test renders every catalog string with
+  its call-site arguments and asserts no line parses as a CommonMark ATX
+  heading, so the next framing string cannot reintroduce the defect. A client
+  matching `^# note:` or `^# warning:` must match the `//` spellings; nothing
+  else about either message changed. The map's rationale rows keep `#`: they
+  quote source comments and their indent makes Markdown read them as code.
+
 - **The cache schema version is 14, because the stored role vocabulary
   shrank.** A build that shipped briefly on this branch wrote
   `self_attribute` into `refs.role`. This build has no such member, so every

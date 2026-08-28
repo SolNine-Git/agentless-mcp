@@ -534,7 +534,7 @@ task: the file in the traceback, the class in the ticket, the function in
 the error message. Each seed carries one vote, split across the files it
 matched, so one exact path outweighs a name that matched twenty files. A
 seed that matches nothing does not fail the call and does not disappear. It
-comes back in `unresolved_seeds`, and as a `# note:` line above the map.
+comes back in `unresolved_seeds`, and as a `// note:` line above the map.
 Read that note: the ranking under it is not focused the way you asked. The
 usual cause is that the name is a parameter, an attribute or a DSL keyword
 rather than a declared symbol, and `symbols(operation="find")` says which.

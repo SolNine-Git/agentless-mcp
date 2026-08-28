@@ -677,11 +677,11 @@ class TestRoundTrip:
             .text
         )
         assert "no matching symbols" in found
-        assert "# warning: 1 files were skipped" in found
+        assert "// warning: 1 files were skipped" in found
         assert "huge.py" in found
 
         mapped = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
-        assert "# warning: 1 files were skipped" in mapped
+        assert "// warning: 1 files were skipped" in mapped
         assert "huge.py" in mapped
 
     def test_shared_callers_replace_the_fan_in_listing(self, services, one_repo):
