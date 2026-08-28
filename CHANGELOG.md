@@ -182,12 +182,9 @@ measurement that can resolve it.
   the receipt to say so. Found on a benchmark snapshot with no `.git`, whose
   every answer carried the enclosing project's HEAD and a dirty count of 36
   files that were not in it. The count and the SHAs are unchanged -- the tree
-  OID keys the cache -- and a note now names the repository they describe.
-
-  The count and the SHAs are unchanged -- they are what they always were, and
-  the tree OID keys the cache -- but the paths are withheld and the note says
-  whose state was reported. Naming a file that is not in the analysed tree is
-  worse than naming none.
+  OID keys the cache -- but the paths are withheld and a note now names the
+  repository whose state was reported. Naming a file that is not in the
+  analysed tree is worse than naming none.
 
 ## 0.7.0 -- 2026-08-25
 

@@ -868,6 +868,11 @@ class IndexSkip:
 # than the literal repeated in ``_discard`` and ``_entry_bytes``, because the
 # sweep's arithmetic is a promise about what the delete reclaims: if the two
 # lists drift, the report says it freed bytes that are still on the disk.
+#
+# Membership is the promise; this order is not. ``_entry_bytes`` sums, so it
+# reads the tuple either way, and ``_discard`` deliberately walks it reversed
+# for the reason given there. The primary is spelled first here because that is
+# how SQLite names the set, not because anything may delete in this order.
 DATABASE_SUFFIXES = ("", "-wal", "-shm")
 
 
@@ -941,7 +946,7 @@ class IndexReport:
         field, and this is the one number on the line that describes a
         deletion outside the repository being indexed.
         """
-        trimmed = (
+        eviction_clause = (
             f", evicted {self.evicted.databases} cached repositories ({self.evicted.size} bytes)"
             if self.evicted.happened
             else ""
@@ -950,7 +955,7 @@ class IndexReport:
             f"indexed {self.indexed}, reused {self.reused}, pruned {self.pruned}, "
             f"skipped {self.skipped}, errors {self.errors}: {self.files} files, "
             f"{self.tags} tags, {self.imports} imports, {self.refs} refs "
-            f"at g:{self.generation} in {self.database}{trimmed}"
+            f"at g:{self.generation} in {self.database}{eviction_clause}"
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -2048,18 +2053,53 @@ def _bypassed_status(database: Path) -> CacheStatus:
     )
 
 
-def _discard(database: Path) -> None:
+def _discard(database: Path) -> bool:
     """Delete a database this build cannot use, with its WAL sidecars.
 
     Deleting rather than ignoring: the file is derived data, and leaving an
     unusable one behind would make every later call pay the same open, fail
     the same check and report the same degradation.
 
+    Returns whether the primary file was there to delete, which is what lets
+    the ceiling sweep report deletions it actually performed. Two sweeps can
+    plan the same cold victim, and counting every pass that did not raise made
+    the second run's :class:`EvictionReport` claim databases and bytes that
+    the first had already reclaimed. The unlink is the test rather than an
+    ``exists()`` before it: a check and then an act is the race this return
+    value exists to close. Because the primary goes last, the answer also
+    implies the primary is gone: the return is only reached once every unlink
+    has succeeded, so no caller is handed a value that misdescribes the disk.
+
+    Sidecars are unlinked whatever the primary's fate, and a missing one is
+    not a fault -- a database checkpointed since the caller last looked has no
+    ``-wal``. Every other :class:`OSError` still propagates, as it did when
+    this loop passed ``missing_ok=True``, which swallowed exactly the same one
+    exception.
+
     Callers must already hold the write lock. The read path calls
-    :func:`_discard_unlocked` instead, which takes it.
+    :func:`_discard_unlocked` instead, which takes it. The two recovery
+    callers ignore the return: whether the unusable file was still there says
+    nothing about the rebuild that follows it.
     """
-    for suffix in DATABASE_SUFFIXES:
-        Path(str(database) + suffix).unlink(missing_ok=True)
+    existed = False
+    # Sidecars first and the primary last. The primary is the only file that
+    # keeps a cache directory reachable: :func:`_cache_entries` keys each
+    # directory on a successful stat of it, so deleting it first and then
+    # failing on a ``-wal`` strands those bytes for good, uncounted by the
+    # ceiling and unreachable by every later sweep. Reversed, a sidecar that
+    # will not go leaves the primary in place, so the entry stays visible and
+    # still weighed, and the next sweep attempts the whole delete again. That
+    # orders the failure rather than promising it clears: an ``OSError`` here
+    # is often persistent, and a repeated warning about a directory the sweep
+    # can still see beats silently leaked bytes it never can.
+    for suffix in reversed(DATABASE_SUFFIXES):
+        try:
+            Path(str(database) + suffix).unlink()
+        except FileNotFoundError:
+            continue
+        if not suffix:
+            existed = True
+    return existed
 
 
 def _discard_unlocked(database: Path, repo_root: Path) -> None:
@@ -2175,6 +2215,58 @@ def _eviction_plan(
     return evict
 
 
+def _evict_victim(entry: _CacheEntry, *, now: float) -> int | None:
+    """Delete one planned victim, returning the bytes the delete reclaimed.
+
+    ``None`` means the sweep must not count this entry, for one of two
+    reasons.
+
+    It was already gone. A concurrent sweep planned the same cold victim and
+    reached it first, and the run that arrives second has reclaimed nothing to
+    report.
+
+    Or it stopped being cold. :func:`_eviction_plan` decides protection from
+    the mtimes :func:`_cache_entries` read before any lock was taken, and the
+    read path stamps a database through :func:`touch_database` holding no lock
+    at all, so an entry can go from cold to hot between the plan and this
+    call. Re-reading the mtime here is what makes the documented 24 hour
+    protection hold rather than merely usually hold.
+
+    The re-read narrows that window to one stat and one unlink. It does not
+    close it, and closing it would mean the readers and the sweep coordinating.
+    They deliberately do not: :func:`enforce_cache_limit` gives the reason an
+    eviction is a cost and never a wrong answer, and a reader that loses this
+    race pays one re-index.
+
+    A failed stat is the already-gone signal rather than a fault, so nothing is
+    warned about it. Every other :class:`OSError` reaches the caller's existing
+    warning path.
+
+    The caller holds this victim's write lock, as :func:`_discard` requires.
+    """
+    try:
+        used_at = entry.database.stat().st_mtime
+    except OSError:
+        return None
+
+    if used_at >= now - PROTECTED_SECONDS:
+        logger.info(
+            "kept %s: a read stamped it as used after the sweep planned its eviction",
+            entry.database,
+        )
+        return None
+
+    # Measured now rather than taken from ``entry.size``, for the reason
+    # ``DATABASE_SUFFIXES`` gives: the figure is a promise about bytes that
+    # left the disk. A size read before the lock drifts for the same reasons
+    # the mtime does, so re-reading one and trusting the other would be half a
+    # fix. Three stats against the unlink they precede cost nothing.
+    freed = _entry_bytes(entry.database)
+    if not _discard(entry.database):
+        return None
+    return freed
+
+
 def enforce_cache_limit(*, keep: Path) -> EvictionReport:
     """Delete least-recently-used databases until the cache root fits its ceiling.
 
@@ -2195,6 +2287,11 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
     by evicting databases it was about to need again -- see
     :data:`PROTECTED_SECONDS` for what that cost when measured.
 
+    The returned counts describe what this run deleted and nothing else. The
+    plan is computed from one unlocked scan, so a victim can be gone or hot
+    again by the time its turn comes; :func:`_evict_victim` re-checks each one
+    under its lock, and only what it confirms is counted.
+
     ``write.lock`` and the directory holding it stay.
     :mod:`agentless_mcp.util.filelock` documents why the lock file is never
     unlinked: a second process would create and lock a *different* file of the
@@ -2206,8 +2303,12 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
     if limit is None:
         return NOTHING_EVICTED
 
+    # One clock for the plan and for every re-check it feeds, so a sweep long
+    # enough to matter cannot protect a later victim by a rule it did not
+    # apply to an earlier one.
+    now = time.time()
     entries = _cache_entries(cache_root())
-    victims = _eviction_plan(entries, limit, keep=keep, now=time.time())
+    victims = _eviction_plan(entries, limit, keep=keep, now=now)
     if not victims:
         _report_unreclaimable(entries, limit)
         return NOTHING_EVICTED
@@ -2221,15 +2322,17 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
         # about to delete.
         try:
             with _write_lock(entry.database.parent, entry.database.parent):
-                _discard(entry.database)
+                reclaimed = _evict_victim(entry, now=now)
         except CacheLocked as exc:
             logger.info("kept %s: an index run holds its write lock (%s)", entry.database, exc)
             continue
         except OSError as exc:
             logger.warning("could not evict %s: %r", entry.database, exc)
             continue
+        if reclaimed is None:
+            continue
         deleted += 1
-        freed += entry.size
+        freed += reclaimed
 
     if deleted:
         logger.info(

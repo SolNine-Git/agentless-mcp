@@ -2132,6 +2132,193 @@ class TestCacheCeiling:
         assert str(missing) in caplog.text
 
 
+def _unlink_refusing(target):
+    """A ``Path.unlink`` that refuses one exact path and delegates for the rest.
+
+    The stand-in for a sidecar the filesystem will not give up: a permission
+    change or an I/O error on that one file. Patched rather than arranged on
+    disk because no directory mode reproduces it portably -- a mode that stops
+    the sidecar stops the primary beside it, which is the pair this has to keep
+    apart.
+
+    The match is exact path equality, which holds by construction:
+    :func:`cache._discard` builds ``Path(str(database) + suffix)`` from the same
+    string the caller built ``target`` from.
+    """
+    real_unlink = Path.unlink
+
+    refusal = f"refusing to unlink {target}"
+
+    def unlink(self, missing_ok=False):
+        if self == target:
+            raise PermissionError(refusal)
+        real_unlink(self, missing_ok=missing_ok)
+
+    return unlink
+
+
+class TestCacheCeilingVictimRecheck:
+    """The decision the sweep makes about one victim, under its lock.
+
+    Everything the plan believes comes from one scan taken before any lock:
+    :func:`cache._cache_entries` stats each database once, and the read path
+    stamps a database through :func:`cache.touch_database` holding no lock at
+    all. A victim can therefore be gone, or hot again, by the time its turn
+    arrives. These pin what the sweep does when it is.
+
+    Hermetic for the same reason the plan tests are. ``now`` is an argument,
+    and every mtime here is placed by an explicit ``utime`` rather than by
+    whatever the filesystem stamped.
+    """
+
+    def _database(self, tmp_path, name, *, size, used_at):
+        """One database on disk at an exact size and an exact mtime."""
+        database = tmp_path / name / cache.DATABASE_NAME
+        database.parent.mkdir()
+        database.write_bytes(b"x" * size)
+        os.utime(database, (used_at, used_at))
+        return database
+
+    def test_a_victim_another_sweep_already_deleted_is_not_counted(self, tmp_path):
+        """The double count, reduced to its seam.
+
+        Two sweeps can plan the same cold victim. Counting every pass that did
+        not raise made the second one report databases and bytes the first had
+        already reclaimed, and ``evicted`` is the one figure on the summary
+        line that describes a deletion outside the repository being indexed.
+        """
+        entry = cache._CacheEntry(
+            database=tmp_path / "gone" / cache.DATABASE_NAME, size=100, used_at=1.0
+        )
+
+        assert cache._evict_victim(entry, now=NOW) is None
+
+    def test_a_victim_that_vanishes_between_the_check_and_the_unlink_is_not_counted(
+        self, tmp_path, monkeypatch
+    ):
+        """The window the re-check narrows and cannot close.
+
+        The stat finds the victim there and cold; the unlink finds nothing,
+        because a concurrent sweep reached it in between. ``_discard`` saying
+        so is the whole reason it returns a bool, and the run that lost the
+        race must not report bytes the winner reclaimed. The stand-in for that
+        other sweep is a patch rather than a thread: the losing side is the
+        only side under test, and a thread would make the test a race of its
+        own.
+        """
+        self._database(tmp_path, "raced", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        monkeypatch.setattr(cache, "_discard", lambda database: False)
+
+        assert cache._evict_victim(entry, now=NOW) is None
+
+    def test_discard_reports_whether_the_primary_was_there_to_delete(self, tmp_path):
+        """The bool the sweep's arithmetic rests on."""
+        database = self._database(tmp_path, "present", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+
+        assert cache._discard(database) is True
+        assert not database.exists()
+        assert not wal.exists()
+
+    def test_discard_takes_the_sidecars_of_a_primary_that_has_already_gone(self, tmp_path):
+        """Reporting nothing reclaimed is not a reason to leave bytes on the disk.
+
+        A ``-wal`` beside a database that has gone is unreachable: nothing
+        lists the directory afterwards, because :func:`cache._cache_entries`
+        keys on the primary.
+        """
+        database = tmp_path / "orphan" / cache.DATABASE_NAME
+        database.parent.mkdir()
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+
+        assert cache._discard(database) is False
+        assert not wal.exists()
+
+    def test_a_sidecar_that_will_not_unlink_leaves_the_primary_sweepable(
+        self, tmp_path, monkeypatch
+    ):
+        """The stranding the delete order exists to prevent.
+
+        With the primary deleted first, a ``-wal`` that will not go is
+        unreachable for good: :func:`cache._cache_entries` keys a directory on
+        its primary, so nothing lists it, nothing weighs it, and the ceiling
+        never accounts for those bytes again. Taking the primary last leaves
+        the entry in the listing, which is the whole difference.
+        """
+        database = self._database(tmp_path, "stuck", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+        monkeypatch.setattr(Path, "unlink", _unlink_refusing(wal))
+
+        with pytest.raises(PermissionError):
+            cache._discard(database)
+
+        assert database.exists()
+        assert [entry.database for entry in cache._cache_entries(tmp_path)] == [database]
+
+    def test_the_next_sweep_reclaims_what_a_failed_sidecar_delete_left(self, tmp_path, monkeypatch):
+        """The retry the surviving primary buys, carried out.
+
+        The first turn raises with both files still on the disk, which reaches
+        :func:`cache.enforce_cache_limit`'s existing ``OSError`` warning and
+        counts nothing. The run after it is the one that matters: the entry is
+        still listed, so the sweep plans it again and takes the primary and the
+        sidecar together.
+        """
+        database = self._database(tmp_path, "retried", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+        monkeypatch.setattr(Path, "unlink", _unlink_refusing(wal))
+
+        with pytest.raises(PermissionError):
+            cache._evict_victim(cache._cache_entries(tmp_path)[0], now=NOW)
+
+        monkeypatch.undo()
+
+        retried = cache._cache_entries(tmp_path)
+        assert [entry.database for entry in retried] == [database]
+        assert cache._evict_victim(retried[0], now=NOW) == 108
+        assert not database.exists()
+        assert not wal.exists()
+
+    def test_a_victim_stamped_after_the_plan_survives_its_turn(self, tmp_path, caplog):
+        """The 24 hour protection is decided from a snapshot, and stamping takes no lock.
+
+        A read that lands between the scan and this victim's delete turn makes
+        it hot. Judged on the snapshot alone the sweep deletes it anyway and
+        forces exactly the re-index the window exists to prevent.
+        """
+        database = self._database(tmp_path, "warm", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        os.utime(database, (NOW, NOW))
+
+        with caplog.at_level(logging.INFO, logger=cache.logger.name):
+            assert cache._evict_victim(entry, now=NOW) is None
+
+        assert database.exists()
+        assert str(database) in caplog.text
+
+    def test_the_freed_figure_is_what_the_delete_reclaimed(self, tmp_path):
+        """Measured under the lock rather than taken from the plan's snapshot.
+
+        The number is a promise about bytes that left the disk, and the
+        snapshot drifts between the scan and the delete for the same reasons
+        the mtime does. Backdated after the growth because writing to the file
+        stamps it with the real clock, which reads as hot against ``NOW``.
+        """
+        database = self._database(tmp_path, "grown", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        database.write_bytes(b"x" * 4096)
+        os.utime(database, (1.0, 1.0))
+
+        assert entry.size == 100
+        assert cache._evict_victim(entry, now=NOW) == 4096
+        assert not database.exists()
+
+
 class TestCacheCeilingConfiguration:
     def test_the_ceiling_defaults_to_the_documented_size(self, monkeypatch):
         monkeypatch.delenv(cache.ENV_MAX_CACHE_BYTES, raising=False)
