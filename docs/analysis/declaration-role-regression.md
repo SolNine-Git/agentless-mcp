@@ -26,7 +26,8 @@ latency was not involved.
 The rollback restores the behaviour at clean cache-only commit `35ccc956`:
 
 - declaration roles are marked only for Python;
-- `declaration_name_ids` recognizes class and function declarations only;
+- `declaration_name_ids` recognized class and function declarations only, and
+  was deleted with the rest of the scaffolding in the post-review cleanup;
 - the resolver drops any reference whose name and line coincide with a symbol
   declaration, as it did in 0.7.0; and
 - the cache schema returns from 15 to 14 because the persisted role vocabulary

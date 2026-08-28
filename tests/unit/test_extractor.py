@@ -18,7 +18,7 @@ arrive as a bare ``assignment`` and docstrings as a bare ``string``, so
 import pytest
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.extractor import TreeSitterExtractor, _scope_tree, walk_nodes
 from agentless_mcp.core.symbols import SymbolKind, rationale_stable_id
 
 SAMPLE_PYTHON = '''\
@@ -342,6 +342,17 @@ DEEP_JS = (
     "function build(x) { return x; }\n"
 )
 
+# The same shape in Python, which reaches a walker the JavaScript sample
+# cannot. `_scope_tree` runs only for Python, behind `_python_roles`, so every
+# deep fixture in this suite -- DEEP_JS here, DEEP_LUA and DEEP_BASH in
+# test_tier2_languages.py -- left it undriven at depth.
+DEEP_PY = (
+    "import defaults\n"
+    "value = client" + "".join(f".step{index}()" for index in range(_DEEP_CHAIN)) + "\n"
+    "def build(x):\n"
+    "    return x\n"
+)
+
 
 class TestStackSafety:
     """Every walk in this module is iterative, and this is what says so.
@@ -362,6 +373,163 @@ class TestStackSafety:
         ext = make_extractor()
         imports = ext.extract_imports_from_source(DEEP_JS, "javascript", "bundle.js")
         assert [i.module for i in imports] == ["./defaults.js"]
+
+    def test_a_deep_python_chain_still_collects_references(self):
+        """The Python-only walkers, which no other deep fixture reaches.
+
+        A reference pass over Python runs `_python_roles`, and that builds a
+        `_ScopeTree` by walking the whole parse tree. Every other stack-safety
+        fixture in this suite is a language with no scope analysis, so the
+        chain below is the only thing that drives `_scope_tree` deeper than a
+        handful of levels. Both ends of the chain are asserted because a walk
+        that stopped early would still return references, just fewer of them,
+        and a partial reference table reads as "this symbol is unused".
+        """
+        ext = make_extractor()
+        refs = ext.extract_refs_from_source(DEEP_PY, "python", "deep.py")
+        names = {ref.name for ref in refs}
+        assert {"client", "build", "step0", f"step{_DEEP_CHAIN - 1}"} <= names
+
+
+NESTED_SCOPES_PY = """\
+value = 1
+
+
+class Outer:
+    def method(self, arg):
+        def inner(x):
+            def deepest(y):
+                return x + y + value
+
+            return deepest(arg)
+
+        return inner(arg)
+
+
+def after(z):
+    return z
+"""
+
+
+def _function_ids(root):
+    """Every ``function_definition`` id at or under ``root``, by ``.children``.
+
+    A `.children` descent rather than a `walk_nodes` call. This builds the
+    boundary set the subject is measured against, so reaching for the subject
+    to build it would make the comparison circular.
+    """
+    found = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "function_definition":
+            found.append(node.id)
+        stack.extend(reversed(node.children))
+    return frozenset(found)
+
+
+def _children_scope_maps(root, boundary_ids):
+    """The pre-cursor ``_scope_tree``, over ``node.children``, as the oracle.
+
+    A stack of `(node, inherited boundary)` pairs, which is exactly what the
+    cursor version replaced with a boundary stack pushed on descent. Pushing
+    `reversed(node.children)` reproduces the pre-order that
+    `goto_first_child` / `goto_next_sibling` produces.
+
+    Duplicated on purpose. An oracle that shared code with the subject, or
+    that called `walk_nodes` to enumerate, would agree with it by construction
+    and could not fail.
+    """
+    boundary_of = {}
+    outer_of = {}
+    node_of = {}
+    stack = [(root, None)]
+    while stack:
+        node, inherited = stack.pop()
+        innermost = inherited
+        if node.id in boundary_ids:
+            outer_of[node.id] = inherited
+            node_of[node.id] = node
+            innermost = node.id
+        boundary_of[node.id] = innermost
+        for child in reversed(node.children):
+            stack.append((child, innermost))
+    return boundary_of, outer_of, node_of
+
+
+class TestTheCursorWalksAgreeWithTheChildrenWalk:
+    """The cursor rewrite kept the old traversal's answers, and this says so.
+
+    `walk_nodes` and `_scope_tree` both moved from a `node.children` stack to
+    a `TreeCursor`, for the speed their docstrings measure. A cursor is driven
+    by position rather than by a materialized child list, so it can differ
+    from the old walk in two ways: it could visit the same nodes in a
+    different order, or it could climb out of the subnode it was created from
+    and index the whole file. Both faults are silent, and both would move
+    every view this package renders.
+    """
+
+    def test_a_scope_tree_rooted_at_a_nested_node_matches_a_children_walk(self):
+        """Rooted three levels in, because that is where a cursor can escape.
+
+        `_scope_tree` builds its cursor with `root.walk()`, and `goto_parent`
+        returning false at the origin is what stops the walk from climbing
+        past it. Most callers pass a subnode, so a cursor that escaped would
+        map the whole file under a method's boundaries and no assertion on a
+        whole-file walk would notice.
+        """
+        tree = grammars.get_parser("python").parse(NESTED_SCOPES_PY.encode("utf-8"))
+        module = tree.root_node
+        outer = next(child for child in module.children if child.type == "class_definition")
+        body = outer.child_by_field_name("body")
+        method = next(child for child in body.children if child.type == "function_definition")
+
+        boundaries = _function_ids(method)
+        built = _scope_tree(method, boundaries)
+        expected_boundary_of, expected_outer_of, expected_node_of = _children_scope_maps(
+            method, boundaries
+        )
+
+        # method, inner, deepest: a chain deep enough that `outer_of` has to
+        # carry a boundary through two levels rather than straight to None.
+        assert len(boundaries) == 3
+        assert built.boundary_of == expected_boundary_of
+        assert built.outer_of == expected_outer_of
+        # Projected rather than compared as nodes, so the assertion rests on
+        # the tree's own facts and not on `Node.__eq__`.
+        assert {nid: (n.type, n.start_byte) for nid, n in built.node_of.items()} == {
+            nid: (n.type, n.start_byte) for nid, n in expected_node_of.items()
+        }
+
+        top_level = [child for child in module.children if child.type == "function_definition"]
+        assert len(top_level) == 1, "the fixture must keep exactly one top-level function"
+        assert module.id not in built.boundary_of
+        assert top_level[0].id not in built.boundary_of
+
+    def test_a_childless_root_walks_to_exactly_itself(self):
+        """The termination path: no first child, no sibling, no parent to climb.
+
+        Asserted at two positions, because they fail differently. An empty
+        module is a tree root, where returning more than itself means the
+        walk invented nodes. A leaf is a subnode, where returning more than
+        itself means `goto_parent` succeeded at the origin and the walk
+        escaped into the rest of the file.
+        """
+        parser = grammars.get_parser("python")
+
+        empty_tree = parser.parse(b"")
+        empty = empty_tree.root_node
+        assert empty.children == []
+        assert [node.id for node in walk_nodes(empty)] == [empty.id]
+
+        leaf_tree = parser.parse(b"x = 1")
+        leaf = leaf_tree.root_node
+        # Descended rather than indexed by node type. This file's header
+        # records a grammar drift that added and then dropped a wrapper at
+        # exactly this position, and a hardcoded shape would fail on the next.
+        while leaf.children:
+            leaf = leaf.children[0]
+        assert [node.id for node in walk_nodes(leaf)] == [leaf.id]
 
 
 class TestTheDecisionsBranchCoverageLeftUnpinned:

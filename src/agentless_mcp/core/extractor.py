@@ -1412,10 +1412,6 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     # None for the nineteen languages with no scope analysis, rather than three
     # empty tables that read as "analysed, and it found nothing".
     analysis = _python_roles(tree.root_node, data) if language == "python" else None
-    # What the other languages get instead: the declaration names their own
-    # configuration already identifies. Not scope analysis -- it says only
-    # "this identifier is the name in a declaration, not a use of one".
-    declared: set[int] = set()
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1429,36 +1425,24 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
                     path=path,
                     name=name,
                     line=line,
-                    role=_ref_role(node, name, analysis, declared),
+                    role=(
+                        _python_role(node, name, analysis)
+                        if analysis is not None
+                        else IdentifierRole.REFERENCE
+                    ),
                     qualifier=analysis.qualifiers.get(node.id, "") if analysis else "",
                 )
             )
     return refs
 
 
-def _ref_role(
-    node: Node,
-    name: str,
-    analysis: "_PythonRoles | None",
-    declared: set[int],
-) -> IdentifierRole:
-    """Return the role of one identifier occurrence, by whichever pass saw it."""
-    if analysis is not None:
-        return _python_role(node, name, analysis)
-    if node.id in declared:
-        return IdentifierRole.DECLARATION
-    return IdentifierRole.REFERENCE
-
-
 def generic_name_node(node: Node, cfg: LanguageConfig) -> Node | None:
     """Return the identifier that names ``node``, by field then by child type.
 
-    One rule with one home. The symbol pass reads the text off this node and
-    the reference pass marks the same node a declaration, so a language whose
-    grammar names its fields and a language whose grammar does not have to
-    agree about which identifier is the name -- otherwise a symbol is
-    extracted under a name that the reference pass still counts as a use of
-    somebody else's.
+    One rule with one home. A grammar that labels its fields answers directly,
+    and one that does not is answered by the first child whose type names
+    things in that language, so the two kinds of grammar cannot disagree about
+    which identifier is the name.
     """
     if cfg.name_field:
         named = node.child_by_field_name(cfg.name_field)
@@ -1466,46 +1450,6 @@ def generic_name_node(node: Node, cfg: LanguageConfig) -> Node | None:
             return named
     # Fallback: first child whose type names things in this language.
     return next((child for child in node.children if child.type in cfg.name_node_types), None)
-
-
-def marks_declarations(language: str) -> bool:
-    """True when this language's references carry a declaration role.
-
-    The reference pass has two ways to tell a declaration's own name from a
-    use of it: Python's scope analysis, and :func:`declaration_name_ids` for a
-    language whose configuration lists declaration node types. A language with
-    neither -- the data formats, whose keys are declarations with no node type
-    to key on -- has no role to read, and the caller must keep whatever
-    weaker rule it used before roles existed.
-    """
-    return language == "python"
-
-
-def declaration_name_ids(root: Node, cfg: LanguageConfig) -> set[int]:
-    """Return the ids of the identifiers that name a declaration under ``root``.
-
-    Keyed on the declaration node types the language configuration already
-    lists, which is what keeps this off the data formats: ``json``, ``toml``
-    and ``yaml`` declare no function or class node type, so their keys are
-    never marked and the reference pass treats them exactly as before. An
-    earlier attempt keyed on the ``name`` field alone instead, and every key
-    in a manifest became a declaration of its own spelling.
-
-    Python does not come through here. Its own pass resolves names against
-    real lexical scopes and marks more roles than this one can see; this
-    answers the other languages, whose identifiers were all called references.
-    """
-    declarations = frozenset(cfg.function_node_types) | frozenset(cfg.class_node_types)
-    if not declarations:
-        return set()
-    found: set[int] = set()
-    for node in walk_nodes(root):
-        if node.type not in declarations:
-            continue
-        named = generic_name_node(node, cfg)
-        if named is not None:
-            found.add(named.id)
-    return found
 
 
 def walk_nodes(root: Node) -> list[Node]:
