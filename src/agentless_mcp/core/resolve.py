@@ -415,7 +415,7 @@ class Cycle:
 def _bind_module_object(
     facts: FileImports,
     statement: ImportStatement,
-    known: frozenset[str],
+    known: graph.PathIndex,
     module_bindings: dict[str, set[str]],
 ) -> None:
     """Record the local name a module-object import binds, and what it names.
@@ -453,7 +453,7 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
     contributes no evidence, which costs a tier rather than an answer -- the
     reference still resolves as ``unique`` or ``ambiguous``.
     """
-    known = frozenset(facts.path for facts in files)
+    known = graph.PathIndex.build([facts.path for facts in files])
     scopes: dict[str, ImportScope] = {}
 
     for facts in files:

@@ -178,6 +178,17 @@ measurement that can resolve it.
 
 ### Fixed
 
+- **`build_file_scopes` hands `resolve_import_target` the path index it was
+  built for.** The resolver accepts a `PathIndex` so that a caller resolving
+  a repository's worth of imports pays the tail-table walk once, and the one
+  caller that does exactly that passed a plain `frozenset` instead -- the
+  no-index scan path, once per imported name. Measured on this repository
+  (197 files, 1,484 imports): `build_resolver` 0.933s to 0.024s, and a warm
+  `find_referencing_symbols` call 2.27s to 1.39s. Every one of the 2,609
+  import resolutions in this tree answers identically through both paths,
+  which the shared tie-break already promised; nothing about what is
+  resolved, verified, or re-resolved per call changes.
+
 - **A symbol lookup that matches nothing names the next step.** `find`
   answered a miss with the bare words `no matching symbols` -- the one dead
   end in a message catalog whose every other refusal says what to do next.
