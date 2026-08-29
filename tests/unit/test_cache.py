@@ -635,16 +635,19 @@ class TestSchemaVersion:
 
         The scenario is built the way it would really happen: index, delete a
         file, re-index, add a new file, index again. The new file must not be
-        wearing the deleted one's number.
+        wearing the deleted one's number. The deleted file is the one holding
+        the *maximum* id, because that is the exact id a plain rowid table
+        hands to the next insert -- retiring any other id would pass here on
+        a table with no AUTOINCREMENT at all.
         """
         report = cache.build_index(repo, extractor)
         with closing(sqlite3.connect(report.database)) as connection:
-            retired = {
-                row[0]
-                for row in connection.execute("SELECT id FROM files WHERE path = 'billing.py'")
-            }
+            victim, newest = connection.execute(
+                "SELECT path, id FROM files ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        retired = {newest}
 
-        (repo / "billing.py").unlink()
+        (repo / victim).unlink()
         cache.build_index(repo, extractor)
         (repo / "shipping.py").write_text("def ship(sku):\n    return sku\n", encoding="utf-8")
         final = cache.build_index(repo, extractor)
@@ -2019,6 +2022,54 @@ class TestCacheCeiling:
 
         assert sorted(entry.database.parent.name for entry in evicted) == ["0", "1", "2"]
 
+    def test_nothing_colder_than_an_evicted_entry_survives(self):
+        """The LRU cut, pinned on mixed sizes, where greedy packing diverges.
+
+        A greedy fit kept a small cold entry in the headroom a warmer, larger
+        eviction had just opened -- bin packing, not the least-recently-used
+        order the docstring promises. Once one unprotected entry fails to
+        fit, every colder one goes with it, and the victims come back
+        coldest first so an interrupted sweep spends its deletes on the most
+        expendable entries.
+        """
+        anchor = _entry("anchor", size=200, used_at=3.0)
+        warm = _entry("warm", size=150, used_at=2.0)
+        cold = _entry("cold", size=40, used_at=1.0)
+
+        evicted = cache._eviction_plan(
+            [anchor, warm, cold], now=NOW, limit=250, keep=Path("nothing")
+        )
+
+        assert [entry.database.parent.name for entry in evicted] == ["cold", "warm"]
+
+    def test_an_unweighable_database_is_reported_not_silently_skipped(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        """A database the sweep cannot stat is invisible to the ceiling.
+
+        Treating every ``OSError`` as absence read a permission failure as
+        "no database here", and the entry silently left the accounting for
+        as long as the condition lasted. A race with a delete stays quiet --
+        that is the normal case -- but any other failure must say so.
+        """
+        database = tmp_path / "opaque" / cache.DATABASE_NAME
+        database.parent.mkdir()
+        database.write_bytes(b"x" * 8)
+        real_stat = Path.stat
+        refusal = f"refusing to stat {database}"
+
+        def stat(self, **kwargs):
+            if self == database:
+                raise PermissionError(refusal)
+            return real_stat(self, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", stat)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._cache_entries(tmp_path) == []
+
+        assert str(database) in caplog.text
+
     def test_the_database_the_calling_run_just_built_is_never_evicted(self):
         """Otherwise a repository larger than the ceiling deletes its own index.
 
@@ -2463,5 +2514,5 @@ class TestCacheCeilingEnforcement:
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
         loud = cache.build_index(repo, extractor, force=True)
 
-        assert "evicted 1 cached repositories" in loud.summary_line()
+        assert "evicted 1 cached repository (" in loud.summary_line()
         assert loud.as_dict()["evicted"]["databases"] == 1

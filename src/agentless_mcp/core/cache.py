@@ -951,8 +951,9 @@ class IndexReport:
         field, and this is the one number on the line that describes a
         deletion outside the repository being indexed.
         """
+        repositories = "repository" if self.evicted.databases == 1 else "repositories"
         eviction_clause = (
-            f", evicted {self.evicted.databases} cached repositories ({self.evicted.size} bytes)"
+            f", evicted {self.evicted.databases} cached {repositories} ({self.evicted.size} bytes)"
             if self.evicted.happened
             else ""
         )
@@ -2139,14 +2140,18 @@ def _entry_bytes(database: Path) -> int:
 
     A missing sidecar contributes nothing rather than raising: a database
     checkpointed since the scan has no ``-wal``, and that is the normal
-    resting state, not a fault.
+    resting state, not a fault. Any other failure to stat is warned about,
+    because a file the sweep cannot weigh is a file the ceiling silently
+    stops accounting for.
     """
     total = 0
     for suffix in DATABASE_SUFFIXES:
         try:
             total += Path(str(database) + suffix).stat().st_size
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError as exc:
+            logger.warning("could not weigh %s%s for the cache ceiling: %r", database, suffix, exc)
     return total
 
 
@@ -2172,7 +2177,15 @@ def _cache_entries(root: Path) -> list[_CacheEntry]:
         database = directory / DATABASE_NAME
         try:
             used_at = database.stat().st_mtime
-        except OSError:
+        except FileNotFoundError:
+            # The normal case this loop's docstring names: an evicted
+            # repository's directory, kept alive by its lock file.
+            continue
+        except OSError as exc:
+            # A database that exists but cannot be statted is invisible to
+            # the ceiling for as long as the condition lasts; the warning is
+            # what keeps that from being silent.
+            logger.warning("could not weigh %s for the cache ceiling: %r", database, exc)
             continue
         entries.append(_CacheEntry(database=database, size=_entry_bytes(database), used_at=used_at))
     return entries
@@ -2213,11 +2226,18 @@ def _eviction_plan(
         if entry.database == keep or position == 0 or entry.used_at >= protected_after:
             total += entry.size
             continue
-        if total + entry.size <= limit:
-            total += entry.size
+        # Once one unprotected entry fails to fit, every colder one goes with
+        # it. Fitting a later, colder entry into the leftover headroom would
+        # keep it alive past a warmer entry the sweep just deleted -- a
+        # bin-packing outcome, not the least-recently-used order this
+        # docstring promises.
+        if evict or total + entry.size > limit:
+            evict.append(entry)
             continue
-        evict.append(entry)
-    return evict
+        total += entry.size
+    # Coldest first, so a sweep interrupted mid-run has spent its deletes on
+    # the entries the policy ranks most expendable.
+    return list(reversed(evict))
 
 
 def _evict_victim(entry: _CacheEntry, *, now: float) -> int | None:
@@ -2243,15 +2263,19 @@ def _evict_victim(entry: _CacheEntry, *, now: float) -> int | None:
     eviction is a cost and never a wrong answer, and a reader that loses this
     race pays one re-index.
 
-    A failed stat is the already-gone signal rather than a fault, so nothing is
-    warned about it. Every other :class:`OSError` reaches the caller's existing
-    warning path.
+    A stat that finds nothing is the already-gone signal rather than a fault,
+    so nothing is warned about it. Any other failed stat is warned about and
+    skips the victim: deleting a file whose freshness could not be re-read
+    would be enforcing the protection window on a guess.
 
     The caller holds this victim's write lock, as :func:`_discard` requires.
     """
     try:
         used_at = entry.database.stat().st_mtime
-    except OSError:
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        logger.warning("could not re-check %s before eviction; kept: %r", entry.database, exc)
         return None
 
     if used_at >= now - PROTECTED_SECONDS:
@@ -2340,11 +2364,21 @@ def enforce_cache_limit(*, keep: Path) -> EvictionReport:
         freed += reclaimed
 
     if deleted:
+        # States what the sweep did, not that the ceiling now holds: a victim
+        # kept for being locked, freshly used, or already gone can leave the
+        # root over the limit, and claiming "trimmed" would paper over it.
+        skipped_victims = len(victims) - deleted
+        skipped_clause = (
+            f"; {skipped_victims} planned victims were kept (locked, freshly used, or gone)"
+            if skipped_victims
+            else ""
+        )
         logger.info(
-            "cache root trimmed to its %d byte ceiling: %d databases deleted, %d bytes freed",
-            limit,
-            deleted,
+            "cache sweep freed %d bytes (%d databases) against the %d byte ceiling%s",
             freed,
+            deleted,
+            limit,
+            skipped_clause,
         )
     return EvictionReport(databases=deleted, size=freed)
 

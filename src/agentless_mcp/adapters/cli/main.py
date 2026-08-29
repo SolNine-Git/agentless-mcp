@@ -299,7 +299,7 @@ def _add_map(subparsers: Any) -> None:
         default=None,
         help=f"map detail: '{GRANULARITY_FUNCTION}' lists symbols within ranked files, "
         f"'file' reports ranked files only, '{GRANULARITY_BODY}' returns the file rows "
-        f"plus the top symbols' whole bodies (default: {GRANULARITY_FUNCTION})",
+        f"plus the top symbols' budgeted bodies (default: {GRANULARITY_FUNCTION})",
     )
     parser.set_defaults(handler=_cmd_map)
 
@@ -846,7 +846,10 @@ def _cmd_map(args: argparse.Namespace, services: CliServices) -> int:
             _Answer(
                 text=render_body_map(services.maps, body_result),
                 payload=body_result.as_dict(),
-                items_key="files",
+                # The bulk of a body answer is the bodies, not the stripped
+                # file rows: trimming "files" would delete the orientation
+                # while keeping the overrun.
+                items_key="bodies.symbols",
                 truncation=envelope.Truncation(
                     shown=len(body_result.bodies.cards),
                     total=body_result.map.candidates,

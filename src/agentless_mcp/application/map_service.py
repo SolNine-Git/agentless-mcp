@@ -88,6 +88,11 @@ TEST_COMPANION_DEPTH = 2
 GRANULARITY_FUNCTION = "function"
 GRANULARITY_FILE = "file"
 GRANULARITY_BODY = "body"
+# The wire surface's choices. Deliberately wider than
+# ``projectconfig.GRANULARITIES``, which stays ('function', 'file'): a config
+# default of 'body' would make the expensive view every call's silent default,
+# so the config door never gains it. A test pins the divergence -- do not
+# merge the two tuples.
 GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE, GRANULARITY_BODY)
 
 # How many whole bodies one budget is worth: expand's own shipped ratio,
@@ -168,6 +173,13 @@ class MapResult:
     # reader is about to trust a partial answer, and silence about that is the
     # failure this package exists to prevent.
     rank_converged: bool = True
+    # The included symbols' stable ids in the packing's own score order --
+    # what `build_body_map` expands when the seats are fewer than the ids.
+    # `files` re-sorts each file's entries by line number for reading, so
+    # this field is the only record of which of them scored highest. Not in
+    # the JSON form: it restates ids the files already carry, in an order
+    # only the body composition consumes.
+    expand_order: tuple[str, ...] = ()
     # The test files that exercise the ranked or seeded files, listed outside
     # the budget the ranked files are packed into. Edges run referrer to
     # definer, so a test file has no inbound weight and the ranking that
@@ -376,6 +388,9 @@ class MapService:
 
         return MapResult(
             files=grouped,
+            expand_order=tuple(
+                symbol_stable_id(entry.symbol) for entry in packing.eligible[:included]
+            ),
             budget=budget,
             included=included,
             # What competed for the budget, not every symbol under a ranked
@@ -395,7 +410,7 @@ class MapService:
             test_companions=companions,
         )
 
-    def count_tokens(self, text: str) -> int:
+    def _count_tokens(self, text: str) -> int:
         """Count ``text`` in the same unit every budget here is spelled in."""
         return self._counter.count(text)
 
@@ -833,6 +848,13 @@ def _normalized_spellings(entry: str) -> list[str]:
         if core != entry:
             core = core.split("?", 1)[0].split("#", 1)[0]
     core = _LOCATION_SUFFIX.sub("", core).strip()
+    # A Windows spelling: the tail walk splits on the repository's own
+    # separator, so a backslash path -- a Windows traceback, an absolute path
+    # from a Windows machine -- would otherwise walk nothing. Converted only
+    # here, on the miss path: a tracked filename containing a literal
+    # backslash resolves as spelled before the rescue ever runs.
+    if "\\" in core:
+        core = core.replace("\\", "/")
 
     candidates: list[str] = []
     if core and core != entry:
@@ -907,8 +929,10 @@ def build_body_map(
 
     Selection is the function-granularity map's own: the ids expanded are the
     first seats' worth of the entries that won the signature packing, in the
-    map's display order -- rank-major, score within a file -- so the bodies
-    are exactly what a caller reading the map would have expanded next. The
+    packing's score order -- so when the seats are fewer than the ids, the
+    bodies are the highest-scored symbols overall, which is what the tool
+    description advertises. The file rows re-sort by line for reading;
+    ``MapResult.expand_order`` is what preserves the score order to here. The
     seat count is the budget divided by :data:`BODY_TOKENS_PER_SEAT`, capped
     at expand's own ceiling, and the bodies then share the same budget the
     map was asked for, water-filled.
@@ -919,13 +943,15 @@ def build_body_map(
     describes the text this result actually renders.
     """
     base = maps.build(ctx, replace(request, granularity=GRANULARITY_FUNCTION))
-    ids = [entry.stable_id for map_file in base.files for entry in map_file.entries]
+    ids = list(base.expand_order)
     seats = min(max(1, base.budget // BODY_TOKENS_PER_SEAT), EXPAND_MAX_SEATS)
     bodies = symbols.expand_symbols(
         ctx, ids[:seats], limit=max(seats, 1), budget=base.budget, seats=seats
     )
     stripped = tuple(replace(map_file, entries=()) for map_file in base.files)
-    display = replace(base, files=stripped, rendered=maps.count_tokens(render.render_map(stripped)))
+    display = replace(
+        base, files=stripped, rendered=maps._count_tokens(render.render_map(stripped))
+    )
     return BodyMapResult(map=display, bodies=bodies)
 
 

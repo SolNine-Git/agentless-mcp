@@ -3,7 +3,9 @@
 ## 0.7.1 -- 2026-08-26
 
 A cache that fits, walks that do not rebuild the tree, and two receipt
-defects. No change to what any view answers.
+defects. No ranking moved; what existing views gained is additive -- churn
+beside the map's rank, a completeness claim on an empty fan-in -- plus the
+new body granularity.
 
 Two evidence tiers and a denser fan-in were built for this release and are
 not in it. Eight benchmark arms could not attribute a localization difference
@@ -20,7 +22,7 @@ measurement that can resolve it.
   The body granularity composes the two shipped views: the file-granularity
   rows for orientation (rank, churn, counts, stable-id pattern) and a real
   expansion of the top-scored symbols under them -- the ids the
-  function-granularity packing chose, in the map's own display order, seats
+  function-granularity packing chose, in the packing's own score order, seats
   = budget / 300 tokens (expand's shipped seats-to-budget ratio), capped at
   expand's ceiling, water-filled to the same budget. Measured on this
   repository at `--budget 3000 --max-files 5`: the two-call flow returns
@@ -42,7 +44,9 @@ measurement that can resolve it.
   never folded into it, because an unmeasured ranking change is what this
   release's own rollback withdrew. One bounded `git log --since=90.days
   --name-only` per map, scoped to the ranked files, NUL-prefixed timestamps
-  so an all-digit filename cannot be read as one, `--relative` so a served
+  so an all-digit filename cannot be read as one, quoting off and
+  magic-proof pathspecs so a non-ASCII or ``:!``-prefixed filename is counted
+  rather than misread, `--relative` so a served
   subdirectory's paths match. Absence and quiet cannot be confused: a bare
   header means git could not answer, `0c/90d` with no `last` means a
   measured quiet file. Measured cost on this repository: 178 characters, 44
@@ -303,8 +307,8 @@ measurement that can resolve it.
   else about either message changed. The map's rationale rows keep `#`: they
   quote source comments and their indent makes Markdown read them as code.
 
-- **The cache schema version is 14, because the stored role vocabulary
-  shrank.** A build that shipped briefly on this branch wrote
+- **The cache schema version moved to 14, because the stored role vocabulary
+  shrank** (the nested-`def` change above then moved it to 15). A build that shipped briefly on this branch wrote
   `self_attribute` into `refs.role`. This build has no such member, so every
   cached file written by that build raised on read and fell back to parsing
   the file -- correct, and one warning per file on every call until something

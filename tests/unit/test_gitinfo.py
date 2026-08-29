@@ -242,34 +242,13 @@ class TestAmbientGitEnvironmentCannotRedirect:
         assert environment["HOME"] == "/home/someone"
 
 
-def _commit_all(root, message):
-    """One more commit in a fixture repository, with the pinned test identity."""
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.email=tests@example.invalid",
-            "-c",
-            "user.name=agentless-mcp tests",
-            "commit",
-            "-am",
-            message,
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
-
-
 class TestCommitChurn:
     """The windowed per-path commit facts the map header spends."""
 
-    def test_counts_and_last_timestamp_per_requested_path(self, make_git_repo):
+    def test_counts_and_last_timestamp_per_requested_path(self, make_git_repo, commit_all):
         root = make_git_repo(SAMPLE)
         (root / "a.py").write_text("x = 2\n", encoding="utf-8")
-        _commit_all(root, "touch a")
+        commit_all(root, "touch a")
 
         facts = gitinfo.commit_churn(root, ["a.py", "sub/b.py"])
 
@@ -289,6 +268,43 @@ class TestCommitChurn:
         facts = gitinfo.commit_churn(root, ["never_committed.py"])
 
         assert facts == {"never_committed.py": gitinfo.ChurnFact(commits=0, last_commit_ts=None)}
+
+    def test_a_non_ascii_filename_is_counted_not_reported_quiet(self, make_git_repo):
+        """Git's default quoting octal-escapes non-ASCII paths in --name-only.
+
+        Without ``core.quotePath=false`` on the argv, git prints the name as
+        a quoted, octal-escaped C string, the exact match misses, and a file
+        with real commits reads back as ``commits=0`` -- rendered downstream
+        as the measured-quiet claim this feature promises cannot be faked.
+        """
+        root = make_git_repo({"café.py": "x = 1\n", "plain.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, ["café.py", "plain.py"])
+
+        assert facts is not None
+        assert facts["café.py"].commits == 1
+        assert facts["café.py"].last_commit_ts is not None
+
+    def test_a_dash_prefixed_filename_is_a_path_not_an_option(self, make_git_repo):
+        """The ``--`` before the batch is what keeps this a pathspec."""
+        root = make_git_repo({"-o.py": "x = 1\n"})
+        facts = gitinfo.commit_churn(root, ["-o.py"])
+
+        assert facts is not None
+        assert facts["-o.py"].commits == 1
+
+    def test_a_pathspec_magic_prefixed_filename_stays_literal(self, make_git_repo):
+        """``--`` does not disable pathspec magic; the ``./`` prefix does.
+
+        Without it a tracked file named ``:!x.py`` is parsed as an exclude
+        pattern: it never matches itself, and it suppresses matches for the
+        rest of the batch in the same call.
+        """
+        root = make_git_repo({":!x.py": "x = 1\n", "a.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, [":!x.py", "a.py"])
+
+        assert facts is not None
+        assert facts[":!x.py"].commits == 1
+        assert facts["a.py"].commits == 1
 
     def test_an_all_digit_filename_is_not_read_as_a_timestamp(self, make_git_repo):
         root = make_git_repo({"2024": "x = 1\n", "a.py": "y = 1\n"})

@@ -1436,22 +1436,6 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     return refs
 
 
-def generic_name_node(node: Node, cfg: LanguageConfig) -> Node | None:
-    """Return the identifier that names ``node``, by field then by child type.
-
-    One rule with one home. A grammar that labels its fields answers directly,
-    and one that does not is answered by the first child whose type names
-    things in that language, so the two kinds of grammar cannot disagree about
-    which identifier is the name.
-    """
-    if cfg.name_field:
-        named = node.child_by_field_name(cfg.name_field)
-        if named is not None:
-            return named
-    # Fallback: first child whose type names things in this language.
-    return next((child for child in node.children if child.type in cfg.name_node_types), None)
-
-
 def walk_nodes(root: Node) -> list[Node]:
     """Return every node beneath ``root`` inclusive, parents before children.
 
@@ -2336,8 +2320,15 @@ class TreeSitterExtractor:
 
     def _generic_name(self, node: Node, source: bytes, cfg: LanguageConfig) -> str:
         """Extract the identifier name from a node using the configured field."""
-        name_node = generic_name_node(node, cfg)
-        return self._node_text(name_node, source) if name_node is not None else ""
+        if cfg.name_field:
+            named = node.child_by_field_name(cfg.name_field)
+            if named is not None:
+                return self._node_text(named, source)
+        # Fallback: first child whose type names things in this language.
+        for child in node.children:
+            if child.type in cfg.name_node_types:
+                return self._node_text(child, source)
+        return ""
 
     def _extract_generic_imports(
         self,

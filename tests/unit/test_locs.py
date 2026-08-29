@@ -141,6 +141,43 @@ class TestFunctionLocations:
         )
 
 
+NESTED_SOURCE = '''\
+"""Module."""
+
+
+def outer():
+    def inner(x):
+        return x
+
+    return inner
+'''
+
+
+class TestNestedFunctionLocations:
+    """A dotted function location is not always ``Class.method``.
+
+    A function nested in a function carries its enclosing chain as the
+    parent, and the published id pattern qualifies it exactly that way --
+    ``outer.inner`` -- so the spelling an id hands back must resolve here
+    rather than be refused for naming a class that does not exist.
+    """
+
+    def test_a_nested_function_resolves_by_its_published_qualified_name(self):
+        extractor = TreeSitterExtractor()
+        symbols = extractor.extract_from_source(NESTED_SOURCE, "python", "nest.py")
+        nested_target = LocTarget(
+            path="nest.py",
+            language="python",
+            symbols=tuple(symbols),
+            total_lines=line_count(NESTED_SOURCE),
+        )
+
+        result = resolve_locs(["function: outer.inner"], nested_target)
+
+        assert result.stable_ids == ("py:nest.py::outer.inner",)
+        assert result.unrecognized == ()
+
+
 class TestLineAndVariableLocations:
     def test_a_line_resolves_to_a_single_line_span(self):
         result = resolve_locs(["line: 7"], target())

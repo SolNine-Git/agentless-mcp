@@ -1,7 +1,5 @@
 """Map, view and symbol services against a small purpose-built repository."""
 
-import subprocess
-
 import pytest
 
 from agentless_mcp.application import render
@@ -72,27 +70,6 @@ ORPHAN = """\
 def lonely():
     return 0
 """
-
-
-def _commit_all(root, message):
-    """One more commit in a fixture repository, with the pinned test identity."""
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.email=tests@example.invalid",
-            "-c",
-            "user.name=agentless-mcp tests",
-            "commit",
-            "-am",
-            message,
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
 
 
 @pytest.fixture
@@ -218,6 +195,19 @@ class TestMapService:
         )
         assert result.seeds == ("ledger.py",)
 
+    def test_a_windows_path_walks_down_to_the_tree_it_names(self, repo, extractor, counter):
+        """The rescue converts separators; the repository's own stay POSIX.
+
+        A Windows traceback or absolute path is exactly the "spelling from
+        another machine" the rescue exists for, and splitting only on ``/``
+        left every such entry unresolved.
+        """
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("C:\\ci\\checkout\\ledger.py",))
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
     def test_a_url_tail_never_resolves_as_a_symbol(self, repo, extractor, counter):
         """``/quote`` in a URL is a route, not the symbol ``quote``.
 
@@ -238,7 +228,9 @@ class TestMapService:
         assert result.seeds == ()
         assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
 
-    def test_a_git_repo_map_header_carries_churn(self, make_git_repo, extractor, counter):
+    def test_a_git_repo_map_header_carries_churn(
+        self, make_git_repo, commit_all, extractor, counter
+    ):
         """`(rank 0.2500, 2c/90d, last 0d)`: churn the model can weigh itself.
 
         The commit count and recency ride in the header paren the rank
@@ -251,7 +243,7 @@ class TestMapService:
         """
         root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
         (root / "billing.py").write_text(BILLING + "\n# touched\n", encoding="utf-8")
-        _commit_all(root, "touch billing")
+        commit_all(root, "touch billing")
         ctx = resolve_repo(root, None)
         try:
             maps = MapService(extractor, counter)
@@ -330,6 +322,34 @@ class TestMapService:
         result = build_body_map(repo, MapRequest(budget=2000), maps, symbols)
 
         assert len(result.bodies.cards) <= 2000 // BODY_TOKENS_PER_SEAT
+
+    def test_a_truncated_body_map_expands_the_top_scored_symbol_first(
+        self, tmp_path, extractor, counter
+    ):
+        """One seat must go to the packing's best symbol, not the earliest line.
+
+        The file rows re-sort by line for reading, and slicing ids off them
+        expanded an unreferenced helper that merely sat above the file's hot
+        symbol. ``expand_order`` preserves the score order to the slice.
+        """
+        (tmp_path / "core.py").write_text(
+            "def helper():\n    return 1\n\n\ndef quote(sku):\n    return sku\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "billing.py").write_text(
+            "from core import quote\n\n\ndef bill(sku):\n    return quote(sku)\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        result = build_body_map(
+            ctx,
+            MapRequest(budget=BODY_TOKENS_PER_SEAT),
+            MapService(extractor, counter),
+            SymbolService(extractor, counter),
+        )
+
+        assert len(result.bodies.cards) == 1
+        assert result.bodies.cards[0].stable_id == "py:core.py::quote"
 
     def test_build_refuses_body_granularity_directly(self, repo, extractor, counter):
         """The adapters compose body maps; build silently rendering the

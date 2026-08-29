@@ -23,6 +23,7 @@ forced through ``cat``. The prefix is public within the core so the walker and
 write-side sandbox cannot drift from the receipt code.
 """
 
+import logging
 import os
 import subprocess
 from collections.abc import Sequence
@@ -34,6 +35,8 @@ from pathlib import Path
 # large repository and far below anything a caller would wait through.
 GIT_TIMEOUT_SECONDS = 5.0
 
+logger = logging.getLogger(__name__)
+
 # Short SHAs are for humans reading a receipt; eight hex digits stay unique
 # well past the size of repository this tool is aimed at.
 SHORT_SHA_LENGTH = 8
@@ -43,6 +46,16 @@ SHORT_SHA_LENGTH = 8
 # configuration, while a pager can turn a non-interactive read into an
 # unbounded process. Values are fixed here; repository content never reaches
 # this tuple.
+#
+# The last entry keeps git's *output* literal rather than its execution safe.
+# ``core.quotePath`` defaults to true, which prints any path with a byte over
+# 0x7f as a quoted, octal-escaped C string -- so a parser matching printed
+# names against the spellings it asked about silently misses every non-ASCII
+# filename, and :func:`commit_churn` reported such a file as measured-quiet
+# (``0c``) rather than unknown. Not ``--literal-pathspecs``: that flag also
+# stops an absolute path from resolving as a pathspec, which
+# ``treewalk._git_ignores`` depends on; pathspec-magic defense is scoped to
+# the one caller that passes repository-named paths (see ``commit_churn``).
 HARDENING_PREFIX: tuple[str, ...] = (
     "--no-optional-locks",
     "-c",
@@ -51,6 +64,8 @@ HARDENING_PREFIX: tuple[str, ...] = (
     "core.pager=cat",
     "-c",
     "diff.external=",
+    "-c",
+    "core.quotePath=false",
 )
 
 
@@ -188,10 +203,20 @@ def commit_churn(
             "--name-only",
             "--relative",
             "--",
-            *paths,
+            # "./" defeats pathspec-magic detection, which triggers only on a
+            # leading ":": without it a tracked file named ":!x.py" parses as
+            # an exclude pattern -- it never matches itself and suppresses
+            # matches for the rest of the batch. Git normalizes the prefix
+            # away, so printed names still match ``paths`` exactly.
+            *(f"./{path}" for path in paths),
         ],
     )
     if outcome.text is None:
+        # The caller renders None as a bare header -- the documented "git
+        # could not answer" -- so the note _run produced is the only place
+        # the reason survives. Debug, not warning: a root outside git takes
+        # this path on every map, and that is a state, not a fault.
+        logger.debug("churn for %s went unanswered: %s", root, outcome.note)
         return None
 
     counts = dict.fromkeys(paths, 0)

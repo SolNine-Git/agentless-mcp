@@ -64,6 +64,11 @@ def warm_grammars() -> grammars.WarmupReport:
     os.environ[grammars.ENV_NO_AUTO_WARM] = "1"
     os.environ[cache.ENV_NO_AUTO_INDEX] = "1"
     os.environ[selfrestart.ENV_NO_AUTO_RESTART] = "1"
+    # The cache ceiling is a kill switch too: an operator with a small
+    # AGENTLESS_MCP_MAX_CACHE_BYTES exported would have every index-building
+    # test sweep its neighbours' caches and change what the suite proves.
+    # "0" disables the sweep; the eviction tests set their own value.
+    os.environ[cache.ENV_MAX_CACHE_BYTES] = "0"
     report = grammars.warmup(TEST_LANGUAGES)
     if report.degraded:
         details = ", ".join(f"{cap.name}: {cap.detail}" for cap in report.degraded)
@@ -156,6 +161,30 @@ def make_git_repo(tmp_path):
         return root
 
     return build
+
+
+@pytest.fixture
+def commit_all():
+    """A second commit in a fixture repository, with the pinned test identity.
+
+    Beside :func:`make_git_repo` because it is the same hermeticity rule
+    applied to the commits after the first: identity per invocation, never
+    the machine's git config.
+    """
+
+    def commit(root, message):
+        _git(
+            root,
+            "-c",
+            "user.email=tests@example.invalid",
+            "-c",
+            "user.name=agentless-mcp tests",
+            "commit",
+            "-am",
+            message,
+        )
+
+    return commit
 
 
 # ---------------------------------------------------------------------------

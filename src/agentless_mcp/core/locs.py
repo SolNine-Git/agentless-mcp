@@ -238,8 +238,22 @@ def _resolve_function(name: str, target: LocTarget, current_class: str) -> _Hit:
     """
     wanted, ordinal = split_ordinal(name)
     if "." in wanted:
-        class_name, _, method_name = wanted.rpartition(".")
-        return _resolve_method(class_name, method_name, target, ordinal)
+        owner, _, member = wanted.rpartition(".")
+        # A dotted spelling is not always Class.method: a function nested in
+        # a function carries its enclosing chain as the parent ("outer" or
+        # "outer.inner"), and the published id pattern qualifies it exactly
+        # this way. Checked first because the FUNCTION kind cannot collide
+        # with a method, so a real Class.method never lands here.
+        nested = [
+            symbol
+            for symbol in target.symbols
+            if symbol.kind == SymbolKind.FUNCTION
+            and symbol.parent_class == owner
+            and symbol.name == member
+        ]
+        if nested:
+            return _pick(nested, wanted, ordinal, target)
+        return _resolve_method(owner, member, target, ordinal)
 
     functions = [
         symbol

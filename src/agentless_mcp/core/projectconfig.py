@@ -62,6 +62,11 @@ MAX_TEST_CMD_CHARS = 512
 # token budget on repository-supplied text.
 MAX_UNKNOWN_KEY_WARNINGS = 8
 
+# The choices a config file may set as the map's default. Deliberately
+# narrower than ``map_service.GRANULARITIES``, which also carries 'body': a
+# persistent default of the expensive body view is a footgun, so 'body' is
+# wire-only and a config that names it is warned about and ignored. A test
+# pins the divergence -- do not merge the two tuples.
 GRANULARITIES = ("function", "file")
 
 KEY_MAP_BUDGET = "map_budget"
