@@ -72,7 +72,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     },
     {
       "path": "pricing.py",
@@ -152,7 +154,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     },
     {
       "path": "inventory.py",
@@ -238,7 +242,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     }
   ],
   "skipped": [],

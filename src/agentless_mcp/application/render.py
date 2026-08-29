@@ -66,6 +66,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, overload
 
+from agentless_mcp.core.gitinfo import CHURN_WINDOW_DAYS
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
 from agentless_mcp.core.symbols import StableId, language_prefix
@@ -351,6 +352,12 @@ class MapFile(_Bounded):
     # unfocused walk reaches every file, and because a caller building one of
     # these by hand is describing a file it chose to include.
     reached: bool = True
+    # Commit activity inside the churn window, for the model to weigh itself
+    # -- deliberately data beside the rank, never folded into it. None means
+    # git could not answer and the header stays bare; a known-quiet file
+    # carries 0 with no "last" part, so absence and quiet cannot be confused.
+    commits_window: int | None = None
+    last_commit_days: int | None = None
 
     @property
     def shown(self) -> int:
@@ -374,6 +381,8 @@ class MapFile(_Bounded):
             "symbols": [entry.as_dict() for entry in self.entries],
             "omitted": self.omitted,
             "reached": self.reached,
+            "commits_90d": self.commits_window,
+            "last_commit_days": self.last_commit_days,
         }
 
 
@@ -1712,7 +1721,12 @@ def render_map(files: Sequence[MapFile]) -> str:
 
     blocks: list[str] = []
     for map_file in files:
-        lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f})"]
+        churn = ""
+        if map_file.commits_window is not None:
+            churn = f", {map_file.commits_window}c/{CHURN_WINDOW_DAYS}d"
+            if map_file.last_commit_days is not None:
+                churn += f", last {map_file.last_commit_days}d"
+        lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f}{churn})"]
         pattern = _stable_ids_line(map_file.id_prefix, map_file.path)
         if pattern:
             lines.append(pattern)

@@ -13,6 +13,24 @@ measurement that can resolve it.
 
 ### Added
 
+- **A ranked file's header carries its commit churn.** `(rank 0.0414,
+  32c/90d, last 3d)`: commits in the last 90 days and days since the newest,
+  rendered only when git answers for the tree. Fault-localization evidence
+  the model was previously spending its own turn on `git log` to get -- now
+  returned in the answer it already paid for, as data beside the rank and
+  never folded into it, because an unmeasured ranking change is what this
+  release's own rollback withdrew. One bounded `git log --since=90.days
+  --name-only` per map, scoped to the ranked files, NUL-prefixed timestamps
+  so an all-digit filename cannot be read as one, `--relative` so a served
+  subdirectory's paths match. Absence and quiet cannot be confused: a bare
+  header means git could not answer, `0c/90d` with no `last` means a
+  measured quiet file. Measured cost on this repository: 178 characters, 44
+  estimator tokens, on a ten-file map. The churn source rides on
+  `RepoContext` beside `head_sha`, so the pinned golden contexts stay
+  hermetic by construction; the JSON form gains `commits_90d` and
+  `last_commit_days` (null when unknown), and the JSON goldens were
+  regenerated for exactly those two keys.
+
 - **An empty fan-in says what licenses the absence.** `no references to X`
   over a complete scan now reads `no references to X outside its own
   definition (complete scan: 197 files, 0 skipped)` -- one line, only on the

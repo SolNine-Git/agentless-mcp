@@ -212,6 +212,39 @@ class TestMapService:
         assert result.seeds == ()
         assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
 
+    def test_a_git_repo_map_header_carries_churn(self, make_git_repo, extractor, counter):
+        """`(rank 0.2500, 1c/90d, last 0d)`: churn the model can weigh itself.
+
+        The commit count and recency ride in the header paren the rank
+        already owns, so the cost is a few characters per ranked file and
+        zero new rows. The fixture commit is seconds old, which is what makes
+        `last 0d` deterministic without touching a clock.
+        """
+        root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "1c/90d, last 0d)" in text
+        entry = next(f for f in result.as_dict()["files"] if f["path"] == "core.py")
+        assert entry["commits_90d"] == 1
+        assert entry["last_commit_days"] == 0
+
+    def test_a_map_outside_git_keeps_the_bare_header(self, repo, extractor, counter):
+        """No suffix, not a zeroed one: absence means git could not answer."""
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest())
+        text = maps.render_text(result)
+
+        assert "c/90d" not in text
+        entry = result.as_dict()["files"][0]
+        assert entry["commits_90d"] is None
+        assert entry["last_commit_days"] is None
+
     def test_an_unresolved_seed_is_named_rather_than_dropped(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely", "rotate_age", "  ")))

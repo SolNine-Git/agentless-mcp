@@ -29,8 +29,9 @@ fits -- deterministic, and independent of the order files were walked in.
 """
 
 import re
+import time
 from collections.abc import Collection, Mapping, Sequence, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -302,6 +303,7 @@ class MapService:
                 )
                 for path in chosen
             )
+            files = _with_churn(files, ctx)
             return MapResult(
                 files=files,
                 budget=0,
@@ -348,7 +350,7 @@ class MapService:
         )
         budget = request.budget if request.budget is not None else self._auto_budget(packing)
         included = self._pack(packing, budget)
-        grouped = _group(included, packing)
+        grouped = _with_churn(_group(included, packing), ctx)
 
         return MapResult(
             files=grouped,
@@ -815,6 +817,39 @@ def _normalized_spellings(entry: str) -> list[str]:
     candidates.extend("/".join(parts[start:]) for start in range(1, len(parts)))
 
     return list(dict.fromkeys(candidate for candidate in candidates if candidate != entry))
+
+
+def _with_churn(files: tuple[render.MapFile, ...], ctx: RepoContext) -> tuple[render.MapFile, ...]:
+    """Stamp each ranked file with its windowed commit activity.
+
+    Data beside the rank, never folded into it: an unmeasured ranking change
+    is what the 0.7.1 rollback withdrew, so the model gets the fact and does
+    its own weighing. One bounded git call for the whole listing, after the
+    ranking chose it, so an unranked repository file costs nothing.
+
+    Every degradation leaves the files exactly as they came: no churn source
+    on the context (a root outside git, a hand-built pinned context), or a
+    lookup git could not answer. The header renders nothing for None, so a
+    map cannot claim quiet history it never measured. A future-dated commit
+    clamps to zero days rather than going negative.
+    """
+    if ctx.churn is None or not files:
+        return files
+    facts = ctx.churn.for_paths([entry.path for entry in files])
+    if facts is None:
+        return files
+    now = int(time.time())
+    decorated = []
+    for entry in files:
+        fact = facts.get(entry.path)
+        if fact is None:
+            decorated.append(entry)
+            continue
+        days = None
+        if fact.last_commit_ts is not None:
+            days = max((now - fact.last_commit_ts) // 86400, 0)
+        decorated.append(replace(entry, commits_window=fact.commits, last_commit_days=days))
+    return tuple(decorated)
 
 
 def _matches_stem(path: str, entry: str) -> bool:

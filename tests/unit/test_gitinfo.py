@@ -240,3 +240,70 @@ class TestAmbientGitEnvironmentCannotRedirect:
         assert not [name for name in environment if name.startswith("GIT_")]
         assert environment["PATH"] == "/usr/bin"
         assert environment["HOME"] == "/home/someone"
+
+
+def _commit_all(root, message):
+    """One more commit in a fixture repository, with the pinned test identity."""
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.email=tests@example.invalid",
+            "-c",
+            "user.name=agentless-mcp tests",
+            "commit",
+            "-am",
+            message,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+
+class TestCommitChurn:
+    """The windowed per-path commit facts the map header spends."""
+
+    def test_counts_and_last_timestamp_per_requested_path(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        _commit_all(root, "touch a")
+
+        facts = gitinfo.commit_churn(root, ["a.py", "sub/b.py"])
+
+        assert facts is not None
+        assert facts["a.py"].commits == 2
+        assert facts["sub/b.py"].commits == 1
+        assert facts["a.py"].last_commit_ts is not None
+        assert facts["sub/b.py"].last_commit_ts is not None
+        assert facts["a.py"].last_commit_ts >= facts["sub/b.py"].last_commit_ts
+
+    def test_a_root_outside_git_answers_none_not_zero(self, tmp_path):
+        """None is "git could not answer"; zeros would claim quiet history."""
+        assert gitinfo.commit_churn(tmp_path, ["a.py"]) is None
+
+    def test_a_path_with_no_commits_gets_zero_and_no_timestamp(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        facts = gitinfo.commit_churn(root, ["never_committed.py"])
+
+        assert facts == {"never_committed.py": gitinfo.ChurnFact(commits=0, last_commit_ts=None)}
+
+    def test_an_all_digit_filename_is_not_read_as_a_timestamp(self, make_git_repo):
+        root = make_git_repo({"2024": "x = 1\n", "a.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, ["2024", "a.py"])
+
+        assert facts is not None
+        assert facts["2024"].commits == 1
+        assert facts["a.py"].commits == 1
+
+    def test_paths_are_relative_to_the_served_root_not_the_toplevel(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        facts = gitinfo.commit_churn(root / "sub", ["b.py"])
+
+        assert facts is not None
+        assert facts["b.py"].commits == 1
+
+    def test_no_paths_asks_git_nothing(self, tmp_path):
+        assert gitinfo.commit_churn(tmp_path, []) == {}

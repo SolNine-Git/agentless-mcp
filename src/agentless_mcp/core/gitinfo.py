@@ -126,6 +126,94 @@ def dirty_count(root: Path) -> int | None:
     return _parse_dirty(_run(root, ["status", "--porcelain"])).count
 
 
+# The window a map header's churn suffix is counted over. One constant so the
+# renderer's "90d" and the git call that produced the number cannot drift.
+CHURN_WINDOW_DAYS = 90
+
+
+@dataclass(frozen=True)
+class ChurnFact:
+    """One path's commit activity inside the churn window.
+
+    ``last_commit_ts`` is the newest in-window commit's unix timestamp, and
+    None when the window holds no commit for the path -- known-quiet, which a
+    consumer must keep distinct from the whole lookup failing (that is
+    :func:`commit_churn` returning None).
+    """
+
+    commits: int
+    last_commit_ts: int | None
+
+
+@dataclass(frozen=True)
+class ChurnSource:
+    """A lazy churn lookup bound to one served root.
+
+    Built by ``resolve_repo`` only when git answered for the root, and carried
+    on the context so a view that never asks pays nothing. The git call
+    happens per ``for_paths`` invocation, scoped to the paths the view ranked.
+    """
+
+    root: Path
+
+    def for_paths(self, paths: Sequence[str]) -> dict[str, ChurnFact] | None:
+        """Answer churn for ``paths``, or None when git cannot say."""
+        return commit_churn(self.root, paths)
+
+
+def commit_churn(
+    root: Path, paths: Sequence[str], *, window_days: int = CHURN_WINDOW_DAYS
+) -> dict[str, ChurnFact] | None:
+    """Count each path's commits inside the window, newest timestamp kept.
+
+    One bounded ``git log`` for the whole batch. None means git could not
+    answer -- not a repository, timed out, not installed -- which the caller
+    must keep distinct from a dict of zeros: zeros claim quiet history, None
+    claims nothing.
+
+    The pretty format prefixes each commit's timestamp with a NUL byte
+    because ``--name-only`` prints bare filenames on their own lines and a
+    filename can be all digits; no filename can contain NUL. ``--relative``
+    keeps printed names relative to ``root`` when it sits inside a larger
+    repository, matching the spelling the caller's paths use.
+    """
+    if not paths:
+        return {}
+    outcome = _run(
+        root,
+        [
+            "log",
+            f"--since={window_days}.days",
+            "--pretty=%x00%ct",
+            "--name-only",
+            "--relative",
+            "--",
+            *paths,
+        ],
+    )
+    if outcome.text is None:
+        return None
+
+    counts = dict.fromkeys(paths, 0)
+    newest: dict[str, int] = {}
+    current_ts: int | None = None
+    for raw in outcome.text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("\x00"):
+            stamp = line[1:]
+            current_ts = int(stamp) if stamp.isdigit() else None
+            continue
+        if line in counts and current_ts is not None:
+            counts[line] += 1
+            # The log is newest-first, so the first sighting is the newest.
+            newest.setdefault(line, current_ts)
+    return {
+        path: ChurnFact(commits=counts[path], last_commit_ts=newest.get(path)) for path in paths
+    }
+
+
 def snapshot(root: Path) -> GitSnapshot:
     """Read HEAD, tree OID and dirty count in one pass, notes collected.
 
