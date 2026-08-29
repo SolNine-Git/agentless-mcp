@@ -1,5 +1,7 @@
 """Map, view and symbol services against a small purpose-built repository."""
 
+import subprocess
+
 import pytest
 
 from agentless_mcp.application import render
@@ -70,6 +72,27 @@ ORPHAN = """\
 def lonely():
     return 0
 """
+
+
+def _commit_all(root, message):
+    """One more commit in a fixture repository, with the pinned test identity."""
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.email=tests@example.invalid",
+            "-c",
+            "user.name=agentless-mcp tests",
+            "commit",
+            "-am",
+            message,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 @pytest.fixture
@@ -216,12 +239,41 @@ class TestMapService:
         assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
 
     def test_a_git_repo_map_header_carries_churn(self, make_git_repo, extractor, counter):
-        """`(rank 0.2500, 1c/90d, last 0d)`: churn the model can weigh itself.
+        """`(rank 0.2500, 2c/90d, last 0d)`: churn the model can weigh itself.
 
         The commit count and recency ride in the header paren the rank
         already owns, so the cost is a few characters per ranked file and
-        zero new rows. The fixture commit is seconds old, which is what makes
-        `last 0d` deterministic without touching a clock.
+        zero new rows. The fixture commits are seconds old, which is what
+        makes `last 0d` deterministic without touching a clock. The second
+        commit touches one file so the two headers differ -- identical
+        values across every ranked file are wallpaper and are suppressed,
+        which the test below pins.
+        """
+        root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
+        (root / "billing.py").write_text(BILLING + "\n# touched\n", encoding="utf-8")
+        _commit_all(root, "touch billing")
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "1c/90d, last 0d)" in text
+        assert "2c/90d, last 0d)" in text
+        entry = next(f for f in result.as_dict()["files"] if f["path"] == "billing.py")
+        assert entry["commits_90d"] == 2
+        assert entry["last_commit_days"] == 0
+
+    def test_identical_churn_on_every_file_is_suppressed(self, make_git_repo, extractor, counter):
+        """A single-commit snapshot decorates every header identically.
+
+        Measured on the pilot's snapshot repositories: 100% of map responses
+        carried one identical `1c/90d` pair on every row -- decoration with
+        zero discriminating signal. The clause exists to tell ranked files
+        apart, so when two or more files all carry one identical pair the
+        text drops it. The JSON keeps the fields: data is lossless and free.
         """
         root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
         ctx = resolve_repo(root, None)
@@ -232,10 +284,23 @@ class TestMapService:
         finally:
             ctx.close()
 
-        assert "1c/90d, last 0d)" in text
+        assert "c/90d" not in text
         entry = next(f for f in result.as_dict()["files"] if f["path"] == "core.py")
         assert entry["commits_90d"] == 1
         assert entry["last_commit_days"] == 0
+
+    def test_a_single_file_map_keeps_its_churn_header(self, make_git_repo, extractor, counter):
+        """One file has nothing to be told apart from; recency is the value."""
+        root = make_git_repo({"core.py": CORE})
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "1c/90d, last 0d)" in text
 
     def test_body_granularity_returns_file_rows_and_top_bodies(self, repo, extractor, counter):
         """One call instead of map-then-expand: the round trip 0.6.3 measured.

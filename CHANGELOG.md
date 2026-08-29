@@ -52,6 +52,15 @@ measurement that can resolve it.
   `last_commit_days` (null when unknown), and the JSON goldens were
   regenerated for exactly those two keys.
 
+  **A value every ranked file shares is suppressed.** Benched on
+  single-commit snapshot repositories, 100% of map responses decorated
+  every row with one identical pair -- wallpaper, not signal. The clause
+  exists to tell ranked files apart, so when two or more files all carry
+  the same (commits, last-days) pair the text drops it; a single-file map
+  keeps it, because there the absolute recency is the information; and the
+  JSON carries the fields in every case, because suppression is a token
+  decision, not a data one.
+
 - **An empty fan-in says what licenses the absence.** `no references to X`
   over a complete scan now reads `no references to X outside its own
   definition (complete scan: 197 files, 0 skipped)` -- one line, only on the
@@ -78,9 +87,18 @@ measurement that can resolve it.
   `quote`. `focus_paths` is the one resolution home, so the diagram's focus
   gains the same tolerance. The measured analog, on the loc-bench harness
   side (2026-08-25): the same tail-walking rule would seed 12 of 50
-  instances that currently resolve nothing, 10 of them gold files; the
-  product-side gain is to be measured on the deterministic ranking bench
-  before any agentic claim is made.
+  instances that currently resolve nothing, 10 of them gold files.
+  Product-side, measured 2026-08-28 on the deterministic 50-instance
+  loc-bench tier, four pinned arms: with the harness forwarding the raw
+  captures it normally discards, this build against the pre-rescue build
+  moves MAP +0.075, nDCG@10 +0.080, recall@10 +0.070, acc_any@5 +0.080 --
+  7 instances better, 0 worse, and the arms are deterministic, so the
+  deltas are exact rather than sampled. The control pair (stock seeding,
+  both builds) is byte-identical on all 50 instances, which is what
+  attributes the whole effect to this change. Absolute scores under
+  forwarding are not comparable to earlier baselines: recovering gold
+  paths from issue text raises the ceiling for any build. Agentic
+  confirmation remains unmeasured.
 
 - **A `def` nested in a Python function body is now a symbol.** Fixtures,
   closures and decorator wrappers are defined there, and a lookup that could

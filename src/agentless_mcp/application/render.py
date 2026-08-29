@@ -1719,10 +1719,20 @@ def render_map(files: Sequence[MapFile]) -> str:
     if not files:
         return "no ranked files\n"
 
+    # The churn clause exists to tell ranked files apart, so a value every
+    # file shares says nothing: a single-commit snapshot decorated 100% of a
+    # pilot's map responses with one identical pair on every row. Two or more
+    # files, one distinct pair, and the text drops the clause; a single file
+    # keeps it, because there the absolute recency is the information. The
+    # JSON keeps the fields either way -- suppression is a token decision,
+    # not a data one.
+    churn_pairs = {(entry.commits_window, entry.last_commit_days) for entry in files}
+    wallpaper_churn = len(files) > 1 and len(churn_pairs) == 1
+
     blocks: list[str] = []
     for map_file in files:
         churn = ""
-        if map_file.commits_window is not None:
+        if map_file.commits_window is not None and not wallpaper_churn:
             churn = f", {map_file.commits_window}c/{CHURN_WINDOW_DAYS}d"
             if map_file.last_commit_days is not None:
                 churn += f", last {map_file.last_commit_days}d"
