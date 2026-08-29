@@ -526,6 +526,9 @@ class TestSymbolService:
         ctx = resolve_repo(tmp_path, None)
         result = SymbolService(extractor, Chars4Counter()).find_symbol(ctx, "listing")
         assert result.cards[0].stable_id == "py:fixtures.py::in_memory_tools.listing"
+        text = render_find(result)
+        assert "function in in_memory_tools" in text
+        assert "function in class" not in text
 
     def test_find_symbol_filters_by_kind(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "o", kind="method")

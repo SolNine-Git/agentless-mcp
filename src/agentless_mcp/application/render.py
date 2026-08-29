@@ -1904,7 +1904,10 @@ def _candidate_rows(rows: Sequence[SharedCaller]) -> Iterator[str]:
 
 def _render_card(card: SymbolCard) -> str:
     """Render one incident card without repeating the path inside its stable id."""
-    owner = f" in class {one_line(card.parent_class)}" if card.parent_class else ""
+    # "in class" is the method's wording; a nested function's parent is the
+    # enclosing chain, which may be a function, so it gets the bare "in".
+    holder = "in class" if card.kind == "method" else "in"
+    owner = f" {holder} {one_line(card.parent_class)}" if card.parent_class else ""
     span = (
         str(card.start_line)
         if card.start_line == card.end_line
