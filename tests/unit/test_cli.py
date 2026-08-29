@@ -144,6 +144,22 @@ class TestInProcess:
         assert document["receipt"]["repo"] == str(repo_path.resolve())
         assert document["files"]
 
+    def test_a_body_map_carries_file_rows_and_whole_bodies(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--granularity", "body") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "(rank " in out
+        # A verbatim body line behind the gutter, which the signature map
+        # never renders: bodies came back in the same call.
+        assert "| " in out
+        assert "return" in out
+
+    def test_a_body_map_json_carries_the_bodies_key(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--granularity", "body", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["files"]
+        assert document["files"][0]["symbols"] == []
+        assert document["bodies"]["symbols"]
+
     def test_a_bad_budget_is_a_usage_error(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "map", "--budget", "lots") == EXIT_USAGE
         assert "--budget" in capsys.readouterr().err

@@ -3,7 +3,7 @@
   "map_focus": "File paths, path suffixes, module names, or symbol names that receive the map's ranking focus. A single string or a list of strings is accepted; a bare string reads as a one-element list. Use this when the target area is partly known; omit it for repository-wide orientation.",
   "map_budget": "Maximum approximate tokens for the rendered repository map. Omit it to use the repository configuration or automatic sizing.",
   "map_max_files": "Maximum ranked files admitted to the repository map before symbol packing.",
-  "map_granularity": "Map detail: function lists symbols within ranked files; file reports ranked files only.",
+  "map_granularity": "Map detail: function lists symbols within ranked files; file reports ranked files only; body returns the file rows plus the top-scored symbols' whole bodies, budgeted -- one call in place of a map followed by an expand.",
   "no_cache": "Bypass the optional SQLite structural-fact cache for this call and parse every requested file live.",
   "tree_path": "Optional repository-relative directory whose tracked subtree should be rendered. Omit it to render from the repository root.",
   "tree_depth": "Maximum directory levels rendered below the selected tree root.",

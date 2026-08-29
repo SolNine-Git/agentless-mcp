@@ -6,9 +6,12 @@ from agentless_mcp.application import render
 from agentless_mcp.application.map_service import (
     AUTO_BUDGET_MAX,
     AUTO_BUDGET_MIN,
+    BODY_TOKENS_PER_SEAT,
     GRANULARITY_FILE,
     MapRequest,
     MapService,
+    build_body_map,
+    render_body_map,
     seed_weights,
 )
 from agentless_mcp.application.repo_context import resolve_repo
@@ -233,6 +236,42 @@ class TestMapService:
         entry = next(f for f in result.as_dict()["files"] if f["path"] == "core.py")
         assert entry["commits_90d"] == 1
         assert entry["last_commit_days"] == 0
+
+    def test_body_granularity_returns_file_rows_and_top_bodies(self, repo, extractor, counter):
+        """One call instead of map-then-expand: the round trip 0.6.3 measured.
+
+        The map half orients -- ranked file rows, no signature entries -- and
+        the bodies half delivers the top-scored symbols whole, budgeted by
+        the same water-filling expand owns.
+        """
+        maps = MapService(extractor, counter)
+        symbols = SymbolService(extractor, counter)
+        result = build_body_map(repo, MapRequest(focus=("core.py",), budget=2000), maps, symbols)
+
+        assert result.map.files
+        assert all(map_file.entries == () for map_file in result.map.files)
+        assert result.bodies.cards
+        rendered = render_body_map(maps, result)
+        assert "(rank " in rendered
+        assert "return RATE" in rendered
+
+        document = result.as_dict()
+        assert document["bodies"]["symbols"]
+        assert document["files"][0]["symbols"] == []
+
+    def test_body_seats_scale_with_the_budget(self, repo, extractor, counter):
+        maps = MapService(extractor, counter)
+        symbols = SymbolService(extractor, counter)
+        result = build_body_map(repo, MapRequest(budget=2000), maps, symbols)
+
+        assert len(result.bodies.cards) <= 2000 // BODY_TOKENS_PER_SEAT
+
+    def test_build_refuses_body_granularity_directly(self, repo, extractor, counter):
+        """The adapters compose body maps; build silently rendering the
+        function view for granularity='body' would answer a different
+        question than the one asked."""
+        with pytest.raises(AgentlessError, match="body"):
+            MapService(extractor, counter).build(repo, MapRequest(granularity="body"))
 
     def test_a_map_outside_git_keeps_the_bare_header(self, repo, extractor, counter):
         """No suffix, not a zeroed one: absence means git could not answer."""

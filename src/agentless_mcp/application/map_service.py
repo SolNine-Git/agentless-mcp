@@ -37,7 +37,15 @@ from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import is_test_path, rationale_nodes
+from agentless_mcp.application.symbol_service import (
+    EXPAND_MAX_SEATS,
+    ExpandResult,
+    SymbolService,
+    is_test_path,
+    rationale_nodes,
+    render_expansion,
+    unresolved_lines,
+)
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import (
@@ -59,6 +67,7 @@ from agentless_mcp.core.symbols import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_MAX_FILES = 10
@@ -78,7 +87,14 @@ TEST_COMPANION_DEPTH = 2
 
 GRANULARITY_FUNCTION = "function"
 GRANULARITY_FILE = "file"
-GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE)
+GRANULARITY_BODY = "body"
+GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE, GRANULARITY_BODY)
+
+# How many whole bodies one budget is worth: expand's own shipped ratio,
+# EXPAND_BUDGET_TOKENS / EXPAND_MAX_SEATS = 12000 / 40 = 300 tokens a seat.
+# The seat count bounds how many ids a body map expands; the water-filling
+# then spends the actual budget fairly across them.
+BODY_TOKENS_PER_SEAT = 300
 
 # "auto": aim at ~6x compression of the candidate set, then refuse to go
 # below a map that could not say anything or above one that stops being a map.
@@ -256,6 +272,12 @@ class MapService:
         granularity = projectconfig.resolve(
             request.granularity, ctx.config.granularity, GRANULARITY_FUNCTION
         )
+        if granularity == GRANULARITY_BODY:
+            # The adapters route 'body' to build_body_map before build is
+            # reached. Falling through to the function view here would answer
+            # a different question than the one asked, silently.
+            message = "granularity 'body' is composed by build_body_map, not by build"
+            raise OperationFailed(message)
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         # The stoplist is a property of the repository rather than of the
@@ -372,6 +394,10 @@ class MapService:
             rank_converged=ranking.converged,
             test_companions=companions,
         )
+
+    def count_tokens(self, text: str) -> int:
+        """Count ``text`` in the same unit every budget here is spelled in."""
+        return self._counter.count(text)
 
     def render_text(self, result: MapResult) -> str:
         """Render a map result as code-shaped text.
@@ -850,6 +876,70 @@ def _with_churn(files: tuple[render.MapFile, ...], ctx: RepoContext) -> tuple[re
             days = max((now - fact.last_commit_ts) // 86400, 0)
         decorated.append(replace(entry, commits_window=fact.commits, last_commit_days=days))
     return tuple(decorated)
+
+
+@dataclass(frozen=True)
+class BodyMapResult:
+    """A body-granularity map: ranked file rows plus the top symbols' bodies.
+
+    Composition, not a new view: the map half is the file-granularity shape
+    (every entry stripped, counts kept), and the bodies half is a real
+    :class:`ExpandResult` from the same machinery ``expand`` answers with --
+    seats, water-filling, truncation markers and all. One call replaces the
+    map-then-expand round trip, which is the cost 0.6.3 measured.
+    """
+
+    map: MapResult
+    bodies: ExpandResult
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form: the map document with a ``bodies`` key."""
+        return {**self.map.as_dict(), "bodies": self.bodies.as_dict()}
+
+
+def build_body_map(
+    ctx: RepoContext,
+    request: MapRequest,
+    maps: MapService,
+    symbols: SymbolService,
+) -> BodyMapResult:
+    """Build the map, then expand its top symbols, in one answer.
+
+    Selection is the function-granularity map's own: the ids expanded are the
+    first seats' worth of the entries that won the signature packing, in the
+    map's display order -- rank-major, score within a file -- so the bodies
+    are exactly what a caller reading the map would have expanded next. The
+    seat count is the budget divided by :data:`BODY_TOKENS_PER_SEAT`, capped
+    at expand's own ceiling, and the bodies then share the same budget the
+    map was asked for, water-filled.
+
+    The map half is handed back at the file-granularity shape: signature
+    rows beside whole bodies of the same symbols would say everything twice.
+    Its ``rendered`` count is restated for the stripped rows, so the number
+    describes the text this result actually renders.
+    """
+    base = maps.build(ctx, replace(request, granularity=GRANULARITY_FUNCTION))
+    ids = [entry.stable_id for map_file in base.files for entry in map_file.entries]
+    seats = min(max(1, base.budget // BODY_TOKENS_PER_SEAT), EXPAND_MAX_SEATS)
+    bodies = symbols.expand_symbols(
+        ctx, ids[:seats], limit=max(seats, 1), budget=base.budget, seats=seats
+    )
+    stripped = tuple(replace(map_file, entries=()) for map_file in base.files)
+    display = replace(base, files=stripped, rendered=maps.count_tokens(render.render_map(stripped)))
+    return BodyMapResult(map=display, bodies=bodies)
+
+
+def render_body_map(maps: MapService, result: BodyMapResult) -> str:
+    """Render the file rows, then the bodies, one text.
+
+    The unresolved rows ride in the body the way the MCP expand door carries
+    them: a tool call has one channel. They should be empty -- every id came
+    off the scan moments earlier -- so a row here is race evidence, not
+    routine.
+    """
+    header = maps.render_text(result.map)
+    body = "\n".join([render_expansion(result.bodies), *unresolved_lines(result.bodies)])
+    return f"{header}\n{body}"
 
 
 def _matches_stem(path: str, entry: str) -> bool:

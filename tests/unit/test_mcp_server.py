@@ -837,6 +837,7 @@ class TestWireBounds:
         tools = {tool.name: tool for tool in listed}
 
         assert enum_values(tools["repo_map"].inputSchema["properties"]["granularity"]) == {
+            "body",
             "file",
             "function",
         }

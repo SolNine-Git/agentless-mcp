@@ -86,7 +86,13 @@ from agentless_mcp.application.graph_service import (
     GraphService,
     PathOptions,
 )
-from agentless_mcp.application.map_service import MapRequest, MapService
+from agentless_mcp.application.map_service import (
+    GRANULARITY_BODY,
+    MapRequest,
+    MapService,
+    build_body_map,
+    render_body_map,
+)
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo, resolved_allowlist
 from agentless_mcp.application.symbol_service import (
     DEFAULT_EXPAND_LIMIT,
@@ -197,7 +203,7 @@ MapFocus = Annotated[
     Field(description=PARAMETER_DESCRIPTIONS["map_focus"]),
 ]
 Granularity = Annotated[
-    Literal["function", "file"] | None,
+    Literal["function", "file", "body"] | None,
     Field(description=PARAMETER_DESCRIPTIONS["map_granularity"]),
 ]
 NoCache = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["no_cache"])]
@@ -729,6 +735,18 @@ class ToolHandlers:
         """
         if request.budget is None and ctx.config.map_budget is not None:
             request = replace(request, budget=ctx.config.map_budget)
+        if request.granularity == GRANULARITY_BODY:
+            composed = build_body_map(ctx, request, self._services.maps, self._services.symbols)
+            return envelope.wrap(
+                ctx,
+                render_body_map(self._services.maps, composed),
+                counter=self._services.counter,
+                truncation=envelope.Truncation(
+                    shown=len(composed.bodies.cards),
+                    total=composed.map.candidates,
+                    unit="symbols",
+                ),
+            )
         result = self._services.maps.build(ctx, request)
         return envelope.wrap(
             ctx,

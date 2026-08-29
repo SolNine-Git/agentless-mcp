@@ -13,6 +13,27 @@ measurement that can resolve it.
 
 ### Added
 
+- **`granularity: body` answers a map and its expansion in one call.** The
+  standard ladder is orient(map), read the ids, expand the winners -- two
+  round trips, and 0.6.3 measured what one extra round trip costs (+0.67
+  turns, +2.5k cache-creation tokens, +4.9s wall, worse on every metric).
+  The body granularity composes the two shipped views: the file-granularity
+  rows for orientation (rank, churn, counts, stable-id pattern) and a real
+  expansion of the top-scored symbols under them -- the ids the
+  function-granularity packing chose, in the map's own display order, seats
+  = budget / 300 tokens (expand's shipped seats-to-budget ratio), capped at
+  expand's ceiling, water-filled to the same budget. Measured on this
+  repository at `--budget 3000 --max-files 5`: the two-call flow returns
+  19,369 characters over two calls, the body map 7,720 over one -- the
+  signature rows the bodies would duplicate are the difference. Nothing new
+  is invented: selection is the map's, bodies, seats, truncation markers and
+  unresolved rows are expand's, and the v1/v2 parity test pins both doors to
+  identical bytes. `MapService.build` refuses `body` directly -- the
+  adapters compose it -- and the config file's granularity choices do not
+  gain it, because a persistent default of the expensive view is a footgun.
+  The JSON form is the map document plus a `bodies` key carrying the
+  expansion document, both shapes unchanged.
+
 - **A ranked file's header carries its commit churn.** `(rank 0.0414,
   32c/90d, last 3d)`: commits in the last 90 days and days since the newest,
   rendered only when git answers for the tree. Fault-localization evidence
