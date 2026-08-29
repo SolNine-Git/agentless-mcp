@@ -13,6 +13,18 @@ measurement that can resolve it.
 
 ### Added
 
+- **A `def` nested in a Python function body is now a symbol.** Fixtures,
+  closures and decorator wrappers are defined there, and a lookup that could
+  not see inside a function body missed them: measured on 2026-08-28, `find`
+  could not name a pytest fixture's nested helper that a competing indexer
+  returned first. Each nested `def` carries its enclosing chain as the parent
+  (`outer.inner`), stays a function rather than a method, and is found by
+  exact name ahead of substring matches. A class inside a function body still
+  ends the descent, so its methods are never attributed to the function's
+  chain, and the generic extractor for other languages is unchanged.
+  `SCHEMA_VERSION` moves to 15: the cached row shape is identical, and only
+  the version can say the symbol set grew.
+
 - **Every cached row is keyed on `files.id`, not on the path and digest it used
   to repeat.** Measured with `dbstat` on the largest cache on one developer
   machine -- 9,045 files, 2.75M rows -- 83.6% of the 643.9 MB file was the

@@ -505,6 +505,28 @@ class TestSymbolService:
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote")
         assert result.cards[0].stable_id == "py:core.py::quote"
 
+    def test_find_symbol_reaches_a_def_nested_in_a_function(self, tmp_path, extractor):
+        """A fixture-style nested ``def`` is findable by its exact name.
+
+        The name also occurs as a substring of unrelated class methods, so
+        this pins both halves: the nested symbol exists, and exact-name rank
+        puts it ahead of every substring match.
+        """
+        (tmp_path / "fixtures.py").write_text(
+            "def in_memory_tools():\n"
+            "    async def listing():\n"
+            "        return ()\n"
+            "    return listing\n"
+            "\n"
+            "class RefListing:\n"
+            "    def __getitem__(self, index):\n"
+            "        return index\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(ctx, "listing")
+        assert result.cards[0].stable_id == "py:fixtures.py::in_memory_tools.listing"
+
     def test_find_symbol_filters_by_kind(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "o", kind="method")
         assert {card.kind for card in result.cards} == {"method"}

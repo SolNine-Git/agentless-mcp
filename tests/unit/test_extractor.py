@@ -115,6 +115,71 @@ class TestFunctionExtraction:
         assert "async def" in fetch.signature
 
 
+NESTED_PYTHON = """\
+def outer():
+    async def inner(x):
+        def deepest():
+            pass
+        return x
+
+    if True:
+        def guarded():
+            pass
+
+    class Local:
+        def method(self):
+            pass
+
+    return inner
+
+
+class Host:
+    def make(self):
+        @functools.wraps(target)
+        def wrapped():
+            pass
+        return wrapped
+"""
+
+
+class TestNestedFunctionExtraction:
+    """A ``def`` inside a function body is a symbol with its chain as parent.
+
+    Fixtures, closures and decorator wrappers live there; a lookup that
+    cannot see inside a function body misses real definitions.
+    """
+
+    @pytest.fixture
+    def symbols(self):
+        ext = make_extractor()
+        return ext.extract_from_source(NESTED_PYTHON, "python", "test.py")
+
+    def test_a_nested_def_carries_its_enclosing_chain(self, symbols):
+        inner = next(s for s in symbols if s.name == "inner")
+        assert inner.parent_class == "outer"
+        deepest = next(s for s in symbols if s.name == "deepest")
+        assert deepest.parent_class == "outer.inner"
+
+    def test_a_nested_def_is_a_function_not_a_method(self, symbols):
+        inner = next(s for s in symbols if s.name == "inner")
+        assert inner.kind == SymbolKind.FUNCTION
+        assert inner.is_async is True
+
+    def test_a_def_under_a_guard_in_the_body_is_still_found(self, symbols):
+        guarded = next(s for s in symbols if s.name == "guarded")
+        assert guarded.parent_class == "outer"
+
+    def test_a_class_in_the_body_ends_the_descent(self, symbols):
+        assert not any(s.name == "Local" for s in symbols)
+        assert not any(s.name == "method" for s in symbols)
+
+    def test_a_decorated_def_under_a_method_chains_through_it(self, symbols):
+        wrapped = next(s for s in symbols if s.name == "wrapped")
+        assert wrapped.parent_class == "Host.make"
+        assert wrapped.kind == SymbolKind.FUNCTION
+        assert any("functools.wraps" in d for d in wrapped.decorators)
+
+
 class TestClassExtraction:
     def test_class_and_methods(self):
         ext = make_extractor()

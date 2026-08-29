@@ -1787,6 +1787,17 @@ PYTHON_DECLARATION_TYPES = frozenset(
     }
 )
 
+# What ends the descent inside a Python function body. A class is in the set
+# so the walk stops at it without extracting: pulling its methods out here
+# would attribute them to the function's chain instead of the class's.
+_PYTHON_NESTED_STOP_TYPES = frozenset(
+    {
+        "function_definition",
+        "decorated_definition",
+        "class_definition",
+    }
+)
+
 
 class TreeSitterExtractor:
     """Extract AST symbols from source files using tree-sitter."""
@@ -3298,7 +3309,7 @@ class TreeSitterExtractor:
                 )
 
     # ------------------------------------------------------------------
-    # Python extraction (unchanged)
+    # Python extraction
     # ------------------------------------------------------------------
 
     def _extract_python_symbols(
@@ -3316,7 +3327,9 @@ class TreeSitterExtractor:
         """
         for child in declarations_under(root, PYTHON_DECLARATION_TYPES):
             if child.type == "function_definition":
-                symbols.append(self._extract_function(child, source, module_path, parent_class=""))
+                func = self._extract_function(child, source, module_path, parent_class="")
+                symbols.append(func)
+                self._extract_nested_functions(child, source, module_path, symbols, func.name)
             elif child.type == "class_definition":
                 self._extract_class(child, source, module_path, symbols)
             elif child.type in ("expression_statement", "assignment"):
@@ -3354,9 +3367,58 @@ class TreeSitterExtractor:
                 definition, source, module_path, parent_class, extra_decorators=decorators
             )
             symbols.append(sym)
+            chain = f"{parent_class}.{sym.name}" if parent_class else sym.name
+            self._extract_nested_functions(definition, source, module_path, symbols, chain)
         elif definition.type == "class_definition":
             self._extract_class(
                 definition, source, module_path, symbols, extra_decorators=decorators
+            )
+
+    def _extract_nested_functions(
+        self,
+        node: Node,
+        source: bytes,
+        module_path: str,
+        symbols: list[ASTSymbol],
+        parent: str,
+    ) -> None:
+        """Extract each ``def`` nested inside ``node``'s body, at any depth.
+
+        Function bodies are where fixtures, closures and decorator wrappers
+        are defined, so a name lookup that cannot see inside one misses real
+        definitions. Each nested ``def`` carries its enclosing chain as the
+        parent -- ``outer.inner`` -- and stays a function: the class-implies-
+        method inference does not apply to a function-owned ``def``. A class
+        in the body ends the descent unextracted, decorated or not, so its
+        methods are never attributed to the function's chain.
+        """
+        body = node.child_by_field_name("body")
+        if body is None:
+            return
+        for child in declarations_under(body, _PYTHON_NESTED_STOP_TYPES):
+            decorators: tuple[str, ...] = ()
+            if child.type == "decorated_definition":
+                decorated = next(
+                    (c for c in child.children if c.type == "function_definition"),
+                    None,
+                )
+                if decorated is None:
+                    continue
+                definition = decorated
+                decorators = self._get_decorators(child, source)
+            elif child.type == "function_definition":
+                definition = child
+            else:
+                continue
+            sym = replace(
+                self._extract_function(
+                    definition, source, module_path, parent, extra_decorators=decorators
+                ),
+                kind=SymbolKind.FUNCTION,
+            )
+            symbols.append(sym)
+            self._extract_nested_functions(
+                definition, source, module_path, symbols, f"{parent}.{sym.name}"
             )
 
     def _extract_function(
@@ -3447,7 +3509,11 @@ class TreeSitterExtractor:
         if body:
             for child in body.children:
                 if child.type == "function_definition":
-                    symbols.append(self._extract_function(child, source, module_path, class_name))
+                    sym = self._extract_function(child, source, module_path, class_name)
+                    symbols.append(sym)
+                    self._extract_nested_functions(
+                        child, source, module_path, symbols, f"{class_name}.{sym.name}"
+                    )
                 elif child.type == "decorated_definition":
                     self._extract_decorated(
                         child, source, module_path, symbols, parent_class=class_name

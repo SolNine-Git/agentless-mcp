@@ -171,7 +171,12 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   -- correct, and one warning per file on every call until something
 #   re-indexed. The row shape is unchanged, which is the trap: only the
 #   version can say the vocabulary moved.
-SCHEMA_VERSION = 14
+#
+# 15: Python extraction gained function-nested ``def`` symbols. The row shape
+#   is unchanged and old rows still read, which is again the trap: a cache
+#   written before the change would keep serving the smaller symbol set for
+#   every unchanged file, and no per-file staleness check can see it.
+SCHEMA_VERSION = 15
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
