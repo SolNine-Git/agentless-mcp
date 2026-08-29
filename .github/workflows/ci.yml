@@ -127,3 +127,47 @@ jobs:
                   | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
           echo "skipped tests: $skips (ceiling 12)"
           test "$skips" -le 12
+
+  # `TestWithoutTheExtra` asserts that asking for the tiktoken counter
+  # without the tokens extra refuses with the install command. The quality
+  # matrix syncs both extras, so that class skips on every row above and no
+  # automated run ever executed the refusal path -- the same
+  # guarantee-without-a-gate shape the skip ceiling above exists for. This
+  # job is the one environment without the extra.
+  #
+  # The counts are asserted exactly, not as a ceiling. A skip here is the
+  # job's premise failing -- tiktoken reached the environment and
+  # `TestWithoutTheExtra` silently flipped back to a skip -- and a moved
+  # count is a new test in the file, which must say which side of the extra
+  # it tests by updating this line.
+  no-extras-counter:
+    name: token counter without the tokens extra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Sync without the tokens extra
+        run: uv sync --extra mcp
+
+      # `--no-sync` on every run step below: a bare `uv run` re-syncs the
+      # environment to the default extras, which both removes the mcp
+      # dependencies this suite imports and could someday add tiktoken back.
+      - name: The extra is genuinely absent
+        run: |
+          if uv run --no-sync python -c "import tiktoken" 2>/dev/null; then
+            echo "tiktoken resolved without --extra tokens; this job proves nothing" >&2
+            exit 1
+          fi
+
+      - name: The refusal path runs and passes
+        shell: bash
+        run: |
+          uv run --no-sync pytest tests/unit/test_token_counter.py -q -rs \
+            | tee counter-output.txt
+          grep -E '^8 passed, 6 skipped' counter-output.txt
