@@ -1816,16 +1816,28 @@ def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:
     return body
 
 
-def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
+def render_ref_groups(
+    groups: Sequence[RefGroup], target: str, *, complete_over: int | None = None
+) -> str:
     """Render fan-in: references grouped by the file they were found in.
 
     The header is the *pre-limit* total when a :class:`RefListing` supplies
     one. Recomputing it from the groups that survived is what made a fan-in of
     fifty-two sites answer "10 references to widget" and say nothing else --
     an agent reads that as the blast radius and ships against it.
+
+    ``complete_over`` is the file count of a scan that skipped nothing, and
+    only an empty listing spends it: "no references" over a complete scan is
+    an absence claim the caller can act on without a verification search,
+    while the same words alone say only that this listing is empty. A caller
+    that cannot vouch for the scan passes None and the line stays as it was.
     """
     if not groups:
-        return f"no references to {one_line(target)} outside its own definition\n"
+        line = f"no references to {one_line(target)} outside its own definition"
+        if complete_over is not None:
+            files = "file" if complete_over == 1 else "files"
+            line += f" (complete scan: {complete_over} {files}, 0 skipped)"
+        return line + "\n"
 
     listed = sum(len(group.sites) for group in groups)
     total = groups.total if isinstance(groups, _Bounded) else listed

@@ -13,6 +13,18 @@ measurement that can resolve it.
 
 ### Added
 
+- **An empty fan-in says what licenses the absence.** `no references to X`
+  over a complete scan now reads `no references to X outside its own
+  definition (complete scan: 197 files, 0 skipped)` -- one line, only on the
+  empty answer, and only when the scan skipped nothing. The claim is what
+  lets a caller act on absence without a verification search. The refs door
+  also gains the skipped-file warning `find` has carried since it existed:
+  without it, "no references" over a partial scan read as affirmative
+  absence, which is the defect the warning exists to prevent. When files
+  were skipped, the warning prints and the completeness claim does not; the
+  two states cannot be confused. The JSON form carries `scanned` and
+  `skipped` beside the groups, both additive.
+
 - **A focus seed wrapped in a task's decoration resolves to the file inside
   it.** A traceback frame (`File "/app/src/billing/invoice.py", line 142`),
   a GitHub blob URL, an absolute path from another machine, and a

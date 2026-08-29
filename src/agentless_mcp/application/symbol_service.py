@@ -271,6 +271,15 @@ class RefsResult:
     groups: render.RefListing
     shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
     target_resolved: bool = True
+    # What the scan behind this fan-in covered. ``scanned`` is None unless the
+    # service that ran the scan set it, because only a count the scan really
+    # produced can license the "complete scan" claim an empty listing makes;
+    # a default of zero would let a hand-built result claim completeness it
+    # never earned. ``skipped`` travels for the same reason it does on
+    # ``FindResult``: "no references" over a partial scan is a different
+    # answer from the same words over a complete one.
+    skipped: tuple[refs.SkippedFile, ...] = ()
+    scanned: int | None = None
 
     @property
     def total(self) -> int:
@@ -302,8 +311,10 @@ class RefsResult:
         return {
             "target": self.target,
             "target_resolved": self.target_resolved,
+            "scanned": self.scanned,
             **self.groups.as_dict(),
             "shared_callers": self.shared.as_dict(),
+            "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
         }
 
 
@@ -468,6 +479,8 @@ class SymbolService:
             groups=groups,
             shared=shared,
             target_resolved=resolution.scoped,
+            skipped=scan.skipped,
+            scanned=len(scan.files),
         )
 
     def _fit_bodies(
@@ -671,15 +684,22 @@ def render_refs(result: RefsResult, *, shared_callers: bool = False) -> str:
     strongest evidence tier for a symbol nobody named, with no sign that the
     id had degraded to a name lookup. The notice comes first because it
     changes how every row below it must be read.
+
+    The skipped-file warning rides here too, exactly as :func:`render_find`
+    carries it: without it, "no references" over a partial scan read as
+    affirmative absence. And a complete scan is what licenses the empty
+    listing's absence claim, so the count is passed only when nothing was
+    skipped.
     """
+    complete_over = result.scanned if not result.skipped else None
     body = (
         render.render_shared_callers(result.shared, result.target)
         if shared_callers
-        else render.render_ref_groups(result.groups, result.target)
+        else render.render_ref_groups(result.groups, result.target, complete_over=complete_over)
     )
-    if not result.notice:
-        return body
-    return result.notice + "\n\n" + body
+    warning = render.render_skipped_files(result.skipped)
+    pieces = [piece for piece in (result.notice, warning) if piece]
+    return "\n\n".join([*pieces, body]) if pieces else body
 
 
 def render_find(result: FindResult) -> str:
