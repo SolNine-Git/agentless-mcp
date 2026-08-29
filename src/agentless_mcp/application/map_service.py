@@ -28,6 +28,7 @@ greedy fill, so the answer is the largest prefix of the score ordering that
 fits -- deterministic, and independent of the order files were walked in.
 """
 
+import re
 from collections.abc import Collection, Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
@@ -723,8 +724,42 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     would take the text after its last dot -- a file extension -- and look
     that up as a symbol, which turns a mistyped path into a confident seed on
     an unrelated file.
+
+    An entry the five shapes cannot resolve gets one more chance: the
+    spellings a task actually hands a caller -- a traceback frame, a blob
+    URL, ``path:line``, an absolute path -- are stripped to the path inside
+    them and retried through the path shapes alone (see
+    :func:`_normalized_spellings`). Only on a miss, so an entry that resolves
+    as spelled today resolves identically; and never through the symbol
+    shapes, because a URL segment or an absolute-path component is a path
+    fragment, not a name -- ``https://example.com/quote`` naming the symbol
+    ``quote`` would be exactly the confident-seed-on-an-unrelated-file defect
+    the step-3 stop exists to prevent.
     """
-    normalized = PurePosixPath(entry).as_posix()
+    paths = _path_matches(PurePosixPath(entry).as_posix(), known)
+    if paths:
+        return paths
+
+    qualified = entry.rpartition("::")[2] or entry
+    if "/" not in qualified:
+        name = qualified.rpartition(".")[2] or qualified
+        defining = [
+            definition for definition in index.definitions.get(name, ()) if definition.path in known
+        ]
+        owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
+        resolved = sorted({definition.path for definition in (owned or defining)})
+        if resolved:
+            return resolved
+
+    for candidate in _normalized_spellings(entry):
+        paths = _path_matches(candidate, known)
+        if paths:
+            return paths
+    return []
+
+
+def _path_matches(normalized: str, known: set[str]) -> list[str]:
+    """Resolve one spelling through the three path shapes, most specific first."""
     if normalized in known:
         return [normalized]
 
@@ -732,20 +767,54 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     if suffix_matches:
         return suffix_matches
 
-    stem_matches = sorted(path for path in known if _matches_stem(path, normalized))
-    if stem_matches:
-        return stem_matches
+    return sorted(path for path in known if _matches_stem(path, normalized))
 
-    qualified = entry.rpartition("::")[2] or entry
-    if "/" in qualified:
-        return []
 
-    name = qualified.rpartition(".")[2] or qualified
-    defining = [
-        definition for definition in index.definitions.get(name, ()) if definition.path in known
-    ]
-    owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
-    return sorted({definition.path for definition in (owned or defining)})
+# A traceback frame: optional indent, `File "<path>", line N`, the rest free.
+_TRACEBACK_FRAME = re.compile(r'\s*File "(?P<path>[^"]+)", line \d+')
+
+# A trailing location: `:12`, `:12-40`, or a blob URL's `#L12` fragment.
+_LOCATION_SUFFIX = re.compile(r"(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)$")
+
+# A URL scheme prefix, `https://` and friends.
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+# How many trailing path components a rescue walk will try. Real spellings
+# put the repository-relative path in the last few components; a bound keeps
+# a pathological entry from scanning the file set thousands of times.
+_MAX_TAIL_COMPONENTS = 32
+
+
+def _normalized_spellings(entry: str) -> list[str]:
+    """The path spellings hiding inside one unresolved focus entry.
+
+    Longest first, deduplicated, never the entry itself: the quoted path of a
+    traceback frame, the entry with its URL scheme, query string, fragment and
+    trailing ``:line`` stripped, and then every shorter ``/``-tail of that
+    path until one names a file -- which is the caller's loop, not this
+    function's. The tail walk is what rescues a blob URL or an absolute path
+    from another machine: the components that never existed in this
+    repository drop away one at a time until what is left is the
+    repository-relative spelling.
+    """
+    frame = _TRACEBACK_FRAME.match(entry)
+    if frame:
+        core = frame.group("path")
+    else:
+        core = _URL_SCHEME.sub("", entry)
+        if core != entry:
+            core = core.split("?", 1)[0].split("#", 1)[0]
+    core = _LOCATION_SUFFIX.sub("", core).strip()
+
+    candidates: list[str] = []
+    if core and core != entry:
+        candidates.append(PurePosixPath(core).as_posix())
+
+    parts = [part for part in core.split("/") if part and part != "."]
+    parts = parts[-_MAX_TAIL_COMPONENTS:]
+    candidates.extend("/".join(parts[start:]) for start in range(1, len(parts)))
+
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate != entry))
 
 
 def _matches_stem(path: str, entry: str) -> bool:

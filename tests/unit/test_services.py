@@ -160,6 +160,58 @@ class TestMapService:
         qualified = maps.build(repo, MapRequest(focus=("PriceBook.cost_of",)))
         assert bare.seeds == qualified.seeds == ("core.py",)
 
+    def test_a_line_suffix_is_stripped_from_a_path_seed(self, repo, extractor, counter):
+        """``ledger.py:6`` is how a grep hit or an editor spells a location.
+
+        The model seeds the map with what the task hands it, and refusing the
+        spelling for its decoration turns a gold seed into an unfocused map.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("ledger.py:6",)))
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_a_blob_url_seeds_the_file_it_names(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo,
+            MapRequest(focus=("https://github.com/acme/shop/blob/abc123/ledger.py",)),
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_a_traceback_frame_seeds_its_file(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo,
+            MapRequest(focus=('File "/app/src/ledger.py", line 6, in post',)),
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_an_absolute_path_walks_down_to_the_tree_it_names(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("/home/ci/checkout/ledger.py",))
+        )
+        assert result.seeds == ("ledger.py",)
+
+    def test_a_url_tail_never_resolves_as_a_symbol(self, repo, extractor, counter):
+        """``/quote`` in a URL is a route, not the symbol ``quote``.
+
+        Normalized spellings resolve through the path shapes alone: a rescued
+        seed must name a file the entry plausibly spelled, never a symbol that
+        happens to share a word with a URL segment.
+        """
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("https://example.com/quote",))
+        )
+        assert result.seeds == ()
+        assert result.unresolved_seeds == ("https://example.com/quote",)
+
+    def test_an_unrescuable_entry_reports_its_original_spelling(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("https://example.com/no/such/file.py:12",))
+        )
+        assert result.seeds == ()
+        assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
+
     def test_an_unresolved_seed_is_named_rather_than_dropped(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
         result = maps.build(repo, MapRequest(focus=("lonely", "rotate_age", "  ")))

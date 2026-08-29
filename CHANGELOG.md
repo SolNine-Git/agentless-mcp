@@ -13,6 +13,24 @@ measurement that can resolve it.
 
 ### Added
 
+- **A focus seed wrapped in a task's decoration resolves to the file inside
+  it.** A traceback frame (`File "/app/src/billing/invoice.py", line 142`),
+  a GitHub blob URL, an absolute path from another machine, and a
+  `path:line` spelling all resolved to nothing, so the map silently ran
+  unfocused on exactly the entries a real task hands an agent. The rescue
+  strips the decoration and walks shorter `/`-tails of what remains until
+  one names a file in the tree. Two rules bound it: it runs only for an
+  entry the five existing shapes cannot resolve, so any seed that resolves
+  today resolves identically -- the committed goldens are byte-unchanged --
+  and a rescued spelling resolves through the path shapes alone, never the
+  symbol shapes, so `https://example.com/quote` cannot seed the symbol
+  `quote`. `focus_paths` is the one resolution home, so the diagram's focus
+  gains the same tolerance. The measured analog, on the loc-bench harness
+  side (2026-08-25): the same tail-walking rule would seed 12 of 50
+  instances that currently resolve nothing, 10 of them gold files; the
+  product-side gain is to be measured on the deterministic ranking bench
+  before any agentic claim is made.
+
 - **A `def` nested in a Python function body is now a symbol.** Fixtures,
   closures and decorator wrappers are defined there, and a lookup that could
   not see inside a function body missed them: measured on 2026-08-28, `find`

@@ -529,7 +529,13 @@ outward from what you name. A seed that resolved leads the ranked list, and
 the files that reference it rank above the utilities it imports. A seed
 resolves as a repository-relative path (`src/billing/invoice.py`), a path
 suffix (`invoice.py`), a bare module stem (`invoice`), a qualified symbol
-name (`Invoice.total`), or a bare symbol name (`quote`). Lift them from the
+name (`Invoice.total`), or a bare symbol name (`quote`). A spelling the task
+wraps in decoration also resolves: a traceback frame (`File
+"/app/src/billing/invoice.py", line 142`), a blob URL, an absolute path from
+another machine, or `invoice.py:142` is stripped to the path inside it --
+only when the raw spelling matches nothing, and never through the symbol
+shapes, so `https://example.com/quote` cannot seed the symbol `quote`. Lift
+seeds from the
 task: the file in the traceback, the class in the ticket, the function in
 the error message. Each seed carries one vote, split across the files it
 matched, so one exact path outweighs a name that matched twenty files. A
