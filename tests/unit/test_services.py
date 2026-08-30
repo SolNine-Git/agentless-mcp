@@ -351,6 +351,87 @@ class TestMapService:
         assert len(result.bodies.cards) == 1
         assert result.bodies.cards[0].stable_id == "py:core.py::quote"
 
+    def test_a_focus_named_symbol_takes_the_first_seat(self, tmp_path, extractor, counter):
+        """The caller who named a symbol gets that symbol's body first.
+
+        Seat order was pure inbound-name centrality, which never sees the
+        focus: a body map focused on a late, uncalled symbol spent its seats
+        on the file's most-referenced names and still needed the second round
+        trip the view exists to remove (issue #45).
+        """
+        (tmp_path / "serializers.py").write_text(
+            "def pack(value):\n    return value\n\n\n"
+            "def unpack(value):\n    return value\n\n\n"
+            "def finale(value):\n    return pack(unpack(value))\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "callers.py").write_text(
+            "from serializers import pack, unpack\n\n\n"
+            "def early(value):\n    return pack(unpack(value))\n\n\n"
+            "def late(value):\n    return pack(unpack(value))\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        result = build_body_map(
+            ctx,
+            MapRequest(focus=("finale",), budget=BODY_TOKENS_PER_SEAT),
+            MapService(extractor, counter),
+            SymbolService(extractor, counter),
+        )
+
+        assert len(result.bodies.cards) == 1
+        assert result.bodies.cards[0].stable_id == "py:serializers.py::finale"
+
+    def test_the_focus_seat_survives_a_packing_that_cut_the_symbol(
+        self, tmp_path, extractor, counter
+    ):
+        """A tight budget cuts the focus symbol from the signature packing,
+        and the seat must not go with it: ``focus_order`` is carried apart
+        from ``expand_order`` for exactly this case."""
+        hot = "\n\n\n".join(
+            f"def serializer_{index}(alpha_parameter, beta_parameter, gamma_parameter):\n"
+            "    return alpha_parameter"
+            for index in range(12)
+        )
+        calls = "\n".join(f"    serializer_{index}(1, 2, 3)" for index in range(12))
+        (tmp_path / "serializers.py").write_text(
+            f"{hot}\n\n\ndef finale(value):\n    return value\n", encoding="utf-8"
+        )
+        (tmp_path / "callers.py").write_text(
+            "from serializers import *\n\n\ndef drive():\n" + calls + "\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        maps = MapService(extractor, counter)
+        request = MapRequest(focus=("finale",), budget=MIN_BUDGET)
+
+        base = maps.build(ctx, request)
+        assert "py:serializers.py::finale" not in base.expand_order
+
+        result = build_body_map(ctx, request, maps, SymbolService(extractor, counter))
+        assert result.bodies.cards[0].stable_id == "py:serializers.py::finale"
+
+    def test_a_path_focus_seats_nothing_ahead_of_the_score_order(self, repo, extractor, counter):
+        """A path names a file, not a symbol in it: current behavior stands."""
+        base = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("core.py",), budget=2000)
+        )
+
+        assert base.focus_order == ()
+
+    def test_a_focus_symbol_already_top_scored_burns_no_extra_seat(self, repo, extractor, counter):
+        """The focus seat and a centrality seat for one symbol deduplicate."""
+        result = build_body_map(
+            repo,
+            MapRequest(focus=("quote",), budget=2000),
+            MapService(extractor, counter),
+            SymbolService(extractor, counter),
+        )
+        ids = [card.stable_id for card in result.bodies.cards]
+
+        assert ids[0] == "py:core.py::quote"
+        assert len(ids) == len(set(ids))
+
     def test_build_refuses_body_granularity_directly(self, repo, extractor, counter):
         """The adapters compose body maps; build silently rendering the
         function view for granularity='body' would answer a different

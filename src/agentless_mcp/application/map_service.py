@@ -180,6 +180,16 @@ class MapResult:
     # the JSON form: it restates ids the files already carry, in an order
     # only the body composition consumes.
     expand_order: tuple[str, ...] = ()
+    # The focus-named symbols' stable ids, in the ranking's file order --
+    # what `build_body_map` seats before anything from `expand_order`. The
+    # score behind that order is inbound-name centrality, which knows nothing
+    # of the focus, so without this field a caller who named a symbol got the
+    # file's most self-referential boilerplate expanded and still needed the
+    # second round trip the body view exists to remove. Independent of the
+    # packing on purpose: a tight budget can cut the named symbol from
+    # `expand_order`, and the seat must survive that. Not in the JSON form,
+    # for `expand_order`'s reason.
+    focus_order: tuple[str, ...] = ()
     # The test files that exercise the ranked or seeded files, listed outside
     # the budget the ranked files are packed into. Edges run referrer to
     # definer, so a test file has no inbound weight and the ranking that
@@ -391,6 +401,7 @@ class MapService:
             expand_order=tuple(
                 symbol_stable_id(entry.symbol) for entry in packing.eligible[:included]
             ),
+            focus_order=_focus_order(seeding.definitions, chosen),
             budget=budget,
             included=included,
             # What competed for the budget, not every symbol under a ranked
@@ -688,6 +699,12 @@ class Seeding:
 
     weights: dict[str, float]
     unresolved: tuple[str, ...]
+    # The definitions the symbol-shaped entries named -- empty for an entry
+    # that resolved as a path, because a path names a file, not a symbol in
+    # it. Carried so the body map can seat the symbol the caller asked about;
+    # the weights alone cannot say one was named, which is the defect that
+    # spent every body seat on a file's most self-referential boilerplate.
+    definitions: tuple[refs.Definition, ...] = ()
 
 
 def seed_weights(
@@ -714,6 +731,7 @@ def seed_weights(
     known = {facts.path for facts in scan.files}
     weights: dict[str, float] = {}
     unresolved: list[str] = []
+    definitions: list[refs.Definition] = []
 
     for entry in focus:
         cleaned = entry.strip()
@@ -725,16 +743,40 @@ def seed_weights(
             # something the scan could not find.
             continue
 
-        paths = focus_paths(cleaned, known, index)
+        paths, matched = _focus_resolution(cleaned, known, index)
         if not paths:
             unresolved.append(cleaned)
             continue
+        definitions.extend(matched)
 
         share = 1.0 / len(paths)
         for path in paths:
             weights[path] = weights.get(path, 0.0) + share
 
-    return Seeding(weights=weights, unresolved=tuple(dict.fromkeys(unresolved)))
+    return Seeding(
+        weights=weights,
+        unresolved=tuple(dict.fromkeys(unresolved)),
+        definitions=tuple(definitions),
+    )
+
+
+def _focus_order(
+    definitions: tuple[refs.Definition, ...], chosen: Sequence[str]
+) -> tuple[str, ...]:
+    """The focus-named symbols' ids, in the ranking's file order then line.
+
+    Filtered to the chosen files because the body map can only seat what its
+    file rows show: a focus definition in a file the ranking cut is the file
+    limit's decision, and a seat order that overturned it would expand a body
+    under no row. Deduplicated because two entries can name one definition,
+    and a repeated id would burn a seat restating a body.
+    """
+    position = {path: index for index, path in enumerate(chosen)}
+    ranked = sorted(
+        (definition for definition in definitions if definition.path in position),
+        key=lambda definition: (position[definition.path], definition.symbol.line_number),
+    )
+    return tuple(dict.fromkeys(symbol_stable_id(definition.symbol) for definition in ranked))
 
 
 def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
@@ -779,9 +821,24 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     ``quote`` would be exactly the confident-seed-on-an-unrelated-file defect
     the step-3 stop exists to prevent.
     """
+    return _focus_resolution(entry, known, index)[0]
+
+
+def _focus_resolution(
+    entry: str, known: set[str], index: refs.RefIndex
+) -> tuple[list[str], tuple[refs.Definition, ...]]:
+    """Resolve one entry to files, and to definitions when it named a symbol.
+
+    One function rather than two lookups, so the path-beats-symbol precedence
+    :func:`focus_paths` documents cannot drift between the caller that wants
+    files (every view's ranking) and the caller that wants the named symbol
+    back (the body map's first seat). The definitions half is empty whenever
+    the entry resolved as a path, because a path names a file, not a symbol
+    in it.
+    """
     paths = _path_matches(PurePosixPath(entry).as_posix(), known)
     if paths:
-        return paths
+        return paths, ()
 
     qualified = entry.rpartition("::")[2] or entry
     if "/" not in qualified:
@@ -790,15 +847,15 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
             definition for definition in index.definitions.get(name, ()) if definition.path in known
         ]
         owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
-        resolved = sorted({definition.path for definition in (owned or defining)})
-        if resolved:
-            return resolved
+        matched = owned or defining
+        if matched:
+            return sorted({definition.path for definition in matched}), tuple(matched)
 
     for candidate in _normalized_spellings(entry):
         paths = _path_matches(candidate, known)
         if paths:
-            return paths
-    return []
+            return paths, ()
+    return [], ()
 
 
 def _path_matches(normalized: str, known: set[str]) -> list[str]:
@@ -927,15 +984,20 @@ def build_body_map(
 ) -> BodyMapResult:
     """Build the map, then expand its top symbols, in one answer.
 
-    Selection is the function-granularity map's own: the ids expanded are the
-    first seats' worth of the entries that won the signature packing, in the
-    packing's score order -- so when the seats are fewer than the ids, the
-    bodies are the highest-scored symbols overall, which is what the tool
-    description advertises. The file rows re-sort by line for reading;
-    ``MapResult.expand_order`` is what preserves the score order to here. The
-    seat count is the budget divided by :data:`BODY_TOKENS_PER_SEAT`, capped
-    at expand's own ceiling, and the bodies then share the same budget the
-    map was asked for, water-filled.
+    A symbol the focus named is seated first: ``MapResult.focus_order``
+    carries those ids, and centrality orders every remaining seat. Without
+    that, a caller who focused on a late-file symbol got the file's densest
+    boilerplate expanded and still needed the second round trip this view
+    exists to remove -- the packing's score is inbound-name centrality and
+    never sees the focus. A focus that named only files seats nothing here,
+    and selection stays the function-granularity map's own: the entries that
+    won the signature packing, in the packing's score order, so when the
+    seats are fewer than the ids the bodies are the highest-scored symbols
+    overall, which is what the tool description advertises. The file rows
+    re-sort by line for reading; ``MapResult.expand_order`` is what preserves
+    the score order to here. The seat count is the budget divided by
+    :data:`BODY_TOKENS_PER_SEAT`, capped at expand's own ceiling, and the
+    bodies then share the same budget the map was asked for, water-filled.
 
     The map half is handed back at the file-granularity shape: signature
     rows beside whole bodies of the same symbols would say everything twice.
@@ -943,7 +1005,7 @@ def build_body_map(
     describes the text this result actually renders.
     """
     base = maps.build(ctx, replace(request, granularity=GRANULARITY_FUNCTION))
-    ids = list(base.expand_order)
+    ids = list(dict.fromkeys((*base.focus_order, *base.expand_order)))
     seats = min(max(1, base.budget // BODY_TOKENS_PER_SEAT), EXPAND_MAX_SEATS)
     bodies = symbols.expand_symbols(
         ctx, ids[:seats], limit=max(seats, 1), budget=base.budget, seats=seats
