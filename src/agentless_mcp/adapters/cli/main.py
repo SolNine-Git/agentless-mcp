@@ -55,9 +55,12 @@ from agentless_mcp.application.lint_service import LintService, load_candidates,
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
+    GRANULARITY_BODY,
     GRANULARITY_FUNCTION,
     MapRequest,
     MapService,
+    build_body_map,
+    render_body_map,
 )
 from agentless_mcp.application.patch_service import CheckReport, PatchService, load_edits
 from agentless_mcp.application.repo_context import RepoContext, resolve_repo
@@ -295,7 +298,8 @@ def _add_map(subparsers: Any) -> None:
         choices=GRANULARITIES,
         default=None,
         help=f"map detail: '{GRANULARITY_FUNCTION}' lists symbols within ranked files, "
-        f"'file' reports ranked files only (default: {GRANULARITY_FUNCTION})",
+        f"'file' reports ranked files only, '{GRANULARITY_BODY}' returns the file rows "
+        f"plus the top symbols' budgeted bodies (default: {GRANULARITY_FUNCTION})",
     )
     parser.set_defaults(handler=_cmd_map)
 
@@ -827,15 +831,35 @@ def _cmd_map(args: argparse.Namespace, services: CliServices) -> int:
     if refusal:
         return fail(refusal, EXIT_USAGE)
 
-    result = services.maps.build(
-        ctx,
-        MapRequest(
-            focus=tuple(args.focus),
-            budget=budget,
-            max_files=args.max_files,
-            granularity=args.granularity,
-        ),
+    request = MapRequest(
+        focus=tuple(args.focus),
+        budget=budget,
+        max_files=args.max_files,
+        granularity=args.granularity,
     )
+    if args.granularity == GRANULARITY_BODY:
+        body_result = build_body_map(ctx, request, services.maps, services.symbols)
+        _emit(
+            args,
+            ctx,
+            services,
+            _Answer(
+                text=render_body_map(services.maps, body_result),
+                payload=body_result.as_dict(),
+                # The bulk of a body answer is the bodies, not the stripped
+                # file rows: trimming "files" would delete the orientation
+                # while keeping the overrun.
+                items_key="bodies.symbols",
+                truncation=envelope.Truncation(
+                    shown=len(body_result.bodies.cards),
+                    total=body_result.map.candidates,
+                    unit="symbols",
+                ),
+            ),
+        )
+        return EXIT_OK
+
+    result = services.maps.build(ctx, request)
     _emit(
         args,
         ctx,

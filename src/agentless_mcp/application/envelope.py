@@ -387,8 +387,12 @@ def wrap_json(
     A JSON document cannot be cut off mid-way and stay parseable, so the
     ceiling is enforced by dropping whole items from the list named by
     ``items_key`` and recording what was dropped in a ``truncated`` field.
-    Without an ``items_key`` an oversized payload is emitted whole with that
-    field set: an honest oversized answer beats a silently mangled one.
+    A dotted key (``bodies.symbols``) names a list inside a nested mapping,
+    for the payloads whose bulk does not live at the top level -- the body
+    map's orientation rows are tiny beside the bodies under them, and
+    trimming the rows would spend the answer to keep the overrun. Without an
+    ``items_key`` an oversized payload is emitted whole with that field set:
+    an honest oversized answer beats a silently mangled one.
 
     The envelope authors ``receipt``, ``notice`` and ``truncated`` and nothing
     else may: a payload naming one of them is refused rather than merged, so
@@ -418,7 +422,7 @@ def wrap_json(
     if counter.count(rendered) <= max_tokens:
         return rendered
 
-    items = document.get(items_key) if items_key else None
+    items = _items_at(document, items_key) if items_key else None
     # `items_key is None` is what narrows it to `str` below; a caller passing
     # no key already reaches this branch through the `items` above.
     if items_key is None or not isinstance(items, list):
@@ -447,9 +451,42 @@ def wrap_json(
     oversized = kept == 0 and bool(items)
     if oversized:
         kept = 1
-    document[items_key] = items[:kept]
+    document = _with_items(document, items_key, items[:kept])
     document["truncated"] = _json_truncation(max_tokens, kept, len(items), oversized=oversized)
     return _dump(document)
+
+
+def _items_at(document: Mapping[str, Any], items_key: str) -> Any:
+    """Read the value at ``items_key``, walking a dotted key into nested maps.
+
+    Any step that is missing or not a mapping resolves to None, which the
+    caller treats exactly as a key naming no list: the document is emitted
+    whole with the untrimmable marker rather than mangled.
+    """
+    value: Any = document
+    for step in items_key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(step)
+    return value
+
+
+def _with_items(document: dict[str, Any], items_key: str, items: list[Any]) -> dict[str, Any]:
+    """Copy ``document`` with the list at ``items_key`` replaced.
+
+    Every mapping along a dotted path is copied, never mutated in place: the
+    fit search probes many candidate lengths against one original document,
+    and an in-place write through a shared inner mapping would corrupt it for
+    every later probe.
+    """
+    copied = dict(document)
+    target = copied
+    *steps, leaf = items_key.split(".")
+    for step in steps:
+        target[step] = dict(target[step])
+        target = target[step]
+    target[leaf] = items
+    return copied
 
 
 def _dump(document: Mapping[str, Any]) -> str:
@@ -506,8 +543,7 @@ def _fit_items(
     low, high = 0, len(items)
     while low < high:
         middle = (low + high + 1) // 2
-        probe = dict(document)
-        probe[items_key] = items[:middle]
+        probe = _with_items(document, items_key, items[:middle])
         probe["truncated"] = _json_truncation(max_tokens, middle, len(items))
         if counter.count(_dump(probe)) <= max_tokens:
             low = middle

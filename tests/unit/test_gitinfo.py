@@ -44,6 +44,33 @@ class TestSnapshot:
 
         assert gitinfo.dirty_count(root) == 2
 
+    def test_a_nested_directory_says_whose_state_it_reported(self, make_git_repo):
+        """Git answers for the enclosing repository, and the note says so.
+
+        A directory inside a larger repository -- a vendored tree, a snapshot
+        never given a git of its own -- is served that repository's HEAD and
+        dirty count. A reader with only the receipt cannot tell, so the answer
+        is qualified rather than quietly wrong.
+        """
+        root = make_git_repo(SAMPLE)
+        snapshot = gitinfo.snapshot(root / "sub")
+
+        assert "is not the top of its git repository" in snapshot.note
+        assert str(root.resolve()) in snapshot.note
+
+    def test_a_nested_directory_still_reports_the_head_it_is_cached_under(self, make_git_repo):
+        """Only the note is added; the SHAs and count are what they were."""
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        nested = gitinfo.snapshot(root / "sub")
+
+        assert nested.head_sha == gitinfo.snapshot(root).head_sha
+        assert nested.dirty_count == 1
+
+    def test_the_repository_root_itself_carries_no_note(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        assert gitinfo.snapshot(root).note == ""
+
     def test_non_git_directory_is_all_unknown_with_a_note(self, tmp_path):
         plain = tmp_path / "plain"
         plain.mkdir()
@@ -213,3 +240,86 @@ class TestAmbientGitEnvironmentCannotRedirect:
         assert not [name for name in environment if name.startswith("GIT_")]
         assert environment["PATH"] == "/usr/bin"
         assert environment["HOME"] == "/home/someone"
+
+
+class TestCommitChurn:
+    """The windowed per-path commit facts the map header spends."""
+
+    def test_counts_and_last_timestamp_per_requested_path(self, make_git_repo, commit_all):
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        commit_all(root, "touch a")
+
+        facts = gitinfo.commit_churn(root, ["a.py", "sub/b.py"])
+
+        assert facts is not None
+        assert facts["a.py"].commits == 2
+        assert facts["sub/b.py"].commits == 1
+        assert facts["a.py"].last_commit_ts is not None
+        assert facts["sub/b.py"].last_commit_ts is not None
+        assert facts["a.py"].last_commit_ts >= facts["sub/b.py"].last_commit_ts
+
+    def test_a_root_outside_git_answers_none_not_zero(self, tmp_path):
+        """None is "git could not answer"; zeros would claim quiet history."""
+        assert gitinfo.commit_churn(tmp_path, ["a.py"]) is None
+
+    def test_a_path_with_no_commits_gets_zero_and_no_timestamp(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        facts = gitinfo.commit_churn(root, ["never_committed.py"])
+
+        assert facts == {"never_committed.py": gitinfo.ChurnFact(commits=0, last_commit_ts=None)}
+
+    def test_a_non_ascii_filename_is_counted_not_reported_quiet(self, make_git_repo):
+        """Git's default quoting octal-escapes non-ASCII paths in --name-only.
+
+        Without ``core.quotePath=false`` on the argv, git prints the name as
+        a quoted, octal-escaped C string, the exact match misses, and a file
+        with real commits reads back as ``commits=0`` -- rendered downstream
+        as the measured-quiet claim this feature promises cannot be faked.
+        """
+        root = make_git_repo({"café.py": "x = 1\n", "plain.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, ["café.py", "plain.py"])
+
+        assert facts is not None
+        assert facts["café.py"].commits == 1
+        assert facts["café.py"].last_commit_ts is not None
+
+    def test_a_dash_prefixed_filename_is_a_path_not_an_option(self, make_git_repo):
+        """The ``--`` before the batch is what keeps this a pathspec."""
+        root = make_git_repo({"-o.py": "x = 1\n"})
+        facts = gitinfo.commit_churn(root, ["-o.py"])
+
+        assert facts is not None
+        assert facts["-o.py"].commits == 1
+
+    def test_a_pathspec_magic_prefixed_filename_stays_literal(self, make_git_repo):
+        """``--`` does not disable pathspec magic; the ``./`` prefix does.
+
+        Without it a tracked file named ``:!x.py`` is parsed as an exclude
+        pattern: it never matches itself, and it suppresses matches for the
+        rest of the batch in the same call.
+        """
+        root = make_git_repo({":!x.py": "x = 1\n", "a.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, [":!x.py", "a.py"])
+
+        assert facts is not None
+        assert facts[":!x.py"].commits == 1
+        assert facts["a.py"].commits == 1
+
+    def test_an_all_digit_filename_is_not_read_as_a_timestamp(self, make_git_repo):
+        root = make_git_repo({"2024": "x = 1\n", "a.py": "y = 1\n"})
+        facts = gitinfo.commit_churn(root, ["2024", "a.py"])
+
+        assert facts is not None
+        assert facts["2024"].commits == 1
+        assert facts["a.py"].commits == 1
+
+    def test_paths_are_relative_to_the_served_root_not_the_toplevel(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        facts = gitinfo.commit_churn(root / "sub", ["b.py"])
+
+        assert facts is not None
+        assert facts["b.py"].commits == 1
+
+    def test_no_paths_asks_git_nothing(self, tmp_path):
+        assert gitinfo.commit_churn(tmp_path, []) == {}

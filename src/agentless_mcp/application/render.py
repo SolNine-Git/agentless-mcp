@@ -66,6 +66,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, overload
 
+from agentless_mcp.core.gitinfo import CHURN_WINDOW_DAYS
 from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.refs import SkippedFile
 from agentless_mcp.core.symbols import StableId, language_prefix
@@ -351,6 +352,12 @@ class MapFile(_Bounded):
     # unfocused walk reaches every file, and because a caller building one of
     # these by hand is describing a file it chose to include.
     reached: bool = True
+    # Commit activity inside the churn window, for the model to weigh itself
+    # -- deliberately data beside the rank, never folded into it. None means
+    # git could not answer and the header stays bare; a known-quiet file
+    # carries 0 with no "last" part, so absence and quiet cannot be confused.
+    commits_window: int | None = None
+    last_commit_days: int | None = None
 
     @property
     def shown(self) -> int:
@@ -374,6 +381,8 @@ class MapFile(_Bounded):
             "symbols": [entry.as_dict() for entry in self.entries],
             "omitted": self.omitted,
             "reached": self.reached,
+            "commits_90d": self.commits_window,
+            "last_commit_days": self.last_commit_days,
         }
 
 
@@ -1710,9 +1719,24 @@ def render_map(files: Sequence[MapFile]) -> str:
     if not files:
         return "no ranked files\n"
 
+    # The churn clause exists to tell ranked files apart, so a value every
+    # file shares says nothing: a single-commit snapshot decorated 100% of a
+    # pilot's map responses with one identical pair on every row. Two or more
+    # files, one distinct pair, and the text drops the clause; a single file
+    # keeps it, because there the absolute recency is the information. The
+    # JSON keeps the fields either way -- suppression is a token decision,
+    # not a data one.
+    churn_pairs = {(entry.commits_window, entry.last_commit_days) for entry in files}
+    wallpaper_churn = len(files) > 1 and len(churn_pairs) == 1
+
     blocks: list[str] = []
     for map_file in files:
-        lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f})"]
+        churn = ""
+        if map_file.commits_window is not None and not wallpaper_churn:
+            churn = f", {map_file.commits_window}c/{CHURN_WINDOW_DAYS}d"
+            if map_file.last_commit_days is not None:
+                churn += f", last {map_file.last_commit_days}d"
+        lines = [f"{one_line(map_file.path)}  (rank {map_file.rank:.4f}{churn})"]
         pattern = _stable_ids_line(map_file.id_prefix, map_file.path)
         if pattern:
             lines.append(pattern)
@@ -1816,16 +1840,28 @@ def render_symbol_cards(cards: Sequence[SymbolCard]) -> str:
     return body
 
 
-def render_ref_groups(groups: Sequence[RefGroup], target: str) -> str:
+def render_ref_groups(
+    groups: Sequence[RefGroup], target: str, *, complete_over: int | None = None
+) -> str:
     """Render fan-in: references grouped by the file they were found in.
 
     The header is the *pre-limit* total when a :class:`RefListing` supplies
     one. Recomputing it from the groups that survived is what made a fan-in of
     fifty-two sites answer "10 references to widget" and say nothing else --
     an agent reads that as the blast radius and ships against it.
+
+    ``complete_over`` is the file count of a scan that skipped nothing, and
+    only an empty listing spends it: "no references" over a complete scan is
+    an absence claim the caller can act on without a verification search,
+    while the same words alone say only that this listing is empty. A caller
+    that cannot vouch for the scan passes None and the line stays as it was.
     """
     if not groups:
-        return f"no references to {one_line(target)} outside its own definition\n"
+        line = f"no references to {one_line(target)} outside its own definition"
+        if complete_over is not None:
+            files = "file" if complete_over == 1 else "files"
+            line += f" (complete scan: {complete_over} {files}, 0 skipped)"
+        return line + "\n"
 
     listed = sum(len(group.sites) for group in groups)
     total = groups.total if isinstance(groups, _Bounded) else listed
@@ -1904,7 +1940,10 @@ def _candidate_rows(rows: Sequence[SharedCaller]) -> Iterator[str]:
 
 def _render_card(card: SymbolCard) -> str:
     """Render one incident card without repeating the path inside its stable id."""
-    owner = f" in class {one_line(card.parent_class)}" if card.parent_class else ""
+    # "in class" is the method's wording; a nested function's parent is the
+    # enclosing chain, which may be a function, so it gets the bare "in".
+    holder = "in class" if card.kind == "method" else "in"
+    owner = f" {holder} {one_line(card.parent_class)}" if card.parent_class else ""
     span = (
         str(card.start_line)
         if card.start_line == card.end_line

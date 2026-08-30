@@ -329,6 +329,25 @@ class TestPrecedence:
         assert all(entry.entries == () for entry in configured.files)
         assert any(entry.entries for entry in overridden.files)
 
+    def test_the_config_never_supplies_the_body_granularity(self, repo, extractor, counter):
+        """'body' is a wire granularity, never a config default.
+
+        The adapters compose a body map before ``MapService.build`` is
+        reached, so a config-supplied 'body' would make every default map
+        call raise instead of answer. The guarantee lives in
+        ``projectconfig.GRANULARITIES`` staying ('function', 'file') while
+        ``map_service.GRANULARITIES`` carries 'body' for the wire surface;
+        this test is what fails if anybody merges the two tuples.
+        """
+        root = repo({"granularity": "body"})
+        config = projectconfig.load(root)
+        assert config.granularity is None
+        assert any("granularity" in warning for warning in config.warnings)
+
+        ctx = resolve_repo(root, None)
+        result = MapService(extractor, counter).build(ctx, MapRequest())
+        assert result.files
+
     def test_the_built_in_default_applies_when_neither_speaks(self, repo, extractor, counter):
         ctx = resolve_repo(repo(), None)
         result = MapService(extractor, counter).build(ctx, MapRequest())

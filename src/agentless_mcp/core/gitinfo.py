@@ -23,6 +23,7 @@ forced through ``cat``. The prefix is public within the core so the walker and
 write-side sandbox cannot drift from the receipt code.
 """
 
+import logging
 import os
 import subprocess
 from collections.abc import Sequence
@@ -34,6 +35,8 @@ from pathlib import Path
 # large repository and far below anything a caller would wait through.
 GIT_TIMEOUT_SECONDS = 5.0
 
+logger = logging.getLogger(__name__)
+
 # Short SHAs are for humans reading a receipt; eight hex digits stay unique
 # well past the size of repository this tool is aimed at.
 SHORT_SHA_LENGTH = 8
@@ -43,6 +46,16 @@ SHORT_SHA_LENGTH = 8
 # configuration, while a pager can turn a non-interactive read into an
 # unbounded process. Values are fixed here; repository content never reaches
 # this tuple.
+#
+# The last entry keeps git's *output* literal rather than its execution safe.
+# ``core.quotePath`` defaults to true, which prints any path with a byte over
+# 0x7f as a quoted, octal-escaped C string -- so a parser matching printed
+# names against the spellings it asked about silently misses every non-ASCII
+# filename, and :func:`commit_churn` reported such a file as measured-quiet
+# (``0c``) rather than unknown. Not ``--literal-pathspecs``: that flag also
+# stops an absolute path from resolving as a pathspec, which
+# ``treewalk._git_ignores`` depends on; pathspec-magic defense is scoped to
+# the one caller that passes repository-named paths (see ``commit_churn``).
 HARDENING_PREFIX: tuple[str, ...] = (
     "--no-optional-locks",
     "-c",
@@ -51,6 +64,8 @@ HARDENING_PREFIX: tuple[str, ...] = (
     "core.pager=cat",
     "-c",
     "diff.external=",
+    "-c",
+    "core.quotePath=false",
 )
 
 
@@ -126,9 +141,116 @@ def dirty_count(root: Path) -> int | None:
     return _parse_dirty(_run(root, ["status", "--porcelain"])).count
 
 
+# The window a map header's churn suffix is counted over. One constant so the
+# renderer's "90d" and the git call that produced the number cannot drift.
+CHURN_WINDOW_DAYS = 90
+
+
+@dataclass(frozen=True)
+class ChurnFact:
+    """One path's commit activity inside the churn window.
+
+    ``last_commit_ts`` is the newest in-window commit's unix timestamp, and
+    None when the window holds no commit for the path -- known-quiet, which a
+    consumer must keep distinct from the whole lookup failing (that is
+    :func:`commit_churn` returning None).
+    """
+
+    commits: int
+    last_commit_ts: int | None
+
+
+@dataclass(frozen=True)
+class ChurnSource:
+    """A lazy churn lookup bound to one served root.
+
+    Built by ``resolve_repo`` only when git answered for the root, and carried
+    on the context so a view that never asks pays nothing. The git call
+    happens per ``for_paths`` invocation, scoped to the paths the view ranked.
+    """
+
+    root: Path
+
+    def for_paths(self, paths: Sequence[str]) -> dict[str, ChurnFact] | None:
+        """Answer churn for ``paths``, or None when git cannot say."""
+        return commit_churn(self.root, paths)
+
+
+def commit_churn(
+    root: Path, paths: Sequence[str], *, window_days: int = CHURN_WINDOW_DAYS
+) -> dict[str, ChurnFact] | None:
+    """Count each path's commits inside the window, newest timestamp kept.
+
+    One bounded ``git log`` for the whole batch. None means git could not
+    answer -- not a repository, timed out, not installed -- which the caller
+    must keep distinct from a dict of zeros: zeros claim quiet history, None
+    claims nothing.
+
+    The pretty format prefixes each commit's timestamp with a NUL byte
+    because ``--name-only`` prints bare filenames on their own lines and a
+    filename can be all digits; no filename can contain NUL. ``--relative``
+    keeps printed names relative to ``root`` when it sits inside a larger
+    repository, matching the spelling the caller's paths use.
+    """
+    if not paths:
+        return {}
+    outcome = _run(
+        root,
+        [
+            "log",
+            f"--since={window_days}.days",
+            "--pretty=%x00%ct",
+            "--name-only",
+            "--relative",
+            "--",
+            # "./" defeats pathspec-magic detection, which triggers only on a
+            # leading ":": without it a tracked file named ":!x.py" parses as
+            # an exclude pattern -- it never matches itself and suppresses
+            # matches for the rest of the batch. Git normalizes the prefix
+            # away, so printed names still match ``paths`` exactly.
+            *(f"./{path}" for path in paths),
+        ],
+    )
+    if outcome.text is None:
+        # The caller renders None as a bare header -- the documented "git
+        # could not answer" -- so the note _run produced is the only place
+        # the reason survives. Debug, not warning: a root outside git takes
+        # this path on every map, and that is a state, not a fault.
+        logger.debug("churn for %s went unanswered: %s", root, outcome.note)
+        return None
+
+    counts = dict.fromkeys(paths, 0)
+    newest: dict[str, int] = {}
+    current_ts: int | None = None
+    for raw in outcome.text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("\x00"):
+            stamp = line[1:]
+            current_ts = int(stamp) if stamp.isdigit() else None
+            continue
+        if line in counts and current_ts is not None:
+            counts[line] += 1
+            # The log is newest-first, so the first sighting is the newest.
+            newest.setdefault(line, current_ts)
+    return {
+        path: ChurnFact(commits=counts[path], last_commit_ts=newest.get(path)) for path in paths
+    }
+
+
 def snapshot(root: Path) -> GitSnapshot:
-    """Read HEAD, tree OID and dirty count in one pass, notes collected."""
-    if git_root(root) is None:
+    """Read HEAD, tree OID and dirty count in one pass, notes collected.
+
+    Git answers for the repository that encloses ``root``, which is not always
+    ``root`` itself. A directory analysed inside a larger repository -- a
+    vendored tree, a snapshot never given a git of its own -- is served that
+    repository's HEAD and that repository's dirty count, and a reader with only
+    the receipt cannot tell. The note says whose state it is, so the answer is
+    qualified rather than quietly wrong.
+    """
+    enclosing = git_root(root)
+    if enclosing is None:
         return GitSnapshot(
             head_sha=None,
             tree_oid=None,
@@ -140,7 +262,12 @@ def snapshot(root: Path) -> GitSnapshot:
     tree = _run(root, ["rev-parse", f"--short={SHORT_SHA_LENGTH}", "HEAD^{tree}"])
     status = _parse_dirty(_run(root, ["status", "--porcelain"]))
 
-    notes = [note for note in (head.note, tree.note, status.note) if note]
+    borrowed = enclosing != root.resolve()
+    enclosing_note = (
+        f"{root} is not the top of its git repository: HEAD and dirty count describe {enclosing}"
+    )
+    notes = [enclosing_note] if borrowed else []
+    notes += [note for note in (head.note, tree.note, status.note) if note]
     return GitSnapshot(
         head_sha=head.text,
         tree_oid=tree.text,

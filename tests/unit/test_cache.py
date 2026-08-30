@@ -13,6 +13,7 @@ developer's real cache.
 
 import json
 import logging
+import os
 import sqlite3
 import stat
 import subprocess
@@ -35,7 +36,7 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, gitinfo, grammars, patchlint, refs
 from agentless_mcp.core.symbols import symbol_stable_id
-from agentless_mcp.util import cachedir, filelock, fslimits
+from agentless_mcp.util import cachedir, filelock, fslimits, platforms
 from agentless_mcp.util.errors import CacheLocked, OperationFailed
 
 CORE = '''\
@@ -252,7 +253,9 @@ class TestIncrementalTriad:
                 "SELECT COUNT(*) FROM files WHERE path = ?", ("empty.py",)
             ).fetchone()
             tagged = connection.execute(
-                "SELECT COUNT(*) FROM tags WHERE path = ?", ("empty.py",)
+                "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id "
+                "WHERE files.path = ?",
+                ("empty.py",),
             ).fetchone()
 
         assert (recorded[0], tagged[0]) == (1, 0)
@@ -269,7 +272,9 @@ class TestIncrementalTriad:
         assert report.files == 2
         with closing(sqlite3.connect(report.database)) as connection:
             rows = connection.execute(
-                "SELECT COUNT(*) FROM tags WHERE path = ?", ("billing.py",)
+                "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id "
+                "WHERE files.path = ?",
+                ("billing.py",),
             ).fetchone()
         assert rows[0] == 0
 
@@ -605,10 +610,76 @@ class TestSchemaVersion:
         with closing(sqlite3.connect(report.database)) as connection:
             files = {row[1] for row in connection.execute("PRAGMA table_info(files)")}
             tags = {row[1] for row in connection.execute("PRAGMA table_info(tags)")}
+            refs = {row[1] for row in connection.execute("PRAGMA table_info(refs)")}
+            imports = {row[1] for row in connection.execute("PRAGMA table_info(imports)")}
 
-        assert files == {"path", "sha256", "grammar_version"}
+        assert files == {"id", "path", "sha256", "grammar_version"}
         assert "qualname" not in tags
         assert "is_def" not in tags
+        # The v13 rule, and the reason the file is 83% smaller: a fact row
+        # names the file it belongs to once, by id, and never repeats the
+        # path or the digest it was extracted from.
+        for columns in (tags, imports, refs):
+            assert "path" not in columns
+            assert "sha256" not in columns
+            assert "file_id" in columns
+
+    def test_a_re_indexed_file_never_inherits_a_retired_id(self, repo, extractor):
+        """Ids are minted, never recycled, which is what AUTOINCREMENT buys.
+
+        A plain rowid is reused after a delete. A file indexed after another
+        was removed would then take the departed file's id, and any fact row
+        that survived that delete would be served for the wrong file --
+        silently, and past the freshness gate, because the gate reads the
+        ``files`` row and would find a perfectly valid one.
+
+        The scenario is built the way it would really happen: index, delete a
+        file, re-index, add a new file, index again. The new file must not be
+        wearing the deleted one's number. The deleted file is the one holding
+        the *maximum* id, because that is the exact id a plain rowid table
+        hands to the next insert -- retiring any other id would pass here on
+        a table with no AUTOINCREMENT at all.
+        """
+        report = cache.build_index(repo, extractor)
+        with closing(sqlite3.connect(report.database)) as connection:
+            victim, newest = connection.execute(
+                "SELECT path, id FROM files ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        retired = {newest}
+
+        (repo / victim).unlink()
+        cache.build_index(repo, extractor)
+        (repo / "shipping.py").write_text("def ship(sku):\n    return sku\n", encoding="utf-8")
+        final = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(final.database)) as connection:
+            fresh = {
+                row[0]
+                for row in connection.execute("SELECT id FROM files WHERE path = 'shipping.py'")
+            }
+            orphans = connection.execute(ORPHAN_QUERIES[2]).fetchone()[0]
+
+        assert retired
+        assert fresh
+        assert not (retired & fresh)
+        assert orphans == 0
+
+    def test_no_fact_row_outlives_the_file_that_owns_it(self, repo, extractor):
+        """The delete order is load-bearing now, so it gets an assertion.
+
+        Fact rows are keyed on ``files.id``. Removing the ``files`` row before
+        its children would take away the only key that reaches them, and they
+        would sit in the table forever with nothing to clean them.
+        """
+        cache.build_index(repo, extractor)
+        (repo / "billing.py").unlink()
+        (repo / "core.py").write_text(CORE + "\n\ndef extra():\n    return 1\n", "utf-8")
+
+        report = cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(report.database)) as connection:
+            for query in ORPHAN_QUERIES:
+                assert connection.execute(query).fetchone()[0] == 0, query
 
     def test_a_corrupt_database_is_discarded_by_both_readers_and_writers(self, repo, extractor):
         database = cache.build_index(repo, extractor).database
@@ -983,14 +1054,8 @@ class TestRefsAndImportsRows:
         second = cache.build_index(repo, extractor)
 
         assert second.pruned == 1
-        queries = (
-            "SELECT COUNT(*) FROM tags WHERE path = ?",
-            "SELECT COUNT(*) FROM imports WHERE path = ?",
-            "SELECT COUNT(*) FROM refs WHERE path = ?",
-            "SELECT COUNT(*) FROM files WHERE path = ?",
-        )
         with closing(sqlite3.connect(second.database)) as connection:
-            for query in queries:
+            for query in ROWS_FOR_PATH_QUERIES:
                 assert connection.execute(query, ("billing.py",)).fetchone()[0] == 0
         assert first.files == 3
 
@@ -1583,12 +1648,35 @@ class TestMigrationFromEveryOlderSchema:
 
         assert report.files == 3
         with closing(sqlite3.connect(database)) as connection:
-            assert _columns(connection, "files") == {"path", "sha256", "grammar_version"}
+            assert _columns(connection, "files") == {"id", "path", "sha256", "grammar_version"}
             assert {"qualname", "is_def"}.isdisjoint(_columns(connection, "tags"))
             imports = _columns(connection, "imports")
             assert "resolved_path" not in imports
             assert {"binds_all", "alias", "local_names"} <= imports
             assert _read_schema_version(connection) == cache.SCHEMA_VERSION
+
+    @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
+    def test_a_migration_gives_the_old_schema_s_pages_back(self, repo, extractor, version):
+        """Dropping tables frees pages inside the file and never shrinks it.
+
+        Without the reclaim the migration is correct and invisible: measured
+        on the largest real cache when v13 landed, 643.9 MB of file holding
+        125.2 MB of data and 518.8 MB of freelist. It matters twice, because
+        the size the eviction ceiling reads is the size on disk -- a database
+        that never returns its pages is counted at its high-water mark and
+        evicted for space it is not using.
+        """
+        database = _write_historic_database(repo, version)
+        before = database.stat().st_size
+
+        cache.build_index(repo, extractor)
+
+        with closing(sqlite3.connect(database)) as connection:
+            free = connection.execute("PRAGMA freelist_count").fetchone()[0]
+            pages = connection.execute("PRAGMA page_count").fetchone()[0]
+        assert free == 0
+        assert database.stat().st_size <= before
+        assert pages > 0
 
     @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
     def test_the_rebuilt_database_reads_back_as_fresh(self, repo, extractor, version):
@@ -1648,11 +1736,11 @@ def _seed_reusable_database(repo, version):
             (digest, grammars.pack_version()),
         )
         connection.execute(
-            "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, signature, "
-            "parent, docstring, decorators, bases, language, is_public, is_async, rationales, "
-            "ordinal) VALUES ('core.py', ?, ?, 'function', 1, 1, 'def stale()', '', '', "
-            "'[]', '[]', 'python', 1, 0, '[]', 0)",
-            (digest, STALE_TAG_NAME),
+            "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, signature, "
+            "parent, docstring, decorators, bases, language, is_public, is_async, rationales) "
+            "VALUES ((SELECT id FROM files WHERE path = 'core.py'), 0, ?, 'function', 1, 1, "
+            "'def stale()', '', '', '[]', '[]', 'python', 1, 0, '[]')",
+            (STALE_TAG_NAME,),
         )
     return database
 
@@ -1872,3 +1960,559 @@ def test_the_two_copies_of_the_degraded_error_list_agree():
 def _read_schema_version(connection):
     """The schema version the meta row records."""
     return connection.execute("SELECT schema_version FROM meta WHERE id = 1").fetchone()[0]
+
+
+# A fixed "now" for the plan tests, far enough above the synthetic timestamps
+# that every one of them reads as cold. Hermetic on purpose: the plan takes its
+# clock as an argument precisely so no test here depends on the real one.
+NOW = 10 * cache.PROTECTED_SECONDS
+
+
+# Spelled out rather than built by interpolating a table name, for the reason
+# ``_apply_plan`` gives: that shape is an injection even when today's names are
+# constants.
+# Counting one path's rows in each table. A fact row is reached through the
+# file that owns it now, so these join rather than filter on a column the fact
+# tables no longer carry.
+ROWS_FOR_PATH_QUERIES = (
+    "SELECT COUNT(*) FROM tags JOIN files ON files.id = tags.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM imports JOIN files ON files.id = imports.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM refs JOIN files ON files.id = refs.file_id WHERE files.path = ?",
+    "SELECT COUNT(*) FROM files WHERE path = ?",
+)
+
+ORPHAN_QUERIES = (
+    "SELECT COUNT(*) FROM tags WHERE file_id NOT IN (SELECT id FROM files)",
+    "SELECT COUNT(*) FROM imports WHERE file_id NOT IN (SELECT id FROM files)",
+    "SELECT COUNT(*) FROM refs WHERE file_id NOT IN (SELECT id FROM files)",
+)
+
+
+def _entry(name, size, used_at):
+    """One synthetic cache entry, for the tests that exercise the plan alone."""
+    return cache._CacheEntry(database=Path(name) / cache.DATABASE_NAME, size=size, used_at=used_at)
+
+
+class TestCacheCeiling:
+    """The bound on the cache root as a whole, which nothing enforced before.
+
+    The cache root grows by auto-indexing rather than by a command anybody
+    types, so it had no owner and no ceiling: one developer machine reached
+    490 databases and 5.67 GB. These tests hold the two halves that make a
+    sweep safe to run unattended -- it evicts in least-recently-*used* order,
+    and there are two entries it will never evict however far over the ceiling
+    the directory is.
+    """
+
+    def test_the_least_recently_used_databases_go_first(self):
+        entries = [
+            _entry("old", size=100, used_at=1.0),
+            _entry("middle", size=100, used_at=2.0),
+            _entry("recent", size=100, used_at=3.0),
+        ]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=200, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["old"]
+
+    def test_everything_over_the_ceiling_goes_not_just_enough_to_fit(self):
+        entries = [_entry(str(index), size=100, used_at=float(index)) for index in range(5)]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=250, keep=Path("nothing"))
+
+        assert sorted(entry.database.parent.name for entry in evicted) == ["0", "1", "2"]
+
+    def test_nothing_colder_than_an_evicted_entry_survives(self):
+        """The LRU cut, pinned on mixed sizes, where greedy packing diverges.
+
+        A greedy fit kept a small cold entry in the headroom a warmer, larger
+        eviction had just opened -- bin packing, not the least-recently-used
+        order the docstring promises. Once one unprotected entry fails to
+        fit, every colder one goes with it, and the victims come back
+        coldest first so an interrupted sweep spends its deletes on the most
+        expendable entries.
+        """
+        anchor = _entry("anchor", size=200, used_at=3.0)
+        warm = _entry("warm", size=150, used_at=2.0)
+        cold = _entry("cold", size=40, used_at=1.0)
+
+        evicted = cache._eviction_plan(
+            [anchor, warm, cold], now=NOW, limit=250, keep=Path("nothing")
+        )
+
+        assert [entry.database.parent.name for entry in evicted] == ["cold", "warm"]
+
+    def test_an_unweighable_database_is_reported_not_silently_skipped(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        """A database the sweep cannot stat is invisible to the ceiling.
+
+        Treating every ``OSError`` as absence read a permission failure as
+        "no database here", and the entry silently left the accounting for
+        as long as the condition lasted. A race with a delete stays quiet --
+        that is the normal case -- but any other failure must say so.
+        """
+        database = tmp_path / "opaque" / cache.DATABASE_NAME
+        database.parent.mkdir()
+        database.write_bytes(b"x" * 8)
+        real_stat = Path.stat
+        refusal = f"refusing to stat {database}"
+
+        def stat(self, **kwargs):
+            if self == database:
+                raise PermissionError(refusal)
+            return real_stat(self, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", stat)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._cache_entries(tmp_path) == []
+
+        assert str(database) in caplog.text
+
+    def test_the_database_the_calling_run_just_built_is_never_evicted(self):
+        """Otherwise a repository larger than the ceiling deletes its own index.
+
+        It would be rebuilt at the start of the next call and deleted again at
+        the end of it, forever, and every call would pay a full index for a
+        cache it never gets to use.
+        """
+        mine = _entry("mine", size=10_000, used_at=1.0)
+        entries = [mine, _entry("other", size=10, used_at=2.0)]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=mine.database)
+
+        assert evicted == []
+
+    def test_a_live_working_set_is_never_evicted_to_meet_the_ceiling(self):
+        """The regression that shipped in the first version of this sweep.
+
+        Sixty repositories in active use, whose caches together exceed the
+        ceiling, must not evict each other. Each eviction costs a full
+        re-index of a repository about to be used again, so the sweep spends
+        more than it reclaims and the ceiling is never actually met. Measured
+        when it shipped: a benchmark's 60 caches totalling 4.66 GiB against a
+        4.00 GiB ceiling drove the database count from 239 to 102 mid-run and
+        cost 37.0s -> 49.0s per instance.
+        """
+        live = [_entry(str(i), size=100, used_at=NOW - 60.0) for i in range(60)]
+
+        evicted = cache._eviction_plan(live, now=NOW, limit=1000, keep=Path("nothing"))
+
+        assert evicted == []
+
+    def test_cold_entries_are_released_even_when_a_live_set_fills_the_ceiling(self):
+        """The window must not turn the sweep off; it must aim it.
+
+        The directory this bound exists for held 490 databases of which 430
+        had gone untouched for over a day. Protecting the live set has to
+        leave every one of those releasable, or the ceiling stops meaning
+        anything the moment somebody opens a repository.
+        """
+        entries = [_entry("hot", size=5000, used_at=NOW - 60.0)]
+        entries += [
+            _entry(f"cold{i}", size=100, used_at=NOW - 5 * cache.PROTECTED_SECONDS)
+            for i in range(10)
+        ]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=1000, keep=Path("nothing"))
+
+        assert sorted(e.database.parent.name for e in evicted) == sorted(
+            f"cold{i}" for i in range(10)
+        )
+
+    def test_an_entry_is_protected_right_up_to_the_window_and_not_past_it(self):
+        cold = _entry("cold", size=100, used_at=NOW - cache.PROTECTED_SECONDS - 1)
+        warm = _entry("warm", size=100, used_at=NOW - cache.PROTECTED_SECONDS + 1)
+        anchor = _entry("anchor", size=100, used_at=NOW)
+
+        evicted = cache._eviction_plan([anchor, warm, cold], now=NOW, limit=1, keep=Path("x"))
+
+        assert [e.database.parent.name for e in evicted] == ["cold"]
+
+    def test_the_most_recently_used_database_is_never_evicted(self):
+        """The same rebuild loop, reached from the other direction.
+
+        One repository bigger than the whole ceiling would be evicted by any
+        other repository's sweep and rebuilt on its next call. Exceeding the
+        ceiling is the deliberate choice here; a sweep that never converges is
+        not.
+        """
+        entries = [_entry("huge", size=10_000, used_at=2.0), _entry("small", size=10, used_at=1.0)]
+
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["small"]
+
+    def test_a_reading_repository_outlives_a_more_recently_indexed_one(self, tmp_path):
+        """The point of stamping the database on every successful open.
+
+        Ordered by last *write*, a repository that is read constantly but has
+        not changed in a month looks abandoned -- and its index is the
+        expensive one to rebuild. ``read`` here is older by mtime than
+        ``built`` until the stamp lands, and newer after it.
+        """
+        read = tmp_path / "read" / cache.DATABASE_NAME
+        built = tmp_path / "built" / cache.DATABASE_NAME
+        for database in (read, built):
+            database.parent.mkdir()
+            database.write_bytes(b"x" * 100)
+        os.utime(read, (1.0, 1.0))
+        os.utime(built, (2.0, 2.0))
+
+        cache.touch_database(read)
+        entries = cache._cache_entries(tmp_path)
+        evicted = cache._eviction_plan(entries, now=NOW, limit=100, keep=Path("nothing"))
+
+        assert [entry.database.parent.name for entry in evicted] == ["built"]
+
+    def test_a_directory_whose_database_already_went_is_not_weighed_again(self, tmp_path):
+        """The sweep leaves ``write.lock`` behind, so evicted repositories stay listed."""
+        evicted_repo = tmp_path / "evicted"
+        evicted_repo.mkdir()
+        (evicted_repo / cache.LOCK_NAME).write_text("", encoding="utf-8")
+
+        assert cache._cache_entries(tmp_path) == []
+
+    def test_an_unlistable_cache_root_evicts_nothing_and_says_so(self, tmp_path, caplog):
+        missing = tmp_path / "not-here"
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache._cache_entries(missing) == []
+
+        assert str(missing) in caplog.text
+
+
+def _unlink_refusing(target):
+    """A ``Path.unlink`` that refuses one exact path and delegates for the rest.
+
+    The stand-in for a sidecar the filesystem will not give up: a permission
+    change or an I/O error on that one file. Patched rather than arranged on
+    disk because no directory mode reproduces it portably -- a mode that stops
+    the sidecar stops the primary beside it, which is the pair this has to keep
+    apart.
+
+    The match is exact path equality, which holds by construction:
+    :func:`cache._discard` builds ``Path(str(database) + suffix)`` from the same
+    string the caller built ``target`` from.
+    """
+    real_unlink = Path.unlink
+
+    refusal = f"refusing to unlink {target}"
+
+    def unlink(self, missing_ok=False):
+        if self == target:
+            raise PermissionError(refusal)
+        real_unlink(self, missing_ok=missing_ok)
+
+    return unlink
+
+
+class TestCacheCeilingVictimRecheck:
+    """The decision the sweep makes about one victim, under its lock.
+
+    Everything the plan believes comes from one scan taken before any lock:
+    :func:`cache._cache_entries` stats each database once, and the read path
+    stamps a database through :func:`cache.touch_database` holding no lock at
+    all. A victim can therefore be gone, or hot again, by the time its turn
+    arrives. These pin what the sweep does when it is.
+
+    Hermetic for the same reason the plan tests are. ``now`` is an argument,
+    and every mtime here is placed by an explicit ``utime`` rather than by
+    whatever the filesystem stamped.
+    """
+
+    def _database(self, tmp_path, name, *, size, used_at):
+        """One database on disk at an exact size and an exact mtime."""
+        database = tmp_path / name / cache.DATABASE_NAME
+        database.parent.mkdir()
+        database.write_bytes(b"x" * size)
+        os.utime(database, (used_at, used_at))
+        return database
+
+    def test_a_victim_another_sweep_already_deleted_is_not_counted(self, tmp_path):
+        """The double count, reduced to its seam.
+
+        Two sweeps can plan the same cold victim. Counting every pass that did
+        not raise made the second one report databases and bytes the first had
+        already reclaimed, and ``evicted`` is the one figure on the summary
+        line that describes a deletion outside the repository being indexed.
+        """
+        entry = cache._CacheEntry(
+            database=tmp_path / "gone" / cache.DATABASE_NAME, size=100, used_at=1.0
+        )
+
+        assert cache._evict_victim(entry, now=NOW) is None
+
+    def test_a_victim_that_vanishes_between_the_check_and_the_unlink_is_not_counted(
+        self, tmp_path, monkeypatch
+    ):
+        """The window the re-check narrows and cannot close.
+
+        The stat finds the victim there and cold; the unlink finds nothing,
+        because a concurrent sweep reached it in between. ``_discard`` saying
+        so is the whole reason it returns a bool, and the run that lost the
+        race must not report bytes the winner reclaimed. The stand-in for that
+        other sweep is a patch rather than a thread: the losing side is the
+        only side under test, and a thread would make the test a race of its
+        own.
+        """
+        self._database(tmp_path, "raced", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        monkeypatch.setattr(cache, "_discard", lambda database: False)
+
+        assert cache._evict_victim(entry, now=NOW) is None
+
+    def test_discard_reports_whether_the_primary_was_there_to_delete(self, tmp_path):
+        """The bool the sweep's arithmetic rests on."""
+        database = self._database(tmp_path, "present", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+
+        assert cache._discard(database) is True
+        assert not database.exists()
+        assert not wal.exists()
+
+    def test_discard_takes_the_sidecars_of_a_primary_that_has_already_gone(self, tmp_path):
+        """Reporting nothing reclaimed is not a reason to leave bytes on the disk.
+
+        A ``-wal`` beside a database that has gone is unreachable: nothing
+        lists the directory afterwards, because :func:`cache._cache_entries`
+        keys on the primary.
+        """
+        database = tmp_path / "orphan" / cache.DATABASE_NAME
+        database.parent.mkdir()
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+
+        assert cache._discard(database) is False
+        assert not wal.exists()
+
+    def test_a_sidecar_that_will_not_unlink_leaves_the_primary_sweepable(
+        self, tmp_path, monkeypatch
+    ):
+        """The stranding the delete order exists to prevent.
+
+        With the primary deleted first, a ``-wal`` that will not go is
+        unreachable for good: :func:`cache._cache_entries` keys a directory on
+        its primary, so nothing lists it, nothing weighs it, and the ceiling
+        never accounts for those bytes again. Taking the primary last leaves
+        the entry in the listing, which is the whole difference.
+        """
+        database = self._database(tmp_path, "stuck", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+        monkeypatch.setattr(Path, "unlink", _unlink_refusing(wal))
+
+        with pytest.raises(PermissionError):
+            cache._discard(database)
+
+        assert database.exists()
+        assert [entry.database for entry in cache._cache_entries(tmp_path)] == [database]
+
+    def test_the_next_sweep_reclaims_what_a_failed_sidecar_delete_left(self, tmp_path, monkeypatch):
+        """The retry the surviving primary buys, carried out.
+
+        The first turn raises with both files still on the disk, which reaches
+        :func:`cache.enforce_cache_limit`'s existing ``OSError`` warning and
+        counts nothing. The run after it is the one that matters: the entry is
+        still listed, so the sweep plans it again and takes the primary and the
+        sidecar together.
+        """
+        database = self._database(tmp_path, "retried", size=100, used_at=1.0)
+        wal = Path(str(database) + "-wal")
+        wal.write_bytes(b"x" * 8)
+        monkeypatch.setattr(Path, "unlink", _unlink_refusing(wal))
+
+        with pytest.raises(PermissionError):
+            cache._evict_victim(cache._cache_entries(tmp_path)[0], now=NOW)
+
+        monkeypatch.undo()
+
+        retried = cache._cache_entries(tmp_path)
+        assert [entry.database for entry in retried] == [database]
+        assert cache._evict_victim(retried[0], now=NOW) == 108
+        assert not database.exists()
+        assert not wal.exists()
+
+    def test_a_victim_stamped_after_the_plan_survives_its_turn(self, tmp_path, caplog):
+        """The 24 hour protection is decided from a snapshot, and stamping takes no lock.
+
+        A read that lands between the scan and this victim's delete turn makes
+        it hot. Judged on the snapshot alone the sweep deletes it anyway and
+        forces exactly the re-index the window exists to prevent.
+        """
+        database = self._database(tmp_path, "warm", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        os.utime(database, (NOW, NOW))
+
+        with caplog.at_level(logging.INFO, logger=cache.logger.name):
+            assert cache._evict_victim(entry, now=NOW) is None
+
+        assert database.exists()
+        assert str(database) in caplog.text
+
+    def test_the_freed_figure_is_what_the_delete_reclaimed(self, tmp_path):
+        """Measured under the lock rather than taken from the plan's snapshot.
+
+        The number is a promise about bytes that left the disk, and the
+        snapshot drifts between the scan and the delete for the same reasons
+        the mtime does. Backdated after the growth because writing to the file
+        stamps it with the real clock, which reads as hot against ``NOW``.
+        """
+        database = self._database(tmp_path, "grown", size=100, used_at=1.0)
+        entry = cache._cache_entries(tmp_path)[0]
+        database.write_bytes(b"x" * 4096)
+        os.utime(database, (1.0, 1.0))
+
+        assert entry.size == 100
+        assert cache._evict_victim(entry, now=NOW) == 4096
+        assert not database.exists()
+
+
+class TestCacheCeilingConfiguration:
+    def test_the_ceiling_defaults_to_the_documented_size(self, monkeypatch):
+        monkeypatch.delenv(cache.ENV_MAX_CACHE_BYTES, raising=False)
+
+        assert cache.max_cache_bytes() == cache.DEFAULT_MAX_CACHE_BYTES
+
+    def test_an_explicit_ceiling_is_honoured(self, monkeypatch):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "512")
+
+        assert cache.max_cache_bytes() == 512
+
+    def test_zero_disables_the_sweep_rather_than_evicting_everything(self, monkeypatch):
+        """The two instructions a single integer would have conflated.
+
+        A ceiling of zero, read literally, deletes every database on the
+        machine after every index run.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+
+        assert cache.max_cache_bytes() is None
+
+    @pytest.mark.parametrize("value", ["4GB", "-1", "", "  "])
+    def test_a_value_that_is_not_a_byte_count_is_reported_and_ignored(
+        self, monkeypatch, caplog, value
+    ):
+        """Reading a typo as "no ceiling" is the exact failure this bound removes.
+
+        It would also be invisible: the sweep would never fire and the
+        directory would grow exactly as it did before anybody set the variable.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, value)
+
+        with caplog.at_level(logging.WARNING, logger=cache.logger.name):
+            assert cache.max_cache_bytes() == cache.DEFAULT_MAX_CACHE_BYTES
+
+        assert (cache.ENV_MAX_CACHE_BYTES in caplog.text) is bool(value.strip())
+
+
+class TestCacheCeilingEnforcement:
+    """The sweep against real databases, run from the index path that owns it."""
+
+    @pytest.fixture
+    def victim(self, tmp_path, extractor):
+        """A second indexed repository, backdated so any sweep evicts it first.
+
+        Backdated with ``utime`` rather than by indexing it earlier: mtime
+        ordering between two operations in one test is a fact about the
+        filesystem's timestamp resolution, and a test resting on that answers
+        differently on a filesystem with coarser stamps.
+        """
+        root = tmp_path / "other"
+        root.mkdir()
+        (root / "core.py").write_text(CORE, encoding="utf-8")
+        os.utime(cache.build_index(root, extractor).database, (1.0, 1.0))
+        return root
+
+    def test_an_index_run_evicts_another_repository_over_the_ceiling(
+        self, repo, extractor, victim, monkeypatch
+    ):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+
+        report = cache.build_index(repo, extractor)
+
+        assert not cache.cache_path(victim.resolve()).exists()
+        assert report.database.exists()
+        assert report.evicted.databases == 1
+        assert report.evicted.size > 0
+
+    def test_the_evicted_directory_keeps_its_lock_file(self, repo, extractor, victim, monkeypatch):
+        """Unlinking it would let a second process lock a different file of the same name.
+
+        :mod:`agentless_mcp.util.filelock` states the rule; the sweep is the
+        one caller that would plausibly break it, because it is deleting the
+        directory's whole reason to exist.
+        """
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        database = cache.cache_path(victim.resolve())
+
+        cache.build_index(repo, extractor)
+
+        assert not database.exists()
+        assert (database.parent / cache.LOCK_NAME).exists()
+
+    def test_an_evicted_repository_still_answers_the_same_map(
+        self, repo, victim, services, capsys, monkeypatch
+    ):
+        """Eviction is a cost, never a wrong answer, which is what makes it safe.
+
+        A reader that opens an evicted database finds nothing and takes the
+        same degradation the package already takes for a missing index: it
+        parses on demand, and renders the identical map from it.
+        """
+        database = cache.cache_path(victim.resolve())
+        assert invoke(services, victim, "map") == EXIT_OK
+        cached = capsys.readouterr().out
+        # That read stamped the database as used, which is the sweep's entire
+        # ordering signal. Backdated again, so this test is about eviction and
+        # not about the stamp.
+        os.utime(database, (1.0, 1.0))
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+
+        cache.build_index(repo, services.extractor)
+
+        assert not database.exists()
+        assert invoke(services, victim, "map") == EXIT_OK
+        assert body(capsys.readouterr().out) == body(cached)
+
+    def test_a_database_a_concurrent_run_holds_the_lock_on_is_kept(
+        self, repo, extractor, victim, monkeypatch, caplog
+    ):
+        """A live index run is never deleted out from underneath itself."""
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        database = cache.cache_path(victim.resolve())
+        flavour = platforms.family(sys.platform)
+
+        with (
+            filelock.exclusive(database.parent / cache.LOCK_NAME, flavour=flavour),
+            caplog.at_level(logging.INFO, logger=cache.logger.name),
+        ):
+            report = cache.build_index(repo, extractor)
+
+        assert database.exists()
+        assert report.evicted.databases == 0
+        assert str(database) in caplog.text
+
+    def test_a_disabled_ceiling_evicts_nothing(self, repo, extractor, victim, monkeypatch):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+
+        report = cache.build_index(repo, extractor)
+
+        assert cache.cache_path(victim.resolve()).exists()
+        assert report.evicted == cache.NOTHING_EVICTED
+
+    def test_the_summary_line_names_an_eviction_only_when_one_happened(
+        self, repo, extractor, victim, monkeypatch
+    ):
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
+        quiet = cache.build_index(repo, extractor)
+        assert "evicted" not in quiet.summary_line()
+        assert quiet.as_dict()["evicted"] == {"databases": 0, "bytes": 0}
+
+        monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
+        loud = cache.build_index(repo, extractor, force=True)
+
+        assert "evicted 1 cached repository (" in loud.summary_line()
+        assert loud.as_dict()["evicted"]["databases"] == 1

@@ -128,6 +128,15 @@ the first time it serves a repository whose index is absent or stale
 indexes only through the explicit command above. Use `--no-cache` on
 repository-scoped commands to bypass the cache.
 
+Every index run then releases cold repository caches until
+`$XDG_CACHE_HOME/agentless-mcp/` fits under 5 GiB, least-recently-used first.
+Because the server indexes on its own, nothing else bounds that directory.
+Caches used in the last 24 hours are never released, so a working set larger
+than the ceiling exceeds it instead of thrashing. Set
+`AGENTLESS_MCP_MAX_CACHE_BYTES` to another ceiling, or to `0` to keep every
+cache forever. An evicted repository loses no answers, only the speed: the
+next call parses on demand and the one after that re-indexes.
+
 ## MCP server
 
 The server exposes read-only repository tools. It talks over stdio by
@@ -520,12 +529,18 @@ outward from what you name. A seed that resolved leads the ranked list, and
 the files that reference it rank above the utilities it imports. A seed
 resolves as a repository-relative path (`src/billing/invoice.py`), a path
 suffix (`invoice.py`), a bare module stem (`invoice`), a qualified symbol
-name (`Invoice.total`), or a bare symbol name (`quote`). Lift them from the
+name (`Invoice.total`), or a bare symbol name (`quote`). A spelling the task
+wraps in decoration also resolves: a traceback frame (`File
+"/app/src/billing/invoice.py", line 142`), a blob URL, an absolute path from
+another machine, or `invoice.py:142` is stripped to the path inside it --
+only when the raw spelling matches nothing, and never through the symbol
+shapes, so `https://example.com/quote` cannot seed the symbol `quote`. Lift
+seeds from the
 task: the file in the traceback, the class in the ticket, the function in
 the error message. Each seed carries one vote, split across the files it
 matched, so one exact path outweighs a name that matched twenty files. A
 seed that matches nothing does not fail the call and does not disappear. It
-comes back in `unresolved_seeds`, and as a `# note:` line above the map.
+comes back in `unresolved_seeds`, and as a `// note:` line above the map.
 Read that note: the ranking under it is not focused the way you asked. The
 usual cause is that the name is a parameter, an attribute or a DSL keyword
 rather than a declared symbol, and `symbols(operation="find")` says which.

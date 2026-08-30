@@ -693,27 +693,63 @@ class _ScopeTree:
             boundary = self.outer_of[boundary]
 
 
+# Asserted by both cursor walks in this module. One constant so the two agree,
+# and inline at each site rather than behind a helper: these are the two
+# hottest loops here, and a Python call per node would cost more than the
+# traversal it guards. :func:`walk_nodes` carries the reasoning.
+CURSOR_NODE_MISSING = "a cursor positioned on a parsed tree always has a node"
+
+
 def _scope_tree(root: Node, boundary_ids: Set[int]) -> _ScopeTree:
     """Index every node under ``root`` by the scope boundaries above it.
 
-    One pre-order walk carrying the innermost boundary downward, the same
-    shape as :func:`declarations_under`, and iterative for the same reason: a
-    deep chain of nodes must not exhaust the interpreter's stack.
+    One pre-order walk carrying the innermost boundary downward, and iterative
+    for the reason :func:`walk_nodes` gives: a deep chain of nodes must not
+    exhaust the interpreter's stack.
+
+    Over a ``TreeCursor`` for the reason :func:`walk_nodes` gives as well, and
+    this is the site that paid most for it. The walk visits exactly the nodes
+    ``walk_nodes`` has already visited for the same file, so every
+    ``node.children`` access here rebuilt a Python ``Node`` that call had just
+    built and dropped. Measured on this repository's own ``core/extractor.py``
+    (28,546 nodes), one fresh parse per iteration as :func:`walk_nodes`
+    explains: 8.81 ms against 4.17 ms.
+
+    ``enclosing`` replaces the ``(node, boundary)`` pairs the old stack held.
+    A cursor reports a position rather than a payload per child, so the
+    boundary in force is kept as a stack parallel to the descent: pushed when
+    the cursor moves to a first child, popped when it moves back to a parent.
+    Siblings share a parent and therefore share an inherited boundary, which
+    is why moving between them touches nothing. That is the same information
+    the pairs carried, without a tuple per node.
     """
     boundary_of: dict[int, int | None] = {}
     outer_of: dict[int, int | None] = {}
     node_of: dict[int, Node] = {}
-    stack: list[tuple[Node, int | None]] = [(root, None)]
-    while stack:
-        node, enclosing = stack.pop()
-        innermost = enclosing
-        if node.id in boundary_ids:
-            outer_of[node.id] = enclosing
-            node_of[node.id] = node
-            innermost = node.id
-        boundary_of[node.id] = innermost
-        stack.extend((child, innermost) for child in reversed(node.children))
-    return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+    cursor = root.walk()
+    enclosing: list[int | None] = [None]
+    while True:
+        node = cursor.node
+        if node is None:
+            raise AssertionError(CURSOR_NODE_MISSING)
+        # Read once. ``Node.id`` is a binding property rather than an
+        # attribute, so the four reads this loop used to make were four
+        # crossings per node for a value that cannot change.
+        node_id = node.id
+        inherited = enclosing[-1]
+        innermost = inherited
+        if node_id in boundary_ids:
+            outer_of[node_id] = inherited
+            node_of[node_id] = node
+            innermost = node_id
+        boundary_of[node_id] = innermost
+        if cursor.goto_first_child():
+            enclosing.append(innermost)
+            continue
+        while not cursor.goto_next_sibling():
+            if not cursor.goto_parent():
+                return _ScopeTree(boundary_of=boundary_of, outer_of=outer_of, node_of=node_of)
+            enclosing.pop()
 
 
 @dataclass(frozen=True)
@@ -1401,18 +1437,58 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
 
 
 def walk_nodes(root: Node) -> list[Node]:
-    """Return every node in the tree, parents before children.
+    """Return every node beneath ``root`` inclusive, parents before children.
 
     Iterative rather than recursive: a deeply nested expression in a generated
     file must not turn a repository map into a RecursionError.
+
+    Over a ``TreeCursor`` rather than over ``node.children``, which is the
+    hottest line in this package. Reading ``.children`` materializes a Python
+    ``Node`` object for every child of every node visited, so the old walk
+    allocated the whole tree twice -- once into ``stack``, once into
+    ``found`` -- and paid an FFI crossing per level. The cursor moves inside
+    the C tree and only ``cursor.node`` crosses, which is one object per node
+    and no allocation for the traversal itself. Measured on this repository's
+    own ``core/extractor.py`` (28,546 nodes, tree-sitter 0.26): 4.23 ms for
+    the ``.children`` walk against 1.80 ms for this one, beside a 7.52 ms
+    native parse of the same file.
+
+    Measure that with one fresh parse per iteration or the number is wrong.
+    The binding memoizes ``.children`` per ``Node`` instance, so walking one
+    retained root repeatedly times the *second* walk and reports 2.28 ms for
+    the old code. Indexing parses a file once and walks it once. This walk
+    reads 1.74 ms under either condition, having nothing to memoize.
+
+    The order is unchanged, and it has to be: callers index into this list and
+    read the first match. A cursor's ``goto_first_child`` / ``goto_next_sibling``
+    descent is the same pre-order, left to right, that popping a reversed
+    stack produced.
+
+    The cursor cannot escape ``root``. ``goto_parent`` returns false at the
+    node the cursor was created from, which is what lets the same function
+    serve the whole-tree callers and the ones that pass a subnode -- and there
+    are many of the latter, so this is load-bearing rather than incidental.
     """
     found: list[Node] = []
-    stack: list[Node] = [root]
-    while stack:
-        node = stack.pop()
+    cursor = root.walk()
+    while True:
+        node = cursor.node
+        if node is None:
+            # The binding types ``TreeCursor.node`` optional, and a cursor the
+            # tree itself handed out sitting on a position the tree itself
+            # reported is not a case that can arise. Asserted rather than
+            # skipped: dropping the node would silently return a partial tree,
+            # and a partial tree is a repository map missing symbols nobody
+            # would know to look for. ``AssertionError`` is deliberately
+            # outside ``cache.EXTRACTION_FAILURES``, so this surfaces as the
+            # defect it would be and not as one file quietly skipped.
+            raise AssertionError(CURSOR_NODE_MISSING)
         found.append(node)
-        stack.extend(reversed(node.children))
-    return found
+        if cursor.goto_first_child():
+            continue
+        while not cursor.goto_next_sibling():
+            if not cursor.goto_parent():
+                return found
 
 
 def declarations_under(root: Node, declaration_types: frozenset[str]) -> Iterator[Node]:
@@ -1692,6 +1768,17 @@ PYTHON_DECLARATION_TYPES = frozenset(
         "assignment",
         "type_alias_statement",
         "decorated_definition",
+    }
+)
+
+# What ends the descent inside a Python function body. A class is in the set
+# so the walk stops at it without extracting: pulling its methods out here
+# would attribute them to the function's chain instead of the class's.
+_PYTHON_NESTED_STOP_TYPES = frozenset(
+    {
+        "function_definition",
+        "decorated_definition",
+        "class_definition",
     }
 )
 
@@ -2234,9 +2321,9 @@ class TreeSitterExtractor:
     def _generic_name(self, node: Node, source: bytes, cfg: LanguageConfig) -> str:
         """Extract the identifier name from a node using the configured field."""
         if cfg.name_field:
-            name_node = node.child_by_field_name(cfg.name_field)
-            if name_node:
-                return self._node_text(name_node, source)
+            named = node.child_by_field_name(cfg.name_field)
+            if named is not None:
+                return self._node_text(named, source)
         # Fallback: first child whose type names things in this language.
         for child in node.children:
             if child.type in cfg.name_node_types:
@@ -3213,7 +3300,7 @@ class TreeSitterExtractor:
                 )
 
     # ------------------------------------------------------------------
-    # Python extraction (unchanged)
+    # Python extraction
     # ------------------------------------------------------------------
 
     def _extract_python_symbols(
@@ -3231,7 +3318,9 @@ class TreeSitterExtractor:
         """
         for child in declarations_under(root, PYTHON_DECLARATION_TYPES):
             if child.type == "function_definition":
-                symbols.append(self._extract_function(child, source, module_path, parent_class=""))
+                func = self._extract_function(child, source, module_path, parent_class="")
+                symbols.append(func)
+                self._extract_nested_functions(child, source, module_path, symbols, func.name)
             elif child.type == "class_definition":
                 self._extract_class(child, source, module_path, symbols)
             elif child.type in ("expression_statement", "assignment"):
@@ -3269,9 +3358,58 @@ class TreeSitterExtractor:
                 definition, source, module_path, parent_class, extra_decorators=decorators
             )
             symbols.append(sym)
+            chain = f"{parent_class}.{sym.name}" if parent_class else sym.name
+            self._extract_nested_functions(definition, source, module_path, symbols, chain)
         elif definition.type == "class_definition":
             self._extract_class(
                 definition, source, module_path, symbols, extra_decorators=decorators
+            )
+
+    def _extract_nested_functions(
+        self,
+        node: Node,
+        source: bytes,
+        module_path: str,
+        symbols: list[ASTSymbol],
+        parent: str,
+    ) -> None:
+        """Extract each ``def`` nested inside ``node``'s body, at any depth.
+
+        Function bodies are where fixtures, closures and decorator wrappers
+        are defined, so a name lookup that cannot see inside one misses real
+        definitions. Each nested ``def`` carries its enclosing chain as the
+        parent -- ``outer.inner`` -- and stays a function: the class-implies-
+        method inference does not apply to a function-owned ``def``. A class
+        in the body ends the descent unextracted, decorated or not, so its
+        methods are never attributed to the function's chain.
+        """
+        body = node.child_by_field_name("body")
+        if body is None:
+            return
+        for child in declarations_under(body, _PYTHON_NESTED_STOP_TYPES):
+            decorators: tuple[str, ...] = ()
+            if child.type == "decorated_definition":
+                decorated = next(
+                    (c for c in child.children if c.type == "function_definition"),
+                    None,
+                )
+                if decorated is None:
+                    continue
+                definition = decorated
+                decorators = self._get_decorators(child, source)
+            elif child.type == "function_definition":
+                definition = child
+            else:
+                continue
+            sym = replace(
+                self._extract_function(
+                    definition, source, module_path, parent, extra_decorators=decorators
+                ),
+                kind=SymbolKind.FUNCTION,
+            )
+            symbols.append(sym)
+            self._extract_nested_functions(
+                definition, source, module_path, symbols, f"{parent}.{sym.name}"
             )
 
     def _extract_function(
@@ -3362,7 +3500,11 @@ class TreeSitterExtractor:
         if body:
             for child in body.children:
                 if child.type == "function_definition":
-                    symbols.append(self._extract_function(child, source, module_path, class_name))
+                    sym = self._extract_function(child, source, module_path, class_name)
+                    symbols.append(sym)
+                    self._extract_nested_functions(
+                        child, source, module_path, symbols, f"{class_name}.{sym.name}"
+                    )
                 elif child.type == "decorated_definition":
                     self._extract_decorated(
                         child, source, module_path, symbols, parent_class=class_name

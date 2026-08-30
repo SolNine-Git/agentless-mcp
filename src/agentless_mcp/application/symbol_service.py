@@ -160,11 +160,19 @@ class FindResult:
     a language whose grammar is not warmed, or unreadable. It travels with the
     matches because "no matching symbols" over a partial scan is a different
     answer from the same words over a complete one.
+
+    ``other_kinds`` is filled only on a miss caused by the kind filter: the
+    kinds of the symbols the name did match, so the renderer can say "not
+    under that kind" instead of "no matching symbols", which reads as a fact
+    about the repository. Empty on a hit, on a filterless miss, and on a miss
+    no kind would save.
     """
 
     query: str
     cards: render.CardListing
     skipped: tuple[refs.SkippedFile, ...] = ()
+    kind: str | None = None
+    other_kinds: tuple[str, ...] = ()
 
     @property
     def total(self) -> int:
@@ -180,6 +188,8 @@ class FindResult:
         """Return the JSON form of this result."""
         return {
             "query": self.query,
+            "kind": self.kind,
+            "other_kinds": list(self.other_kinds),
             **self.cards.as_dict(),
             "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
         }
@@ -261,6 +271,15 @@ class RefsResult:
     groups: render.RefListing
     shared: render.SharedCallerListing = field(default_factory=render.SharedCallerListing)
     target_resolved: bool = True
+    # What the scan behind this fan-in covered. ``scanned`` is None unless the
+    # service that ran the scan set it, because only a count the scan really
+    # produced can license the "complete scan" claim an empty listing makes;
+    # a default of zero would let a hand-built result claim completeness it
+    # never earned. ``skipped`` travels for the same reason it does on
+    # ``FindResult``: "no references" over a partial scan is a different
+    # answer from the same words over a complete one.
+    skipped: tuple[refs.SkippedFile, ...] = ()
+    scanned: int | None = None
 
     @property
     def total(self) -> int:
@@ -292,8 +311,10 @@ class RefsResult:
         return {
             "target": self.target,
             "target_resolved": self.target_resolved,
+            "scanned": self.scanned,
             **self.groups.as_dict(),
             "shared_callers": self.shared.as_dict(),
+            "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
         }
 
 
@@ -327,7 +348,25 @@ class SymbolService:
 
         cards = tuple(symbol_card(symbol) for _, symbol in matches[:limit])
         listing = render.CardListing(rows=cards, total=len(matches), limit=limit)
-        return FindResult(query=query, cards=listing, skipped=scan.skipped)
+
+        # Computed only on a miss the kind filter caused: the scan is already
+        # in memory, so naming the kinds the name did match costs one pass and
+        # saves the caller a guessing turn.
+        other_kinds: tuple[str, ...] = ()
+        if kind is not None and not matches:
+            other_kinds = tuple(
+                sorted(
+                    {
+                        symbol.kind.value
+                        for facts in scan.files
+                        for symbol in facts.symbols
+                        if _matches(symbol, needle, None)
+                    }
+                )
+            )
+        return FindResult(
+            query=query, cards=listing, skipped=scan.skipped, kind=kind, other_kinds=other_kinds
+        )
 
     def expand_symbols(
         self,
@@ -440,6 +479,8 @@ class SymbolService:
             groups=groups,
             shared=shared,
             target_resolved=resolution.scoped,
+            skipped=scan.skipped,
+            scanned=len(scan.files),
         )
 
     def _fit_bodies(
@@ -643,15 +684,22 @@ def render_refs(result: RefsResult, *, shared_callers: bool = False) -> str:
     strongest evidence tier for a symbol nobody named, with no sign that the
     id had degraded to a name lookup. The notice comes first because it
     changes how every row below it must be read.
+
+    The skipped-file warning rides here too, exactly as :func:`render_find`
+    carries it: without it, "no references" over a partial scan read as
+    affirmative absence. And a complete scan is what licenses the empty
+    listing's absence claim, so the count is passed only when nothing was
+    skipped.
     """
+    complete_over = result.scanned if not result.skipped else None
     body = (
         render.render_shared_callers(result.shared, result.target)
         if shared_callers
-        else render.render_ref_groups(result.groups, result.target)
+        else render.render_ref_groups(result.groups, result.target, complete_over=complete_over)
     )
-    if not result.notice:
-        return body
-    return result.notice + "\n\n" + body
+    warning = render.render_skipped_files(result.skipped)
+    pieces = [piece for piece in (result.notice, warning) if piece]
+    return "\n\n".join([*pieces, body]) if pieces else body
 
 
 def render_find(result: FindResult) -> str:
@@ -662,8 +710,27 @@ def render_find(result: FindResult) -> str:
     "no matching symbols" to a reader whose file was never scanned. The
     warning comes first because it changes how the listing below it -- and
     especially an empty one -- must be read.
+
+    A miss names its next step here rather than in
+    :func:`render.render_symbol_cards`, because the two callers of that
+    renderer miss differently: the expansion path already names every id it
+    could not answer, while a lookup miss said "no matching symbols" and
+    stopped -- the one dead end in the catalog. Which message depends on why:
+    a miss the kind filter caused names the kinds the name did match, and any
+    other miss says what a declared symbol is not and where to search for the
+    rest.
     """
-    body = render.render_symbol_cards(result.cards)
+    if result.cards:
+        body = render.render_symbol_cards(result.cards)
+    elif result.other_kinds:
+        body = (
+            MESSAGES.find_no_matches_kind.format(
+                kind=result.kind, query=result.query, kinds=", ".join(result.other_kinds)
+            )
+            + "\n"
+        )
+    else:
+        body = MESSAGES.find_no_matches.format(query=result.query) + "\n"
     warning = render.render_skipped_files(result.skipped)
     if not warning:
         return body

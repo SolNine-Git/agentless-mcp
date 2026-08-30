@@ -59,7 +59,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -154,11 +154,77 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   pre-fix extractor wrote. That is the exact failure this package exists to
 #   refuse -- a confident answer built from facts nobody re-derived -- and it
 #   is worth one rebuild by the handful of people who tested mid-branch.
-SCHEMA_VERSION = 12
+# 13 (2026-08-26): every row is keyed on ``files.id`` rather than on the
+#   ``(path, sha256)`` pair it used to repeat. Measured with ``dbstat`` on the
+#   largest cache on one developer machine -- 9,045 files, 2.75M rows -- the
+#   repeated key text was 387.6 MB of a 538.4 MB ``refs`` table, and 83.6% of
+#   the 643.9 MB file was that one table. Rebuilt against the same data the
+#   file is 110.9 MB: 83% smaller, reads 1.20x faster, writes 1.78x faster,
+#   and 363,267 rows compared tuple for tuple with no mismatch.
+#
+#   Every table changes shape, so there is nothing here an older reader could
+#   partially understand -- which is exactly what the version gate is for.
+#
+# 14: the stored role vocabulary shrank. A build that shipped briefly wrote
+#   ``self_attribute`` into ``refs.role``, and this build has no such member,
+#   so every cached file written by it raised on read and fell back to parsing
+#   -- correct, and one warning per file on every call until something
+#   re-indexed. The row shape is unchanged, which is the trap: only the
+#   version can say the vocabulary moved.
+#
+# 15: Python extraction gained function-nested ``def`` symbols. The row shape
+#   is unchanged and old rows still read, which is again the trap: a cache
+#   written before the change would keep serving the smaller symbol set for
+#   every unchanged file, and no per-file staleness check can see it.
+SCHEMA_VERSION = 15
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
+ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
 DATABASE_NAME = "tags.db"
 LOCK_NAME = "write.lock"
+
+# The byte ceiling on the whole cache root, enforced after every index run.
+#
+# There was no ceiling before, and the cache root is written by auto-indexing
+# rather than by a command anybody types, so nothing bounded it. Measured on
+# one developer machine on 2026-08-26: 490 databases, 5.67 GB, the largest
+# 644 MB and the median under a megabyte. The mass is in a few dozen entries
+# and the long tail is nearly free, which is why this is a size cap and not an
+# age cap -- on that same machine nothing was older than fourteen days, so any
+# defensible age rule would have evicted nothing at all while the directory
+# kept growing.
+#
+# 5 GiB. Two measurements set it. It holds the largest single repository
+# observed (644 MB) with room to spare, and it clears the largest working set
+# measured here -- a 60-repository benchmark whose caches total 4.66 GiB, which
+# a 4 GiB ceiling could not hold and thrashed against. It also sits under the
+# 5.67 GB the unbounded directory had reached, so the sweep still has work to
+# do. Set ``AGENTLESS_MCP_MAX_CACHE_BYTES`` to another value, or to 0 to keep
+# the old unbounded behaviour.
+DEFAULT_MAX_CACHE_BYTES = 5 * 1024**3
+
+# How recently a database must have been used to be exempt from the sweep.
+#
+# The ceiling alone was wrong, and measurably so. It treats hot and cold
+# databases alike, so a working set larger than the ceiling makes each newly
+# indexed repository evict one that is about to be needed again -- and every
+# eviction costs a full re-index, which is the exact work the cache exists to
+# remove. Measured on 2026-08-26: a 60-repository benchmark whose caches total
+# 4.66 GiB ran against the 4.00 GiB ceiling, drove the database count from 239
+# to 102 mid-run, evicted 8 of the 60 repositories it was actively using, and
+# came out 37.0s -> 49.0s per instance against the same benchmark on the
+# unbounded build. Thrash, not reclamation.
+#
+# The two populations are nothing alike, which is what makes a window work. On
+# the machine that motivated the ceiling, 430 of 490 databases had gone
+# untouched for over a day while the benchmark touched all 60 of its own inside
+# one hour. A day-long window would have released essentially all of the dead
+# weight and none of the live set.
+#
+# So the ceiling bounds cold accumulation and never arbitrates between hot
+# entries. A working set that exceeds it on its own exceeds it: deleting a
+# database somebody is still using costs more than it reclaims.
+PROTECTED_SECONDS = 24 * 60 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -367,10 +433,19 @@ class _RowCounts:
 
 @dataclass(frozen=True)
 class _FileEntry:
-    """The digest and grammar version one indexed file was recorded with."""
+    """The digest and grammar version one indexed file was recorded with.
+
+    ``file_id`` is excluded from equality on purpose. The two sites that
+    compare an entry are asking one question -- same content, same grammar --
+    and the row identifier is not part of it. Comparing it would make every
+    reuse check fail against a freshly loaded entry and re-extract the whole
+    repository on every run. The default is 0, which no AUTOINCREMENT id can
+    ever be, so a constructed-for-comparison entry cannot alias a real row.
+    """
 
     digest: str
     grammar_version: str
+    file_id: int = field(compare=False, default=0)
 
 
 @dataclass(frozen=True)
@@ -447,7 +522,7 @@ class CachedSource:
 
     def _rows_or_none(
         self,
-        read: "Callable[[str, str], list[Any]]",
+        read: "Callable[[str, int], list[Any]]",
         text: str,
         path: str,
         kind: str,
@@ -469,11 +544,11 @@ class CachedSource:
         IndexError and KeyError for a row or document missing a field this
         build reads. A defect in this module still raises.
         """
-        digest = self._fresh_digest(text, path)
-        if digest is None:
+        file_id = self._fresh_file_id(text, path)
+        if file_id is None:
             return None
         try:
-            return read(path, digest)
+            return read(path, file_id)
         except (sqlite3.DatabaseError, ValueError, TypeError, IndexError, KeyError) as exc:
             logger.warning(
                 "tag cache %s: %s rows for %s are unreadable (%r); parsing the file instead",
@@ -513,20 +588,26 @@ class CachedSource:
             logger.debug("read snapshot for %s was already gone: %r", self._state.database, exc)
         self._connection.close()
 
-    def _fresh_digest(self, text: str, path: str) -> str | None:
-        """Return the digest to read rows at, or None when they cannot be used.
+    def _fresh_file_id(self, text: str, path: str) -> int | None:
+        """Return the id to read rows at, or None when they cannot be used.
 
         One gate for all three row kinds: the file must be indexed, indexed by
         the grammar pack that is installed now, and indexed from exactly this
         content. Anything else and the caller parses.
+
+        Returning the id rather than the digest is what lets the fact tables
+        stop repeating the digest on every row without weakening anything. The
+        id is reachable only through this function and only when the content
+        matched, so a caller that skips the check has no key to query with.
+        The guarantee is unchanged; it is simply established once per file
+        instead of once per row.
         """
         entry = self._state.entries.get(path)
         if entry is None or entry.grammar_version != self._state.grammar_version:
             return None
-        digest = content_digest(text)
-        return digest if entry.digest == digest else None
+        return entry.file_id if entry.digest == content_digest(text) else None
 
-    def _symbol_rows(self, path: str, digest: str) -> list[ASTSymbol]:
+    def _symbol_rows(self, path: str, file_id: int) -> list[ASTSymbol]:
         """Rebuild one file's symbols from its tag rows, in extraction order.
 
         The collision ordinal is recomputed rather than stored: it is a pure
@@ -537,27 +618,31 @@ class CachedSource:
         cursor = self._connection.execute(
             "SELECT name, kind, start_line, end_line, signature, parent, docstring, "
             "decorators, bases, language, is_public, is_async, rationales "
-            "FROM tags WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "FROM tags WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return disambiguate([_symbol_from_row(row, path) for row in cursor.fetchall()])
 
-    def _import_rows(self, path: str, digest: str) -> list[ImportStatement]:
-        """Rebuild one file's import statements from its rows, in extraction order."""
+    def _import_rows(self, _path: str, file_id: int) -> list[ImportStatement]:
+        """Rebuild one file's import statements from its rows, in extraction order.
+
+        Takes the path it does not use because :meth:`_rows_or_none` calls all
+        three readers through one signature. The other two need it: symbols to
+        build their stable ids, references to name the file they were found in.
+        """
         cursor = self._connection.execute(
             "SELECT module, names, is_relative, relative_level, line, "
             "binds_all, alias, local_names FROM imports "
-            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return [_import_from_row(row) for row in cursor.fetchall()]
 
-    def _ref_rows(self, path: str, digest: str) -> list[Ref]:
+    def _ref_rows(self, path: str, file_id: int) -> list[Ref]:
         """Rebuild one file's identifier references from its rows, in order."""
         cursor = self._connection.execute(
-            "SELECT name, line, role, qualifier FROM refs "
-            "WHERE path = ? AND sha256 = ? ORDER BY ordinal",
-            (path, digest),
+            "SELECT name, line, role, qualifier FROM refs WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
         )
         return [
             Ref(
@@ -730,6 +815,12 @@ def _open_indexed(
         _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, opened.note))
 
+    # Stamped here, at the one point that proves the index was both usable and
+    # actually used: past the schema, repository and generation checks, and
+    # about to be handed to a caller as its source of facts. Stamping on entry
+    # would keep a database alive for being probed and rejected.
+    touch_database(database)
+
     return CachedSource(
         connection,
         extractor,
@@ -778,6 +869,49 @@ class IndexSkip:
     reason: str
 
 
+# The sidecars a database is accounted for and deleted with. One tuple rather
+# than the literal repeated in ``_discard`` and ``_entry_bytes``, because the
+# sweep's arithmetic is a promise about what the delete reclaims: if the two
+# lists drift, the report says it freed bytes that are still on the disk.
+#
+# Membership is the promise; this order is not. ``_entry_bytes`` sums, so it
+# reads the tuple either way, and ``_discard`` deliberately walks it reversed
+# for the reason given there. The primary is spelled first here because that is
+# how SQLite names the set, not because anything may delete in this order.
+DATABASE_SUFFIXES = ("", "-wal", "-shm")
+
+
+@dataclass(frozen=True)
+class _CacheEntry:
+    """One repository's cached database, as the sweep weighs it.
+
+    ``used_at`` is the database's mtime, which :func:`touch_database` refreshes
+    on every successful open. Without that refresh it would mean "last
+    written", and a repository that is read constantly but has not changed in
+    a month is exactly the one an index is most worth keeping.
+    """
+
+    database: Path
+    size: int
+    used_at: float
+
+
+@dataclass(frozen=True)
+class EvictionReport:
+    """What one sweep of the cache root deleted."""
+
+    databases: int
+    size: int
+
+    @property
+    def happened(self) -> bool:
+        """True when the sweep deleted anything."""
+        return self.databases > 0
+
+
+NOTHING_EVICTED = EvictionReport(databases=0, size=0)
+
+
 @dataclass(frozen=True)
 class IndexReport:
     """What one index run did, in the numbers its summary line prints."""
@@ -793,6 +927,11 @@ class IndexReport:
     refs: int
     failures: tuple[IndexFailure, ...]
     skipped_files: tuple[IndexSkip, ...]
+    # What the ceiling sweep deleted from other repositories after this run.
+    # Appended with a default rather than placed by meaning, for the reason
+    # ``CacheStatus.repo_root`` gives: this is a shipped dataclass and a
+    # positional insertion would break its callers.
+    evicted: EvictionReport = NOTHING_EVICTED
 
     @property
     def errors(self) -> int:
@@ -805,22 +944,43 @@ class IndexReport:
         return len(self.skipped_files)
 
     def summary_line(self) -> str:
-        """Return the one-line summary the CLI prints."""
+        """Return the one-line summary the CLI prints.
+
+        The eviction clause appears only when a sweep deleted something.
+        Printing "evicted 0" on every run would train a reader to skip the
+        field, and this is the one number on the line that describes a
+        deletion outside the repository being indexed.
+        """
+        repositories = "repository" if self.evicted.databases == 1 else "repositories"
+        eviction_clause = (
+            f", evicted {self.evicted.databases} cached {repositories} ({self.evicted.size} bytes)"
+            if self.evicted.happened
+            else ""
+        )
         return (
             f"indexed {self.indexed}, reused {self.reused}, pruned {self.pruned}, "
             f"skipped {self.skipped}, errors {self.errors}: {self.files} files, "
             f"{self.tags} tags, {self.imports} imports, {self.refs} refs "
-            f"at g:{self.generation} in {self.database}"
+            f"at g:{self.generation} in {self.database}{eviction_clause}"
         )
 
     def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this report."""
+        """Return the JSON form of this report.
+
+        ``evicted`` is always present here, unlike in the summary line: a JSON
+        consumer reads a key it looked up, so a field that appears only
+        sometimes is a field it has to guard for no gain.
+        """
         return {
             "database": str(self.database),
             "generation": self.generation,
             "indexed": self.indexed,
             "reused": self.reused,
             "pruned": self.pruned,
+            "evicted": {
+                "databases": self.evicted.databases,
+                "bytes": self.evicted.size,
+            },
             "errors": self.errors,
             "files": self.files,
             "tags": self.tags,
@@ -871,6 +1031,40 @@ class _IndexPlan:
 def auto_index_disabled() -> bool:
     """True when the environment opts out of the background index refresh."""
     return os.environ.get(ENV_NO_AUTO_INDEX, "") not in ("", "0", "false", "False")
+
+
+def max_cache_bytes() -> int | None:
+    """Return the byte ceiling on the cache root, or None when it is disabled.
+
+    ``0`` disables the sweep and restores the unbounded behaviour, which is
+    the reason this returns an option rather than a very large number: "do not
+    enforce a ceiling" and "enforce a ceiling of zero" are different
+    instructions, and the second one would delete every database on the
+    machine after every index run.
+
+    A value that is not a non-negative integer is reported and ignored. The
+    alternative -- reading a typo as "no ceiling" -- is the failure mode this
+    whole function exists to remove, and it would be invisible: the sweep
+    would simply never fire and the directory would grow exactly as it did
+    before anybody set the variable.
+    """
+    configured = os.environ.get(ENV_MAX_CACHE_BYTES, "").strip()
+    if not configured:
+        return DEFAULT_MAX_CACHE_BYTES
+    try:
+        limit = int(configured)
+    except ValueError:
+        limit = -1
+    if limit < 0:
+        logger.warning(
+            "%s=%r is not a non-negative integer and was ignored; the default ceiling of "
+            "%d bytes applies. Set it to 0 to disable the sweep",
+            ENV_MAX_CACHE_BYTES,
+            configured,
+            DEFAULT_MAX_CACHE_BYTES,
+        )
+        return DEFAULT_MAX_CACHE_BYTES
+    return limit or None
 
 
 # The generation recorded for an attempt that never got far enough to read
@@ -1143,6 +1337,12 @@ def build_index(
     # ``errors`` and ``pruned`` on the same summary line and made ``pruned``
     # stop meaning "files that left the repository".
     pruned = len([path for path in previous if path not in plan.present])
+
+    # After the lock is released, not inside it. The sweep takes the write
+    # lock of every database it deletes, and this run's own lock is one it
+    # would otherwise be holding while asking for it again.
+    evicted = enforce_cache_limit(keep=database)
+
     return IndexReport(
         database=database,
         generation=generation,
@@ -1155,6 +1355,7 @@ def build_index(
         refs=counts.refs,
         failures=plan.failures,
         skipped_files=plan.skips,
+        evicted=evicted,
     )
 
 
@@ -1282,51 +1483,52 @@ def _apply_plan(
     connection.execute("BEGIN IMMEDIATE")
     try:
         for path in (*vanished, *touched):
-            # Spelled out rather than looped over a table-name list: a query
-            # built by interpolating a name is the shape of an injection even
-            # when today's names are constants.
-            connection.execute("DELETE FROM tags WHERE path = ?", (path,))
-            connection.execute("DELETE FROM imports WHERE path = ?", (path,))
-            connection.execute("DELETE FROM refs WHERE path = ?", (path,))
+            # Children before the parent, and by the id the parent owns. The
+            # order is load-bearing rather than tidy: the fact rows are keyed
+            # on ``files.id``, so deleting the ``files`` row first would take
+            # away the only key that reaches them and leave them orphaned in a
+            # table nothing would ever clean.
+            #
+            # A path absent from ``previous`` is a file this index has never
+            # recorded, so it owns no id and no rows. Its ``files`` delete is
+            # still issued, because ``vanished`` and ``touched`` are the paths
+            # to clear and not the paths known to be present.
+            recorded = previous.get(path)
+            if recorded is not None:
+                # Spelled out rather than looped over a table-name list: a
+                # query built by interpolating a name is the shape of an
+                # injection even when today's names are constants.
+                connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
             connection.execute("DELETE FROM files WHERE path = ?", (path,))
 
         for entry in plan.writes:
-            connection.execute(
-                "INSERT INTO files (path, sha256, grammar_version) VALUES (?, ?, ?)",
-                (entry.path, entry.digest, entry.grammar_version),
-            )
+            file_id = _insert_file(connection, entry)
             connection.executemany(
-                "INSERT INTO tags (path, sha256, name, kind, start_line, end_line, "
+                "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
                 "signature, parent, docstring, decorators, bases, language, "
-                "is_public, is_async, rationales, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "is_public, is_async, rationales) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    _tag_row(entry.path, entry.digest, ordinal, symbol)
+                    _tag_row(file_id, ordinal, symbol)
                     for ordinal, symbol in enumerate(entry.symbols)
                 ],
             )
             connection.executemany(
-                "INSERT INTO imports (path, sha256, module, names, is_relative, "
-                "relative_level, line, binds_all, alias, local_names, "
-                "ordinal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
+                "relative_level, line, binds_all, alias, local_names) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    _import_row(entry.path, entry.digest, ordinal, statement)
+                    _import_row(file_id, ordinal, statement)
                     for ordinal, statement in enumerate(entry.imports)
                 ],
             )
             connection.executemany(
-                "INSERT INTO refs (path, sha256, name, line, role, qualifier, ordinal) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (
-                        entry.path,
-                        entry.digest,
-                        ref.name,
-                        ref.line,
-                        ref.role.value,
-                        ref.qualifier,
-                        ordinal,
-                    )
+                    (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
                     for ordinal, ref in enumerate(entry.refs)
                 ],
             )
@@ -1349,11 +1551,35 @@ def _apply_plan(
     connection.commit()
 
 
-def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
+def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
+    """Insert one file's row and return the id its fact rows are keyed on.
+
+    Read from the insert that minted it rather than selected back:
+    AUTOINCREMENT guarantees the id is new, and a second query would only be a
+    slower way to learn what the cursor already knows.
+
+    ``lastrowid`` is typed optional because it is None for statements that
+    insert nothing, which an INSERT that did not raise is not. Asserted rather
+    than defaulted: a zero or a None flowing into ``file_id`` would key every
+    one of this file's rows onto an id no ``files`` row owns, and they would
+    read back as somebody else's symbols rather than as an error.
+    """
+    cursor = connection.execute(
+        "INSERT INTO files (path, sha256, grammar_version) VALUES (?, ?, ?)",
+        (entry.path, entry.digest, entry.grammar_version),
+    )
+    file_id = cursor.lastrowid
+    if file_id is None:
+        unreachable = "an INSERT that did not raise always reports a row id"
+        raise AssertionError(unreachable)
+    return file_id
+
+
+def _tag_row(file_id: int, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
     """Flatten one symbol into its tag row."""
     return (
-        path,
-        digest,
+        file_id,
+        ordinal,
         symbol.name,
         symbol.kind.value,
         symbol.line_number,
@@ -1378,17 +1604,14 @@ def _tag_row(path: str, digest: str, ordinal: int, symbol: ASTSymbol) -> tuple[A
                 for rationale in symbol.rationales
             ]
         ),
-        ordinal,
     )
 
 
-def _import_row(
-    path: str, digest: str, ordinal: int, statement: ImportStatement
-) -> tuple[Any, ...]:
+def _import_row(file_id: int, ordinal: int, statement: ImportStatement) -> tuple[Any, ...]:
     """Flatten one import statement into its row."""
     return (
-        path,
-        digest,
+        file_id,
+        ordinal,
         statement.module,
         json.dumps(list(statement.names)),
         int(statement.is_relative),
@@ -1397,7 +1620,6 @@ def _import_row(
         int(statement.binds_all),
         statement.alias,
         json.dumps(list(statement.local_names)),
-        ordinal,
     )
 
 
@@ -1521,6 +1743,41 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
     meta = _read_meta(connection)
     stale = meta is not None and meta.schema_version != SCHEMA_VERSION
     connection.executescript(_MIGRATE_SCHEMA if stale else _CREATE_SCHEMA)
+    if stale:
+        _reclaim(connection)
+
+
+def _reclaim(connection: sqlite3.Connection) -> None:
+    """Return a migrated database's freed pages to the filesystem.
+
+    Dropping a table frees its pages inside the file and never shrinks the
+    file: SQLite keeps them on a freelist and spends them on the next thing
+    that grows. Without this, a migration that genuinely shrinks the data
+    leaves the old size on disk. Measured on the largest cache here when v13
+    landed -- 643.9 MB of file holding 125.2 MB of data and 518.8 MB of
+    freelist, so the entire storage change was invisible.
+
+    It matters twice over, because the size the cache ceiling reads is the
+    size on disk. A database that never gives its pages back is counted at its
+    high-water mark forever, and would be evicted for space it is not using.
+
+    Outside a transaction, because VACUUM cannot run inside one --
+    ``executescript`` has already committed the migration by the time this
+    runs. Failure is reported and not raised: the migration itself succeeded,
+    the database is correct, and a file that is larger than it needs to be is
+    a cost rather than a fault. The usual cause is the one worth naming, which
+    is why the message names it -- VACUUM rebuilds the database beside itself
+    and needs room for a second copy.
+    """
+    try:
+        connection.execute("VACUUM")
+    except sqlite3.DatabaseError as exc:
+        logger.warning(
+            "could not reclaim free pages after the schema migration (%r); the database is "
+            "correct but still holds the space the old schema used. A VACUUM needs free disk "
+            "for a second copy of the file",
+            exc,
+        )
 
 
 # A version bump drops every table this package owns and rebuilds them. The
@@ -1550,14 +1807,33 @@ CREATE TABLE IF NOT EXISTS meta (
 -- and no reader ever selects is storage and write time spent on nothing, and
 -- the migration policy -- bump and rebuild -- makes adding one back free on
 -- the day a reader wants it.
+-- ``id`` is what every other table keys on, and it is AUTOINCREMENT rather
+-- than a plain rowid on purpose. A plain rowid is reused after a delete, so a
+-- newly indexed file could inherit the id of one just removed -- and if any
+-- child row had survived that delete it would be served for the wrong file,
+-- silently, with the digest gate satisfied because the gate reads this table.
+-- The monotonic counter costs one row in ``sqlite_sequence`` and removes the
+-- whole class.
 CREATE TABLE IF NOT EXISTS files (
-    path TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
     sha256 TEXT NOT NULL,
     grammar_version TEXT NOT NULL
 );
+-- The three fact tables share one shape: keyed on ``(file_id, ordinal)``,
+-- WITHOUT ROWID, no secondary index. Every read of them is "one file, in
+-- extraction order", so that key clusters the rows the way they are read and
+-- the primary key alone answers the query.
+--
+-- They used to repeat ``(path, sha256)`` on every row and carry a separate
+-- index over it. On one real repository that was 387.6 MB of duplicated path
+-- and digest text in ``refs`` alone, plus 42.6 MB of index that the clustering
+-- key now makes redundant. The digest did not have to live here to be
+-- load-bearing: ``CachedSource._fresh_file_id`` checks it once per file, and a
+-- caller whose content does not match never obtains an id to query with.
 CREATE TABLE IF NOT EXISTS tags (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     name TEXT NOT NULL,
     kind TEXT NOT NULL,
     start_line INTEGER NOT NULL,
@@ -1571,16 +1847,11 @@ CREATE TABLE IF NOT EXISTS tags (
     is_public INTEGER NOT NULL,
     is_async INTEGER NOT NULL,
     rationales TEXT NOT NULL,
-    ordinal INTEGER NOT NULL
-);
--- References are by far the largest table (tens of thousands of rows per
--- repository against hundreds of symbols), and every read of them is
--- "one file, one digest, in order". A WITHOUT ROWID table keyed on exactly
--- that clusters the rows the way they are read and removes the separate
--- (path, sha256) index, which measured the same size as the table it indexed.
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS imports (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     module TEXT NOT NULL,
     names TEXT NOT NULL,
     is_relative INTEGER NOT NULL,
@@ -1589,20 +1860,20 @@ CREATE TABLE IF NOT EXISTS imports (
     binds_all INTEGER NOT NULL,
     alias TEXT NOT NULL,
     local_names TEXT NOT NULL,
-    ordinal INTEGER NOT NULL
-);
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+-- By far the largest table: millions of rows per repository against thousands
+-- of symbols, which is why the key it repeats is the one that decides the size
+-- of the whole file.
 CREATE TABLE IF NOT EXISTS refs (
-    path TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
     name TEXT NOT NULL,
     line INTEGER NOT NULL,
     role TEXT NOT NULL,
     qualifier TEXT NOT NULL,
-    ordinal INTEGER NOT NULL,
-    PRIMARY KEY (path, sha256, ordinal)
+    PRIMARY KEY (file_id, ordinal)
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS tags_path_sha256 ON tags (path, sha256);
-CREATE INDEX IF NOT EXISTS imports_path_sha256 ON imports (path, sha256);
 """
 
 # The two scripts :func:`_ensure_schema` runs, each one transaction.
@@ -1692,9 +1963,12 @@ def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
     to :func:`_open_indexed`, which reports ``cache unreadable`` and leaves
     the file in place. This is the same rule :func:`_read_meta` states.
     """
-    rows = connection.execute("SELECT path, sha256, grammar_version FROM files").fetchall()
+    rows = connection.execute("SELECT path, sha256, grammar_version, id FROM files").fetchall()
     return {
-        str(row[0]): _FileEntry(digest=str(row[1]), grammar_version=str(row[2])) for row in rows
+        str(row[0]): _FileEntry(
+            digest=str(row[1]), grammar_version=str(row[2]), file_id=int(row[3])
+        )
+        for row in rows
     }
 
 
@@ -1785,18 +2059,53 @@ def _bypassed_status(database: Path) -> CacheStatus:
     )
 
 
-def _discard(database: Path) -> None:
+def _discard(database: Path) -> bool:
     """Delete a database this build cannot use, with its WAL sidecars.
 
     Deleting rather than ignoring: the file is derived data, and leaving an
     unusable one behind would make every later call pay the same open, fail
     the same check and report the same degradation.
 
+    Returns whether the primary file was there to delete, which is what lets
+    the ceiling sweep report deletions it actually performed. Two sweeps can
+    plan the same cold victim, and counting every pass that did not raise made
+    the second run's :class:`EvictionReport` claim databases and bytes that
+    the first had already reclaimed. The unlink is the test rather than an
+    ``exists()`` before it: a check and then an act is the race this return
+    value exists to close. Because the primary goes last, the answer also
+    implies the primary is gone: the return is only reached once every unlink
+    has succeeded, so no caller is handed a value that misdescribes the disk.
+
+    Sidecars are unlinked whatever the primary's fate, and a missing one is
+    not a fault -- a database checkpointed since the caller last looked has no
+    ``-wal``. Every other :class:`OSError` still propagates, as it did when
+    this loop passed ``missing_ok=True``, which swallowed exactly the same one
+    exception.
+
     Callers must already hold the write lock. The read path calls
-    :func:`_discard_unlocked` instead, which takes it.
+    :func:`_discard_unlocked` instead, which takes it. The two recovery
+    callers ignore the return: whether the unusable file was still there says
+    nothing about the rebuild that follows it.
     """
-    for suffix in ("", "-wal", "-shm"):
-        Path(str(database) + suffix).unlink(missing_ok=True)
+    existed = False
+    # Sidecars first and the primary last. The primary is the only file that
+    # keeps a cache directory reachable: :func:`_cache_entries` keys each
+    # directory on a successful stat of it, so deleting it first and then
+    # failing on a ``-wal`` strands those bytes for good, uncounted by the
+    # ceiling and unreachable by every later sweep. Reversed, a sidecar that
+    # will not go leaves the primary in place, so the entry stays visible and
+    # still weighed, and the next sweep attempts the whole delete again. That
+    # orders the failure rather than promising it clears: an ``OSError`` here
+    # is often persistent, and a repeated warning about a directory the sweep
+    # can still see beats silently leaked bytes it never can.
+    for suffix in reversed(DATABASE_SUFFIXES):
+        try:
+            Path(str(database) + suffix).unlink()
+        except FileNotFoundError:
+            continue
+        if not suffix:
+            existed = True
+    return existed
 
 
 def _discard_unlocked(database: Path, repo_root: Path) -> None:
@@ -1824,3 +2133,292 @@ def _discard_unlocked(database: Path, repo_root: Path) -> None:
         )
     except OSError as exc:
         logger.warning("tag cache %s could not be discarded: %r", database, exc)
+
+
+def _entry_bytes(database: Path) -> int:
+    """Return what deleting ``database`` and its sidecars would reclaim.
+
+    A missing sidecar contributes nothing rather than raising: a database
+    checkpointed since the scan has no ``-wal``, and that is the normal
+    resting state, not a fault. Any other failure to stat is warned about,
+    because a file the sweep cannot weigh is a file the ceiling silently
+    stops accounting for.
+    """
+    total = 0
+    for suffix in DATABASE_SUFFIXES:
+        try:
+            total += Path(str(database) + suffix).stat().st_size
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("could not weigh %s%s for the cache ceiling: %r", database, suffix, exc)
+    return total
+
+
+def _cache_entries(root: Path) -> list[_CacheEntry]:
+    """List every cached database under ``root``, with its size and last use.
+
+    A directory whose database has already gone contributes nothing: the sweep
+    leaves ``write.lock`` behind (see :func:`enforce_cache_limit`), so an
+    evicted repository stays in the listing as an empty directory and must not
+    be weighed or deleted a second time.
+    """
+    entries: list[_CacheEntry] = []
+    try:
+        candidates = sorted(root.iterdir())
+    except OSError as exc:
+        # Not fatal and not silent. The sweep is an optimization on an
+        # optimization; a cache root that cannot be listed means no eviction
+        # this run, and the run that produced a usable index still succeeded.
+        logger.warning("cache root %s could not be listed, so nothing was evicted: %r", root, exc)
+        return []
+
+    for directory in candidates:
+        database = directory / DATABASE_NAME
+        try:
+            used_at = database.stat().st_mtime
+        except FileNotFoundError:
+            # The normal case this loop's docstring names: an evicted
+            # repository's directory, kept alive by its lock file.
+            continue
+        except OSError as exc:
+            # A database that exists but cannot be statted is invisible to
+            # the ceiling for as long as the condition lasts; the warning is
+            # what keeps that from being silent.
+            logger.warning("could not weigh %s for the cache ceiling: %r", database, exc)
+            continue
+        entries.append(_CacheEntry(database=database, size=_entry_bytes(database), used_at=used_at))
+    return entries
+
+
+def _eviction_plan(
+    entries: Sequence[_CacheEntry], limit: int, *, keep: Path, now: float
+) -> list[_CacheEntry]:
+    """Return the databases to delete, in the order the sweep should delete them.
+
+    Least recently used first, which is the whole policy: walk the entries
+    most-recent first, keep them while the running total fits under ``limit``,
+    and evict the rest.
+
+    Nothing used within :data:`PROTECTED_SECONDS` of ``now`` is a candidate,
+    whatever that does to the total. That is the rule that makes the sweep safe
+    to run against a live machine rather than only against an idle one: an
+    entry still in use is not spare capacity, and reclaiming it buys bytes at
+    the price of the re-index it forces. The constant carries the measurement.
+
+    Two further entries are never candidates, and both key on identity rather
+    than on a clock, so they still hold when mtimes do not -- a filesystem that
+    does not keep them, a tree restored from an archive, a skewed clock.
+    ``keep`` is the database the calling index run just built. The most
+    recently used entry is spared from the other direction: without it, one
+    repository bigger than the whole ceiling would be evicted by any other
+    repository's sweep and rebuilt on its next call, forever.
+
+    The ceiling is therefore a bound on what has gone cold, not a hard cap. It
+    is exceeded on purpose whenever the live set alone fills it, and
+    :func:`enforce_cache_limit` says so rather than evicting into a live set.
+    """
+    ordered = sorted(entries, key=lambda entry: entry.used_at, reverse=True)
+    protected_after = now - PROTECTED_SECONDS
+    evict: list[_CacheEntry] = []
+    total = 0
+    for position, entry in enumerate(ordered):
+        if entry.database == keep or position == 0 or entry.used_at >= protected_after:
+            total += entry.size
+            continue
+        # Once one unprotected entry fails to fit, every colder one goes with
+        # it. Fitting a later, colder entry into the leftover headroom would
+        # keep it alive past a warmer entry the sweep just deleted -- a
+        # bin-packing outcome, not the least-recently-used order this
+        # docstring promises.
+        if evict or total + entry.size > limit:
+            evict.append(entry)
+            continue
+        total += entry.size
+    # Coldest first, so a sweep interrupted mid-run has spent its deletes on
+    # the entries the policy ranks most expendable.
+    return list(reversed(evict))
+
+
+def _evict_victim(entry: _CacheEntry, *, now: float) -> int | None:
+    """Delete one planned victim, returning the bytes the delete reclaimed.
+
+    ``None`` means the sweep must not count this entry, for one of two
+    reasons.
+
+    It was already gone. A concurrent sweep planned the same cold victim and
+    reached it first, and the run that arrives second has reclaimed nothing to
+    report.
+
+    Or it stopped being cold. :func:`_eviction_plan` decides protection from
+    the mtimes :func:`_cache_entries` read before any lock was taken, and the
+    read path stamps a database through :func:`touch_database` holding no lock
+    at all, so an entry can go from cold to hot between the plan and this
+    call. Re-reading the mtime here is what makes the documented 24 hour
+    protection hold rather than merely usually hold.
+
+    The re-read narrows that window to one stat and one unlink. It does not
+    close it, and closing it would mean the readers and the sweep coordinating.
+    They deliberately do not: :func:`enforce_cache_limit` gives the reason an
+    eviction is a cost and never a wrong answer, and a reader that loses this
+    race pays one re-index.
+
+    A stat that finds nothing is the already-gone signal rather than a fault,
+    so nothing is warned about it. Any other failed stat is warned about and
+    skips the victim: deleting a file whose freshness could not be re-read
+    would be enforcing the protection window on a guess.
+
+    The caller holds this victim's write lock, as :func:`_discard` requires.
+    """
+    try:
+        used_at = entry.database.stat().st_mtime
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        logger.warning("could not re-check %s before eviction; kept: %r", entry.database, exc)
+        return None
+
+    if used_at >= now - PROTECTED_SECONDS:
+        logger.info(
+            "kept %s: a read stamped it as used after the sweep planned its eviction",
+            entry.database,
+        )
+        return None
+
+    # Measured now rather than taken from ``entry.size``, for the reason
+    # ``DATABASE_SUFFIXES`` gives: the figure is a promise about bytes that
+    # left the disk. A size read before the lock drifts for the same reasons
+    # the mtime does, so re-reading one and trusting the other would be half a
+    # fix. Three stats against the unlink they precede cost nothing.
+    freed = _entry_bytes(entry.database)
+    if not _discard(entry.database):
+        return None
+    return freed
+
+
+def enforce_cache_limit(*, keep: Path) -> EvictionReport:
+    """Delete least-recently-used databases until the cache root fits its ceiling.
+
+    Called after an index run rather than on the read path, because indexing is
+    the only thing that makes the cache grow and the read path is the hot one.
+    That also makes the owner of the growth the owner of the bound.
+
+    Evicting a cache is always safe, which is what lets this run without
+    coordinating with readers. A reader that opens a database after the delete
+    finds nothing, reports ``cache: none`` and parses on demand -- the same
+    degradation the package already takes for a missing, corrupt or
+    older-schema index -- and a reader holding the file open keeps reading the
+    unlinked inode until it closes. The write lock is still taken per victim,
+    so a concurrent index run is never deleted out from underneath.
+
+    A ceiling the live set alone exceeds is reported and not enforced. That is
+    the whole correction to the first version of this sweep, which enforced it
+    by evicting databases it was about to need again -- see
+    :data:`PROTECTED_SECONDS` for what that cost when measured.
+
+    The returned counts describe what this run deleted and nothing else. The
+    plan is computed from one unlocked scan, so a victim can be gone or hot
+    again by the time its turn comes; :func:`_evict_victim` re-checks each one
+    under its lock, and only what it confirms is counted.
+
+    ``write.lock`` and the directory holding it stay.
+    :mod:`agentless_mcp.util.filelock` documents why the lock file is never
+    unlinked: a second process would create and lock a *different* file of the
+    same name while the first still holds the old one, and the mutual exclusion
+    the index depends on would quietly stop existing. An empty directory with a
+    zero-byte lock file costs an inode, and this sweep is about gigabytes.
+    """
+    limit = max_cache_bytes()
+    if limit is None:
+        return NOTHING_EVICTED
+
+    # One clock for the plan and for every re-check it feeds, so a sweep long
+    # enough to matter cannot protect a later victim by a rule it did not
+    # apply to an earlier one.
+    now = time.time()
+    entries = _cache_entries(cache_root())
+    victims = _eviction_plan(entries, limit, keep=keep, now=now)
+    if not victims:
+        _report_unreclaimable(entries, limit)
+        return NOTHING_EVICTED
+
+    deleted = 0
+    freed = 0
+    for entry in victims:
+        # The lock's subject is the cache directory, not a repository: the
+        # sweep never resolves the repository a victim describes, and reading
+        # it back out of ``meta`` would mean opening every database it is
+        # about to delete.
+        try:
+            with _write_lock(entry.database.parent, entry.database.parent):
+                reclaimed = _evict_victim(entry, now=now)
+        except CacheLocked as exc:
+            logger.info("kept %s: an index run holds its write lock (%s)", entry.database, exc)
+            continue
+        except OSError as exc:
+            logger.warning("could not evict %s: %r", entry.database, exc)
+            continue
+        if reclaimed is None:
+            continue
+        deleted += 1
+        freed += reclaimed
+
+    if deleted:
+        # States what the sweep did, not that the ceiling now holds: a victim
+        # kept for being locked, freshly used, or already gone can leave the
+        # root over the limit, and claiming "trimmed" would paper over it.
+        skipped_victims = len(victims) - deleted
+        skipped_clause = (
+            f"; {skipped_victims} planned victims were kept (locked, freshly used, or gone)"
+            if skipped_victims
+            else ""
+        )
+        logger.info(
+            "cache sweep freed %d bytes (%d databases) against the %d byte ceiling%s",
+            freed,
+            deleted,
+            limit,
+            skipped_clause,
+        )
+    return EvictionReport(databases=deleted, size=freed)
+
+
+def _report_unreclaimable(entries: Sequence[_CacheEntry], limit: int) -> None:
+    """Say when the cache root is over its ceiling with nothing cold to release.
+
+    Silence here would be the first version's mistake wearing a different
+    face. That build met the ceiling by evicting live databases, and the only
+    signal was a benchmark that got slower. This one keeps them and says why,
+    so the condition is a line in a log rather than an unexplained slowdown.
+    """
+    total = sum(entry.size for entry in entries)
+    if total <= limit:
+        return
+    logger.info(
+        "cache root is %d bytes against a %d byte ceiling and nothing is cold enough to "
+        "release: %d databases were all used within the last %d seconds. Evicting one would "
+        "force a re-index of a repository still in use, which costs more than it reclaims",
+        total,
+        limit,
+        len(entries),
+        PROTECTED_SECONDS,
+    )
+
+
+def touch_database(database: Path) -> None:
+    """Record that ``database`` was used now, for the eviction sweep's ordering.
+
+    One ``utime`` on a file the caller has already opened, which is what turns
+    :func:`enforce_cache_limit` from least-recently-*written* into least
+    recently *used*. Without it a repository nobody has committed to in a month
+    looks abandoned to the sweep however often it is read, and its index -- the
+    expensive one to rebuild -- is the first thing deleted.
+
+    A failure degrades the ordering and nothing else, so it is logged at debug
+    and not raised: a cache on a read-only mount cannot grow, so a sweep that
+    mis-orders it has nothing to delete anyway.
+    """
+    try:
+        os.utime(database)
+    except OSError as exc:
+        logger.debug("could not stamp %s as used: %r", database, exc)

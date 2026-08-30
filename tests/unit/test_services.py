@@ -6,13 +6,16 @@ from agentless_mcp.application import render
 from agentless_mcp.application.map_service import (
     AUTO_BUDGET_MAX,
     AUTO_BUDGET_MIN,
+    BODY_TOKENS_PER_SEAT,
     GRANULARITY_FILE,
     MapRequest,
     MapService,
+    build_body_map,
+    render_body_map,
     seed_weights,
 )
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.symbol_service import SymbolService, render_find
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import grammars, refs
 from agentless_mcp.core.projectconfig import MIN_BUDGET
@@ -159,6 +162,212 @@ class TestMapService:
         bare = maps.build(repo, MapRequest(focus=("cost_of",)))
         qualified = maps.build(repo, MapRequest(focus=("PriceBook.cost_of",)))
         assert bare.seeds == qualified.seeds == ("core.py",)
+
+    def test_a_line_suffix_is_stripped_from_a_path_seed(self, repo, extractor, counter):
+        """``ledger.py:6`` is how a grep hit or an editor spells a location.
+
+        The model seeds the map with what the task hands it, and refusing the
+        spelling for its decoration turns a gold seed into an unfocused map.
+        """
+        result = MapService(extractor, counter).build(repo, MapRequest(focus=("ledger.py:6",)))
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_a_blob_url_seeds_the_file_it_names(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo,
+            MapRequest(focus=("https://github.com/acme/shop/blob/abc123/ledger.py",)),
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_a_traceback_frame_seeds_its_file(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo,
+            MapRequest(focus=('File "/app/src/ledger.py", line 6, in post',)),
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_an_absolute_path_walks_down_to_the_tree_it_names(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("/home/ci/checkout/ledger.py",))
+        )
+        assert result.seeds == ("ledger.py",)
+
+    def test_a_windows_path_walks_down_to_the_tree_it_names(self, repo, extractor, counter):
+        """The rescue converts separators; the repository's own stay POSIX.
+
+        A Windows traceback or absolute path is exactly the "spelling from
+        another machine" the rescue exists for, and splitting only on ``/``
+        left every such entry unresolved.
+        """
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("C:\\ci\\checkout\\ledger.py",))
+        )
+        assert result.seeds == ("ledger.py",)
+        assert result.unresolved_seeds == ()
+
+    def test_a_url_tail_never_resolves_as_a_symbol(self, repo, extractor, counter):
+        """``/quote`` in a URL is a route, not the symbol ``quote``.
+
+        Normalized spellings resolve through the path shapes alone: a rescued
+        seed must name a file the entry plausibly spelled, never a symbol that
+        happens to share a word with a URL segment.
+        """
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("https://example.com/quote",))
+        )
+        assert result.seeds == ()
+        assert result.unresolved_seeds == ("https://example.com/quote",)
+
+    def test_an_unrescuable_entry_reports_its_original_spelling(self, repo, extractor, counter):
+        result = MapService(extractor, counter).build(
+            repo, MapRequest(focus=("https://example.com/no/such/file.py:12",))
+        )
+        assert result.seeds == ()
+        assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
+
+    def test_a_git_repo_map_header_carries_churn(
+        self, make_git_repo, commit_all, extractor, counter
+    ):
+        """`(rank 0.2500, 2c/90d, last 0d)`: churn the model can weigh itself.
+
+        The commit count and recency ride in the header paren the rank
+        already owns, so the cost is a few characters per ranked file and
+        zero new rows. The fixture commits are seconds old, which is what
+        makes `last 0d` deterministic without touching a clock. The second
+        commit touches one file so the two headers differ -- identical
+        values across every ranked file are wallpaper and are suppressed,
+        which the test below pins.
+        """
+        root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
+        (root / "billing.py").write_text(BILLING + "\n# touched\n", encoding="utf-8")
+        commit_all(root, "touch billing")
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "1c/90d, last 0d)" in text
+        assert "2c/90d, last 0d)" in text
+        entry = next(f for f in result.as_dict()["files"] if f["path"] == "billing.py")
+        assert entry["commits_90d"] == 2
+        assert entry["last_commit_days"] == 0
+
+    def test_identical_churn_on_every_file_is_suppressed(self, make_git_repo, extractor, counter):
+        """A single-commit snapshot decorates every header identically.
+
+        Measured on the pilot's snapshot repositories: 100% of map responses
+        carried one identical `1c/90d` pair on every row -- decoration with
+        zero discriminating signal. The clause exists to tell ranked files
+        apart, so when two or more files all carry one identical pair the
+        text drops it. The JSON keeps the fields: data is lossless and free.
+        """
+        root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "c/90d" not in text
+        entry = next(f for f in result.as_dict()["files"] if f["path"] == "core.py")
+        assert entry["commits_90d"] == 1
+        assert entry["last_commit_days"] == 0
+
+    def test_a_single_file_map_keeps_its_churn_header(self, make_git_repo, extractor, counter):
+        """One file has nothing to be told apart from; recency is the value."""
+        root = make_git_repo({"core.py": CORE})
+        ctx = resolve_repo(root, None)
+        try:
+            maps = MapService(extractor, counter)
+            result = maps.build(ctx, MapRequest())
+            text = maps.render_text(result)
+        finally:
+            ctx.close()
+
+        assert "1c/90d, last 0d)" in text
+
+    def test_body_granularity_returns_file_rows_and_top_bodies(self, repo, extractor, counter):
+        """One call instead of map-then-expand: the round trip 0.6.3 measured.
+
+        The map half orients -- ranked file rows, no signature entries -- and
+        the bodies half delivers the top-scored symbols whole, budgeted by
+        the same water-filling expand owns.
+        """
+        maps = MapService(extractor, counter)
+        symbols = SymbolService(extractor, counter)
+        result = build_body_map(repo, MapRequest(focus=("core.py",), budget=2000), maps, symbols)
+
+        assert result.map.files
+        assert all(map_file.entries == () for map_file in result.map.files)
+        assert result.bodies.cards
+        rendered = render_body_map(maps, result)
+        assert "(rank " in rendered
+        assert "return RATE" in rendered
+
+        document = result.as_dict()
+        assert document["bodies"]["symbols"]
+        assert document["files"][0]["symbols"] == []
+
+    def test_body_seats_scale_with_the_budget(self, repo, extractor, counter):
+        maps = MapService(extractor, counter)
+        symbols = SymbolService(extractor, counter)
+        result = build_body_map(repo, MapRequest(budget=2000), maps, symbols)
+
+        assert len(result.bodies.cards) <= 2000 // BODY_TOKENS_PER_SEAT
+
+    def test_a_truncated_body_map_expands_the_top_scored_symbol_first(
+        self, tmp_path, extractor, counter
+    ):
+        """One seat must go to the packing's best symbol, not the earliest line.
+
+        The file rows re-sort by line for reading, and slicing ids off them
+        expanded an unreferenced helper that merely sat above the file's hot
+        symbol. ``expand_order`` preserves the score order to the slice.
+        """
+        (tmp_path / "core.py").write_text(
+            "def helper():\n    return 1\n\n\ndef quote(sku):\n    return sku\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "billing.py").write_text(
+            "from core import quote\n\n\ndef bill(sku):\n    return quote(sku)\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        result = build_body_map(
+            ctx,
+            MapRequest(budget=BODY_TOKENS_PER_SEAT),
+            MapService(extractor, counter),
+            SymbolService(extractor, counter),
+        )
+
+        assert len(result.bodies.cards) == 1
+        assert result.bodies.cards[0].stable_id == "py:core.py::quote"
+
+    def test_build_refuses_body_granularity_directly(self, repo, extractor, counter):
+        """The adapters compose body maps; build silently rendering the
+        function view for granularity='body' would answer a different
+        question than the one asked."""
+        with pytest.raises(AgentlessError, match="body"):
+            MapService(extractor, counter).build(repo, MapRequest(granularity="body"))
+
+    def test_a_map_outside_git_keeps_the_bare_header(self, repo, extractor, counter):
+        """No suffix, not a zeroed one: absence means git could not answer."""
+        maps = MapService(extractor, counter)
+        result = maps.build(repo, MapRequest())
+        text = maps.render_text(result)
+
+        assert "c/90d" not in text
+        entry = result.as_dict()["files"][0]
+        assert entry["commits_90d"] is None
+        assert entry["last_commit_days"] is None
 
     def test_an_unresolved_seed_is_named_rather_than_dropped(self, repo, extractor, counter):
         maps = MapService(extractor, counter)
@@ -505,6 +714,31 @@ class TestSymbolService:
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote")
         assert result.cards[0].stable_id == "py:core.py::quote"
 
+    def test_find_symbol_reaches_a_def_nested_in_a_function(self, tmp_path, extractor):
+        """A fixture-style nested ``def`` is findable by its exact name.
+
+        The name also occurs as a substring of unrelated class methods, so
+        this pins both halves: the nested symbol exists, and exact-name rank
+        puts it ahead of every substring match.
+        """
+        (tmp_path / "fixtures.py").write_text(
+            "def in_memory_tools():\n"
+            "    async def listing():\n"
+            "        return ()\n"
+            "    return listing\n"
+            "\n"
+            "class RefListing:\n"
+            "    def __getitem__(self, index):\n"
+            "        return index\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(ctx, "listing")
+        assert result.cards[0].stable_id == "py:fixtures.py::in_memory_tools.listing"
+        text = render_find(result)
+        assert "function in in_memory_tools" in text
+        assert "function in class" not in text
+
     def test_find_symbol_filters_by_kind(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "o", kind="method")
         assert {card.kind for card in result.cards} == {"method"}
@@ -513,6 +747,41 @@ class TestSymbolService:
         result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "", limit=2)
         assert len(result.cards) == 2
         assert result.total > 2
+
+    def test_a_find_miss_names_the_next_step(self, repo, extractor):
+        """A miss with no remediation is the one dead end in the surface.
+
+        Every refusal in the message catalog names what to do next; a bare
+        "no matching symbols" did not. The usual cause is that the name is a
+        parameter, a local variable, an attribute or a string literal rather
+        than a declared symbol, and the remedy for those is a text search.
+        """
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "frobnicate")
+        text = render_find(result)
+        assert "no matching symbols" in text
+        assert "frobnicate" in text
+        assert "grep" in text
+
+    def test_a_kind_blocked_miss_names_the_kinds_that_matched(self, repo, extractor):
+        """The service knows the filter caused the miss, so the answer says so.
+
+        "quote" matches a function; asked for a class, the honest answer is
+        not "no matching symbols" but "not under that kind", naming the kinds
+        the name did match so the next call needs no guessing.
+        """
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(repo, "quote", kind="class")
+        assert result.total == 0
+        assert result.other_kinds == ("function",)
+        text = render_find(result)
+        assert "class" in text
+        assert "function" in text
+
+    def test_a_miss_that_no_kind_would_save_takes_the_plain_wording(self, repo, extractor):
+        result = SymbolService(extractor, Chars4Counter()).find_symbol(
+            repo, "frobnicate", kind="class"
+        )
+        assert result.other_kinds == ()
+        assert "grep" in render_find(result)
 
     def test_expand_reports_an_id_whose_symbol_is_gone(self, repo, extractor):
         result = SymbolService(extractor, Chars4Counter()).expand_symbols(

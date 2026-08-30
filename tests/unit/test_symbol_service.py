@@ -199,9 +199,17 @@ class TestAnUnresolvedFanInTarget:
         assert "resolves to no symbol" in rendered.split("\n\n", 1)[0]
 
     def test_a_resolved_target_renders_the_rows_alone(self, repo, symbols):
+        """No notice, no warning: the composed render is the row render.
+
+        ``complete_over`` rides along because this fan-in is empty over a
+        complete scan, and the absence claim belongs to both spellings of the
+        same answer.
+        """
         result = symbols.find_referencing_symbols(repo, "py:core.py::quote")
 
-        assert render_refs(result) == render.render_ref_groups(result.groups, result.target)
+        assert render_refs(result) == render.render_ref_groups(
+            result.groups, result.target, complete_over=result.scanned
+        )
 
     def test_the_shared_caller_render_carries_the_notice_too(self, repo, symbols):
         result = symbols.find_referencing_symbols(
@@ -211,6 +219,56 @@ class TestAnUnresolvedFanInTarget:
 
         assert rendered.startswith(result.notice)
         assert render.render_shared_callers(result.shared, result.target) in rendered
+
+
+class TestAnEmptyFanInStatesItsEvidence:
+    """Absence is a claim, and a claim states what licenses it.
+
+    "no references" over a complete scan and the same words over a scan that
+    skipped files are different answers, and only the first lets the caller
+    skip a verification search. The refs door never carried the skipped-file
+    warning ``render_find`` prepends, so a partial-scan empty fan-in read as
+    affirmative absence.
+    """
+
+    def test_a_complete_scan_licenses_the_absence_claim(self, repo, symbols):
+        result = symbols.find_referencing_symbols(repo, "normalise")
+        rendered = render_refs(result)
+
+        assert "no references to normalise" in rendered
+        assert "(complete scan: 2 files, 0 skipped)" in rendered
+
+    def test_a_partial_scan_warns_instead_of_claiming(self, tmp_path, extractor, counter):
+        (tmp_path / "core.py").write_text(CORE, encoding="utf-8")
+        (tmp_path / "huge.py").write_text("x = 1\n" * 200_000, encoding="utf-8")
+        ctx = resolve_repo(tmp_path, None)
+
+        result = SymbolService(extractor, counter).find_referencing_symbols(ctx, "normalise")
+        rendered = render_refs(result)
+
+        assert "// warning: 1 files were skipped" in rendered
+        assert "complete scan" not in rendered
+
+    def test_a_populated_fan_in_carries_no_claim(self, tmp_path, extractor, counter):
+        (tmp_path / "core.py").write_text(CORE, encoding="utf-8")
+        (tmp_path / "billing.py").write_text(
+            "from core import quote\n\n\ndef run():\n    return quote(1)\n",
+            encoding="utf-8",
+        )
+        ctx = resolve_repo(tmp_path, None)
+
+        rendered = render_refs(
+            SymbolService(extractor, counter).find_referencing_symbols(ctx, "quote")
+        )
+
+        assert "reference" in rendered
+        assert "complete scan" not in rendered
+
+    def test_the_json_carries_the_scan_evidence(self, repo, symbols):
+        document = symbols.find_referencing_symbols(repo, "normalise").as_dict()
+
+        assert document["scanned"] == 2
+        assert document["skipped"] == []
 
 
 class TestTheUnresolvedListIsBounded:

@@ -125,6 +125,12 @@ PARITY_PAIRS = [
     ),
     (
         "orient",
+        {"operation": "map", "granularity": "body"},
+        "repo_map",
+        {"granularity": "body"},
+    ),
+    (
+        "orient",
         {"operation": "communities"},
         "analyze_structure",
         {"operation": "communities"},

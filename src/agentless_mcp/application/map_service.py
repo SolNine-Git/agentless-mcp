@@ -28,14 +28,24 @@ greedy fill, so the answer is the largest prefix of the score ordering that
 fits -- deterministic, and independent of the order files were walked in.
 """
 
+import re
+import time
 from collections.abc import Collection, Mapping, Sequence, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import is_test_path, rationale_nodes
+from agentless_mcp.application.symbol_service import (
+    EXPAND_MAX_SEATS,
+    ExpandResult,
+    SymbolService,
+    is_test_path,
+    rationale_nodes,
+    render_expansion,
+    unresolved_lines,
+)
 from agentless_mcp.core import projectconfig, refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.graph import (
@@ -57,6 +67,7 @@ from agentless_mcp.core.symbols import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_MAX_FILES = 10
@@ -76,7 +87,19 @@ TEST_COMPANION_DEPTH = 2
 
 GRANULARITY_FUNCTION = "function"
 GRANULARITY_FILE = "file"
-GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE)
+GRANULARITY_BODY = "body"
+# The wire surface's choices. Deliberately wider than
+# ``projectconfig.GRANULARITIES``, which stays ('function', 'file'): a config
+# default of 'body' would make the expensive view every call's silent default,
+# so the config door never gains it. A test pins the divergence -- do not
+# merge the two tuples.
+GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE, GRANULARITY_BODY)
+
+# How many whole bodies one budget is worth: expand's own shipped ratio,
+# EXPAND_BUDGET_TOKENS / EXPAND_MAX_SEATS = 12000 / 40 = 300 tokens a seat.
+# The seat count bounds how many ids a body map expands; the water-filling
+# then spends the actual budget fairly across them.
+BODY_TOKENS_PER_SEAT = 300
 
 # "auto": aim at ~6x compression of the candidate set, then refuse to go
 # below a map that could not say anything or above one that stops being a map.
@@ -150,6 +173,13 @@ class MapResult:
     # reader is about to trust a partial answer, and silence about that is the
     # failure this package exists to prevent.
     rank_converged: bool = True
+    # The included symbols' stable ids in the packing's own score order --
+    # what `build_body_map` expands when the seats are fewer than the ids.
+    # `files` re-sorts each file's entries by line number for reading, so
+    # this field is the only record of which of them scored highest. Not in
+    # the JSON form: it restates ids the files already carry, in an order
+    # only the body composition consumes.
+    expand_order: tuple[str, ...] = ()
     # The test files that exercise the ranked or seeded files, listed outside
     # the budget the ranked files are packed into. Edges run referrer to
     # definer, so a test file has no inbound weight and the ranking that
@@ -254,6 +284,12 @@ class MapService:
         granularity = projectconfig.resolve(
             request.granularity, ctx.config.granularity, GRANULARITY_FUNCTION
         )
+        if granularity == GRANULARITY_BODY:
+            # The adapters route 'body' to build_body_map before build is
+            # reached. Falling through to the function view here would answer
+            # a different question than the one asked, silently.
+            message = "granularity 'body' is composed by build_body_map, not by build"
+            raise OperationFailed(message)
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         # The stoplist is a property of the repository rather than of the
@@ -301,6 +337,7 @@ class MapService:
                 )
                 for path in chosen
             )
+            files = _with_churn(files, ctx)
             return MapResult(
                 files=files,
                 budget=0,
@@ -347,10 +384,13 @@ class MapService:
         )
         budget = request.budget if request.budget is not None else self._auto_budget(packing)
         included = self._pack(packing, budget)
-        grouped = _group(included, packing)
+        grouped = _with_churn(_group(included, packing), ctx)
 
         return MapResult(
             files=grouped,
+            expand_order=tuple(
+                symbol_stable_id(entry.symbol) for entry in packing.eligible[:included]
+            ),
             budget=budget,
             included=included,
             # What competed for the budget, not every symbol under a ranked
@@ -369,6 +409,10 @@ class MapService:
             rank_converged=ranking.converged,
             test_companions=companions,
         )
+
+    def _count_tokens(self, text: str) -> int:
+        """Count ``text`` in the same unit every budget here is spelled in."""
+        return self._counter.count(text)
 
     def render_text(self, result: MapResult) -> str:
         """Render a map result as code-shaped text.
@@ -723,8 +767,42 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     would take the text after its last dot -- a file extension -- and look
     that up as a symbol, which turns a mistyped path into a confident seed on
     an unrelated file.
+
+    An entry the five shapes cannot resolve gets one more chance: the
+    spellings a task actually hands a caller -- a traceback frame, a blob
+    URL, ``path:line``, an absolute path -- are stripped to the path inside
+    them and retried through the path shapes alone (see
+    :func:`_normalized_spellings`). Only on a miss, so an entry that resolves
+    as spelled today resolves identically; and never through the symbol
+    shapes, because a URL segment or an absolute-path component is a path
+    fragment, not a name -- ``https://example.com/quote`` naming the symbol
+    ``quote`` would be exactly the confident-seed-on-an-unrelated-file defect
+    the step-3 stop exists to prevent.
     """
-    normalized = PurePosixPath(entry).as_posix()
+    paths = _path_matches(PurePosixPath(entry).as_posix(), known)
+    if paths:
+        return paths
+
+    qualified = entry.rpartition("::")[2] or entry
+    if "/" not in qualified:
+        name = qualified.rpartition(".")[2] or qualified
+        defining = [
+            definition for definition in index.definitions.get(name, ()) if definition.path in known
+        ]
+        owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
+        resolved = sorted({definition.path for definition in (owned or defining)})
+        if resolved:
+            return resolved
+
+    for candidate in _normalized_spellings(entry):
+        paths = _path_matches(candidate, known)
+        if paths:
+            return paths
+    return []
+
+
+def _path_matches(normalized: str, known: set[str]) -> list[str]:
+    """Resolve one spelling through the three path shapes, most specific first."""
     if normalized in known:
         return [normalized]
 
@@ -732,20 +810,162 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     if suffix_matches:
         return suffix_matches
 
-    stem_matches = sorted(path for path in known if _matches_stem(path, normalized))
-    if stem_matches:
-        return stem_matches
+    return sorted(path for path in known if _matches_stem(path, normalized))
 
-    qualified = entry.rpartition("::")[2] or entry
-    if "/" in qualified:
-        return []
 
-    name = qualified.rpartition(".")[2] or qualified
-    defining = [
-        definition for definition in index.definitions.get(name, ()) if definition.path in known
-    ]
-    owned = [definition for definition in defining if qualname(definition.symbol) == qualified]
-    return sorted({definition.path for definition in (owned or defining)})
+# A traceback frame: optional indent, `File "<path>", line N`, the rest free.
+_TRACEBACK_FRAME = re.compile(r'\s*File "(?P<path>[^"]+)", line \d+')
+
+# A trailing location: `:12`, `:12-40`, or a blob URL's `#L12` fragment.
+_LOCATION_SUFFIX = re.compile(r"(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)$")
+
+# A URL scheme prefix, `https://` and friends.
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+# How many trailing path components a rescue walk will try. Real spellings
+# put the repository-relative path in the last few components; a bound keeps
+# a pathological entry from scanning the file set thousands of times.
+_MAX_TAIL_COMPONENTS = 32
+
+
+def _normalized_spellings(entry: str) -> list[str]:
+    """The path spellings hiding inside one unresolved focus entry.
+
+    Longest first, deduplicated, never the entry itself: the quoted path of a
+    traceback frame, the entry with its URL scheme, query string, fragment and
+    trailing ``:line`` stripped, and then every shorter ``/``-tail of that
+    path until one names a file -- which is the caller's loop, not this
+    function's. The tail walk is what rescues a blob URL or an absolute path
+    from another machine: the components that never existed in this
+    repository drop away one at a time until what is left is the
+    repository-relative spelling.
+    """
+    frame = _TRACEBACK_FRAME.match(entry)
+    if frame:
+        core = frame.group("path")
+    else:
+        core = _URL_SCHEME.sub("", entry)
+        if core != entry:
+            core = core.split("?", 1)[0].split("#", 1)[0]
+    core = _LOCATION_SUFFIX.sub("", core).strip()
+    # A Windows spelling: the tail walk splits on the repository's own
+    # separator, so a backslash path -- a Windows traceback, an absolute path
+    # from a Windows machine -- would otherwise walk nothing. Converted only
+    # here, on the miss path: a tracked filename containing a literal
+    # backslash resolves as spelled before the rescue ever runs.
+    if "\\" in core:
+        core = core.replace("\\", "/")
+
+    candidates: list[str] = []
+    if core and core != entry:
+        candidates.append(PurePosixPath(core).as_posix())
+
+    parts = [part for part in core.split("/") if part and part != "."]
+    parts = parts[-_MAX_TAIL_COMPONENTS:]
+    candidates.extend("/".join(parts[start:]) for start in range(1, len(parts)))
+
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate != entry))
+
+
+def _with_churn(files: tuple[render.MapFile, ...], ctx: RepoContext) -> tuple[render.MapFile, ...]:
+    """Stamp each ranked file with its windowed commit activity.
+
+    Data beside the rank, never folded into it: an unmeasured ranking change
+    is what the 0.7.1 rollback withdrew, so the model gets the fact and does
+    its own weighing. One bounded git call for the whole listing, after the
+    ranking chose it, so an unranked repository file costs nothing.
+
+    Every degradation leaves the files exactly as they came: no churn source
+    on the context (a root outside git, a hand-built pinned context), or a
+    lookup git could not answer. The header renders nothing for None, so a
+    map cannot claim quiet history it never measured. A future-dated commit
+    clamps to zero days rather than going negative.
+    """
+    if ctx.churn is None or not files:
+        return files
+    facts = ctx.churn.for_paths([entry.path for entry in files])
+    if facts is None:
+        return files
+    now = int(time.time())
+    decorated = []
+    for entry in files:
+        fact = facts.get(entry.path)
+        if fact is None:
+            decorated.append(entry)
+            continue
+        days = None
+        if fact.last_commit_ts is not None:
+            days = max((now - fact.last_commit_ts) // 86400, 0)
+        decorated.append(replace(entry, commits_window=fact.commits, last_commit_days=days))
+    return tuple(decorated)
+
+
+@dataclass(frozen=True)
+class BodyMapResult:
+    """A body-granularity map: ranked file rows plus the top symbols' bodies.
+
+    Composition, not a new view: the map half is the file-granularity shape
+    (every entry stripped, counts kept), and the bodies half is a real
+    :class:`ExpandResult` from the same machinery ``expand`` answers with --
+    seats, water-filling, truncation markers and all. One call replaces the
+    map-then-expand round trip, which is the cost 0.6.3 measured.
+    """
+
+    map: MapResult
+    bodies: ExpandResult
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form: the map document with a ``bodies`` key."""
+        return {**self.map.as_dict(), "bodies": self.bodies.as_dict()}
+
+
+def build_body_map(
+    ctx: RepoContext,
+    request: MapRequest,
+    maps: MapService,
+    symbols: SymbolService,
+) -> BodyMapResult:
+    """Build the map, then expand its top symbols, in one answer.
+
+    Selection is the function-granularity map's own: the ids expanded are the
+    first seats' worth of the entries that won the signature packing, in the
+    packing's score order -- so when the seats are fewer than the ids, the
+    bodies are the highest-scored symbols overall, which is what the tool
+    description advertises. The file rows re-sort by line for reading;
+    ``MapResult.expand_order`` is what preserves the score order to here. The
+    seat count is the budget divided by :data:`BODY_TOKENS_PER_SEAT`, capped
+    at expand's own ceiling, and the bodies then share the same budget the
+    map was asked for, water-filled.
+
+    The map half is handed back at the file-granularity shape: signature
+    rows beside whole bodies of the same symbols would say everything twice.
+    Its ``rendered`` count is restated for the stripped rows, so the number
+    describes the text this result actually renders.
+    """
+    base = maps.build(ctx, replace(request, granularity=GRANULARITY_FUNCTION))
+    ids = list(base.expand_order)
+    seats = min(max(1, base.budget // BODY_TOKENS_PER_SEAT), EXPAND_MAX_SEATS)
+    bodies = symbols.expand_symbols(
+        ctx, ids[:seats], limit=max(seats, 1), budget=base.budget, seats=seats
+    )
+    stripped = tuple(replace(map_file, entries=()) for map_file in base.files)
+    display = replace(
+        base, files=stripped, rendered=maps._count_tokens(render.render_map(stripped))
+    )
+    return BodyMapResult(map=display, bodies=bodies)
+
+
+def render_body_map(maps: MapService, result: BodyMapResult) -> str:
+    """Render the file rows, then the bodies, one text.
+
+    The unresolved rows ride in the body the way the MCP expand door carries
+    them: a tool call has one channel. They should be empty -- every id came
+    off the scan moments earlier -- so a row here is race evidence, not
+    routine.
+    """
+    header = maps.render_text(result.map)
+    body = "\n".join([render_expansion(result.bodies), *unresolved_lines(result.bodies)])
+    return f"{header}\n{body}"
 
 
 def _matches_stem(path: str, entry: str) -> bool:

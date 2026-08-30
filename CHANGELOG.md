@@ -1,5 +1,332 @@
 # Changelog
 
+## 0.7.1 -- 2026-08-26
+
+A cache that fits, walks that do not rebuild the tree, and two receipt
+defects. No ranking moved; what existing views gained is additive -- churn
+beside the map's rank, a completeness claim on an empty fan-in -- plus the
+new body granularity.
+
+Two evidence tiers and a denser fan-in were built for this release and are
+not in it. Eight benchmark arms could not attribute a localization difference
+to any of them, and the bench's own arm-to-arm spread proved wide enough that
+the difference may not exist; the work is withdrawn until there is a
+measurement that can resolve it.
+
+### Added
+
+- **`granularity: body` answers a map and its expansion in one call.** The
+  standard ladder is orient(map), read the ids, expand the winners -- two
+  round trips, and 0.6.3 measured what one extra round trip costs (+0.67
+  turns, +2.5k cache-creation tokens, +4.9s wall, worse on every metric).
+  The body granularity composes the two shipped views: the file-granularity
+  rows for orientation (rank, churn, counts, stable-id pattern) and a real
+  expansion of the top-scored symbols under them -- the ids the
+  function-granularity packing chose, in the packing's own score order, seats
+  = budget / 300 tokens (expand's shipped seats-to-budget ratio), capped at
+  expand's ceiling, water-filled to the same budget. Measured on this
+  repository at `--budget 3000 --max-files 5`: the two-call flow returns
+  19,369 characters over two calls, the body map 7,720 over one -- the
+  signature rows the bodies would duplicate are the difference. Nothing new
+  is invented: selection is the map's, bodies, seats, truncation markers and
+  unresolved rows are expand's, and the v1/v2 parity test pins both doors to
+  identical bytes. `MapService.build` refuses `body` directly -- the
+  adapters compose it -- and the config file's granularity choices do not
+  gain it, because a persistent default of the expensive view is a footgun.
+  The JSON form is the map document plus a `bodies` key carrying the
+  expansion document, both shapes unchanged.
+
+- **A ranked file's header carries its commit churn.** `(rank 0.0414,
+  32c/90d, last 3d)`: commits in the last 90 days and days since the newest,
+  rendered only when git answers for the tree. Fault-localization evidence
+  the model was previously spending its own turn on `git log` to get -- now
+  returned in the answer it already paid for, as data beside the rank and
+  never folded into it, because an unmeasured ranking change is what this
+  release's own rollback withdrew. One bounded `git log --since=90.days
+  --name-only` per map, scoped to the ranked files, NUL-prefixed timestamps
+  so an all-digit filename cannot be read as one, quoting off and
+  magic-proof pathspecs so a non-ASCII or ``:!``-prefixed filename is counted
+  rather than misread, `--relative` so a served
+  subdirectory's paths match. Absence and quiet cannot be confused: a bare
+  header means git could not answer, `0c/90d` with no `last` means a
+  measured quiet file. Measured cost on this repository: 178 characters, 44
+  estimator tokens, on a ten-file map. The churn source rides on
+  `RepoContext` beside `head_sha`, so the pinned golden contexts stay
+  hermetic by construction; the JSON form gains `commits_90d` and
+  `last_commit_days` (null when unknown), and the JSON goldens were
+  regenerated for exactly those two keys.
+
+  **A value every ranked file shares is suppressed.** Benched on
+  single-commit snapshot repositories, 100% of map responses decorated
+  every row with one identical pair -- wallpaper, not signal. The clause
+  exists to tell ranked files apart, so when two or more files all carry
+  the same (commits, last-days) pair the text drops it; a single-file map
+  keeps it, because there the absolute recency is the information; and the
+  JSON carries the fields in every case, because suppression is a token
+  decision, not a data one.
+
+- **An empty fan-in says what licenses the absence.** `no references to X`
+  over a complete scan now reads `no references to X outside its own
+  definition (complete scan: 197 files, 0 skipped)` -- one line, only on the
+  empty answer, and only when the scan skipped nothing. The claim is what
+  lets a caller act on absence without a verification search. The refs door
+  also gains the skipped-file warning `find` has carried since it existed:
+  without it, "no references" over a partial scan read as affirmative
+  absence, which is the defect the warning exists to prevent. When files
+  were skipped, the warning prints and the completeness claim does not; the
+  two states cannot be confused. The JSON form carries `scanned` and
+  `skipped` beside the groups, both additive.
+
+- **A focus seed wrapped in a task's decoration resolves to the file inside
+  it.** A traceback frame (`File "/app/src/billing/invoice.py", line 142`),
+  a GitHub blob URL, an absolute path from another machine, and a
+  `path:line` spelling all resolved to nothing, so the map silently ran
+  unfocused on exactly the entries a real task hands an agent. The rescue
+  strips the decoration and walks shorter `/`-tails of what remains until
+  one names a file in the tree. Two rules bound it: it runs only for an
+  entry the five existing shapes cannot resolve, so any seed that resolves
+  today resolves identically -- the committed goldens are byte-unchanged --
+  and a rescued spelling resolves through the path shapes alone, never the
+  symbol shapes, so `https://example.com/quote` cannot seed the symbol
+  `quote`. `focus_paths` is the one resolution home, so the diagram's focus
+  gains the same tolerance. The measured analog, on the loc-bench harness
+  side (2026-08-25): the same tail-walking rule would seed 12 of 50
+  instances that currently resolve nothing, 10 of them gold files.
+  Product-side, measured 2026-08-28 on the deterministic 50-instance
+  loc-bench tier, four pinned arms: with the harness forwarding the raw
+  captures it normally discards, this build against the pre-rescue build
+  moves MAP +0.075, nDCG@10 +0.080, recall@10 +0.070, acc_any@5 +0.080 --
+  7 instances better, 0 worse, and the arms are deterministic, so the
+  deltas are exact rather than sampled. The control pair (stock seeding,
+  both builds) is byte-identical on all 50 instances, which is what
+  attributes the whole effect to this change. Absolute scores under
+  forwarding are not comparable to earlier baselines: recovering gold
+  paths from issue text raises the ceiling for any build. Agentic
+  confirmation remains unmeasured.
+
+- **A `def` nested in a Python function body is now a symbol.** Fixtures,
+  closures and decorator wrappers are defined there, and a lookup that could
+  not see inside a function body missed them: measured on 2026-08-28, `find`
+  could not name a pytest fixture's nested helper that a competing indexer
+  returned first. Each nested `def` carries its enclosing chain as the parent
+  (`outer.inner`), stays a function rather than a method, and is found by
+  exact name ahead of substring matches. A class inside a function body still
+  ends the descent, so its methods are never attributed to the function's
+  chain, and the generic extractor for other languages is unchanged.
+  `SCHEMA_VERSION` moves to 15: the cached row shape is identical, and only
+  the version can say the symbol set grew.
+
+- **Every cached row is keyed on `files.id`, not on the path and digest it used
+  to repeat.** Measured with `dbstat` on the largest cache on one developer
+  machine -- 9,045 files, 2.75M rows -- 83.6% of the 643.9 MB file was the
+  `refs` table, and 387.6 MB of that one table was the same 90-byte path and
+  64-character digest written again on every row.
+
+  The three fact tables now share one shape: `(file_id, ordinal)`, `WITHOUT
+  ROWID`, no secondary index. The clustering key answers the only query these
+  tables ever get -- one file, in extraction order -- so `tags_path_sha256` and
+  `imports_path_sha256` are gone as well, another 42.6 MB of pure redundancy.
+  `refs` already had this shape; the change extends it to the two tables it had
+  never been applied to.
+
+  Rebuilt against that same repository the database is **615 MB to 120 MB**,
+  with identical row counts. Reads are 1.20x faster and writes 1.78x, and
+  363,267 rows were compared tuple for tuple between the two schemas with no
+  mismatch.
+
+  **The freshness guarantee is unchanged, and is now established once per file
+  rather than once per row.** It never depended on the digest living in the
+  row: `CachedSource._fresh_file_id` is the single gate, and it hands back an
+  id only when the content digest and the grammar version both match. A caller
+  that skips the check has no key to query with.
+
+  `files.id` is `AUTOINCREMENT` rather than a plain rowid. A plain rowid is
+  reused after a delete, so a newly indexed file could inherit the id of one
+  just removed -- and a fact row that survived that delete would then be served
+  for the wrong file, silently, past a freshness gate that reads the very
+  `files` row that made it look valid. The delete order is load-bearing for the
+  same reason and now carries its own test: children first, by the id their
+  parent owns.
+
+- **A schema migration gives the old schema's pages back to the filesystem.**
+  Dropping a table frees its pages inside the database and never shrinks the
+  file; SQLite keeps them on a freelist. Without a `VACUUM` the v13 migration
+  was correct and completely invisible -- 643.9 MB of file holding 125.2 MB of
+  data and 518.8 MB of freelist. It matters twice, because the size the
+  eviction ceiling reads is the size on disk: a database that never returns its
+  pages is counted at its high-water mark and evicted for space it is not
+  using.
+
+
+- **The cache root has a size ceiling, enforced after every index run.**
+  Nothing bounded it before. The cache root grows through the server's own
+  background indexing rather than through a command anybody types, so no
+  operator was ever in a position to notice: one developer machine held **490
+  databases and 5.67 GB**, the largest 644 MB and the median under a
+  megabyte. Each index run now releases cold repository caches until the root
+  fits under 5 GiB, least-recently-used first, and names them on the summary
+  line when it releases any. `AGENTLESS_MCP_MAX_CACHE_BYTES` sets another
+  ceiling, or `0` restores the unbounded behaviour.
+
+  **Nothing used in the last 24 hours is released, whatever that does to the
+  total.** A first version of this sweep had no such window and enforced the
+  ceiling against live databases. Measured: a 60-repository benchmark whose
+  caches total 4.66 GiB ran against a 4 GiB ceiling, drove the database count
+  from 239 to 102 mid-run, evicted 8 of the 60 repositories it was actively
+  using, and cost **37.0s to 49.0s per instance** against the same benchmark
+  on the unbounded build. Every eviction bought bytes at the price of a full
+  re-index of a repository about to be used again -- the exact work the cache
+  exists to remove.
+
+  The two populations are nothing alike, which is what makes a window work: on
+  the machine that motivated the ceiling, 430 of 490 databases had gone
+  untouched for over a day while the benchmark touched all 60 of its own
+  inside one hour. Replayed against that same cache, the new policy puts 0 of
+  the 60 benchmark repositories in its release plan. The ceiling is now a
+  bound on cold accumulation rather than a hard cap, and a root the live set
+  alone fills is reported rather than enforced.
+
+  A size cap rather than an age cap, decided on that distribution: nothing in
+  those 490 databases was older than fourteen days, so any defensible age rule
+  would have evicted nothing while the directory kept growing. The mass is in
+  a few dozen entries and the long tail is nearly free.
+
+  Eviction is a cost and never a wrong answer, which is what makes it safe to
+  run unattended. A reader that opens an evicted database finds nothing and
+  takes the degradation the package already takes for a missing index: it
+  parses on demand and renders the identical output. Two entries are never
+  evicted -- the database the calling run just built, and the most recently
+  used one -- because a repository larger than the whole ceiling would
+  otherwise delete its own index at the end of every run and rebuild it at the
+  start of the next. The write lock is taken per victim, so a concurrent index
+  run is never deleted out from underneath, and `write.lock` itself is left in
+  place, because unlinking it would let a second process lock a *different*
+  file of the same name.
+
+  Ordering is least-recently-*used*, not least-recently-written: a successful
+  cached open stamps the database. Without that, a repository read constantly
+  but not committed to in a month looks abandoned, and its index is the
+  expensive one to rebuild.
+
+### Changed
+
+- **`walk_nodes` traverses with a cursor instead of `node.children`.** It is
+  the hottest function in the package, and reading `.children` materializes a
+  Python `Node` object for every child of every node visited -- so the walk
+  allocated the whole tree twice and paid an FFI crossing per level. A
+  `TreeCursor` moves inside the C tree and crosses once per node.
+
+  Measured on this repository's own `core/extractor.py`, 28,546 nodes,
+  tree-sitter 0.26, one fresh parse per iteration: **4.23 ms to 1.80 ms**,
+  against a 7.52 ms native parse of the same file. Order and output are
+  unchanged, which they had to be: callers index into the list and read the
+  first match.
+
+  The condition matters and is easy to get wrong. The binding memoizes
+  `.children` per `Node` instance, so a benchmark that walks one retained root
+  object repeatedly measures the *second* walk, not the first, and reports
+  2.28 ms for the old code instead of 4.23. Indexing parses each file once and
+  walks it once, so the fresh-parse figure is the representative one. The
+  cursor walk is 1.74 ms either way -- it never touches `.children`, so it has
+  nothing to memoize.
+
+- **`_scope_tree` traverses with a cursor too, and reads `Node.id` once.** It
+  is the second `.children` walk over the same tree: `_python_roles` calls
+  `walk_nodes` for the flat list and then `_scope_tree` for the scope index,
+  so every Python file was fully materialized twice. The old stack carried
+  `(node, boundary)` pairs to push the enclosing scope downward; a cursor
+  reports a position rather than a payload per child, so the boundary in force
+  is now a stack parallel to the descent -- pushed on a move to a first child,
+  popped on a move back to a parent. Siblings share a parent and so share an
+  inherited boundary, which is why moving between them touches nothing.
+
+  Measured on the same 28,546-node file under the same fresh-parse condition:
+  **8.81 ms to 4.17 ms**, part of which is reading `node.id` once per node
+  instead of four times -- it is a binding property, not an attribute, so each
+  read was a crossing for a value that cannot change. Output is identical,
+  checked field by field against the old implementation over all 152 Python
+  files in this repository, over 300 random subnode roots, and over the
+  empty-boundary case.
+
+  End to end, four builds run against one fixed corpus, 7 runs each, minimum:
+
+  | build | `map --no-cache` | `refs --no-cache` |
+  | --- | --- | --- |
+  | `d381eb9`, before both changes | 1642 ms | 2546 ms |
+  | `d381eb9` + the release's other work, no cursor walks | 1653 ms | 2531 ms |
+  | `walk_nodes` on a cursor | 1473 ms | 2364 ms |
+  | `_scope_tree` on a cursor as well | **1356 ms** | **2227 ms** |
+
+  17% and 13%. The second row is a control: the release's other work is
+  performance-neutral, so the whole delta is these two functions. A warm cache
+  is unchanged at 357 ms and 1247 ms, which is the expected result -- these
+  changes are on the parse path, and a fully fresh index parses nothing.
+
+  Fusing the two walks into one pass was measured and rejected: a bare cursor
+  traversal of that file costs 1.24 ms, which is the ceiling on what fusing
+  could save, and it would couple `walk_nodes` -- a general utility with about
+  twenty callers -- to one language's scope rules.
+
+### Fixed
+
+- **`build_file_scopes` hands `resolve_import_target` the path index it was
+  built for.** The resolver accepts a `PathIndex` so that a caller resolving
+  a repository's worth of imports pays the tail-table walk once, and the one
+  caller that does exactly that passed a plain `frozenset` instead -- the
+  no-index scan path, once per imported name. Measured on this repository
+  (197 files, 1,484 imports): `build_resolver` 0.933s to 0.024s, and a warm
+  `find_referencing_symbols` call 2.27s to 1.39s. Every one of the 2,609
+  import resolutions in this tree answers identically through both paths,
+  which the shared tie-break already promised; nothing about what is
+  resolved, verified, or re-resolved per call changes.
+
+- **A symbol lookup that matches nothing names the next step.** `find`
+  answered a miss with the bare words `no matching symbols` -- the one dead
+  end in a message catalog whose every other refusal says what to do next.
+  The usual cause is that the name is a parameter, a local variable, an
+  attribute or a string literal rather than a declared symbol, and the plain
+  miss now says so and points at grep, which is the tool that finds those.
+  A miss the kind filter caused gets a different answer, because the service
+  can tell the two apart from the scan it already holds: it names the kinds
+  the name did match -- `'build_index' does match symbols of other kinds:
+  function` -- so the retry needs no guessing. The kinds cost one pass over
+  the in-memory scan, only on that miss. The JSON form carries `kind` and
+  `other_kinds` beside `query`, both additive; no existing key changed. The
+  expansion path keeps its own wording, which already names every id it
+  could not answer.
+
+- **The last two `#` framing lines are `//` lines.** 0.7.0 moved the receipt
+  marker to `//` because a column-0 `#` renders as a Markdown H1 in most
+  clients, and missed two instances: the map's unresolved-seeds note
+  (`# note:`) and the skipped-files warning (`# warning:`). Both are tool
+  framing at column 0 and rendered heading-sized. They now open with `//`,
+  matching every other framing line. A test renders every catalog string with
+  its call-site arguments and asserts no line parses as a CommonMark ATX
+  heading, so the next framing string cannot reintroduce the defect. A client
+  matching `^# note:` or `^# warning:` must match the `//` spellings; nothing
+  else about either message changed. The map's rationale rows keep `#`: they
+  quote source comments and their indent makes Markdown read them as code.
+
+- **The cache schema version moved to 14, because the stored role vocabulary
+  shrank** (the nested-`def` change above then moved it to 15). A build that shipped briefly on this branch wrote
+  `self_attribute` into `refs.role`. This build has no such member, so every
+  cached file written by that build raised on read and fell back to parsing
+  the file -- correct, and one warning per file on every call until something
+  re-indexed it. The row shape is unchanged, which is the trap: only the
+  version can say a vocabulary moved. Caches written by that build are now
+  discarded and rebuilt once.
+
+- **A directory analysed inside a larger repository now says whose state it
+  was served.** Git answers for the repository that encloses the root it is
+  given, so a vendored tree or a snapshot never given a git of its own gets
+  that repository's HEAD and dirty count presented as its own, with nothing in
+  the receipt to say so. Found on a benchmark snapshot with no `.git`, whose
+  every answer carried the enclosing project's HEAD and a dirty count of 36
+  files that were not in it. The count and the SHAs are unchanged -- the tree
+  OID keys the cache -- but the paths are withheld and a note now names the
+  repository whose state was reported. Naming a file that is not in the
+  analysed tree is worse than naming none.
+
 ## 0.7.0 -- 2026-08-25
 
 Responses are text and nothing else, and a focused map spends its budget on

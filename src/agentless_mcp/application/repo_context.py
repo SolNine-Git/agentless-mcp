@@ -89,6 +89,12 @@ class RepoContext:
     note: str = ""
     symbols: FileSource | None = None
     config: ProjectConfig = projectconfig.EMPTY
+    # The lazy churn lookup the map header spends, set only when git answered
+    # for the root. None for a root outside git and for any hand-built
+    # context -- the characterization goldens pin their git state through
+    # exactly that door, so churn enters through the same boundary as
+    # ``head_sha`` and a pinned context stays hermetic by construction.
+    churn: gitinfo.ChurnSource | None = None
     cache_receipt: str = field(init=False, default=CACHE_NONE)
 
     def __post_init__(self) -> None:
@@ -127,6 +133,7 @@ def resolve_repo(raw_root: str | Path, allowlist: Sequence[Path] | None) -> Repo
         dirty_count=snapshot.dirty_count,
         note=snapshot.note,
         config=projectconfig.load(resolved),
+        churn=gitinfo.ChurnSource(resolved) if snapshot.head_sha else None,
     )
 
 

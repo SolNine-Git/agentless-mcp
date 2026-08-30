@@ -117,6 +117,13 @@ comparison acquired a moving side without anyone choosing it.
 - A parse-failure row, meaning an instance with empty regions, is purged
   per-instance and resumed. It is not a CLI error and it is not a score.
 
+Semantic regressions can survive every integrity check above. The
+[`declaration-role regression record`](declaration-role-regression.md)
+documents the 0.7.1 cross-language extraction change, its rollback, the fresh
+three-arm validation, and the gates a future attempt must pass. Its central
+lesson is that a more precise syntax label is still a product-output change:
+reference edges feed ranking and rendered agent context.
+
 ## What each tier can answer
 
 Three instruments measure three different things, and the failure mode is
@@ -172,9 +179,16 @@ every headline number: about a third of instances have a gold region covering
 `weighted_core_coverage` is not a proxy for agent behaviour in either mode --
 measured at 0.020 interleaved and -0.002 in default order.
 
-**The open gap.** The agentic tier has no noise floor recorded here. Until a
-same-arm replicate is run and written into this document, no agentic delta is
-interpretable -- including a favourable one.
+**The remaining noise-floor gap.** The 2026-08-28 declaration-role
+investigation recorded a provisional same-commit bound: fresh 0.7.0 moved
+-0.026 on hit-file rate, +0.028 on noise-file rate, -0.037 on hit-region rate,
+and -0.027 on WCC relative to the prior run, with every paired interval crossing
+zero. The prior arm used six workers and the fresh validation used one worker
+per parallel arm, so this is operational variance, not a clean
+same-configuration replicate. Until that exact replicate exists, an agentic
+delta smaller than this movement is not interpretable -- including a
+favourable one. See
+[`declaration-role-regression.md`](declaration-role-regression.md).
 
 ## The arms
 

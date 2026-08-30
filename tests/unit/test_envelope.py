@@ -410,6 +410,44 @@ class TestJson:
         assert document["truncated"]["shown"] == len(document["files"])
         assert counter.count(rendered) <= 1_000
 
+    def test_a_dotted_items_key_trims_the_nested_list_and_nothing_else(
+        self, counter, pinned_context
+    ):
+        """The body map's bulk is under ``bodies``, not in the file rows.
+
+        Trimming ``files`` there would delete the orientation while keeping
+        the overrun, so a dotted key reaches the list that actually holds
+        the weight. The rows beside it must come through intact.
+        """
+        bodies = [{"id": f"sym{number}", "text": "x" * 200} for number in range(500)]
+        rendered = envelope.wrap_json(
+            pinned_context(ROOT),
+            {"files": [{"path": "core.py"}], "bodies": {"symbols": bodies}},
+            counter=counter,
+            max_tokens=1_000,
+            items_key="bodies.symbols",
+        )
+        document = json.loads(rendered)
+
+        assert document["files"] == [{"path": "core.py"}]
+        assert 0 < len(document["bodies"]["symbols"]) < len(bodies)
+        assert document["truncated"]["total"] == 500
+        assert counter.count(rendered) <= 1_000
+
+    def test_a_dotted_key_naming_no_list_is_the_untrimmable_answer(self, counter, pinned_context):
+        """A step that is missing or not a mapping degrades exactly like a bare miss."""
+        rendered = envelope.wrap_json(
+            pinned_context(ROOT),
+            {"files": [{"path": "core.py", "text": "x" * 40_000}]},
+            counter=counter,
+            max_tokens=1_000,
+            items_key="bodies.symbols",
+        )
+        document = json.loads(rendered)
+
+        assert len(document["files"]) == 1
+        assert "token_ceiling" in document["truncated"]
+
     def test_a_single_oversized_item_is_returned_rather_than_an_empty_list(
         self, counter, pinned_context
     ):

@@ -60,7 +60,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     },
     {
       "path": "pricing.go",
@@ -110,7 +112,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     },
     {
       "path": "inventory.go",
@@ -166,7 +170,9 @@
         }
       ],
       "omitted": 0,
-      "reached": true
+      "reached": true,
+      "commits_90d": null,
+      "last_commit_days": null
     }
   ],
   "skipped": [],

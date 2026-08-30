@@ -28,23 +28,19 @@ from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, guide, selfrestart
 
-# The environment every spawned console script gets. Built here rather than
-# inherited: the three kill switches decide whether a child starts a background
-# grammar warm, a background index or a self-restart monitor, and a suite that
-# is green because of what the developer's shell does not export is not
-# evidence. ``conftest`` assigns the same three for the in-process half; naming
-# them at the spawn as well is what makes the guarantee local to the harness
-# that depends on it.
-CHILD_ENV = {
-    **os.environ,
-    grammars.ENV_NO_AUTO_WARM: "1",
-    cache.ENV_NO_AUTO_INDEX: "1",
-    selfrestart.ENV_NO_AUTO_RESTART: "1",
-}
-
 
 def console_script(*arguments, cwd=None, stdin=None, timeout=120):
     """Run the installed console script with a pinned environment."""
+    # Snapshot at invocation time, after pytest's autouse fixtures have moved
+    # XDG_CACHE_HOME into the current test's temporary directory. A module-level
+    # snapshot leaked the developer cache into every subprocess and made these
+    # tests pass or fail according to ambient machine state.
+    child_env = {
+        **os.environ,
+        grammars.ENV_NO_AUTO_WARM: "1",
+        cache.ENV_NO_AUTO_INDEX: "1",
+        selfrestart.ENV_NO_AUTO_RESTART: "1",
+    }
     return subprocess.run(
         [sys.executable, "-m", "agentless_mcp", *arguments],
         capture_output=True,
@@ -52,7 +48,7 @@ def console_script(*arguments, cwd=None, stdin=None, timeout=120):
         timeout=timeout,
         cwd=cwd,
         input=stdin,
-        env=CHILD_ENV,
+        env=child_env,
         check=False,
     )
 
@@ -147,6 +143,22 @@ class TestInProcess:
         document = json.loads(capsys.readouterr().out)
         assert document["receipt"]["repo"] == str(repo_path.resolve())
         assert document["files"]
+
+    def test_a_body_map_carries_file_rows_and_whole_bodies(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--granularity", "body") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "(rank " in out
+        # A verbatim body line behind the gutter, which the signature map
+        # never renders: bodies came back in the same call.
+        assert "| " in out
+        assert "return" in out
+
+    def test_a_body_map_json_carries_the_bodies_key(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "map", "--granularity", "body", "--json") == EXIT_OK
+        document = json.loads(capsys.readouterr().out)
+        assert document["files"]
+        assert document["files"][0]["symbols"] == []
+        assert document["bodies"]["symbols"]
 
     def test_a_bad_budget_is_a_usage_error(self, services, repo_path, capsys):
         assert invoke(services, repo_path, "map", "--budget", "lots") == EXIT_USAGE
@@ -266,7 +278,7 @@ class TestInProcess:
 
         assert invoke(services, repo_path, "map") == EXIT_OK
         out = capsys.readouterr().out
-        assert "# warning: 1 files were skipped" in out
+        assert "// warning: 1 files were skipped" in out
         assert "huge.py" in out
         assert "exceeds the per-file cap" in out
 
@@ -276,7 +288,7 @@ class TestInProcess:
         assert invoke(services, repo_path, "find-symbol", "at_end") == EXIT_DOMAIN
         out = capsys.readouterr().out
         assert "no matching symbols" in out
-        assert "# warning: 1 files were skipped" in out
+        assert "// warning: 1 files were skipped" in out
         assert "huge.py" in out
 
     def test_find_symbol_json_carries_the_skipped_files(self, services, repo_path, capsys):
