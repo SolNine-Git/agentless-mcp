@@ -834,7 +834,9 @@ def _focus_resolution(
     files (every view's ranking) and the caller that wants the named symbol
     back (the body map's first seat). The definitions half is empty whenever
     the entry resolved as a path, because a path names a file, not a symbol
-    in it.
+    in it. A bare name no qualname owns returns every same-named definition,
+    so such a focus can seat homonyms across files before any centrality
+    seat -- deliberate: the caller named it, and the seat count caps it.
     """
     paths = _path_matches(PurePosixPath(entry).as_posix(), known)
     if paths:
