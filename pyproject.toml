@@ -1,6 +1,6 @@
 [project]
 name = "agentless-mcp"
-version = "0.7.1"
+version = "0.7.2"
 description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
 readme = "README.md"
 authors = [

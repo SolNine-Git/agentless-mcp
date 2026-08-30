@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.2 -- 2026-08-29
+
+One defect: the body map's seats ignored the focus.
+
+### Fixed
+
+- **A symbol the focus named takes the first seat of a body map.** (#45)
+  Seat order was `expand_order` alone -- inbound-name centrality, which
+  never sees the focus -- so a body map focused on a late-file symbol spent
+  every seat on the file's most self-referential boilerplate and still
+  needed the second round trip the view exists to remove. Reproduced on
+  this repository: `orient(map, focus=["render_ref_groups"],
+  granularity=body, limit=1)` seated six consecutive `as_dict` methods and
+  never the named symbol. Now the definitions a symbol-shaped focus entry
+  matches ride from `focus_paths`'s own resolution through
+  `Seeding.definitions` to `MapResult.focus_order` -- filtered to the
+  ranked files, ordered by the file ranking then line, deduplicated -- and
+  `build_body_map` seats them before anything from `expand_order`.
+  Independent of the packing on purpose: at a tight budget the packing
+  cuts the named symbol from `expand_order` entirely, and a
+  promotion-within would silently degrade to the old behavior exactly
+  there (measured on this repository: at `--budget 400` the packing keeps
+  20 of 144 symbols and the focus symbol is not among them). A focus that
+  named only files seats nothing, so an unfocused or path-focused body map
+  is byte-identical to 0.7.1; the map ranking, the signature packing, and
+  the function and file granularities are untouched, and the goldens
+  prove it by not changing. `focus_order`, like `expand_order`, is not in
+  the JSON form: it restates ids the composition alone consumes.
+
 ## 0.7.1 -- 2026-08-26
 
 A cache that fits, walks that do not rebuild the tree, and two receipt
