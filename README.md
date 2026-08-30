@@ -278,29 +278,14 @@ well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
 
 ### Eager tool schemas
 
-Approval is not the only way a session loses the server. Claude
-Code can also defer an MCP server's tools: they arrive as bare names, and the
-schema is fetched before the tool can be called. A deferred tool is not a
-callable tool, and `Grep` loads from the first turn.
-
-These five tools therefore publish an `alwaysLoad` hint, which asks a
-deferring client to hold all five schemas from the first turn. The reason is
-what the hint buys at the moment the gate in the next section fires: the
-denial redirects an agent that already knows these tools exist and what each
-one answers, rather than one meeting them for the first time because it was
-blocked. Loading a schema on demand makes the tool callable; loading it up
-front makes the tool *considered*.
-
-The obvious objection is that preloading five schemas costs context in every
-session. Measured on the benchmark below, it does not: the deferred arm spent
-*more* than the eager arm on cache-creation tokens, cache-read tokens, turns,
-output tokens and wall time, though no interval excluded zero. Deferral does
-not keep the schemas out of context; it makes the agent spend a round trip
-fetching them first.
-
-The gate remains the load-bearing part either way. Ordering is what earned the
-measured gains; the hint only ensures the agent understands its options before
-the ordering is enforced.
+Claude Code can defer an MCP server's tools: they arrive as bare names, and
+the schema is fetched before the tool can be called. These five tools publish
+an `alwaysLoad` hint that asks a deferring client to hold all five schemas
+from the first turn, so the gate below redirects an agent that already knows
+what each tool answers. Measured, the hint costs nothing: the deferred and
+eager arms were indistinguishable on every localization metric, and deferral
+spent a round trip fetching the schemas anyway. The gate is the load-bearing
+part either way.
 
 ### Structural-first gate (recommended hooks)
 
@@ -322,48 +307,24 @@ The constraint is an order, not a ban: once the gate opens, broad search keeps
 the one job a symbol map cannot do, which is string literals, error messages,
 config keys, and fixtures.
 
-**Search routed through the shell is covered too.** A harness that instructs
-the model to search with `grep`, `rg` or `find` inside `Bash` produces payloads
-whose tool name is always `Bash`, so a matcher keyed on `Grep|Glob` never sees
-them and the deny half goes dormant. The check hook therefore reads `Bash`
-commands rather than trusting the tool name, and denies only what parses
-cleanly as a tree search: `rg` with no path operand or a directory operand,
-`grep` with a recursive flag, and `find` with `-name`/`-path`. Everything else
-passes, including the common case of a pipe filter over another command's
-output (`git log | grep fix`) and a search scoped to one existing file.
+**Search routed through the shell is covered too.** The check hook reads
+`Bash` commands rather than trusting the tool name, and denies only what
+parses cleanly as a tree search: `rg` with no path operand or a directory
+operand, `grep` with a recursive flag, and `find` with `-name`/`-path`.
+Everything else passes, including a pipe filter over another command's output
+(`git log | grep fix`) and a search scoped to one existing file. Shell text
+cannot be parsed in general, so this half fails open: `git grep`, `xargs`,
+subshells, and variable command names all pass unexamined, and this
+heuristic has not been benchmarked the way the tool-name half has.
 
-Shell text cannot be parsed in general, so this half of the gate is a weaker
-guard than the tool-name half and is deliberately biased to fail open. `git
-grep`, a search assembled by `xargs` or a subshell, and any command whose name
-arrives through a variable all pass unexamined. The benchmark backing the
-"recommended install" claim measured the tool-name matchers only; the shell
-heuristic has a different error profile and has not been measured.
-
-This is the recommended install rather than an optional extra. The server
-assumes the ordering mechanism lives client-side: the schemas it asks a client
-to preload say what the tools do, and the gate is what decides when they are
-reached for.
-
-The measured reason is a paired comparison on SWE-Explore-Bench, run against
-agentless-mcp 0.6.1 with n=60 issue-localization tasks on Sonnet. An arm
-restricted to the agentless tools plus `Read` beat an arm with every tool
-available on all six metrics: precision +0.062, recall +0.041, F1 +0.040,
-hit-region rate +0.052, WCC +0.043, and recall@100 +0.011, with every 95%
-confidence interval excluding 0. Prompt steering alone did not produce that
-ordering discipline in the free-choice arm. Read the numbers as evidence for
-the ordering, not as a prediction for your repository: the measured arm removed
-the native search tools, and this gate only defers them.
-
-Both schema policies were then measured as their own arms, on the same 60
-tasks with the same gate and prompt, differing only in whether the client
-preloaded the schemas. They are indistinguishable on every metric except
-`recall@100`, where deferral led by 0.017 -- one significant result among
-roughly 22 tests, and the tools-only arm holds the highest `recall@100` of any
-arm while being eager-loaded, so the exception does not track schema policy.
-Eager loading is what ships; the gate is what earned the gains in either case.
-
-How that comparison is run, which guardrails it carries and why, and what the
-gated arm itself measured are in
+This is the recommended install rather than an optional extra, and the reason
+is measured: on SWE-Explore-Bench (n=60 issue-localization tasks, Sonnet,
+agentless-mcp 0.6.1), an arm restricted to the agentless tools plus `Read`
+beat a free-choice arm on all six localization metrics, every 95% confidence
+interval excluding 0. Read that as evidence for the ordering, not as a
+prediction for your repository: the measured arm removed the native search
+tools, and this gate only defers them. The full comparison, its guardrails,
+and the schema-policy arms are in
 [`docs/analysis/benchmark-methodology.md`](docs/analysis/benchmark-methodology.md).
 
 #### Claude Code
@@ -437,24 +398,16 @@ rm -rf /tmp/agentless_gate
 The first call prints the denial text and reports `exit=2`. The third call
 prints nothing and reports `exit=0`. Inside a session, a denied `Grep` shows
 as a blocked tool call, and the model receives the same denial text as an
-instruction to call `orient` first. The unlock marker is
-`/tmp/agentless_gate/<sha256(session_id)>.json`; its receipt names the tool and
-operation that unlocked broad search without placing the untrusted session id
-in a filesystem path.
+instruction to call `orient` first. The unlock marker lives under
+`/tmp/agentless_gate/`.
 
-**Both hooks fail open.** Malformed stdin, a payload with no session id, an
-unwritable `/tmp`, or any other internal error exits 0 and allows the call. A
-gate that breaks an unrelated session is worse than a gate that misses one
-call. The failure mode to expect is a `Grep` that runs early, never a session
-that cannot search.
-
-Set `AGENTLESS_GATE_LOG` to a file path to append one JSONL line per decision.
-The variable is optional and unset by default. Use it to confirm that the gate
-fired rather than assuming it did.
-
-Remove the gate by deleting the `PreToolUse` and `PostToolUse` blocks from
-`settings.json` and starting a new session. Delete `/tmp/agentless_gate` and
-the copied scripts afterwards. Nothing else on disk changes.
+**Both hooks fail open.** Malformed stdin, a missing session id, an
+unwritable `/tmp`, or any internal error exits 0 and allows the call: the
+failure mode to expect is a `Grep` that runs early, never a session that
+cannot search. Set `AGENTLESS_GATE_LOG` to a file path to append one JSONL
+line per decision and confirm the gate fired. Remove the gate by deleting
+the two hook blocks from `settings.json`, the copied scripts, and
+`/tmp/agentless_gate`; nothing else on disk changes.
 
 #### Codex CLI
 
@@ -505,99 +458,36 @@ Three things differ, and all three are configuration.
    then they are skipped silently -- no error, no log line, and the gate simply
    does not fire.
 
-Codex searches by running `rg`, `grep` and `find` through its shell tool
-rather than through a `Grep` tool, so on that client the shell half of the
-gate does the work and the tool-name half rarely fires.
-
-**Eager schema loading does not port.** The `anthropic/alwaysLoad` hint this
-server sets is Anthropic-specific and does not appear in Codex; Codex's own
-`tool_search_always_defer_mcp_tools` is fixed on and cannot be overridden. So
-Codex runs deferred schemas plus the gate. That is the 0.6.2 configuration,
-which measured indistinguishable from eager on every metric, so the cost is
-a round trip rather than a capability.
+Codex searches through its shell tool rather than a `Grep` tool, so there the
+shell half of the gate does the work. The `anthropic/alwaysLoad` hint does not
+port -- Codex always defers MCP schemas -- so Codex runs deferred schemas plus
+the gate, which measured indistinguishable from eager on every metric.
 
 ### Navigation craft for the agent
 
-The gate decides *when* the structural pass happens. It does not teach the
-pass. This section is the routing knowledge behind it. Read it while
-configuring an agent, or paste it into `CLAUDE.md` or a dispatch prompt.
+The gate decides *when* the structural pass happens; the routing knowledge
+behind it ships with the package. `agentless-mcp guide` prints the full agent
+usage guide -- the canonical recipe, the escalation funnel, and per-tool
+usage -- and `--section NAME` prints one section for pasting into `CLAUDE.md`
+or a dispatch prompt. The rules that matter most:
 
-**Seed the map with what the task already names.** `orient(operation="map",
-focus=[...])` ranks every file by personalized PageRank over the reference
-graph, and the seeds take the whole teleport mass, so the ranking flows
-outward from what you name. A seed that resolved leads the ranked list, and
-the files that reference it rank above the utilities it imports. A seed
-resolves as a repository-relative path (`src/billing/invoice.py`), a path
-suffix (`invoice.py`), a bare module stem (`invoice`), a qualified symbol
-name (`Invoice.total`), or a bare symbol name (`quote`). A spelling the task
-wraps in decoration also resolves: a traceback frame (`File
-"/app/src/billing/invoice.py", line 142`), a blob URL, an absolute path from
-another machine, or `invoice.py:142` is stripped to the path inside it --
-only when the raw spelling matches nothing, and never through the symbol
-shapes, so `https://example.com/quote` cannot seed the symbol `quote`. Lift
-seeds from the
-task: the file in the traceback, the class in the ticket, the function in
-the error message. Each seed carries one vote, split across the files it
-matched, so one exact path outweighs a name that matched twenty files. A
-seed that matches nothing does not fail the call and does not disappear. It
-comes back in `unresolved_seeds`, and as a `// note:` line above the map.
-Read that note: the ranking under it is not focused the way you asked. The
-usual cause is that the name is a parameter, an attribute or a DSL keyword
-rather than a declared symbol, and `symbols(operation="find")` says which.
-
-**Escalate one rung at a time, and stop at the rung that answers.** Each rung
-costs more than the one above it.
-
-1. `orient(operation="map")` answers *where this lives*. It returns ten ranked
-   files by default however large the repository is: it localizes, it does not
-   enumerate. Below the ranked files it may list the tests that exercise them,
-   which the ranking itself does not surface, because a test file is held out
-   of the ranking as a pure source of rank.
-2. `symbols(operation="overview", paths=[...])` answers *what this file
-   declares*. Signatures with the bodies elided, plus the stable-id pattern for
-   that file. It is cheap, and it replaces reading the file.
-3. `symbols(operation="expand", stable_ids=[...])` answers *what this code
-   does*. Line-numbered bodies for the few symbols that matter. Batch the short
-   ones; expand a long one on its own, because a batch over the output budget
-   cuts the longest bodies to their leading lines and marks the cut.
-4. `symbols(operation="explain", target=...)` is the one-call card for a single
-   suspect symbol you have not seen: definition site, signature, linked
-   rationale comments, fan-out and fan-in by evidence tier, and the file's
-   imports. It replaces a `find` followed by a reference listing.
-5. `find_referencing_symbols` answers *who calls this, and what breaks if it
-   changes*. Pay for it when the answer depends on the callers -- a blast
-   radius, an error path, a signature change -- not as a routine confirmation
-   of something a map already showed. It is the expensive tool here, and
-   fan-in across a large repository can take minutes.
-6. `read(operation="slice")` is the last rung. Use explicit line ranges when no
-   symbol boundary fits the region you need.
-
-Weigh the reference rows rather than trusting them equally. `same-file` and
-`resolved-via-import` are resolved bindings. `unique` means only that the
-repository spells that name once, which is retrieval evidence and not a link
-between the two files. `name-only-ambiguous` is a candidate to inspect.
-
-**Run `Grep` after the structural pass, for what a symbol map cannot hold.**
-These tools rank symbols, so a file that matches the task only as text never
-enters a map, whatever you seed it with: string literals, error messages,
-config keys, fixtures, templates, and the wiring in YAML or JSON. The two
-passes are not alternatives. The structural pass finds the code and gives you
-the exact names to search for; the text pass then finds everything about those
-names that is not code. Going in the other order costs the map's ranking,
-which is the part a text search cannot reproduce.
-
-**Read an empty or thin map as a report, not as an absence.** When nothing
-ranks, the map says which of three things happened: nothing in the repository
-parsed into symbols, the file cap kept none of the ranked files, or the token
-budget left room for none of the candidate symbols. Only the first is a
-statement about the repository. When a view stops short, call `capabilities`:
-it reports the server version, the loaded grammars and their warm state, the
-cache generation, the configured and client-advertised roots, and the caps in
-force, and it names the exact index command when the tag cache is absent. That
-is what separates "this repository was never parsed" -- an unsupported
-language, a cold cache, or a root that is not the one you meant -- from "this
-repository genuinely declares nothing here". An agent that skips the check
-reads the second when the first is true, and stops looking.
+- **Seed the map with what the task already names**: paths, module stems,
+  symbol names, or a decorated spelling like a traceback frame. One exact
+  path outweighs a name that matched twenty files. A seed that matches
+  nothing comes back in `unresolved_seeds`; reseed rather than trusting an
+  unfocused ranking.
+- **Escalate one rung at a time and stop at the rung that answers**:
+  `orient(map)` to locate, `symbols(overview)` for what a file declares,
+  `symbols(expand)` for the few bodies that matter, `symbols(explain)` for
+  one suspect symbol's wiring, `find_referencing_symbols` only when callers
+  decide the answer (it is the expensive one), `read(slice)` last.
+- **Weigh reference tiers**: `same-file` and `resolved-via-import` are
+  bindings; `unique` and `name-only-ambiguous` are candidates to inspect.
+- **Run `Grep` after the structural pass** for what a symbol map cannot
+  hold: string literals, error messages, config keys, fixtures.
+- **Read an empty or thin map as a report, not an absence**, and call
+  `capabilities` to separate a repository that never parsed from one that
+  declares nothing there.
 
 ## Supported languages
 
