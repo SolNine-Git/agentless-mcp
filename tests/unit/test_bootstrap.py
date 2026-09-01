@@ -8,6 +8,8 @@ entry points reach one selection point rather than two.
 """
 
 import socket
+import subprocess
+import sys
 
 import pytest
 
@@ -103,12 +105,92 @@ class TestFailureReportingIsTheAdaptersOwn:
             message = "no module named fastmcp"
             raise ImportError(message)
 
+        def not_installed(name):
+            raise bootstrap.importlib.metadata.PackageNotFoundError(name)
+
         monkeypatch.setattr(bootstrap.importlib, "import_module", absent)
+        monkeypatch.setattr(bootstrap.importlib.metadata, "version", not_installed)
 
         assert bootstrap.mcp_main([]) == EXIT_USAGE
         assert capsys.readouterr().err.startswith(
             "agentless-mcp: the MCP server needs the 'mcp' extra"
         )
+
+    def test_an_incompatible_mcp_extra_is_not_blamed_on_absence(self, monkeypatch, capsys):
+        """Issue #48: the wrong-major failure used to prescribe a useless reinstall.
+
+        With the extra installed, an upstream major makes the server module's
+        imports fail, and "install the extra" sends the operator to a command
+        that reproduces the broken resolution. The branch is decided by
+        whether the distributions are installed, not by the ImportError's
+        shape, because a removed submodule in a new major raises the same
+        ModuleNotFoundError a missing package does.
+        """
+
+        def wrong_major(name):
+            message = "cannot import name 'McpError' from 'mcp.shared.exceptions'"
+            raise ImportError(message)
+
+        monkeypatch.setattr(bootstrap.importlib, "import_module", wrong_major)
+        monkeypatch.setattr(bootstrap.importlib.metadata, "version", lambda name: "9.9.9")
+        monkeypatch.setattr(
+            bootstrap.importlib.metadata,
+            "requires",
+            lambda name: ["fastmcp>=3.4,<4 ; extra == 'mcp'", "tomli>=2 ; python_version < '3.11'"],
+        )
+
+        assert bootstrap.mcp_main([]) == EXIT_USAGE
+        err = capsys.readouterr().err
+        assert "installed but not API-compatible" in err
+        assert "fastmcp 9.9.9" in err
+        assert "needs fastmcp>=3.4,<4" in err
+        assert "tomli" not in err
+        assert "which is not installed" not in err
+
+
+class TestTheEntryPointAnswersWithoutTheExtra:
+    """Issue #47: a bare install's ``agentless-mcp-server`` must describe itself.
+
+    The argv is parsed before the gated import, from a module that does not
+    need the extra, so ``--help`` and ``--version`` -- the invocations a user
+    makes to find out whether the thing works -- answer with exit 0 instead
+    of exit 2 on the missing extra.
+    """
+
+    @staticmethod
+    def _must_not_import(name):
+        pytest.fail(f"the gated module {name!r} was imported before the argv was answered")
+
+    def test_help_answers_before_the_gated_import(self, monkeypatch, capsys):
+        monkeypatch.setattr(bootstrap.importlib, "import_module", self._must_not_import)
+
+        with pytest.raises(SystemExit) as exit_info:
+            bootstrap.mcp_main(["--help"])
+
+        assert exit_info.value.code == 0
+        assert "usage: agentless-mcp-server" in capsys.readouterr().out
+
+    def test_version_answers_before_the_gated_import(self, monkeypatch, capsys):
+        monkeypatch.setattr(bootstrap.importlib, "import_module", self._must_not_import)
+
+        with pytest.raises(SystemExit) as exit_info:
+            bootstrap.mcp_main(["--version"])
+
+        assert exit_info.value.code == 0
+        assert capsys.readouterr().out.startswith("agentless-mcp-server ")
+
+    def test_cliargs_never_pulls_in_the_gated_modules(self):
+        """In a subprocess: this suite's own imports would contaminate sys.modules."""
+        code = (
+            "import sys\n"
+            "import agentless_mcp.adapters.mcp.cliargs\n"
+            "gated = [m for m in ('fastmcp', 'mcp', 'pydantic') if m in sys.modules]\n"
+            "sys.exit(f'cliargs imported {gated}' if gated else 0)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
 
 class TestTheEncodingLoadIsInsideTheBoundary:

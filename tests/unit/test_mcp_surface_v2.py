@@ -24,15 +24,17 @@ from agentless_mcp.adapters.cli.formatting import EXIT_OK
 from agentless_mcp.adapters.cli.main import CliServices
 from agentless_mcp.adapters.cli.main import run as cli_run
 from agentless_mcp.adapters.mcp import server as server_module
-from agentless_mcp.adapters.mcp.server import (
+from agentless_mcp.adapters.mcp.cliargs import (
     SURFACE_BOTH,
     SURFACE_V1,
     SURFACE_V2,
     SURFACES,
+    parse_args,
+)
+from agentless_mcp.adapters.mcp.server import (
     ServerServices,
     ToolHandlers,
     build_server,
-    parse_args,
 )
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.lint_service import LintService
