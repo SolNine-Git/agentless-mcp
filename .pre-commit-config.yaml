@@ -62,8 +62,13 @@ repos:
           - tomli>=2
           # 2026-08-18, Phase 1b: adapters/mcp imports fastmcp, so the hook's
           # isolated env needs it or mypy reports a missing stub for a module
-          # that is present in the project env.
-          - fastmcp>=2.14
+          # that is present in the project env. Bounded to the same majors as
+          # the pyproject mcp extra, and kept in step with it: this env
+          # resolves fresh from PyPI, so an open bound let mcp 2 / fastmcp 4
+          # land here and fail mypy on imports the locked project env serves
+          # fine (#48). mcp is named because server.py imports it directly.
+          - fastmcp>=3.4,<4
+          - mcp>=1.29,<2
         args: [--config-file=pyproject.toml]
         files: ^src/
 
