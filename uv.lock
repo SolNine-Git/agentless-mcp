@@ -14,7 +14,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentless-mcp"
-version = "0.7.2"
+version = "0.7.3"
 source = { editable = "." }
 dependencies = [
     { name = "tomli", marker = "python_full_version < '3.11'" },
@@ -48,8 +48,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.14" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.29" },
+    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.4,<4" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.29,<2" },
     { name = "pydantic", marker = "extra == 'mcp'", specifier = ">=2" },
     { name = "tiktoken", marker = "extra == 'tokens'", specifier = ">=0.9" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },

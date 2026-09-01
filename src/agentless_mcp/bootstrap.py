@@ -31,6 +31,7 @@ server flag would have to be wired into.
 """
 
 import importlib
+import importlib.metadata
 import socket
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -38,6 +39,7 @@ from typing import cast
 
 from agentless_mcp.adapters.cli.formatting import EXIT_USAGE, fail
 from agentless_mcp.adapters.cli.main import CliServices, build_parser, run
+from agentless_mcp.adapters.mcp.cliargs import DISTRIBUTION_NAME, parse_args
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
@@ -212,16 +214,69 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
     return run(argv, services)
 
 
+def _mcp_extra_requirements() -> list[str]:
+    """The requirement strings pyproject declares for the ``mcp`` extra.
+
+    Read from the installed metadata rather than restated here, so the
+    diagnosis below can never disagree with pyproject about which versions
+    this build imports from. The marker spelling varies by build backend
+    (single or double quotes), so both are matched.
+    """
+    try:
+        requirements = importlib.metadata.requires(DISTRIBUTION_NAME) or []
+    except importlib.metadata.PackageNotFoundError:
+        return []
+    markers = ("extra == 'mcp'", 'extra == "mcp"')
+    return [
+        requirement.split(";")[0].strip()
+        for requirement in requirements
+        if any(marker in requirement for marker in markers)
+    ]
+
+
+def _mcp_extra_diagnosis(exc: ImportError) -> str:
+    """Say why the server module did not import, without lying about the fix.
+
+    Two distinct failures used to share one message. When the extra is absent,
+    installing it is the fix. When the extra is present but resolved to a
+    major the code does not import from -- an upstream major landing on a
+    fresh install, or an independent upgrade of fastmcp -- that same message
+    sent the operator to a reinstall that reproduced the broken resolution.
+    The two are told apart by the invariant itself: whether the distributions
+    the extra declares are installed, not by the shape of the ImportError,
+    because a removed submodule in a new major raises the same
+    ModuleNotFoundError a missing package does.
+    """
+    installed: list[str] = []
+    for name in ("fastmcp", "mcp", "pydantic"):
+        try:
+            installed.append(f"{name} {importlib.metadata.version(name)}")
+        except importlib.metadata.PackageNotFoundError:
+            return (
+                f"the MCP server needs the 'mcp' extra, which is not installed ({exc}). "
+                "Install it with: uv sync --extra mcp, or pip install 'agentless-mcp[mcp]'."
+            )
+    declared = ", ".join(_mcp_extra_requirements()) or "the versions pyproject.toml declares"
+    return (
+        f"the MCP server's dependencies are installed but not API-compatible ({exc}). "
+        f"Found {', '.join(installed)}; this build needs {declared}. Reinstall the "
+        "extra so the resolver applies those bounds: uv tool install --force "
+        "'agentless-mcp[mcp]', or pip install --force-reinstall 'agentless-mcp[mcp]'."
+    )
+
+
 def mcp_main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the ``agentless-mcp-server`` stdio MCP script."""
+    # Parsed before the gated import, from the module that stays importable
+    # without the extra, so --help, --version and usage errors answer on a
+    # bare install instead of exiting 2 on the missing extra. `serve` parses
+    # the same argv again with the same parser -- the pattern `counter_choice`
+    # documents -- so the two reads cannot disagree about what is admissible.
+    parse_args(argv)
     try:
         module = importlib.import_module(SERVER_MODULE)
     except ImportError as exc:
-        return fail(
-            f"the MCP server needs the 'mcp' extra, which is not installed ({exc}). "
-            "Install it with: uv sync --extra mcp, or pip install 'agentless-mcp[mcp]'.",
-            EXIT_USAGE,
-        )
+        return fail(_mcp_extra_diagnosis(exc), EXIT_USAGE)
 
     extractor = TreeSitterExtractor()
     # The server declares no `--token-counter`, so nobody chose -- which is

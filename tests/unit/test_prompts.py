@@ -28,8 +28,8 @@ from typing import Any
 import pytest
 from fastmcp import Client
 
+from agentless_mcp.adapters.mcp.cliargs import SURFACE_BOTH
 from agentless_mcp.adapters.mcp.server import (
-    SURFACE_BOTH,
     ServerServices,
     ToolHandlers,
     build_server,

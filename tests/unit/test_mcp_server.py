@@ -22,10 +22,10 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from pydantic import TypeAdapter, ValidationError
 
+from agentless_mcp.adapters.mcp import cliargs
 from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.annotations import read_only
-from agentless_mcp.adapters.mcp.server import (
-    _OPERATIONS,
+from agentless_mcp.adapters.mcp.cliargs import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DISTRIBUTION_NAME,
@@ -35,12 +35,15 @@ from agentless_mcp.adapters.mcp.server import (
     SURFACES,
     TRANSPORT_HTTP,
     TRANSPORT_STDIO,
-    ServerServices,
-    ToolHandlers,
-    effective_client_roots,
     http_binding,
     parse_args,
     server_version,
+)
+from agentless_mcp.adapters.mcp.server import (
+    _OPERATIONS,
+    ServerServices,
+    ToolHandlers,
+    effective_client_roots,
 )
 from agentless_mcp.adapters.mcp.server import build_server as build_surface_server
 from agentless_mcp.application.graph_service import GraphService
@@ -1232,7 +1235,7 @@ class TestArgvDiagnostics:
         assert "unsplit shell string" not in err
 
     def test_an_omitted_argv_echoes_what_argparse_actually_read(self, capsys, monkeypatch):
-        monkeypatch.setattr(server_module.sys, "argv", ["agentless-mcp-server", "--nope"])
+        monkeypatch.setattr(cliargs.sys, "argv", ["agentless-mcp-server", "--nope"])
         with pytest.raises(SystemExit):
             parse_args(None)
         assert "received argv: ['--nope']" in capsys.readouterr().err
@@ -1469,8 +1472,8 @@ class TestHandshakeVersion:
         def absent(name):
             raise importlib.metadata.PackageNotFoundError(name)
 
-        monkeypatch.setattr(server_module, "distribution_version", absent)
-        assert server_version() == server_module.UNKNOWN_VERSION
+        monkeypatch.setattr(cliargs, "distribution_version", absent)
+        assert server_version() == cliargs.UNKNOWN_VERSION
         assert DISTRIBUTION_NAME in capsys.readouterr().err
 
 

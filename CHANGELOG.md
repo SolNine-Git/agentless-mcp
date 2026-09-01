@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.3 -- 2026-09-01
+
+Two install defects, both found in the field on 0.7.2. Nothing about the
+tool surface, the ranking, or any rendered view changed.
+
+### Fixed
+
+- **The `mcp` extra is bounded to the majors the code imports from.** (#48)
+  The extra declared `fastmcp>=2.14` and `mcp>=1.29` with no upper bound,
+  while `server.py` imports `ToolResult` from `fastmcp.tools` (a 3.x
+  location) and `McpError` from `mcp.shared.exceptions` (a 1.x location).
+  `uv.lock` pinned a working pair, but `uv tool install` and
+  `pip install agentless-mcp[mcp]` resolve fresh from PyPI and never read
+  the lock, so the day fastmcp 4.0 and mcp 2.1 landed, every fresh install
+  crashed at startup while CI stayed green. The specifiers are now
+  `fastmcp>=3.4,<4` and `mcp>=1.29,<2` -- the old 2.14 floor also admitted
+  versions the `ToolResult` import never worked on. A new `fresh-install`
+  CI job resolves from the pyproject specifiers without the lock and
+  imports the server module, so the next upstream major fails there
+  instead of in the field.
+- **The missing-extra message no longer prescribes a reinstall that cannot
+  help.** (#48) One message covered two failures. When the extra is absent,
+  "install it" is the fix; when the extra is installed but resolved to the
+  wrong major, that same instruction reproduced the broken resolution. The
+  two are now told apart by whether the extra's distributions are installed
+  -- not by the ImportError's shape, because a removed submodule in a new
+  major raises the same ModuleNotFoundError a missing package does -- and
+  the incompatible branch reports the versions found against the ranges
+  the installed metadata declares.
+- **A bare install's `agentless-mcp-server` describes itself.** (#47)
+  `uv tool install agentless-mcp` puts the server entry point on PATH
+  unconditionally, and every invocation -- `--help` included, the one a
+  user runs to find out whether the thing works -- exited 2 on the missing
+  extra before argparse ever saw the argv. The parser and its helpers now
+  live in `adapters/mcp/cliargs.py`, importable without the extra, and
+  `bootstrap.mcp_main` parses before the gated import: `--help`, the new
+  `--version`, and usage errors answer on a bare install, and only a real
+  invocation reports the extra. The README now leads with the `[mcp]`
+  install and presents the bare install as the CLI-only variant. The
+  `fresh-install` CI job drives the bare entry point as its gate.
+
 ## 0.7.2 -- 2026-08-29
 
 One defect: the body map's seats ignored the focus.

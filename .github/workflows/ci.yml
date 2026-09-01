@@ -171,3 +171,48 @@ jobs:
           uv run --no-sync pytest tests/unit/test_token_counter.py -q -rs \
             | tee counter-output.txt
           grep -E '^8 passed, 6 skipped' counter-output.txt
+
+  # `uv.lock` pins a working fastmcp/mcp pair, but `uv tool install` and
+  # `pip install agentless-mcp[mcp]` resolve fresh from PyPI and never read
+  # the lock, so an upstream major (mcp 2.0, fastmcp 4.0) broke every fresh
+  # install while every lock-synced job above stayed green (#48). This job is
+  # the only one that resolves from the pyproject specifiers alone; the next
+  # upstream major fails here instead of in the field.
+  #
+  # The bare-install steps gate #47: the entry point a plain
+  # `uv tool install agentless-mcp` puts on PATH must answer --help and
+  # --version without the mcp extra, and a real invocation must exit 2
+  # naming the extra rather than reading as a server that will not start.
+  fresh-install:
+    name: install from pyproject without the lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: The mcp extra resolves from pyproject and the server imports
+        run: |
+          uv venv with-extra
+          uv pip install --python with-extra ".[mcp]"
+          with-extra/bin/python -c "import agentless_mcp.adapters.mcp.server"
+          with-extra/bin/agentless-mcp-server --help
+
+      - name: A bare install's entry point describes itself and names the extra
+        shell: bash
+        run: |
+          uv venv bare
+          uv pip install --python bare .
+          bare/bin/agentless-mcp-server --help
+          bare/bin/agentless-mcp-server --version
+          set +e
+          output=$(bare/bin/agentless-mcp-server 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" -eq 2
+          grep -q "the 'mcp' extra, which is not installed" <<<"$output"

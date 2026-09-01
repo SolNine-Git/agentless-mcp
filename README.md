@@ -8,17 +8,22 @@ MCP server.
 ## Install
 
 ```sh
-uv tool install agentless-mcp
+uv tool install "agentless-mcp[mcp]"
 ```
 
 That installs two console scripts. `agentless-mcp` is the CLI, for a human or
 for an agent driving it over a shell. `agentless-mcp-server` is the MCP
 server, which an MCP client launches for you rather than something you run in
-a terminal; it needs the `mcp` extra, so install that when you want the server:
+a terminal. The server needs the `mcp` extra, which is why the install above
+leads with it; install without the extra when you want the CLI alone:
 
 ```sh
-uv tool install "agentless-mcp[mcp]"
+uv tool install agentless-mcp
 ```
+
+Without the extra, `agentless-mcp-server --help` and `--version` still
+answer, and any real invocation exits with the install command for the
+extra.
 
 Both entry points warm cold grammars in the background at startup (one
 digest-verified bundle fetch at most; `--no-auto-warm` or

@@ -1,6 +1,6 @@
 [project]
 name = "agentless-mcp"
-version = "0.7.2"
+version = "0.7.3"
 description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
 readme = "README.md"
 authors = [
@@ -47,12 +47,18 @@ agentless-mcp-server = "agentless_mcp.bootstrap:mcp_main"
 # FastMCP sits behind an extra so CLI-only users do not pay for the server
 # stack. Install with: uv sync --extra mcp
 mcp = [
-    "fastmcp>=2.14",
+    # Bounded to the majors the code imports from, on both sides: server.py
+    # imports `ToolResult` from `fastmcp.tools` (a 3.x location) and `McpError`
+    # from `mcp.shared.exceptions` (a 1.x location), so an open upper bound let
+    # fastmcp 4 / mcp 2 break every fresh install while CI stayed green on the
+    # lock (#48). The fresh-install CI job is the gate: it resolves from these
+    # specifiers without the lock and imports the server module.
+    "fastmcp>=3.4,<4",
     # Declared because we import it, not because fastmcp happens to pull it
     # in: adapters/mcp/server.py catches `mcp.shared.exceptions.McpError` to
     # tell "this client does not implement roots" from a real failure. A
     # transitive dependency we import is a contract we do not control.
-    "mcp>=1.29",
+    "mcp>=1.29,<2",
     # Same rule: adapters/mcp/server.py annotates the shared repo_root
     # parameter with `pydantic.Field(description=...)` so the description
     # reaches the published schema.
