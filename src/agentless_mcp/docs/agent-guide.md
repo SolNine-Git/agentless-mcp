@@ -116,21 +116,26 @@ you can address one of several same-named symbols at all.
 
 ## The two surfaces
 
-The CLI has one subcommand per question. The MCP server publishes **five
-tools**. That number is a decision rather than an accident. Selection
+The CLI has one subcommand per question. The MCP server publishes **six
+tools**, five of them loaded eagerly. That number is a decision rather
+than an accident. Selection
 accuracy falls as a tool list grows. The questions therefore fold behind an
 `operation` parameter by intent (orientation, symbols, contents) instead of
 being eleven entries to choose between. The folding is adapter-level only:
 same services, same answers, same wording. `find_referencing_symbols` stays
 its own tool deliberately, so the expensive fan-in call keeps its own
-decision point and cost warning. The escalation chain is `orient` to locate,
-then `symbols` for declarations and bodies, then `read` for exact lines.
+decision point and cost warning. `history` is its own tool for the same
+reason and is the one whose schema a deferring client fetches on demand:
+it answers why rather than where. The escalation chain is `orient` to
+locate, then `symbols` for declarations and bodies, then `read` for exact
+lines.
 
 | MCP tool | Operations | CLI | Answers |
 |---|---|---|---|
 | `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | `map` / `communities` / `cycles` / `diagram` / `path` / `health` | where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | `find-symbol` / `skeleton` / `expand` / `explain` / `resolve-locs` | what is this symbol, what does it declare, what does it do |
 | `find_referencing_symbols` | *(none)* | `refs` | who calls it (blast radius) |
+| `history` | *(none)* | `history` | why does this code exist (the commits that touched a span) |
 | `read` | `slice`, `dir` | `slice` / `tree` | these exact lines, what exists |
 | `capabilities` | *(none)* | `capabilities` | what is loaded, what is capped |
 | *(no MCP tool)* | | `html` | searchable human graph export to stdout or XDG cache |
@@ -218,22 +223,24 @@ the last copy it managed to load.
 ### Claude Code specifics
 
 Two client-side settings decide whether agents actually reach these tools.
-First, allowlist the five read tools in `~/.claude/settings.json` permissions
+First, allowlist the six read tools in `~/.claude/settings.json` permissions
 (`mcp__agentless__orient`, `mcp__agentless__symbols`,
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
-`mcp__agentless__capabilities`) so calls run without permission prompts.
+`mcp__agentless__capabilities`, `mcp__agentless__history`) so calls run
+without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
 may defer tool schemas, in a main session and in a subagent alike, and a
-deferred tool is not callable until its schema loads. These five ask to be
-loaded eagerly for that reason, so an agent knows what they answer before it
-picks its first move. Grep is loaded from the first turn either way, so the
+deferred tool is not callable until its schema loads. The five localizing
+tools ask to be loaded eagerly for that reason, so an agent knows what they
+answer before it picks its first move; `history` does not, so it costs no
+context until the question is why. Grep is loaded from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
 the structural-first gate in `contrib/hooks/`: it denies broad Grep, Glob and
 tree-searching Bash commands until `orient(map|path)`,
 `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session.
-Exact-file Grep remains available, while diagnostics, `read(dir)` and the shape
-listings do not unlock broad discovery. The equivalent v1 tools also unlock the temporary
+Exact-file Grep remains available, while diagnostics, `read(dir)`, `history`
+and the shape listings do not unlock broad discovery. The equivalent v1 tools also unlock the temporary
 compatibility surface. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
@@ -589,6 +596,50 @@ path segment, or a `conftest` module). But they rank below every production
 candidate whatever their score, grouped under a `defined in tests` heading.
 The question is whether a *production* utility already exists. Every row and
 every caller carries `file:line`.
+
+### `history` (`history`) -- why does this code exist
+
+```
+agentless-mcp history py:src/app/svc.py::Invoice.total --limit 10
+```
+
+The command lists the commits that changed the symbol's lines, newest first,
+each with its full message body. `target` is a stable id from `map`,
+`skeleton`, `find-symbol`, `explain` or `resolve-locs`. A bare name is
+refused, because history is span-scoped and a name can resolve to several
+spans.
+
+```
+py:src/app/svc.py::Invoice.total  src/app/svc.py:120-158  (2 commits, newest first)
+  a1b2c3d4  2026-08-23T16:43:57-04:00  Round the total at the sink
+    The renderer owns the line grammar, so rounding moved out of the
+    callers that each did it differently.
+  9f8e7d6c  2026-08-19T22:34:50-04:00  Add Invoice.total
+... 2 newest commits shown; older commits touch this span (raise limit for the rest)
+```
+
+Read it when the question is why, not where. A repository whose comment
+discipline keeps why-comments to a line or two puts the reasoning in commit
+bodies, and this is the call that reads it back. Cite the sha in an answer
+rather than paraphrasing the body into a new comment.
+
+The span is the symbol's current lines, traced with `git log -L` against
+HEAD. An uncommitted edit to the file can shift those lines, so the answer
+carries a `note:` line whenever the working copy differs from HEAD. A file
+that is untracked, ignored or only staged is a refusal (`not in HEAD`), as is
+a span past the end of HEAD's copy, a directory without git, and a span no
+commit touches. None of these is ever an empty answer.
+
+`--limit` caps the commits (default 10); the answer says when older commits
+exist. `--budget` caps the tokens spent on bodies (default 12000), shared
+across the commits the way `expand` shares its budget across cards: bodies
+that fit an equal share stay whole, the rest are cut alike, and each cut is
+marked with the `git show` command that prints the whole message.
+
+The tool is its own MCP tool rather than a `symbols` operation, and it does
+not ask a deferring client to load its schema eagerly: it answers why, not
+where, so it costs no context until an agent asks. It does not unlock the
+structural-first gate for the same reason.
 
 ### `explain` (`symbols` operation `explain`) -- one symbol, in context
 

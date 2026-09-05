@@ -55,6 +55,7 @@ agentless-mcp slice src/app.py --lines 40:80
 agentless-mcp find-symbol App
 agentless-mcp refs App.run
 agentless-mcp explain App.run
+agentless-mcp history py:src/app.py::App.run
 ```
 
 These commands provide repository maps, directory trees, symbol overviews,
@@ -213,7 +214,7 @@ Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects
 exactly one; otherwise the refusal lists the roots to choose from.
 
-The MCP tools are five intent-shaped surfaces; three of them fold their
+The MCP tools are six intent-shaped surfaces; three of them fold their
 questions behind an `operation` parameter:
 
 | Tool | Operations | Purpose |
@@ -221,6 +222,7 @@ questions behind an `operation` parameter:
 | `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | Where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
 | `find_referencing_symbols` | | Find references and callers (blast radius) |
+| `history` | | Why does this code exist: the commits that touched a symbol's lines, bodies included |
 | `read` | `slice`, `dir` | Read selected source lines; list the repository tree |
 | `capabilities` | | Report loaded grammars and cache state |
 
@@ -230,6 +232,7 @@ One worked call per surface:
 orient(operation="map", focus=["src/app.py", "quote"])
 symbols(operation="expand", stable_ids=["py:src/app.py::App.run"])
 find_referencing_symbols(target="App.run")
+history(target="py:src/app.py::App.run")
 read(operation="slice", path="src/app.py", lines=[[40, 80]])
 capabilities()
 ```
@@ -262,7 +265,8 @@ the repository's `.claude/settings.json` for one:
       "mcp__agentless__symbols",
       "mcp__agentless__find_referencing_symbols",
       "mcp__agentless__read",
-      "mcp__agentless__capabilities"
+      "mcp__agentless__capabilities",
+      "mcp__agentless__history"
     ]
   }
 }
@@ -284,13 +288,15 @@ well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
 ### Eager tool schemas
 
 Claude Code can defer an MCP server's tools: they arrive as bare names, and
-the schema is fetched before the tool can be called. These five tools publish
-an `alwaysLoad` hint that asks a deferring client to hold all five schemas
-from the first turn, so the gate below redirects an agent that already knows
-what each tool answers. Measured, the hint costs nothing: the deferred and
-eager arms were indistinguishable on every localization metric, and deferral
-spent a round trip fetching the schemas anyway. The gate is the load-bearing
-part either way.
+the schema is fetched before the tool can be called. The five localizing
+tools publish an `alwaysLoad` hint that asks a deferring client to hold their
+schemas from the first turn, so the gate below redirects an agent that already
+knows what each tool answers. Measured, the hint costs nothing: the deferred
+and eager arms were indistinguishable on every localization metric, and
+deferral spent a round trip fetching the schemas anyway. The gate is the
+load-bearing part either way. `history` publishes no hint by design: it
+answers why rather than where, so a deferring client fetches its schema only
+when an agent asks.
 
 ### Structural-first gate (recommended hooks)
 
@@ -300,7 +306,7 @@ and any `Bash` command that parses as a tree search, until the session has
 made a localizing Agentless call.
 `orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
 `find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
-`symbols(locate)`, and the shape listings `orient(communities|cycles|diagram|health)`
+`symbols(locate)`, `history`, and the shape listings `orient(communities|cycles|diagram|health)`
 do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
 naming a file and a line range is the localization. A directory listing is how
 you look for a file, not evidence that you found one. The equivalent v1 tools unlock servers running the temporary
