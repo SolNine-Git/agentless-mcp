@@ -94,9 +94,8 @@ CONFIG_WARNINGS_SUPPRESSED = (
     "{shown} of {total} shown; the rest are suppressed and can be anywhere in the list"
 )
 
-# No block but the answer may take more than this share of the ceiling. The
-# tool-authored receipt and the config warnings after it are each clamped
-# to it, so a header can never outgrow the answer it introduces.
+# No block but the answer may take more than this share of the ceiling: the
+# receipt and the config warnings are each clamped to it.
 _BLOCK_TOKEN_SHARE = 8
 
 # The keys the envelope authors. A payload carrying one of them is a service

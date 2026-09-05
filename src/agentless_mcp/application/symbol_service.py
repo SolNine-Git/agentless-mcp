@@ -97,12 +97,8 @@ TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs"
 # A structural-health view needs both names excluded, so it asks for both.
 FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures"})
 
-# What the rendered cards of one expansion may cost. Under the envelope's
-# 16k-token ceiling by a margin that covers the receipt and the
-# few percent JSON escaping adds to the same bodies -- because the service
-# budget only does its job if it binds *before* the ceiling does. A batch
-# trimmed by the ceiling loses whole symbols; a batch trimmed here loses the
-# tails of the longest ones.
+# What one expansion's cards may cost: under the 16k ceiling by the receipt
+# and JSON-escaping margin, so this budget binds before the ceiling drops symbols.
 EXPAND_BUDGET_TOKENS = 12_000
 
 # How many cards one call may seat at all, however small each one is cut. A

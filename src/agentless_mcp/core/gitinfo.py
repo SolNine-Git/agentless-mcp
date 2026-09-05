@@ -387,7 +387,6 @@ def _bounded_outcome(
 def _drain(
     stdout: IO[bytes], stderr: IO[bytes], *, timeout: float, max_output_bytes: int
 ) -> tuple[bytes, bytes, bool, bool]:
-    """Read both pipes until EOF, the deadline, or the stdout cap; report which ended it."""
     deadline = time.monotonic() + timeout
     buffers: dict[int, bytearray] = {stdout.fileno(): bytearray(), stderr.fileno(): bytearray()}
     truncated = timed_out = False

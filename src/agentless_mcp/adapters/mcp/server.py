@@ -940,12 +940,8 @@ def _resolved_client_root(uri: object) -> Path:
         raise ValueError(message)
 
     decoded = unquote(parsed.path)
-    # Checked on the DECODED form, before the path is built: `%0A` survives
-    # percent-decoding as a real newline, and a root carrying one reaches the
-    # receipt, which is the tool's own trusted framing. Refused
-    # rather than escaped -- at an entry point a control character in a
-    # directory name is invalid input, and rejecting says so; escaping here
-    # would double up against the escape the receipt already applies.
+    # `%0A` decodes to a real newline that would reach the receipt, the tool's
+    # own trusted framing; an entry point refuses rather than escapes twice.
     if textsafe.has_line_break(decoded):
         message = "path contains a control character"
         raise ValueError(message)
