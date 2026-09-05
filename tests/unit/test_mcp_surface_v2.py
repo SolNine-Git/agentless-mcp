@@ -2,7 +2,7 @@
 
 Two guarantees pinned here. *Parity*: every v2 operation is adapter-layer
 routing into the same handler its v1 counterpart tool calls, so its answer --
-receipt, banner and content -- is byte-identical to the v1 tool's on the same
+receipt and content -- is byte-identical to the v1 tool's on the same
 repository. *Rejection*: the v2 tools publish ``operation`` as a plain string,
 no wire enum, so the server's own message is what reaches the agent, and for
 every rejection class -- unknown operation, a parameter foreign to the

@@ -773,7 +773,7 @@ class ToolHandlers:
         return self._wrap(ctx, render_capability_report(report))
 
     def _wrap(self, ctx: RepoContext, body: str) -> str:
-        """Put the receipt and banner around one tool's answer."""
+        """Put the receipt around one tool's answer."""
         return envelope.wrap(ctx, body, counter=self._services.counter)
 
 
@@ -917,7 +917,7 @@ def _resolved_client_root(uri: object) -> Path:
     decoded = unquote(parsed.path)
     # Checked on the DECODED form, before the path is built: `%0A` survives
     # percent-decoding as a real newline, and a root carrying one reaches the
-    # receipt, which is the tool's own framing above the trust banner. Refused
+    # receipt, which is the tool's own trusted framing. Refused
     # rather than escaped -- at an entry point a control character in a
     # directory name is invalid input, and rejecting says so; escaping here
     # would double up against the escape the receipt already applies.

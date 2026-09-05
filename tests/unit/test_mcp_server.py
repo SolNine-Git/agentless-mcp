@@ -393,8 +393,8 @@ class TestAdvertisedRoots:
             "file://relative/../path",
             "file:///tmp/%00",
             # A percent-encoded newline decodes to a real one, and a root
-            # carrying it reaches the receipt -- the tool's own framing above
-            # the trust banner. Refused here rather than escaped downstream:
+            # carrying it reaches the receipt -- the tool's own trusted
+            # framing. Refused here rather than escaped downstream:
             # at an entry point a control character in a directory name is
             # invalid input, and one owner per invariant means the sink does
             # not also have to defend against a value we could have refused.
@@ -529,7 +529,7 @@ class TestRoundTrip:
         result = self.call(server, "repo_map", {"repo_root": str(one_repo)})
         text = result.content[0].text
 
-        assert text.startswith("// agentless-mcp receipt\n")
+        assert text.startswith("// agentless-mcp receipt (repository data below)\n")
         # The id is spelled once per file as a pattern, and each row carries
         # the qualified name it addresses. Both halves are pinned: a row that
         # lost its pattern line is an id an agent cannot rebuild.

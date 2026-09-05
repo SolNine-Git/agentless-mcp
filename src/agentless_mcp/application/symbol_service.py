@@ -98,7 +98,7 @@ TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs"
 FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures"})
 
 # What the rendered cards of one expansion may cost. Under the envelope's
-# 16k-token ceiling by a margin that covers the receipt, the banner, and the
+# 16k-token ceiling by a margin that covers the receipt and the
 # few percent JSON escaping adds to the same bodies -- because the service
 # budget only does its job if it binds *before* the ceiling does. A batch
 # trimmed by the ceiling loses whole symbols; a batch trimmed here loses the

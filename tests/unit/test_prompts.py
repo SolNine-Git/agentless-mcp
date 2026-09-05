@@ -61,7 +61,6 @@ ENVELOPE_ARGUMENTS = {
     "receipt_config": {"path": "/srv/app/.agentless-mcp.json"},
     "receipt_config_warning": {"warning": "map_budget is not an integer"},
     "receipt_summary": {"summary": "12 files, 3 skipped"},
-    "banner": {},
     "notice": {},
     "service_truncation": {"shown": 12, "total": 40, "unit": "symbols"},
     "ceiling_truncation": {"max_tokens": 16_000, "dropped": 7, "total": 900},
@@ -151,12 +150,11 @@ class TestLoadedData:
     def test_the_records_are_frozen(self):
         record: Any = ENVELOPE
         with pytest.raises(AttributeError):
-            record.banner = "x"
+            record.notice = "x"
 
     def test_the_envelope_carries_the_documented_wording(self):
-        assert ENVELOPE.receipt_header == "// agentless-mcp receipt"
-        assert ENVELOPE.banner.startswith("// NOTE:")
-        assert ENVELOPE.notice in ENVELOPE.banner
+        assert ENVELOPE.receipt_header == "// agentless-mcp receipt (repository data below)"
+        assert ENVELOPE.notice in ENVELOPE.receipt_header
 
 
 class TestTemplates:
@@ -234,23 +232,23 @@ class TestEagerValidation:
 
     def test_a_missing_key_is_refused_by_name(self):
         document = json.loads(ENVELOPE_TEXT)
-        del document["banner"]
-        with pytest.raises(PromptDataError, match=r"missing \['banner'\]"):
+        del document["notice"]
+        with pytest.raises(PromptDataError, match=r"missing \['notice'\]"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
             )
 
     def test_a_key_no_code_consumes_is_refused_by_name(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["bannner"] = "typo"
-        with pytest.raises(PromptDataError, match=r"unknown \['bannner'\]"):
+        document["notiice"] = "typo"
+        with pytest.raises(PromptDataError, match=r"unknown \['notiice'\]"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
             )
 
     def test_a_blank_value_is_refused(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["banner"] = "   "
+        document["notice"] = "   "
         with pytest.raises(PromptDataError, match="must be a non-empty string"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
@@ -258,7 +256,7 @@ class TestEagerValidation:
 
     def test_a_non_string_value_is_refused(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["banner"] = 3
+        document["notice"] = 3
         with pytest.raises(PromptDataError, match="must be a non-empty string"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS

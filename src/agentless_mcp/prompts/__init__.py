@@ -20,8 +20,9 @@ Four files, grouped by consumer:
     see.
 
 ``envelope.json``
-    The receipt lines, the untrusted-content banner and the truncation
-    markers that ``application.envelope`` wraps every answer in.
+    The receipt lines, whose header carries the untrusted-content marker,
+    and the truncation markers that ``application.envelope`` wraps every
+    answer in.
 
 ``messages.json``
     The refusals and the guidance notes: a root or operation refusal, a
@@ -65,7 +66,6 @@ class EnvelopeText:
     receipt_config: str
     receipt_config_warning: str
     receipt_summary: str
-    banner: str
     notice: str
     service_truncation: str
     ceiling_truncation: str
