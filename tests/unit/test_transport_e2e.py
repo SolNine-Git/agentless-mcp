@@ -27,6 +27,7 @@ from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
 from agentless_mcp.adapters.mcp.server import ServerServices, ToolHandlers, build_server
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
@@ -79,6 +80,7 @@ def in_memory_tools(extractor, counter, fixture_repo):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,

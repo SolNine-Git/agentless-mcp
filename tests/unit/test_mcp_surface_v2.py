@@ -37,6 +37,7 @@ from agentless_mcp.adapters.mcp.server import (
     build_server,
 )
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
@@ -53,6 +54,7 @@ EXPECTED_TOOLS_V2 = {
     "find_referencing_symbols",
     "read",
     "capabilities",
+    "history",
 }
 
 SOURCE = """\
@@ -72,6 +74,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,
@@ -318,7 +321,7 @@ class TestParity:
 
 
 class TestSurfaceListing:
-    def test_v2_publishes_exactly_five_tools(self, services, one_repo):
+    def test_v2_publishes_exactly_six_tools(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
         assert {tool.name for tool in tools} == EXPECTED_TOOLS_V2
 
@@ -327,28 +330,28 @@ class TestSurfaceListing:
         assert {tool.name for tool in tools} == EXPECTED_TOOLS_V2
 
     def test_no_tool_on_either_surface_publishes_an_output_schema(self, services, one_repo):
-        """All fourteen answer in text, so none declares a structured shape.
+        """All fifteen answer in text, so none declares a structured shape.
 
         Built on ``SURFACE_BOTH`` rather than the default: the default
-        registers five tools, and the nine v1 registrations return ``str``
+        registers six tools, and the nine v1 registrations return ``str``
         the same way and carry the same defect if one of them forgets
         ``output_schema=None``.
         """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
 
-        assert len(tools) == 14
+        assert len(tools) == 15
         for tool in tools:
             assert tool.outputSchema is None, tool.name
 
     def test_both_publishes_the_union_of_the_surfaces(self, services, one_repo):
-        # find_referencing_symbols and capabilities are shared, so the union
-        # is fourteen names rather than sixteen.
+        # find_referencing_symbols, capabilities and history are shared, so
+        # the union is fifteen names rather than eighteen.
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
         names = {tool.name for tool in tools}
         assert names >= EXPECTED_TOOLS_V2
         assert "repo_map" in names
         assert "analyze_structure" in names
-        assert len(tools) == 14
+        assert len(tools) == 15
 
     def test_every_v2_tool_is_annotated_read_only(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
@@ -365,12 +368,21 @@ class TestSurfaceListing:
                 rendered = json.dumps(schema)
                 assert '"description"' in rendered, f"{tool.name}.{name}"
 
-    def test_every_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
+    def test_every_localizing_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
         # Deferral-capable clients keep these five schemas out of context
         # without this hint, and an unloaded schema routes agents to grep.
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
         for tool in tools:
+            if tool.name == "history":
+                continue
             assert (tool.meta or {}).get("anthropic/alwaysLoad") is True, tool.name
+
+    def test_history_is_deferred_by_design(self, services, one_repo):
+        # History answers why, not where: it costs no context until an agent
+        # asks for its schema, so the five localizing schemas stay undiluted.
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
+        history = next(tool for tool in tools if tool.name == "history")
+        assert "anthropic/alwaysLoad" not in (history.meta or {})
 
     def test_v1_only_tools_never_ask_for_always_load(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
@@ -830,6 +842,27 @@ OUT_OF_RANGE = (
         "refused",
     ),
     DoorCase(
+        "history-limit-zero",
+        ("history", "py:core.py::quote", "--limit", "0"),
+        "history",
+        {"target": "py:core.py::quote", "limit": 0},
+        "refused",
+    ),
+    DoorCase(
+        "history-limit-above",
+        ("history", "py:core.py::quote", "--limit", "100000"),
+        "history",
+        {"target": "py:core.py::quote", "limit": 100000},
+        "refused",
+    ),
+    DoorCase(
+        "history-budget-below",
+        ("history", "py:core.py::quote", "--budget", "10"),
+        "history",
+        {"target": "py:core.py::quote", "budget": 10},
+        "refused",
+    ),
+    DoorCase(
         "limit-zero",
         ("cycles", "--limit", "0"),
         "orient",
@@ -924,6 +957,7 @@ def cli_verdict(root, argv):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         patches=patches,
         validates=ValidateService(patches),
@@ -953,3 +987,31 @@ class TestTheTwoDoorsAgree:
         server = build_server(ToolHandlers([one_repo], services, auto_index=False), SURFACE_V2)
         assert cli_verdict(one_repo, case.argv) == case.verdict
         assert mcp_verdict(server, one_repo, case) == case.verdict
+
+
+class TestHistoryTool:
+    """History is its own deferred tool: it answers why and refuses loudly."""
+
+    def test_answers_with_the_commits_that_touched_the_span(self, services, make_git_repo):
+        root = make_git_repo({"core.py": SOURCE})
+        server = build_server(ToolHandlers([root], services), surface=SURFACE_V2)
+
+        result = call(server, "history", {"repo_root": str(root), "target": "py:core.py::quote"})
+
+        text = result.content[0].text
+        assert text.startswith("// agentless-mcp receipt (repository data below)")
+        assert "py:core.py::quote  core.py:1-2  (1 commit, newest first)" in text
+        assert "  fixture" in text
+
+    def test_a_bare_name_is_refused_with_the_fix(self, services, make_git_repo):
+        root = make_git_repo({"core.py": SOURCE})
+        server = build_server(ToolHandlers([root], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="Pass a stable id"):
+            call(server, "history", {"repo_root": str(root), "target": "quote"})
+
+    def test_a_directory_without_git_is_refused(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="history needs git"):
+            call(server, "history", {"repo_root": str(one_repo), "target": "py:core.py::quote"})

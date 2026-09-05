@@ -28,6 +28,7 @@ from agentless_mcp.adapters.cli import main as cli
 from agentless_mcp.adapters.cli.formatting import EXIT_OK
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
@@ -76,6 +77,7 @@ COMMAND_WRITES = {
     "find-symbol": READS_ONLY,
     "refs": READS_ONLY,
     "explain": READS_ONLY,
+    "history": READS_ONLY,
     "path": READS_ONLY,
     "cycles": READS_ONLY,
     "communities": READS_ONLY,
@@ -111,6 +113,7 @@ READ_COMMANDS = {
     "find-symbol": ["find-symbol", "quote"],
     "refs": ["refs", "quote"],
     "explain": ["explain", "quote"],
+    "history": ["history", "py:core.py::quote"],
     "path": ["path", "caller.py", "core.py"],
     "cycles": ["cycles"],
     "communities": ["communities"],
@@ -156,6 +159,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),

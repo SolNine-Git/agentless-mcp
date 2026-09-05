@@ -25,6 +25,7 @@ import pytest
 from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapResult, MapService
 from agentless_mcp.application.patch_service import PatchService
@@ -69,6 +70,7 @@ LEADING = {
     "expand": ("py:core.py::quote",),
     "explain": ("quote",),
     "find-symbol": ("quote",),
+    "history": ("py:core.py::quote",),
     "path": ("caller.py", "core.py"),
     "refs": ("quote",),
     "resolve-locs": ("core.py", "--loc", "function:quote"),
@@ -106,6 +108,9 @@ BOUNDARY_EXITS: dict[tuple[str, str], tuple[int, int, int]] = {
     ("expand", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     ("explain", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     ("find-symbol", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    # The budget floor is 200 tokens, so zero is below it like -1 is.
+    ("history", "--budget"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
+    ("history", "--limit"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     ("html", "--max-nodes"): (EXIT_DOMAIN, EXIT_DOMAIN, EXIT_DOMAIN),
     # The one option whose floor is zero rather than one: no reference edges
     # is a legible diagram, where no nodes is not a diagram.
@@ -141,6 +146,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         patches=PatchService(extractor),
         validates=ValidateService(PatchService(extractor)),

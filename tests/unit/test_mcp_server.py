@@ -47,6 +47,7 @@ from agentless_mcp.adapters.mcp.server import (
 )
 from agentless_mcp.adapters.mcp.server import build_server as build_surface_server
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.repo_context import resolved_allowlist
 from agentless_mcp.application.symbol_service import SymbolService
@@ -78,6 +79,7 @@ EXPECTED_TOOLS = {
     "analyze_structure",
     "resolve_locations",
     "capabilities",
+    "history",
 }
 
 # One well-typed argument set per published tool, over the one_repo fixture.
@@ -95,6 +97,7 @@ WELL_TYPED_CALLS = {
     "analyze_structure": {"operation": "cycles"},
     "resolve_locations": {"path": "core.py", "locs": ["function:quote"]},
     "capabilities": {},
+    "history": {"target": "py:core.py::quote"},
 }
 
 WELL_TYPED_CALLS_V2 = {
@@ -103,11 +106,12 @@ WELL_TYPED_CALLS_V2 = {
     "read": {"operation": "dir"},
     "find_referencing_symbols": {"target": "quote"},
     "capabilities": {},
+    "history": {"target": "py:core.py::quote"},
 }
 
 # What each --surface mode publishes, and one well-typed call for everything
-# it publishes. find_referencing_symbols and capabilities are shared by the
-# two surfaces, so `both` is the fourteen-name union rather than sixteen.
+# it publishes. find_referencing_symbols, capabilities and history are shared
+# by the two surfaces, so `both` is the fifteen-name union rather than eighteen.
 SURFACE_CALLS = {
     SURFACE_V1: WELL_TYPED_CALLS,
     SURFACE_V2: WELL_TYPED_CALLS_V2,
@@ -146,6 +150,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,
@@ -1631,10 +1636,10 @@ def value_shape(schema):
 class TestToolSurface:
     """The listing is capped at eleven, and the cap is read off a live server."""
 
-    def test_the_published_listing_is_exactly_eleven_tools(self, services, one_repo):
+    def test_the_published_listing_is_exactly_twelve_tools(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))
 
-        assert len(tools) == 11
+        assert len(tools) == 12
         assert {tool.name for tool in tools} == EXPECTED_TOOLS
 
     def test_the_folded_tools_are_no_longer_published(self, services, one_repo):
@@ -1646,7 +1651,7 @@ class TestToolSurface:
         assert "import_cycles" not in names
 
     @pytest.mark.parametrize("surface", SURFACES)
-    def test_every_published_tool_answers_a_well_typed_call(self, services, one_repo, surface):
+    def test_every_published_tool_answers_a_well_typed_call(self, services, make_git_repo, surface):
         """tools/list round-trips into one successful tools/call per tool.
 
         The per-tool tests above assert content; this gate asserts the whole
@@ -1656,7 +1661,8 @@ class TestToolSurface:
         fails here first.
         """
         calls = SURFACE_CALLS[surface]
-        server = build_surface_server(ToolHandlers([one_repo], services), surface=surface)
+        root = make_git_repo({"core.py": SOURCE}, name="alpha")
+        server = build_surface_server(ToolHandlers([root], services), surface=surface)
         tools = listed_tools(server)
         assert {tool.name for tool in tools} == set(calls)
 
@@ -1665,7 +1671,7 @@ class TestToolSurface:
                 return {
                     tool.name: await client.call_tool(
                         tool.name,
-                        {"repo_root": str(one_repo), **calls[tool.name]},
+                        {"repo_root": str(root), **calls[tool.name]},
                     )
                     for tool in tools
                 }

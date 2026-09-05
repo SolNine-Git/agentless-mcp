@@ -90,6 +90,12 @@ from agentless_mcp.application.graph_service import (
     GraphService,
     PathOptions,
 )
+from agentless_mcp.application.history_service import (
+    DEFAULT_HISTORY_LIMIT,
+    HISTORY_BUDGET_TOKENS,
+    HistoryService,
+    render_history,
+)
 from agentless_mcp.application.map_service import (
     GRANULARITY_BODY,
     MapRequest,
@@ -168,6 +174,19 @@ ReferenceTarget = Annotated[
 ]
 SharedCallers = Annotated[bool, Field(description=PARAMETER_DESCRIPTIONS["shared_callers"])]
 ExplainTarget = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["explain_target"])]
+HistoryTarget = Annotated[str, Field(description=PARAMETER_DESCRIPTIONS["history_target"])]
+HistoryLimit = Annotated[
+    int | None,
+    Field(ge=1, le=bounds.MAX_LIMIT, description=PARAMETER_DESCRIPTIONS["history_limit"]),
+]
+HistoryBudget = Annotated[
+    int | None,
+    Field(
+        ge=projectconfig.MIN_BUDGET,
+        le=projectconfig.MAX_BUDGET,
+        description=PARAMETER_DESCRIPTIONS["history_budget"],
+    ),
+]
 StructureOperation = Annotated[
     Literal["path", "cycles", "communities", "diagram", "health"],
     Field(description=PARAMETER_DESCRIPTIONS["structure_operation"]),
@@ -461,6 +480,7 @@ class ServerServices:
     views: ViewService
     symbols: SymbolService
     graphs: GraphService
+    histories: HistoryService
     counter: TokenCounter
     extractor: TreeSitterExtractor
 
@@ -713,6 +733,11 @@ class ToolHandlers:
             ctx, target, limit=limit, shared_callers=shared_callers
         )
         return self._wrap(ctx, render_refs(result, shared_callers=shared_callers))
+
+    def history(self, ctx: RepoContext, target: str, limit: int, budget: int) -> str:
+        """Render the commits that touched one symbol's lines, newest first."""
+        result = self._services.histories.history(ctx, target, limit=limit, budget=budget)
+        return self._wrap(ctx, render_history(result))
 
     def explain_symbol(self, ctx: RepoContext, target: str, limit: int) -> str:
         """Render one symbol's definition site with its tiered fan-out and fan-in."""
@@ -1088,7 +1113,7 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     contract either way.
 
     Every registration passes ``output_schema=None``, which is why the literal
-    repeats fourteen times below. Each handler returns ``str``, and FastMCP's
+    repeats fifteen times below. Each handler returns ``str``, and FastMCP's
     default for a non-object return type is to generate a wrapping schema and
     emit ``structured_content={"result": <the string>}`` beside the
     ``TextContent`` block. That second copy is not a structured view of the
@@ -1345,7 +1370,9 @@ def _register_shared(
     ``find_referencing_symbols`` stays its own tool on v2 deliberately: the
     expensive fan-in call keeps its own decision point, name and cost warning
     rather than hiding behind an operation value. ``capabilities`` is the same
-    contract on both surfaces.
+    contract on both surfaces. ``history`` is its own tool for the same
+    reason and carries no ``alwaysLoad`` hint: it answers why rather than
+    where, so a deferring client fetches its schema only when asked.
     """
 
     @mcp.tool(
@@ -1368,6 +1395,27 @@ def _register_shared(
                 target,
                 _or_default(limit, DEFAULT_REFS_LIMIT),
                 shared_callers=shared_callers,
+            )
+
+    @mcp.tool(
+        output_schema=None,
+        description=TOOL_DESCRIPTIONS["history"],
+        annotations=read_only("History"),
+    )
+    async def history(
+        context: Context,
+        target: HistoryTarget,
+        repo_root: RepoRoot = None,
+        limit: HistoryLimit = None,
+        budget: HistoryBudget = None,
+    ) -> str:
+        """Return the commits that touched one symbol's lines, bodies included."""
+        async with context_for(context, repo_root) as ctx:
+            return handlers.history(
+                ctx,
+                target,
+                _or_default(limit, DEFAULT_HISTORY_LIMIT),
+                _or_default(budget, HISTORY_BUDGET_TOKENS),
             )
 
     @mcp.tool(

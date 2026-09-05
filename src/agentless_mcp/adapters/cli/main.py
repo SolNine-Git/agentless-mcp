@@ -51,6 +51,12 @@ from agentless_mcp.application.graph_service import (
     GraphService,
     PathOptions,
 )
+from agentless_mcp.application.history_service import (
+    DEFAULT_HISTORY_LIMIT,
+    HISTORY_BUDGET_TOKENS,
+    HistoryService,
+    render_history,
+)
 from agentless_mcp.application.lint_service import LintService, load_candidates, load_diff
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
@@ -142,6 +148,7 @@ class CliServices:
     views: ViewService
     symbols: SymbolService
     graphs: GraphService
+    histories: HistoryService
     patches: PatchService
     validates: ValidateService
     lints: LintService
@@ -219,6 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_slice(subparsers)
     _add_find_symbol(subparsers)
     _add_refs(subparsers)
+    _add_history(subparsers)
     _add_explain(subparsers)
     _add_path(subparsers)
     _add_cycles(subparsers)
@@ -386,6 +394,17 @@ def _add_refs(subparsers: Any) -> None:
         help="instead rank symbols the same callers use (the DRY pass)",
     )
     parser.set_defaults(handler=_cmd_refs)
+
+
+def _add_history(subparsers: Any) -> None:
+    parser = subparsers.add_parser(
+        "history", help="why does this code exist: the commits that touched a symbol's lines"
+    )
+    _repo_flags(parser)
+    parser.add_argument("target", metavar="STABLE_ID")
+    parser.add_argument("--limit", type=int, default=DEFAULT_HISTORY_LIMIT)
+    parser.add_argument("--budget", type=int, default=HISTORY_BUDGET_TOKENS)
+    parser.set_defaults(handler=_cmd_history)
 
 
 def _add_explain(subparsers: Any) -> None:
@@ -1057,6 +1076,16 @@ def _cmd_refs(args: argparse.Namespace, services: CliServices) -> int:
     )
     text = render_refs(result, shared_callers=args.shared_callers)
     _emit(args, ctx, services, _Answer(text, result.as_dict(), "groups"))
+    return EXIT_OK
+
+
+def _cmd_history(args: argparse.Namespace, services: CliServices) -> int:
+    ctx = _context(args, services)
+    if ctx is None:
+        return EXIT_USAGE
+
+    result = services.histories.history(ctx, args.target, limit=args.limit, budget=args.budget)
+    _emit(args, ctx, services, _Answer(render_history(result), result.as_dict(), "commits"))
     return EXIT_OK
 
 

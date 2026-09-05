@@ -323,3 +323,109 @@ class TestCommitChurn:
 
     def test_no_paths_asks_git_nothing(self, tmp_path):
         assert gitinfo.commit_churn(tmp_path, []) == {}
+
+
+class TestRunBounded:
+    def test_a_successful_call_keeps_stdout_whole(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "HEAD"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.returncode == 0
+        assert outcome.truncated is False
+        assert outcome.text is not None
+        assert outcome.text.endswith("\n")
+        assert len(outcome.text.strip()) == 40
+
+    def test_the_argv_carries_the_hardening_prefix_and_a_c_locale(self, monkeypatch, tmp_path):
+        seen = {}
+        message = "git"
+
+        def record(command, **kwargs):
+            seen["command"] = command
+            seen["env"] = kwargs["env"]
+            raise FileNotFoundError(message)
+
+        monkeypatch.setattr(subprocess, "Popen", record)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=1.0, max_output_bytes=10)
+
+        assert outcome.text is None
+        assert "not installed" in outcome.note
+        expected = ["git", *gitinfo.HARDENING_PREFIX]
+        assert seen["command"][: len(expected)] == expected
+        assert seen["env"]["LC_ALL"] == "C"
+        assert not any(name.startswith("GIT_") for name in seen["env"])
+
+    def test_a_nonzero_exit_is_a_note_with_the_first_stderr_line(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "--verify", "no-such-ref-zzz"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.text is None
+        assert outcome.returncode not in (0, None)
+        assert outcome.note.startswith(f"git rev-parse exited {outcome.returncode}: fatal:")
+
+    def test_the_output_cap_cuts_stdout_and_flags_it(self, make_git_repo, commit_all):
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "-C", str(root), "add", "-A"], check=True, capture_output=True, timeout=30
+        )
+        commit_all(root, "big\n\n" + "y" * 100_000)
+
+        outcome = gitinfo.run_bounded(
+            root, ["log", "-1", "--format=%B"], timeout=30.0, max_output_bytes=4096
+        )
+
+        assert outcome.truncated is True
+        assert outcome.text is not None
+        assert len(outcome.text.encode()) == 4096
+
+    def test_a_deadline_kills_a_silent_child(self, monkeypatch, tmp_path):
+        class Silent:
+            def __init__(self, command, **kwargs):
+                self._writers = []
+                self.stdout = self._reader()
+                self.stderr = self._reader()
+                self.returncode = None
+
+            def _reader(self):
+                read_fd, write_fd = os.pipe()
+                self._writers.append(write_fd)
+                return os.fdopen(read_fd, "rb")
+
+            def kill(self):
+                for fd in self._writers:
+                    os.close(fd)
+                self._writers = []
+                self.returncode = -9
+
+            def wait(self):
+                return self.returncode
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                if self._writers:
+                    self.kill()
+                self.stdout.close()
+                self.stderr.close()
+
+        monkeypatch.setattr(subprocess, "Popen", Silent)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=0.05, max_output_bytes=10)
+
+        assert outcome.text is None
+        assert outcome.note == "git log timed out after 0.05s"
+
+    def test_a_process_that_cannot_be_spawned_degrades_with_its_reason(self, monkeypatch, tmp_path):
+        def cannot_spawn(command, **kwargs):
+            raise OSError(errno.EMFILE, "Too many open files")
+
+        monkeypatch.setattr(subprocess, "Popen", cannot_spawn)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=1.0, max_output_bytes=10)
+
+        assert outcome.text is None
+        assert outcome.note == "git log could not be run: Too many open files"

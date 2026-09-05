@@ -25,10 +25,13 @@ write-side sandbox cannot drift from the receipt code.
 
 import logging
 import os
+import selectors
 import subprocess
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import IO
 
 # Bounded hard: the receipt is a courtesy on every call, and a courtesy that
 # can hang is a bug. Five seconds is far above a healthy `git status` on a
@@ -107,6 +110,16 @@ class GitSnapshot:
     tree_oid: str | None
     dirty_count: int | None
     note: str
+
+
+@dataclass(frozen=True)
+class GitOutcome:
+    """One bounded git invocation: its stdout, or the reason there is none, and how it ended."""
+
+    text: str | None
+    note: str
+    truncated: bool = False
+    returncode: int | None = None
 
 
 @dataclass(frozen=True)
@@ -325,3 +338,76 @@ def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
         return _Outcome(None, f"git {subcommand} exited {completed.returncode}: {first}")
 
     return _Outcome(completed.stdout.decode("utf-8", errors="replace").strip(), "")
+
+
+def run_bounded(
+    cwd: Path, arguments: Sequence[str], *, timeout: float, max_output_bytes: int
+) -> GitOutcome:
+    """Run one git command under a deadline and an output cap; every failure becomes a note."""
+    subcommand = arguments[0] if arguments else "git"
+    command = ["git", *HARDENING_PREFIX, "-C", str(cwd), *arguments]
+    # LC_ALL=C keeps git's failure text in the spelling the callers classify.
+    env = {**subprocess_env(), "LC_ALL": "C"}
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    except OSError as exc:
+        if isinstance(exc, FileNotFoundError):
+            return GitOutcome(None, "git is not installed, so repository state is unknown")
+        return GitOutcome(None, f"git {subcommand} could not be run: {exc.strerror}")
+    with process:
+        if process.stdout is None or process.stderr is None:
+            process.kill()
+            return GitOutcome(None, f"git {subcommand} could not be run: no pipes")
+        stdout, stderr, truncated, timed_out = _drain(
+            process.stdout, process.stderr, timeout=timeout, max_output_bytes=max_output_bytes
+        )
+        if truncated or timed_out:
+            process.kill()
+        process.wait()
+    if timed_out:
+        return GitOutcome(None, f"git {subcommand} timed out after {timeout}s")
+    return _bounded_outcome(subcommand, process.returncode, stdout, stderr, truncated=truncated)
+
+
+def _bounded_outcome(
+    subcommand: str, returncode: int, stdout: bytes, stderr: bytes, *, truncated: bool
+) -> GitOutcome:
+    text = stdout.decode("utf-8", errors="replace")
+    if truncated:
+        return GitOutcome(text, "", truncated=True, returncode=returncode)
+    if returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip().splitlines()
+        first = detail[0] if detail else "no detail"
+        return GitOutcome(
+            None, f"git {subcommand} exited {returncode}: {first}", returncode=returncode
+        )
+    return GitOutcome(text, "", returncode=0)
+
+
+def _drain(
+    stdout: IO[bytes], stderr: IO[bytes], *, timeout: float, max_output_bytes: int
+) -> tuple[bytes, bytes, bool, bool]:
+    """Read both pipes until EOF, the deadline, or the stdout cap; report which ended it."""
+    deadline = time.monotonic() + timeout
+    buffers: dict[int, bytearray] = {stdout.fileno(): bytearray(), stderr.fileno(): bytearray()}
+    truncated = timed_out = False
+    with selectors.DefaultSelector() as selector:
+        selector.register(stdout, selectors.EVENT_READ)
+        selector.register(stderr, selectors.EVENT_READ)
+        while selector.get_map() and not truncated:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            for key, _events in selector.select(remaining):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                buffer = buffers[key.fd]
+                if key.fd == stdout.fileno() and len(buffer) + len(chunk) > max_output_bytes:
+                    buffer += chunk[: max_output_bytes - len(buffer)]
+                    truncated = True
+                    break
+                buffer += chunk
+    return bytes(buffers[stdout.fileno()]), bytes(buffers[stderr.fileno()]), truncated, timed_out

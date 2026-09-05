@@ -118,6 +118,16 @@ class MessageText:
     cache_discarded_no_index: str
     cache_discarded_old_schema: str
     cache_discarded_other_repo: str
+    history_target_unresolved: str
+    history_no_git: str
+    history_path_not_in_head: str
+    history_span_beyond_head: str
+    history_git_failed: str
+    history_no_commits: str
+    history_more_commits: str
+    history_body_truncated: str
+    history_output_capped: str
+    history_dirty_file: str
 
 
 # Every tool this server can register, across both published surfaces: the
@@ -140,6 +150,7 @@ TOOL_NAMES = (
     "orient",
     "symbols",
     "read",
+    "history",
 )
 
 ENVELOPE: EnvelopeText = load_record(
@@ -197,6 +208,9 @@ PARAMETER_NAMES = (
     "orient_limit",
     "symbols_limit",
     "read_path",
+    "history_target",
+    "history_limit",
+    "history_budget",
 )
 
 PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(

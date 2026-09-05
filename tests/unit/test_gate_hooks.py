@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from agentless_mcp.adapters.mcp import server
+from agentless_mcp.prompts import TOOL_NAMES
 
 ROOT = Path(__file__).parents[2]
 
@@ -130,6 +131,7 @@ def test_localizing_operations_unlock_broad_search(
         ("mcp__agentless__orient", {"operation": "diagram"}),
         ("mcp__agentless__read", {"operation": "dir"}),
         ("mcp__agentless__symbols", {"operation": "locate"}),
+        ("mcp__agentless__history", {"target": "py:a.py::f"}),
         ("mcp__agentless__list_dir", {}),
         ("mcp__agentless__resolve_locations", {}),
         ("mcp__agentless__analyze_structure", {"operation": "health"}),
@@ -517,3 +519,11 @@ class TestTheHookAndTheServerAgreeOnOperationNames:
         for operation, table in excluded.items():
             assert operation in table, operation
             assert operation not in unlocked, operation
+
+    def test_history_is_held_back_by_design(self):
+        """History answers why, not where, so it never counts as localizing."""
+        mark = load_hook("agentless_gate_mark")
+        assert "history" in TOOL_NAMES
+        assert "mcp__agentless__history" not in mark.LOCALIZING_TOOLS
+        assert "mcp__agentless__history" not in mark.LOCALIZING_OPERATIONS
+        assert mark.REFERENCE_TOOL != "mcp__agentless__history"

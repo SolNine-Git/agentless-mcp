@@ -30,5 +30,15 @@
   "cache_build_hint": "tag cache is empty: parsing is on demand; run agentless-mcp index --repo {repo_root} to build it",
   "cache_discarded_no_index": "cache discarded: no index has been built",
   "cache_discarded_old_schema": "cache discarded: schema {found} predates {expected}, rerun agentless-mcp index",
-  "cache_discarded_other_repo": "cache discarded: it was built for {repo_root}"
+  "cache_discarded_other_repo": "cache discarded: it was built for {repo_root}",
+  "history_target_unresolved": "{target}: {reason}. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused.",
+  "history_no_git": "history needs git: {note}",
+  "history_path_not_in_head": "unsatisfiable: {path} is not in HEAD (untracked, ignored, or only staged). Commit it, or ask about a tracked file.",
+  "history_span_beyond_head": "unsatisfiable: lines {start}-{end} of {path} are past the end of HEAD's copy. The working tree grew the file since the last commit; commit, then ask again.",
+  "history_git_failed": "git could not answer: {note}",
+  "history_no_commits": "no commit touches lines {start}-{end} of {path}",
+  "history_more_commits": "... {shown} newest commits shown; older commits touch this span (raise limit for the rest)",
+  "history_body_truncated": "... {shown} of {total} body lines shown for {sha}; git show -s --format=%B {sha} prints the whole message",
+  "history_output_capped": "... git output was cut at {bytes} bytes; the {count} complete commits above are shown",
+  "history_dirty_file": "note: {path} has uncommitted changes; lines were read against HEAD, so the span may be shifted"
 }
