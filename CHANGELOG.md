@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 -- 2026-09-05
+## 0.8.0 -- 2026-09-06
 
 One new tool and one line fewer on every answer. `history` answers why a span
 exists from the commits that touched it, and the per-call trust banner folds
@@ -70,6 +70,16 @@ into the receipt header.
   point keeps raw file names intact, so a non-UTF-8 name survives the walk.
   The walker's output is byte-identical; a truncated listing is a bound
   refusal that names its remedy.
+- **The tool descriptions a client loads are a third smaller.** Every v2
+  tool and parameter description is rewritten in the controlled register and
+  stripped of text the answers already carry (the valid operation list on a
+  bad operation, the stable-id pattern, the `git show` command on a cut body)
+  and of facts the JSON schema states. Measured with cl100k against the stdio
+  server: the five eager schemas cost 2675 tokens per session, down from
+  4231; `history` costs 240 when fetched, down from 405. A test pins the
+  eager total under 3178 chars/4 tokens so the schemas cannot regrow
+  unnoticed. The `SymbolKind` docstring, which pydantic copied into the
+  `symbols` schema, is one line.
 
 ### Fixed
 

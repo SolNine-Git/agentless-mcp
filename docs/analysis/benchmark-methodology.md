@@ -323,7 +323,8 @@ it.
    without it.
 4. Run the preflight against each worktree:
    `python3 probe_mcp_server.py repos/<instance_id> <worktree>`. It must
-   print `5`. The run scripts, for example `run_061_agentless.sh`, refuse to
+   print the tool count that build publishes: `5` up to 0.7.3, `6` from
+   0.8.0. The run scripts, for example `run_061_agentless.sh`, refuse to
    start otherwise. Confirm separately that an `orient(map)` call against an
    unpacked snapshot lists that snapshot's files.
 5. Archive the previous results. The convention is
