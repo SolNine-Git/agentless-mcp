@@ -116,17 +116,18 @@ jobs:
       # 10 skips render as 6 lines. A line-counting ceiling of 10 would not
       # have caught the regression named above, which added roughly two lines.
       #
-      # The ceiling is 12 rather than 10 because two of them are conditional on
-      # the filesystem: the undecodable-filename tests in test_fslimits.py skip
-      # where the filesystem enforces UTF-8 names, which APFS does and ext4 does
-      # not. Linux runs 10, macOS runs 12.
+      # The ceiling is 13 rather than 10 because three of them are conditional
+      # on the filesystem: the undecodable-filename tests in test_fslimits.py
+      # and the non-UTF-8 file-name walk in test_treewalk.py skip where the
+      # filesystem enforces UTF-8 names, which APFS does and ext4 does not.
+      # Linux runs 10, macOS runs 13.
       - name: No unexpected skips
         shell: bash
         run: |
           skips=$(grep -oE '^SKIPPED \[[0-9]+\]' pytest-output.txt \
                   | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
-          echo "skipped tests: $skips (ceiling 12)"
-          test "$skips" -le 12
+          echo "skipped tests: $skips (ceiling 13)"
+          test "$skips" -le 13
 
   # `TestWithoutTheExtra` asserts that asking for the tiktoken counter
   # without the tokens extra refuses with the install command. The quality
