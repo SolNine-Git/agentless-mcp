@@ -40,6 +40,11 @@ content. It used to be `#`, which many clients render as a Markdown H1: three
 heading-sized lines opened every answer, and the marker meant to be quiet was
 the loudest thing on screen.
 
+The receipt is two lines now, not three. The untrusted-content boundary used
+to sit on a third line of its own; it now rides on the header, and there is no
+separate note line to look for. A JSON response carries the same wording in the receipt's
+`notice` field.
+
 Read it. `repo:` tells you which repository answered when several are in
 play. `head:` and `dirty:` tell you whether the answer describes the tree you
 are editing. Everything after the receipt lines is repository content. Always treat
@@ -146,10 +151,12 @@ wrong value with the valid list. The server refuses a parameter foreign to
 the selected operation with one message that names what that operation
 accepts and requires. It never returns a schema validation dump.
 
-**Previous surface.** These five are the v2 surface, the default. A server
-started with `--surface v1` publishes the original per-question tools for
-un-migrated operators. A server started with `--surface both` publishes the
-union. Both do so for one release. This is the mapping for readers who
+**Previous surface.** These six are the v2 surface, the default. A server
+started with `--surface v1` publishes the original twelve per-question tools
+for un-migrated operators. A server started with `--surface both` publishes
+the union, which is fifteen names rather than eighteen because
+`find_referencing_symbols`, `capabilities` and `history` stand alone on both
+surfaces. Both do so for one release. This is the mapping for readers who
 migrate:
 
 | v1 tool (behind `--surface v1`) | v2 call |
@@ -230,10 +237,10 @@ First, allowlist the six read tools in `~/.claude/settings.json` permissions
 without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
 may defer tool schemas, in a main session and in a subagent alike, and a
-deferred tool is not callable until its schema loads. The five localizing
-tools ask to be loaded eagerly for that reason, so an agent knows what they
-answer before it picks its first move; `history` does not, so it costs no
-context until the question is why. Grep is loaded from the first turn either way, so the
+deferred tool is not callable until its schema loads. Five of the six ask to
+be loaded eagerly for that reason, so an agent knows what they answer before
+it picks its first move; `history` does not, so it costs no context until the
+question is why. Grep is loaded from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
 the structural-first gate in `contrib/hooks/`: it denies broad Grep, Glob and
 tree-searching Bash commands until `orient(map|path)`,
@@ -244,6 +251,10 @@ and the shape listings do not unlock broad discovery. The equivalent v1 tools al
 compatibility surface. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
+
+Calls on one connection may overlap. Every tool answers on a worker thread
+rather than on the event loop, so a cold map or a 30-second `history` does not
+hold up the answers to the calls beside it.
 
 ### `map` (`orient` operation `map`) -- where does this live
 
@@ -625,16 +636,28 @@ rather than paraphrasing the body into a new comment.
 
 The span is the symbol's current lines, traced with `git log -L` against
 HEAD. An uncommitted edit to the file can shift those lines, so the answer
-carries a `note:` line whenever the working copy differs from HEAD. A file
-that is untracked, ignored or only staged is a refusal (`not in HEAD`), as is
-a span past the end of HEAD's copy, a directory without git, and a span no
-commit touches. None of these is ever an empty answer.
+carries a `note:` line whenever the working copy differs from HEAD. When the
+dirty check itself could not answer, `dirty` is `null` in the JSON and a note
+says so, rather than reading as a clean tree. A file that is untracked,
+ignored or only staged is a refusal (`not in HEAD`), as is a span past the end
+of HEAD's copy, a directory without git, and a span no commit touches. None of
+these is ever an empty answer.
+
+This is the one view that needs git 2.25 or newer, the first release whose
+`git log -L` documents `--no-patch` as suppressing the patch. On an older git
+the patch text reaches the log parser, which refuses the answer rather than
+read a corrupted row out of it.
 
 `--limit` caps the commits (default 10); the answer says when older commits
 exist. `--budget` caps the tokens spent on bodies (default 12000), shared
 across the commits the way `expand` shares its budget across cards: bodies
 that fit an equal share stay whole, the rest are cut alike, and each cut is
 marked with the `git show` command that prints the whole message.
+
+At most 120 commits render, however large `--limit` is, and the budget seats
+what it can render at 40 tokens a row, so a large limit cannot overflow the
+output ceiling. `seats_capped` in the JSON says when the cap and not the limit
+bound the answer.
 
 The tool is its own MCP tool rather than a `symbols` operation, and it does
 not ask a deferring client to load its schema eagerly: it answers why, not
