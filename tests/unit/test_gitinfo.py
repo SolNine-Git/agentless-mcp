@@ -282,7 +282,7 @@ class TestDegradation:
             return real_popen(command, **kwargs)
 
         # One seam, because one runner is the point: every caller below reaches
-        # git through `run_bounded_bytes` and none of them spawns it directly.
+        # git through `run_bounded` and none of them spawns it directly.
         monkeypatch.setattr(subprocess, "Popen", record_spawn)
 
         gitinfo.head_sha(root)
@@ -323,8 +323,8 @@ class TestOnlyThisModuleSpawnsGit:
     made that easy to write, so the assertion is that nobody does.
     """
 
-    def test_the_bytes_runner_is_the_only_place_gitinfo_spawns(self):
-        assert spawn_sites(gitinfo) == {"run_bounded_bytes"}
+    def test_the_runner_is_the_only_place_gitinfo_spawns(self):
+        assert spawn_sites(gitinfo) == {"run_bounded"}
 
     def test_the_walker_spawns_nothing_of_its_own(self):
         assert spawn_sites(treewalk) == set()
@@ -484,6 +484,12 @@ class TestCommitChurn:
 
     def test_no_paths_asks_git_nothing(self, tmp_path):
         assert gitinfo.commit_churn(tmp_path, []) == {}
+
+
+class TestGitOutcome:
+    def test_the_text_view_decodes_lossily_and_stays_none_without_stdout(self):
+        assert gitinfo.GitOutcome(b"name\xff.py", "").text == "name\ufffd.py"
+        assert gitinfo.GitOutcome(None, "git log timed out after 5.0s").text is None
 
 
 class TestRunBounded:

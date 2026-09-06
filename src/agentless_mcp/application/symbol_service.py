@@ -736,7 +736,7 @@ def symbol_card(symbol: ASTSymbol, body: str = "") -> render.SymbolCard:
         stable_id=symbol_stable_id(symbol),
         path=symbol.module_path,
         start_line=symbol.line_number,
-        end_line=symbol.end_line_number or symbol.line_number,
+        end_line=span_end(symbol),
         kind=symbol.kind.value,
         language=symbol.language,
         signature=symbol.signature,
@@ -1041,7 +1041,7 @@ def _shared_callers(
         facts = by_path.get(caller.module_path)
         if facts is None:
             continue
-        end = caller.end_line_number or caller.line_number
+        end = span_end(caller)
         names = {
             ref.name
             for ref in facts.refs

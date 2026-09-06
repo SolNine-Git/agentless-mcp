@@ -653,7 +653,7 @@ def run_git(
 ) -> str:
     """Run one bounded git command, raising on anything but success.
 
-    The spawn is :func:`agentless_mcp.core.gitinfo.run_bounded_bytes`, so this
+    The spawn is :func:`agentless_mcp.core.gitinfo.run_bounded`, so this
     call carries the same hardening prefix and the same scrubbed environment as
     every other. The write side has most to lose from an ambient ``GIT_DIR``:
     ``worktree add`` against a redirected repository would create the checkout
@@ -673,7 +673,7 @@ def run_git(
     long every other holder of that lock waits.
     """
     subcommand = arguments[0] if arguments else "git"
-    outcome = gitinfo.run_bounded_bytes(
+    outcome = gitinfo.run_bounded(
         cwd,
         arguments,
         timeout=timeout,

@@ -22,7 +22,7 @@ system monitors, external diff drivers and commit-signature verification are
 disabled, and pager output is forced through ``cat``. The prefix cannot drift
 between callers because this module owns the only place the package spawns
 git: the walker and the write-side sandbox run their own argv through
-:func:`run_bounded_bytes`, so the prefix, the scrubbed environment, the
+:func:`run_bounded`, so the prefix, the scrubbed environment, the
 deadline and the output cap reach every git call the package makes.
 """
 
@@ -142,24 +142,21 @@ class GitSnapshot:
     note: str
 
 
+# The payload stays bytes because ``-z`` output carries filesystem names that
+# are not always UTF-8, and a lossy decode there names files that do not exist.
 @dataclass(frozen=True)
 class GitOutcome:
     """One bounded git invocation: its stdout, or the reason there is none, and how it ended."""
-
-    text: str | None
-    note: str
-    truncated: bool = False
-    returncode: int | None = None
-
-
-@dataclass(frozen=True)
-class GitBytesOutcome:
-    """One bounded git invocation: its raw stdout, or the reason there is none, and how it ended."""
 
     stdout: bytes | None
     note: str
     truncated: bool = False
     returncode: int | None = None
+
+    @property
+    def text(self) -> str | None:
+        """The stdout decoded lossily, or None when there is none."""
+        return None if self.stdout is None else self.stdout.decode("utf-8", errors="replace")
 
 
 def git_root(path: Path) -> Path | None:
@@ -351,33 +348,20 @@ def _run(cwd: Path, arguments: Sequence[str]) -> GitOutcome:
             f"git {subcommand} printed more than {MAX_RECEIPT_OUTPUT_BYTES} bytes",
             returncode=outcome.returncode,
         )
-    if outcome.text is None:
+    if outcome.stdout is None:
         return outcome
-    return GitOutcome(outcome.text.strip(), outcome.note, returncode=outcome.returncode)
+    return GitOutcome(outcome.stdout.strip(), outcome.note, returncode=outcome.returncode)
 
 
 def run_bounded(
-    cwd: Path, arguments: Sequence[str], *, timeout: float, max_output_bytes: int
-) -> GitOutcome:
-    """Run one git command under a deadline and an output cap; every failure becomes a note."""
-    outcome = run_bounded_bytes(cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes)
-    text = None if outcome.stdout is None else outcome.stdout.decode("utf-8", errors="replace")
-    return GitOutcome(
-        text, outcome.note, truncated=outcome.truncated, returncode=outcome.returncode
-    )
-
-
-# The bytes seam exists because ``-z`` output carries filesystem names that are
-# not always UTF-8, and a lossy decode there names files that do not exist.
-def run_bounded_bytes(
     cwd: Path,
     arguments: Sequence[str],
     *,
     timeout: float,
     max_output_bytes: int,
     config: Sequence[str] = (),
-) -> GitBytesOutcome:
-    """Run one git command under a deadline and an output cap, stdout left undecoded."""
+) -> GitOutcome:
+    """Run one git command under a deadline and an output cap; every failure becomes a note."""
     subcommand = arguments[0] if arguments else "git"
     command = ["git", *HARDENING_PREFIX, *config, "-C", str(cwd), *arguments]
     # LC_ALL=C keeps git's failure text in the spelling the callers classify.
@@ -386,13 +370,13 @@ def run_bounded_bytes(
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     except OSError as exc:
         if isinstance(exc, FileNotFoundError):
-            return GitBytesOutcome(None, "git is not installed, so repository state is unknown")
-        return GitBytesOutcome(None, f"git {subcommand} could not be run: {exc.strerror}")
+            return GitOutcome(None, "git is not installed, so repository state is unknown")
+        return GitOutcome(None, f"git {subcommand} could not be run: {exc.strerror}")
     deadline = time.monotonic() + timeout
     with process:
         if process.stdout is None or process.stderr is None:
             process.kill()
-            return GitBytesOutcome(None, f"git {subcommand} could not be run: no pipes")
+            return GitOutcome(None, f"git {subcommand} could not be run: no pipes")
         # select() takes sockets and not pipes on Windows, so the incremental
         # drain is POSIX-only and Windows caps what communicate() already read.
         if platforms.family(sys.platform) == platforms.WINDOWS:
@@ -412,24 +396,24 @@ def run_bounded_bytes(
             timed_out = True
         process.wait()
     if timed_out:
-        return GitBytesOutcome(None, f"git {subcommand} timed out after {timeout}s")
+        return GitOutcome(None, f"git {subcommand} timed out after {timeout}s")
     return _bounded_outcome(subcommand, process.returncode, stdout, stderr, truncated=truncated)
 
 
 def _bounded_outcome(
     subcommand: str, returncode: int, stdout: bytes, stderr: bytes, *, truncated: bool
-) -> GitBytesOutcome:
+) -> GitOutcome:
     if truncated:
-        return GitBytesOutcome(stdout, "", truncated=True, returncode=returncode)
+        return GitOutcome(stdout, "", truncated=True, returncode=returncode)
     if returncode != 0:
         # The first line keeps the note short; it is not what makes it safe on a
         # receipt row -- `application/envelope` escapes it where the grammar is known.
         detail = stderr.decode("utf-8", errors="replace").strip().splitlines()
         first = detail[0] if detail else "no detail"
-        return GitBytesOutcome(
+        return GitOutcome(
             None, f"git {subcommand} exited {returncode}: {first}", returncode=returncode
         )
-    return GitBytesOutcome(stdout, "", returncode=0)
+    return GitOutcome(stdout, "", returncode=0)
 
 
 def _reaped_by(process: subprocess.Popen[bytes], deadline: float) -> bool:

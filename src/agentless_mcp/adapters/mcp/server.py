@@ -47,12 +47,12 @@ happen in ``warmup``, never inside a tool call.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, replace
 from itertools import chain
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, ParamSpec, Protocol, TypeVar
 from urllib.parse import unquote, urlparse
 
 from fastmcp import Context, FastMCP
@@ -65,6 +65,7 @@ from pydantic import Field, ValidationError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.cliargs import (
+    DEFAULT_MAX_CONCURRENCY,
     DISTRIBUTION_NAME,
     SURFACE_BOTH,
     SURFACE_V1,
@@ -1042,6 +1043,19 @@ ALWAYS_LOAD_META = {"anthropic/alwaysLoad": True}
 # closure build_server makes over its handlers.
 RepoContextFactory = Callable[..., AbstractAsyncContextManager[RepoContext]]
 
+_Work = ParamSpec("_Work")
+_Answer = TypeVar("_Answer")
+
+
+# What a registrar needs to run one call's blocking work: the offload closure
+# build_server makes over its gate.
+class Offload(Protocol):
+    """Run one blocking call on a worker thread, bounded by the server's gate."""
+
+    def __call__(
+        self, work: Callable[_Work, _Answer], *args: _Work.args, **kwargs: _Work.kwargs
+    ) -> Awaitable[_Answer]: ...
+
 
 # The exceptions whose own text was written for a caller to read: this
 # package's refusals, and the framework's own -- a wire-schema rejection
@@ -1096,7 +1110,12 @@ class _DeliberateErrorsOnly(Middleware):
             raise ToolError(_UNPLANNED_ERROR_MESSAGE) from None
 
 
-def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastMCP[None]:
+def build_server(
+    handlers: ToolHandlers,
+    surface: Surface = SURFACE_V2,
+    *,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+) -> FastMCP[None]:
     """Register the selected tool surface on a FastMCP server and return it.
 
     Each tool's wire description is passed explicitly from
@@ -1123,6 +1142,9 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     synchronous because the CLI calls them, and a 30 s ``git log -L`` or cold map
     run inline stalls the loop that answers pings and cancellations. Overlap is safe:
     ``tests/unit/test_concurrency.py`` pins the state as immutable, per-call or locked.
+    Every offload passes through one gate of ``max_concurrency`` permits held by this
+    server, and a call takes one permit at a time -- resolving releases before the
+    context yields -- so a limit of 1 serializes calls rather than deadlocking one.
     """
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
@@ -1141,6 +1163,13 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     # into a deliberately worded error before FastMCP sees it.
     mcp: FastMCP[None] = FastMCP(SERVER_NAME, version=server_version(), mask_error_details=False)
     mcp.add_middleware(_DeliberateErrorsOnly())
+    gate = asyncio.Semaphore(max_concurrency)
+
+    async def offload(
+        work: Callable[_Work, _Answer], *args: _Work.args, **kwargs: _Work.kwargs
+    ) -> _Answer:
+        async with gate:
+            return await asyncio.to_thread(work, *args, **kwargs)
 
     @asynccontextmanager
     async def context_for(
@@ -1154,23 +1183,23 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
             roots = await effective_client_roots(context)
         # Resolving runs the git snapshot to its 5 s bound and opens the tag
         # cache, so it leaves the loop for the same reason a handler does.
-        ctx = await asyncio.to_thread(handlers.resolve, repo_root, roots, no_cache=no_cache)
+        ctx = await offload(handlers.resolve, repo_root, roots, no_cache=no_cache)
         handlers.refresh_in_background(ctx, no_cache=no_cache)
         try:
             yield ctx
         finally:
             ctx.close()
 
-    _register_shared(mcp, handlers, context_for)
+    _register_shared(mcp, handlers, context_for, offload)
     if surface in (SURFACE_V1, SURFACE_BOTH):
-        _register_v1(mcp, handlers, context_for)
+        _register_v1(mcp, handlers, context_for, offload)
     if surface in (SURFACE_V2, SURFACE_BOTH):
-        _register_v2(mcp, handlers, context_for)
+        _register_v2(mcp, handlers, context_for, offload)
     return mcp
 
 
 def _register_v1(
-    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory, offload: Offload
 ) -> None:
     """Register the v1-only tools: one tool per question, nine of them."""
 
@@ -1190,7 +1219,7 @@ def _register_v1(
     ) -> str:
         """Rank the repository's files and render the symbols that fit a budget."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.repo_map,
                 ctx,
                 MapRequest(
@@ -1215,7 +1244,7 @@ def _register_v1(
     ) -> str:
         """List the repository's files, honouring gitignore."""
         async with context_for(context, repo_root) as ctx:
-            return await asyncio.to_thread(handlers.list_dir, ctx, path, depth, max_entries)
+            return await offload(handlers.list_dir, ctx, path, depth, max_entries)
 
     @mcp.tool(
         output_schema=None,
@@ -1231,9 +1260,7 @@ def _register_v1(
     ) -> str:
         """Render the named files as signatures with their bodies elided."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
-                handlers.get_symbols_overview, ctx, paths, docs=docstrings
-            )
+            return await offload(handlers.get_symbols_overview, ctx, paths, docs=docstrings)
 
     @mcp.tool(
         output_schema=None,
@@ -1249,7 +1276,7 @@ def _register_v1(
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.expand_symbols, ctx, stable_ids, _or_default(limit, DEFAULT_EXPAND_LIMIT)
             )
 
@@ -1268,7 +1295,7 @@ def _register_v1(
     ) -> str:
         """Return numbered lines for the given 1-based inclusive ranges."""
         async with context_for(context, repo_root) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.read_slice,
                 ctx,
                 path,
@@ -1291,7 +1318,7 @@ def _register_v1(
     ) -> str:
         """Find symbols by substring or qualified name."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.find_symbol, ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT)
             )
 
@@ -1309,7 +1336,7 @@ def _register_v1(
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.explain_symbol, ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
             )
 
@@ -1339,7 +1366,7 @@ def _register_v1(
         The operations are path, cycles, communities, diagram and health.
         """
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.analyze_structure,
                 ctx,
                 StructureRequest(
@@ -1371,13 +1398,11 @@ def _register_v1(
     ) -> str:
         """Turn class:/function:/line: strings into stable ids and intervals."""
         async with context_for(context, repo_root) as ctx:
-            return await asyncio.to_thread(
-                handlers.resolve_locations, ctx, path, locs, context_lines
-            )
+            return await offload(handlers.resolve_locations, ctx, path, locs, context_lines)
 
 
 def _register_shared(
-    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory, offload: Offload
 ) -> None:
     """Register the tools every surface publishes, unchanged between them.
 
@@ -1404,7 +1429,7 @@ def _register_shared(
     ) -> str:
         """Find the symbols that reference a target, grouped by file."""
         async with context_for(context, repo_root) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.find_referencing_symbols,
                 ctx,
                 target,
@@ -1426,7 +1451,7 @@ def _register_shared(
     ) -> str:
         """Return the commits that touched one symbol's lines, bodies included."""
         async with context_for(context, repo_root) as ctx:
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.history,
                 ctx,
                 target,
@@ -1443,10 +1468,10 @@ def _register_shared(
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)
-        ctx = await asyncio.to_thread(handlers.resolve, repo_root, roots)
+        ctx = await offload(handlers.resolve, repo_root, roots)
         handlers.refresh_in_background(ctx)
         try:
-            return await asyncio.to_thread(handlers.capabilities, ctx, roots)
+            return await offload(handlers.capabilities, ctx, roots)
         finally:
             ctx.close()
 
@@ -1604,7 +1629,7 @@ def _checked_operation(
 
 
 def _register_v2(
-    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory
+    mcp: FastMCP[None], handlers: ToolHandlers, context_for: RepoContextFactory, offload: Offload
 ) -> None:
     """Register the v2 surface: three consolidated intent-shaped tools.
 
@@ -1662,7 +1687,7 @@ def _register_v2(
         _checked_map_limit(operation, limit)
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             if operation == OPERATION_MAP:
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.repo_map,
                     ctx,
                     MapRequest(
@@ -1672,7 +1697,7 @@ def _register_v2(
                         granularity=granularity,
                     ),
                 )
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.analyze_structure,
                 ctx,
                 StructureRequest(
@@ -1733,7 +1758,7 @@ def _register_v2(
         )
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             if operation == OPERATION_FIND:
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.find_symbol,
                     ctx,
                     name or "",
@@ -1741,18 +1766,18 @@ def _register_v2(
                     _or_default(limit, DEFAULT_FIND_LIMIT),
                 )
             if operation == OPERATION_OVERVIEW:
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.get_symbols_overview, ctx, paths or [], docs=docstrings
                 )
             if operation == OPERATION_EXPAND:
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.expand_symbols,
                     ctx,
                     stable_ids or [],
                     _or_default(limit, DEFAULT_EXPAND_LIMIT),
                 )
             if operation == OPERATION_EXPLAIN:
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.explain_symbol,
                     ctx,
                     target or "",
@@ -1763,7 +1788,7 @@ def _register_v2(
             # parity table pairs every table entry with its CLI rendering, so an
             # operation added to the table without a branch fails there rather
             # than silently landing on this arm.
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.resolve_locations,
                 ctx,
                 path or "",
@@ -1805,7 +1830,7 @@ def _register_v2(
         async with context_for(context, repo_root) as ctx:
             if operation == OPERATION_SLICE:
                 intervals = _slice_intervals(lines, bool(whole_file), tool="read operation 'slice'")
-                return await asyncio.to_thread(
+                return await offload(
                     handlers.read_slice,
                     ctx,
                     path or "",
@@ -1814,7 +1839,7 @@ def _register_v2(
                 )
             # The remaining table entry is OPERATION_DIR; the note on the same
             # arm of `symbols` says what keeps this fall-through honest.
-            return await asyncio.to_thread(
+            return await offload(
                 handlers.list_dir,
                 ctx,
                 path,
@@ -1833,7 +1858,7 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         roots_files=args.roots_from,
         auto_index=not args.no_auto_index,
     )
-    server = build_server(handlers, surface=args.surface)
+    server = build_server(handlers, surface=args.surface, max_concurrency=args.max_concurrency)
     # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the
     # process must serve immediately; until the warm lands, answers carry the
     # labeled skips with the warm-in-progress reason. AGENTLESS_MCP_NO_DOWNLOAD

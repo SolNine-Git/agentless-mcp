@@ -360,9 +360,9 @@ class TestRunGit:
         """The deadline is the runner's; what this owns is the note reaching the caller."""
 
         def times_out(cwd, arguments, *, timeout, max_output_bytes, config=()):
-            return gitinfo.GitBytesOutcome(None, f"git {arguments[0]} timed out after {timeout}s")
+            return gitinfo.GitOutcome(None, f"git {arguments[0]} timed out after {timeout}s")
 
-        monkeypatch.setattr(sandbox.gitinfo, "run_bounded_bytes", times_out)
+        monkeypatch.setattr(sandbox.gitinfo, "run_bounded", times_out)
 
         with pytest.raises(
             OperationFailed, match=rf"git status timed out after 7\.0s \(in {repo}\)"
@@ -380,13 +380,13 @@ class TestRunGit:
 
     def test_the_default_bound_is_the_creation_bound(self, repo, monkeypatch):
         seen = []
-        real_bounded = gitinfo.run_bounded_bytes
+        real_bounded = gitinfo.run_bounded
 
         def record(cwd, arguments, **keywords):
             seen.append(keywords["timeout"])
             return real_bounded(cwd, arguments, **keywords)
 
-        monkeypatch.setattr(sandbox.gitinfo, "run_bounded_bytes", record)
+        monkeypatch.setattr(sandbox.gitinfo, "run_bounded", record)
         sandbox.run_git(repo, ["status"])
 
         assert seen == [sandbox.GIT_TIMEOUT_SECONDS]

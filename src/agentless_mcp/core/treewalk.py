@@ -105,7 +105,7 @@ def _git_ignores(top: Path, path: Path) -> bool:
     the caller keeps the git listing. A fix for roots that list empty must
     not widen into a fallback for the roots that list correctly today.
     """
-    outcome = gitinfo.run_bounded_bytes(
+    outcome = gitinfo.run_bounded(
         top,
         ["check-ignore", "-q", "--", str(path)],
         timeout=GIT_TIMEOUT_SECONDS,
@@ -229,7 +229,7 @@ def _size_of(path: Path) -> int | None:
 
 def _git_listed_paths(root: Path, *, max_files: int = DEFAULT_MAX_WALK_FILES) -> list[str]:
     """Return tracked plus untracked-not-ignored paths, via git."""
-    outcome = gitinfo.run_bounded_bytes(
+    outcome = gitinfo.run_bounded(
         root,
         ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         timeout=GIT_TIMEOUT_SECONDS,
@@ -275,7 +275,7 @@ def _decoded_paths(
     bound could refuse the walk. Measured 2026-08-23 over a one-million-name
     listing against the 20,000-file default bound: 196 MB of allocations and
     415 MB peak RSS before, 72 MB and 89 MB after. What is left is the buffer
-    itself, twice: :func:`agentless_mcp.core.gitinfo.run_bounded_bytes` reads
+    itself, twice: :func:`agentless_mcp.core.gitinfo.run_bounded` reads
     the whole of stdout and joins it, under a cap rather than unbounded. This
     scan is what stops the listing being copied three more times on top of it.
 

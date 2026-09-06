@@ -60,6 +60,8 @@ from agentless_mcp.core import normalize, sandbox
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.normalize import SyntaxVerdict
 from agentless_mcp.core.patches import (
+    MAX_EDIT_BYTES,
+    MAX_EDITS,
     ApplyResult,
     Edit,
     EditOutcome,
@@ -221,10 +223,17 @@ def load_edits(text: str) -> ParseResult:
     for must be present and of the right type, because a document missing
     ``search`` is a caller bug and must not read downstream as an empty search
     that matches the start of a file.
-    """
-    if not text.lstrip().startswith("{"):
-        return parse_blocks(text)
 
+    Both forms leave through one exit, so :data:`~agentless_mcp.core.patches.MAX_EDITS`
+    and :data:`~agentless_mcp.core.patches.MAX_EDIT_BYTES` are checked once for
+    whichever one the caller wrote.
+    """
+    if text.lstrip().startswith("{"):
+        return _within_bounds(_from_json(text))
+    return _within_bounds(parse_blocks(text))
+
+
+def _from_json(text: str) -> ParseResult:
     try:
         document = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -273,6 +282,29 @@ def _edit_from(entry: object, position: int) -> Edit:
         search=values["search"],
         replace=values["replace"],
     )
+
+
+def _within_bounds(parsed: ParseResult) -> ParseResult:
+    count = len(parsed.edits)
+    if count > MAX_EDITS:
+        message = (
+            f"the request carries {count} edits, "
+            f"more than the {MAX_EDITS} this tool applies at once"
+        )
+        raise OperationFailed(message)
+
+    total = sum(
+        len(edit.search.encode("utf-8")) + len(edit.replace.encode("utf-8"))
+        for edit in parsed.edits
+    )
+    if total > MAX_EDIT_BYTES:
+        message = (
+            f"the request carries {total} bytes of search and replace text, "
+            f"more than the {MAX_EDIT_BYTES} this tool applies at once"
+        )
+        raise OperationFailed(message)
+
+    return parsed
 
 
 class PatchService:

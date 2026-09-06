@@ -112,7 +112,9 @@ agentless-mcp vote --verdicts verdicts.jsonl
 ```
 
 Patch candidates can use SEARCH/REPLACE text or the package's `edits.json`
-format. `validate` normalizes them against HEAD, runs byte-identical resulting
+format. One request carries at most 500 edits and 2,000,000 bytes of search
+and replace text; a larger one is refused when it is read, before any file is
+opened. `validate` normalizes them against HEAD, runs byte-identical resulting
 file states once while preserving every candidate's vote, and skips a
 reproduction command when regression has already failed. `vote` ranks the
 candidates that pass.
@@ -227,6 +229,15 @@ Put an authenticating proxy in front if you need it off-host.
 
 `--host` and `--port` apply to the HTTP transport only; passing either under
 stdio is refused rather than ignored, because there is no socket to bind.
+
+Several clients sharing one server also share its worker threads, so
+`--max-concurrency N` bounds how many tool calls run at once; it accepts 1 to
+64 and defaults to 8. Every admitted call may hold a tag-cache connection and
+a git child, and the ungated ceiling is whatever the interpreter's default
+thread pool sized itself to -- 32 on a large host, 5 on a small one. Raise it
+for a server with many clients, lower it to keep the machine's git and disk
+load predictable. It applies to stdio too, where the default is already the
+right answer for a single client.
 
 Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects

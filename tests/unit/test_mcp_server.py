@@ -30,7 +30,10 @@ from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.cliargs import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENCY,
     DISTRIBUTION_NAME,
+    MAX_CONCURRENCY,
+    MIN_CONCURRENCY,
     SURFACE_BOTH,
     SURFACE_V1,
     SURFACE_V2,
@@ -122,6 +125,10 @@ SURFACE_CALLS = {
 # A deadline, not a wait: the offload tests reach it only when a handler runs
 # on the loop thread, and they fail on the answer rather than hanging.
 OFFLOAD_DEADLINE_SECONDS = 10.0
+
+# A window, not a deadline: how long a serialized handler stays inside, which
+# is the room a second one would have to enter through were the gate wider.
+SERIALIZED_WAIT_SECONDS = 1.0
 
 # One row per offloaded call site rather than per tool, because the v2 tools
 # pick their handler from `operation`: the tool, that handler, and arguments.
@@ -1225,6 +1232,41 @@ class TestTransportSelection:
         assert capsys.readouterr().err == ""
 
 
+class TestConcurrencyLimit:
+    """How many handlers may hold worker threads at once is the operator's number.
+
+    Ungated, the ceiling is whatever the default executor sized itself to --
+    min(32, cpu_count + 4), so 32 on a workstation and 5 on a one-CPU host --
+    and each admitted handler may hold a tag-cache connection and a git child.
+    The bound applies to both transports, so the refusal does too.
+    """
+
+    def refuse(self, capsys, argv):
+        with pytest.raises(SystemExit) as caught:
+            parse_args(argv)
+        assert caught.value.code == 2
+        return capsys.readouterr().err
+
+    def test_the_default_is_the_named_constant(self):
+        assert parse_args([]).max_concurrency == DEFAULT_MAX_CONCURRENCY
+
+    @pytest.mark.parametrize("limit", [MIN_CONCURRENCY, MAX_CONCURRENCY])
+    def test_the_ends_of_the_range_are_accepted(self, limit):
+        assert parse_args(["--max-concurrency", str(limit)]).max_concurrency == limit
+
+    @pytest.mark.parametrize("limit", ["0", "-1", "65", "many"])
+    def test_a_limit_outside_the_range_is_refused_at_startup(self, capsys, limit):
+        err = self.refuse(capsys, ["--max-concurrency", limit])
+        assert "--max-concurrency" in err
+        assert "received argv" in err
+
+    def test_the_refusal_reaches_stdio_too(self, capsys):
+        # The gate is not a binding decision, so a stdio server that names an
+        # impossible limit must be refused rather than started with the default.
+        argv = ["--transport", TRANSPORT_STDIO, "--max-concurrency", "0"]
+        assert "--max-concurrency" in self.refuse(capsys, argv)
+
+
 class TestArgvDiagnostics:
     """Issue #3: an argv mistake must not read to the operator as a dead socket.
 
@@ -2139,3 +2181,74 @@ class TestNothingBlocksTheEventLoop:
         answers = {result.content[0].text for result in asyncio.run(go())}
 
         assert answers == {"party=0", "party=1"}
+
+    def both_calls(self, server, repo):
+        """One symbols call and one read call, started together."""
+
+        async def go():
+            async with Client(server) as client:
+                return await asyncio.wait_for(
+                    asyncio.gather(
+                        client.call_tool(
+                            "symbols",
+                            {"repo_root": str(repo), "operation": "find", "name": "quote"},
+                        ),
+                        client.call_tool("read", {"repo_root": str(repo), "operation": "dir"}),
+                    ),
+                    OFFLOAD_DEADLINE_SECONDS,
+                )
+
+        return [result.content[0].text for result in asyncio.run(go())]
+
+    def test_the_gate_at_two_permits_still_lets_two_calls_overlap(self, services, one_repo):
+        """A gate the width of the calls is a bound, not a lock.
+
+        The same two-party barrier as above: it fills only if both handlers are
+        inside at once, which needs both permits to be held at the same time.
+        """
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2, max_concurrency=2)
+        barrier = threading.Barrier(2, timeout=OFFLOAD_DEADLINE_SECONDS)
+
+        def paired(*_args, **_kwargs):
+            return f"party={barrier.wait()}"
+
+        handlers.find_symbol = paired
+        handlers.list_dir = paired
+
+        assert set(self.both_calls(server, one_repo)) == {"party=0", "party=1"}
+
+    def test_one_permit_serializes_the_calls_and_deadlocks_neither(self, services, one_repo):
+        """A gate of one orders the calls, and never blocks a call against itself.
+
+        Resolving the repository takes a permit and gives it back before the
+        context yields, so the handler's acquisition is a second, separate one.
+        Held across the yield instead, it would be the call waiting on itself
+        and this test would reach its deadline with nothing answered.
+        """
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2, max_concurrency=1)
+        trace = []
+        guard = threading.Lock()
+        # Never set: the wait is the window, not a handshake with the other call.
+        never = threading.Event()
+
+        def traced(name):
+            def handler(*_args, **_kwargs):
+                with guard:
+                    trace.append(f"{name} in")
+                never.wait(SERIALIZED_WAIT_SECONDS)
+                with guard:
+                    trace.append(f"{name} out")
+                return name
+
+            return handler
+
+        handlers.find_symbol = traced("find")
+        handlers.list_dir = traced("dir")
+
+        assert set(self.both_calls(server, one_repo)) == {"find", "dir"}
+        assert trace in (
+            ["find in", "find out", "dir in", "dir out"],
+            ["dir in", "dir out", "find in", "find out"],
+        )
