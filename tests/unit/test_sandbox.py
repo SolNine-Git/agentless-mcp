@@ -239,6 +239,43 @@ class TestWorktreeRunsNoRepositoryCode:
 
         assert not marker.exists(), "core.hooksPath from the repository decided what ran"
 
+    def test_a_textconv_driver_the_repository_names_is_not_run(self, repo, tmp_path):
+        """A diff driver is repository-named code, and diffing is what runs it.
+
+        The control half runs the same argv without ``--no-textconv`` and
+        proves the driver fires, so a green assertion below is not vacuous.
+        """
+        marker = tmp_path / "textconv-fired.txt"
+        driver = repo / "textconv.sh"
+        driver.write_text(
+            f'#!/bin/sh\necho fired > "{marker}"\ncat "$1"\n',
+            encoding="utf-8",
+        )
+        driver.chmod(0o755)
+        (repo / ".gitattributes").write_text("*.py diff=shipped\n", encoding="utf-8")
+        git(repo, "add", "-A")
+        git(
+            repo,
+            "-c",
+            "user.email=tests@example.invalid",
+            "-c",
+            "user.name=agentless-mcp tests",
+            "commit",
+            "-m",
+            "ship a diff driver",
+        )
+        git(repo, "config", "diff.shipped.textconv", str(driver))
+
+        with sandbox.worktree(repo) as tree:
+            (tree / "app.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+            git(tree, "diff", "--no-color", "--no-ext-diff")
+            assert marker.exists(), "the fixture driver never fired; the test proves nothing"
+            marker.unlink()
+
+            assert "return a - b" in sandbox.diff(tree)
+
+        assert not marker.exists(), "diff.<driver>.textconv from the repository decided what ran"
+
 
 class TestWorktreeCreationFailure:
     """A creation that dies part-way leaves nothing in the analysed repository."""

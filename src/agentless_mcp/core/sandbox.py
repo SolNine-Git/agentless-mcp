@@ -347,8 +347,11 @@ def diff(worktree_path: Path) -> str:
     the repository's own configuration: a ``color.diff = always`` or a
     ``diff.external`` in the user's config would otherwise decide the format
     of a diff this tool promises is machine-readable.
+
+    ``--no-textconv`` is the execution half: a ``diff.<driver>.textconv`` runs
+    a repository-named program here, and only the flag turns the mechanism off.
     """
-    return run_git(worktree_path, ["diff", "--no-color", "--no-ext-diff"])
+    return run_git(worktree_path, ["diff", "--no-color", "--no-ext-diff", "--no-textconv"])
 
 
 def run_command(

@@ -3,12 +3,103 @@
 import errno
 import os
 import subprocess
+import sys
 
 import pytest
 
 from agentless_mcp.core import gitinfo, sandbox, treewalk
 
 SAMPLE = {"a.py": "x = 1\n", "sub/b.py": "y = 2\n"}
+
+
+def git_out(root, *arguments):
+    """Run one git command in ``root`` and return its stdout bytes."""
+    return subprocess.run(
+        ["git", "-C", str(root), *arguments], check=True, capture_output=True, timeout=30
+    ).stdout
+
+
+def sign_head_commit(root):
+    """Rewrite HEAD's commit object with a gpgsig header, so git offers to verify it."""
+    # A real signature is not needed and gpg is not assumed to exist: git
+    # consults gpg.program because the header is present, not because it verifies.
+    lines = []
+    for line in git_out(root, "cat-file", "commit", "HEAD").decode().split("\n"):
+        lines.append(line)
+        if line.startswith("committer "):
+            lines += [
+                "gpgsig -----BEGIN PGP SIGNATURE-----",
+                " ",
+                " bm90IGEgc2lnbmF0dXJl",
+                " -----END PGP SIGNATURE-----",
+            ]
+    written = (
+        subprocess.run(
+            ["git", "-C", str(root), "hash-object", "-t", "commit", "-w", "--stdin"],
+            input="\n".join(lines).encode(),
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    git_out(root, "update-ref", "HEAD", written)
+
+
+@pytest.fixture
+def signature_bait(make_git_repo, tmp_path):
+    """Build a repository whose HEAD is signed and whose gpg.program touches a marker."""
+
+    def build(*, local_config=True):
+        root = make_git_repo(SAMPLE)
+        marker = tmp_path / "gpg-fired.txt"
+        program = root / "gpg.sh"
+        program.write_text(
+            f'#!/bin/sh\necho fired > "{marker}"\ncat > /dev/null\n', encoding="utf-8"
+        )
+        program.chmod(0o755)
+        sign_head_commit(root)
+        if local_config:
+            git_out(root, "config", "log.showSignature", "true")
+            git_out(root, "config", "gpg.program", str(program))
+        return root, marker, program
+
+    return build
+
+
+class SilentChild:
+    """A spawned process that holds both pipes open and never writes or exits."""
+
+    def __init__(self, command, **kwargs):
+        self._writers = []
+        self.stdout = self._reader()
+        self.stderr = self._reader()
+        self.returncode = None
+
+    def _reader(self):
+        read_fd, write_fd = os.pipe()
+        self._writers.append(write_fd)
+        return os.fdopen(read_fd, "rb")
+
+    def kill(self):
+        for fd in self._writers:
+            os.close(fd)
+        self._writers = []
+        self.returncode = -9
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if self._writers:
+            self.kill()
+        for pipe in (self.stdout, self.stderr):
+            if pipe is not None:
+                pipe.close()
 
 
 class TestGitRoot:
@@ -102,18 +193,15 @@ class TestDegradation:
         def missing(*args, **kwargs):
             raise FileNotFoundError(message)
 
-        monkeypatch.setattr(subprocess, "run", missing)
+        monkeypatch.setattr(subprocess, "Popen", missing)
         assert gitinfo.git_root(tmp_path) is None
         assert gitinfo.head_sha(tmp_path) is None
         assert gitinfo.dirty_count(tmp_path) is None
 
     def test_a_timeout_leaves_the_dirty_count_unknown(self, monkeypatch, make_git_repo):
         root = make_git_repo(SAMPLE)
-
-        def slow(command, **kwargs):
-            raise subprocess.TimeoutExpired(command, gitinfo.GIT_TIMEOUT_SECONDS)
-
-        monkeypatch.setattr(subprocess, "run", slow)
+        monkeypatch.setattr(gitinfo, "GIT_TIMEOUT_SECONDS", 0.05)
+        monkeypatch.setattr(subprocess, "Popen", SilentChild)
         assert gitinfo.dirty_count(root) is None
 
     def test_a_process_that_cannot_be_spawned_degrades_with_its_reason(
@@ -128,16 +216,16 @@ class TestDegradation:
         degrades to a note, so this must not reach the caller as a raise.
         """
         root = make_git_repo(SAMPLE)
-        real_run = subprocess.run
+        real_popen = subprocess.Popen
 
         def cannot_spawn(command, **kwargs):
             # Root discovery still works, so the snapshot gets past it and
             # reaches the three reads whose notes are the thing under test.
             if "--show-toplevel" in command:
-                return real_run(command, **kwargs)
+                return real_popen(command, **kwargs)
             raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
 
-        monkeypatch.setattr(subprocess, "run", cannot_spawn)
+        monkeypatch.setattr(subprocess, "Popen", cannot_spawn)
         snapshot = gitinfo.snapshot(root)
 
         assert snapshot.head_sha is None
@@ -156,32 +244,48 @@ class TestDegradation:
         promises never to write to.
         """
         root = make_git_repo(SAMPLE)
-        calls = []
-        real = subprocess.run
+        argvs = []
+        bounds = []
+        real_popen = subprocess.Popen
+        real_bounded = gitinfo.run_bounded
 
-        def record(command, **kwargs):
-            calls.append((command, kwargs.get("timeout")))
-            return real(command, **kwargs)
+        def record_spawn(command, **kwargs):
+            argvs.append(command)
+            return real_popen(command, **kwargs)
 
-        monkeypatch.setattr(subprocess, "run", record)
+        def record_bound(cwd, arguments, *, timeout, max_output_bytes):
+            bounds.append((timeout, max_output_bytes))
+            return real_bounded(cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes)
+
+        monkeypatch.setattr(subprocess, "Popen", record_spawn)
+        monkeypatch.setattr(gitinfo, "run_bounded", record_bound)
         gitinfo.snapshot(root)
 
-        assert len(calls) >= 4, "expected rev-parse x3 plus status"
-        for command, timeout in calls:
+        assert len(argvs) >= 4, "expected rev-parse x3 plus status"
+        for command in argvs:
             assert command[: 1 + len(gitinfo.HARDENING_PREFIX)] == [
                 "git",
                 *gitinfo.HARDENING_PREFIX,
             ]
-            assert timeout == gitinfo.GIT_TIMEOUT_SECONDS
+        assert len(bounds) == len(argvs)
+        assert set(bounds) == {(gitinfo.GIT_TIMEOUT_SECONDS, gitinfo.MAX_RECEIPT_OUTPUT_BYTES)}
 
     def test_every_package_git_argv_has_the_same_hardening_prefix(self, monkeypatch, tmp_path):
         calls = []
+        real_popen = subprocess.Popen
 
-        def record(command, **_kwargs):
+        def record_run(command, **_kwargs):
             calls.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
 
-        monkeypatch.setattr(subprocess, "run", record)
+        def record_spawn(command, **kwargs):
+            calls.append(command)
+            return real_popen(command, **kwargs)
+
+        # Two seams because the receipt reader spawns and the other two callers
+        # still run to completion; the prefix has to be on the argv of each.
+        monkeypatch.setattr(subprocess, "run", record_run)
+        monkeypatch.setattr(subprocess, "Popen", record_spawn)
 
         gitinfo.head_sha(tmp_path)
         treewalk._git_listed_paths(tmp_path)
@@ -226,20 +330,39 @@ class TestAmbientGitEnvironmentCannotRedirect:
 
         assert gitinfo.snapshot(analysed).dirty_count == 0
 
-    def test_the_whole_git_family_is_stripped_and_nothing_else_is(self, monkeypatch):
+    def test_the_whole_git_family_is_stripped_except_the_two_config_names(self, monkeypatch):
         # A denylist of the variables known to hurt today would be a list git
         # is free to extend. The whole prefix is stripped instead, and the
         # configuration this package needs travels on the argv.
         monkeypatch.setenv("GIT_DIR", "/somewhere")
         monkeypatch.setenv("GIT_SOMETHING_INVENTED_LATER", "1")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/some/config")
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
         monkeypatch.setenv("PATH", "/usr/bin")
         monkeypatch.setenv("HOME", "/home/someone")
 
         environment = gitinfo.subprocess_env()
 
-        assert not [name for name in environment if name.startswith("GIT_")]
+        assert [name for name in environment if name.startswith("GIT_")] == [
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_NOSYSTEM",
+        ]
         assert environment["PATH"] == "/usr/bin"
         assert environment["HOME"] == "/home/someone"
+
+    def test_the_kept_names_cannot_redirect_git_at_another_repository(self, two_repos, monkeypatch):
+        """The two kept names say where config is read, never which repository is.
+
+        That distinction is the whole reason they are exempt, so it is asserted
+        rather than left to the reader of git-config(1).
+        """
+        analysed, elsewhere = two_repos
+        expected = gitinfo.snapshot(analysed).head_sha
+
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(elsewhere / ".git" / "config"))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+        assert gitinfo.snapshot(analysed).head_sha == expected
 
 
 class TestCommitChurn:
@@ -355,7 +478,11 @@ class TestRunBounded:
         expected = ["git", *gitinfo.HARDENING_PREFIX]
         assert seen["command"][: len(expected)] == expected
         assert seen["env"]["LC_ALL"] == "C"
-        assert not any(name.startswith("GIT_") for name in seen["env"])
+        assert not [
+            name
+            for name in seen["env"]
+            if name.startswith("GIT_") and name not in gitinfo.GIT_CONFIG_KEPT
+        ]
 
     def test_a_nonzero_exit_is_a_note_with_the_first_stderr_line(self, make_git_repo):
         root = make_git_repo(SAMPLE)
@@ -384,37 +511,7 @@ class TestRunBounded:
         assert len(outcome.text.encode()) == 4096
 
     def test_a_deadline_kills_a_silent_child(self, monkeypatch, tmp_path):
-        class Silent:
-            def __init__(self, command, **kwargs):
-                self._writers = []
-                self.stdout = self._reader()
-                self.stderr = self._reader()
-                self.returncode = None
-
-            def _reader(self):
-                read_fd, write_fd = os.pipe()
-                self._writers.append(write_fd)
-                return os.fdopen(read_fd, "rb")
-
-            def kill(self):
-                for fd in self._writers:
-                    os.close(fd)
-                self._writers = []
-                self.returncode = -9
-
-            def wait(self):
-                return self.returncode
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                if self._writers:
-                    self.kill()
-                self.stdout.close()
-                self.stderr.close()
-
-        monkeypatch.setattr(subprocess, "Popen", Silent)
+        monkeypatch.setattr(subprocess, "Popen", SilentChild)
         outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=0.05, max_output_bytes=10)
 
         assert outcome.text is None
@@ -429,3 +526,218 @@ class TestRunBounded:
 
         assert outcome.text is None
         assert outcome.note == "git log could not be run: Too many open files"
+
+
+class TestRepositoryConfigCannotChooseAProgram:
+    """``log.showSignature`` plus ``gpg.program`` turns a repository read into an exec.
+
+    Both keys are repository-local, so a repository that ships them decides
+    what runs the moment this package reads its history. The prefix pins the
+    first key off, which is what makes the second unreachable.
+    """
+
+    def test_the_bait_fires_when_the_prefix_is_absent(self, signature_bait):
+        """The control half: without it a green assertion below proves nothing."""
+        root, marker, _ = signature_bait()
+        git_out(root, "log", "--oneline")
+
+        assert marker.exists(), "the fixture never fired; the assertions below are vacuous"
+
+    def test_the_churn_log_runs_nothing(self, signature_bait):
+        root, marker, _ = signature_bait()
+
+        assert gitinfo.commit_churn(root, ["a.py"]) is not None
+        assert not marker.exists(), "the repository's gpg.program ran under _run"
+
+    def test_the_history_log_runs_nothing(self, signature_bait):
+        root, marker, _ = signature_bait()
+        outcome = gitinfo.run_bounded(
+            root,
+            ["log", "-L1,1:a.py", "--no-patch", "-z", "--format=%H", "--max-count=5", "--"],
+            timeout=30.0,
+            max_output_bytes=100_000,
+        )
+
+        assert outcome.note == ""
+        assert not marker.exists(), "the repository's gpg.program ran under run_bounded"
+
+    def test_the_snapshot_reads_run_nothing(self, signature_bait):
+        root, marker, _ = signature_bait()
+
+        assert gitinfo.snapshot(root).head_sha is not None
+        assert not marker.exists()
+
+
+class TestPinnedGlobalConfigIsHonoured:
+    """The suite pins git's global config; the package's own calls must see that pin."""
+
+    def test_the_pinned_global_config_reaches_the_package_s_git(
+        self, make_git_repo, tmp_path, monkeypatch
+    ):
+        """``core.abbrev`` is observable in the output, so arrival is proved, not assumed."""
+        root = make_git_repo(SAMPLE)
+        config = tmp_path / "global.cfg"
+        config.write_text("[core]\n\tabbrev = 12\n", encoding="utf-8")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "--short", "HEAD"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.text is not None
+        assert len(outcome.text.strip()) == 12
+
+    def test_a_global_show_signature_reaches_git_and_still_runs_nothing(
+        self, signature_bait, tmp_path, monkeypatch
+    ):
+        root, marker, program = signature_bait(local_config=False)
+        config = tmp_path / "global.cfg"
+        config.write_text(
+            f"[log]\n\tshowSignature = true\n[gpg]\n\tprogram = {program}\n", encoding="utf-8"
+        )
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+        git_out(root, "log", "--oneline")
+        assert marker.exists(), "the global config never reached git; the assertion is vacuous"
+        marker.unlink()
+
+        assert gitinfo.commit_churn(root, ["a.py"]) is not None
+        assert not marker.exists()
+
+
+class TestReceiptOutputCap:
+    def test_output_past_the_cap_is_unknown_rather_than_partial(self, monkeypatch, make_git_repo):
+        """Half a porcelain status undercounts a dirty tree, so it is not reported at all."""
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        monkeypatch.setattr(gitinfo, "MAX_RECEIPT_OUTPUT_BYTES", 4)
+
+        outcome = gitinfo._run(root, ["status", "--porcelain"])
+
+        assert outcome.text is None
+        assert outcome.note == "git status printed more than 4 bytes"
+        assert gitinfo.dirty_count(root) is None
+
+
+class TestBoundedStderr:
+    def test_stderr_is_capped_and_keeps_its_oldest_bytes(self, monkeypatch, tmp_path):
+        """The note quotes the first line, so the cap has to keep the front of the stream."""
+        monkeypatch.setattr(gitinfo, "MAX_STDERR_BYTES", 16)
+        real_popen = subprocess.Popen
+
+        def noisy(command, **kwargs):
+            script = "import sys; sys.stderr.write('E' * 200000); raise SystemExit(3)"
+            return real_popen([sys.executable, "-c", script], **kwargs)
+
+        monkeypatch.setattr(subprocess, "Popen", noisy)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=30.0, max_output_bytes=4096)
+
+        assert outcome.note == "git log exited 3: " + "E" * 16
+
+
+class TestWindowsDrainFallback:
+    """``select()`` takes sockets and not pipes on Windows, so that branch reads differently.
+
+    The platform cannot be run here, so every test forces the branch and
+    fails loudly if the POSIX drain is reached anyway.
+    """
+
+    @pytest.fixture(autouse=True)
+    def on_windows(self, monkeypatch):
+        wrong_branch = "the POSIX drain ran on the Windows branch"
+
+        def unreachable(*args, **kwargs):
+            raise AssertionError(wrong_branch)
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(gitinfo, "_drain_selectors", unreachable)
+
+    def test_a_successful_call_keeps_stdout_whole(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "HEAD"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.returncode == 0
+        assert outcome.truncated is False
+        assert outcome.text is not None
+        assert len(outcome.text.strip()) == 40
+
+    def test_a_nonzero_exit_is_a_note_with_the_first_stderr_line(self, make_git_repo):
+        root = make_git_repo(SAMPLE)
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "--verify", "no-such-ref-zzz"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.text is None
+        assert outcome.note.startswith(f"git rev-parse exited {outcome.returncode}: fatal:")
+
+    def test_the_output_cap_cuts_stdout_and_flags_it(self, make_git_repo, commit_all):
+        root = make_git_repo(SAMPLE)
+        (root / "a.py").write_text("x = 2\n", encoding="utf-8")
+        commit_all(root, "big\n\n" + "y" * 100_000)
+
+        outcome = gitinfo.run_bounded(
+            root, ["log", "-1", "--format=%B"], timeout=30.0, max_output_bytes=4096
+        )
+
+        assert outcome.truncated is True
+        assert outcome.text is not None
+        assert len(outcome.text.encode()) == 4096
+
+    def test_a_deadline_kills_a_silent_child(self, monkeypatch, tmp_path):
+        real_popen = subprocess.Popen
+
+        def sleeper(command, **kwargs):
+            return real_popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+
+        monkeypatch.setattr(subprocess, "Popen", sleeper)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=0.05, max_output_bytes=10)
+
+        assert outcome.text is None
+        assert outcome.note == "git log timed out after 0.05s"
+
+
+class TestNoCallInTheRunnerIsUnbounded:
+    def test_a_child_that_closes_its_pipes_and_lingers_is_killed(self, monkeypatch, tmp_path):
+        """EOF on both pipes is not proof the child exited, so the reap is bounded too."""
+        real_popen = subprocess.Popen
+        script = "import os, time; os.close(1); os.close(2); time.sleep(30)"
+
+        def lingering(command, **kwargs):
+            return real_popen([sys.executable, "-c", script], **kwargs)
+
+        monkeypatch.setattr(subprocess, "Popen", lingering)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=1.0, max_output_bytes=4096)
+
+        assert outcome.text is None
+        assert outcome.note == "git log timed out after 1.0s"
+
+    def test_a_spawn_that_yields_no_pipes_degrades_with_a_reason(self, monkeypatch, tmp_path):
+        class Pipeless(SilentChild):
+            def __init__(self, command, **kwargs):
+                super().__init__(command, **kwargs)
+                self.stdout.close()
+                self.stdout = None
+
+        monkeypatch.setattr(subprocess, "Popen", Pipeless)
+        outcome = gitinfo.run_bounded(tmp_path, ["log"], timeout=1.0, max_output_bytes=4096)
+
+        assert outcome.text is None
+        assert outcome.note == "git log could not be run: no pipes"
+
+
+class TestPosixDrainIsTheDefault:
+    def test_the_communicate_fallback_is_not_used_here(self, monkeypatch, make_git_repo):
+        root = make_git_repo(SAMPLE)
+
+        wrong_branch = "the Windows fallback ran on POSIX"
+
+        def unreachable(*args, **kwargs):
+            raise AssertionError(wrong_branch)
+
+        monkeypatch.setattr(gitinfo, "_drain_communicate", unreachable)
+        outcome = gitinfo.run_bounded(
+            root, ["rev-parse", "HEAD"], timeout=5.0, max_output_bytes=4096
+        )
+
+        assert outcome.returncode == 0

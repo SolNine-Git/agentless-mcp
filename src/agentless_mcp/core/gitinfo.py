@@ -18,25 +18,37 @@ allowed to read.
 
 Repository-local configuration is untrusted input. Every git invocation in
 the package therefore carries the same fixed configuration prefix: file
-system monitors and external diff drivers are disabled, and pager output is
-forced through ``cat``. The prefix is public within the core so the walker and
-write-side sandbox cannot drift from the receipt code.
+system monitors, external diff drivers and commit-signature verification are
+disabled, and pager output is forced through ``cat``. The prefix is public
+within the core so the walker and write-side sandbox cannot drift from the
+receipt code.
 """
 
 import logging
 import os
 import selectors
 import subprocess
+import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
+from agentless_mcp.util import platforms
+
 # Bounded hard: the receipt is a courtesy on every call, and a courtesy that
 # can hang is a bug. Five seconds is far above a healthy `git status` on a
 # large repository and far below anything a caller would wait through.
 GIT_TIMEOUT_SECONDS = 5.0
+
+# The receipt reads a short SHA, a porcelain status and a churn log, so this is
+# far above any healthy answer and only bounds the pathological one.
+MAX_RECEIPT_OUTPUT_BYTES = 8_000_000
+
+# A note quotes stderr's first line, so the rest is only ever read past. The
+# pipe is drained past this point anyway: a child blocked on it never exits.
+MAX_STDERR_BYTES = 65_536
 
 logger = logging.getLogger(__name__)
 
@@ -69,18 +81,30 @@ HARDENING_PREFIX: tuple[str, ...] = (
     "diff.external=",
     "-c",
     "core.quotePath=false",
+    # `log.showSignature` makes every `git log` verify commit signatures through
+    # `gpg.program`, and both keys are repository-local: a read becomes an exec.
+    "-c",
+    "log.showSignature=false",
 )
+
+# The two ``GIT_`` names that move where config is read from without moving
+# which repository is read. See :func:`subprocess_env`.
+GIT_CONFIG_KEPT: frozenset[str] = frozenset({"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"})
 
 
 def subprocess_env() -> dict[str, str]:
     """Return the environment a git call this package makes may inherit.
 
-    Every ``GIT_``-prefixed variable is removed, and nothing else is. The
-    variables that break this package are the ones that redirect git away from
-    the ``-C`` it was given -- ``GIT_DIR``, ``GIT_WORK_TREE``,
-    ``GIT_INDEX_FILE``, ``GIT_CEILING_DIRECTORIES``, ``GIT_OBJECT_DIRECTORY``
-    and their relatives -- and the whole family is stripped rather than a list
-    of the ones known to hurt today, because the list is git's to extend.
+    Every ``GIT_``-prefixed variable is removed except :data:`GIT_CONFIG_KEPT`,
+    and nothing else is. The variables that break this package are the ones
+    that redirect git away from the ``-C`` it was given -- ``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``, ``GIT_CEILING_DIRECTORIES``,
+    ``GIT_OBJECT_DIRECTORY`` and their relatives -- and the whole family is
+    stripped rather than a list of the ones known to hurt today, because the
+    list is git's to extend.
+
+    The two exceptions move where config is read from, not which repository is
+    read, so a caller's pinned git configuration reaches these calls.
 
     Reproduced before this existed: with ``GIT_DIR`` pointing at an unrelated
     repository, the receipt for the analysed repository carried the *other*
@@ -94,7 +118,11 @@ def subprocess_env() -> dict[str, str]:
     on the argv -- :data:`HARDENING_PREFIX` -- rather than through the
     environment.
     """
-    return {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_") or name in GIT_CONFIG_KEPT
+    }
 
 
 @dataclass(frozen=True)
@@ -120,14 +148,6 @@ class GitOutcome:
     note: str
     truncated: bool = False
     returncode: int | None = None
-
-
-@dataclass(frozen=True)
-class _Outcome:
-    """One git invocation: its stdout, or the reason there is none."""
-
-    text: str | None
-    note: str
 
 
 def git_root(path: Path) -> Path | None:
@@ -297,7 +317,7 @@ class _DirtyOutcome:
     note: str
 
 
-def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
+def _parse_dirty(outcome: GitOutcome) -> _DirtyOutcome:
     """Count the porcelain lines; unknown stays unknown."""
     if outcome.text is None:
         return _DirtyOutcome(count=None, note=outcome.note)
@@ -305,39 +325,23 @@ def _parse_dirty(outcome: _Outcome) -> _DirtyOutcome:
     return _DirtyOutcome(count=len(lines), note=outcome.note)
 
 
-def _run(cwd: Path, arguments: Sequence[str]) -> _Outcome:
-    """Run one bounded git command; every failure becomes a note, never a raise."""
-    subcommand = arguments[0] if arguments else "git"
-    command = ["git", *HARDENING_PREFIX, "-C", str(cwd), *arguments]
-    try:
-        # Fixed argv, no shell. `cwd` is an already-resolved path and the rest
-        # of the argv is a literal, so nothing from the analysed repository
-        # can steer this call.
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=GIT_TIMEOUT_SECONDS,
-            check=False,
-            env=subprocess_env(),
+def _run(cwd: Path, arguments: Sequence[str]) -> GitOutcome:
+    """Run one receipt-bounded git command; every failure becomes a note, never a raise."""
+    outcome = run_bounded(
+        cwd, arguments, timeout=GIT_TIMEOUT_SECONDS, max_output_bytes=MAX_RECEIPT_OUTPUT_BYTES
+    )
+    if outcome.truncated:
+        # Unknown, not partial: half a porcelain status would undercount a
+        # dirty tree, and a receipt row that reads low is worse than one unread.
+        subcommand = arguments[0] if arguments else "git"
+        return GitOutcome(
+            None,
+            f"git {subcommand} printed more than {MAX_RECEIPT_OUTPUT_BYTES} bytes",
+            returncode=outcome.returncode,
         )
-    except FileNotFoundError:
-        return _Outcome(None, "git is not installed, so repository state is unknown")
-    except subprocess.TimeoutExpired:
-        return _Outcome(None, f"git {subcommand} timed out after {GIT_TIMEOUT_SECONDS}s")
-    except OSError as exc:
-        return _Outcome(None, f"git {subcommand} could not be run: {exc.strerror}")
-
-    if completed.returncode != 0:
-        # Taking the first line keeps the note short. It is not what makes the
-        # note safe to put on a receipt row -- `application/envelope` escapes
-        # it at the sink, which is where the line grammar is known. Simplify
-        # this to `.strip()` if the note should carry more, and nothing
-        # downstream breaks.
-        detail = completed.stderr.decode("utf-8", errors="replace").strip().splitlines()
-        first = detail[0] if detail else "no detail"
-        return _Outcome(None, f"git {subcommand} exited {completed.returncode}: {first}")
-
-    return _Outcome(completed.stdout.decode("utf-8", errors="replace").strip(), "")
+    if outcome.text is None:
+        return outcome
+    return GitOutcome(outcome.text.strip(), outcome.note, returncode=outcome.returncode)
 
 
 def run_bounded(
@@ -354,15 +358,28 @@ def run_bounded(
         if isinstance(exc, FileNotFoundError):
             return GitOutcome(None, "git is not installed, so repository state is unknown")
         return GitOutcome(None, f"git {subcommand} could not be run: {exc.strerror}")
+    deadline = time.monotonic() + timeout
     with process:
         if process.stdout is None or process.stderr is None:
             process.kill()
             return GitOutcome(None, f"git {subcommand} could not be run: no pipes")
-        stdout, stderr, truncated, timed_out = _drain(
-            process.stdout, process.stderr, timeout=timeout, max_output_bytes=max_output_bytes
-        )
+        # select() takes sockets and not pipes on Windows, so the incremental
+        # drain is POSIX-only and Windows caps what communicate() already read.
+        if platforms.family(sys.platform) == platforms.WINDOWS:
+            stdout, stderr, truncated, timed_out = _drain_communicate(
+                process, deadline=deadline, max_output_bytes=max_output_bytes
+            )
+        else:
+            stdout, stderr, truncated, timed_out = _drain_selectors(
+                process.stdout, process.stderr, deadline=deadline, max_output_bytes=max_output_bytes
+            )
         if truncated or timed_out:
             process.kill()
+        elif not _reaped_by(process, deadline):
+            # Both pipes are at EOF, so the child is on its way out; bounding
+            # the reap anyway leaves no unbounded wait in this runner.
+            process.kill()
+            timed_out = True
         process.wait()
     if timed_out:
         return GitOutcome(None, f"git {subcommand} timed out after {timeout}s")
@@ -376,6 +393,8 @@ def _bounded_outcome(
     if truncated:
         return GitOutcome(text, "", truncated=True, returncode=returncode)
     if returncode != 0:
+        # The first line keeps the note short; it is not what makes it safe on a
+        # receipt row -- `application/envelope` escapes it where the grammar is known.
         detail = stderr.decode("utf-8", errors="replace").strip().splitlines()
         first = detail[0] if detail else "no detail"
         return GitOutcome(
@@ -384,11 +403,19 @@ def _bounded_outcome(
     return GitOutcome(text, "", returncode=0)
 
 
-def _drain(
-    stdout: IO[bytes], stderr: IO[bytes], *, timeout: float, max_output_bytes: int
+def _reaped_by(process: subprocess.Popen[bytes], deadline: float) -> bool:
+    try:
+        process.wait(timeout=max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        return False
+    return True
+
+
+def _drain_selectors(
+    stdout: IO[bytes], stderr: IO[bytes], *, deadline: float, max_output_bytes: int
 ) -> tuple[bytes, bytes, bool, bool]:
-    deadline = time.monotonic() + timeout
-    buffers: dict[int, bytearray] = {stdout.fileno(): bytearray(), stderr.fileno(): bytearray()}
+    out_fd = stdout.fileno()
+    buffers: dict[int, bytearray] = {out_fd: bytearray(), stderr.fileno(): bytearray()}
     truncated = timed_out = False
     with selectors.DefaultSelector() as selector:
         selector.register(stdout, selectors.EVENT_READ)
@@ -404,9 +431,27 @@ def _drain(
                     selector.unregister(key.fileobj)
                     continue
                 buffer = buffers[key.fd]
-                if key.fd == stdout.fileno() and len(buffer) + len(chunk) > max_output_bytes:
+                if key.fd != out_fd:
+                    buffer += chunk[: max(0, MAX_STDERR_BYTES - len(buffer))]
+                    continue
+                if len(buffer) + len(chunk) > max_output_bytes:
                     buffer += chunk[: max_output_bytes - len(buffer)]
                     truncated = True
                     break
                 buffer += chunk
-    return bytes(buffers[stdout.fileno()]), bytes(buffers[stderr.fileno()]), truncated, timed_out
+    return bytes(buffers[out_fd]), bytes(buffers[stderr.fileno()]), truncated, timed_out
+
+
+def _drain_communicate(
+    process: subprocess.Popen[bytes], *, deadline: float, max_output_bytes: int
+) -> tuple[bytes, bytes, bool, bool]:
+    try:
+        stdout, stderr = process.communicate(timeout=max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        return b"", b"", False, True
+    return (
+        stdout[:max_output_bytes],
+        stderr[:MAX_STDERR_BYTES],
+        len(stdout) > max_output_bytes,
+        False,
+    )
