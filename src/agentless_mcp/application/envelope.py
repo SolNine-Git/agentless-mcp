@@ -156,21 +156,8 @@ def receipt_lines(
 
 
 def _tool_lines(ctx: RepoContext) -> list[str]:
-    """Return the receipt lines the tool itself authored: no repository text.
-
-    "No repository text" is the claim; :func:`one_line` is what makes it true.
-    Three of the values interpolated here reach us from outside -- the root can
-    be a client-advertised directory, the note and the config path come from the
-    analysed repository -- and the receipt is the region an agent is told to
-    trust. A newline in any of them forges a second receipt line, which is
-    worse than forging a data row in the body because it can carry free-form
-    directive prose.
-
-    Held here rather than upstream on purpose. ``gitinfo`` and ``projectconfig``
-    happen to keep their values single-line today (``splitlines()[0]`` and
-    ``{key!r}``), but neither documents that as an envelope precondition, so
-    neither can be relied on to keep doing it.
-    """
+    # Root, note and config path all reach us from outside, and the receipt is
+    # the region an agent trusts, so `one_line` denies them a forged line.
     head = ctx.head_sha or "nogit"
     dirty = "unknown" if ctx.dirty_count is None else str(ctx.dirty_count)
     lines = [
@@ -340,26 +327,14 @@ def wrap(
 
 
 def _header(ctx: RepoContext, counter: TokenCounter, budget: int) -> str:
-    """Render the tool-authored receipt, clamped to ``budget``.
-
-    The header line carries the untrusted-content marker, so it is rendered
-    whatever the clamp dropped: a bounded answer that lost its marker would be
-    the worse failure of the two.
-    """
     block = "".join(f"{line}\n" for line in _tool_lines(ctx))
     kept, _ = _fit(block, counter, budget)
+    # The header line carries the untrusted-content marker, so it survives a
+    # clamp that dropped everything: losing the marker is the worse failure.
     return kept or f"{ENVELOPE.receipt_header}\n"
 
 
 def _config_warnings(ctx: RepoContext, counter: TokenCounter, max_tokens: int) -> str:
-    """Render the repository's own config warnings, bounded by count and size.
-
-    After the tool-authored lines, because the warning text is quoted from a
-    file the analysed repository wrote. A warning left out is counted in the line that
-    replaces it, so the block is never quietly shorter than the truth -- and
-    the selection is :func:`_bounded_warnings`, the one both receipts use, so
-    the count this block reports is the count they report.
-    """
     lines = _warning_lines(_bounded_warnings(ctx.config.warnings, counter, max_tokens))
     return "".join(f"{line}\n" for line in lines)
 

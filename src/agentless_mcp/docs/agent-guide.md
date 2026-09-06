@@ -121,7 +121,7 @@ tools**, five of them loaded eagerly. That number is a decision rather
 than an accident. Selection
 accuracy falls as a tool list grows. The questions therefore fold behind an
 `operation` parameter by intent (orientation, symbols, contents) instead of
-being eleven entries to choose between. The folding is adapter-level only:
+being twelve entries to choose between. The folding is adapter-level only:
 same services, same answers, same wording. `find_referencing_symbols` stays
 its own tool deliberately, so the expensive fan-in call keeps its own
 decision point and cost warning. `history` is its own tool for the same

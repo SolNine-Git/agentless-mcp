@@ -1629,7 +1629,7 @@ def value_shape(schema):
 
 
 class TestToolSurface:
-    """The listing is capped at eleven, and the cap is read off a live server."""
+    """The listing is capped at twelve, and the cap is read off a live server."""
 
     def test_the_published_listing_is_exactly_twelve_tools(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services)))

@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass
 
 import pytest
@@ -66,6 +67,14 @@ class PriceBook:
     def cost_of(self, sku):
         return quote(sku)
 """
+
+# A deadlock guard, not a wait: the offload test only reaches this bound when
+# the handler blocks the loop, and it fails on the answer rather than hanging.
+OFFLOAD_DEADLOCK_SECONDS = 10.0
+
+# The `--surface` help spells its counts. A count with no word here is drift
+# the help cannot already be stating, so KeyError is the intended failure.
+COUNT_WORDS = {6: "six", 12: "twelve", 15: "fifteen"}
 
 
 @pytest.fixture
@@ -541,6 +550,22 @@ class TestSurfaceFlag:
         assert caught.value.code == 2
         assert "received argv" in capsys.readouterr().err
 
+    def test_the_help_spells_the_counts_the_surfaces_publish(self, services, one_repo, capsys):
+        """`--surface` quotes two tool counts, so a new tool has to move them."""
+        published = {
+            surface: len(
+                listed_tools(build_server(ToolHandlers([one_repo], services), surface=surface))
+            )
+            for surface in (SURFACE_V1, SURFACE_V2)
+        }
+        with pytest.raises(SystemExit):
+            parse_args(["--help"])
+        # argparse wraps the help, so the phrases only survive unwrapped.
+        rendered = " ".join(capsys.readouterr().out.split())
+
+        assert f"the {COUNT_WORDS[published[SURFACE_V2]]} consolidated" in rendered
+        assert f"the original {COUNT_WORDS[published[SURFACE_V1]]}" in rendered
+
     def test_serve_builds_the_surface_the_flag_selected(self, services, tmp_path, monkeypatch):
         built = {}
 
@@ -1015,3 +1040,40 @@ class TestHistoryTool:
 
         with pytest.raises(ToolError, match="history needs git"):
             call(server, "history", {"repo_root": str(one_repo), "target": "py:core.py::quote"})
+
+    def test_a_blocked_handler_leaves_the_event_loop_running(self, services, one_repo):
+        """The handler answers off the loop thread, so a long `git log -L` stalls nothing.
+
+        The stub blocks until the loop sets ``release``, and it can only reach
+        the loop through ``call_soon_threadsafe``. Both steps need a loop that
+        is still turning, so dropping the offload fails this in one deadlock
+        guard rather than hanging the suite -- measured at 10 s against 0.7 s.
+        """
+        handlers = ToolHandlers([one_repo], services)
+        server = build_server(handlers, surface=SURFACE_V2)
+        release = threading.Event()
+        entered = asyncio.Event()
+        loop_holder: list[asyncio.AbstractEventLoop] = []
+
+        def blocking_history(ctx, target, limit, budget):
+            loop_holder[0].call_soon_threadsafe(entered.set)
+            return f"released={release.wait(OFFLOAD_DEADLOCK_SECONDS)}"
+
+        handlers.history = blocking_history
+
+        async def go():
+            loop_holder.append(asyncio.get_running_loop())
+            async with Client(server) as client:
+                pending = asyncio.create_task(
+                    client.call_tool(
+                        "history",
+                        {"repo_root": str(one_repo), "target": "py:core.py::quote"},
+                    )
+                )
+                await asyncio.wait_for(entered.wait(), OFFLOAD_DEADLOCK_SECONDS)
+                release.set()
+                return await asyncio.wait_for(pending, OFFLOAD_DEADLOCK_SECONDS)
+
+        result = asyncio.run(go())
+
+        assert result.content[0].text == "released=True"

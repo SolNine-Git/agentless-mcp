@@ -79,12 +79,8 @@ DEFAULT_HTTP_PORT = 8000
 MIN_HTTP_PORT = 1
 MAX_HTTP_PORT = 65535
 
-# The tool surfaces this server can publish. v2 -- five intent-shaped tools --
-# is the default; v1 keeps the original eleven for un-migrated operators, and
-# both publishes the union for a transition window (find_referencing_symbols
-# and capabilities are shared by the two surfaces, so the union is fourteen
-# names, not sixteen). The flag is server-level: one process publishes one
-# surface, whatever repositories it serves.
+# find_referencing_symbols, capabilities and history sit on both surfaces, so
+# `both` publishes a fifteen-name union rather than v2's six plus v1's twelve.
 SURFACE_V1: Literal["v1"] = "v1"
 SURFACE_V2: Literal["v2"] = "v2"
 SURFACE_BOTH: Literal["both"] = "both"
@@ -430,8 +426,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         choices=SURFACES,
         default=SURFACE_V2,
         help=(
-            "which tool surface to publish: v2 (the default) is the five "
-            "consolidated intent-shaped tools, v1 is the original eleven for "
+            "which tool surface to publish: v2 (the default) is the six "
+            "consolidated intent-shaped tools, v1 is the original twelve for "
             "un-migrated operators, both publishes the union for a transition "
             "window"
         ),

@@ -747,9 +747,9 @@ class ToolHandlers:
     def analyze_structure(self, ctx: RepoContext, request: StructureRequest) -> str:
         """Answer one structural question about the repository as a whole.
 
-        Four questions behind one tool, because they are one question shape --
+        Five questions behind one tool, because they are one question shape --
         "how is this repository put together" -- and a client picking between
-        eleven tools picks better than one picking between fourteen. Over the
+        twelve tools picks better than one picking between sixteen. Over the
         v1 wire the published enum on ``operation`` rejects an unknown value
         before this branch can; it stays as the backstop for direct handler
         callers, and it keeps the dispatch and the message from disagreeing
@@ -1407,7 +1407,10 @@ def _register_shared(
     ) -> str:
         """Return the commits that touched one symbol's lines, bodies included."""
         async with context_for(context, repo_root) as ctx:
-            return handlers.history(
+            # `git log -L` runs to a 30 s deadline, the longest block any
+            # handler makes, so this one answers off the event loop thread.
+            return await asyncio.to_thread(
+                handlers.history,
                 ctx,
                 target,
                 _or_default(limit, DEFAULT_HISTORY_LIMIT),
