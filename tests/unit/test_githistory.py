@@ -41,31 +41,65 @@ class TestParseLog:
     def test_two_records_come_back_in_order_with_their_bodies(self):
         text = record("a" * 40, "2026-08-23T16:43:57-04:00", "fix: sink", "why\n\nmore\n")
         text += record("b" * 40, "2026-08-19T22:34:50-04:00", "feat", "")
-        records, partial = githistory.parse_log(text)
+        records = githistory.parse_log(text, capped=False)
 
-        assert partial is False
         assert [entry.subject for entry in records] == ["fix: sink", "feat"]
         assert records[0].body == "why\n\nmore\n"
         assert records[1].body == ""
 
     def test_literal_format_escapes_in_a_body_are_ordinary_text(self):
         body = "the body says %x00 and \\x00 in words\n"
-        records, _ = githistory.parse_log(record("a" * 40, "d", "s", body))
+        records = githistory.parse_log(record("a" * 40, "d", "s", body), capped=False)
         assert records[0].body == body
 
     def test_control_characters_and_a_lone_surrogate_pass_through(self):
         body = "cr\r here \x1b[0m u2028\u2028 sur\udcff end"
-        records, _ = githistory.parse_log(record("a" * 40, "d", "s", body))
+        records = githistory.parse_log(record("a" * 40, "d", "s", body), capped=False)
         assert records[0].body == body
 
-    def test_a_trailing_partial_record_is_dropped_and_flagged(self):
+    def test_a_trailing_partial_record_is_dropped_when_the_cap_cut_it(self):
         text = record("a" * 40, "d", "s", "b") + "c" * 40 + "\x00date"
-        records, partial = githistory.parse_log(text)
+        records = githistory.parse_log(text, capped=True)
         assert len(records) == 1
-        assert partial is True
+
+    def test_a_trailing_partial_record_is_refused_when_nothing_cut_it(self):
+        text = record("a" * 40, "d", "s", "b") + "c" * 40 + "\x00date"
+        with pytest.raises(OperationFailed, match="history cannot read"):
+            githistory.parse_log(text, capped=False)
+
+    def test_patch_text_after_a_record_terminator_is_refused(self):
+        """A git that ignores --no-patch under -L prints the diff into the next sha field."""
+        text = record("a" * 40, "d", "s", "b") + "diff --git a/x.py b/x.py\n@@ -1 +1 @@\n"
+        text += record("b" * 40, "d", "s", "b")
+        with pytest.raises(OperationFailed, match="history cannot read"):
+            githistory.parse_log(text, capped=False)
+
+    def test_one_nul_inside_a_body_is_refused_on_the_field_count(self):
+        text = record("a" * 40, "d", "s", "before\x00after") + record("b" * 40, "d", "s", "")
+        with pytest.raises(OperationFailed, match="history cannot read"):
+            githistory.parse_log(text, capped=False)
+
+    def test_four_nuls_inside_a_body_are_refused_rather_than_read_as_a_sha(self):
+        """Four extra NULs keep the count a multiple of four, so only the sha check can catch it."""
+        text = record("a" * 40, "d", "s", "\x00".join(("w", "x", "y", "z", "end")))
+        with pytest.raises(OperationFailed, match="40-character sha"):
+            githistory.parse_log(text, capped=False)
+
+    def test_a_record_without_an_author_date_is_refused(self):
+        with pytest.raises(OperationFailed, match="no author date"):
+            githistory.parse_log(record("a" * 40, "", "s", "b"), capped=False)
+
+    @pytest.mark.parametrize("sha", ["A" * 40, "a" * 39, "a" * 41, "g" * 40, ""])
+    def test_a_field_that_is_not_a_sha_is_refused(self, sha):
+        with pytest.raises(OperationFailed, match="40-character sha"):
+            githistory.parse_log(record(sha, "d", "s", "b"), capped=False)
+
+    def test_a_complete_record_is_validated_even_when_the_cap_cut_the_stream(self):
+        with pytest.raises(OperationFailed, match="40-character sha"):
+            githistory.parse_log(record("nope", "d", "s", "b"), capped=True)
 
     def test_empty_output_is_no_records(self):
-        assert githistory.parse_log("") == ((), False)
+        assert githistory.parse_log("", capped=False) == ()
 
 
 class TestClassifyFailure:
@@ -80,7 +114,7 @@ class TestClassifyFailure:
                 "git log exited 128: fatal: file a.py has only 3 lines",
                 githistory.HistoryFailure.SPAN_BEYOND_HEAD,
             ),
-            ("git log timed out after 30.0s", githistory.HistoryFailure.TIMEOUT),
+            ("git log timed out after 30.0s", githistory.HistoryFailure.OTHER),
             (
                 "git is not installed, so repository state is unknown",
                 githistory.HistoryFailure.NO_GIT,

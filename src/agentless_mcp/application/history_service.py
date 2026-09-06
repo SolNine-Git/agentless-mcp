@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
+from agentless_mcp.application.render import ROW_INDENT
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import SymbolSpan, resolve_symbol_span
 from agentless_mcp.core import githistory, gitinfo
@@ -15,6 +16,7 @@ from agentless_mcp.core.projectconfig import MAX_BUDGET, MIN_BUDGET
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
 from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import TokenCounter
@@ -23,9 +25,17 @@ DEFAULT_HISTORY_LIMIT = 10
 # Under the envelope's 16k ceiling by the same margin expand keeps for the
 # receipt, so this budget binds before the ceiling drops whole commits.
 HISTORY_BUDGET_TOKENS = 12_000
-_TRUNCATION_MARKER_TOKENS = 32
+
+# The budget cuts bodies and cannot cut a header row, so without a seat cap the
+# row count alone decides the size: 500 rows measure 15.8k tokens, 120 measure 3.8k.
+HISTORY_MAX_SEATS = 120
+
+# A measured worst-case row is 32 tokens; the rest is room for the span header
+# and the footer markers, so a caller's budget seats what it can really render.
+HISTORY_TOKENS_PER_SEAT = 40
+
+# --quiet prints nothing, so this bounds a misbehaving git and nothing else.
 _DIRTY_CHECK_OUTPUT_BYTES = 4_096
-ROW_INDENT = "  "
 BODY_INDENT = "    "
 
 
@@ -49,10 +59,12 @@ class HistoryEntry:
 
     @property
     def short_sha(self) -> str:
+        """Return the abbreviated sha every row and marker cites this commit by."""
         return self.sha[: gitinfo.SHORT_SHA_LENGTH]
 
     @property
     def body_shown(self) -> int:
+        """Return how many body lines survived the budget."""
         return len(self.body_lines)
 
     def as_dict(self) -> dict[str, Any]:
@@ -79,7 +91,10 @@ class HistoryResult:
     entries: tuple[HistoryEntry, ...]
     more_commits: bool
     output_capped: bool
-    dirty: bool
+    # None is "git could not say", which a reader must not read as clean.
+    dirty: bool | None
+    seats_capped: bool = False
+    dirty_note: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form: the span, then the commits under ``commits``."""
@@ -92,6 +107,7 @@ class HistoryResult:
             "more_commits": self.more_commits,
             "output_capped": self.output_capped,
             "dirty": self.dirty,
+            "seats_capped": self.seats_capped,
         }
 
 
@@ -126,8 +142,9 @@ class HistoryService:
         if ctx.head_sha is None:
             raise OperationFailed(MESSAGES.history_no_git.format(note=ctx.note))
 
+        seats = min(limit, HISTORY_MAX_SEATS, max(1, budget // HISTORY_TOKENS_PER_SEAT))
         arguments = githistory.log_arguments(
-            span.path, span.start_line, span.end_line, max_count=limit + 1
+            span.path, span.start_line, span.end_line, max_count=seats + 1
         )
         outcome = self._runner(
             ctx.root,
@@ -137,56 +154,41 @@ class HistoryService:
         )
         if outcome.text is None:
             raise OperationFailed(_failure(outcome.note, span))
-        records, _partial = githistory.parse_log(outcome.text)
+        records = githistory.parse_log(outcome.text, capped=outcome.truncated)
         if not records:
-            message = MESSAGES.history_no_commits.format(
-                path=span.path, start=span.start_line, end=span.end_line
-            )
-            raise OperationFailed(message)
+            raise OperationFailed(_empty(span, capped=outcome.truncated))
 
-        entries = self._fit([_entry(record) for record in records[:limit]], budget)
+        more = len(records) > seats
+        dirty, dirty_note = self._dirty(ctx.root, span.path)
         return HistoryResult(
             target=symbol_stable_id(span.symbol),
             path=span.path,
             start_line=span.start_line,
             end_line=span.end_line,
-            entries=entries,
-            more_commits=len(records) > limit,
+            entries=self._fit([_entry(record) for record in records[:seats]], budget),
+            more_commits=more,
             output_capped=outcome.truncated,
-            dirty=self._dirty(ctx.root, span.path),
+            dirty=dirty,
+            seats_capped=more and seats < limit,
+            dirty_note=dirty_note,
         )
 
-    def _dirty(self, root: Path, path: str) -> bool:
+    def _dirty(self, root: Path, path: str) -> tuple[bool | None, str]:
         outcome = self._runner(
             root,
             githistory.diff_arguments(path),
             timeout=gitinfo.GIT_TIMEOUT_SECONDS,
             max_output_bytes=_DIRTY_CHECK_OUTPUT_BYTES,
         )
-        return outcome.returncode == 1
+        if outcome.returncode in (0, 1):
+            return outcome.returncode == 1, ""
+        return None, outcome.note
 
     def _fit(self, entries: list[HistoryEntry], budget: int) -> tuple[HistoryEntry, ...]:
-        # Water-filling, as expand does for cards: bodies that fit an equal
-        # share stay whole and give their leftover back; the rest are cut alike.
-        if not entries:
-            return ()
-        costs = {
-            index: self._counter.count(_render_entry(entry)) for index, entry in enumerate(entries)
-        }
-        pending = set(costs)
-        remaining = budget
-        while pending:
-            share = remaining // len(pending)
-            settled = {index for index in pending if costs[index] <= share}
-            if not settled:
-                break
-            remaining -= sum(costs[index] for index in settled)
-            pending -= settled
-        if not pending:
-            return tuple(entries)
-        share = max(0, remaining // len(pending))
+        costs = [self._counter.count(_render_entry(entry)) for entry in entries]
+        cut, share = allocate(costs, budget)
         return tuple(
-            self._shorten(entry, share) if index in pending else entry
+            self._shorten(entry, share) if index in cut else entry
             for index, entry in enumerate(entries)
         )
 
@@ -194,12 +196,14 @@ class HistoryService:
         if not entry.body_lines:
             return entry
         header = self._counter.count(_render_entry(replace(entry, body_lines=(), body_total=0)))
-        room = share - header - _TRUNCATION_MARKER_TOKENS
+        room = share - header - TRUNCATION_MARKER_TOKENS
         lines = entry.body_lines
-        low, high = 1, len(lines)
+        # The header row always renders, so a body may go to nothing; the search
+        # counts the rendered rows the settled cost was measured on.
+        low, high = 0, len(lines)
         while low < high:
             middle = (low + high + 1) // 2
-            if self._counter.count("\n".join(lines[:middle])) <= room:
+            if self._counter.count("\n".join(_body_rows(lines[:middle]))) <= room:
                 low = middle
             else:
                 high = middle - 1
@@ -220,9 +224,24 @@ def render_history(result: HistoryResult) -> str:
                 bytes=githistory.MAX_HISTORY_OUTPUT_BYTES, count=count
             )
         )
-    if result.more_commits:
+    if result.seats_capped:
+        lines.append(
+            MESSAGES.history_seats_capped.format(
+                shown=count,
+                path=one_line(result.path),
+                start=result.start_line,
+                end=result.end_line,
+            )
+        )
+    elif result.more_commits:
         lines.append(MESSAGES.history_more_commits.format(shown=count))
-    if result.dirty:
+    if result.dirty is None:
+        lines.append(
+            MESSAGES.history_dirty_unknown.format(
+                path=one_line(result.path), note=one_line(result.dirty_note)
+            )
+        )
+    elif result.dirty:
         lines.append(MESSAGES.history_dirty_file.format(path=one_line(result.path)))
     return "\n".join(lines) + "\n"
 
@@ -236,25 +255,40 @@ def _entry(record: githistory.CommitRecord) -> HistoryEntry:
     return HistoryEntry(record.sha, record.authored, record.subject, tuple(lines), len(lines))
 
 
+def _body_rows(lines: Sequence[str]) -> list[str]:
+    return [f"{BODY_INDENT}{one_line(line)}" if line.strip() else "" for line in lines]
+
+
 def _entry_lines(entry: HistoryEntry) -> list[str]:
     # Every row is indented and every field escaped per line, so a marker in
     # column 0 stays the one line repository text cannot forge.
     row = f"{one_line(entry.short_sha)}  {one_line(entry.authored)}  {one_line(entry.subject)}"
-    lines = [f"{ROW_INDENT}{row}"]
-    lines.extend(
-        f"{BODY_INDENT}{one_line(line)}" if line.strip() else "" for line in entry.body_lines
-    )
+    lines = [f"{ROW_INDENT}{row}", *_body_rows(entry.body_lines)]
     if entry.body_shown < entry.body_total:
-        lines.append(
-            MESSAGES.history_body_truncated.format(
-                shown=entry.body_shown, total=entry.body_total, sha=entry.short_sha
-            )
+        # This marker names one commit, so it is a row and carries a row's
+        # indent; only a whole-answer marker earns column 0.
+        marker = MESSAGES.history_body_truncated.format(
+            shown=entry.body_shown, total=entry.body_total, sha=one_line(entry.short_sha)
         )
+        lines.append(f"{ROW_INDENT}{marker}")
     return lines
 
 
 def _render_entry(entry: HistoryEntry) -> str:
     return "\n".join(_entry_lines(entry)) + "\n"
+
+
+def _empty(span: SymbolSpan, *, capped: bool) -> str:
+    if capped:
+        return MESSAGES.history_output_capped_no_commits.format(
+            bytes=githistory.MAX_HISTORY_OUTPUT_BYTES,
+            path=span.path,
+            start=span.start_line,
+            end=span.end_line,
+        )
+    return MESSAGES.history_no_commits.format(
+        path=span.path, start=span.start_line, end=span.end_line
+    )
 
 
 def _failure(note: str, span: SymbolSpan) -> str:

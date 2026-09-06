@@ -123,11 +123,15 @@ class MessageText:
     history_path_not_in_head: str
     history_span_beyond_head: str
     history_git_failed: str
+    history_git_output_malformed: str
     history_no_commits: str
     history_more_commits: str
+    history_seats_capped: str
     history_body_truncated: str
     history_output_capped: str
+    history_output_capped_no_commits: str
     history_dirty_file: str
+    history_dirty_unknown: str
 
 
 # Every tool this server can register, across both published surfaces: the

@@ -29,6 +29,7 @@ from agentless_mcp.core.cache import FileSource, effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.projectconfig import CONFIG_FILENAME
+from agentless_mcp.core.slices import span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     id_qualname,
@@ -297,11 +298,6 @@ def _path_confirms(definition: Definition, target: str) -> bool:
     module = Path(definition.path).with_suffix("").as_posix().replace("/", ".")
     dotted = f"{module}.{base}"
     return dotted == target or dotted.endswith(f".{target}")
-
-
-def span_end(symbol: ASTSymbol) -> int:
-    """Return the last line a symbol covers, its own when the parse gave no end."""
-    return symbol.end_line_number if symbol.end_line_number is not None else symbol.line_number
 
 
 def enclosing_symbol(facts: FileFacts, line: int) -> ASTSymbol | None:

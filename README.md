@@ -25,6 +25,11 @@ Without the extra, `agentless-mcp-server --help` and `--version` still
 answer, and any real invocation exits with the install command for the
 extra.
 
+The `history` view needs git 2.25 or newer, the first release whose `git log
+-L` documents `--no-patch` as suppressing the patch. On an older git the patch
+text reaches the log parser, which refuses the answer rather than misread it.
+Every other view works without git.
+
 Both entry points warm cold grammars in the background at startup (one
 digest-verified bundle fetch at most; `--no-auto-warm` or
 `AGENTLESS_MCP_NO_AUTO_WARM` opts out, `AGENTLESS_MCP_NO_DOWNLOAD` forbids

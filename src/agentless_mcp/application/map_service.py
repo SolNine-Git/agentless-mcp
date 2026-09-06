@@ -58,6 +58,7 @@ from agentless_mcp.core.graph import (
     rank_order,
 )
 from agentless_mcp.core.projectconfig import MAX_MAX_FILES, MIN_MAX_FILES
+from agentless_mcp.core.slices import span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     id_qualname,
@@ -674,7 +675,7 @@ def _companion_reference(
         if owner is None:
             loose.append(ref.line)
             continue
-        span = (owner.line_number, refs.span_end(owner))
+        span = (owner.line_number, span_end(owner))
         hits.setdefault(span, set()).update(reached)
         sites[span] = sites.get(span, 0) + 1
 

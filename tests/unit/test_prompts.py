@@ -127,11 +127,23 @@ MESSAGE_ARGUMENTS = {
     "history_path_not_in_head": {"path": "src/app/svc.py"},
     "history_span_beyond_head": {"path": "src/app/svc.py", "start": 120, "end": 158},
     "history_git_failed": {"note": "git log timed out after 30.0s"},
+    "history_git_output_malformed": {"detail": "commit 2 does not open with a 40-character sha"},
     "history_no_commits": {"path": "src/app/svc.py", "start": 120, "end": 158},
     "history_more_commits": {"shown": 10},
+    "history_seats_capped": {"shown": 120, "path": "src/app/svc.py", "start": 120, "end": 158},
     "history_body_truncated": {"shown": 12, "total": 40, "sha": "a1b2c3d4"},
     "history_output_capped": {"bytes": 2_000_000, "count": 7},
+    "history_output_capped_no_commits": {
+        "bytes": 2_000_000,
+        "path": "src/app/svc.py",
+        "start": 120,
+        "end": 158,
+    },
     "history_dirty_file": {"path": "src/app/svc.py"},
+    "history_dirty_unknown": {
+        "path": "src/app/svc.py",
+        "note": "git diff timed out after 5.0s",
+    },
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})

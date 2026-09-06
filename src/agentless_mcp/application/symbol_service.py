@@ -53,7 +53,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
-from agentless_mcp.core.slices import line_count, line_prefix
+from agentless_mcp.core.slices import line_count, line_prefix, span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -67,6 +67,7 @@ from agentless_mcp.core.symbols import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
 from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
@@ -137,11 +138,6 @@ EXPAND_MAX_SEATS = 40
 # must not be able to crowd out the answer, so it is bounded like every other
 # listing here and says how many it did not name.
 MAX_UNRESOLVED_ROWS = 20
-
-# Room kept back on each shortened card for the marker that says it was
-# shortened, so announcing the cut cannot be what pushes a card past its
-# share.
-_TRUNCATION_MARKER_TOKENS = 32
 
 
 @dataclass(frozen=True)
@@ -348,7 +344,7 @@ def resolve_symbol_span(
             f"This symbol's id is {symbol_stable_id(match)}"
         )
 
-    end = min(line_count(source), match.end_line_number or match.line_number)
+    end = min(line_count(source), span_end(match))
     return SymbolSpan(match, parsed.path, match.line_number, end, source), ""
 
 
@@ -542,43 +538,10 @@ class SymbolService:
     def _fit_bodies(
         self, cards: list[render.SymbolCard], budget: int
     ) -> tuple[render.SymbolCard, ...]:
-        """Spend ``budget`` across the cards max-min fair, cutting only what must be.
-
-        The allocation is the classic water-filling one, and it is what makes
-        the degradation fair rather than positional. Every round divides what
-        is left of the budget equally among the cards still competing; the
-        cards that already fit their share are settled at full length and give
-        their unspent tokens back; the rest go round again on a larger share.
-        The loop ends when a round settles nobody, and every card still
-        competing then gets exactly the same allowance -- so a thousand-line
-        class and a five-line method are cut to the same size, and no card is
-        cut at all while another is still whole and larger.
-        """
-        if not cards:
-            return ()
-
-        costs = {
-            index: self._counter.count(render.render_symbol_cards([card]))
-            for index, card in enumerate(cards)
-        }
-        pending = set(costs)
-        remaining = budget
-
-        while pending:
-            share = remaining // len(pending)
-            settled = {index for index in pending if costs[index] <= share}
-            if not settled:
-                break
-            remaining -= sum(costs[index] for index in settled)
-            pending -= settled
-
-        if not pending:
-            return tuple(cards)
-
-        share = max(0, remaining // len(pending))
+        costs = [self._counter.count(render.render_symbol_cards([card])) for card in cards]
+        cut, share = allocate(costs, budget)
         return tuple(
-            self._shorten(card, share) if index in pending else card
-            for index, card in enumerate(cards)
+            self._shorten(card, share) if index in cut else card for index, card in enumerate(cards)
         )
 
     def _shorten(self, card: render.SymbolCard, share: int) -> render.SymbolCard:
@@ -591,7 +554,7 @@ class SymbolService:
         """
         lines = card.body.split("\n")
         header = self._counter.count(render.render_symbol_cards([replace(card, body="")]))
-        room = share - header - _TRUNCATION_MARKER_TOKENS
+        room = share - header - TRUNCATION_MARKER_TOKENS
 
         # Binary search over the line count rather than a walk, so a
         # thousand-line body costs ten counts and not a thousand -- the

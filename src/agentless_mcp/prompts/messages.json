@@ -36,9 +36,13 @@
   "history_path_not_in_head": "unsatisfiable: {path} is not in HEAD (untracked, ignored, or only staged). Commit it, or ask about a tracked file.",
   "history_span_beyond_head": "unsatisfiable: lines {start}-{end} of {path} are past the end of HEAD's copy. The working tree grew the file since the last commit; commit, then ask again.",
   "history_git_failed": "git could not answer: {note}",
+  "history_git_output_malformed": "git printed log output history cannot read: {detail}. history refuses a partial read rather than answer from one. Check that this git honours --no-patch together with -L, and that no filter rewrites git log output.",
   "history_no_commits": "no commit touches lines {start}-{end} of {path}",
   "history_more_commits": "... {shown} newest commits shown; older commits touch this span (raise limit for the rest)",
+  "history_seats_capped": "... {shown} commits shown, the most one answer seats; older commits touch this span (ask about a narrower span, or run git log -L{start},{end}:{path} for the rest)",
   "history_body_truncated": "... {shown} of {total} body lines shown for {sha}; git show -s --format=%B {sha} prints the whole message",
   "history_output_capped": "... git output was cut at {bytes} bytes; the {count} complete commits above are shown",
-  "history_dirty_file": "note: {path} has uncommitted changes; lines were read against HEAD, so the span may be shifted"
+  "history_output_capped_no_commits": "unsatisfiable: git output reached the {bytes} byte cap before the first complete commit. The newest commit on lines {start}-{end} of {path} carries a message larger than the cap; run git log -L{start},{end}:{path} to read it.",
+  "history_dirty_file": "note: {path} has uncommitted changes; lines were read against HEAD, so the span may be shifted",
+  "history_dirty_unknown": "note: git could not say whether {path} has uncommitted changes ({note}); lines were read against HEAD, so the span may be shifted"
 }
