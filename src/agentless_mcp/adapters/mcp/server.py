@@ -1118,6 +1118,11 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
     ``\n`` and ``\"`` in it and every response crosses the wire twice.
     Passing ``None`` disables the schema, and a ``str`` return then travels as
     the text block alone.
+
+    Every tool awaits its handler through ``asyncio.to_thread``: the handlers are
+    synchronous because the CLI calls them, and a 30 s ``git log -L`` or cold map
+    run inline stalls the loop that answers pings and cancellations. Overlap is safe:
+    ``tests/unit/test_concurrency.py`` pins the state as immutable, per-call or locked.
     """
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
@@ -1147,7 +1152,9 @@ def build_server(handlers: ToolHandlers, surface: Surface = SURFACE_V2) -> FastM
         roots: list[Path] = []
         if handlers.needs_client_roots(repo_root):
             roots = await effective_client_roots(context)
-        ctx = handlers.resolve(repo_root, roots, no_cache=no_cache)
+        # Resolving runs the git snapshot to its 5 s bound and opens the tag
+        # cache, so it leaves the loop for the same reason a handler does.
+        ctx = await asyncio.to_thread(handlers.resolve, repo_root, roots, no_cache=no_cache)
         handlers.refresh_in_background(ctx, no_cache=no_cache)
         try:
             yield ctx
@@ -1183,7 +1190,8 @@ def _register_v1(
     ) -> str:
         """Rank the repository's files and render the symbols that fit a budget."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.repo_map(
+            return await asyncio.to_thread(
+                handlers.repo_map,
                 ctx,
                 MapRequest(
                     focus=_focus_entries(focus),
@@ -1207,7 +1215,7 @@ def _register_v1(
     ) -> str:
         """List the repository's files, honouring gitignore."""
         async with context_for(context, repo_root) as ctx:
-            return handlers.list_dir(ctx, path, depth, max_entries)
+            return await asyncio.to_thread(handlers.list_dir, ctx, path, depth, max_entries)
 
     @mcp.tool(
         output_schema=None,
@@ -1223,7 +1231,9 @@ def _register_v1(
     ) -> str:
         """Render the named files as signatures with their bodies elided."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.get_symbols_overview(ctx, paths, docs=docstrings)
+            return await asyncio.to_thread(
+                handlers.get_symbols_overview, ctx, paths, docs=docstrings
+            )
 
     @mcp.tool(
         output_schema=None,
@@ -1239,8 +1249,8 @@ def _register_v1(
     ) -> str:
         """Return the full body of each named symbol, line-numbered."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.expand_symbols(
-                ctx, stable_ids, _or_default(limit, DEFAULT_EXPAND_LIMIT)
+            return await asyncio.to_thread(
+                handlers.expand_symbols, ctx, stable_ids, _or_default(limit, DEFAULT_EXPAND_LIMIT)
             )
 
     @mcp.tool(
@@ -1258,7 +1268,8 @@ def _register_v1(
     ) -> str:
         """Return numbered lines for the given 1-based inclusive ranges."""
         async with context_for(context, repo_root) as ctx:
-            return handlers.read_slice(
+            return await asyncio.to_thread(
+                handlers.read_slice,
                 ctx,
                 path,
                 _slice_intervals(lines, whole_file),
@@ -1280,7 +1291,9 @@ def _register_v1(
     ) -> str:
         """Find symbols by substring or qualified name."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.find_symbol(ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT))
+            return await asyncio.to_thread(
+                handlers.find_symbol, ctx, name, kind, _or_default(limit, DEFAULT_FIND_LIMIT)
+            )
 
     @mcp.tool(
         output_schema=None,
@@ -1296,7 +1309,9 @@ def _register_v1(
     ) -> str:
         """Render one symbol's definition site, tiered fan-out, fan-in and imports."""
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.explain_symbol(ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT))
+            return await asyncio.to_thread(
+                handlers.explain_symbol, ctx, target, _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
+            )
 
     @mcp.tool(
         output_schema=None,
@@ -1324,7 +1339,8 @@ def _register_v1(
         The operations are path, cycles, communities, diagram and health.
         """
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
-            return handlers.analyze_structure(
+            return await asyncio.to_thread(
+                handlers.analyze_structure,
                 ctx,
                 StructureRequest(
                     operation=operation,
@@ -1355,7 +1371,9 @@ def _register_v1(
     ) -> str:
         """Turn class:/function:/line: strings into stable ids and intervals."""
         async with context_for(context, repo_root) as ctx:
-            return handlers.resolve_locations(ctx, path, locs, context_lines)
+            return await asyncio.to_thread(
+                handlers.resolve_locations, ctx, path, locs, context_lines
+            )
 
 
 def _register_shared(
@@ -1386,7 +1404,8 @@ def _register_shared(
     ) -> str:
         """Find the symbols that reference a target, grouped by file."""
         async with context_for(context, repo_root) as ctx:
-            return handlers.find_referencing_symbols(
+            return await asyncio.to_thread(
+                handlers.find_referencing_symbols,
                 ctx,
                 target,
                 _or_default(limit, DEFAULT_REFS_LIMIT),
@@ -1407,8 +1426,6 @@ def _register_shared(
     ) -> str:
         """Return the commits that touched one symbol's lines, bodies included."""
         async with context_for(context, repo_root) as ctx:
-            # `git log -L` runs to a 30 s deadline, the longest block any
-            # handler makes, so this one answers off the event loop thread.
             return await asyncio.to_thread(
                 handlers.history,
                 ctx,
@@ -1426,10 +1443,10 @@ def _register_shared(
     async def capabilities(context: Context, repo_root: RepoRoot = None) -> str:
         """Report loaded grammars, cache state and the bounds in force."""
         roots = await effective_client_roots(context)
-        ctx = handlers.resolve(repo_root, roots)
+        ctx = await asyncio.to_thread(handlers.resolve, repo_root, roots)
         handlers.refresh_in_background(ctx)
         try:
-            return handlers.capabilities(ctx, roots)
+            return await asyncio.to_thread(handlers.capabilities, ctx, roots)
         finally:
             ctx.close()
 
@@ -1645,7 +1662,8 @@ def _register_v2(
         _checked_map_limit(operation, limit)
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             if operation == OPERATION_MAP:
-                return handlers.repo_map(
+                return await asyncio.to_thread(
+                    handlers.repo_map,
                     ctx,
                     MapRequest(
                         focus=_focus_entries(focus),
@@ -1654,7 +1672,8 @@ def _register_v2(
                         granularity=granularity,
                     ),
                 )
-            return handlers.analyze_structure(
+            return await asyncio.to_thread(
+                handlers.analyze_structure,
                 ctx,
                 StructureRequest(
                     operation=operation,
@@ -1714,25 +1733,38 @@ def _register_v2(
         )
         async with context_for(context, repo_root, no_cache=no_cache) as ctx:
             if operation == OPERATION_FIND:
-                return handlers.find_symbol(
-                    ctx, name or "", kind, _or_default(limit, DEFAULT_FIND_LIMIT)
+                return await asyncio.to_thread(
+                    handlers.find_symbol,
+                    ctx,
+                    name or "",
+                    kind,
+                    _or_default(limit, DEFAULT_FIND_LIMIT),
                 )
             if operation == OPERATION_OVERVIEW:
-                return handlers.get_symbols_overview(ctx, paths or [], docs=docstrings)
+                return await asyncio.to_thread(
+                    handlers.get_symbols_overview, ctx, paths or [], docs=docstrings
+                )
             if operation == OPERATION_EXPAND:
-                return handlers.expand_symbols(
-                    ctx, stable_ids or [], _or_default(limit, DEFAULT_EXPAND_LIMIT)
+                return await asyncio.to_thread(
+                    handlers.expand_symbols,
+                    ctx,
+                    stable_ids or [],
+                    _or_default(limit, DEFAULT_EXPAND_LIMIT),
                 )
             if operation == OPERATION_EXPLAIN:
-                return handlers.explain_symbol(
-                    ctx, target or "", _or_default(limit, DEFAULT_EXPLAIN_LIMIT)
+                return await asyncio.to_thread(
+                    handlers.explain_symbol,
+                    ctx,
+                    target or "",
+                    _or_default(limit, DEFAULT_EXPLAIN_LIMIT),
                 )
             # The remaining table entry is OPERATION_LOCATE. _checked_operation
             # has already refused anything outside SYMBOLS_OPERATIONS, and the
             # parity table pairs every table entry with its CLI rendering, so an
             # operation added to the table without a branch fails there rather
             # than silently landing on this arm.
-            return handlers.resolve_locations(
+            return await asyncio.to_thread(
+                handlers.resolve_locations,
                 ctx,
                 path or "",
                 locations or [],
@@ -1773,7 +1805,8 @@ def _register_v2(
         async with context_for(context, repo_root) as ctx:
             if operation == OPERATION_SLICE:
                 intervals = _slice_intervals(lines, bool(whole_file), tool="read operation 'slice'")
-                return handlers.read_slice(
+                return await asyncio.to_thread(
+                    handlers.read_slice,
                     ctx,
                     path or "",
                     intervals,
@@ -1781,7 +1814,8 @@ def _register_v2(
                 )
             # The remaining table entry is OPERATION_DIR; the note on the same
             # arm of `symbols` says what keeps this fall-through honest.
-            return handlers.list_dir(
+            return await asyncio.to_thread(
+                handlers.list_dir,
                 ctx,
                 path,
                 _or_default(depth, DEFAULT_RENDER_DEPTH),

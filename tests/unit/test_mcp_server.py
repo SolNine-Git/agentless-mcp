@@ -7,12 +7,14 @@ because the refusal cases are easier to assert without a JSON-RPC error
 wrapper around them.
 """
 
+import ast
 import asyncio
 import importlib.metadata
 import ipaddress
 import json
 import re
 import sqlite3
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
@@ -116,6 +118,50 @@ SURFACE_CALLS = {
     SURFACE_V2: WELL_TYPED_CALLS_V2,
     SURFACE_BOTH: {**WELL_TYPED_CALLS, **WELL_TYPED_CALLS_V2},
 }
+
+# A deadline, not a wait: the offload tests reach it only when a handler runs
+# on the loop thread, and they fail on the answer rather than hanging.
+OFFLOAD_DEADLINE_SECONDS = 10.0
+
+# One row per offloaded call site rather than per tool, because the v2 tools
+# pick their handler from `operation`: the tool, that handler, and arguments.
+OFFLOAD_CALLS = (
+    ("repo_map", "repo_map", {}),
+    ("list_dir", "list_dir", {}),
+    ("get_symbols_overview", "get_symbols_overview", {"paths": ["core.py"]}),
+    ("expand_symbols", "expand_symbols", {"stable_ids": ["py:core.py::quote"]}),
+    ("read_slice", "read_slice", {"path": "core.py", "lines": [[1, 2]]}),
+    ("find_symbol", "find_symbol", {"name": "quote"}),
+    ("explain_symbol", "explain_symbol", {"target": "quote"}),
+    ("analyze_structure", "analyze_structure", {"operation": "cycles"}),
+    ("resolve_locations", "resolve_locations", {"path": "core.py", "locs": ["function:quote"]}),
+    ("find_referencing_symbols", "find_referencing_symbols", {"target": "quote"}),
+    ("history", "history", {"target": "py:core.py::quote"}),
+    ("capabilities", "capabilities", {}),
+    ("orient", "repo_map", {"operation": "map"}),
+    ("orient", "analyze_structure", {"operation": "cycles"}),
+    ("symbols", "find_symbol", {"operation": "find", "name": "quote"}),
+    ("symbols", "get_symbols_overview", {"operation": "overview", "paths": ["core.py"]}),
+    ("symbols", "expand_symbols", {"operation": "expand", "stable_ids": ["py:core.py::quote"]}),
+    ("symbols", "explain_symbol", {"operation": "explain", "target": "quote"}),
+    (
+        "symbols",
+        "resolve_locations",
+        {"operation": "locate", "path": "core.py", "locations": ["function:quote"]},
+    ),
+    ("read", "read_slice", {"operation": "slice", "path": "core.py", "lines": [[1, 2]]}),
+    ("read", "list_dir", {"operation": "dir"}),
+)
+
+# The two handler methods the adapter may still call on the loop thread: one
+# reads the roots tuple, the other starts a thread and returns.
+ON_LOOP_HANDLERS = {"needs_client_roots", "refresh_in_background"}
+
+
+def offload_id(case):
+    tool, handler, _ = case
+    return f"{tool}-{handler}"
+
 
 SOURCE = """\
 def quote(sku):
@@ -1985,3 +2031,111 @@ class TestClientRootsUnderHttp:
 
         assert args.transport == TRANSPORT_HTTP
         assert args.allow_client_roots is False
+
+
+class TestNothingBlocksTheEventLoop:
+    """Every tool answers on a worker thread, and two of them may overlap there.
+
+    The handlers are synchronous by design: the CLI calls the same ones
+    directly, and they block for as long as the work takes -- ``git log -L``
+    to its 30 s deadline, a cold map for a whole-repository parse. Called
+    inline from a coroutine, each of those stalls the loop that also has to
+    answer pings, roots requests and cancellations, so every tool hands its
+    handler to ``asyncio.to_thread``.
+    """
+
+    @pytest.mark.parametrize("case", OFFLOAD_CALLS, ids=offload_id)
+    def test_a_blocked_handler_leaves_the_event_loop_running(self, services, one_repo, case):
+        """The stub blocks until the loop releases it, so a stalled loop cannot answer.
+
+        Reaching ``entered`` needs ``call_soon_threadsafe`` to be serviced and
+        reaching ``release`` needs the loop to run again after that. Both
+        require a loop still turning, so a site that drops the offload fails
+        on the deadline rather than hanging the suite.
+        """
+        tool, handler, arguments = case
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_BOTH)
+        release = threading.Event()
+        entered = asyncio.Event()
+        loop_holder: list[asyncio.AbstractEventLoop] = []
+
+        def blocking(*_args, **_kwargs):
+            loop_holder[0].call_soon_threadsafe(entered.set)
+            return f"released={release.wait(OFFLOAD_DEADLINE_SECONDS)}"
+
+        setattr(handlers, handler, blocking)
+
+        async def go():
+            loop_holder.append(asyncio.get_running_loop())
+            async with Client(server) as client:
+                pending = asyncio.create_task(
+                    client.call_tool(tool, {"repo_root": str(one_repo), **arguments})
+                )
+                await asyncio.wait_for(entered.wait(), OFFLOAD_DEADLINE_SECONDS)
+                release.set()
+                return await asyncio.wait_for(pending, OFFLOAD_DEADLINE_SECONDS)
+
+        assert asyncio.run(go()).content[0].text == "released=True"
+
+    def test_the_table_names_every_published_tool(self, services, one_repo):
+        """A tool published without an offload row fails here before it ships."""
+        server = build_surface_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH)
+
+        assert {tool for tool, _, _ in OFFLOAD_CALLS} == {
+            tool.name for tool in listed_tools(server)
+        }
+
+    def test_the_adapter_calls_no_other_handler_on_the_loop_thread(self):
+        """The source carries the guarantee the runtime test samples.
+
+        A handler handed to ``asyncio.to_thread`` is an argument, not a call,
+        so every remaining ``handlers.x(...)`` in the module is one running on
+        the loop. Two are allowed and both return without blocking.
+        """
+        source = Path(server_module.__file__).read_text(encoding="utf-8")
+
+        called = {
+            node.func.attr
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "handlers"
+        }
+
+        assert called == ON_LOOP_HANDLERS
+
+    def test_two_tool_calls_overlap_on_the_worker_threads(self, services, one_repo):
+        """The contract is overlap, not one-at-a-time: no lock serializes dispatch.
+
+        Both handlers wait on the same two-party barrier, so neither returns
+        until the other has entered. Serialized dispatch never fills the
+        barrier and breaks it on its own timeout instead of hanging.
+        """
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2)
+        barrier = threading.Barrier(2, timeout=OFFLOAD_DEADLINE_SECONDS)
+
+        def paired(*_args, **_kwargs):
+            return f"party={barrier.wait()}"
+
+        handlers.find_symbol = paired
+        handlers.list_dir = paired
+
+        async def go():
+            async with Client(server) as client:
+                return await asyncio.wait_for(
+                    asyncio.gather(
+                        client.call_tool(
+                            "symbols",
+                            {"repo_root": str(one_repo), "operation": "find", "name": "quote"},
+                        ),
+                        client.call_tool("read", {"repo_root": str(one_repo), "operation": "dir"}),
+                    ),
+                    OFFLOAD_DEADLINE_SECONDS,
+                )
+
+        answers = {result.content[0].text for result in asyncio.run(go())}
+
+        assert answers == {"party=0", "party=1"}
