@@ -406,10 +406,11 @@ class TestSurfaceListing:
         in; tiktoken lives behind the `tokens` extra and would make this gate
         skip on a plain checkout.
 
-        Measured 2026-09-06 after the 0.8.0 distillation pass: 3027 chars/4,
-        2675 cl100k. The ceiling is that measurement plus five percent, which
-        leaves room for a sentence a later release genuinely needs and stops
-        a paragraph.
+        Measured 2026-09-06 after the 0.8.0 distillation pass: 3027 chars/4
+        on Python 3.13 (2675 cl100k) and 3265 on Python 3.10, where pydantic
+        renders the same schemas about eight percent larger. The ceiling is
+        the larger figure plus five percent, which leaves room for a sentence
+        a later release genuinely needs and stops a paragraph.
         """
         counter = Chars4Counter()
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
@@ -422,7 +423,7 @@ class TestSurfaceListing:
         }
 
         assert len(cost) == 5, sorted(cost)
-        assert sum(cost.values()) <= 3178, cost
+        assert sum(cost.values()) <= 3430, cost
 
 
 class TestOperationSchema:
