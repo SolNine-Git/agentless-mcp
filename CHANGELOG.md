@@ -46,6 +46,41 @@ into the receipt header.
   existing `GIT_*` scrub, so a global commit-msg hook or a commit template
   can no longer change what a fixture commit does.
 
+### Measured
+
+- **Publishing `history` costs nothing detectable on localization, measured
+  twice.** Two paired 60-instance runs on SWE-Explore-Bench (Sonnet, top 10,
+  the hooked arm, 0.7.3 as control and this release as treatment, 20,000
+  paired bootstrap resamples). In the first run every acceptance metric's
+  95% interval includes zero: precision +0.044 (-0.007 to +0.096), recall
+  -0.011 (-0.036 to +0.013), F1 +0.004 (-0.023 to +0.031), `hit_region_rate`
+  -0.005 (-0.045 to +0.034), `weighted_core_coverage` -0.005 (-0.037 to
+  +0.026), `recall@100` +0.007 (-0.010 to +0.024); `nDCG@100` +0.045 (+0.001
+  to +0.095) favours the treatment. A solo replicate of the treatment against
+  the same control repeats the shape: precision +0.069 (+0.014 to +0.123),
+  recall +0.001, F1 +0.017 (-0.001 to +0.039), `hit_region_rate` -0.017
+  (-0.052 to +0.016), `weighted_core_coverage` -0.019 (-0.046 to +0.005),
+  `recall@100` +0.013 (+0.001 to +0.027), `nDCG@100` +0.053 (+0.013 to
+  +0.101).
+- **The same-arm replicate puts a number on the noise floor.** Treatment run
+  two against treatment run one, paired, moves precision +0.025 (-0.016 to
+  +0.068), `hit_file_rate` -0.023 (-0.064 to +0.017) and
+  `weighted_core_coverage` -0.014 (-0.040 to +0.012), with every interval
+  including zero. Read against that floor, the precision and `nDCG@100`
+  gains clear it in both runs and the coverage drift does not. The agent
+  called `history` in 6 of 60 instances in run one and 3 of 60 in run two,
+  so the runs measure the sixth tool's presence, which is the question the
+  deferral decision asked. One instance, `apache__druid-15402`, called it in
+  both runs and lost about 0.35 of coverage each time against a control at
+  0.906 recall there; three callers cannot resolve that, and it is recorded
+  as the hypothesis to watch.
+- **Health and cost.** Six tools listed on 60 of 60 instances, median 5 MCP
+  calls, gate logs 60 of 60, no errors and no timeouts across all three
+  runs. The solo replicate is the valid cost baseline: $16.45 and 4426 s for
+  60 instances, median 54 s per instance, 36.3k cache-creation tokens per
+  instance. The first run's two arms ran side by side and shared prompt
+  cache, so their cost columns are equal by construction, not comparable.
+
 ## 0.7.3 -- 2026-09-01
 
 Two install defects, both found in the field on 0.7.2. Nothing about the
