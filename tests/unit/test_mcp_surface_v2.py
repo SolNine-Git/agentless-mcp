@@ -25,6 +25,7 @@ from agentless_mcp.adapters.cli.main import CliServices
 from agentless_mcp.adapters.cli.main import run as cli_run
 from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.cliargs import (
+    DEFAULT_MAX_CONCURRENCY,
     SURFACE_BOTH,
     SURFACE_V1,
     SURFACE_V2,
@@ -597,8 +598,9 @@ class TestSurfaceFlag:
             def run(self, **kwargs):
                 _ = kwargs
 
-        def record(handlers, surface):
+        def record(handlers, surface, max_concurrency):
             built["surface"] = surface
+            built["max_concurrency"] = max_concurrency
             return StubTransport()
 
         monkeypatch.setattr(server_module, "build_server", record)
@@ -611,6 +613,27 @@ class TestSurfaceFlag:
 
         assert server_module.serve(["--root", str(tmp_path)], services) == 0
         assert built["surface"] == SURFACE_V2
+
+    def test_serve_passes_the_parsed_concurrency_limit(self, services, tmp_path, monkeypatch):
+        built = {}
+
+        class StubTransport:
+            def run(self, **kwargs):
+                _ = kwargs
+
+        def record(handlers, surface, max_concurrency):
+            built["max_concurrency"] = max_concurrency
+            return StubTransport()
+
+        monkeypatch.setattr(server_module, "build_server", record)
+        monkeypatch.setattr(server_module.grammars, "start_auto_warm", lambda *a, **k: None)
+
+        assert server_module.serve(["--root", str(tmp_path)], services) == 0
+        assert built["max_concurrency"] == DEFAULT_MAX_CONCURRENCY
+
+        argv = ["--root", str(tmp_path), "--max-concurrency", "3"]
+        assert server_module.serve(argv, services) == 0
+        assert built["max_concurrency"] == 3
 
 
 class TestZeroValuesAreNotStrayParameters:

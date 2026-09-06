@@ -79,6 +79,12 @@ DEFAULT_HTTP_PORT = 8000
 MIN_HTTP_PORT = 1
 MAX_HTTP_PORT = 65535
 
+# Chosen rather than inherited: with no gate the ceiling is the default
+# executor's min(32, cpu_count + 4), 32 on a workstation and 5 on one CPU.
+DEFAULT_MAX_CONCURRENCY = 8
+MIN_CONCURRENCY = 1
+MAX_CONCURRENCY = 64
+
 # find_referencing_symbols, capabilities and history sit on both surfaces, so
 # `both` publishes a fifteen-name union rather than v2's six plus v1's twelve.
 SURFACE_V1: Literal["v1"] = "v1"
@@ -338,6 +344,18 @@ def _check_transport(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     args.host_literal = literal
 
 
+def _check_concurrency(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    # Separate from _check_transport: the gate bounds both transports, so a
+    # refusal that only ran under --transport http would leave stdio unchecked.
+    if not MIN_CONCURRENCY <= args.max_concurrency <= MAX_CONCURRENCY:
+        parser.error(
+            f"--max-concurrency {args.max_concurrency} is outside "
+            f"{MIN_CONCURRENCY}-{MAX_CONCURRENCY}. Zero or less admits no handler and the "
+            "server would answer nothing; above the range the gate stops bounding the "
+            "tag-cache connections and git children a shared server holds at once."
+        )
+
+
 def http_binding(args: argparse.Namespace) -> tuple[str, int]:
     """The address the HTTP transport listens on, defaults filled in.
 
@@ -459,12 +477,22 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help=f"port --transport {TRANSPORT_HTTP} binds; {MIN_HTTP_PORT}-{MAX_HTTP_PORT}, "
         f"default {DEFAULT_HTTP_PORT}",
     )
+    parser.add_argument(
+        "--max-concurrency",
+        default=DEFAULT_MAX_CONCURRENCY,
+        type=int,
+        metavar="N",
+        help="how many tool handlers may hold worker threads at once; "
+        f"{MIN_CONCURRENCY}-{MAX_CONCURRENCY}, default {DEFAULT_MAX_CONCURRENCY}. Raise it "
+        f"for a --transport {TRANSPORT_HTTP} server several clients share",
+    )
     try:
         args = parser.parse_args(argv)
         # Inside the try on purpose: parser.error leaves by the same SystemExit
         # door argparse itself uses, so a transport refusal gets the argv
         # diagnostic below rather than reading to the operator as a dead socket.
         _check_transport(parser, args)
+        _check_concurrency(parser, args)
     except SystemExit as exc:
         # Under an MCP client the exit-2 usage error is invisible and the whole
         # session reads as a closed connection, so the argv itself is the
