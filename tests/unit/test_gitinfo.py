@@ -1,9 +1,11 @@
 """Git state reading: real repositories in tmp_path, no ambient config."""
 
+import ast
 import errno
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -270,30 +272,66 @@ class TestDegradation:
         assert len(bounds) == len(argvs)
         assert set(bounds) == {(gitinfo.GIT_TIMEOUT_SECONDS, gitinfo.MAX_RECEIPT_OUTPUT_BYTES)}
 
-    def test_every_package_git_argv_has_the_same_hardening_prefix(self, monkeypatch, tmp_path):
+    def test_every_package_git_argv_has_the_same_hardening_prefix(self, monkeypatch, make_git_repo):
+        root = make_git_repo(SAMPLE)
         calls = []
         real_popen = subprocess.Popen
-
-        def record_run(command, **_kwargs):
-            calls.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
 
         def record_spawn(command, **kwargs):
             calls.append(command)
             return real_popen(command, **kwargs)
 
-        # Two seams because the receipt reader spawns and the other two callers
-        # still run to completion; the prefix has to be on the argv of each.
-        monkeypatch.setattr(subprocess, "run", record_run)
+        # One seam, because one runner is the point: every caller below reaches
+        # git through `run_bounded_bytes` and none of them spawns it directly.
         monkeypatch.setattr(subprocess, "Popen", record_spawn)
 
-        gitinfo.head_sha(tmp_path)
-        treewalk._git_listed_paths(tmp_path)
-        sandbox.run_git(tmp_path, ["status", "--porcelain"])
+        gitinfo.head_sha(root)
+        treewalk._git_listed_paths(root)
+        treewalk._git_ignores(root, root / "a.py")
+        sandbox.run_git(root, ["status", "--porcelain"])
 
         expected = ["git", *gitinfo.HARDENING_PREFIX]
-        assert len(calls) == 3
+        assert len(calls) == 4
         assert all(command[: len(expected)] == expected for command in calls)
+
+
+def spawn_sites(module):
+    """Name every function in ``module`` that calls ``subprocess.run`` or ``subprocess.Popen``."""
+    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+    sites = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for inner in ast.walk(node):
+            call = inner.func if isinstance(inner, ast.Call) else None
+            if (
+                isinstance(call, ast.Attribute)
+                and call.attr in {"run", "Popen"}
+                and isinstance(call.value, ast.Name)
+                and call.value.id == "subprocess"
+            ):
+                sites.add(node.name)
+    return sites
+
+
+class TestOnlyThisModuleSpawnsGit:
+    """One runner, asserted on the source rather than on the reviewer's memory.
+
+    A second spawn anywhere in the package is a second set of defaults: an argv
+    without the hardening prefix, an inherited ``GIT_DIR``, or a call with no
+    deadline and no output cap. The prefix constant being importable is what
+    made that easy to write, so the assertion is that nobody does.
+    """
+
+    def test_the_bytes_runner_is_the_only_place_gitinfo_spawns(self):
+        assert spawn_sites(gitinfo) == {"run_bounded_bytes"}
+
+    def test_the_walker_spawns_nothing_of_its_own(self):
+        assert spawn_sites(treewalk) == set()
+
+    def test_the_sandbox_spawns_only_the_caller_s_validation_command(self):
+        """``run_command`` runs the caller's command, not git, so it keeps its own spawn."""
+        assert spawn_sites(sandbox) == {"run_command"}
 
 
 class TestAmbientGitEnvironmentCannotRedirect:

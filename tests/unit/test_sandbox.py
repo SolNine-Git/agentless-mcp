@@ -25,10 +25,12 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import sandbox
+from agentless_mcp.core import gitinfo, sandbox
 from agentless_mcp.core.sandbox import RunStatus
 from agentless_mcp.util import cachedir, platforms
 from agentless_mcp.util.errors import OperationFailed, RepoResolutionError
+
+ABSENT_GIT = "git"
 
 FILES = {
     "app.py": "def add(a, b):\n    return a + b\n",
@@ -331,13 +333,14 @@ class TestDiff:
 
 
 class TestRunGit:
-    """The four ways one git call can fail, each with its own message.
+    """The ways one git call can fail, each with its own message.
 
     Every one of these is a path the write side takes when something has
     already gone wrong, and the message is the only thing an operator gets.
-    The subprocess is stubbed rather than provoked: uninstalling git, hanging
-    it, or exhausting file descriptors are not things a unit test may do to
-    the machine it runs on.
+    The spawn is stubbed rather than provoked: uninstalling git, hanging it, or
+    exhausting file descriptors are not things a unit test may do to the
+    machine it runs on. The seam is `subprocess.Popen`, because the spawn now
+    happens inside `gitinfo` and this module holds none of its own.
     """
 
     def test_a_failing_command_raises_with_the_reason(self, repo):
@@ -348,42 +351,78 @@ class TestRunGit:
         def absent(command, **keywords):
             raise FileNotFoundError(errno.ENOENT, "No such file or directory", "git")
 
-        monkeypatch.setattr(sandbox.subprocess, "run", absent)
+        monkeypatch.setattr(subprocess, "Popen", absent)
 
         with pytest.raises(OperationFailed, match="git is not installed"):
             sandbox.run_git(repo, ["status"])
 
     def test_a_hung_git_reports_the_bound_it_exceeded(self, repo, monkeypatch):
-        def hangs(command, **keywords):
-            raise subprocess.TimeoutExpired(command, keywords["timeout"])
+        """The deadline is the runner's; what this owns is the note reaching the caller."""
 
-        monkeypatch.setattr(sandbox.subprocess, "run", hangs)
+        def times_out(cwd, arguments, *, timeout, max_output_bytes, config=()):
+            return gitinfo.GitBytesOutcome(None, f"git {arguments[0]} timed out after {timeout}s")
 
-        with pytest.raises(OperationFailed, match=r"git status timed out after 7\.0s"):
+        monkeypatch.setattr(sandbox.gitinfo, "run_bounded_bytes", times_out)
+
+        with pytest.raises(
+            OperationFailed, match=rf"git status timed out after 7\.0s \(in {repo}\)"
+        ):
             sandbox.run_git(repo, ["status"], timeout=7.0)
 
     def test_an_os_error_names_the_subcommand_and_the_directory(self, repo, monkeypatch):
         def refuses(command, **keywords):
             raise OSError(errno.EMFILE, "Too many open files")
 
-        monkeypatch.setattr(sandbox.subprocess, "run", refuses)
+        monkeypatch.setattr(subprocess, "Popen", refuses)
 
-        with pytest.raises(OperationFailed, match="git status could not be run"):
+        with pytest.raises(OperationFailed, match=f"git status could not be run.*in {repo}"):
             sandbox.run_git(repo, ["status"])
 
     def test_the_default_bound_is_the_creation_bound(self, repo, monkeypatch):
         seen = []
+        real_bounded = gitinfo.run_bounded_bytes
 
-        def record(command, **keywords):
+        def record(cwd, arguments, **keywords):
             seen.append(keywords["timeout"])
-            raise subprocess.TimeoutExpired(command, keywords["timeout"])
+            return real_bounded(cwd, arguments, **keywords)
 
-        monkeypatch.setattr(sandbox.subprocess, "run", record)
-
-        with pytest.raises(OperationFailed):
-            sandbox.run_git(repo, ["status"])
+        monkeypatch.setattr(sandbox.gitinfo, "run_bounded_bytes", record)
+        sandbox.run_git(repo, ["status"])
 
         assert seen == [sandbox.GIT_TIMEOUT_SECONDS]
+
+    def test_the_argv_carries_the_prefix_the_config_and_the_scrubbed_environment(
+        self, repo, monkeypatch
+    ):
+        """The write side has most to lose from an ambient ``GIT_DIR``."""
+        seen = {}
+
+        def record(command, **keywords):
+            seen["command"] = command
+            seen["env"] = keywords["env"]
+            raise FileNotFoundError(ABSENT_GIT)
+
+        monkeypatch.setenv("GIT_DIR", "/somewhere/else")
+        monkeypatch.setattr(subprocess, "Popen", record)
+
+        with pytest.raises(OperationFailed, match="not installed"):
+            sandbox.run_git(repo, ["worktree", "prune"], config=sandbox.NO_REPO_CODE)
+
+        expected = ["git", *gitinfo.HARDENING_PREFIX, *sandbox.NO_REPO_CODE]
+        assert seen["command"][: len(expected)] == expected
+        assert seen["env"]["LC_ALL"] == "C"
+        assert not [
+            name
+            for name in seen["env"]
+            if name.startswith("GIT_") and name not in gitinfo.GIT_CONFIG_KEPT
+        ]
+
+    def test_output_past_the_cap_is_a_refusal_rather_than_a_cut_diff(self, repo, monkeypatch):
+        """Half a diff is worse than no diff: the caller would apply it as whole."""
+        monkeypatch.setattr(sandbox, "MAX_GIT_OUTPUT_BYTES", 4)
+
+        with pytest.raises(OperationFailed, match="printed more than 4 bytes"):
+            sandbox.run_git(repo, ["rev-parse", "HEAD"])
 
 
 class TestRelease:
