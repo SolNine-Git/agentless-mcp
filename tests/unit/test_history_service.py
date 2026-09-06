@@ -34,7 +34,9 @@ EDITED_COST = EDITED_QUOTE.replace("        return quote(sku)\n", "        retur
 
 WHY = "Return the rate\n\nBecause the loader reads it.\nAnd the sink owns the line grammar."
 OUTSIDE = "Tidy cost_of\n\nOutside the quote span."
-RECORD = "a" * 40 + "\x00" + "2026-08-23T16:43:57-04:00" + "\x00" + "s" + "\x00" + "b" + "\x00"
+RECORD = (
+    b"a" * 40 + b"\x00" + b"2026-08-23T16:43:57-04:00" + b"\x00" + b"s" + b"\x00" + b"b" + b"\x00"
+)
 LONG_BODY = "\n".join(f"line {number} of a long explanation" for number in range(40))
 
 
@@ -44,7 +46,7 @@ def log_output(count, *, body=""):
         "\x00".join((f"{index:040x}", "2026-08-23T16:43:57-04:00", "Tighten the guard", body))
         + "\x00"
         for index in range(count)
-    )
+    ).encode()
 
 
 def stage_all(root):
@@ -200,7 +202,9 @@ class TestRefusals:
             service.history(context(repo), "py:core.py::quote")
 
     def test_no_records_is_a_refusal_not_an_empty_answer(self, extractor, counter, repo):
-        service, _ = injected(extractor, counter, {"log": gitinfo.GitOutcome("", "", returncode=0)})
+        service, _ = injected(
+            extractor, counter, {"log": gitinfo.GitOutcome(b"", "", returncode=0)}
+        )
         with pytest.raises(
             OperationFailed, match=re.escape("no commit touches lines 1-3 of core.py")
         ):
@@ -248,7 +252,7 @@ class TestGitContract:
             counter,
             {
                 "log": gitinfo.GitOutcome(
-                    RECORD + "b" * 40 + "\x00date", "", truncated=True, returncode=-9
+                    RECORD + b"b" * 40 + b"\x00date", "", truncated=True, returncode=-9
                 ),
                 "diff": gitinfo.GitOutcome(None, "", returncode=0),
             },
@@ -268,7 +272,7 @@ class TestGitContract:
         service, _ = injected(
             extractor,
             counter,
-            {"log": gitinfo.GitOutcome("a" * 40 + "\x00date", "", truncated=True, returncode=-9)},
+            {"log": gitinfo.GitOutcome(b"a" * 40 + b"\x00date", "", truncated=True, returncode=-9)},
         )
 
         with pytest.raises(OperationFailed) as raised:
@@ -279,7 +283,7 @@ class TestGitContract:
         assert "git log -L1,3:core.py" in message
 
     def test_git_output_git_cannot_have_written_is_refused(self, extractor, counter, repo):
-        patch = "diff --git a/core.py b/core.py\n@@ -1 +1 @@\n"
+        patch = b"diff --git a/core.py b/core.py\n@@ -1 +1 @@\n"
         service, _ = injected(
             extractor,
             counter,
