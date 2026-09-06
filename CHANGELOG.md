@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.1 -- unreleased
+## 0.8.1 -- 2026-09-06
 
 Follow-ups from the 0.8.0 review. No tool answers differently; the server,
 the git seam and the patch write side each gain a bound or lose a duplicate.
