@@ -21,7 +21,7 @@ from agentless_mcp.application.patch_service import PatchService, load_edits
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import sandbox
 from agentless_mcp.core.normalize import file_key
-from agentless_mcp.core.patches import EditStatus, parse_blocks
+from agentless_mcp.core.patches import MAX_EDIT_BYTES, MAX_EDITS, EditStatus, parse_blocks
 from agentless_mcp.util.errors import AgentlessError, SecurityRefusal
 
 APP = """\
@@ -701,3 +701,89 @@ class TestLoadEdits:
         assert not report.ok
         assert "the SEARCH side is empty" in report.result.outcomes[0].reason
         assert (repo / "app.py").read_text(encoding="utf-8") == APP
+
+
+def blocks_text(count, rows=1):
+    """Raw SEARCH/REPLACE text of ``count`` blocks, ``rows`` one-char lines each."""
+    old = "\n".join("x" for _ in range(rows))
+    new = "\n".join("y" for _ in range(rows))
+    return "".join(
+        f"### pkg/mod_{index:04d}.py\n<<<<<<< SEARCH\n{old}\n=======\n{new}\n>>>>>>> REPLACE\n\n"
+        for index in range(count)
+    )
+
+
+def json_text(count, rows=1):
+    """The same request in the ``edits.json`` form."""
+    old = "\n".join("x" for _ in range(rows))
+    new = "\n".join("y" for _ in range(rows))
+    edits = [
+        {"index": index, "path": f"pkg/mod_{index:04d}.py", "search": old, "replace": new}
+        for index in range(count)
+    ]
+    return json.dumps({"edits": edits})
+
+
+class TestTheRequestIsBounded:
+    """One request may not be larger than the diff cap can carry.
+
+    The bound is a refusal at the parse boundary, so an oversized request costs
+    no worktree and no file read. `sandbox.MAX_GIT_OUTPUT_BYTES` stays the
+    backstop it was meant to be rather than the first thing a caller meets.
+    """
+
+    def test_too_many_raw_blocks_are_refused(self):
+        with pytest.raises(AgentlessError, match=f"501 edits, more than the {MAX_EDITS}"):
+            load_edits(blocks_text(MAX_EDITS + 1))
+
+    def test_too_many_json_edits_are_refused(self):
+        with pytest.raises(AgentlessError, match=f"501 edits, more than the {MAX_EDITS}"):
+            load_edits(json_text(MAX_EDITS + 1))
+
+    def test_raw_blocks_over_the_byte_bound_are_refused(self):
+        with pytest.raises(AgentlessError, match="bytes of search and replace text"):
+            load_edits(blocks_text(100, rows=11_000))
+
+    def test_a_json_document_over_the_byte_bound_is_refused(self):
+        with pytest.raises(AgentlessError, match=f"more than the {MAX_EDIT_BYTES}"):
+            load_edits(json_text(100, rows=11_000))
+
+    def test_the_refusal_names_the_observed_size(self):
+        with pytest.raises(AgentlessError) as caught:
+            load_edits(json_text(100, rows=11_000))
+        assert "4399800 bytes" in str(caught.value)
+
+    def test_a_request_at_the_bounds_is_admitted(self):
+        parsed = load_edits(json_text(MAX_EDITS, rows=1000))
+        assert len(parsed.edits) == MAX_EDITS
+
+    def test_an_oversized_request_creates_no_worktree(self):
+        with pytest.raises(AgentlessError):
+            load_edits(blocks_text(MAX_EDITS + 1))
+        assert not sandbox.scratch_root().exists()
+
+    def test_the_bounds_stay_under_the_git_output_cap(self):
+        """The relation the bounds exist for, pinned against the backstop.
+
+        A removed line of length L costs L+1 request bytes and L+2 diff bytes,
+        so two diff bytes per request byte is the ceiling; 512 bytes per edited
+        file covers the file and hunk headers, measured at 194.
+        """
+        worst_case = 2 * MAX_EDIT_BYTES + MAX_EDITS * 512
+        assert worst_case <= sandbox.MAX_GIT_OUTPUT_BYTES
+
+    def test_a_request_at_the_bounds_diffs_under_the_cap(self, make_git_repo, extractor):
+        """The empirical half: apply at both bounds and measure the diff."""
+        rows = 1000
+        old = "\n".join("x" for _ in range(rows))
+        files = {
+            f"pkg/mod_{index:04d}.py": f"head{index}\n{old}\ntail{index}\n"
+            for index in range(MAX_EDITS)
+        }
+        repo = make_git_repo(files, name="bounded")
+        parsed = load_edits(json_text(MAX_EDITS, rows=rows))
+
+        report = PatchService(extractor).apply(parsed.edits, resolve_repo(repo, None))
+
+        assert report.ok
+        assert len(report.diff.encode("utf-8")) < sandbox.MAX_GIT_OUTPUT_BYTES

@@ -96,6 +96,11 @@ _PROSE_END = frozenset(".,:;!?\"')]}")
 # is one this cannot read, and `_filename_in` answers those differently.
 _PATH_START_REFUSED = frozenset("\"'([{")
 
+# How large one request may be. Both bounds hold the diff it produces under
+# `sandbox.MAX_GIT_OUTPUT_BYTES`, the backstop a bounded request cannot reach.
+MAX_EDITS = 500
+MAX_EDIT_BYTES = 2_000_000
+
 
 @dataclass(frozen=True)
 class Edit:

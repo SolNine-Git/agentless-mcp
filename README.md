@@ -112,7 +112,9 @@ agentless-mcp vote --verdicts verdicts.jsonl
 ```
 
 Patch candidates can use SEARCH/REPLACE text or the package's `edits.json`
-format. `validate` normalizes them against HEAD, runs byte-identical resulting
+format. One request carries at most 500 edits and 2,000,000 bytes of search
+and replace text; a larger one is refused when it is read, before any file is
+opened. `validate` normalizes them against HEAD, runs byte-identical resulting
 file states once while preserving every candidate's vote, and skips a
 reproduction command when regression has already failed. `vote` ranks the
 candidates that pass.

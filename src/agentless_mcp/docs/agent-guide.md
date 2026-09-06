@@ -1066,7 +1066,9 @@ The report therefore names a candidate that calls a function nobody wrote, or
 one that re-implements a helper you already have. You do not burn a worktree
 to find that out. `--candidates` takes one patch file or a directory of them,
 in either format `patch parse` accepts. One file is one candidate, and its
-stem is its id. `validate` uses the same rule.
+stem is its id. `validate` uses the same rule. Either format is refused when
+it carries more than 500 edits or more than 2,000,000 bytes of search and
+replace text, and the refusal names what it counted and the bound it passed.
 
 **`--diff` is the review case: a branch or a pull request that already exists.**
 It takes a unified diff (`git diff`, or a `format-patch` body) and maps one

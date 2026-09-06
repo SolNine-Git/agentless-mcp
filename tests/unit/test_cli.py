@@ -28,6 +28,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, grammars, guide, selfrestart
+from agentless_mcp.core.patches import MAX_EDITS
 
 
 def console_script(*arguments, cwd=None, stdin=None, timeout=120):
@@ -1488,6 +1489,20 @@ class TestPatchSubprocess:
             "patch", "check", "-f", str(tmp_path / "gone.txt"), "--repo", str(git_repo)
         )
         assert result.returncode == 2
+
+    def test_a_request_over_the_edit_bound_is_refused_on_stderr(self, git_repo, tmp_path):
+        """The operator gets the count and the bound, and nothing on stdout."""
+        oversized = "".join(
+            f"### pkg/mod_{index:04d}.py\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n\n"
+            for index in range(MAX_EDITS + 1)
+        )
+        patch = self.write_patch(tmp_path, oversized)
+
+        result = self.run_cli("patch", "apply", "-f", str(patch), "--repo", str(git_repo))
+
+        assert result.returncode == EXIT_DOMAIN
+        assert f"501 edits, more than the {MAX_EDITS}" in result.stderr
+        assert result.stdout == ""
 
     # --json on the three patch subcommands. Pinned because nothing reached it
     # before: the machine-readable form of the only write path in the package
