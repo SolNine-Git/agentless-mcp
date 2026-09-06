@@ -2,7 +2,7 @@
 
 The split is deliberate and load-bearing for an agent driving this over Bash:
 **stdout carries the answer, stderr carries everything about the run**. A
-pipeline that captures stdout gets only the receipt, the banner and the view;
+pipeline that captures stdout gets only the receipt and the view;
 a failure is on stderr with a non-zero exit, never interleaved into a view
 that would then parse as a shorter answer.
 

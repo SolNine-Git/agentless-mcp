@@ -109,6 +109,10 @@ GIT_TIMEOUT_SECONDS = 120.0
 # directory still goes away.
 GIT_CLEANUP_TIMEOUT_SECONDS = 30.0
 
+# The largest thing `run_git` returns is the patch diff, which is proportional
+# to the edits a caller sent rather than to the repository behind them.
+MAX_GIT_OUTPUT_BYTES = 8_000_000
+
 WORKTREE_DIR = "worktrees"
 
 # How long a timed-out process group gets between SIGTERM and SIGKILL. Long
@@ -347,8 +351,11 @@ def diff(worktree_path: Path) -> str:
     the repository's own configuration: a ``color.diff = always`` or a
     ``diff.external`` in the user's config would otherwise decide the format
     of a diff this tool promises is machine-readable.
+
+    ``--no-textconv`` is the execution half: a ``diff.<driver>.textconv`` runs
+    a repository-named program here, and only the flag turns the mechanism off.
     """
-    return run_git(worktree_path, ["diff", "--no-color", "--no-ext-diff"])
+    return run_git(worktree_path, ["diff", "--no-color", "--no-ext-diff", "--no-textconv"])
 
 
 def run_command(
@@ -646,6 +653,12 @@ def run_git(
 ) -> str:
     """Run one bounded git command, raising on anything but success.
 
+    The spawn is :func:`agentless_mcp.core.gitinfo.run_bounded_bytes`, so this
+    call carries the same hardening prefix and the same scrubbed environment as
+    every other. The write side has most to lose from an ambient ``GIT_DIR``:
+    ``worktree add`` against a redirected repository would create the checkout
+    somewhere the caller never named.
+
     Unlike :func:`agentless_mcp.core.gitinfo._run`, a failure here is an
     error, not a note: that module answers "what state is this repository in",
     where unknown is a legitimate answer, and this one performs the write-side
@@ -660,35 +673,23 @@ def run_git(
     long every other holder of that lock waits.
     """
     subcommand = arguments[0] if arguments else "git"
-    command = ["git", *gitinfo.HARDENING_PREFIX, *config, "-C", str(cwd), *arguments]
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            # The write-side calls have most to lose from an ambient GIT_DIR:
-            # `worktree add` against a redirected repository would create the
-            # checkout somewhere the caller never named.
-            env=gitinfo.subprocess_env(),
-        )
-    except FileNotFoundError as exc:
-        message = "git is not installed, so the patch machinery cannot run"
-        raise OperationFailed(message) from exc
-    except subprocess.TimeoutExpired as exc:
-        message = f"git {subcommand} timed out after {timeout}s in {cwd}"
-        raise OperationFailed(message) from exc
-    except OSError as exc:
-        message = f"git {subcommand} could not be run in {cwd}: {exc.strerror}"
-        raise OperationFailed(message) from exc
-
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        first = detail.splitlines()[0] if detail else "no detail"
-        message = f"git {subcommand} exited {completed.returncode} in {cwd}: {first}"
+    outcome = gitinfo.run_bounded_bytes(
+        cwd,
+        arguments,
+        timeout=timeout,
+        max_output_bytes=MAX_GIT_OUTPUT_BYTES,
+        config=config,
+    )
+    if outcome.truncated:
+        message = f"git {subcommand} printed more than {MAX_GIT_OUTPUT_BYTES} bytes in {cwd}"
+        raise OperationFailed(message)
+    if outcome.stdout is None:
+        # The runner's note already names the subcommand and the reason, so the
+        # directory is the only thing this layer has left to add.
+        message = f"{outcome.note} (in {cwd})"
         raise OperationFailed(message)
 
-    return completed.stdout.decode("utf-8", errors="replace")
+    return outcome.stdout.decode("utf-8", errors="replace")
 
 
 def _release(root: Path, path: Path) -> None:

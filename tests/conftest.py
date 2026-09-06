@@ -32,6 +32,10 @@ from agentless_mcp.util.tokens import Chars4Counter
 # core.gitinfo.subprocess_env enforces for the package's own calls.
 for _name in [name for name in os.environ if name.startswith("GIT_")]:
     del os.environ[_name]
+# The machine's global and system git config stay out too: a global commit-msg
+# hook or a commit template would change what a fixture commit does.
+os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
+os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 # The languages the suite actually parses. Kept short on purpose: warming the
 # full tier-1 set would slow a cold run down for no coverage gain.

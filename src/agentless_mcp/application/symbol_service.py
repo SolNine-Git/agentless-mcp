@@ -53,7 +53,7 @@ from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
-from agentless_mcp.core.slices import line_count, line_prefix
+from agentless_mcp.core.slices import line_count, line_prefix, span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     SymbolKind,
@@ -67,6 +67,7 @@ from agentless_mcp.core.symbols import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
 from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
@@ -97,12 +98,8 @@ TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs"
 # A structural-health view needs both names excluded, so it asks for both.
 FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures"})
 
-# What the rendered cards of one expansion may cost. Under the envelope's
-# 16k-token ceiling by a margin that covers the receipt, the banner, and the
-# few percent JSON escaping adds to the same bodies -- because the service
-# budget only does its job if it binds *before* the ceiling does. A batch
-# trimmed by the ceiling loses whole symbols; a batch trimmed here loses the
-# tails of the longest ones.
+# What one expansion's cards may cost: under the 16k ceiling by the receipt
+# and JSON-escaping margin, so this budget binds before the ceiling drops symbols.
 EXPAND_BUDGET_TOKENS = 12_000
 
 # How many cards one call may seat at all, however small each one is cut. A
@@ -141,11 +138,6 @@ EXPAND_MAX_SEATS = 40
 # must not be able to crowd out the answer, so it is bounded like every other
 # listing here and says how many it did not name.
 MAX_UNRESOLVED_ROWS = 20
-
-# Room kept back on each shortened card for the marker that says it was
-# shortened, so announcing the cut cannot be what pushes a card past its
-# share.
-_TRUNCATION_MARKER_TOKENS = 32
 
 
 @dataclass(frozen=True)
@@ -318,6 +310,66 @@ class RefsResult:
         }
 
 
+@dataclass(frozen=True)
+class SymbolSpan:
+    """One stable id resolved to its symbol and the lines it spans in the working tree."""
+
+    symbol: ASTSymbol
+    path: str
+    start_line: int
+    end_line: int
+    source: str
+
+
+def resolve_symbol_span(
+    ctx: RepoContext, extractor: TreeSitterExtractor, raw: str
+) -> tuple[SymbolSpan | None, str]:
+    """Resolve a stable id to its span, or return the reason it did not resolve."""
+    try:
+        parsed = parse_stable_id(raw)
+    except ValueError as exc:
+        return None, str(exc)
+
+    source, symbols, reason = _parse_file(ctx, extractor, parsed.path)
+    if symbols is None:
+        return None, reason
+
+    match = next((symbol for symbol in symbols if id_qualname(symbol) == parsed.qualname), None)
+    if match is None:
+        return None, f"{parsed.path} no longer defines {parsed.qualname}"
+
+    if language_prefix(match.language) != parsed.prefix:
+        return None, (
+            f"no {parsed.prefix} symbol in {parsed.path}: the file is {match.language}. "
+            f"This symbol's id is {symbol_stable_id(match)}"
+        )
+
+    end = min(line_count(source), span_end(match))
+    return SymbolSpan(match, parsed.path, match.line_number, end, source), ""
+
+
+def _parse_file(
+    ctx: RepoContext, extractor: TreeSitterExtractor, path: str
+) -> tuple[str, list[ASTSymbol] | None, str]:
+    # The id came from a caller, so its path is foreign data even though this
+    # package generated the id in the first place; an escape raises.
+    absolute = contained_path(ctx.root, path)
+
+    read = read_bounded(absolute)
+    if read.text is None:
+        return "", None, f"{path}: {read.skipped}"
+
+    language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix)
+    if language is None:
+        return "", None, f"{path}: no grammar for this file type"
+
+    try:
+        symbols = effective_source(ctx.symbols, extractor).symbols_for(read.text, language, path)
+    except LanguageUnavailable as exc:
+        return "", None, f"{path}: {exc}"
+    return read.text, list(symbols), ""
+
+
 class SymbolService:
     """Finds, expands and traces symbols. Holds no per-repository state."""
 
@@ -486,43 +538,10 @@ class SymbolService:
     def _fit_bodies(
         self, cards: list[render.SymbolCard], budget: int
     ) -> tuple[render.SymbolCard, ...]:
-        """Spend ``budget`` across the cards max-min fair, cutting only what must be.
-
-        The allocation is the classic water-filling one, and it is what makes
-        the degradation fair rather than positional. Every round divides what
-        is left of the budget equally among the cards still competing; the
-        cards that already fit their share are settled at full length and give
-        their unspent tokens back; the rest go round again on a larger share.
-        The loop ends when a round settles nobody, and every card still
-        competing then gets exactly the same allowance -- so a thousand-line
-        class and a five-line method are cut to the same size, and no card is
-        cut at all while another is still whole and larger.
-        """
-        if not cards:
-            return ()
-
-        costs = {
-            index: self._counter.count(render.render_symbol_cards([card]))
-            for index, card in enumerate(cards)
-        }
-        pending = set(costs)
-        remaining = budget
-
-        while pending:
-            share = remaining // len(pending)
-            settled = {index for index in pending if costs[index] <= share}
-            if not settled:
-                break
-            remaining -= sum(costs[index] for index in settled)
-            pending -= settled
-
-        if not pending:
-            return tuple(cards)
-
-        share = max(0, remaining // len(pending))
+        costs = [self._counter.count(render.render_symbol_cards([card])) for card in cards]
+        cut, share = allocate(costs, budget)
         return tuple(
-            self._shorten(card, share) if index in pending else card
-            for index, card in enumerate(cards)
+            self._shorten(card, share) if index in cut else card for index, card in enumerate(cards)
         )
 
     def _shorten(self, card: render.SymbolCard, share: int) -> render.SymbolCard:
@@ -535,7 +554,7 @@ class SymbolService:
         """
         lines = card.body.split("\n")
         header = self._counter.count(render.render_symbol_cards([replace(card, body="")]))
-        room = share - header - _TRUNCATION_MARKER_TOKENS
+        room = share - header - TRUNCATION_MARKER_TOKENS
 
         # Binary search over the line count rather than a walk, so a
         # thousand-line body costs ten counts and not a thousand -- the
@@ -572,71 +591,18 @@ class SymbolService:
         for.
         """
         try:
-            parsed = parse_stable_id(raw)
-        except ValueError as exc:
+            span, reason = resolve_symbol_span(ctx, self._extractor, raw)
+        except SecurityRefusal as exc:
             return None, str(exc)
-
-        source, symbols, reason = self._parse_one(ctx, parsed.path)
-        if symbols is None:
+        if span is None:
             return None, reason
 
-        match = next((symbol for symbol in symbols if id_qualname(symbol) == parsed.qualname), None)
-        if match is None:
-            return None, f"{parsed.path} no longer defines {parsed.qualname}"
-
-        if language_prefix(match.language) != parsed.prefix:
-            return None, (
-                f"no {parsed.prefix} symbol in {parsed.path}: the file is {match.language}. "
-                f"This symbol's id is {symbol_stable_id(match)}"
-            )
-
-        lines = source.split("\n")
-        start = match.line_number
-        end = min(line_count(source), match.end_line_number or match.line_number)
+        lines = span.source.split("\n")
         body = "\n".join(
-            f"{line_prefix(number)}{lines[number - 1]}" for number in range(start, end + 1)
+            f"{line_prefix(number)}{lines[number - 1]}"
+            for number in range(span.start_line, span.end_line + 1)
         )
-        return symbol_card(match, body=body), ""
-
-    def _parse_one(self, ctx: RepoContext, path: str) -> tuple[str, list[ASTSymbol] | None, str]:
-        """Read and parse one file, degrading that file alone when it cannot be.
-
-        Every way one file can fail -- a path that escapes the repository, an
-        unreadable or oversized file, a suffix with no grammar, a grammar that
-        was never warmed -- comes back as a reason for the id that asked for
-        it. That is the convention :func:`agentless_mcp.core.refs._parse_one`
-        sets, and an exception here instead would discard every card the batch
-        had already built while leaving the caller unable to tell which id
-        poisoned the call.
-
-        The channel follows the shape of the operation and not the method that
-        caught the failure: a batch reports per item, a single-target view
-        raises. :mod:`agentless_mcp.application.view_service` keeps the same
-        rule over the same containment check, so an adapter handles a path
-        refusal one way per operation shape rather than one way per method.
-        """
-        try:
-            # The id came from a caller, so its path is foreign data even
-            # though this package generated the id in the first place.
-            absolute = contained_path(ctx.root, path)
-        except SecurityRefusal as exc:
-            return "", None, str(exc)
-
-        read = read_bounded(absolute)
-        if read.text is None:
-            return "", None, f"{path}: {read.skipped}"
-
-        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(absolute.suffix)
-        if language is None:
-            return "", None, f"{path}: no grammar for this file type"
-
-        try:
-            symbols = effective_source(ctx.symbols, self._extractor).symbols_for(
-                read.text, language, path
-            )
-        except LanguageUnavailable as exc:
-            return "", None, f"{path}: {exc}"
-        return read.text, list(symbols), ""
+        return symbol_card(span.symbol, body=body), ""
 
 
 def render_expansion(result: ExpandResult) -> str:

@@ -41,6 +41,7 @@ from agentless_mcp.adapters.cli.formatting import EXIT_USAGE, fail
 from agentless_mcp.adapters.cli.main import CliServices, build_parser, run
 from agentless_mcp.adapters.mcp.cliargs import DISTRIBUTION_NAME, parse_args
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
@@ -205,6 +206,7 @@ def cli_main(argv: Sequence[str] | None = None) -> int:
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
         graphs=GraphService(extractor),
+        histories=HistoryService(extractor, counter),
         patches=patches,
         validates=ValidateService(patches),
         lints=LintService(extractor),
@@ -294,6 +296,7 @@ def mcp_main(argv: Sequence[str] | None = None) -> int:
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
         graphs=GraphService(extractor),
+        histories=HistoryService(extractor, counter),
         counter=counter,
         extractor=extractor,
     )

@@ -2,7 +2,7 @@
 
 Two guarantees pinned here. *Parity*: every v2 operation is adapter-layer
 routing into the same handler its v1 counterpart tool calls, so its answer --
-receipt, banner and content -- is byte-identical to the v1 tool's on the same
+receipt and content -- is byte-identical to the v1 tool's on the same
 repository. *Rejection*: the v2 tools publish ``operation`` as a plain string,
 no wire enum, so the server's own message is what reaches the agent, and for
 every rejection class -- unknown operation, a parameter foreign to the
@@ -37,6 +37,7 @@ from agentless_mcp.adapters.mcp.server import (
     build_server,
 )
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
@@ -53,6 +54,7 @@ EXPECTED_TOOLS_V2 = {
     "find_referencing_symbols",
     "read",
     "capabilities",
+    "history",
 }
 
 SOURCE = """\
@@ -65,6 +67,10 @@ class PriceBook:
         return quote(sku)
 """
 
+# The `--surface` help spells its counts. A count with no word here is drift
+# the help cannot already be stating, so KeyError is the intended failure.
+COUNT_WORDS = {6: "six", 12: "twelve", 15: "fifteen"}
+
 
 @pytest.fixture
 def services(extractor, counter):
@@ -72,6 +78,7 @@ def services(extractor, counter):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         counter=counter,
         extractor=extractor,
@@ -318,7 +325,7 @@ class TestParity:
 
 
 class TestSurfaceListing:
-    def test_v2_publishes_exactly_five_tools(self, services, one_repo):
+    def test_v2_publishes_exactly_six_tools(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
         assert {tool.name for tool in tools} == EXPECTED_TOOLS_V2
 
@@ -327,28 +334,28 @@ class TestSurfaceListing:
         assert {tool.name for tool in tools} == EXPECTED_TOOLS_V2
 
     def test_no_tool_on_either_surface_publishes_an_output_schema(self, services, one_repo):
-        """All fourteen answer in text, so none declares a structured shape.
+        """All fifteen answer in text, so none declares a structured shape.
 
         Built on ``SURFACE_BOTH`` rather than the default: the default
-        registers five tools, and the nine v1 registrations return ``str``
+        registers six tools, and the nine v1 registrations return ``str``
         the same way and carry the same defect if one of them forgets
         ``output_schema=None``.
         """
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
 
-        assert len(tools) == 14
+        assert len(tools) == 15
         for tool in tools:
             assert tool.outputSchema is None, tool.name
 
     def test_both_publishes_the_union_of_the_surfaces(self, services, one_repo):
-        # find_referencing_symbols and capabilities are shared, so the union
-        # is fourteen names rather than sixteen.
+        # find_referencing_symbols, capabilities and history are shared, so
+        # the union is fifteen names rather than eighteen.
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
         names = {tool.name for tool in tools}
         assert names >= EXPECTED_TOOLS_V2
         assert "repo_map" in names
         assert "analyze_structure" in names
-        assert len(tools) == 14
+        assert len(tools) == 15
 
     def test_every_v2_tool_is_annotated_read_only(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
@@ -365,12 +372,21 @@ class TestSurfaceListing:
                 rendered = json.dumps(schema)
                 assert '"description"' in rendered, f"{tool.name}.{name}"
 
-    def test_every_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
+    def test_every_localizing_v2_tool_asks_clients_to_always_load_it(self, services, one_repo):
         # Deferral-capable clients keep these five schemas out of context
         # without this hint, and an unloaded schema routes agents to grep.
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
         for tool in tools:
+            if tool.name == "history":
+                continue
             assert (tool.meta or {}).get("anthropic/alwaysLoad") is True, tool.name
+
+    def test_history_is_deferred_by_design(self, services, one_repo):
+        # History answers why, not where: it costs no context until an agent
+        # asks for its schema, so the five localizing schemas stay undiluted.
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
+        history = next(tool for tool in tools if tool.name == "history")
+        assert "anthropic/alwaysLoad" not in (history.meta or {})
 
     def test_v1_only_tools_never_ask_for_always_load(self, services, one_repo):
         tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_BOTH))
@@ -379,6 +395,35 @@ class TestSurfaceListing:
                 continue
             meta = tool.meta or {}
             assert "anthropic/alwaysLoad" not in meta, tool.name
+
+    def test_the_eager_schemas_stay_under_their_context_ceiling(self, services, one_repo):
+        """What the five alwaysLoad schemas cost every session that connects.
+
+        These five are the only schemas a deferring client loads before an
+        agent asks for anything, so their size is a tax on every session
+        rather than on the calls that use them. Measured with the package's
+        own estimator, which is the unit every other budget here is stated
+        in; tiktoken lives behind the `tokens` extra and would make this gate
+        skip on a plain checkout.
+
+        Measured 2026-09-06 after the 0.8.0 distillation pass: 3027 chars/4
+        on Python 3.13 (2675 cl100k) and 3265 on Python 3.10, where pydantic
+        renders the same schemas about eight percent larger. The ceiling is
+        the larger figure plus five percent, which leaves room for a sentence
+        a later release genuinely needs and stops a paragraph.
+        """
+        counter = Chars4Counter()
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
+
+        eager = [tool for tool in tools if (tool.meta or {}).get("anthropic/alwaysLoad")]
+        cost = {
+            tool.name: counter.count(tool.description or "")
+            + counter.count(json.dumps(tool.inputSchema, separators=(",", ":")))
+            for tool in eager
+        }
+
+        assert len(cost) == 5, sorted(cost)
+        assert sum(cost.values()) <= 3430, cost
 
 
 class TestOperationSchema:
@@ -528,6 +573,22 @@ class TestSurfaceFlag:
             parse_args(["--surface", "v3"])
         assert caught.value.code == 2
         assert "received argv" in capsys.readouterr().err
+
+    def test_the_help_spells_the_counts_the_surfaces_publish(self, services, one_repo, capsys):
+        """`--surface` quotes two tool counts, so a new tool has to move them."""
+        published = {
+            surface: len(
+                listed_tools(build_server(ToolHandlers([one_repo], services), surface=surface))
+            )
+            for surface in (SURFACE_V1, SURFACE_V2)
+        }
+        with pytest.raises(SystemExit):
+            parse_args(["--help"])
+        # argparse wraps the help, so the phrases only survive unwrapped.
+        rendered = " ".join(capsys.readouterr().out.split())
+
+        assert f"the {COUNT_WORDS[published[SURFACE_V2]]} consolidated" in rendered
+        assert f"the original {COUNT_WORDS[published[SURFACE_V1]]}" in rendered
 
     def test_serve_builds_the_surface_the_flag_selected(self, services, tmp_path, monkeypatch):
         built = {}
@@ -830,6 +891,27 @@ OUT_OF_RANGE = (
         "refused",
     ),
     DoorCase(
+        "history-limit-zero",
+        ("history", "py:core.py::quote", "--limit", "0"),
+        "history",
+        {"target": "py:core.py::quote", "limit": 0},
+        "refused",
+    ),
+    DoorCase(
+        "history-limit-above",
+        ("history", "py:core.py::quote", "--limit", "100000"),
+        "history",
+        {"target": "py:core.py::quote", "limit": 100000},
+        "refused",
+    ),
+    DoorCase(
+        "history-budget-below",
+        ("history", "py:core.py::quote", "--budget", "10"),
+        "history",
+        {"target": "py:core.py::quote", "budget": 10},
+        "refused",
+    ),
+    DoorCase(
         "limit-zero",
         ("cycles", "--limit", "0"),
         "orient",
@@ -924,6 +1006,7 @@ def cli_verdict(root, argv):
         maps=MapService(extractor, counter),
         views=ViewService(extractor),
         symbols=SymbolService(extractor, counter),
+        histories=HistoryService(extractor, counter),
         graphs=GraphService(extractor),
         patches=patches,
         validates=ValidateService(patches),
@@ -953,3 +1036,31 @@ class TestTheTwoDoorsAgree:
         server = build_server(ToolHandlers([one_repo], services, auto_index=False), SURFACE_V2)
         assert cli_verdict(one_repo, case.argv) == case.verdict
         assert mcp_verdict(server, one_repo, case) == case.verdict
+
+
+class TestHistoryTool:
+    """History is its own deferred tool: it answers why and refuses loudly."""
+
+    def test_answers_with_the_commits_that_touched_the_span(self, services, make_git_repo):
+        root = make_git_repo({"core.py": SOURCE})
+        server = build_server(ToolHandlers([root], services), surface=SURFACE_V2)
+
+        result = call(server, "history", {"repo_root": str(root), "target": "py:core.py::quote"})
+
+        text = result.content[0].text
+        assert text.startswith("// agentless-mcp receipt (repository data below)")
+        assert "py:core.py::quote  core.py:1-2  (1 commit, newest first)" in text
+        assert "  fixture" in text
+
+    def test_a_bare_name_is_refused_with_the_fix(self, services, make_git_repo):
+        root = make_git_repo({"core.py": SOURCE})
+        server = build_server(ToolHandlers([root], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="Pass a stable id"):
+            call(server, "history", {"repo_root": str(root), "target": "quote"})
+
+    def test_a_directory_without_git_is_refused(self, services, one_repo):
+        server = build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2)
+
+        with pytest.raises(ToolError, match="history needs git"):
+            call(server, "history", {"repo_root": str(one_repo), "target": "py:core.py::quote"})

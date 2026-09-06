@@ -25,6 +25,16 @@ Without the extra, `agentless-mcp-server --help` and `--version` still
 answer, and any real invocation exits with the install command for the
 extra.
 
+Installing from a local checkout takes the same command with the path to the
+checkout in place of the package name. Add `--reinstall --refresh` whenever
+you rebuild: `uv tool install --force` reuses a cached wheel while the version
+string is unchanged, so a changed tree does not reach the installed tool.
+
+The `history` view needs git 2.25 or newer, the first release whose `git log
+-L` documents `--no-patch` as suppressing the patch. On an older git the patch
+text reaches the log parser, which refuses the answer rather than misread it.
+Every other view works without git.
+
 Both entry points warm cold grammars in the background at startup (one
 digest-verified bundle fetch at most; `--no-auto-warm` or
 `AGENTLESS_MCP_NO_AUTO_WARM` opts out, `AGENTLESS_MCP_NO_DOWNLOAD` forbids
@@ -55,12 +65,21 @@ agentless-mcp slice src/app.py --lines 40:80
 agentless-mcp find-symbol App
 agentless-mcp refs App.run
 agentless-mcp explain App.run
+agentless-mcp history py:src/app.py::App.run
 ```
 
 These commands provide repository maps, directory trees, symbol overviews,
-full symbol bodies, source slices, symbol lookup, references, and symbol
-context. Symbol IDs are printed by `map` and `skeleton` and can be passed to
-`expand`, `refs`, `explain`, and related commands.
+full symbol bodies, source slices, symbol lookup, references, symbol context,
+and the commits that touched a symbol's lines. Symbol IDs are printed by `map`
+and `skeleton` and can be passed to `expand`, `refs`, `explain`, and related
+commands.
+
+`history` takes a symbol id and prints the commits that changed that symbol's
+lines, newest first, with their message bodies. `--limit` caps the commits
+(default 10) and `--budget` caps the tokens spent on the bodies (default
+12000); at most 120 commits render, however large the limit is. A span no
+commit touched, a file that is not in HEAD, and a directory without git are
+each a refusal rather than an empty answer.
 
 ### Analyze structure
 
@@ -213,7 +232,7 @@ Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects
 exactly one; otherwise the refusal lists the roots to choose from.
 
-The MCP tools are five intent-shaped surfaces; three of them fold their
+The MCP tools are six intent-shaped surfaces; three of them fold their
 questions behind an `operation` parameter:
 
 | Tool | Operations | Purpose |
@@ -221,6 +240,7 @@ questions behind an `operation` parameter:
 | `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | Where does this live, how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
 | `find_referencing_symbols` | | Find references and callers (blast radius) |
+| `history` | | Why does this code exist: the commits that touched a symbol's lines, bodies included |
 | `read` | `slice`, `dir` | Read selected source lines; list the repository tree |
 | `capabilities` | | Report loaded grammars and cache state |
 
@@ -230,6 +250,7 @@ One worked call per surface:
 orient(operation="map", focus=["src/app.py", "quote"])
 symbols(operation="expand", stable_ids=["py:src/app.py::App.run"])
 find_referencing_symbols(target="App.run")
+history(target="py:src/app.py::App.run")
 read(operation="slice", path="src/app.py", lines=[[40, 80]])
 capabilities()
 ```
@@ -239,12 +260,38 @@ to the selected operation is refused with a message naming what that
 operation accepts and requires.
 
 This v2 surface is the default. For the transition, `--surface v1` publishes
-the previous per-question tools (`repo_map`, `expand_symbols`, and the rest)
-and `--surface both` publishes the union; v1 remains for one release. The
-mapping between the surfaces is in
+the previous twelve per-question tools (`repo_map`, `expand_symbols`, and the
+rest) and `--surface both` publishes the union; v1 remains for one release.
+`find_referencing_symbols`, `capabilities` and `history` stand alone on both
+surfaces, so the union is fifteen names rather than eighteen. The mapping
+between the surfaces is in
 `agentless-mcp guide --section the-two-surfaces`.
 
-The MCP server does not apply patches or execute repository commands.
+### What the server runs
+
+The MCP server does not apply patches or execute repository commands. Git is
+the only program the read surface spawns, and every git call the package makes
+goes through one bounded runner: a fixed configuration prefix on the argv, an
+environment with git's redirection variables stripped, `LC_ALL=C`, a deadline,
+and a cap on the output read from the pipe.
+
+The prefix holds the settings a repository's own configuration could otherwise
+use to name a program. `core.fsmonitor`, `diff.external` and `core.pager` are
+fixed on the argv, and `log.showSignature=false` keeps a repository-local
+`gpg.program` from running on every `git log`, which is what the receipt's
+churn count and `history` read. The CLI's patch sandbox passes `--no-textconv`
+on its diff, the one control git offers over a repository-named textconv
+driver.
+
+Two `GIT_` variables survive the environment scrub: `GIT_CONFIG_GLOBAL` and
+`GIT_CONFIG_NOSYSTEM`. They move where git reads configuration from rather
+than which repository it reads, so a caller that pins git's configuration
+reaches these calls too. Every other `GIT_` variable is removed, because that
+family can redirect git away from the repository the call named.
+
+Each tool answers on a worker thread rather than on the event loop. One slow
+call -- a cold map, a 30-second `git log -L` -- therefore does not stall the
+answers to the others, and calls on one connection can overlap.
 
 ### Keeping the tools enabled in Claude Code
 
@@ -262,7 +309,8 @@ the repository's `.claude/settings.json` for one:
       "mcp__agentless__symbols",
       "mcp__agentless__find_referencing_symbols",
       "mcp__agentless__read",
-      "mcp__agentless__capabilities"
+      "mcp__agentless__capabilities",
+      "mcp__agentless__history"
     ]
   }
 }
@@ -284,13 +332,15 @@ well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
 ### Eager tool schemas
 
 Claude Code can defer an MCP server's tools: they arrive as bare names, and
-the schema is fetched before the tool can be called. These five tools publish
-an `alwaysLoad` hint that asks a deferring client to hold all five schemas
-from the first turn, so the gate below redirects an agent that already knows
-what each tool answers. Measured, the hint costs nothing: the deferred and
-eager arms were indistinguishable on every localization metric, and deferral
-spent a round trip fetching the schemas anyway. The gate is the load-bearing
-part either way.
+the schema is fetched before the tool can be called. Five of the six tools
+publish an `alwaysLoad` hint that asks a deferring client to hold their
+schemas from the first turn, so the gate below redirects an agent that already
+knows what each tool answers. Measured, the hint costs nothing: the deferred
+and eager arms were indistinguishable on every localization metric, and
+deferral spent a round trip fetching the schemas anyway. The gate is the
+load-bearing part either way. `history` publishes no hint by design: it
+answers why rather than where, so a deferring client fetches its schema only
+when an agent asks.
 
 ### Structural-first gate (recommended hooks)
 
@@ -300,7 +350,7 @@ and any `Bash` command that parses as a tree search, until the session has
 made a localizing Agentless call.
 `orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
 `find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
-`symbols(locate)`, and the shape listings `orient(communities|cycles|diagram|health)`
+`symbols(locate)`, `history`, and the shape listings `orient(communities|cycles|diagram|health)`
 do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
 naming a file and a line range is the localization. A directory listing is how
 you look for a file, not evidence that you found one. The equivalent v1 tools unlock servers running the temporary
@@ -328,8 +378,15 @@ agentless-mcp 0.6.1), an arm restricted to the agentless tools plus `Read`
 beat a free-choice arm on all six localization metrics, every 95% confidence
 interval excluding 0. Read that as evidence for the ordering, not as a
 prediction for your repository: the measured arm removed the native search
-tools, and this gate only defers them. The full comparison, its guardrails,
-and the schema-policy arms are in
+tools, and this gate only defers them.
+
+Publishing `history` costs nothing detectable on the same instrument, measured
+twice. Two paired 60-instance runs put the hooked arm on 0.7.3 against the
+hooked arm on 0.8.0, differing only in the server build. No acceptance metric
+moved significantly against the release in either run, and `nDCG@100` favoured
+it in both. A same-configuration replicate measured the run-to-run noise floor
+those deltas are read against. The full comparison,
+its guardrails, and the schema-policy arms are in
 [`docs/analysis/benchmark-methodology.md`](docs/analysis/benchmark-methodology.md).
 
 #### Claude Code

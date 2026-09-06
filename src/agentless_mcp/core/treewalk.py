@@ -17,7 +17,6 @@ being served. Either way the security bounds in
 """
 
 import logging
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +38,14 @@ DEFAULT_MAX_ENTRIES = 500
 
 # git is out-of-process: it gets a timeout like every other external call.
 GIT_TIMEOUT_SECONDS = 30
+
+# `--others` enumerates the whole untracked working tree, so this listing is as
+# large as a repository this tool does not own; the file bound accepts far less.
+MAX_LISTING_OUTPUT_BYTES = 16_000_000
+
+# `check-ignore -q` prints nothing, so this bounds only a git that answers with
+# something else.
+MAX_IGNORE_OUTPUT_BYTES = 65_536
 
 
 @dataclass(frozen=True)
@@ -98,36 +105,25 @@ def _git_ignores(top: Path, path: Path) -> bool:
     the caller keeps the git listing. A fix for roots that list empty must
     not widen into a fallback for the roots that list correctly today.
     """
-    command = [
-        "git",
-        *gitinfo.HARDENING_PREFIX,
-        "-C",
-        str(top),
-        "check-ignore",
-        "-q",
-        "--",
-        str(path),
-    ]
-    try:
-        # Fixed argv, no shell, and nothing from repository content reaches it.
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=GIT_TIMEOUT_SECONDS,
-            check=False,
-            env=gitinfo.subprocess_env(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    outcome = gitinfo.run_bounded_bytes(
+        top,
+        ["check-ignore", "-q", "--", str(path)],
+        timeout=GIT_TIMEOUT_SECONDS,
+        max_output_bytes=MAX_IGNORE_OUTPUT_BYTES,
+    )
+    if outcome.returncode is None:
+        # No exit status at all: git never ran, or the deadline killed it.
+        # Exit 128 is a fatal error git chose to report, and stays unlogged.
         logger.warning(
             "git check-ignore could not be run in %s for %s (%s). "
             "The listing for %s comes from git, as it did before.",
             top,
             path,
-            exc,
+            outcome.note,
             path,
         )
         return False
-    return completed.returncode == 0
+    return outcome.returncode == 0
 
 
 def walk_repo(
@@ -233,46 +229,25 @@ def _size_of(path: Path) -> int | None:
 
 def _git_listed_paths(root: Path, *, max_files: int = DEFAULT_MAX_WALK_FILES) -> list[str]:
     """Return tracked plus untracked-not-ignored paths, via git."""
-    command = [
-        "git",
-        *gitinfo.HARDENING_PREFIX,
-        "-C",
-        str(root),
-        "ls-files",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-        "-z",
-    ]
-    try:
-        # Fixed argv, no shell, and nothing from repository content reaches it.
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=GIT_TIMEOUT_SECONDS,
-            check=False,
-            env=gitinfo.subprocess_env(),
+    outcome = gitinfo.run_bounded_bytes(
+        root,
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        timeout=GIT_TIMEOUT_SECONDS,
+        max_output_bytes=MAX_LISTING_OUTPUT_BYTES,
+    )
+    if outcome.truncated:
+        message = (
+            f"walk refused: git listed more than {MAX_LISTING_OUTPUT_BYTES} bytes of names "
+            f"under {root}; point the call at a subdirectory instead"
         )
-    except FileNotFoundError as exc:
-        message = f"git is not installed, so {root} cannot be listed the way its .gitignore asks"
-        raise RepoResolutionError(message) from exc
-    except subprocess.TimeoutExpired as exc:
-        message = f"git ls-files timed out after {GIT_TIMEOUT_SECONDS}s in {root}"
-        raise RepoResolutionError(message) from exc
-    except OSError as exc:
-        # The surface `gitinfo._run` already has for the same invocation. A
-        # permission bit on the git binary, or a spawn that fails under memory
-        # pressure, is a reason this listing has no answer -- not an untyped
-        # error travelling past the adapters' boundary as a traceback.
-        message = f"git ls-files could not be run in {root}: {exc.strerror}"
-        raise RepoResolutionError(message) from exc
-
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        message = f"git ls-files failed in {root} (exit {completed.returncode}): {detail}"
+        raise WalkBoundExceeded(message)
+    if outcome.stdout is None:
+        # A git that never answered is a reason this listing has none -- not an
+        # untyped error travelling past the adapters' boundary as a traceback.
+        message = f"{root} cannot be listed the way its .gitignore asks: {outcome.note}"
         raise RepoResolutionError(message)
 
-    return _decoded_paths(completed.stdout, root, max_files=max_files)
+    return _decoded_paths(outcome.stdout, root, max_files=max_files)
 
 
 def _decoded_paths(
@@ -300,9 +275,9 @@ def _decoded_paths(
     bound could refuse the walk. Measured 2026-08-23 over a one-million-name
     listing against the 20,000-file default bound: 196 MB of allocations and
     415 MB peak RSS before, 72 MB and 89 MB after. What is left is the buffer
-    itself, twice: ``subprocess.run`` reads the whole of stdout and joins it,
-    and only reading the pipe as a stream would fix that. This scan is what
-    stops the listing being copied three more times on top of it.
+    itself, twice: :func:`agentless_mcp.core.gitinfo.run_bounded_bytes` reads
+    the whole of stdout and joins it, under a cap rather than unbounded. This
+    scan is what stops the listing being copied three more times on top of it.
 
     Duplicates are collapsed first because an unmerged index lists one path
     once per conflict stage and :func:`walk_repo` collapses them before it

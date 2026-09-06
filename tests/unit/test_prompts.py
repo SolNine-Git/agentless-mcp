@@ -35,6 +35,7 @@ from agentless_mcp.adapters.mcp.server import (
     build_server,
 )
 from agentless_mcp.application.graph_service import GraphService
+from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
@@ -61,7 +62,6 @@ ENVELOPE_ARGUMENTS = {
     "receipt_config": {"path": "/srv/app/.agentless-mcp.json"},
     "receipt_config_warning": {"warning": "map_budget is not an integer"},
     "receipt_summary": {"summary": "12 files, 3 skipped"},
-    "banner": {},
     "notice": {},
     "service_truncation": {"shown": 12, "total": 40, "unit": "symbols"},
     "ceiling_truncation": {"max_tokens": 16_000, "dropped": 7, "total": 900},
@@ -122,6 +122,28 @@ MESSAGE_ARGUMENTS = {
     "cache_discarded_no_index": {},
     "cache_discarded_old_schema": {"found": 1, "expected": 2},
     "cache_discarded_other_repo": {"repo_root": "/srv/other"},
+    "history_target_unresolved": {"target": "quote", "reason": "core.py no longer defines quote"},
+    "history_no_git": {"note": "/srv/app is not inside a git repository"},
+    "history_path_not_in_head": {"path": "src/app/svc.py"},
+    "history_span_beyond_head": {"path": "src/app/svc.py", "start": 120, "end": 158},
+    "history_git_failed": {"note": "git log timed out after 30.0s"},
+    "history_git_output_malformed": {"detail": "commit 2 does not open with a 40-character sha"},
+    "history_no_commits": {"path": "src/app/svc.py", "start": 120, "end": 158},
+    "history_more_commits": {"shown": 10},
+    "history_seats_capped": {"shown": 120, "path": "src/app/svc.py", "start": 120, "end": 158},
+    "history_body_truncated": {"shown": 12, "total": 40, "sha": "a1b2c3d4"},
+    "history_output_capped": {"bytes": 2_000_000, "count": 7},
+    "history_output_capped_no_commits": {
+        "bytes": 2_000_000,
+        "path": "src/app/svc.py",
+        "start": 120,
+        "end": 158,
+    },
+    "history_dirty_file": {"path": "src/app/svc.py"},
+    "history_dirty_unknown": {
+        "path": "src/app/svc.py",
+        "note": "git diff timed out after 5.0s",
+    },
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})
@@ -151,12 +173,11 @@ class TestLoadedData:
     def test_the_records_are_frozen(self):
         record: Any = ENVELOPE
         with pytest.raises(AttributeError):
-            record.banner = "x"
+            record.notice = "x"
 
     def test_the_envelope_carries_the_documented_wording(self):
-        assert ENVELOPE.receipt_header == "// agentless-mcp receipt"
-        assert ENVELOPE.banner.startswith("// NOTE:")
-        assert ENVELOPE.notice in ENVELOPE.banner
+        assert ENVELOPE.receipt_header == "// agentless-mcp receipt (repository data below)"
+        assert ENVELOPE.notice in ENVELOPE.receipt_header
 
 
 class TestTemplates:
@@ -234,23 +255,23 @@ class TestEagerValidation:
 
     def test_a_missing_key_is_refused_by_name(self):
         document = json.loads(ENVELOPE_TEXT)
-        del document["banner"]
-        with pytest.raises(PromptDataError, match=r"missing \['banner'\]"):
+        del document["notice"]
+        with pytest.raises(PromptDataError, match=r"missing \['notice'\]"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
             )
 
     def test_a_key_no_code_consumes_is_refused_by_name(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["bannner"] = "typo"
-        with pytest.raises(PromptDataError, match=r"unknown \['bannner'\]"):
+        document["notiice"] = "typo"
+        with pytest.raises(PromptDataError, match=r"unknown \['notiice'\]"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
             )
 
     def test_a_blank_value_is_refused(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["banner"] = "   "
+        document["notice"] = "   "
         with pytest.raises(PromptDataError, match="must be a non-empty string"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
@@ -258,7 +279,7 @@ class TestEagerValidation:
 
     def test_a_non_string_value_is_refused(self):
         document = json.loads(ENVELOPE_TEXT)
-        document["banner"] = 3
+        document["notice"] = 3
         with pytest.raises(PromptDataError, match="must be a non-empty string"):
             loader.build_record(
                 "envelope.json", json.dumps(document), EnvelopeText, ENVELOPE_ARGUMENTS
@@ -317,6 +338,7 @@ class TestWireDescriptions:
             maps=MapService(extractor, counter),
             views=ViewService(extractor),
             symbols=SymbolService(extractor, counter),
+            histories=HistoryService(extractor, counter),
             graphs=GraphService(extractor),
             counter=counter,
             extractor=extractor,

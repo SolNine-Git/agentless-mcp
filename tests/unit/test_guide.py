@@ -33,6 +33,7 @@ EXPECTED_SECTIONS = (
     "slice",
     "find-symbol",
     "refs",
+    "history",
     "explain",
     "path",
     "cycles",
@@ -52,7 +53,7 @@ EXPECTED_SECTIONS = (
 )
 
 # Heading level -> count, over the whole guide, fences excluded.
-EXPECTED_LEVELS = {1: 1, 2: 8, 3: 21, 4: 4}
+EXPECTED_LEVELS = {1: 1, 2: 8, 3: 22, 4: 4}
 
 
 @pytest.fixture(autouse=True)

@@ -11,11 +11,25 @@ import subprocess
 
 import pytest
 
-from agentless_mcp.core import treewalk
+from agentless_mcp.core import gitinfo, treewalk
 from agentless_mcp.core.treewalk import RepoFile, render_tree, walk_repo
 from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 
 GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@test"]
+ABSENT_GIT = "git"
+
+
+def assert_hardened(spawn, subcommand):
+    """Assert one recorded spawn carries the prefix, the C locale and no ambient GIT_ names."""
+    expected = ["git", *gitinfo.HARDENING_PREFIX]
+    assert spawn["command"][: len(expected)] == expected
+    assert subcommand in spawn["command"]
+    assert spawn["env"]["LC_ALL"] == "C"
+    assert not [
+        name
+        for name in spawn["env"]
+        if name.startswith("GIT_") and name not in gitinfo.GIT_CONFIG_KEPT
+    ]
 
 
 def git(repo, *args):
@@ -196,8 +210,15 @@ class TestGitListing:
         def refuse(command, **kwargs):
             raise PermissionError(13, "Permission denied")
 
-        monkeypatch.setattr(subprocess, "run", refuse)
+        monkeypatch.setattr(subprocess, "Popen", refuse)
         with pytest.raises(RepoResolutionError, match="git ls-files could not be run"):
+            treewalk._git_listed_paths(git_repo)
+
+    def test_a_listing_over_the_output_cap_is_refused_rather_than_cut(self, git_repo, monkeypatch):
+        """A cut listing would read as a smaller repository, which is the silent drop."""
+        monkeypatch.setattr(treewalk, "MAX_LISTING_OUTPUT_BYTES", 4)
+
+        with pytest.raises(WalkBoundExceeded, match="more than 4 bytes of names"):
             treewalk._git_listed_paths(git_repo)
 
     def test_a_name_that_is_not_utf8_is_counted_rather_than_mangled(self, tmp_path, caplog):
@@ -227,6 +248,66 @@ class TestGitListing:
         """An unmerged index lists one path three times; `walk_repo` sees one."""
         listing = b"a.py\x00a.py\x00a.py\x00b.py\x00"
         assert treewalk._decoded_paths(listing, tmp_path, max_files=2) == ["a.py", "b.py"]
+
+    def test_a_name_that_is_not_utf8_reaches_the_decoder_as_raw_bytes(self, git_repo, caplog):
+        """End to end, so the runner's own decoding cannot hide the case.
+
+        A runner that decoded stdout with ``errors="replace"`` would hand this
+        name over as a valid string full of U+FFFD, and it would be listed as a
+        file that does not exist rather than counted here.
+        """
+        try:
+            (git_repo / os.fsdecode(b"bad\xff.py")).write_text("x = 1\n", encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            pytest.skip(f"this filesystem refuses a non-UTF-8 file name: {exc}")
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.treewalk"):
+            paths = treewalk._git_listed_paths(git_repo)
+
+        assert paths == [".gitignore", "app.py", "pkg/mod.py"]
+        assert "not valid UTF-8" in caplog.text
+
+
+class TestTheWalkerSpawnsNoGitOfItsOwn:
+    """Both walker argvs reach git through the one runner, prefix and environment included.
+
+    A spawn of this module's own is a second set of defaults: an argv without
+    the hardening prefix, an inherited ``GIT_DIR``, or a call with no deadline
+    and no output cap. Each call is asserted, because one of two is not a rule.
+    """
+
+    def test_the_ignore_check_carries_the_prefix_and_the_scrubbed_environment(
+        self, monkeypatch, tmp_path
+    ):
+        seen = {}
+
+        def record(command, **kwargs):
+            seen["command"] = command
+            seen["env"] = kwargs["env"]
+            raise FileNotFoundError(ABSENT_GIT)
+
+        monkeypatch.setenv("GIT_DIR", "/somewhere/else")
+        monkeypatch.setattr(subprocess, "Popen", record)
+
+        assert treewalk._git_ignores(tmp_path, tmp_path / "app.py") is False
+        assert_hardened(seen, "check-ignore")
+
+    def test_the_listing_carries_the_prefix_and_the_scrubbed_environment(
+        self, monkeypatch, tmp_path
+    ):
+        seen = {}
+
+        def record(command, **kwargs):
+            seen["command"] = command
+            seen["env"] = kwargs["env"]
+            raise FileNotFoundError(ABSENT_GIT)
+
+        monkeypatch.setenv("GIT_DIR", "/somewhere/else")
+        monkeypatch.setattr(subprocess, "Popen", record)
+
+        with pytest.raises(RepoResolutionError, match="not installed"):
+            treewalk._git_listed_paths(tmp_path)
+        assert_hardened(seen, "ls-files")
 
 
 class TestRenderTree:

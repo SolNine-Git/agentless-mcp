@@ -185,9 +185,11 @@ investigation recorded a provisional same-commit bound: fresh 0.7.0 moved
 and -0.027 on WCC relative to the prior run, with every paired interval crossing
 zero. The prior arm used six workers and the fresh validation used one worker
 per parallel arm, so this is operational variance, not a clean
-same-configuration replicate. Until that exact replicate exists, an agentic
-delta smaller than this movement is not interpretable -- including a
-favourable one. See
+same-configuration replicate. The 0.8.0 measurement below supplies that
+replicate: the same treatment build run twice at one worker moved precision
++0.025, `hit_file_rate` -0.023 and WCC -0.014, with every paired interval
+crossing zero. An agentic delta inside that movement is not interpretable --
+including a favourable one. See
 [`declaration-role-regression.md`](declaration-role-regression.md).
 
 ## The arms
@@ -274,6 +276,36 @@ significance. The reporting constraints appear to buy caution with coverage:
 the agent cites fewer files and misses more of the core. The prompt is
 recorded here as a negative result and does not ship in any surface.
 
+**Adding `history` in 0.8.0 has no detectable cost on localization, and the
+same-configuration replicate this document asked for now exists.** Two paired
+60-instance runs, measured 2026-09-05: the hooked arm on 0.7.3 as control
+against the hooked arm on 0.8.0 as treatment, differing only in the server
+build, so the sixth tool and the folded banner are the whole treatment. Run
+one: every acceptance interval includes zero (precision +0.044, recall
+-0.011, F1 +0.004, `hit_region_rate` -0.005, WCC -0.005, `recall@100`
++0.007), and `nDCG@100` +0.045 (interval +0.001 to +0.095) favours the
+treatment. Run two, a solo replicate of the treatment against the same
+control: precision +0.069 (interval +0.014 to +0.123), `recall@100` +0.013
+(+0.001 to +0.027) and `nDCG@100` +0.053 (+0.013 to +0.101) favour the
+treatment; recall +0.001, F1 +0.017, `hit_region_rate` -0.017 and WCC -0.019
+(-0.046 to +0.005) include zero. The agent called `history` in 6 and then 3
+of 60 instances, so what the runs measure is the presence of a deferred
+sixth tool, which is the question the deferral decision asked.
+
+**The noise floor, measured.** Treatment run two against treatment run one is
+the same configuration twice. Paired, every one of the 21 intervals includes
+zero, and the largest moves are precision +0.025, `hit_file_rate` -0.023,
+`nDCG@300` +0.024 and WCC -0.014. That is the run-to-run swing of one
+configuration at n=60, and it is the bar a claimed effect has to clear.
+Against it, the precision and `nDCG@100` gains recur in both runs and exceed
+the floor; the WCC drift sits inside it. Per instance the picture is
+symmetric: on WCC, 27 instances better and 27 worse in run one, 21 and 32 in
+run two, with single-instance swings near 0.4 in both directions. One
+instance, `apache__druid-15402`, called `history` in both treatment runs and
+lost about 0.35 of coverage each time against a control at 0.906 recall,
+which reads as a turn spent on why during a where task; three callers cannot
+resolve it, and it is the hypothesis a future run should split on.
+
 ## How to re-run
 
 Work from the `swe-explore-bench` clone root. Its `RUNBOOK.md` is the
@@ -291,7 +323,8 @@ it.
    without it.
 4. Run the preflight against each worktree:
    `python3 probe_mcp_server.py repos/<instance_id> <worktree>`. It must
-   print `5`. The run scripts, for example `run_061_agentless.sh`, refuse to
+   print the tool count that build publishes: `5` up to 0.7.3, `6` from
+   0.8.0. The run scripts, for example `run_061_agentless.sh`, refuse to
    start otherwise. Confirm separately that an `orient(map)` call against an
    unpacked snapshot lists that snapshot's files.
 5. Archive the previous results. The convention is
