@@ -396,6 +396,34 @@ class TestSurfaceListing:
             meta = tool.meta or {}
             assert "anthropic/alwaysLoad" not in meta, tool.name
 
+    def test_the_eager_schemas_stay_under_their_context_ceiling(self, services, one_repo):
+        """What the five alwaysLoad schemas cost every session that connects.
+
+        These five are the only schemas a deferring client loads before an
+        agent asks for anything, so their size is a tax on every session
+        rather than on the calls that use them. Measured with the package's
+        own estimator, which is the unit every other budget here is stated
+        in; tiktoken lives behind the `tokens` extra and would make this gate
+        skip on a plain checkout.
+
+        Measured 2026-09-06 after the 0.8.0 distillation pass: 3027 chars/4,
+        2675 cl100k. The ceiling is that measurement plus five percent, which
+        leaves room for a sentence a later release genuinely needs and stops
+        a paragraph.
+        """
+        counter = Chars4Counter()
+        tools = listed_tools(build_server(ToolHandlers([one_repo], services), surface=SURFACE_V2))
+
+        eager = [tool for tool in tools if (tool.meta or {}).get("anthropic/alwaysLoad")]
+        cost = {
+            tool.name: counter.count(tool.description or "")
+            + counter.count(json.dumps(tool.inputSchema, separators=(",", ":")))
+            for tool in eager
+        }
+
+        assert len(cost) == 5, sorted(cost)
+        assert sum(cost.values()) <= 3178, cost
+
 
 class TestOperationSchema:
     """The v2 rejection story: no wire enum, the server's own message instead.

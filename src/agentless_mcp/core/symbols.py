@@ -68,18 +68,10 @@ class Rationale:
     duplicate_index: int = 0
 
 
+# ``str, Enum`` rather than ``StrEnum`` for the 3.10 floor, where a plain mixin
+# renders the class name: ``__str__`` and ``__format__`` below pin the value.
 class SymbolKind(str, Enum):
-    """Classification of extracted AST symbols.
-
-    ``str, Enum`` rather than ``StrEnum`` for the 3.10 floor. The mixin gives
-    the same equality and JSON behaviour, but ``format()`` of a plain mixin
-    enum differs across 3.10 and 3.11+, and ``str()`` renders the class name
-    on every version rather than the value ``StrEnum`` gives, so both are
-    pinned here to the member value -- what StrEnum guarantees. Code that
-    needs the wire form should still say ``.value``; this override exists so
-    an f-string cannot silently emit ``SymbolKind.CLASS`` on one interpreter
-    and ``class`` on another.
-    """
+    """Classification of extracted AST symbols."""
 
     CLASS = "class"
     FUNCTION = "function"
