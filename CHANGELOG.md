@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.1 -- unreleased
+
+Follow-ups from the 0.8.0 review. No tool answers differently; the server,
+the git seam and the patch write side each gain a bound or lose a duplicate.
+
+### Changed
+
+- **One git outcome type, one runner.** `GitOutcome` carries stdout as bytes
+  and derives `text` through a property, so the callers that read prose and
+  the callers that read raw file names share one type; `run_bounded` is the
+  one runner and holds the package's single git spawn. `GitBytesOutcome` and
+  `run_bounded_bytes` are gone. The text every caller observes is unchanged.
+- **Tool handlers run behind one bounded gate.** `--max-concurrency N` (1 to
+  64, default 8) caps how many handlers hold worker threads at once, on
+  either transport. The ungated ceiling was the interpreter's default pool,
+  `min(32, cpu_count + 4)`: 32 on a large host, 5 on a small one, and each
+  admitted handler may hold a tag-cache connection and a git child. A call
+  holds at most one permit, so a limit of 1 serialises without deadlock.
+- **The patch write side refuses an oversized request.** `patch check`,
+  `patch apply` and `patch normalize`, and the candidates `lint` and
+  `validate` read, accept at most 500 edits and 2,000,000 bytes of search
+  and replace text per request. A larger request is refused when it is
+  read, before any file is opened, and the refusal names what it counted
+  and the bound. Measured: a maximal request produces at most 3.1 MB of
+  diff against the 8 MB git output cap, and a test pins that relation.
+  `patch parse` stays unbounded because it resolves no repository.
+
 ## 0.8.0 -- 2026-09-06
 
 One new tool and one line fewer on every answer. `history` answers why a span
