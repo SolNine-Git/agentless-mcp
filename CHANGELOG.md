@@ -55,6 +55,21 @@ into the receipt header.
   the package makes has a deadline, an output cap, a bounded stderr and a
   bounded wait, and the runner carries a `communicate` path for Windows,
   where `select()` accepts sockets only.
+- **Every tool answers off the event loop.** Each MCP tool awaits its
+  handler through `asyncio.to_thread`, and so does the context resolution
+  every tool enters, so one long call (a 30-second `git log -L`, a cold map)
+  no longer stalls the loop that answers pings and cancellations. Calls can
+  overlap; the state they share is immutable, per-call or locked, which the
+  concurrency tests pin, and a test asserts that no tool function calls a
+  handler inline.
+- **One git spawn in the package.** The tree walker and the write-side
+  sandbox route their git calls through `gitinfo`'s bounded runner, so every
+  git call carries the hardening prefix, the scrubbed environment,
+  `LC_ALL=C`, a deadline and an output cap (16 MB for a listing, 64 KB for
+  the ignore check, 8 MB for a patch diff). A `run_bounded_bytes` entry
+  point keeps raw file names intact, so a non-UTF-8 name survives the walk.
+  The walker's output is byte-identical; a truncated listing is a bound
+  refusal that names its remedy.
 
 ### Fixed
 
