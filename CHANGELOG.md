@@ -38,6 +38,23 @@ into the receipt header.
   carries the same wording as the header.
 - **v2 publishes six tools.** The five localizing tools are unchanged and
   still eager; `history` is the sixth and deferred by design.
+- **One budget allocator.** The water-filling split that `expand` used for
+  cards and `history` had copied for bodies lives once in
+  `util.budget.allocate`, with the 32-token marker allowance beside it.
+  `expand` output is byte-identical; `history` drops its one-line body floor
+  because its header row always renders.
+- **`history` has a seat cap.** At most 120 commits render
+  (`HISTORY_MAX_SEATS`, measured: 500 rows cost 15.8k tokens, 120 cost 3.8k),
+  and a caller's budget seats what it can render at 40 tokens per row, so a
+  large `limit` no longer overflows the 16k ceiling. `seats_capped` in the
+  JSON says when the cap and not the limit bound the answer.
+- **`history` answers off the event loop.** The 30-second `git log -L` runs
+  through `asyncio.to_thread`, so one slow history call no longer stalls the
+  other calls on the connection. Only this handler moves.
+- **One git runner.** `_run` delegates to `run_bounded`, so every git call
+  the package makes has a deadline, an output cap, a bounded stderr and a
+  bounded wait, and the runner carries a `communicate` path for Windows,
+  where `select()` accepts sockets only.
 
 ### Fixed
 
@@ -45,6 +62,31 @@ into the receipt header.
   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` sit beside the
   existing `GIT_*` scrub, so a global commit-msg hook or a commit template
   can no longer change what a fixture commit does.
+- **`history` refuses what git did not write.** `parse_log` validates every
+  record (a 40-character sha, a non-empty author date) and refuses a trailing
+  partial record unless the output cap cut it, so a git that prints a patch
+  despite `--no-patch` yields a refusal instead of a corrupted row. Capped
+  output with no complete record is its own refusal naming the 2 MB cap and
+  the `git log -L` command, not "no commit touches these lines". The
+  body-truncation marker escapes its sha and sits with its row. README states
+  the git floor: 2.25, the first release documenting `--no-patch` with `-L`.
+- **`git log` can no longer run a repository-chosen program.**
+  `HARDENING_PREFIX` sets `log.showSignature=false`, so a repository-local
+  `gpg.program` is never executed by the receipt's churn log or by `history`.
+  The write-side sandbox diff passes `--no-textconv`, the one control git
+  offers over a repository-named textconv driver. Both were reproduced on
+  git 2.55 before the fix and are covered by regression tests.
+- **The suite's git isolation reaches the package's own calls.**
+  `subprocess_env` keeps `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM`, which
+  move where config is read from and not which repository is read. Before
+  this the isolation covered fixture commits only.
+- **A failed dirty check reads as unknown, not clean.** `dirty` in the
+  `history` JSON is `null`, with a note line, when `git diff --quiet` could
+  not answer.
+- **Stale tool counts.** The `analyze_structure` docstring, the agent guide,
+  a test docstring and the `--surface` help all carried the pre-`history`
+  counts. They now say twelve and sixteen, and six and twelve, and a test
+  reads the help's counts off the built server so they cannot drift again.
 
 ### Measured
 
