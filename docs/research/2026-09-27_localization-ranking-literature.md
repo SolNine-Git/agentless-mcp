@@ -26,10 +26,13 @@ recommendation, which is untested.
 **Primary sources**: LocAgent (2503.09089); Code Isn't Memory (2606.22417);
 Beyond Semantic Similarity (2605.05242).
 
-**Standing recommendation**: segment the benchmark by gold-set size. The
-literature says structural ranking pays off specifically on multi-file
-changes, and that is where 0.8.2's gains concentrate: at n=150 all four
-`acc_all` metrics exclude zero.
+**Correction this report makes to itself**: an earlier draft claimed 0.8.2's
+gains concentrate on multi-file changes. Segmenting the 150 instances shows
+the opposite -- the whole effect is in the 94 single-gold instances (MAP
++0.0575, five of five metrics clearing) and the 56 multi-gold instances show
+nothing (+0.0133, none clearing). Section 3.3 has the reasoning error that
+produced the wrong claim, and the weakness the split exposed: only 5 of 56
+multi-gold instances ever get their whole gold set into a top 10.
 
 **Built, measured and rejected during this pass**: the BM25 subword tier
 (section 3.2) and `relation_weights` (section 3.1). Neither clears this
@@ -130,17 +133,52 @@ which is what a noisy seed source looks like.
 eight times larger for twenty lines and no new index. The prototype is not
 in the tree.
 
-### 3.3 Benchmark segmentation (F2)
+### 3.3 Benchmark segmentation: run, and it refuted this report
 
-Split every future loc-bench report by gold-set size: single-gold instances
-against multi-gold. The prediction from F2 is that structural ranking's edge
-concentrates in the multi-gold half. 0.8.2's own result is consistent with
-it: at n=150 all four `acc_all` metrics exclude zero, while the two @1
-metrics -- the single-file question -- are the only two that do not.
+F2's condition is whether the workload holds multi-file changes, so the
+n=150 arms were split on exactly that line: 94 single-gold instances against
+56 multi-gold. The prediction, written in an earlier draft of this report,
+was that 0.8.2's edge would concentrate in the multi-gold half, because all
+four `acc_all` metrics cleared the bar on the whole subset.
 
-This is the one recommendation in this report that has not been tested, and
-it needs no new code: it is a grouping applied to result files the harness
-already writes.
+**That prediction was wrong, and the reasoning behind it was wrong.**
+
+| stratum | MAP delta | 95% CI | metrics clearing |
+|---|---|---|---|
+| all (n=150) | +0.0410 | +0.0179 to +0.0680 | 5 of 5 |
+| single-gold (n=94) | +0.0575 | +0.0234 to +0.0996 | 5 of 5 |
+| multi-gold (n=56) | +0.0133 | -0.0074 to +0.0342 | 0 of 5 |
+
+The whole effect is in the single-gold half. The error was reading
+`acc_all@k` as a multi-file measurement: on a single-gold instance
+`acc_any@k`, `acc_all@k` and `recall@k` are the same number, which the
+per-stratum base rates show plainly (all three are 0.5426 before and 0.6277
+after). Ninety-four of the 150 instances have one gold file, so the
+whole-subset `acc_all` columns were mostly single-gold instances wearing a
+different metric's name.
+
+The segmentation also exposes the ranker's real weakness, which no
+whole-subset number showed:
+
+| | single-gold (94) | multi-gold (56) |
+|---|---|---|
+| `acc_any@10` | 0.6277 | 0.6964 |
+| `acc_all@10` | 0.6277 | **0.0893** |
+
+Finding *a* gold file in a multi-file change is easier than in a single-file
+change. Finding *all* of them essentially never happens: 5 of 56 instances,
+and 0.8.2 changed none of them. Any claim that this server helps with
+multi-file changes has to be about `acc_any`, not coverage.
+
+One caveat on reading that against F2. loc-bench scores a single ranked
+list; the paper scores an agent that may call many times. Poor one-shot
+coverage of a multi-file gold set is not the same as an agent failing to
+find those files across a session. Only the agentic tier can separate the
+two, and this project's agentic evidence is from 0.6.1 on 2026-08-24, before
+the 0.6.3 ranking fix.
+
+**Keep the segmentation.** It cost one script over existing result files and
+it caught a false inference inside an hour.
 
 ### 3.4 Two proposals to decline
 
