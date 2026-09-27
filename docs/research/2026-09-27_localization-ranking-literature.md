@@ -7,34 +7,42 @@ ranking core | **Tree**: `feat/0.8.2-spelling-seeds` at 674b7b1
 ## 1. Executive summary
 
 The literature converges on the design this server already has, and the one
-gap it names is the one measured as dominant today: turning a caller's words
-into graph entry points. LocAgent runs a four-tier entity index; 0.8.2 just
-shipped its fourth tier, and the third -- a lexical index for keywords that
-miss exact names -- is the only tier still absent.
+gap it named has now been built and rejected on measurement. LocAgent runs a
+four-tier entity index; 0.8.2 shipped its fourth tier, and its third -- a
+lexical index for keywords that miss exact names -- was prototyped during
+this pass and does not survive 150 instances.
 
-**Confidence**: High on the gap analysis, which is a direct structural
-comparison against a published index design. Medium on the ranked
-recommendations, because two of the four cited results transfer from systems
-with an LLM in the retrieval loop, which this server does not have.
+The durable conclusion is therefore about the instrument rather than the
+features. Every idea the literature offered was either already present, too
+small for this benchmark to resolve, or a transfer from a system with an LLM
+in its retrieval loop. The subset was widened from 50 to 150 instances to
+decide the two that were merely small, and that widening is the most useful
+thing this pass produced.
+
+**Confidence**: High on the gap analysis and on both rejections, which rest
+on paired bootstraps over 150 instances. Medium on the remaining
+recommendation, which is untested.
 
 **Primary sources**: LocAgent (2503.09089); Code Isn't Memory (2606.22417);
 Beyond Semantic Similarity (2605.05242).
 
-**Top two recommendations**, priority order:
+**Standing recommendation**: segment the benchmark by gold-set size. The
+literature says structural ranking pays off specifically on multi-file
+changes, and that is where 0.8.2's gains concentrate: at n=150 all four
+`acc_all` metrics exclude zero.
 
-1. Prototype a subword lexical tier and measure it on precision metrics
-   first, not recall. The upside is the largest available; so is the risk.
-2. Segment the benchmark by gold-set size. The literature says structural
-   ranking pays off specifically on multi-file changes, and 0.8.2's largest
-   and most significant gains were on `acc_all`.
-
-**Measured during this pass, and not recommended**: turning on
-`relation_weights`. Section 3.1 has the numbers. The direction is favourable
-and no metric is harmed, but one marginal significance in fourteen tests is
-what fourteen tests do, and MAP is flat at +0.0013.
+**Built, measured and rejected during this pass**: the BM25 subword tier
+(section 3.2) and `relation_weights` (section 3.1). Neither clears this
+project's statistical bar. The subword tier is the sharper negative: at 150
+instances it moves 12 instances up and 16 down on MAP.
 
 **Recommended against on design grounds**: folding commit churn into the
 rank, and making the map exploration-aware. Section 3.4 gives the reasons.
+
+**Instrument change**: the deterministic subset was expanded from 50 to 150
+instances (section 3.5). It is a strict superset, so no earlier result is
+invalidated, and it raised the shipped tier's confirmed metrics from 6 of 14
+to 12 of 14.
 
 ## 2. Key findings
 
@@ -62,8 +70,8 @@ while the gated arm did not.
 
 F2 supplies the segmentation this project's benchmark does not yet do. The
 condition it names, multi-file changes, is measurable here: `acc_all@k`
-requires every gold file in the top k, and the subset averages 2.42 gold
-files per instance.
+requires every gold file in the top k, and the 150-instance subset averages
+2.13 gold files per instance.
 
 ## 3. Implementation guide
 
@@ -91,32 +99,48 @@ direction is favourable on every metric that moves at all, so this is worth
 re-running on a larger or multi-language subset before it is dismissed. It
 is not grounds to flip the default today.
 
-### 3.2 The subword lexical tier (F1)
+### 3.2 The subword lexical tier: built, measured, rejected
 
-The gap is real and the mechanism is clear. `_focus_resolution` in
-`application/map_service.py` now ends with an exact-occurrence tier; a
-subword tier would sit after it, splitting both the query term and the
-indexed identifiers on `snake_case` and `camelCase` boundaries.
+LocAgent's missing tier three was prototyped as BM25 over subword-split
+identifiers, sitting after the exact-occurrence tier. Documents are non-test
+files, terms are the `snake_case` and `camelCase` subwords of every
+identifier the file spells, and a file scores only when it carries every
+subword of the query.
 
-**Measure precision before recall.** Today's exact tier was safe because its
-matches are rare: the seat-cap sweep moved MAP only from +0.058 to +0.071
-across caps of 2 to unbounded, which is what a rare, high-precision match
-looks like. Subword matches will not be rare. A query term `queue` would
-touch every queue in the repository, and the harness's own seeding rule
-emits prose such as `GitHub` and `PostgreSQL`, which subword splitting would
-make resolvable to something. That is the confident-seed-on-an-unrelated-file
-defect the step-3 stop in `focus_paths` exists to prevent.
+The gate on how many subwords a query must have turns out to decide the
+result. Measured at n=50 against the shipped tier:
 
-Acceptance should therefore be `acc_any@1` and MAP holding or rising, not
-`recall@10` alone.
+| variant | `acc_any@1` | `acc_any@10` | `recall@10` | MAP |
+|---|---|---|---|---|
+| ungated, `min=1` | **-0.0200** | +0.0800 | +0.0487 | **-0.0103** |
+| gated, `min=2` | +0.0200 | +0.0400 | +0.0064 | +0.0077 |
+
+The ungated form is the predicted failure: it buys coverage and pays for it
+in precision, because a one-word query such as `queue` touches every queue
+in the repository. The gate fixes the sign but not the size.
+
+At n=150 the gated form settles it. Zero of fourteen metrics exclude zero,
+MAP +0.0054 (95% CI -0.0127 to +0.0254), nDCG@10 +0.0084 (-0.0088 to
++0.0275). The instance counts are the real verdict, and they worsened as the
+sample grew: MAP moves 12 instances up and **16 down**, nDCG@10 9 up and 14
+down. It helps a few instances a lot and hurts more instances a little,
+which is what a noisy seed source looks like.
+
+**Rejected.** For contrast, the exact-occurrence tier shipped in 674b7b1 is
+eight times larger for twenty lines and no new index. The prototype is not
+in the tree.
 
 ### 3.3 Benchmark segmentation (F2)
 
 Split every future loc-bench report by gold-set size: single-gold instances
 against multi-gold. The prediction from F2 is that structural ranking's edge
 concentrates in the multi-gold half. 0.8.2's own result is consistent with
-it: `acc_all@3` and `acc_all@10` both moved +0.080 with intervals excluding
-zero, the largest gains in the table.
+it: at n=150 all four `acc_all` metrics exclude zero, while the two @1
+metrics -- the single-file question -- are the only two that do not.
+
+This is the one recommendation in this report that has not been tested, and
+it needs no new code: it is a grouping applied to result files the harness
+already writes.
 
 ### 3.4 Two proposals to decline
 
@@ -147,6 +171,38 @@ determinism is a shipped property: two runs of the same tree differ on 0 of
 would break determinism, break cacheability, and make an answer depend on
 history the server does not own. The agent already holds that state and can
 express it by changing its focus seeds.
+
+### 3.5 The instrument was the bottleneck, and was widened
+
+Both rejections above were unresolvable at 50 instances: the subword tier's
+95% interval on MAP spanned 0.036, against an effect of 0.008. The subset
+was therefore raised from 50 to 150 instances, 104 repositories, 3.2 GB of
+checkouts. `select_subset` walks repositories in ascending size order, so
+the larger quota is a strict superset -- verified -- and every earlier
+result stands.
+
+The added instances come from larger repositories, which makes the subset
+both harder and slower, and moves it toward the large-corpus regime F3 names
+as this server's niche:
+
+| | n=50 | n=150 |
+|---|---|---|
+| `acc_any@10`, main | 0.700 | 0.600 |
+| MAP, main | 0.374 | 0.339 |
+| map seconds per instance | 0.80 | 5.03 |
+| instances resolving no seed | 26 of 50 (52%) | 52 of 150 (35%) |
+
+What it bought immediately: the tier shipped in 674b7b1 was re-measured
+against main on all 150, and went from 6 of 14 metrics excluding zero to 12
+of 14. MAP +0.0410 (95% CI +0.0180 to +0.0680), nDCG@10 +0.0467 (+0.0225 to
++0.0747), `recall@10` +0.0585 (+0.0242 to +0.0975), and all four `acc_all`
+metrics now clear the bar. Only the two @1 metrics do not. That is an
+independent replication on 100 instances the original measurement never saw.
+
+The cost is that an arm is now about 13 minutes rather than 40 seconds. Keep
+the 50-instance subset as the fast gate during development and reserve the
+150 for deciding a result; `loc-bench subset --quota N` switches between
+them.
 
 ## 4. Detailed analysis
 
@@ -206,9 +262,14 @@ solve as a headline alongside resolve rate.
 
 ## 5. Context and assumptions
 
-- The deterministic tier is 50 Python instances. Every ranking claim here
-  inherits that scope: one language, one subset, and a proxy whose
-  correlation with the agentic arm this project records at about r = 0.37.
+- The deterministic tier is now 150 Python instances across 104
+  repositories. Every ranking claim here inherits that scope: one language,
+  one subset, and a proxy whose correlation with the agentic arm this
+  project records at about r = 0.37. Nothing here was measured on the
+  agentic tier.
+- `relation_weights` was measured at n=50 only, before the subset grew. Its
+  row in 3.1 is therefore weaker evidence than the n=150 rows elsewhere, and
+  re-running it is the cheapest open item in this report.
 - Phase 4 of the research workflow, adversarial validation against the local
   peer, **did not run**. Both `/consult` backends answered a reachability
   probe and then timed out at 300 s on every substantive payload, including
@@ -272,7 +333,9 @@ solve as a headline alongside resolve rate.
 | 3 | `web_search`, science | 3 | 7 papers not in the corpus |
 | 3 | `fetch_page` | 1 batch of 4 | 4 abstracts |
 | 4 | `consult`, local peer | 3 attempts | 0, timed out at 300 s |
-| 5 | `loc-bench run` | 1 arm, `relation_weights` on | recorded in 3.1 |
+| 5 | `loc-bench run`, n=50 | `relation_weights`, subword `min=1`, subword `min=2` | 3.1, 3.2 |
+| 5 | `loc-bench subset --quota 150` + `fetch` | 150 instances, 104 repos, 3.2 GB, 2m02s | 3.5 |
+| 5 | `loc-bench run`, n=150 | main, branch, branch+subword | 3.2, 3.5 |
 
 The CodeNib read stopped at the iteration ceiling without converging, so its
 row in the findings table is drawn from a partial answer.
@@ -280,3 +343,11 @@ row in the findings table is drawn from a partial answer.
 Code inspection alongside the reading confirmed two facts the report rests
 on: `_focus_resolution` has no lexical tier, and `_with_churn` stamps churn
 onto files the ranking has already chosen rather than feeding the score.
+
+One integrity check is worth recording because it could have invalidated
+everything. The harness carries an uncommitted modification to
+`seeds.py` that forwards path-shaped captures the seeding rule normally
+discards. It is gated on `LOC_BENCH_FORWARD_RAW_PATHS=1`, which was never
+set, and the control arm reproduced the August baseline exactly
+(`mean_seeds` 3.9 and `mean_resolved_seeds` 1.34 in both), which is what
+confirms the gate held.
