@@ -306,6 +306,62 @@ lost about 0.35 of coverage each time against a control at 0.906 recall,
 which reads as a turn spent on why during a where task; three callers cannot
 resolve it, and it is the hypothesis a future run should split on.
 
+**The current build against the grep-only baseline, measured 2026-09-27.**
+Every comparison above this one dates from 0.6.1 on 2026-08-24, before the
+0.6.3 ranking fix, so the project held no current end-to-end number. This run
+supplies one: `claude_code` as control against `claude_code_agentless_hooked`
+pinned to 674b7b1 (0.8.1 plus the spelling tier), n=60, Sonnet, top 10, 900 s
+timeout, sequential, 60 of 60 scored in both arms with no error and no
+timeout. Paired, full cohort:
+
+| metric | control | treatment | delta | 95% CI |
+| --- | --- | --- | --- | --- |
+| `hit_region_rate` | 0.5012 | 0.5556 | +0.0543 | +0.0062 to +0.1030 |
+| `weighted_core_coverage` | 0.1463 | 0.1928 | +0.0465 | +0.0132 to +0.0814 |
+| `wcc@500` | 0.1461 | 0.1875 | +0.0414 | +0.0098 to +0.0744 |
+| precision | 0.7108 | 0.6632 | -0.0476 | -0.1133 to +0.0154 |
+| `hit_file_rate` | 0.6184 | 0.6490 | +0.0306 | -0.0191 to +0.0801 |
+| recall | 0.1495 | 0.1667 | +0.0172 | -0.0038 to +0.0424 |
+
+Three of twelve intervals exclude zero and all three favour the treatment.
+They are the two the instrument section names as carrying the localization
+question, plus its budgeted form. Against the noise floor above, WCC +0.047
+is 2.4 times the 0.019 same-arm swing.
+
+**Two things this run changes, and one it does not settle.** The 0.6.1
+precision penalty does not reproduce: the deferred arm was then significantly
+worse than baseline on precision at -0.052, and here -0.0476 has an interval
+spanning zero. It is unresolved rather than absent, because the point
+estimate is still 1.9 times the 0.025 precision noise floor. And the
+structural arm is cheaper per instance than grep-only, $0.2884 against
+$0.3035, for $17.30 against $18.21 over the pilot, while running slower in
+wall time, 69.8 s against 61.9 s. Lower cost at higher latency is the shape
+arXiv:2606.22417 reports.
+
+**The bulk-read cohort is where this result weakens, and it must be quoted
+with the headline.** Twenty-eight of the 60 ground truths are bulk reads, so
+reading more scores higher by construction, and the treatment does emit more
+(3666 output tokens against 3032). On `region-non-bulk` (n=32) no interval
+excludes zero: `hit_region_rate` falls to +0.0123 and `hit_file_rate` turns
+slightly negative. The exception is WCC, which keeps almost its whole
+magnitude at +0.0407 (-0.0047 to +0.0883) and only just misses, still above
+the 0.019 floor. On `strict-non-bulk` (n=8) every metric is negative and
+nothing is resolvable at that size.
+
+The defensible claim is therefore narrower than the full-cohort table looks:
+**a weighted-core-coverage gain of about +0.04, above the measured noise
+floor and stable across cohorts, at no cost penalty.** The `hit_region_rate`
+and `wcc@500` wins are full-cohort only and are partly the bulk-read
+artifact. Raising the non-bulk cohort past n=32 is what would settle WCC.
+
+Integrity: 60 of 60 proof and gate logs, 60 of 60 carrying a `tools/list`,
+median 6 `tools/call` per instance with no zero-call instance, and
+`capabilities` called in 0 of 60 against the blind run's 46 of 60. Every one
+of the 60 recorded `server_argv_sha256` values was reproduced from the pinned
+worktree path, which is incident 3 closed by hash rather than by assertion.
+Result tags `n082_baseline` and `n082_treatment`, proof logs under
+`mcp_proof_082/`.
+
 ## How to re-run
 
 Work from the `swe-explore-bench` clone root. Its `RUNBOOK.md` is the
