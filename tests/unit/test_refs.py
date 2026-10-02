@@ -350,31 +350,37 @@ class TestIndex:
         index = build_ref_index(scan_repo(build(tmp_path), extractor))
         assert index.defining_paths("no_such_name") == ()
 
-    def test_defining_paths_never_reads_definitions(self):
-        # The map asks once per reference occurrence; a lookup that rescans
-        # every definition of the name makes that pass quadratic.
+    def test_repeated_lookups_never_reread_definitions(self, tmp_path, extractor):
+        # The map asks once per name in every file it scans; a lookup that
+        # rescans every definition of the name makes that pass quadratic.
+        built = build_ref_index(scan_repo(build(tmp_path), extractor))
+        definitions = _CountingReads(built.definitions)
         index = RefIndex(
-            definitions=_Unreadable(),
-            sites={},
-            files_referencing={},
-            defining={"quote": ("library.py",)},
+            definitions=definitions, sites=built.sites, files_referencing=built.files_referencing
         )
         assert index.defining_paths("quote") == ("library.py",)
-        assert index.defining_paths("no_such_name") == ()
+        reads = definitions.reads
+        for _ in range(3):
+            assert index.defining_paths("quote") == ("library.py",)
+            assert index.defining_paths("no_such_name") == ()
+        assert definitions.reads == reads
 
 
-class _Unreadable(Mapping[str, tuple[Definition, ...]]):
+class _CountingReads(Mapping[str, tuple[Definition, ...]]):
+    def __init__(self, inner: Mapping[str, tuple[Definition, ...]]) -> None:
+        self.inner = inner
+        self.reads = 0
+
     def __getitem__(self, name: str) -> tuple[Definition, ...]:
-        message = f"definitions read for {name!r}"
-        raise AssertionError(message)
+        self.reads += 1
+        return self.inner[name]
 
     def __iter__(self) -> Iterator[str]:
-        message = "definitions iterated"
-        raise AssertionError(message)
+        self.reads += 1
+        return iter(self.inner)
 
     def __len__(self) -> int:
-        message = "definitions measured"
-        raise AssertionError(message)
+        return len(self.inner)
 
 
 class TestLookupTargets:
