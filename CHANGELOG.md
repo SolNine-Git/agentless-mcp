@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.8.2 -- unreleased
+
+The map seeds on a name the repository spells but never defines, and a
+repository with large data fixtures no longer spends most of a `map` call in
+the test-companion pass.
+
+### Changed
+
+- **Focus resolution falls back to where a name is spelled.** A sixth tier
+  runs after the five existing shapes and the traceback and URL rescue have
+  all missed. An attribute, a field, a parameter or a call into a dependency
+  used to resolve to nothing and leave the map unfocused; the tier now seeds
+  the files that spell the name. Test files are held out, because a seed
+  that reaches only tests heads the list with files the ranking cannot
+  score. A name spelled in more than five files is refused as the
+  repository's vocabulary rather than a locator. Measured on
+  loc-bench-harness, 50 instances, against 0.8.1: MAP +0.0613 (95% CI
+  +0.0122 to +0.1214) and recall@10 +0.0756 (+0.0100 to +0.1586); six of
+  fourteen metrics exclude zero and none regresses. This is the
+  deterministic retrieval tier: it shows the ranking improved, not that an
+  agent localizes better.
+
+### Fixed
+
+- **`map` no longer goes quadratic on repeated data keys** (#52). The
+  test-companion pass asked for a name's defining files once per reference
+  occurrence, and each answer rebuilt and sorted a set over every definition
+  of the name. A JSON fixture emits every key as a definition and every key
+  occurrence as a reference, so the pass cost occurrences times definitions.
+  The index now computes each name's files once when it is built, and the
+  pass resolves each distinct name once. On a synthetic repository of 100
+  fixture files with 300 rows each, one `map` call fell from 56.25 s to
+  3.50 s with byte-identical output; at 200 files it fell from more than
+  240 s to 7.75 s.
+
 ## 0.8.1 -- 2026-09-06
 
 Follow-ups from the 0.8.0 review. No tool answers differently; the server,
