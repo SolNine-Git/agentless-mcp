@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.2 -- unreleased
+## 0.8.2 -- 2026-10-02
 
 The map seeds on a name the repository spells but never defines, and a
 repository with large data fixtures no longer spends most of a `map` call in
