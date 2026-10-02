@@ -10,7 +10,7 @@
   "repo_refused_not_allowed": "repository refused: the requested root is not one of this server's roots. Retry with repo_root set to one of: {roots}",
   "roots_file_hint": "To serve another repository, append its absolute path as a line in {file}; the file is re-read on the next call, no restart needed.",
   "roots_file_unreadable": "roots file {file} cannot be read: {error}. Refusing rather than serving the stale copy; restore the file, or restart the server without --roots-from.",
-  "map_unresolved_seeds": "// note: these focus seeds matched no file and no symbol in this repository, so the ranking below is not focused on them: {seeds}. Check the spelling, or seed with a file path from the tree.",
+  "map_unresolved_seeds": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: {seeds}. Check the spelling, or seed with a file path from the tree.",
   "scan_skipped_files": "// warning: {count} files were skipped and are absent from this answer: {listed}. A symbol in a skipped file reads as missing here even though it may exist in the repository.",
   "find_no_matches": "no matching symbols: no declared symbol has '{query}' in its name or qualified name, matched case-insensitively. A parameter, a local variable, an attribute or a string literal is not a declared symbol; grep for the literal to find those.",
   "find_no_matches_kind": "no matching symbols of kind '{kind}': '{query}' does match symbols of other kinds: {kinds}. Retry with one of those kinds, or with no kind.",

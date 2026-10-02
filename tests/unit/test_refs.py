@@ -1,7 +1,11 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
+from collections.abc import Iterator, Mapping
+
 from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
+    Definition,
+    RefIndex,
     build_ref_index,
     definitions_for,
     enclosing_symbol,
@@ -331,6 +335,52 @@ class TestIndex:
     def test_defining_paths_are_sorted_and_deduplicated(self, tmp_path, extractor):
         index = build_ref_index(scan_repo(build(tmp_path), extractor))
         assert index.defining_paths("quote") == ("library.py",)
+
+    def test_defining_paths_agree_with_definitions_for_every_name(self, tmp_path, extractor):
+        root = build(tmp_path)
+        (root / "aaa.py").write_text(
+            "def quote():\n    return 1\n\n\ndef quote():\n    return 2\n", encoding="utf-8"
+        )
+        index = build_ref_index(scan_repo(root, extractor))
+        assert index.defining_paths("quote") == ("aaa.py", "library.py")
+        for name, values in index.definitions.items():
+            assert index.defining_paths(name) == tuple(sorted({d.path for d in values}))
+
+    def test_defining_paths_of_an_unknown_name_is_empty(self, tmp_path, extractor):
+        index = build_ref_index(scan_repo(build(tmp_path), extractor))
+        assert index.defining_paths("no_such_name") == ()
+
+    def test_repeated_lookups_never_reread_definitions(self, tmp_path, extractor):
+        # The map asks once per name in every file it scans; a lookup that
+        # rescans every definition of the name makes that pass quadratic.
+        built = build_ref_index(scan_repo(build(tmp_path), extractor))
+        definitions = _CountingReads(built.definitions)
+        index = RefIndex(
+            definitions=definitions, sites=built.sites, files_referencing=built.files_referencing
+        )
+        assert index.defining_paths("quote") == ("library.py",)
+        reads = definitions.reads
+        for _ in range(3):
+            assert index.defining_paths("quote") == ("library.py",)
+            assert index.defining_paths("no_such_name") == ()
+        assert definitions.reads == reads
+
+
+class _CountingReads(Mapping[str, tuple[Definition, ...]]):
+    def __init__(self, inner: Mapping[str, tuple[Definition, ...]]) -> None:
+        self.inner = inner
+        self.reads = 0
+
+    def __getitem__(self, name: str) -> tuple[Definition, ...]:
+        self.reads += 1
+        return self.inner[name]
+
+    def __iter__(self) -> Iterator[str]:
+        self.reads += 1
+        return iter(self.inner)
+
+    def __len__(self) -> int:
+        return len(self.inner)
 
 
 class TestLookupTargets:

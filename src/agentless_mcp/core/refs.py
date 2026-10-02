@@ -23,6 +23,7 @@ never dropped into an answer that then looks complete.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from agentless_mcp.core.cache import FileSource, effective_source
@@ -96,9 +97,18 @@ class RefIndex:
     sites: Mapping[str, tuple[Ref, ...]]
     files_referencing: Mapping[str, int]
 
+    # Derived rather than supplied, so it cannot disagree with `definitions`;
+    # cached because callers ask once per name in every file they scan.
+    @cached_property
+    def _defining(self) -> Mapping[str, tuple[str, ...]]:
+        return {
+            name: tuple(sorted({definition.path for definition in values}))
+            for name, values in self.definitions.items()
+        }
+
     def defining_paths(self, name: str) -> tuple[str, ...]:
         """The distinct files defining ``name``, in path order."""
-        return tuple(sorted({definition.path for definition in self.definitions.get(name, ())}))
+        return self._defining.get(name, ())
 
 
 def scan_repo(

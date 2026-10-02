@@ -4,6 +4,7 @@ import pytest
 
 from agentless_mcp.application import render
 from agentless_mcp.application.map_service import (
+    _SPELLING_MAX_FILES,
     AUTO_BUDGET_MAX,
     AUTO_BUDGET_MIN,
     BODY_TOKENS_PER_SEAT,
@@ -227,6 +228,118 @@ class TestMapService:
         )
         assert result.seeds == ()
         assert result.unresolved_seeds == ("https://example.com/no/such/file.py:12",)
+
+    def test_a_name_nothing_defines_seeds_the_file_that_spells_it(self, tmp_path, extractor):
+        """An attribute is the seed an issue report yields and no scan defines."""
+        (tmp_path / "transport.py").write_text(
+            "class Transport:\n"
+            "    def __init__(self):\n"
+            "        self._outbound_queue = []\n"
+            "\n"
+            "    def send(self, item):\n"
+            "        self._outbound_queue.append(item)\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "unrelated.py").write_text("def other():\n    return 0\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        seeding = seed_weights(("_outbound_queue",), scan, refs.build_ref_index(scan))
+
+        assert seeding.unresolved == ()
+        assert seeding.weights == pytest.approx({"transport.py": 1.0})
+        assert seeding.definitions == ()
+
+    def test_a_definition_beats_a_spelling_of_the_same_name(self, tmp_path, extractor):
+        (tmp_path / "owner.py").write_text("def handle():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "caller.py").write_text(
+            "from owner import handle\n\n\ndef go():\n    return handle()\n", encoding="utf-8"
+        )
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        seeding = seed_weights(("handle",), scan, refs.build_ref_index(scan))
+
+        assert sorted(seeding.weights) == ["owner.py"]
+
+    def test_the_cap_is_what_refuses_a_widely_spelled_name(self, tmp_path, extractor):
+        """Past the cap a name is the repository's vocabulary, not a locator.
+
+        Both halves run against one tree, so a pass cannot mean the tier is
+        simply absent: at the cap the name resolves, one file past it it does
+        not, and the cap is the only thing that changed.
+        """
+        body = "def run(payload):\n    return payload.shared_attribute\n"
+        for index in range(_SPELLING_MAX_FILES):
+            (tmp_path / f"mod{index}.py").write_text(body, encoding="utf-8")
+
+        def seed_for(root):
+            scan = refs.scan_repo(root, extractor)
+            return seed_weights(("shared_attribute",), scan, refs.build_ref_index(scan))
+
+        at_cap = seed_for(tmp_path)
+        assert len(at_cap.weights) == _SPELLING_MAX_FILES
+        assert at_cap.unresolved == ()
+
+        (tmp_path / "one_too_many.py").write_text(body, encoding="utf-8")
+        past_cap = seed_for(tmp_path)
+        assert past_cap.weights == {}
+        assert past_cap.unresolved == ("shared_attribute",)
+
+    def test_a_name_only_tests_spell_seeds_nothing(self, tmp_path, extractor):
+        """A test file is a pure source of rank, so seeding one ranks nothing.
+
+        The same name in a non-test file does seed, which is what keeps this
+        pinning the holdout rather than the tier's absence.
+        """
+        (tmp_path / "shop.py").write_text("def price():\n    return 1\n", encoding="utf-8")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_shop.py").write_text(
+            "def test_price():\n    assert price().fixture_marker\n", encoding="utf-8"
+        )
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        seeding = seed_weights(("fixture_marker",), scan, refs.build_ref_index(scan))
+        assert seeding.weights == {}
+        assert seeding.unresolved == ("fixture_marker",)
+
+        (tmp_path / "helper.py").write_text(
+            "def carry(bag):\n    return bag.fixture_marker\n", encoding="utf-8"
+        )
+        scan = refs.scan_repo(tmp_path, extractor)
+        widened = seed_weights(("fixture_marker",), scan, refs.build_ref_index(scan))
+        assert widened.weights == pytest.approx({"helper.py": 1.0})
+
+    def test_a_mistyped_path_never_reaches_the_spelling_tier(self, tmp_path, extractor):
+        """``lib/py`` as an extension must not seed every file spelling ``py``."""
+        (tmp_path / "shop.py").write_text("def run():\n    return py\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        seeding = seed_weights(("lib/nope.py",), scan, refs.build_ref_index(scan))
+
+        assert seeding.weights == {}
+        assert seeding.unresolved == ("lib/nope.py",)
+
+    @pytest.mark.parametrize(
+        "entry", ["settings.json", ".env", "setup.cfg", "app.log", "src\\missing.json"]
+    )
+    def test_a_missing_filename_never_seeds_its_extension(self, tmp_path, extractor, entry):
+        """A slashless filename reaches the spelling tier, so it must match whole.
+
+        ``os.environ`` resolving in the same tree is what keeps this pinning
+        the whole-entry rule rather than the tier's absence.
+        """
+        (tmp_path / "app.py").write_text(
+            "import json\nimport os\n\nenv = os.environ\n\n\n"
+            "def load(cfg):\n    return json.loads(cfg)\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "worker.py").write_text("def run(log):\n    return log\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        index = refs.build_ref_index(scan)
+
+        assert seed_weights((entry,), scan, index).unresolved == (entry,)
+        dotted = seed_weights(("os.environ",), scan, index)
+        assert dotted.weights == pytest.approx({"app.py": 1.0})
 
     def test_a_git_repo_map_header_carries_churn(
         self, make_git_repo, commit_all, extractor, counter

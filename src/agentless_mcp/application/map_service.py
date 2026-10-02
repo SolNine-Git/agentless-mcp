@@ -660,14 +660,19 @@ def _companion_reference(
     hits: dict[tuple[int, int], set[str]] = {}
     sites: dict[tuple[int, int], int] = {}
     loose: list[int] = []
+    # The answer depends on the name alone, and a data fixture repeats one key
+    # thousands of times, so each name is resolved once.
+    reached_by_name: dict[str, frozenset[str]] = {}
 
     for ref in facts.refs:
         if not ref.is_reference:
             continue
-        defining = index.defining_paths(ref.name)
-        if facts.path in defining:
-            continue
-        reached = closer.intersection(defining)
+        reached = reached_by_name.get(ref.name)
+        if reached is None:
+            defining = index.defining_paths(ref.name)
+            shadowed = facts.path in defining
+            reached = frozenset() if shadowed else closer.intersection(defining)
+            reached_by_name[ref.name] = reached
         if not reached:
             continue
         referenced |= reached
@@ -700,11 +705,8 @@ class Seeding:
 
     weights: dict[str, float]
     unresolved: tuple[str, ...]
-    # The definitions the symbol-shaped entries named -- empty for an entry
-    # that resolved as a path, because a path names a file, not a symbol in
-    # it. Carried so the body map can seat the symbol the caller asked about;
-    # the weights alone cannot say one was named, which is the defect that
-    # spent every body seat on a file's most self-referential boilerplate.
+    # The definitions the symbol-shaped entries named, so the body map can seat
+    # the symbol asked about; empty for an entry resolved as a path or a spelling.
     definitions: tuple[refs.Definition, ...] = ()
 
 
@@ -716,18 +718,19 @@ def seed_weights(
     """Turn ``--focus`` entries into personalization weights over files.
 
     A focus entry is a path when it names one and a symbol otherwise, and a
-    symbol seeds every file that defines it. Two rules make that fair:
+    symbol seeds every file that defines it -- or, when nothing defines it,
+    the few non-test files that spell it. Two rules make that fair:
 
     * **One entry, one vote.** An entry's mass is split across the files it
       resolved to rather than added once per file, so ``--focus Validate``
       naming twenty files cannot drown out ``--focus config/config.go``. The
       seed vector then says "these entries", not "whichever entry happened to
       be spelled with a common name".
-    * **Nothing is lost quietly.** An entry matching no file and no symbol is
-      still not an error -- the map answers unfocused rather than empty -- but
-      it comes back in ``unresolved`` and every renderer says so. A seed
-      silently dropped is a caller believing the map was focused when it was
-      not.
+    * **Nothing is lost quietly.** An entry the repository neither defines nor
+      spells is still not an error -- the map answers unfocused rather than
+      empty -- but it comes back in ``unresolved`` and every renderer says so.
+      A seed silently dropped is a caller believing the map was focused when
+      it was not.
     """
     known = {facts.path for facts in scan.files}
     weights: dict[str, float] = {}
@@ -788,7 +791,7 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
     views resolving the same word two ways would be a defect a reader could
     only find by comparing outputs.
 
-    Five shapes, tried in order of how specific they are:
+    Six shapes, tried in order of how specific they are:
 
     1. A repository-relative path, exactly as the scan spells it.
     2. A path suffix -- ``config.go`` for ``config/config.go``.
@@ -805,22 +808,28 @@ def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:
        extracted symbols the same way ``find_symbol`` matches -- because a
        method name is the most natural seed an issue report yields, and the
        tool description promises symbol names work.
+    6. A name nothing defines but some file spells: an attribute, a field, a
+       parameter, a call into a dependency. The scan already records every
+       occurrence, and the files spelling such a name are better evidence
+       than the unfocused ranking the entry would otherwise fall back to.
+       Last because it is the weakest tier: a definition is what the caller
+       named, a spelling is only where the word appears.
 
     A path-shaped entry that matches no file stops at step 3. Falling through
     would take the text after its last dot -- a file extension -- and look
     that up as a symbol, which turns a mistyped path into a confident seed on
     an unrelated file.
 
-    An entry the five shapes cannot resolve gets one more chance: the
-    spellings a task actually hands a caller -- a traceback frame, a blob
-    URL, ``path:line``, an absolute path -- are stripped to the path inside
-    them and retried through the path shapes alone (see
-    :func:`_normalized_spellings`). Only on a miss, so an entry that resolves
-    as spelled today resolves identically; and never through the symbol
-    shapes, because a URL segment or an absolute-path component is a path
-    fragment, not a name -- ``https://example.com/quote`` naming the symbol
-    ``quote`` would be exactly the confident-seed-on-an-unrelated-file defect
-    the step-3 stop exists to prevent.
+    An entry the path and symbol shapes cannot resolve gets one more chance
+    before step 6: the spellings a task actually hands a caller -- a
+    traceback frame, a blob URL, ``path:line``, an absolute path -- are
+    stripped to the path inside them and retried through the path shapes
+    alone (see :func:`_normalized_spellings`). Only on a miss, so an entry
+    that resolves as spelled today resolves identically; and never through
+    the symbol shapes, because a URL segment or an absolute-path component is
+    a path fragment, not a name -- ``https://example.com/quote`` naming the
+    symbol ``quote`` would be exactly the confident-seed-on-an-unrelated-file
+    defect the step-3 stop exists to prevent.
     """
     return _focus_resolution(entry, known, index)[0]
 
@@ -834,18 +843,22 @@ def _focus_resolution(
     :func:`focus_paths` documents cannot drift between the caller that wants
     files (every view's ranking) and the caller that wants the named symbol
     back (the body map's first seat). The definitions half is empty whenever
-    the entry resolved as a path, because a path names a file, not a symbol
-    in it. A bare name no qualname owns returns every same-named definition,
-    so such a focus can seat homonyms across files before any centrality
-    seat -- deliberate: the caller named it, and the seat count caps it.
+    the entry resolved as a path or as a spelling, because neither names a
+    symbol the map could seat. A bare name no qualname owns returns every
+    same-named definition, so such a focus can seat homonyms across files
+    before any centrality seat -- deliberate: the caller named it, and the
+    seat count caps it.
     """
     paths = _path_matches(PurePosixPath(entry).as_posix(), known)
     if paths:
         return paths, ()
 
     qualified = entry.rpartition("::")[2] or entry
-    if "/" not in qualified:
-        name = qualified.rpartition(".")[2] or qualified
+    # None for a path-shaped entry, which is the step-3 stop: both name tiers
+    # read the text after the last dot, and there that text is an extension.
+    name = None if "/" in qualified else (qualified.rpartition(".")[2] or qualified)
+
+    if name is not None:
         defining = [
             definition for definition in index.definitions.get(name, ()) if definition.path in known
         ]
@@ -858,7 +871,38 @@ def _focus_resolution(
         paths = _path_matches(candidate, known)
         if paths:
             return paths, ()
+
+    if name is not None:
+        spelled = _spelling_matches(qualified, known, index)
+        if spelled:
+            return spelled, ()
     return [], ()
+
+
+# Past this many files a name is the repository's vocabulary rather than a
+# locator, and seeding on it splits one entry's vote across the tree.
+_SPELLING_MAX_FILES = 5
+
+
+def _spelling_matches(qualified: str, known: set[str], index: refs.RefIndex) -> list[str]:
+    # A dotted entry is evidence only where a file spells every part of it:
+    # `settings.json` must not seed a file that merely imports `json`.
+    *owners, name = qualified.split(".")
+    if not name or not all(owners):
+        return []
+    counts: dict[str, int] = {}
+    for ref in index.sites.get(name, ()):
+        # Tests enter the ranking as pure sources, so a seed reaching only
+        # tests would head the list with files the walk cannot rank.
+        if ref.path not in known or is_test_path(ref.path):
+            continue
+        counts[ref.path] = counts.get(ref.path, 0) + 1
+        if len(counts) > _SPELLING_MAX_FILES:
+            return []
+    for owner in owners:
+        spelling = {ref.path for ref in index.sites.get(owner, ())}
+        counts = {path: count for path, count in counts.items() if path in spelling}
+    return sorted(counts, key=lambda path: (-counts[path], path))
 
 
 def _path_matches(normalized: str, known: set[str]) -> list[str]:

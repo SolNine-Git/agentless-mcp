@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.8.2 -- 2026-10-02
+
+The map seeds on a name the repository spells but never defines, and a
+repository with large data fixtures no longer spends most of a `map` call in
+the test-companion pass.
+
+### Changed
+
+- **Focus resolution falls back to where a name is spelled.** A sixth tier
+  runs after the five existing shapes and the traceback and URL rescue have
+  all missed. An attribute, a field, a parameter or a call into a dependency
+  used to resolve to nothing and leave the map unfocused; the tier now seeds
+  the files that spell the name. Test files are held out, because a seed
+  that reaches only tests heads the list with files the ranking cannot
+  score. A name spelled in more than five non-test files is refused as the
+  repository's vocabulary rather than a locator. A dotted name seeds only a
+  file that spells every part of it, so a missing `settings.json` cannot
+  seed a file that merely imports `json`. Measured on
+  loc-bench-harness, 150 instances, against 0.8.1: MAP +0.0410 (95% CI
+  +0.0181 to +0.0676) and recall@10 +0.0585 (+0.0242 to +0.0973); twelve of
+  fourteen metrics exclude zero and none regresses. The dotted-name rule
+  changes one of the 150 rankings and no metric. This is the deterministic
+  retrieval tier: it shows the ranking improved, not that an agent localizes
+  better.
+
+### Fixed
+
+- **`map` no longer goes quadratic on repeated data keys** (#52). The
+  test-companion pass asked for a name's defining files once per reference
+  occurrence, and each answer rebuilt and sorted a set over every definition
+  of the name. A JSON fixture emits every key as a definition and every key
+  occurrence as a reference, so the pass cost occurrences times definitions.
+  The index now computes each name's files once, on first use, and the
+  pass resolves each distinct name once. On a synthetic repository of 100
+  fixture files with 300 rows each, one `map` call fell from 56.25 s to
+  3.49 s with byte-identical output; at 200 files it fell from more than
+  240 s to 7.64 s.
+
 ## 0.8.1 -- 2026-09-06
 
 Follow-ups from the 0.8.0 review. No tool answers differently; the server,

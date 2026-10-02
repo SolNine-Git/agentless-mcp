@@ -698,3 +698,37 @@ class TestCoversIsMeasuredOverTheWholeFile:
 
         assert row is not None
         assert row.end - row.start < 4
+
+
+class TestTheCompanionPassLooksUpEachNameOnce:
+    """A data fixture repeats one key thousands of times, so the lookups the
+    section costs must follow the distinct names, never the occurrences.
+    """
+
+    def test_fifty_references_cost_the_lookups_one_does(self, tmp_path, maps, monkeypatch):
+        calls: list[str] = []
+        original = refs.RefIndex.defining_paths
+
+        def counting(index, name):
+            calls.append(name)
+            return original(index, name)
+
+        monkeypatch.setattr(refs.RefIndex, "defining_paths", counting)
+
+        def lookups(root, uses):
+            calls.clear()
+            repo = written(
+                root,
+                {
+                    "shop.py": "def price():\n    return 1\n",
+                    "tests/test_shop.py": (
+                        "from shop import price\n\n\ndef test_price():\n"
+                        + "    assert price()\n" * uses
+                    ),
+                },
+            )
+            result = maps.build(repo, MapRequest(max_files=1))
+            assert companion(result, "tests/test_shop.py") is not None
+            return calls.count("price")
+
+        assert lookups(tmp_path / "one", 1) == lookups(tmp_path / "fifty", 50)
