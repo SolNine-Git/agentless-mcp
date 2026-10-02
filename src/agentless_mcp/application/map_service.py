@@ -660,14 +660,19 @@ def _companion_reference(
     hits: dict[tuple[int, int], set[str]] = {}
     sites: dict[tuple[int, int], int] = {}
     loose: list[int] = []
+    # The answer depends on the name alone, and a data fixture repeats one key
+    # thousands of times, so each name is resolved once.
+    reached_by_name: dict[str, frozenset[str]] = {}
 
     for ref in facts.refs:
         if not ref.is_reference:
             continue
-        defining = index.defining_paths(ref.name)
-        if facts.path in defining:
-            continue
-        reached = closer.intersection(defining)
+        reached = reached_by_name.get(ref.name)
+        if reached is None:
+            defining = index.defining_paths(ref.name)
+            shadowed = facts.path in defining
+            reached = frozenset() if shadowed else closer.intersection(defining)
+            reached_by_name[ref.name] = reached
         if not reached:
             continue
         referenced |= reached

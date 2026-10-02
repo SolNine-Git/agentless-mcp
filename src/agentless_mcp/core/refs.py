@@ -95,10 +95,11 @@ class RefIndex:
     definitions: Mapping[str, tuple[Definition, ...]]
     sites: Mapping[str, tuple[Ref, ...]]
     files_referencing: Mapping[str, int]
+    defining: Mapping[str, tuple[str, ...]]
 
     def defining_paths(self, name: str) -> tuple[str, ...]:
         """The distinct files defining ``name``, in path order."""
-        return tuple(sorted({definition.path for definition in self.definitions.get(name, ())}))
+        return self.defining.get(name, ())
 
 
 def scan_repo(
@@ -174,6 +175,12 @@ def build_ref_index(scan: RepoScan) -> RefIndex:
         definitions={name: tuple(values) for name, values in definitions.items()},
         sites={name: tuple(values) for name, values in sites.items()},
         files_referencing={name: len(paths) for name, paths in referencing.items()},
+        # Callers ask once per reference occurrence, so the per-name sort is
+        # paid here once rather than on every lookup.
+        defining={
+            name: tuple(sorted({definition.path for definition in values}))
+            for name, values in definitions.items()
+        },
     )
 
 

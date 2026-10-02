@@ -1,7 +1,11 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
+from collections.abc import Iterator, Mapping
+
 from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
+    Definition,
+    RefIndex,
     build_ref_index,
     definitions_for,
     enclosing_symbol,
@@ -331,6 +335,46 @@ class TestIndex:
     def test_defining_paths_are_sorted_and_deduplicated(self, tmp_path, extractor):
         index = build_ref_index(scan_repo(build(tmp_path), extractor))
         assert index.defining_paths("quote") == ("library.py",)
+
+    def test_defining_paths_agree_with_definitions_for_every_name(self, tmp_path, extractor):
+        root = build(tmp_path)
+        (root / "aaa.py").write_text(
+            "def quote():\n    return 1\n\n\ndef quote():\n    return 2\n", encoding="utf-8"
+        )
+        index = build_ref_index(scan_repo(root, extractor))
+        assert index.defining_paths("quote") == ("aaa.py", "library.py")
+        for name, values in index.definitions.items():
+            assert index.defining_paths(name) == tuple(sorted({d.path for d in values}))
+
+    def test_defining_paths_of_an_unknown_name_is_empty(self, tmp_path, extractor):
+        index = build_ref_index(scan_repo(build(tmp_path), extractor))
+        assert index.defining_paths("no_such_name") == ()
+
+    def test_defining_paths_never_reads_definitions(self):
+        # The map asks once per reference occurrence; a lookup that rescans
+        # every definition of the name makes that pass quadratic.
+        index = RefIndex(
+            definitions=_Unreadable(),
+            sites={},
+            files_referencing={},
+            defining={"quote": ("library.py",)},
+        )
+        assert index.defining_paths("quote") == ("library.py",)
+        assert index.defining_paths("no_such_name") == ()
+
+
+class _Unreadable(Mapping[str, tuple[Definition, ...]]):
+    def __getitem__(self, name: str) -> tuple[Definition, ...]:
+        message = f"definitions read for {name!r}"
+        raise AssertionError(message)
+
+    def __iter__(self) -> Iterator[str]:
+        message = "definitions iterated"
+        raise AssertionError(message)
+
+    def __len__(self) -> int:
+        message = "definitions measured"
+        raise AssertionError(message)
 
 
 class TestLookupTargets:
