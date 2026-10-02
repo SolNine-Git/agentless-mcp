@@ -705,11 +705,8 @@ class Seeding:
 
     weights: dict[str, float]
     unresolved: tuple[str, ...]
-    # The definitions the symbol-shaped entries named -- empty for an entry
-    # that resolved as a path, because a path names a file, not a symbol in
-    # it. Carried so the body map can seat the symbol the caller asked about;
-    # the weights alone cannot say one was named, which is the defect that
-    # spent every body seat on a file's most self-referential boilerplate.
+    # The definitions the symbol-shaped entries named, so the body map can seat
+    # the symbol asked about; empty for an entry resolved as a path or a spelling.
     definitions: tuple[refs.Definition, ...] = ()
 
 
@@ -721,7 +718,8 @@ def seed_weights(
     """Turn ``--focus`` entries into personalization weights over files.
 
     A focus entry is a path when it names one and a symbol otherwise, and a
-    symbol seeds every file that defines it. Two rules make that fair:
+    symbol seeds every file that defines it -- or, when nothing defines it,
+    the few non-test files that spell it. Two rules make that fair:
 
     * **One entry, one vote.** An entry's mass is split across the files it
       resolved to rather than added once per file, so ``--focus Validate``
@@ -875,7 +873,7 @@ def _focus_resolution(
             return paths, ()
 
     if name is not None:
-        spelled = _spelling_matches(name, known, index)
+        spelled = _spelling_matches(qualified, known, index)
         if spelled:
             return spelled, ()
     return [], ()
@@ -886,7 +884,12 @@ def _focus_resolution(
 _SPELLING_MAX_FILES = 5
 
 
-def _spelling_matches(name: str, known: set[str], index: refs.RefIndex) -> list[str]:
+def _spelling_matches(qualified: str, known: set[str], index: refs.RefIndex) -> list[str]:
+    # A dotted entry is evidence only where a file spells every part of it:
+    # `settings.json` must not seed a file that merely imports `json`.
+    *owners, name = qualified.split(".")
+    if not name or not all(owners):
+        return []
     counts: dict[str, int] = {}
     for ref in index.sites.get(name, ()):
         # Tests enter the ranking as pure sources, so a seed reaching only
@@ -894,8 +897,11 @@ def _spelling_matches(name: str, known: set[str], index: refs.RefIndex) -> list[
         if ref.path not in known or is_test_path(ref.path):
             continue
         counts[ref.path] = counts.get(ref.path, 0) + 1
-    if len(counts) > _SPELLING_MAX_FILES:
-        return []
+        if len(counts) > _SPELLING_MAX_FILES:
+            return []
+    for owner in owners:
+        spelling = {ref.path for ref in index.sites.get(owner, ())}
+        counts = {path: count for path, count in counts.items() if path in spelling}
     return sorted(counts, key=lambda path: (-counts[path], path))
 
 

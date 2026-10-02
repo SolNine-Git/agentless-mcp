@@ -318,6 +318,29 @@ class TestMapService:
         assert seeding.weights == {}
         assert seeding.unresolved == ("lib/nope.py",)
 
+    @pytest.mark.parametrize(
+        "entry", ["settings.json", ".env", "setup.cfg", "app.log", "src\\missing.json"]
+    )
+    def test_a_missing_filename_never_seeds_its_extension(self, tmp_path, extractor, entry):
+        """A slashless filename reaches the spelling tier, so it must match whole.
+
+        ``os.environ`` resolving in the same tree is what keeps this pinning
+        the whole-entry rule rather than the tier's absence.
+        """
+        (tmp_path / "app.py").write_text(
+            "import json\nimport os\n\nenv = os.environ\n\n\n"
+            "def load(cfg):\n    return json.loads(cfg)\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "worker.py").write_text("def run(log):\n    return log\n", encoding="utf-8")
+
+        scan = refs.scan_repo(tmp_path, extractor)
+        index = refs.build_ref_index(scan)
+
+        assert seed_weights((entry,), scan, index).unresolved == (entry,)
+        dotted = seed_weights(("os.environ",), scan, index)
+        assert dotted.weights == pytest.approx({"app.py": 1.0})
+
     def test_a_git_repo_map_header_carries_churn(
         self, make_git_repo, commit_all, extractor, counter
     ):
