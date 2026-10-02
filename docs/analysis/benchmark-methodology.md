@@ -324,8 +324,10 @@ timeout. Paired, full cohort:
 | recall | 0.1495 | 0.1667 | +0.0172 | -0.0038 to +0.0424 |
 
 Three of twelve intervals exclude zero and all three favour the treatment.
-They are the two the instrument section names as carrying the localization
-question, plus its budgeted form. Against the noise floor above, WCC +0.047
+They are WCC, its budgeted form `wcc@500`, and the region hit rate; WCC is one
+of the two metrics the instrument section names as carrying the localization
+question, and budgeted recall, the other, is not among the three. Against the
+noise floor above, WCC +0.047
 is 2.4 times the 0.019 same-arm swing.
 
 **Two things this run changes, and one it does not settle.** The 0.6.1

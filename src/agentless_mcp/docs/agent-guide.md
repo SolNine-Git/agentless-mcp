@@ -292,7 +292,7 @@ the top files. `--focus` is not a filter. Seeds take the entire teleport
 mass, so the ranking flows outward from what you named to whatever it
 depends on.
 
-A seed resolves in five shapes, most specific first:
+A seed resolves in six shapes, most specific first:
 
 - a repository-relative path (`src/billing/invoice.py`)
 - a path suffix (`invoice.py`)
@@ -302,6 +302,9 @@ A seed resolves in five shapes, most specific first:
   stable id)
 - a bare function, method, class or type name (`quote`), matched exactly
   against the extracted symbols
+- a name nothing defines (`_outbound_queue`, `os.environ`), matched in the
+  non-test files that spell it. A file must spell every part of a dotted
+  name, and a name spelled in more than five non-test files is refused.
 
 A name defined in several files seeds all of them.
 
@@ -312,9 +315,10 @@ to. A `--focus Validate` that matches twenty files therefore cannot outweigh
 A seed that resolves to nothing does not fail the call, and it does not
 vanish. It comes back in `unresolved_seeds` in the JSON, and in a `// note:`
 line above the map in the text. If you see that note, the ranking below it is
-*not* focused the way you asked. The usual cause is that the name you took
-from an issue is a parameter, an attribute or a DSL keyword rather than a
-declared symbol. `find-symbol` will tell you which.
+*not* focused the way you asked. The usual causes are a misspelled name, a
+name that only tests spell, and a name spelled in more than five non-test
+files, which is the repository's vocabulary rather than a locator. Seed with
+a file path from the tree instead.
 
 A focused map still lists ten files, but only the ones the walk *reached* from
 the seeds spend the budget. A file no reference path connects to the seeds is

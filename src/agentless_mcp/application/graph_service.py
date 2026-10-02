@@ -912,8 +912,8 @@ def _diagram_focus(focus: str | None, ranked: _Ranked) -> _Focus:
     """Resolve a diagram's focus argument to one module, or say why not.
 
     The same resolution the map's ``--focus`` uses -- a path, a path suffix, a
-    module stem or a symbol name -- narrowed to a single module, because a
-    diagram has one centre. A focus naming several modules is answered with
+    module stem, a symbol name or a spelled name -- narrowed to a single
+    module, because a diagram has one centre. A focus naming several modules is answered with
     the list rather than with whichever one sorts first.
     """
     if focus is None or not focus.strip():

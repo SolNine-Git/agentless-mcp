@@ -14,13 +14,16 @@ the test-companion pass.
   used to resolve to nothing and leave the map unfocused; the tier now seeds
   the files that spell the name. Test files are held out, because a seed
   that reaches only tests heads the list with files the ranking cannot
-  score. A name spelled in more than five files is refused as the
-  repository's vocabulary rather than a locator. Measured on
-  loc-bench-harness, 50 instances, against 0.8.1: MAP +0.0613 (95% CI
-  +0.0122 to +0.1214) and recall@10 +0.0756 (+0.0100 to +0.1586); six of
-  fourteen metrics exclude zero and none regresses. This is the
-  deterministic retrieval tier: it shows the ranking improved, not that an
-  agent localizes better.
+  score. A name spelled in more than five non-test files is refused as the
+  repository's vocabulary rather than a locator. A dotted name seeds only a
+  file that spells every part of it, so a missing `settings.json` cannot
+  seed a file that merely imports `json`. Measured on
+  loc-bench-harness, 150 instances, against 0.8.1: MAP +0.0410 (95% CI
+  +0.0181 to +0.0676) and recall@10 +0.0585 (+0.0242 to +0.0973); twelve of
+  fourteen metrics exclude zero and none regresses. The dotted-name rule
+  changes one of the 150 rankings and no metric. This is the deterministic
+  retrieval tier: it shows the ranking improved, not that an agent localizes
+  better.
 
 ### Fixed
 
@@ -29,11 +32,11 @@ the test-companion pass.
   occurrence, and each answer rebuilt and sorted a set over every definition
   of the name. A JSON fixture emits every key as a definition and every key
   occurrence as a reference, so the pass cost occurrences times definitions.
-  The index now computes each name's files once when it is built, and the
+  The index now computes each name's files once, on first use, and the
   pass resolves each distinct name once. On a synthetic repository of 100
   fixture files with 300 rows each, one `map` call fell from 56.25 s to
-  3.50 s with byte-identical output; at 200 files it fell from more than
-  240 s to 7.75 s.
+  3.49 s with byte-identical output; at 200 files it fell from more than
+  240 s to 7.64 s.
 
 ## 0.8.1 -- 2026-09-06
 
