@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.3 -- unreleased
+## 0.8.3 -- 2026-10-03
 
 A stdio server answers a call that omits `repo_root` when the client
 advertises several workspace folders.
