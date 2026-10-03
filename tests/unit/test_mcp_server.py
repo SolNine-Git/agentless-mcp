@@ -403,6 +403,28 @@ class TestAllowlist:
         with pytest.raises(SecurityRefusal, match="will not guess"):
             handlers.resolve(None, list(two_repos))
 
+    def test_the_launch_directory_breaks_a_tie_between_client_roots(self, services, two_repos):
+        inner = two_repos[1] / "src"
+        inner.mkdir()
+        handlers = ToolHandlers(two_repos, services, launch_dir=inner)
+        assert handlers.resolve(None, list(two_repos)).root == two_repos[1].resolve()
+
+    def test_a_launch_directory_inside_no_candidate_still_refuses(
+        self, services, two_repos, tmp_path
+    ):
+        handlers = ToolHandlers(two_repos, services, launch_dir=tmp_path)
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            handlers.resolve(None, list(two_repos))
+
+    def test_the_launch_directory_never_selects_a_root_no_client_root_named(
+        self, services, two_repos, tmp_path
+    ):
+        elsewhere = tmp_path / "gamma"
+        elsewhere.mkdir()
+        handlers = ToolHandlers(two_repos, services, launch_dir=two_repos[0])
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            handlers.resolve(None, [elsewhere])
+
 
 class StubRoot:
     """One entry of a client's ``roots/list`` answer."""
@@ -2073,6 +2095,43 @@ class TestClientRootsUnderHttp:
 
         assert args.transport == TRANSPORT_HTTP
         assert args.allow_client_roots is False
+
+
+class TestLaunchDirectoryWiring:
+    """serve hands its cwd to root selection under stdio, and only there."""
+
+    @pytest.fixture
+    def built(self, monkeypatch):
+        made = []
+
+        class StubServer:
+            def run(self, **_kwargs):
+                return None
+
+        def stub_build_server(handlers, **_kwargs):
+            made.append(handlers)
+            return StubServer()
+
+        monkeypatch.setattr(server_module, "build_server", stub_build_server)
+        return made
+
+    def argv(self, two_repos):
+        return ["--root", str(two_repos[0]), "--root", str(two_repos[1]), "--no-auto-warm"]
+
+    def test_stdio_breaks_a_tie_with_its_cwd(self, services, two_repos, built, monkeypatch):
+        monkeypatch.chdir(two_repos[1])
+
+        assert server_module.serve(self.argv(two_repos), services) == 0
+        assert built[0].resolve(None, list(two_repos)).root == two_repos[1].resolve()
+
+    def test_http_ignores_its_cwd(self, services, two_repos, built, monkeypatch):
+        monkeypatch.chdir(two_repos[1])
+        monkeypatch.setattr(server_module.selfrestart, "restart_pending", lambda: False)
+        argv = [*self.argv(two_repos), "--transport", TRANSPORT_HTTP, "--no-auto-restart"]
+
+        assert server_module.serve(argv, services) == 0
+        with pytest.raises(SecurityRefusal, match="will not guess"):
+            built[0].resolve(None, list(two_repos))
 
 
 class TestNothingBlocksTheEventLoop:
