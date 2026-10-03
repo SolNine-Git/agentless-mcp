@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.3 -- unreleased
+
+A stdio server answers a call that omits `repo_root` when the client
+advertises several workspace folders.
+
+### Fixed
+
+- **Several workspace folders no longer refuse every rootless call** (#54).
+  Each advertised folder matched its own configured repository, so N folders
+  left N candidates and the server refused to guess between them. Claude Code
+  advertises its primary folder and each `--add-dir`, so any session with an
+  extra directory got the refusal, `capabilities` included. Under stdio the
+  client starts the server in the session's primary folder, so the server now
+  keeps the candidate that contains its launch directory. The launch
+  directory only narrows: it never selects a root that no advertised folder
+  named, and zero or several survivors still refuse. The HTTP transport
+  ignores its working directory, because one shared server's directory says
+  nothing about which client calls it.
+
 ## 0.8.2 -- 2026-10-02
 
 The map seeds on a name the repository spells but never defines, and a
