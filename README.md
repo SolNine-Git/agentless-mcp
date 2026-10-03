@@ -241,7 +241,9 @@ right answer for a single client.
 
 Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects
-exactly one; otherwise the refusal lists the roots to choose from.
+exactly one; otherwise the refusal lists the roots to choose from. Under
+stdio, a client that advertises several workspace folders gets the one the
+server was launched in.
 
 The MCP tools are six intent-shaped surfaces; three of them fold their
 questions behind an `operation` parameter:

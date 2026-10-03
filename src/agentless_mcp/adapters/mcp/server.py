@@ -10,7 +10,7 @@ refusals are identical either way: only the pipe changes.
 This adapter owns two things the CLI does not, and nothing else.
 
 **The allowlist.** One server process serves a workspace of repositories, so
-there is no cwd to infer a root from and inferring one would be a
+the cwd alone never picks a root: inferring one from it would be a
 wrong-repository answer. Every tool therefore takes ``repo_root`` first and it
 is checked, exactly, against the roots the server was started with. Those come
 from repeatable ``--root DIR`` flags, and from ``--roots-from FILE`` which is
@@ -36,8 +36,11 @@ is a normal negative, not a failure, and the static roots still apply.
 client's advertised roots select the same way: when the advertised workspace
 picks out exactly one configured root -- equal to it, or nested either way
 round -- an omitted ``repo_root`` defaults to that root, receipted like any
-other answer. With several candidates left, or none, an omitted or unmatched
-root is refused with the list of allowed roots rather than guessed at.
+other answer. A client with several workspace folders leaves several
+candidates; under stdio the one containing the launch directory wins, because
+the client spawns its child in the session's primary folder. With several
+candidates still left, or none, an omitted or unmatched root is refused with
+the list of allowed roots rather than guessed at.
 
 Everything else is a thin call into the same services the CLI uses. There are
 no write, exec or fetch tools here and there will not be: patch application
@@ -71,6 +74,7 @@ from agentless_mcp.adapters.mcp.cliargs import (
     SURFACE_V1,
     SURFACE_V2,
     TRANSPORT_HTTP,
+    TRANSPORT_STDIO,
     RootsFile,
     Surface,
     http_binding,
@@ -416,16 +420,20 @@ OptionalMaxEntries = Annotated[
 ]
 
 
-def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Path | None:
+def _sole_selection(
+    static: Sequence[Path], client_roots: Sequence[Path], launch_dir: Path | None = None
+) -> Path | None:
     """Return the one configured root the client's workspace identifies, if any.
 
     Static roots authorise; client roots only select among them. An advertised
     root names a configured root when one contains the other (a path contains
     itself): the workspace open inside a repository, or one directory above
     it. An advertised root that names none of them selects nothing -- it never
-    authorises itself, so there is nothing there to select. Zero candidates or
-    several is ordinary ambiguity; the caller refuses with the listing exactly
-    as if nothing were advertised.
+    authorises itself, so there is nothing there to select. Several candidates
+    narrow to the one containing ``launch_dir``, and never widen to a root no
+    advertised root named. Zero candidates, or several left after that, is
+    ordinary ambiguity; the caller refuses with the listing exactly as if
+    nothing were advertised.
     """
     if len(static) == 1:
         return static[0]
@@ -436,6 +444,8 @@ def _sole_selection(static: Sequence[Path], client_roots: Sequence[Path]) -> Pat
             root.is_relative_to(client) or client.is_relative_to(root) for client in client_roots
         )
     ]
+    if len(candidates) > 1 and launch_dir is not None:
+        candidates = [root for root in candidates if launch_dir.is_relative_to(root)]
     if len(candidates) == 1:
         return candidates[0]
     return None
@@ -497,12 +507,14 @@ class ToolHandlers:
         allow_client_roots: bool = False,
         roots_files: Sequence[RootsFile] = (),
         auto_index: bool = True,
+        launch_dir: Path | None = None,
     ) -> None:
         self._roots = tuple(roots)
         self._services = services
         self._allow_client_roots = allow_client_roots
         self._roots_files = tuple(roots_files)
         self._auto_index = auto_index
+        self._launch_dir = launch_dir
 
     @property
     def roots(self) -> tuple[Path, ...]:
@@ -582,7 +594,7 @@ class ToolHandlers:
             raise SecurityRefusal(self._hinted(message))
 
         if repo_root is None or not repo_root.strip():
-            selected = _sole_selection(allowed, client_roots)
+            selected = _sole_selection(allowed, client_roots, self._launch_dir)
             if selected is not None:
                 return self._with_source(resolve_repo(selected, allowed), no_cache=no_cache)
             listing = ", ".join(str(path) for path in allowed)
@@ -1857,6 +1869,8 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         allow_client_roots=args.allow_client_roots,
         roots_files=args.roots_from,
         auto_index=not args.no_auto_index,
+        # One shared HTTP server's cwd says nothing about which client is calling.
+        launch_dir=Path.cwd().resolve() if args.transport == TRANSPORT_STDIO else None,
     )
     server = build_server(handlers, surface=args.surface, max_concurrency=args.max_concurrency)
     # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the

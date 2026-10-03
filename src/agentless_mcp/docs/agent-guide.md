@@ -207,8 +207,10 @@ takes `repo_root`. The CLI defaults it to the git root that encloses the
 current directory, or takes `--repo PATH`. You may omit `repo_root` when the
 server holds one repository, or when the client advertises an MCP workspace
 root that identifies exactly one configured root. The receipt names the
-repository that answered either way. With several candidates left, the
-refusal lists the roots to choose from.
+repository that answered either way. Under stdio, when the client advertises
+several workspace folders, the server keeps the one that contains its launch
+directory. With several candidates still left, the refusal lists the roots to
+choose from.
 
 `--root` is the confinement boundary. The client cannot widen it. A root the
 client advertises may only *select* among the directories the server was
