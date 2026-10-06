@@ -58,7 +58,14 @@ from typing import Protocol, TypeVar
 from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
+from agentless_mcp.core.refs import (
+    Definition,
+    FileFacts,
+    RefIndex,
+    RepoScan,
+    in_name_graph,
+    line_owners,
+)
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     base_name,
@@ -687,6 +694,9 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
     definitions: dict[str, Definition] = {}
 
     for facts in scan.files:
+        edges.extend(_import_edges(facts, resolver.scopes.get(facts.path)))
+        if not in_name_graph(facts):
+            continue
         owners = line_owners(facts)
         for symbol in facts.symbols:
             definitions[symbol_stable_id(symbol)] = Definition(path=facts.path, symbol=symbol)
@@ -702,7 +712,6 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
             ambiguous.add(AmbiguousReference(source, resolution.name, relation))
             if resolution.name not in candidates:
                 candidates[resolution.name] = _endpoints(resolution.candidates)
-        edges.extend(_import_edges(facts, resolver.scopes.get(facts.path)))
 
     return ResolvedGraph(
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),

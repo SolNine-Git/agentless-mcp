@@ -1754,6 +1754,9 @@ RUST_ITEM_TYPES = frozenset(
         "type_item",
     }
 )
+# Languages whose symbols are document keys rather than code declarations.
+DATA_LANGUAGES = frozenset({"json", "toml", "yaml"})
+
 # The config surfaces name a pair the same way in every grammar in the table,
 # and a TOML table header owns the pairs below it. `[[array]]` is a table
 # header too: its pairs have an owner exactly as `[table]`'s do.

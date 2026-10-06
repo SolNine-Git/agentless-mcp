@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import grammars, graph, refs, skeleton
+from agentless_mcp.core import grammars, graph, refs, resolve, skeleton
 from agentless_mcp.core.extractor import (
     LANGUAGE_CONFIGS,
     TreeSitterExtractor,
@@ -248,17 +248,39 @@ class TestSymbolExtraction:
         assert modules == {EXPECTED[language][3]}, f"{language} from {path}"
 
 
+CONFIG_FILES = {
+    "json": ("config.json", '{"service": {"port": 8080}}\n'),
+    "toml": ("config.toml", "[service]\nport = 8080\n"),
+    "yaml": ("config.yaml", "service:\n  port: 8080\n"),
+}
+
+
 class TestDeterministicNonCodeSurfaces:
-    def test_config_definitions_feed_the_same_cross_file_graph(self, tmp_path, extractor):
-        if "json" not in grammars.warmed_languages():
-            pytest.skip("grammar for json is not in the local pack cache")
-        (tmp_path / "config.json").write_text('{"service": {"port": 8080}}\n', encoding="utf-8")
+    @pytest.mark.parametrize("language", sorted(CONFIG_FILES))
+    def test_config_keys_stay_navigable_but_join_no_name_graph(self, tmp_path, extractor, language):
+        """A data file's keys are document keys, not declarations code can call.
+
+        Matched by spelling, one fixture that repeats a key thousands of times
+        made every code spelling of it a candidate for each copy. The keys stay
+        in the scan, so find-symbol, overview and expand still show them.
+        """
+        if language not in grammars.warmed_languages():
+            pytest.skip(f"grammar for {language} is not in the local pack cache")
+        filename, text = CONFIG_FILES[language]
+        (tmp_path / filename).write_text(text, encoding="utf-8")
         (tmp_path / "app.py").write_text("def configured():\n    return port\n", encoding="utf-8")
 
         scan = refs.scan_repo(tmp_path, extractor)
-        built = graph.build_graph(scan, refs.build_ref_index(scan))
+        index = refs.build_ref_index(scan)
+        _, resolved = resolve.resolve_repo(scan, index)
 
-        assert ("app.py", "config.json") in built.edges
+        assert "port" in {symbol.name for symbol in scan.by_path()[filename].symbols}
+        assert "port" not in index.definitions
+        assert graph.build_graph(scan, index).edges == {}
+        assert [
+            edge for edge in resolved.edges if filename in (edge.source.path, edge.target.path)
+        ] == []
+        assert resolved.ambiguous == ()
 
     def test_expected_nodes_feed_the_symbol_graph(self, surface_language, extractor):
         filename, expected = SURFACE_FIXTURES[surface_language]

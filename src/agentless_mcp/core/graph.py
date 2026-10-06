@@ -51,7 +51,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.refs import FileFacts, RefIndex, RepoScan
+from agentless_mcp.core.refs import FileFacts, RefIndex, RepoScan, in_name_graph
 from agentless_mcp.core.symbols import base_name
 from agentless_mcp.util.deadline import checkpoint
 
@@ -350,11 +350,12 @@ def build_graph(
 
     for facts in scan.files:
         checkpoint()
-        for target, contribution in _reference_contributions(
-            facts, index, stoplist, known, reference_weight
-        ):
-            key = (facts.path, target)
-            edges[key] = edges.get(key, 0.0) + contribution
+        if in_name_graph(facts):
+            for target, contribution in _reference_contributions(
+                facts, index, stoplist, known, reference_weight
+            ):
+                key = (facts.path, target)
+                edges[key] = edges.get(key, 0.0) + contribution
 
         for statement in facts.imports:
             for target in _resolved_import_targets(facts.path, statement, index_of_paths):

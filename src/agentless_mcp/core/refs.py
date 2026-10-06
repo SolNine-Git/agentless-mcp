@@ -27,7 +27,7 @@ from functools import cached_property
 from pathlib import Path
 
 from agentless_mcp.core.cache import FileSource, effective_source
-from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.extractor import DATA_LANGUAGES, Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.projectconfig import CONFIG_FILENAME
 from agentless_mcp.core.slices import span_end
@@ -160,6 +160,13 @@ def scan_repo(
     return RepoScan(root=root, files=tuple(files), skipped=tuple(skipped))
 
 
+def in_name_graph(facts: FileFacts) -> bool:
+    """True when a file's symbols and spellings join the name graph."""
+    # A data file's keys are not declarations: one fixture can define a key
+    # thousands of times, and every code spelling of it used to match them all.
+    return facts.language not in DATA_LANGUAGES
+
+
 def build_ref_index(scan: RepoScan) -> RefIndex:
     """Index a scan by name: where each name is defined and where it is used.
 
@@ -173,6 +180,8 @@ def build_ref_index(scan: RepoScan) -> RefIndex:
     referencing: dict[str, set[str]] = {}
 
     for facts in scan.files:
+        if not in_name_graph(facts):
+            continue
         for symbol in facts.symbols:
             definitions.setdefault(symbol.name, []).append(
                 Definition(path=facts.path, symbol=symbol)
