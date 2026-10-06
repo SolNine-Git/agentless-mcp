@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.9.0 -- unreleased
+
+The graph views stay small on a repository with large data fixtures, keys in
+data files leave the name graph, and the MCP server bounds how long one call
+may run.
+
+### Fixed
+
+- **The ambiguous tier is stored once per reference** (#56). `explain`,
+  `path`, `health` and `cycles` stored one name-only-ambiguous edge for each
+  pairing of a reference with a same-name definition. A JSON fixture defines
+  every key, so one `cycles` call on a 1,026-file TypeScript repository held
+  33 GB. Each ambiguous reference is now stored once, with one table of
+  candidates per name, and each view expands only what it reads. The answers
+  do not change: `explain`, `health`, `path` under all four edge policies and
+  `cycles` were byte-identical to 0.8.3 on five repositories. On the issue's
+  repro (500 TypeScript literals, four JSON fixtures of 2,000 rows), with
+  `--no-cache`:
+
+  | Command | 0.8.3 | Fix alone |
+  |---|---|---|
+  | `cycles` | 23.6 s, 1,902 MB | 0.24 s, 41 MB |
+  | `health` | 25.2 s, 1,902 MB | 0.29 s, 51 MB |
+  | `explain` on a JSON key | 26.4 s, 1,902 MB | 0.27 s, 45 MB |
+  | `path --include-ambiguous` | 57.4 s, 2,190 MB | 0.28 s, 49 MB |
+
+- **`cycles` resolves no reference.** It reads the import graph alone, which
+  is all its answer ever used.
+- **The resolver orders each name's candidates once.** It sorted and scanned
+  every same-name definition at every reference.
+
+### Added
+
+- **A time limit for each MCP call.** `--call-limit SECONDS` (default 30)
+  bounds how long a call may work. Time spent parsing files the tag cache does
+  not hold is added on top, up to `--recache-grace SECONDS` (default 60). A
+  worker thread cannot be killed, so the long loops check a per-call deadline:
+  a call past its limit stops with a refusal that names both bounds, and a
+  call the client cancels stops the same way. Before this, an abandoned call
+  ran to the end, which is how the call in #56 held its memory for three
+  hours after its client gave up. Measured calls take 0.4 to 4 s on
+  repositories of up to 1,822 files. The CLI has no limit.
+
+### Changed
+
+- **Keys in JSON, TOML and YAML files leave the name graph.** `find-symbol`,
+  the overview and `expand` still list them. They are no longer definitions
+  for reference resolution, the map's ranking, `refs`, `explain`, `path` or
+  `health`, and a string value in a data file is no longer a reference. A
+  fixture that repeats a key thousands of times made every code spelling of
+  that key a candidate for each copy, and a JSON schema could rank above
+  every source file (#52). The patch linter still reads data-file references
+  for its dangling-caller check. Measured on loc-bench (150 instances, paired
+  bootstrap against 0.8.3): MAP +0.0031 (95% CI -0.0036 to +0.0120) and
+  recall@10 +0.0048 (95% CI -0.0067 to +0.0215), so no measurable change in
+  ranking quality.
+
 ## 0.8.3 -- 2026-10-03
 
 A stdio server answers a call that omits `repo_root` when the client
