@@ -65,6 +65,7 @@ from agentless_mcp.core.symbols import (
     qualname,
     symbol_stable_id,
 )
+from agentless_mcp.util.deadline import checkpoint
 
 # A path search that has looked at this many nodes has stopped answering the
 # question it was asked. The bound is a parameter everywhere it matters; this
@@ -694,6 +695,7 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
             _reference_links(facts, owners, resolver),
             _inherit_links(facts, resolver),
         ):
+            checkpoint()
             if resolution.tier is not Tier.AMBIGUOUS:
                 _add(edges, source, resolution, relation)
                 continue
@@ -768,6 +770,7 @@ def shortest_path(
     while frontier and not exhausted:
         following: list[str] = []
         for node in frontier:
+            checkpoint()
             visited += 1
             if visited > max_visited:
                 exhausted = True

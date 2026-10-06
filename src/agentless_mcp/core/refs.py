@@ -38,6 +38,7 @@ from agentless_mcp.core.symbols import (
     split_ordinal,
 )
 from agentless_mcp.core.treewalk import walk_repo
+from agentless_mcp.util.deadline import checkpoint
 from agentless_mcp.util.errors import LanguageUnavailable
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 
@@ -130,6 +131,7 @@ def scan_repo(
     skipped: list[SkippedFile] = []
 
     for repo_file in walk_repo(root):
+        checkpoint()
         if repo_file.path == CONFIG_FILENAME:
             continue
 

@@ -68,6 +68,7 @@ from agentless_mcp.core.symbols import (
 )
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
+from agentless_mcp.util.deadline import checkpoint
 from agentless_mcp.util.errors import OperationFailed
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -597,6 +598,7 @@ def companions_for(
 
     rows: list[render.TestCompanion] = []
     for path, depth in depths.items():
+        checkpoint()
         if not is_test_path(path):
             continue
         closer = by_depth[depth]

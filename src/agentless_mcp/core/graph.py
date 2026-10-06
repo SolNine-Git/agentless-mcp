@@ -53,6 +53,7 @@ from types import MappingProxyType
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import FileFacts, RefIndex, RepoScan
 from agentless_mcp.core.symbols import base_name
+from agentless_mcp.util.deadline import checkpoint
 
 DEFAULT_DAMPING = 0.85
 DEFAULT_EPSILON = 1e-6
@@ -348,6 +349,7 @@ def build_graph(
     reference_weight = RELATION_WEIGHTS["references"] if relation_weights else 1.0
 
     for facts in scan.files:
+        checkpoint()
         for target, contribution in _reference_contributions(
             facts, index, stoplist, known, reference_weight
         ):
@@ -534,6 +536,7 @@ def personalized_pagerank(
     iterations = 0
     converged = False
     while iterations < limits.max_iterations:
+        checkpoint()
         iterations += 1
         incoming = dict.fromkeys(nodes, 0.0)
         dangling = 0.0
