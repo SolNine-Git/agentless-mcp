@@ -24,7 +24,7 @@ symbol-level edge set:
 ``cycles``
     Module-level import cycles, by strongly connected component. The one
     question in this module that is about files rather than symbols, because
-    an import cycle is a property of modules.
+    an import cycle is a property of modules, so it resolves no reference.
 
 The last two read the *file*-level graph the map ranks -- "which files mention
 names these files define" -- because both are questions about modules and
@@ -47,9 +47,10 @@ neither needs a name bound to a declaration:
 Every one of them is bounded and says what it left out.
 """
 
+import heapq
 import math
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
@@ -228,6 +229,8 @@ class GraphService:
         ordered = rank_candidates(definitions, target)
         chosen = ordered[0]
         node = symbol_stable_id(chosen.symbol)
+        built = resolved.graph
+        arriving, leaving = built.ambiguous_degrees()
 
         return render.Explanation(
             target=target,
@@ -235,10 +238,18 @@ class GraphService:
             message="",
             alternatives=tuple(symbol_stable_id(entry.symbol) for entry in ordered[1:]),
             rationales=rationale_nodes(chosen.symbol),
-            fan_out=_tier_groups(resolved.graph.outgoing().get(node, ()), limit, outgoing=True),
-            fan_in=_tier_groups(resolved.graph.incoming().get(node, ()), limit, outgoing=False),
-            imports_out=_imports(resolved.graph, chosen.path, limit, declared=True),
-            imports_in=_imports(resolved.graph, chosen.path, limit, declared=False),
+            fan_out=(
+                *_tier_groups(built.outgoing().get(node, ()), limit, outgoing=True),
+                *_ambiguous_group(built.ambiguous_from(node), leaving[node], limit, outgoing=True),
+            ),
+            fan_in=(
+                *_tier_groups(built.incoming().get(node, ()), limit, outgoing=False),
+                *_ambiguous_group(
+                    built.ambiguous_into(node), arriving[node], limit, outgoing=False
+                ),
+            ),
+            imports_out=_imports(built, chosen.path, limit, declared=True),
+            imports_in=_imports(built, chosen.path, limit, declared=False),
         )
 
     def path(
@@ -283,13 +294,14 @@ class GraphService:
     def cycles(self, ctx: RepoContext, *, limit: int = DEFAULT_CYCLE_LIMIT) -> render.CycleReport:
         """Report every module-level import cycle, in a deterministic order."""
         bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
-        resolved = self._resolve(ctx)
-        cycles = resolve.import_cycles(resolved.graph)
+        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
+        imports = resolve.import_graph(scan.files)
+        cycles = resolve.import_cycles(imports)
         return render.CycleReport(
             cycles=tuple(render.CycleRow(files=cycle.files) for cycle in cycles[:limit]),
             total=len(cycles),
             limit=limit,
-            unresolved_imports=resolved.graph.unresolved_imports,
+            unresolved_imports=imports.unresolved_imports,
         )
 
     def health(self, ctx: RepoContext, *, limit: int = DEFAULT_HEALTH_LIMIT) -> render.HealthReport:
@@ -552,6 +564,11 @@ def _degrees(graph: resolve.ResolvedGraph) -> dict[str, _Degree]:
         else:
             weak_out[edge.source.node][edge.tier] += 1
             weak_in[edge.target.node][edge.tier] += 1
+    arriving, leaving = graph.ambiguous_degrees()
+    for node, count in arriving.items():
+        weak_in[node][resolve.Tier.AMBIGUOUS] += count
+    for node, count in leaving.items():
+        weak_out[node][resolve.Tier.AMBIGUOUS] += count
 
     nodes = set(counted_in) | set(counted_out) | set(weak_in) | set(weak_out)
     return {
@@ -728,17 +745,7 @@ def _tier_groups(
     """Group one side of a symbol's edges by tier, strongest tier first."""
     buckets: dict[resolve.Tier, list[render.EdgeRow]] = {}
     for edge in edges:
-        endpoint = edge.target if outgoing else edge.source
-        verb = _ACTIVE[edge.relation] if outgoing else _PASSIVE[edge.relation]
-        buckets.setdefault(edge.tier, []).append(
-            render.EdgeRow(
-                node=endpoint.node,
-                label=endpoint.label,
-                path=endpoint.path,
-                line=endpoint.line,
-                relation=verb,
-            )
-        )
+        buckets.setdefault(edge.tier, []).append(_edge_row(edge, outgoing=outgoing))
 
     return tuple(
         render.TierGroup(
@@ -749,6 +756,37 @@ def _tier_groups(
         )
         for tier in resolve.TIER_ORDER
         if tier in buckets
+    )
+
+
+def _ambiguous_group(
+    edges: Iterable[resolve.SymbolEdge],
+    total: int,
+    limit: int,
+    *,
+    outgoing: bool,
+) -> tuple[render.TierGroup, ...]:
+    if not total:
+        return ()
+    first = heapq.nsmallest(limit, edges, key=lambda edge: edge.sort_key)
+    return (
+        render.TierGroup(
+            tier=resolve.Tier.AMBIGUOUS.value,
+            tier_label=resolve.Tier.AMBIGUOUS.label,
+            rows=tuple(_edge_row(edge, outgoing=outgoing) for edge in first),
+            total=total,
+        ),
+    )
+
+
+def _edge_row(edge: resolve.SymbolEdge, *, outgoing: bool) -> render.EdgeRow:
+    endpoint = edge.target if outgoing else edge.source
+    return render.EdgeRow(
+        node=endpoint.node,
+        label=endpoint.label,
+        path=endpoint.path,
+        line=endpoint.line,
+        relation=_ACTIVE[edge.relation] if outgoing else _PASSIVE[edge.relation],
     )
 
 
