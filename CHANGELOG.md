@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 -- unreleased
+## 0.9.0 -- 2026-10-05
 
 The graph views stay small on a repository with large data fixtures, keys in
 data files leave the name graph, and the MCP server bounds how long one call
