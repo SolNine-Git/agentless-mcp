@@ -239,6 +239,15 @@ for a server with many clients, lower it to keep the machine's git and disk
 load predictable. It applies to stdio too, where the default is already the
 right answer for a single client.
 
+`--call-limit SECONDS` bounds how long one tool call may work, and defaults to
+30. Time a call spends parsing files the tag cache does not hold is added on
+top, up to `--recache-grace SECONDS` (default 60), so a call that rebuilds a
+cold cache is not stopped for that. A call past its limit stops at its next
+checkpoint and returns a refusal that names both bounds. A call the client
+cancels stops the same way, so its worker thread does not run on after the
+client has gone. Measured calls take 0.4 to 4 s on repositories of up to
+1,822 files. The CLI has no limit.
+
 Every tool takes `repo_root` first. It may be omitted only when the server
 holds one repository, or when the client advertises a root that selects
 exactly one; otherwise the refusal lists the roots to choose from. Under

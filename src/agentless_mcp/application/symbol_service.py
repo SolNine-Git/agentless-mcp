@@ -68,6 +68,7 @@ from agentless_mcp.core.symbols import (
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
 from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
+from agentless_mcp.util.deadline import checkpoint
 from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
 from agentless_mcp.util.tokens import TokenCounter
@@ -1038,6 +1039,7 @@ def _shared_callers(
 
     shared: dict[str, _Adjacency] = {}
     for caller_id, caller in sorted(callers.items()):
+        checkpoint()
         facts = by_path.get(caller.module_path)
         if facts is None:
             continue

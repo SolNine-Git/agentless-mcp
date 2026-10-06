@@ -46,21 +46,33 @@ is exactly the freshness of the scan that produced it -- which the per-file
 sha256 gate already guarantees.
 """
 
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Protocol
+from functools import cached_property
+from itertools import chain
+from typing import Protocol, TypeVar
 
 from agentless_mcp.core import graph
 from agentless_mcp.core.extractor import IdentifierRole
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.refs import Definition, FileFacts, RefIndex, RepoScan, line_owners
+from agentless_mcp.core.refs import (
+    Definition,
+    FileFacts,
+    RefIndex,
+    RepoScan,
+    in_name_graph,
+    line_owners,
+)
 from agentless_mcp.core.symbols import (
     ASTSymbol,
     base_name,
     qualname,
     symbol_stable_id,
 )
+from agentless_mcp.util.deadline import checkpoint
 
 # A path search that has looked at this many nodes has stopped answering the
 # question it was asked. The bound is a parameter everywhere it matters; this
@@ -70,6 +82,8 @@ DEFAULT_MAX_VISITED = 20_000
 # A component of one file is not a cycle: a module that imports itself is a
 # typo, not a dependency knot, and the import pass drops that edge anyway.
 _SMALLEST_CYCLE = 2
+
+_T = TypeVar("_T")
 
 
 class FileImports(Protocol):
@@ -191,12 +205,29 @@ class SymbolEdge:
 
 
 @dataclass(frozen=True)
+class AmbiguousReference:
+    """One name-only-ambiguous reference: an edge to every definition of ``name``."""
+
+    source: Endpoint
+    name: str
+    relation: Relation
+
+    @property
+    def sort_key(self) -> tuple[str, str, str, int]:
+        """Return the order the stored references are kept in."""
+        return (self.source.node, self.relation.value, self.name, self.source.line)
+
+
+@dataclass(frozen=True)
 class Resolution:
     """The tier one name resolved at, and every candidate at that tier."""
 
     name: str
     tier: Tier
     candidates: tuple[Definition, ...]
+
+
+_Link = tuple[Endpoint, Resolution, Relation]
 
 
 @dataclass(frozen=True)
@@ -284,20 +315,38 @@ class Resolver:
     index: RefIndex
     scopes: Mapping[str, ImportScope]
 
+    # Ordered and grouped once, not per reference: a name with thousands of
+    # definitions would otherwise be sorted and scanned at every spelling.
+    @cached_property
+    def _candidates(self) -> Mapping[str, tuple[Definition, ...]]:
+        return {name: _ordered(values) for name, values in self.index.definitions.items()}
+
+    @cached_property
+    def _candidates_by_path(self) -> Mapping[str, Mapping[str, tuple[Definition, ...]]]:
+        return {
+            name: _group(ordered, lambda entry: entry.path)
+            for name, ordered in self._candidates.items()
+        }
+
     def resolve(self, name: str, path: str) -> Resolution | None:
         """Resolve ``name`` as spelled in ``path``, or None when nothing defines it."""
-        candidates = self.index.definitions.get(name, ())
-        if not candidates:
+        ordered = self._candidates.get(name, ())
+        if not ordered:
             return None
 
-        ordered = _ordered(candidates)
-        same_file = tuple(entry for entry in ordered if _in_module_scope(entry, path))
+        by_path = self._candidates_by_path[name]
+        same_file = tuple(entry for entry in by_path.get(path, ()) if _in_module_scope(entry, path))
         if same_file:
             return Resolution(name=name, tier=Tier.SAME_FILE, candidates=same_file)
 
         scope = self.scopes.get(path)
         if scope is not None:
-            imported = tuple(entry for entry in ordered if scope.binds(name, entry.path))
+            imported = tuple(
+                entry
+                for defining, entries in by_path.items()
+                if scope.binds(name, defining)
+                for entry in entries
+            )
             if imported:
                 return Resolution(name=name, tier=Tier.IMPORTED, candidates=imported)
 
@@ -318,8 +367,9 @@ class Resolver:
         targets = scope.module_bindings.get(qualifier, frozenset())
         candidates = tuple(
             entry
-            for entry in _ordered(self.index.definitions.get(name, ()))
-            if entry.path in targets
+            for defining, entries in self._candidates_by_path.get(name, {}).items()
+            if defining in targets
+            for entry in entries
         )
         if not candidates:
             return None
@@ -349,6 +399,11 @@ class ResolvedGraph:
     Both travel with the graph rather than being recomputed beside it, because
     "nothing found" and "little was searched" must not render identically and
     only one of the two numbers can tell them apart.
+
+    ``edges`` holds every tier but the ambiguous one. Each ambiguous reference
+    is kept once in ``ambiguous`` and expanded against ``candidates`` on
+    demand: stored edge by edge, it costs references times same-name
+    definitions, and a data fixture that defines every key makes both large.
     """
 
     edges: tuple[SymbolEdge, ...]
@@ -356,6 +411,24 @@ class ResolvedGraph:
     files: tuple[str, ...]
     unresolved_imports: int = 0
     unresolved_internal_imports: int = 0
+    ambiguous: tuple[AmbiguousReference, ...] = ()
+    candidates: Mapping[str, tuple[Endpoint, ...]] = field(default_factory=dict)
+
+    @cached_property
+    def _ambiguous_by_source(self) -> Mapping[str, tuple[AmbiguousReference, ...]]:
+        return _group(self.ambiguous, lambda reference: reference.source.node)
+
+    @cached_property
+    def _ambiguous_by_name(self) -> Mapping[str, tuple[AmbiguousReference, ...]]:
+        return _group(self.ambiguous, lambda reference: reference.name)
+
+    @cached_property
+    def _candidates_at(self) -> Mapping[str, tuple[tuple[str, Endpoint], ...]]:
+        collected: dict[str, list[tuple[str, Endpoint]]] = {}
+        for name, targets in self.candidates.items():
+            for target in targets:
+                collected.setdefault(target.node, []).append((name, target))
+        return {node: tuple(entries) for node, entries in collected.items()}
 
     def outgoing(self) -> dict[str, tuple[SymbolEdge, ...]]:
         """Return the edges leaving each node, keyed by node id."""
@@ -368,6 +441,49 @@ class ResolvedGraph:
     def import_edges(self) -> tuple[SymbolEdge, ...]:
         """Return the module-level import edges alone."""
         return tuple(edge for edge in self.edges if edge.relation is Relation.IMPORTS)
+
+    def ambiguous_edges(self, reference: AmbiguousReference) -> Iterator[SymbolEdge]:
+        """Yield the edges one ambiguous reference stands for, unordered."""
+        name = reference.name
+        for target in self.candidates[name]:
+            edge = _edge(reference.source, target, name, reference.relation, Tier.AMBIGUOUS)
+            if edge is not None:
+                yield edge
+
+    def references_from(self, node: str) -> tuple[AmbiguousReference, ...]:
+        """Return the ambiguous references ``node`` makes, in stored order."""
+        return self._ambiguous_by_source.get(node, ())
+
+    def candidates_at(self, node: str) -> tuple[tuple[str, Endpoint], ...]:
+        """Return each candidate endpoint at ``node``, beside the name it answers."""
+        return self._candidates_at.get(node, ())
+
+    def ambiguous_from(self, node: str) -> Iterator[SymbolEdge]:
+        """Yield the ambiguous edges leaving ``node``, unordered."""
+        for reference in self.references_from(node):
+            yield from self.ambiguous_edges(reference)
+
+    def ambiguous_into(self, node: str) -> Iterator[SymbolEdge]:
+        """Yield the ambiguous edges arriving at ``node``, unordered."""
+        for name, target in self.candidates_at(node):
+            for reference in self._ambiguous_by_name[name]:
+                edge = _edge(reference.source, target, name, reference.relation, Tier.AMBIGUOUS)
+                if edge is not None:
+                    yield edge
+
+    def ambiguous_degrees(self) -> tuple[Counter[str], Counter[str]]:
+        """Count each node's ambiguous edges, arriving and leaving, without building one."""
+        arriving: Counter[str] = Counter()
+        leaving: Counter[str] = Counter()
+        for name, references in self._ambiguous_by_name.items():
+            targets = self.candidates[name]
+            at_node = Counter(target.node for target in targets)
+            sources = Counter(reference.source.node for reference in references)
+            for reference in references:
+                leaving[reference.source.node] += len(targets) - at_node[reference.source.node]
+            for node, count in at_node.items():
+                arriving[node] += count * (len(references) - sources[node])
+        return +arriving, +leaving
 
 
 @dataclass(frozen=True)
@@ -573,16 +689,29 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
     import line and the module-level use are different facts.
     """
     edges: list[SymbolEdge] = []
+    ambiguous: set[AmbiguousReference] = set()
+    candidates: dict[str, tuple[Endpoint, ...]] = {}
     definitions: dict[str, Definition] = {}
 
     for facts in scan.files:
+        edges.extend(_import_edges(facts, resolver.scopes.get(facts.path)))
+        if not in_name_graph(facts):
+            continue
         owners = line_owners(facts)
         for symbol in facts.symbols:
             definitions[symbol_stable_id(symbol)] = Definition(path=facts.path, symbol=symbol)
 
-        edges.extend(_reference_edges(facts, owners, resolver))
-        edges.extend(_inherit_edges(facts, resolver))
-        edges.extend(_import_edges(facts, resolver.scopes.get(facts.path)))
+        for source, resolution, relation in chain(
+            _reference_links(facts, owners, resolver),
+            _inherit_links(facts, resolver),
+        ):
+            checkpoint()
+            if resolution.tier is not Tier.AMBIGUOUS:
+                _add(edges, source, resolution, relation)
+                continue
+            ambiguous.add(AmbiguousReference(source, resolution.name, relation))
+            if resolution.name not in candidates:
+                candidates[resolution.name] = _endpoints(resolution.candidates)
 
     return ResolvedGraph(
         edges=tuple(sorted(set(edges), key=lambda edge: edge.sort_key)),
@@ -592,6 +721,8 @@ def build_graph(scan: RepoScan, resolver: Resolver) -> ResolvedGraph:
         unresolved_internal_imports=_unresolved_internal_imports(
             resolver.scopes.values(), resolver.scopes.keys()
         ),
+        ambiguous=tuple(sorted(ambiguous, key=lambda reference: reference.sort_key)),
+        candidates=candidates,
     )
 
 
@@ -624,8 +755,7 @@ def shortest_path(
     usable = [
         edge
         for edge in resolved.edges
-        if (edge_policy.include_unique or edge.tier is not Tier.UNIQUE)
-        and (edge_policy.include_ambiguous or edge.tier is not Tier.AMBIGUOUS)
+        if edge_policy.include_unique or edge.tier is not Tier.UNIQUE
     ]
     adjacency = _undirected(usable)
 
@@ -639,6 +769,9 @@ def shortest_path(
 
     previous: dict[str, tuple[str, Hop]] = {}
     seen = {source}
+    # A name expanded once has marked every node it reaches seen, so the search
+    # skips it after that: a repeat would only add hops it never takes.
+    expanded: set[tuple[bool, str]] = set()
     frontier = [source]
     visited = 0
     exhausted = False
@@ -646,11 +779,17 @@ def shortest_path(
     while frontier and not exhausted:
         following: list[str] = []
         for node in frontier:
+            checkpoint()
             visited += 1
             if visited > max_visited:
                 exhausted = True
                 break
-            for hop in adjacency.get(node, ()):
+            hops: Sequence[Hop] = adjacency.get(node, ())
+            if edge_policy.include_ambiguous:
+                extra, newly = _ambiguous_hops(resolved, node, expanded)
+                expanded |= newly
+                hops = sorted((*hops, *extra), key=lambda hop: hop.edge.sort_key)
+            for hop in hops:
                 reached = hop.arrival.node
                 if reached in seen:
                     continue
@@ -767,14 +906,12 @@ def _names_this_repository(module: str, segments: frozenset[str]) -> bool:
     return bool(lead) and lead in segments
 
 
-def _reference_edges(
+def _reference_links(
     facts: FileFacts,
     owners: Mapping[int, ASTSymbol],
     resolver: Resolver,
-) -> list[SymbolEdge]:
-    """Resolve one file's identifier references into edges."""
+) -> Iterator[_Link]:
     declarations = {(symbol.name, symbol.line_number) for symbol in facts.symbols}
-    edges: list[SymbolEdge] = []
 
     for ref in facts.refs:
         if not ref.is_resolvable:
@@ -818,19 +955,10 @@ def _reference_edges(
             if owner is not None
             else file_endpoint(facts.path, ref.line)
         )
-        _add(edges, source, resolution, Relation.REFERENCES)
-
-    return edges
+        yield source, resolution, Relation.REFERENCES
 
 
-def _inherit_edges(facts: FileFacts, resolver: Resolver) -> list[SymbolEdge]:
-    """Resolve one file's declared base classes into edges.
-
-    Only symbols that already carry ``bases`` produce these: the extractor is
-    the authority on what a declaration says, and this module does not reach
-    past what it recorded.
-    """
-    edges: list[SymbolEdge] = []
+def _inherit_links(facts: FileFacts, resolver: Resolver) -> Iterator[_Link]:
     for symbol in facts.symbols:
         source = _symbol_endpoint(facts.path, symbol)
         for base in symbol.bases:
@@ -840,8 +968,7 @@ def _inherit_edges(facts: FileFacts, resolver: Resolver) -> list[SymbolEdge]:
             resolution = resolver.resolve(name, facts.path)
             if resolution is None:
                 continue
-            _add(edges, source, resolution, Relation.INHERITS)
-    return edges
+            yield source, resolution, Relation.INHERITS
 
 
 def _add(
@@ -921,6 +1048,10 @@ def _definition_endpoint(definition: Definition) -> Endpoint:
     return _symbol_endpoint(definition.path, definition.symbol)
 
 
+def _endpoints(candidates: Sequence[Definition]) -> tuple[Endpoint, ...]:
+    return tuple(dict.fromkeys(_definition_endpoint(entry) for entry in candidates))
+
+
 def _in_module_scope(candidate: Definition, path: str) -> bool:
     """True when ``path``'s own module namespace binds this definition.
 
@@ -944,14 +1075,10 @@ def _ordered(candidates: Sequence[Definition]) -> tuple[Definition, ...]:
     )
 
 
-def _group(
-    edges: Iterable[SymbolEdge],
-    key: Callable[[SymbolEdge], str],
-) -> dict[str, tuple[SymbolEdge, ...]]:
-    """Bucket edges by one endpoint's node id, preserving the sorted order."""
-    collected: dict[str, list[SymbolEdge]] = {}
-    for edge in edges:
-        collected.setdefault(key(edge), []).append(edge)
+def _group(items: Iterable[_T], key: Callable[[_T], str]) -> dict[str, tuple[_T, ...]]:
+    collected: dict[str, list[_T]] = {}
+    for item in items:
+        collected.setdefault(key(item), []).append(item)
     return {node: tuple(bucket) for node, bucket in collected.items()}
 
 
@@ -962,6 +1089,26 @@ def _undirected(edges: Sequence[SymbolEdge]) -> dict[str, tuple[Hop, ...]]:
         collected.setdefault(edge.source.node, []).append(Hop(edge=edge, forward=True))
         collected.setdefault(edge.target.node, []).append(Hop(edge=edge, forward=False))
     return {node: tuple(hops) for node, hops in collected.items()}
+
+
+def _ambiguous_hops(
+    resolved: ResolvedGraph,
+    node: str,
+    expanded: AbstractSet[tuple[bool, str]],
+) -> tuple[list[Hop], set[tuple[bool, str]]]:
+    hops: list[Hop] = []
+    arriving = {(False, name) for name, _ in resolved.candidates_at(node)} - expanded
+    if arriving:
+        hops.extend(Hop(edge=edge, forward=False) for edge in resolved.ambiguous_into(node))
+    # The search takes only the first hop to each neighbour, so the lowest-line
+    # reference per name stands in for a file that spells it on many lines.
+    first: dict[tuple[Relation, str], AmbiguousReference] = {}
+    for reference in resolved.references_from(node):
+        if (True, reference.name) not in expanded:
+            first.setdefault((reference.relation, reference.name), reference)
+    for reference in first.values():
+        hops.extend(Hop(edge=edge, forward=True) for edge in resolved.ambiguous_edges(reference))
+    return hops, arriving | {(True, reference.name) for reference in first.values()}
 
 
 def _unwind(

@@ -16,6 +16,7 @@ import pytest
 from agentless_mcp.application import render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
+from agentless_mcp.core import resolve
 from agentless_mcp.util.errors import AgentlessError
 
 CORE = """\
@@ -399,6 +400,83 @@ class TestCycles:
         assert report.total == 2
         assert report.omitted == 1
         assert "1 more cycles not listed" in render.render_cycles(report)
+
+    def test_cycles_resolve_no_reference(self, graphs, tmp_path, monkeypatch):
+        def refuse(_scan, _index):
+            message = "cycles resolved every reference to read the imports"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(resolve, "resolve_repo", refuse)
+        report = graphs.cycles(build(tmp_path, CYCLE_FILES))
+
+        assert report.cycles[0].chain == "x.py -> y.py -> x.py"
+
+
+# `shared` has three definitions and more ambiguous callers than a limit of two
+# shows. Two of them are module-level lines of one file.
+AMBIGUOUS_FILES = {
+    "left.py": "def shared(value):\n    return value\n",
+    "right.py": "def shared(value):\n    return value\n\n\ndef shared(value):\n    return shared\n",
+    "lines.py": "shared\nshared\n\n\n"
+    + "".join(f"def call_{index}(value):\n    return shared(value)\n\n\n" for index in range(4)),
+}
+
+
+def edge_by_edge(real):
+    """Wrap ``resolve_repo`` so its graph stores every ambiguous edge one by one."""
+
+    def resolve_and_expand(scan, index):
+        resolver, graph = real(scan, index)
+        expanded = [edge for ref in graph.ambiguous for edge in graph.ambiguous_edges(ref)]
+        return resolver, replace(
+            graph,
+            edges=tuple(sorted([*graph.edges, *expanded], key=lambda edge: edge.sort_key)),
+            ambiguous=(),
+            candidates={},
+        )
+
+    return resolve_and_expand
+
+
+class TestTheAmbiguousTierIsExpandedOnDemand:
+    """`explain` and `health` read the ambiguous tier without storing its edges.
+
+    Each answer is held to the one the same repository gives when every
+    ambiguous edge is stored one by one, which is how the tier was kept before.
+    """
+
+    TARGETS = (
+        "py:left.py::shared",
+        "py:right.py::shared",
+        "py:right.py::shared#2",
+        "py:lines.py::call_0",
+    )
+
+    def cards(self, graphs, repo):
+        """Every target explained at a limit below and above its fan sizes."""
+        return [
+            graphs.explain(repo, target, limit=limit)
+            for target in self.TARGETS
+            for limit in (2, 20)
+        ]
+
+    def test_explain_and_health_match_the_edge_by_edge_graph(self, graphs, tmp_path, monkeypatch):
+        repo = build(tmp_path, AMBIGUOUS_FILES)
+        cards = self.cards(graphs, repo)
+        health = graphs.health(repo, limit=50)
+
+        monkeypatch.setattr(resolve, "resolve_repo", edge_by_edge(resolve.resolve_repo))
+
+        assert self.cards(graphs, repo) == cards
+        assert graphs.health(repo, limit=50) == health
+
+    def test_the_fan_in_counts_every_ambiguous_caller_past_the_limit(self, graphs, tmp_path):
+        card = graphs.explain(build(tmp_path, AMBIGUOUS_FILES), "py:left.py::shared", limit=2)
+
+        (group,) = card.fan_in
+        assert group.tier == "ambiguous"
+        assert group.total == 6
+        assert [(row.path, row.line) for row in group.rows] == [("lines.py", 1), ("lines.py", 2)]
 
 
 # The three-way collision a live smoke run exposed: one class method spelled

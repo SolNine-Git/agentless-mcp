@@ -560,6 +560,11 @@ Matching is by name, so fan-in is deliberately fuzzy. It over-reports across
 files that share a short name rather than under-reports, because a missed
 caller is the expensive error.
 
+Keys in JSON, TOML and YAML files are not definitions. `find-symbol`, the
+overview and `expand` list them, but a key has no fan-in, a code spelling of a
+key is not a reference to the data file, and a string value in a data file
+references nothing. Use `grep` to find where a key is spelled.
+
 The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing:
 

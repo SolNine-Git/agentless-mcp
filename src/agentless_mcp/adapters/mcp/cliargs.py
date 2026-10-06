@@ -85,6 +85,11 @@ DEFAULT_MAX_CONCURRENCY = 8
 MIN_CONCURRENCY = 1
 MAX_CONCURRENCY = 64
 
+# 30 s matches the longest single git wait a call makes (`git log -L`). Measured
+# calls run 0.4-4 s, and a cache rebuild earns up to the grace on top.
+DEFAULT_CALL_LIMIT_SECONDS = 30.0
+DEFAULT_RECACHE_GRACE_SECONDS = 60.0
+
 # find_referencing_symbols, capabilities and history sit on both surfaces, so
 # `both` publishes a fifteen-name union rather than v2's six plus v1's twelve.
 SURFACE_V1: Literal["v1"] = "v1"
@@ -356,6 +361,16 @@ def _check_concurrency(parser: argparse.ArgumentParser, args: argparse.Namespace
         )
 
 
+def _check_call_limits(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.call_limit <= 0:
+        parser.error(
+            f"--call-limit {args.call_limit:g} is not positive. Every call would stop at "
+            "its first checkpoint, so the server would answer nothing."
+        )
+    if args.recache_grace < 0:
+        parser.error(f"--recache-grace {args.recache_grace:g} is negative. Use 0 for no grace.")
+
+
 def http_binding(args: argparse.Namespace) -> tuple[str, int]:
     """The address the HTTP transport listens on, defaults filled in.
 
@@ -486,6 +501,22 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         f"{MIN_CONCURRENCY}-{MAX_CONCURRENCY}, default {DEFAULT_MAX_CONCURRENCY}. Raise it "
         f"for a --transport {TRANSPORT_HTTP} server several clients share",
     )
+    parser.add_argument(
+        "--call-limit",
+        default=DEFAULT_CALL_LIMIT_SECONDS,
+        type=float,
+        metavar="SECONDS",
+        help="how long one tool call may work before it stops with a refusal; a call the "
+        f"client cancels also stops. Default {DEFAULT_CALL_LIMIT_SECONDS:g}",
+    )
+    parser.add_argument(
+        "--recache-grace",
+        default=DEFAULT_RECACHE_GRACE_SECONDS,
+        type=float,
+        metavar="SECONDS",
+        help="extra time a call may spend parsing files the tag cache does not hold, on "
+        f"top of --call-limit. Default {DEFAULT_RECACHE_GRACE_SECONDS:g}",
+    )
     try:
         args = parser.parse_args(argv)
         # Inside the try on purpose: parser.error leaves by the same SystemExit
@@ -493,6 +524,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         # diagnostic below rather than reading to the operator as a dead socket.
         _check_transport(parser, args)
         _check_concurrency(parser, args)
+        _check_call_limits(parser, args)
     except SystemExit as exc:
         # Under an MCP client the exit-2 usage error is invisible and the whole
         # session reads as a closed connection, so the argv itself is the

@@ -78,6 +78,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agentless_mcp.core.graph import RefGraph
+from agentless_mcp.util.deadline import checkpoint
 
 # The resolution knob of the modularity objective. Above 1.0 the partition
 # breaks into more, smaller communities; below it, into fewer, larger ones.
@@ -270,6 +271,7 @@ def detect_communities(
     passes = 0
     converged = False
     while passes < max_passes:
+        checkpoint()
         passes += 1
         if not _one_pass(nodes, weighted, total, membership, resolution):
             converged = True

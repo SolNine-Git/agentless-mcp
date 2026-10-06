@@ -28,9 +28,11 @@ from agentless_mcp.adapters.mcp import cliargs
 from agentless_mcp.adapters.mcp import server as server_module
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.cliargs import (
+    DEFAULT_CALL_LIMIT_SECONDS,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_RECACHE_GRACE_SECONDS,
     DISTRIBUTION_NAME,
     MAX_CONCURRENCY,
     MIN_CONCURRENCY,
@@ -59,7 +61,8 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
-from agentless_mcp.util.errors import SecurityRefusal
+from agentless_mcp.util import deadline
+from agentless_mcp.util.errors import CallStopped, SecurityRefusal
 
 
 def build_server(handlers):
@@ -2311,3 +2314,132 @@ class TestNothingBlocksTheEventLoop:
             ["find in", "find out", "dir in", "dir out"],
             ["dir in", "dir out", "find in", "find out"],
         )
+
+
+class TestTheCallLimit:
+    """A handler thread cannot be killed, so each call carries a deadline it checks.
+
+    The handlers here run in the worker thread and reach their own call's
+    deadline, so a test moves that deadline's start back instead of waiting on
+    a real clock.
+    """
+
+    def call(self, server, repo):
+        """One symbols call, with its error text if it fails."""
+
+        async def go():
+            async with Client(server) as client:
+                return await asyncio.wait_for(
+                    client.call_tool(
+                        "symbols", {"repo_root": str(repo), "operation": "find", "name": "quote"}
+                    ),
+                    OFFLOAD_DEADLINE_SECONDS,
+                )
+
+        return asyncio.run(go())
+
+    def test_a_call_past_its_limit_stops_with_a_refusal_naming_the_limit(self, services, one_repo):
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2, call_limit=5, recache_grace=7)
+
+        def overdue(*_args, **_kwargs):
+            active = deadline.active()
+            assert active is not None
+            active.started -= 60
+            deadline.checkpoint()
+            return "finished"
+
+        handlers.find_symbol = overdue
+
+        with pytest.raises(ToolError) as refused:
+            self.call(server, one_repo)
+
+        message = str(refused.value)
+        assert "stopped after 60 s" in message
+        assert "allows 5 s of work per call, plus up to 7 s" in message
+        assert "--call-limit" in message
+
+    def test_a_call_inside_its_limit_answers(self, services, one_repo):
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2, call_limit=5, recache_grace=0)
+
+        def prompt(*_args, **_kwargs):
+            deadline.checkpoint()
+            return "finished"
+
+        handlers.find_symbol = prompt
+
+        assert self.call(server, one_repo).content[0].text == "finished"
+
+    def test_a_cancelled_call_stops_its_worker_at_the_next_checkpoint(self, services, one_repo):
+        """The leak behind issue 56: an abandoned call ran on for hours."""
+        handlers = ToolHandlers([one_repo], services, auto_index=False)
+        server = build_surface_server(handlers, surface=SURFACE_V2)
+        entered = threading.Event()
+        released = threading.Event()
+        stopped = []
+
+        def spinning(*_args, **_kwargs):
+            entered.set()
+            try:
+                while not released.wait(0.01):
+                    deadline.checkpoint()
+            except CallStopped as error:
+                stopped.append(str(error))
+                raise
+            return "ran to the end"
+
+        handlers.find_symbol = spinning
+
+        async def go():
+            async with Client(server) as client:
+                call = asyncio.ensure_future(
+                    client.call_tool(
+                        "symbols",
+                        {"repo_root": str(one_repo), "operation": "find", "name": "quote"},
+                    )
+                )
+                await asyncio.to_thread(entered.wait, OFFLOAD_DEADLINE_SECONDS)
+                call.cancel()
+                await asyncio.gather(call, return_exceptions=True)
+
+        try:
+            asyncio.run(go())
+            for _ in range(int(OFFLOAD_DEADLINE_SECONDS / 0.01)):
+                if stopped:
+                    break
+                released.wait(0.01)
+        finally:
+            released.set()
+
+        assert entered.is_set()
+        assert stopped == ["the client cancelled this call, so it stopped at its next checkpoint"]
+
+
+class TestTheCallLimitFlags:
+    def refuse(self, capsys, argv):
+        """Parse ``argv`` expecting a usage refusal; return what stderr said."""
+        with pytest.raises(SystemExit) as caught:
+            parse_args(argv)
+        assert caught.value.code == 2
+        return capsys.readouterr().err
+
+    def test_the_defaults_are_the_named_constants(self):
+        args = parse_args([])
+        assert args.call_limit == DEFAULT_CALL_LIMIT_SECONDS
+        assert args.recache_grace == DEFAULT_RECACHE_GRACE_SECONDS
+
+    def test_both_bounds_are_settable(self):
+        args = parse_args(["--call-limit", "12.5", "--recache-grace", "0"])
+        assert (args.call_limit, args.recache_grace) == (12.5, 0)
+
+    @pytest.mark.parametrize(
+        ("argv", "named"),
+        [
+            (["--call-limit", "0"], "--call-limit"),
+            (["--call-limit", "-3"], "--call-limit"),
+            (["--recache-grace", "-1"], "--recache-grace"),
+        ],
+    )
+    def test_a_bound_that_cannot_bound_is_refused_at_startup(self, capsys, argv, named):
+        assert named in self.refuse(capsys, argv)

@@ -8,6 +8,10 @@ then defines its own -- and the assertion is that the local definition wins
 and the imported one does not appear on the edge at all.
 """
 
+from collections import Counter
+from dataclasses import replace
+from itertools import product
+
 import pytest
 
 from agentless_mcp.core import grammars, refs, resolve, symbols
@@ -235,11 +239,22 @@ def repo(tmp_path, extractor):
     return resolved(write(tmp_path, FILES), extractor)
 
 
+def every_edge(graph):
+    """The stored edges and every edge the ambiguous references stand for, in edge order."""
+    expanded = [edge for ref in graph.ambiguous for edge in graph.ambiguous_edges(ref)]
+    return tuple(sorted([*graph.edges, *expanded], key=lambda edge: edge.sort_key))
+
+
+def expanded(graph):
+    """The same graph with every ambiguous edge stored one by one, as before the split."""
+    return replace(graph, edges=every_edge(graph), ambiguous=(), candidates={})
+
+
 def edges_from(graph, source, name):
     """Every reference edge leaving ``source`` that spells ``name``."""
     return [
         edge
-        for edge in graph.edges
+        for edge in every_edge(graph)
         if edge.source.node == source
         and edge.name == name
         and edge.relation is resolve.Relation.REFERENCES
@@ -533,12 +548,121 @@ class TestDeterminism:
         second = resolved(root, extractor)[1]
         assert [edge.sort_key for edge in first.edges] == [edge.sort_key for edge in second.edges]
         assert repr(first.edges) == repr(second.edges)
+        assert repr(first.ambiguous) == repr(second.ambiguous)
+        assert repr(first.candidates) == repr(second.candidates)
 
     def test_identical_edges_are_reported_once(self, tmp_path, extractor):
         repeated = "def a():\n    return 1\n\n\ndef b():\n    return a() + a() + a()\n"
         root = write(tmp_path, {"repeat.py": repeated})
         _, graph = resolved(root, extractor)
         assert len(edges_from(graph, "py:repeat.py::b", "a")) == 1
+
+
+REPEATED = {
+    "left.py": "def shared(value):\n    return value\n",
+    "right.py": "def shared(value):\n    return value\n\n\ndef shared(value):\n    return value\n",
+    "lines.py": "shared\nshared\n\n\ndef ask(value):\n    return only(shared(value))\n",
+    "member.py": "class Keeper:\n    def shared(self):\n        return shared\n",
+    "solo.py": "def only(value):\n    return value\n",
+    "user.py": "import lines\n\n\ndef go(value):\n    return lines.ask(value)\n",
+}
+
+
+class TestAmbiguousReferencesAreStoredOnce:
+    """A name-only-ambiguous reference is kept once, not once per candidate.
+
+    Stored edge by edge, the tier costs references times same-name
+    definitions. Each test here holds the compact form to the answer the
+    edge-by-edge form gave. The fixture spells `shared` on two module-level
+    lines, in `ask`, and in `Keeper.shared`, which is itself a candidate.
+    """
+
+    @pytest.fixture
+    def graph(self, tmp_path, extractor):
+        return resolved(write(tmp_path, REPEATED), extractor)
+
+    def test_the_stored_edges_hold_no_ambiguous_tier(self, graph):
+        _, built = graph
+        assert built.ambiguous
+        assert all(edge.tier is not resolve.Tier.AMBIGUOUS for edge in built.edges)
+
+    def test_each_reference_is_stored_once(self, graph):
+        _, built = graph
+        assert [(ref.source.location, ref.name) for ref in built.ambiguous] == [
+            ("lines.py:1", "shared"),
+            ("lines.py:2", "shared"),
+            ("lines.py:5", "shared"),
+            ("member.py:2", "shared"),
+        ]
+
+    def test_every_spelling_file_resolves_the_candidates_stored_for_the_name(self, graph):
+        resolver, built = graph
+        for ref in built.ambiguous:
+            resolution = resolver.resolve(ref.name, ref.source.path)
+            assert resolution.tier is resolve.Tier.AMBIGUOUS
+            assert [symbols.symbol_stable_id(entry.symbol) for entry in resolution.candidates] == [
+                target.node for target in built.candidates[ref.name]
+            ]
+
+    def test_a_reference_expands_to_every_candidate_but_its_own_source(self, graph):
+        _, built = graph
+        edges = [edge for ref in built.ambiguous for edge in built.ambiguous_edges(ref)]
+        assert len(edges) == len(set(edges)) == 3 * 4 + 3
+        assert all(edge.source.node != edge.target.node for edge in edges)
+
+    def test_the_degrees_count_every_expanded_edge(self, graph):
+        _, built = graph
+        edges = [edge for ref in built.ambiguous for edge in built.ambiguous_edges(ref)]
+        arriving, leaving = built.ambiguous_degrees()
+        assert arriving == Counter(edge.target.node for edge in edges)
+        assert leaving == Counter(edge.source.node for edge in edges)
+
+    def test_the_edges_at_one_node_are_the_expanded_edges_at_it(self, graph):
+        _, built = graph
+        edges = sorted(
+            (edge for ref in built.ambiguous for edge in built.ambiguous_edges(ref)),
+            key=lambda edge: edge.sort_key,
+        )
+        for node in {*built.definitions, *built.files}:
+            leaving = sorted(built.ambiguous_from(node), key=lambda edge: edge.sort_key)
+            arriving = sorted(built.ambiguous_into(node), key=lambda edge: edge.sort_key)
+            assert leaving == [edge for edge in edges if edge.source.node == node]
+            assert arriving == [edge for edge in edges if edge.target.node == node]
+
+    def test_a_search_through_ambiguous_edges_walks_the_expanded_graph(self, graph):
+        _, built = graph
+        oracle = expanded(built)
+        nodes = sorted({*built.definitions, *built.files})
+        for source, target, unique, bound in product(nodes, nodes, (False, True), (2, 20_000)):
+            policy = resolve.PathEdgePolicy(include_unique=unique, include_ambiguous=True)
+            assert resolve.shortest_path(
+                built, source, target, edge_policy=policy, max_visited=bound
+            ) == resolve.shortest_path(
+                oracle, source, target, edge_policy=policy, max_visited=bound
+            ), (source, target, unique, bound)
+
+    def test_a_search_expands_each_name_once_however_many_candidates_it_visits(
+        self, graph, monkeypatch
+    ):
+        _, built = graph
+        expansions = []
+        into = resolve.ResolvedGraph.ambiguous_into
+
+        def counted(self, node):
+            expansions.append(node)
+            return into(self, node)
+
+        monkeypatch.setattr(resolve.ResolvedGraph, "ambiguous_into", counted)
+        found = resolve.shortest_path(
+            built,
+            "lines.py",
+            "py:solo.py::only",
+            edge_policy=resolve.PathEdgePolicy(include_ambiguous=True),
+        )
+
+        assert not found.found
+        assert found.visited > len(built.candidates["shared"])
+        assert len(expansions) == 1
 
 
 class TestPaths:
@@ -831,7 +955,7 @@ class TestTheDeclarationGuardCostsBothWays:
         guard's comment in `core/resolve.py` names as the real fix.
         """
         _, graph = resolved(write(tmp_path, UNMODELLED_DECLARATION_GO), extractor)
-        edges = [edge for edge in graph.edges if edge.name == "handler"]
+        edges = [edge for edge in every_edge(graph) if edge.name == "handler"]
 
         assert [(edge.source.path, edge.target.path, edge.tier) for edge in edges] == [
             ("b.go", "a.go", resolve.Tier.UNIQUE)
@@ -860,7 +984,9 @@ class TestAnOutOfLineDefinitionIsNotAReference:
         }
         _, graph = resolved(write(tmp_path, files), extractor)
         strays = [
-            edge for edge in graph.edges if edge.name == "emit" and edge.target.path == "util.cpp"
+            edge
+            for edge in every_edge(graph)
+            if edge.name == "emit" and edge.target.path == "util.cpp"
         ]
 
         assert strays == []

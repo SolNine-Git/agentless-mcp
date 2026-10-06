@@ -77,6 +77,10 @@ class RepoResolutionError(AgentlessError):
     """A repository root could not be resolved or interrogated."""
 
 
+class CallStopped(AgentlessError):
+    """A call stopped at a checkpoint: its time limit ran out, or its client left."""
+
+
 class CacheLocked(AgentlessError):
     """Another process holds the tag cache's write lock.
 

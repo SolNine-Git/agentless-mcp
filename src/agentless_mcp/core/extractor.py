@@ -31,6 +31,7 @@ from tree_sitter import Node, Parser
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
+from agentless_mcp.util.deadline import recaching
 
 # Handlers normalised for the registry: both take the parsed root, the source
 # bytes, the module path, and the accumulator list they append to.
@@ -1753,6 +1754,9 @@ RUST_ITEM_TYPES = frozenset(
         "type_item",
     }
 )
+# Languages whose symbols are document keys rather than code declarations.
+DATA_LANGUAGES = frozenset({"json", "toml", "yaml"})
+
 # The config surfaces name a pair the same way in every grammar in the table,
 # and a TOML table header owns the pairs below it. `[[array]]` is a table
 # header too: its pairs have an owner exactly as `[table]`'s do.
@@ -1936,21 +1940,24 @@ class TreeSitterExtractor:
         stable-id uniqueness inside a file is a property of extraction rather
         than something each of the six handlers has to remember.
         """
-        try:
-            parser = self.get_parser(language)
-        except UnsupportedLanguageError as e:
-            logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
-            return []
+        with recaching():
+            try:
+                parser = self.get_parser(language)
+            except UnsupportedLanguageError as e:
+                logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
+                return []
 
-        source_bytes = bytes(source, "utf-8")
-        tree = parser.parse(source_bytes)
+            source_bytes = bytes(source, "utf-8")
+            tree = parser.parse(source_bytes)
 
-        # get_parser succeeded, so the language is registered.
-        symbols: list[ASTSymbol] = []
-        self._registry[language].extract_symbols(tree.root_node, source_bytes, module_path, symbols)
-        defined = disambiguate(symbols)
-        rationales = _extract_rationales(tree.root_node, source_bytes)
-        return _attach_rationales(defined, rationales)
+            # get_parser succeeded, so the language is registered.
+            symbols: list[ASTSymbol] = []
+            self._registry[language].extract_symbols(
+                tree.root_node, source_bytes, module_path, symbols
+            )
+            defined = disambiguate(symbols)
+            rationales = _extract_rationales(tree.root_node, source_bytes)
+            return _attach_rationales(defined, rationales)
 
     # ------------------------------------------------------------------
     # Public import extraction API
@@ -1964,19 +1971,22 @@ class TreeSitterExtractor:
         Same contract as `extract_from_source`: unsupported means empty, and
         a grammar that is unavailable or will not load raises.
         """
-        try:
-            parser = self.get_parser(language)
-        except UnsupportedLanguageError as e:
-            logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
-            return []
+        with recaching():
+            try:
+                parser = self.get_parser(language)
+            except UnsupportedLanguageError as e:
+                logger.warning("Unsupported language %s (%s): %s", language, module_path, e)
+                return []
 
-        source_bytes = bytes(source, "utf-8")
-        tree = parser.parse(source_bytes)
+            source_bytes = bytes(source, "utf-8")
+            tree = parser.parse(source_bytes)
 
-        # get_parser succeeded, so the language is registered.
-        imports: list[ImportStatement] = []
-        self._registry[language].extract_imports(tree.root_node, source_bytes, module_path, imports)
-        return imports
+            # get_parser succeeded, so the language is registered.
+            imports: list[ImportStatement] = []
+            self._registry[language].extract_imports(
+                tree.root_node, source_bytes, module_path, imports
+            )
+            return imports
 
     # ------------------------------------------------------------------
     # Public reference extraction API
@@ -1989,7 +1999,8 @@ class TreeSitterExtractor:
         the extractor so that the tag cache -- which stores all three -- has
         one object to ask.
         """
-        return collect_refs(source, language, path)
+        with recaching():
+            return collect_refs(source, language, path)
 
     # ------------------------------------------------------------------
     # Generic symbol / import extraction (table-driven)

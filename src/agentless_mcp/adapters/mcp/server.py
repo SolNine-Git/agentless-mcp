@@ -68,7 +68,9 @@ from pydantic import Field, ValidationError
 
 from agentless_mcp.adapters.mcp.annotations import read_only
 from agentless_mcp.adapters.mcp.cliargs import (
+    DEFAULT_CALL_LIMIT_SECONDS,
     DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_RECACHE_GRACE_SECONDS,
     DISTRIBUTION_NAME,
     SURFACE_BOTH,
     SURFACE_V1,
@@ -127,7 +129,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NO
 from agentless_mcp.core.symbols import SymbolKind
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIPTIONS
-from agentless_mcp.util import bounds, fslimits, textsafe
+from agentless_mcp.util import bounds, deadline, fslimits, textsafe
 from agentless_mcp.util.errors import AgentlessError, OperationFailed, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -1127,6 +1129,8 @@ def build_server(
     surface: Surface = SURFACE_V2,
     *,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    call_limit: float = DEFAULT_CALL_LIMIT_SECONDS,
+    recache_grace: float = DEFAULT_RECACHE_GRACE_SECONDS,
 ) -> FastMCP[None]:
     """Register the selected tool surface on a FastMCP server and return it.
 
@@ -1157,6 +1161,11 @@ def build_server(
     Every offload passes through one gate of ``max_concurrency`` permits held by this
     server, and a call takes one permit at a time -- resolving releases before the
     context yields -- so a limit of 1 serializes calls rather than deadlocking one.
+
+    A thread cannot be stopped from outside, so each call carries a
+    :class:`~agentless_mcp.util.deadline.Deadline` that its long loops check: past
+    ``call_limit`` seconds, plus up to ``recache_grace`` spent parsing uncached
+    files, or once the client cancels, the call stops at its next checkpoint.
     """
     # Without an explicit version FastMCP advertises its own in the initialize
     # handshake, which tells a client the version of the framework rather than
@@ -1181,7 +1190,13 @@ def build_server(
         work: Callable[_Work, _Answer], *args: _Work.args, **kwargs: _Work.kwargs
     ) -> _Answer:
         async with gate:
-            return await asyncio.to_thread(work, *args, **kwargs)
+            try:
+                return await asyncio.to_thread(work, *args, **kwargs)
+            except asyncio.CancelledError:
+                abandoned = deadline.active()
+                if abandoned is not None:
+                    abandoned.cancel()
+                raise
 
     @asynccontextmanager
     async def context_for(
@@ -1190,17 +1205,18 @@ def build_server(
         *,
         no_cache: bool = False,
     ) -> AsyncIterator[RepoContext]:
-        roots: list[Path] = []
-        if handlers.needs_client_roots(repo_root):
-            roots = await effective_client_roots(context)
-        # Resolving runs the git snapshot to its 5 s bound and opens the tag
-        # cache, so it leaves the loop for the same reason a handler does.
-        ctx = await offload(handlers.resolve, repo_root, roots, no_cache=no_cache)
-        handlers.refresh_in_background(ctx, no_cache=no_cache)
-        try:
-            yield ctx
-        finally:
-            ctx.close()
+        with deadline.bounded(deadline.Deadline(limit=call_limit, grace=recache_grace)):
+            roots: list[Path] = []
+            if handlers.needs_client_roots(repo_root):
+                roots = await effective_client_roots(context)
+            # Resolving runs the git snapshot to its 5 s bound and opens the tag
+            # cache, so it leaves the loop for the same reason a handler does.
+            ctx = await offload(handlers.resolve, repo_root, roots, no_cache=no_cache)
+            handlers.refresh_in_background(ctx, no_cache=no_cache)
+            try:
+                yield ctx
+            finally:
+                ctx.close()
 
     _register_shared(mcp, handlers, context_for, offload)
     if surface in (SURFACE_V1, SURFACE_BOTH):
@@ -1872,7 +1888,13 @@ def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
         # One shared HTTP server's cwd says nothing about which client is calling.
         launch_dir=Path.cwd().resolve() if args.transport == TRANSPORT_STDIO else None,
     )
-    server = build_server(handlers, surface=args.surface, max_concurrency=args.max_concurrency)
+    server = build_server(
+        handlers,
+        surface=args.surface,
+        max_concurrency=args.max_concurrency,
+        call_limit=args.call_limit,
+        recache_grace=args.recache_grace,
+    )
     # Non-blocking on purpose: MCP clients auto-spawn stdio servers, so the
     # process must serve immediately; until the warm lands, answers carry the
     # labeled skips with the warm-in-progress reason. AGENTLESS_MCP_NO_DOWNLOAD
