@@ -90,6 +90,9 @@ class HistoryResult:
     path: str
     start_line: int
     end_line: int
+    # The lines git log read: the span in the committed copy of a dirty file.
+    committed_start_line: int
+    committed_end_line: int
     entries: tuple[HistoryEntry, ...]
     more_commits: bool
     output_capped: bool
@@ -97,12 +100,14 @@ class HistoryResult:
     dirty: bool | None
     seats_capped: bool = False
     dirty_note: str = ""
-    shallow: bool = False
+    # None is "git could not say"; the note carries git's reason.
+    shallow: bool | None = False
+    shallow_note: str = ""
     signature_changed: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form: the span, then the commits under ``commits``."""
-        return {
+        payload = {
             "target": self.target,
             "path": self.path,
             "start_line": self.start_line,
@@ -115,6 +120,11 @@ class HistoryResult:
             "shallow": self.shallow,
             "signature_changed": self.signature_changed,
         }
+        committed = (self.committed_start_line, self.committed_end_line)
+        if committed != (self.start_line, self.end_line):
+            payload["committed_start_line"] = self.committed_start_line
+            payload["committed_end_line"] = self.committed_end_line
+        return payload
 
 
 class HistoryService:
@@ -172,18 +182,22 @@ class HistoryService:
             raise OperationFailed(_empty(span, capped=outcome.truncated))
 
         more = len(records) > seats
+        shallow, shallow_note = self._shallow(ctx.root)
         return HistoryResult(
             target=symbol_stable_id(working.symbol),
             path=span.path,
-            start_line=span.start_line,
-            end_line=span.end_line,
+            start_line=working.start_line,
+            end_line=working.end_line,
+            committed_start_line=span.start_line,
+            committed_end_line=span.end_line,
             entries=self._fit([_entry(record) for record in records[:seats]], budget),
             more_commits=more,
             output_capped=outcome.truncated,
             dirty=dirty,
             seats_capped=more and seats < limit,
             dirty_note=dirty_note,
-            shallow=self._shallow(ctx.root),
+            shallow=shallow,
+            shallow_note=shallow_note,
             signature_changed=span.symbol.signature != working.symbol.signature,
         )
 
@@ -231,14 +245,19 @@ class HistoryService:
         end = min(line_count(text), span_end(match))
         return SymbolSpan(match, span.path, match.line_number, end, text)
 
-    def _shallow(self, root: Path) -> bool:
+    def _shallow(self, root: Path) -> tuple[bool | None, str]:
         outcome = self._runner(
             root,
             githistory.SHALLOW_ARGUMENTS,
             timeout=gitinfo.GIT_TIMEOUT_SECONDS,
             max_output_bytes=_DIRTY_CHECK_OUTPUT_BYTES,
         )
-        return (outcome.text or "").strip() == "true"
+        if outcome.text is None:
+            return None, outcome.note
+        answer = outcome.text.strip()
+        if answer not in ("true", "false"):
+            return None, f"git rev-parse printed {answer[:80]!r}"
+        return answer == "true", ""
 
     def _fit(self, entries: list[HistoryEntry], budget: int) -> tuple[HistoryEntry, ...]:
         costs = [self._counter.count(_render_entry(entry)) for entry in entries]
@@ -280,13 +299,11 @@ def render_history(result: HistoryResult) -> str:
                 bytes=githistory.MAX_HISTORY_OUTPUT_BYTES, count=count
             )
         )
+    committed = {"start": result.committed_start_line, "end": result.committed_end_line}
     if result.seats_capped:
         lines.append(
             MESSAGES.history_seats_capped.format(
-                shown=count,
-                path=one_line(result.path),
-                start=result.start_line,
-                end=result.end_line,
+                shown=count, path=one_line(result.path), **committed
             )
         )
     elif result.more_commits:
@@ -294,15 +311,17 @@ def render_history(result: HistoryResult) -> str:
     if result.dirty is None:
         lines.append(
             MESSAGES.history_dirty_unknown.format(
-                path=one_line(result.path), note=one_line(result.dirty_note)
+                path=one_line(result.path), note=one_line(result.dirty_note), **committed
             )
         )
     elif result.dirty:
-        lines.append(MESSAGES.history_dirty_file.format(path=one_line(result.path)))
+        lines.append(MESSAGES.history_dirty_file.format(path=one_line(result.path), **committed))
     if result.signature_changed:
         name = result.target.rsplit("::", 1)[-1]
         lines.append(MESSAGES.history_signature_changed.format(name=one_line(name)))
-    if result.shallow:
+    if result.shallow is None:
+        lines.append(MESSAGES.history_shallow_unknown.format(note=one_line(result.shallow_note)))
+    elif result.shallow:
         lines.append(MESSAGES.history_shallow)
     return "\n".join(lines) + "\n"
 

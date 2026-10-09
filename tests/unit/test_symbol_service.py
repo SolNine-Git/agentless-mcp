@@ -562,7 +562,7 @@ class TestAnAliasedCallerIsInTheFanIn:
     def test_the_alias_spelling_is_listed_at_its_import_tier(self, symbols, tmp_path):
         use = "from lib import helper as h\n\n\ndef real():\n    return h()\n"
         tiers, _ = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
-        assert tiers[("use.py", "imported")] == [1, 5]
+        assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5]}
 
     def test_an_alias_of_another_definition_is_not_listed(self, symbols, tmp_path):
         files = {
@@ -572,6 +572,38 @@ class TestAnAliasedCallerIsInTheFanIn:
         }
         tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::helper")
         assert ("use.py", "imported") not in tiers
+
+
+def _rows_in(tiers, path):
+    return {key: lines for key, lines in tiers.items() if key[0] == path}
+
+
+class TestEachLineIsOneRow:
+    def test_a_call_keeps_its_tier_when_the_line_spells_the_name_again(self, symbols, tmp_path):
+        use = (
+            "from lib import helper\n\n\n"
+            "def f(node):\n    return helper(node).helper\n\n\n"
+            "def g(node):\n    return helper(node, helper=1)\n"
+        )
+        tiers, _ = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
+        assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5, 9]}
+
+    def test_an_aliased_import_line_is_one_row(self, symbols, tmp_path):
+        files = {
+            **HELPER_LIB,
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": "from lib import helper as h\n\n\ndef real():\n    return h()\n",
+        }
+        tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::helper")
+        assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5]}
+
+    def test_a_parameter_spelled_like_the_alias_is_not_listed(self, symbols, tmp_path):
+        use = (
+            "from lib import helper as h\n\n\ndef real():\n    return h()\n\n\n"
+            "def other(h):\n    return h(2)\n"
+        )
+        tiers, _ = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
+        assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5]}
 
 
 def _found(symbols, tmp_path, text, query):

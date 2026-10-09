@@ -141,13 +141,16 @@ MESSAGE_ARGUMENTS = {
         "start": 120,
         "end": 158,
     },
-    "history_dirty_file": {"path": "src/app/svc.py"},
+    "history_dirty_file": {"path": "src/app/svc.py", "start": 120, "end": 158},
     "history_symbol_not_in_head": {"name": "quote", "path": "src/app/svc.py"},
     "history_signature_changed": {"name": "quote"},
     "history_shallow": {},
+    "history_shallow_unknown": {"note": "git rev-parse timed out after 30.0s"},
     "history_dirty_unknown": {
         "path": "src/app/svc.py",
         "note": "git diff timed out after 5.0s",
+        "start": 120,
+        "end": 158,
     },
 }
 

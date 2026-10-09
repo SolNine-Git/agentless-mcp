@@ -83,8 +83,8 @@ DEFAULT_MAX_VISITED = 20_000
 # typo, not a dependency knot, and the import pass drops that edge anyway.
 _SMALLEST_CYCLE = 2
 
-# How many (file, member) pairs one alias or re-export chain may visit. Real
-# package chains run a few hops; the bound only stops a pathological fan-out.
+# How many re-export hops one alias chain may follow. The visited set already
+# ends a cycle; this bound only limits the work on a very deep chain.
 MAX_IMPORT_HOPS = 32
 
 _T = TypeVar("_T")
@@ -368,13 +368,13 @@ class Resolver:
 
     def through_imports(self, name: str, path: str) -> tuple[Definition, ...]:
         """Follow ``name``'s from-imports in ``path`` through aliases and re-exports."""
-        # The visited set ends a re-export cycle; the hop bound only limits the work.
         scope = self.scopes.get(path)
-        pending = deque(sorted(scope.members.get(name, ()))) if scope is not None else deque()
+        first = sorted(scope.members.get(name, ())) if scope is not None else []
+        pending = deque((target, member, 1) for target, member in first)
         visited: set[tuple[str, str]] = set()
         found: dict[tuple[str, int], Definition] = {}
-        while pending and len(visited) < MAX_IMPORT_HOPS:
-            target, member = pending.popleft()
+        while pending:
+            target, member, depth = pending.popleft()
             if (target, member) in visited:
                 continue
             visited.add((target, member))
@@ -386,10 +386,9 @@ class Resolver:
             for entry in defined:
                 found.setdefault((entry.path, entry.symbol.line_number), entry)
             onward = self.scopes.get(target)
-            if defined or onward is None:
+            if defined or onward is None or depth >= MAX_IMPORT_HOPS:
                 continue
-            pending.extend(sorted(onward.members.get(member, ())))
-            pending.extend((module, member) for module in sorted(onward.wholesale))
+            pending.extend((*hop, depth + 1) for hop in _re_exports(onward, member))
         return _ordered(list(found.values()))
 
     def resolve_module_attribute(
@@ -595,6 +594,17 @@ def _bind_module_object(
     if target is None or target == facts.path:
         return
     module_bindings.setdefault(binding, set()).add(target)
+
+
+def _re_exports(scope: ImportScope, member: str) -> list[tuple[str, str]]:
+    # An explicit import of the name outranks a star import, and a star import
+    # never carries a private name (only Python's reaches here past a named import).
+    explicit = scope.members.get(member)
+    if explicit:
+        return sorted(explicit)
+    if member.startswith("_"):
+        return []
+    return [(module, member) for module in sorted(scope.wholesale)]
 
 
 def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:

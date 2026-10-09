@@ -51,7 +51,7 @@ class TestLogArguments:
         assert githistory.blob_arguments(SHA, "src/app.py") == [
             "cat-file",
             "blob",
-            f"{SHA}:src/app.py",
+            f"{SHA}:./src/app.py",
         ]
 
 

@@ -697,11 +697,7 @@ def rank_candidates(
 
 
 def best_band(ranked: Sequence[refs.Definition], target: str) -> tuple[refs.Definition, ...]:
-    """Return the definitions of equal standing at the head of a ranked list.
-
-    Exact qualified-name matches when there are any, otherwise every
-    candidate. More than one is the ambiguity a caller has to resolve.
-    """
+    """Return the exact qualified-name matches in ``ranked``, or all of it when none is exact."""
     exact = tuple(entry for entry in ranked if qualname(entry.symbol) == target)
     return exact if exact else tuple(ranked)
 

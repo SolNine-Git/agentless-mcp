@@ -13,19 +13,23 @@ say what they left out. The Loc-Bench retrieval ranking is byte-identical to
   `find_referencing_symbols` resolved the name once per file and gave every
   occurrence that tier, so a parameter that shadows an imported function was
   listed as a `resolved-via-import` caller. Each occurrence now takes the tier
-  the resolved graph gives it. A parameter, a local, an attribute member or a
-  declaration of the same name is `name-only-ambiguous`, and an import line is
-  tiered by the binding it creates. One file can now hold one group per tier.
-  A binding-tier group from a language with no scope analysis is marked
-  `locals not checked` (`scope_checked: false` in JSON).
+  the resolved graph gives it, and each line takes the best tier of the
+  occurrences on it, so `helper(x).helper` stays a call. A parameter, a local,
+  an attribute member or a declaration of the same name is
+  `name-only-ambiguous`, and an import line is tiered by the binding it
+  creates. A binding-tier group from a language with no scope analysis is
+  marked `locals not checked` (`scope_checked: false` in JSON).
 - **Import aliases and package re-exports resolve.** `from lib import helper
   as h` bound `h` to nothing, and `from pkg import helper` through
   `pkg/__init__.py` resolved only as `unique`. The resolver now follows each
   local name to the file and the original member it names, through re-exports
   and star re-exports inside packages, and a visited set ends a re-export
-  cycle. Fan-in also lists the alias spellings. On MONAI, 5,558 reference
-  edges moved from `unique` to `resolved-via-import` with the same target, 77
-  ambiguous references resolved to one target, and no edge was lost.
+  cycle. An explicit re-export of a name outranks a star import, and a star
+  import does not carry a private name. Fan-in also lists the alias
+  spellings, but not a parameter or local that reuses one. On MONAI, 5,558
+  reference edges moved from `unique` to `resolved-via-import` with the same
+  target, 77 ambiguous references resolved to one target, and no edge was
+  lost.
 - **A focus-named symbol survives the map budget.** The function map packed
   symbols by score alone, so a symbol the focus named at the end of a large
   file was cut while the file's other functions filled the budget. Up to 10
@@ -35,7 +39,9 @@ say what they left out. The Loc-Bench retrieval ranking is byte-identical to
   and listed the commits of other lines. The span is now found in HEAD's copy
   of the file, at the full sha the receipt names. A symbol that exists only in
   the working tree is refused, and a changed signature or a shallow clone is
-  noted.
+  noted. `start_line` and `end_line` stay the working-tree lines; when the
+  committed lines differ, JSON adds `committed_start_line` and
+  `committed_end_line`.
 - **Validation and patch worktrees check out one commit.** Each worktree of a
   `validate` or `patch` call checks out the full commit the receipt names, so a
   commit that lands during a run no longer gives two phases two bases.
@@ -63,6 +69,10 @@ say what they left out. The Loc-Bench retrieval ranking is byte-identical to
 
 ### Changed
 
+- **A file can appear in more than one fan-in group.** `groups` in the
+  `find_referencing_symbols` JSON held one entry per file. It now holds one
+  entry per file and tier, so a consumer that keys groups by `path` must
+  merge them.
 - **One parse per file.** Symbols, imports and references come from one tree.
   An uncached `find-symbol` on this repository: 1.518 s to 1.207 s, median of
   seven.

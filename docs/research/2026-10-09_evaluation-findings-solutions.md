@@ -608,6 +608,7 @@ the deferred row and the open half of query-shaped loading.
 | `fix-s1` | stage 1 | 0 of 150 | 475.6 |
 | `fix-s4` | stages 1-4 | 0 of 150 | 472.7 |
 | `fix-s6` | stages 1-6 | 0 of 150 | 383.0 |
+| `fix-review` | stages 1-6 and the review fixes | 0 of 150 | 373.8 |
 
 No ranking moved, so no metric moved: the gate holds at every stage. The
 `map_seconds` totals are single runs and are not claimed as an effect.
@@ -659,6 +660,21 @@ query is spelled inside an unparsed region, and needs no cache schema change.
 
 The warm figure is the symbol-only scan; the single digest alone moved it
 within noise (0.303 s to 0.299 s), as section 3.6 predicted.
+
+**Pull-request review.** A read-only review of the branch found nine
+defects. Two were regressions from 0.9.0: fan-in demoted a call when the
+same line spelled the name again as a member or a keyword, and it listed an
+aliased import line twice. The other seven:
+
+- History refused a dirty file under a subdirectory root.
+- A star hop outranked an explicit re-export and carried private names.
+- The hop bound counted pairs visited, not depth.
+- An alias-spelled parameter was listed.
+- A failed shallow check read as "not shallow".
+- `start_line` changed meaning for a dirty file.
+- One docstring ran past one line.
+
+All nine are fixed with tests, and the `fix-review` run repeats the gate.
 
 **Not built.** Structured content, cursors and lexical search (deferred by
 design); references loaded by name (the open half of the plan, now updated

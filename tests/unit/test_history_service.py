@@ -433,10 +433,61 @@ class TestADirtyFileIsReadAtItsCommittedLines:
 
         result = service.history(context(repo), "py:core.py::quote")
 
-        assert (result.start_line, result.end_line) == (1, 3)
+        assert (result.committed_start_line, result.committed_end_line) == (1, 3)
         assert [entry.subject for entry in result.entries] == ["Return the rate", "fixture"]
         assert result.dirty is True
         assert "located in the committed copy" in render_history(result)
+
+    def test_the_span_keeps_its_working_tree_lines_beside_the_committed_ones(self, service, repo):
+        (repo / "core.py").write_text("import os\nimport sys\n\n" + EDITED_COST, encoding="utf-8")
+
+        payload = service.history(context(repo), "py:core.py::quote").as_dict()
+
+        assert (payload["start_line"], payload["end_line"]) == (4, 6)
+        assert (payload["committed_start_line"], payload["committed_end_line"]) == (1, 3)
+
+    def test_a_clean_file_reports_one_span(self, service, repo):
+        payload = service.history(context(repo), "py:core.py::quote").as_dict()
+
+        assert (payload["start_line"], payload["end_line"]) == (1, 3)
+        assert "committed_start_line" not in payload
+
+    def test_the_git_log_hint_names_the_committed_lines(self, extractor, counter, repo):
+        (repo / "core.py").write_text("import os\nimport sys\n\n" + EDITED_COST, encoding="utf-8")
+        service, _ = injected(
+            extractor,
+            counter,
+            {"log": gitinfo.GitOutcome(log_output(HISTORY_MAX_SEATS + 1), "", returncode=0)},
+        )
+
+        result = service.history(context(repo), "py:core.py::quote", limit=500)
+
+        assert "run git log -L1,3:core.py for the rest" in render_history(result)
+
+    def test_a_root_below_the_repository_top_reads_the_committed_copy(self, service, make_git_repo):
+        root = make_git_repo({"sub/core.py": EDITED_COST}, name="nested")
+        (root / "sub" / "core.py").write_text("import os\n\n" + EDITED_COST, encoding="utf-8")
+
+        result = service.history(context(root / "sub"), "py:core.py::quote")
+
+        assert result.dirty is True
+        assert (result.committed_start_line, result.committed_end_line) == (1, 3)
+        assert [entry.subject for entry in result.entries] == ["fixture"]
+
+    def test_a_failed_shallow_check_is_reported_as_unknown(self, extractor, counter, repo):
+        def runner(cwd, arguments, *, timeout, max_output_bytes):
+            if tuple(arguments) == githistory.SHALLOW_ARGUMENTS:
+                return gitinfo.GitOutcome(None, "git rev-parse timed out after 30.0s")
+            return gitinfo.run_bounded(
+                cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes
+            )
+
+        service = HistoryService(extractor, counter, runner=runner)
+        result = service.history(context(repo), "py:core.py::quote")
+
+        assert result.shallow is None
+        assert result.as_dict()["shallow"] is None
+        assert "git rev-parse timed out after 30.0s" in render_history(result)
 
     def test_a_symbol_new_in_the_working_tree_has_no_committed_history(self, service, repo):
         (repo / "core.py").write_text(EDITED_COST + "\n\ndef fresh():\n    return 3\n")

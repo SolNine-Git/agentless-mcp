@@ -137,6 +137,7 @@ class MessageText:
     history_symbol_not_in_head: str
     history_signature_changed: str
     history_shallow: str
+    history_shallow_unknown: str
 
 
 # Every tool this server can register, across both published surfaces: the

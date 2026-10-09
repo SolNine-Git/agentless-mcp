@@ -1102,3 +1102,38 @@ class TestAliasesAndReExports:
         assert targets(graph, "py:use.py::real", "h") == [
             ("py:other.py::helper", resolve.Tier.IMPORTED)
         ]
+
+    def test_an_explicit_re_export_outranks_a_star_import_of_the_name(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .a import *\nfrom .b import helper\n",
+            "pkg/a.py": "__all__ = ['other']\n\n\ndef helper():\n    return 1\n",
+            "pkg/b.py": "def helper():\n    return 2\n",
+            "use.py": "from pkg import helper\n\n\ndef caller():\n    return helper()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/b.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_star_re_export_does_not_carry_a_private_name(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .a import *\n",
+            "pkg/a.py": "def _helper():\n    return 1\n",
+            "other.py": "def _helper():\n    return 2\n",
+            "use.py": "from pkg import _helper\n\n\ndef caller():\n    return _helper()\n",
+        }
+        resolver, _ = resolved(write(tmp_path, files), extractor)
+        resolution = resolver.resolve("_helper", "use.py")
+        assert resolution is not None
+        assert resolution.tier is resolve.Tier.AMBIGUOUS
+
+    def test_a_wide_star_re_export_still_reaches_the_definition(self, tmp_path, extractor):
+        files = {f"pkg/m{n:02d}.py": f"def f{n:02d}():\n    return {n}\n" for n in range(40)}
+        files["pkg/m39.py"] += "\n\ndef helper():\n    return 0\n"
+        files["pkg/__init__.py"] = "".join(f"from .m{n:02d} import *\n" for n in range(40))
+        files["other.py"] = "def helper():\n    return 2\n"
+        files["use.py"] = "from pkg import helper\n\n\ndef caller():\n    return helper()\n"
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/m39.py::helper", resolve.Tier.IMPORTED)
+        ]

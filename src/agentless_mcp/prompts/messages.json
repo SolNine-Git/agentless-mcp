@@ -45,9 +45,10 @@
   "history_body_truncated": "... {shown} of {total} body lines shown for {sha}; git show -s --format=%B {sha} prints the whole message",
   "history_output_capped": "... git output was cut at {bytes} bytes; the {count} complete commits above are shown",
   "history_output_capped_no_commits": "unsatisfiable: git output reached the {bytes} byte cap before the first complete commit. The newest commit on lines {start}-{end} of {path} carries a message larger than the cap; run git log -L{start},{end}:{path} to read it.",
-  "history_dirty_file": "note: {path} has uncommitted changes; the span was located in the committed copy of the file, so these commits follow the committed definition",
-  "history_dirty_unknown": "note: git could not say whether {path} has uncommitted changes ({note}); the span was located in the committed copy of the file",
+  "history_dirty_file": "note: {path} has uncommitted changes; the span was located in the committed copy of the file (lines {start}-{end} there), so these commits follow the committed definition",
+  "history_dirty_unknown": "note: git could not say whether {path} has uncommitted changes ({note}); the span was located in the committed copy of the file (lines {start}-{end} there)",
   "history_symbol_not_in_head": "unsatisfiable: {name} is not defined in the committed copy of {path}: it is new or renamed in the working tree, so no commit has touched it yet",
   "history_signature_changed": "note: {name} has a different signature in the committed copy than in the working tree; these commits follow the committed definition",
-  "history_shallow": "note: this clone is shallow, so the oldest commit listed may stand in for older history"
+  "history_shallow": "note: this clone is shallow, so the oldest commit listed may stand in for older history",
+  "history_shallow_unknown": "note: git could not say whether this clone is shallow ({note}); in a shallow clone the oldest commit listed may stand in for older history"
 }

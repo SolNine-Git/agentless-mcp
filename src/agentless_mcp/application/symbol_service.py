@@ -43,7 +43,8 @@ name itself, matched the repository's only definition, or matched nothing but
 the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
 from typing import Any
@@ -530,7 +531,7 @@ class SymbolService:
         resolver = resolve.build_resolver(scan, index)
         target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
         spelled = {definition.symbol.name for definition in definitions}
-        sites = _dedupe(
+        spellings = list(
             chain(
                 (
                     site
@@ -540,8 +541,12 @@ class SymbolService:
                 _alias_sites(index, resolver, target_ids, spelled),
             )
         )
+        sites = _dedupe(spellings)
+        names: dict[str, set[str]] = {}
+        for site in spellings:
+            names.setdefault(site.path, set()).add(site.name)
         groups = render.RefListing(
-            rows=_group_sites(_round_robin(sites, limit), by_path, resolver, target_ids),
+            rows=_group_sites(_round_robin(sites, limit), names, by_path, resolver, target_ids),
             total=len(sites),
             limit=limit,
             files=len({site.path for site in sites}),
@@ -834,7 +839,15 @@ def _alias_sites(
                 continue
             resolution = resolver.resolve(local, path)
             if resolution is not None and _lands_on(resolution.candidates, target_ids):
-                yield from (site for site in index.sites.get(local, ()) if site.path == path)
+                # A parameter or local that reuses the alias spelling is not the alias.
+                yield from (
+                    site
+                    for site in index.sites.get(local, ())
+                    if site.path == path and site.role in _ALIAS_ROLES
+                )
+
+
+_ALIAS_ROLES = frozenset({IdentifierRole.IMPORT, IdentifierRole.REFERENCE})
 
 
 def _lands_on(candidates: Iterable[refs.Definition], target_ids: set[str]) -> bool:
@@ -842,8 +855,8 @@ def _lands_on(candidates: Iterable[refs.Definition], target_ids: set[str]) -> bo
 
 
 def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
-    """Collapse duplicate sites and order them by file then line."""
-    unique = {(site.path, site.line, site.name): site for site in sites}
+    """Collapse the sites on one line to one row and order them by file then line."""
+    unique = {(site.path, site.line): site for site in sites}
     return [unique[key] for key in sorted(unique)]
 
 
@@ -874,16 +887,14 @@ def _round_robin(sites: list[Ref], limit: int) -> list[Ref]:
 
 def _group_sites(
     sites: list[Ref],
+    names: Mapping[str, AbstractSet[str]],
     by_path: dict[str, refs.FileFacts],
     resolver: resolve.Resolver,
     target_ids: set[str],
 ) -> tuple[render.RefGroup, ...]:
-    """Group reference sites by file and evidence tier, each site tiered on its own binding."""
+    """Group reference sites by file and evidence tier, each line tiered on its own bindings."""
     grouped: dict[tuple[str, resolve.Tier], list[render.RefSite]] = {}
-    bindings: dict[str, dict[Ref, resolve.Resolution]] = {}
-    spelled: dict[str, set[str]] = {}
-    for site in sites:
-        spelled.setdefault(site.path, set()).add(site.name)
+    line_tiers: dict[str, dict[int, resolve.Tier]] = {}
     # Taken from the symbol, never parsed back out of the id this loop just
     # minted. `parse_stable_id` refuses an id carrying a control character,
     # and a newline is legal in a POSIX filename, so round-tripping here let
@@ -896,9 +907,9 @@ def _group_sites(
         symbol = refs.enclosing_symbol(facts, site.line) if facts else None
         if symbol is not None:
             prefixes.setdefault(site.path, language_prefix(symbol.language))
-        if facts is not None and site.path not in bindings:
-            bindings[site.path] = dict(resolve.resolved_sites(facts, resolver, spelled[site.path]))
-        tier = _site_tier(site, bindings.get(site.path, {}).get(site), resolver, target_ids)
+        if facts is not None and site.path not in line_tiers:
+            line_tiers[site.path] = _line_tiers(facts, names[site.path], resolver, target_ids)
+        tier = line_tiers.get(site.path, {}).get(site.line, resolve.Tier.AMBIGUOUS)
         grouped.setdefault((site.path, tier), []).append(
             render.RefSite(
                 line=site.line,
@@ -929,6 +940,24 @@ def _group_sites(
 
 
 _BINDING_TIERS = frozenset({resolve.Tier.SAME_FILE, resolve.Tier.IMPORTED})
+
+
+def _line_tiers(
+    facts: refs.FileFacts,
+    names: AbstractSet[str],
+    resolver: resolve.Resolver,
+    target_ids: set[str],
+) -> dict[int, resolve.Tier]:
+    # A row is a line, so it takes the best tier of the target's spellings on it:
+    # `helper(x).helper` calls the target although its last spelling is a member.
+    bound = dict(resolve.resolved_sites(facts, resolver, names))
+    tiers: dict[int, resolve.Tier] = {}
+    for ref in facts.refs:
+        if ref.name in names:
+            tier = _site_tier(ref, bound.get(ref), resolver, target_ids)
+            best = tiers.get(ref.line, resolve.Tier.AMBIGUOUS)
+            tiers[ref.line] = min(tier, best, key=resolve.TIER_ORDER.index)
+    return tiers
 
 
 def _site_tier(

@@ -79,8 +79,9 @@ def commit_arguments(short: str) -> list[str]:
 
 def blob_arguments(commit: str, path: str) -> list[str]:
     """Build the argv that prints ``path`` as committed at ``commit``."""
-    # Plumbing rather than `git show`, which can run a textconv driver.
-    return ["cat-file", "blob", f"{commit}:{path}"]
+    # Plumbing rather than `git show`, which can run a textconv driver. The "./"
+    # reads path from -C, as log and diff do, not from the repository top.
+    return ["cat-file", "blob", f"{commit}:./{path}"]
 
 
 SHALLOW_ARGUMENTS = ("rev-parse", "--is-shallow-repository")
