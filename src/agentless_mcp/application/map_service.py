@@ -103,6 +103,10 @@ GRANULARITIES = (GRANULARITY_FUNCTION, GRANULARITY_FILE, GRANULARITY_BODY)
 # then spends the actual budget fairly across them.
 BODY_TOKENS_PER_SEAT = 300
 
+# Symbols a focus entry names are packed before any scored symbol. Capped so a
+# common name matching many definitions still leaves the budget to the ranking.
+FOCUS_PIN_LIMIT = 10
+
 # "auto": aim at ~6x compression of the candidate set, then refuse to go
 # below a map that could not say anything or above one that stops being a map.
 AUTO_BUDGET_DIVISOR = 6
@@ -386,7 +390,10 @@ class MapService:
         # exists to prevent -- as well as breaking the top-N contract the
         # tool description publishes. What changes is where the budget goes,
         # not how many files come back.
-        eligible = [entry for entry in candidates if entry.path in ranking.support]
+        focus_order = _focus_order(seeding.definitions, chosen)
+        eligible = _pinned_first(
+            [entry for entry in candidates if entry.path in ranking.support], focus_order
+        )
         packing = _Packing(
             eligible=eligible,
             candidates=candidates,
@@ -403,7 +410,7 @@ class MapService:
             expand_order=tuple(
                 symbol_stable_id(entry.symbol) for entry in packing.eligible[:included]
             ),
-            focus_order=_focus_order(seeding.definitions, chosen),
+            focus_order=focus_order,
             budget=budget,
             included=included,
             # What competed for the budget, not every symbol under a ranked
@@ -783,6 +790,17 @@ def _focus_order(
         key=lambda definition: (position[definition.path], definition.symbol.line_number),
     )
     return tuple(dict.fromkeys(symbol_stable_id(definition.symbol) for definition in ranked))
+
+
+def _pinned_first(eligible: list[_Candidate], focus_order: tuple[str, ...]) -> list[_Candidate]:
+    # The packing keeps a prefix, so a named symbol moved to the front is a named
+    # symbol kept; a late-file target used to lose to the file's boilerplate.
+    position = {stable: index for index, stable in enumerate(focus_order[:FOCUS_PIN_LIMIT])}
+    pinned = sorted(
+        (entry for entry in eligible if symbol_stable_id(entry.symbol) in position),
+        key=lambda entry: position[symbol_stable_id(entry.symbol)],
+    )
+    return pinned + [entry for entry in eligible if symbol_stable_id(entry.symbol) not in position]
 
 
 def focus_paths(entry: str, known: set[str], index: refs.RefIndex) -> list[str]:

@@ -21,10 +21,11 @@ whose grammar is not warmed are reported in ``skipped`` with the reason --
 never dropped into an answer that then looks complete.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import TypeVar
 
 from agentless_mcp.core.cache import FileSource, effective_source
 from agentless_mcp.core.extractor import DATA_LANGUAGES, Ref, TreeSitterExtractor
@@ -55,6 +56,8 @@ class FileFacts:
     refs: tuple[Ref, ...]
 
 
+_Parsed = TypeVar("_Parsed")
+
 # What makes a lookup target dotted, and therefore a claim about which file to
 # look in rather than a bare name. `Resolver` is a name; `core.refs.Resolver`
 # names a path as well, and can fail to find it.
@@ -80,6 +83,24 @@ class RepoScan:
     def by_path(self) -> dict[str, FileFacts]:
         """Index the parsed files by their repository-relative path."""
         return {facts.path: facts for facts in self.files}
+
+
+@dataclass(frozen=True)
+class FileSymbols:
+    """One file's declared symbols, for a caller that reads nothing else."""
+
+    path: str
+    language: str
+    symbols: tuple[ASTSymbol, ...]
+
+
+@dataclass(frozen=True)
+class SymbolScan:
+    """One traversal that read only symbols: what parsed, and what did not."""
+
+    root: Path
+    files: tuple[FileSymbols, ...]
+    skipped: tuple[SkippedFile, ...]
 
 
 @dataclass(frozen=True)
@@ -127,7 +148,37 @@ def scan_repo(
     fresh index removes all three parses rather than one of them.
     """
     facts_source = effective_source(source, extractor)
-    files: list[FileFacts] = []
+    files, skipped = _walk_parsed(
+        root,
+        max_file_bytes,
+        lambda text, language, path: _parse_one(text, language, path, facts_source),
+    )
+    return RepoScan(root=root, files=tuple(files), skipped=tuple(skipped))
+
+
+def scan_symbols(
+    root: Path,
+    extractor: TreeSitterExtractor,
+    *,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    source: FileSource | None = None,
+) -> SymbolScan:
+    """Walk ``root`` as :func:`scan_repo` does, reading each file's symbols and nothing else."""
+    facts_source = effective_source(source, extractor)
+    files, skipped = _walk_parsed(
+        root,
+        max_file_bytes,
+        lambda text, language, path: _symbols_one(text, language, path, facts_source),
+    )
+    return SymbolScan(root=root, files=tuple(files), skipped=tuple(skipped))
+
+
+def _walk_parsed(
+    root: Path,
+    max_file_bytes: int,
+    parse: Callable[[str, str, str], _Parsed | SkippedFile],
+) -> tuple[list[_Parsed], list[SkippedFile]]:
+    files: list[_Parsed] = []
     skipped: list[SkippedFile] = []
 
     for repo_file in walk_repo(root):
@@ -151,16 +202,16 @@ def scan_repo(
             skipped.append(SkippedFile(path=repo_file.path, reason=read.skipped))
             continue
 
-        facts = _parse_one(read.text, language, repo_file.path, facts_source)
-        if isinstance(facts, SkippedFile):
-            skipped.append(facts)
+        parsed = parse(read.text, language, repo_file.path)
+        if isinstance(parsed, SkippedFile):
+            skipped.append(parsed)
         else:
-            files.append(facts)
+            files.append(parsed)
 
-    return RepoScan(root=root, files=tuple(files), skipped=tuple(skipped))
+    return files, skipped
 
 
-def in_name_graph(facts: FileFacts) -> bool:
+def in_name_graph(facts: FileFacts | FileSymbols) -> bool:
     """True when a file's symbols and spellings join the name graph."""
     # A data file's keys are not declarations: one fixture can define a key
     # thousands of times, and every code spelling of it used to match them all.
@@ -363,9 +414,7 @@ def _parse_one(
 ) -> FileFacts | SkippedFile:
     """Take one file's three fact sets, degrading that file alone when it cannot be."""
     try:
-        defined = source.symbols_for(text, language, path)
-        imports = source.imports_for(text, language, path)
-        refs = source.refs_for(text, language, path)
+        defined, imports, refs = source.facts_for(text, language, path)
     except LanguageUnavailable as exc:
         return SkippedFile(path=path, reason=str(exc))
 
@@ -377,3 +426,13 @@ def _parse_one(
         imports=tuple(imports),
         refs=tuple(refs),
     )
+
+
+def _symbols_one(
+    text: str, language: str, path: str, source: FileSource
+) -> FileSymbols | SkippedFile:
+    try:
+        defined = source.symbols_for(text, language, path)
+    except LanguageUnavailable as exc:
+        return SkippedFile(path=path, reason=str(exc))
+    return FileSymbols(path=path, language=language, symbols=tuple(defined))

@@ -24,9 +24,9 @@ from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
-from tree_sitter import Node, Parser
+from tree_sitter import Node, Parser, Tree
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
@@ -612,6 +612,14 @@ class Ref:
     def is_resolvable(self) -> bool:
         """Whether the evidence graph has enough syntax to attempt binding."""
         return self.role in {IdentifierRole.REFERENCE, IdentifierRole.MODULE_ATTRIBUTE}
+
+
+class ParsedFacts(NamedTuple):
+    """The three fact sets one file yields: its symbols, imports and identifier occurrences."""
+
+    symbols: list[ASTSymbol]
+    imports: list[ImportStatement]
+    refs: list[Ref]
 
 
 # Python nodes that open a lexical scope, with the field naming parameters
@@ -1398,6 +1406,24 @@ def _identifier_name(node: Node, data: bytes, wanted: frozenset[str]) -> str:
     return text
 
 
+# Languages whose identifier occurrences carry real roles (parameter, local,
+# attribute); every other language reports each identifier as a REFERENCE.
+SCOPE_ANALYSED_LANGUAGES = frozenset({"python"})
+
+
+def error_nodes(root: Node) -> Iterator[Node]:
+    """Yield each ERROR and MISSING node in document order, never descending into an ERROR."""
+    stack: list[Node] = [root]
+    while stack:
+        node = stack.pop()
+        if not node.has_error and not node.is_missing:
+            continue
+        if node.is_missing or node.is_error:
+            yield node
+            continue
+        stack.extend(reversed(node.children))
+
+
 def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     """Return every identifier occurrence in ``source``.
 
@@ -1406,13 +1432,17 @@ def collect_refs(source: str, language: str, path: str) -> list[Ref]:
     would read as "this symbol is unused", which is the most expensive wrong
     answer this tool could give.
     """
-    wanted = identifier_node_types(language)
     parser = grammars.get_parser(language)
     data = source.encode("utf-8")
-    tree = parser.parse(data)
+    return refs_from_tree(parser.parse(data), data, language, path)
+
+
+def refs_from_tree(tree: Tree, data: bytes, language: str, path: str) -> list[Ref]:
+    """Return every identifier occurrence in ``tree``, parsed from ``data``."""
+    wanted = identifier_node_types(language)
     # None for the nineteen languages with no scope analysis, rather than three
     # empty tables that read as "analysed, and it found nothing".
-    analysis = _python_roles(tree.root_node, data) if language == "python" else None
+    analysis = _python_roles(tree.root_node, data) if language in SCOPE_ANALYSED_LANGUAGES else None
 
     refs: list[Ref] = []
     for node in walk_nodes(tree.root_node):
@@ -1911,7 +1941,7 @@ class TreeSitterExtractor:
     # ------------------------------------------------------------------
 
     def get_parser(self, language: str) -> Parser:
-        """Return the memoized parser for a supported language."""
+        """Return a fresh parser for a supported language."""
         return grammars.get_parser(self._grammar_of(language))
 
     def _grammar_of(self, language: str) -> str:
@@ -1949,15 +1979,43 @@ class TreeSitterExtractor:
 
             source_bytes = bytes(source, "utf-8")
             tree = parser.parse(source_bytes)
+            return self._symbols_from_tree(tree, source_bytes, language, module_path)
 
-            # get_parser succeeded, so the language is registered.
-            symbols: list[ASTSymbol] = []
-            self._registry[language].extract_symbols(
-                tree.root_node, source_bytes, module_path, symbols
+    def extract_facts(self, source: str, language: str, path: str) -> ParsedFacts:
+        """Extract symbols, imports and identifier occurrences from one parse of ``source``."""
+        with recaching():
+            try:
+                parser = self.get_parser(language)
+            except UnsupportedLanguageError:
+                return ParsedFacts(
+                    self.extract_from_source(source, language, path),
+                    self.extract_imports_from_source(source, language, path),
+                    self.extract_refs_from_source(source, language, path),
+                )
+            data = bytes(source, "utf-8")
+            tree = parser.parse(data)
+            return ParsedFacts(
+                self._symbols_from_tree(tree, data, language, path),
+                self._imports_from_tree(tree, data, language, path),
+                refs_from_tree(tree, data, language, path),
             )
-            defined = disambiguate(symbols)
-            rationales = _extract_rationales(tree.root_node, source_bytes)
-            return _attach_rationales(defined, rationales)
+
+    # The language is registered: every caller got a parser for it first.
+    def _symbols_from_tree(
+        self, tree: Tree, source_bytes: bytes, language: str, module_path: str
+    ) -> list[ASTSymbol]:
+        symbols: list[ASTSymbol] = []
+        self._registry[language].extract_symbols(tree.root_node, source_bytes, module_path, symbols)
+        defined = disambiguate(symbols)
+        rationales = _extract_rationales(tree.root_node, source_bytes)
+        return _attach_rationales(defined, rationales)
+
+    def _imports_from_tree(
+        self, tree: Tree, source_bytes: bytes, language: str, module_path: str
+    ) -> list[ImportStatement]:
+        imports: list[ImportStatement] = []
+        self._registry[language].extract_imports(tree.root_node, source_bytes, module_path, imports)
+        return imports
 
     # ------------------------------------------------------------------
     # Public import extraction API
@@ -1980,17 +2038,25 @@ class TreeSitterExtractor:
 
             source_bytes = bytes(source, "utf-8")
             tree = parser.parse(source_bytes)
-
-            # get_parser succeeded, so the language is registered.
-            imports: list[ImportStatement] = []
-            self._registry[language].extract_imports(
-                tree.root_node, source_bytes, module_path, imports
-            )
-            return imports
+            return self._imports_from_tree(tree, source_bytes, language, module_path)
 
     # ------------------------------------------------------------------
     # Public reference extraction API
     # ------------------------------------------------------------------
+
+    def unparsed_mentions(self, source: str, language: str, name: str) -> tuple[int, ...]:
+        """Return the 1-based lines where ``name`` is spelled inside a region that did not parse."""
+        data = source.encode("utf-8")
+        with recaching():
+            tree = self.get_parser(language).parse(data)
+        unparsed = (node for node in error_nodes(tree.root_node) if node.is_error)
+        spans = [(node.start_byte, node.end_byte) for node in unparsed]
+        lines = (
+            data.count(b"\n", 0, found.start()) + 1
+            for found in re.finditer(re.escape(name.encode("utf-8")), data, re.IGNORECASE)
+            if any(start <= found.start() < end for start, end in spans)
+        )
+        return tuple(dict.fromkeys(lines))
 
     def extract_refs_from_source(self, source: str, language: str, path: str) -> list[Ref]:
         """Extract every identifier occurrence from source string.

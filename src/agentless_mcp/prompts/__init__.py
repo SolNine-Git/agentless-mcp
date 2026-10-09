@@ -93,6 +93,7 @@ class MessageText:
     scan_skipped_files: str
     find_no_matches: str
     find_no_matches_kind: str
+    find_unparsed: str
     expand_body_truncated: str
     expand_batch_shortened: str
     expand_no_room: str
@@ -102,6 +103,7 @@ class MessageText:
     # file the focus never reached has no budget that would produce it.
     map_file_unreached: str
     refs_target_unresolved: str
+    explain_tie: str
     # Two spellings, because two views need different amounts of it. A
     # grouped view whose rows show `[Class.method]` demonstrates the
     # nesting rule on every line, so it prints the pattern alone. The
@@ -132,6 +134,9 @@ class MessageText:
     history_output_capped_no_commits: str
     history_dirty_file: str
     history_dirty_unknown: str
+    history_symbol_not_in_head: str
+    history_signature_changed: str
+    history_shallow: str
 
 
 # Every tool this server can register, across both published surfaces: the

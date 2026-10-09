@@ -43,16 +43,21 @@ name itself, matched the repository's only definition, or matched nothing but
 the spelling, so a reader can weigh the rows instead of trusting them equally.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
-from itertools import zip_longest
+from itertools import chain, zip_longest
 from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
-from agentless_mcp.core.extractor import Ref, TreeSitterExtractor
+from agentless_mcp.core.extractor import (
+    SCOPE_ANALYSED_LANGUAGES,
+    IdentifierRole,
+    Ref,
+    TreeSitterExtractor,
+)
 from agentless_mcp.core.slices import line_count, line_prefix, span_end
 from agentless_mcp.core.symbols import (
     ASTSymbol,
@@ -71,6 +76,7 @@ from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
 from agentless_mcp.util.deadline import checkpoint
 from agentless_mcp.util.errors import LanguageUnavailable, SecurityRefusal
 from agentless_mcp.util.fslimits import contained_path, read_bounded
+from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import TokenCounter
 
 DEFAULT_FIND_LIMIT = 20
@@ -140,6 +146,9 @@ EXPAND_MAX_SEATS = 40
 # listing here and says how many it did not name.
 MAX_UNRESOLVED_ROWS = 20
 
+# How many unparsed places a lookup miss names before cutting to a count.
+UNPARSED_SHOWN = 5
+
 
 @dataclass(frozen=True)
 class FindResult:
@@ -166,6 +175,9 @@ class FindResult:
     skipped: tuple[refs.SkippedFile, ...] = ()
     kind: str | None = None
     other_kinds: tuple[str, ...] = ()
+    # On a miss, the (path, line) places the query is spelled inside a region
+    # that did not parse, where a declaration the grammar lost may sit.
+    unparsed: tuple[tuple[str, int], ...] = ()
 
     @property
     def total(self) -> int:
@@ -185,6 +197,7 @@ class FindResult:
             "other_kinds": list(self.other_kinds),
             **self.cards.as_dict(),
             "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
+            "unparsed": [{"path": path, "line": line} for path, line in self.unparsed],
         }
 
 
@@ -388,7 +401,7 @@ class SymbolService:
     ) -> FindResult:
         """Match a substring or a qualified name across the repository."""
         _check_limit(limit)
-        scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
+        scan = refs.scan_symbols(ctx.root, self._extractor, source=ctx.symbols)
         needle = query.lower()
 
         matches = [
@@ -418,7 +431,12 @@ class SymbolService:
                 )
             )
         return FindResult(
-            query=query, cards=listing, skipped=scan.skipped, kind=kind, other_kinds=other_kinds
+            query=query,
+            cards=listing,
+            skipped=scan.skipped,
+            kind=kind,
+            other_kinds=other_kinds,
+            unparsed=() if matches else _unparsed_mentions(ctx, self._extractor, scan, query),
         )
 
     def expand_symbols(
@@ -509,12 +527,19 @@ class SymbolService:
 
         resolution = refs.resolve_definitions(index, target)
         definitions = list(resolution.definitions)
-        sites = _dedupe(
-            site for definition in definitions for site in refs.references_to(index, definition)
-        )
-
         resolver = resolve.build_resolver(scan, index)
         target_ids = {symbol_stable_id(definition.symbol) for definition in definitions}
+        spelled = {definition.symbol.name for definition in definitions}
+        sites = _dedupe(
+            chain(
+                (
+                    site
+                    for definition in definitions
+                    for site in refs.references_to(index, definition)
+                ),
+                _alias_sites(index, resolver, target_ids, spelled),
+            )
+        )
         groups = render.RefListing(
             rows=_group_sites(_round_robin(sites, limit), by_path, resolver, target_ids),
             total=len(sites),
@@ -698,10 +723,41 @@ def render_find(result: FindResult) -> str:
         )
     else:
         body = MESSAGES.find_no_matches.format(query=result.query) + "\n"
+    if result.unparsed and not result.cards:
+        body += _unparsed_line(result) + "\n"
     warning = render.render_skipped_files(result.skipped)
     if not warning:
         return body
     return warning + "\n\n" + body
+
+
+def _unparsed_line(result: FindResult) -> str:
+    shown = ", ".join(f"{one_line(path)}:{line}" for path, line in result.unparsed[:UNPARSED_SHOWN])
+    hidden = len(result.unparsed) - UNPARSED_SHOWN
+    listed = f"{shown}; ... {hidden} more" if hidden > 0 else shown
+    return MESSAGES.find_unparsed.format(query=one_line(result.query), listed=listed)
+
+
+def _unparsed_mentions(
+    ctx: RepoContext, extractor: TreeSitterExtractor, scan: refs.SymbolScan, query: str
+) -> tuple[tuple[str, int], ...]:
+    # Only the files that spell the query are re-parsed: a blanket parse-error
+    # flag is noise, because grammars leave ERROR nodes in much valid C and TypeScript.
+    needle = query.lower()
+    found: list[tuple[str, int]] = []
+    for facts in scan.files:
+        checkpoint()
+        if not needle or not refs.in_name_graph(facts):
+            continue
+        read = read_bounded(contained_path(ctx.root, facts.path))
+        if read.text is None or needle not in read.text.lower():
+            continue
+        try:
+            lines = extractor.unparsed_mentions(read.text, facts.language, query)
+        except LanguageUnavailable:
+            continue
+        found.extend((facts.path, line) for line in lines)
+    return tuple(found)
 
 
 def _matches(symbol: ASTSymbol, needle: str, kind: str | None) -> bool:
@@ -764,6 +820,27 @@ def rationale_nodes(symbol: ASTSymbol) -> tuple[render.RationaleNode, ...]:
     )
 
 
+def _alias_sites(
+    index: refs.RefIndex,
+    resolver: resolve.Resolver,
+    target_ids: set[str],
+    spelled: set[str],
+) -> Iterator[Ref]:
+    # A file that imported the target under another name calls it by that name.
+    # Only the import chain can rename, so it is walked first and resolve confirms.
+    for path, scope in sorted(resolver.scopes.items()):
+        for local in sorted(scope.members):
+            if local in spelled or not _lands_on(resolver.through_imports(local, path), target_ids):
+                continue
+            resolution = resolver.resolve(local, path)
+            if resolution is not None and _lands_on(resolution.candidates, target_ids):
+                yield from (site for site in index.sites.get(local, ()) if site.path == path)
+
+
+def _lands_on(candidates: Iterable[refs.Definition], target_ids: set[str]) -> bool:
+    return any(symbol_stable_id(entry.symbol) in target_ids for entry in candidates)
+
+
 def _dedupe(sites: Iterable[Ref]) -> list[Ref]:
     """Collapse duplicate sites and order them by file then line."""
     unique = {(site.path, site.line, site.name): site for site in sites}
@@ -801,9 +878,12 @@ def _group_sites(
     resolver: resolve.Resolver,
     target_ids: set[str],
 ) -> tuple[render.RefGroup, ...]:
-    """Group reference sites by file, attributing and tiering each group."""
-    grouped: dict[str, list[render.RefSite]] = {}
-    names: dict[str, str] = {}
+    """Group reference sites by file and evidence tier, each site tiered on its own binding."""
+    grouped: dict[tuple[str, resolve.Tier], list[render.RefSite]] = {}
+    bindings: dict[str, dict[Ref, resolve.Resolution]] = {}
+    spelled: dict[str, set[str]] = {}
+    for site in sites:
+        spelled.setdefault(site.path, set()).add(site.name)
     # Taken from the symbol, never parsed back out of the id this loop just
     # minted. `parse_stable_id` refuses an id carrying a control character,
     # and a newline is legal in a POSIX filename, so round-tripping here let
@@ -814,10 +894,12 @@ def _group_sites(
     for site in sites:
         facts = by_path.get(site.path)
         symbol = refs.enclosing_symbol(facts, site.line) if facts else None
-        names.setdefault(site.path, site.name)
         if symbol is not None:
             prefixes.setdefault(site.path, language_prefix(symbol.language))
-        grouped.setdefault(site.path, []).append(
+        if facts is not None and site.path not in bindings:
+            bindings[site.path] = dict(resolve.resolved_sites(facts, resolver, spelled[site.path]))
+        tier = _site_tier(site, bindings.get(site.path, {}).get(site), resolver, target_ids)
+        grouped.setdefault((site.path, tier), []).append(
             render.RefSite(
                 line=site.line,
                 enclosing=qualname(symbol) if symbol else render.MODULE_LEVEL,
@@ -827,40 +909,38 @@ def _group_sites(
         )
 
     groups = []
-    for path in sorted(grouped):
-        tier = _ref_tier(path, names[path], resolver, target_ids)
+    for path, tier in sorted(grouped, key=lambda key: (key[0], resolve.TIER_ORDER.index(key[1]))):
+        facts = by_path.get(path)
         groups.append(
             render.RefGroup(
                 path=path,
-                sites=tuple(grouped[path]),
+                sites=tuple(grouped[path, tier]),
                 tier=tier.value,
                 tier_label=tier.label,
                 id_prefix=prefixes.get(path, ""),
+                scope_checked=not (
+                    tier in _BINDING_TIERS
+                    and facts is not None
+                    and facts.language not in SCOPE_ANALYSED_LANGUAGES
+                ),
             )
         )
     return tuple(groups)
 
 
-def _ref_tier(
-    path: str,
-    name: str,
+_BINDING_TIERS = frozenset({resolve.Tier.SAME_FILE, resolve.Tier.IMPORTED})
+
+
+def _site_tier(
+    site: Ref,
+    resolution: resolve.Resolution | None,
     resolver: resolve.Resolver,
     target_ids: set[str],
 ) -> resolve.Tier:
-    """Return the evidence tier behind one file's references.
-
-    The tier is the tier at which *this file* resolves the name -- and it is
-    reported only when the resolution actually lands on the target. A file
-    that defines its own ``quote`` resolves the name to its own definition, so
-    its rows are name-only evidence about somebody else's ``quote`` no matter
-    how strong the local binding is; labelling them ``name-only-ambiguous`` is
-    what tells a reader that the shadowing happened.
-
-    Returns the tier rather than a finished :class:`~render.RefGroup`: naming
-    the evidence is the one judgement here, and the group is five fields the
-    caller already holds.
-    """
-    resolution = resolver.resolve(name, path)
+    # An import is tiered by the binding it creates. Any other site that binds
+    # nothing (parameter, local, attribute member, declaration) is a spelling only.
+    if resolution is None and site.role is IdentifierRole.IMPORT:
+        resolution = resolver.resolve(site.name, site.path)
     if resolution is None:
         return resolve.Tier.AMBIGUOUS
     resolved_ids = {symbol_stable_id(entry.symbol) for entry in resolution.candidates}

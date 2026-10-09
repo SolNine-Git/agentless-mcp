@@ -41,6 +41,16 @@ def test_report_contains_every_documented_capability_surface(tmp_path, extractor
     assert document["cache"]["generation_matches"] is False
 
 
+def test_the_report_names_the_languages_whose_locals_are_told_from_callers(tmp_path, extractor):
+    (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    report = build_capability_report(resolve_repo(tmp_path, None), extractor)
+
+    assert report.as_dict()["scope_analysed_languages"] == ["python"]
+    assert "scope analysis (a parameter or local is told from a caller): python" in (
+        render_capability_report(report)
+    )
+
+
 class TestTheCacheStatusIsMeasured:
     """The report describes this repository's database, not a stand-in.
 

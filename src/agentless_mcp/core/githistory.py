@@ -23,7 +23,8 @@ HISTORY_TIMEOUT_SECONDS = 30.0
 # else: a patch an older git prints despite --no-patch, or a rewritten log.
 MAX_HISTORY_OUTPUT_BYTES = 2_000_000
 
-_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
+# SHA-1 object names are 40 hex digits; a SHA-256 repository's are 64.
+_SHA_PATTERN = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class HistoryFailure(Enum):
     OTHER = "other"
 
 
-def log_arguments(path: str, start: int, end: int, *, max_count: int) -> list[str]:
+def log_arguments(path: str, start: int, end: int, *, max_count: int, revision: str) -> list[str]:
     """Build the git log argv for the commits that touched lines start..end of path."""
     bounds.at_least(start, 1, "start")
     bounds.at_least(end, start, "end")
@@ -59,15 +60,30 @@ def log_arguments(path: str, start: int, end: int, *, max_count: int) -> list[st
         "-z",
         f"--format={HISTORY_FORMAT}",
         f"--max-count={max_count}",
+        revision,
         "--",
     ]
 
 
-def diff_arguments(path: str) -> list[str]:
-    """Build the git diff argv whose exit status says whether path differs from HEAD."""
+def diff_arguments(path: str, revision: str) -> list[str]:
+    """Build the git diff argv whose exit status says whether path differs from revision."""
     # The "./" defeats pathspec magic, as commit_churn does: a repository file
     # named ":(exclude)x" is a path here and never a pattern.
-    return ["diff", "--quiet", "HEAD", "--", f"./{path}"]
+    return ["diff", "--quiet", revision, "--", f"./{path}"]
+
+
+def commit_arguments(short: str) -> list[str]:
+    """Build the rev-parse argv that expands a receipt's short sha to its full commit."""
+    return ["rev-parse", "--verify", f"{short}^{{commit}}"]
+
+
+def blob_arguments(commit: str, path: str) -> list[str]:
+    """Build the argv that prints ``path`` as committed at ``commit``."""
+    # Plumbing rather than `git show`, which can run a textconv driver.
+    return ["cat-file", "blob", f"{commit}:{path}"]
+
+
+SHALLOW_ARGUMENTS = ("rev-parse", "--is-shallow-repository")
 
 
 def parse_log(text: str, *, capped: bool) -> tuple[CommitRecord, ...]:
@@ -92,7 +108,7 @@ def parse_log(text: str, *, capped: bool) -> tuple[CommitRecord, ...]:
         if not _SHA_PATTERN.fullmatch(sha):
             raise OperationFailed(
                 MESSAGES.history_git_output_malformed.format(
-                    detail=f"commit {index + 1} does not open with a 40-character sha"
+                    detail=f"commit {index + 1} does not open with a full sha"
                 )
             )
         if not authored:
@@ -107,7 +123,8 @@ def parse_log(text: str, *, capped: bool) -> tuple[CommitRecord, ...]:
 
 def classify_failure(note: str) -> HistoryFailure:
     """Name the failure a runner note describes."""
-    if "There is no path" in note:
+    # The first is git log's wording, the other two cat-file's.
+    if "There is no path" in note or "does not exist in" in note or "but not in" in note:
         return HistoryFailure.NO_PATH
     if "has only" in note and "lines" in note:
         return HistoryFailure.SPAN_BEYOND_HEAD

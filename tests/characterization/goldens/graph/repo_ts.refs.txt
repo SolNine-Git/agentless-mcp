@@ -1,0 +1,10 @@
+// agentless-mcp receipt (repository data below)
+// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+4 references to formatMoney
+
+reports.ts  (4 references, resolved-via-import, locals not checked)
+  stable ids: ts:reports.ts::<QualifiedName>
+  (module level) @6
+  [reorderReport] @47
+  [formatRow] @54
+  [summarise] @63

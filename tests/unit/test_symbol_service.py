@@ -19,6 +19,7 @@ from agentless_mcp.application.symbol_service import (
     is_fixture_path,
     is_test_path,
     render_expansion,
+    render_find,
     render_refs,
     unresolved_lines,
 )
@@ -486,3 +487,117 @@ class TestWhatCountsAsAFixturePath:
     def test_a_fixture_is_not_reported_as_a_test(self):
         """The map lists tests as companions; a fixture has nothing to exercise."""
         assert not is_test_path("fixtures/repo_py/core.py")
+
+
+def _fan_in(symbols, tmp_path, files, target):
+    for relative, text in files.items():
+        written = tmp_path / relative
+        written.parent.mkdir(parents=True, exist_ok=True)
+        written.write_text(text, encoding="utf-8")
+    result = symbols.find_referencing_symbols(resolve_repo(tmp_path, None), target)
+    return {
+        (group.path, group.tier): [site.line for site in group.sites] for group in result.groups
+    }, result
+
+
+HELPER_LIB = {"lib.py": "def helper():\n    return 1\n"}
+
+
+class TestEachSiteIsTieredOnItsOwnBinding:
+    def test_a_parameter_shadowing_an_import_is_a_spelling_not_a_caller(self, symbols, tmp_path):
+        use = (
+            "from lib import helper\n\n\ndef real():\n    return helper()\n\n\n"
+            "def unrelated(helper):\n    return helper()\n"
+        )
+        tiers, _ = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
+
+        assert tiers[("use.py", "imported")] == [1, 5]
+        assert tiers[("use.py", "ambiguous")] == [8, 9]
+
+    def test_a_qualifier_naming_another_module_is_a_spelling(self, symbols, tmp_path):
+        files = {
+            **HELPER_LIB,
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": (
+                "import lib\nimport other\n\n\ndef real():\n    return lib.helper()\n\n\n"
+                "def unrelated():\n    return other.helper()\n"
+            ),
+        }
+        tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::helper")
+
+        assert tiers[("use.py", "imported")] == [6]
+        assert tiers[("use.py", "ambiguous")] == [10]
+
+    def test_a_language_without_scope_analysis_says_so_on_its_binding_rows(self, symbols, tmp_path):
+        files = {
+            "lib.ts": "export function helper() {\n  return 1;\n}\n",
+            "use.ts": (
+                'import { helper } from "./lib";\n\n'
+                "export function real() {\n  return helper();\n}\n"
+            ),
+        }
+        _, result = _fan_in(symbols, tmp_path, files, "ts:lib.ts::helper")
+        group = next(group for group in result.groups if group.path == "use.ts")
+
+        assert group.tier == "imported"
+        assert group.scope_checked is False
+        assert group.as_dict()["scope_checked"] is False
+        assert "locals not checked" in render_refs(result)
+
+    def test_a_file_split_across_tiers_counts_once_toward_the_omitted_files(
+        self, symbols, tmp_path
+    ):
+        use = (
+            "from lib import helper\n\n\ndef real():\n    return helper()\n\n\n"
+            "def unrelated(helper):\n    return helper()\n"
+        )
+        _, result = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
+
+        assert len(result.groups.rows) == 2
+        assert result.groups.files == 1
+        assert result.groups.files_omitted == 0
+
+
+class TestAnAliasedCallerIsInTheFanIn:
+    def test_the_alias_spelling_is_listed_at_its_import_tier(self, symbols, tmp_path):
+        use = "from lib import helper as h\n\n\ndef real():\n    return h()\n"
+        tiers, _ = _fan_in(symbols, tmp_path, {**HELPER_LIB, "use.py": use}, "py:lib.py::helper")
+        assert tiers[("use.py", "imported")] == [1, 5]
+
+    def test_an_alias_of_another_definition_is_not_listed(self, symbols, tmp_path):
+        files = {
+            **HELPER_LIB,
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": "from other import helper as h\n\n\ndef real():\n    return h()\n",
+        }
+        tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::helper")
+        assert ("use.py", "imported") not in tiers
+
+
+def _found(symbols, tmp_path, text, query):
+    (tmp_path / "core.py").write_text(text, encoding="utf-8")
+    return symbols.find_symbol(resolve_repo(tmp_path, None), query)
+
+
+class TestALookupMissNamesAnUnparsedDeclaration:
+    UNFINISHED = "def good():\n    return 1\n\ndef unfinished(\n"
+
+    def test_a_name_inside_a_region_that_did_not_parse_is_pointed_at(self, symbols, tmp_path):
+        result = _found(symbols, tmp_path, self.UNFINISHED, "unfinished")
+
+        assert result.unparsed == (("core.py", 4),)
+        assert result.as_dict()["unparsed"] == [{"path": "core.py", "line": 4}]
+        assert "unfinished is spelled where a file did not parse (core.py:4)" in render_find(result)
+
+    def test_a_parse_error_away_from_the_name_adds_nothing(self, symbols, tmp_path):
+        text = "def good():\n    return 'missing'\n\ndef broken(\n"
+        result = _found(symbols, tmp_path, text, "missing")
+
+        assert result.unparsed == ()
+        assert "did not parse" not in render_find(result)
+
+    def test_a_hit_is_not_rescanned(self, symbols, tmp_path):
+        result = _found(symbols, tmp_path, self.UNFINISHED, "good")
+
+        assert result.total == 1
+        assert result.unparsed == ()

@@ -89,6 +89,11 @@ class TestWithTheExtra:
     def test_it_counts_a_positive_number_of_tokens(self):
         assert bootstrap.select_counter(COUNTER_TIKTOKEN).count(SAMPLE) > 0
 
+    def test_a_special_token_spelling_counts_as_ordinary_text(self):
+        counter = bootstrap.select_counter(COUNTER_TIKTOKEN)
+        marker = '"<|endoftext|>"'
+        assert counter.count(f"value = {marker}\n") > counter.count("value = \n")
+
     def test_the_default_is_still_chars4_with_the_extra_installed(self):
         # The pins move only when a caller asks for them to.
         assert isinstance(bootstrap.select_counter(None), Chars4Counter)

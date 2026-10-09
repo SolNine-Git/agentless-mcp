@@ -13,11 +13,13 @@ from agentless_mcp.application.symbol_service import SymbolSpan, resolve_symbol_
 from agentless_mcp.core import githistory, gitinfo
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.projectconfig import MAX_BUDGET, MIN_BUDGET
-from agentless_mcp.core.symbols import symbol_stable_id
+from agentless_mcp.core.slices import line_count, span_end
+from agentless_mcp.core.symbols import id_qualname, symbol_stable_id
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import bounds
 from agentless_mcp.util.budget import TRUNCATION_MARKER_TOKENS, allocate
 from agentless_mcp.util.errors import OperationFailed
+from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES
 from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import TokenCounter
 
@@ -95,6 +97,8 @@ class HistoryResult:
     dirty: bool | None
     seats_capped: bool = False
     dirty_note: str = ""
+    shallow: bool = False
+    signature_changed: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form: the span, then the commits under ``commits``."""
@@ -108,6 +112,8 @@ class HistoryResult:
             "output_capped": self.output_capped,
             "dirty": self.dirty,
             "seats_capped": self.seats_capped,
+            "shallow": self.shallow,
+            "signature_changed": self.signature_changed,
         }
 
 
@@ -142,9 +148,16 @@ class HistoryService:
         if ctx.head_sha is None:
             raise OperationFailed(MESSAGES.history_no_git.format(note=ctx.note))
 
+        commit = self._git_text(ctx.root, githistory.commit_arguments(ctx.head_sha), span).strip()
+        dirty, dirty_note = self._dirty(ctx.root, span.path, commit)
+        working = span
+        if dirty is not False:
+            # git log -L reads line numbers against the commit, not the working tree.
+            span = self._committed_span(ctx.root, commit, span)
+
         seats = min(limit, HISTORY_MAX_SEATS, max(1, budget // HISTORY_TOKENS_PER_SEAT))
         arguments = githistory.log_arguments(
-            span.path, span.start_line, span.end_line, max_count=seats + 1
+            span.path, span.start_line, span.end_line, max_count=seats + 1, revision=commit
         )
         outcome = self._runner(
             ctx.root,
@@ -159,9 +172,8 @@ class HistoryService:
             raise OperationFailed(_empty(span, capped=outcome.truncated))
 
         more = len(records) > seats
-        dirty, dirty_note = self._dirty(ctx.root, span.path)
         return HistoryResult(
-            target=symbol_stable_id(span.symbol),
+            target=symbol_stable_id(working.symbol),
             path=span.path,
             start_line=span.start_line,
             end_line=span.end_line,
@@ -171,18 +183,62 @@ class HistoryService:
             dirty=dirty,
             seats_capped=more and seats < limit,
             dirty_note=dirty_note,
+            shallow=self._shallow(ctx.root),
+            signature_changed=span.symbol.signature != working.symbol.signature,
         )
 
-    def _dirty(self, root: Path, path: str) -> tuple[bool | None, str]:
+    def _dirty(self, root: Path, path: str, commit: str) -> tuple[bool | None, str]:
         outcome = self._runner(
             root,
-            githistory.diff_arguments(path),
+            githistory.diff_arguments(path, commit),
             timeout=gitinfo.GIT_TIMEOUT_SECONDS,
             max_output_bytes=_DIRTY_CHECK_OUTPUT_BYTES,
         )
         if outcome.returncode in (0, 1):
             return outcome.returncode == 1, ""
         return None, outcome.note
+
+    def _git_text(
+        self,
+        root: Path,
+        arguments: Sequence[str],
+        span: SymbolSpan,
+        max_output_bytes: int = _DIRTY_CHECK_OUTPUT_BYTES,
+    ) -> str:
+        outcome = self._runner(
+            root, arguments, timeout=gitinfo.GIT_TIMEOUT_SECONDS, max_output_bytes=max_output_bytes
+        )
+        if outcome.text is None:
+            raise OperationFailed(_failure(outcome.note, span))
+        if outcome.truncated:
+            note = f"git {arguments[0]} printed more than {max_output_bytes} bytes"
+            raise OperationFailed(MESSAGES.history_git_failed.format(note=note))
+        return outcome.text
+
+    def _committed_span(self, root: Path, commit: str, span: SymbolSpan) -> SymbolSpan:
+        text = self._git_text(
+            root,
+            githistory.blob_arguments(commit, span.path),
+            span,
+            max_output_bytes=DEFAULT_MAX_FILE_BYTES,
+        )
+        wanted = id_qualname(span.symbol)
+        symbols = self._extractor.extract_from_source(text, span.symbol.language, span.path)
+        match = next((symbol for symbol in symbols if id_qualname(symbol) == wanted), None)
+        if match is None:
+            message = MESSAGES.history_symbol_not_in_head.format(name=wanted, path=span.path)
+            raise OperationFailed(message)
+        end = min(line_count(text), span_end(match))
+        return SymbolSpan(match, span.path, match.line_number, end, text)
+
+    def _shallow(self, root: Path) -> bool:
+        outcome = self._runner(
+            root,
+            githistory.SHALLOW_ARGUMENTS,
+            timeout=gitinfo.GIT_TIMEOUT_SECONDS,
+            max_output_bytes=_DIRTY_CHECK_OUTPUT_BYTES,
+        )
+        return (outcome.text or "").strip() == "true"
 
     def _fit(self, entries: list[HistoryEntry], budget: int) -> tuple[HistoryEntry, ...]:
         costs = [self._counter.count(_render_entry(entry)) for entry in entries]
@@ -243,6 +299,11 @@ def render_history(result: HistoryResult) -> str:
         )
     elif result.dirty:
         lines.append(MESSAGES.history_dirty_file.format(path=one_line(result.path)))
+    if result.signature_changed:
+        name = result.target.rsplit("::", 1)[-1]
+        lines.append(MESSAGES.history_signature_changed.format(name=one_line(name)))
+    if result.shallow:
+        lines.append(MESSAGES.history_shallow)
     return "\n".join(lines) + "\n"
 
 

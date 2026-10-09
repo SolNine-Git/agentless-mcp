@@ -66,7 +66,11 @@ from dataclasses import dataclass
 from tree_sitter import Node, Parser
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, INDENT_BLOCK_NODE_TYPES
+from agentless_mcp.core.extractor import (
+    COMMENT_NODE_TYPES,
+    INDENT_BLOCK_NODE_TYPES,
+    error_nodes,
+)
 from agentless_mcp.util.errors import LanguageUnavailable
 
 # What a block boundary looks like in the normalised stream. Two control
@@ -369,17 +373,7 @@ def _error_count(root: Node) -> int:
     ones. Counting them separately would make the baseline delta depend on how
     much text followed the mistake.
     """
-    count = 0
-    stack: list[Node] = [root]
-    while stack:
-        node = stack.pop()
-        if not node.has_error and not node.is_missing:
-            continue
-        if node.is_missing or node.is_error:
-            count += 1
-            continue
-        stack.extend(node.children)
-    return count
+    return sum(1 for _ in error_nodes(root))
 
 
 def _first_error_line(root: Node) -> int | None:
@@ -396,12 +390,4 @@ def _first_error_line(root: Node) -> int | None:
     failure -- and no descendant can start before its parent, so the topmost
     error reached is the earliest one.
     """
-    stack: list[Node] = [root]
-    while stack:
-        node = stack.pop()
-        if not node.has_error and not node.is_missing:
-            continue
-        if node.is_missing or node.is_error:
-            return node.start_point[0] + 1
-        stack.extend(reversed(node.children))
-    return None
+    return next((node.start_point[0] + 1 for node in error_nodes(root)), None)

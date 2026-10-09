@@ -369,7 +369,8 @@ class PatchService:
             self._require_clean(ctx)
             return self._apply_at(ctx, ctx.root, canonical, in_place=True)
 
-        with sandbox.worktree(ctx.root) as tree:
+        commit = sandbox.pinned_commit(ctx.root, ctx.head_sha)
+        with sandbox.worktree(ctx.root, commit) as tree:
             return self._apply_at(ctx, tree, canonical, in_place=False)
 
     def normalize(self, edits: Sequence[Edit], ctx: RepoContext) -> NormalizeReport:
