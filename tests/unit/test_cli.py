@@ -1042,6 +1042,43 @@ class TestLintReviewMode:
         assert code == EXIT_USAGE
         assert "--since no-such-branch does not name a commit" in capsys.readouterr().err
 
+    def test_since_runs_clone_delta_when_only_names_it(self, services, reviewed, capsys):
+        (reviewed / "copy.py").write_text(_branchy("again", 11), encoding="utf-8")
+
+        code = invoke(
+            services, reviewed, "lint", "--since", "HEAD", "--only", "clone_delta", "--json"
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        # Both functions are new in this shape, so each is a new copy of the other.
+        assert [(row["check"], row["location"]) for row in entry["findings"]] == [
+            ("clone_delta", "app.py:1"),
+            ("clone_delta", "copy.py:1"),
+        ]
+        assert "observed" not in entry
+
+    def test_path_runs_clone_delta_when_only_names_it(self, services, reviewed, tmp_path, capsys):
+        after = tmp_path / "after.py"
+        after.write_text(_branchy("again", 11), encoding="utf-8")
+
+        code = invoke(
+            services,
+            reviewed,
+            "lint",
+            "--path",
+            "copy.py",
+            "--after",
+            str(after),
+            "--only",
+            "clone_delta",
+            "--json",
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert [row["location"] for row in entry["findings"]] == ["copy.py:1"]
+
 
 def _git_diff(root):
     """Return ``git diff`` for a fixture repository, as git itself writes it."""

@@ -18,8 +18,9 @@
   gains a candidate that takes `check_report_inputs` from complexity 4 to 11,
   and the two existing candidates' reports are byte-identical.
 - **`lint --only CHECK[,CHECK...]` runs a subset of the checks.** When it
-  names only pair checks, `lint` reads the edited files and does not scan the
-  repository. One SEARCH/REPLACE candidate on mcp-local takes 0.15 s with
+  names only pair checks, `lint` skips the repository scan that the patch
+  checks need, and `complexity_delta` and `contract_drift` read only the edited
+  files. One SEARCH/REPLACE candidate on mcp-local takes 0.15 s with
   `--only complexity_delta` and 1.48 s with every check (median of 5 runs,
   `/usr/bin/time`, `uv run`, tag cache at a generation mismatch).
 - **`lint --path REL --after FILE` is the per-edit hook form.** It compares
@@ -133,6 +134,29 @@
   Over 144 Loc-Bench checkouts, the orphan, unused-export, and hub sections are
   byte-identical to the previous build, and the walk takes 0.26 s median and
   4.9 s at most.
+- **`lint` reports `clone_delta`.** The advisory names each block a change
+  adds that has a copy elsewhere in the repository once names, literals,
+  comments, and docstrings are ignored (a Type-2 clone). A block is a function,
+  loop, branch, or try statement with 3 or more source lines, in all 12 tier-1
+  languages. Old and new blocks pair within each file first, then across
+  files, so a block moved to another file or renamed in place is not a finding,
+  and a new block with no copy is not one either. One finding covers a pasted
+  function and the copied blocks inside it, and a function that
+  `near_duplicates` reported at the same path and line is skipped. The index
+  covers tier-1 files outside test and fixture paths, and a file it could not
+  read or parse is counted and named in one `not_checked` row. Python follows
+  scb-check 0.1.3: on a snapshot of mcp-local `src/` (183 files), the clone
+  groups (200 groups, 545 instances) and the 2,513 clone source lines equal
+  scb-check's. The check runs by default over `--candidates` and `--diff`.
+  `--path` and `--since` run it only when `--only` names it, because it
+  parses every source file. On a scratch clone of mcp-local (228 files in
+  scope), `--since HEAD~5 --only clone_delta` takes 0.84 s, and all three pair
+  checks take 0.90 s against 0.23 s for `complexity_delta` and
+  `contract_drift`. A one-edit candidate with every check takes 3.93 s against
+  3.24 s before (median of 5 runs, `/usr/bin/time`, no tag cache). The lint
+  golden gains a candidate that copies `format_money`, and the other four
+  candidates' reports are byte-identical. `capabilities` lists the check under
+  the input kind `pairs+clones`.
 
 ## 0.9.1 -- 2026-10-09
 

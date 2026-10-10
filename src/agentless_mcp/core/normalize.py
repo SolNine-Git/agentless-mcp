@@ -62,6 +62,7 @@ import hashlib
 import re
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from tree_sitter import Node, Parser
 
@@ -259,6 +260,231 @@ def node_stream(node: Node, language: str, omit: Node | None = None) -> str:
     blocks = frozenset(INDENT_BLOCK_NODE_TYPES.get(language, ()))
     omit_id = None if omit is None else omit.id
     return " ".join(_tokens(node, blocks, omit_id))
+
+
+# The pack grammar hides `expression_statement`, so a statement-level string
+# is a bare `string` child of one of these.
+PYTHON_STATEMENT_PARENTS = frozenset({"block", "module"})
+
+_ECMASCRIPT_IDENTIFIERS = frozenset(
+    {
+        "identifier",
+        "property_identifier",
+        "shorthand_property_identifier",
+        "shorthand_property_identifier_pattern",
+        "private_property_identifier",
+        "statement_identifier",
+    }
+)
+_C_IDENTIFIERS = frozenset(
+    {"identifier", "field_identifier", "type_identifier", "statement_identifier"}
+)
+
+CLONE_IDENTIFIERS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "bash": frozenset({"variable_name", "word"}),
+        "c": _C_IDENTIFIERS,
+        "cpp": _C_IDENTIFIERS | {"namespace_identifier"},
+        "go": frozenset(
+            {
+                "identifier",
+                "field_identifier",
+                "type_identifier",
+                "package_identifier",
+                "label_name",
+            }
+        ),
+        "java": frozenset({"identifier", "type_identifier"}),
+        "javascript": _ECMASCRIPT_IDENTIFIERS,
+        "lua": frozenset({"identifier"}),
+        "python": frozenset({"identifier"}),
+        "ruby": frozenset(
+            {"identifier", "constant", "instance_variable", "class_variable", "global_variable"}
+        ),
+        "rust": frozenset(
+            {"identifier", "field_identifier", "type_identifier", "shorthand_field_identifier"}
+        ),
+        "tsx": _ECMASCRIPT_IDENTIFIERS | {"type_identifier"},
+        "typescript": _ECMASCRIPT_IDENTIFIERS | {"type_identifier"},
+    }
+)
+
+
+def _literals(**tokens: tuple[str, ...]) -> Mapping[str, str]:
+    return MappingProxyType({kind: token for token, kinds in tokens.items() for kind in kinds})
+
+
+_BOOLEANS = ("true", "false")
+_ECMASCRIPT_LITERALS = _literals(
+    STR=("string", "template_string", "regex"),
+    NUM=("number",),
+    BOOL=_BOOLEANS,
+    NONE=("null", "undefined"),
+)
+_C_LITERALS = _literals(
+    STR=("string_literal", "char_literal", "system_lib_string"),
+    NUM=("number_literal",),
+    BOOL=_BOOLEANS,
+    NONE=("null",),
+)
+
+# The tokens drop the `$` the serialized form gives them, so `**tokens` can name them.
+CLONE_LITERALS: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        "bash": _literals(
+            STR=("string", "raw_string", "ansi_c_string", "translated_string", "heredoc_body"),
+            NUM=("number",),
+        ),
+        "c": _C_LITERALS,
+        "cpp": MappingProxyType({**_C_LITERALS, "raw_string_literal": "STR"}),
+        "go": _literals(
+            STR=("interpreted_string_literal", "raw_string_literal", "rune_literal"),
+            INT=("int_literal",),
+            FLOAT=("float_literal", "imaginary_literal"),
+            BOOL=_BOOLEANS,
+            NONE=("nil",),
+        ),
+        "java": _literals(
+            STR=("string_literal", "character_literal"),
+            INT=(
+                "decimal_integer_literal",
+                "hex_integer_literal",
+                "octal_integer_literal",
+                "binary_integer_literal",
+            ),
+            FLOAT=("decimal_floating_point_literal", "hex_floating_point_literal"),
+            BOOL=_BOOLEANS,
+            NONE=("null_literal",),
+        ),
+        "javascript": _ECMASCRIPT_LITERALS,
+        "lua": _literals(STR=("string",), NUM=("number",), BOOL=_BOOLEANS, NONE=("nil",)),
+        # scb-check's table also names f_string, string_fragment, bytes, and
+        # imaginary, which are not kinds in the pack grammar.
+        "python": _literals(
+            STR=("string", "string_content"),
+            INT=("integer",),
+            FLOAT=("float",),
+            BOOL=_BOOLEANS,
+            NONE=("none",),
+        ),
+        "ruby": _literals(
+            STR=(
+                "string",
+                "character",
+                "regex",
+                "simple_symbol",
+                "delimited_symbol",
+                "hash_key_symbol",
+            ),
+            INT=("integer",),
+            FLOAT=("float", "rational", "complex"),
+            BOOL=_BOOLEANS,
+            NONE=("nil",),
+        ),
+        "rust": _literals(
+            STR=("string_literal", "raw_string_literal", "char_literal"),
+            INT=("integer_literal",),
+            FLOAT=("float_literal",),
+            BOOL=("boolean_literal",),
+        ),
+        "tsx": _ECMASCRIPT_LITERALS,
+        "typescript": _ECMASCRIPT_LITERALS,
+    }
+)
+
+
+@dataclass(frozen=True)
+class CloneKey:
+    """A block's sha256 keys: ``type2`` with names and literals abstracted, ``exact`` without."""
+
+    type2: str
+    exact: str
+
+
+def clone_key(node: Node, language: str) -> CloneKey:
+    """Return the clone keys of one parsed block, comments and Python docstrings dropped."""
+    identifiers = CLONE_IDENTIFIERS.get(language, frozenset())
+    literals = CLONE_LITERALS.get(language, MappingProxyType({}))
+    statement_drop = _STATEMENT_DROPS.get(language)
+    names: dict[str, str] = {}
+    type2: list[str] = []
+    exact: list[str] = []
+    stack: list[Node | str] = [node]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            type2.append(item)
+            exact.append(item)
+        elif item.type in identifiers:
+            name = _node_text(item)
+            type2.append(names.setdefault(name, f"$VAR{len(names) + 1}"))
+            exact.append(f"{item.type}={name}")
+        elif item.type in literals:
+            type2.append(f"${literals[item.type]}")
+            exact.append(f"{item.type}={_node_text(item)}")
+        else:
+            token, pending = _opened(item, _kept_children(item, statement_drop))
+            type2.append(token)
+            exact.append(token)
+            stack.extend(pending)
+    return CloneKey(
+        type2=hashlib.sha256("".join(type2).encode("utf-8")).hexdigest(),
+        exact=hashlib.sha256(_KEY_SEPARATOR.join(exact).encode("utf-8")).hexdigest(),
+    )
+
+
+def string_prefix(literal: str) -> str:
+    """Return the lowercase prefix before a Python string literal's first quote."""
+    end = next((index for index, char in enumerate(literal) if char in "\"'"), len(literal))
+    return literal[:end].lower()
+
+
+def _kept_children(node: Node, statement_drop: Callable[[Node, Node], bool] | None) -> list[Node]:
+    return [
+        child
+        for child in node.children
+        if child.type not in COMMENT_NODE_TYPES
+        and (statement_drop is None or not statement_drop(child, node))
+    ]
+
+
+def _opened(node: Node, kept: list[Node]) -> tuple[str, list[Node | str]]:
+    # scb-check's `type(child,child)` form: a node that keeps no child is its bare type.
+    if not kept:
+        return node.type, []
+    pending: list[Node | str] = [")"]
+    for index, child in enumerate(reversed(kept)):
+        pending.append(child)
+        if index < len(kept) - 1:
+            pending.append(",")
+    return f"{node.type}(", pending
+
+
+def _node_text(node: Node) -> str:
+    return (node.text or b"").decode("utf-8")
+
+
+def _is_python_docstring(child: Node, parent: Node) -> bool:
+    # scb-check drops a plain-string statement with no ownership test, and its
+    # one-element string tuple (`"a",`) too, which the pack spells `tuple_expression`.
+    if parent.type not in PYTHON_STATEMENT_PARENTS:
+        return False
+    if child.type == "tuple_expression":
+        named = child.named_children
+        return len(named) == 1 and _is_plain_string(named[0])
+    return _is_plain_string(child)
+
+
+def _is_plain_string(node: Node) -> bool:
+    if node.type != "string":
+        return False
+    prefix = string_prefix(_node_text(node))
+    return "b" not in prefix and "f" not in prefix
+
+
+_STATEMENT_DROPS: Mapping[str, Callable[[Node, Node], bool]] = MappingProxyType(
+    {"python": _is_python_docstring}
+)
 
 
 def _label(digest: str, *, grammar: bool) -> str:

@@ -37,3 +37,11 @@
   [warning] contract_drift  reports.py:71
       summarise: inventory.reorder_list() or [] is new in a boundary module (or-empty-default). A missing or falsy value reads as an empty container, so a changed response shape looks like no data. Check for the missing value in the parse step and raise there.
       evidence: rule or-empty-default; unit summarise; capture inventory.reorder_list() or []
+
+05-copies: 1 advisory, 1 not_checked
+  [not_checked] undeclared_imports  (repository)
+      not checked: the repository has no pyproject.toml or requirements file
+      evidence: no dependency manifest found
+  [advisory] clone_delta  pricing.py:84
+      lines 84-87 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.
+      evidence: also at pricing.py:78

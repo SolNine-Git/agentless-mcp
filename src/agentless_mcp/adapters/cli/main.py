@@ -59,6 +59,7 @@ from agentless_mcp.application.history_service import (
 )
 from agentless_mcp.application.lint_service import (
     CHECK_NAMES,
+    EDITED_FILE_CHECK_NAMES,
     PAIR_CHECK_NAMES,
     LintService,
     load_candidates,
@@ -626,15 +627,17 @@ def _add_lint(subparsers: Any) -> None:
     source.add_argument(
         "--path",
         metavar="REL",
-        help="a file in --repo whose proposed whole new text is in --after; runs only the "
-        "pair checks, with no repository scan (the per-edit hook form)",
+        help="a file in --repo whose proposed whole new text is in --after (the per-edit hook "
+        f"form). Runs {' and '.join(EDITED_FILE_CHECK_NAMES)}, which read only this file. "
+        "--only can add clone_delta, which also reads every tier-1 source file",
     )
     source.add_argument(
         "--since",
         metavar="REV",
-        help="compare each file changed since the commit REV with its working-tree text; runs "
-        'only the pair checks (review mode). For a branch, pass --since "$(git merge-base '
-        'HEAD main)"',
+        help="compare each file changed since the commit REV with its working-tree text "
+        f"(review mode). Runs {' and '.join(EDITED_FILE_CHECK_NAMES)}, which read only the "
+        "changed files. --only can add clone_delta, which also reads every tier-1 source "
+        'file. For a branch, pass --since "$(git merge-base HEAD main)"',
     )
     parser.add_argument(
         "--after",
@@ -647,9 +650,11 @@ def _add_lint(subparsers: Any) -> None:
         metavar="CHECK[,CHECK...]",
         type=_check_names,
         default=None,
-        help=f"run only these checks: {', '.join(CHECK_NAMES)}. With only pair checks "
-        f"({', '.join(PAIR_CHECK_NAMES)}), lint reads the edited files and does not scan "
-        "the repository",
+        help=f"run only these checks: {', '.join(CHECK_NAMES)}. The pair checks "
+        f"({', '.join(PAIR_CHECK_NAMES)}) compare whole file texts. "
+        f"{' and '.join(EDITED_FILE_CHECK_NAMES)} read only the edited files. clone_delta "
+        "also reads every tier-1 source file outside test and fixture paths. A run with only "
+        "pair checks skips the symbol scan that the other checks need",
     )
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_lint)
@@ -1372,10 +1377,10 @@ def _lint_report(
     args: argparse.Namespace, ctx: RepoContext, services: CliServices
 ) -> render.LintReportView:
     if args.path is not None:
-        checks = PAIR_CHECK_NAMES if args.only is None else args.only
+        checks = EDITED_FILE_CHECK_NAMES if args.only is None else args.only
         return services.lints.lint_proposed(ctx, args.path, Path(args.after), checks)
     if args.since is not None:
-        checks = PAIR_CHECK_NAMES if args.only is None else args.only
+        checks = EDITED_FILE_CHECK_NAMES if args.only is None else args.only
         return services.lints.lint_revision(ctx, args.since, checks)
     candidates = (
         (load_diff(Path(args.diff)),)

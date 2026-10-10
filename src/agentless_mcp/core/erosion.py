@@ -1,27 +1,36 @@
 """Checks that compare one file's whole text before and after a change.
 
 They take typed text pairs rather than :class:`agentless_mcp.core.patchlint.RepoFacts`,
-so ``lint`` can run them without scanning the repository. Like every lint check
-they are advisory: nothing here blocks a change. This module opens no file.
+so ``lint`` can run them without the repository scan the patch checks need.
+``clone_delta`` also takes a :class:`CloneIndex` of the repository's source
+files, which the caller reads. Like every lint check they are advisory: nothing
+here blocks a change. This module opens no file.
 """
 
+import difflib
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Collection, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any, TypeVar
+from types import MappingProxyType
+from typing import Any, Final, TypeVar
 
-from agentless_mcp.core import complexity, contracts
+from agentless_mcp.core import clones, complexity, contracts
+from agentless_mcp.core.clones import Block, FileBlocks, place
 from agentless_mcp.core.complexity import Unit
 from agentless_mcp.core.contracts import Hit
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.patchlint import Finding, Severity
+from agentless_mcp.core.patchlint import MAX_DUPLICATE_SITES, Finding, Severity
 from agentless_mcp.core.projectconfig import CONFIG_FILENAME
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import LanguageUnavailable, UnmeasurableSource
 
 CHECK_COMPLEXITY_DELTA = "complexity_delta"
 CHECK_CONTRACT_DRIFT = "contract_drift"
+CHECK_CLONE_DELTA = "clone_delta"
+
+# How many unindexed files the one clone_delta coverage row names.
+MAX_NAMED_GAPS: Final = 10
 
 MODULE_UNIT = "<module>"
 GAP_NO_BOUNDARY_GLOBS = "no_boundary_globs"
@@ -205,6 +214,31 @@ class PairOutcome:
     observed: Observed = field(default_factory=Observed)
 
 
+def _no_files() -> Mapping[str, FileBlocks]:
+    return MappingProxyType({})
+
+
+def _no_reasons() -> Mapping[str, str]:
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class CloneIndex:
+    """The repository files clone_delta indexed, and why each other file was not, by path."""
+
+    files: Mapping[str, FileBlocks] = field(default_factory=_no_files)
+    unindexed: Mapping[str, str] = field(default_factory=_no_reasons)
+    unlisted: str | None = None
+
+
+@dataclass(frozen=True)
+class _Indexed:
+    path: str
+    old: tuple[Block, ...]
+    new: tuple[Block, ...]
+    unchanged: Mapping[int, int]
+
+
 @dataclass(frozen=True)
 class _Gaps:
     check: str
@@ -272,6 +306,39 @@ def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> PairOutco
     found, keys = _new_hits(measured, _match_run(measured))
     observed = Observed(contract_keys=keys) if measured else Observed()
     return PairOutcome(_sorted([*rows, *gaps, *found]), observed)
+
+
+def clone_index(texts: Mapping[str, str], unread: Mapping[str, str]) -> CloneIndex:
+    """Index the clone blocks of each tier-1 text, keeping each file read or indexed in vain."""
+    files: dict[str, FileBlocks] = {}
+    unindexed = dict(unread)
+    for path, text in sorted(texts.items()):
+        try:
+            files[path] = clones.file_blocks(text, path, _source_language(path))
+        except (UnmeasurableSource, LanguageUnavailable) as exc:
+            unindexed[path] = str(exc)
+    return CloneIndex(
+        files=MappingProxyType(files), unindexed=MappingProxyType(dict(sorted(unindexed.items())))
+    )
+
+
+def clone_delta(
+    pairs: Sequence[TextPair], index: CloneIndex, reported: Collection[tuple[str, int]]
+) -> PairOutcome:
+    """Report each block a change adds that has a Type-2 copy elsewhere once the change is in.
+
+    ``index`` holds the repository as the working tree has it, and every index
+    file a pair names is replaced by that pair. ``reported`` holds the
+    ``(path, line)`` of each function ``near_duplicates`` reported in the same run.
+    """
+    indexed, rows = _index_pairs(pairs)
+    changed = {pair.path for pair in pairs}
+    instances = _after_instances(indexed, index, changed)
+    copies = [
+        block for block in _added(indexed) if len(instances[block.key]) >= clones.MIN_INSTANCES
+    ]
+    found = [_clone_finding(block, instances[block.key]) for block in _outermost(copies, reported)]
+    return PairOutcome(_sorted([*_index_rows(index, changed), *rows, *found]))
 
 
 def _first(value: _Row | None, fallback: _Row | None) -> _Row | None:
@@ -588,3 +655,197 @@ def _hit_finding(path: str, hit: Hit, key: DriftKey) -> PairFinding:
         evidence=MESSAGES.contract_evidence.format(**fields),
     )
     return PairFinding(finding, key)
+
+
+BlockKey = Callable[[Block], Hashable]
+
+
+def _source_language(path: str) -> str:
+    language = pair_language(path)
+    if language is None:
+        message = f"{path} is not a tier-1 source file, so clone_delta cannot index it"
+        raise ValueError(message)
+    return language
+
+
+def _index_pairs(pairs: Sequence[TextPair]) -> tuple[list[_Indexed], list[PairFinding]]:
+    if len({pair.path for pair in pairs}) != len(pairs):
+        message = "each path may appear in only one text pair of a run"
+        raise ValueError(message)
+    indexed: list[_Indexed] = []
+    rows: list[PairFinding] = []
+    for pair in pairs:
+        language = pair_language(pair.path)
+        if language is None:
+            continue
+        outcome = _index_pair(pair, language)
+        if isinstance(outcome, PairFinding):
+            rows.append(outcome)
+        else:
+            indexed.append(outcome)
+    return indexed, rows
+
+
+def _index_pair(pair: TextPair, language: str) -> _Indexed | PairFinding:
+    old = _side_blocks(pair.old, pair.path, language, MESSAGES.clone_old_not_indexed)
+    if isinstance(old, PairFinding):
+        return old
+    new = _side_blocks(pair.new, pair.path, language, MESSAGES.clone_new_not_indexed)
+    if isinstance(new, PairFinding):
+        return new
+    return _Indexed(pair.path, old, new, _unchanged_lines(pair.old, pair.new))
+
+
+def _side_blocks(
+    text: str | None, path: str, language: str, gap: str
+) -> tuple[Block, ...] | PairFinding:
+    if text is None:
+        return ()
+    try:
+        return clones.file_blocks(text, path, language).blocks
+    except (UnmeasurableSource, LanguageUnavailable) as exc:
+        message = gap.format(path=path, reason=exc)
+        return _not_checked(CHECK_CLONE_DELTA, path, message, evidence=type(exc).__name__)
+
+
+def _unchanged_lines(old: str | None, new: str | None) -> Mapping[int, int]:
+    # Split on "\n" alone, as tree-sitter numbers rows.
+    if old is None or new is None:
+        return MappingProxyType({})
+    matcher = difflib.SequenceMatcher(None, old.split("\n"), new.split("\n"))
+    return MappingProxyType(
+        {
+            first + offset + 1: second + offset + 1
+            for first, second, size in matcher.get_matching_blocks()
+            for offset in range(size)
+        }
+    )
+
+
+def _after_instances(
+    indexed: Sequence[_Indexed], index: CloneIndex, changed: Collection[str]
+) -> dict[str, list[Block]]:
+    instances: dict[str, list[Block]] = defaultdict(list)
+    for path, unchanged in index.files.items():
+        if path not in changed:
+            for block in unchanged.blocks:
+                instances[block.key].append(block)
+    for item in indexed:
+        for block in item.new:
+            instances[block.key].append(block)
+    return instances
+
+
+def _exact(block: Block) -> Hashable:
+    return block.exact
+
+
+def _type2(block: Block) -> Hashable:
+    return block.key
+
+
+def _added(indexed: Sequence[_Indexed]) -> list[Block]:
+    # Each file pairs its own blocks first, so a copy beside its original is the
+    # added one, and only then do the leftovers pair across files as moves.
+    old_left: list[Block] = []
+    new_left: list[Block] = []
+    for item in indexed:
+        olds, news = _within_file(item)
+        old_left.extend(olds)
+        new_left.extend(news)
+    olds, news = sorted(old_left, key=place), sorted(new_left, key=place)
+    for key in (_exact, _type2):
+        olds, news = _pair_by(olds, news, key, key)
+    return news
+
+
+def _within_file(item: _Indexed) -> tuple[list[Block], list[Block]]:
+    # A block on lines the diff left in place pairs with itself before any copy of it can.
+    olds, news = _pair_by(
+        item.old,
+        item.new,
+        lambda block: (item.unchanged.get(block.start_line), block.exact),
+        lambda block: (block.start_line, block.exact),
+    )
+    for key in (_exact, _type2):
+        olds, news = _pair_by(olds, news, key, key)
+    return olds, news
+
+
+def _pair_by(
+    old: Sequence[Block], new: Sequence[Block], old_key: BlockKey, new_key: BlockKey
+) -> tuple[list[Block], list[Block]]:
+    waiting: dict[Hashable, list[Block]] = defaultdict(list)
+    for block in old:
+        waiting[old_key(block)].append(block)
+    new_left: list[Block] = []
+    for block in new:
+        queue = waiting.get(new_key(block))
+        if queue:
+            queue.pop(0)
+        else:
+            new_left.append(block)
+    old_left = sorted((block for queue in waiting.values() for block in queue), key=place)
+    return old_left, new_left
+
+
+def _outermost(copies: Sequence[Block], reported: Collection[tuple[str, int]]) -> list[Block]:
+    # A copy inside a reported copy, or inside a function near_duplicates
+    # already reported, folds into it, so one pasted function is one finding.
+    kept: list[Block] = []
+    outer: Block | None = None
+    for block in sorted(copies, key=lambda copy: (copy.path, copy.start_line, -copy.end_line)):
+        if outer is not None and _within(block, outer):
+            continue
+        outer = block
+        if not (block.function and (block.path, block.start_line) in reported):
+            kept.append(block)
+    return kept
+
+
+def _within(block: Block, outer: Block) -> bool:
+    return (
+        block.path == outer.path
+        and outer.start_line <= block.start_line
+        and block.end_line <= outer.end_line
+    )
+
+
+def _clone_finding(block: Block, instances: Sequence[Block]) -> PairFinding:
+    others = sorted((other for other in instances if other is not block), key=place)
+    sites = [f"{other.path}:{other.start_line}" for other in others]
+    finding = Finding(
+        check=CHECK_CLONE_DELTA,
+        severity=Severity.ADVISORY,
+        message=MESSAGES.clone_new_copy.format(
+            start=block.start_line, end=block.end_line, count=len(instances)
+        ),
+        path=block.path,
+        line=block.start_line,
+        evidence=MESSAGES.clone_new_copy_evidence.format(sites=_listed(sites, MAX_DUPLICATE_SITES)),
+    )
+    return PairFinding(finding)
+
+
+def _listed(items: Sequence[str], limit: int) -> str:
+    shown = ", ".join(items[:limit])
+    if len(items) <= limit:
+        return shown
+    return MESSAGES.clone_and_more.format(listed=shown, count=len(items) - limit)
+
+
+def _index_rows(index: CloneIndex, changed: Collection[str]) -> list[PairFinding]:
+    rows: list[PairFinding] = []
+    if index.unlisted is not None:
+        message = MESSAGES.clone_index_unlisted.format(reason=index.unlisted)
+        rows.append(_not_checked(CHECK_CLONE_DELTA, "", message, evidence=index.unlisted))
+    gaps = [(path, reason) for path, reason in index.unindexed.items() if path not in changed]
+    if gaps:
+        total = len(gaps) + sum(1 for path in index.files if path not in changed)
+        message = MESSAGES.clone_index_gaps.format(
+            count=len(gaps), total=total, paths=_listed([path for path, _ in gaps], MAX_NAMED_GAPS)
+        )
+        first, reason = gaps[0]
+        evidence = MESSAGES.clone_index_gaps_evidence.format(path=first, reason=reason)
+        rows.append(_not_checked(CHECK_CLONE_DELTA, "", message, evidence=evidence))
+    return rows

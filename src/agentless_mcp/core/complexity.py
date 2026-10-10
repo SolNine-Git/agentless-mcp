@@ -13,7 +13,7 @@ from tree_sitter import Node
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, error_nodes
-from agentless_mcp.core.normalize import node_stream
+from agentless_mcp.core.normalize import PYTHON_STATEMENT_PARENTS, node_stream, string_prefix
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -281,10 +281,6 @@ _PYTHON_IGNORED_TOKENS = frozenset(
     }
 )
 
-# The pack grammar hides `expression_statement`, so a statement-level string
-# is a bare `string` child of one of these.
-_PYTHON_STATEMENT_PARENTS = frozenset({"block", "module"})
-
 
 def _python_sloc_lines(source: str, root: Node) -> frozenset[int]:
     # scb-check v0.1.3 feeds the tokenizer `str.splitlines()`, so U+2028 and
@@ -300,7 +296,7 @@ def _python_sloc_lines(source: str, root: Node) -> frozenset[int]:
     while stack:
         node = stack.pop()
         for child in node.named_children:
-            if node.type in _PYTHON_STATEMENT_PARENTS and _is_docstring(child, text_lines):
+            if node.type in PYTHON_STATEMENT_PARENTS and _is_docstring(child, text_lines):
                 lines.difference_update(range(_first_line(child), _last_line(child) + 1))
             stack.append(child)
     return frozenset(lines)
@@ -309,13 +305,8 @@ def _python_sloc_lines(source: str, root: Node) -> frozenset[int]:
 def _is_docstring(node: Node, text_lines: list[str]) -> bool:
     if node.type != "string":
         return False
-    prefix = _string_prefix(_text(node))
+    prefix = string_prefix(_text(node))
     return "b" not in prefix and "f" not in prefix and _owns_its_lines(node, text_lines)
-
-
-def _string_prefix(literal: str) -> str:
-    end = next((index for index, char in enumerate(literal) if char in "\"'"), len(literal))
-    return literal[:end].lower()
 
 
 def _owns_its_lines(literal: Node, text_lines: list[str]) -> bool:

@@ -189,6 +189,17 @@ class MessageText:
     contract_new_not_measured: str
     contract_new_hit: str
     contract_evidence: str
+    clone_language_unsupported: str
+    clone_does_not_parse: str
+    clone_tokenizer_rejects: str
+    clone_old_not_indexed: str
+    clone_new_not_indexed: str
+    clone_index_gaps: str
+    clone_index_gaps_evidence: str
+    clone_index_unlisted: str
+    clone_new_copy: str
+    clone_new_copy_evidence: str
+    clone_and_more: str
     config_boundary_globs_not_list: str
     config_boundary_globs_too_many: str
     config_boundary_globs_dropped: str

@@ -18,8 +18,10 @@ ten scans of the same unchanged tree.
 
 The pair checks in :mod:`agentless_mcp.core.erosion` compare each edited file's
 whole text before and after the change. A run that selects only pair checks
-reads the edited files and does not scan the repository. Review mode reads the
-files changed since a commit from git and from the working tree.
+skips the repository scan the patch checks need. ``clone_delta`` reads every
+tier-1 source file outside test and fixture paths for its index, and only a run
+that selects it reads them. Review mode reads the files changed since a commit
+from git and from the working tree.
 
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
@@ -38,6 +40,7 @@ from agentless_mcp.application import render
 from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.application.symbol_service import is_fixture_path, is_test_path
 from agentless_mcp.core import (
     cache,
     complexity,
@@ -49,6 +52,7 @@ from agentless_mcp.core import (
     projectconfig,
     refs,
     resolve,
+    treewalk,
     unidiff,
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
@@ -59,8 +63,10 @@ from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import (
     InputUnreadable,
     OperationFailed,
+    RepoResolutionError,
     RevisionUnresolved,
     SecurityRefusal,
+    WalkBoundExceeded,
 )
 from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_FILE_BYTES,
@@ -103,13 +109,24 @@ class LintCandidateInput:
 
 
 class CheckInput(str, Enum):
-    """What a lint check reads: a parsed patch with the repository scan, or text pairs."""
+    """What a lint check reads: a parsed patch with the scan, text pairs, or pairs and the index."""
 
     PATCH = "patch"
     PAIRS = "pairs"
+    PAIRS_CLONES = "pairs+clones"
 
 
-PairRunner = Callable[[Sequence[erosion.TextPair], ProjectConfig], erosion.PairOutcome]
+@dataclass(frozen=True)
+class PairInput:
+    """What one pair runner reads: the run's text pairs, config, clone index, and reported sites."""
+
+    pairs: Sequence[erosion.TextPair]
+    config: ProjectConfig
+    clones: erosion.CloneIndex | None = None
+    reported: frozenset[tuple[str, int]] = frozenset()
+
+
+PairRunner = Callable[[PairInput], erosion.PairOutcome]
 
 
 @dataclass(frozen=True)
@@ -121,24 +138,35 @@ class LintCheck:
     run_pairs: PairRunner | None = None
 
     def __post_init__(self) -> None:
-        if (self.needs is CheckInput.PAIRS) != (self.run_pairs is not None):
+        if (self.needs is not CheckInput.PATCH) != (self.run_pairs is not None):
             message = f"{self.name}: a pair check needs a runner, and a patch check has none"
             raise ValueError(message)
 
 
-def _complexity_delta(
-    pairs: Sequence[erosion.TextPair], config: ProjectConfig
-) -> erosion.PairOutcome:
+def _complexity_delta(run: PairInput) -> erosion.PairOutcome:
     threshold = projectconfig.resolve(
-        None, config.complexity_threshold, complexity.DEFAULT_THRESHOLD
+        None, run.config.complexity_threshold, complexity.DEFAULT_THRESHOLD
     )
-    return erosion.complexity_delta(pairs, threshold)
+    return erosion.complexity_delta(run.pairs, threshold)
 
 
-def _contract_drift(
-    pairs: Sequence[erosion.TextPair], config: ProjectConfig
-) -> erosion.PairOutcome:
-    return erosion.contract_drift(pairs, config.boundary_globs)
+def _contract_drift(run: PairInput) -> erosion.PairOutcome:
+    return erosion.contract_drift(run.pairs, run.config.boundary_globs)
+
+
+def _clone_delta(run: PairInput) -> erosion.PairOutcome:
+    if run.clones is None:
+        message = "clone_delta needs the clone index, and the service built none for this run"
+        raise RuntimeError(message)
+    pairs = [pair for pair in run.pairs if _in_clone_scope(pair.path)]
+    return erosion.clone_delta(pairs, run.clones, run.reported)
+
+
+def _in_clone_scope(path: str) -> bool:
+    # health's scope rule, applied to the tier-1 files the pair checks read.
+    return erosion.pair_language(path) is not None and not (
+        is_test_path(path) or is_fixture_path(path)
+    )
 
 
 CHECKS: tuple[LintCheck, ...] = (
@@ -151,9 +179,12 @@ CHECKS: tuple[LintCheck, ...] = (
     LintCheck(patchlint.CHECK_CYCLE_DELTA, CheckInput.PATCH),
     LintCheck(erosion.CHECK_COMPLEXITY_DELTA, CheckInput.PAIRS, _complexity_delta),
     LintCheck(erosion.CHECK_CONTRACT_DRIFT, CheckInput.PAIRS, _contract_drift),
+    LintCheck(erosion.CHECK_CLONE_DELTA, CheckInput.PAIRS_CLONES, _clone_delta),
 )
 CHECK_NAMES = tuple(check.name for check in CHECKS)
-PAIR_CHECK_NAMES = tuple(check.name for check in CHECKS if check.needs is CheckInput.PAIRS)
+PAIR_CHECK_NAMES = tuple(check.name for check in CHECKS if check.needs is not CheckInput.PATCH)
+# The pair checks that read only the edited files: the --path and --since default.
+EDITED_FILE_CHECK_NAMES = tuple(check.name for check in CHECKS if check.needs is CheckInput.PAIRS)
 
 
 def unknown_check_refusal(names: Collection[str]) -> str:
@@ -189,6 +220,19 @@ class _Judged:
     observed: erosion.Observed = field(default_factory=erosion.Observed)
 
 
+@dataclass(frozen=True)
+class _PairChecks:
+    runners: tuple[PairRunner, ...]
+    clones: erosion.CloneIndex | None = None
+    reported: frozenset[tuple[str, int]] = frozenset()
+
+
+@dataclass(frozen=True)
+class _CandidateChecks:
+    patch: frozenset[str]
+    pairs: _PairChecks
+
+
 Judge = Callable[[LintCandidateInput], _Judged]
 
 
@@ -218,21 +262,21 @@ class LintService:
         ctx: RepoContext,
         path: str,
         after: Path,
-        checks: Collection[str] = PAIR_CHECK_NAMES,
+        checks: Collection[str] = EDITED_FILE_CHECK_NAMES,
     ) -> render.LintReportView:
         """Compare ``path`` as the tree holds it with the whole new text in ``after``."""
         selection = _select(checks)
         refusal = proposed_check_refusal(checks)
         if refusal:
             raise OperationFailed(refusal)
-        judged = _proposed_findings(ctx, path, after, selection.pairs)
+        judged = _proposed_findings(ctx, path, after, _pair_checks(ctx.root, selection))
         return render.LintReportView(candidates=(_view(path, judged),))
 
     def lint_revision(
         self,
         ctx: RepoContext,
         revision: str,
-        checks: Collection[str] = PAIR_CHECK_NAMES,
+        checks: Collection[str] = EDITED_FILE_CHECK_NAMES,
     ) -> render.LintReportView:
         """Compare each file changed since ``revision`` with its text in the working tree."""
         selection = _select(checks)
@@ -240,15 +284,17 @@ class LintService:
         if refusal:
             raise OperationFailed(refusal)
         review = _Review(ctx.root, self._runner)
-        judged = review.judge(revision, selection.pairs, ctx.config)
+        judged = review.judge(revision, _pair_checks(ctx.root, selection), ctx.config)
         return render.LintReportView(candidates=(_view(revision, judged),))
 
     def _judge(self, ctx: RepoContext, selection: "_Selection") -> Judge:
+        pairs = _pair_checks(ctx.root, selection)
         if not selection.patch:
-            return lambda candidate: _pair_only_findings(candidate, ctx, selection.pairs)
+            return lambda candidate: _pair_only_findings(candidate, ctx, pairs)
         facts = self._facts(ctx)
         source = cache.effective_source(ctx.symbols, self._extractor)
-        return lambda candidate: _findings(candidate, ctx, facts, source, selection)
+        checks = _CandidateChecks(patch=selection.patch, pairs=pairs)
+        return lambda candidate: _findings(candidate, ctx, facts, source, checks)
 
     def _facts(self, ctx: RepoContext) -> patchlint.RepoFacts:
         """Assemble the pre-patch repository every check compares against.
@@ -271,6 +317,7 @@ class LintService:
 class _Selection:
     patch: frozenset[str]
     pairs: tuple[PairRunner, ...]
+    clones: bool
 
 
 def _select(names: Collection[str]) -> _Selection:
@@ -281,7 +328,40 @@ def _select(names: Collection[str]) -> _Selection:
     return _Selection(
         patch=frozenset(check.name for check in chosen if check.needs is CheckInput.PATCH),
         pairs=tuple(check.run_pairs for check in chosen if check.run_pairs is not None),
+        clones=any(check.needs is CheckInput.PAIRS_CLONES for check in chosen),
     )
+
+
+def _pair_checks(root: Path, selection: _Selection) -> _PairChecks:
+    # The only place a run reads the whole repository for a pair check.
+    clones = _clone_index(root) if selection.clones else None
+    return _PairChecks(runners=selection.pairs, clones=clones)
+
+
+def _clone_index(root: Path) -> erosion.CloneIndex:
+    try:
+        listed = treewalk.walk_repo(root)
+    except (WalkBoundExceeded, RepoResolutionError) as exc:
+        return erosion.CloneIndex(unlisted=str(exc))
+    texts: dict[str, str] = {}
+    unread: dict[str, str] = {}
+    for repo_file in listed:
+        if not _in_clone_scope(repo_file.path):
+            continue
+        read = decoded_strict(read_bounded_bytes(root / repo_file.path))
+        if read.text is not None:
+            texts[repo_file.path] = read.text
+        else:
+            unread[repo_file.path] = _skip_reason(read)
+    return erosion.clone_index(texts, unread)
+
+
+def _skip_reason(read: BoundedRead) -> str:
+    if read.skipped is None:
+        # `BoundedRead` sets exactly one of `text` and `skipped`.
+        message = f"bounded read of {read.path} set neither text nor a skip reason"
+        raise RuntimeError(message)
+    return read.skipped
 
 
 def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
@@ -422,7 +502,7 @@ def _findings(
     ctx: RepoContext,
     facts: patchlint.RepoFacts,
     source: patchlint.FragmentSource,
-    selection: _Selection,
+    checks: _CandidateChecks,
 ) -> _Judged:
     """Parse one candidate and run the selected checks over the edits it yielded.
 
@@ -460,10 +540,20 @@ def _findings(
     kept = tuple(
         _row(finding)
         for finding in report.findings
-        if finding.check in selection.patch or finding.check == patchlint.CHECK_COVERAGE
+        if finding.check in checks.patch or finding.check == patchlint.CHECK_COVERAGE
     )
-    paired = _tree_pair_rows(admitted.edits, ctx, selection.pairs)
+    reported = replace(checks.pairs, reported=_near_duplicate_sites(kept))
+    paired = _tree_pair_rows(admitted.edits, ctx, reported)
     return _with_rows(admitted.rows + unread + kept, paired)
+
+
+def _near_duplicate_sites(rows: Sequence[render.LintFinding]) -> frozenset[tuple[str, int]]:
+    return frozenset(
+        (row.path, row.line)
+        for row in rows
+        if row.check == patchlint.CHECK_NEAR_DUPLICATES
+        and row.severity == patchlint.Severity.ADVISORY.value
+    )
 
 
 @dataclass(frozen=True)
@@ -521,28 +611,24 @@ def _oriented(admission: _Admission, texts: Mapping[str, str]) -> _Admission:
 
 
 def _pair_only_findings(
-    candidate: LintCandidateInput, ctx: RepoContext, runners: Sequence[PairRunner]
+    candidate: LintCandidateInput, ctx: RepoContext, pairs: _PairChecks
 ) -> _Judged:
     checkable = _checkable(candidate, ctx.root)
     reads = _working_reads(ctx.root, _scanned_paths(checkable.edits))
     admitted = _oriented(checkable, _lenient_texts(reads))
     if not admitted.edits:
         return _Judged(admitted.rows)
-    return _with_rows(admitted.rows, _pair_rows(admitted.edits, reads, runners, ctx.config))
+    return _with_rows(admitted.rows, _pair_rows(admitted.edits, reads, pairs, ctx.config))
 
 
-def _tree_pair_rows(
-    edits: Sequence[Edit], ctx: RepoContext, runners: Sequence[PairRunner]
-) -> _Judged:
-    if not runners:
+def _tree_pair_rows(edits: Sequence[Edit], ctx: RepoContext, pairs: _PairChecks) -> _Judged:
+    if not pairs.runners:
         return _Judged(())
     reads = _working_reads(ctx.root, _pair_paths(edits))
-    return _pair_rows(edits, reads, runners, ctx.config)
+    return _pair_rows(edits, reads, pairs, ctx.config)
 
 
-def _proposed_findings(
-    ctx: RepoContext, path: str, after: Path, runners: Sequence[PairRunner]
-) -> _Judged:
+def _proposed_findings(ctx: RepoContext, path: str, after: Path, pairs: _PairChecks) -> _Judged:
     try:
         target = contained_path(ctx.root, path)
     except SecurityRefusal as refusal:
@@ -557,7 +643,7 @@ def _proposed_findings(
     new = decoded_strict(read_bounded_bytes(after))
     if new.text is None:
         return _Judged((_side_row(MESSAGES.pair_new_unread, relative, new),))
-    return _run_pairs([erosion.TextPair(path=relative, old=old, new=new.text)], runners, ctx.config)
+    return _run_pairs([erosion.TextPair(path=relative, old=old, new=new.text)], pairs, ctx.config)
 
 
 @dataclass(frozen=True)
@@ -572,7 +658,7 @@ class _Review:
     root: Path
     runner: GitRunner
 
-    def judge(self, revision: str, runners: Sequence[PairRunner], config: ProjectConfig) -> _Judged:
+    def judge(self, revision: str, checks: _PairChecks, config: ProjectConfig) -> _Judged:
         commit = self._commit(revision)
         if isinstance(commit, render.LintFinding):
             return _Judged((commit,))
@@ -592,7 +678,7 @@ class _Review:
             else:
                 rows.append(outcome)
         ordered = tuple(sorted(rows, key=lambda row: row.path))
-        return _with_rows(ordered, _run_pairs(pairs, runners, config))
+        return _with_rows(ordered, _run_pairs(pairs, checks, config))
 
     def _commit(self, revision: str) -> str | render.LintFinding:
         outcome = self.runner(
@@ -792,7 +878,7 @@ def _lenient_texts(reads: Mapping[str, BoundedBytes | None]) -> dict[str, str]:
 def _pair_rows(
     edits: Sequence[Edit],
     reads: Mapping[str, BoundedBytes | None],
-    runners: Sequence[PairRunner],
+    checks: _PairChecks,
     config: ProjectConfig,
 ) -> _Judged:
     rows: list[render.LintFinding] = []
@@ -805,7 +891,7 @@ def _pair_rows(
             pairs.append(outcome)
         else:
             rows.append(outcome)
-    return _with_rows(tuple(rows), _run_pairs(pairs, runners, config))
+    return _with_rows(tuple(rows), _run_pairs(pairs, checks, config))
 
 
 def _by_path(edits: Sequence[Edit]) -> dict[str, list[Edit]]:
@@ -847,9 +933,10 @@ def _side_text(
 
 
 def _run_pairs(
-    pairs: Sequence[erosion.TextPair], runners: Sequence[PairRunner], config: ProjectConfig
+    pairs: Sequence[erosion.TextPair], checks: _PairChecks, config: ProjectConfig
 ) -> _Judged:
-    outcomes = [run(pairs, config) for run in runners]
+    run = PairInput(pairs=pairs, config=config, clones=checks.clones, reported=checks.reported)
+    outcomes = [runner(run) for runner in checks.runners]
     rows = tuple(_pair_row(found) for outcome in outcomes for found in outcome.findings)
     observed = reduce(
         erosion.Observed.merged, (outcome.observed for outcome in outcomes), erosion.Observed()

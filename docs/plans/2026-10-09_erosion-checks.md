@@ -210,16 +210,33 @@ Dropped from revision 1, because a query cannot tell the cases apart: Go `error-
 - **Delta**: build two complete repository indexes, before and after, with every changed file of the run applied together. Keep every candidate, including singletons, so a block whose only twin is new still has a baseline. Pair moved instances first: a hash's instances in deleted or changed old text pair with its instances in new text by count. A finding is a new-text instance of a hash whose repository-wide count rose (`after - before > 0`), reported at that instance's path and line. Moving one of two existing instances to another file does not raise the count, so it gives no finding. Severity is `advisory`, like `near_duplicates`.
 - **Overlap with `near_duplicates`**: `near_duplicates` keeps its scope (functions the patch introduces, exact token stream) and its output. `clone_delta` skips a function-definition candidate that `near_duplicates` already reported at the same path and line in the same run. Merging the two is a later decision.
 - **Repository index**: computed on demand (one parse per file, Type-2 keys for every candidate) until Phase 5 stores the keys in the cache.
+- **As built (ERO-5b)**:
+  - **Modules.** `normalize.clone_key(node, language)` returns two sha256 keys: `type2` and `exact`. The tables `CLONE_IDENTIFIERS` and `CLONE_LITERALS` sit beside it. `core/clones.py` holds the candidate table `CANDIDATES`, `file_blocks` (one file's blocks and its SLOC lines), `clone_groups`, and `clone_sloc_lines`. `erosion.clone_index` and `erosion.clone_delta` build on them. `complexity` now imports `string_prefix` and `PYTHON_STATEMENT_PARENTS` from `normalize`, with no change in behavior.
+  - **Serialization.** It is scb-check's `type(child,child)` form over every child, anonymous ones included, and a node that keeps no child is its bare type. Every comment kind is dropped, directive comments included, because scb-check drops every comment. `normalized_stream` keeps directives.
+  - **Python drops.** A Python statement-level `string` with no `b` or `f` prefix is dropped, with no ownership test. A `tuple_expression` whose only named child is such a string is dropped too. In scb-check's grammar, `expression_statement` sits only under `block` and `module` (11,007 occurrences on mcp-local `src`), so the rule applies to those two parents.
+  - **Python literal table.** It omits scb-check's `f_string`, `string_fragment`, `bytes`, and `imaginary`. They are not kinds in the pack grammar, where f-strings and bytes parse as `string` and `1j` as `integer`.
+  - **`$NUM`.** Grammars with one number kind (javascript, typescript, tsx, c, cpp, lua, bash) map it to a sixth token, `$NUM`.
+  - **Identifiers.** Type identifiers count as identifiers, and Bash `word` counts as one too.
+  - **Candidates.** Function candidates are D1's unit types plus the binding callables of javascript, typescript, tsx, and lua, with no binding test. D1's non-unit closures and Ruby blocks are not candidates. Ruby loops are D1's `while`, `until`, and `for` only. Rust `loop_expression` is a loop candidate. The key carries no language. Typescript and tsx share node types, and so do c and cpp, so a copy between them groups. Javascript and typescript do not, because the typescript grammar wraps each parameter in `required_parameter`.
+  - **Finding rule.** A finding is an added instance whose key the after state holds at least twice. The literal "count rose" rule would report every new block with no twin.
+  - **Pairing.** Within each changed file, blocks pair in three passes. First, an old block pairs with the new block on the line the line diff (`difflib.SequenceMatcher` on `\n`-split lines) kept it on, by exact key. Then blocks pair by exact key, and then by Type-2 key. The leftovers then pair across files, by exact key and then by Type-2 key. The counts equal `max(0, after - before)` per key. The passes only choose which copy is new.
+  - **Nesting.** A copy that lies inside another reported copy, or inside a function the overlap rule skipped, folds into it. One pasted function is one finding.
+  - **Rows.** Severity is `advisory`. The evidence names up to `patchlint.MAX_DUPLICATE_SITES` (3) other copies, then `and N more`. A finding has no `detail` and adds no `observed` list. Both arrive when `clone_delta` joins the hook in Phase 5.
+  - **Scope.** The index and the findings cover tier-1 files minus `is_test_path` and `is_fixture_path`. `lint_service._in_clone_scope` composes health's rule. A changed file outside the scope gives no row.
+  - **Coverage rows.** Index files that could not be read or indexed give one `not_checked` row per candidate. It counts them and names the first 10, and its evidence holds the first reason. A pair side that cannot be indexed gives one row for that file. A walk that failed gives one row, and the pairs are still compared with each other.
+  - **Overlap gap.** The `(path, line)` overlap misses a function in a file the candidate creates, because `near_duplicates` reports line 0 there. It also misses a function below an earlier edit of the same file that changes the line count, because `near_duplicates` reports the pre-edit line. Both checks then report it, and the guide says so (Side Findings).
+  - **Measured.** On a `git archive` snapshot of mcp-local `src/` at `f17af96` (183 files), agentless and scb-check v0.1.3 give the same 200 groups, the same 545 instances, and the same 2,513 clone SLOC lines. Agentless takes 0.524 s in process.
 
 ### D5. Lint plumbing
 
 The revision 1 plan, "lazy facts" inside `RepoFacts`, conflicts with the current design. `RepoFacts` has four required fields, and its contract forbids building repository views in core (`core/patchlint.py:374`). `LintService._facts` scans the repository before any check runs (`application/lint_service.py:100-114`). `lint_patch` parses fragments and reads dependency warnings outside the per-check guards (`core/patchlint.py:694-716`). Revision 2 leaves all of that unchanged and gives the new checks their own input.
 
-1. **Check registry and `--only CHECK[,CHECK...]`.** A registry in `application/lint_service.py` lists each check and the input it needs: `patch` (the seven existing checks, which need `RepoFacts` and parsed fragments), `pairs` (`complexity_delta`, `contract_drift`), or `pairs+clones` (`clone_delta`). An unknown name is a usage error (exit 2). Without the flag, all checks run, as today. When no selected check needs `patch`, the service does not call `_facts` or `lint_patch`. Fact gathering stays in application.
+1. **Check registry and `--only CHECK[,CHECK...]`.** A registry in `application/lint_service.py` lists each check and the input it needs: `patch` (the seven existing checks, which need `RepoFacts` and parsed fragments), `pairs` (`complexity_delta`, `contract_drift`), or `pairs+clones` (`clone_delta`). An unknown name is a usage error (exit 2). Without the flag, all checks run, as today. When no selected check needs `patch`, the service does not call `_facts` or `lint_patch`. Fact gathering stays in application. As built (ERO-5b): `PAIR_CHECK_NAMES` is every check whose input is `pairs` or `pairs+clones`, which is what `--path` and `--since` accept. `EDITED_FILE_CHECK_NAMES` (input `pairs`) is their default, so `clone_delta` runs there only when `--only` names it. The default candidate run includes it. Every pair runner takes one `PairInput(pairs, config, clones, reported)`, and the core signatures of `complexity_delta` and `contract_drift` do not change.
 2. **Text pairs.** The new checks take a typed value, `TextPair(path, old, new)`, from core. `old` is `None` when the file did not exist, and `new` is `None` when the file is deleted. An empty string is an existing empty file. Missing, empty, unreadable, and oversized are four different states, and each unreadable or oversized side gives a `not_checked` row. Both sides are read as bytes and decoded as UTF-8 with no newline translation, so CRLF files keep their line endings. Each side is capped at `DEFAULT_MAX_FILE_BYTES` (1,000,000 bytes, `util/fslimits.py:35`). Pairs come from three sources:
    - **Candidates** (`--candidates`, existing). For pair checks, the service reads only the edited files with the bounded reader, runs `unidiff.orientation` against those texts, applies the edits, and forms pairs. An edit with an empty search side on a missing path is a creation (`old` is `None`). The candidate path keeps its current rule for an empty search on an existing empty file: orientation and the applier reject it (`core/unidiff.py:224`, `core/patches.py:623`).
    - **Hook form** (`--path REL --after FILE`, new). The service reads the old text from the working tree at `REL` and the new text from `FILE`. No SEARCH/REPLACE document is built, and orientation does not run. The hook writes only the proposed new text, so a 600 KB source no longer turns into a 1.4 MB candidate that the 1,000,000-byte candidate reader rejects (Codex probe).
    - **Review mode** (`--since REV`, item 4).
+   - **The clone index** (ERO-5b). When the selection holds a `pairs+clones` check, the service builds one `erosion.CloneIndex` per call. It lists the tree with `treewalk.walk_repo` and reads each in-scope file with `read_bounded_bytes` and `decoded_strict`. Ten candidates share one index. It holds the working tree, which is the old side for candidates and the hook form and the new side in review mode. `clone_delta` replaces every index file that a pair names with that pair. A run without `clone_delta` builds no index.
 3. **Per-file degradation.** The new checks catch degraded input per file. One file that fails to parse gives a `not_checked` row for that file, and the other files are still checked. The existing `_guarded` wrapper returns one gap row for the whole check and drops its other results (`core/patchlint.py:722`), so the new checks do not use it.
 4. **Review mode, `--since REV`** (Phase 4). A separate entry point, `LintService.lint_revision`, CLI-only like the rest of lint (`application/lint_service.py:9-12`). It accepts only pair checks. `--since` with a `patch` check is a usage error (exit 2), because those checks compare against the current tree and would see a mix of two states. Steps:
    - Resolve `REV` with `git rev-parse --verify --end-of-options REV^{commit}`. A bad revision is a usage error.
@@ -235,8 +252,8 @@ The revision 1 plan, "lazy facts" inside `RepoFacts`, conflicts with the current
    - `units_over_threshold`: `{path, unit, line, cc, sloc}` for each unit in the new text with `cc > T`, unchanged units included;
    - `units_changed`: `{path, unit, line, match, cc_old, cc_new, sloc_old, sloc_new}` for each match that is not a body-pass match, with `match` one of `name`, `collision`, `new`, and `null` old values for a new unit;
    - `contract_keys`: `{path, rule, unit, capture}` for each hit in the new text of each file `contract_drift` checked, with duplicates kept.
-   A `contract_drift` finding's `detail.unit` keeps its D3 meaning, the paired old identity. The text output does not change.
-8. **The check list in `capabilities`** (ERO-5a). Text and JSON (`lint_checks`) list each registered check with its input kind (`patch` or `pairs`), so the hook reads the registry and never parses an error message.
+   A `contract_drift` finding's `detail.unit` keeps its D3 meaning, the paired old identity. The text output does not change. `clone_delta` adds no list now. Its list and its `detail` arrive with Phase 5, when it joins the hook.
+8. **The check list in `capabilities`** (ERO-5a). Text and JSON (`lint_checks`) list each registered check with its input kind (`patch`, `pairs`, or `pairs+clones`), so the hook reads the registry and never parses an error message. The hook keeps only the `pairs` checks, so `clone_delta` stays out of it until Phase 5.
 
 ### D6. `health` complexity section (Phase 4)
 
@@ -324,6 +341,10 @@ The 90% bar is our own derived target. The corpus passage states only that Googl
 - **Runtime**: parity tests run on Python 3.12 and later, the versions scb-check supports. In the CI matrix that is 3.13. On 3.10 the parity module is skipped, and one separate test pins the documented f-string difference, so a change in it is seen.
 - **Live check**: a manual verification step compares agentless erosion on one snapshot of mcp-local `src/` with scb-check's erosion on the same snapshot. The Phase 1 gate measures through `core.complexity` directly, and Phase 4 repeats the check through `health`. It is not a test, because it depends on another repository.
 - **Other languages**: hand-counted goldens per fixture under `fixtures/complexity_<lang>/`, reviewed against the D1 table and McConnell's rule.
+- **Clones, as built (ERO-5b)**:
+  - **Python.** `TestCloneParity` in the existing `test_complexity_parity.py` compares the groups and the clone SLOC lines of `clone_groups` and `clone_sloc_lines` with every golden's `clones` object exactly. It stays in that module because a new module-level skip would take macOS on 3.10 to 15 skips, over the CI ceiling of 14.
+  - **Other languages.** Each of the 11 other languages has `fixtures/complexity_<lang>/clones.<ext>`, with one Type-2 pair and one near miss, and `tests/unit/test_clones.py` holds the hand-read groups.
+  - **Live check.** On mcp-local `src/` at `f17af96`: 200 groups, 545 instances, and 2,513 clone SLOC lines, equal to scb-check's.
 
 ## Implementation Plan
 
@@ -392,7 +413,7 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 - [x] Update `contrib/hooks/settings-example.json` and the README hook section
 - [ ] Deploy the hook in advisory mode on this machine and start the log
 - [x] Add `lint --since` as `lint_revision`, reusing stage 5's `blob_arguments`
-- [ ] Add the Type-2 normalizer and `clone_delta`
+- [x] Add the Type-2 normalizer and `clone_delta`
 - [x] Add the `health` complexity section and update the wire text (clone share follows `clone_delta`)
 - [ ] After stage 6: extractor interface change, cache metrics and block hashes with an algorithm version, bump `SCHEMA_VERSION`
 - [x] Update the review skills in the vault and copy them down
@@ -455,7 +476,7 @@ Edge cases to test:
 - [ ] A unit renamed in the same edit, a unit moved to another file (hook: reported as new or moved; `--since`: paired), two methods with the same name in different classes
 - [ ] Same-name units inserted above, swapped, or reordered (the collision pass gives no finding)
 - [ ] A contract hit moved from an internal helper into a parser in the same file (a new key)
-- [ ] Moving one of two clone instances to another file (no `clone_delta` finding)
+- [x] Moving one of two clone instances to another file (no `clone_delta` finding)
 - [ ] An Edit with `replace_all`, a Write that creates a file, a Write that empties a file
 - [ ] A file with a syntax error before or after the edit, and a Python file that `tokenize` rejects (that file degrades to `not_checked`)
 - [ ] A run with one unparsable file and one file with a real regression (the regression is still reported)
@@ -521,3 +542,7 @@ Revision 1 went to two independent read-only reviews on 2026-10-09: Codex `gpt-6
 - `core/extractor.py`: `BODY_BLOCK_NODE_TYPES` includes `function_body`, which no tier-1 grammar has. It also includes `block`, which in Ruby is a brace closure, not a statement block.
 - `~/.claude/hooks/comment_gate.py` has no catch-all, so an unexpected exception exits 1, not 0. The vault `INSTALL.md:147-149` says every gate fails open.
 - `src/agentless_mcp/docs/agent-guide.md:1131-1137` says `undeclared_imports` reports `not_checked` on Python 3.10. `core/patchlint.py:22-24` and `:525` show 3.10 now falls back to `tomli`.
+- `core/patchlint.py` `_Fragment.file_line`: a `near_duplicates` line is `base_line + fragment_line - 1`, where `base_line` is the search block's line in the pre-edit file.
+  - For a created file, `_locate` returns `(0, 0)`, so the line is 0.
+  - Below an earlier edit of the same file that changes the line count, the line is a pre-edit line, which can point at a blank line of the new file. A probe with a 2-line import edit above gave 15 where the function sits at 17.
+  - `clone_delta`'s `(path, line)` overlap misses both cases (D4).

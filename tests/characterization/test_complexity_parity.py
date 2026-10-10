@@ -1,4 +1,4 @@
-"""Python complexity matches scb-check v0.1.3 on the parity fixtures.
+"""Python complexity and clone lines match scb-check v0.1.3 on the parity fixtures.
 
 The goldens come from scripts/scb_parity_goldens.py, which runs scb-check under
 uvx. Regenerate them deliberately: predict the diff, run the script, read the diff.
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from agentless_mcp.core.clones import clone_groups, clone_sloc_lines, file_blocks
 from agentless_mcp.core.complexity import erosion, measure
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -80,3 +81,33 @@ class TestParity:
 def test_a_file_scb_check_cannot_read_is_a_typed_failure(stem):
     with pytest.raises(UnmeasurableSource):
         measured(stem)
+
+
+def indexed(stem):
+    path = FIXTURES / f"{stem}.py"
+    return file_blocks(path.read_text(encoding="utf-8"), path.name, "python")
+
+
+@pytest.mark.parametrize("stem", MEASURED)
+class TestCloneParity:
+    def test_the_clone_groups_match_exactly(self, stem):
+        groups = clone_groups([indexed(stem)])
+        ours = sorted(
+            sorted([block.start_line, block.end_line] for block in group.instances)
+            for group in groups
+        )
+        assert ours == load(stem)["clones"]["groups"]
+
+    def test_the_clone_lines_match_exactly(self, stem):
+        files = [indexed(stem)]
+        lines = clone_sloc_lines(files, clone_groups(files))
+        assert (
+            sorted(line for found in lines.values() for line in found)
+            == (load(stem)["clones"]["sloc_lines"])
+        )
+
+
+@pytest.mark.parametrize("stem", REJECTED)
+def test_a_file_scb_check_cannot_read_has_no_clone_blocks(stem):
+    with pytest.raises(UnmeasurableSource):
+        indexed(stem)

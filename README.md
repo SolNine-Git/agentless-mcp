@@ -141,13 +141,15 @@ and mode-only changes are reported the same way, and a construct one edit cannot
 express — a rename, a `-U0` diff with no context — is refused with the reason.
 
 `lint --only CHECK[,CHECK...]` runs only the named checks. A run that names only
-pair checks, such as `complexity_delta`, reads the edited files and does not
-scan the repository. `lint --path REL --after FILE` is the per-edit form. It
-compares `REL` as the working tree holds it with the whole proposed text in
+pair checks skips the repository scan that the patch checks need.
+`complexity_delta` and `contract_drift` read only the edited files.
+`clone_delta` also reads every source file outside test and fixture paths, to
+find the copies of a block. `lint --path REL --after FILE` is the per-edit form.
+It compares `REL` as the working tree holds it with the whole proposed text in
 `FILE`, and it runs only the pair checks. The erosion gate hook calls lint this
 way. `lint --since REV` is the review mode. It compares each file changed since
 the commit `REV` with its text in the working tree, and it runs only the pair
-checks.
+checks. Both forms run `clone_delta` only when `--only` names it.
 
 ```sh
 agentless-mcp lint --repo /path/to/repo --path pkg/app.py --after /tmp/app.py \

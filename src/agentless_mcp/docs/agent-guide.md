@@ -1135,19 +1135,24 @@ diff with no context lines, a combined merge diff) is refused with its
 reason, and the candidate is not half-checked.
 
 **`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
-table below. An unknown name is a usage error (exit 2). `complexity_delta` and
-`contract_drift` are pair checks: they compare each edited file's whole text
-before and after the change. When `--only` names pair checks alone, `lint`
-reads only the edited files and does not scan the repository. The pair checks
-pair functions across all the files of one candidate, so a function moved to
-another file without other change is not a finding, and a contract hit that
-moves with its function is not new.
+table below. An unknown name is a usage error (exit 2). `complexity_delta`,
+`contract_drift`, and `clone_delta` are pair checks: they compare each edited
+file's whole text before and after the change. `complexity_delta` and
+`contract_drift` read only the edited files. `clone_delta` also reads every
+tier-1 source file outside test and fixture paths, to find the copies of a
+block. When `--only` names pair checks alone, `lint` skips the symbol scan
+that the other checks need. The pair checks pair functions across all the
+files of one candidate, so a function moved to another file without other
+change is not a finding, and a contract hit that moves with its function is
+not new.
 
 **`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
 `--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
 working-tree text at `REL` with `FILE`, so no patch is needed. This form runs
-the pair checks only. Without `--only` it runs every pair check, and an
-`--only` that names another check is a usage error (exit 2). A path that does
+the pair checks only. Without `--only` it runs `complexity_delta` and
+`contract_drift`, which read only this file. `--only clone_delta` adds the
+clone check, which reads every source file. An `--only` that names another
+check is a usage error (exit 2). A path that does
 not exist yet is a new file, so every function in `FILE` counts as new. Both
 sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
 each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
@@ -1159,20 +1164,24 @@ function moved here from another file counts as new.
 the commit `REV` with its text in the working tree. Committed, staged,
 unstaged, and untracked changes all count. For a branch, pass the merge-base:
 `--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
-Without `--only` it runs every pair check, and an `--only` that names another
-check is a usage error (exit 2). `--since` with `--after` is a usage error, and
-so is a `REV` that names no commit. Each file's old text comes from git, one
-`git cat-file blob` per file. A renamed file is compared at its new path with
-its old text. A deleted file has no new text, and an added or untracked file
-has no old text. A binary file (a NUL byte in its first 8,000 bytes), a
-submodule, and a path with an unmerged status each give one `not_checked` row.
+Without `--only` it runs `complexity_delta` and `contract_drift`, which read
+only the changed files. `--only` can add `clone_delta`. An `--only` that names
+another check is a usage error (exit 2). `--since` with `--after` is a usage
+error, and so is a `REV` that names no commit. Each file's old text comes
+from git, one `git cat-file blob` per file. A renamed file is compared at its
+new path with its old text. A deleted file has no new text, and an added or
+untracked file has no old text. A binary file (a NUL byte in its first 8,000
+bytes), a submodule, and a path with an unmerged status each give one
+`not_checked` row.
 A symbolic link is not compared, because its committed text is a target path.
 A file in a language with no complexity rules gives no row. A git call that
 fails or times out gives one `not_checked` row, and so does a run in which no
 file changed since `REV`. The report has one candidate, and its id is `REV` as
-you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with both pair
-checks takes 0.26 s (18 tier-1 files of 27 changed), and `--since HEAD~50`
-takes 0.85 s (156 files).
+you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with
+`complexity_delta` and `contract_drift` takes 0.23 s (18 tier-1 files of 27
+changed), and `--since HEAD~50` takes 0.83 s (156 files). With `clone_delta`
+added, they take 0.90 s and 1.90 s, because `clone_delta` parses all 228
+source files outside test and fixture paths on every run.
 
 **`--json` carries one more field for a pair check.** Each finding has
 `check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
@@ -1196,6 +1205,7 @@ got simpler or a hit went away. It has three lists, each present only when its
 check measured at least one file of the candidate. An empty list means that
 the check measured and found nothing. An absent list means that the check did
 not measure a file, and `observed` itself is absent when no list is present.
+`clone_delta` adds no list.
 
 - `units_over_threshold`: each function in the new text above the threshold,
   as `{path, unit, line, cc, sloc}`, unchanged functions included.
@@ -1230,6 +1240,7 @@ patch is right. This decides what to look at first.
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
 | `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
+| `clone_delta` | advisory | the change adds a block of three or more source lines that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
 | `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
@@ -1267,6 +1278,33 @@ c and bash have no rules. A boundary file in either language gives one
 `not_checked` row. With no `boundary_globs`, `contract_drift` gives one
 `not_checked` row per candidate that edits a tier-1 file, and nothing else.
 
+**`clone_delta` counts copies across the whole repository.** It indexes every
+tier-1 source file outside test and fixture paths, by the same `is_test_path`
+and `is_fixture_path` rules that `health` uses, as the working tree holds it.
+The edited files replace their indexed text. A changed file outside that scope
+gives no row. A block's key renames each identifier by its first appearance
+in the block and replaces each literal with its type, so `total(items)` and
+`summed(values)` with the same body share a key. Python follows scb-check
+v0.1.3: a plain-string statement is dropped as a docstring, and an
+`if TYPE_CHECKING:` block is not a block although the functions in it are.
+Typescript and tsx share their node types, and so do c and cpp, so a copy
+between them counts. Javascript and typescript do not, because the
+typescript grammar wraps each parameter.
+
+A finding is a block the change adds whose key the repository then holds at
+least twice. Old and new blocks pair within each file first, then across
+files, so a block moved to another file is not new. A new block with no
+other instance is not a finding. When a copy is the same text as its
+original, the copy is the block the line diff did not keep in place. The
+evidence names up to three other copies. A finding has no `detail`.
+
+`clone_delta` skips a function that `near_duplicates` reported at the same
+path and line in the same run. Two cases defeat that match, so both checks
+report the same function: a function in a file the candidate creates, which
+`near_duplicates` reports at line 0, and a function below an earlier edit of
+the same file that changes the line count, which `near_duplicates` reports at
+its line before the edit.
+
 Two things the table cannot say.
 
 **`not_checked` is a finding.** Every check reports coverage gaps as findings
@@ -1279,6 +1317,9 @@ at severity `not_checked` and names the reason:
 - edits that did not apply
 - a file whose text before or after the change was not read, or does not parse
 - a repository with no `boundary_globs`, for `contract_drift`
+- for `clone_delta`, repository files that could not be read or parsed (one
+  row counts them and names the first ten), and a repository whose files
+  could not be listed
 - a boundary file in a language with no contract rules (c, bash)
 - in review mode: a binary file, a submodule, an unmerged path, a git call
   that failed or timed out, and a run in which no file changed

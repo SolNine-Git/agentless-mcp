@@ -262,19 +262,33 @@ class TestTheCheckRegistry:
         }
         assert registered == declared
 
-    def test_complexity_delta_and_contract_drift_are_the_pair_checks(self):
+    def test_the_three_erosion_checks_are_the_pair_checks(self):
         assert lint_service.PAIR_CHECK_NAMES == (
             erosion.CHECK_COMPLEXITY_DELTA,
             erosion.CHECK_CONTRACT_DRIFT,
+            erosion.CHECK_CLONE_DELTA,
         )
+
+    def test_the_hook_and_review_default_reads_only_the_edited_files(self):
+        assert lint_service.EDITED_FILE_CHECK_NAMES == (
+            erosion.CHECK_COMPLEXITY_DELTA,
+            erosion.CHECK_CONTRACT_DRIFT,
+        )
+
+    def test_clone_delta_alone_reads_the_clone_index(self):
+        needs = {check.name: check.needs for check in lint_service.CHECKS}
+
+        assert needs[erosion.CHECK_CLONE_DELTA] is lint_service.CheckInput.PAIRS_CLONES
+        assert lint_service.CheckInput.PAIRS_CLONES.value == "pairs+clones"
 
     @pytest.mark.parametrize(
         ("needs", "runner"),
         [
             (lint_service.CheckInput.PAIRS, None),
-            (lint_service.CheckInput.PATCH, lambda _pairs, _config: ()),
+            (lint_service.CheckInput.PAIRS_CLONES, None),
+            (lint_service.CheckInput.PATCH, lambda _run: ()),
         ],
-        ids=["pair-check-without-runner", "patch-check-with-runner"],
+        ids=["pair-check-without-runner", "clone-check-without-runner", "patch-check-with-runner"],
     )
     def test_a_check_and_its_runner_must_agree(self, needs, runner):
         with pytest.raises(ValueError, match="a pair check needs a runner"):
@@ -1096,3 +1110,171 @@ class TestReviewModeGitFailures:
         assert (
             row.evidence == "skipped: the committed text exceeds the per-file cap of 1000000 bytes"
         )
+
+
+CLONE_ONLY = (erosion.CHECK_CLONE_DELTA,)
+
+
+def summed(name):
+    """A five-line function; two of them with different names are Type-2 copies."""
+    return (
+        f"def {name}(items):\n"
+        "    out = 0\n"
+        "    for item in items:\n"
+        "        out += item\n"
+        "    return out\n"
+    )
+
+
+def clone_rows(findings):
+    return [row for row in findings if row.check == erosion.CHECK_CLONE_DELTA]
+
+
+@pytest.fixture
+def clone_repo(make_git_repo):
+    """A committed repository with one function, and a copy of it in each out-of-scope tree."""
+    return make_git_repo(
+        {
+            "app.py": summed("total"),
+            "tests/test_app.py": summed("tested"),
+            "fixtures/sample.py": summed("sampled"),
+            "README.md": "# x\n",
+        },
+        name="clones",
+    )
+
+
+def add_file(path, text):
+    return block(path, "", text)
+
+
+class TestCloneDeltaInTheService:
+    def test_a_run_without_clone_delta_never_builds_the_index(
+        self, service, clone_repo, monkeypatch, tmp_path
+    ):
+        def forbidden(*_arguments, **_keywords):
+            message = "a run without clone_delta must not read the repository for it"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(lint_service, "_clone_index", forbidden)
+        ctx = resolve_repo(clone_repo, None)
+        after = tmp_path / "after.py"
+        after.write_text(summed("again"))
+
+        without = tuple(name for name in ALL if name != erosion.CHECK_CLONE_DELTA)
+        candidate = findings_of(service, clone_repo, add_file("lib.py", summed("again")), without)
+        proposed = service.lint_proposed(ctx, "lib.py", after).candidates[0]
+        reviewed = service.lint_revision(ctx, "HEAD").candidates[0]
+
+        assert clone_rows([*candidate, *proposed.findings, *reviewed.findings]) == []
+
+    def test_clone_delta_alone_skips_the_scan(self, service, clone_repo, monkeypatch):
+        def forbidden(*_arguments, **_keywords):
+            message = "a pair-only run must not reach this"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(LintService, "_facts", forbidden)
+        monkeypatch.setattr(patchlint, "lint_patch", forbidden)
+
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), CLONE_ONLY)
+
+        (row,) = findings
+        assert (row.check, row.severity, row.location) == (
+            erosion.CHECK_CLONE_DELTA,
+            "advisory",
+            "lib.py:1",
+        )
+        assert row.evidence == "also at app.py:1"
+        assert row.detail is None
+
+    def test_the_default_run_reports_a_copy_after_the_patch_rows(self, service, clone_repo):
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), ALL)
+
+        assert checks_in(findings)[-1] == erosion.CHECK_CLONE_DELTA
+        assert len(clone_rows(findings)) == 1
+
+    def test_a_copy_under_a_test_or_fixture_path_gives_no_row(self, service, clone_repo):
+        text = add_file("tests/test_more.py", summed("more")) + add_file(
+            "fixtures/more.py", summed("more")
+        )
+
+        assert findings_of(service, clone_repo, text, CLONE_ONLY) == ()
+
+    def test_a_twin_only_under_a_test_or_fixture_path_is_not_seen(self, service, make_git_repo):
+        root = make_git_repo(
+            {"tests/test_app.py": summed("tested"), "fixtures/sample.py": summed("sampled")},
+            name="twins-out-of-scope",
+        )
+
+        assert findings_of(service, root, add_file("lib.py", summed("again")), CLONE_ONLY) == ()
+
+    def test_an_unreadable_repository_file_is_one_row(self, service, clone_repo):
+        (clone_repo / "latin.py").write_bytes(b"y = 1\nx = '\xff'\n")
+
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), CLONE_ONLY)
+
+        (row,) = [row for row in findings if row.severity == "not_checked"]
+        assert row.check == erosion.CHECK_CLONE_DELTA
+        assert row.message.endswith(
+            "of 2 repository files, so it does not see a copy of a block in them: latin.py."
+        )
+        assert row.evidence == "first: latin.py: not UTF-8 text: byte 11 is invalid start byte"
+        assert len(clone_rows(findings)) == 2
+
+    def test_a_copy_near_duplicates_reports_is_not_reported_twice(self, service, make_git_repo):
+        root = make_git_repo({"app.py": summed("total"), "lib.py": "VALUE = 1\n"}, name="overlap")
+        text = block("lib.py", "VALUE = 1\n", "VALUE = 1\n\n\n" + summed("again"))
+        checks = (patchlint.CHECK_NEAR_DUPLICATES, erosion.CHECK_CLONE_DELTA)
+
+        findings = findings_of(service, root, text, checks)
+
+        assert [(row.check, row.location) for row in findings if row.severity == "advisory"] == [
+            (patchlint.CHECK_NEAR_DUPLICATES, "lib.py:4")
+        ]
+
+    def test_a_created_file_is_the_documented_overlap_gap(self, service, clone_repo):
+        # near_duplicates reports line 0 for a created file, so both checks report it.
+        checks = (patchlint.CHECK_NEAR_DUPLICATES, erosion.CHECK_CLONE_DELTA)
+
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), checks)
+
+        assert [(row.check, row.line) for row in findings if row.severity == "advisory"] == [
+            (patchlint.CHECK_NEAR_DUPLICATES, 0),
+            (erosion.CHECK_CLONE_DELTA, 1),
+        ]
+
+    def test_without_near_duplicates_the_exact_copy_is_a_clone_finding(self, service, clone_repo):
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("total")), CLONE_ONLY)
+
+        assert [row.location for row in clone_rows(findings)] == ["lib.py:1"]
+
+    def test_the_hook_form_runs_clone_delta_when_named(self, service, clone_repo, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_text(summed("again"))
+        ctx = resolve_repo(clone_repo, None)
+
+        (entry,) = service.lint_proposed(ctx, "lib.py", after, CLONE_ONLY).candidates
+        (default,) = service.lint_proposed(ctx, "lib.py", after).candidates
+
+        assert [row.location for row in entry.findings] == ["lib.py:1"]
+        assert clone_rows(default.findings) == []
+
+    def test_review_mode_reports_a_new_copy(self, service, clone_repo):
+        (clone_repo / "lib.py").write_text(summed("again"))
+
+        entry = review(service, clone_repo, checks=CLONE_ONLY)
+
+        assert [row.location for row in entry.findings] == ["lib.py:1"]
+        assert clone_rows(review(service, clone_repo).findings) == []
+
+    def test_review_mode_does_not_report_a_cross_file_move(self, service, make_git_repo):
+        root = make_git_repo(
+            {"a.py": summed("total"), "b.py": summed("again") + "\n\nVALUE = 1\n"},
+            name="clone-move",
+        )
+        (root / "b.py").write_text("VALUE = 1\n")
+        (root / "c.py").write_text(summed("again"))
+        commit(root)
+        (root / "d.py").write_text("x = 1\n")
+
+        assert review(service, root, "HEAD~1", checks=CLONE_ONLY).findings == ()

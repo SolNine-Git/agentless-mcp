@@ -231,6 +231,44 @@
           }
         ]
       }
+    },
+    {
+      "id": "05-copies",
+      "findings": [
+        {
+          "check": "undeclared_imports",
+          "severity": "not_checked",
+          "message": "not checked: the repository has no pyproject.toml or requirements file",
+          "path": "",
+          "line": 0,
+          "location": "(repository)",
+          "evidence": "no dependency manifest found"
+        },
+        {
+          "check": "clone_delta",
+          "severity": "advisory",
+          "message": "lines 84-87 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.",
+          "path": "pricing.py",
+          "line": 84,
+          "location": "pricing.py:84",
+          "evidence": "also at pricing.py:78"
+        }
+      ],
+      "observed": {
+        "units_over_threshold": [],
+        "units_changed": [
+          {
+            "path": "pricing.py",
+            "unit": "render_price",
+            "line": 84,
+            "match": "new",
+            "cc_old": null,
+            "cc_new": 1,
+            "sloc_old": null,
+            "sloc_new": 3
+          }
+        ]
+      }
     }
   ]
 }
