@@ -28,7 +28,7 @@ from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import projectconfig
+from agentless_mcp.core import erosion, projectconfig
 
 MODULE = '''\
 """Module."""
@@ -399,3 +399,185 @@ class TestTestCommand:
         errors = capsys.readouterr().err
         assert command in errors
         assert "from the repository under analysis" in errors
+
+
+class TestErosionKeys:
+    """`complexity_threshold` and `erosion_gate`: dropped with a warning, never clamped."""
+
+    def test_both_keys_are_parsed_into_typed_values(self, repo):
+        config = projectconfig.load(
+            repo(
+                {
+                    "complexity_threshold": 15,
+                    "erosion_gate": {"complexity_delta": "block", "contract_drift": "off"},
+                }
+            )
+        )
+
+        assert config.complexity_threshold == 15
+        assert dict(config.erosion_gate) == {"complexity_delta": "block", "contract_drift": "off"}
+        assert config.warnings == ()
+        assert config.as_dict()["complexity_threshold"] == 15
+        assert config.as_dict()["erosion_gate"] == {
+            "complexity_delta": "block",
+            "contract_drift": "off",
+        }
+
+    def test_both_keys_stay_unset_when_absent(self, repo):
+        config = projectconfig.load(repo({"map_budget": 3000}))
+
+        assert config.complexity_threshold is None
+        assert config.erosion_gate is None
+        assert config.as_dict()["erosion_gate"] is None
+
+    @pytest.mark.parametrize("value", [0, 101, -3, True, "10", 10.5, None])
+    def test_a_bad_threshold_is_dropped_not_clamped(self, repo, value):
+        config = projectconfig.load(repo({"complexity_threshold": value}))
+
+        assert config.complexity_threshold is None
+        assert any("complexity_threshold" in warning for warning in config.warnings)
+
+    @pytest.mark.parametrize("value", [1, 100])
+    def test_the_threshold_bounds_are_inclusive(self, repo, value):
+        assert projectconfig.load(repo({"complexity_threshold": value})).complexity_threshold == (
+            value
+        )
+
+    @pytest.mark.parametrize("value", ["block", ["complexity_delta"], 1, None])
+    def test_a_gate_that_is_not_an_object_is_dropped(self, repo, value):
+        config = projectconfig.load(repo({"erosion_gate": value}))
+
+        assert config.erosion_gate is None
+        assert config.warnings == (
+            (
+                "erosion_gate in .agentless-mcp.json must be an object that maps a check name "
+                "to one of off, advisory, block. The key is ignored."
+            ),
+        )
+
+    def test_a_bad_mode_drops_that_entry_and_keeps_the_others(self, repo):
+        config = projectconfig.load(
+            repo({"erosion_gate": {"complexity_delta": "strict", "clone_delta": "advisory"}})
+        )
+
+        assert dict(config.erosion_gate) == {"clone_delta": "advisory"}
+        assert config.warnings == (
+            (
+                "erosion_gate.complexity_delta in .agentless-mcp.json must be one of off, "
+                "advisory, block. The entry is ignored."
+            ),
+        )
+
+
+class TestBoundaryGlobs:
+    """`boundary_globs`: a bounded list of repo-relative globs, dropped with a warning."""
+
+    def test_valid_globs_are_kept_in_file_order(self, repo):
+        globs = ["src/*/adapters/**", "**/clients/*.py", "pages/[id].tsx"]
+        config = projectconfig.load(repo({"boundary_globs": globs}))
+
+        assert config.boundary_globs == tuple(globs)
+        assert config.warnings == ()
+        assert config.as_dict()["boundary_globs"] == globs
+
+    def test_absent_globs_are_empty(self, repo):
+        config = projectconfig.load(repo({"map_budget": 3000}))
+
+        assert config.boundary_globs == ()
+        assert config.as_dict()["boundary_globs"] == []
+
+    @pytest.mark.parametrize("value", ["src/**", {"glob": "src/**"}, 3, None])
+    def test_a_value_that_is_not_a_list_is_dropped(self, repo, value):
+        config = projectconfig.load(repo({"boundary_globs": value}))
+
+        assert config.boundary_globs == ()
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json must be a list of at most 64 "
+                "repo-relative globs, each at most 256 characters. The key is ignored."
+            ),
+        )
+
+    def test_a_list_over_the_cap_is_dropped_whole_not_clamped(self, repo):
+        config = projectconfig.load(repo({"boundary_globs": [f"src/m{i}/**" for i in range(65)]}))
+
+        assert config.boundary_globs == ()
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json holds 65 globs, over the 64 cap. "
+                "The key is ignored."
+            ),
+        )
+
+    def test_the_cap_itself_is_allowed(self, repo):
+        globs = [f"src/m{i}/**" for i in range(64)]
+        assert len(projectconfig.load(repo({"boundary_globs": globs})).boundary_globs) == 64
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            "",
+            "/abs/path/**",
+            "src\\adapters\\**",
+            "src//adapters",
+            "src/adapters/",
+            "./src/**",
+            "src/../secrets/**",
+            "src/\x00/**",
+            "src/\n/**",
+            "a" * 257,
+            7,
+            None,
+        ],
+        ids=[
+            "empty",
+            "absolute",
+            "backslash",
+            "empty-segment",
+            "trailing-slash",
+            "dot-segment",
+            "dotdot-segment",
+            "nul",
+            "newline",
+            "too-long",
+            "not-a-string",
+            "null",
+        ],
+    )
+    def test_a_bad_entry_is_dropped_and_the_others_kept(self, repo, entry):
+        config = projectconfig.load(repo({"boundary_globs": ["src/adapters/**", entry]}))
+
+        assert config.boundary_globs == ("src/adapters/**",)
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json: 1 entries are not repo-relative globs "
+                "of at most 256 characters. They are ignored."
+            ),
+        )
+
+    def test_a_glob_of_exactly_256_characters_is_kept(self, repo):
+        glob = "a" * 256
+        assert projectconfig.load(repo({"boundary_globs": [glob]})).boundary_globs == (glob,)
+
+    def test_entries_that_name_no_gated_check_are_dropped_with_one_warning(self, repo):
+        config = projectconfig.load(
+            repo({"erosion_gate": {"complexity-delta": "block", "arity": "block"}})
+        )
+
+        assert dict(config.erosion_gate) == {}
+        assert config.warnings == (
+            (
+                "erosion_gate in .agentless-mcp.json holds 2 entries that name no gated check "
+                "(complexity_delta, contract_drift, clone_delta). They are ignored."
+            ),
+        )
+
+    def test_the_gate_cannot_be_edited_after_parsing(self, repo):
+        config = projectconfig.load(repo({"erosion_gate": {"complexity_delta": "block"}}))
+
+        with pytest.raises(TypeError):
+            config.erosion_gate["complexity_delta"] = "off"
+
+    def test_the_gated_checks_include_complexity_delta(self):
+        # `projectconfig` does not import `core.erosion`, so this pins the name.
+        assert erosion.CHECK_COMPLEXITY_DELTA in projectconfig.GATED_CHECKS

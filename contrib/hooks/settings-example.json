@@ -9,6 +9,16 @@
             "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_gate_check.py"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/contrib/hooks/agentless_erosion_gate.py",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "PostToolUse": [

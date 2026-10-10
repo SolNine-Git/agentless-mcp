@@ -57,7 +57,7 @@ from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.repo_context import resolved_allowlist
-from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.symbol_service import SymbolService, in_metric_scope
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
@@ -240,13 +240,14 @@ class TestAutoIndexTrigger:
     def test_serving_a_repository_starts_its_refresh(self, services, one_repo, monkeypatch):
         started = []
 
-        def record(root, extractor, *, tree_oid=None, head_sha=None):
-            started.append(root)
+        def record(root, extractor, *, measure, git=cache.NO_GIT_STATE):
+            started.append((root, measure))
 
         monkeypatch.setattr(cache, "start_auto_index", record)
         handlers = ToolHandlers([one_repo], services)
         handlers.refresh_in_background(handlers.resolve(None))
-        assert started == [one_repo.resolve()]
+        # The background index measures the files health and clone_delta read, and no others.
+        assert started == [(one_repo.resolve(), in_metric_scope)]
 
     def test_resolving_alone_arms_nothing(self, services, one_repo, monkeypatch):
         monkeypatch.setattr(cache, "start_auto_index", self._must_not_start)
@@ -263,7 +264,7 @@ class TestAutoIndexTrigger:
         handlers.refresh_in_background(handlers.resolve(None, no_cache=True), no_cache=True)
 
     @staticmethod
-    def _must_not_start(root, extractor, *, tree_oid=None, head_sha=None):
+    def _must_not_start(root, extractor, *, measure, git=cache.NO_GIT_STATE):
         pytest.fail("the background refresh must not be armed here")
 
 
@@ -626,7 +627,7 @@ class TestRoundTrip:
             self.call(server, "repo_map", {})
 
     def test_a_cached_repository_is_reported_in_the_receipt(self, services, one_repo, extractor):
-        report = cache.build_index(one_repo, extractor)
+        report = cache.build_index(one_repo, extractor, measure=in_metric_scope)
         server = build_server(ToolHandlers([one_repo], services))
 
         text = self.call(server, "repo_map", {"repo_root": str(one_repo)}).content[0].text
@@ -634,7 +635,7 @@ class TestRoundTrip:
         assert f"cache: g:{report.generation} fresh" in text
 
     def test_no_cache_bypasses_the_index_for_one_call(self, services, one_repo, extractor):
-        cache.build_index(one_repo, extractor)
+        cache.build_index(one_repo, extractor, measure=in_metric_scope)
         server = build_server(ToolHandlers([one_repo], services))
 
         text = (
@@ -652,7 +653,7 @@ class TestRoundTrip:
         extractor,
         monkeypatch,
     ):
-        cache.build_index(one_repo, extractor)
+        cache.build_index(one_repo, extractor, measure=in_metric_scope)
         closed = []
         close = cache.CachedSource.close
 
@@ -679,7 +680,7 @@ class TestRoundTrip:
     def test_capabilities_reports_the_cache_path_and_row_counts(
         self, services, one_repo, extractor
     ):
-        report = cache.build_index(one_repo, extractor)
+        report = cache.build_index(one_repo, extractor, measure=in_metric_scope)
         server = build_server(ToolHandlers([one_repo], services))
 
         text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text
@@ -1858,7 +1859,7 @@ class TestCapabilitiesCacheHint:
         assert f"run agentless-mcp index --repo {one_repo.resolve()} to build it" in text
 
     def test_a_built_index_carries_no_hint(self, services, one_repo, extractor):
-        cache.build_index(one_repo, extractor)
+        cache.build_index(one_repo, extractor, measure=in_metric_scope)
         server = build_server(ToolHandlers([one_repo], services))
 
         text = self.call(server, "capabilities", {"repo_root": str(one_repo)}).content[0].text

@@ -7,17 +7,20 @@ every bounded section says what it left out, and that the three ways a path
 can fail to be a path are three different messages rather than an exception.
 """
 
+import json
 import math
 import re
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
-from agentless_mcp.application import render
+from agentless_mcp.application import graph_service, render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import resolve
-from agentless_mcp.util.errors import AgentlessError
+from agentless_mcp.core import clones, complexity, fileparse, resolve
+from agentless_mcp.util import deadline
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, UnmeasurableSource
 
 CORE = """\
 def helper(value):
@@ -924,3 +927,307 @@ class TestHealth:
     def test_a_limit_outside_the_published_range_is_refused(self, graphs, repo):
         with pytest.raises(AgentlessError):
             graphs.health(repo, limit=0)
+
+
+def branchy(name, cc):
+    """A Python function whose cyclomatic complexity is exactly ``cc``."""
+    arms = "".join(f"    if value == {index}:\n        return {index}\n" for index in range(cc - 1))
+    return f"def {name}(value):\n{arms}    return value\n"
+
+
+COMPLEX = "\n\n".join((branchy("ten", 10), branchy("eleven", 11), branchy("small", 2)))
+
+NESTED = """\
+def outer():
+    class Local:
+        def method(self):
+            return 1
+
+    return Local
+"""
+
+# A dedent to no enclosing level: the tree parses, and every supported tokenizer refuses it.
+TOKENIZER_REJECTS = "def f():\n    if x:\n        pass\n  pass\n"
+
+
+class TickingClock:
+    """A monotonic clock that moves one second each time it is read."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self):
+        self.now += 1.0
+        return self.now
+
+
+class TestHealthComplexity:
+    """The complexity summary and hotspots, the scope they cover, and the walk's own budget."""
+
+    def test_the_summary_counts_units_strictly_over_the_threshold(self, graphs, tmp_path):
+        report = graphs.health(build(tmp_path, {"core.py": COMPLEX}))
+
+        summary = report.complexity
+        assert (summary.units, summary.over_threshold, summary.threshold) == (3, 1, 10)
+        assert summary.erosion == complexity.erosion(
+            complexity.measure(COMPLEX, "core.py", "python")
+        )
+        assert (summary.files, summary.walked, summary.measured) == (1, 1, 1)
+
+    def test_the_threshold_comes_from_the_project_config(self, graphs, tmp_path):
+        files = {"core.py": COMPLEX, ".agentless-mcp.json": json.dumps({"complexity_threshold": 3})}
+
+        summary = graphs.health(build(tmp_path, files)).complexity
+
+        assert (summary.threshold, summary.over_threshold) == (3, 2)
+
+    def test_hotspots_rank_by_mass_and_carry_the_symbol_ids(self, graphs, tmp_path):
+        hotspots = graphs.health(build(tmp_path, {"core.py": COMPLEX})).hotspots
+
+        assert [row.label for row in hotspots.rows] == ["eleven", "ten", "small"]
+        assert [row.stable_id for row in hotspots.rows] == [
+            "py:core.py::eleven",
+            "py:core.py::ten",
+            "py:core.py::small",
+        ]
+        assert [row.mass for row in hotspots.rows] == sorted(
+            (row.mass for row in hotspots.rows), reverse=True
+        )
+
+    def test_a_unit_no_symbol_matches_is_metric_only(self, graphs, tmp_path):
+        rows = {
+            row.label: row
+            for row in graphs.health(build(tmp_path, {"nest.py": NESTED})).hotspots.rows
+        }
+
+        assert rows["outer"].stable_id == "py:nest.py::outer"
+        assert rows["outer.Local.method"].stable_id is None
+        assert rows["outer.Local.method"].metric_only
+
+    def test_a_symbol_name_matches_the_qualname_or_its_dotted_tail_and_only_once(self):
+        def unit(qualname):
+            return complexity.Unit(
+                qualname=qualname,
+                path="a.lua",
+                start_byte=0,
+                end_byte=1,
+                start_line=3,
+                end_line=4,
+                body_key="",
+                cc=1,
+                sloc=1,
+            )
+
+        lua = {("a.lua", 3): [("lua:a.lua::M.pick", "M.pick")]}
+        leaf = {("a.lua", 3): [("go:a.lua::Store.Find", "Find")]}
+        twice = {("a.lua", 3): [("py:a.lua::f", "f"), ("py:a.lua::f#2", "f")]}
+
+        assert graph_service._unit_stable_id(unit("M.pick"), lua) == "lua:a.lua::M.pick"
+        assert graph_service._unit_stable_id(unit("Store.Find"), leaf) == "go:a.lua::Store.Find"
+        assert graph_service._unit_stable_id(unit("Store.Refind"), leaf) is None
+        assert graph_service._unit_stable_id(unit("A.f"), twice) is None
+
+    def test_the_limit_cuts_every_listing_and_keeps_its_total(self, graphs, tmp_path):
+        files = {"core.py": COMPLEX, "bad_a.py": "def broken(:\n", "bad_b.py": "def worse(:\n"}
+
+        report = graphs.health(build(tmp_path, files), limit=1)
+
+        assert (report.hotspots.shown, report.hotspots.total) == (1, 3)
+        listing = report.complexity.not_measured
+        assert (listing.shown, listing.total, listing.omitted) == (1, 2, 1)
+
+    def test_test_and_fixture_paths_are_not_walked(self, graphs, tmp_path):
+        files = {
+            "core.py": COMPLEX,
+            "tests/test_core.py": branchy("test_core", 12),
+            "fixtures/sample.py": branchy("sample", 12),
+            "pkg/store_test.go": "package pkg\n\nfunc TestStore() {}\n",
+        }
+
+        report = graphs.health(build(tmp_path, files))
+
+        assert report.complexity.files == 1
+        assert {row.path for row in report.hotspots.rows} == {"core.py"}
+
+    def test_files_that_cannot_be_measured_are_named_and_the_rest_are_measured(
+        self, graphs, tmp_path
+    ):
+        files = {"core.py": COMPLEX, "broken.py": "def broken(:\n", "odd.py": TOKENIZER_REJECTS}
+
+        summary = graphs.health(build(tmp_path, files)).complexity
+
+        reasons = {entry.path: entry.reason for entry in summary.not_measured.rows}
+        assert set(reasons) == {"broken.py", "odd.py"}
+        assert "does not parse" in reasons["broken.py"]
+        assert "tokenizer rejects" in reasons["odd.py"]
+        assert (summary.files, summary.walked, summary.measured, summary.units) == (3, 3, 1, 3)
+
+    def test_a_file_the_scan_skipped_is_named_with_the_scans_reason(self, graphs, tmp_path):
+        files = {"core.py": COMPLEX, "big.py": "x = 1\n" * 170_000}
+
+        summary = graphs.health(build(tmp_path, files)).complexity
+
+        assert [entry.path for entry in summary.not_measured.rows] == ["big.py"]
+        assert summary.files == 2
+
+    def test_a_grammar_that_fails_inside_the_walk_is_named(self, graphs, tmp_path, monkeypatch):
+        parse = fileparse.parse_metrics
+
+        def unavailable(source, language, path):
+            if path == "other.py":
+                message = "language 'python' not warmed: run agentless-mcp warmup"
+                raise LanguageUnavailable(message)
+            return parse(source, language, path)
+
+        monkeypatch.setattr(fileparse, "parse_metrics", unavailable)
+        repo = build(tmp_path, {"core.py": COMPLEX, "other.py": branchy("other", 3)})
+
+        rows = graphs.health(repo).complexity.not_measured.rows
+
+        assert [(entry.path, entry.reason) for entry in rows] == [
+            ("other.py", "language 'python' not warmed: run agentless-mcp warmup")
+        ]
+
+    def test_the_clone_share_is_clone_lines_over_the_measured_lines(self, graphs, tmp_path):
+        core = (
+            "def a(x):\n    y = x + 1\n    return y\n\n\n"
+            "def b(z):\n    w = z + 1\n    return w\n\n\n"
+            "VALUE = 3\n"
+        )
+
+        summary = graphs.health(build(tmp_path, {"core.py": core})).complexity
+
+        assert (summary.clone_lines, summary.sloc) == (6, 7)
+        assert summary.clone_share == 6 / 7
+
+    def test_a_file_that_cannot_be_indexed_is_named_and_leaves_both_figures(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        index = clones.file_blocks_tree
+
+        def unindexable(root, path, language, lines):
+            if path == "other.py":
+                message = "other.py: clone blocks cannot be indexed"
+                raise UnmeasurableSource(message)
+            return index(root, path, language, lines)
+
+        monkeypatch.setattr(clones, "file_blocks_tree", unindexable)
+        repo = build(tmp_path, {"core.py": COMPLEX, "other.py": branchy("other", 3)})
+
+        summary = graphs.health(repo).complexity
+
+        assert [(entry.path, entry.reason) for entry in summary.not_measured.rows] == [
+            ("other.py", "other.py: clone blocks cannot be indexed")
+        ]
+        assert summary.units == 3
+        assert summary.sloc == len(clones.file_blocks(COMPLEX, "core.py", "python").sloc_lines)
+
+    def test_the_walk_parses_each_file_once_for_both_figures(self, graphs, tmp_path, monkeypatch):
+        files = {"core.py": COMPLEX, "other.py": branchy("other", 3)}
+        units = sum(len(complexity.measure(text, path, "python")) for path, text in files.items())
+        calls = []
+        parse = fileparse.parse_metrics
+
+        def counted(source, language, path):
+            calls.append(path)
+            return parse(source, language, path)
+
+        def refuse(*_arguments):
+            message = "a text form parsed a file the walk had already parsed"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(fileparse, "parse_metrics", counted)
+        monkeypatch.setattr(complexity, "measure", refuse)
+        monkeypatch.setattr(clones, "file_blocks", refuse)
+
+        summary = graphs.health(build(tmp_path, files)).complexity
+
+        assert calls == ["core.py", "other.py"]
+        assert (summary.measured, summary.units) == (2, units)
+
+    def test_a_walk_the_budget_stopped_shares_over_the_walked_files_only(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        files = {f"m{index:02}.py": branchy(f"f{index}", index + 4) for index in range(1, 11)}
+        # m00 and m11 are the one Type-2 pair, and the stopped walk never reaches m11.
+        repo = build(tmp_path, {**files, "m00.py": branchy("a", 3), "m11.py": branchy("b", 3)})
+        whole = graphs.health(repo).complexity
+        monkeypatch.setattr(graph_service, "time", TickingClock())
+
+        stopped = graphs.health(repo).complexity
+
+        assert whole.clone_lines == 12
+        assert (stopped.walked, stopped.clone_lines, stopped.clone_share) == (9, 0, 0.0)
+        assert 0 < stopped.sloc < whole.sloc
+
+    def test_the_cli_walk_stops_at_the_cap(self, graphs, tmp_path, monkeypatch):
+        files = {f"m{index:02}.py": branchy(f"f{index}", 2) for index in range(12)}
+        repo = build(tmp_path, files)
+        monkeypatch.setattr(graph_service, "time", TickingClock())
+
+        summary = graphs.health(repo).complexity
+
+        # One read starts the walk and one precedes each file, a second apiece.
+        assert (summary.walked, summary.files, summary.stopped_by_budget) == (9, 12, True)
+        assert summary.units == 9
+
+    def test_a_call_deadline_halves_what_is_left(self, graphs, tmp_path, monkeypatch):
+        files = {f"m{index}.py": branchy(f"f{index}", 2) for index in range(5)}
+        repo = build(tmp_path, files)
+        monkeypatch.setattr(graph_service, "time", TickingClock())
+        monkeypatch.setattr(deadline, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+
+        with deadline.bounded(deadline.Deadline(limit=6, grace=0, started=1000.0)):
+            report = graphs.health(repo)
+
+        assert (report.complexity.walked, report.complexity.files) == (2, 5)
+        assert "complexity: 2 of 5 files walked before the time budget" in (
+            render.render_health(report).splitlines()
+        )
+
+    def test_the_graph_sections_return_when_the_allowance_ends_after_the_resolve(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        repo = build(tmp_path, FILES)
+        whole = graphs.health(repo)
+        now = {"t": 1000.0}
+        monkeypatch.setattr(deadline, "time", SimpleNamespace(monotonic=lambda: now["t"]))
+        resolve = GraphService._resolve
+
+        def resolve_then_spend(self, context):
+            resolved = resolve(self, context)
+            now["t"] = 1007.0
+            return resolved
+
+        monkeypatch.setattr(GraphService, "_resolve", resolve_then_spend)
+
+        with deadline.bounded(deadline.Deadline(limit=6, grace=0, started=1000.0)):
+            spent = graphs.health(repo)
+
+        assert (spent.complexity.walked, spent.complexity.files) == (0, whole.complexity.files)
+        assert spent.complexity.stopped_by_budget
+        assert (spent.orphans, spent.unused_exports, spent.hubs) == (
+            whole.orphans,
+            whole.unused_exports,
+            whole.hubs,
+        )
+
+    def test_the_graph_sections_return_whole_when_the_budget_stops_the_walk(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        repo = build(
+            tmp_path,
+            {**FILES, **{f"m{index:02}.py": branchy(f"f{index}", 2) for index in range(12)}},
+        )
+        whole = graphs.health(repo)
+        monkeypatch.setattr(graph_service, "time", TickingClock())
+
+        stopped = graphs.health(repo)
+
+        assert stopped.complexity.stopped_by_budget
+        assert not whole.complexity.stopped_by_budget
+        assert (stopped.orphans, stopped.unused_exports, stopped.hubs) == (
+            whole.orphans,
+            whole.unused_exports,
+            whole.hubs,
+        )

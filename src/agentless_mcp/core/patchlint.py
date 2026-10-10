@@ -13,7 +13,9 @@ on :class:`RepoFacts`. This module opens nothing -- no cache, no repository,
 no source file: every check reads the facts and text the caller supplies, and
 the ``parse_*`` functions beside them take text. Reading the repository is
 :mod:`agentless_mcp.application.lint_service`'s job, the dependency manifests
-included: it reads them and hands the result over on :class:`RepoFacts`.
+included: it reads them and hands the result over on :class:`RepoFacts`. The
+pair checks, which compare one file's whole text before and after a change,
+live in :mod:`agentless_mcp.core.erosion`.
 
 ``undeclared_imports``
     A top-level package the patch imports that is in neither the repository's
@@ -198,19 +200,8 @@ MAX_DUPLICATE_SITES = 3
 PYPROJECT_NAME = "pyproject.toml"
 REQUIREMENTS_GLOB = "requirements*.txt"
 
-# Failure modes a check may hit on hostile or merely odd input, each of which
-# must degrade that check rather than the whole report. Named explicitly
-# instead of catching Exception: an error class not in this list is a defect
-# in this module and must surface as one.
-#
-# Every member is something *foreign data* does, not something this module's
-# own code does wrong. `TypeError`, `KeyError`, `IndexError` and
-# `AttributeError` were members and are deliberately not: those are the four
-# classes a None dereference, an off-by-one or a renamed field raises, and
-# catching them turned a crash into a `not checked` line with no traceback
-# while the other six checks reported a healthy-looking patch around it.
-# `UnicodeDecodeError` is a `ValueError` and is covered by it; a manifest or a
-# fragment that is not text arrives that way.
+# Named explicitly instead of catching Exception: an error class not in this list
+# is a defect in this module and must surface as one.
 DEGRADED_ERRORS: tuple[type[Exception], ...] = (
     AgentlessError,
     ValueError,

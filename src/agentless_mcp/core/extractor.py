@@ -1993,12 +1993,19 @@ class TreeSitterExtractor:
                     self.extract_refs_from_source(source, language, path),
                 )
             data = bytes(source, "utf-8")
-            tree = parser.parse(data)
-            return ParsedFacts(
-                self._symbols_from_tree(tree, data, language, path),
-                self._imports_from_tree(tree, data, language, path),
-                refs_from_tree(tree, data, language, path),
-            )
+            return self.facts_from_tree(parser.parse(data), data, language, path)
+
+    def parse(self, data: bytes, language: str) -> Tree:
+        """Parse UTF-8 ``data`` with a fresh parser for a supported language."""
+        return self.get_parser(language).parse(data)
+
+    def facts_from_tree(self, tree: Tree, data: bytes, language: str, path: str) -> ParsedFacts:
+        """Return the three fact sets of a tree that `parse` built from ``data``."""
+        return ParsedFacts(
+            self._symbols_from_tree(tree, data, language, path),
+            self._imports_from_tree(tree, data, language, path),
+            refs_from_tree(tree, data, language, path),
+        )
 
     # The language is registered: every caller got a parser for it first.
     def _symbols_from_tree(

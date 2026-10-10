@@ -47,11 +47,12 @@ from collections.abc import Iterable, Iterator, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from itertools import chain, zip_longest
+from pathlib import PurePosixPath
 from typing import Any
 
 from agentless_mcp.application import render
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import graph, refs, resolve
+from agentless_mcp.core import grammars, graph, refs, resolve
 from agentless_mcp.core.cache import effective_source
 from agentless_mcp.core.extractor import (
     SCOPE_ANALYSED_LANGUAGES,
@@ -1060,6 +1061,14 @@ def is_fixture_path(path: str) -> bool:
     two names.
     """
     return _has_directory_segment(path, FIXTURE_DIRECTORY_SEGMENTS)
+
+
+def in_metric_scope(path: str) -> bool:
+    """True when ``path`` is a tier-1 file outside test and fixture paths, so it has metrics."""
+    language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(PurePosixPath(path).suffix)
+    if language is None or not grammars.is_tier1(language):
+        return False
+    return not is_test_path(path) and not is_fixture_path(path)
 
 
 def is_test_path(path: str) -> bool:

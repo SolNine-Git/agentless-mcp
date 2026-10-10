@@ -1,5 +1,232 @@
 # Changelog
 
+## 0.10.0 -- 2026-10-10
+
+### Added
+
+- **`lint` reports `complexity_delta`.** The check compares each edited
+  file's whole text before and after the change. It warns when a function
+  above the complexity threshold grows, when a function crosses the threshold,
+  and when a new function arrives above it. Functions are paired by body, then
+  by name, then by rank among functions that share a name, so a rename, a
+  move, or a reordering of same-name functions is not a finding. The body pass
+  runs across all the files of one candidate, so a function moved to another
+  file is paired with its old copy. The hook form sees one file, so there a
+  function moved from another file counts as new. Complexity is counted the
+  scb-check way. A file that does not parse or tokenize gives one
+  `not_checked` row, and the other files are still checked. The lint golden
+  gains a candidate that takes `check_report_inputs` from complexity 4 to 11,
+  and the two existing candidates' reports are byte-identical.
+- **`lint --only CHECK[,CHECK...]` runs a subset of the checks.** When it
+  names only pair checks, `lint` skips the repository scan that the patch
+  checks need, and `complexity_delta` and `contract_drift` read only the edited
+  files. One SEARCH/REPLACE candidate on mcp-local takes 0.15 s with
+  `--only complexity_delta` and 1.48 s with every check (median of 5 runs,
+  `/usr/bin/time`, `uv run`, tag cache at a generation mismatch).
+- **`lint --path REL --after FILE` is the per-edit hook form.** It compares
+  the working-tree text at `REL` with the whole proposed text in `FILE` and
+  runs the pair checks only. Both sides are read as UTF-8 bytes with their line
+  endings kept, up to 1,000,000 bytes each. A side that is larger, unreadable,
+  or not UTF-8 gives a `not_checked` row. On one mcp-local file the hook form
+  takes 0.16 s through `uv run` and 0.14 s through the installed console
+  script (median of 5 runs, `/usr/bin/time`).
+- **The lint JSON carries `detail` on a `complexity_delta` finding.** It holds
+  `unit`, `match`, `cc_old`, `cc_new`, `sloc_old`, `sloc_new`, and
+  `threshold`. No other finding has the field, and the text output does not
+  change.
+- **Two `.agentless-mcp.json` keys.** `complexity_threshold` (1 to 100,
+  default 10) sets the threshold `complexity_delta` uses. `erosion_gate` maps
+  `complexity_delta`, `contract_drift`, or `clone_delta` to `off`, `advisory`,
+  or `block` for the per-edit hook. A bad value is dropped with a warning, and
+  `capabilities` shows both keys in the effective config.
+- **`lint` reports `contract_drift`.** The check warns when a change adds a
+  silent default or a swallowed error to a boundary module, a file that
+  `boundary_globs` matches. It runs 30 syntactic rules across 10 languages.
+  They are 22 tree-sitter query entries in `prompts/contract_rules.json`,
+  because javascript, typescript, and tsx share four. Examples are
+  `get-default-empty` (`data.get("items", [])`) and `except-pass`. Each hit is
+  keyed by its rule, the function that holds it, and its text with comments cut
+  out. Old and new keys are compared as multisets, so a hit the file already
+  had is not a finding, a renamed function keeps its hits, and a hit moved into
+  another function is a finding. The multisets span all the boundary files of
+  one candidate, so a hit that moves with its function to another file is not
+  new, and a function moved into a boundary module from outside brings its
+  hits in as new. With no `boundary_globs`, the check gives one
+  `not_checked` row per candidate that edits a tier-1 file. A boundary file in c
+  or bash gives one `not_checked` row, because those languages have no rules.
+  In JSON a finding carries `detail` (`rule`, `unit`, `capture`), and these two
+  rows carry `detail.reason` (`no_boundary_globs`, `no_rules_for_language`).
+  The hook form with `--only complexity_delta,contract_drift` takes 0.18 s
+  through `uv run` and 0.16 s through the installed console script on one
+  mcp-local file with `boundary_globs` set. `--only complexity_delta` takes
+  0.16 s on the same copy (median of 5 runs, `/usr/bin/time`). The lint golden
+  gains a candidate with two hits, and the three existing candidates' reports
+  are byte-identical.
+- **`lint --since REV` is the review mode.** It compares each file changed
+  since the commit `REV` with its text in the working tree, through the pair
+  checks only. The changed files come from `git diff --raw -z -M --relative`
+  and `git ls-files --others --exclude-standard`, and each old text from one
+  bounded `git cat-file blob`. A renamed file is compared at its new path, a
+  deleted file has no new text, and an added or untracked file has no old
+  text. A binary file, a submodule, an unmerged path, a failed or timed-out
+  git call, and a run with no changed file each give a `not_checked` row. A
+  symbolic link is not compared. A patch check, `--after`, or a `REV` that
+  names no commit is a usage error (exit 2), through the new
+  `RevisionUnresolved` error. On a scratch clone of mcp-local, `--since
+  HEAD~5 --only complexity_delta,contract_drift --json` (27 changed files, 18
+  in tier-1 languages) takes 0.26 s through the installed console script and
+  0.28 s through `uv run` (median of 5 runs, `/usr/bin/time`), and 0.30 s
+  with `boundary_globs` set. `--since HEAD~50` (156 files) takes 0.85 s
+  (median of 3 runs).
+- **The lint JSON carries `observed` on each candidate.** It describes the
+  new text: `units_over_threshold` (`path`, `unit`, `line`, `cc`, `sloc`),
+  `units_changed` (`path`, `unit`, `line`, `match`, `cc_old`, `cc_new`,
+  `sloc_old`, `sloc_new`), and `contract_keys` (`path`, `rule`, `unit`,
+  `capture`). Each `unit` is the qualified name in the new text. A list is
+  present only when its check measured a file, and the text output does not
+  change. The lint JSON golden gains `observed` on its four candidates, and
+  every finding in it is unchanged. The text golden is byte-identical.
+- **`capabilities` lists the lint checks.** Text and JSON (`lint_checks`) name
+  each check and the input it reads, `patch`, `pairs`, or `pairs+clones`, from
+  the check registry.
+- **`boundary_globs` in `.agentless-mcp.json`.** It lists at most 64
+  repo-relative globs of at most 256 characters each. `*` matches within one
+  path segment, `**/` matches zero or more whole segments, and every other
+  character is literal. A list over the cap is ignored whole, and a bad entry
+  is dropped with a warning. `capabilities` shows the globs in force.
+- **A per-edit erosion gate hook for Claude Code.**
+  `contrib/hooks/agentless_erosion_gate.py` runs on each `Write` and `Edit`
+  call. It computes the whole text the call would leave on disk, with Claude
+  Code's line-ending rule for an Edit, and runs `lint --path --after` with
+  `complexity_delta` and `contract_drift`. Each check is `off`, `advisory`, or
+  `block`, from the repository's `erosion_gate` key, then
+  `AGENTLESS_EROSION_GATE`, then `advisory`. `AGENTLESS_EROSION_GATE=off`
+  turns the gate off everywhere. Advisory findings reach the model as
+  additional context, and the hook never approves a call. Blocking findings
+  stop the call with exit 2. The hook imports the standard library only, stops
+  its own work after 10 s, and fails open: a lint error, a timeout, a SIGTERM,
+  or an internal error exits 0 and is logged as `degraded`.
+  `AGENTLESS_EROSION_BIN` names the binary, and `AGENTLESS_EROSION_LOG` names
+  a JSONL log with one record per call. `settings-example.json` registers the
+  hook with a 15 s timeout. On one mcp-local file a call takes 0.20 s without
+  `boundary_globs` and 0.23 s with them (median of 5 runs, `/usr/bin/time`, on
+  a scratch clone).
+- **`contrib/hooks/erosion_gate_report.py` turns the gate log into the trial
+  figures.** It reads each record's transcript after the session and puts each
+  finding in one class: not applied, unresolved, unobserved, acted on, or not
+  acted on. It prints the effective false-positive rate per check. It writes a
+  seeded sample of up to 30 applied findings per check to a CSV file for
+  labeling, scores the filled file, and prints which checks meet the
+  advisory-to-block criterion (50 applied findings and a labeled precision of
+  90% or more).
+- **`health` reports complexity and hotspots.** The CLI subcommand and the
+  `orient` and `analyze_structure` operation `health` add a complexity summary
+  and a `hotspots` section after the graph sections. The summary gives the
+  units measured, the units above `complexity_threshold` (default 10), and
+  erosion, over tier-1 source files outside test and fixture paths. Hotspots
+  lists the units with the most mass (cc times the square root of sloc), each
+  with its stable id or marked metric-only. A file that cannot be measured is
+  counted and named with the reason. The walk has its own time budget, 10 s or
+  half of an MCP call's remaining allowance, whichever is less, and it tests
+  the budget before each checkpoint, so the walk never stops the call for time
+  and the graph sections return. A client that cancels still stops the call,
+  and so does an allowance spent during the scan or the resolve, before the
+  walk starts. On a snapshot of mcp-local `src/` (183 files, 1770
+  units), `health` erosion is 0.3500945549598066, equal to scb-check 0.1.3. On
+  mcp-local, `health` takes 1.40 s against 0.80 s before (CLI, median of 3).
+  Over 144 Loc-Bench checkouts, the orphan, unused-export, and hub sections are
+  byte-identical to the previous build, and the walk takes 0.26 s median and
+  4.9 s at most.
+- **`health` reports clone share.** The complexity summary ends with the share
+  of measured source lines that sit inside a Type-2 clone instance: a
+  function, loop, branch, or try block of 3 or more lines that has a copy once
+  names, literals, comments, and docstrings are ignored. Each line counts once,
+  however many copies hold it. The JSON summary carries `sloc`, `clone_lines`,
+  and `clone_share`. A file that cannot be indexed is counted and named on the
+  `not measured` line, and it leaves both erosion and clone share. On a snapshot
+  of mcp-local `src/` (183 files), the 2,513 clone lines of 30,603 source lines
+  equal scb-check 0.1.3's `clone_loc` and `total_loc`. On mcp-local, `health`
+  takes 2.16 s against 1.39 s before (CLI, median of 3), and the graph sections
+  are byte-identical.
+- **`lint` reports `clone_delta`.** The advisory names each block a change
+  adds that has a copy elsewhere in the repository once names, literals,
+  comments, and docstrings are ignored (a Type-2 clone). A block is a function,
+  loop, branch, or try statement with 3 or more source lines, in all 12 tier-1
+  languages. A finding also needs 40 Type-2 tokens (identifiers, literals,
+  keywords, operators, and punctuation), so the guard clauses a lint rule
+  writes in one shape are not reported: over mcp-local `src/` and five
+  Loc-Bench checkouts, the floor keeps 4 of 183 guard-clause groups and 1,159
+  of 2,424 groups. On real diffs it takes mcp-local `--since HEAD~50` from 21
+  findings to 2, and the clone_delta self-check on its own change from 8 to
+  0. Old and new blocks pair within each file first, then across
+  files, so a block moved to another file or renamed in place is not a finding,
+  and a new block with no copy is not one either. One finding covers a pasted
+  function and the copied blocks inside it, and a function that
+  `near_duplicates` reported at the same path and line is skipped. The index
+  covers tier-1 files outside test and fixture paths, and a file it could not
+  read or parse is counted and named in one `not_checked` row. Python follows
+  scb-check 0.1.3: on a snapshot of mcp-local `src/` (183 files), the clone
+  groups (200 groups, 545 instances) and the 2,513 clone source lines equal
+  scb-check's. The check runs by default over `--candidates` and `--diff`.
+  `--path` and `--since` run it only when `--only` names it, because it
+  reads every source file. It builds its index only when a change edits a
+  file in its scope, once for all the candidates of a run, and it stops the
+  index after 10 s and names each file it did not reach in its `not_checked`
+  row. In the per-edit form (`--path`) it reads the index from the tag cache
+  only, and parses just the edited file and the files that changed since the
+  index. Without a tag cache it gives one `not_checked` row with
+  `detail.reason` `no_tag_cache` and parses nothing. On a scratch clone of
+  mcp-local (228 files in
+  scope), `--since HEAD~5 --only clone_delta` takes 0.84 s, and all three pair
+  checks take 0.90 s against 0.23 s for `complexity_delta` and
+  `contract_drift`. A one-edit candidate with every check takes 3.93 s against
+  3.24 s before (median of 5 runs, `/usr/bin/time`, no tag cache). The lint
+  golden gains a candidate that copies `format_money`, and the other four
+  candidates' reports are byte-identical. `capabilities` lists the check under
+  the input kind `pairs+clones`.
+- **The lint JSON carries `detail` on a `clone_delta` finding and a
+  `clone_instances` list in `observed`.** `detail` holds the block's Type-2
+  `key`, its `line` and `end_line`, up to 20 other `sites` as `{path, line,
+  end_line}`, and `sites_total`. `clone_instances` lists each block of the new
+  text that `clone_delta` could report, as `{path, key, line, end_line}`, so a
+  later run shows whether a copy went away. The text output does not change.
+  The lint golden gains `"clone_instances": []` in the four candidates that
+  copy nothing, and two rows and the `detail` in the one that copies
+  `format_money`.
+- **The erosion gate hook runs `clone_delta`.** It is the hook's third check,
+  advisory by default, and the trial report counts a copy as acted on when a
+  later call leaves its file with fewer copies of the block. A binary without
+  the check runs the other two and logs `clone_delta` as dropped. On one
+  mcp-local file the hook takes 0.24 s with a fresh tag cache, against 0.21 s
+  with the two other checks (median of 5 interleaved runs, `/usr/bin/time`).
+  Without a tag cache, `clone_delta` is off for the call: lint gives its
+  `no_tag_cache` row, and the hook logs the check under `off_by_config`, not
+  as a gap. On `diffusers@65ab105` with `--no-cache`, the hook-form lint of
+  all three checks takes 0.14 s for a source file (one run).
+
+### Changed
+
+- **The tag cache stores complexity units and clone blocks.** One parse of each
+  file in the metric scope now gives its symbols, imports, references,
+  complexity units, and clone blocks, and `index` stores all five. The metric
+  scope is the files that `health` and `lint`'s clone index read: tier-1 files
+  outside test and fixture paths. Other files keep their symbols, imports, and
+  references alone. The cache schema moves to 16, so the first `index` after
+  the upgrade rebuilds the database. `health` and `lint`'s clone index read the
+  stored units and blocks when the file's digest, grammar, and metric stamp
+  still match, and compute them otherwise. A file that cannot be measured keeps
+  its reason in the cache. The answers do not change. On mcp-local, `health
+  --json` is identical with a fresh index, with `--no-cache`, and on the build
+  before the cache. `lint --since HEAD~5 --only clone_delta --json` is
+  identical with a fresh index and with `--no-cache`, and its findings match
+  the build before the cache. With a fresh index, `health` takes 0.82 s against
+  2.14 s, and that lint run takes 0.29 s against 0.90 s. With `--no-cache`,
+  `health` takes 3.63 s against 3.86 s, because its walk parses each file once
+  for both the units and the blocks. A cold `index` takes 3.46 s against
+  2.65 s, and the database grows from 14,106,624 to 15,286,272 bytes (median of
+  3 interleaved runs, `/usr/bin/time`). On Loc-Bench, `diffusers` indexes in
+  18.59 s against 10.11 s and `moto` in 36.35 s against 31.99 s.
+
 ## 0.9.1 -- 2026-10-09
 
 Fan-in tiers describe each occurrence, import aliases and package re-exports

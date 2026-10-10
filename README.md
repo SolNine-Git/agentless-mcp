@@ -93,8 +93,8 @@ agentless-mcp html > modules.html
 ```
 
 These commands find relationships between symbols or files, report import
-cycles, group related files, list orphan candidates, unused exports and hubs,
-and export Mermaid or interactive HTML graphs.
+cycles, group related files, list orphan candidates, unused exports, hubs and
+complexity hotspots, and export Mermaid or interactive HTML graphs.
 
 ### Validate patches
 
@@ -106,6 +106,8 @@ agentless-mcp patch check --file change.patch --repo /path/to/repo
 agentless-mcp patch apply --file change.patch --repo /path/to/repo
 agentless-mcp lint --candidates ./candidates --repo /path/to/repo
 agentless-mcp lint --diff change.patch --repo /path/to/base-checkout
+agentless-mcp lint --path pkg/app.py --after /tmp/app.py --repo /path/to/repo
+agentless-mcp lint --since "$(git merge-base HEAD main)" --repo /path/to/repo
 agentless-mcp validate --candidates ./candidates --repo /path/to/repo \
   --test-cmd 'pytest -q'
 agentless-mcp vote --verdicts verdicts.jsonl
@@ -137,6 +139,22 @@ Pointing `--repo` at the branch instead is not silently wrong: each affected
 file is reported as a `not_checked` coverage gap naming the remedy. Binary files
 and mode-only changes are reported the same way, and a construct one edit cannot
 express — a rename, a `-U0` diff with no context — is refused with the reason.
+
+`lint --only CHECK[,CHECK...]` runs only the named checks. A run that names only
+pair checks skips the repository scan that the patch checks need.
+`complexity_delta` and `contract_drift` read only the edited files.
+`clone_delta` also reads every source file outside test and fixture paths, to
+find the copies of a block. `lint --path REL --after FILE` is the per-edit form.
+It compares `REL` as the working tree holds it with the whole proposed text in
+`FILE`, and it runs only the pair checks. The erosion gate hook calls lint this
+way. `lint --since REV` is the review mode. It compares each file changed since
+the commit `REV` with its text in the working tree, and it runs only the pair
+checks. Both forms run `clone_delta` only when `--only` names it.
+
+```sh
+agentless-mcp lint --repo /path/to/repo --path pkg/app.py --after /tmp/app.py \
+  --only complexity_delta --json
+```
 
 ### Cache and capabilities
 
@@ -546,6 +564,150 @@ Codex searches through its shell tool rather than a `Grep` tool, so there the
 shell half of the gate does the work. The `anthropic/alwaysLoad` hint does not
 port -- Codex always defers MCP schemas -- so Codex runs deferred schemas plus
 the gate, which measured indistinguishable from eager on every metric.
+
+### Erosion gate (per-edit hook)
+
+`contrib/hooks/agentless_erosion_gate.py` checks each Claude Code `Write` and
+`Edit` call before the call lands. It computes the whole text the call would
+leave on disk, runs `agentless-mcp lint --path REL --after FILE`, and reports
+what the change makes worse. The checks are `complexity_delta`,
+`contract_drift`, and `clone_delta`. `complexity_delta` reports a function above
+the complexity threshold that gets more complex, a function that crosses the
+threshold, and a new function above it. `contract_drift` reports a silent
+default or a swallowed error in a module that `boundary_globs` names.
+`clone_delta` reports a block of 3 or more source lines and 40 or more tokens
+that the change adds while the repository already has a copy of it, with
+names and literals ignored. The hook imports the standard library only.
+
+**Modes.** Each check has one mode: `off`, `advisory`, or `block`.
+
+- `advisory` adds the findings to the model's context. The call then goes
+  through the normal permission flow. The hook never approves a call.
+- `block` stops the call with exit 2 and returns the findings to the model.
+  Blocking findings come first, then the advisory findings under their own
+  label.
+- `off` skips the check.
+
+The repository's `erosion_gate` key in `.agentless-mcp.json` sets a mode per
+check, for example `{"erosion_gate": {"complexity_delta": "block"}}`. A check
+that the key leaves unset takes `AGENTLESS_EROSION_GATE` (`advisory` or
+`block`). Without that variable, the check takes `advisory`. The variable sets
+`clone_delta` too, so `AGENTLESS_EROSION_GATE=block` blocks on copies. To keep
+`clone_delta` advisory while it is on trial, set
+`{"erosion_gate": {"clone_delta": "advisory"}}`.
+`AGENTLESS_EROSION_GATE=off` turns the gate off on the whole machine, and it
+wins over every repository key.
+
+| Variable | Effect |
+|---|---|
+| `AGENTLESS_EROSION_GATE` | `off` turns the gate off everywhere. `advisory` or `block` sets the default mode. |
+| `AGENTLESS_EROSION_BIN` | The `agentless-mcp` binary to run. Without it, the hook runs `agentless-mcp` from `PATH`. |
+| `AGENTLESS_EROSION_LOG` | A file path. The hook appends one JSON line per call to this file. |
+
+The binary must have the hook form (`lint --path`). With a release that does
+not have it, the log records every call as `degraded` with the reason
+`agentless-mcp lacks the hook form`. When lint refuses a check, the hook reads
+the binary's check list from `capabilities --json` and runs lint once more with
+the requested pair checks that the list names. When the binary is missing, the
+hook skips the call.
+
+In the hook form, `clone_delta` reads the clone blocks of every source file
+outside test and fixture paths from the tag cache (`agentless-mcp index`, or
+the MCP server's background index). It parses only the edited file and the
+files that changed or were added since the index. Without a tag cache, the
+check is off for that call: lint gives one `not_checked` row with the reason
+`no_tag_cache`, and the hook logs `clone_delta` under `off_by_config`, not as
+a gap. An edit of a test or fixture file gets no `clone_delta` row. On one
+mcp-local file the hook takes 0.24 s with a fresh cache, against 0.21 s and
+0.20 s for the two other checks alone (median of 5 interleaved runs,
+`/usr/bin/time`). On diffusers@65ab105 without a cache, the hook-form lint of
+all three checks takes 0.14 s for a source file (one run). `lint --since` and
+candidate runs build the index when there is no cache, and they stop it after
+10 s. The binary must have the same cache schema as the MCP server that keeps
+the cache fresh, because two builds with different schemas delete each other's
+database.
+
+Install the gate in Claude Code:
+
+1. Copy `contrib/hooks/agentless_erosion_gate.py` to a stable path, for
+   example `~/.claude/hooks/`.
+2. Merge the `Write|Edit` entry from `contrib/hooks/settings-example.json`
+   into the `PreToolUse` list in `~/.claude/settings.json`. Replace the
+   placeholder with the absolute path of the copied script.
+3. Keep `"timeout": 15`. The hook stops its own work after 10 s, so the 15 s
+   timeout is a second limit. A hook that times out does not block the call.
+4. Set the variables in the `env` block of `settings.json`, for example
+   `"env": {"AGENTLESS_EROSION_LOG": "/home/you/.claude/erosion-gate.jsonl"}`.
+5. Start a new session.
+
+```json
+{
+  "matcher": "Write|Edit",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_erosion_gate.py",
+      "timeout": 15
+    }
+  ]
+}
+```
+
+Check the script outside a session first. With a binary that has the hook
+form, a Write of a small new Python file in a repository gives exit 0, no
+output, and a `clean` record:
+
+```sh
+printf '%s\n' '{"session_id":"probe","transcript_path":"/tmp/probe.jsonl","tool_use_id":"toolu_probe","tool_name":"Write","tool_input":{"file_path":"/path/to/repo/probe.py","content":"x = 1\n"}}' \
+  | AGENTLESS_EROSION_BIN=/path/to/agentless-mcp AGENTLESS_EROSION_LOG=/tmp/erosion-probe.jsonl \
+    python3 ~/.claude/hooks/agentless_erosion_gate.py
+echo "exit=$?"
+tail -1 /tmp/erosion-probe.jsonl
+```
+
+**The gate fails open.** A malformed payload, a lint error, a lint timeout, a
+SIGTERM from Claude Code, and any internal error exit 0 and let the call
+proceed. The log records each of them as `degraded` with the reason. A file
+that is not a tier-1 source file, a file outside a git repository, and a
+symlink that points out of the repository are `skipped`. The log never records
+a degraded call as `clean`.
+
+**The log.** Each record holds the session id, the transcript path, the
+`tool_use_id`, the path, the mode per check, the outcome, every finding with
+its numbers, the state that lint observed in the proposed text, and the
+latency. The outcomes are `clean`, `advisory`, `blocked`, `degraded`, and
+`skipped`.
+
+**The report.** `contrib/hooks/erosion_gate_report.py` reads the log and the
+transcript of each record after the sessions end:
+
+```sh
+python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl
+python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --sample-out labels.csv
+# Write correct or wrong in the label column of each row, then:
+python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --labels labels.csv
+```
+
+The report puts each finding in one class:
+
+- **not applied**: the call failed, or the user or a hook rejected it.
+- **unresolved**: the transcript is missing or has no result for the call.
+- **unobserved**: no later call in the same session changed the same file.
+- **acted on**: a later call brought the function back to its old complexity
+  or under the threshold, removed the contract hit, or left the file with
+  fewer copies of the block.
+- **not acted on**: a later call changed the file, and the finding still holds.
+
+It prints the effective false-positive rate (not acted on, over acted on plus
+not acted on) as a diagnostic. `--sample-out` writes a seeded random sample of
+up to 30 applied findings per check to a new CSV file, and it never overwrites
+a file. `--labels` reads the filled file and computes the labeled precision.
+
+**The trial.** Run the gate in `advisory` mode first. Set a check to `block` in
+a repository only when the report says that the check qualifies: at least 50
+applied findings, and a labeled precision of 90% or more. The log cannot show
+the third condition. Confirm that the check's rules and message did not change
+after its trial started.
 
 ### Navigation craft for the agent
 

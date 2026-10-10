@@ -20,12 +20,14 @@ from dataclasses import dataclass
 
 import pytest
 
+from agentless_mcp.core import grammars
 from agentless_mcp.core.normalize import (
     BLOCK_CLOSE,
     BLOCK_OPEN,
     TEXT_ONLY_KEY_PREFIX,
     equivalence_key,
     file_key,
+    node_stream,
     normalized_stream,
     syntax_delta,
 )
@@ -618,3 +620,18 @@ class TestDirectiveFamilies:
         plain = "TOTAL = 1\n"
         prose = "# pragmatic choices were made\nTOTAL = 1\n"
         assert file_key(plain, prose, "python") == file_key(plain, plain, "python")
+
+
+class TestNodeStream:
+    SOURCE = "def add(left, right):\n    # Sum them.\n    return left + right\n"
+
+    def root(self):
+        return grammars.get_parser("python").parse(self.SOURCE.encode("utf-8")).root_node
+
+    def test_the_root_streams_like_the_whole_text(self):
+        assert node_stream(self.root(), "python") == normalized_stream(self.SOURCE, "python")
+
+    def test_omit_leaves_out_that_subtree_and_nothing_else(self):
+        function = self.root().named_children[0]
+        stream = node_stream(function, "python", omit=function.child_by_field_name("name"))
+        assert stream == node_stream(function, "python").replace("def add (", "def (", 1)

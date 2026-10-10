@@ -17,7 +17,9 @@ tree-holding indexers is a design constraint here, not an incident to react
 to. All three are keyed the same way and gated by the same digest, so a fresh
 index removes every parse a repository scan would perform and every
 single-file view (expand, slice, find) gets its symbols without parsing at
-all.
+all. A tier-1 file also stores its complexity units and clone blocks from the
+same parse, stamped with :func:`agentless_mcp.core.fileparse.metrics_stamp`, so
+``health`` and ``lint``'s clone index read them instead of parsing again.
 
 **Freshness has two layers, and only one of them is load-bearing.**
 
@@ -61,21 +63,25 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol, TypeVar
 
-from agentless_mcp.core import grammars
+from agentless_mcp.core import clones, fileparse, grammars
+from agentless_mcp.core.clones import Block, FileBlocks
+from agentless_mcp.core.complexity import Unit
 from agentless_mcp.core.extractor import IdentifierRole, ParsedFacts, Ref, TreeSitterExtractor
+from agentless_mcp.core.fileparse import FileMetrics, Unmeasured
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
-from agentless_mcp.core.treewalk import walk_repo
+from agentless_mcp.core.treewalk import RepoFile, walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.cachedir import (
     DIRECTORY_MODE,
     cache_root,
 )
-from agentless_mcp.util.errors import AgentlessError, CacheLocked
+from agentless_mcp.util.errors import AgentlessError, CacheLocked, UnmeasurableSource
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
@@ -176,7 +182,7 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   is unchanged and old rows still read, which is again the trap: a cache
 #   written before the change would keep serving the smaller symbol set for
 #   every unchanged file, and no per-file staleness check can see it.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
@@ -245,6 +251,9 @@ MANIFEST_DIGEST_LENGTH = 16
 # SQLite is out-of-process state like any other: a lock wait gets a bound.
 SQLITE_TIMEOUT_SECONDS = 5.0
 
+
+_Rows = TypeVar("_Rows")
+_Metric = TypeVar("_Metric")
 
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
@@ -368,6 +377,11 @@ class FileSource(Protocol):
         """The ``cache:`` field describing this source."""
         ...
 
+    @property
+    def cached(self) -> bool:
+        """True when this source reads stored rows, so it parses only a file whose rows moved."""
+        ...
+
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Return the symbols ``text`` defines, as the extractor would."""
         ...
@@ -382,6 +396,14 @@ class FileSource(Protocol):
 
     def facts_for(self, text: str, language: str, path: str) -> ParsedFacts:
         """Return all three fact sets for ``text``, as the extractor would."""
+        ...
+
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Return the units and blocks of ``text``, or raise, as `fileparse.parse_metrics` would."""
+        ...
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Return the clone blocks of ``text``, or raise, as `clones.file_blocks` would."""
         ...
 
     def status(self) -> CacheStatus:
@@ -405,6 +427,11 @@ class OnDemandSource:
         """The ``cache:`` field describing this source."""
         return self._status.receipt
 
+    @property
+    def cached(self) -> bool:
+        """False: this source parses every file it is asked about."""
+        return False
+
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Extract symbols from ``text`` with no cache involved."""
         return self._extractor.extract_from_source(text, language, path)
@@ -420,6 +447,14 @@ class OnDemandSource:
     def facts_for(self, text: str, language: str, path: str) -> ParsedFacts:
         """Extract all three fact sets from one parse of ``text``."""
         return self._extractor.extract_facts(text, language, path)
+
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Measure the units and clone blocks of ``text`` from one parse, with no cache involved."""
+        return fileparse.parse_metrics(text, language, path)
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Index the clone blocks of ``text`` with no cache involved."""
+        return clones.file_blocks(text, path, language)
 
     def status(self) -> CacheStatus:
         """Describe why there is no cache behind this source."""
@@ -441,7 +476,7 @@ class _RowCounts:
 
 @dataclass(frozen=True)
 class _FileEntry:
-    """The digest and grammar version one indexed file was recorded with.
+    """The digest, grammar version, and metric stamp one indexed file was recorded with.
 
     ``file_id`` is excluded from equality on purpose. The two sites that
     compare an entry are asking one question -- same content, same grammar --
@@ -453,6 +488,7 @@ class _FileEntry:
 
     digest: str
     grammar_version: str
+    stamp: str | None = None
     file_id: int = field(compare=False, default=0)
 
 
@@ -501,6 +537,11 @@ class CachedSource:
         """The ``cache:`` field describing this source."""
         return self.status().receipt
 
+    @property
+    def cached(self) -> bool:
+        """True: this source reads the tag cache's rows."""
+        return True
+
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Return cached symbols when the row still describes ``text``.
 
@@ -544,13 +585,33 @@ class CachedSource:
             return self._extractor.extract_facts(text, language, path)
         return ParsedFacts(symbols, imports, refs)
 
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Return cached units and clone blocks while the rows still describe ``text``."""
+        file_id = self._fresh_file_id(text, path)
+        read = partial(self._unit_rows, language=language)
+        units = self._rows_or_none(read, file_id, path, "unit")
+        if units is None:
+            return fileparse.parse_metrics(text, language, path)
+        return _measured_or_raise(units), self._blocks(text, language, path, file_id)
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Return cached clone blocks when the row still describes ``text``."""
+        return self._blocks(text, language, path, self._fresh_file_id(text, path))
+
+    def _blocks(self, text: str, language: str, path: str, file_id: int | None) -> FileBlocks:
+        read = partial(self._block_rows, language=language)
+        blocks = self._rows_or_none(read, file_id, path, "block")
+        if blocks is None:
+            return clones.file_blocks(text, path, language)
+        return _measured_or_raise(blocks)
+
     def _rows_or_none(
         self,
-        read: "Callable[[str, int], list[Any]]",
+        read: "Callable[[str, int], _Rows]",
         file_id: int | None,
         path: str,
         kind: str,
-    ) -> list[Any] | None:
+    ) -> _Rows | None:
         """Read one file's rows, or return ``None`` to mean "parse it instead".
 
         The module promises that a read command never fails because of a
@@ -677,6 +738,112 @@ class CachedSource:
             )
             for row in cursor.fetchall()
         ]
+
+    def _unit_rows(
+        self, path: str, file_id: int, *, language: str
+    ) -> tuple[Unit, ...] | Unmeasured | None:
+        row = self._metric_row(file_id, language)
+        if row is None:
+            return None
+        if row.units_reason is not None:
+            return Unmeasured(row.units_reason)
+        cursor = self._connection.execute(
+            "SELECT qualname, start_byte, end_byte, start_line, end_line, body_key, cc, sloc "
+            "FROM units WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
+        )
+        units = tuple(
+            Unit(
+                qualname=str(found[0]),
+                path=path,
+                start_byte=int(found[1]),
+                end_byte=int(found[2]),
+                start_line=int(found[3]),
+                end_line=int(found[4]),
+                body_key=str(found[5]),
+                cc=int(found[6]),
+                sloc=int(found[7]),
+            )
+            for found in cursor.fetchall()
+        )
+        return _counted(units, row.unit_count, "unit")
+
+    def _block_rows(
+        self, path: str, file_id: int, *, language: str
+    ) -> FileBlocks | Unmeasured | None:
+        row = self._metric_row(file_id, language)
+        if row is None:
+            return None
+        if row.blocks_reason is not None:
+            return Unmeasured(row.blocks_reason)
+        cursor = self._connection.execute(
+            "SELECT start_line, end_line, type2_key, exact_key, is_function, tokens "
+            "FROM blocks WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
+        )
+        blocks = tuple(
+            Block(
+                path=path,
+                start_line=int(found[0]),
+                end_line=int(found[1]),
+                key=str(found[2]),
+                exact=str(found[3]),
+                function=bool(found[4]),
+                tokens=int(found[5]),
+            )
+            for found in cursor.fetchall()
+        )
+        return FileBlocks(
+            path=path,
+            blocks=_counted(blocks, row.block_count, "block"),
+            sloc_lines=_sloc_from_row(row.sloc_lines),
+        )
+
+    def _metric_row(self, file_id: int, language: str) -> "_MetricRow | None":
+        found = self._connection.execute(
+            "SELECT stamp, language, units_reason, unit_count, blocks_reason, block_count, "
+            "sloc_lines FROM file_metrics WHERE file_id = ?",
+            (file_id,),
+        ).fetchone()
+        if found is None or found[0] != fileparse.metrics_stamp(language) or found[1] != language:
+            return None
+        return _MetricRow(
+            units_reason=None if found[2] is None else str(found[2]),
+            unit_count=int(found[3]),
+            blocks_reason=None if found[4] is None else str(found[4]),
+            block_count=int(found[5]),
+            sloc_lines=found[6],
+        )
+
+
+@dataclass(frozen=True)
+class _MetricRow:
+    units_reason: str | None
+    unit_count: int
+    blocks_reason: str | None
+    block_count: int
+    sloc_lines: Any
+
+
+def _counted(rows: tuple[_Rows, ...], expected: int, kind: str) -> tuple[_Rows, ...]:
+    if len(rows) != expected:
+        message = f"{len(rows)} {kind} rows where the metrics row records {expected}"
+        raise ValueError(message)
+    return rows
+
+
+def _sloc_from_row(raw: Any) -> tuple[int, ...]:
+    lines = json.loads(raw) if isinstance(raw, str) else None
+    if not isinstance(lines, list) or not all(type(line) is int for line in lines):
+        message = f"sloc_lines is not a JSON list of integers: {raw!r:.80}"
+        raise TypeError(message)
+    return tuple(lines)
+
+
+def _measured_or_raise(value: _Metric | Unmeasured) -> _Metric:
+    if isinstance(value, Unmeasured):
+        raise UnmeasurableSource(value.reason)
+    return value
 
 
 def effective_source(
@@ -1032,11 +1199,27 @@ class _FileTags:
     imports: tuple[ImportStatement, ...]
     refs: tuple[Ref, ...]
     grammar_version: str
+    metrics: FileMetrics | None
 
     @property
     def unwarmed(self) -> bool:
         """Whether this row records a skip rather than extracted facts."""
         return self.grammar_version.startswith(UNWARMED_STAMP_PREFIX)
+
+
+# Which repository paths get complexity units and clone blocks; the caller owns the rule.
+MetricScope = Callable[[str], bool]
+
+
+@dataclass(frozen=True)
+class GitState:
+    """The tree and the commit an index run records, ``None`` for a repository without them."""
+
+    tree_oid: str | None = None
+    head_sha: str | None = None
+
+
+NO_GIT_STATE: Final = GitState()
 
 
 @dataclass(frozen=True)
@@ -1148,8 +1331,8 @@ def start_auto_index(
     root: Path,
     extractor: TreeSitterExtractor,
     *,
-    tree_oid: str | None = None,
-    head_sha: str | None = None,
+    measure: MetricScope,
+    git: GitState = NO_GIT_STATE,
 ) -> threading.Thread | None:
     """Start one background refresh of a stale tag cache; never blocks or raises.
 
@@ -1181,6 +1364,17 @@ def start_auto_index(
         # made again until the process restarts.
         return None
 
+    generation = _stale_generation(resolved, database, run, git.tree_oid)
+    if generation is None:
+        return None
+    return _start_refresh(
+        resolved, generation, partial(_auto_index, resolved, extractor, measure, git)
+    )
+
+
+def _stale_generation(
+    resolved: Path, database: Path, run: "_AutoIndexRun | None", tree_oid: str | None
+) -> str | None:
     # Outside the git tree oid this walks the repository's stat manifest.
     generation = GENERATION_UNAVAILABLE
     try:
@@ -1197,18 +1391,11 @@ def start_auto_index(
         _record_attempt(database, generation)
         logger.warning("background index refresh for %s skipped: %s", resolved, error)
         return None
-    if done:
-        return None
-
-    return _start_refresh(resolved, extractor, generation, tree_oid, head_sha)
+    return None if done else generation
 
 
 def _start_refresh(
-    root: Path,
-    extractor: TreeSitterExtractor,
-    generation: str,
-    tree_oid: str | None,
-    head_sha: str | None,
+    root: Path, generation: str, refresh: Callable[[], None]
 ) -> threading.Thread | None:
     """Register and start this generation's refresh, unless a racer got there first.
 
@@ -1221,12 +1408,7 @@ def _start_refresh(
         raced = _AUTO_INDEX_RUNS.get(database)
         if raced is not None and raced.generation == generation:
             return raced.thread
-        thread = threading.Thread(
-            target=_auto_index,
-            args=(root, extractor, tree_oid, head_sha),
-            name="tag-auto-index",
-            daemon=True,
-        )
+        thread = threading.Thread(target=refresh, name="tag-auto-index", daemon=True)
         _AUTO_INDEX_RUNS[database] = _AutoIndexRun(thread=thread, generation=generation)
         # Started under the lock, not after it. A thread that is registered but
         # not yet started reads as ``is_alive() == False``, so a second caller
@@ -1240,10 +1422,7 @@ def _start_refresh(
 
 
 def _auto_index(
-    root: Path,
-    extractor: TreeSitterExtractor,
-    tree_oid: str | None,
-    head_sha: str | None,
+    root: Path, extractor: TreeSitterExtractor, measure: MetricScope, git: GitState
 ) -> None:
     """Refresh one repository's tag cache; one log line, never an exception out."""
     # Index warm grammars rather than racing the startup warm: an index built
@@ -1252,7 +1431,7 @@ def _auto_index(
     grammars.wait_for_auto_warm()
     started = time.monotonic()
     try:
-        report = build_index(root, extractor, tree_oid=tree_oid, head_sha=head_sha)
+        report = build_index(root, extractor, measure=measure, git=git)
     except CacheLocked:
         # Another index run is refreshing the same database. Another index
         # run rather than another process: ``flock`` is per open file
@@ -1317,8 +1496,8 @@ def build_index(
     root: Path,
     extractor: TreeSitterExtractor,
     *,
-    tree_oid: str | None = None,
-    head_sha: str | None = None,
+    measure: MetricScope,
+    git: GitState = NO_GIT_STATE,
     force: bool = False,
 ) -> IndexReport:
     """Build or refresh the tag cache for one repository.
@@ -1340,13 +1519,13 @@ def build_index(
         connection = _open_for_write(database)
         try:
             previous = _load_entries(connection)
-            plan = _plan_index(resolved, extractor, previous=previous, force=force)
-            generation = repo_generation(resolved, tree_oid)
+            plan = _plan_index(resolved, extractor, previous=previous, force=force, measure=measure)
+            generation = repo_generation(resolved, git.tree_oid)
             meta = _Meta(
                 schema_version=SCHEMA_VERSION,
                 repo_root=str(resolved),
                 generation=generation,
-                head_sha=head_sha,
+                head_sha=git.head_sha,
             )
             _apply_plan(connection, plan, meta, previous)
             counts = _row_counts(connection)
@@ -1388,24 +1567,45 @@ def _plan_index(
     *,
     previous: dict[str, _FileEntry],
     force: bool,
+    measure: MetricScope,
 ) -> _IndexPlan:
     """Walk the repository and decide, per file, reuse, skip or re-extract."""
-    grammar_version = grammars.pack_version()
-    unwarmed_version = UNWARMED_STAMP_PREFIX + grammar_version
-    warmed = grammars.warmed_languages()
-    writes: list[_FileTags] = []
-    reused: list[str] = []
-    seen: set[str] = set()
-    present: set[str] = set()
-    failures: list[IndexFailure] = []
-    skips: list[IndexSkip] = []
-
+    planning = _Planning(
+        root=root,
+        extractor=extractor,
+        previous=previous,
+        force=force,
+        measure=measure,
+        grammar_version=grammars.pack_version(),
+        warmed=grammars.warmed_languages(),
+    )
     for repo_file in walk_repo(root):
+        planning.consider(repo_file)
+    return planning.result()
+
+
+@dataclass
+class _Planning:
+    root: Path
+    extractor: TreeSitterExtractor
+    previous: dict[str, _FileEntry]
+    force: bool
+    measure: MetricScope
+    grammar_version: str
+    warmed: frozenset[str]
+    writes: list[_FileTags] = field(default_factory=list)
+    reused: list[str] = field(default_factory=list)
+    seen: set[str] = field(default_factory=set)
+    present: set[str] = field(default_factory=set)
+    failures: list[IndexFailure] = field(default_factory=list)
+    skips: list[IndexSkip] = field(default_factory=list)
+
+    def consider(self, repo_file: RepoFile) -> None:
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(Path(repo_file.path).suffix)
         if language is None:
-            continue
+            return
 
-        present.add(repo_file.path)
+        self.present.add(repo_file.path)
 
         if repo_file.size > DEFAULT_MAX_FILE_BYTES:
             # Declining to read a file is a skip, not a failure to read one.
@@ -1413,7 +1613,7 @@ def _plan_index(
             # ``read_bounded``'s skip reason: the invariant is "this file is
             # over the cap", and a message is not a category. Deciding it
             # first also means the bytes are never pulled in to be dropped.
-            skips.append(
+            self.skips.append(
                 IndexSkip(
                     path=repo_file.path,
                     reason=(
@@ -1422,73 +1622,90 @@ def _plan_index(
                     ),
                 )
             )
-            continue
+            return
 
         # The same cap the stat above was compared against, passed rather than
         # defaulted: the two deciding the same number is what keeps a
         # cap-exceeded read out of ``failures``.
-        read = read_bounded(root / repo_file.path, DEFAULT_MAX_FILE_BYTES)
+        read = read_bounded(self.root / repo_file.path, DEFAULT_MAX_FILE_BYTES)
         if read.text is None:
-            failures.append(IndexFailure(path=repo_file.path, reason=read.skipped or "unreadable"))
-            continue
-
-        seen.add(repo_file.path)
-        digest = content_digest(read.text)
-        entry = previous.get(repo_file.path)
-
-        if language not in warmed:
-            # A skip, not a failure: the same wording get_language raises with,
-            # so the index report and a live scan describe the file identically.
-            skips.append(
-                IndexSkip(path=repo_file.path, reason=grammars.unavailable_reason(language))
+            self.failures.append(
+                IndexFailure(path=repo_file.path, reason=read.skipped or "unreadable")
             )
-            if not force and entry == _FileEntry(digest, unwarmed_version):
-                continue
-            writes.append(
-                _FileTags(
-                    path=repo_file.path,
-                    digest=digest,
-                    symbols=(),
-                    imports=(),
-                    refs=(),
-                    grammar_version=unwarmed_version,
-                )
+            return
+
+        self._readable(repo_file.path, read.text, language)
+
+    def result(self) -> _IndexPlan:
+        return _IndexPlan(
+            writes=tuple(self.writes),
+            reused=tuple(self.reused),
+            seen=frozenset(self.seen),
+            present=frozenset(self.present),
+            failures=tuple(self.failures),
+            skips=tuple(self.skips),
+        )
+
+    def _readable(self, path: str, text: str, language: str) -> None:
+        self.seen.add(path)
+        digest = content_digest(text)
+        entry = self.previous.get(path)
+
+        if language not in self.warmed:
+            self._unwarmed(path, digest, entry, language)
+            return
+
+        # A file outside the metric scope keeps facts only, so no reader finds a row for it.
+        stamp = fileparse.metrics_stamp(language) if self.measure(path) else None
+        current = _FileEntry(digest, self.grammar_version, stamp)
+        if not self.force and entry is not None and entry == current:
+            self.reused.append(path)
+            return
+
+        parse = fileparse.parse_file if stamp is not None else fileparse.parse_facts
+        self._extract(path, digest, lambda: parse(self.extractor, text, language, path))
+
+    def _unwarmed(self, path: str, digest: str, entry: _FileEntry | None, language: str) -> None:
+        # A skip, not a failure: the same wording get_language raises with,
+        # so the index report and a live scan describe the file identically.
+        self.skips.append(IndexSkip(path=path, reason=grammars.unavailable_reason(language)))
+        unwarmed_version = UNWARMED_STAMP_PREFIX + self.grammar_version
+        if not self.force and entry == _FileEntry(digest, unwarmed_version):
+            return
+        self.writes.append(
+            _FileTags(
+                path=path,
+                digest=digest,
+                symbols=(),
+                imports=(),
+                refs=(),
+                grammar_version=unwarmed_version,
+                metrics=None,
             )
-            continue
+        )
 
-        if not force and entry is not None and entry == _FileEntry(digest, grammar_version):
-            reused.append(repo_file.path)
-            continue
-
+    def _extract(self, path: str, digest: str, parse: Callable[[], fileparse.ParsedFile]) -> None:
         try:
-            symbols, imports, refs = extractor.extract_facts(read.text, language, repo_file.path)
+            parsed = parse()
         except EXTRACTION_FAILURES as exc:
             # The class name is part of the report: "maximum recursion depth
             # exceeded" names a defect, a bare KeyError message names nothing.
             reason = f"{type(exc).__name__}: {exc}"
-            seen.discard(repo_file.path)
-            failures.append(IndexFailure(path=repo_file.path, reason=reason))
-            continue
+            self.seen.discard(path)
+            self.failures.append(IndexFailure(path=path, reason=reason))
+            return
 
-        writes.append(
+        self.writes.append(
             _FileTags(
-                path=repo_file.path,
+                path=path,
                 digest=digest,
-                symbols=tuple(symbols),
-                imports=tuple(imports),
-                refs=tuple(refs),
-                grammar_version=grammar_version,
+                symbols=tuple(parsed.facts.symbols),
+                imports=tuple(parsed.facts.imports),
+                refs=tuple(parsed.facts.refs),
+                grammar_version=self.grammar_version,
+                metrics=parsed.metrics,
             )
         )
-
-    return _IndexPlan(
-        writes=tuple(writes),
-        reused=tuple(reused),
-        seen=frozenset(seen),
-        present=frozenset(present),
-        failures=tuple(failures),
-        skips=tuple(skips),
-    )
 
 
 def _apply_plan(
@@ -1503,73 +1720,87 @@ def _apply_plan(
 
     connection.execute("BEGIN IMMEDIATE")
     try:
-        for path in (*vanished, *touched):
-            # Children before the parent, and by the id the parent owns. The
-            # order is load-bearing rather than tidy: the fact rows are keyed
-            # on ``files.id``, so deleting the ``files`` row first would take
-            # away the only key that reaches them and leave them orphaned in a
-            # table nothing would ever clean.
-            #
-            # A path absent from ``previous`` is a file this index has never
-            # recorded, so it owns no id and no rows. Its ``files`` delete is
-            # still issued, because ``vanished`` and ``touched`` are the paths
-            # to clear and not the paths known to be present.
-            recorded = previous.get(path)
-            if recorded is not None:
-                # Spelled out rather than looped over a table-name list: a
-                # query built by interpolating a name is the shape of an
-                # injection even when today's names are constants.
-                connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
-            connection.execute("DELETE FROM files WHERE path = ?", (path,))
-
+        _clear_paths(connection, (*vanished, *touched), previous)
         for entry in plan.writes:
-            file_id = _insert_file(connection, entry)
-            connection.executemany(
-                "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
-                "signature, parent, docstring, decorators, bases, language, "
-                "is_public, is_async, rationales) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    _tag_row(file_id, ordinal, symbol)
-                    for ordinal, symbol in enumerate(entry.symbols)
-                ],
-            )
-            connection.executemany(
-                "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
-                "relative_level, line, binds_all, alias, local_names) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    _import_row(file_id, ordinal, statement)
-                    for ordinal, statement in enumerate(entry.imports)
-                ],
-            )
-            connection.executemany(
-                "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
-                    for ordinal, ref in enumerate(entry.refs)
-                ],
-            )
-
-        connection.execute("DELETE FROM meta")
-        connection.execute(
-            "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
-            "created_at) VALUES (1, ?, ?, ?, ?, ?)",
-            (
-                meta.schema_version,
-                meta.repo_root,
-                meta.generation,
-                meta.head_sha,
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
+            _insert_entry(connection, entry)
+        _write_meta(connection, meta)
     except BaseException:
         connection.rollback()
         raise
     connection.commit()
+
+
+def _clear_paths(
+    connection: sqlite3.Connection, paths: Sequence[str], previous: dict[str, _FileEntry]
+) -> None:
+    for path in paths:
+        # Children before the parent, and by the id the parent owns. The
+        # order is load-bearing rather than tidy: the fact rows are keyed
+        # on ``files.id``, so deleting the ``files`` row first would take
+        # away the only key that reaches them and leave them orphaned in a
+        # table nothing would ever clean.
+        #
+        # A path absent from ``previous`` is a file this index has never
+        # recorded, so it owns no id and no rows. Its ``files`` delete is
+        # still issued, because ``vanished`` and ``touched`` are the paths
+        # to clear and not the paths known to be present.
+        recorded = previous.get(path)
+        if recorded is not None:
+            # Spelled out rather than looped over a table-name list: a
+            # query built by interpolating a name is the shape of an
+            # injection even when today's names are constants.
+            connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM units WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM blocks WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM file_metrics WHERE file_id = ?", (recorded.file_id,))
+        connection.execute("DELETE FROM files WHERE path = ?", (path,))
+
+
+def _insert_entry(connection: sqlite3.Connection, entry: _FileTags) -> None:
+    file_id = _insert_file(connection, entry)
+    connection.executemany(
+        "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
+        "signature, parent, docstring, decorators, bases, language, "
+        "is_public, is_async, rationales) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [_tag_row(file_id, ordinal, symbol) for ordinal, symbol in enumerate(entry.symbols)],
+    )
+    connection.executemany(
+        "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
+        "relative_level, line, binds_all, alias, local_names) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            _import_row(file_id, ordinal, statement)
+            for ordinal, statement in enumerate(entry.imports)
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
+            for ordinal, ref in enumerate(entry.refs)
+        ],
+    )
+    if entry.metrics is not None:
+        _insert_metrics(connection, file_id, entry.metrics)
+
+
+def _write_meta(connection: sqlite3.Connection, meta: _Meta) -> None:
+    connection.execute("DELETE FROM meta")
+    connection.execute(
+        "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
+        "created_at) VALUES (1, ?, ?, ?, ?, ?)",
+        (
+            meta.schema_version,
+            meta.repo_root,
+            meta.generation,
+            meta.head_sha,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
 
 
 def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
@@ -1594,6 +1825,66 @@ def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
         unreachable = "an INSERT that did not raise always reports a row id"
         raise AssertionError(unreachable)
     return file_id
+
+
+def _insert_metrics(connection: sqlite3.Connection, file_id: int, metrics: FileMetrics) -> None:
+    units = () if isinstance(metrics.units, Unmeasured) else metrics.units
+    indexed = None if isinstance(metrics.blocks, Unmeasured) else metrics.blocks
+    blocks = () if indexed is None else indexed.blocks
+    connection.execute(
+        "INSERT INTO file_metrics (file_id, stamp, language, units_reason, unit_count, "
+        "blocks_reason, block_count, sloc_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file_id,
+            metrics.stamp,
+            metrics.language,
+            _reason(metrics.units),
+            len(units),
+            _reason(metrics.blocks),
+            len(blocks),
+            None if indexed is None else json.dumps(list(indexed.sloc_lines)),
+        ),
+    )
+    connection.executemany(
+        "INSERT INTO units (file_id, ordinal, qualname, start_byte, end_byte, start_line, "
+        "end_line, body_key, cc, sloc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                file_id,
+                ordinal,
+                unit.qualname,
+                unit.start_byte,
+                unit.end_byte,
+                unit.start_line,
+                unit.end_line,
+                unit.body_key,
+                unit.cc,
+                unit.sloc,
+            )
+            for ordinal, unit in enumerate(units)
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO blocks (file_id, ordinal, start_line, end_line, type2_key, exact_key, "
+        "is_function, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                file_id,
+                ordinal,
+                block.start_line,
+                block.end_line,
+                block.key,
+                block.exact,
+                int(block.function),
+                block.tokens,
+            )
+            for ordinal, block in enumerate(blocks)
+        ],
+    )
+
+
+def _reason(value: object) -> str | None:
+    return value.reason if isinstance(value, Unmeasured) else None
 
 
 def _tag_row(file_id: int, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
@@ -1811,6 +2102,9 @@ _DROP_SCHEMA = """
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS imports;
 DROP TABLE IF EXISTS refs;
+DROP TABLE IF EXISTS units;
+DROP TABLE IF EXISTS blocks;
+DROP TABLE IF EXISTS file_metrics;
 DROP TABLE IF EXISTS files;
 DROP TABLE IF EXISTS meta;
 """
@@ -1893,6 +2187,42 @@ CREATE TABLE IF NOT EXISTS refs (
     line INTEGER NOT NULL,
     role TEXT NOT NULL,
     qualifier TEXT NOT NULL,
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+-- A metric that could not be taken keeps its reason and a count of 0, so a reader
+-- can name the failure and never reads it as a file with no units or blocks.
+CREATE TABLE IF NOT EXISTS file_metrics (
+    file_id INTEGER PRIMARY KEY,
+    stamp TEXT NOT NULL,
+    language TEXT NOT NULL,
+    units_reason TEXT,
+    unit_count INTEGER NOT NULL,
+    blocks_reason TEXT,
+    block_count INTEGER NOT NULL,
+    sloc_lines TEXT
+);
+CREATE TABLE IF NOT EXISTS units (
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    qualname TEXT NOT NULL,
+    start_byte INTEGER NOT NULL,
+    end_byte INTEGER NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    body_key TEXT NOT NULL,
+    cc INTEGER NOT NULL,
+    sloc INTEGER NOT NULL,
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS blocks (
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    type2_key TEXT NOT NULL,
+    exact_key TEXT NOT NULL,
+    is_function INTEGER NOT NULL,
+    tokens INTEGER NOT NULL,
     PRIMARY KEY (file_id, ordinal)
 ) WITHOUT ROWID;
 """
@@ -1984,10 +2314,16 @@ def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
     to :func:`_open_indexed`, which reports ``cache unreadable`` and leaves
     the file in place. This is the same rule :func:`_read_meta` states.
     """
-    rows = connection.execute("SELECT path, sha256, grammar_version, id FROM files").fetchall()
+    rows = connection.execute(
+        "SELECT files.path, files.sha256, files.grammar_version, files.id, file_metrics.stamp "
+        "FROM files LEFT JOIN file_metrics ON file_metrics.file_id = files.id"
+    ).fetchall()
     return {
         str(row[0]): _FileEntry(
-            digest=str(row[1]), grammar_version=str(row[2]), file_id=int(row[3])
+            digest=str(row[1]),
+            grammar_version=str(row[2]),
+            stamp=None if row[4] is None else str(row[4]),
+            file_id=int(row[3]),
         )
         for row in rows
     }

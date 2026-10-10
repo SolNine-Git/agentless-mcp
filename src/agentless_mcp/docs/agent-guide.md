@@ -907,7 +907,7 @@ a `.md` file exactly as it stands. That is the never-stale story for committed
 diagrams. Wire it into pre-commit, and a diagram cannot silently describe a
 tree that no longer exists.
 
-### `health` (`orient` operation `health`) -- what is unreferenced, what is central
+### `health` (`orient` operation `health`) -- what is unreferenced, what is central, where complexity sits
 
 ```
 agentless-mcp health --limit 20
@@ -918,9 +918,9 @@ agentless-mcp health --limit 20
 ```
 
 Three readings of one degree count over the resolved symbol graph, returned as
-one answer: orphan candidates, unused exports and hubs. `--limit` bounds each
-section separately, and every section reports the complete count it was cut
-from.
+one answer: orphan candidates, unused exports and hubs. A complexity summary
+and a `hotspots` section follow them. `--limit` bounds each section separately,
+and every section reports the complete count it was cut from.
 
 ```
 health over 412 symbols; 88 excluded as test or fixture paths
@@ -955,6 +955,65 @@ Read the sections for code health, not for localization. An orphan is by
 definition a symbol nothing references, which is close to the opposite of
 where a bug lives. The hub ranking is the section to read when the question is
 which symbol a change has to route through.
+
+```
+complexity over 1770 units in 183 files (threshold cc > 10): 115 over the threshold, erosion 0.350, clone share 0.082
+complexity: 1 file not measured
+  scripts/broken.py  scripts/broken.py does not parse: the first syntax error is at line 3. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again.
+
+1770 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
+  [py:app/report.py::build_report] @40  build_report  cc 41  sloc 120  mass 449.1
+  app/handlers.js:52  load  cc 3  sloc 4  mass 6.0  -- metric-only unit, no stable id
+```
+
+**The complexity summary says where complexity sits, not whether the design
+is good.** A unit is a named function or method. Its `cc` counts decision
+points the way scb-check does, and its mass is `cc * sqrt(sloc)`. Erosion is
+the share of all mass held by units above the threshold, which is 10 unless
+`complexity_threshold` in `.agentless-mcp.json` sets it. The walk covers
+tier-1 source files outside test and fixture paths, the same rule the graph
+sections use. A function that is long and simple ranks high in `hotspots` and
+adds nothing to erosion. Whether it should be split is a judgment this
+section does not make.
+
+**Clone share is the share of source lines that sit in a copied block.** A
+block is a function, loop, branch, or try statement of 3 or more source lines.
+Two blocks are copies when they match once names, literals, comments, and
+docstrings are ignored (a Type-2 clone, the rule that `lint`'s `clone_delta`
+uses). Clone share counts each source line inside any instance of a block
+that has 2 or more instances, once, so nested and overlapping copies do not
+count a line twice. It divides that count by the source lines of the files
+the walk measured. Python follows scb-check 0.1.3: on a snapshot of mcp-local
+`src/`, the 2,513 clone lines of 30,603 source lines equal scb-check's
+`clone_loc` and `total_loc`. The share counts every copied block of 3 or more
+lines, including the short guard clauses that `clone_delta` leaves out of its
+findings. The JSON form carries `sloc`, `clone_lines`, and `clone_share`.
+
+**A hotspot row carries the unit's stable id when one agentless symbol starts
+on the same line with the same name.** Otherwise the row ends `metric-only
+unit, no stable id`, for example an arrow function bound to an object key,
+which the extractor does not report as a symbol. Read such a row by its
+`path:line`.
+
+**Nothing the walk could not measure is dropped.** A file that does not parse,
+that Python's tokenizer rejects, whose grammar is not loaded, or that the scan
+skipped is counted on the `not measured` line and named with its reason.
+Erosion and clone share cover the same files, so a file that cannot be measured
+or indexed is left out of both. The walk has its own time budget: 10 s, or half
+of what is left of an MCP call's allowance, whichever is less. When the budget
+ends it, the answer says
+`complexity: N of M files walked before the time budget`, the summary and the
+clone share cover the files walked, and the graph sections are complete. The
+walk tests its budget before each checkpoint, so it never stops the call for
+time. A client that cancels still stops the call, and so does an allowance
+spent during the scan or the resolve, before the walk starts.
+
+**A fresh index makes the walk cheap and does not change the answer.** The
+walk reads each file's units and blocks from the index and parses only the
+files that changed since it was built. The answer is the same with the index
+and with `--no-cache`. The time budget is the one exception: a walk that has to
+parse every file can stop earlier. On mcp-local, `health` takes 0.81 s with a
+fresh index and 3.63 s with `--no-cache`.
 
 ### `html` (CLI only) -- the module graph, interactive
 
@@ -1011,6 +1070,8 @@ The report holds:
 - the configured roots and the roots the client advertised
 - the project config in force
 - every bound (walk depth, file count, per-file bytes, output tokens)
+- the `lint` checks, each with the input it reads (`patch`, `pairs`, or
+  `pairs+clones`)
 
 The report names an absent tag cache with the exact
 `agentless-mcp index --repo PATH` command that builds it. Check the report
@@ -1029,8 +1090,12 @@ agentless-mcp index --force               # re-extract even unchanged files
 ```
 
 The index is optional. Every read command works without it. Indexing removes
-the symbol, import and reference parses for files whose sha256 has not
-changed since the last run. The MCP server runs this refresh itself, in the
+the symbol, import and reference parses for files whose sha256 has not changed
+since the last run. For each file that `health` and `lint`'s `clone_delta`
+read, a tier-1 file outside test and fixture paths, the same parse also gives
+the complexity units and clone blocks, and the index stores them too. Other
+files get no metrics in the index. On mcp-local a cold index takes 3.5 s with
+them, against 2.7 s without. The MCP server runs this refresh itself, in the
 background, the first time it serves a repository whose index is absent or
 stale. Opt out with `--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX`. A
 held lock is a silent skip, since another process is already refreshing. The
@@ -1069,6 +1134,9 @@ MCP tools) to bypass the index for that call.
 agentless-mcp lint --candidates ./candidates
 agentless-mcp lint --candidates ./candidates/01-plus.txt --json
 agentless-mcp lint --diff change.patch --repo /tmp/base
+agentless-mcp lint --diff change.patch --repo /tmp/base --only complexity_delta
+agentless-mcp lint --path src/app.py --after /tmp/app.py.new --json
+agentless-mcp lint --since "$(git merge-base HEAD main)" --json
 ```
 
 Run this **before** `validate`. It is the mechanical half of a hostile
@@ -1084,7 +1152,7 @@ replace text, and the refusal names what it counted and the bound it passed.
 **`--diff` is the review case: a branch or a pull request that already exists.**
 It takes a unified diff (`git diff`, or a `format-patch` body) and maps one
 hunk to one edit. Nobody has to hand-convert a diff into SEARCH/REPLACE
-blocks to check it. Exactly one of `--candidates` and `--diff` is required.
+blocks to check it. Exactly one of `--candidates`, `--diff`, `--path`, and `--since` is required.
 The thing to get right is which tree you point at. The checks compare the
 diff against `--repo` as it stands, so **`--repo` must be a checkout of the
 diff's base**, typically a `git worktree add` of the merge-base. To lint a
@@ -1095,6 +1163,112 @@ the remedy. Binary files and mode-only changes are reported the same way
 rather than dropped. A construct one edit cannot express (a rename, a `-U0`
 diff with no context lines, a combined merge diff) is refused with its
 reason, and the candidate is not half-checked.
+
+**`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
+table below. An unknown name is a usage error (exit 2). `complexity_delta`,
+`contract_drift`, and `clone_delta` are pair checks: they compare each edited
+file's whole text before and after the change. `complexity_delta` and
+`contract_drift` read only the edited files. `clone_delta` also reads every
+tier-1 source file outside test and fixture paths, to find the copies of a
+block. It reads them only when a change edits a file in that scope, once for
+all the candidates of a run, and it stops after 10 s. When `--only` names pair
+checks alone, `lint` skips the symbol scan that the other checks need. The
+pair checks pair functions across all the files of one candidate, so a
+function moved to another file without other change is not a finding, and a
+contract hit that moves with its function is not new.
+
+**`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
+`--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
+working-tree text at `REL` with `FILE`, so no patch is needed. This form runs
+the pair checks only. Without `--only` it runs `complexity_delta` and
+`contract_drift`, which read only this file. `--only clone_delta` adds the
+clone check. In this form it reads the clone blocks of the source files from
+the tag cache only, and it parses just this file and the files that changed
+since the index. Without a tag cache, as on a repository never indexed or with
+`--no-cache`, it gives one `not_checked` row with `detail`
+`{"reason": "no_tag_cache"}` and parses nothing. Run `agentless-mcp index`, or
+let the MCP server index the repository, to turn it on. An `--only` that names
+another check is a usage error (exit 2). A path that does
+not exist yet is a new file, so every function in `FILE` counts as new. Both
+sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
+each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
+row. The report has one candidate, and its id is `REL`. A file in a language
+that has no complexity rules gives no row. The hook form sees one file, so a
+function moved here from another file counts as new.
+
+**`--since REV` is the review mode.** `lint` compares each file changed since
+the commit `REV` with its text in the working tree. Committed, staged,
+unstaged, and untracked changes all count. For a branch, pass the merge-base:
+`--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
+Without `--only` it runs `complexity_delta` and `contract_drift`, which read
+only the changed files. `--only` can add `clone_delta`. An `--only` that names
+another check is a usage error (exit 2). `--since` with `--after` is a usage
+error, and so is a `REV` that names no commit. Each file's old text comes
+from git, one `git cat-file blob` per file. A renamed file is compared at its
+new path with its old text. A deleted file has no new text, and an added or
+untracked file has no old text. A binary file (a NUL byte in its first 8,000
+bytes), a submodule, and a path with an unmerged status each give one
+`not_checked` row.
+A symbolic link is not compared, because its committed text is a target path.
+A file in a language with no complexity rules gives no row. A git call that
+fails or times out gives one `not_checked` row, and so does a run in which no
+file changed since `REV`. The report has one candidate, and its id is `REV` as
+you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with
+`complexity_delta` and `contract_drift` takes 0.23 s (18 tier-1 files of 27
+changed), and `--since HEAD~50` takes 0.83 s (156 files). With `clone_delta`
+added, they take 0.35 s and 1.35 s with a fresh index, which holds the clone
+blocks of the 228 source files outside test and fixture paths, and 0.96 s and
+1.93 s without one, when `clone_delta` parses all 228.
+
+**`--json` carries one more field for a pair check.** Each finding has
+`check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
+`complexity_delta` finding about one function also has `detail`: `unit` (the
+function's qualified name), `match` (`body`, `name`, `collision`, or `new`),
+`cc_old`, `cc_new`, `sloc_old`, `sloc_new`, and `threshold`. The old values are
+`null` for a new function. A `contract_drift` finding about one hit has
+`detail`: `rule` (the rule id), `unit` (the qualified name of the function
+that holds the hit, or `<module>`), and `capture` (the matched text). Two
+`contract_drift` `not_checked` rows also have `detail`, so a caller can match
+the reason without reading the message: `{"reason": "no_boundary_globs"}` when
+no `boundary_globs` is set, and `{"reason": "no_rules_for_language",
+"language": "c"}` (or `"bash"`) for a boundary file in a language with no
+rules. A `clone_delta` `not_checked` row in the `--path` form has `detail`
+`{"reason": "no_tag_cache"}` when the run has no tag cache. A `clone_delta`
+finding has `detail`: `key` (the block's Type-2 key), `line` and `end_line`
+(its span in the new text), `sites` (up to 20 other
+instances after the change, each `{path, line, end_line}`, in path and line
+order), and `sites_total` (how many other instances there are). A row about
+text that was not read, does not parse, or cannot be measured has no `detail`.
+No other finding has `detail`, and the text form does not print it.
+
+**`--json` also carries `observed` on a candidate.** It describes the new text,
+not the change, so a later run on the same file can show whether a function
+got simpler, a hit went away, or a copy was removed. It has four lists, each
+present only when its check measured at least one file of the candidate. An
+empty list means that the check measured and found nothing. An absent list
+means that the check did not measure a file, and `observed` itself is absent
+when no list is present.
+
+- `units_over_threshold`: each function in the new text above the threshold,
+  as `{path, unit, line, cc, sloc}`, unchanged functions included.
+- `units_changed`: each function the change added or altered, as `{path, unit,
+  line, match, cc_old, cc_new, sloc_old, sloc_new}`. `match` is `name`,
+  `collision`, or `new`, and the old values are `null` for a new function. A
+  function that is unchanged, or renamed or moved without other change, is not
+  listed.
+- `contract_keys`: each contract hit in the new text of every boundary file
+  that `contract_drift` checked, as `{path, rule, unit, capture}`, with
+  duplicates kept.
+- `clone_instances`: each block in the new text of every file `clone_delta`
+  indexed that it could report, as `{path, key, line, end_line}`: 40 or more
+  tokens, and a copy in the repository after the change. A new copy and its
+  original in the same file both appear. The list names blocks, not changes,
+  so a later run shows whether a copy went away.
+
+Every `unit` in `observed` is the function's qualified name in the new text,
+or `<module>`. A renamed function therefore appears under its new name, while
+the `detail.unit` of a `contract_drift` finding keeps its old name. The text
+form does not print `observed`.
 
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
 `vote`.
@@ -1112,6 +1286,84 @@ patch is right. This decides what to look at first.
 | `dangling_callers` | warning | the patch removes or renames a symbol that files it does not touch still reference, listed with `file:line` |
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
+| `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
+| `clone_delta` | advisory | the change adds a block of three or more source lines and 40 or more tokens that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
+| `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
+
+**`contract_drift` matches syntax, not types or data flow.** Each rule is a
+tree-sitter query, and the rule id names the syntax it matches. An empty value
+is matched by its exact text, so `[ ]` with a space is not `[]`. An empty body
+holds no statement, or one comment and no statement. Only the edited files
+that match `boundary_globs` are checked. The rules:
+
+| Language | Rule | Matches |
+|---|---|---|
+| python | `get-default-empty` | `x.get(k, d)` where `d` is `[]`, `{}`, `""`, `''`, or `0` |
+| python | `or-empty-default` | `x or []`, `x or {}` |
+| python | `getattr-default` | `getattr(o, name, default)` |
+| python | `except-return-default` | `return None`, `False`, `0`, `[]`, or `{}` directly in an `except` block |
+| python | `except-pass` | an `except` block that holds only `pass` |
+| javascript, typescript, tsx | `nullish-empty-default` | `x ?? []`, `x ?? {}` |
+| javascript, typescript, tsx | `or-empty-default` | `x \|\| []`, `x \|\| {}` |
+| javascript, typescript, tsx | `catch-return-default` | `return null`, `undefined`, `false`, `0`, `[]`, or `{}` directly in a `catch` block |
+| javascript, typescript, tsx | `catch-empty` | a `catch` with an empty body |
+| go | `err-check-returns-nil` | a `return` whose last value is `nil`, directly in `if err != nil { ... }` |
+| rust | `unwrap-or-default` | `.unwrap_or_default()` |
+| rust | `unwrap-or-empty` | `.unwrap_or(d)` where `d` is `vec![]`, `Vec::new()`, `String::new()`, another std collection's `new()`, `""`, `0`, or `Default::default()` |
+| rust | `ok-statement` | `.ok()` as a whole statement |
+| java | `catch-empty` | a `catch` with an empty body |
+| java | `catch-return-null` | `return null;` directly in a `catch` block |
+| java | `get-or-default-empty` | `m.getOrDefault(k, d)` where `d` is `""`, `0`, `List.of()`, `Set.of()`, `Map.of()`, a `Collections.empty*()` call, or a JDK collection built with `new X<>()` |
+| ruby | `rescue-nil` | `x rescue nil`, and a `rescue` clause whose body is only `nil` |
+| ruby | `fetch-default-empty` | `h.fetch(k, d)` where `d` is `[]`, `{}`, `""`, `''`, or `0` |
+| ruby | `or-empty-default` | `x \|\| []`, `x \|\| {}` |
+| lua | `or-empty-table` | `x or {}` |
+| lua | `pcall-statement` | `pcall(...)` as a whole statement, so its status is never read |
+| cpp | `catch-all-empty` | `catch (...)` with an empty body |
+
+c and bash have no rules. A boundary file in either language gives one
+`not_checked` row. With no `boundary_globs`, `contract_drift` gives one
+`not_checked` row per candidate that edits a tier-1 file, and nothing else.
+
+**`clone_delta` counts copies across the whole repository.** It indexes every
+tier-1 source file outside test and fixture paths, by the same `is_test_path`
+and `is_fixture_path` rules that `health` uses, as the working tree holds it.
+The edited files replace their indexed text. A changed file outside that scope
+gives no row, and a run that changes no file in the scope reads no other file.
+The index is built once for all the candidates of a run, and it stops after
+10 s: each file it did not reach is named in the coverage row with the reason
+`stopped: the clone index reached its time budget before this file`. A
+block's key renames each identifier by its first appearance in the block and
+replaces each literal with its type, so `total(items)` and `summed(values)`
+with the same body share a key. Python follows scb-check
+v0.1.3: a plain-string statement is dropped as a docstring, and an
+`if TYPE_CHECKING:` block is not a block although the functions in it are.
+Typescript and tsx share their node types, and so do c and cpp, so a copy
+between them counts. Javascript and typescript do not, because the
+typescript grammar wraps each parameter.
+
+A finding is a block of 40 or more tokens that the change adds, and whose key
+the repository then holds at least twice. A token is a leaf of the Type-2
+stream: an identifier, a literal, a keyword, an operator, or a punctuation
+mark, with comments and docstrings dropped. Nearly every guard clause falls
+under 40 tokens. A guard clause here is an `if` with no `else` whose body is at
+most two statements, the last a raise, throw, or return, as when a lint rule
+makes every check build its message and then raise. On mcp-local `src/` and
+five Loc-Bench checkouts, 183 of 2,424 clone groups are guard clauses. A floor
+of 40 tokens keeps 4 of them, and a floor of 6 source lines keeps 28. The floor
+applies to findings only, so the clone groups count every block of 3 or more
+source lines. Old and new blocks pair within each file first, then across
+files, so a block moved to another file is not new. A new block with no other
+instance is not a finding. When a copy is the same text as its original, the
+copy is the block the line diff did not keep in place. The evidence names up to
+three other copies, and the JSON `detail` names up to 20.
+
+`clone_delta` skips a function that `near_duplicates` reported at the same
+path and line in the same run. Two cases defeat that match, so both checks
+report the same function: a function in a file the candidate creates, which
+`near_duplicates` reports at line 0, and a function below an earlier edit of
+the same file that changes the line count, which `near_duplicates` reports at
+its line before the edit.
 
 Two things the table cannot say.
 
@@ -1123,6 +1375,15 @@ at severity `not_checked` and names the reason:
 - a file the caller supplied no text for
 - a patch block that did not parse
 - edits that did not apply
+- a file whose text before or after the change was not read, or does not parse
+- a repository with no `boundary_globs`, for `contract_drift`
+- for `clone_delta`, repository files that could not be read or parsed, or
+  that the index did not reach before its time budget (one row counts them and
+  names the first ten), a repository whose files could not be listed, and in
+  the `--path` form a run with no tag cache
+- a boundary file in a language with no contract rules (c, bash)
+- in review mode: a binary file, a submodule, an unmerged path, a git call
+  that failed or timed out, and a run in which no file changed
 
 Silence would be the one dishonest outcome, because you cannot tell "checked
 and clean" from "never ran". `dangling_references` and `arity` need Python's
@@ -1133,7 +1394,7 @@ language rather than judge it by Python's rules.
 means `tomllib`, which the standard library gained in 3.11. This package
 takes no dependency to fill that in. On 3.10 the check reports `not_checked`
 with the reason: "reading a dependency manifest needs Python 3.11 or newer".
-The other six checks run as usual. Everything else in this package works the
+Every other check runs as usual. Everything else in this package works the
 same on 3.10.
 
 **Both advisories are deliberately timid.** `arity` passes in silence on any
@@ -1375,7 +1636,10 @@ root. Every key is optional:
   "docstrings": false,
   "stoplist": ["ctx", "helper", "handle"],
   "test_cmd": "pytest -q tests/unit",
-  "relation_weights": false
+  "relation_weights": false,
+  "complexity_threshold": 10,
+  "erosion_gate": {"complexity_delta": "advisory"},
+  "boundary_globs": ["src/*/adapters/**", "**/clients/*.py"]
 }
 ```
 
@@ -1391,7 +1655,7 @@ two-character names, and never drop them.
 The file is repository content, and the tool treats it as such:
 
 - values are schema-checked and bounded
-- no key takes a path
+- no key names a file for the tool to read
 - unknown keys are warnings rather than errors
 - a malformed file degrades to "no config", with the reason in the receipt,
   instead of failing the call
@@ -1415,6 +1679,29 @@ three views. Three things are worth knowing before you set it:
   in by the extractor's Python class handler alone, and every other language
   records none. On a Go, Java, Rust or TypeScript repository the key changes
   the import weighting and adds no inheritance edge at all.
+
+`complexity_threshold` sets the complexity above which `lint`'s
+`complexity_delta` reports a function and above which `health` counts a unit
+toward erosion, from 1 to 100. The default is 10.
+
+`erosion_gate` maps a check name to `off`, `advisory`, or `block`. The names it
+takes are `complexity_delta`, `contract_drift`, and `clone_delta`. It is for the
+per-edit erosion hook. `lint` ignores it, because `lint` never blocks. A check
+the key leaves unset takes the hook's `AGENTLESS_EROSION_GATE` default, and
+that includes `clone_delta`: to keep it advisory while it is on trial, set its
+entry to `advisory`. A bad entry is dropped with a warning, and `capabilities`
+shows the entries in force.
+
+`boundary_globs` lists the modules that parse foreign data, the only files
+`lint`'s `contract_drift` checks. It is empty by default. It holds at most 64
+globs of at most 256 characters each. Each glob matches a repo-relative path
+with `/` separators. `*` matches within one path segment. `**/` matches zero or
+more whole segments, and a final `/**` matches everything inside a directory,
+so `**/adapters/**` matches both `adapters/x.py` and `src/pkg/adapters/x.py`.
+Every other character is literal. A list longer than 64 is ignored whole. An
+entry that is not a repo-relative glob (empty, longer than 256 characters,
+absolute, holding `\`, a control character, or a `.`, `..`, or empty segment)
+is dropped with a warning. `capabilities` shows the globs in force.
 
 ## Token counting
 

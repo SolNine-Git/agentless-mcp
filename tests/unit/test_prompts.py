@@ -152,6 +152,144 @@ MESSAGE_ARGUMENTS = {
         "start": 120,
         "end": 158,
     },
+    "complexity_language_unsupported": {
+        "path": "config.yaml",
+        "language": "yaml",
+        "languages": "bash, c, python",
+    },
+    "complexity_does_not_parse": {"path": "src/app/svc.py", "line": 12},
+    "complexity_tokenizer_rejects": {
+        "path": "src/app/svc.py",
+        "detail": "IndentationError: unindent does not match any outer indentation level",
+    },
+    "complexity_grew": {
+        "qualname": "register_search_tools",
+        "old_cc": 16,
+        "new_cc": 17,
+        "old_sloc": 194,
+        "new_sloc": 201,
+        "threshold": 10,
+    },
+    "complexity_crossed": {
+        "qualname": "Store.find",
+        "old_cc": 10,
+        "new_cc": 12,
+        "old_sloc": 30,
+        "new_sloc": 36,
+        "threshold": 10,
+    },
+    "complexity_new_unit": {
+        "qualname": "parse_rows",
+        "new_cc": 14,
+        "new_sloc": 40,
+        "threshold": 10,
+    },
+    "complexity_evidence": {
+        "old_cc": 16,
+        "new_cc": 17,
+        "old_sloc": 194,
+        "new_sloc": 201,
+        "threshold": 10,
+    },
+    "complexity_new_unit_evidence": {"new_cc": 14, "new_sloc": 40, "threshold": 10},
+    "complexity_old_not_measured": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12.",
+    },
+    "complexity_new_not_measured": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12.",
+    },
+    "pair_old_unread": {
+        "path": "src/app/big.py",
+        "reason": "skipped: 1200000 bytes exceeds the per-file cap of 1000000 bytes",
+    },
+    "pair_new_unread": {"path": "src/app/svc.py", "reason": "unreadable: No such file"},
+    "pair_edits_unapplied": {"failed": 1, "path": "src/app/svc.py"},
+    "lint_unknown_check": {"name": "complexity", "checks": "arity, complexity_delta"},
+    "lint_no_checks": {"checks": "arity, complexity_delta"},
+    "lint_path_needs_after": {},
+    "lint_path_takes_pair_checks": {"pair_checks": "complexity_delta", "checks": "arity"},
+    "lint_since_alone": {},
+    "lint_since_takes_pair_checks": {"pair_checks": "complexity_delta", "checks": "arity"},
+    "lint_revision_unresolved": {
+        "revision": "HEAD~5",
+        "note": "git rev-parse exited 128: fatal: Needed a single revision",
+    },
+    "lint_revision_not_resolved": {
+        "revision": "HEAD~5",
+        "note": "git is not installed, so repository state is unknown",
+    },
+    "lint_revision_unlisted": {"command": "diff", "note": "git diff timed out after 30.0s"},
+    "lint_revision_listing_capped": {"command": "diff", "bytes": 8_000_000},
+    "lint_revision_output_malformed": {"detail": "a diff record ends before its path"},
+    "lint_revision_unchanged": {"revision": "HEAD"},
+    "lint_revision_unchanged_evidence": {},
+    "lint_revision_submodule": {"path": "vendor/lib"},
+    "lint_revision_submodule_evidence": {},
+    "lint_revision_binary": {"path": "src/app/blob.py"},
+    "lint_revision_binary_evidence": {"bytes": 8_000},
+    "lint_revision_status": {"path": "src/app/svc.py", "status": "U"},
+    "lint_revision_status_evidence": {"status": "U"},
+    "pair_worktree_unread": {"path": "src/app/svc.py", "reason": "unreadable: No such file"},
+    "pair_blob_over_cap": {"cap": 1_000_000},
+    "config_erosion_gate_not_object": {
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block",
+    },
+    "config_erosion_gate_mode": {
+        "check": "complexity_delta",
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block",
+    },
+    "config_erosion_gate_unknown": {
+        "config": ".agentless-mcp.json",
+        "count": 2,
+        "checks": "complexity_delta, contract_drift, clone_delta",
+    },
+    "contract_no_boundary": {"config": ".agentless-mcp.json"},
+    "contract_no_boundary_evidence": {},
+    "contract_no_rules": {"language": "bash", "path": "src/adapters/run.sh"},
+    "contract_old_not_measured": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse",
+    },
+    "contract_new_not_measured": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse",
+    },
+    "contract_new_hit": {
+        "unit": "parse_items",
+        "capture": 'data.get("items", [])',
+        "rule": "get-default-empty",
+        "why": "A missing key reads as an empty value.",
+    },
+    "contract_evidence": {
+        "rule": "get-default-empty",
+        "unit": "parse_items",
+        "capture": 'data.get("items", [])',
+    },
+    "clone_language_unsupported": {
+        "path": "notes.md",
+        "language": "markdown",
+        "languages": "bash, python",
+    },
+    "clone_does_not_parse": {"path": "src/app/svc.py", "line": 12},
+    "clone_tokenizer_rejects": {"path": "src/app/svc.py", "detail": "TokenError: EOF"},
+    "clone_old_not_indexed": {"path": "src/app/svc.py", "reason": "src/app/svc.py does not parse"},
+    "clone_new_not_indexed": {"path": "src/app/svc.py", "reason": "src/app/svc.py does not parse"},
+    "clone_index_gaps": {"count": 2, "total": 40, "paths": "a.py, b.py"},
+    "clone_index_gaps_evidence": {"path": "a.py", "reason": "skipped: over the cap"},
+    "clone_index_unlisted": {"reason": "walk refused: more than 20000 files"},
+    "clone_index_stopped": {},
+    "clone_no_tag_cache": {},
+    "clone_no_tag_cache_evidence": {},
+    "clone_new_copy": {"start": 10, "end": 14, "count": 2},
+    "clone_new_copy_evidence": {"sites": "src/app/a.py:4"},
+    "clone_and_more": {"listed": "a.py:4, b.py:9, c.py:2", "count": 3},
+    "config_boundary_globs_not_list": {"config": ".agentless-mcp.json", "limit": 64, "chars": 256},
+    "config_boundary_globs_too_many": {"config": ".agentless-mcp.json", "count": 65, "limit": 64},
+    "config_boundary_globs_dropped": {"config": ".agentless-mcp.json", "count": 2, "chars": 256},
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})
@@ -332,6 +470,13 @@ class TestWireDescriptions:
         # documentation for every agent that reads the published schema.
         assert "rationale nodes" in TOOL_DESCRIPTIONS["orient"]
         assert "rationale comments" in TOOL_DESCRIPTIONS["symbols"]
+
+    def test_both_surfaces_say_what_the_health_complexity_sections_do_not_answer(self):
+        for name in ("orient", "analyze_structure"):
+            assert "hotspots" in TOOL_DESCRIPTIONS[name], name
+            assert "not judge design" in TOOL_DESCRIPTIONS[name], name
+        for name in ("orient_limit", "structure_operation"):
+            assert "hotspots" in PARAMETER_DESCRIPTIONS[name], name
 
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path

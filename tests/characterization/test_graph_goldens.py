@@ -84,6 +84,7 @@ def build_outputs(repo: str) -> dict[str, str]:
     cycles = graphs.cycles(ctx)
     grouped = graphs.communities(ctx)
     drawn = graphs.diagram(ctx, DiagramRequest(group_by_communities=True))
+    health = graphs.health(ctx)
     fan_in = SymbolService(TreeSitterExtractor(), counter).find_referencing_symbols(
         ctx, target_symbol
     )
@@ -103,6 +104,10 @@ def build_outputs(repo: str) -> dict[str, str]:
             envelope.wrap(ctx, render.render_communities(grouped), counter=counter), ctx
         ),
         "refs.txt": normalise(envelope.wrap(ctx, render_refs(fan_in), counter=counter), ctx),
+        "health.txt": normalise(
+            envelope.wrap(ctx, render.render_health(health), counter=counter), ctx
+        ),
+        "health.json": normalise(envelope.wrap_json(ctx, health.as_dict(), counter=counter), ctx),
         # The diagram alone travels without an envelope, because that is how
         # both adapters emit it: the CLI writes it into a document and the MCP
         # tool fences it into a body. A receipt in front of it would be text
@@ -132,6 +137,8 @@ GOLDEN_NAMES = (
     "communities.txt",
     "diagram.mmd",
     "refs.txt",
+    "health.txt",
+    "health.json",
 )
 
 

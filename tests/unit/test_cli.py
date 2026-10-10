@@ -9,6 +9,7 @@ it over Bash.
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from dataclasses import replace
@@ -230,15 +231,15 @@ class TestInProcess:
         That file was the only thing the two tests above ever put in it, so
         without this one nothing would gate the failure path or its exit code.
         """
-        original = services.extractor.extract_facts
+        original = services.extractor.facts_from_tree
 
-        def refuse(text, language, path):
+        def refuse(tree, data, language, path):
             if path == "core.py":
                 message = "deliberate extraction failure"
                 raise ValueError(message)
-            return original(text, language, path)
+            return original(tree, data, language, path)
 
-        monkeypatch.setattr(services.extractor, "extract_facts", refuse)
+        monkeypatch.setattr(services.extractor, "facts_from_tree", refuse)
 
         assert invoke(services, repo_path, "index") == EXIT_DOMAIN
         out = capsys.readouterr().out
@@ -412,6 +413,8 @@ class TestInProcess:
         document = json.loads(capsys.readouterr().out)
         assert set(document["hubs"]) == {"total", "limit", "omitted", "rows"}
         assert document["symbols"] > 0
+        assert set(document["hotspots"]) == {"total", "limit", "omitted", "rows"}
+        assert document["complexity"]["units"] == document["hotspots"]["total"]
 
     def test_a_bad_health_limit_is_refused_by_the_service(self, services, repo_path, capsys):
         code = invoke(services, repo_path, "health", "--limit", "0")
@@ -627,8 +630,9 @@ class TestLint:
 
         assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
         out = capsys.readouterr().out
-        assert "clean: 1 not_checked" in out
+        assert "clean: 2 not_checked" in out
         assert "no pyproject.toml" in out
+        assert "contract_drift has no boundary modules to check" in out
         assert "[warning]" not in out
 
     def test_lint_has_a_json_form(self, services, repo_path, capsys, tmp_path):
@@ -852,6 +856,233 @@ class TestLintOverADiff:
         with pytest.raises(SystemExit) as raised:
             invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--diff", "d.patch")
         assert raised.value.code == EXIT_USAGE
+
+
+def _branchy(name, cc):
+    lines = [f"def {name}(value):"]
+    for index in range(cc - 1):
+        lines += [f"    if value == {index}:", f"        return {index}"]
+    lines.append("    return -1")
+    return "\n".join(lines) + "\n"
+
+
+class TestLintSelectionAndTheHookForm:
+    """`--only`, `--path` and `--after`: the flags, their exit codes, and the JSON shape."""
+
+    def test_an_unknown_check_is_a_usage_error(self, services, repo_path, tmp_path, capsys):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--only", "nope")
+
+        assert raised.value.code == EXIT_USAGE
+        assert "unknown check 'nope'" in capsys.readouterr().err
+
+    def test_an_empty_check_name_is_a_usage_error(self, services, repo_path, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--only", "arity,")
+        assert raised.value.code == EXIT_USAGE
+
+    def test_path_without_after_is_a_usage_error(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "lint", "--path", "core.py") == EXIT_USAGE
+        assert "--path and --after go together" in capsys.readouterr().err
+
+    def test_after_without_path_is_a_usage_error(self, services, repo_path, tmp_path, capsys):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        code = invoke(
+            services, repo_path, "lint", "--candidates", str(candidate), "--after", "x.py"
+        )
+
+        assert code == EXIT_USAGE
+        assert "--path and --after go together" in capsys.readouterr().err
+
+    def test_the_hook_form_with_a_patch_check_is_a_usage_error(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(SOURCE, encoding="utf-8")
+
+        code = invoke(
+            services,
+            repo_path,
+            "lint",
+            "--path",
+            "core.py",
+            "--after",
+            str(after),
+            "--only",
+            "complexity_delta,arity",
+        )
+
+        assert code == EXIT_USAGE
+        assert "Remove arity from --only" in capsys.readouterr().err
+
+    def test_path_beside_candidates_is_a_usage_error(self, services, repo_path, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(
+                services,
+                repo_path,
+                "lint",
+                "--candidates",
+                str(tmp_path),
+                "--path",
+                "core.py",
+                "--after",
+                "x.py",
+            )
+        assert raised.value.code == EXIT_USAGE
+
+    def test_the_hook_form_runs_every_pair_check_and_emits_detail(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(SOURCE + "\n\n" + _branchy("fresh", 12), encoding="utf-8")
+
+        code = invoke(
+            services, repo_path, "lint", "--path", "core.py", "--after", str(after), "--json"
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert entry["id"] == "core.py"
+        finding, gap = entry["findings"]
+        assert (gap["check"], gap["severity"]) == ("contract_drift", "not_checked")
+        assert gap["detail"] == {"reason": "no_boundary_globs"}
+        assert finding["check"] == "complexity_delta"
+        assert finding["location"] == "core.py:15"
+        assert finding["detail"] == {
+            "unit": "fresh",
+            "match": "new",
+            "cc_old": None,
+            "cc_new": 12,
+            "sloc_old": None,
+            "sloc_new": 24,
+            "threshold": 10,
+        }
+
+    def test_a_patch_finding_carries_no_detail(self, services, repo_path, tmp_path, capsys):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        invoke(services, repo_path, "lint", "--candidates", str(candidate), "--json")
+
+        findings = json.loads(capsys.readouterr().out)["candidates"][0]["findings"]
+        patch_rows = [finding for finding in findings if finding["check"] != "contract_drift"]
+        assert patch_rows
+        assert all("detail" not in finding for finding in patch_rows)
+
+    def test_only_pair_checks_over_candidates_drop_the_patch_rows(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        code = invoke(
+            services,
+            repo_path,
+            "lint",
+            "--candidates",
+            str(candidate),
+            "--only",
+            "complexity_delta",
+        )
+
+        assert code == EXIT_OK
+        out = capsys.readouterr().out
+        assert "01: no findings" in out
+        assert "undeclared_imports" not in out
+        assert "dangling_references" not in out
+
+
+class TestLintReviewMode:
+    """`--since REV`: the flags, their exit codes, and the JSON shape."""
+
+    @pytest.fixture
+    def reviewed(self, make_git_repo):
+        root = make_git_repo({"app.py": _branchy("handle", 10)}, name="reviewed")
+        (root / "app.py").write_text(_branchy("handle", 11), encoding="utf-8")
+        return root
+
+    def test_a_review_emits_one_candidate_named_by_the_revision(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--json")
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert entry["id"] == "HEAD"
+        finding, gap = entry["findings"]
+        assert (finding["check"], finding["location"]) == ("complexity_delta", "app.py:1")
+        assert gap["detail"] == {"reason": "no_boundary_globs"}
+        assert [row["unit"] for row in entry["observed"]["units_changed"]] == ["handle"]
+
+    def test_the_text_form_does_not_print_observed(self, services, reviewed, capsys):
+        assert invoke(services, reviewed, "lint", "--since", "HEAD") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "HEAD: 1 warning, 1 not_checked" in out
+        assert "observed" not in out
+
+    def test_since_beside_candidates_is_a_usage_error(self, services, reviewed, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, reviewed, "lint", "--since", "HEAD", "--candidates", str(tmp_path))
+        assert raised.value.code == EXIT_USAGE
+
+    def test_since_with_after_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--after", "x.py")
+
+        assert code == EXIT_USAGE
+        assert "--since takes no --after" in capsys.readouterr().err
+
+    def test_since_with_a_patch_check_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--only", "arity")
+
+        assert code == EXIT_USAGE
+        assert "--since runs only the pair checks" in capsys.readouterr().err
+
+    def test_a_revision_that_names_no_commit_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "no-such-branch")
+
+        assert code == EXIT_USAGE
+        assert "--since no-such-branch does not name a commit" in capsys.readouterr().err
+
+    def test_since_runs_clone_delta_when_only_names_it(self, services, reviewed, capsys):
+        (reviewed / "copy.py").write_text(_branchy("again", 11), encoding="utf-8")
+
+        code = invoke(
+            services, reviewed, "lint", "--since", "HEAD", "--only", "clone_delta", "--json"
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        # Both functions are new in this shape, so each is a new copy of the other.
+        assert [(row["check"], row["location"]) for row in entry["findings"]] == [
+            ("clone_delta", "app.py:1"),
+            ("clone_delta", "copy.py:1"),
+        ]
+        observed = entry["observed"]["clone_instances"]
+        assert [(row["path"], row["line"]) for row in observed] == [("app.py", 1), ("copy.py", 1)]
+        assert {row["key"] for row in observed} == {entry["findings"][0]["detail"]["key"]}
+
+    def test_path_runs_clone_delta_when_only_names_it(self, services, reviewed, tmp_path, capsys):
+        after = tmp_path / "after.py"
+        after.write_text(_branchy("again", 11), encoding="utf-8")
+        assert invoke(services, reviewed, "index") == EXIT_OK
+        capsys.readouterr()
+
+        code = invoke(
+            services,
+            reviewed,
+            "lint",
+            "--path",
+            "copy.py",
+            "--after",
+            str(after),
+            "--only",
+            "clone_delta",
+            "--json",
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert [row["location"] for row in entry["findings"]] == ["copy.py:1"]
 
 
 def _git_diff(root):
@@ -1953,3 +2184,81 @@ class TestAutoWarmStartup:
         _ = repo_path
         assert run(["warmup", "python"], services) == EXIT_OK
         assert warm_calls == []
+
+
+SUMMED_BODY = (
+    "(items, scale=1, offset=None):\n"
+    "    out = 0 * scale + len(items) - (offset or 0)\n"
+    "    for item in sorted(items, key=abs, reverse=True):\n"
+    "        out += item * scale - 0 + max(item, 0)\n"
+    "    return round(out, 2) if out else 0\n"
+)
+
+
+def summed(name):
+    """A five-line function over the clone_delta token floor; two names are Type-2 copies."""
+    return f"def {name}{SUMMED_BODY}"
+
+
+def metric_paths(root):
+    with sqlite3.connect(cache.cache_path(root)) as connection:
+        rows = connection.execute(
+            "SELECT files.path FROM file_metrics JOIN files ON files.id = file_metrics.file_id"
+        ).fetchall()
+    return sorted(row[0] for row in rows)
+
+
+def answer(services, root, capsys, *arguments):
+    assert invoke(services, root, *arguments) == EXIT_OK
+    document = json.loads(capsys.readouterr().out)
+    document.pop("receipt")
+    return document
+
+
+class TestTheMetricScope:
+    @pytest.fixture
+    def scoped_repo(self, make_git_repo):
+        """Copies of one function in source, test, and fixture files, and one new source copy."""
+        root = make_git_repo(
+            {
+                "pkg/app.py": summed("total"),
+                "pkg/notes.md": "# notes\n",
+                "tests/test_app.py": summed("tested"),
+                "pkg/fixtures/sample.py": summed("sampled"),
+            },
+            name="scoped",
+        )
+        (root / "pkg" / "copy.py").write_text(summed("again"), encoding="utf-8")
+        return root
+
+    def test_index_stores_metrics_only_for_the_files_health_and_lint_read(
+        self, services, scoped_repo
+    ):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+
+        assert metric_paths(scoped_repo) == ["pkg/app.py", "pkg/copy.py"]
+
+    def test_health_answers_the_same_warm_and_cold(self, services, scoped_repo, capsys):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+        capsys.readouterr()
+
+        warm = answer(services, scoped_repo, capsys, "health", "--json")
+        cold = answer(services, scoped_repo, capsys, "health", "--json", "--no-cache")
+
+        assert warm == cold
+        assert warm["complexity"]["clone_lines"] == 10
+
+    def test_lint_answers_the_same_warm_and_cold(self, services, scoped_repo, capsys):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+        capsys.readouterr()
+        checks = ("lint", "--since", "HEAD", "--only", "complexity_delta,clone_delta", "--json")
+
+        warm = answer(services, scoped_repo, capsys, *checks)
+        cold = answer(services, scoped_repo, capsys, *checks, "--no-cache")
+
+        assert warm == cold
+        (entry,) = warm["candidates"]
+        clones = [row for row in entry["findings"] if row["check"] == "clone_delta"]
+        assert [(row["location"], row["evidence"]) for row in clones] == [
+            ("pkg/copy.py:1", "also at pkg/app.py:1")
+        ]

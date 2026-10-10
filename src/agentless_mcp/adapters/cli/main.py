@@ -57,7 +57,17 @@ from agentless_mcp.application.history_service import (
     HistoryService,
     render_history,
 )
-from agentless_mcp.application.lint_service import LintService, load_candidates, load_diff
+from agentless_mcp.application.lint_service import (
+    CHECK_NAMES,
+    EDITED_FILE_CHECK_NAMES,
+    PAIR_CHECK_NAMES,
+    LintService,
+    load_candidates,
+    load_diff,
+    proposed_check_refusal,
+    revision_check_refusal,
+    unknown_check_refusal,
+)
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
@@ -75,6 +85,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_FIND_LIMIT,
     DEFAULT_REFS_LIMIT,
     SymbolService,
+    in_metric_scope,
     kind_names,
     render_expansion,
     render_find,
@@ -110,6 +121,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NO
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
@@ -539,7 +551,9 @@ def _add_diagram(subparsers: Any) -> None:
 
 
 def _add_health(subparsers: Any) -> None:
-    parser = subparsers.add_parser("health", help="orphan candidates, unused exports and hubs")
+    parser = subparsers.add_parser(
+        "health", help="orphan candidates, unused exports, hubs and complexity hotspots"
+    )
     _repo_flags(parser)
     parser.add_argument(
         "--limit",
@@ -611,8 +625,49 @@ def _add_lint(subparsers: Any) -> None:
         "the checks compare it against --repo as it stands, so --repo must be a checkout "
         "of the diff's BASE, not a tree with the diff already applied",
     )
+    source.add_argument(
+        "--path",
+        metavar="REL",
+        help="a file in --repo whose proposed whole new text is in --after (the per-edit hook "
+        f"form). Runs {' and '.join(EDITED_FILE_CHECK_NAMES)}, which read only this file. "
+        "--only can add clone_delta, which reads the clone blocks of every tier-1 source "
+        "file from the tag cache only, and gives one not_checked row when there is no cache",
+    )
+    source.add_argument(
+        "--since",
+        metavar="REV",
+        help="compare each file changed since the commit REV with its working-tree text "
+        f"(review mode). Runs {' and '.join(EDITED_FILE_CHECK_NAMES)}, which read only the "
+        "changed files. --only can add clone_delta, which also reads every tier-1 source "
+        'file. For a branch, pass --since "$(git merge-base HEAD main)"',
+    )
+    parser.add_argument(
+        "--after",
+        metavar="FILE",
+        default=None,
+        help="the file that holds the proposed whole new text of --path",
+    )
+    parser.add_argument(
+        "--only",
+        metavar="CHECK[,CHECK...]",
+        type=_check_names,
+        default=None,
+        help=f"run only these checks: {', '.join(CHECK_NAMES)}. The pair checks "
+        f"({', '.join(PAIR_CHECK_NAMES)}) compare whole file texts. "
+        f"{' and '.join(EDITED_FILE_CHECK_NAMES)} read only the edited files. clone_delta "
+        "also reads every tier-1 source file outside test and fixture paths. A run with only "
+        "pair checks skips the symbol scan that the other checks need",
+    )
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_lint)
+
+
+def _check_names(raw: str) -> tuple[str, ...]:
+    names = tuple(dict.fromkeys(part.strip() for part in raw.split(",")))
+    refusal = unknown_check_refusal(names)
+    if refusal:
+        raise argparse.ArgumentTypeError(refusal)
+    return names
 
 
 def _add_resolve_locs(subparsers: Any) -> None:
@@ -1290,18 +1345,51 @@ def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
     not a verdict, and a lint that failed the command would be a gate nobody
     asked for standing between a candidate and the tests that actually decide.
     """
+    refusal = _lint_flag_refusal(args)
+    if refusal:
+        return fail(refusal, EXIT_USAGE)
     ctx = _context(args, services, require_git=False)
     if ctx is None:
         return EXIT_USAGE
 
+    report = _lint_report(args, ctx, services)
+    _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
+    return EXIT_OK
+
+
+def _lint_flag_refusal(args: argparse.Namespace) -> str:
+    if args.since is not None:
+        return _since_flag_refusal(args)
+    if (args.path is None) != (args.after is None):
+        return MESSAGES.lint_path_needs_after
+    if args.path is None or args.only is None:
+        return ""
+    return proposed_check_refusal(args.only)
+
+
+def _since_flag_refusal(args: argparse.Namespace) -> str:
+    if args.after is not None:
+        return MESSAGES.lint_since_alone
+    if args.only is None:
+        return ""
+    return revision_check_refusal(args.only)
+
+
+def _lint_report(
+    args: argparse.Namespace, ctx: RepoContext, services: CliServices
+) -> render.LintReportView:
+    if args.path is not None:
+        checks = EDITED_FILE_CHECK_NAMES if args.only is None else args.only
+        return services.lints.lint_proposed(ctx, args.path, Path(args.after), checks)
+    if args.since is not None:
+        checks = EDITED_FILE_CHECK_NAMES if args.only is None else args.only
+        return services.lints.lint_revision(ctx, args.since, checks)
     candidates = (
         (load_diff(Path(args.diff)),)
         if args.diff is not None
         else load_candidates(Path(args.candidates))
     )
-    report = services.lints.lint(ctx, candidates)
-    _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
-    return EXIT_OK
+    return services.lints.lint(ctx, candidates, CHECK_NAMES if args.only is None else args.only)
 
 
 def _diagram_summary(view: render.DiagramView) -> str:
@@ -1610,8 +1698,8 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
         report = cache.build_index(
             ctx.root,
             services.extractor,
-            tree_oid=ctx.tree_oid,
-            head_sha=ctx.head_sha,
+            measure=in_metric_scope,
+            git=cache.GitState(tree_oid=ctx.tree_oid, head_sha=ctx.head_sha),
             force=args.force,
         )
     except (sqlite3.Error, OSError) as error:

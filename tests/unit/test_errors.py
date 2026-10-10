@@ -22,7 +22,9 @@ from agentless_mcp.util.errors import (
     LanguageUnavailable,
     OperationFailed,
     RepoResolutionError,
+    RevisionUnresolved,
     SecurityRefusal,
+    UnmeasurableSource,
     WalkBoundExceeded,
 )
 
@@ -32,7 +34,9 @@ LEAVES = (
     LanguageUnavailable,
     OperationFailed,
     RepoResolutionError,
+    RevisionUnresolved,
     SecurityRefusal,
+    UnmeasurableSource,
     WalkBoundExceeded,
 )
 
@@ -58,6 +62,7 @@ class TestTheExitCodeIsKeyedOnTheError:
             (SecurityRefusal("refused"), EXIT_USAGE),
             (RepoResolutionError("no root"), EXIT_USAGE),
             (InputUnreadable("gone"), EXIT_USAGE),
+            (RevisionUnresolved("no such commit"), EXIT_USAGE),
             (OperationFailed("did not apply"), EXIT_DOMAIN),
             (LanguageUnavailable("no grammar"), EXIT_DOMAIN),
             (WalkBoundExceeded("too many files"), EXIT_DOMAIN),

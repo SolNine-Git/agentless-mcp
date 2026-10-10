@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from agentless_mcp.application.lint_service import CHECK_NAMES
 from agentless_mcp.core import guide
 from agentless_mcp.core.guide import GuideDataError
 
@@ -228,3 +229,13 @@ class TestFenceRule:
     def test_an_info_string_does_not_close_a_fence(self):
         lines = ["```", "# not a heading", "```json", "# still not a heading"]
         assert guide._headings(lines) == []
+
+
+class TestTheLintSection:
+    def test_the_check_table_names_every_registered_check(self):
+        """A check `lint --only` accepts and the guide never names is a check nobody can find."""
+        section = guide.section_text("lint")
+        assert section is not None
+        rows = {match.group(1) for match in re.finditer(r"^\| `([a-z_]+)` \|", section, re.M)}
+
+        assert rows == set(CHECK_NAMES)

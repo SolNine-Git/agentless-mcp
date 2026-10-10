@@ -5,7 +5,7 @@ prompts: they are read by a model, they are revised for how well they steer
 one, and revising them should not mean editing Python. They live in the JSON
 files beside this module and are loaded once, here, at import time.
 
-Four files, grouped by consumer:
+Five files, grouped by consumer:
 
 ``tool_descriptions.json``
     The MCP tool descriptions, keyed by tool name. These are the wire
@@ -32,6 +32,10 @@ Four files, grouped by consumer:
     application services down to ``core.cache`` and an enumerated list of
     them goes stale.
 
+``contract_rules.json``
+    The ``contract_drift`` rules: per rule, its languages, its tree-sitter
+    query, and the message its hits report. ``contract_rules`` parses it.
+
 Every value is validated against the keys the code consumes, so a rename in
 the JSON fails at startup rather than serving a blank description. Templates
 carry ``str.format`` fields and are formatted at the call site; the field sets
@@ -41,15 +45,18 @@ are pinned by ``tests/unit/test_prompts.py``.
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
+from agentless_mcp.prompts.contract_rules import ContractRule, load_contract_rules
 from agentless_mcp.prompts.loader import PromptDataError, load_mapping, load_record
 
 __all__ = [
+    "CONTRACT_RULES",
     "ENVELOPE",
     "MESSAGES",
     "PARAMETER_DESCRIPTIONS",
     "PARAMETER_NAMES",
     "TOOL_DESCRIPTIONS",
     "TOOL_NAMES",
+    "ContractRule",
     "EnvelopeText",
     "MessageText",
     "PromptDataError",
@@ -138,6 +145,67 @@ class MessageText:
     history_signature_changed: str
     history_shallow: str
     history_shallow_unknown: str
+    complexity_language_unsupported: str
+    complexity_does_not_parse: str
+    complexity_tokenizer_rejects: str
+    complexity_grew: str
+    complexity_crossed: str
+    complexity_new_unit: str
+    complexity_evidence: str
+    complexity_new_unit_evidence: str
+    complexity_old_not_measured: str
+    complexity_new_not_measured: str
+    pair_old_unread: str
+    pair_new_unread: str
+    pair_edits_unapplied: str
+    lint_unknown_check: str
+    lint_no_checks: str
+    lint_path_needs_after: str
+    lint_path_takes_pair_checks: str
+    lint_since_alone: str
+    lint_since_takes_pair_checks: str
+    lint_revision_unresolved: str
+    lint_revision_not_resolved: str
+    lint_revision_unlisted: str
+    lint_revision_listing_capped: str
+    lint_revision_output_malformed: str
+    lint_revision_unchanged: str
+    lint_revision_unchanged_evidence: str
+    lint_revision_submodule: str
+    lint_revision_submodule_evidence: str
+    lint_revision_binary: str
+    lint_revision_binary_evidence: str
+    lint_revision_status: str
+    lint_revision_status_evidence: str
+    pair_worktree_unread: str
+    pair_blob_over_cap: str
+    config_erosion_gate_not_object: str
+    config_erosion_gate_mode: str
+    config_erosion_gate_unknown: str
+    contract_no_boundary: str
+    contract_no_boundary_evidence: str
+    contract_no_rules: str
+    contract_old_not_measured: str
+    contract_new_not_measured: str
+    contract_new_hit: str
+    contract_evidence: str
+    clone_language_unsupported: str
+    clone_does_not_parse: str
+    clone_tokenizer_rejects: str
+    clone_old_not_indexed: str
+    clone_new_not_indexed: str
+    clone_index_gaps: str
+    clone_index_gaps_evidence: str
+    clone_index_unlisted: str
+    clone_index_stopped: str
+    clone_no_tag_cache: str
+    clone_no_tag_cache_evidence: str
+    clone_new_copy: str
+    clone_new_copy_evidence: str
+    clone_and_more: str
+    config_boundary_globs_not_list: str
+    config_boundary_globs_too_many: str
+    config_boundary_globs_dropped: str
 
 
 # Every tool this server can register, across both published surfaces: the
@@ -226,3 +294,5 @@ PARAMETER_NAMES = (
 PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(
     "parameter_descriptions.json", PARAMETER_NAMES
 )
+
+CONTRACT_RULES: tuple[ContractRule, ...] = load_contract_rules()

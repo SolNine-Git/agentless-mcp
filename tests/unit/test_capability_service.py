@@ -2,10 +2,13 @@
 
 from dataclasses import replace
 
+import pytest
+
 from agentless_mcp.application import (
     capability_service,
     envelope,
     graph_service,
+    lint_service,
     map_service,
     symbol_service,
 )
@@ -14,6 +17,7 @@ from agentless_mcp.application.capability_service import (
     render_capability_report,
 )
 from agentless_mcp.application.repo_context import resolve_repo
+from agentless_mcp.application.symbol_service import in_metric_scope
 from agentless_mcp.core import (
     cache,
     communities,
@@ -49,6 +53,20 @@ def test_the_report_names_the_languages_whose_locals_are_told_from_callers(tmp_p
     assert "scope analysis (a parameter or local is told from a caller): python" in (
         render_capability_report(report)
     )
+
+
+def test_the_report_lists_every_lint_check_with_the_input_it_reads(tmp_path, extractor):
+    (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    report = build_capability_report(resolve_repo(tmp_path, None), extractor)
+
+    assert report.as_dict()["lint_checks"] == [
+        {"name": check.name, "input": check.needs.value} for check in lint_service.CHECKS
+    ]
+    text = render_capability_report(report)
+    assert "lint checks (CLI only), by the input each reads:" in text
+    for needs in lint_service.CheckInput:
+        names = [check.name for check in lint_service.CHECKS if check.needs is needs]
+        assert f"  {needs.value}: {', '.join(names)}" in text
 
 
 class TestTheCacheStatusIsMeasured:
@@ -91,7 +109,7 @@ class TestTheCacheStatusIsMeasured:
 
     def test_an_opened_source_reports_its_own_generation(self, tmp_path, extractor):
         (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
-        built = cache.build_index(tmp_path, extractor)
+        built = cache.build_index(tmp_path, extractor, measure=in_metric_scope)
         source = cache.open_source(tmp_path, extractor, tree_oid=None)
         try:
             ctx = replace(resolve_repo(tmp_path, None), symbols=source)
@@ -269,6 +287,48 @@ class TestTheEffectiveConfigCoversEveryKey:
         resolved = dict(capability_service._effective_config(config))
 
         assert resolved["relation_weights"] is True
+
+    def test_the_complexity_threshold_defaults_to_ten(self):
+        resolved = dict(capability_service._effective_config(projectconfig.EMPTY))
+
+        assert resolved["complexity_threshold"] == 10
+
+    def test_a_configured_complexity_threshold_is_reported(self):
+        config = projectconfig.parse({"complexity_threshold": 15})
+
+        assert dict(capability_service._effective_config(config))["complexity_threshold"] == 15
+
+    @pytest.mark.parametrize(
+        "document",
+        [{}, {"erosion_gate": {"arity": "block"}}],
+        ids=["absent", "every-entry-dropped"],
+    )
+    def test_an_erosion_gate_with_no_entry_in_force_is_unset(self, document):
+        config = projectconfig.parse(document)
+
+        assert dict(capability_service._effective_config(config))["erosion_gate"] == "unset"
+
+    def test_a_configured_erosion_gate_lists_each_mode_in_force(self):
+        config = projectconfig.parse(
+            {"erosion_gate": {"clone_delta": "advisory", "complexity_delta": "block"}}
+        )
+
+        resolved = dict(capability_service._effective_config(config))
+
+        assert resolved["erosion_gate"] == ("complexity_delta=block", "clone_delta=advisory")
+
+    def test_no_boundary_globs_are_shown_as_none(self):
+        resolved = dict(capability_service._effective_config(projectconfig.EMPTY))
+
+        assert resolved["boundary_globs"] == ()
+        assert capability_service._display(resolved["boundary_globs"]) == "none"
+
+    def test_configured_boundary_globs_are_listed(self):
+        config = projectconfig.parse({"boundary_globs": ["src/adapters/**", "**/clients/*.py"]})
+
+        resolved = dict(capability_service._effective_config(config))
+
+        assert resolved["boundary_globs"] == ("src/adapters/**", "**/clients/*.py")
 
 
 class TestTheInventoryIsComplete:

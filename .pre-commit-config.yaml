@@ -30,10 +30,15 @@ repos:
       - id: check-case-conflict
       # Check for debugger imports and py37+ breakpoint() calls
       - id: debug-statements
+        # The complexity fixtures are tree-sitter input with syntax newer than
+        # Python 3.10, such as except*, and CI runs these hooks on 3.10.
+        exclude: ^tests/characterization/fixtures/complexity_py/
       # Detect accidentally committed private keys
       - id: detect-private-key
       # Check that Python files have valid syntax
       - id: check-ast
+        # Same reason as debug-statements above.
+        exclude: ^tests/characterization/fixtures/complexity_py/
       # Prevent accidental commits of large files
       - id: check-added-large-files
         args: [--maxkb=1000]
