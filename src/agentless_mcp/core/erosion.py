@@ -476,7 +476,7 @@ def _match_run(measured: Sequence[_Measured]) -> list[_Match]:
     moved, old_rest, new_rest = _body_pass(old_left, new_left)
     matches.extend(moved)
 
-    old_by_file, new_by_file = _by_file(old_rest), _by_file(new_rest)
+    old_by_file, new_by_file = _grouped(old_rest, _by_file), _grouped(new_rest, _by_file)
     for item in measured:
         named, unpaired = _name_and_collision_passes(
             old_by_file.get(item.pair.path, []), new_by_file.get(item.pair.path, [])
@@ -509,10 +509,10 @@ def _body_pass(
 def _name_and_collision_passes(
     old_left: Sequence[Unit], new_left: Sequence[Unit]
 ) -> tuple[list[_Match], list[Unit]]:
-    old_named = _by_qualname(old_left)
+    old_named = _grouped(old_left, _by_qualname)
     matches: list[_Match] = []
     unpaired: list[Unit] = []
-    for qualname, news in _by_qualname(new_left).items():
+    for qualname, news in _grouped(new_left, _by_qualname).items():
         olds = old_named.get(qualname, [])
         if len(olds) == 1 and len(news) == 1:
             matches.append(_Match(olds[0], news[0], MATCH_NAME))
@@ -529,18 +529,19 @@ def _name_and_collision_passes(
     return matches, unpaired
 
 
-def _by_qualname(units: Sequence[Unit]) -> dict[str, list[Unit]]:
+def _grouped(units: Sequence[Unit], key: Callable[[Unit], str]) -> dict[str, list[Unit]]:
     grouped: dict[str, list[Unit]] = {}
     for unit in units:
-        grouped.setdefault(unit.qualname, []).append(unit)
+        grouped.setdefault(key(unit), []).append(unit)
     return grouped
 
 
-def _by_file(units: Sequence[Unit]) -> dict[str, list[Unit]]:
-    grouped: dict[str, list[Unit]] = {}
-    for unit in units:
-        grouped.setdefault(unit.path, []).append(unit)
-    return grouped
+def _by_qualname(unit: Unit) -> str:
+    return unit.qualname
+
+
+def _by_file(unit: Unit) -> str:
+    return unit.path
 
 
 def _rank(unit: Unit) -> tuple[int, int]:
