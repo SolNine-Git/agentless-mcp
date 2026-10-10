@@ -680,7 +680,7 @@ All nine are fixed with tests, and the `fix-review` run repeats the gate.
 
 **Surface diff over the 150 Loc-Bench checkouts.** The retrieval tier reads
 only the ranked file list, so every changed surface was run under 0.9.0 and
-under the final build on the same 1,128 queries: the function map with the
+under the final build on the same 1,206 queries: the function map with the
 issue's seeds as focus, `cycles`, `refs` and `explain` on up to two seed
 names, and `refs` on three sampled symbols. Targets were picked under each
 build and were byte-identical. No model is involved, and no exit code

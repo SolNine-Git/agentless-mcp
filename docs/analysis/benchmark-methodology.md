@@ -131,7 +131,8 @@ letting a cheap one answer an expensive one's question.
 
 | Claim | Instrument | Why it is valid for that claim |
 | --- | --- | --- |
-| the ranking changed | `loc-bench-harness` | scores file ranking with no flattening step; 47 s; records compare byte for byte |
+| the ranking changed | `loc-bench-harness` | scores file ranking with no flattening step; 150 instances in 6 to 12 minutes; records compare byte for byte |
+| an answer other than the ranking changed | the surface diff (below) | runs both builds on the same queries over the same checkouts and diffs the answers; no model |
 | the output got denser or cheaper | direct measurement | symbols per rendered token, character counts, token pins -- it measures the thing itself |
 | an agent does better | the agentic arms | an agent chooses what to read; no cheaper tier models that |
 
@@ -191,6 +192,85 @@ replicate: the same treatment build run twice at one worker moved precision
 crossing zero. An agentic delta inside that movement is not interpretable --
 including a favourable one. See
 [`declaration-role-regression.md`](declaration-role-regression.md).
+
+## The release regression gate
+
+A release must not degrade against the instruments above. A change that the
+instruments cannot see is acceptable when a test proves it and the
+instruments show no degradation. Run the four steps below in order, and
+report each step's result in the release's commit messages.
+
+**1. The suites.** Run `uv run pre-commit run --all-files` (ruff, mypy,
+codespell, the import-linter contract, deptry) and the full `pytest` suite.
+Regenerate a golden deliberately: predict the diff first, then read the
+regenerated golden in the diff. A golden diff that was predicted is evidence;
+one that was not is a defect to explain.
+
+**2. The retrieval tier, as a byte-diff.** Freeze the build under test. Use
+a detached worktree, or copy the tree without `.git` and `.venv`
+(`rsync -a --exclude .git --exclude .venv`) and run
+`uv sync --all-extras --frozen` in the copy. Never point the harness at the
+shared working tree (incident 3). Then, with `LOC_BENCH_FORWARD_RAW_PATHS`
+unset:
+
+    uv run loc-bench run --agentless <frozen copy> --name <arm>
+
+Compare `ranked_files` per instance against the stored arm for the base
+commit. The records carry no agentless commit, so prove which arm is the
+base by re-running the base commit once and diffing it against the stored
+arm. For 0.9.0 (72d44d7) that arm is `results/fix-base`, which is
+byte-identical to `results/i56-branch`. Zero differing instances means the
+ranking did not move, and no ranking metric can have moved. Any difference
+needs the paired bootstrap on the seeded and the no-seed arms, with recall@10
+beside every precision metric. `map_seconds` is a single run and is not a
+latency claim unless the runs were interleaved on a quiet machine.
+
+**3. The surface diff, for every answer the ranking does not cover.** The
+retrieval tier reads only the ranked file list, so it cannot see fan-in
+tiers, `explain`, `cycles`, `history` or how a function map packs its
+symbols. For those, run the CLI of both frozen builds over the Loc-Bench
+checkouts in `loc-bench-harness/repos/`, on the same queries:
+
+- `map --granularity function`, with each record's seeds as focus
+- `cycles`
+- `refs --json` and `explain` on the record's seed names
+- `refs --json` on a few symbols sampled from the scan
+
+Pick the targets under each build and require the two target lists to be
+byte-identical. Otherwise a target the old build answered and the new one
+does not is never sampled, and a regression hides by construction. Then
+report:
+
+- per surface, how many answers changed
+- for `refs`, how many lines moved from each tier to each other tier,
+  keyed by (path, line)
+- a loss count: answers that shrank (fewer rows, fewer cycles, a lower
+  fan-in or fan-out, fewer map files), and exit codes that went from 0 to
+  failure
+- one falsifiable prediction, written down before the output is read
+
+Then read a random sample of the changed lines in the source. Compare
+answers without the receipt lines, which carry cache state, and note which
+answers carry `truncated`: an answer over the token ceiling drops whole
+groups, in both builds.
+
+**4. The exposure check, before any agentic run.** Count which operations
+the agent actually calls, from the proof logs of the last healthy run
+(`argument_keys` differ per operation). On the 2026-09-27 hooked arm (359
+calls over 60 instances): `symbols(expand)` 109 calls in 49 instances,
+`read` 93 in 37, `orient(map)` 61 in 56, `symbols(find)` 61 in 22,
+`symbols(overview)` 19 in 17, `find_referencing_symbols` 10 in 9,
+`symbols(explain)` 5 in 5, and `cycles`, `communities`, `path`, `health`,
+`diagram` and `history` none. A change confined to a surface called in a
+handful of instances returns a null that is not evidence about it, and the
+report must say so rather than record it as unchanged.
+
+The agentic tier also cannot certify no-degradation at n=60. That is an
+equivalence claim, and an interval that crosses zero is absence of evidence.
+At n=60 the paired half-widths are about 0.034 on WCC and 0.064 on
+precision, wider than the 0.019 and 0.025 noise floors. Passing a 0.019 WCC
+margin needs about 192 instances. Buy an agentic run to answer one question
+about a surface with broad exposure, not to certify a release.
 
 ## The arms
 
@@ -364,6 +444,28 @@ worktree path, which is incident 3 closed by hash rather than by assertion.
 Result tags `n082_baseline` and `n082_treatment`, proof logs under
 `mcp_proof_082/`.
 
+
+**0.9.1 against 0.9.0, measured 2026-10-09.** Every step of the release
+gate ran; no agentic run did, because the exposure check put four of the
+five changed surfaces at nine or fewer instances of sixty.
+
+- Retrieval tier: `ranked_files` identical to `results/fix-base` on 150 of
+  150 instances in five runs (`fix-s1`, `fix-s4`, `fix-s6`, `fix-review`,
+  `fix-qualifier`).
+- Surface diff, 1,206 queries per build: `refs` changed in 130 of 678
+  answers. 1,706 lines moved from `unique` to `resolved-via-import` and 415
+  from `name-only-ambiguous` to `resolved-via-import`; 15 of 15 sampled were
+  correct. 22 lines left `resolved-via-import` (14 are a third-party
+  `pandas.DataFrame`; 8 are names imported under `TYPE_CHECKING` and
+  assigned `None`) and 92 left `same-file` (parameters that shadow the
+  target). `map` changed in 42 of 150, each with a seed that names a symbol,
+  as predicted, and no file was added or lost. `cycles` changed in all 150
+  (the note and the member lists) and no cycle count fell.
+- The first surface diff found a regression no fixture covered: an
+  imported class used as a qualifier (`OptionKey.from_string(...)`) fell to
+  `name-only-ambiguous` on 31 lines. It was fixed before release, and the
+  figures above are after the fix.
+
 ## How to re-run
 
 Work from the `swe-explore-bench` clone root. Its `RUNBOOK.md` is the
@@ -372,8 +474,9 @@ it.
 
 1. Rebuild the server under test and confirm the client sees it. A repository
    fix is not live until the `uv tool install` is rebuilt.
-2. Pin every arm to a commit with `git worktree add --detach <dir> <sha>`, and
-   point the arm at it with `AGENTLESS_PROJECT`. Never point an arm at the live
+2. Pin every arm to a commit with `git worktree add --detach <dir> <sha>`, or
+   with a frozen copy of the tree (see the release gate, step 2), and point
+   the arm at it with `AGENTLESS_PROJECT`. Never point an arm at the live
    checkout: another session editing it mid-run splits the arm across two
    builds, as incident 3 records.
 3. Give each worktree the server extra -- `uv sync --project <dir> --extra mcp`
