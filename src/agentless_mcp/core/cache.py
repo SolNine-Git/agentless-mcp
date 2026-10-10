@@ -74,7 +74,7 @@ from agentless_mcp.core.extractor import IdentifierRole, ParsedFacts, Ref, TreeS
 from agentless_mcp.core.fileparse import FileMetrics, Unmeasured
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
-from agentless_mcp.core.treewalk import walk_repo
+from agentless_mcp.core.treewalk import RepoFile, walk_repo
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.cachedir import (
@@ -1330,6 +1330,15 @@ def start_auto_index(
         # made again until the process restarts.
         return None
 
+    generation = _stale_generation(resolved, database, run, tree_oid)
+    if generation is None:
+        return None
+    return _start_refresh(resolved, extractor, generation, tree_oid, head_sha)
+
+
+def _stale_generation(
+    resolved: Path, database: Path, run: "_AutoIndexRun | None", tree_oid: str | None
+) -> str | None:
     # Outside the git tree oid this walks the repository's stat manifest.
     generation = GENERATION_UNAVAILABLE
     try:
@@ -1346,10 +1355,7 @@ def start_auto_index(
         _record_attempt(database, generation)
         logger.warning("background index refresh for %s skipped: %s", resolved, error)
         return None
-    if done:
-        return None
-
-    return _start_refresh(resolved, extractor, generation, tree_oid, head_sha)
+    return None if done else generation
 
 
 def _start_refresh(
@@ -1539,22 +1545,40 @@ def _plan_index(
     force: bool,
 ) -> _IndexPlan:
     """Walk the repository and decide, per file, reuse, skip or re-extract."""
-    grammar_version = grammars.pack_version()
-    unwarmed_version = UNWARMED_STAMP_PREFIX + grammar_version
-    warmed = grammars.warmed_languages()
-    writes: list[_FileTags] = []
-    reused: list[str] = []
-    seen: set[str] = set()
-    present: set[str] = set()
-    failures: list[IndexFailure] = []
-    skips: list[IndexSkip] = []
-
+    planning = _Planning(
+        root=root,
+        extractor=extractor,
+        previous=previous,
+        force=force,
+        grammar_version=grammars.pack_version(),
+        warmed=grammars.warmed_languages(),
+    )
     for repo_file in walk_repo(root):
+        planning.consider(repo_file)
+    return planning.result()
+
+
+@dataclass
+class _Planning:
+    root: Path
+    extractor: TreeSitterExtractor
+    previous: dict[str, _FileEntry]
+    force: bool
+    grammar_version: str
+    warmed: frozenset[str]
+    writes: list[_FileTags] = field(default_factory=list)
+    reused: list[str] = field(default_factory=list)
+    seen: set[str] = field(default_factory=set)
+    present: set[str] = field(default_factory=set)
+    failures: list[IndexFailure] = field(default_factory=list)
+    skips: list[IndexSkip] = field(default_factory=list)
+
+    def consider(self, repo_file: RepoFile) -> None:
         language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(Path(repo_file.path).suffix)
         if language is None:
-            continue
+            return
 
-        present.add(repo_file.path)
+        self.present.add(repo_file.path)
 
         if repo_file.size > DEFAULT_MAX_FILE_BYTES:
             # Declining to read a file is a skip, not a failure to read one.
@@ -1562,7 +1586,7 @@ def _plan_index(
             # ``read_bounded``'s skip reason: the invariant is "this file is
             # over the cap", and a message is not a category. Deciding it
             # first also means the bytes are never pulled in to be dropped.
-            skips.append(
+            self.skips.append(
                 IndexSkip(
                     path=repo_file.path,
                     reason=(
@@ -1571,76 +1595,87 @@ def _plan_index(
                     ),
                 )
             )
-            continue
+            return
 
         # The same cap the stat above was compared against, passed rather than
         # defaulted: the two deciding the same number is what keeps a
         # cap-exceeded read out of ``failures``.
-        read = read_bounded(root / repo_file.path, DEFAULT_MAX_FILE_BYTES)
+        read = read_bounded(self.root / repo_file.path, DEFAULT_MAX_FILE_BYTES)
         if read.text is None:
-            failures.append(IndexFailure(path=repo_file.path, reason=read.skipped or "unreadable"))
-            continue
-
-        seen.add(repo_file.path)
-        digest = content_digest(read.text)
-        entry = previous.get(repo_file.path)
-
-        if language not in warmed:
-            # A skip, not a failure: the same wording get_language raises with,
-            # so the index report and a live scan describe the file identically.
-            skips.append(
-                IndexSkip(path=repo_file.path, reason=grammars.unavailable_reason(language))
+            self.failures.append(
+                IndexFailure(path=repo_file.path, reason=read.skipped or "unreadable")
             )
-            if not force and entry == _FileEntry(digest, unwarmed_version):
-                continue
-            writes.append(
-                _FileTags(
-                    path=repo_file.path,
-                    digest=digest,
-                    symbols=(),
-                    imports=(),
-                    refs=(),
-                    grammar_version=unwarmed_version,
-                    metrics=None,
-                )
+            return
+
+        self._readable(repo_file.path, read.text, language)
+
+    def result(self) -> _IndexPlan:
+        return _IndexPlan(
+            writes=tuple(self.writes),
+            reused=tuple(self.reused),
+            seen=frozenset(self.seen),
+            present=frozenset(self.present),
+            failures=tuple(self.failures),
+            skips=tuple(self.skips),
+        )
+
+    def _readable(self, path: str, text: str, language: str) -> None:
+        self.seen.add(path)
+        digest = content_digest(text)
+        entry = self.previous.get(path)
+
+        if language not in self.warmed:
+            self._unwarmed(path, digest, entry, language)
+            return
+
+        current = _FileEntry(digest, self.grammar_version, fileparse.metrics_stamp(language))
+        if not self.force and entry is not None and entry == current:
+            self.reused.append(path)
+            return
+
+        self._extract(path, text, language, digest)
+
+    def _unwarmed(self, path: str, digest: str, entry: _FileEntry | None, language: str) -> None:
+        # A skip, not a failure: the same wording get_language raises with,
+        # so the index report and a live scan describe the file identically.
+        self.skips.append(IndexSkip(path=path, reason=grammars.unavailable_reason(language)))
+        unwarmed_version = UNWARMED_STAMP_PREFIX + self.grammar_version
+        if not self.force and entry == _FileEntry(digest, unwarmed_version):
+            return
+        self.writes.append(
+            _FileTags(
+                path=path,
+                digest=digest,
+                symbols=(),
+                imports=(),
+                refs=(),
+                grammar_version=unwarmed_version,
+                metrics=None,
             )
-            continue
+        )
 
-        current = _FileEntry(digest, grammar_version, fileparse.metrics_stamp(language))
-        if not force and entry is not None and entry == current:
-            reused.append(repo_file.path)
-            continue
-
+    def _extract(self, path: str, text: str, language: str, digest: str) -> None:
         try:
-            parsed = fileparse.parse_file(extractor, read.text, language, repo_file.path)
+            parsed = fileparse.parse_file(self.extractor, text, language, path)
         except EXTRACTION_FAILURES as exc:
             # The class name is part of the report: "maximum recursion depth
             # exceeded" names a defect, a bare KeyError message names nothing.
             reason = f"{type(exc).__name__}: {exc}"
-            seen.discard(repo_file.path)
-            failures.append(IndexFailure(path=repo_file.path, reason=reason))
-            continue
+            self.seen.discard(path)
+            self.failures.append(IndexFailure(path=path, reason=reason))
+            return
 
-        writes.append(
+        self.writes.append(
             _FileTags(
-                path=repo_file.path,
+                path=path,
                 digest=digest,
                 symbols=tuple(parsed.facts.symbols),
                 imports=tuple(parsed.facts.imports),
                 refs=tuple(parsed.facts.refs),
-                grammar_version=grammar_version,
+                grammar_version=self.grammar_version,
                 metrics=parsed.metrics,
             )
         )
-
-    return _IndexPlan(
-        writes=tuple(writes),
-        reused=tuple(reused),
-        seen=frozenset(seen),
-        present=frozenset(present),
-        failures=tuple(failures),
-        skips=tuple(skips),
-    )
 
 
 def _apply_plan(
@@ -1655,80 +1690,87 @@ def _apply_plan(
 
     connection.execute("BEGIN IMMEDIATE")
     try:
-        for path in (*vanished, *touched):
-            # Children before the parent, and by the id the parent owns. The
-            # order is load-bearing rather than tidy: the fact rows are keyed
-            # on ``files.id``, so deleting the ``files`` row first would take
-            # away the only key that reaches them and leave them orphaned in a
-            # table nothing would ever clean.
-            #
-            # A path absent from ``previous`` is a file this index has never
-            # recorded, so it owns no id and no rows. Its ``files`` delete is
-            # still issued, because ``vanished`` and ``touched`` are the paths
-            # to clear and not the paths known to be present.
-            recorded = previous.get(path)
-            if recorded is not None:
-                # Spelled out rather than looped over a table-name list: a
-                # query built by interpolating a name is the shape of an
-                # injection even when today's names are constants.
-                connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM units WHERE file_id = ?", (recorded.file_id,))
-                connection.execute("DELETE FROM blocks WHERE file_id = ?", (recorded.file_id,))
-                connection.execute(
-                    "DELETE FROM file_metrics WHERE file_id = ?", (recorded.file_id,)
-                )
-            connection.execute("DELETE FROM files WHERE path = ?", (path,))
-
+        _clear_paths(connection, (*vanished, *touched), previous)
         for entry in plan.writes:
-            file_id = _insert_file(connection, entry)
-            connection.executemany(
-                "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
-                "signature, parent, docstring, decorators, bases, language, "
-                "is_public, is_async, rationales) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    _tag_row(file_id, ordinal, symbol)
-                    for ordinal, symbol in enumerate(entry.symbols)
-                ],
-            )
-            connection.executemany(
-                "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
-                "relative_level, line, binds_all, alias, local_names) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    _import_row(file_id, ordinal, statement)
-                    for ordinal, statement in enumerate(entry.imports)
-                ],
-            )
-            connection.executemany(
-                "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
-                    for ordinal, ref in enumerate(entry.refs)
-                ],
-            )
-            if entry.metrics is not None:
-                _insert_metrics(connection, file_id, entry.metrics)
-
-        connection.execute("DELETE FROM meta")
-        connection.execute(
-            "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
-            "created_at) VALUES (1, ?, ?, ?, ?, ?)",
-            (
-                meta.schema_version,
-                meta.repo_root,
-                meta.generation,
-                meta.head_sha,
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
+            _insert_entry(connection, entry)
+        _write_meta(connection, meta)
     except BaseException:
         connection.rollback()
         raise
     connection.commit()
+
+
+def _clear_paths(
+    connection: sqlite3.Connection, paths: Sequence[str], previous: dict[str, _FileEntry]
+) -> None:
+    for path in paths:
+        # Children before the parent, and by the id the parent owns. The
+        # order is load-bearing rather than tidy: the fact rows are keyed
+        # on ``files.id``, so deleting the ``files`` row first would take
+        # away the only key that reaches them and leave them orphaned in a
+        # table nothing would ever clean.
+        #
+        # A path absent from ``previous`` is a file this index has never
+        # recorded, so it owns no id and no rows. Its ``files`` delete is
+        # still issued, because ``vanished`` and ``touched`` are the paths
+        # to clear and not the paths known to be present.
+        recorded = previous.get(path)
+        if recorded is not None:
+            # Spelled out rather than looped over a table-name list: a
+            # query built by interpolating a name is the shape of an
+            # injection even when today's names are constants.
+            connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM units WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM blocks WHERE file_id = ?", (recorded.file_id,))
+            connection.execute("DELETE FROM file_metrics WHERE file_id = ?", (recorded.file_id,))
+        connection.execute("DELETE FROM files WHERE path = ?", (path,))
+
+
+def _insert_entry(connection: sqlite3.Connection, entry: _FileTags) -> None:
+    file_id = _insert_file(connection, entry)
+    connection.executemany(
+        "INSERT INTO tags (file_id, ordinal, name, kind, start_line, end_line, "
+        "signature, parent, docstring, decorators, bases, language, "
+        "is_public, is_async, rationales) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [_tag_row(file_id, ordinal, symbol) for ordinal, symbol in enumerate(entry.symbols)],
+    )
+    connection.executemany(
+        "INSERT INTO imports (file_id, ordinal, module, names, is_relative, "
+        "relative_level, line, binds_all, alias, local_names) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            _import_row(file_id, ordinal, statement)
+            for ordinal, statement in enumerate(entry.imports)
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO refs (file_id, ordinal, name, line, role, qualifier) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (file_id, ordinal, ref.name, ref.line, ref.role.value, ref.qualifier)
+            for ordinal, ref in enumerate(entry.refs)
+        ],
+    )
+    if entry.metrics is not None:
+        _insert_metrics(connection, file_id, entry.metrics)
+
+
+def _write_meta(connection: sqlite3.Connection, meta: _Meta) -> None:
+    connection.execute("DELETE FROM meta")
+    connection.execute(
+        "INSERT INTO meta (id, schema_version, repo_root, generation_tree_oid, head_sha, "
+        "created_at) VALUES (1, ?, ?, ?, ?, ?)",
+        (
+            meta.schema_version,
+            meta.repo_root,
+            meta.generation,
+            meta.head_sha,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
 
 
 def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
