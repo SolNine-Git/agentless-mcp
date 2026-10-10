@@ -425,7 +425,7 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 
 ## Task Checklist
 
-**Progress pin, 2026-10-10.** Branch `feat/erosion-checks`, from `main` `d7f0c52`. Phases 0 to 2, the Phase 3 code, and Phases 4 to 6 are committed: the three pair checks (`complexity_delta`, `contract_drift`, `clone_delta`), review mode, the `health` complexity section with hotspots and clone share, the tag cache for units and blocks, the erosion gate hook with all three checks and its trial report, and the review-skill changes. The release regression gate passed on `1b17fb2`: suites, retrieval byte-diff, surface diff, and lint patch checks. The confirmed findings of the branch's PR review are fixed: the body pass pairs same-name units first, the clone index is built only for a change in its scope and within a time budget, the hook form reads the clone index from the tag cache only, the boundary-glob matcher does not backtrack, and the `health` walk tests its budget before its checkpoint. Parallel parsing is not in this branch: it moved to the planned Rust port. The cost of the nested clone keys in the index stays open. `pytest` gives 4930 passed and 10 skipped on 3.13, and 4896 passed and 11 skipped on 3.10 (at `5b74d25`). Q2 and Q3 take the reviewers' recommendation (not_checked for c and bash, empty `boundary_globs`). Open: the advisory deploy of the hook, which waits for the user's choice of the binary the hook calls (it must share the MCP server's cache schema), and the flip, which needs trial data and labels.
+**Progress pin, 2026-10-10.** Branch `feat/erosion-checks`, from `main` `d7f0c52`. Phases 0 to 2, the Phase 3 code, and Phases 4 to 6 are committed: the three pair checks (`complexity_delta`, `contract_drift`, `clone_delta`), review mode, the `health` complexity section with hotspots and clone share, the tag cache for units and blocks, the erosion gate hook with all three checks and its trial report, and the review-skill changes. The release regression gate passed on `1b17fb2` and again on `1dc4d70`, after the review fixes: suites, retrieval byte-diff, surface diff, and lint patch checks. The confirmed findings of the branch's PR review are fixed: the body pass pairs same-name units first, the clone index is built only for a change in its scope and within a time budget, the hook form reads the clone index from the tag cache only, the boundary-glob matcher does not backtrack, and the `health` walk tests its budget before its checkpoint. Parallel parsing is not in this branch: it moved to the planned Rust port. The cost of the nested clone keys in the index stays open. `pytest` gives 4930 passed and 10 skipped on 3.13, and 4896 passed and 11 skipped on 3.10 (at `5b74d25`). Q2 and Q3 take the reviewers' recommendation (not_checked for c and bash, empty `boundary_globs`). The hook is deployed in advisory mode on this machine. Every agentless server and the hook's binary run the same build, so they share one cache schema, and a live session showed the advisory text reaching the model. Open: the flip, which needs trial data and labels.
 
 - [x] S0: log real hook payloads, confirm the advisory form live, record `tool_use_id` presence and CRLF Edit behavior in this file
 - [x] S1: write `scripts/scb_parity_goldens.py`, generate and commit Python goldens
@@ -439,7 +439,7 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 - [x] Update check-count text, the agent guide lint section, `test_guide.py` heading counts, and the CHANGELOG
 - [x] Write `contrib/hooks/agentless_erosion_gate.py`, its tests, and `erosion_gate_report.py`
 - [x] Update `contrib/hooks/settings-example.json` and the README hook section
-- [ ] Deploy the hook in advisory mode on this machine and start the log
+- [x] Deploy the hook in advisory mode on this machine and start the log
 - [x] Add `lint --since` as `lint_revision`, reusing stage 5's `blob_arguments`
 - [x] Add the Type-2 normalizer and `clone_delta`
 - [x] Add the `health` complexity section and update the wire text (clone share follows `clone_delta`)
@@ -498,7 +498,7 @@ Outside this repository (Phase 6, vault first):
 - [x] `uv run pre-commit run --all-files` is green, including `lint-imports`
 - [x] Hook pipe tests: advisory mode prints the frozen JSON form and exits 0, block mode exits 2, a malformed payload exits 0, a lint timeout exits 0 and logs `degraded`, the temp file is gone after every path
 - [x] Report tests: a fixture log and transcript give the expected not-applied, unobserved, acted-on, and not-acted-on counts, and the seeded sample is stable
-- [ ] A live session confirms advisory text reaches the model and no permission prompt is skipped
+- [x] A live session confirms advisory text reaches the model and no permission prompt is skipped
 
 Edge cases to test:
 - [x] A unit renamed in the same edit, a unit moved to another file (hook: reported as new or moved; `--since`: paired), two methods with the same name in different classes
