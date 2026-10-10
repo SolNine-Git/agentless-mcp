@@ -499,11 +499,7 @@ def health_report(graph: resolve.ResolvedGraph, *, limit: int) -> render.HealthR
     orphans and would be the whole listing on most repositories.
     """
     degrees = _degrees(graph)
-    considered = [
-        (stable_id, definition)
-        for stable_id, definition in sorted(graph.definitions.items())
-        if not is_test_path(definition.path) and not is_fixture_path(definition.path)
-    ]
+    considered = _considered(graph)
 
     orphans = [
         (stable_id, definition, degree)
@@ -527,6 +523,18 @@ def health_report(graph: resolve.ResolvedGraph, *, limit: int) -> render.HealthR
         symbols=len(considered),
         excluded=len(graph.definitions) - len(considered),
     )
+
+
+def _considered(graph: resolve.ResolvedGraph) -> list[tuple[str, refs.Definition]]:
+    return [
+        (stable_id, definition)
+        for stable_id, definition in sorted(graph.definitions.items())
+        if _in_health_scope(definition.path)
+    ]
+
+
+def _in_health_scope(path: str) -> bool:
+    return not is_test_path(path) and not is_fixture_path(path)
 
 
 def _of_kinds(
