@@ -230,15 +230,15 @@ class TestInProcess:
         That file was the only thing the two tests above ever put in it, so
         without this one nothing would gate the failure path or its exit code.
         """
-        original = services.extractor.extract_facts
+        original = services.extractor.facts_from_tree
 
-        def refuse(text, language, path):
+        def refuse(tree, data, language, path):
             if path == "core.py":
                 message = "deliberate extraction failure"
                 raise ValueError(message)
-            return original(text, language, path)
+            return original(tree, data, language, path)
 
-        monkeypatch.setattr(services.extractor, "extract_facts", refuse)
+        monkeypatch.setattr(services.extractor, "facts_from_tree", refuse)
 
         assert invoke(services, repo_path, "index") == EXIT_DOMAIN
         out = capsys.readouterr().out

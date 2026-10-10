@@ -66,6 +66,7 @@ from agentless_mcp.application.symbol_service import (
     symbol_card,
 )
 from agentless_mcp.core import (
+    cache,
     clones,
     communities,
     complexity,
@@ -342,6 +343,7 @@ class GraphService:
             ctx.root,
             _complexity_targets(resolved.scan),
             budget=walk_budget(deadline.remaining()),
+            source=cache.effective_source(ctx.symbols, self._extractor),
         )
         threshold = projectconfig.resolve(
             None, ctx.config.complexity_threshold, complexity.DEFAULT_THRESHOLD
@@ -798,7 +800,9 @@ def _skipped_targets(skipped: Iterable[refs.SkippedFile]) -> Iterator[_Target]:
             yield _Target(path=entry.path, language=language, skipped=entry.reason)
 
 
-def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -> ComplexityWalk:
+def _walk_complexity(
+    root: Path, targets: Sequence[_Target], *, budget: float, source: cache.FileSource
+) -> ComplexityWalk:
     started = time.monotonic()
     units: list[complexity.Unit] = []
     blocks: list[clones.FileBlocks] = []
@@ -808,7 +812,7 @@ def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -
         deadline.checkpoint()
         if time.monotonic() - started >= budget:
             break
-        measured = _measure_target(root, target)
+        measured = _measure_target(root, target, source)
         if isinstance(measured, refs.SkippedFile):
             not_measured.append(measured)
         else:
@@ -824,7 +828,9 @@ def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -
     )
 
 
-def _measure_target(root: Path, target: _Target) -> _Measured | refs.SkippedFile:
+def _measure_target(
+    root: Path, target: _Target, source: cache.FileSource
+) -> _Measured | refs.SkippedFile:
     if target.skipped is not None:
         return refs.SkippedFile(path=target.path, reason=target.skipped)
     read = read_bounded(root / target.path)
@@ -832,8 +838,8 @@ def _measure_target(root: Path, target: _Target) -> _Measured | refs.SkippedFile
         return refs.SkippedFile(path=target.path, reason=_skip_reason(read.skipped, target.path))
     # One failure drops the file from both figures, so erosion and clone share cover one set.
     try:
-        units = complexity.measure(read.text, target.path, target.language)
-        blocks = clones.file_blocks(read.text, target.path, target.language)
+        units = source.units_for(read.text, target.language, target.path)
+        blocks = source.blocks_for(read.text, target.language, target.path)
     except (UnmeasurableSource, LanguageUnavailable) as exc:
         return refs.SkippedFile(path=target.path, reason=str(exc))
     return _Measured(units=units, blocks=blocks)

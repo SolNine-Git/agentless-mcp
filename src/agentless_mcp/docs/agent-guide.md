@@ -1005,6 +1005,13 @@ ends it, the answer says
 `complexity: N of M files walked before the time budget`, the summary and the
 clone share cover the files walked, and the graph sections are complete.
 
+**A fresh index makes the walk cheap and does not change the answer.** The
+walk reads each file's units and blocks from the index and parses only the
+files that changed since it was built. The answer is the same with the index
+and with `--no-cache`. The time budget is the one exception: a walk that has to
+parse every file can stop earlier. On mcp-local, `health` takes 0.81 s with a
+fresh index and 3.85 s with `--no-cache`.
+
 ### `html` (CLI only) -- the module graph, interactive
 
 ```
@@ -1080,7 +1087,10 @@ agentless-mcp index --force               # re-extract even unchanged files
 
 The index is optional. Every read command works without it. Indexing removes
 the symbol, import and reference parses for files whose sha256 has not
-changed since the last run. The MCP server runs this refresh itself, in the
+changed since the last run. For a tier-1 file the same parse also gives the
+complexity units and clone blocks that `health` and `lint`'s `clone_delta`
+read, and the index stores them too. On mcp-local a cold index takes 4.4 s
+with them, against 2.7 s without. The MCP server runs this refresh itself, in the
 background, the first time it serves a repository whose index is absent or
 stale. Opt out with `--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX`. A
 held lock is a silent skip, since another process is already refreshing. The

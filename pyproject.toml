@@ -281,6 +281,20 @@ type = "layers"
 layers = ["adapters", "application", "core", "prompts", "util"]
 containers = ["agentless_mcp"]
 
+# One parse feeds the facts, the complexity units, and the clone blocks. The owner of
+# that parse sits above the metric modules, which already import the extractor.
+[[tool.importlinter.contracts]]
+name = "One parse: cache -> fileparse -> clones -> complexity -> normalize -> extractor"
+type = "layers"
+layers = [
+    "agentless_mcp.core.cache",
+    "agentless_mcp.core.fileparse",
+    "agentless_mcp.core.clones",
+    "agentless_mcp.core.complexity",
+    "agentless_mcp.core.normalize",
+    "agentless_mcp.core.extractor",
+]
+
 # The two adapters are alternative front doors onto the same application
 # services. Either importing the other would make the CLI drag in fastmcp
 # (an optional extra) or the server inherit argparse exit-code semantics.

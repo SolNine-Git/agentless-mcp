@@ -269,7 +269,8 @@ class LintService:
         refusal = proposed_check_refusal(checks)
         if refusal:
             raise OperationFailed(refusal)
-        judged = _proposed_findings(ctx, path, after, _pair_checks(ctx.root, selection))
+        pairs = _pair_checks(ctx.root, selection, self._source(ctx))
+        judged = _proposed_findings(ctx, path, after, pairs)
         return render.LintReportView(candidates=(_view(path, judged),))
 
     def lint_revision(
@@ -284,17 +285,21 @@ class LintService:
         if refusal:
             raise OperationFailed(refusal)
         review = _Review(ctx.root, self._runner)
-        judged = review.judge(revision, _pair_checks(ctx.root, selection), ctx.config)
+        pairs = _pair_checks(ctx.root, selection, self._source(ctx))
+        judged = review.judge(revision, pairs, ctx.config)
         return render.LintReportView(candidates=(_view(revision, judged),))
 
     def _judge(self, ctx: RepoContext, selection: "_Selection") -> Judge:
-        pairs = _pair_checks(ctx.root, selection)
+        source = self._source(ctx)
+        pairs = _pair_checks(ctx.root, selection, source)
         if not selection.patch:
             return lambda candidate: _pair_only_findings(candidate, ctx, pairs)
         facts = self._facts(ctx)
-        source = cache.effective_source(ctx.symbols, self._extractor)
         checks = _CandidateChecks(patch=selection.patch, pairs=pairs)
         return lambda candidate: _findings(candidate, ctx, facts, source, checks)
+
+    def _source(self, ctx: RepoContext) -> cache.FileSource:
+        return cache.effective_source(ctx.symbols, self._extractor)
 
     def _facts(self, ctx: RepoContext) -> patchlint.RepoFacts:
         """Assemble the pre-patch repository every check compares against.
@@ -332,13 +337,13 @@ def _select(names: Collection[str]) -> _Selection:
     )
 
 
-def _pair_checks(root: Path, selection: _Selection) -> _PairChecks:
+def _pair_checks(root: Path, selection: _Selection, source: cache.FileSource) -> _PairChecks:
     # The only place a run reads the whole repository for a pair check.
-    clones = _clone_index(root) if selection.clones else None
+    clones = _clone_index(root, source) if selection.clones else None
     return _PairChecks(runners=selection.pairs, clones=clones)
 
 
-def _clone_index(root: Path) -> erosion.CloneIndex:
+def _clone_index(root: Path, source: cache.FileSource) -> erosion.CloneIndex:
     try:
         listed = treewalk.walk_repo(root)
     except (WalkBoundExceeded, RepoResolutionError) as exc:
@@ -353,7 +358,9 @@ def _clone_index(root: Path) -> erosion.CloneIndex:
             texts[repo_file.path] = read.text
         else:
             unread[repo_file.path] = _skip_reason(read)
-    return erosion.clone_index(texts, unread)
+    return erosion.clone_index(
+        texts, unread, lambda text, path, language: source.blocks_for(text, language, path)
+    )
 
 
 def _skip_reason(read: BoundedRead) -> str:

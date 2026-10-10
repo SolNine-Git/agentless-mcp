@@ -12,7 +12,7 @@ import pytest
 
 from agentless_mcp.application import graph_service, symbol_service
 from agentless_mcp.application.map_service import companions_for
-from agentless_mcp.core import communities, graph, refs, resolve
+from agentless_mcp.core import cache, communities, graph, refs, resolve
 from agentless_mcp.util import deadline
 from agentless_mcp.util.errors import CallStopped
 
@@ -160,9 +160,12 @@ class TestTheLongLoopsCheckIt:
         by_path = built.scan.by_path()
         self.stops(lambda: companions_for(built.files, by_path, built.index, ["core.py"]))
 
-    def test_the_complexity_walk(self, built):
+    def test_the_complexity_walk(self, built, extractor):
         targets = graph_service._complexity_targets(built.scan)
-        self.stops(lambda: graph_service._walk_complexity(built.root, targets, budget=60))
+        source = cache.OnDemandSource(extractor)
+        self.stops(
+            lambda: graph_service._walk_complexity(built.root, targets, budget=60, source=source)
+        )
 
     def test_the_shared_caller_ranking(self, built):
         definitions = list(refs.definitions_for(built.index, "helper"))

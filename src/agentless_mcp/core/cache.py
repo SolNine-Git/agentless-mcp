@@ -17,7 +17,9 @@ tree-holding indexers is a design constraint here, not an incident to react
 to. All three are keyed the same way and gated by the same digest, so a fresh
 index removes every parse a repository scan would perform and every
 single-file view (expand, slice, find) gets its symbols without parsing at
-all.
+all. A tier-1 file also stores its complexity units and clone blocks from the
+same parse, stamped with :func:`agentless_mcp.core.fileparse.metrics_stamp`, so
+``health`` and ``lint``'s clone index read them instead of parsing again.
 
 **Freshness has two layers, and only one of them is load-bearing.**
 
@@ -61,11 +63,15 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
-from agentless_mcp.core import grammars
+from agentless_mcp.core import clones, complexity, fileparse, grammars
+from agentless_mcp.core.clones import Block, FileBlocks
+from agentless_mcp.core.complexity import Unit
 from agentless_mcp.core.extractor import IdentifierRole, ParsedFacts, Ref, TreeSitterExtractor
+from agentless_mcp.core.fileparse import FileMetrics, Unmeasured
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
 from agentless_mcp.core.treewalk import walk_repo
@@ -75,7 +81,7 @@ from agentless_mcp.util.cachedir import (
     DIRECTORY_MODE,
     cache_root,
 )
-from agentless_mcp.util.errors import AgentlessError, CacheLocked
+from agentless_mcp.util.errors import AgentlessError, CacheLocked, UnmeasurableSource
 from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 
 # Bumping this drops the database and rebuilds it. That is the whole migration
@@ -176,7 +182,7 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   is unchanged and old rows still read, which is again the trap: a cache
 #   written before the change would keep serving the smaller symbol set for
 #   every unchanged file, and no per-file staleness check can see it.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
@@ -245,6 +251,9 @@ MANIFEST_DIGEST_LENGTH = 16
 # SQLite is out-of-process state like any other: a lock wait gets a bound.
 SQLITE_TIMEOUT_SECONDS = 5.0
 
+
+_Rows = TypeVar("_Rows")
+_Metric = TypeVar("_Metric")
 
 RECEIPT_NONE = "none"
 RECEIPT_BYPASSED = "bypassed (--no-cache)"
@@ -384,6 +393,14 @@ class FileSource(Protocol):
         """Return all three fact sets for ``text``, as the extractor would."""
         ...
 
+    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
+        """Return the complexity units of ``text``, or raise, as `complexity.measure` would."""
+        ...
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Return the clone blocks of ``text``, or raise, as `clones.file_blocks` would."""
+        ...
+
     def status(self) -> CacheStatus:
         """Describe this source, including row counts when it has any."""
         ...
@@ -421,6 +438,14 @@ class OnDemandSource:
         """Extract all three fact sets from one parse of ``text``."""
         return self._extractor.extract_facts(text, language, path)
 
+    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
+        """Measure the complexity units of ``text`` with no cache involved."""
+        return complexity.measure(text, path, language)
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Index the clone blocks of ``text`` with no cache involved."""
+        return clones.file_blocks(text, path, language)
+
     def status(self) -> CacheStatus:
         """Describe why there is no cache behind this source."""
         return self._status
@@ -441,7 +466,7 @@ class _RowCounts:
 
 @dataclass(frozen=True)
 class _FileEntry:
-    """The digest and grammar version one indexed file was recorded with.
+    """The digest, grammar version, and metric stamp one indexed file was recorded with.
 
     ``file_id`` is excluded from equality on purpose. The two sites that
     compare an entry are asking one question -- same content, same grammar --
@@ -453,6 +478,7 @@ class _FileEntry:
 
     digest: str
     grammar_version: str
+    stamp: str | None = None
     file_id: int = field(compare=False, default=0)
 
 
@@ -544,13 +570,29 @@ class CachedSource:
             return self._extractor.extract_facts(text, language, path)
         return ParsedFacts(symbols, imports, refs)
 
+    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
+        """Return cached complexity units when the row still describes ``text``."""
+        read = partial(self._unit_rows, language=language)
+        units = self._rows_or_none(read, self._fresh_file_id(text, path), path, "unit")
+        if units is None:
+            return complexity.measure(text, path, language)
+        return _measured_or_raise(units)
+
+    def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
+        """Return cached clone blocks when the row still describes ``text``."""
+        read = partial(self._block_rows, language=language)
+        blocks = self._rows_or_none(read, self._fresh_file_id(text, path), path, "block")
+        if blocks is None:
+            return clones.file_blocks(text, path, language)
+        return _measured_or_raise(blocks)
+
     def _rows_or_none(
         self,
-        read: "Callable[[str, int], list[Any]]",
+        read: "Callable[[str, int], _Rows]",
         file_id: int | None,
         path: str,
         kind: str,
-    ) -> list[Any] | None:
+    ) -> _Rows | None:
         """Read one file's rows, or return ``None`` to mean "parse it instead".
 
         The module promises that a read command never fails because of a
@@ -677,6 +719,112 @@ class CachedSource:
             )
             for row in cursor.fetchall()
         ]
+
+    def _unit_rows(
+        self, path: str, file_id: int, *, language: str
+    ) -> tuple[Unit, ...] | Unmeasured | None:
+        row = self._metric_row(file_id, language)
+        if row is None:
+            return None
+        if row.units_reason is not None:
+            return Unmeasured(row.units_reason)
+        cursor = self._connection.execute(
+            "SELECT qualname, start_byte, end_byte, start_line, end_line, body_key, cc, sloc "
+            "FROM units WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
+        )
+        units = tuple(
+            Unit(
+                qualname=str(found[0]),
+                path=path,
+                start_byte=int(found[1]),
+                end_byte=int(found[2]),
+                start_line=int(found[3]),
+                end_line=int(found[4]),
+                body_key=str(found[5]),
+                cc=int(found[6]),
+                sloc=int(found[7]),
+            )
+            for found in cursor.fetchall()
+        )
+        return _counted(units, row.unit_count, "unit")
+
+    def _block_rows(
+        self, path: str, file_id: int, *, language: str
+    ) -> FileBlocks | Unmeasured | None:
+        row = self._metric_row(file_id, language)
+        if row is None:
+            return None
+        if row.blocks_reason is not None:
+            return Unmeasured(row.blocks_reason)
+        cursor = self._connection.execute(
+            "SELECT start_line, end_line, type2_key, exact_key, is_function, tokens "
+            "FROM blocks WHERE file_id = ? ORDER BY ordinal",
+            (file_id,),
+        )
+        blocks = tuple(
+            Block(
+                path=path,
+                start_line=int(found[0]),
+                end_line=int(found[1]),
+                key=str(found[2]),
+                exact=str(found[3]),
+                function=bool(found[4]),
+                tokens=int(found[5]),
+            )
+            for found in cursor.fetchall()
+        )
+        return FileBlocks(
+            path=path,
+            blocks=_counted(blocks, row.block_count, "block"),
+            sloc_lines=_sloc_from_row(row.sloc_lines),
+        )
+
+    def _metric_row(self, file_id: int, language: str) -> "_MetricRow | None":
+        found = self._connection.execute(
+            "SELECT stamp, language, units_reason, unit_count, blocks_reason, block_count, "
+            "sloc_lines FROM file_metrics WHERE file_id = ?",
+            (file_id,),
+        ).fetchone()
+        if found is None or found[0] != fileparse.metrics_stamp(language) or found[1] != language:
+            return None
+        return _MetricRow(
+            units_reason=None if found[2] is None else str(found[2]),
+            unit_count=int(found[3]),
+            blocks_reason=None if found[4] is None else str(found[4]),
+            block_count=int(found[5]),
+            sloc_lines=found[6],
+        )
+
+
+@dataclass(frozen=True)
+class _MetricRow:
+    units_reason: str | None
+    unit_count: int
+    blocks_reason: str | None
+    block_count: int
+    sloc_lines: Any
+
+
+def _counted(rows: tuple[_Rows, ...], expected: int, kind: str) -> tuple[_Rows, ...]:
+    if len(rows) != expected:
+        message = f"{len(rows)} {kind} rows where the metrics row records {expected}"
+        raise ValueError(message)
+    return rows
+
+
+def _sloc_from_row(raw: Any) -> tuple[int, ...]:
+    lines = json.loads(raw) if isinstance(raw, str) else None
+    if not isinstance(lines, list) or not all(type(line) is int for line in lines):
+        message = f"sloc_lines is not a JSON list of integers: {raw!r:.80}"
+        raise TypeError(message)
+    return tuple(lines)
+
+
+def _measured_or_raise(value: _Metric | Unmeasured) -> _Metric:
+    if isinstance(value, Unmeasured):
+        raise UnmeasurableSource(value.reason)
+    return value
 
 
 def effective_source(
@@ -1032,6 +1180,7 @@ class _FileTags:
     imports: tuple[ImportStatement, ...]
     refs: tuple[Ref, ...]
     grammar_version: str
+    metrics: FileMetrics | None
 
     @property
     def unwarmed(self) -> bool:
@@ -1452,16 +1601,18 @@ def _plan_index(
                     imports=(),
                     refs=(),
                     grammar_version=unwarmed_version,
+                    metrics=None,
                 )
             )
             continue
 
-        if not force and entry is not None and entry == _FileEntry(digest, grammar_version):
+        current = _FileEntry(digest, grammar_version, fileparse.metrics_stamp(language))
+        if not force and entry is not None and entry == current:
             reused.append(repo_file.path)
             continue
 
         try:
-            symbols, imports, refs = extractor.extract_facts(read.text, language, repo_file.path)
+            parsed = fileparse.parse_file(extractor, read.text, language, repo_file.path)
         except EXTRACTION_FAILURES as exc:
             # The class name is part of the report: "maximum recursion depth
             # exceeded" names a defect, a bare KeyError message names nothing.
@@ -1474,10 +1625,11 @@ def _plan_index(
             _FileTags(
                 path=repo_file.path,
                 digest=digest,
-                symbols=tuple(symbols),
-                imports=tuple(imports),
-                refs=tuple(refs),
+                symbols=tuple(parsed.facts.symbols),
+                imports=tuple(parsed.facts.imports),
+                refs=tuple(parsed.facts.refs),
                 grammar_version=grammar_version,
+                metrics=parsed.metrics,
             )
         )
 
@@ -1522,6 +1674,11 @@ def _apply_plan(
                 connection.execute("DELETE FROM tags WHERE file_id = ?", (recorded.file_id,))
                 connection.execute("DELETE FROM imports WHERE file_id = ?", (recorded.file_id,))
                 connection.execute("DELETE FROM refs WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM units WHERE file_id = ?", (recorded.file_id,))
+                connection.execute("DELETE FROM blocks WHERE file_id = ?", (recorded.file_id,))
+                connection.execute(
+                    "DELETE FROM file_metrics WHERE file_id = ?", (recorded.file_id,)
+                )
             connection.execute("DELETE FROM files WHERE path = ?", (path,))
 
         for entry in plan.writes:
@@ -1553,6 +1710,8 @@ def _apply_plan(
                     for ordinal, ref in enumerate(entry.refs)
                 ],
             )
+            if entry.metrics is not None:
+                _insert_metrics(connection, file_id, entry.metrics)
 
         connection.execute("DELETE FROM meta")
         connection.execute(
@@ -1594,6 +1753,66 @@ def _insert_file(connection: sqlite3.Connection, entry: _FileTags) -> int:
         unreachable = "an INSERT that did not raise always reports a row id"
         raise AssertionError(unreachable)
     return file_id
+
+
+def _insert_metrics(connection: sqlite3.Connection, file_id: int, metrics: FileMetrics) -> None:
+    units = () if isinstance(metrics.units, Unmeasured) else metrics.units
+    indexed = None if isinstance(metrics.blocks, Unmeasured) else metrics.blocks
+    blocks = () if indexed is None else indexed.blocks
+    connection.execute(
+        "INSERT INTO file_metrics (file_id, stamp, language, units_reason, unit_count, "
+        "blocks_reason, block_count, sloc_lines) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            file_id,
+            metrics.stamp,
+            metrics.language,
+            _reason(metrics.units),
+            len(units),
+            _reason(metrics.blocks),
+            len(blocks),
+            None if indexed is None else json.dumps(list(indexed.sloc_lines)),
+        ),
+    )
+    connection.executemany(
+        "INSERT INTO units (file_id, ordinal, qualname, start_byte, end_byte, start_line, "
+        "end_line, body_key, cc, sloc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                file_id,
+                ordinal,
+                unit.qualname,
+                unit.start_byte,
+                unit.end_byte,
+                unit.start_line,
+                unit.end_line,
+                unit.body_key,
+                unit.cc,
+                unit.sloc,
+            )
+            for ordinal, unit in enumerate(units)
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO blocks (file_id, ordinal, start_line, end_line, type2_key, exact_key, "
+        "is_function, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                file_id,
+                ordinal,
+                block.start_line,
+                block.end_line,
+                block.key,
+                block.exact,
+                int(block.function),
+                block.tokens,
+            )
+            for ordinal, block in enumerate(blocks)
+        ],
+    )
+
+
+def _reason(value: object) -> str | None:
+    return value.reason if isinstance(value, Unmeasured) else None
 
 
 def _tag_row(file_id: int, ordinal: int, symbol: ASTSymbol) -> tuple[Any, ...]:
@@ -1811,6 +2030,9 @@ _DROP_SCHEMA = """
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS imports;
 DROP TABLE IF EXISTS refs;
+DROP TABLE IF EXISTS units;
+DROP TABLE IF EXISTS blocks;
+DROP TABLE IF EXISTS file_metrics;
 DROP TABLE IF EXISTS files;
 DROP TABLE IF EXISTS meta;
 """
@@ -1893,6 +2115,42 @@ CREATE TABLE IF NOT EXISTS refs (
     line INTEGER NOT NULL,
     role TEXT NOT NULL,
     qualifier TEXT NOT NULL,
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+-- A metric that could not be taken keeps its reason and a count of 0, so a reader
+-- can name the failure and never reads it as a file with no units or blocks.
+CREATE TABLE IF NOT EXISTS file_metrics (
+    file_id INTEGER PRIMARY KEY,
+    stamp TEXT NOT NULL,
+    language TEXT NOT NULL,
+    units_reason TEXT,
+    unit_count INTEGER NOT NULL,
+    blocks_reason TEXT,
+    block_count INTEGER NOT NULL,
+    sloc_lines TEXT
+);
+CREATE TABLE IF NOT EXISTS units (
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    qualname TEXT NOT NULL,
+    start_byte INTEGER NOT NULL,
+    end_byte INTEGER NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    body_key TEXT NOT NULL,
+    cc INTEGER NOT NULL,
+    sloc INTEGER NOT NULL,
+    PRIMARY KEY (file_id, ordinal)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS blocks (
+    file_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    type2_key TEXT NOT NULL,
+    exact_key TEXT NOT NULL,
+    is_function INTEGER NOT NULL,
+    tokens INTEGER NOT NULL,
     PRIMARY KEY (file_id, ordinal)
 ) WITHOUT ROWID;
 """
@@ -1984,10 +2242,16 @@ def _load_entries(connection: sqlite3.Connection) -> dict[str, _FileEntry]:
     to :func:`_open_indexed`, which reports ``cache unreadable`` and leaves
     the file in place. This is the same rule :func:`_read_meta` states.
     """
-    rows = connection.execute("SELECT path, sha256, grammar_version, id FROM files").fetchall()
+    rows = connection.execute(
+        "SELECT files.path, files.sha256, files.grammar_version, files.id, file_metrics.stamp "
+        "FROM files LEFT JOIN file_metrics ON file_metrics.file_id = files.id"
+    ).fetchall()
     return {
         str(row[0]): _FileEntry(
-            digest=str(row[1]), grammar_version=str(row[2]), file_id=int(row[3])
+            digest=str(row[1]),
+            grammar_version=str(row[2]),
+            stamp=None if row[4] is None else str(row[4]),
+            file_id=int(row[3]),
         )
         for row in rows
     }

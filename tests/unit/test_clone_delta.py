@@ -6,6 +6,7 @@ from agentless_mcp.core import erosion
 from agentless_mcp.core.clones import clone_groups, file_blocks
 from agentless_mcp.core.erosion import CloneIndex, TextPair, clone_delta, clone_index
 from agentless_mcp.core.patchlint import Severity
+from agentless_mcp.util.errors import UnmeasurableSource
 
 
 def total(name="total", items="items", start="0"):
@@ -332,6 +333,22 @@ class TestCoverage:
     def test_the_index_refuses_a_file_that_is_not_tier1_source(self):
         with pytest.raises(ValueError, match="not a tier-1 source file"):
             clone_index({"notes.md": "# x"}, {})
+
+    def test_the_index_reads_each_text_through_the_reader_it_is_given(self):
+        seen = []
+
+        def reader(text, path, language):
+            seen.append((path, language))
+            if path == "b.py":
+                message = "b.py: the reader has no blocks for it"
+                raise UnmeasurableSource(message)
+            return file_blocks(text, path, language)
+
+        index = clone_index({"a.py": total(), "b.py": total()}, {}, reader)
+
+        assert seen == [("a.py", "python"), ("b.py", "python")]
+        assert set(index.files) == {"a.py"}
+        assert dict(index.unindexed) == {"b.py": "b.py: the reader has no blocks for it"}
 
     def test_clone_delta_observes_nothing(self):
         outcome = clone_delta([TextPair("b.py", None, total())], repo(ORIGINAL), frozenset())

@@ -11,6 +11,7 @@ the autouse fixture in ``tests/conftest.py``; nothing here can reach the
 developer's real cache.
 """
 
+import difflib
 import json
 import logging
 import os
@@ -35,10 +36,20 @@ from agentless_mcp.application.patch_service import PatchService
 from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
-from agentless_mcp.core import cache, gitinfo, grammars, patchlint, refs
+from agentless_mcp.core import (
+    cache,
+    clones,
+    complexity,
+    fileparse,
+    gitinfo,
+    grammars,
+    patchlint,
+    refs,
+)
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import cachedir, filelock, fslimits, platforms
-from agentless_mcp.util.errors import CacheLocked, OperationFailed
+from agentless_mcp.util.errors import CacheLocked, OperationFailed, UnmeasurableSource
 
 CORE = '''\
 """Core."""
@@ -121,15 +132,21 @@ def services(extractor, counter):
 def spy(extractor, monkeypatch):
     """Record every path the extractor actually parses symbols out of, by either entry point."""
     parsed: list[str] = []
+    original = extractor.extract_from_source
 
-    for name in ("extract_from_source", "extract_facts"):
-        original = getattr(extractor, name)
+    def record(text, language, path):
+        parsed.append(path)
+        return original(text, language, path)
 
-        def record(text, language, path, _original=original):
-            parsed.append(path)
-            return _original(text, language, path)
+    # extract_facts and the index's one parse both build their facts here.
+    whole = extractor.facts_from_tree
 
-        monkeypatch.setattr(extractor, name, record)
+    def record_tree(tree, data, language, path):
+        parsed.append(path)
+        return whole(tree, data, language, path)
+
+    monkeypatch.setattr(extractor, "extract_from_source", record)
+    monkeypatch.setattr(extractor, "facts_from_tree", record_tree)
     return parsed
 
 
@@ -157,15 +174,15 @@ def parse_spy(extractor, monkeypatch):
 
         monkeypatch.setattr(extractor, name, record)
 
-    # One extract_facts call is one parse that yields every kind.
-    whole = extractor.extract_facts
+    # One facts_from_tree call is one parse that yields every kind.
+    whole = extractor.facts_from_tree
 
-    def record_all(text, language, path):
+    def record_all(tree, data, language, path):
         for paths in parsed.values():
             paths.append(path)
-        return whole(text, language, path)
+        return whole(tree, data, language, path)
 
-    monkeypatch.setattr(extractor, "extract_facts", record_all)
+    monkeypatch.setattr(extractor, "facts_from_tree", record_all)
     return parsed
 
 
@@ -337,15 +354,15 @@ class TestIncrementalTriad:
         error and a prune on the same summary line.
         """
         cache.build_index(repo, extractor)
-        original = extractor.extract_facts
+        original = extractor.facts_from_tree
 
-        def explode(text, language, path):
+        def explode(tree, data, language, path):
             if path == "billing.py":
                 message = "maximum recursion depth exceeded"
                 raise RecursionError(message)
-            return original(text, language, path)
+            return original(tree, data, language, path)
 
-        monkeypatch.setattr(extractor, "extract_facts", explode)
+        monkeypatch.setattr(extractor, "facts_from_tree", explode)
         (repo / "billing.py").write_text(BILLING + "\nEXTRA = 1\n", encoding="utf-8")
 
         report = cache.build_index(repo, extractor)
@@ -362,15 +379,15 @@ class TestIncrementalTriad:
         scan catches a named tuple of them, so one pathological file becomes an
         ``IndexFailure`` row and every other file is still indexed.
         """
-        original = extractor.extract_facts
+        original = extractor.facts_from_tree
 
-        def explode(text, language, path):
+        def explode(tree, data, language, path):
             if path == "billing.py":
                 message = "maximum recursion depth exceeded"
                 raise RecursionError(message)
-            return original(text, language, path)
+            return original(tree, data, language, path)
 
-        monkeypatch.setattr(extractor, "extract_facts", explode)
+        monkeypatch.setattr(extractor, "facts_from_tree", explode)
 
         report = cache.build_index(repo, extractor)
 
@@ -435,11 +452,11 @@ class TestIncrementalTriad:
         ids=lambda error: error.__name__,
     )
     def test_an_extractor_programming_defect_surfaces(self, repo, extractor, monkeypatch, error):
-        def defective(_text, _language, _path):
+        def defective(_tree, _data, _language, _path):
             message = "a renamed field"
             raise error(message)
 
-        monkeypatch.setattr(extractor, "extract_facts", defective)
+        monkeypatch.setattr(extractor, "facts_from_tree", defective)
 
         with pytest.raises(error, match="renamed field"):
             cache.build_index(repo, extractor)
@@ -1679,8 +1696,11 @@ class TestMigrationFromEveryOlderSchema:
         that never returns its pages is counted at its high-water mark and
         evicted for space it is not using.
         """
+        scratch = cache.build_index(repo, extractor).database
+        built_from_scratch = scratch.stat().st_size
+        for suffix in cache.DATABASE_SUFFIXES:
+            Path(f"{scratch}{suffix}").unlink(missing_ok=True)
         database = _write_historic_database(repo, version)
-        before = database.stat().st_size
 
         cache.build_index(repo, extractor)
 
@@ -1688,7 +1708,7 @@ class TestMigrationFromEveryOlderSchema:
             free = connection.execute("PRAGMA freelist_count").fetchone()[0]
             pages = connection.execute("PRAGMA page_count").fetchone()[0]
         assert free == 0
-        assert database.stat().st_size <= before
+        assert database.stat().st_size <= built_from_scratch
         assert pages > 0
 
     @pytest.mark.parametrize("version", OLDER_SCHEMA_VERSIONS)
@@ -2549,3 +2569,442 @@ class TestAScanReadsEachFileOnce:
 
         assert len(scan.files) == 3
         assert len(digested) == 3
+
+
+APP = """\
+def total(items, rate):
+    result = 0
+    for item in items:
+        if item.price > 0:
+            result += item.price * rate
+        else:
+            result -= item.refund
+    return result
+
+
+def summary(rows, factor):
+    value = 0
+    for row in rows:
+        if row.price > 0:
+            value += row.price * factor
+        else:
+            value -= row.refund
+    return value
+"""
+
+# A third copy of the pair above, under new names, for clone_delta to report.
+COPY = """
+
+def gross(lines, scale):
+    amount = 0
+    for line in lines:
+        if line.price > 0:
+            amount += line.price * scale
+        else:
+            amount -= line.refund
+    return amount
+"""
+
+WEB = """\
+export function pick(xs: number[]): number {
+  let best = 0;
+  for (const x of xs) {
+    if (x > best && x < 100) {
+      best = x;
+    }
+  }
+  return best;
+}
+"""
+
+TOOL = """\
+package main
+
+func Max(xs []int) int {
+\tbest := 0
+\tfor _, x := range xs {
+\t\tif x > best {
+\t\t\tbest = x
+\t\t}
+\t}
+\treturn best
+}
+"""
+
+BROKEN = "def good():\n    return 1\n\n\ndef bad(:\n"
+CONFIG = '{"a": 1}\n'
+APP_TEST = "def test_total():\n    assert total([], 1) == 0\n"
+# Every Python version's tokenizer rejects this dedent, and tree-sitter parses it.
+REJECTED = "def f():\n    if x:\n        pass\n  pass\n"
+METRIC_FILES = ("app.py", "broken.py", "rejects.py", "tests/test_app.py", "tool.go", "web.ts")
+
+
+@pytest.fixture
+def metrics_repo(tmp_path):
+    """Tier-1 files that measure, fail to parse, and fail to tokenize, and one tier-2 file."""
+    root = tmp_path / "metrics"
+    (root / "tests").mkdir(parents=True)
+    files = {
+        "app.py": APP,
+        "broken.py": BROKEN,
+        "rejects.py": REJECTED,
+        "tests/test_app.py": APP_TEST,
+        "tool.go": TOOL,
+        "web.ts": WEB,
+        "config.json": CONFIG,
+    }
+    for name, text in files.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return root
+
+
+def measured(function, *arguments):
+    try:
+        return function(*arguments)
+    except UnmeasurableSource as exc:
+        return ("unmeasurable", str(exc))
+
+
+def metric_arguments(root, path):
+    text = (root / path).read_text(encoding="utf-8")
+    return text, TreeSitterExtractor.SUPPORTED_EXTENSIONS[Path(path).suffix], path
+
+
+def both_metrics(source, root, path):
+    arguments = metric_arguments(root, path)
+    return measured(source.units_for, *arguments), measured(source.blocks_for, *arguments)
+
+
+def refuse(*_arguments):
+    message = "a metric was computed where the cache should have served it"
+    raise AssertionError(message)
+
+
+def recording(monkeypatch, module, name):
+    """Replace ``module.name`` with a wrapper that records the path of every call."""
+    calls = []
+    real = getattr(module, name)
+
+    def record(source, path, language):
+        calls.append(path)
+        return real(source, path, language)
+
+    monkeypatch.setattr(module, name, record)
+    return calls
+
+
+def metric_row(database, path):
+    with closing(sqlite3.connect(database)) as connection:
+        return connection.execute(
+            "SELECT stamp, language, units_reason, unit_count, blocks_reason, block_count, "
+            "sloc_lines FROM file_metrics JOIN files ON files.id = file_metrics.file_id "
+            "WHERE files.path = ?",
+            (path,),
+        ).fetchone()
+
+
+def run_sql(database, statement, *parameters):
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+        connection.execute(statement, parameters)
+
+
+class TestCachedMetrics:
+    def test_the_cache_serves_what_parsing_gives_and_parses_nothing(
+        self, metrics_repo, extractor, monkeypatch
+    ):
+        cache.build_index(metrics_repo, extractor)
+        on_demand = cache.OnDemandSource(extractor)
+        expected = {path: both_metrics(on_demand, metrics_repo, path) for path in METRIC_FILES}
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        monkeypatch.setattr(grammars, "get_parser", refuse)
+        monkeypatch.setattr(complexity, "measure", refuse)
+        monkeypatch.setattr(clones, "file_blocks", refuse)
+
+        served = {path: both_metrics(source, metrics_repo, path) for path in METRIC_FILES}
+
+        assert served == expected
+        assert served["app.py"][0]
+        assert served["app.py"][1].blocks
+
+    def test_a_failed_metric_keeps_its_reason_and_never_reads_as_empty(
+        self, metrics_repo, extractor
+    ):
+        report = cache.build_index(metrics_repo, extractor)
+
+        _, _, units_reason, unit_count, blocks_reason, block_count, sloc = metric_row(
+            report.database, "broken.py"
+        )
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+
+        assert "does not parse" in units_reason
+        assert "does not parse" in blocks_reason
+        assert (unit_count, block_count, sloc) == (0, 0, None)
+        with pytest.raises(UnmeasurableSource, match="does not parse"):
+            source.units_for(*metric_arguments(metrics_repo, "broken.py"))
+
+    def test_a_language_without_metrics_has_no_row_and_is_measured_on_demand(
+        self, metrics_repo, extractor
+    ):
+        report = cache.build_index(metrics_repo, extractor)
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        on_demand = cache.OnDemandSource(extractor)
+
+        assert metric_row(report.database, "config.json") is None
+        assert both_metrics(source, metrics_repo, "config.json") == both_metrics(
+            on_demand, metrics_repo, "config.json"
+        )
+
+    def test_an_unwarmed_file_has_no_metrics_row(self, metrics_repo, extractor, monkeypatch):
+        warmed = grammars.warmed_languages()
+        monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
+
+        report = cache.build_index(metrics_repo, extractor)
+
+        assert metric_row(report.database, "tool.go") is None
+        assert metric_row(report.database, "web.ts") is not None
+
+    def test_a_bumped_algorithm_is_a_miss_until_the_next_index_rewrites_it(
+        self, metrics_repo, extractor, monkeypatch
+    ):
+        cache.build_index(metrics_repo, extractor)
+        monkeypatch.setattr(fileparse, "METRICS_ALGORITHM", fileparse.METRICS_ALGORITHM + 1)
+        calls = recording(monkeypatch, complexity, "measure")
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+
+        source.units_for(*metric_arguments(metrics_repo, "app.py"))
+        rewritten = cache.build_index(metrics_repo, extractor)
+        again = cache.build_index(metrics_repo, extractor)
+
+        assert calls == ["app.py"]
+        assert (rewritten.indexed, rewritten.reused) == (len(METRIC_FILES), 1)
+        assert metric_row(rewritten.database, "app.py")[0] == fileparse.metrics_stamp("python")
+        assert (again.indexed, again.reused) == (0, len(METRIC_FILES) + 1)
+
+    def test_a_stamp_from_another_interpreter_is_a_miss(self, metrics_repo, extractor, monkeypatch):
+        report = cache.build_index(metrics_repo, extractor)
+        run_sql(report.database, "UPDATE file_metrics SET stamp = ?", "1/py2.7")
+        calls = recording(monkeypatch, clones, "file_blocks")
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+
+        source.blocks_for(*metric_arguments(metrics_repo, "app.py"))
+
+        assert calls == ["app.py"]
+
+    def test_another_language_is_a_miss(self, metrics_repo, extractor, monkeypatch):
+        cache.build_index(metrics_repo, extractor)
+        calls = recording(monkeypatch, complexity, "measure")
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        text, _, path = metric_arguments(metrics_repo, "app.py")
+
+        served = measured(source.units_for, text, "javascript", path)
+
+        assert calls == ["app.py"]
+        assert served == measured(complexity.measure, text, path, "javascript")
+
+    def test_a_short_row_set_is_a_miss_with_a_warning(
+        self, metrics_repo, extractor, monkeypatch, caplog
+    ):
+        report = cache.build_index(metrics_repo, extractor)
+        run_sql(
+            report.database,
+            "DELETE FROM units WHERE ordinal = 0 AND file_id = "
+            "(SELECT id FROM files WHERE path = 'app.py')",
+        )
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        on_demand = cache.OnDemandSource(extractor)
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
+            served = source.units_for(*metric_arguments(metrics_repo, "app.py"))
+
+        assert served == on_demand.units_for(*metric_arguments(metrics_repo, "app.py"))
+        assert "unit rows for app.py are unreadable" in caplog.text
+
+    def test_unreadable_sloc_lines_are_a_miss_with_a_warning(self, metrics_repo, extractor, caplog):
+        report = cache.build_index(metrics_repo, extractor)
+        run_sql(report.database, "UPDATE file_metrics SET sloc_lines = ?", '{"a": 1}')
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        on_demand = cache.OnDemandSource(extractor)
+
+        with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
+            served = source.blocks_for(*metric_arguments(metrics_repo, "app.py"))
+
+        assert served == on_demand.blocks_for(*metric_arguments(metrics_repo, "app.py"))
+        assert "block rows for app.py are unreadable" in caplog.text
+
+    def test_the_metric_tables_hold_only_columns_a_reader_selects(self, metrics_repo, extractor):
+        report = cache.build_index(metrics_repo, extractor)
+
+        with closing(sqlite3.connect(report.database)) as connection:
+            columns = {
+                table: {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+                for table in ("file_metrics", "units", "blocks")
+            }
+
+        assert columns == {
+            "file_metrics": {
+                "file_id",
+                "stamp",
+                "language",
+                "units_reason",
+                "unit_count",
+                "blocks_reason",
+                "block_count",
+                "sloc_lines",
+            },
+            "units": {
+                "file_id",
+                "ordinal",
+                "qualname",
+                "start_byte",
+                "end_byte",
+                "start_line",
+                "end_line",
+                "body_key",
+                "cc",
+                "sloc",
+            },
+            "blocks": {
+                "file_id",
+                "ordinal",
+                "start_line",
+                "end_line",
+                "type2_key",
+                "exact_key",
+                "is_function",
+                "tokens",
+            },
+        }
+
+    def test_a_re_indexed_file_leaves_no_metric_rows_behind(self, metrics_repo, extractor):
+        cache.build_index(metrics_repo, extractor)
+        (metrics_repo / "app.py").write_text(APP + COPY, encoding="utf-8")
+        (metrics_repo / "web.ts").unlink()
+
+        report = cache.build_index(metrics_repo, extractor)
+
+        with closing(sqlite3.connect(report.database)) as connection:
+            orphans = [
+                connection.execute(statement).fetchone()[0]
+                for statement in (
+                    "SELECT COUNT(*) FROM file_metrics WHERE file_id NOT IN (SELECT id FROM files)",
+                    "SELECT COUNT(*) FROM units WHERE file_id NOT IN (SELECT id FROM files)",
+                    "SELECT COUNT(*) FROM blocks WHERE file_id NOT IN (SELECT id FROM files)",
+                )
+            ]
+        assert orphans == [0, 0, 0]
+        assert metric_row(report.database, "app.py")[5] > 0
+
+
+# A v15 database whose core.py rows would pass this build's reuse check, stamp and all.
+def _seed_version_15(repo):
+    database = _seed_reusable_database(repo, 15)
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
+        connection.execute(
+            "INSERT INTO file_metrics (file_id, stamp, language, units_reason, unit_count, "
+            "blocks_reason, block_count, sloc_lines) "
+            "VALUES ((SELECT id FROM files WHERE path = 'core.py'), ?, 'python', NULL, 0, "
+            "NULL, 0, '[]')",
+            (fileparse.metrics_stamp("python"),),
+        )
+    return database
+
+
+class TestTheSixteenthSchema:
+    def test_a_version_15_database_is_rebuilt_rather_than_reused(self, repo, extractor):
+        database = _seed_version_15(repo)
+
+        report = cache.build_index(repo, extractor)
+
+        assert report.reused == 0, "rows from schema 15 were carried over"
+        with closing(sqlite3.connect(database)) as connection:
+            names = {row[0] for row in connection.execute("SELECT name FROM tags")}
+            assert _read_schema_version(connection) == cache.SCHEMA_VERSION == 16
+        assert STALE_TAG_NAME not in names
+        assert metric_row(database, "core.py")[3] > 0
+
+    def test_a_reader_discards_a_version_15_database(self, repo, extractor):
+        database = _seed_version_15(repo)
+
+        source = cache.open_source(repo, extractor, tree_oid=None)
+
+        assert "schema" in source.receipt
+        assert not database.exists()
+
+
+def _json_without_receipt(output):
+    document = json.loads(output)
+    document.pop("receipt")
+    return document
+
+
+class TestWarmEqualsCold:
+    """Every metric reader answers the same with the index as without it."""
+
+    def cold_then_warm(self, services, root, capsys, *arguments):
+        assert invoke(services, root, *arguments, "--no-cache") == EXIT_OK
+        cold = _json_without_receipt(capsys.readouterr().out)
+        assert invoke(services, root, "index") == EXIT_OK
+        capsys.readouterr()
+        assert invoke(services, root, *arguments) == EXIT_OK
+        warm = capsys.readouterr()
+        assert "fresh" in json.loads(warm.out)["receipt"]["cache"]
+        return cold, _json_without_receipt(warm.out)
+
+    def test_health(self, services, metrics_repo, capsys, monkeypatch):
+        cold, warm = self.cold_then_warm(services, metrics_repo, capsys, "health", "--json")
+        monkeypatch.setattr(complexity, "measure", refuse)
+        monkeypatch.setattr(clones, "file_blocks", refuse)
+
+        assert invoke(services, metrics_repo, "health", "--json") == EXIT_OK
+        served = _json_without_receipt(capsys.readouterr().out)
+
+        assert warm == cold
+        assert served == cold
+        assert cold["complexity"]["units"] > 0
+
+    def test_health_recomputes_only_the_file_that_changed(
+        self, services, metrics_repo, capsys, monkeypatch
+    ):
+        assert invoke(services, metrics_repo, "index") == EXIT_OK
+        (metrics_repo / "web.ts").write_text(WEB + "\nexport const two = 2;\n", encoding="utf-8")
+        capsys.readouterr()
+        assert invoke(services, metrics_repo, "health", "--json", "--no-cache") == EXIT_OK
+        cold = _json_without_receipt(capsys.readouterr().out)
+        calls = recording(monkeypatch, complexity, "measure")
+
+        assert invoke(services, metrics_repo, "health", "--json") == EXIT_OK
+
+        assert _json_without_receipt(capsys.readouterr().out) == cold
+        assert calls == ["web.ts"]
+
+    def test_the_lint_hook_form(self, services, metrics_repo, capsys, monkeypatch, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_text(APP + COPY, encoding="utf-8")
+        arguments = ("lint", "--path", "app.py", "--after", str(after))
+        arguments = (*arguments, "--only", "clone_delta", "--json")
+
+        cold, warm = self.cold_then_warm(services, metrics_repo, capsys, *arguments)
+        calls = recording(monkeypatch, clones, "file_blocks")
+        assert invoke(services, metrics_repo, *arguments) == EXIT_OK
+        served = _json_without_receipt(capsys.readouterr().out)
+
+        assert warm == cold
+        assert served == cold
+        assert calls == ["app.py", "app.py"], "only the two pair sides are parsed"
+        assert any(row["check"] == "clone_delta" for row in cold["candidates"][0]["findings"])
+
+    def test_lint_with_every_check(self, services, metrics_repo, capsys, tmp_path):
+        before = APP.splitlines(keepends=True)
+        diff = difflib.unified_diff(
+            before, (APP + COPY).splitlines(keepends=True), "a/app.py", "b/app.py"
+        )
+        patch = tmp_path / "copy.patch"
+        patch.write_text("".join(diff), encoding="utf-8")
+
+        cold, warm = self.cold_then_warm(
+            services, metrics_repo, capsys, "lint", "--diff", str(patch), "--json"
+        )
+
+        assert warm == cold
+        checks = {row["check"] for row in cold["candidates"][0]["findings"]}
+        assert "clone_delta" in checks

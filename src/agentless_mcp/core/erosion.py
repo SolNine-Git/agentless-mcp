@@ -310,13 +310,17 @@ def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> PairOutco
     return PairOutcome(_sorted([*rows, *gaps, *found]), observed)
 
 
-def clone_index(texts: Mapping[str, str], unread: Mapping[str, str]) -> CloneIndex:
-    """Index the clone blocks of each tier-1 text, keeping each file read or indexed in vain."""
+def clone_index(
+    texts: Mapping[str, str],
+    unread: Mapping[str, str],
+    blocks_of: Callable[[str, str, str], FileBlocks] = clones.file_blocks,
+) -> CloneIndex:
+    """Index each tier-1 text with ``blocks_of``, keeping each file read or indexed in vain."""
     files: dict[str, FileBlocks] = {}
     unindexed = dict(unread)
     for path, text in sorted(texts.items()):
         try:
-            files[path] = clones.file_blocks(text, path, _source_language(path))
+            files[path] = blocks_of(text, path, _source_language(path))
         except (UnmeasurableSource, LanguageUnavailable) as exc:
             unindexed[path] = str(exc)
     return CloneIndex(

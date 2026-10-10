@@ -15,6 +15,8 @@ from agentless_mcp.core.normalize import CLONE_IDENTIFIERS, CLONE_LITERALS, clon
 from agentless_mcp.util.errors import UnmeasurableSource
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
+# Every Python version's tokenizer rejects this dedent, and tree-sitter parses it.
+DEDENT_REJECTED = "def f():\n    if x:\n        pass\n  pass\n"
 
 # Hand-read from each fixture: the first two functions are a Type-2 pair (names
 # and literals changed), and the third is a near miss (one operator or one call).
@@ -215,7 +217,7 @@ class TestFailures:
             file_blocks("x = 1\ndef f(:\n", "a.py", "python")
 
     def test_a_file_the_tokenizer_rejects_is_unmeasurable(self):
-        source = (FIXTURES / "complexity_py" / "tokenize_rejects.py").read_text(encoding="utf-8")
+        source = DEDENT_REJECTED
         with pytest.raises(UnmeasurableSource, match="tokenizer rejects"):
             file_blocks(source, "a.py", "python")
 
@@ -333,10 +335,7 @@ class TestTheTreeForm:
         "source",
         [
             pytest.param("x = 1\ndef f(:\n", id="does-not-parse"),
-            pytest.param(
-                (FIXTURES / "complexity_py" / "tokenize_rejects.py").read_text(encoding="utf-8"),
-                id="tokenizer-rejects",
-            ),
+            pytest.param(DEDENT_REJECTED, id="tokenizer-rejects"),
         ],
     )
     def test_the_tree_form_fails_with_the_text_forms_message(self, source):

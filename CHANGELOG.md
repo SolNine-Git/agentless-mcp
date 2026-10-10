@@ -174,6 +174,24 @@
   candidates' reports are byte-identical. `capabilities` lists the check under
   the input kind `pairs+clones`.
 
+### Changed
+
+- **The tag cache stores complexity units and clone blocks.** One parse of
+  each tier-1 file now gives its symbols, imports, references, complexity
+  units, and clone blocks, and `index` stores all five. The cache schema moves
+  to 16, so the first `index` after the upgrade rebuilds the database. `health`
+  and `lint`'s clone index read the stored units and blocks when the file's
+  digest, grammar, and metric stamp still match, and compute them otherwise. A
+  file that cannot be measured keeps its reason in the cache. The answers do
+  not change: on mcp-local, `health --json` and `lint --since HEAD~5 --only
+  clone_delta --json` are identical with a fresh index, with `--no-cache`, and
+  on the previous build. With a fresh index, `health` takes 0.81 s against
+  2.12 s, and that lint run takes 0.28 s against 0.88 s. A cold `index` takes
+  4.41 s against 2.66 s, and the database grows from 14,106,624 to 16,678,912
+  bytes (median of 5 runs, `/usr/bin/time`). On Loc-Bench, `diffusers` indexes
+  in 20.89 s against 10.08 s and `moto` in 42.83 s against 32.04 s (median of
+  3).
+
 ## 0.9.1 -- 2026-10-09
 
 Fan-in tiers describe each occurrence, import aliases and package re-exports
