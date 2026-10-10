@@ -31,8 +31,12 @@ CONFIG_FILENAME = ".agentless-mcp.json"
 TEMP_PREFIX = "agentless-erosion-"
 LOG_VERSION = 1
 
+# Under the 15 s timeout in settings-example.json, so the hook ends a slow step itself
+# and logs that step's reason before Claude Code sends SIGTERM.
 DEADLINE_S = 10.0
+# Held back from the time of every subprocess, so the log record is still written.
 LOG_RESERVE_S = 0.5
+# A git timeout ends the call as degraded, so a hung git costs one edit at most this long.
 GIT_TIMEOUT_S = 2.0
 MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 MAX_CONFIG_BYTES = 64 * 1024

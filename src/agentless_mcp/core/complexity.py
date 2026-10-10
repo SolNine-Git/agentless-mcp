@@ -38,6 +38,8 @@ class Unit:
     cc: int
     sloc: int
 
+    # scb-check's formula, which the erosion parity goldens pin. Under the square root,
+    # length weighs less than branching.
     @property
     def mass(self) -> float:
         """Return cc times the square root of sloc."""
@@ -63,6 +65,8 @@ class UnitRules:
     units: frozenset[str]
     scopes: frozenset[str] = frozenset()
     bound: frozenset[str] = frozenset()
+    # The node kinds that name_of, binding_of, and owner_of look for. Only the
+    # grammar-name test reads this field, to check that those kinds exist.
     reads: frozenset[str] = frozenset()
     descend: frozenset[str] | None = None
     name_of: NameOf = _name_field

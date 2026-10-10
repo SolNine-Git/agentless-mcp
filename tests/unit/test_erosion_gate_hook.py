@@ -1142,4 +1142,5 @@ class TestTheHookAgreesWithThePackage:
 
         assert command["command"].endswith("agentless_erosion_gate.py")
         assert command["timeout"] == 15
+        assert command["timeout"] > hook.DEADLINE_S
         assert "onFailure" not in command

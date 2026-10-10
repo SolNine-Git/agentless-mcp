@@ -52,6 +52,7 @@ MATCH_NEW = "new"
 
 _Row = TypeVar("_Row")
 _Read = TypeVar("_Read")
+BlockKey = Callable[[Block], Hashable]
 
 
 @dataclass(frozen=True)
@@ -747,9 +748,6 @@ def _hit_finding(path: str, hit: Hit, key: DriftKey) -> PairFinding:
         evidence=MESSAGES.contract_evidence.format(**parts),
     )
     return PairFinding(finding, key)
-
-
-BlockKey = Callable[[Block], Hashable]
 
 
 def _source_language(path: str) -> str:

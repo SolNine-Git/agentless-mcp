@@ -37,6 +37,8 @@ NOT_ACTED_ON = "not acted on"
 CLASSES = (NOT_APPLIED, UNRESOLVED, UNOBSERVED, ACTED_ON, NOT_ACTED_ON)
 APPLIED_CLASSES = (UNOBSERVED, ACTED_ON, NOT_ACTED_ON)
 
+# The flip to block needs at least 50 applied findings of a check, and its precision
+# comes from a labeled sample of 30 of them.
 SAMPLE_SIZE = 30
 MIN_APPLIED = 50
 # Precision at or above 9/10, compared in integers so 27 of 30 meets the bar exactly.
