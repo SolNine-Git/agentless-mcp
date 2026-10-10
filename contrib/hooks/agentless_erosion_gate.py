@@ -28,6 +28,8 @@ ENV_BIN = "AGENTLESS_EROSION_BIN"
 ENV_LOG = "AGENTLESS_EROSION_LOG"
 BINARY_NAME = "agentless-mcp"
 CONFIG_FILENAME = ".agentless-mcp.json"
+CONFIG_NOT_REGULAR = f"{CONFIG_FILENAME} is not a readable regular file; ignored"
+CONFIG_OUTSIDE_ROOT = f"{CONFIG_FILENAME} resolves outside the repository root; ignored"
 TEMP_PREFIX = "agentless-erosion-"
 LOG_VERSION = 1
 
@@ -400,13 +402,11 @@ def _modes(root: Path, record: dict[str, object]) -> dict[str, str]:
 
 
 def _config_document(root: Path) -> tuple[dict[str, object] | None, list[str]]:
-    try:
-        with (root / CONFIG_FILENAME).open("rb") as handle:
-            raw = handle.read(MAX_CONFIG_BYTES + 1)
-    except FileNotFoundError:
+    raw, refusal = _config_bytes(root / CONFIG_FILENAME, root)
+    if refusal:
+        return None, [refusal]
+    if raw is None:
         return None, []
-    except OSError as error:
-        return None, [f"{CONFIG_FILENAME} was not read: {error}"]
     if len(raw) > MAX_CONFIG_BYTES:
         return None, [f"{CONFIG_FILENAME} is over {MAX_CONFIG_BYTES} bytes and was ignored"]
     try:
@@ -416,6 +416,27 @@ def _config_document(root: Path) -> tuple[dict[str, object] | None, list[str]]:
     if not isinstance(document, dict):
         return None, [f"{CONFIG_FILENAME} is not a JSON object and was ignored"]
     return document, []
+
+
+def _config_bytes(path: Path, root: Path) -> tuple[bytes | None, str]:
+    # Lint's rules (projectconfig.load): a regular file that resolves inside the repository.
+    # O_NONBLOCK keeps a FIFO from stalling the open; fstat tests the file actually opened.
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None, CONFIG_NOT_REGULAR if path.is_symlink() else ""
+    except OSError as error:
+        return None, f"{CONFIG_FILENAME} was not read: {error}"
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        return None, CONFIG_NOT_REGULAR
+    with os.fdopen(descriptor, "rb") as handle:
+        if not Path(os.path.realpath(path)).is_relative_to(root):
+            return None, CONFIG_OUTSIDE_ROOT
+        try:
+            return handle.read(MAX_CONFIG_BYTES + 1), ""
+        except OSError as error:
+            return None, f"{CONFIG_FILENAME} was not read: {error}"
 
 
 def repo_modes(document: Mapping[str, object] | None) -> tuple[dict[str, str], list[str]]:
