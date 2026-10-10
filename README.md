@@ -611,13 +611,20 @@ the binary's check list from `capabilities --json` and runs lint once more with
 the requested pair checks that the list names. When the binary is missing, the
 hook skips the call.
 
-`clone_delta` reads the clone blocks of every source file, so it is fast only
-with a fresh tag cache (`agentless-mcp index`, or the MCP server's background
-index). On one mcp-local file the hook takes 0.24 s with a fresh cache and
-0.84 s without one, against 0.21 s and 0.20 s for the two other checks alone
-(median of 5 interleaved runs, `/usr/bin/time`). The binary must have the same
-cache schema as the MCP server that keeps the cache fresh, because two builds
-with different schemas delete each other's database.
+`clone_delta` reads the clone blocks of every source file outside test and
+fixture paths, so it is fast only with a fresh tag cache (`agentless-mcp
+index`, or the MCP server's background index). An edit of a test or fixture
+file reads none of them and gets no `clone_delta` row. On one mcp-local file
+the hook takes 0.24 s with a fresh cache and 0.84 s without one, against 0.21 s
+and 0.20 s for the two other checks alone (median of 5 interleaved runs,
+`/usr/bin/time`). On diffusers@65ab105 without a cache, the hook-form lint of
+all three checks takes 6.31 s for a source file and 0.15 s for a test file (one
+run each). The clone index stops after 10 s and reports each file it did not
+reach in a `not_checked` row. The hook gives lint at most 9.5 s, so in a larger
+repository without a fresh cache the hook still logs the call as `degraded`.
+The binary must have the same cache schema as the MCP server that keeps the
+cache fresh, because two builds with different schemas delete each other's
+database.
 
 Install the gate in Claude Code:
 

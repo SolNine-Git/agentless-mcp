@@ -197,6 +197,7 @@ class MessageText:
     clone_index_gaps: str
     clone_index_gaps_evidence: str
     clone_index_unlisted: str
+    clone_index_stopped: str
     clone_new_copy: str
     clone_new_copy_evidence: str
     clone_and_more: str

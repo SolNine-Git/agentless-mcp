@@ -103,6 +103,7 @@
   "clone_index_gaps": "not checked: clone_delta did not index {count} of {total} repository files, so it does not see a copy of a block in them: {paths}.",
   "clone_index_gaps_evidence": "first: {path}: {reason}",
   "clone_index_unlisted": "not checked: clone_delta could not list the repository files ({reason}), so it compared the changed files only with each other.",
+  "clone_index_stopped": "stopped: the clone index reached its time budget before this file",
   "clone_new_copy": "lines {start}-{end} add a copy of a block, with names and literals ignored, and this repository now holds {count} copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.",
   "clone_new_copy_evidence": "also at {sites}",
   "clone_and_more": "{listed} and {count} more",

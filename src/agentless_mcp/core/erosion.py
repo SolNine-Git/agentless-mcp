@@ -276,6 +276,10 @@ def _no_reasons() -> Mapping[str, str]:
     return MappingProxyType({})
 
 
+def _unbounded() -> bool:
+    return True
+
+
 @dataclass(frozen=True)
 class CloneIndex:
     """The repository files clone_delta indexed, and why each other file was not, by path."""
@@ -366,11 +370,17 @@ def clone_index(
     texts: Mapping[str, str],
     unread: Mapping[str, str],
     blocks_of: Callable[[str, str, str], FileBlocks] = clones.file_blocks,
+    in_budget: Callable[[], bool] = _unbounded,
 ) -> CloneIndex:
-    """Index each tier-1 text with ``blocks_of``, keeping each file read or indexed in vain."""
+    """Index each tier-1 text with ``blocks_of`` until ``in_budget`` fails, keeping each gap."""
     files: dict[str, FileBlocks] = {}
     unindexed = dict(unread)
+    stopped = False
     for path, text in sorted(texts.items()):
+        stopped = stopped or not in_budget()
+        if stopped:
+            unindexed[path] = MESSAGES.clone_index_stopped
+            continue
         try:
             files[path] = blocks_of(text, path, _source_language(path))
         except (UnmeasurableSource, LanguageUnavailable) as exc:

@@ -281,6 +281,7 @@ MESSAGE_ARGUMENTS = {
     "clone_index_gaps": {"count": 2, "total": 40, "paths": "a.py, b.py"},
     "clone_index_gaps_evidence": {"path": "a.py", "reason": "skipped: over the cap"},
     "clone_index_unlisted": {"reason": "walk refused: more than 20000 files"},
+    "clone_index_stopped": {},
     "clone_new_copy": {"start": 10, "end": 14, "count": 2},
     "clone_new_copy_evidence": {"sites": "src/app/a.py:4"},
     "clone_and_more": {"listed": "a.py:4, b.py:9, c.py:2", "count": 3},

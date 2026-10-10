@@ -19,9 +19,10 @@ ten scans of the same unchanged tree.
 The pair checks in :mod:`agentless_mcp.core.erosion` compare each edited file's
 whole text before and after the change. A run that selects only pair checks
 skips the repository scan the patch checks need. ``clone_delta`` reads every
-tier-1 source file outside test and fixture paths for its index, and only a run
-that selects it reads them. Review mode reads the files changed since a commit
-from git and from the working tree.
+tier-1 source file outside test and fixture paths for its index, once per run,
+within a time budget. Only a run that selects it and changes a file in that
+scope reads them. Review mode reads the files changed since a commit from git
+and from the working tree.
 
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
@@ -30,13 +31,15 @@ write side refuses a partly-parsed patch whole and findings about the blocks
 that did parse would describe a patch that can never be applied.
 """
 
+import time
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from functools import reduce
+from functools import lru_cache, partial, reduce
 from pathlib import Path
 
 from agentless_mcp.application import render
+from agentless_mcp.application.graph_service import walk_budget
 from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
@@ -60,6 +63,7 @@ from agentless_mcp.core.gitchanges import Change, Side
 from agentless_mcp.core.patches import BlockError, Edit, EditOutcome, ParseResult, apply_edits
 from agentless_mcp.core.projectconfig import CONFIG_FILENAME, ProjectConfig
 from agentless_mcp.prompts import MESSAGES
+from agentless_mcp.util import deadline
 from agentless_mcp.util.errors import (
     InputUnreadable,
     OperationFailed,
@@ -116,13 +120,16 @@ class CheckInput(str, Enum):
     PAIRS_CLONES = "pairs+clones"
 
 
+CloneIndexSource = Callable[[], erosion.CloneIndex]
+
+
 @dataclass(frozen=True)
 class PairInput:
     """What one pair runner reads: the run's text pairs, config, clone index, and reported sites."""
 
     pairs: Sequence[erosion.TextPair]
     config: ProjectConfig
-    clones: erosion.CloneIndex | None = None
+    clones: CloneIndexSource | None = None
     reported: frozenset[tuple[str, int]] = frozenset()
 
 
@@ -159,7 +166,9 @@ def _clone_delta(run: PairInput) -> erosion.PairOutcome:
         message = "clone_delta needs the clone index, and the service built none for this run"
         raise RuntimeError(message)
     pairs = [pair for pair in run.pairs if in_metric_scope(pair.path)]
-    return erosion.clone_delta(pairs, run.clones, run.reported)
+    if not pairs:
+        return erosion.PairOutcome(())
+    return erosion.clone_delta(pairs, run.clones(), run.reported)
 
 
 CHECKS: tuple[LintCheck, ...] = (
@@ -216,7 +225,7 @@ class _Judged:
 @dataclass(frozen=True)
 class _PairChecks:
     runners: tuple[PairRunner, ...]
-    clones: erosion.CloneIndex | None = None
+    clones: CloneIndexSource | None = None
     reported: frozenset[tuple[str, int]] = frozenset()
 
 
@@ -331,12 +340,15 @@ def _select(names: Collection[str]) -> _Selection:
 
 
 def _pair_checks(root: Path, selection: _Selection, source: cache.FileSource) -> _PairChecks:
-    # The only place a run reads the whole repository for a pair check.
-    clones = _clone_index(root, source) if selection.clones else None
+    # The only place a run reads the whole repository for a pair check. The index is built
+    # on the first clone_delta call with a pair in scope, and every candidate shares it.
+    clones = lru_cache(maxsize=1)(partial(_clone_index, root, source)) if selection.clones else None
     return _PairChecks(runners=selection.pairs, clones=clones)
 
 
 def _clone_index(root: Path, source: cache.FileSource) -> erosion.CloneIndex:
+    started = time.monotonic()
+    budget = walk_budget(deadline.remaining())
     try:
         listed = treewalk.walk_repo(root)
     except (WalkBoundExceeded, RepoResolutionError) as exc:
@@ -352,7 +364,10 @@ def _clone_index(root: Path, source: cache.FileSource) -> erosion.CloneIndex:
         else:
             unread[repo_file.path] = _skip_reason(read)
     return erosion.clone_index(
-        texts, unread, lambda text, path, language: source.blocks_for(text, language, path)
+        texts,
+        unread,
+        lambda text, path, language: source.blocks_for(text, language, path),
+        in_budget=lambda: time.monotonic() - started < budget,
     )
 
 

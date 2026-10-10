@@ -9,6 +9,7 @@ file the reader skipped, which the report has to admit it never compared.
 
 import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -1200,6 +1201,89 @@ class TestCloneDeltaInTheService:
         )
 
         assert findings_of(service, clone_repo, text, CLONE_ONLY) == ()
+
+    def test_an_edit_outside_the_clone_scope_gives_no_row(self, service, make_git_repo, tmp_path):
+        root = make_git_repo(
+            {
+                "pkg/app.py": "def run(value):\n    return value\n",
+                "pkg/broken.py": "def broken(:\n    pass\n",
+                "tests/test_app.py": "def test_run():\n    assert True\n",
+            },
+            name="scope",
+        )
+        after = tmp_path / "after.py"
+        after.write_text("def test_run():\n    assert 1 == 1\n", encoding="utf-8")
+
+        (entry,) = service.lint_proposed(
+            resolve_repo(root, None), "tests/test_app.py", after, CLONE_ONLY
+        ).candidates
+
+        assert [row.message for row in entry.findings] == []
+
+    def test_an_edit_outside_the_clone_scope_never_builds_the_index(
+        self, service, clone_repo, monkeypatch, tmp_path
+    ):
+        def forbidden(*_arguments, **_keywords):
+            message = "an edit outside the clone scope must not read the repository for it"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(lint_service, "_clone_index", forbidden)
+        ctx = resolve_repo(clone_repo, None)
+        after = tmp_path / "after.py"
+        after.write_text(summed("more"))
+        added = add_file("tests/test_more.py", summed("more"))
+
+        candidate_rows = findings_of(service, clone_repo, added, CLONE_ONLY)
+        proposed = service.lint_proposed(ctx, "tests/test_app.py", after, CLONE_ONLY)
+        (clone_repo / "fixtures" / "sample.py").write_text(summed("more"))
+        reviewed = review(service, clone_repo, checks=CLONE_ONLY)
+
+        assert candidate_rows == ()
+        assert proposed.candidates[0].findings == ()
+        assert reviewed.findings == ()
+
+    def test_the_candidates_of_one_run_share_one_index(self, service, clone_repo, monkeypatch):
+        built = []
+        build = lint_service._clone_index
+
+        def counted(*arguments):
+            built.append(arguments)
+            return build(*arguments)
+
+        monkeypatch.setattr(lint_service, "_clone_index", counted)
+        candidates = [
+            candidate(f"{index:02}", add_file(f"lib{index}.py", summed(f"again{index}")))
+            for index in range(3)
+        ]
+
+        view = service.lint(resolve_repo(clone_repo, None), candidates, CLONE_ONLY)
+
+        assert len(built) == 1
+        assert [len(clone_rows(entry.findings)) for entry in view.candidates] == [1, 1, 1]
+
+    def test_the_index_stops_at_its_time_budget_with_one_row(
+        self, service, clone_repo, monkeypatch
+    ):
+        asked = []
+
+        def spent(remaining):
+            asked.append(remaining)
+            return 0.0
+
+        monkeypatch.setattr(lint_service, "walk_budget", spent)
+        monkeypatch.setattr(lint_service, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+
+        findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), CLONE_ONLY)
+
+        (row,) = findings
+        assert (row.check, row.severity) == (erosion.CHECK_CLONE_DELTA, "not_checked")
+        assert row.message.endswith(
+            "of 1 repository files, so it does not see a copy of a block in them: app.py."
+        )
+        assert row.evidence == (
+            "first: app.py: stopped: the clone index reached its time budget before this file"
+        )
+        assert asked == [None]
 
     def test_a_twin_only_under_a_test_or_fixture_path_is_not_seen(self, service, make_git_repo):
         root = make_git_repo(

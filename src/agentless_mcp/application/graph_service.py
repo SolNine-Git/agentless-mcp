@@ -89,8 +89,8 @@ DEFAULT_CYCLE_LIMIT = 20
 DEFAULT_COMMUNITY_LIMIT = 20
 DEFAULT_HEALTH_LIMIT = 20
 
-# The complexity walk stops at the lesser of this and half the call's remaining
-# allowance, so a large repository cannot cost the graph sections their answer.
+# The complexity walk and lint's clone index stop at the lesser of this and half the
+# call's remaining allowance, so a large repository cannot cost the rest of the answer.
 COMPLEXITY_BUDGET_SECONDS = 10.0
 
 # How many member paths one community lists before it elides. A community is
@@ -768,7 +768,7 @@ def _unit_stable_id(
 
 
 def walk_budget(remaining: float | None) -> float:
-    """Return the complexity walk's budget in seconds, given the call's remaining allowance."""
+    """Return a metric walk's budget in seconds, given the call's remaining allowance."""
     if remaining is None:
         return COMPLEXITY_BUDGET_SECONDS
     return max(0.0, min(COMPLEXITY_BUDGET_SECONDS, remaining / 2))

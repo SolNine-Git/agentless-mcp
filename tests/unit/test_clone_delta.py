@@ -334,6 +334,24 @@ class TestCoverage:
         with pytest.raises(ValueError, match="not a tier-1 source file"):
             clone_index({"notes.md": "# x"}, {})
 
+    def test_the_index_stops_when_its_budget_ends_and_counts_the_rest_as_gaps(self):
+        files = {f"{name}.py": total(name) for name in ("a", "b", "c", "d")}
+        answers = [True, True, False, True]
+
+        index = clone_index(files, {}, in_budget=lambda: answers.pop(0))
+        results = clone_delta([TextPair("e.py", None, total("e"))], index, frozenset()).findings
+
+        stopped = "stopped: the clone index reached its time budget before this file"
+        assert set(index.files) == {"a.py", "b.py"}
+        assert dict(index.unindexed) == {"c.py": stopped, "d.py": stopped}
+        assert answers == [True]
+        (row,) = gaps(results)
+        assert row.message.endswith(
+            "did not index 2 of 4 repository files, so it does not see a copy of a block in them: "
+            "c.py, d.py."
+        )
+        assert row.evidence == f"first: c.py: {stopped}"
+
     def test_the_index_reads_each_text_through_the_reader_it_is_given(self):
         seen = []
 
