@@ -468,6 +468,97 @@ class TestErosionKeys:
             ),
         )
 
+
+class TestBoundaryGlobs:
+    """`boundary_globs`: a bounded list of repo-relative globs, dropped with a warning."""
+
+    def test_valid_globs_are_kept_in_file_order(self, repo):
+        globs = ["src/*/adapters/**", "**/clients/*.py", "pages/[id].tsx"]
+        config = projectconfig.load(repo({"boundary_globs": globs}))
+
+        assert config.boundary_globs == tuple(globs)
+        assert config.warnings == ()
+        assert config.as_dict()["boundary_globs"] == globs
+
+    def test_absent_globs_are_empty(self, repo):
+        config = projectconfig.load(repo({"map_budget": 3000}))
+
+        assert config.boundary_globs == ()
+        assert config.as_dict()["boundary_globs"] == []
+
+    @pytest.mark.parametrize("value", ["src/**", {"glob": "src/**"}, 3, None])
+    def test_a_value_that_is_not_a_list_is_dropped(self, repo, value):
+        config = projectconfig.load(repo({"boundary_globs": value}))
+
+        assert config.boundary_globs == ()
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json must be a list of at most 64 "
+                "repo-relative globs, each at most 256 characters. The key is ignored."
+            ),
+        )
+
+    def test_a_list_over_the_cap_is_dropped_whole_not_clamped(self, repo):
+        config = projectconfig.load(repo({"boundary_globs": [f"src/m{i}/**" for i in range(65)]}))
+
+        assert config.boundary_globs == ()
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json holds 65 globs, over the 64 cap. "
+                "The key is ignored."
+            ),
+        )
+
+    def test_the_cap_itself_is_allowed(self, repo):
+        globs = [f"src/m{i}/**" for i in range(64)]
+        assert len(projectconfig.load(repo({"boundary_globs": globs})).boundary_globs) == 64
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            "",
+            "/abs/path/**",
+            "src\\adapters\\**",
+            "src//adapters",
+            "src/adapters/",
+            "./src/**",
+            "src/../secrets/**",
+            "src/\x00/**",
+            "src/\n/**",
+            "a" * 257,
+            7,
+            None,
+        ],
+        ids=[
+            "empty",
+            "absolute",
+            "backslash",
+            "empty-segment",
+            "trailing-slash",
+            "dot-segment",
+            "dotdot-segment",
+            "nul",
+            "newline",
+            "too-long",
+            "not-a-string",
+            "null",
+        ],
+    )
+    def test_a_bad_entry_is_dropped_and_the_others_kept(self, repo, entry):
+        config = projectconfig.load(repo({"boundary_globs": ["src/adapters/**", entry]}))
+
+        assert config.boundary_globs == ("src/adapters/**",)
+        assert config.warnings == (
+            (
+                "boundary_globs in .agentless-mcp.json: 1 entries are not repo-relative globs "
+                "of at most 256 characters. They are ignored."
+            ),
+        )
+
+    def test_a_glob_of_exactly_256_characters_is_kept(self, repo):
+        glob = "a" * 256
+        assert projectconfig.load(repo({"boundary_globs": [glob]})).boundary_globs == (glob,)
+
     def test_entries_that_name_no_gated_check_are_dropped_with_one_warning(self, repo):
         config = projectconfig.load(
             repo({"erosion_gate": {"complexity-delta": "block", "arity": "block"}})

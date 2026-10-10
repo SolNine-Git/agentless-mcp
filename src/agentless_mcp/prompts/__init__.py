@@ -5,7 +5,7 @@ prompts: they are read by a model, they are revised for how well they steer
 one, and revising them should not mean editing Python. They live in the JSON
 files beside this module and are loaded once, here, at import time.
 
-Four files, grouped by consumer:
+Five files, grouped by consumer:
 
 ``tool_descriptions.json``
     The MCP tool descriptions, keyed by tool name. These are the wire
@@ -32,6 +32,10 @@ Four files, grouped by consumer:
     application services down to ``core.cache`` and an enumerated list of
     them goes stale.
 
+``contract_rules.json``
+    The ``contract_drift`` rules: per rule, its languages, its tree-sitter
+    query, and the message its hits report. ``contract_rules`` parses it.
+
 Every value is validated against the keys the code consumes, so a rename in
 the JSON fails at startup rather than serving a blank description. Templates
 carry ``str.format`` fields and are formatted at the call site; the field sets
@@ -41,15 +45,18 @@ are pinned by ``tests/unit/test_prompts.py``.
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
+from agentless_mcp.prompts.contract_rules import ContractRule, load_contract_rules
 from agentless_mcp.prompts.loader import PromptDataError, load_mapping, load_record
 
 __all__ = [
+    "CONTRACT_RULES",
     "ENVELOPE",
     "MESSAGES",
     "PARAMETER_DESCRIPTIONS",
     "PARAMETER_NAMES",
     "TOOL_DESCRIPTIONS",
     "TOOL_NAMES",
+    "ContractRule",
     "EnvelopeText",
     "MessageText",
     "PromptDataError",
@@ -158,6 +165,16 @@ class MessageText:
     config_erosion_gate_not_object: str
     config_erosion_gate_mode: str
     config_erosion_gate_unknown: str
+    contract_no_boundary: str
+    contract_no_boundary_evidence: str
+    contract_no_rules: str
+    contract_old_not_measured: str
+    contract_new_not_measured: str
+    contract_new_hit: str
+    contract_evidence: str
+    config_boundary_globs_not_list: str
+    config_boundary_globs_too_many: str
+    config_boundary_globs_dropped: str
 
 
 # Every tool this server can register, across both published surfaces: the
@@ -246,3 +263,5 @@ PARAMETER_NAMES = (
 PARAMETER_DESCRIPTIONS: Mapping[str, str] = load_mapping(
     "parameter_descriptions.json", PARAMETER_NAMES
 )
+
+CONTRACT_RULES: tuple[ContractRule, ...] = load_contract_rules()

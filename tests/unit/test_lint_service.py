@@ -7,6 +7,8 @@ outside the repository, which took the whole run down with it, and a repository
 file the reader skipped, which the report has to admit it never compared.
 """
 
+import json
+
 import pytest
 
 from agentless_mcp.application import lint_service
@@ -258,8 +260,11 @@ class TestTheCheckRegistry:
         }
         assert registered == declared
 
-    def test_complexity_delta_is_the_one_pair_check(self):
-        assert lint_service.PAIR_CHECK_NAMES == (erosion.CHECK_COMPLEXITY_DELTA,)
+    def test_complexity_delta_and_contract_drift_are_the_pair_checks(self):
+        assert lint_service.PAIR_CHECK_NAMES == (
+            erosion.CHECK_COMPLEXITY_DELTA,
+            erosion.CHECK_CONTRACT_DRIFT,
+        )
 
     @pytest.mark.parametrize(
         ("needs", "runner"),
@@ -308,6 +313,7 @@ class TestOnlyPairChecksSkipTheScan:
         assert checks_in(findings) == [
             patchlint.CHECK_UNDECLARED_IMPORTS,
             erosion.CHECK_COMPLEXITY_DELTA,
+            erosion.CHECK_CONTRACT_DRIFT,
         ]
 
 
@@ -551,3 +557,90 @@ class TestTheHookForm:
     def test_a_patch_check_is_refused(self, service, erosion_repo, tmp_path):
         with pytest.raises(OperationFailed, match="--path runs only the pair checks"):
             self.proposed(service, erosion_repo, "app.py", tmp_path / "x.py", checks=("arity",))
+
+
+CONTRACT_ONLY = (erosion.CHECK_CONTRACT_DRIFT,)
+
+
+@pytest.fixture
+def boundary_repo(make_git_repo):
+    return make_git_repo(
+        {
+            ".agentless-mcp.json": json.dumps({"boundary_globs": ["adapters/**"]}),
+            "adapters/api.py": "def parse(data):\n    return data['items']\n",
+            "core.py": "def total(items):\n    return sum(items)\n",
+        },
+        name="boundary",
+    )
+
+
+class TestContractDrift:
+    def test_the_hook_form_reports_a_new_hit_in_a_boundary_module(
+        self, service, boundary_repo, tmp_path
+    ):
+        after = tmp_path / "after.py"
+        after.write_text("def parse(data):\n    return data.get('items', [])\n")
+
+        view = service.lint_proposed(
+            resolve_repo(boundary_repo, None), "adapters/api.py", after, CONTRACT_ONLY
+        )
+
+        (entry,) = view.candidates
+        (found,) = entry.findings
+        assert (found.check, found.severity) == (erosion.CHECK_CONTRACT_DRIFT, "warning")
+        assert found.location == "adapters/api.py:2"
+        assert found.detail == {
+            "rule": "get-default-empty",
+            "unit": "parse",
+            "capture": "data.get('items', [])",
+        }
+
+    def test_a_boundary_file_without_rules_carries_its_language(
+        self, service, boundary_repo, tmp_path
+    ):
+        after = tmp_path / "run.sh"
+        after.write_text("echo hi\n")
+
+        view = service.lint_proposed(
+            resolve_repo(boundary_repo, None), "adapters/run.sh", after, CONTRACT_ONLY
+        )
+
+        (entry,) = view.candidates
+        (gap,) = entry.findings
+        assert gap.severity == "not_checked"
+        assert gap.as_dict()["detail"] == {"reason": "no_rules_for_language", "language": "bash"}
+
+    def test_an_unreadable_side_carries_no_detail(self, service, boundary_repo, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_bytes(b"x = '\xff'\n")
+
+        view = service.lint_proposed(
+            resolve_repo(boundary_repo, None), "adapters/api.py", after, CONTRACT_ONLY
+        )
+
+        (entry,) = view.candidates
+        (gap,) = entry.findings
+        assert gap.severity == "not_checked"
+        assert "detail" not in gap.as_dict()
+
+    def test_an_edit_outside_the_boundary_gives_no_row(self, service, boundary_repo):
+        text = block("core.py", "    return sum(items)\n", "    return sum(items or [])\n")
+        assert findings_of(service, boundary_repo, text, CONTRACT_ONLY) == ()
+
+    def test_without_globs_a_candidate_gets_one_row_for_all_its_files(self, service, erosion_repo):
+        text = block("app.py", function("handle", 10), function("handle", 2)) + block(
+            "twice.py", "x = 1\n\nx = 1\n", "x = 1\n\nx = y or []\n"
+        )
+
+        (gap,) = findings_of(service, erosion_repo, text, CONTRACT_ONLY)
+
+        assert (gap.check, gap.severity, gap.location) == (
+            erosion.CHECK_CONTRACT_DRIFT,
+            "not_checked",
+            "(repository)",
+        )
+        assert gap.as_dict()["detail"] == {"reason": "no_boundary_globs"}
+
+    def test_without_globs_a_candidate_with_no_tier1_file_gets_no_row(self, service, erosion_repo):
+        text = block("config.yaml", "key: value\n", "key: other\n")
+        assert findings_of(service, erosion_repo, text, CONTRACT_ONLY) == ()

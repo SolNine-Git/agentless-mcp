@@ -627,8 +627,9 @@ class TestLint:
 
         assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
         out = capsys.readouterr().out
-        assert "clean: 1 not_checked" in out
+        assert "clean: 2 not_checked" in out
         assert "no pyproject.toml" in out
+        assert "contract_drift has no boundary modules to check" in out
         assert "[warning]" not in out
 
     def test_lint_has_a_json_form(self, services, repo_path, capsys, tmp_path):
@@ -941,7 +942,9 @@ class TestLintSelectionAndTheHookForm:
         assert code == EXIT_OK
         (entry,) = json.loads(capsys.readouterr().out)["candidates"]
         assert entry["id"] == "core.py"
-        (finding,) = entry["findings"]
+        finding, gap = entry["findings"]
+        assert (gap["check"], gap["severity"]) == ("contract_drift", "not_checked")
+        assert gap["detail"] == {"reason": "no_boundary_globs"}
         assert finding["check"] == "complexity_delta"
         assert finding["location"] == "core.py:15"
         assert finding["detail"] == {
@@ -961,8 +964,9 @@ class TestLintSelectionAndTheHookForm:
         invoke(services, repo_path, "lint", "--candidates", str(candidate), "--json")
 
         findings = json.loads(capsys.readouterr().out)["candidates"][0]["findings"]
-        assert findings
-        assert all("detail" not in finding for finding in findings)
+        patch_rows = [finding for finding in findings if finding["check"] != "contract_drift"]
+        assert patch_rows
+        assert all("detail" not in finding for finding in patch_rows)
 
     def test_only_pair_checks_over_candidates_drop_the_patch_rows(
         self, services, repo_path, tmp_path, capsys

@@ -36,6 +36,31 @@
   `complexity_delta`, `contract_drift`, or `clone_delta` to `off`, `advisory`,
   or `block` for the per-edit hook. A bad value is dropped with a warning, and
   `capabilities` shows both keys in the effective config.
+- **`lint` reports `contract_drift`.** The check warns when a change adds a
+  silent default or a swallowed error to a boundary module, a file that
+  `boundary_globs` matches. It runs 30 syntactic rules across 10 languages.
+  They are 22 tree-sitter query entries in `prompts/contract_rules.json`,
+  because javascript, typescript, and tsx share four. Examples are
+  `get-default-empty` (`data.get("items", [])`) and `except-pass`. Each hit is
+  keyed by its rule, the function that holds it, and its text with comments cut
+  out. Old and new keys are compared as multisets, so a hit the file already
+  had is not a finding, a renamed function keeps its hits, and a hit moved into
+  another function is a finding. With no `boundary_globs`, the check gives one
+  `not_checked` row per candidate that edits a tier-1 file. A boundary file in c
+  or bash gives one `not_checked` row, because those languages have no rules.
+  In JSON a finding carries `detail` (`rule`, `unit`, `capture`), and these two
+  rows carry `detail.reason` (`no_boundary_globs`, `no_rules_for_language`).
+  The hook form with `--only complexity_delta,contract_drift` takes 0.18 s
+  through `uv run` and 0.16 s through the installed console script on one
+  mcp-local file with `boundary_globs` set. `--only complexity_delta` takes
+  0.16 s on the same copy (median of 5 runs, `/usr/bin/time`). The lint golden
+  gains a candidate with two hits, and the three existing candidates' reports
+  are byte-identical.
+- **`boundary_globs` in `.agentless-mcp.json`.** It lists at most 64
+  repo-relative globs of at most 256 characters each. `*` matches within one
+  path segment, `**/` matches zero or more whole segments, and every other
+  character is literal. A list over the cap is ignored whole, and a bad entry
+  is dropped with a warning. `capabilities` shows the globs in force.
 
 ## 0.9.1 -- 2026-10-09
 

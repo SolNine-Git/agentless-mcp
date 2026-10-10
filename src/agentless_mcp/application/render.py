@@ -1313,8 +1313,8 @@ class LintFinding:
     line: int
     location: str
     evidence: str
-    # Machine-readable numbers behind a pair-check finding about one unit. JSON
-    # only, and absent from every other finding, so the existing shape holds.
+    # Machine-readable detail behind a pair-check row. JSON only, and absent
+    # from every other finding, so the existing shape holds.
     detail: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:

@@ -236,7 +236,8 @@ class TestDegradedInput:
         assert "because its text after the change cannot be measured" in found.finding.message
 
     def test_a_tokenizer_rejection_is_not_checked(self):
-        rejected = 'LABEL = "left\u2028right"\n\n\ndef f(a):\n    return a or 1\n'
+        # Every supported Python rejects this dedent. U+2028 is rejected from 3.12 on only.
+        rejected = "def f():\n    if x:\n        pass\n  pass\n"
         found = only(run(rejected, rejected + "\n"))
         assert found.finding.severity is Severity.NOT_CHECKED
         assert "tokenizer rejects this file" in found.finding.message
@@ -296,3 +297,172 @@ class TestScope:
             ("b.py", 1),
             ("b.py", 23),
         ]
+
+
+BOUNDARY = ("**/adapters/**",)
+API = "src/adapters/api.py"
+
+
+def drift(old, new, path=API, globs=BOUNDARY):
+    return erosion.contract_drift([TextPair(path, old, new)], globs)
+
+
+def parser(name, body):
+    return f"def {name}(data):\n    {body}\n"
+
+
+class TestContractDrift:
+    def test_without_globs_one_row_stands_for_every_pair(self):
+        pairs = [TextPair(f"{name}.py", "x = 1\n", "x = d.get(k, [])\n") for name in "abc"]
+
+        (gap,) = erosion.contract_drift(pairs, ())
+
+        assert gap.finding.check == erosion.CHECK_CONTRACT_DRIFT
+        assert gap.finding.severity is Severity.NOT_CHECKED
+        assert gap.finding.location == "(repository)"
+        assert "has no boundary modules to check" in gap.finding.message
+        assert gap.finding.evidence == "boundary_globs is empty"
+        assert gap.detail.as_dict() == {"reason": "no_boundary_globs"}
+
+    def test_without_globs_and_without_pairs_there_is_no_row(self):
+        assert erosion.contract_drift([], ()) == ()
+
+    def test_a_file_outside_the_globs_gives_no_row(self):
+        assert drift("x = 1\n", "x = d.get(k, [])\n", path="src/core/model.py") == ()
+
+    @pytest.mark.parametrize(
+        ("path", "language", "text"),
+        [("src/adapters/io.c", "c", "int x;\n"), ("src/adapters/run.sh", "bash", "echo hi\n")],
+    )
+    def test_a_boundary_file_in_a_language_without_rules_gives_one_row(self, path, language, text):
+        (gap,) = drift(text, text + text, path=path)
+
+        assert gap.finding.severity is Severity.NOT_CHECKED
+        assert gap.finding.path == path
+        assert gap.finding.message == (
+            f"not checked: contract_drift has no rules for {language}, so it did not check {path}."
+        )
+        assert gap.finding.evidence == language
+        assert gap.detail.as_dict() == {"reason": "no_rules_for_language", "language": language}
+
+    def test_an_unchanged_hit_is_not_a_finding(self):
+        text = parser("parse", 'return data.get("items", [])')
+        assert drift(text, text + "\nVERSION = 2\n") == ()
+
+    def test_a_new_hit_is_a_warning_at_its_line_with_its_key(self):
+        old = parser("parse", 'return data["items"]')
+        new = parser("parse", 'return data.get("items", [])')
+
+        (found,) = drift(old, new)
+
+        assert found.finding.severity is Severity.WARNING
+        assert found.finding.location == f"{API}:2"
+        assert found.finding.message.startswith(
+            'parse: data.get("items", []) is new in a boundary module (get-default-empty). '
+        )
+        assert found.finding.evidence == (
+            'rule get-default-empty; unit parse; capture data.get("items", [])'
+        )
+        assert found.detail.as_dict() == {
+            "rule": "get-default-empty",
+            "unit": "parse",
+            "capture": 'data.get("items", [])',
+        }
+
+    def test_a_second_copy_of_a_hit_in_one_unit_is_one_finding(self):
+        hit = 'a = data.get("k", [])'
+        old = parser("parse", hit)
+        new = parser("parse", f"{hit}\n    {hit}")
+
+        (found,) = drift(old, new)
+
+        assert found.finding.line == 3
+        assert found.detail.capture == 'data.get("k", [])'
+
+    def test_a_hit_moved_to_another_unit_is_new(self):
+        hit = 'items = data.get("items", [])'
+        old = parser("helper", f"{hit}\n    log(1)") + "\n" + parser("parse", "log(2)")
+        new = parser("helper", "log(1)") + "\n" + parser("parse", f"{hit}\n    log(2)")
+
+        (found,) = drift(old, new)
+
+        assert found.detail.unit == "parse"
+        assert found.finding.line == 5
+
+    def test_a_renamed_unit_keeps_its_hits(self):
+        body = 'return data.get("items", [])'
+        assert drift(parser("parse", body), parser("parse_items", body)) == ()
+
+    def test_a_hit_outside_every_unit_belongs_to_the_module(self):
+        (found,) = drift("CONFIG = {}\n", "CONFIG = LOADED or {}\n")
+        assert found.detail.unit == erosion.MODULE_UNIT
+        assert found.finding.message.startswith("<module>: LOADED or {} is new")
+
+    def test_a_new_file_reports_every_hit(self):
+        new = parser("parse", 'return data.get("items", [])') + "\nDEFAULTS = OVERRIDE or {}\n"
+        assert [found.detail.rule for found in drift(None, new)] == [
+            "get-default-empty",
+            "or-empty-default",
+        ]
+
+    def test_a_deleted_file_gives_nothing(self):
+        assert drift(parser("parse", 'return data.get("items", [])'), None) == ()
+
+    def test_a_comment_edit_inside_a_hit_is_not_new(self):
+        old = "try:\n    run()\nexcept KeyError:\n    pass  # old reason\n"
+        new = "try:\n    run()\nexcept KeyError:\n    pass  # a better reason\n"
+        assert drift(old, new) == ()
+
+    def test_a_crlf_file_reports_the_hit_line(self):
+        old = parser("parse", "return data").replace("\n", "\r\n")
+        new = parser("parse", "return data or {}").replace("\n", "\r\n")
+        (found,) = drift(old, new)
+        assert found.finding.line == 2
+
+    @pytest.mark.parametrize(
+        ("old", "new", "side"),
+        [("def f(:\n", "x = d or {}\n", "before"), ("x = 1\n", "def f(:\n", "after")],
+    )
+    def test_a_side_that_does_not_parse_gives_one_row(self, old, new, side):
+        (gap,) = drift(old, new)
+        assert gap.finding.severity is Severity.NOT_CHECKED
+        assert gap.finding.check == erosion.CHECK_CONTRACT_DRIFT
+        assert f"because its text {side} the change cannot be measured" in gap.finding.message
+        assert gap.finding.evidence == "UnmeasurableSource"
+        assert gap.detail is None
+
+    def test_one_unparsable_file_does_not_hide_a_hit_in_another(self):
+        results = erosion.contract_drift(
+            [
+                TextPair("adapters/broken.py", "def f(:\n", "def f(:\n    pass\n"),
+                TextPair("adapters/api.py", "x = 1\n", "x = d or []\n"),
+            ],
+            BOUNDARY,
+        )
+
+        hit, gap = results
+        assert (hit.finding.path, hit.finding.severity) == ("adapters/api.py", Severity.WARNING)
+        assert (gap.finding.path, gap.finding.severity) == (
+            "adapters/broken.py",
+            Severity.NOT_CHECKED,
+        )
+
+    def test_a_tokenizer_rejection_is_not_checked(self):
+        rejected = "def f():\n    if x:\n        pass\n  pass\n"
+        (gap,) = drift(rejected, rejected + "x = d or {}\n")
+        assert "tokenizer rejects this file" in gap.finding.message
+
+    def test_an_unavailable_grammar_is_not_checked(self, monkeypatch):
+        def cold(_source, _path, _language):
+            message = "python is not warmed"
+            raise LanguageUnavailable(message)
+
+        monkeypatch.setattr(complexity, "measure", cold)
+
+        (gap,) = drift("x = 1\n", "x = d or {}\n")
+        assert gap.finding.evidence == "LanguageUnavailable"
+        assert "python is not warmed" in gap.finding.message
+
+    def test_a_typescript_boundary_file_is_checked(self):
+        (found,) = drift("const a = x;\n", "const a = x ?? [];\n", path="web/adapters/api.ts")
+        assert found.detail.rule == "nullish-empty-default"

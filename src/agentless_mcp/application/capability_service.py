@@ -257,6 +257,7 @@ def _effective_config(config: projectconfig.ProjectConfig) -> tuple[tuple[str, o
             projectconfig.resolve(None, config.complexity_threshold, complexity.DEFAULT_THRESHOLD),
         ),
         ("erosion_gate", _gate_display(config.erosion_gate)),
+        ("boundary_globs", config.boundary_globs),
     )
 
 

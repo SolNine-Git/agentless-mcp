@@ -24,6 +24,7 @@ from agentless_mcp.application.lint_service import LintCandidateInput, LintServi
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.projectconfig import ProjectConfig
 from agentless_mcp.util.tokens import Chars4Counter
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -92,6 +93,35 @@ BRANCHING_CANDIDATE = """\
 """
 
 
+# One edit turns an except handler into `pass`, and one adds `or []`, both in
+# `reports.py`, the one boundary module `BOUNDARY` names.
+DEFAULTS_CANDIDATE = """\
+### reports.py
+<<<<<<< SEARCH
+            prices.cost_of(item.sku)
+        except LookupError:
+            missing.append(item.sku)
+=======
+            prices.cost_of(item.sku)
+        except LookupError:
+            pass
+>>>>>>> REPLACE
+
+### reports.py
+<<<<<<< SEARCH
+    rows = inventory.reorder_list()
+    summary = {
+=======
+    rows = inventory.reorder_list() or []
+    summary = {
+>>>>>>> REPLACE
+"""
+
+# No path, so the receipt names no config file. The other candidates edit no
+# hit, so this changes nothing in their reports.
+BOUNDARY = ProjectConfig(boundary_globs=("**/reports.py",))
+
+
 def context_for(repo: str) -> RepoContext:
     """A pinned context so the receipt does not depend on the working tree."""
     return RepoContext(
@@ -100,6 +130,7 @@ def context_for(repo: str) -> RepoContext:
         tree_oid="1111111f",
         dirty_count=0,
         note="",
+        config=BOUNDARY,
     )
 
 
@@ -118,6 +149,7 @@ def build_outputs() -> dict[str, str]:
             LintCandidateInput(id="01-renames", parsed=load_edits(RENAMING_CANDIDATE)),
             LintCandidateInput(id="02-calls", parsed=load_edits(CALLING_CANDIDATE)),
             LintCandidateInput(id="03-branches", parsed=load_edits(BRANCHING_CANDIDATE)),
+            LintCandidateInput(id="04-defaults", parsed=load_edits(DEFAULTS_CANDIDATE)),
         ],
     )
     return {
@@ -165,3 +197,11 @@ def test_the_branching_candidate_crosses_the_complexity_threshold():
     text = build_outputs()["lint.txt"]
     assert "[warning] complexity_delta  reports.py:55" in text
     assert "check_report_inputs: complexity 4 -> 11" in text
+
+
+def test_the_defaults_candidate_reports_two_contract_hits():
+    text = build_outputs()["lint.txt"]
+    assert "[warning] contract_drift  reports.py:61" in text
+    assert "check_report_inputs: except LookupError: pass is new in a boundary module" in text
+    assert "[warning] contract_drift  reports.py:71" in text
+    assert "summarise: inventory.reorder_list() or [] is new in a boundary module" in text

@@ -173,9 +173,9 @@ A new unit that no pass pairs is "new". In review mode (`--since`, D5.4), the bo
 
 ### D3. `contract_drift` check
 
-Scope: only files that match `boundary_globs` from `.agentless-mcp.json`. With no globs configured, the check emits one `not_checked` row ("no boundary modules configured") and nothing else. A global default would mostly flag correct internal defaults: 102 such patterns exist in mcp-local today, and many read internal data.
+Scope: only files that match `boundary_globs` from `.agentless-mcp.json`. With no globs configured, the check emits one `not_checked` row ("no boundary modules configured") per candidate that edits at least one tier-1 file, and nothing else. A candidate that edits no tier-1 file gets no row. A global default would mostly flag correct internal defaults: 102 such patterns exist in mcp-local today, and many read internal data. In JSON, this row carries `detail` `{"reason": "no_boundary_globs"}`, and the c and bash row carries `{"reason": "no_rules_for_language", "language": "<name>"}`, so a caller matches the reason and never the message.
 
-Rules: data, not code. One JSON file, `src/agentless_mcp/core/data/contract_rules.json`. Each rule has an `id`, `language`, a tree-sitter `query`, a `message`, and a `severity`. It is loaded once and validated eagerly: unknown keys fail, and every query must compile against its grammar in a unit test. New rules are a data change plus a fixture. This is how the rule set grows over time.
+Rules: data, not code. One JSON file, `src/agentless_mcp/prompts/contract_rules.json`, because each rule's message is a caller-facing string. Each rule has an `id`, `languages` (a list, so one query serves javascript, typescript, and tsx), a tree-sitter `query`, a `message`, and a `severity`. The prompts package loads it once at import and validates it eagerly: unknown keys fail, and every field is typed. Each rule language is checked at core import. The queries compile on first use per language, so the unit test that compiles every query against its grammar, with the predicate allowlist and the capture names, is the gate for rule wiring. New rules are a data change plus a fixture. This is how the rule set grows over time.
 
 **Rules are syntactic only.** A tree-sitter query sees syntax, not types or data flow. v1 has no rule that needs to know a value's type (for example that a Go result is an `error`), or whether a later line checks a result. Each rule id names the syntax it matches, not the intent behind it.
 
@@ -183,7 +183,7 @@ Rules: data, not code. One JSON file, `src/agentless_mcp/core/data/contract_rule
 
 **Delta key.** Each hit becomes the key `(rule_id, unit, capture)`:
 - `unit` is the qualname of the enclosing unit, taken from the D2 pairing so that a renamed unit keeps its old identity. A hit outside every unit uses `<module>`.
-- `capture` is the matched text with each run of whitespace collapsed to one space. Identifiers, receivers, and keys are kept, so `data.get("items", [])` and `resp.get("items", [])` are different keys.
+- `capture` is the matched text with its comment nodes cut out and each run of whitespace collapsed to one space. Identifiers, receivers, and keys are kept, so `data.get("items", [])` and `resp.get("items", [])` are different keys. A comment edit inside a hit does not change its key.
 
 Old and new keys are compared as multisets, like the comment gate's `new_findings` (`comment_rules.py:216-224`). Only new keys become findings, at `warning` severity. Because the key holds the unit, moving `data.get("items", [])` from an internal helper into a response parser in the same file is a new hit. A variable rename in a boundary module re-reports its hits. That cost is accepted, because those hits sit in a module that parses foreign data.
 
@@ -198,10 +198,10 @@ Initial rules (v1):
 | java | `catch-empty`, `catch-return-null`, `get-or-default-empty` |
 | ruby | `rescue-nil` (modifier and block), `fetch-default-empty`, `or-empty-default` |
 | lua | `or-empty-table` (`x or {}`), `pcall-statement` (`pcall(...)` as a whole statement, so its status is never read) |
+| cpp | `catch-all-empty` (`catch (...) {}`) |
+| c, bash | none in v1. C has no syntactic marker that separates a silent default from a deliberate one. Bash's `\|\| true` is usually deliberate. The check emits a `not_checked` row for these languages. Both reviews recommend this, and the user confirmed it (Q2). |
 
 Dropped from revision 1, because a query cannot tell the cases apart: Go `error-discarded` (`value, _ := f()` parses the same whether `_` drops an error or a count), Rust `let-underscore-result` (`let _ = f()` holds no type), and Lua `pcall-unchecked` (it needs data flow to a later line).
-| cpp | `catch-all-empty` (`catch (...) {}`) |
-| c, bash | none in v1. C has no syntactic marker that separates a silent default from a deliberate one. Bash's `\|\| true` is usually deliberate. The check emits a `not_checked` row for these languages. Both reviews recommend this. Open question Q2. |
 
 ### D4. `clone_delta` check
 
@@ -376,7 +376,7 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 - [ ] Add Python parity tests and hand goldens for the other 11 languages
 - [ ] Add the check registry and `--only` to `lint`; add `TextPair`, the candidate pair path, and the `--path/--after` hook form
 - [ ] Add `complexity_delta` with the three-pass matching and message text per D2
-- [ ] Add `contract_drift`, `core/data/contract_rules.json`, the eager loader, the glob matcher, and rule fixtures (positive and negative)
+- [ ] Add `contract_drift`, `prompts/contract_rules.json`, the eager loader, the glob matcher, and rule fixtures (positive and negative)
 - [ ] Add `complexity_threshold`, `boundary_globs`, and `erosion_gate` to project config and `capabilities`
 - [ ] Update check-count text, the agent guide lint section, `test_guide.py` heading counts, and the CHANGELOG
 - [ ] Write `contrib/hooks/agentless_erosion_gate.py`, its tests, and `erosion_gate_report.py`
@@ -393,9 +393,10 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 
 New:
 - `src/agentless_mcp/core/complexity.py`: unit walk, per-language tables, SLOC, mass, erosion
-- `src/agentless_mcp/core/contracts.py`: rule loader, glob matcher, and query matcher
+- `src/agentless_mcp/core/contracts.py`: rule index, query compiler, glob matcher, and query matcher
 - `src/agentless_mcp/core/erosion.py`: `TextPair` and the three pair checks (`complexity_delta`, `contract_drift`, `clone_delta`), returning `patchlint.Finding` rows so rendering stays shared
-- `src/agentless_mcp/core/data/contract_rules.json`: rule data
+- `src/agentless_mcp/prompts/contract_rules.json`: rule data
+- `src/agentless_mcp/prompts/contract_rules.py`: the eager rule-file parser and its typed record
 - `contrib/hooks/agentless_erosion_gate.py`: per-edit hook
 - `contrib/hooks/erosion_gate_report.py`: log analysis for D9
 - `scripts/scb_parity_goldens.py`: development-time reference generator
@@ -470,8 +471,8 @@ Edge cases to test:
 ## Open Questions
 
 1. **Q1, case arms**: RESOLVED 2026-10-09. Non-Python languages count each non-default case arm (McConnell). Python keeps scb-check's rule for parity.
-2. **Q2, c and bash contract rules**: ship v1 with a `not_checked` row for these two languages, or define narrow rules now (for example Bash `|| true` on a command whose output a later line parses)? **Both reviews recommend `not_checked` for v1.** The Bash example needs data flow to a later line, which a query-only rule set cannot see (D3, "Rules are syntactic only"). In C, a returned `NULL` or status code is ordinary control flow. Narrow rules can follow once each has positive and negative fixtures. Awaiting the user.
-3. **Q3, boundary default**: keep `boundary_globs` empty by default (the check is off until configured), or default to a conventional set such as `**/adapters/**` and `**/infrastructure/**`? **Both reviews recommend empty.** A directory name does not show that a module parses foreign data. The research report separates foreign-response defaults from correct internal defaults inside the same repositories (research report section 3.2). The `not_checked` row ("no boundary modules configured") keeps the off state visible. Awaiting the user.
+2. **Q2, c and bash contract rules**: ship v1 with a `not_checked` row for these two languages, or define narrow rules now (for example Bash `|| true` on a command whose output a later line parses)? **Both reviews recommend `not_checked` for v1.** The Bash example needs data flow to a later line, which a query-only rule set cannot see (D3, "Rules are syntactic only"). In C, a returned `NULL` or status code is ordinary control flow. Narrow rules can follow once each has positive and negative fixtures. RESOLVED 2026-10-09: the user accepted the recommendation.
+3. **Q3, boundary default**: keep `boundary_globs` empty by default (the check is off until configured), or default to a conventional set such as `**/adapters/**` and `**/infrastructure/**`? **Both reviews recommend empty.** A directory name does not show that a module parses foreign data. The research report separates foreign-response defaults from correct internal defaults inside the same repositories (research report section 3.2). The `not_checked` row ("no boundary modules configured") keeps the off state visible. RESOLVED 2026-10-09: the user accepted the recommendation.
 4. **Q4, Strict scoping**: RESOLVED 2026-10-09. The user approved amending `~/.claude/CLAUDE.md` so that a refactor of the function being edited is in scope. The hook's block message relies on this.
 
 ## Review Record

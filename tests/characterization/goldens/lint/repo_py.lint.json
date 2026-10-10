@@ -96,6 +96,48 @@
           }
         }
       ]
+    },
+    {
+      "id": "04-defaults",
+      "findings": [
+        {
+          "check": "undeclared_imports",
+          "severity": "not_checked",
+          "message": "not checked: the repository has no pyproject.toml or requirements file",
+          "path": "",
+          "line": 0,
+          "location": "(repository)",
+          "evidence": "no dependency manifest found"
+        },
+        {
+          "check": "contract_drift",
+          "severity": "warning",
+          "message": "check_report_inputs: except LookupError: pass is new in a boundary module (except-pass). The handler drops the error, so a failure looks like success. Handle the error, or let it propagate.",
+          "path": "reports.py",
+          "line": 61,
+          "location": "reports.py:61",
+          "evidence": "rule except-pass; unit check_report_inputs; capture except LookupError: pass",
+          "detail": {
+            "rule": "except-pass",
+            "unit": "check_report_inputs",
+            "capture": "except LookupError: pass"
+          }
+        },
+        {
+          "check": "contract_drift",
+          "severity": "warning",
+          "message": "summarise: inventory.reorder_list() or [] is new in a boundary module (or-empty-default). A missing or falsy value reads as an empty container, so a changed response shape looks like no data. Check for the missing value in the parse step and raise there.",
+          "path": "reports.py",
+          "line": 71,
+          "location": "reports.py:71",
+          "evidence": "rule or-empty-default; unit summarise; capture inventory.reorder_list() or []",
+          "detail": {
+            "rule": "or-empty-default",
+            "unit": "summarise",
+            "capture": "inventory.reorder_list() or []"
+          }
+        }
+      ]
     }
   ]
 }

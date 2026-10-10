@@ -1099,10 +1099,10 @@ diff with no context lines, a combined merge diff) is refused with its
 reason, and the candidate is not half-checked.
 
 **`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
-table below. An unknown name is a usage error (exit 2). `complexity_delta` is a
-pair check: it compares each edited file's whole text before and after the
-change. When `--only` names pair checks alone, `lint` reads only the edited
-files and does not scan the repository.
+table below. An unknown name is a usage error (exit 2). `complexity_delta` and
+`contract_drift` are pair checks: they compare each edited file's whole text
+before and after the change. When `--only` names pair checks alone, `lint`
+reads only the edited files and does not scan the repository.
 
 **`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
 `--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
@@ -1120,7 +1120,15 @@ that has no complexity rules gives no row.
 `complexity_delta` finding about one function also has `detail`: `unit` (the
 function's qualified name), `match` (`body`, `name`, `collision`, or `new`),
 `cc_old`, `cc_new`, `sloc_old`, `sloc_new`, and `threshold`. The old values are
-`null` for a new function. No other finding has `detail`, and the text form
+`null` for a new function. A `contract_drift` finding about one hit has
+`detail`: `rule` (the rule id), `unit` (the qualified name of the function
+that holds the hit, or `<module>`), and `capture` (the matched text). Two
+`contract_drift` `not_checked` rows also have `detail`, so a caller can match
+the reason without reading the message: `{"reason": "no_boundary_globs"}` when
+no `boundary_globs` is set, and `{"reason": "no_rules_for_language",
+"language": "c"}` (or `"bash"`) for a boundary file in a language with no
+rules. A row about text that was not read, does not parse, or cannot be
+measured has no `detail`. No other finding has `detail`, and the text form
 does not print it.
 
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
@@ -1140,6 +1148,42 @@ patch is right. This decides what to look at first.
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
 | `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function (or one moved from another file) arrives above it. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
+| `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the file already had is not a finding, and a renamed function keeps its hits. A hit that moves into another function is a finding |
+
+**`contract_drift` matches syntax, not types or data flow.** Each rule is a
+tree-sitter query, and the rule id names the syntax it matches. An empty value
+is matched by its exact text, so `[ ]` with a space is not `[]`. An empty body
+holds no statement, or one comment and no statement. Only the edited files
+that match `boundary_globs` are checked. The rules:
+
+| Language | Rule | Matches |
+|---|---|---|
+| python | `get-default-empty` | `x.get(k, d)` where `d` is `[]`, `{}`, `""`, `''`, or `0` |
+| python | `or-empty-default` | `x or []`, `x or {}` |
+| python | `getattr-default` | `getattr(o, name, default)` |
+| python | `except-return-default` | `return None`, `False`, `0`, `[]`, or `{}` directly in an `except` block |
+| python | `except-pass` | an `except` block that holds only `pass` |
+| javascript, typescript, tsx | `nullish-empty-default` | `x ?? []`, `x ?? {}` |
+| javascript, typescript, tsx | `or-empty-default` | `x \|\| []`, `x \|\| {}` |
+| javascript, typescript, tsx | `catch-return-default` | `return null`, `undefined`, `false`, `0`, `[]`, or `{}` directly in a `catch` block |
+| javascript, typescript, tsx | `catch-empty` | a `catch` with an empty body |
+| go | `err-check-returns-nil` | a `return` whose last value is `nil`, directly in `if err != nil { ... }` |
+| rust | `unwrap-or-default` | `.unwrap_or_default()` |
+| rust | `unwrap-or-empty` | `.unwrap_or(d)` where `d` is `vec![]`, `Vec::new()`, `String::new()`, another std collection's `new()`, `""`, `0`, or `Default::default()` |
+| rust | `ok-statement` | `.ok()` as a whole statement |
+| java | `catch-empty` | a `catch` with an empty body |
+| java | `catch-return-null` | `return null;` directly in a `catch` block |
+| java | `get-or-default-empty` | `m.getOrDefault(k, d)` where `d` is `""`, `0`, `List.of()`, `Set.of()`, `Map.of()`, a `Collections.empty*()` call, or a JDK collection built with `new X<>()` |
+| ruby | `rescue-nil` | `x rescue nil`, and a `rescue` clause whose body is only `nil` |
+| ruby | `fetch-default-empty` | `h.fetch(k, d)` where `d` is `[]`, `{}`, `""`, `''`, or `0` |
+| ruby | `or-empty-default` | `x \|\| []`, `x \|\| {}` |
+| lua | `or-empty-table` | `x or {}` |
+| lua | `pcall-statement` | `pcall(...)` as a whole statement, so its status is never read |
+| cpp | `catch-all-empty` | `catch (...)` with an empty body |
+
+c and bash have no rules. A boundary file in either language gives one
+`not_checked` row. With no `boundary_globs`, `contract_drift` gives one
+`not_checked` row per candidate that edits a tier-1 file, and nothing else.
 
 Two things the table cannot say.
 
@@ -1152,6 +1196,8 @@ at severity `not_checked` and names the reason:
 - a patch block that did not parse
 - edits that did not apply
 - a file whose text before or after the change was not read, or does not parse
+- a repository with no `boundary_globs`, for `contract_drift`
+- a boundary file in a language with no contract rules (c, bash)
 
 Silence would be the one dishonest outcome, because you cannot tell "checked
 and clean" from "never ran". `dangling_references` and `arity` need Python's
@@ -1406,7 +1452,8 @@ root. Every key is optional:
   "test_cmd": "pytest -q tests/unit",
   "relation_weights": false,
   "complexity_threshold": 10,
-  "erosion_gate": {"complexity_delta": "advisory"}
+  "erosion_gate": {"complexity_delta": "advisory"},
+  "boundary_globs": ["src/*/adapters/**", "**/clients/*.py"]
 }
 ```
 
@@ -1422,7 +1469,7 @@ two-character names, and never drop them.
 The file is repository content, and the tool treats it as such:
 
 - values are schema-checked and bounded
-- no key takes a path
+- no key names a file for the tool to read
 - unknown keys are warnings rather than errors
 - a malformed file degrades to "no config", with the reason in the receipt,
   instead of failing the call
@@ -1454,6 +1501,17 @@ three views. Three things are worth knowing before you set it:
 takes are `complexity_delta`, `contract_drift`, and `clone_delta`. It is for the
 per-edit erosion hook. `lint` ignores it, because `lint` never blocks. A bad
 entry is dropped with a warning, and `capabilities` shows the entries in force.
+
+`boundary_globs` lists the modules that parse foreign data, the only files
+`lint`'s `contract_drift` checks. It is empty by default. It holds at most 64
+globs of at most 256 characters each. Each glob matches a repo-relative path
+with `/` separators. `*` matches within one path segment. `**/` matches zero or
+more whole segments, and a final `/**` matches everything inside a directory,
+so `**/adapters/**` matches both `adapters/x.py` and `src/pkg/adapters/x.py`.
+Every other character is literal. A list longer than 64 is ignored whole. An
+entry that is not a repo-relative glob (empty, longer than 256 characters,
+absolute, holding `\`, a control character, or a `.`, `..`, or empty segment)
+is dropped with a warning. `capabilities` shows the globs in force.
 
 ## Token counting
 

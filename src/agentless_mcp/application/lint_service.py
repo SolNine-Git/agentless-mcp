@@ -126,6 +126,12 @@ def _complexity_delta(
     return erosion.complexity_delta(pairs, threshold)
 
 
+def _contract_drift(
+    pairs: Sequence[erosion.TextPair], config: ProjectConfig
+) -> tuple[erosion.PairFinding, ...]:
+    return erosion.contract_drift(pairs, config.boundary_globs)
+
+
 CHECKS: tuple[LintCheck, ...] = (
     LintCheck(patchlint.CHECK_UNDECLARED_IMPORTS, CheckInput.PATCH),
     LintCheck(patchlint.CHECK_SHADOWING, CheckInput.PATCH),
@@ -135,6 +141,7 @@ CHECKS: tuple[LintCheck, ...] = (
     LintCheck(patchlint.CHECK_ARITY, CheckInput.PATCH),
     LintCheck(patchlint.CHECK_CYCLE_DELTA, CheckInput.PATCH),
     LintCheck(erosion.CHECK_COMPLEXITY_DELTA, CheckInput.PAIRS, _complexity_delta),
+    LintCheck(erosion.CHECK_CONTRACT_DRIFT, CheckInput.PAIRS, _contract_drift),
 )
 CHECK_NAMES = tuple(check.name for check in CHECKS)
 PAIR_CHECK_NAMES = tuple(check.name for check in CHECKS if check.needs is CheckInput.PAIRS)

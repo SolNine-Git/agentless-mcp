@@ -224,6 +224,31 @@ MESSAGE_ARGUMENTS = {
         "count": 2,
         "checks": "complexity_delta, contract_drift, clone_delta",
     },
+    "contract_no_boundary": {"config": ".agentless-mcp.json"},
+    "contract_no_boundary_evidence": {},
+    "contract_no_rules": {"language": "bash", "path": "src/adapters/run.sh"},
+    "contract_old_not_measured": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse",
+    },
+    "contract_new_not_measured": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse",
+    },
+    "contract_new_hit": {
+        "unit": "parse_items",
+        "capture": 'data.get("items", [])',
+        "rule": "get-default-empty",
+        "why": "A missing key reads as an empty value.",
+    },
+    "contract_evidence": {
+        "rule": "get-default-empty",
+        "unit": "parse_items",
+        "capture": 'data.get("items", [])',
+    },
+    "config_boundary_globs_not_list": {"config": ".agentless-mcp.json", "limit": 64, "chars": 256},
+    "config_boundary_globs_too_many": {"config": ".agentless-mcp.json", "count": 65, "limit": 64},
+    "config_boundary_globs_dropped": {"config": ".agentless-mcp.json", "count": 2, "chars": 256},
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})

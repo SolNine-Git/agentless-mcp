@@ -70,5 +70,15 @@
   "lint_path_takes_pair_checks": "--path runs only the pair checks ({pair_checks}), because it supplies whole-file text and no patch. Remove {checks} from --only, or lint a patch with --candidates or --diff.",
   "config_erosion_gate_not_object": "erosion_gate in {config} must be an object that maps a check name to one of {modes}. The key is ignored.",
   "config_erosion_gate_mode": "erosion_gate.{check} in {config} must be one of {modes}. The entry is ignored.",
-  "config_erosion_gate_unknown": "erosion_gate in {config} holds {count} entries that name no gated check ({checks}). They are ignored."
+  "config_erosion_gate_unknown": "erosion_gate in {config} holds {count} entries that name no gated check ({checks}). They are ignored.",
+  "contract_no_boundary": "not checked: contract_drift has no boundary modules to check. Set boundary_globs in {config} to the globs of the modules that parse foreign data.",
+  "contract_no_boundary_evidence": "boundary_globs is empty",
+  "contract_no_rules": "not checked: contract_drift has no rules for {language}, so it did not check {path}.",
+  "contract_old_not_measured": "not checked: contract_drift did not compare {path}, because its text before the change cannot be measured. {reason}",
+  "contract_new_not_measured": "not checked: contract_drift did not compare {path}, because its text after the change cannot be measured. {reason}",
+  "contract_new_hit": "{unit}: {capture} is new in a boundary module ({rule}). {why}",
+  "contract_evidence": "rule {rule}; unit {unit}; capture {capture}",
+  "config_boundary_globs_not_list": "boundary_globs in {config} must be a list of at most {limit} repo-relative globs, each at most {chars} characters. The key is ignored.",
+  "config_boundary_globs_too_many": "boundary_globs in {config} holds {count} globs, over the {limit} cap. The key is ignored.",
+  "config_boundary_globs_dropped": "boundary_globs in {config}: {count} entries are not repo-relative globs of at most {chars} characters. They are ignored."
 }

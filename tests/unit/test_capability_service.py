@@ -301,6 +301,19 @@ class TestTheEffectiveConfigCoversEveryKey:
 
         assert resolved["erosion_gate"] == ("complexity_delta=block", "clone_delta=advisory")
 
+    def test_no_boundary_globs_are_shown_as_none(self):
+        resolved = dict(capability_service._effective_config(projectconfig.EMPTY))
+
+        assert resolved["boundary_globs"] == ()
+        assert capability_service._display(resolved["boundary_globs"]) == "none"
+
+    def test_configured_boundary_globs_are_listed(self):
+        config = projectconfig.parse({"boundary_globs": ["src/adapters/**", "**/clients/*.py"]})
+
+        resolved = dict(capability_service._effective_config(config))
+
+        assert resolved["boundary_globs"] == ("src/adapters/**", "**/clients/*.py")
+
 
 class TestTheInventoryIsComplete:
     """`_caps` says it lists every bound the services apply, so check it.

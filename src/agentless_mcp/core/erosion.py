@@ -5,20 +5,27 @@ so ``lint`` can run them without scanning the repository. Like every lint check
 they are advisory: nothing here blocks a change. This module opens no file.
 """
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 
-from agentless_mcp.core import complexity
+from agentless_mcp.core import complexity, contracts
 from agentless_mcp.core.complexity import Unit
+from agentless_mcp.core.contracts import Hit
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.patchlint import Finding, Severity
+from agentless_mcp.core.projectconfig import CONFIG_FILENAME
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import LanguageUnavailable, UnmeasurableSource
 
 CHECK_COMPLEXITY_DELTA = "complexity_delta"
+CHECK_CONTRACT_DRIFT = "contract_drift"
+
+MODULE_UNIT = "<module>"
+GAP_NO_BOUNDARY_GLOBS = "no_boundary_globs"
+GAP_NO_RULES = "no_rules_for_language"
 
 MATCH_BODY = "body"
 MATCH_NAME = "name"
@@ -61,11 +68,39 @@ class UnitDelta:
 
 
 @dataclass(frozen=True)
+class DriftKey:
+    """One contract hit's identity: the rule, the unit that holds it, and its normalized text."""
+
+    rule: str
+    unit: str
+    capture: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this key."""
+        return {"rule": self.rule, "unit": self.unit, "capture": self.capture}
+
+
+@dataclass(frozen=True)
+class DriftGap:
+    """Why contract_drift did not check a change by design, as a reason a caller can match."""
+
+    reason: str
+    language: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this gap, with ``language`` only when it names one."""
+        document: dict[str, Any] = {"reason": self.reason}
+        if self.language is not None:
+            document["language"] = self.language
+        return document
+
+
+@dataclass(frozen=True)
 class PairFinding:
-    """A pair-check finding, and its unit numbers when it is about one unit."""
+    """A pair-check finding, and the machine-readable detail behind it when it has one."""
 
     finding: Finding
-    detail: UnitDelta | None = None
+    detail: UnitDelta | DriftKey | DriftGap | None = None
 
 
 @dataclass(frozen=True)
@@ -88,11 +123,23 @@ def complexity_delta(pairs: Sequence[TextPair], threshold: int) -> tuple[PairFin
         language = pair_language(pair.path)
         if language is None or pair.new is None:
             continue
-        old_units = _units(pair.old, pair.path, language, MESSAGES.complexity_old_not_measured)
+        old_units = _units(
+            pair.old,
+            pair.path,
+            language,
+            MESSAGES.complexity_old_not_measured,
+            CHECK_COMPLEXITY_DELTA,
+        )
         if isinstance(old_units, PairFinding):
             findings.append(old_units)
             continue
-        new_units = _units(pair.new, pair.path, language, MESSAGES.complexity_new_not_measured)
+        new_units = _units(
+            pair.new,
+            pair.path,
+            language,
+            MESSAGES.complexity_new_not_measured,
+            CHECK_COMPLEXITY_DELTA,
+        )
         if isinstance(new_units, PairFinding):
             findings.append(new_units)
             continue
@@ -103,22 +150,46 @@ def complexity_delta(pairs: Sequence[TextPair], threshold: int) -> tuple[PairFin
     return tuple(sorted(findings, key=_order))
 
 
-def _units(text: str | None, path: str, language: str, gap: str) -> tuple[Unit, ...] | PairFinding:
+def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> tuple[PairFinding, ...]:
+    """Report each contract-rule hit a change adds to a file that one of ``globs`` matches."""
+    if not globs:
+        if not pairs:
+            return ()
+        message = MESSAGES.contract_no_boundary.format(config=CONFIG_FILENAME)
+        evidence = MESSAGES.contract_no_boundary_evidence
+        gap = DriftGap(GAP_NO_BOUNDARY_GLOBS)
+        return (_not_checked(CHECK_CONTRACT_DRIFT, "", message, evidence, gap),)
+    findings = [found for pair in pairs for found in _drift(pair, globs)]
+    return tuple(sorted(findings, key=_order))
+
+
+def _units(
+    text: str | None, path: str, language: str, gap: str, check: str
+) -> tuple[Unit, ...] | PairFinding:
     if text is None:
         return ()
     try:
         return complexity.measure(text, path, language)
     except (UnmeasurableSource, LanguageUnavailable) as exc:
-        return PairFinding(
-            Finding(
-                check=CHECK_COMPLEXITY_DELTA,
-                severity=Severity.NOT_CHECKED,
-                message=gap.format(path=path, reason=exc),
-                path=path,
-                line=0,
-                evidence=type(exc).__name__,
-            )
+        return _not_checked(
+            check, path, gap.format(path=path, reason=exc), evidence=type(exc).__name__
         )
+
+
+def _not_checked(
+    check: str, path: str, message: str, evidence: str, gap: DriftGap | None = None
+) -> PairFinding:
+    return PairFinding(
+        Finding(
+            check=check,
+            severity=Severity.NOT_CHECKED,
+            message=message,
+            path=path,
+            line=0,
+            evidence=evidence,
+        ),
+        gap,
+    )
 
 
 def _match(old_units: Sequence[Unit], new_units: Sequence[Unit]) -> list[_Match]:
@@ -225,3 +296,71 @@ def _unit_finding(path: str, match: _Match, threshold: int) -> PairFinding | Non
 def _order(found: PairFinding) -> tuple[str, int, str, str]:
     finding = found.finding
     return (finding.path, finding.line, finding.message, finding.evidence)
+
+
+def _drift(pair: TextPair, globs: Sequence[str]) -> list[PairFinding]:
+    language = pair_language(pair.path)
+    if language is None or pair.new is None or not contracts.in_boundary(pair.path, globs):
+        return []
+    if not contracts.rules_for(language):
+        message = MESSAGES.contract_no_rules.format(language=language, path=pair.path)
+        gap = DriftGap(GAP_NO_RULES, language)
+        return [_not_checked(CHECK_CONTRACT_DRIFT, pair.path, message, language, gap)]
+
+    old_units = _units(
+        pair.old, pair.path, language, MESSAGES.contract_old_not_measured, CHECK_CONTRACT_DRIFT
+    )
+    if isinstance(old_units, PairFinding):
+        return [old_units]
+    new_units = _units(
+        pair.new, pair.path, language, MESSAGES.contract_new_not_measured, CHECK_CONTRACT_DRIFT
+    )
+    if isinstance(new_units, PairFinding):
+        return [new_units]
+
+    old_hits = () if pair.old is None else contracts.hits(pair.old, language, old_units)
+    new_hits = contracts.hits(pair.new, language, new_units)
+    return _new_hits(pair.path, old_hits, new_hits, _identities(old_units, new_units))
+
+
+def _identities(old_units: Sequence[Unit], new_units: Sequence[Unit]) -> dict[int, str]:
+    # A new unit that `_match` pairs keeps its old name, so a rename moves no hit.
+    return {
+        match.new.start_byte: (match.new if match.old is None else match.old).qualname
+        for match in _match(old_units, new_units)
+    }
+
+
+def _new_hits(
+    path: str, old_hits: Sequence[Hit], new_hits: Sequence[Hit], identity: dict[int, str]
+) -> list[PairFinding]:
+    carried = Counter(
+        _key(hit, None if hit.unit is None else hit.unit.qualname) for hit in old_hits
+    )
+    fresh: list[PairFinding] = []
+    for hit in new_hits:
+        key = _key(hit, None if hit.unit is None else identity[hit.unit.start_byte])
+        if carried[key]:
+            carried[key] -= 1
+        else:
+            fresh.append(_hit_finding(path, hit, key))
+    return fresh
+
+
+def _key(hit: Hit, unit: str | None) -> DriftKey:
+    return DriftKey(
+        rule=hit.rule.id, unit=MODULE_UNIT if unit is None else unit, capture=hit.capture
+    )
+
+
+def _hit_finding(path: str, hit: Hit, key: DriftKey) -> PairFinding:
+    fields = {"rule": key.rule, "unit": key.unit, "capture": key.capture}
+    finding = Finding(
+        check=CHECK_CONTRACT_DRIFT,
+        severity=Severity(hit.rule.severity),
+        message=MESSAGES.contract_new_hit.format(why=hit.rule.message, **fields),
+        path=path,
+        line=hit.line,
+        evidence=MESSAGES.contract_evidence.format(**fields),
+    )
+    return PairFinding(finding, key)
