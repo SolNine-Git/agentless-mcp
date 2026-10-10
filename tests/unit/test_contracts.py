@@ -1,6 +1,8 @@
 """contract_drift's rule file, its compiled queries, the glob matcher, and the hits per text."""
 
+import itertools
 import json
+import re
 
 import pytest
 
@@ -660,3 +662,54 @@ class TestBoundaryGlobs:
 
     def test_no_globs_match_nothing(self):
         assert not in_boundary("a.py", [])
+
+    # The suite's per-test timeout fails a matcher that backtracks on these two.
+    def test_twenty_stars_in_one_segment_on_a_256_character_path(self):
+        glob = "a*" * 20 + "b"
+
+        assert not in_boundary("a" * 256, [glob])
+        assert in_boundary("a" * 255 + "b", [glob])
+
+    def test_twenty_stars_across_segments_on_a_256_character_path(self):
+        glob = "/".join(["**"] * 10) + "/b"
+        path = "/".join(["aa"] + ["a"] * 127)
+
+        assert len(path) == 256
+        assert not in_boundary(path, [glob])
+        assert in_boundary(path[:-1] + "b", [glob])
+
+    def test_the_matcher_agrees_with_the_regex_it_replaced(self):
+        globs = ["/".join(parts) for size in (1, 2, 3) for parts in product(GLOB_ELEMENTS, size)]
+        paths = ["/".join(parts) for size in (1, 2, 3, 4) for parts in product(SEGMENTS, size)]
+
+        disagree = [
+            (glob, path)
+            for glob in globs
+            for pattern in [regex_oracle(glob)]
+            for path in paths
+            if in_boundary(path, [glob]) != bool(pattern.fullmatch(path))
+        ]
+
+        assert disagree == []
+
+
+GLOB_ELEMENTS = ("**", "*", "a", "a*", "*a*", "a**", "")
+SEGMENTS = ("a", "b", "ab", "")
+
+
+def product(items, size):
+    return itertools.product(items, repeat=size)
+
+
+def regex_oracle(glob):
+    """The regex that in_boundary compiled before the segment matcher: its exact semantics."""
+    segments = glob.split("/")
+    last = len(segments) - 1
+    parts = []
+    for index, segment in enumerate(segments):
+        if segment == "**":
+            parts.append("[^/]+(?:/[^/]+)*" if index == last else "(?:[^/]+/)*")
+        else:
+            literal = "[^/]*".join(re.escape(piece) for piece in segment.split("*"))
+            parts.append(literal if index == last else f"{literal}/")
+    return re.compile("".join(parts))

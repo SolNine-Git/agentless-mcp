@@ -3,7 +3,7 @@
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from functools import cache, lru_cache
+from functools import cache
 from types import MappingProxyType
 
 from tree_sitter import Language, Node, Query, QueryCursor, QueryError
@@ -18,8 +18,7 @@ _HIT_CAPTURE = "hit"
 _PREDICATES = frozenset({"eq?", "not-eq?", "any-of?", "not-any-of?", "match?", "not-match?"})
 
 _PREDICATE_NAME = re.compile(r"\(#([A-Za-z-]+[?!])")
-_SOME_SEGMENTS_THEN_SLASH = "(?:[^/]+/)*"
-_ONE_OR_MORE_SEGMENTS = "[^/]+(?:/[^/]+)*"
+_GLOBSTAR = "**"
 
 
 @dataclass(frozen=True)
@@ -42,7 +41,8 @@ class Hit:
 
 def in_boundary(path: str, globs: Sequence[str]) -> bool:
     """Return whether the repo-relative POSIX ``path`` matches any of ``globs``."""
-    return any(_glob_pattern(glob).fullmatch(path) for glob in globs)
+    segments = path.split("/")
+    return any(_glob_matches(glob.split("/"), segments) for glob in globs)
 
 
 def rules_for(language: str) -> tuple[ContractRule, ...]:
@@ -153,15 +153,46 @@ def _comments(node: Node) -> Iterator[Node]:
         stack.extend(reversed(current.children))
 
 
-@lru_cache(maxsize=256)
-def _glob_pattern(glob: str) -> re.Pattern[str]:
-    segments = glob.split("/")
-    last = len(segments) - 1
-    parts: list[str] = []
-    for index, segment in enumerate(segments):
-        if segment == "**":
-            parts.append(_ONE_OR_MORE_SEGMENTS if index == last else _SOME_SEGMENTS_THEN_SLASH)
+def _glob_matches(elements: Sequence[str], segments: Sequence[str]) -> bool:
+    # reached[j]: the elements so far consume exactly segments[:j]. One pass per element,
+    # so the cost grows with glob length times path length and nothing backtracks.
+    reached = [True] + [False] * len(segments)
+    last = len(elements) - 1
+    for index, element in enumerate(elements):
+        if element == _GLOBSTAR:
+            reached = _globstar(reached, segments, final=index == last)
         else:
-            literal = "[^/]*".join(re.escape(piece) for piece in segment.split("*"))
-            parts.append(literal if index == last else f"{literal}/")
-    return re.compile("".join(parts))
+            reached = [False] + [
+                was and _segment_matches(element, segment)
+                for was, segment in zip(reached[:-1], segments, strict=True)
+            ]
+    return reached[-1]
+
+
+def _globstar(reached: Sequence[bool], segments: Sequence[str], *, final: bool) -> list[bool]:
+    # ** consumes whole non-empty segments: one or more at the end of a glob, any number inside.
+    spread = [False]
+    for j, segment in enumerate(segments, start=1):
+        spread.append(bool(segment) and (reached[j - 1] or spread[j - 1]))
+    if final:
+        return spread
+    return [was or more for was, more in zip(reached, spread, strict=True)]
+
+
+def _segment_matches(pattern: str, text: str) -> bool:
+    # A star stays inside one segment, so each piece between stars takes its leftmost
+    # place after the previous one, and no choice is ever undone.
+    pieces = pattern.split("*")
+    if len(pieces) == 1:
+        return pattern == text
+    head, *middle, tail = pieces
+    end = len(text) - len(tail)
+    if end < len(head) or not text.startswith(head) or not text.endswith(tail):
+        return False
+    position = len(head)
+    for piece in middle:
+        found = text.find(piece, position, end)
+        if found < 0:
+            return False
+        position = found + len(piece)
+    return True
