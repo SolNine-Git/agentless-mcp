@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 -- unreleased
 
 Fan-in tiers describe each occurrence, import aliases and package re-exports
 resolve to their definitions, and several answers that read as complete now
