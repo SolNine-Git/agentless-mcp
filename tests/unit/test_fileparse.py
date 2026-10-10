@@ -75,6 +75,10 @@ def canonical(value):
         return {entry.name: canonical(getattr(value, entry.name)) for entry in fields}
     if isinstance(value, Mapping):
         return {str(key): canonical(item) for key, item in sorted(value.items())}
+    return canonical_value(value)
+
+
+def canonical_value(value):
     if isinstance(value, (set, frozenset)):
         return sorted(canonical(item) for item in value)
     if isinstance(value, (list, tuple)):

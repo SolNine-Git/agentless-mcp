@@ -1,6 +1,7 @@
 """The erosion gate trial report: finding classes, the seeded sample, labels, and the verdict."""
 
 import csv
+import dataclasses
 import importlib.util
 import json
 import os
@@ -719,9 +720,8 @@ PINNED_ENV = (
 )
 
 
-def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make_git_repo):
-    root = make_git_repo({"pkg/app.py": SUMMED})
-    target = root / "pkg" / "app.py"
+def hook_env(tmp_path):
+    """The environment the real hook runs in, with its log and cache under tmp_path."""
     env = {name: os.environ[name] for name in PINNED_ENV if name in os.environ}
     env.update(
         PATH=GIT_DIR,
@@ -732,17 +732,28 @@ def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make
         AGENTLESS_EROSION_BIN=str(CLI),
         AGENTLESS_EROSION_LOG=str(tmp_path / "gate.jsonl"),
     )
-    transcript = tmp_path / "t1.jsonl"
+    return env
 
-    def edit(tool_use_id, old, new):
+
+@dataclasses.dataclass(frozen=True)
+class HookSession:
+    """One hook session's environment, transcript, repository, and edited file."""
+
+    env: dict
+    transcript: Path
+    root: Path
+    target: Path
+
+    def edit(self, tool_use_id, old, new):
+        """Send one Edit payload for the target through the real hook."""
         payload = {
             "session_id": "s1",
-            "transcript_path": str(transcript),
+            "transcript_path": str(self.transcript),
             "tool_use_id": tool_use_id,
             "tool_name": "Edit",
-            "cwd": str(root),
+            "cwd": str(self.root),
             "tool_input": {
-                "file_path": str(target),
+                "file_path": str(self.target),
                 "old_string": old,
                 "new_string": new,
                 "replace_all": False,
@@ -751,21 +762,33 @@ def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make
         subprocess.run(
             [sys.executable, str(HOOK)],
             input=json.dumps(payload).encode(),
-            env=env,
+            env=self.env,
             capture_output=True,
             check=True,
             timeout=60,
         )
 
-    last = "    return round(out, 2) if out else 0\n"
-    edit("toolu_a", last, last + PASTED)
-    target.write_text(SUMMED + PASTED, encoding="utf-8")
-    edit("toolu_b", PASTED, "")
+
+def write_tool_results(transcript, tool_use_ids):
+    """Write a transcript in which each tool call returned a result."""
     results = [
         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i}]}}
-        for i in ("toolu_a", "toolu_b")
+        for i in tool_use_ids
     ]
     transcript.write_text("\n".join(json.dumps(r) for r in results) + "\n", encoding="utf-8")
+
+
+def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make_git_repo):
+    root = make_git_repo({"pkg/app.py": SUMMED})
+    target = root / "pkg" / "app.py"
+    transcript = tmp_path / "t1.jsonl"
+    session = HookSession(hook_env(tmp_path), transcript, root, target)
+
+    last = "    return round(out, 2) if out else 0\n"
+    session.edit("toolu_a", last, last + PASTED)
+    target.write_text(SUMMED + PASTED, encoding="utf-8")
+    session.edit("toolu_b", PASTED, "")
+    write_tool_results(transcript, ("toolu_a", "toolu_b"))
 
     records = report.read_log(tmp_path / "gate.jsonl")
     classified = report.classify(records, report.read_transcripts(records))

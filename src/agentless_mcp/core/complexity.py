@@ -442,6 +442,11 @@ _LUA_BINDING_NAMES = frozenset({"identifier", "dot_index_expression"})
 
 
 def _lua_binding(node: Node) -> Node | None:
+    statement = _lua_assignment_of(node)
+    return None if statement is None else _lua_single_target(statement)
+
+
+def _lua_assignment_of(node: Node) -> Node | None:
     values = node.parent
     if values is None or values.type != "expression_list":
         return None
@@ -449,8 +454,10 @@ def _lua_binding(node: Node) -> Node | None:
     statement = values.parent
     if first is None or first.id != node.id or statement is None:
         return None
-    if statement.type != "assignment_statement":
-        return None
+    return statement if statement.type == "assignment_statement" else None
+
+
+def _lua_single_target(statement: Node) -> Node | None:
     targets = next((child for child in statement.children if child.type == "variable_list"), None)
     names = [] if targets is None else targets.children_by_field_name("name")
     if len(names) != 1 or names[0].type not in _LUA_BINDING_NAMES:
