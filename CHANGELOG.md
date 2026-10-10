@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`lint --fail-on SEVERITY[,SEVERITY...]` makes a finding fail the
+  command.** The severities are `warning`, `advisory`, and `not_checked`. A
+  finding with a listed severity exits 3, after the report is printed. Exit 1
+  still means the run failed, so CI can tell a broken run from a failed gate.
+  Without the flag, `lint` exits 0 on a run that happened, as before. An
+  unknown severity is a usage error (exit 2).
+
+### Changed
+
+- **The erosion checks share one path-scope rule.** Fixture paths are outside
+  every check, and `complexity_delta` now skips them too. Test paths are
+  outside `health`, `clone_delta`, and `contract_drift`, and `contract_drift`
+  now skips them too. `complexity_delta` keeps checking test paths, because
+  test code is maintained code. A `testdata` directory, the Go convention, now
+  counts as a fixture directory. On this repository, `lint --since d7f0c52`
+  no longer warns on `tests/characterization/fixtures/complexity_py/branches.py`
+  and `tokenize_rejects.py`. No golden changed.
+
+### Fixed
+
+- **The erosion gate hook reads `.agentless-mcp.json` with lint's rules.** The
+  hook opened the file with no checks, so a config symlinked from outside the
+  repository set the hook's modes but not lint's, and a FIFO at that path
+  stalled the hook. The hook now refuses anything but a regular file that
+  resolves inside the repository, with lint's warning text, and its open does
+  not block. A test builds a regular file, a symlink inside and one outside the
+  repository, a dangling symlink, a FIFO, and a directory, and asserts that the
+  hook and lint make the same decision with the same warning.
+
 ## 0.10.0 -- 2026-10-10
 
 ### Added

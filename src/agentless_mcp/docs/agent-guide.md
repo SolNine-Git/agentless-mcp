@@ -1273,9 +1273,17 @@ form does not print `observed`.
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
 `vote`.
 
-**Nothing here is a verdict.** The report has no ok field. No finding fails
-the command. `lint` exits 0 whatever it found. The tests decide whether a
-patch is right. This decides what to look at first.
+**Nothing here is a verdict.** The report has no ok field. By default no
+finding fails the command, and `lint` exits 0 whatever it found. The tests
+decide whether a patch is right. This decides what to look at first. For a CI
+gate, `--fail-on SEVERITY[,SEVERITY...]` (`warning`, `advisory`,
+`not_checked`) exits 3 when a finding has a listed severity, after the report
+is printed.
+
+**One path-scope rule.** Fixture paths, `testdata` directories included, are
+outside every check. Test paths are outside `clone_delta` and
+`contract_drift`, as they are outside `health`. `complexity_delta` checks test
+paths, because test code is maintained code.
 
 | Check | Severity | Fires when |
 |---|---|---|
@@ -1721,6 +1729,7 @@ pass the flag.
 | 0 | answered, including legitimately empty answers |
 | 1 | domain failure: no such symbol, unparsable file, walk bound exceeded |
 | 2 | usage or security: bad flag, no repository root, path or root refused |
+| 3 | a gate failed: `lint --fail-on` matched a finding |
 
 Answers go to stdout. Everything about the run goes to stderr. A failure
 never interleaves into a view that would then parse as a shorter answer.
