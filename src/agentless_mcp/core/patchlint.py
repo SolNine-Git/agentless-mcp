@@ -200,19 +200,8 @@ MAX_DUPLICATE_SITES = 3
 PYPROJECT_NAME = "pyproject.toml"
 REQUIREMENTS_GLOB = "requirements*.txt"
 
-# Failure modes a check may hit on hostile or merely odd input, each of which
-# must degrade that check rather than the whole report. Named explicitly
-# instead of catching Exception: an error class not in this list is a defect
-# in this module and must surface as one.
-#
-# Every member is something *foreign data* does, not something this module's
-# own code does wrong. `TypeError`, `KeyError`, `IndexError` and
-# `AttributeError` were members and are deliberately not: those are the four
-# classes a None dereference, an off-by-one or a renamed field raises, and
-# catching them turned a crash into a `not checked` line with no traceback
-# while the other checks reported a healthy-looking patch around it.
-# `UnicodeDecodeError` is a `ValueError` and is covered by it; a manifest or a
-# fragment that is not text arrives that way.
+# Named explicitly instead of catching Exception: an error class not in this list
+# is a defect in this module and must surface as one.
 DEGRADED_ERRORS: tuple[type[Exception], ...] = (
     AgentlessError,
     ValueError,
