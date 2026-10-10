@@ -8,6 +8,7 @@ module opens no file.
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cache, partial
 from typing import Final, TypeVar
 
 from agentless_mcp.core import clones, complexity
@@ -67,11 +68,14 @@ def parse_file(extractor: TreeSitterExtractor, text: str, language: str, path: s
         data = text.encode("utf-8")
         tree = extractor.parse(data, language)
         root = tree.root_node
+        # Both metrics read one SLOC pass. A tokenizer rejection is not cached, so each
+        # metric raises it again and keeps its own message.
+        lines = cache(partial(complexity.sloc_line_numbers, root, text, language))
         metrics = FileMetrics(
             stamp=stamp,
             language=language,
-            units=_measured(lambda: complexity.measure_tree(root, text, path, language)),
-            blocks=_measured(lambda: clones.file_blocks_tree(root, text, path, language)),
+            units=_measured(lambda: complexity.measure_tree(root, path, language, lines)),
+            blocks=_measured(lambda: clones.file_blocks_tree(root, path, language, lines)),
         )
         return ParsedFile(extractor.facts_from_tree(tree, data, language, path), metrics)
 

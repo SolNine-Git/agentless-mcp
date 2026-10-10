@@ -150,6 +150,29 @@ class TestOneParse:
 
         assert calls == ["python"]
 
+    @pytest.mark.parametrize(
+        ("source", "reads"),
+        [
+            pytest.param("def f(x):\n    if x:\n        return 1\n    return 2\n", 1, id="once"),
+            pytest.param("def f():\n    if x:\n        pass\n  pass\n", 2, id="rejected"),
+        ],
+    )
+    def test_the_sloc_lines_are_read_once_unless_the_tokenizer_rejects(
+        self, extractor, monkeypatch, source, reads
+    ):
+        calls = []
+        real = complexity.sloc_line_numbers
+
+        def counted(root, text, language):
+            calls.append(language)
+            return real(root, text, language)
+
+        monkeypatch.setattr(complexity, "sloc_line_numbers", counted)
+
+        parse_file(extractor, source, "python", "a.py")
+
+        assert len(calls) == reads
+
     def test_a_file_that_does_not_parse_keeps_its_facts_and_both_reasons(self, extractor):
         source = "def good():\n    return 1\n\ndef bad(:\n"
 

@@ -20,6 +20,7 @@ from agentless_mcp.util.errors import UnmeasurableSource
 DEFAULT_THRESHOLD: Final = 10
 
 NameOf = Callable[[Node], "Node | None"]
+SlocLines = Callable[[], tuple[int, ...]]
 
 
 @dataclass(frozen=True)
@@ -91,12 +92,17 @@ def measure(source: str, path: str, language: str) -> tuple[Unit, ...]:
     """Return every unit of source in source order, or raise UnmeasurableSource."""
     rules = _rules_for(path, language)
     root = grammars.get_parser(language).parse(source.encode("utf-8")).root_node
-    return _measured(root, source, path, language, rules)
+    return _measured(root, path, language, rules, lambda: sloc_line_numbers(root, source, language))
 
 
-def measure_tree(root: Node, source: str, path: str, language: str) -> tuple[Unit, ...]:
-    """Return what `measure` returns for source, from the root of its UTF-8 parse."""
-    return _measured(root, source, path, language, _rules_for(path, language))
+def measure_tree(root: Node, path: str, language: str, lines: SlocLines) -> tuple[Unit, ...]:
+    """Return what `measure` returns, from the root of its UTF-8 parse and its SLOC lines."""
+    return _measured(root, path, language, _rules_for(path, language), lines)
+
+
+def sloc_line_numbers(root: Node, source: str, language: str) -> tuple[int, ...]:
+    """Return the sorted SLOC lines of a parsed tier-1 source, or raise the tokenizer's error."""
+    return tuple(sorted(RULES[language].sloc_lines(source, root)))
 
 
 def erosion(units: Iterable[Unit], threshold: int = DEFAULT_THRESHOLD) -> float:
@@ -119,7 +125,7 @@ def _rules_for(path: str, language: str) -> LanguageRules:
 
 
 def _measured(
-    root: Node, source: str, path: str, language: str, rules: LanguageRules
+    root: Node, path: str, language: str, rules: LanguageRules, sloc: SlocLines
 ) -> tuple[Unit, ...]:
     if root.has_error:
         first = next(error_nodes(root))
@@ -127,7 +133,7 @@ def _measured(
         raise UnmeasurableSource(message)
 
     try:
-        lines = sorted(rules.sloc_lines(source, root))
+        lines = sloc()
     except (tokenize.TokenError, SyntaxError) as exc:
         message = MESSAGES.complexity_tokenizer_rejects.format(
             path=path, detail=_tokenizer_detail(exc)
@@ -167,7 +173,7 @@ def _last_line(node: Node) -> int:
     return node.end_point[0] + 1
 
 
-def _lines_within(lines: list[int], start: int, end: int) -> int:
+def _lines_within(lines: tuple[int, ...], start: int, end: int) -> int:
     return bisect.bisect_right(lines, end) - bisect.bisect_left(lines, start)
 
 

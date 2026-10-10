@@ -18,6 +18,7 @@ from typing import Final
 from tree_sitter import Node
 
 from agentless_mcp.core import complexity, grammars
+from agentless_mcp.core.complexity import SlocLines
 from agentless_mcp.core.extractor import error_nodes
 from agentless_mcp.core.normalize import clone_key
 from agentless_mcp.prompts import MESSAGES
@@ -74,13 +75,15 @@ def file_blocks(source: str, path: str, language: str) -> FileBlocks:
     """Return the clone blocks of ``source``, or raise UnmeasurableSource."""
     _require_rules(path, language)
     root = grammars.get_parser(language).parse(source.encode("utf-8")).root_node
-    return _indexed(root, source, path, language)
+    return _indexed(
+        root, path, language, lambda: complexity.sloc_line_numbers(root, source, language)
+    )
 
 
-def file_blocks_tree(root: Node, source: str, path: str, language: str) -> FileBlocks:
-    """Return what `file_blocks` returns for ``source``, from the root of its UTF-8 parse."""
+def file_blocks_tree(root: Node, path: str, language: str, lines: SlocLines) -> FileBlocks:
+    """Return what `file_blocks` returns, from the root of its UTF-8 parse and its SLOC lines."""
     _require_rules(path, language)
-    return _indexed(root, source, path, language)
+    return _indexed(root, path, language, lines)
 
 
 def clone_groups(files: Iterable[FileBlocks]) -> tuple[CloneGroup, ...]:
@@ -129,12 +132,12 @@ def _require_rules(path: str, language: str) -> None:
         raise UnmeasurableSource(message)
 
 
-def _indexed(root: Node, source: str, path: str, language: str) -> FileBlocks:
+def _indexed(root: Node, path: str, language: str, sloc: SlocLines) -> FileBlocks:
     if root.has_error:
         line = next(error_nodes(root)).start_point[0] + 1
         raise UnmeasurableSource(MESSAGES.clone_does_not_parse.format(path=path, line=line))
     try:
-        lines = tuple(sorted(complexity.RULES[language].sloc_lines(source, root)))
+        lines = sloc()
     except (tokenize.TokenError, SyntaxError) as exc:
         reason = exc.args[0] if exc.args else ""
         message = MESSAGES.clone_tokenizer_rejects.format(

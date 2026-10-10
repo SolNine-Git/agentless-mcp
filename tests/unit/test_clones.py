@@ -1,8 +1,9 @@
+from functools import partial
 from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import clones, erosion, grammars
+from agentless_mcp.core import clones, complexity, erosion, grammars
 from agentless_mcp.core.clones import (
     CANDIDATES,
     clone_groups,
@@ -322,12 +323,23 @@ def parsed(source, language):
     return grammars.get_parser(language).parse(source.encode("utf-8")).root_node
 
 
+def tree_form(source, path, language):
+    root = parsed(source, language)
+    lines = partial(complexity.sloc_line_numbers, root, source, language)
+    return file_blocks_tree(root, path, language, lines)
+
+
+def never_read():
+    message = "the tree form read the SLOC lines before it checked the tree"
+    raise AssertionError(message)
+
+
 class TestTheTreeForm:
     @pytest.mark.parametrize(("path", "language"), list(fixture_texts()))
     def test_the_tree_form_equals_the_text_form_on_every_fixture(self, path, language):
         text = path.read_text(encoding="utf-8")
 
-        from_tree = outcome(file_blocks_tree, parsed(text, language), text, path.name, language)
+        from_tree = outcome(tree_form, text, path.name, language)
 
         assert from_tree == outcome(file_blocks, text, path.name, language)
 
@@ -339,14 +351,18 @@ class TestTheTreeForm:
         ],
     )
     def test_the_tree_form_fails_with_the_text_forms_message(self, source):
-        from_tree = outcome(file_blocks_tree, parsed(source, "python"), source, "a.py", "python")
+        from_tree = outcome(tree_form, source, "a.py", "python")
 
         assert from_tree[0] == "unmeasurable"
         assert from_tree == outcome(file_blocks, source, "a.py", "python")
 
     def test_the_tree_form_names_a_language_with_no_table(self):
         with pytest.raises(UnmeasurableSource, match="no rules for language 'json'"):
-            file_blocks_tree(parsed(TOTAL, "python"), TOTAL, "a.json", "json")
+            file_blocks_tree(parsed(TOTAL, "python"), "a.json", "json", never_read)
+
+    def test_a_tree_that_does_not_parse_is_refused_before_the_lines_are_read(self):
+        with pytest.raises(UnmeasurableSource, match="does not parse"):
+            file_blocks_tree(parsed("def f(:\n", "python"), "a.py", "python", never_read)
 
     def test_the_tree_form_never_parses(self, monkeypatch):
         root = parsed(TOTAL, "python")
@@ -358,4 +374,5 @@ class TestTheTreeForm:
 
         monkeypatch.setattr(grammars, "get_parser", refuse)
 
-        assert file_blocks_tree(root, TOTAL, "a.py", "python") == expected
+        lines = complexity.sloc_line_numbers(root, TOTAL, "python")
+        assert file_blocks_tree(root, "a.py", "python", lambda: lines) == expected

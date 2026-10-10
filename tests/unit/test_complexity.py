@@ -1,11 +1,19 @@
 import dataclasses
 import sys
+from functools import partial
 from pathlib import Path
 
 import pytest
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.complexity import RULES, Unit, erosion, measure, measure_tree
+from agentless_mcp.core.complexity import (
+    RULES,
+    Unit,
+    erosion,
+    measure,
+    measure_tree,
+    sloc_line_numbers,
+)
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -288,12 +296,22 @@ def parsed(source, language):
     return grammars.get_parser(language).parse(source.encode("utf-8")).root_node
 
 
+def tree_form(source, path, language):
+    root = parsed(source, language)
+    return measure_tree(root, path, language, partial(sloc_line_numbers, root, source, language))
+
+
+def never_read():
+    message = "the tree form read the SLOC lines before it checked the tree"
+    raise AssertionError(message)
+
+
 class TestTheTreeForm:
     @pytest.mark.parametrize(("path", "language"), list(fixture_texts()))
     def test_the_tree_form_equals_the_text_form_on_every_fixture(self, path, language):
         text = path.read_text(encoding="utf-8")
 
-        from_tree = outcome(measure_tree, parsed(text, language), text, path.name, language)
+        from_tree = outcome(tree_form, text, path.name, language)
 
         assert from_tree == outcome(measure, text, path.name, language)
 
@@ -306,7 +324,7 @@ class TestTheTreeForm:
         ],
     )
     def test_the_tree_form_fails_with_the_text_forms_message(self, language, source):
-        from_tree = outcome(measure_tree, parsed(source, language), source, "a", language)
+        from_tree = outcome(tree_form, source, "a", language)
 
         assert from_tree[0] == "unmeasurable"
         assert from_tree == outcome(measure, source, "a", language)
@@ -315,7 +333,11 @@ class TestTheTreeForm:
         source = "x = 1\n"
 
         with pytest.raises(UnmeasurableSource, match="no rules for language 'yaml'"):
-            measure_tree(parsed(source, "python"), source, "a.yaml", "yaml")
+            measure_tree(parsed(source, "python"), "a.yaml", "yaml", never_read)
+
+    def test_a_tree_that_does_not_parse_is_refused_before_the_lines_are_read(self):
+        with pytest.raises(UnmeasurableSource, match="does not parse"):
+            measure_tree(parsed("def f(:\n", "python"), "a.py", "python", never_read)
 
     def test_the_tree_form_never_parses(self, monkeypatch):
         source = "def f(x):\n    if x:\n        return 1\n    return 2\n"
@@ -327,4 +349,18 @@ class TestTheTreeForm:
 
         monkeypatch.setattr(grammars, "get_parser", refuse)
 
-        assert rows(measure_tree(root, source, "a.py", "python")) == [("f", 1, 2, 4)]
+        lines = sloc_line_numbers(root, source, "python")
+        assert rows(measure_tree(root, "a.py", "python", lambda: lines)) == [("f", 1, 2, 4)]
+
+
+class TestSlocLineNumbers:
+    def test_the_lines_are_sorted_and_skip_comments_and_docstrings(self):
+        source = 'def f(x):\n    """Doc."""\n    # note\n\n    return x\n'
+
+        assert sloc_line_numbers(parsed(source, "python"), source, "python") == (1, 5)
+
+    def test_a_tokenizer_rejection_is_raised(self):
+        source = "def f():\n    if x:\n        pass\n  pass\n"
+
+        with pytest.raises(IndentationError):
+            sloc_line_numbers(parsed(source, "python"), source, "python")
