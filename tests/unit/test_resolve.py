@@ -1031,3 +1031,121 @@ class TestADeclarationSharingALineWithAReference:
 
         edges = edges_from(graph, "java:Uses.java::Uses.Helper", "Helper")
         assert [edge.target.path for edge in edges] == ["Helper.java"]
+
+
+LIB = {"lib.py": "def helper():\n    return 1\n"}
+
+
+def targets(graph, source, name):
+    return [(edge.target.node, edge.tier) for edge in edges_from(graph, source, name)]
+
+
+class TestAliasesAndReExports:
+    def test_an_aliased_import_binds_the_alias_to_the_original_definition(
+        self, tmp_path, extractor
+    ):
+        use = "from lib import helper as h\n\n\ndef real():\n    return h()\n"
+        _, graph = resolved(write(tmp_path, {**LIB, "use.py": use}), extractor)
+        assert targets(graph, "py:use.py::real", "h") == [
+            ("py:lib.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_package_re_export_is_followed_to_the_definition(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .lib import helper\n",
+            "pkg/lib.py": "def helper():\n    return 1\n",
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": "from pkg import helper\n\n\ndef caller():\n    return helper()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/lib.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_star_re_export_is_followed_inside_the_package(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .lib import *\n",
+            "pkg/lib.py": "def helper():\n    return 1\n",
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": "from pkg import helper\n\n\ndef caller():\n    return helper()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/lib.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_re_export_cycle_ends_without_a_binding(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "",
+            "pkg/a.py": "from .b import helper\n",
+            "pkg/b.py": "from .a import helper\n",
+            "use.py": "from pkg.a import helper\n\n\ndef caller():\n    return helper()\n",
+        }
+        resolver, _ = resolved(write(tmp_path, files), extractor)
+        assert resolver.resolve("helper", "use.py") is None
+
+    def test_a_same_file_definition_still_wins_over_an_alias(self, tmp_path, extractor):
+        use = (
+            "from lib import helper as h\n\n\ndef h():\n    return 2\n\n\n"
+            "def real():\n    return h()\n"
+        )
+        _, graph = resolved(write(tmp_path, {**LIB, "use.py": use}), extractor)
+        assert targets(graph, "py:use.py::real", "h") == [("py:use.py::h", resolve.Tier.SAME_FILE)]
+
+    def test_an_alias_of_another_module_binds_that_module(self, tmp_path, extractor):
+        files = {
+            **LIB,
+            "other.py": "def helper():\n    return 2\n",
+            "use.py": "from other import helper as h\n\n\ndef real():\n    return h()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::real", "h") == [
+            ("py:other.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_an_explicit_re_export_outranks_a_star_import_of_the_name(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .a import *\nfrom .b import helper\n",
+            "pkg/a.py": "__all__ = ['other']\n\n\ndef helper():\n    return 1\n",
+            "pkg/b.py": "def helper():\n    return 2\n",
+            "use.py": "from pkg import helper\n\n\ndef caller():\n    return helper()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/b.py::helper", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_star_re_export_does_not_carry_a_private_name(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .a import *\n",
+            "pkg/a.py": "def _helper():\n    return 1\n",
+            "other.py": "def _helper():\n    return 2\n",
+            "use.py": "from pkg import _helper\n\n\ndef caller():\n    return _helper()\n",
+        }
+        resolver, _ = resolved(write(tmp_path, files), extractor)
+        resolution = resolver.resolve("_helper", "use.py")
+        assert resolution is not None
+        assert resolution.tier is resolve.Tier.AMBIGUOUS
+
+    def test_a_module_attribute_follows_the_package_re_export(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .core import Array\n",
+            "pkg/core.py": "class Array:\n    pass\n",
+            "other.py": "class Array:\n    pass\n",
+            "use.py": "import pkg\n\n\ndef caller():\n    return pkg.Array()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "Array") == [
+            ("py:pkg/core.py::Array", resolve.Tier.IMPORTED)
+        ]
+
+    def test_a_wide_star_re_export_still_reaches_the_definition(self, tmp_path, extractor):
+        files = {f"pkg/m{n:02d}.py": f"def f{n:02d}():\n    return {n}\n" for n in range(40)}
+        files["pkg/m39.py"] += "\n\ndef helper():\n    return 0\n"
+        files["pkg/__init__.py"] = "".join(f"from .m{n:02d} import *\n" for n in range(40))
+        files["other.py"] = "def helper():\n    return 2\n"
+        files["use.py"] = "from pkg import helper\n\n\ndef caller():\n    return helper()\n"
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "helper") == [
+            ("py:pkg/m39.py::helper", resolve.Tier.IMPORTED)
+        ]

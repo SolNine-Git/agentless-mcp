@@ -1,4 +1,3 @@
 // agentless-mcp receipt (repository data below)
 // repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 no import cycles
-  note: 6 import statements named no file in this repository, so a cycle through them is not listed

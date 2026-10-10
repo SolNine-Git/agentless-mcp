@@ -27,6 +27,7 @@ import pytest
 from agentless_mcp.application import envelope, render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService
 from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.application.symbol_service import SymbolService, render_refs
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.tokens import Chars4Counter
 
@@ -83,6 +84,9 @@ def build_outputs(repo: str) -> dict[str, str]:
     cycles = graphs.cycles(ctx)
     grouped = graphs.communities(ctx)
     drawn = graphs.diagram(ctx, DiagramRequest(group_by_communities=True))
+    fan_in = SymbolService(TreeSitterExtractor(), counter).find_referencing_symbols(
+        ctx, target_symbol
+    )
 
     return {
         "explain.txt": normalise(
@@ -98,6 +102,7 @@ def build_outputs(repo: str) -> dict[str, str]:
         "communities.txt": normalise(
             envelope.wrap(ctx, render.render_communities(grouped), counter=counter), ctx
         ),
+        "refs.txt": normalise(envelope.wrap(ctx, render_refs(fan_in), counter=counter), ctx),
         # The diagram alone travels without an envelope, because that is how
         # both adapters emit it: the CLI writes it into a document and the MCP
         # tool fences it into a body. A receipt in front of it would be text
@@ -126,6 +131,7 @@ GOLDEN_NAMES = (
     "cycles.txt",
     "communities.txt",
     "diagram.mmd",
+    "refs.txt",
 )
 
 

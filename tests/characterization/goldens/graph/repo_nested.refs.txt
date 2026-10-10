@@ -1,0 +1,20 @@
+// agentless-mcp receipt (repository data below)
+// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+8 references to format_amount
+
+billing/invoice.py  (3 references, resolved-via-import)
+  stable ids: py:billing/invoice.py::<QualifiedName>
+  (module level) @7
+  [render_invoice] @55
+  [render_invoice] @57
+
+billing/ledger.py  (3 references, resolved-via-import)
+  stable ids: py:billing/ledger.py::<QualifiedName>
+  (module level) @10
+  [Ledger.statement] @49
+  [Ledger.statement] @50
+
+catalog/search.py  (2 references, resolved-via-import)
+  stable ids: py:catalog/search.py::<QualifiedName>
+  (module level) @5
+  [describe] @27

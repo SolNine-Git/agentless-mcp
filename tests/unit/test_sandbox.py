@@ -56,12 +56,12 @@ def git(root, *arguments):
 
 class TestWorktree:
     def test_it_yields_a_populated_checkout_at_head(self, repo):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             assert (tree / "app.py").read_text(encoding="utf-8") == FILES["app.py"]
             assert tree != repo
 
     def test_the_scratch_lives_outside_the_repository(self, repo, isolated_cache_home):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             assert repo not in tree.parents
             assert isolated_cache_home in tree.parents
 
@@ -78,7 +78,7 @@ class TestWorktree:
 
         with (
             pytest.raises(RepoResolutionError, match="inside the repository"),
-            sandbox.worktree(repo),
+            sandbox.worktree(repo, "HEAD"),
         ):
             pass
 
@@ -103,7 +103,7 @@ class TestWorktree:
 
         with (
             pytest.raises(RepoResolutionError, match="inside the repository"),
-            sandbox.worktree(repo),
+            sandbox.worktree(repo, "HEAD"),
         ):
             pass
 
@@ -114,7 +114,7 @@ class TestWorktree:
         before_head = git(repo, "rev-parse", "HEAD")
         before_source = (repo / "app.py").read_text(encoding="utf-8")
 
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             (tree / "app.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
 
         assert git(repo, "status", "--porcelain") == before_status
@@ -122,7 +122,7 @@ class TestWorktree:
         assert (repo / "app.py").read_text(encoding="utf-8") == before_source
 
     def test_the_scratch_is_removed_on_success(self, repo):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             captured = tree
         assert not captured.exists()
 
@@ -130,7 +130,7 @@ class TestWorktree:
         captured = []
 
         def fail_inside():
-            with sandbox.worktree(repo) as tree:
+            with sandbox.worktree(repo, "HEAD") as tree:
                 captured.append(tree)
                 message = "deliberate"
                 raise RuntimeError(message)
@@ -142,20 +142,20 @@ class TestWorktree:
         assert not captured[0].exists()
 
     def test_the_repository_forgets_the_worktree_afterwards(self, repo):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             recorded = str(tree)
         assert recorded not in git(repo, "worktree", "list")
 
     def test_a_subdirectory_root_yields_that_subdirectory(self, make_git_repo):
         """Git worktrees are whole-repository; the yielded path is not."""
         root = make_git_repo({"pkg/app.py": FILES["app.py"], "README.md": "# top\n"})
-        with sandbox.worktree(root / "pkg") as tree:
+        with sandbox.worktree(root / "pkg", "HEAD") as tree:
             assert tree.name == "pkg"
             assert (tree / "app.py").read_text(encoding="utf-8") == FILES["app.py"]
         assert not tree.exists()
 
     def test_two_worktrees_do_not_collide(self, repo):
-        with sandbox.worktree(repo) as first, sandbox.worktree(repo) as second:
+        with sandbox.worktree(repo, "HEAD") as first, sandbox.worktree(repo, "HEAD") as second:
             assert first != second
 
     def test_a_directory_outside_git_is_refused(self, tmp_path):
@@ -163,7 +163,7 @@ class TestWorktree:
         plain.mkdir()
 
         def enter():
-            with sandbox.worktree(plain):
+            with sandbox.worktree(plain, "HEAD"):
                 pass
 
         with pytest.raises(RepoResolutionError, match="not inside a git repository"):
@@ -181,7 +181,7 @@ class TestWorktree:
         untracked.mkdir()
 
         def enter():
-            with sandbox.worktree(untracked):
+            with sandbox.worktree(untracked, "HEAD"):
                 pytest.fail("the body must not run for a directory HEAD does not have")
 
         with pytest.raises(RepoResolutionError, match="scratchpad"):
@@ -195,6 +195,35 @@ class TestWorktree:
     def test_the_scratch_root_is_under_the_cache_home(self, isolated_cache_home):
         assert sandbox.scratch_root().parent == cachedir.cache_root()
         assert isolated_cache_home in sandbox.scratch_root().parents
+
+
+class TestPinnedCommit:
+    def test_a_short_sha_expands_to_the_full_commit(self, repo):
+        full = git(repo, "rev-parse", "HEAD").strip()
+        assert sandbox.pinned_commit(repo, full[:8]) == full
+
+    def test_a_commit_after_the_capture_does_not_move_the_pin(self, repo):
+        full = git(repo, "rev-parse", "HEAD").strip()
+        (repo / "app.py").write_text("def add(a, b):\n    return 0\n", encoding="utf-8")
+        git(
+            repo,
+            "-c",
+            "user.email=tests@example.invalid",
+            "-c",
+            "user.name=agentless-mcp tests",
+            "commit",
+            "-qam",
+            "moved",
+        )
+
+        pinned = sandbox.pinned_commit(repo, full[:8])
+        assert pinned == full
+        with sandbox.worktree(repo, pinned) as tree:
+            assert (tree / "app.py").read_text(encoding="utf-8") == FILES["app.py"]
+
+    def test_no_captured_commit_is_refused(self, repo):
+        with pytest.raises(RepoResolutionError, match="not inside a git repository"):
+            sandbox.pinned_commit(repo, None)
 
 
 class TestWorktreeRunsNoRepositoryCode:
@@ -225,7 +254,7 @@ class TestWorktreeRunsNoRepositoryCode:
             git(repo, "worktree", "remove", "--force", str(control))
         marker.unlink()
 
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             assert (tree / "app.py").exists()
 
         assert not marker.exists(), "git worktree add ran the repository's post-checkout hook"
@@ -236,7 +265,7 @@ class TestWorktreeRunsNoRepositoryCode:
         self.hook(repo, marker, directory="githooks")
         git(repo, "config", "core.hooksPath", "githooks")
 
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             assert (tree / "app.py").exists()
 
         assert not marker.exists(), "core.hooksPath from the repository decided what ran"
@@ -268,7 +297,7 @@ class TestWorktreeRunsNoRepositoryCode:
         )
         git(repo, "config", "diff.shipped.textconv", str(driver))
 
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             (tree / "app.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
             git(tree, "diff", "--no-color", "--no-ext-diff")
             assert marker.exists(), "the fixture driver never fired; the test proves nothing"
@@ -304,7 +333,7 @@ class TestWorktreeCreationFailure:
         monkeypatch.setattr(sandbox, "run_git", dies_after_the_record_exists)
 
         def enter():
-            with sandbox.worktree(repo):
+            with sandbox.worktree(repo, "HEAD"):
                 pytest.fail("the body must not run when creation failed")
 
         with pytest.raises(OperationFailed, match="timed out"):
@@ -318,7 +347,7 @@ class TestWorktreeCreationFailure:
 
 class TestDiff:
     def test_a_written_change_shows_up_as_a_unified_diff(self, repo):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             (tree / "app.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
             text = sandbox.diff(tree)
 
@@ -328,7 +357,7 @@ class TestDiff:
         assert "+    return a - b" in text
 
     def test_an_untouched_worktree_diffs_to_nothing(self, repo):
-        with sandbox.worktree(repo) as tree:
+        with sandbox.worktree(repo, "HEAD") as tree:
             assert sandbox.diff(tree) == ""
 
 

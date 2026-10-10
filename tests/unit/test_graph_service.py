@@ -209,6 +209,20 @@ class TestExplain:
         assert explained.card.stable_id == "py:alpha.py::shared"
         assert explained.alternatives == ("py:beta.py::shared",)
 
+    def test_a_tie_is_stated_before_the_card_with_the_rule_that_broke_it(self, graphs, repo):
+        explained = graphs.explain(repo, "shared")
+        first = render.render_explanation(explained).splitlines()[0]
+        assert explained.tied == 2
+        assert explained.as_dict()["tied"] == 2
+        assert first.startswith("ambiguous: 2 definitions match shared equally")
+        assert "path order" in first
+
+    def test_a_unique_name_carries_no_tie_line(self, graphs, repo):
+        explained = graphs.explain(repo, "helper")
+        assert explained.tied == 1
+        assert "tied" not in explained.as_dict()
+        assert not render.render_explanation(explained).startswith("ambiguous")
+
     def test_a_section_limit_is_reported_rather_than_silent(self, graphs, crowded):
         """Rewritten: the fixture must actually overflow the limit.
 
@@ -366,22 +380,54 @@ class TestCycles:
         makes was the one with nothing qualifying it.
         """
         files = {
-            "a.py": "import json\nimport os\n\n\ndef only():\n    return json, os\n",
+            "pkg/__init__.py": "",
+            "pkg/a.py": "import json\nfrom .missing import thing\n",
         }
         report = graphs.cycles(build(tmp_path, files))
 
         assert report.total == 0
         assert report.unresolved_imports == 2
-        assert report.as_dict()["unresolved_imports"] == 2
-        assert "2 import statements named no file in this repository" in render.render_cycles(
-            report
+        assert report.unresolved_internal_imports == 1
+        assert report.as_dict()["unresolved_internal_imports"] == 1
+        assert "1 import statement of this repository's own modules did not resolve" in (
+            render.render_cycles(report)
         )
+
+    def test_standard_library_imports_do_not_qualify_an_empty_list(self, graphs, tmp_path):
+        files = {"a.py": "import json\nimport os\n\n\ndef only():\n    return json, os\n"}
+        report = graphs.cycles(build(tmp_path, files))
+
+        assert report.as_dict()["unresolved_imports"] == 2
+        assert report.unresolved_internal_imports == 0
+        assert render.render_cycles(report) == "no import cycles\n"
 
     def test_a_fully_resolved_import_graph_carries_no_qualification(self, graphs, tmp_path):
         report = graphs.cycles(build(tmp_path, CYCLE_FILES))
 
         assert report.unresolved_imports == 0
-        assert "named no file" not in render.render_cycles(report)
+        assert "note:" not in render.render_cycles(report)
+
+    def test_every_member_of_a_component_is_reported(self, graphs, tmp_path):
+        files = {
+            "a.py": "import b\nimport c\n",
+            "b.py": "import a\n",
+            "c.py": "import a\n",
+        }
+        report = graphs.cycles(build(tmp_path, files))
+        text = render.render_cycles(report)
+
+        assert report.total == 1
+        assert report.cycles[0].chain == "a.py -> b.py -> a.py"
+        assert report.as_dict()["cycles"][0]["members"] == ["a.py", "b.py", "c.py"]
+        assert "(3 files) a.py -> b.py -> a.py" in text
+        assert "also in this cycle: c.py" in text
+
+    def test_a_skipped_file_is_named_above_the_cycle_list(self, graphs, tmp_path):
+        files = {**CYCLE_FILES, "big.py": "x = 1\n" * 200_000}
+        report = graphs.cycles(build(tmp_path, files))
+
+        assert [entry.path for entry in report.skipped] == ["big.py"]
+        assert render.render_cycles(report).startswith("// warning: 1 files were skipped")
 
     def test_a_cycle_is_rendered_as_a_chain(self, graphs, tmp_path):
         report = graphs.cycles(build(tmp_path, CYCLE_FILES))

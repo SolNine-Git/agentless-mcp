@@ -26,7 +26,7 @@ from agentless_mcp.core import (
     projectconfig,
     resolve,
 )
-from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.extractor import SCOPE_ANALYSED_LANGUAGES, TreeSitterExtractor
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.fslimits import (
@@ -90,6 +90,7 @@ class CapabilityReport:
                 for cap in self.languages
             ],
             "extensions": dict(self.extensions),
+            "scope_analysed_languages": sorted(SCOPE_ANALYSED_LANGUAGES),
             "config": self.config.as_dict(),
             "effective_config": dict(self.effective_config),
             "caps": dict(self.caps),
@@ -204,6 +205,10 @@ def render_capability_report(report: CapabilityReport) -> str:
     lines.extend(_language_lines(report.languages))
     lines.append("extensions (language: suffixes):")
     lines.extend(_extension_lines(report.extensions))
+    lines.append(
+        "scope analysis (a parameter or local is told from a caller): "
+        + ", ".join(sorted(SCOPE_ANALYSED_LANGUAGES))
+    )
     lines.append("effective project config:")
     lines.extend(f"  {name} = {_display(value)}" for name, value in report.effective_config)
     lines.append("caps:")

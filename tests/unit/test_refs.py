@@ -1,7 +1,11 @@
 """The identifier-reference pass, the repository scan, and fan-in attribution."""
 
 from collections.abc import Iterator, Mapping
+from pathlib import Path
 
+import pytest
+
+from agentless_mcp.core import cache, refs
 from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
     Definition,
@@ -485,3 +489,32 @@ class TestADottedTargetReportsWhetherItFoundWhatItNamed:
         assert definitions_for(index, "somewhere.else.quote") == (
             resolve_definitions(index, "somewhere.else.quote").definitions
         )
+
+
+_FIXTURES = Path(__file__).parents[1] / "characterization" / "fixtures"
+
+
+class TestASymbolOnlyScanReadsWhatTheFullScanReads:
+    @pytest.mark.parametrize("repo", ["repo_py", "repo_ts", "repo_go", "repo_nested", "tier1"])
+    def test_the_symbols_and_the_skips_match(self, extractor, repo):
+        root = _FIXTURES / repo
+        full = refs.scan_repo(root, extractor)
+        light = refs.scan_symbols(root, extractor)
+
+        assert [(facts.path, facts.language, facts.symbols) for facts in full.files] == [
+            (facts.path, facts.language, facts.symbols) for facts in light.files
+        ]
+        assert full.skipped == light.skipped
+
+    def test_a_cached_symbol_scan_matches_an_uncached_one(self, extractor, tmp_path):
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
+        cache.build_index(root, extractor)
+        source = cache.open_source(root, extractor, tree_oid=None)
+        try:
+            cached = refs.scan_symbols(root, extractor, source=source)
+        finally:
+            source.close()
+
+        assert cached == refs.scan_symbols(root, extractor)

@@ -18,6 +18,7 @@ listening port, on the clock or on a test that ran before it.
 """
 
 import json
+import subprocess
 
 import pytest
 
@@ -185,6 +186,46 @@ class TestLoadCandidates:
         directory = candidates_dir({"fix.txt": PLUS, "fix.json": '{"edits": []}'})
         with pytest.raises(AgentlessError, match="share the id"):
             load_candidates(directory)
+
+
+def git(root, *arguments):
+    return subprocess.run(
+        ["git", "-C", str(root), *arguments], check=True, capture_output=True, timeout=30
+    ).stdout.decode()
+
+
+class TestPinnedCommit:
+    def test_every_worktree_checks_out_the_commit_the_run_started_at(
+        self, seeded_bug_repo, candidates_dir, validate, monkeypatch
+    ):
+        repo = seeded_bug_repo()
+        started = git(repo, "rev-parse", "HEAD").strip()
+        seen = []
+        real = validate_module.sandbox.worktree
+
+        def recording(root, commit):
+            seen.append(commit)
+            if len(seen) == 1:
+                # Another session commits while the baseline runs.
+                git(
+                    repo,
+                    "-c",
+                    "user.email=tests@example.invalid",
+                    "-c",
+                    "user.name=agentless-mcp tests",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "moved",
+                )
+            return real(root, commit)
+
+        monkeypatch.setattr(validate_module.sandbox, "worktree", recording)
+        validate(repo, candidates_dir({"01-plus.txt": PLUS}))
+
+        assert git(repo, "rev-parse", "HEAD").strip() != started
+        assert len(seen) >= 3
+        assert set(seen) == {started}
 
 
 class TestBaseline:

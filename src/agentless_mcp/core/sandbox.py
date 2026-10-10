@@ -248,9 +248,22 @@ def scratch_root() -> Path:
     return cachedir.cache_root() / WORKTREE_DIR
 
 
+def pinned_commit(root: Path, captured: str | None) -> str:
+    """Return the full commit that ``captured``, a receipt's short sha, names."""
+    if not captured:
+        message = (
+            f"{root} is not inside a git repository, or HEAD names no commit, so no worktree "
+            "can be created for it."
+        )
+        raise RepoResolutionError(message)
+    # Expanded from the receipt rather than read from HEAD again: every phase of
+    # one operation must check out the commit the receipt names, even after HEAD moves.
+    return run_git(root, ["rev-parse", "--verify", f"{captured}^{{commit}}"]).strip()
+
+
 @contextmanager
-def worktree(root: Path) -> Iterator[Path]:
-    """Materialise a detached worktree of ``root`` at HEAD, and remove it after.
+def worktree(root: Path, commit: str) -> Iterator[Path]:
+    """Materialise a detached worktree of ``root`` at ``commit``, and remove it after.
 
     Yields the directory inside the worktree that *corresponds to* ``root``.
     Git only ever creates a worktree of a whole repository, so when ``root`` is
@@ -320,7 +333,7 @@ def worktree(root: Path) -> Iterator[Path]:
         with _WORKTREE_LOCK:
             run_git(
                 top,
-                ["worktree", "add", "--detach", str(path), "HEAD"],
+                ["worktree", "add", "--detach", str(path), commit],
                 config=NO_REPO_CODE,
             )
         relative = resolved.relative_to(top)
@@ -333,9 +346,9 @@ def worktree(root: Path) -> Iterator[Path]:
         # try, so the worktree just created is still released.
         if not inside.is_dir():
             message = (
-                f"{resolved} is not at HEAD of {top}, so the worktree has no {relative} to "
-                "work in. The directory is untracked or ignored: commit it, or point this "
-                "call at a directory the repository tracks."
+                f"{resolved} is not in commit {commit} of {top}, so the worktree has no "
+                f"{relative} to work in. The directory is untracked or ignored: commit it, or "
+                "point this call at a directory the repository tracks."
             )
             raise RepoResolutionError(message)
         yield inside

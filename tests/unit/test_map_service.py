@@ -732,3 +732,42 @@ class TestTheCompanionPassLooksUpEachNameOnce:
             return calls.count("price")
 
         assert lookups(tmp_path / "one", 1) == lookups(tmp_path / "fifty", 50)
+
+
+def _shown_names(result):
+    return {
+        entry.stable_id.rsplit("::", 1)[1]
+        for map_file in result.files
+        for entry in map_file.entries
+    }
+
+
+class TestAFocusNamedSymbolIsPackedFirst:
+    def test_a_late_target_survives_a_budget_its_file_cannot_fill(self, maps, tmp_path):
+        filler = "".join(
+            f"def routine_{index:03d}(argument: str) -> str:\n    return argument\n\n"
+            for index in range(180)
+        )
+        late = "def target_bug(argument: str) -> str:\n    return argument\n"
+        repo = written(tmp_path, {"large.py": filler + late})
+
+        result = maps.build(repo, MapRequest(focus=("target_bug",), budget=500))
+
+        assert "target_bug" in _shown_names(result)
+        assert 1 < result.included < 181
+
+    def test_pins_are_capped_so_a_common_name_leaves_room_for_the_ranking(self, maps, tmp_path):
+        files = {
+            f"m{index:02d}.py": "def run():\n    return 1\n\n\ndef other():\n    return 2\n"
+            for index in range(map_service.FOCUS_PIN_LIMIT + 5)
+        }
+        repo = written(tmp_path, files)
+
+        result = maps.build(repo, MapRequest(focus=("run",), max_files=len(files)))
+        pinned = [
+            stable
+            for stable in result.expand_order[: map_service.FOCUS_PIN_LIMIT + 1]
+            if stable.endswith("::run")
+        ]
+
+        assert len(pinned) == map_service.FOCUS_PIN_LIMIT

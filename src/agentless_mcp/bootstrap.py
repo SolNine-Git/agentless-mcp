@@ -138,7 +138,9 @@ class TiktokenCounter:
 
     def count(self, text: str) -> int:
         """Return the number of tokens ``text`` encodes to."""
-        return len(self._encoding.encode(text))
+        # Repository text is data: plain `encode` raises on a spelling such as
+        # "<|endoftext|>", and a file that quotes one is ordinary source.
+        return len(self._encoding.encode_ordinary(text))
 
 
 def select_counter(choice: str | None) -> TokenCounter:

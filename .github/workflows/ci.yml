@@ -171,7 +171,7 @@ jobs:
         run: |
           uv run --no-sync pytest tests/unit/test_token_counter.py -q -rs \
             | tee counter-output.txt
-          grep -E '^8 passed, 6 skipped' counter-output.txt
+          grep -E '^8 passed, 7 skipped' counter-output.txt
 
   # `uv.lock` pins a working fastmcp/mcp pair, but `uv tool install` and
   # `pip install agentless-mcp[mcp]` resolve fresh from PyPI and never read

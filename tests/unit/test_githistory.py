@@ -5,31 +5,54 @@ import pytest
 from agentless_mcp.core import githistory
 from agentless_mcp.util.errors import OperationFailed
 
+SHA = "a" * 40
+
 
 class TestLogArguments:
     def test_the_argv_pins_the_span_the_format_and_the_count(self):
-        assert githistory.log_arguments("src/app.py", 12, 40, max_count=11) == [
+        assert githistory.log_arguments("src/app.py", 12, 40, max_count=11, revision=SHA) == [
             "log",
             "-L12,40:src/app.py",
             "--no-patch",
             "-z",
             f"--format={githistory.HISTORY_FORMAT}",
             "--max-count=11",
+            SHA,
             "--",
         ]
 
     def test_a_path_holding_a_colon_rides_inside_the_range_token(self):
-        argv = githistory.log_arguments("odd:name.py", 1, 1, max_count=1)
+        argv = githistory.log_arguments("odd:name.py", 1, 1, max_count=1, revision=SHA)
         assert argv[1] == "-L1,1:odd:name.py"
         assert argv[-1] == "--"
 
     @pytest.mark.parametrize(("start", "end", "count"), [(0, 1, 1), (5, 4, 1), (1, 1, 0)])
     def test_an_impossible_span_or_count_is_refused(self, start, end, count):
         with pytest.raises(OperationFailed):
-            githistory.log_arguments("a.py", start, end, max_count=count)
+            githistory.log_arguments("a.py", start, end, max_count=count, revision=SHA)
 
     def test_the_dirty_check_defeats_pathspec_magic(self):
-        assert githistory.diff_arguments(":!x.py") == ["diff", "--quiet", "HEAD", "--", "./:!x.py"]
+        assert githistory.diff_arguments(":!x.py", SHA) == [
+            "diff",
+            "--quiet",
+            SHA,
+            "--",
+            "./:!x.py",
+        ]
+
+    def test_the_commit_is_expanded_by_rev_parse_verify(self):
+        assert githistory.commit_arguments("72d44d7f") == [
+            "rev-parse",
+            "--verify",
+            "72d44d7f^{commit}",
+        ]
+
+    def test_the_committed_copy_is_read_by_plumbing(self):
+        assert githistory.blob_arguments(SHA, "src/app.py") == [
+            "cat-file",
+            "blob",
+            f"{SHA}:./src/app.py",
+        ]
 
 
 def record(sha, authored, subject, body):
@@ -82,8 +105,16 @@ class TestParseLog:
     def test_four_nuls_inside_a_body_are_refused_rather_than_read_as_a_sha(self):
         """Four extra NULs keep the count a multiple of four, so only the sha check can catch it."""
         text = record("a" * 40, "d", "s", "\x00".join(("w", "x", "y", "z", "end")))
-        with pytest.raises(OperationFailed, match="40-character sha"):
+        with pytest.raises(OperationFailed, match="full sha"):
             githistory.parse_log(text, capped=False)
+
+    def test_a_sha256_object_name_is_a_full_sha(self):
+        records = githistory.parse_log(record("c" * 64, "d", "s", "b"), capped=False)
+        assert records[0].sha == "c" * 64
+
+    def test_a_sha_between_the_two_lengths_is_refused(self):
+        with pytest.raises(OperationFailed, match="full sha"):
+            githistory.parse_log(record("c" * 50, "d", "s", "b"), capped=False)
 
     def test_a_record_without_an_author_date_is_refused(self):
         with pytest.raises(OperationFailed, match="no author date"):
@@ -91,11 +122,11 @@ class TestParseLog:
 
     @pytest.mark.parametrize("sha", ["A" * 40, "a" * 39, "a" * 41, "g" * 40, ""])
     def test_a_field_that_is_not_a_sha_is_refused(self, sha):
-        with pytest.raises(OperationFailed, match="40-character sha"):
+        with pytest.raises(OperationFailed, match="full sha"):
             githistory.parse_log(record(sha, "d", "s", "b"), capped=False)
 
     def test_a_complete_record_is_validated_even_when_the_cap_cut_the_stream(self):
-        with pytest.raises(OperationFailed, match="40-character sha"):
+        with pytest.raises(OperationFailed, match="full sha"):
             githistory.parse_log(record("nope", "d", "s", "b"), capped=True)
 
     def test_empty_output_is_no_records(self):

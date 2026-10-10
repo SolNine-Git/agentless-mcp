@@ -495,12 +495,10 @@ class TestMapService:
         assert len(result.bodies.cards) == 1
         assert result.bodies.cards[0].stable_id == "py:serializers.py::finale"
 
-    def test_the_focus_seat_survives_a_packing_that_cut_the_symbol(
+    def test_a_tight_budget_packs_and_seats_the_focus_symbol_first(
         self, tmp_path, extractor, counter
     ):
-        """A tight budget cuts the focus symbol from the signature packing,
-        and the seat must not go with it: ``focus_order`` is carried apart
-        from ``expand_order`` for exactly this case."""
+        """The focus symbol leads both the signature packing and the body seats."""
         hot = "\n\n\n".join(
             f"def serializer_{index}(alpha_parameter, beta_parameter, gamma_parameter):\n"
             "    return alpha_parameter"
@@ -519,7 +517,7 @@ class TestMapService:
         request = MapRequest(focus=("finale",), budget=MIN_BUDGET)
 
         base = maps.build(ctx, request)
-        assert "py:serializers.py::finale" not in base.expand_order
+        assert base.expand_order[0] == "py:serializers.py::finale"
 
         result = build_body_map(ctx, request, maps, SymbolService(extractor, counter))
         assert result.bodies.cards[0].stable_id == "py:serializers.py::finale"

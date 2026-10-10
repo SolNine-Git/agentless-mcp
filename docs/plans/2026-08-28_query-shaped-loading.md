@@ -1,5 +1,31 @@
 # Specification: Query-Shaped Loading
 
+## Status (2026-10-09, branch `fix/evaluation-findings`)
+
+Done:
+
+- `find_symbol` reads symbols only (`refs.scan_symbols`). The scan still reads
+  and digest-checks every file. A warm `find-symbol` on this repository went
+  from 0.302 s to 0.180 s (median of nine), with identical output.
+- Each file is digested once per call, not once per fact kind
+  (`FileSource.facts_for`).
+- An uncached file is parsed once for all three fact kinds
+  (`TreeSitterExtractor.extract_facts`).
+
+Open: references loaded by name for `find_referencing_symbols`, and the
+narrowed scan for `explain`. Before that work starts, the design below needs
+five changes, found in review on 2026-10-09:
+
+1. Index `(name, role)`, not `(name)`: `files_referencing` counts only
+   `role == REFERENCE` sites.
+2. Filter the verified file ids through a temporary table. A bound `IN` list
+   fails above 32,766 parameters.
+3. Drop data-language files from definitions, sites and `files_referencing`,
+   as `refs.in_name_graph` now does (5639166 postdates this plan).
+4. Hash each file once per call. Done, see above.
+5. Expect the name projection to dominate at very large scale. An FTS5
+   trigram index can narrow it, with `_matches` still deciding.
+
 ## Problem Statement
 
 Every symbol-surface call pays for the whole repository. `scan_repo`

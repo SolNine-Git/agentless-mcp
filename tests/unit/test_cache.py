@@ -119,15 +119,17 @@ def services(extractor, counter):
 
 @pytest.fixture
 def spy(extractor, monkeypatch):
-    """Record every path the extractor actually parses symbols out of."""
+    """Record every path the extractor actually parses symbols out of, by either entry point."""
     parsed: list[str] = []
-    original = extractor.extract_from_source
 
-    def record(text, language, path):
-        parsed.append(path)
-        return original(text, language, path)
+    for name in ("extract_from_source", "extract_facts"):
+        original = getattr(extractor, name)
 
-    monkeypatch.setattr(extractor, "extract_from_source", record)
+        def record(text, language, path, _original=original):
+            parsed.append(path)
+            return _original(text, language, path)
+
+        monkeypatch.setattr(extractor, name, record)
     return parsed
 
 
@@ -155,6 +157,15 @@ def parse_spy(extractor, monkeypatch):
 
         monkeypatch.setattr(extractor, name, record)
 
+    # One extract_facts call is one parse that yields every kind.
+    whole = extractor.extract_facts
+
+    def record_all(text, language, path):
+        for paths in parsed.values():
+            paths.append(path)
+        return whole(text, language, path)
+
+    monkeypatch.setattr(extractor, "extract_facts", record_all)
     return parsed
 
 
@@ -326,7 +337,7 @@ class TestIncrementalTriad:
         error and a prune on the same summary line.
         """
         cache.build_index(repo, extractor)
-        original = extractor.extract_from_source
+        original = extractor.extract_facts
 
         def explode(text, language, path):
             if path == "billing.py":
@@ -334,7 +345,7 @@ class TestIncrementalTriad:
                 raise RecursionError(message)
             return original(text, language, path)
 
-        monkeypatch.setattr(extractor, "extract_from_source", explode)
+        monkeypatch.setattr(extractor, "extract_facts", explode)
         (repo / "billing.py").write_text(BILLING + "\nEXTRA = 1\n", encoding="utf-8")
 
         report = cache.build_index(repo, extractor)
@@ -351,7 +362,7 @@ class TestIncrementalTriad:
         scan catches a named tuple of them, so one pathological file becomes an
         ``IndexFailure`` row and every other file is still indexed.
         """
-        original = extractor.extract_from_source
+        original = extractor.extract_facts
 
         def explode(text, language, path):
             if path == "billing.py":
@@ -359,7 +370,7 @@ class TestIncrementalTriad:
                 raise RecursionError(message)
             return original(text, language, path)
 
-        monkeypatch.setattr(extractor, "extract_from_source", explode)
+        monkeypatch.setattr(extractor, "extract_facts", explode)
 
         report = cache.build_index(repo, extractor)
 
@@ -428,7 +439,7 @@ class TestIncrementalTriad:
             message = "a renamed field"
             raise error(message)
 
-        monkeypatch.setattr(extractor, "extract_from_source", defective)
+        monkeypatch.setattr(extractor, "extract_facts", defective)
 
         with pytest.raises(error, match="renamed field"):
             cache.build_index(repo, extractor)
@@ -2518,3 +2529,23 @@ class TestCacheCeilingEnforcement:
 
         assert "evicted 1 cached repository (" in loud.summary_line()
         assert loud.as_dict()["evicted"]["databases"] == 1
+
+
+class TestAScanReadsEachFileOnce:
+    def test_a_cached_scan_digests_each_file_once_for_all_three_kinds(
+        self, repo, extractor, monkeypatch
+    ):
+        cache.build_index(repo, extractor)
+        source = cache.open_source(repo, extractor, tree_oid=None)
+        digested = []
+        original = cache.content_digest
+
+        def counting(text):
+            digested.append(text)
+            return original(text)
+
+        monkeypatch.setattr(cache, "content_digest", counting)
+        scan = refs.scan_repo(repo, extractor, source=source)
+
+        assert len(scan.files) == 3
+        assert len(digested) == 3

@@ -15,6 +15,8 @@ arrive as a bare ``assignment`` and docstrings as a bare ``string``, so
 ``test_uppercase_constant`` and every docstring assertion below fail.
 """
 
+from pathlib import Path
+
 import pytest
 
 from agentless_mcp.core import grammars
@@ -691,3 +693,30 @@ class TestTheDecisionsBranchCoverageLeftUnpinned:
 
         assert [symbol.name for symbol in symbols] == ["f"]
         assert not [r for symbol in symbols for r in symbol.rationales]
+
+
+_EQUIVALENCE_ROOTS = (
+    Path(__file__).parents[1] / "characterization" / "fixtures",
+    Path(__file__).parents[2] / "src" / "agentless_mcp",
+)
+
+
+def _equivalence_files():
+    for root in _EQUIVALENCE_ROOTS:
+        for path in sorted(root.rglob("*")):
+            language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(path.suffix)
+            if path.is_file() and language is not None:
+                yield pytest.param(path, language, id=str(path.relative_to(root.parent)))
+
+
+class TestOneParseYieldsTheSameFactsAsThree:
+    @pytest.mark.parametrize(("path", "language"), list(_equivalence_files()))
+    def test_extract_facts_equals_the_three_separate_passes(self, extractor, path, language):
+        text = path.read_text(encoding="utf-8")
+        relative = path.name
+
+        facts = extractor.extract_facts(text, language, relative)
+
+        assert facts.symbols == extractor.extract_from_source(text, language, relative)
+        assert facts.imports == extractor.extract_imports_from_source(text, language, relative)
+        assert facts.refs == extractor.extract_refs_from_source(text, language, relative)

@@ -305,6 +305,14 @@ class _CandidatePlan:
 
 
 @dataclass(frozen=True)
+class _Invocation:
+    # Shared by every phase of one validate call: one clock, and one commit
+    # that every worktree checks out.
+    deadline: float | None
+    commit: str
+
+
+@dataclass(frozen=True)
 class CandidateVerdict:
     """Everything one candidate produced, including why it produced nothing."""
 
@@ -598,8 +606,11 @@ class ValidateService:
         deadline = _deadline(request)
 
         candidates = load_candidates(request.candidates)
+        invocation = _Invocation(
+            deadline=deadline, commit=sandbox.pinned_commit(ctx.root, ctx.head_sha)
+        )
         header, baseline_deadline_expired = self._baseline(
-            ctx, request, count=len(candidates), deadline=deadline
+            ctx, request, count=len(candidates), invocation=invocation
         )
 
         if baseline_deadline_expired:
@@ -618,7 +629,11 @@ class ValidateService:
             )
 
         verdicts, candidate_deadline_expired = self._evaluate_all(
-            ctx, request, candidates, repro_valid=header.repro_valid, deadline=deadline
+            ctx,
+            request,
+            candidates,
+            repro_valid=header.repro_valid,
+            invocation=invocation,
         )
         return ValidateReport(
             header=header,
@@ -636,7 +651,7 @@ class ValidateService:
         request: ValidateRequest,
         *,
         count: int,
-        deadline: float | None,
+        invocation: _Invocation,
     ) -> tuple[RunHeader, bool]:
         """Run the test command, and the reproduction command, on unpatched HEAD.
 
@@ -655,11 +670,11 @@ class ValidateService:
         runs: list[RunResult] = []
         truncated = False
         for _ in range(repeats):
-            bound = _command_bound(request.timeout, deadline)
+            bound = _command_bound(request.timeout, invocation.deadline)
             if bound is None:
                 outcome = _expired_baseline(runs, repeats, request.run_timeout)
                 return _header(ctx, request, count, outcome, repro_run=None), True
-            with sandbox.worktree(ctx.root) as tree:
+            with sandbox.worktree(ctx.root, invocation.commit) as tree:
                 run = sandbox.run_command(
                     tree,
                     request.test_cmd,
@@ -669,7 +684,7 @@ class ValidateService:
             runs.append(run)
             truncated = truncated or _truncated(bound, run)
 
-            if _deadline_reached(deadline) and len(runs) < repeats:
+            if _deadline_reached(invocation.deadline) and len(runs) < repeats:
                 outcome = _expired_baseline(runs, repeats, request.run_timeout)
                 return _header(ctx, request, count, outcome, repro_run=None), True
 
@@ -684,11 +699,11 @@ class ValidateService:
 
         repro_run = None
         if request.repro_cmd is not None:
-            bound = _command_bound(request.timeout, deadline)
+            bound = _command_bound(request.timeout, invocation.deadline)
             if bound is None:
                 expired_outcome = replace(outcome, deadline_expired=True)
                 return _header(ctx, request, count, expired_outcome, repro_run=None), True
-            with sandbox.worktree(ctx.root) as tree:
+            with sandbox.worktree(ctx.root, invocation.commit) as tree:
                 repro_run = sandbox.run_command(
                     tree,
                     request.repro_cmd,
@@ -712,7 +727,7 @@ class ValidateService:
         candidates: Sequence[Candidate],
         *,
         repro_valid: bool,
-        deadline: float | None,
+        invocation: _Invocation,
     ) -> tuple[tuple[CandidateVerdict, ...], bool]:
         """Evaluate every candidate, in parallel when asked, and sort the answers.
 
@@ -732,14 +747,16 @@ class ValidateService:
         reach, and used to raise the DEADLINE warning anyway.
         """
 
-        plans, immediate = self._plan_candidates(ctx, request, candidates)
+        plans, immediate = self._plan_candidates(ctx, request, candidates, commit=invocation.commit)
         groups = _execution_groups(plans)
         representatives = tuple(group[0] for group in groups)
 
         def evaluate(plan: _CandidatePlan) -> tuple[CandidateVerdict, bool]:
-            if _deadline_reached(deadline):
+            if _deadline_reached(invocation.deadline):
                 return _deadline_expired(plan.candidate, request.run_timeout), True
-            return self._evaluate(ctx, request, plan, repro_valid=repro_valid, deadline=deadline)
+            return self._evaluate(
+                ctx, request, plan, repro_valid=repro_valid, invocation=invocation
+            )
 
         if request.jobs > 1 and len(representatives) > 1:
             with ThreadPoolExecutor(max_workers=request.jobs) as pool:
@@ -761,12 +778,14 @@ class ValidateService:
         ctx: RepoContext,
         request: ValidateRequest,
         candidates: Sequence[Candidate],
+        *,
+        commit: str,
     ) -> tuple[tuple[_CandidatePlan, ...], tuple[CandidateVerdict, ...]]:
         """Normalize candidates once and group byte-identical results."""
         plans: list[_CandidatePlan] = []
         failures: list[CandidateVerdict] = []
 
-        with sandbox.worktree(ctx.root) as tree:
+        with sandbox.worktree(ctx.root, commit) as tree:
             scoped = resolve_repo(tree, None)
             for candidate in candidates:
                 edits, reasons = _candidate_edits(candidate, request)
@@ -802,7 +821,7 @@ class ValidateService:
         plan: _CandidatePlan,
         *,
         repro_valid: bool,
-        deadline: float | None,
+        invocation: _Invocation,
     ) -> tuple[CandidateVerdict, bool]:
         """Apply one candidate in its own worktree and run the tests there.
 
@@ -812,7 +831,7 @@ class ValidateService:
         """
         candidate = plan.candidate
         started = _monotonic()
-        with sandbox.worktree(ctx.root) as tree:
+        with sandbox.worktree(ctx.root, invocation.commit) as tree:
             # The worktree is the repository this candidate is judged in, so
             # it is the root every path in the patch is contained against. A
             # containment refusal here still aborts the whole run: a candidate
@@ -824,7 +843,7 @@ class ValidateService:
             if not applied.ok:
                 return _apply_failed(candidate, _reasons(applied.result), started), False
 
-            bound = _command_bound(request.timeout, deadline)
+            bound = _command_bound(request.timeout, invocation.deadline)
             if bound is None:
                 return (
                     _applied_but_unmeasured(
@@ -850,7 +869,7 @@ class ValidateService:
                 if not regression_run.passed:
                     reproduction_verdict = Verdict.NOT_EVALUATED
                 else:
-                    repro_bound = _command_bound(request.timeout, deadline)
+                    repro_bound = _command_bound(request.timeout, invocation.deadline)
                     if repro_bound is None:
                         reproduction_verdict = Verdict.NOT_EVALUATED
                         abandoned = True

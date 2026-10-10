@@ -82,14 +82,26 @@ def context(root):
 
 
 def injected(extractor, counter, outcomes):
-    """A service whose git is a table of subcommand -> outcome, recording each call."""
+    """A service whose git answers from a table of subcommand -> outcome, recording each call.
+
+    A subcommand the table does not name runs for real against the fixture repository.
+    """
     calls = []
 
     def runner(cwd, arguments, *, timeout, max_output_bytes):
         calls.append((cwd, list(arguments), timeout, max_output_bytes))
-        return outcomes[arguments[0]]
+        if arguments[0] in outcomes:
+            return outcomes[arguments[0]]
+        return gitinfo.run_bounded(
+            cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes
+        )
 
     return HistoryService(extractor, counter, runner=runner), calls
+
+
+def log_argv(calls):
+    """The argv of the one git log call a history answer made."""
+    return next(call[1] for call in calls if call[1][0] == "log")
 
 
 class TestHistory:
@@ -232,17 +244,28 @@ class TestGitContract:
 
         result = service.history(context(repo), "py:core.py::quote", limit=DEFAULT_HISTORY_LIMIT)
 
-        assert calls[0][1] == [
+        head = (
+            subprocess.run(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            .stdout.decode()
+            .strip()
+        )
+        assert log_argv(calls) == [
             "log",
             "-L1,3:core.py",
             "--no-patch",
             "-z",
             "--format=%H%x00%aI%x00%s%x00%b",
             "--max-count=11",
+            head,
             "--",
         ]
-        assert calls[0][2] == 30.0
-        assert calls[1][1] == ["diff", "--quiet", "HEAD", "--", "./core.py"]
+        assert next(call[2] for call in calls if call[1][0] == "log") == 30.0
+        assert ["diff", "--quiet", head, "--", "./core.py"] in [call[1] for call in calls]
         assert result.dirty is True
         assert result.entries[0].short_sha == "a" * 8
 
@@ -329,7 +352,7 @@ class TestSeatCap:
 
         result = service.history(context(repo), "py:core.py::quote", limit=500)
 
-        assert calls[0][1][5] == f"--max-count={HISTORY_MAX_SEATS + 1}"
+        assert log_argv(calls)[5] == f"--max-count={HISTORY_MAX_SEATS + 1}"
         assert len(result.entries) == HISTORY_MAX_SEATS
         assert (result.more_commits, result.seats_capped) == (True, True)
         text = render_history(result)
@@ -365,7 +388,7 @@ class TestSeatCap:
 
         result = service.history(context(repo), "py:core.py::quote", limit=2)
 
-        assert calls[0][1][5] == "--max-count=3"
+        assert log_argv(calls)[5] == "--max-count=3"
         assert (len(result.entries), result.more_commits, result.seats_capped) == (2, True, False)
         assert "raise limit for the rest" in render_history(result)
 
@@ -402,3 +425,96 @@ class TestBodyFitting:
         assert [entry.body_shown for entry in result.entries] == [0] * seats
         assert {entry.body_total for entry in result.entries} == {40}
         assert "... 0 of 40 body lines shown" in render_history(result)
+
+
+class TestADirtyFileIsReadAtItsCommittedLines:
+    def test_lines_inserted_above_the_symbol_do_not_shift_the_span(self, service, repo):
+        (repo / "core.py").write_text("import os\nimport sys\n\n" + EDITED_COST, encoding="utf-8")
+
+        result = service.history(context(repo), "py:core.py::quote")
+
+        assert (result.committed_start_line, result.committed_end_line) == (1, 3)
+        assert [entry.subject for entry in result.entries] == ["Return the rate", "fixture"]
+        assert result.dirty is True
+        assert "located in the committed copy" in render_history(result)
+
+    def test_the_span_keeps_its_working_tree_lines_beside_the_committed_ones(self, service, repo):
+        (repo / "core.py").write_text("import os\nimport sys\n\n" + EDITED_COST, encoding="utf-8")
+
+        payload = service.history(context(repo), "py:core.py::quote").as_dict()
+
+        assert (payload["start_line"], payload["end_line"]) == (4, 6)
+        assert (payload["committed_start_line"], payload["committed_end_line"]) == (1, 3)
+
+    def test_a_clean_file_reports_one_span(self, service, repo):
+        payload = service.history(context(repo), "py:core.py::quote").as_dict()
+
+        assert (payload["start_line"], payload["end_line"]) == (1, 3)
+        assert "committed_start_line" not in payload
+
+    def test_the_git_log_hint_names_the_committed_lines(self, extractor, counter, repo):
+        (repo / "core.py").write_text("import os\nimport sys\n\n" + EDITED_COST, encoding="utf-8")
+        service, _ = injected(
+            extractor,
+            counter,
+            {"log": gitinfo.GitOutcome(log_output(HISTORY_MAX_SEATS + 1), "", returncode=0)},
+        )
+
+        result = service.history(context(repo), "py:core.py::quote", limit=500)
+
+        assert "run git log -L1,3:core.py for the rest" in render_history(result)
+
+    def test_a_root_below_the_repository_top_reads_the_committed_copy(self, service, make_git_repo):
+        root = make_git_repo({"sub/core.py": EDITED_COST}, name="nested")
+        (root / "sub" / "core.py").write_text("import os\n\n" + EDITED_COST, encoding="utf-8")
+
+        result = service.history(context(root / "sub"), "py:core.py::quote")
+
+        assert result.dirty is True
+        assert (result.committed_start_line, result.committed_end_line) == (1, 3)
+        assert [entry.subject for entry in result.entries] == ["fixture"]
+
+    def test_a_failed_shallow_check_is_reported_as_unknown(self, extractor, counter, repo):
+        def runner(cwd, arguments, *, timeout, max_output_bytes):
+            if tuple(arguments) == githistory.SHALLOW_ARGUMENTS:
+                return gitinfo.GitOutcome(None, "git rev-parse timed out after 30.0s")
+            return gitinfo.run_bounded(
+                cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes
+            )
+
+        service = HistoryService(extractor, counter, runner=runner)
+        result = service.history(context(repo), "py:core.py::quote")
+
+        assert result.shallow is None
+        assert result.as_dict()["shallow"] is None
+        assert "git rev-parse timed out after 30.0s" in render_history(result)
+
+    def test_a_symbol_new_in_the_working_tree_has_no_committed_history(self, service, repo):
+        (repo / "core.py").write_text(EDITED_COST + "\n\ndef fresh():\n    return 3\n")
+
+        with pytest.raises(OperationFailed, match="not defined in the committed copy"):
+            service.history(context(repo), "py:core.py::fresh")
+
+    def test_a_changed_signature_is_noted_rather_than_silently_followed(self, service, repo):
+        edited = EDITED_COST.replace("def quote(sku):", "def quote(sku, region):")
+        (repo / "core.py").write_text(edited, encoding="utf-8")
+
+        result = service.history(context(repo), "py:core.py::quote")
+
+        assert result.signature_changed is True
+        assert "different signature in the committed copy" in render_history(result)
+
+    def test_a_shallow_clone_says_its_oldest_commit_may_stand_in(self, service, repo, tmp_path):
+        shallow = tmp_path / "shallow"
+        subprocess.run(
+            ["git", "clone", "-q", "--depth", "1", repo.as_uri(), str(shallow)],
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+
+        result = service.history(context(shallow), "py:core.py::quote")
+
+        assert result.shallow is True
+        assert result.as_dict()["shallow"] is True
+        assert "this clone is shallow" in render_history(result)

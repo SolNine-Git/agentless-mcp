@@ -46,7 +46,7 @@ is exactly the freshness of the scan that produced it -- which the per-file
 sha256 gate already guarantees.
 """
 
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
@@ -56,7 +56,7 @@ from itertools import chain
 from typing import Protocol, TypeVar
 
 from agentless_mcp.core import graph
-from agentless_mcp.core.extractor import IdentifierRole
+from agentless_mcp.core.extractor import IdentifierRole, Ref
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.refs import (
     Definition,
@@ -82,6 +82,10 @@ DEFAULT_MAX_VISITED = 20_000
 # A component of one file is not a cycle: a module that imports itself is a
 # typo, not a dependency knot, and the import pass drops that edge anyway.
 _SMALLEST_CYCLE = 2
+
+# How many re-export hops one alias chain may follow. The visited set already
+# ends a cycle; this bound only limits the work on a very deep chain.
+MAX_IMPORT_HOPS = 32
 
 _T = TypeVar("_T")
 
@@ -265,6 +269,9 @@ class ImportScope:
     module_bindings: Mapping[str, frozenset[str]]
     named: Mapping[str, frozenset[str]]
     statements: tuple[ResolvedImport, ...]
+    # Local name to (file, original member) for each `from x import member as local`:
+    # the member name is what an alias or a re-export must be followed by.
+    members: Mapping[str, frozenset[tuple[str, str]]] = field(default_factory=dict)
 
     def resolved_edges(self, path: str) -> Iterator[tuple[str, int, str]]:
         """Yield ``(module, line, target)`` for the statements that are edges.
@@ -331,28 +338,60 @@ class Resolver:
     def resolve(self, name: str, path: str) -> Resolution | None:
         """Resolve ``name`` as spelled in ``path``, or None when nothing defines it."""
         ordered = self._candidates.get(name, ())
+        if ordered:
+            by_path = self._candidates_by_path[name]
+            same_file = tuple(
+                entry for entry in by_path.get(path, ()) if _in_module_scope(entry, path)
+            )
+            if same_file:
+                return Resolution(name=name, tier=Tier.SAME_FILE, candidates=same_file)
+
+            scope = self.scopes.get(path)
+            if scope is not None:
+                imported = tuple(
+                    entry
+                    for defining, entries in by_path.items()
+                    if scope.binds(name, defining)
+                    for entry in entries
+                )
+                if imported:
+                    return Resolution(name=name, tier=Tier.IMPORTED, candidates=imported)
+
+        followed = self.through_imports(name, path)
+        if followed:
+            return Resolution(name=name, tier=Tier.IMPORTED, candidates=followed)
         if not ordered:
             return None
-
-        by_path = self._candidates_by_path[name]
-        same_file = tuple(entry for entry in by_path.get(path, ()) if _in_module_scope(entry, path))
-        if same_file:
-            return Resolution(name=name, tier=Tier.SAME_FILE, candidates=same_file)
-
-        scope = self.scopes.get(path)
-        if scope is not None:
-            imported = tuple(
-                entry
-                for defining, entries in by_path.items()
-                if scope.binds(name, defining)
-                for entry in entries
-            )
-            if imported:
-                return Resolution(name=name, tier=Tier.IMPORTED, candidates=imported)
-
         if len(ordered) == 1:
             return Resolution(name=name, tier=Tier.UNIQUE, candidates=ordered)
         return Resolution(name=name, tier=Tier.AMBIGUOUS, candidates=ordered)
+
+    def through_imports(self, name: str, path: str) -> tuple[Definition, ...]:
+        """Follow ``name``'s from-imports in ``path`` through aliases and re-exports."""
+        scope = self.scopes.get(path)
+        return self._follow(sorted(scope.members.get(name, ())) if scope is not None else [])
+
+    def _follow(self, first: Iterable[tuple[str, str]]) -> tuple[Definition, ...]:
+        pending = deque((target, member, 1) for target, member in first)
+        visited: set[tuple[str, str]] = set()
+        found: dict[tuple[str, int], Definition] = {}
+        while pending:
+            target, member, depth = pending.popleft()
+            if (target, member) in visited:
+                continue
+            visited.add((target, member))
+            defined = [
+                entry
+                for entry in self._candidates_by_path.get(member, {}).get(target, ())
+                if _in_module_scope(entry, target)
+            ]
+            for entry in defined:
+                found.setdefault((entry.path, entry.symbol.line_number), entry)
+            onward = self.scopes.get(target)
+            if defined or onward is None or depth >= MAX_IMPORT_HOPS:
+                continue
+            pending.extend((*hop, depth + 1) for hop in _re_exports(onward, member))
+        return _ordered(list(found.values()))
 
     def resolve_module_attribute(
         self,
@@ -370,7 +409,7 @@ class Resolver:
             for defining, entries in self._candidates_by_path.get(name, {}).items()
             if defining in targets
             for entry in entries
-        )
+        ) or self._follow((module, name) for module in sorted(targets))
         if not candidates:
             return None
         return Resolution(name=name, tier=Tier.IMPORTED, candidates=candidates)
@@ -521,6 +560,9 @@ class Cycle:
     """One import cycle, as the chain of files that closes it."""
 
     files: tuple[str, ...]
+    # Every file in the strongly connected component; `files` is one shortest
+    # chain through it, so a larger component has members the chain skips.
+    members: tuple[str, ...] = ()
 
     @property
     def chain(self) -> str:
@@ -556,6 +598,17 @@ def _bind_module_object(
     module_bindings.setdefault(binding, set()).add(target)
 
 
+def _re_exports(scope: ImportScope, member: str) -> list[tuple[str, str]]:
+    # An explicit import of the name outranks a star import, and a star import
+    # never carries a private name (only Python's reaches here past a named import).
+    explicit = scope.members.get(member)
+    if explicit:
+        return sorted(explicit)
+    if member.startswith("_"):
+        return []
+    return [(module, member) for module in sorted(scope.wholesale)]
+
+
 def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
     """Resolve every file's import statements to repository files, once.
 
@@ -576,6 +629,7 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
         wholesale: set[str] = set()
         module_bindings: dict[str, set[str]] = {}
         named: dict[str, set[str]] = {}
+        members: dict[str, set[tuple[str, str]]] = {}
         statements: list[ResolvedImport] = []
 
         for statement in facts.imports:
@@ -629,12 +683,14 @@ def build_file_scopes(files: Sequence[FileImports]) -> dict[str, ImportScope]:
                     )
                 elif bound is not None:
                     named.setdefault(local, set()).add(bound)
+                    members.setdefault(local, set()).add((bound, member))
 
         scopes[facts.path] = ImportScope(
             wholesale=frozenset(wholesale),
             module_bindings={name: frozenset(paths) for name, paths in module_bindings.items()},
             named={name: frozenset(paths) for name, paths in named.items()},
             statements=tuple(statements),
+            members={name: frozenset(pairs) for name, pairs in members.items()},
         )
 
     return scopes
@@ -845,7 +901,7 @@ def import_cycles(resolved: ResolvedGraph) -> tuple[Cycle, ...]:
             continue
         chain = _cycle_chain(component, ordered)
         if chain:
-            cycles.append(Cycle(files=chain))
+            cycles.append(Cycle(files=chain, members=component))
 
     cycles.sort(key=lambda cycle: (len(cycle.files), cycle.files))
     return tuple(cycles)
@@ -911,9 +967,25 @@ def _reference_links(
     owners: Mapping[int, ASTSymbol],
     resolver: Resolver,
 ) -> Iterator[_Link]:
+    for ref, resolution in resolved_sites(facts, resolver):
+        owner = owners.get(ref.line)
+        source = (
+            _symbol_endpoint(facts.path, owner)
+            if owner is not None
+            else file_endpoint(facts.path, ref.line)
+        )
+        yield source, resolution, Relation.REFERENCES
+
+
+def resolved_sites(
+    facts: FileFacts, resolver: Resolver, names: AbstractSet[str] | None = None
+) -> Iterator[tuple[Ref, Resolution]]:
+    """Yield each occurrence in ``facts`` that binds a definition, with the tier it binds at."""
     declarations = {(symbol.name, symbol.line_number) for symbol in facts.symbols}
 
     for ref in facts.refs:
+        if names is not None and ref.name not in names:
+            continue
         if not ref.is_resolvable:
             # A syntactic binding, label, declaration, or attribute member is
             # not a bare repository reference at any evidence tier.
@@ -946,16 +1018,8 @@ def _reference_links(
             if ref.role is IdentifierRole.MODULE_ATTRIBUTE
             else resolver.resolve(ref.name, facts.path)
         )
-        if resolution is None:
-            continue
-
-        owner = owners.get(ref.line)
-        source = (
-            _symbol_endpoint(facts.path, owner)
-            if owner is not None
-            else file_endpoint(facts.path, ref.line)
-        )
-        yield source, resolution, Relation.REFERENCES
+        if resolution is not None:
+            yield ref, resolution
 
 
 def _inherit_links(facts: FileFacts, resolver: Resolver) -> Iterator[_Link]:
@@ -1184,31 +1248,21 @@ def _cycle_chain(
     component: Sequence[str],
     adjacency: Mapping[str, tuple[str, ...]],
 ) -> tuple[str, ...]:
-    """Return a real walk inside ``component`` that returns to where it began.
-
-    Depth first from the component's first file, following only edges that
-    stay inside it, taking the first neighbour in sorted order every time --
-    so the chain reported for one component never depends on iteration order.
-    """
+    # Breadth first from the component's first file over sorted edges inside it,
+    # so the chain is the shortest cycle through that file and never order-dependent.
     members = set(component)
     start = min(members)
-    path: list[str] = [start]
-    seen = {start}
-
-    while True:
-        node = path[-1]
-        step = next(
-            (child for child in adjacency.get(node, ()) if child in members and child not in seen),
-            None,
-        )
-        if step is not None:
-            path.append(step)
-            seen.add(step)
-            continue
-        if start in adjacency.get(node, ()):
-            return tuple(path)
-        if len(path) == 1:
-            return ()
-        path.pop()
-        # The dropped node stays in `seen`: it cannot close the cycle from
-        # here, and re-entering it would not change that.
+    previous: dict[str, str] = {}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        for child in adjacency.get(node, ()):
+            if child == start:
+                chain = [node]
+                while chain[-1] != start:
+                    chain.append(previous[chain[-1]])
+                return tuple(reversed(chain))
+            if child in members and child not in previous:
+                previous[child] = node
+                queue.append(child)
+    return ()

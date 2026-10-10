@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import IdentifierRole, Ref, TreeSitterExtractor
+from agentless_mcp.core.extractor import IdentifierRole, ParsedFacts, Ref, TreeSitterExtractor
 from agentless_mcp.core.imports import ImportStatement
 from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
 from agentless_mcp.core.treewalk import walk_repo
@@ -380,6 +380,10 @@ class FileSource(Protocol):
         """Return the identifier occurrences in ``text``, as the extractor would."""
         ...
 
+    def facts_for(self, text: str, language: str, path: str) -> ParsedFacts:
+        """Return all three fact sets for ``text``, as the extractor would."""
+        ...
+
     def status(self) -> CacheStatus:
         """Describe this source, including row counts when it has any."""
         ...
@@ -412,6 +416,10 @@ class OnDemandSource:
     def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
         """Extract identifier references from ``text`` with no cache involved."""
         return self._extractor.extract_refs_from_source(text, language, path)
+
+    def facts_for(self, text: str, language: str, path: str) -> ParsedFacts:
+        """Extract all three fact sets from one parse of ``text``."""
+        return self._extractor.extract_facts(text, language, path)
 
     def status(self) -> CacheStatus:
         """Describe why there is no cache behind this source."""
@@ -501,29 +509,45 @@ class CachedSource:
         answers from its live content while the rest of the repository is
         still served from the index.
         """
-        rows = self._rows_or_none(self._symbol_rows, text, path, "symbol")
+        rows = self._rows_or_none(
+            self._symbol_rows, self._fresh_file_id(text, path), path, "symbol"
+        )
         if rows is None:
             return self._extractor.extract_from_source(text, language, path)
         return rows
 
     def imports_for(self, text: str, language: str, path: str) -> list[ImportStatement]:
         """Return cached imports when the row still describes ``text``."""
-        rows = self._rows_or_none(self._import_rows, text, path, "import")
+        rows = self._rows_or_none(
+            self._import_rows, self._fresh_file_id(text, path), path, "import"
+        )
         if rows is None:
             return self._extractor.extract_imports_from_source(text, language, path)
         return rows
 
     def refs_for(self, text: str, language: str, path: str) -> list[Ref]:
         """Return cached identifier references when the row still describes ``text``."""
-        rows = self._rows_or_none(self._ref_rows, text, path, "reference")
+        rows = self._rows_or_none(
+            self._ref_rows, self._fresh_file_id(text, path), path, "reference"
+        )
         if rows is None:
             return self._extractor.extract_refs_from_source(text, language, path)
         return rows
 
+    def facts_for(self, text: str, language: str, path: str) -> ParsedFacts:
+        """Return all three fact sets, checking the digest once and parsing at most once."""
+        file_id = self._fresh_file_id(text, path)
+        symbols = self._rows_or_none(self._symbol_rows, file_id, path, "symbol")
+        imports = self._rows_or_none(self._import_rows, file_id, path, "import")
+        refs = self._rows_or_none(self._ref_rows, file_id, path, "reference")
+        if symbols is None or imports is None or refs is None:
+            return self._extractor.extract_facts(text, language, path)
+        return ParsedFacts(symbols, imports, refs)
+
     def _rows_or_none(
         self,
         read: "Callable[[str, int], list[Any]]",
-        text: str,
+        file_id: int | None,
         path: str,
         kind: str,
     ) -> list[Any] | None:
@@ -544,7 +568,6 @@ class CachedSource:
         IndexError and KeyError for a row or document missing a field this
         build reads. A defect in this module still raises.
         """
-        file_id = self._fresh_file_id(text, path)
         if file_id is None:
             return None
         try:
@@ -1438,9 +1461,7 @@ def _plan_index(
             continue
 
         try:
-            symbols = extractor.extract_from_source(read.text, language, repo_file.path)
-            imports = extractor.extract_imports_from_source(read.text, language, repo_file.path)
-            refs = extractor.extract_refs_from_source(read.text, language, repo_file.path)
+            symbols, imports, refs = extractor.extract_facts(read.text, language, repo_file.path)
         except EXTRACTION_FAILURES as exc:
             # The class name is part of the report: "maximum recursion depth
             # exceeded" names a defect, a bare KeyError message names nothing.

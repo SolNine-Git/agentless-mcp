@@ -109,6 +109,9 @@ SHARED_CALLERS_SHOWN = 5
 # an inventory. The JSON forms still carry every entry.
 SKIPPED_FILES_SHOWN = 5
 
+# How many off-chain members of one cycle the text names; the JSON carries all.
+CYCLE_MEMBERS_SHOWN = 10
+
 # The markdown fence a diagram travels in when it is going into a response
 # body. Declared here rather than in `core.mermaid` because fencing is a
 # property of the destination, not of the diagram. `core.patches` spells the
@@ -527,7 +530,7 @@ class RefSite:
 
 @dataclass(frozen=True)
 class RefGroup:
-    """The references to one symbol from one file.
+    """The references to one symbol from one file, at one evidence tier.
 
     ``tier`` says what kind of evidence connects this file to the target: an
     import it declares, a definition in the file itself, the fact that the
@@ -544,15 +547,21 @@ class RefGroup:
     # As on :class:`MapFile`: with the path, the id pattern this group prints
     # once so its rows carry the qualified name alone.
     id_prefix: str = ""
+    # False for a binding tier in a language with no scope analysis, where a
+    # parameter or local that shadows the name cannot be told from a caller.
+    scope_checked: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this group."""
-        return {
+        record: dict[str, Any] = {
             "path": self.path,
             "count": len(self.sites),
             "tier": self.tier,
             "sites": [site.as_dict() for site in self.sites],
         }
+        if not self.scope_checked:
+            record["scope_checked"] = False
+        return record
 
 
 @dataclass(frozen=True)
@@ -584,7 +593,7 @@ class RefListing(_Bounded, Sequence[RefGroup]):
     @property
     def files_omitted(self) -> int:
         """How many referencing files the limit cut out whole."""
-        return max(0, self.files - len(self.rows))
+        return max(0, self.files - len({group.path for group in self.rows}))
 
     def __len__(self) -> int:
         """Return how many file groups the listing kept."""
@@ -887,15 +896,26 @@ class CycleRow:
     """
 
     files: tuple[str, ...]
+    members: tuple[str, ...] = ()
 
     @property
     def chain(self) -> str:
         """Render the cycle as ``a -> b -> a``."""
         return " -> ".join([*self.files, self.files[0]])
 
+    @property
+    def component(self) -> tuple[str, ...]:
+        """Every file in the cycle, sorted; the chain's own files when no members were given."""
+        return self.members or tuple(sorted(self.files))
+
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this cycle."""
-        return {"length": len(self.files), "files": list(self.files), "chain": self.chain}
+        return {
+            "length": len(self.files),
+            "files": list(self.files),
+            "chain": self.chain,
+            "members": list(self.component),
+        }
 
 
 @dataclass(frozen=True)
@@ -911,6 +931,8 @@ class Explanation:
     fan_in: tuple[TierGroup, ...]
     imports_out: ImportListing
     imports_in: ImportListing
+    # How many definitions matched the target as well as the one explained.
+    tied: int = 1
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this explanation."""
@@ -928,6 +950,8 @@ class Explanation:
         }
         if self.rationales:
             record["rationales"] = [rationale.as_dict() for rationale in self.rationales]
+        if self.tied > 1:
+            record["tied"] = self.tied
         return record
 
 
@@ -979,6 +1003,10 @@ class CycleReport(_Bounded):
     total: int
     limit: int
     unresolved_imports: int = 0
+    # The text note reads this one: stdlib imports can never resolve, so only
+    # an unresolved import of this repository's own modules can hide a cycle.
+    unresolved_internal_imports: int = 0
+    skipped: tuple[SkippedFile, ...] = ()
 
     @property
     def shown(self) -> int:
@@ -992,6 +1020,8 @@ class CycleReport(_Bounded):
             "limit": self.limit,
             "omitted": self.omitted,
             "unresolved_imports": self.unresolved_imports,
+            "unresolved_internal_imports": self.unresolved_internal_imports,
+            "skipped": [{"path": entry.path, "reason": entry.reason} for entry in self.skipped],
             "cycles": [cycle.as_dict() for cycle in self.cycles],
         }
 
@@ -1445,7 +1475,12 @@ def render_explanation(explanation: Explanation) -> str:
     if explanation.card is None:
         return one_line(explanation.message).rstrip("\n") + "\n"
 
-    lines = [_render_card(explanation.card)]
+    lines = []
+    if explanation.tied > 1:
+        lines.append(
+            MESSAGES.explain_tie.format(count=explanation.tied, target=one_line(explanation.target))
+        )
+    lines.append(_render_card(explanation.card))
     lines.extend(f"  also defined at {one_line(entry)}" for entry in explanation.alternatives)
     if explanation.rationales:
         lines.append("")
@@ -1493,17 +1528,29 @@ def render_cycles(report: CycleReport) -> str:
     the three renderers that phrase an empty result as a statement about the
     repository, this is the one whose statement clears something.
     """
-    note = _unresolved_imports_note(report.unresolved_imports)
+    note = _unresolved_imports_note(report.unresolved_internal_imports)
     if not report.total:
-        return "\n".join(["no import cycles", *note]) + "\n"
+        lines = ["no import cycles", *note]
+    else:
+        cycles = "cycle" if report.total == 1 else "cycles"
+        lines = [f"{report.total} import {cycles}", *note]
+        for index, cycle in enumerate(report.cycles, start=1):
+            lines.append(f"  {index:>3}. ({len(cycle.component)} files) {one_line(cycle.chain)}")
+            on_chain = set(cycle.files)
+            off_chain = [path for path in cycle.component if path not in on_chain]
+            if off_chain:
+                lines.append(f"         also in this cycle: {_listed_members(off_chain)}")
+        if report.omitted:
+            lines.append(_omitted_line(report.omitted, "cycles", limit=report.limit))
+    body = "\n".join(lines) + "\n"
+    warning = render_skipped_files(report.skipped)
+    return f"{warning}\n\n{body}" if warning else body
 
-    cycles = "cycle" if report.total == 1 else "cycles"
-    lines = [f"{report.total} import {cycles}", *note]
-    for index, cycle in enumerate(report.cycles, start=1):
-        lines.append(f"  {index:>3}. ({len(cycle.files)} files) {one_line(cycle.chain)}")
-    if report.omitted:
-        lines.append(_omitted_line(report.omitted, "cycles", limit=report.limit))
-    return "\n".join(lines) + "\n"
+
+def _listed_members(paths: Sequence[str]) -> str:
+    shown = ", ".join(one_line(path) for path in paths[:CYCLE_MEMBERS_SHOWN])
+    hidden = len(paths) - CYCLE_MEMBERS_SHOWN
+    return f"{shown}; ... {hidden} more" if hidden > 0 else shown
 
 
 def _unresolved_imports_note(count: int) -> list[str]:
@@ -1518,8 +1565,8 @@ def _unresolved_imports_note(count: int) -> list[str]:
     statements = "statement" if count == 1 else "statements"
     return [
         (
-            f"  note: {count} import {statements} named no file in this repository, "
-            "so a cycle through them is not listed"
+            f"  note: {count} import {statements} of this repository's own modules did not "
+            "resolve, so a cycle through them is not listed"
         )
     ]
 
@@ -1873,6 +1920,8 @@ def render_ref_groups(
     blocks = [f"{total} {_references(total)} to {one_line(target)}"]
     for group in groups:
         labelled = f", {one_line(group.tier_label)}" if group.tier_label else ""
+        if not group.scope_checked:
+            labelled += ", locals not checked"
         sites = len(group.sites)
         lines = [f"{one_line(group.path)}  ({sites} {_references(sites)}{labelled})"]
         pattern = _stable_ids_line(group.id_prefix, group.path)

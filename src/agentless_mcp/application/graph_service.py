@@ -228,6 +228,7 @@ class GraphService:
 
         ordered = rank_candidates(definitions, target)
         chosen = ordered[0]
+        tied = len(best_band(ordered, target))
         node = symbol_stable_id(chosen.symbol)
         built = resolved.graph
         arriving, leaving = built.ambiguous_degrees()
@@ -250,6 +251,7 @@ class GraphService:
             ),
             imports_out=_imports(built, chosen.path, limit, declared=True),
             imports_in=_imports(built, chosen.path, limit, declared=False),
+            tied=tied,
         )
 
     def path(
@@ -298,10 +300,15 @@ class GraphService:
         imports = resolve.import_graph(scan.files)
         cycles = resolve.import_cycles(imports)
         return render.CycleReport(
-            cycles=tuple(render.CycleRow(files=cycle.files) for cycle in cycles[:limit]),
+            cycles=tuple(
+                render.CycleRow(files=cycle.files, members=cycle.members)
+                for cycle in cycles[:limit]
+            ),
             total=len(cycles),
             limit=limit,
             unresolved_imports=imports.unresolved_imports,
+            unresolved_internal_imports=imports.unresolved_internal_imports,
+            skipped=scan.skipped,
         )
 
     def health(self, ctx: RepoContext, *, limit: int = DEFAULT_HEALTH_LIMIT) -> render.HealthReport:
@@ -689,6 +696,12 @@ def rank_candidates(
     )
 
 
+def best_band(ranked: Sequence[refs.Definition], target: str) -> tuple[refs.Definition, ...]:
+    """Return the exact qualified-name matches in ``ranked``, or all of it when none is exact."""
+    exact = tuple(entry for entry in ranked if qualname(entry.symbol) == target)
+    return exact if exact else tuple(ranked)
+
+
 def _endpoint(resolved: _Resolved, text: str) -> _Located:
     """Resolve one endpoint argument to a graph node, or say why it is not one.
 
@@ -708,9 +721,7 @@ def _endpoint(resolved: _Resolved, text: str) -> _Located:
     if not candidates:
         return _Located(node="", label=text, message=f"no symbol or file matches {text}")
 
-    ranked = rank_candidates(candidates, text)
-    exact = [entry for entry in ranked if qualname(entry.symbol) == text]
-    best = tuple(exact) if exact else ranked
+    best = best_band(rank_candidates(candidates, text), text)
     if len(best) > 1:
         listed = ", ".join(symbol_stable_id(entry.symbol) for entry in best)
         return _Located(node="", label=text, message=f"{text} is ambiguous: {listed}")

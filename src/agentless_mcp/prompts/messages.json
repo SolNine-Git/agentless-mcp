@@ -13,6 +13,7 @@
   "map_unresolved_seeds": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: {seeds}. Check the spelling, or seed with a file path from the tree.",
   "scan_skipped_files": "// warning: {count} files were skipped and are absent from this answer: {listed}. A symbol in a skipped file reads as missing here even though it may exist in the repository.",
   "find_no_matches": "no matching symbols: no declared symbol has '{query}' in its name or qualified name, matched case-insensitively. A parameter, a local variable, an attribute or a string literal is not a declared symbol; grep for the literal to find those.",
+  "find_unparsed": "note: {query} is spelled where a file did not parse ({listed}), so a declaration there may be missing from this answer",
   "find_no_matches_kind": "no matching symbols of kind '{kind}': '{query}' does match symbols of other kinds: {kinds}. Retry with one of those kinds, or with no kind.",
   "expand_body_truncated": "... {shown} of {total} lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body.",
   "expand_batch_shortened": "note: {shortened} of {total} bodies were shortened to fit the {budget}-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies.",
@@ -20,6 +21,7 @@
   "grouped_ids": "({count} ids)",
   "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
+  "explain_tie": "ambiguous: {count} definitions match {target} equally; this explains the first in path order. Pass a stable id to explain another.",
   "stable_ids_pattern": "stable ids: {pattern}",
   "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",
   "slice_range_beyond_file": "unsatisfiable: line range {start}-{end} is beyond {path} ({total} lines)",
@@ -43,6 +45,10 @@
   "history_body_truncated": "... {shown} of {total} body lines shown for {sha}; git show -s --format=%B {sha} prints the whole message",
   "history_output_capped": "... git output was cut at {bytes} bytes; the {count} complete commits above are shown",
   "history_output_capped_no_commits": "unsatisfiable: git output reached the {bytes} byte cap before the first complete commit. The newest commit on lines {start}-{end} of {path} carries a message larger than the cap; run git log -L{start},{end}:{path} to read it.",
-  "history_dirty_file": "note: {path} has uncommitted changes; lines were read against HEAD, so the span may be shifted",
-  "history_dirty_unknown": "note: git could not say whether {path} has uncommitted changes ({note}); lines were read against HEAD, so the span may be shifted"
+  "history_dirty_file": "note: {path} has uncommitted changes; the span was located in the committed copy of the file (lines {start}-{end} there), so these commits follow the committed definition",
+  "history_dirty_unknown": "note: git could not say whether {path} has uncommitted changes ({note}); the span was located in the committed copy of the file (lines {start}-{end} there)",
+  "history_symbol_not_in_head": "unsatisfiable: {name} is not defined in the committed copy of {path}: it is new or renamed in the working tree, so no commit has touched it yet",
+  "history_signature_changed": "note: {name} has a different signature in the committed copy than in the working tree; these commits follow the committed definition",
+  "history_shallow": "note: this clone is shallow, so the oldest commit listed may stand in for older history",
+  "history_shallow_unknown": "note: git could not say whether this clone is shallow ({note}); in a shallow clone the oldest commit listed may stand in for older history"
 }
