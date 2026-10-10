@@ -93,8 +93,8 @@ agentless-mcp html > modules.html
 ```
 
 These commands find relationships between symbols or files, report import
-cycles, group related files, list orphan candidates, unused exports and hubs,
-and export Mermaid or interactive HTML graphs.
+cycles, group related files, list orphan candidates, unused exports, hubs and
+complexity hotspots, and export Mermaid or interactive HTML graphs.
 
 ### Validate patches
 

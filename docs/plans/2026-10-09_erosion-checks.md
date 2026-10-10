@@ -376,26 +376,26 @@ Deferred: cognitive complexity, tier-2 languages, merging `near_duplicates` into
 
 ## Task Checklist
 
-**Progress pin, 2026-10-09.** Branch `feat/erosion-checks` in the worktree `agentless-mcp-erosion`, from `main` `d7f0c52`. Nothing committed. Q2 and Q3 take the reviewers' recommendation (not_checked for c and bash, empty `boundary_globs`) unless the user redirects. Ticket ERO-1 (Phase 0 S1 and Phase 1) is landed in the worktree, unvalidated, and uncommitted: `pytest` 3694 passed and 10 skipped (baseline 3585 and 10), pre-commit green, and live erosion on mcp-local `f17af96` equal to scb-check's 0.3500945549598066 over 1770 units. S0 (hook spike) not started: it needs a logging hook in a live session, which needs the user's go-ahead.
+**Progress pin, 2026-10-10.** Branch `feat/erosion-checks` in the worktree `agentless-mcp-erosion`, from `main` `d7f0c52`. Phases 0 to 2, the Phase 3 code, Phase 4 review mode and the `health` complexity section, and Phase 6 are committed. `pytest` gives 4319 passed and 10 skipped. Q2 and Q3 take the reviewers' recommendation (not_checked for c and bash, empty `boundary_globs`). Open: `clone_delta` with the Type-2 normalizer and the `health` clone share (Phase 4), the cache (Phase 5), the advisory deploy (it waits for the user's choice of the binary the hook calls), and the flip (it needs trial data and labels).
 
-- [ ] S0: log real hook payloads, confirm the advisory form live, record `tool_use_id` presence and CRLF Edit behavior in this file
-- [ ] S1: write `scripts/scb_parity_goldens.py`, generate and commit Python goldens
-- [ ] Write `core/complexity.py` with the D1 tables, unit walk, SLOC, mass, erosion
-- [ ] Add the grammar-name validation test for every complexity, unit, and contract table entry, plus full-count fixtures
-- [ ] Add Python parity tests and hand goldens for the other 11 languages
-- [ ] Add the check registry and `--only` to `lint`; add `TextPair`, the candidate pair path, and the `--path/--after` hook form
-- [ ] Add `complexity_delta` with the three-pass matching and message text per D2
-- [ ] Add `contract_drift`, `prompts/contract_rules.json`, the eager loader, the glob matcher, and rule fixtures (positive and negative)
-- [ ] Add `complexity_threshold`, `boundary_globs`, and `erosion_gate` to project config and `capabilities`
-- [ ] Update check-count text, the agent guide lint section, `test_guide.py` heading counts, and the CHANGELOG
-- [ ] Write `contrib/hooks/agentless_erosion_gate.py`, its tests, and `erosion_gate_report.py`
-- [ ] Update `contrib/hooks/settings-example.json` and the README hook section
+- [x] S0: log real hook payloads, confirm the advisory form live, record `tool_use_id` presence and CRLF Edit behavior in this file
+- [x] S1: write `scripts/scb_parity_goldens.py`, generate and commit Python goldens
+- [x] Write `core/complexity.py` with the D1 tables, unit walk, SLOC, mass, erosion
+- [x] Add the grammar-name validation test for every complexity, unit, and contract table entry, plus full-count fixtures
+- [x] Add Python parity tests and hand goldens for the other 11 languages
+- [x] Add the check registry and `--only` to `lint`; add `TextPair`, the candidate pair path, and the `--path/--after` hook form
+- [x] Add `complexity_delta` with the three-pass matching and message text per D2
+- [x] Add `contract_drift`, `prompts/contract_rules.json`, the eager loader, the glob matcher, and rule fixtures (positive and negative)
+- [x] Add `complexity_threshold`, `boundary_globs`, and `erosion_gate` to project config and `capabilities`
+- [x] Update check-count text, the agent guide lint section, `test_guide.py` heading counts, and the CHANGELOG
+- [x] Write `contrib/hooks/agentless_erosion_gate.py`, its tests, and `erosion_gate_report.py`
+- [x] Update `contrib/hooks/settings-example.json` and the README hook section
 - [ ] Deploy the hook in advisory mode on this machine and start the log
-- [ ] Add `lint --since` as `lint_revision`, reusing stage 5's `blob_arguments`
+- [x] Add `lint --since` as `lint_revision`, reusing stage 5's `blob_arguments`
 - [ ] Add the Type-2 normalizer and `clone_delta`
-- [ ] Add the `health` complexity section and update the wire text
+- [x] Add the `health` complexity section and update the wire text (clone share follows `clone_delta`)
 - [ ] After stage 6: extractor interface change, cache metrics and block hashes with an algorithm version, bump `SCHEMA_VERSION`
-- [ ] Update the review skills in the vault and copy them down
+- [x] Update the review skills in the vault and copy them down
 - [ ] Flip each check to `block`, per repository, when D9 is met for it
 
 ## Files to Modify

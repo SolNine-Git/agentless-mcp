@@ -1579,7 +1579,8 @@ three views. Three things are worth knowing before you set it:
   the import weighting and adds no inheritance edge at all.
 
 `complexity_threshold` sets the complexity above which `lint`'s
-`complexity_delta` reports a function, from 1 to 100. The default is 10.
+`complexity_delta` reports a function and above which `health` counts a unit
+toward erosion, from 1 to 100. The default is 10.
 
 `erosion_gate` maps a check name to `off`, `advisory`, or `block`. The names it
 takes are `complexity_delta`, `contract_drift`, and `clone_delta`. It is for the

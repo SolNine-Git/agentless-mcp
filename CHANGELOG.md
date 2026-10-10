@@ -118,6 +118,21 @@
   labeling, scores the filled file, and prints which checks meet the
   advisory-to-block criterion (50 applied findings and a labeled precision of
   90% or more).
+- **`health` reports complexity and hotspots.** The CLI subcommand and the
+  `orient` and `analyze_structure` operation `health` add a complexity summary
+  and a `hotspots` section after the graph sections. The summary gives the
+  units measured, the units above `complexity_threshold` (default 10), and
+  erosion, over tier-1 source files outside test and fixture paths. Hotspots
+  lists the units with the most mass (cc times the square root of sloc), each
+  with its stable id or marked metric-only. A file that cannot be measured is
+  counted and named with the reason. The walk has its own time budget, 10 s or
+  half of an MCP call's remaining allowance, whichever is less, so the graph
+  sections always return. On a snapshot of mcp-local `src/` (183 files, 1770
+  units), `health` erosion is 0.3500945549598066, equal to scb-check 0.1.3. On
+  mcp-local, `health` takes 1.40 s against 0.80 s before (CLI, median of 3).
+  Over 144 Loc-Bench checkouts, the orphan, unused-export, and hub sections are
+  byte-identical to the previous build, and the walk takes 0.26 s median and
+  4.9 s at most.
 
 ## 0.9.1 -- 2026-10-09
 
