@@ -450,9 +450,10 @@ def _transcript(path: Path) -> Transcript:
 def _json_line(line: str) -> object | None:
     # A live session can leave a partial last line. The caller counts it and reports it.
     try:
-        return json.loads(line)
+        document: object = json.loads(line)
     except ValueError:
         return None
+    return document
 
 
 def _tool_results(document: object) -> list[dict[str, object]]:
@@ -502,7 +503,7 @@ def _status(record: Record, transcripts: Mapping[str, Transcript]) -> str:
     transcript = None if record.transcript_path is None else transcripts[record.transcript_path]
     if transcript is None or transcript.results is None:
         return UNRESOLVED
-    if record.tool_use_id not in transcript.results:
+    if record.tool_use_id is None or record.tool_use_id not in transcript.results:
         return UNRESOLVED
     return transcript.results[record.tool_use_id]
 
