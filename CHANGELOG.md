@@ -87,8 +87,8 @@
   change. The lint JSON golden gains `observed` on its four candidates, and
   every finding in it is unchanged. The text golden is byte-identical.
 - **`capabilities` lists the lint checks.** Text and JSON (`lint_checks`) name
-  each check and the input it reads, `patch` or `pairs`, from the check
-  registry.
+  each check and the input it reads, `patch`, `pairs`, or `pairs+clones`, from
+  the check registry.
 - **`boundary_globs` in `.agentless-mcp.json`.** It lists at most 64
   repo-relative globs of at most 256 characters each. `*` matches within one
   path segment, `**/` matches zero or more whole segments, and every other
@@ -127,8 +127,11 @@
   lists the units with the most mass (cc times the square root of sloc), each
   with its stable id or marked metric-only. A file that cannot be measured is
   counted and named with the reason. The walk has its own time budget, 10 s or
-  half of an MCP call's remaining allowance, whichever is less, so the graph
-  sections always return. On a snapshot of mcp-local `src/` (183 files, 1770
+  half of an MCP call's remaining allowance, whichever is less, and it tests
+  the budget before each checkpoint, so the walk never stops the call for time
+  and the graph sections return. A client that cancels still stops the call,
+  and so does an allowance spent during the scan or the resolve, before the
+  walk starts. On a snapshot of mcp-local `src/` (183 files, 1770
   units), `health` erosion is 0.3500945549598066, equal to scb-check 0.1.3. On
   mcp-local, `health` takes 1.40 s against 0.80 s before (CLI, median of 3).
   Over 144 Loc-Bench checkouts, the orphan, unused-export, and hub sections are
@@ -166,7 +169,14 @@
   groups (200 groups, 545 instances) and the 2,513 clone source lines equal
   scb-check's. The check runs by default over `--candidates` and `--diff`.
   `--path` and `--since` run it only when `--only` names it, because it
-  parses every source file. On a scratch clone of mcp-local (228 files in
+  reads every source file. It builds its index only when a change edits a
+  file in its scope, once for all the candidates of a run, and it stops the
+  index after 10 s and names each file it did not reach in its `not_checked`
+  row. In the per-edit form (`--path`) it reads the index from the tag cache
+  only, and parses just the edited file and the files that changed since the
+  index. Without a tag cache it gives one `not_checked` row with
+  `detail.reason` `no_tag_cache` and parses nothing. On a scratch clone of
+  mcp-local (228 files in
   scope), `--since HEAD~5 --only clone_delta` takes 0.84 s, and all three pair
   checks take 0.90 s against 0.23 s for `complexity_delta` and
   `contract_drift`. A one-edit candidate with every check takes 3.93 s against
@@ -187,9 +197,12 @@
   advisory by default, and the trial report counts a copy as acted on when a
   later call leaves its file with fewer copies of the block. A binary without
   the check runs the other two and logs `clone_delta` as dropped. On one
-  mcp-local file the hook takes 0.24 s with a fresh tag cache and 0.84 s
-  without one, against 0.21 s and 0.20 s with the two other checks (median of
-  5 interleaved runs, `/usr/bin/time`).
+  mcp-local file the hook takes 0.24 s with a fresh tag cache, against 0.21 s
+  with the two other checks (median of 5 interleaved runs, `/usr/bin/time`).
+  Without a tag cache, `clone_delta` is off for the call: lint gives its
+  `no_tag_cache` row, and the hook logs the check under `off_by_config`, not
+  as a gap. On `diffusers@65ab105` with `--no-cache`, the hook-form lint of
+  all three checks takes 0.14 s for a source file (one run).
 
 ### Changed
 

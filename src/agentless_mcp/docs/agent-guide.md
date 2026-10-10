@@ -1003,7 +1003,10 @@ or indexed is left out of both. The walk has its own time budget: 10 s, or half
 of what is left of an MCP call's allowance, whichever is less. When the budget
 ends it, the answer says
 `complexity: N of M files walked before the time budget`, the summary and the
-clone share cover the files walked, and the graph sections are complete.
+clone share cover the files walked, and the graph sections are complete. The
+walk tests its budget before each checkpoint, so it never stops the call for
+time. A client that cancels still stops the call, and so does an allowance
+spent during the scan or the resolve, before the walk starts.
 
 **A fresh index makes the walk cheap and does not change the answer.** The
 walk reads each file's units and blocks from the index and parses only the
@@ -1067,7 +1070,8 @@ The report holds:
 - the configured roots and the roots the client advertised
 - the project config in force
 - every bound (walk depth, file count, per-file bytes, output tokens)
-- the `lint` checks, each with the input it reads (`patch` or `pairs`)
+- the `lint` checks, each with the input it reads (`patch`, `pairs`, or
+  `pairs+clones`)
 
 The report names an absent tag cache with the exact
 `agentless-mcp index --repo PATH` command that builds it. Check the report
@@ -1166,19 +1170,25 @@ table below. An unknown name is a usage error (exit 2). `complexity_delta`,
 file's whole text before and after the change. `complexity_delta` and
 `contract_drift` read only the edited files. `clone_delta` also reads every
 tier-1 source file outside test and fixture paths, to find the copies of a
-block. When `--only` names pair checks alone, `lint` skips the symbol scan
-that the other checks need. The pair checks pair functions across all the
-files of one candidate, so a function moved to another file without other
-change is not a finding, and a contract hit that moves with its function is
-not new.
+block. It reads them only when a change edits a file in that scope, once for
+all the candidates of a run, and it stops after 10 s. When `--only` names pair
+checks alone, `lint` skips the symbol scan that the other checks need. The
+pair checks pair functions across all the files of one candidate, so a
+function moved to another file without other change is not a finding, and a
+contract hit that moves with its function is not new.
 
 **`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
 `--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
 working-tree text at `REL` with `FILE`, so no patch is needed. This form runs
 the pair checks only. Without `--only` it runs `complexity_delta` and
 `contract_drift`, which read only this file. `--only clone_delta` adds the
-clone check, which reads every source file. An `--only` that names another
-check is a usage error (exit 2). A path that does
+clone check. In this form it reads the clone blocks of the source files from
+the tag cache only, and it parses just this file and the files that changed
+since the index. Without a tag cache, as on a repository never indexed or with
+`--no-cache`, it gives one `not_checked` row with `detail`
+`{"reason": "no_tag_cache"}` and parses nothing. Run `agentless-mcp index`, or
+let the MCP server index the repository, to turn it on. An `--only` that names
+another check is a usage error (exit 2). A path that does
 not exist yet is a new file, so every function in `FILE` counts as new. Both
 sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
 each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
@@ -1222,8 +1232,10 @@ that holds the hit, or `<module>`), and `capture` (the matched text). Two
 the reason without reading the message: `{"reason": "no_boundary_globs"}` when
 no `boundary_globs` is set, and `{"reason": "no_rules_for_language",
 "language": "c"}` (or `"bash"`) for a boundary file in a language with no
-rules. A `clone_delta` finding has `detail`: `key` (the block's Type-2 key),
-`line` and `end_line` (its span in the new text), `sites` (up to 20 other
+rules. A `clone_delta` `not_checked` row in the `--path` form has `detail`
+`{"reason": "no_tag_cache"}` when the run has no tag cache. A `clone_delta`
+finding has `detail`: `key` (the block's Type-2 key), `line` and `end_line`
+(its span in the new text), `sites` (up to 20 other
 instances after the change, each `{path, line, end_line}`, in path and line
 order), and `sites_total` (how many other instances there are). A row about
 text that was not read, does not parse, or cannot be measured has no `detail`.
@@ -1317,9 +1329,13 @@ c and bash have no rules. A boundary file in either language gives one
 tier-1 source file outside test and fixture paths, by the same `is_test_path`
 and `is_fixture_path` rules that `health` uses, as the working tree holds it.
 The edited files replace their indexed text. A changed file outside that scope
-gives no row. A block's key renames each identifier by its first appearance
-in the block and replaces each literal with its type, so `total(items)` and
-`summed(values)` with the same body share a key. Python follows scb-check
+gives no row, and a run that changes no file in the scope reads no other file.
+The index is built once for all the candidates of a run, and it stops after
+10 s: each file it did not reach is named in the coverage row with the reason
+`stopped: the clone index reached its time budget before this file`. A
+block's key renames each identifier by its first appearance in the block and
+replaces each literal with its type, so `total(items)` and `summed(values)`
+with the same body share a key. Python follows scb-check
 v0.1.3: a plain-string statement is dropped as a docstring, and an
 `if TYPE_CHECKING:` block is not a block although the functions in it are.
 Typescript and tsx share their node types, and so do c and cpp, so a copy
@@ -1361,9 +1377,10 @@ at severity `not_checked` and names the reason:
 - edits that did not apply
 - a file whose text before or after the change was not read, or does not parse
 - a repository with no `boundary_globs`, for `contract_drift`
-- for `clone_delta`, repository files that could not be read or parsed (one
-  row counts them and names the first ten), and a repository whose files
-  could not be listed
+- for `clone_delta`, repository files that could not be read or parsed, or
+  that the index did not reach before its time budget (one row counts them and
+  names the first ten), a repository whose files could not be listed, and in
+  the `--path` form a run with no tag cache
 - a boundary file in a language with no contract rules (c, bash)
 - in review mode: a binary file, a submodule, an unmerged path, a git call
   that failed or timed out, and a run in which no file changed

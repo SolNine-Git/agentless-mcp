@@ -630,7 +630,8 @@ def _add_lint(subparsers: Any) -> None:
         metavar="REL",
         help="a file in --repo whose proposed whole new text is in --after (the per-edit hook "
         f"form). Runs {' and '.join(EDITED_FILE_CHECK_NAMES)}, which read only this file. "
-        "--only can add clone_delta, which also reads every tier-1 source file",
+        "--only can add clone_delta, which reads the clone blocks of every tier-1 source "
+        "file from the tag cache only, and gives one not_checked row when there is no cache",
     )
     source.add_argument(
         "--since",
