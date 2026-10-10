@@ -10,7 +10,7 @@ here blocks a change. This module opens no file.
 import difflib
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Hashable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final, TypeVar
@@ -187,22 +187,18 @@ class Observed:
     def merged(self, other: "Observed") -> "Observed":
         """Return this state with each field it does not hold taken from ``other``."""
         return Observed(
-            units_over_threshold=_first(self.units_over_threshold, other.units_over_threshold),
-            units_changed=_first(self.units_changed, other.units_changed),
-            contract_keys=_first(self.contract_keys, other.contract_keys),
+            **{
+                item.name: _first(getattr(self, item.name), getattr(other, item.name))
+                for item in fields(self)
+            }
         )
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form, with only the fields a check measured."""
-        fields: dict[str, Sequence[UnitState | UnitChange | HitState] | None] = {
-            "units_over_threshold": self.units_over_threshold,
-            "units_changed": self.units_changed,
-            "contract_keys": self.contract_keys,
-        }
         return {
-            name: [row.as_dict() for row in rows]
-            for name, rows in fields.items()
-            if rows is not None
+            item.name: [row.as_dict() for row in rows]
+            for item in fields(self)
+            if (rows := getattr(self, item.name)) is not None
         }
 
 
@@ -645,14 +641,14 @@ def _qualname(unit: Unit | None) -> str:
 
 
 def _hit_finding(path: str, hit: Hit, key: DriftKey) -> PairFinding:
-    fields = {"rule": key.rule, "unit": key.unit, "capture": key.capture}
+    parts = {"rule": key.rule, "unit": key.unit, "capture": key.capture}
     finding = Finding(
         check=CHECK_CONTRACT_DRIFT,
         severity=Severity(hit.rule.severity),
-        message=MESSAGES.contract_new_hit.format(why=hit.rule.message, **fields),
+        message=MESSAGES.contract_new_hit.format(why=hit.rule.message, **parts),
         path=path,
         line=hit.line,
-        evidence=MESSAGES.contract_evidence.format(**fields),
+        evidence=MESSAGES.contract_evidence.format(**parts),
     )
     return PairFinding(finding, key)
 

@@ -18,7 +18,6 @@ from typing import Any, TypeVar
 LOG_VERSION = 1
 COMPLEXITY_DELTA = "complexity_delta"
 CONTRACT_DRIFT = "contract_drift"
-KNOWN_CHECKS = (COMPLEXITY_DELTA, CONTRACT_DRIFT)
 MATCH_PASSES = ("body", "name", "collision", "new")
 CONTRACT_KEY_FIELDS = ("rule", "unit", "capture")
 OUTCOMES = ("clean", "advisory", "blocked", "degraded", "skipped")
@@ -135,6 +134,15 @@ class Finding:
     cc_old: int | None = None
     threshold: int | None = None
     hit: tuple[str, str, str] | None = None
+
+
+@dataclass(frozen=True)
+class CheckRule:
+    """How the report reads one check: its finding detail, its observed list, and its fix test."""
+
+    with_detail: Callable[[Finding, Mapping[str, object], str], Finding]
+    tracked: Callable[[Observed], tuple[Any, ...] | None]
+    acted: Callable[[Finding, tuple[Any, ...] | None, tuple[Any, ...]], bool]
 
 
 @dataclass(frozen=True)
@@ -299,14 +307,13 @@ def _finding(item: object, where: str) -> Finding:
         evidence=_field(item, "evidence", str, where),
     )
     detail = _field(item, "detail", (dict, NULL), where)
-    if check not in KNOWN_CHECKS:
+    rule = CHECK_RULES.get(check)
+    if rule is None:
         return finding
     if detail is None:
         message = f"{where}: detail is missing, and a {check} finding needs it"
         raise ReportError(message)
-    if check == CONTRACT_DRIFT:
-        return _with_key(finding, detail, f"{where}.detail")
-    return _with_numbers(finding, detail, f"{where}.detail")
+    return rule.with_detail(finding, detail, f"{where}.detail")
 
 
 def _with_key(finding: Finding, detail: Mapping[str, object], where: str) -> Finding:
@@ -521,23 +528,24 @@ def _class(
 
 
 def _observes(observed: Observed, finding: Finding) -> bool:
-    if finding.check == COMPLEXITY_DELTA:
-        return observed.units_over_threshold is not None
-    if finding.check == CONTRACT_DRIFT:
-        return observed.contract_keys is not None
-    return False
+    rule = CHECK_RULES.get(finding.check)
+    return rule is not None and rule.tracked(observed) is not None
 
 
 def _acted(finding: Finding, at_finding: Observed | None, later: Observed) -> bool:
-    if finding.check == COMPLEXITY_DELTA and later.units_over_threshold is not None:
-        return _complexity_acted(finding, later.units_over_threshold)
-    if finding.check == CONTRACT_DRIFT and later.contract_keys is not None:
-        before = None if at_finding is None else at_finding.contract_keys
-        return _contract_acted(finding, before, later.contract_keys)
-    return False
+    rule = CHECK_RULES.get(finding.check)
+    if rule is None:
+        return False
+    after = rule.tracked(later)
+    if after is None:
+        return False
+    before = None if at_finding is None else rule.tracked(at_finding)
+    return rule.acted(finding, before, after)
 
 
-def _complexity_acted(finding: Finding, over: Sequence[UnitCC]) -> bool:
+def _complexity_acted(
+    finding: Finding, _before: Sequence[UnitCC] | None, over: Sequence[UnitCC]
+) -> bool:
     if finding.threshold is None:
         message = f"a {COMPLEXITY_DELTA} finding reached classification without its threshold"
         raise ReportError(message)
@@ -561,6 +569,21 @@ def _contract_acted(
 
 def _hit_count(finding: Finding, hits: Sequence[ContractHit]) -> int:
     return sum(1 for hit in hits if (hit.path, hit.rule, hit.capture) == finding.hit)
+
+
+CHECK_RULES: Mapping[str, CheckRule] = {
+    COMPLEXITY_DELTA: CheckRule(
+        with_detail=_with_numbers,
+        tracked=lambda observed: observed.units_over_threshold,
+        acted=_complexity_acted,
+    ),
+    CONTRACT_DRIFT: CheckRule(
+        with_detail=_with_key,
+        tracked=lambda observed: observed.contract_keys,
+        acted=_contract_acted,
+    ),
+}
+KNOWN_CHECKS = tuple(CHECK_RULES)
 
 
 def sample(classified: Sequence[Classified], seed: int) -> list[Classified]:

@@ -608,6 +608,15 @@ class TestObserved:
             "contract_keys": [],
         }
 
+    def test_merging_keeps_this_states_list_over_the_others(self):
+        mine = erosion.Observed(contract_keys=())
+        theirs = erosion.Observed(
+            contract_keys=(erosion.HitState("a.py", "except-pass", "<module>", "pass"),)
+        )
+
+        assert mine.merged(theirs) == mine
+        assert theirs.merged(mine) == theirs
+
 
 def drift_all(*pairs, globs=BOUNDARY):
     """Run contract_drift over several pairs as one run."""
