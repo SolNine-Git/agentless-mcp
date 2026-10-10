@@ -23,7 +23,7 @@ write side refuses a partly-parsed patch whole and findings about the blocks
 that did parse would describe a patch that can never be applied.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -280,6 +280,22 @@ def _findings(
     produced no report at all, rather than nine reports and one refusal --
     which is the case a model-generated candidate set is most likely to hold.
     """
+    admitted = _oriented(_checkable(candidate, root), facts.texts)
+    if not admitted.edits:
+        return admitted.rows
+
+    report = patchlint.lint_patch(admitted.edits, facts, source)
+    unread = tuple(_unread_row(warning) for warning in report.warnings)
+    return admitted.rows + unread + tuple(_row(finding) for finding in report.findings)
+
+
+@dataclass(frozen=True)
+class _Admission:
+    rows: tuple[render.LintFinding, ...]
+    edits: tuple[Edit, ...] = ()
+
+
+def _checkable(candidate: LintCandidateInput, root: Path) -> _Admission:
     parsed = candidate.parsed
     notes = tuple(_note_row(note) for note in candidate.notes)
     gaps = tuple(
@@ -295,7 +311,7 @@ def _findings(
         for error in parsed.errors
     )
     if gaps:
-        return notes + gaps
+        return _Admission(notes + gaps)
 
     if not parsed.edits:
         # A candidate that parsed cleanly to zero edits -- an empty
@@ -311,20 +327,20 @@ def _findings(
             location="(repository)",
             evidence="0 edits",
         )
-        return (*notes, empty)
+        return _Admission((*notes, empty))
 
     try:
         edits = _canonical(root, parsed.edits)
     except SecurityRefusal as refusal:
-        return (*notes, _refused_row(refusal))
+        return _Admission((*notes, _refused_row(refusal)))
+    return _Admission(notes, edits)
 
-    misoriented = unidiff.orientation(edits, facts.texts)
-    if misoriented:
-        return notes + tuple(_misoriented_row(problem) for problem in misoriented)
 
-    report = patchlint.lint_patch(edits, facts, source)
-    unread = tuple(_unread_row(warning) for warning in report.warnings)
-    return notes + unread + tuple(_row(finding) for finding in report.findings)
+def _oriented(admission: _Admission, texts: Mapping[str, str]) -> _Admission:
+    misoriented = unidiff.orientation(admission.edits, texts)
+    if not misoriented:
+        return admission
+    return _Admission(admission.rows + tuple(_misoriented_row(problem) for problem in misoriented))
 
 
 def _note_row(note: unidiff.DiffNote) -> render.LintFinding:
