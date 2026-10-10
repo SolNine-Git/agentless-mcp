@@ -6,10 +6,11 @@ import math
 import tokenize
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from functools import cache
 from types import MappingProxyType
 from typing import Final
 
-from tree_sitter import Node
+from tree_sitter import Node, Query, QueryCursor
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, error_nodes
@@ -312,14 +313,33 @@ def _python_sloc_lines(source: str, root: Node) -> frozenset[int]:
         if token.type not in _PYTHON_IGNORED_TOKENS
     }
     text_lines = source.splitlines()
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        for child in node.named_children:
-            if node.type in PYTHON_STATEMENT_PARENTS and _is_docstring(child, text_lines):
-                lines.difference_update(range(_first_line(child), _last_line(child) + 1))
-            stack.append(child)
+    for child in _statement_strings(root):
+        if _is_docstring(child, text_lines):
+            lines.difference_update(range(_first_line(child), _last_line(child) + 1))
     return frozenset(lines)
+
+
+_STATEMENT_STRING = "statement_string"
+
+
+@cache
+def _statement_string_query() -> Query:
+    patterns = " ".join(
+        f"({parent} (string) @{_STATEMENT_STRING})" for parent in sorted(PYTHON_STATEMENT_PARENTS)
+    )
+    query: Query = Query(grammars.get_language("python"), patterns)
+    return query
+
+
+def _statement_strings(root: Node) -> list[Node]:
+    # The query finds the same `string` children of a `block` or `module` that a
+    # walk over every node finds, in the C matcher instead of the interpreter.
+    cursor = QueryCursor(_statement_string_query())
+    found = cursor.captures(root).get(_STATEMENT_STRING, [])
+    if cursor.did_exceed_match_limit:
+        message = "the Python docstring query exceeded its match limit, so SLOC would be wrong"
+        raise RuntimeError(message)
+    return found
 
 
 def _is_docstring(node: Node, text_lines: list[str]) -> bool:

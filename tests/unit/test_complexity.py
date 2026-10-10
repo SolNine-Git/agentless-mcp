@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import grammars
+from agentless_mcp.core import complexity, grammars
 from agentless_mcp.core.complexity import (
     RULES,
     Unit,
@@ -15,6 +15,7 @@ from agentless_mcp.core.complexity import (
     sloc_line_numbers,
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.normalize import PYTHON_STATEMENT_PARENTS
 from agentless_mcp.util.errors import UnmeasurableSource
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
@@ -364,3 +365,36 @@ class TestSlocLineNumbers:
 
         with pytest.raises(IndentationError):
             sloc_line_numbers(parsed(source, "python"), source, "python")
+
+
+def statement_strings_by_walk(root):
+    found = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        for child in node.named_children:
+            if node.type in PYTHON_STATEMENT_PARENTS and child.type == "string":
+                found.append(child)
+            stack.append(child)
+    return found
+
+
+class TestTheDocstringQuery:
+    @pytest.mark.parametrize(
+        ("path", "language"),
+        [entry for entry in fixture_texts() if entry.values[1] == "python"],
+    )
+    def test_the_query_finds_what_a_walk_over_every_node_finds(self, path, language):
+        root = parsed(path.read_text(encoding="utf-8"), language)
+
+        by_query = sorted(node.start_byte for node in complexity._statement_strings(root))
+        by_walk = sorted(node.start_byte for node in statement_strings_by_walk(root))
+
+        assert by_query == by_walk
+
+    def test_nested_and_module_level_strings_are_found(self):
+        source = '"""Module."""\nclass A:\n    """Class."""\n    def f(self):\n        "Doc."\n'
+
+        found = complexity._statement_strings(parsed(source, "python"))
+
+        assert sorted(node.start_point[0] + 1 for node in found) == [1, 3, 5]
