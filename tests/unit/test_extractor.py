@@ -20,7 +20,12 @@ from pathlib import Path
 import pytest
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import TreeSitterExtractor, _scope_tree, walk_nodes
+from agentless_mcp.core.extractor import (
+    TreeSitterExtractor,
+    UnsupportedLanguageError,
+    _scope_tree,
+    walk_nodes,
+)
 from agentless_mcp.core.symbols import SymbolKind, rationale_stable_id
 
 SAMPLE_PYTHON = '''\
@@ -720,3 +725,18 @@ class TestOneParseYieldsTheSameFactsAsThree:
         assert facts.symbols == extractor.extract_from_source(text, language, relative)
         assert facts.imports == extractor.extract_imports_from_source(text, language, relative)
         assert facts.refs == extractor.extract_refs_from_source(text, language, relative)
+
+    @pytest.mark.parametrize(("path", "language"), list(_equivalence_files()))
+    def test_facts_from_one_parsed_tree_equal_extract_facts(self, extractor, path, language):
+        text = path.read_text(encoding="utf-8")
+        data = text.encode("utf-8")
+
+        facts = extractor.facts_from_tree(
+            extractor.parse(data, language), data, language, path.name
+        )
+
+        assert facts == extractor.extract_facts(text, language, path.name)
+
+    def test_parse_refuses_a_language_the_registry_does_not_carry(self, extractor):
+        with pytest.raises(UnsupportedLanguageError, match="cobol"):
+            extractor.parse(b"x = 1\n", "cobol")

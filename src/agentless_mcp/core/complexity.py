@@ -89,15 +89,38 @@ class LanguageRules:
 
 def measure(source: str, path: str, language: str) -> tuple[Unit, ...]:
     """Return every unit of source in source order, or raise UnmeasurableSource."""
+    rules = _rules_for(path, language)
+    root = grammars.get_parser(language).parse(source.encode("utf-8")).root_node
+    return _measured(root, source, path, language, rules)
+
+
+def measure_tree(root: Node, source: str, path: str, language: str) -> tuple[Unit, ...]:
+    """Return what `measure` returns for source, from the root of its UTF-8 parse."""
+    return _measured(root, source, path, language, _rules_for(path, language))
+
+
+def erosion(units: Iterable[Unit], threshold: int = DEFAULT_THRESHOLD) -> float:
+    """Return the share of mass held by units with cc above threshold, 0.0 for no mass."""
+    measured = tuple(units)
+    total = sum(unit.mass for unit in measured)
+    if not total:
+        return 0.0
+    return sum(unit.mass for unit in measured if unit.cc > threshold) / total
+
+
+def _rules_for(path: str, language: str) -> LanguageRules:
     rules = RULES.get(language)
     if rules is None:
         message = MESSAGES.complexity_language_unsupported.format(
             path=path, language=language, languages=", ".join(RULES)
         )
         raise UnmeasurableSource(message)
+    return rules
 
-    tree = grammars.get_parser(language).parse(source.encode("utf-8"))
-    root = tree.root_node
+
+def _measured(
+    root: Node, source: str, path: str, language: str, rules: LanguageRules
+) -> tuple[Unit, ...]:
     if root.has_error:
         first = next(error_nodes(root))
         message = MESSAGES.complexity_does_not_parse.format(path=path, line=_first_line(first))
@@ -127,15 +150,6 @@ def measure(source: str, path: str, language: str) -> tuple[Unit, ...]:
         )
         for node, qualname, name in _walk_units(root, rules.units)
     )
-
-
-def erosion(units: Iterable[Unit], threshold: int = DEFAULT_THRESHOLD) -> float:
-    """Return the share of mass held by units with cc above threshold, 0.0 for no mass."""
-    measured = tuple(units)
-    total = sum(unit.mass for unit in measured)
-    if not total:
-        return 0.0
-    return sum(unit.mass for unit in measured if unit.cc > threshold) / total
 
 
 def _tokenizer_detail(exc: tokenize.TokenError | SyntaxError) -> str:

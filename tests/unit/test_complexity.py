@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.complexity import RULES, Unit, erosion, measure
+from agentless_mcp.core.complexity import RULES, Unit, erosion, measure, measure_tree
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.util.errors import UnmeasurableSource
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
@@ -267,3 +268,63 @@ class TestPythonSloc:
             ]
 
         assert shape(source.replace("\n", "\r\n")) == shape(source)
+
+
+def fixture_texts():
+    for path in sorted(FIXTURES.glob("complexity_*/*")):
+        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(path.suffix)
+        if path.is_file() and language in RULES:
+            yield pytest.param(path, language, id=f"{path.parent.name}/{path.name}")
+
+
+def outcome(function, *arguments):
+    try:
+        return function(*arguments)
+    except UnmeasurableSource as exc:
+        return ("unmeasurable", str(exc))
+
+
+def parsed(source, language):
+    return grammars.get_parser(language).parse(source.encode("utf-8")).root_node
+
+
+class TestTheTreeForm:
+    @pytest.mark.parametrize(("path", "language"), list(fixture_texts()))
+    def test_the_tree_form_equals_the_text_form_on_every_fixture(self, path, language):
+        text = path.read_text(encoding="utf-8")
+
+        from_tree = outcome(measure_tree, parsed(text, language), text, path.name, language)
+
+        assert from_tree == outcome(measure, text, path.name, language)
+
+    @pytest.mark.parametrize(
+        ("language", "source"),
+        [
+            ("python", "def f(:\n    pass\n"),
+            ("python", "def f():\n    if x:\n        pass\n  pass\n"),
+            ("bash", "if [ x ]; then\n  echo\n"),
+        ],
+    )
+    def test_the_tree_form_fails_with_the_text_forms_message(self, language, source):
+        from_tree = outcome(measure_tree, parsed(source, language), source, "a", language)
+
+        assert from_tree[0] == "unmeasurable"
+        assert from_tree == outcome(measure, source, "a", language)
+
+    def test_the_tree_form_names_a_language_without_rules(self):
+        source = "x = 1\n"
+
+        with pytest.raises(UnmeasurableSource, match="no rules for language 'yaml'"):
+            measure_tree(parsed(source, "python"), source, "a.yaml", "yaml")
+
+    def test_the_tree_form_never_parses(self, monkeypatch):
+        source = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+        root = parsed(source, "python")
+
+        def refuse(_language):
+            message = "measure_tree parsed the source again"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(grammars, "get_parser", refuse)
+
+        assert rows(measure_tree(root, source, "a.py", "python")) == [("f", 1, 2, 4)]

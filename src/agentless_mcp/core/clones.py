@@ -71,26 +71,15 @@ class CloneGroup:
 
 def file_blocks(source: str, path: str, language: str) -> FileBlocks:
     """Return the clone blocks of ``source``, or raise UnmeasurableSource."""
-    rules = CANDIDATES.get(language)
-    if rules is None:
-        message = MESSAGES.clone_language_unsupported.format(
-            path=path, language=language, languages=", ".join(CANDIDATES)
-        )
-        raise UnmeasurableSource(message)
-
+    _require_rules(path, language)
     root = grammars.get_parser(language).parse(source.encode("utf-8")).root_node
-    if root.has_error:
-        line = next(error_nodes(root)).start_point[0] + 1
-        raise UnmeasurableSource(MESSAGES.clone_does_not_parse.format(path=path, line=line))
-    try:
-        lines = tuple(sorted(complexity.RULES[language].sloc_lines(source, root)))
-    except (tokenize.TokenError, SyntaxError) as exc:
-        reason = exc.args[0] if exc.args else ""
-        message = MESSAGES.clone_tokenizer_rejects.format(
-            path=path, detail=f"{type(exc).__name__}: {reason}"
-        )
-        raise UnmeasurableSource(message) from exc
-    return FileBlocks(path=path, blocks=_blocks(root, path, language, lines), sloc_lines=lines)
+    return _indexed(root, source, path, language)
+
+
+def file_blocks_tree(root: Node, source: str, path: str, language: str) -> FileBlocks:
+    """Return what `file_blocks` returns for ``source``, from the root of its UTF-8 parse."""
+    _require_rules(path, language)
+    return _indexed(root, source, path, language)
 
 
 def clone_groups(files: Iterable[FileBlocks]) -> tuple[CloneGroup, ...]:
@@ -129,6 +118,29 @@ def lines_within(lines: tuple[int, ...], block: Block) -> tuple[int, ...]:
     return lines[
         bisect.bisect_left(lines, block.start_line) : bisect.bisect_right(lines, block.end_line)
     ]
+
+
+def _require_rules(path: str, language: str) -> None:
+    if language not in CANDIDATES:
+        message = MESSAGES.clone_language_unsupported.format(
+            path=path, language=language, languages=", ".join(CANDIDATES)
+        )
+        raise UnmeasurableSource(message)
+
+
+def _indexed(root: Node, source: str, path: str, language: str) -> FileBlocks:
+    if root.has_error:
+        line = next(error_nodes(root)).start_point[0] + 1
+        raise UnmeasurableSource(MESSAGES.clone_does_not_parse.format(path=path, line=line))
+    try:
+        lines = tuple(sorted(complexity.RULES[language].sloc_lines(source, root)))
+    except (tokenize.TokenError, SyntaxError) as exc:
+        reason = exc.args[0] if exc.args else ""
+        message = MESSAGES.clone_tokenizer_rejects.format(
+            path=path, detail=f"{type(exc).__name__}: {reason}"
+        )
+        raise UnmeasurableSource(message) from exc
+    return FileBlocks(path=path, blocks=_blocks(root, path, language, lines), sloc_lines=lines)
 
 
 def _blocks(root: Node, path: str, language: str, lines: tuple[int, ...]) -> tuple[Block, ...]:

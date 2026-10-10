@@ -3,7 +3,14 @@ from pathlib import Path
 import pytest
 
 from agentless_mcp.core import clones, erosion, grammars
-from agentless_mcp.core.clones import CANDIDATES, clone_groups, clone_sloc_lines, file_blocks
+from agentless_mcp.core.clones import (
+    CANDIDATES,
+    clone_groups,
+    clone_sloc_lines,
+    file_blocks,
+    file_blocks_tree,
+)
+from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.normalize import CLONE_IDENTIFIERS, CLONE_LITERALS, clone_key
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -293,3 +300,63 @@ def test_clone_key_reads_one_parsed_node():
 
 def test_the_minimum_is_three_source_lines():
     assert clones.MIN_SLOC == 3
+
+
+def fixture_texts():
+    for path in sorted(FIXTURES.glob("complexity_*/*")):
+        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(path.suffix)
+        if path.is_file() and language in CANDIDATES:
+            yield pytest.param(path, language, id=f"{path.parent.name}/{path.name}")
+
+
+def outcome(function, *arguments):
+    try:
+        return function(*arguments)
+    except UnmeasurableSource as exc:
+        return ("unmeasurable", str(exc))
+
+
+def parsed(source, language):
+    return grammars.get_parser(language).parse(source.encode("utf-8")).root_node
+
+
+class TestTheTreeForm:
+    @pytest.mark.parametrize(("path", "language"), list(fixture_texts()))
+    def test_the_tree_form_equals_the_text_form_on_every_fixture(self, path, language):
+        text = path.read_text(encoding="utf-8")
+
+        from_tree = outcome(file_blocks_tree, parsed(text, language), text, path.name, language)
+
+        assert from_tree == outcome(file_blocks, text, path.name, language)
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param("x = 1\ndef f(:\n", id="does-not-parse"),
+            pytest.param(
+                (FIXTURES / "complexity_py" / "tokenize_rejects.py").read_text(encoding="utf-8"),
+                id="tokenizer-rejects",
+            ),
+        ],
+    )
+    def test_the_tree_form_fails_with_the_text_forms_message(self, source):
+        from_tree = outcome(file_blocks_tree, parsed(source, "python"), source, "a.py", "python")
+
+        assert from_tree[0] == "unmeasurable"
+        assert from_tree == outcome(file_blocks, source, "a.py", "python")
+
+    def test_the_tree_form_names_a_language_with_no_table(self):
+        with pytest.raises(UnmeasurableSource, match="no rules for language 'json'"):
+            file_blocks_tree(parsed(TOTAL, "python"), TOTAL, "a.json", "json")
+
+    def test_the_tree_form_never_parses(self, monkeypatch):
+        root = parsed(TOTAL, "python")
+        expected = file_blocks(TOTAL, "a.py", "python")
+
+        def refuse(_language):
+            message = "file_blocks_tree parsed the source again"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(grammars, "get_parser", refuse)
+
+        assert file_blocks_tree(root, TOTAL, "a.py", "python") == expected
