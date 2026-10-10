@@ -149,7 +149,13 @@ It compares `REL` as the working tree holds it with the whole proposed text in
 `FILE`, and it runs only the pair checks. The erosion gate hook calls lint this
 way. `lint --since REV` is the review mode. It compares each file changed since
 the commit `REV` with its text in the working tree, and it runs only the pair
-checks. Both forms run `clone_delta` only when `--only` names it.
+checks. Both forms run `clone_delta` only when `--only` names it. Fixture
+paths, `testdata` directories included, are outside every check, and test
+paths are outside every check but `complexity_delta`.
+
+By default `lint` exits 0 whatever it found. For a CI gate, `--fail-on
+SEVERITY[,SEVERITY...]` (`warning`, `advisory`, `not_checked`) exits 3 when a
+finding has a listed severity.
 
 ```sh
 agentless-mcp lint --repo /path/to/repo --path pkg/app.py --after /tmp/app.py \

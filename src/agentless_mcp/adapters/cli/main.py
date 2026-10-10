@@ -28,6 +28,7 @@ from typing import Any
 
 from agentless_mcp.adapters.cli.formatting import (
     EXIT_DOMAIN,
+    EXIT_GATE,
     EXIT_OK,
     EXIT_USAGE,
     emit,
@@ -119,6 +120,7 @@ from agentless_mcp.core.htmlgraph import HtmlExport
 from agentless_mcp.core.locs import DEFAULT_CONTEXT_LINES
 from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NODES
 from agentless_mcp.core.patches import ApplyResult, Edit
+from agentless_mcp.core.patchlint import Severity
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
 from agentless_mcp.prompts import MESSAGES
@@ -598,19 +600,24 @@ def _add_html(subparsers: Any) -> None:
     parser.set_defaults(handler=_cmd_html)
 
 
+SEVERITIES = tuple(severity.value for severity in Severity)
+
+
 def _add_lint(subparsers: Any) -> None:
     """Wire ``lint``: the deterministic patch checks, CLI only.
 
     No MCP tool reaches this, like ``validate`` and ``vote`` and for the same
-    reason: a patch is write-side input. And no finding fails the command --
-    the report says what to look at, the tests say what works.
+    reason: a patch is write-side input. And no finding fails the command
+    unless the caller asks with ``--fail-on`` -- the report says what to look
+    at, the tests say what works.
     """
     parser = subparsers.add_parser(
         "lint",
         help="deterministic hallucination checks over candidate patches (write side)",
         description="Run the deterministic patch checks and print what they found. "
-        "Advisories, warnings and coverage gaps are all reported and none of them fails "
-        "the command: the exit code is 0 unless the invocation itself was unusable.",
+        "Advisories, warnings and coverage gaps are all reported. By default none of them "
+        "fails the command: the exit code is 0 unless the invocation itself was unusable. "
+        "--fail-on makes a finding of a listed severity exit 3, for a CI gate.",
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument(
@@ -658,6 +665,14 @@ def _add_lint(subparsers: Any) -> None:
         "also reads every tier-1 source file outside test and fixture paths. A run with only "
         "pair checks skips the symbol scan that the other checks need",
     )
+    parser.add_argument(
+        "--fail-on",
+        metavar="SEVERITY[,SEVERITY...]",
+        type=_severities,
+        default=(),
+        help=f"exit 3 when a finding has one of these severities: {', '.join(SEVERITIES)}. "
+        "Without it, lint exits 0 on a run that happened",
+    )
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_lint)
 
@@ -668,6 +683,17 @@ def _check_names(raw: str) -> tuple[str, ...]:
     if refusal:
         raise argparse.ArgumentTypeError(refusal)
     return names
+
+
+def _severities(raw: str) -> frozenset[str]:
+    names = [part.strip() for part in raw.split(",")]
+    unknown = [name for name in names if name not in SEVERITIES]
+    if unknown:
+        message = MESSAGES.lint_unknown_severity.format(
+            name=unknown[0], severities=", ".join(SEVERITIES)
+        )
+        raise argparse.ArgumentTypeError(message)
+    return frozenset(names)
 
 
 def _add_resolve_locs(subparsers: Any) -> None:
@@ -1341,9 +1367,9 @@ def _write_html_export(target: Path, document: str) -> None:
 def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
     """Run the deterministic patch checks and print what they found.
 
-    Always exit 0 on a run that happened. A finding is something to look at,
-    not a verdict, and a lint that failed the command would be a gate nobody
-    asked for standing between a candidate and the tests that actually decide.
+    Exit 0 on a run that happened, unless ``--fail-on`` names a severity a
+    finding has. A finding is something to look at, not a verdict, so only a
+    caller that asked for a gate gets one.
     """
     refusal = _lint_flag_refusal(args)
     if refusal:
@@ -1354,7 +1380,12 @@ def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
 
     report = _lint_report(args, ctx, services)
     _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
-    return EXIT_OK
+    failed = any(
+        finding.severity in args.fail_on
+        for candidate in report.candidates
+        for finding in candidate.findings
+    )
+    return EXIT_GATE if failed else EXIT_OK
 
 
 def _lint_flag_refusal(args: argparse.Namespace) -> str:

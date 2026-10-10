@@ -66,6 +66,7 @@
   "pair_edits_unapplied": "not checked: {failed} of the edits to {path} did not apply, so no pair check compared this file.",
   "lint_unknown_check": "unknown check '{name}'. The checks are: {checks}.",
   "lint_no_checks": "no check selected. Name at least one of these checks: {checks}.",
+  "lint_unknown_severity": "unknown severity '{name}'. The severities are: {severities}.",
   "lint_path_needs_after": "--path and --after go together: --path names the file in --repo, and --after names a file that holds its proposed new text.",
   "lint_path_takes_pair_checks": "--path runs only the pair checks ({pair_checks}), because it supplies whole-file text and no patch. Remove {checks} from --only, or lint a patch with --candidates or --diff.",
   "lint_since_alone": "--since takes no --after. --since compares each file changed since REV with its text in the working tree, so it needs no other input.",

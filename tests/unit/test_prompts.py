@@ -208,6 +208,7 @@ MESSAGE_ARGUMENTS = {
     "pair_edits_unapplied": {"failed": 1, "path": "src/app/svc.py"},
     "lint_unknown_check": {"name": "complexity", "checks": "arity, complexity_delta"},
     "lint_no_checks": {"checks": "arity, complexity_delta"},
+    "lint_unknown_severity": {"name": "error", "severities": "advisory, warning, not_checked"},
     "lint_path_needs_after": {},
     "lint_path_takes_pair_checks": {"pair_checks": "complexity_delta", "checks": "arity"},
     "lint_since_alone": {},

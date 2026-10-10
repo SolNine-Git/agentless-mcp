@@ -160,6 +160,7 @@ class MessageText:
     pair_edits_unapplied: str
     lint_unknown_check: str
     lint_no_checks: str
+    lint_unknown_severity: str
     lint_path_needs_after: str
     lint_path_takes_pair_checks: str
     lint_since_alone: str

@@ -1081,6 +1081,25 @@ def test_the_log_holds_the_observed_state_that_lint_reports(gate):
     assert gate.records()[0]["observed"] == expected
 
 
+GATE_CONFIG = json.dumps({"erosion_gate": {"complexity_delta": "block"}})
+
+
+def make_config_shape(config: Path, shape: str, outside: Path) -> None:
+    """Put one kind of filesystem entry at the config path; "absent" leaves nothing there."""
+    if shape == "regular":
+        config.write_text(GATE_CONFIG, encoding="utf-8")
+    elif shape == "link-inside":
+        config.symlink_to(Path("conf") / "real.json")
+    elif shape == "link-outside":
+        config.symlink_to(outside)
+    elif shape == "dangling-link":
+        config.symlink_to(Path("conf") / "missing.json")
+    elif shape == "fifo":
+        os.mkfifo(config)
+    elif shape == "directory":
+        config.mkdir()
+
+
 class TestTheHookAgreesWithThePackage:
     def test_the_suffixes_are_the_ones_the_pair_checks_read(self):
         measured = {
@@ -1111,6 +1130,24 @@ class TestTheHookAgreesWithThePackage:
         assert hook.MAX_OLD_BYTES == DEFAULT_MAX_FILE_BYTES
         assert set(hook.SEVERITIES) == {severity.value for severity in patchlint.Severity}
         assert hook.COVERAGE_CHECK == patchlint.CHECK_COVERAGE
+
+    @pytest.mark.parametrize(
+        "shape",
+        ["absent", "regular", "link-inside", "link-outside", "dangling-link", "fifo", "directory"],
+    )
+    def test_the_hook_reads_the_config_only_where_lint_does(self, tmp_path, shape):
+        root = tmp_path / "repo"
+        (root / "conf").mkdir(parents=True)
+        outside = tmp_path / "outside.json"
+        outside.write_text(GATE_CONFIG, encoding="utf-8")
+        (root / "conf" / "real.json").write_text(GATE_CONFIG, encoding="utf-8")
+        make_config_shape(root / projectconfig.CONFIG_FILENAME, shape, outside)
+
+        document, warnings = hook._config_document(root.resolve())
+        loaded = projectconfig.load(root)
+
+        assert (document is not None) == loaded.present
+        assert warnings == list(loaded.warnings)
 
     def test_the_hook_reads_this_branchs_check_list(self, make_git_repo):
         root = make_git_repo({"app.py": "x = 1\n"})
