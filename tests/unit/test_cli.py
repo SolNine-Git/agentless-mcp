@@ -412,6 +412,8 @@ class TestInProcess:
         document = json.loads(capsys.readouterr().out)
         assert set(document["hubs"]) == {"total", "limit", "omitted", "rows"}
         assert document["symbols"] > 0
+        assert set(document["hotspots"]) == {"total", "limit", "omitted", "rows"}
+        assert document["complexity"]["units"] == document["hotspots"]["total"]
 
     def test_a_bad_health_limit_is_refused_by_the_service(self, services, repo_path, capsys):
         code = invoke(services, repo_path, "health", "--limit", "0")

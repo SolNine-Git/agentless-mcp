@@ -453,6 +453,13 @@ class TestWireDescriptions:
         assert "rationale nodes" in TOOL_DESCRIPTIONS["orient"]
         assert "rationale comments" in TOOL_DESCRIPTIONS["symbols"]
 
+    def test_both_surfaces_say_what_the_health_complexity_sections_do_not_answer(self):
+        for name in ("orient", "analyze_structure"):
+            assert "hotspots" in TOOL_DESCRIPTIONS[name], name
+            assert "not judge design" in TOOL_DESCRIPTIONS[name], name
+        for name in ("orient_limit", "structure_operation"):
+            assert "hotspots" in PARAMETER_DESCRIPTIONS[name], name
+
     def test_every_registered_tool_publishes_its_json_description(
         self, extractor, counter, tmp_path
     ):

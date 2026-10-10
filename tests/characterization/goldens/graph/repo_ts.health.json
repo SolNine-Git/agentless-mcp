@@ -1,0 +1,557 @@
+{
+  "receipt": {
+    "repo": "<REPO>",
+    "head": "0000000f",
+    "tree": "1111111f",
+    "dirty": 0,
+    "cache": "none",
+    "note": "",
+    "notice": "repository data below"
+  },
+  "notice": "repository data below",
+  "symbols": 29,
+  "excluded": 0,
+  "orphans": {
+    "total": 0,
+    "limit": 20,
+    "omitted": 0,
+    "rows": []
+  },
+  "unused_exports": {
+    "total": 5,
+    "limit": 20,
+    "omitted": 0,
+    "rows": [
+      {
+        "stable_id": "ts:reports.ts::reorderReport",
+        "path": "reports.ts",
+        "line": 32,
+        "label": "reorderReport",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 4,
+        "degree": 4,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:reports.ts::summarise",
+        "path": "reports.ts",
+        "line": 58,
+        "label": "summarise",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 4,
+        "degree": 4,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::describeWarehouse",
+        "path": "types.ts",
+        "line": 25,
+        "label": "describeWarehouse",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::parseWarehouse",
+        "path": "types.ts",
+        "line": 31,
+        "label": "parseWarehouse",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::addMoney",
+        "path": "types.ts",
+        "line": 51,
+        "label": "addMoney",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 1,
+        "degree": 1,
+        "discounted": []
+      }
+    ]
+  },
+  "hubs": {
+    "total": 20,
+    "limit": 20,
+    "omitted": 0,
+    "rows": [
+      {
+        "stable_id": "ts:types.ts::Money",
+        "path": "types.ts",
+        "line": 5,
+        "label": "Money",
+        "kind": "class",
+        "in_degree": 8,
+        "out_degree": 0,
+        "degree": 8,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:inventory.ts::Item",
+        "path": "inventory.ts",
+        "line": 19,
+        "label": "Item",
+        "kind": "class",
+        "in_degree": 7,
+        "out_degree": 0,
+        "degree": 7,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook",
+        "path": "pricing.ts",
+        "line": 22,
+        "label": "PriceBook",
+        "kind": "class",
+        "in_degree": 6,
+        "out_degree": 0,
+        "degree": 6,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory",
+        "path": "inventory.ts",
+        "line": 37,
+        "label": "Inventory",
+        "kind": "class",
+        "in_degree": 4,
+        "out_degree": 1,
+        "degree": 5,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:pricing.ts::formatMoney",
+        "path": "pricing.ts",
+        "line": 94,
+        "label": "formatMoney",
+        "kind": "function",
+        "in_degree": 4,
+        "out_degree": 1,
+        "degree": 5,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:reports.ts::stockValue",
+        "path": "reports.ts",
+        "line": 19,
+        "label": "stockValue",
+        "kind": "function",
+        "in_degree": 1,
+        "out_degree": 4,
+        "degree": 5,
+        "discounted": [
+          {
+            "tier": "unique",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "stable_id": "ts:reports.ts::reorderReport",
+        "path": "reports.ts",
+        "line": 32,
+        "label": "reorderReport",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 4,
+        "degree": 4,
+        "discounted": [
+          {
+            "tier": "unique",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "stable_id": "ts:reports.ts::formatRow",
+        "path": "reports.ts",
+        "line": 51,
+        "label": "formatRow",
+        "kind": "function",
+        "in_degree": 1,
+        "out_degree": 3,
+        "degree": 4,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:reports.ts::summarise",
+        "path": "reports.ts",
+        "line": 58,
+        "label": "summarise",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 4,
+        "degree": 4,
+        "discounted": [
+          {
+            "tier": "unique",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "stable_id": "ts:inventory.ts::needsReorder",
+        "path": "inventory.ts",
+        "line": 25,
+        "label": "needsReorder",
+        "kind": "function",
+        "in_degree": 1,
+        "out_degree": 1,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.reorderList",
+        "path": "inventory.ts",
+        "line": 79,
+        "label": "Inventory.reorderList",
+        "kind": "method",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": [
+          {
+            "tier": "unique",
+            "count": 4
+          }
+        ]
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.valueAt",
+        "path": "inventory.ts",
+        "line": 90,
+        "label": "Inventory.valueAt",
+        "kind": "method",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": [
+          {
+            "tier": "unique",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "stable_id": "ts:types.ts::Warehouse",
+        "path": "types.ts",
+        "line": 10,
+        "label": "Warehouse",
+        "kind": "class",
+        "in_degree": 2,
+        "out_degree": 0,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::isRegion",
+        "path": "types.ts",
+        "line": 21,
+        "label": "isRegion",
+        "kind": "function",
+        "in_degree": 2,
+        "out_degree": 0,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::describeWarehouse",
+        "path": "types.ts",
+        "line": 25,
+        "label": "describeWarehouse",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::parseWarehouse",
+        "path": "types.ts",
+        "line": 31,
+        "label": "parseWarehouse",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 2,
+        "degree": 2,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.add",
+        "path": "inventory.ts",
+        "line": 50,
+        "label": "Inventory.add",
+        "kind": "method",
+        "in_degree": 0,
+        "out_degree": 1,
+        "degree": 1,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.remove",
+        "path": "inventory.ts",
+        "line": 68,
+        "label": "Inventory.remove",
+        "kind": "method",
+        "in_degree": 0,
+        "out_degree": 1,
+        "degree": 1,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:reports.ts::ReportError",
+        "path": "reports.ts",
+        "line": 12,
+        "label": "ReportError",
+        "kind": "class",
+        "in_degree": 1,
+        "out_degree": 0,
+        "degree": 1,
+        "discounted": []
+      },
+      {
+        "stable_id": "ts:types.ts::addMoney",
+        "path": "types.ts",
+        "line": 51,
+        "label": "addMoney",
+        "kind": "function",
+        "in_degree": 0,
+        "out_degree": 1,
+        "degree": 1,
+        "discounted": []
+      }
+    ]
+  },
+  "complexity": {
+    "threshold": 10,
+    "files": 4,
+    "walked": 4,
+    "measured": 4,
+    "stopped_by_budget": false,
+    "units": 23,
+    "over_threshold": 0,
+    "erosion": 0.0,
+    "not_measured": {
+      "total": 0,
+      "limit": 20,
+      "omitted": 0,
+      "rows": []
+    }
+  },
+  "hotspots": {
+    "total": 23,
+    "limit": 20,
+    "omitted": 3,
+    "rows": [
+      {
+        "stable_id": "ts:types.ts::parseWarehouse",
+        "metric_only": false,
+        "path": "types.ts",
+        "line": 31,
+        "label": "parseWarehouse",
+        "cc": 8,
+        "sloc": 19,
+        "mass": 34.87119154832539
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.cheapest",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 78,
+        "label": "PriceBook.cheapest",
+        "cc": 4,
+        "sloc": 14,
+        "mass": 14.966629547095765
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.applyPromotion",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 64,
+        "label": "PriceBook.applyPromotion",
+        "cc": 4,
+        "sloc": 12,
+        "mass": 13.856406460551018
+      },
+      {
+        "stable_id": "ts:reports.ts::stockValue",
+        "metric_only": false,
+        "path": "reports.ts",
+        "line": 19,
+        "label": "stockValue",
+        "cc": 4,
+        "sloc": 12,
+        "mass": 13.856406460551018
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.add",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 50,
+        "label": "Inventory.add",
+        "cc": 3,
+        "sloc": 17,
+        "mass": 12.36931687685298
+      },
+      {
+        "stable_id": "ts:reports.ts::reorderReport",
+        "metric_only": false,
+        "path": "reports.ts",
+        "line": 32,
+        "label": "reorderReport",
+        "cc": 3,
+        "sloc": 16,
+        "mass": 12.0
+      },
+      {
+        "stable_id": "ts:inventory.ts::needsReorder",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 25,
+        "label": "needsReorder",
+        "cc": 3,
+        "sloc": 10,
+        "mass": 9.486832980505138
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.reorderList",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 79,
+        "label": "Inventory.reorderList",
+        "cc": 3,
+        "sloc": 10,
+        "mass": 9.486832980505138
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.constructor",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 27,
+        "label": "PriceBook.constructor",
+        "cc": 3,
+        "sloc": 9,
+        "mass": 9.0
+      },
+      {
+        "stable_id": "ts:reports.ts::summarise",
+        "metric_only": false,
+        "path": "reports.ts",
+        "line": 58,
+        "label": "summarise",
+        "cc": 2,
+        "sloc": 12,
+        "mass": 6.928203230275509
+      },
+      {
+        "stable_id": "ts:types.ts::describeWarehouse",
+        "metric_only": false,
+        "path": "types.ts",
+        "line": 25,
+        "label": "describeWarehouse",
+        "cc": 3,
+        "sloc": 5,
+        "mass": 6.708203932499369
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.remove",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 68,
+        "label": "Inventory.remove",
+        "cc": 2,
+        "sloc": 9,
+        "mass": 6.0
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.quote",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 46,
+        "label": "PriceBook.quote",
+        "cc": 2,
+        "sloc": 9,
+        "mass": 6.0
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.constructor",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 42,
+        "label": "Inventory.constructor",
+        "cc": 2,
+        "sloc": 7,
+        "mass": 5.291502622129181
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.valueAt",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 90,
+        "label": "Inventory.valueAt",
+        "cc": 2,
+        "sloc": 7,
+        "mass": 5.291502622129181
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.costOf",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 38,
+        "label": "PriceBook.costOf",
+        "cc": 2,
+        "sloc": 7,
+        "mass": 5.291502622129181
+      },
+      {
+        "stable_id": "ts:pricing.ts::PriceBook.priceList",
+        "metric_only": false,
+        "path": "pricing.ts",
+        "line": 56,
+        "label": "PriceBook.priceList",
+        "cc": 2,
+        "sloc": 7,
+        "mass": 5.291502622129181
+      },
+      {
+        "stable_id": "ts:types.ts::addMoney",
+        "metric_only": false,
+        "path": "types.ts",
+        "line": 51,
+        "label": "addMoney",
+        "cc": 2,
+        "sloc": 6,
+        "mass": 4.898979485566356
+      },
+      {
+        "stable_id": "ts:inventory.ts::Inventory.auditTrail",
+        "metric_only": false,
+        "path": "inventory.ts",
+        "line": 98,
+        "label": "Inventory.auditTrail",
+        "cc": 1,
+        "sloc": 6,
+        "mass": 2.449489742783178
+      },
+      {
+        "stable_id": "ts:reports.ts::formatRow",
+        "metric_only": false,
+        "path": "reports.ts",
+        "line": 51,
+        "label": "formatRow",
+        "cc": 1,
+        "sloc": 6,
+        "mass": 2.449489742783178
+      }
+    ]
+  }
+}

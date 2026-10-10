@@ -1210,18 +1210,134 @@ class HealthSection(_Bounded):
 
 
 @dataclass(frozen=True)
-class HealthReport:
-    """The three structural-health findings over one repository, in one answer.
+class HealthComplexityRow:
+    """One measured unit in the hotspots section, with its stable id or none."""
 
-    ``symbols`` is how many definitions the three sections were computed over
-    and ``excluded`` how many the test and fixture rule left out, because a
-    section that found nothing and a section that was handed nothing render
+    path: str
+    line: int
+    label: str
+    cc: int
+    sloc: int
+    mass: float
+    stable_id: str | None = None
+
+    @property
+    def metric_only(self) -> bool:
+        """True when no agentless symbol matches this unit, so it has no stable id."""
+        return self.stable_id is None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {
+            "stable_id": self.stable_id,
+            "metric_only": self.metric_only,
+            "path": self.path,
+            "line": self.line,
+            "label": self.label,
+            "cc": self.cc,
+            "sloc": self.sloc,
+            "mass": self.mass,
+        }
+
+
+@dataclass(frozen=True)
+class HealthHotspots(_Bounded):
+    """The units with the most mass, capped, with the count of every unit measured."""
+
+    rows: tuple[HealthComplexityRow, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many rows the cap kept."""
+        return len(self.rows)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this section."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "rows": [row.as_dict() for row in self.rows],
+        }
+
+
+@dataclass(frozen=True)
+class HealthUnmeasured(_Bounded):
+    """The files the complexity walk reached but could not measure, capped, with the reason."""
+
+    rows: tuple[SkippedFile, ...] = ()
+    total: int = 0
+    limit: int = 0
+
+    @property
+    def shown(self) -> int:
+        """How many rows the cap kept."""
+        return len(self.rows)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this listing."""
+        return {
+            "total": self.total,
+            "limit": self.limit,
+            "omitted": self.omitted,
+            "rows": [{"path": entry.path, "reason": entry.reason} for entry in self.rows],
+        }
+
+
+@dataclass(frozen=True)
+class HealthComplexity:
+    """The complexity summary over the files one walk measured."""
+
+    threshold: int
+    files: int
+    walked: int
+    units: int
+    over_threshold: int
+    erosion: float
+    not_measured: HealthUnmeasured
+
+    @property
+    def measured(self) -> int:
+        """How many of the walked files gave metrics."""
+        return self.walked - self.not_measured.total
+
+    @property
+    def stopped_by_budget(self) -> bool:
+        """True when the time budget ended the walk before every file in scope."""
+        return self.walked < self.files
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this summary."""
+        return {
+            "threshold": self.threshold,
+            "files": self.files,
+            "walked": self.walked,
+            "measured": self.measured,
+            "stopped_by_budget": self.stopped_by_budget,
+            "units": self.units,
+            "over_threshold": self.over_threshold,
+            "erosion": self.erosion,
+            "not_measured": self.not_measured.as_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class HealthReport:
+    """The structural-health findings and the complexity sections over one repository.
+
+    ``symbols`` is how many definitions the three graph sections were computed
+    over and ``excluded`` how many the test and fixture rule left out, because
+    a section that found nothing and a section that was handed nothing render
     the same sentence without them.
     """
 
     orphans: HealthSection
     unused_exports: HealthSection
     hubs: HealthSection
+    complexity: HealthComplexity
+    hotspots: HealthHotspots
     symbols: int = 0
     excluded: int = 0
 
@@ -1233,6 +1349,8 @@ class HealthReport:
             "orphans": self.orphans.as_dict(),
             "unused_exports": self.unused_exports.as_dict(),
             "hubs": self.hubs.as_dict(),
+            "complexity": self.complexity.as_dict(),
+            "hotspots": self.hotspots.as_dict(),
         }
 
 
@@ -1587,7 +1705,7 @@ def _unresolved_imports_note(count: int) -> list[str]:
 
 
 def render_health(report: HealthReport) -> str:
-    """Render the three structural-health findings under one shared header.
+    """Render the three structural-health findings under one shared header, then complexity.
 
     The header states the denominator and the counting rule once, so no
     section has to repeat them and no row can be read against a rule it was
@@ -1610,6 +1728,8 @@ def render_health(report: HealthReport) -> str:
     lines.extend(_health_section(report.orphans, _ORPHAN_WORDING))
     lines.extend(_health_section(report.unused_exports, _UNUSED_WORDING))
     lines.extend(_health_section(report.hubs, _HUB_WORDING))
+    lines.extend(_complexity_lines(report.complexity))
+    lines.extend(_hotspot_lines(report.hotspots))
     return "\n".join(lines) + "\n"
 
 
@@ -1689,6 +1809,75 @@ def _health_rows(rows: Sequence[HealthSymbol]) -> Iterator[str]:
             f"  {_locator(row.stable_id, line=row.line)}  {one_line(row.label)}  "
             f"{one_line(row.kind)}  in {row.in_degree}  out {row.out_degree}{note}"
         )
+
+
+def _complexity_lines(summary: HealthComplexity) -> list[str]:
+    if not summary.files:
+        return ["", "complexity: no tier-1 source files to measure outside test and fixture paths"]
+
+    lines = [
+        "",
+        f"complexity over {summary.units} {_units(summary.units)} in {summary.measured} "
+        f"{_files(summary.measured)} (threshold cc > {summary.threshold}): "
+        + ", ".join(_complexity_figures(summary)),
+    ]
+    if summary.stopped_by_budget:
+        lines.append(
+            f"complexity: {summary.walked} of {summary.files} files walked before the time budget"
+        )
+    lines.extend(_unmeasured_lines(summary.not_measured))
+    return lines
+
+
+def _complexity_figures(summary: HealthComplexity) -> tuple[str, ...]:
+    return (f"{summary.over_threshold} over the threshold", f"erosion {summary.erosion:.3f}")
+
+
+def _unmeasured_lines(listing: HealthUnmeasured) -> list[str]:
+    if not listing.total:
+        return []
+    lines = [f"complexity: {listing.total} {_files(listing.total)} not measured"]
+    lines.extend(f"  {one_line(entry.path)}  {one_line(entry.reason)}" for entry in listing.rows)
+    if listing.omitted:
+        lines.append(_omitted_line(listing.omitted, "unmeasured files", limit=listing.limit))
+    return lines
+
+
+def _hotspot_lines(hotspots: HealthHotspots) -> list[str]:
+    if not hotspots.total:
+        return ["", "no hotspots: no unit was measured"]
+
+    lines = [
+        "",
+        (
+            f"{hotspots.total} {_units(hotspots.total)} ranked by mass "
+            "(named functions and methods, mass = cc * sqrt(sloc), highest first)"
+        ),
+    ]
+    lines.extend(_hotspot_row(row) for row in hotspots.rows)
+    if hotspots.omitted:
+        lines.append(_omitted_line(hotspots.omitted, "hotspots", limit=hotspots.limit))
+    return lines
+
+
+def _hotspot_row(row: HealthComplexityRow) -> str:
+    if row.stable_id is None:
+        site = _file_site(row.path, row.line)
+        note = "  -- metric-only unit, no stable id"
+    else:
+        site = _locator(row.stable_id, line=row.line)
+        note = ""
+    return (
+        f"  {site}  {one_line(row.label)}  cc {row.cc}  sloc {row.sloc}  mass {row.mass:.1f}{note}"
+    )
+
+
+def _units(count: int) -> str:
+    return "unit" if count == 1 else "units"
+
+
+def _files(count: int) -> str:
+    return "file" if count == 1 else "files"
 
 
 def _render_tiers(heading: str, groups: Sequence[TierGroup]) -> str:

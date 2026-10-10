@@ -1,0 +1,61 @@
+// agentless-mcp receipt (repository data below)
+// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+health over 29 symbols
+degree counts same-file and resolved-via-import edges only; unique and name-only-ambiguous matches are discounted and named per row
+methods are ranked as hubs and never reported as orphans: a call through a selector resolves to no edge, so every method would be a permanent candidate
+
+no orphan candidates: every function has a counted edge
+
+5 unused exports (public function, no counted edge in)
+  [ts:reports.ts::reorderReport] @32  reorderReport  function  in 0  out 4
+  [ts:reports.ts::summarise] @58  summarise  function  in 0  out 4
+  [ts:types.ts::describeWarehouse] @25  describeWarehouse  function  in 0  out 2
+  [ts:types.ts::parseWarehouse] @31  parseWarehouse  function  in 0  out 2
+  [ts:types.ts::addMoney] @51  addMoney  function  in 0  out 1
+
+20 symbols carry a counted edge (function, method or class, highest counted degree first)
+  [ts:types.ts::Money] @5  Money  class  in 8  out 0
+  [ts:inventory.ts::Item] @19  Item  class  in 7  out 0
+  [ts:pricing.ts::PriceBook] @22  PriceBook  class  in 6  out 0
+  [ts:inventory.ts::Inventory] @37  Inventory  class  in 4  out 1
+  [ts:pricing.ts::formatMoney] @94  formatMoney  function  in 4  out 1
+  [ts:reports.ts::stockValue] @19  stockValue  function  in 1  out 4  -- discounted: 2 unique
+  [ts:reports.ts::reorderReport] @32  reorderReport  function  in 0  out 4  -- discounted: 2 unique
+  [ts:reports.ts::formatRow] @51  formatRow  function  in 1  out 3
+  [ts:reports.ts::summarise] @58  summarise  function  in 0  out 4  -- discounted: 1 unique
+  [ts:inventory.ts::needsReorder] @25  needsReorder  function  in 1  out 1
+  [ts:inventory.ts::Inventory.reorderList] @79  Inventory.reorderList  method  in 0  out 2  -- discounted: 4 unique
+  [ts:inventory.ts::Inventory.valueAt] @90  Inventory.valueAt  method  in 0  out 2  -- discounted: 2 unique
+  [ts:types.ts::Warehouse] @10  Warehouse  class  in 2  out 0
+  [ts:types.ts::isRegion] @21  isRegion  function  in 2  out 0
+  [ts:types.ts::describeWarehouse] @25  describeWarehouse  function  in 0  out 2
+  [ts:types.ts::parseWarehouse] @31  parseWarehouse  function  in 0  out 2
+  [ts:inventory.ts::Inventory.add] @50  Inventory.add  method  in 0  out 1
+  [ts:inventory.ts::Inventory.remove] @68  Inventory.remove  method  in 0  out 1
+  [ts:reports.ts::ReportError] @12  ReportError  class  in 1  out 0
+  [ts:types.ts::addMoney] @51  addMoney  function  in 0  out 1
+
+complexity over 23 units in 4 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+
+23 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
+  [ts:types.ts::parseWarehouse] @31  parseWarehouse  cc 8  sloc 19  mass 34.9
+  [ts:pricing.ts::PriceBook.cheapest] @78  PriceBook.cheapest  cc 4  sloc 14  mass 15.0
+  [ts:pricing.ts::PriceBook.applyPromotion] @64  PriceBook.applyPromotion  cc 4  sloc 12  mass 13.9
+  [ts:reports.ts::stockValue] @19  stockValue  cc 4  sloc 12  mass 13.9
+  [ts:inventory.ts::Inventory.add] @50  Inventory.add  cc 3  sloc 17  mass 12.4
+  [ts:reports.ts::reorderReport] @32  reorderReport  cc 3  sloc 16  mass 12.0
+  [ts:inventory.ts::needsReorder] @25  needsReorder  cc 3  sloc 10  mass 9.5
+  [ts:inventory.ts::Inventory.reorderList] @79  Inventory.reorderList  cc 3  sloc 10  mass 9.5
+  [ts:pricing.ts::PriceBook.constructor] @27  PriceBook.constructor  cc 3  sloc 9  mass 9.0
+  [ts:reports.ts::summarise] @58  summarise  cc 2  sloc 12  mass 6.9
+  [ts:types.ts::describeWarehouse] @25  describeWarehouse  cc 3  sloc 5  mass 6.7
+  [ts:inventory.ts::Inventory.remove] @68  Inventory.remove  cc 2  sloc 9  mass 6.0
+  [ts:pricing.ts::PriceBook.quote] @46  PriceBook.quote  cc 2  sloc 9  mass 6.0
+  [ts:inventory.ts::Inventory.constructor] @42  Inventory.constructor  cc 2  sloc 7  mass 5.3
+  [ts:inventory.ts::Inventory.valueAt] @90  Inventory.valueAt  cc 2  sloc 7  mass 5.3
+  [ts:pricing.ts::PriceBook.costOf] @38  PriceBook.costOf  cc 2  sloc 7  mass 5.3
+  [ts:pricing.ts::PriceBook.priceList] @56  PriceBook.priceList  cc 2  sloc 7  mass 5.3
+  [ts:types.ts::addMoney] @51  addMoney  cc 2  sloc 6  mass 4.9
+  [ts:inventory.ts::Inventory.auditTrail] @98  Inventory.auditTrail  cc 1  sloc 6  mass 2.4
+  [ts:reports.ts::formatRow] @51  formatRow  cc 1  sloc 6  mass 2.4
+... 3 more hotspots not listed (limit 20)

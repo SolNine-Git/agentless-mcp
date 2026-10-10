@@ -49,9 +49,11 @@ Every one of them is bounded and says what it left out.
 
 import heapq
 import math
+import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from agentless_mcp.application import render
@@ -63,16 +65,31 @@ from agentless_mcp.application.symbol_service import (
     rationale_nodes,
     symbol_card,
 )
-from agentless_mcp.core import communities, graph, htmlgraph, mermaid, refs, resolve
+from agentless_mcp.core import (
+    communities,
+    complexity,
+    grammars,
+    graph,
+    htmlgraph,
+    mermaid,
+    projectconfig,
+    refs,
+    resolve,
+)
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import SymbolKind, qualname, symbol_stable_id
-from agentless_mcp.util import bounds
-from agentless_mcp.util.errors import OperationFailed
+from agentless_mcp.util import bounds, deadline
+from agentless_mcp.util.errors import LanguageUnavailable, OperationFailed, UnmeasurableSource
+from agentless_mcp.util.fslimits import read_bounded
 
 DEFAULT_EXPLAIN_LIMIT = 20
 DEFAULT_CYCLE_LIMIT = 20
 DEFAULT_COMMUNITY_LIMIT = 20
 DEFAULT_HEALTH_LIMIT = 20
+
+# The complexity walk stops at the lesser of this and half the call's remaining
+# allowance, so a large repository cannot cost the graph sections their answer.
+COMPLEXITY_BUDGET_SECONDS = 10.0
 
 # How many member paths one community lists before it elides. A community is
 # usually a directory; past a dozen files the reader wants the label and the
@@ -168,11 +185,16 @@ _HUB_KINDS = frozenset(
     }
 )
 
+# The kinds a complexity unit can take an id from. A one-line record or class
+# that shares a line and a name with its constructor must not lend its own.
+_CALLABLE_KINDS = frozenset({SymbolKind.FUNCTION, SymbolKind.METHOD})
+
 
 @dataclass(frozen=True)
 class _Resolved:
     """One call's scan, name index and resolved edge set."""
 
+    scan: refs.RepoScan
     index: refs.RefIndex
     graph: resolve.ResolvedGraph
 
@@ -312,16 +334,18 @@ class GraphService:
         )
 
     def health(self, ctx: RepoContext, *, limit: int = DEFAULT_HEALTH_LIMIT) -> render.HealthReport:
-        """Report orphans, unused exports and hubs over the resolved graph.
-
-        Three findings in one answer rather than three calls, because they are
-        three readings of one degree count and computing that count is what
-        the call costs. ``limit`` bounds each section separately, and each
-        section carries the size of the finding it was cut from.
-        """
+        """Report orphans, unused exports, hubs and complexity, ``limit`` rows per section."""
         bounds.within(limit, 1, bounds.MAX_LIMIT, "limit")
         resolved = self._resolve(ctx)
-        return health_report(resolved.graph, limit=limit)
+        walk = _walk_complexity(
+            ctx.root,
+            _complexity_targets(resolved.scan),
+            budget=walk_budget(deadline.remaining()),
+        )
+        threshold = projectconfig.resolve(
+            None, ctx.config.complexity_threshold, complexity.DEFAULT_THRESHOLD
+        )
+        return health_report(resolved.graph, walk, threshold=threshold, limit=limit)
 
     def communities(
         self,
@@ -444,7 +468,7 @@ class GraphService:
         scan = refs.scan_repo(ctx.root, self._extractor, source=ctx.symbols)
         index = refs.build_ref_index(scan)
         _, resolved = resolve.resolve_repo(scan, index)
-        return _Resolved(index=index, graph=resolved)
+        return _Resolved(scan=scan, index=index, graph=resolved)
 
     def _ranked(self, ctx: RepoContext) -> _Ranked:
         """Build the file-level graph and its ranking, the map's own two steps.
@@ -490,14 +514,27 @@ class _Degree:
 _NO_DEGREE = _Degree()
 
 
-def health_report(graph: resolve.ResolvedGraph, *, limit: int) -> render.HealthReport:
-    """Compute the three structural-health findings over one resolved graph.
+@dataclass(frozen=True)
+class ComplexityWalk:
+    """What one complexity walk measured, what it could not measure, and how far it got."""
 
-    Pure: one graph in, one report out, no repository and no clock. Test and
-    fixture paths are excluded before anything is counted, because a fixture
-    that exists to be parsed and a test helper nothing calls are permanent
-    orphans and would be the whole listing on most repositories.
-    """
+    units: tuple[complexity.Unit, ...]
+    not_measured: tuple[refs.SkippedFile, ...]
+    walked: int
+    files: int
+
+
+@dataclass(frozen=True)
+class _Target:
+    path: str
+    language: str
+    skipped: str | None = None
+
+
+def health_report(
+    graph: resolve.ResolvedGraph, walk: ComplexityWalk, *, threshold: int, limit: int
+) -> render.HealthReport:
+    """Compute every health section from one resolved graph and one walk, with no I/O or clock."""
     degrees = _degrees(graph)
     considered = _considered(graph)
 
@@ -520,6 +557,8 @@ def health_report(graph: resolve.ResolvedGraph, *, limit: int) -> render.HealthR
         orphans=_health_section(orphans, limit=limit, inbound_only=False),
         unused_exports=_health_section(unused, limit=limit, inbound_only=True),
         hubs=_health_section(hubs, limit=limit, inbound_only=False),
+        complexity=_complexity_summary(walk, threshold=threshold, limit=limit),
+        hotspots=_hotspots(walk.units, graph.definitions, limit=limit),
         symbols=len(considered),
         excluded=len(graph.definitions) - len(considered),
     )
@@ -533,6 +572,8 @@ def _considered(graph: resolve.ResolvedGraph) -> list[tuple[str, refs.Definition
     ]
 
 
+# A fixture exists to be parsed and a test helper is called by a runner, so
+# both are permanent orphans and would be the whole listing on most repositories.
 def _in_health_scope(path: str) -> bool:
     return not is_test_path(path) and not is_fixture_path(path)
 
@@ -641,6 +682,149 @@ def _health_row(
             if discounted[tier]
         ),
     )
+
+
+def _complexity_summary(
+    walk: ComplexityWalk, *, threshold: int, limit: int
+) -> render.HealthComplexity:
+    return render.HealthComplexity(
+        threshold=threshold,
+        files=walk.files,
+        walked=walk.walked,
+        units=len(walk.units),
+        over_threshold=sum(1 for unit in walk.units if unit.cc > threshold),
+        erosion=complexity.erosion(walk.units, threshold),
+        not_measured=render.HealthUnmeasured(
+            rows=walk.not_measured[:limit], total=len(walk.not_measured), limit=limit
+        ),
+    )
+
+
+def _hotspots(
+    units: Sequence[complexity.Unit], definitions: Mapping[str, refs.Definition], *, limit: int
+) -> render.HealthHotspots:
+    ranked = sorted(
+        units,
+        key=lambda unit: (-unit.mass, unit.path, unit.start_line, unit.start_byte, unit.qualname),
+    )
+    sites = _callable_sites(definitions)
+    return render.HealthHotspots(
+        rows=tuple(_hotspot_row(unit, sites) for unit in ranked[:limit]),
+        total=len(units),
+        limit=limit,
+    )
+
+
+# ASTSymbol carries no start byte, so a unit is matched by its start line and name.
+def _callable_sites(
+    definitions: Mapping[str, refs.Definition],
+) -> dict[tuple[str, int], list[tuple[str, str]]]:
+    sites: dict[tuple[str, int], list[tuple[str, str]]] = defaultdict(list)
+    for stable_id, definition in definitions.items():
+        if definition.symbol.kind in _CALLABLE_KINDS:
+            site = (definition.path, definition.symbol.line_number)
+            sites[site].append((stable_id, definition.symbol.name))
+    return dict(sites)
+
+
+def _hotspot_row(
+    unit: complexity.Unit, sites: Mapping[tuple[str, int], list[tuple[str, str]]]
+) -> render.HealthComplexityRow:
+    return render.HealthComplexityRow(
+        path=unit.path,
+        line=unit.start_line,
+        label=unit.qualname,
+        cc=unit.cc,
+        sloc=unit.sloc,
+        mass=unit.mass,
+        stable_id=_unit_stable_id(unit, sites),
+    )
+
+
+# A symbol's name is the whole qualname in Lua (`M.pick`) and only the leaf in Go
+# (`Find` for `Store.Find`). Two candidates give no id rather than a guess.
+def _unit_stable_id(
+    unit: complexity.Unit, sites: Mapping[tuple[str, int], list[tuple[str, str]]]
+) -> str | None:
+    found = [
+        stable_id
+        for stable_id, name in sites.get((unit.path, unit.start_line), ())
+        if unit.qualname == name or unit.qualname.endswith(f".{name}")
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+def walk_budget(remaining: float | None) -> float:
+    """Return the complexity walk's budget in seconds, given the call's remaining allowance."""
+    if remaining is None:
+        return COMPLEXITY_BUDGET_SECONDS
+    return max(0.0, min(COMPLEXITY_BUDGET_SECONDS, remaining / 2))
+
+
+def _complexity_targets(scan: refs.RepoScan) -> tuple[_Target, ...]:
+    candidates = [
+        *(_Target(path=facts.path, language=facts.language) for facts in scan.files),
+        *_skipped_targets(scan.skipped),
+    ]
+    return tuple(
+        sorted(
+            (
+                target
+                for target in candidates
+                if grammars.is_tier1(target.language) and _in_health_scope(target.path)
+            ),
+            key=lambda target: target.path,
+        )
+    )
+
+
+# The scan turns a grammar that will not load into a skip, so a walk over the
+# parsed files alone would drop that file without a word.
+def _skipped_targets(skipped: Iterable[refs.SkippedFile]) -> Iterator[_Target]:
+    for entry in skipped:
+        language = TreeSitterExtractor.SUPPORTED_EXTENSIONS.get(PurePosixPath(entry.path).suffix)
+        if language is not None:
+            yield _Target(path=entry.path, language=language, skipped=entry.reason)
+
+
+def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -> ComplexityWalk:
+    started = time.monotonic()
+    units: list[complexity.Unit] = []
+    not_measured: list[refs.SkippedFile] = []
+    walked = 0
+    for target in targets:
+        deadline.checkpoint()
+        if time.monotonic() - started >= budget:
+            break
+        measured = _measure_target(root, target)
+        if isinstance(measured, refs.SkippedFile):
+            not_measured.append(measured)
+        else:
+            units.extend(measured)
+        walked += 1
+    return ComplexityWalk(
+        units=tuple(units), not_measured=tuple(not_measured), walked=walked, files=len(targets)
+    )
+
+
+def _measure_target(root: Path, target: _Target) -> tuple[complexity.Unit, ...] | refs.SkippedFile:
+    if target.skipped is not None:
+        return refs.SkippedFile(path=target.path, reason=target.skipped)
+    read = read_bounded(root / target.path)
+    if read.text is None:
+        return refs.SkippedFile(path=target.path, reason=_skip_reason(read.skipped, target.path))
+    try:
+        units = complexity.measure(read.text, target.path, target.language)
+    except (UnmeasurableSource, LanguageUnavailable) as exc:
+        return refs.SkippedFile(path=target.path, reason=str(exc))
+    return units
+
+
+def _skip_reason(skipped: str | None, path: str) -> str:
+    if skipped is None:
+        message = f"bounded read of {path} set neither text nor a skip reason"
+        raise RuntimeError(message)
+    return skipped
 
 
 def _import_pairs(scan: refs.RepoScan) -> frozenset[tuple[str, str]]:

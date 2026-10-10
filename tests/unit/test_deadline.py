@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agentless_mcp.application import symbol_service
+from agentless_mcp.application import graph_service, symbol_service
 from agentless_mcp.application.map_service import companions_for
 from agentless_mcp.core import communities, graph, refs, resolve
 from agentless_mcp.util import deadline
@@ -80,6 +80,24 @@ class TestTheDeadline:
 
         assert call.credited == 30
 
+    def test_the_remaining_allowance_is_none_outside_a_call(self):
+        assert deadline.remaining() is None
+
+    def test_the_remaining_allowance_counts_the_credited_grace(self, clock):
+        call = deadline.Deadline(limit=30, grace=60, started=clock.now)
+
+        with deadline.bounded(call):
+            with deadline.recaching():
+                clock.now += 5
+            clock.now += 5
+            assert deadline.remaining() == 30 + 5 - 10
+
+    def test_a_spent_allowance_leaves_a_negative_remainder(self, clock):
+        call = deadline.Deadline(limit=10, grace=0, started=clock.now)
+        clock.now += 12
+
+        assert call.remaining() == -2
+
     def test_recaching_outside_a_call_credits_nothing(self, clock):
         with deadline.recaching():
             clock.now += 5
@@ -141,6 +159,10 @@ class TestTheLongLoopsCheckIt:
     def test_the_test_companion_pass(self, built):
         by_path = built.scan.by_path()
         self.stops(lambda: companions_for(built.files, by_path, built.index, ["core.py"]))
+
+    def test_the_complexity_walk(self, built):
+        targets = graph_service._complexity_targets(built.scan)
+        self.stops(lambda: graph_service._walk_complexity(built.root, targets, budget=60))
 
     def test_the_shared_caller_ranking(self, built):
         definitions = list(refs.definitions_for(built.index, "helper"))

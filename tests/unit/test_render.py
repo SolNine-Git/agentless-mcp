@@ -286,6 +286,8 @@ class TestHealth:
             "orphans": render.HealthSection(rows=(self.row(),), total=1, limit=20),
             "unused_exports": empty,
             "hubs": empty,
+            "complexity": complexity_summary(),
+            "hotspots": render.HealthHotspots(rows=(hotspot(),), total=1, limit=20),
             "symbols": 4,
             "excluded": 2,
         }
@@ -329,6 +331,145 @@ class TestHealth:
 
     def test_a_single_finding_is_spelled_in_the_singular(self):
         assert "1 orphan candidate (" in render.render_health(self.report())
+
+
+def hotspot(**overrides):
+    """One hotspot row, with a stable id unless the caller removes it."""
+    fields = {
+        "path": "core.py",
+        "line": 12,
+        "label": "Report.build",
+        "cc": 12,
+        "sloc": 16,
+        "mass": 48.0,
+        "stable_id": "py:core.py::Report.build",
+    }
+    return render.HealthComplexityRow(**{**fields, **overrides})
+
+
+def complexity_summary(**overrides):
+    """A complexity summary over a walk that reached every file and measured all but none."""
+    fields = {
+        "threshold": 10,
+        "files": 3,
+        "walked": 3,
+        "units": 7,
+        "over_threshold": 2,
+        "erosion": 0.4567,
+        "not_measured": render.HealthUnmeasured(rows=(), total=0, limit=20),
+    }
+    return render.HealthComplexity(**{**fields, **overrides})
+
+
+class TestHealthComplexity:
+    """The complexity summary and hotspots: what was measured, and what was not."""
+
+    def render(self, **overrides):
+        empty = render.HealthSection(rows=(), total=0, limit=20)
+        fields = {
+            "orphans": empty,
+            "unused_exports": empty,
+            "hubs": empty,
+            "complexity": complexity_summary(),
+            "hotspots": render.HealthHotspots(rows=(hotspot(),), total=1, limit=20),
+        }
+        return render.render_health(render.HealthReport(**{**fields, **overrides}))
+
+    def test_the_summary_states_units_threshold_and_erosion(self):
+        assert (
+            "complexity over 7 units in 3 files (threshold cc > 10): "
+            "2 over the threshold, erosion 0.457"
+        ) in self.render().splitlines()
+
+    def test_the_complexity_lines_follow_the_graph_sections(self):
+        lines = self.render().splitlines()
+
+        assert lines.index("no hubs: no function, method or class carries a counted edge") < next(
+            index for index, line in enumerate(lines) if line.startswith("complexity over")
+        )
+
+    def test_a_walk_the_budget_stopped_says_how_far_it_got(self):
+        text = self.render(complexity=complexity_summary(files=9, walked=4))
+
+        assert "complexity: 4 of 9 files walked before the time budget" in text.splitlines()
+
+    def test_a_complete_walk_prints_no_budget_line(self):
+        assert "time budget" not in self.render()
+
+    def test_files_not_measured_are_counted_and_named_with_their_reason(self):
+        skipped = (
+            SkippedFile(path="broken.py", reason="broken.py does not parse"),
+            SkippedFile(path="later.go", reason="language 'go' not warmed"),
+        )
+        summary = complexity_summary(
+            walked=3, not_measured=render.HealthUnmeasured(rows=skipped[:1], total=2, limit=1)
+        )
+
+        lines = self.render(complexity=summary).splitlines()
+
+        assert "complexity: 2 files not measured" in lines
+        assert "  broken.py  broken.py does not parse" in lines
+        assert "... 1 more unmeasured files not listed (limit 1)" in lines
+        assert "complexity over 7 units in 1 file (threshold cc > 10): " in "\n".join(lines)
+
+    def test_a_row_with_an_id_is_located_by_it(self):
+        lines = self.render().splitlines()
+
+        assert "  [py:core.py::Report.build] @12  Report.build  cc 12  sloc 16  mass 48.0" in lines
+        assert (
+            "1 unit ranked by mass (named functions and methods, mass = cc * sqrt(sloc), "
+            "highest first)"
+        ) in lines
+
+    def test_a_metric_only_row_says_it_has_no_stable_id(self):
+        row = hotspot(stable_id=None, path="app.js", line=52, label="load", cc=3, sloc=4, mass=6.0)
+
+        text = self.render(hotspots=render.HealthHotspots(rows=(row,), total=1, limit=20))
+
+        assert "  app.js:52  load  cc 3  sloc 4  mass 6.0  -- metric-only unit, no stable id" in (
+            text.splitlines()
+        )
+
+    def test_a_cut_hotspot_section_says_how_much_it_left_out(self):
+        text = self.render(hotspots=render.HealthHotspots(rows=(hotspot(),), total=40, limit=1))
+
+        assert "... 39 more hotspots not listed (limit 1)" in text.splitlines()
+
+    def test_the_empty_states_still_render_a_line(self):
+        nothing = complexity_summary(files=0, walked=0, units=0, over_threshold=0, erosion=0.0)
+
+        lines = self.render(complexity=nothing, hotspots=render.HealthHotspots()).splitlines()
+
+        assert "complexity: no tier-1 source files to measure outside test and fixture paths" in (
+            lines
+        )
+        assert "no hotspots: no unit was measured" in lines
+
+    def test_the_json_form_carries_the_counts_and_marks_a_metric_only_row(self):
+        report = render.HealthReport(
+            orphans=render.HealthSection(),
+            unused_exports=render.HealthSection(),
+            hubs=render.HealthSection(),
+            complexity=complexity_summary(files=5, walked=4),
+            hotspots=render.HealthHotspots(rows=(hotspot(stable_id=None),), total=1, limit=20),
+        )
+
+        document = report.as_dict()
+
+        assert document["complexity"] == {
+            "threshold": 10,
+            "files": 5,
+            "walked": 4,
+            "measured": 4,
+            "stopped_by_budget": True,
+            "units": 7,
+            "over_threshold": 2,
+            "erosion": 0.4567,
+            "not_measured": {"total": 0, "limit": 20, "omitted": 0, "rows": []},
+        }
+        assert document["hotspots"]["rows"][0]["stable_id"] is None
+        assert document["hotspots"]["rows"][0]["metric_only"] is True
+        assert "clone_share" not in document["complexity"]
 
 
 class TestImports:
@@ -774,6 +915,8 @@ def cases():
         orphans=render.HealthSection(rows=(health_row,), total=1, limit=10),
         unused_exports=empty_section,
         hubs=empty_section,
+        complexity=complexity_summary(),
+        hotspots=render.HealthHotspots(rows=(hotspot(),), total=1, limit=10),
         symbols=1,
     )
 
@@ -883,6 +1026,32 @@ def cases():
                 )
             ),
         ),
+        (
+            "health/hotspot",
+            hotspot(),
+            lambda v: render.render_health(
+                replace(health_report, hotspots=render.HealthHotspots(rows=(v,), total=1, limit=10))
+            ),
+        ),
+        (
+            "health/metric-only",
+            hotspot(stable_id=None),
+            lambda v: render.render_health(
+                replace(health_report, hotspots=render.HealthHotspots(rows=(v,), total=1, limit=10))
+            ),
+        ),
+        (
+            "health/not-measured",
+            skipped,
+            lambda v: render.render_health(
+                replace(
+                    health_report,
+                    complexity=complexity_summary(
+                        not_measured=render.HealthUnmeasured(rows=(v,), total=1, limit=10)
+                    ),
+                )
+            ),
+        ),
     ]
 
 
@@ -988,6 +1157,9 @@ class TestTheForgeryEndToEnd:
             # refuses a client root carrying a line break. A field added to
             # the report from anywhere else would land outside all three.
             ["capabilities"],
+            # `health` puts the forged path in a hotspot row's stable id as well
+            # as in its graph rows.
+            ["health"],
         ],
         ids=[
             "map",
@@ -1001,6 +1173,7 @@ class TestTheForgeryEndToEnd:
             "diagram",
             "skeleton",
             "capabilities",
+            "health",
         ],
     )
     def test_no_command_lets_the_forged_row_occupy_a_line(

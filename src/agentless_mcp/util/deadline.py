@@ -40,6 +40,10 @@ class Deadline:
         """Add parse time to the call's allowance, up to the grace."""
         self.credited = min(self.grace, self.credited + seconds)
 
+    def remaining(self) -> float:
+        """Return the seconds left in the call's allowance, negative once it is spent."""
+        return self.limit + self.credited - (time.monotonic() - self.started)
+
     def check(self) -> None:
         """Raise CallStopped when the client left or the allowance is spent."""
         if self.cancelled.is_set():
@@ -74,6 +78,12 @@ def bounded(deadline: Deadline) -> Iterator[Deadline]:
         yield deadline
     finally:
         _ACTIVE.reset(token)
+
+
+def remaining() -> float | None:
+    """Return the seconds left in the current call's allowance, or None outside a call."""
+    deadline = _ACTIVE.get()
+    return None if deadline is None else deadline.remaining()
 
 
 def checkpoint() -> None:

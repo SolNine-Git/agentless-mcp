@@ -907,7 +907,7 @@ a `.md` file exactly as it stands. That is the never-stale story for committed
 diagrams. Wire it into pre-commit, and a diagram cannot silently describe a
 tree that no longer exists.
 
-### `health` (`orient` operation `health`) -- what is unreferenced, what is central
+### `health` (`orient` operation `health`) -- what is unreferenced, what is central, where complexity sits
 
 ```
 agentless-mcp health --limit 20
@@ -918,9 +918,9 @@ agentless-mcp health --limit 20
 ```
 
 Three readings of one degree count over the resolved symbol graph, returned as
-one answer: orphan candidates, unused exports and hubs. `--limit` bounds each
-section separately, and every section reports the complete count it was cut
-from.
+one answer: orphan candidates, unused exports and hubs. A complexity summary
+and a `hotspots` section follow them. `--limit` bounds each section separately,
+and every section reports the complete count it was cut from.
 
 ```
 health over 412 symbols; 88 excluded as test or fixture paths
@@ -955,6 +955,40 @@ Read the sections for code health, not for localization. An orphan is by
 definition a symbol nothing references, which is close to the opposite of
 where a bug lives. The hub ranking is the section to read when the question is
 which symbol a change has to route through.
+
+```
+complexity over 1770 units in 183 files (threshold cc > 10): 412 over the threshold, erosion 0.350
+complexity: 1 file not measured
+  scripts/broken.py  scripts/broken.py does not parse: the first syntax error is at line 3. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again.
+
+1770 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
+  [py:app/report.py::build_report] @40  build_report  cc 41  sloc 120  mass 449.1
+  app/handlers.js:52  load  cc 3  sloc 4  mass 6.0  -- metric-only unit, no stable id
+```
+
+**The complexity summary says where complexity sits, not whether the design
+is good.** A unit is a named function or method. Its `cc` counts decision
+points the way scb-check does, and its mass is `cc * sqrt(sloc)`. Erosion is
+the share of all mass held by units above the threshold, which is 10 unless
+`complexity_threshold` in `.agentless-mcp.json` sets it. The walk covers
+tier-1 source files outside test and fixture paths, the same rule the graph
+sections use. A function that is long and simple ranks high in `hotspots` and
+adds nothing to erosion. Whether it should be split is a judgment this
+section does not make.
+
+**A hotspot row carries the unit's stable id when one agentless symbol starts
+on the same line with the same name.** Otherwise the row ends `metric-only
+unit, no stable id`, for example an arrow function bound to an object key,
+which the extractor does not report as a symbol. Read such a row by its
+`path:line`.
+
+**Nothing the walk could not measure is dropped.** A file that does not parse,
+that Python's tokenizer rejects, whose grammar is not loaded, or that the scan
+skipped is counted on the `not measured` line and named with its reason. The
+walk has its own time budget: 10 s, or half of what is left of an MCP call's
+allowance, whichever is less. When the budget ends it, the answer says
+`complexity: N of M files walked before the time budget`, the summary covers
+the files walked, and the graph sections are complete.
 
 ### `html` (CLI only) -- the module graph, interactive
 

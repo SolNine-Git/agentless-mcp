@@ -1,0 +1,62 @@
+// agentless-mcp receipt (repository data below)
+// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+health over 40 symbols
+degree counts same-file and resolved-via-import edges only; unique and name-only-ambiguous matches are discounted and named per row
+methods are ranked as hubs and never reported as orphans: a call through a selector resolves to no edge, so every method would be a permanent candidate
+
+no orphan candidates: every function has a counted edge
+
+5 unused exports (public function, no counted edge in)
+  [py:billing/invoice.py::open_invoice] @42  open_invoice  function  in 0  out 3
+  [py:billing/invoice.py::render_invoice] @47  render_invoice  function  in 0  out 3
+  [py:catalog/search.py::load_catalogue] @12  load_catalogue  function  in 0  out 2
+  [py:catalog/search.py::find_by_title] @17  find_by_title  function  in 0  out 2
+  [py:catalog/search.py::describe] @24  describe  function  in 0  out 3
+
+27 symbols carry a counted edge (function, method or class, highest counted degree first)
+  [py:catalog/product.py::Product] @10  Product  dataclass  in 7  out 0
+  [py:billing/invoice.py::Invoice] @27  Invoice  dataclass  in 4  out 1
+  [py:billing/money.py::format_amount] @14  format_amount  function  in 3  out 2
+  [py:billing/money.py::round_amount] @9  round_amount  function  in 3  out 1
+  [py:billing/money.py::sum_amounts] @19  sum_amounts  function  in 3  out 1
+  [py:billing/invoice.py::open_invoice] @42  open_invoice  function  in 0  out 3
+  [py:billing/invoice.py::render_invoice] @47  render_invoice  function  in 0  out 3
+  [py:billing/tax.py::tax_on] @26  tax_on  function  in 1  out 2
+  [py:catalog/search.py::describe] @24  describe  function  in 0  out 3
+  [py:billing/invoice.py::InvoiceLine] @14  InvoiceLine  dataclass  in 2  out 0
+  [py:billing/ledger.py::next_reference] @16  next_reference  function  in 1  out 1
+  [py:billing/tax.py::rate_for_band] @17  rate_for_band  function  in 1  out 1
+  [py:catalog/product.py::parse_product] @24  parse_product  function  in 1  out 1
+  [py:catalog/search.py::load_catalogue] @12  load_catalogue  function  in 0  out 2
+  [py:catalog/search.py::find_by_title] @17  find_by_title  function  in 0  out 2
+  [py:catalog/stock.py::StockLevels.is_low] @30  StockLevels.is_low  method  in 0  out 2
+  [py:billing/invoice.py::InvoiceLine.tax] @21  InvoiceLine.tax  method  in 0  out 1
+  [py:billing/invoice.py::Invoice.net] @33  Invoice.net  method  in 0  out 1
+  [py:billing/invoice.py::Invoice.gross] @37  Invoice.gross  method  in 0  out 1
+  [py:billing/ledger.py::Ledger.__init__] @27  Ledger.__init__  method  in 0  out 1
+... 7 more hubs not listed (limit 20)
+
+complexity over 24 units in 7 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+
+24 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
+  [py:billing/invoice.py::render_invoice] @47  render_invoice  cc 3  sloc 10  mass 9.5
+  [py:billing/ledger.py::Ledger.post] @35  Ledger.post  cc 3  sloc 6  mass 7.3
+  [py:catalog/product.py::parse_product] @24  parse_product  cc 3  sloc 6  mass 7.3
+  [py:catalog/search.py::find_by_title] @17  find_by_title  cc 3  sloc 4  mass 6.0
+  [py:billing/ledger.py::Ledger.__init__] @27  Ledger.__init__  cc 2  sloc 6  mass 4.9
+  [py:billing/tax.py::rate_for_band] @17  rate_for_band  cc 2  sloc 6  mass 4.9
+  [py:catalog/stock.py::StockLevels.held] @22  StockLevels.held  cc 2  sloc 6  mass 4.9
+  [py:billing/ledger.py::next_reference] @16  next_reference  cc 2  sloc 5  mass 4.5
+  [py:billing/money.py::sum_amounts] @19  sum_amounts  cc 2  sloc 5  mass 4.5
+  [py:billing/tax.py::tax_on] @26  tax_on  cc 2  sloc 5  mass 4.5
+  [py:catalog/stock.py::StockLevels.record] @15  StockLevels.record  cc 2  sloc 5  mass 4.5
+  [py:billing/ledger.py::Ledger.statement] @47  Ledger.statement  cc 2  sloc 4  mass 4.0
+  [py:catalog/product.py::Product.short_title] @17  Product.short_title  cc 2  sloc 4  mass 4.0
+  [py:catalog/search.py::describe] @24  describe  cc 2  sloc 3  mass 3.5
+  [py:billing/invoice.py::Invoice.net] @33  Invoice.net  cc 2  sloc 2  mass 2.8
+  [py:billing/invoice.py::Invoice.gross] @37  Invoice.gross  cc 2  sloc 2  mass 2.8
+  [py:billing/ledger.py::Ledger.balance] @43  Ledger.balance  cc 2  sloc 2  mass 2.8
+  [py:catalog/search.py::load_catalogue] @12  load_catalogue  cc 2  sloc 2  mass 2.8
+  [py:billing/invoice.py::InvoiceLine.tax] @21  InvoiceLine.tax  cc 1  sloc 2  mass 1.4
+  [py:billing/invoice.py::open_invoice] @42  open_invoice  cc 1  sloc 2  mass 1.4
+... 4 more hotspots not listed (limit 20)

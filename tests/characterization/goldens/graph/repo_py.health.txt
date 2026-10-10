@@ -1,0 +1,60 @@
+// agentless-mcp receipt (repository data below)
+// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+health over 33 symbols
+degree counts same-file and resolved-via-import edges only; unique and name-only-ambiguous matches are discounted and named per row
+methods are ranked as hubs and never reported as orphans: a call through a selector resolves to no edge, so every method would be a permanent candidate
+
+no orphan candidates: every function has a counted edge
+
+5 unused exports (public function, no counted edge in)
+  [py:inventory.py::load_inventory] @104  load_inventory  function  in 0  out 2
+  [py:inventory.py::dump_inventory] @118  dump_inventory  function  in 0  out 1
+  [py:reports.py::reorder_report] @29  reorder_report  function  in 0  out 5
+  [py:reports.py::check_report_inputs] @55  check_report_inputs  function  in 0  out 3
+  [py:reports.py::summarise] @69  summarise  function  in 0  out 4
+
+21 symbols carry a counted edge (function, method or class, highest counted degree first)
+  [py:inventory.py::Inventory] @44  Inventory  class  in 6  out 1
+  [py:inventory.py::Item] @25  Item  dataclass  in 6  out 0
+  [py:pricing.py::Tier] @11  Tier  enum  in 5  out 0
+  [py:pricing.py::format_money] @78  format_money  function  in 3  out 2
+  [py:reports.py::stock_value] @16  stock_value  function  in 1  out 4
+  [py:reports.py::reorder_report] @29  reorder_report  function  in 0  out 5
+  [py:pricing.py::PriceBook] @26  PriceBook  class  in 4  out 0
+  [py:pricing.py::PriceBook.quote] @46  PriceBook.quote  method  in 0  out 4
+  [py:reports.py::summarise] @69  summarise  function  in 0  out 4
+  [py:reports.py::_format_row] @47  _format_row  function  in 1  out 2
+  [py:reports.py::check_report_inputs] @55  check_report_inputs  function  in 0  out 3
+  [py:inventory.py::Inventory.__init__] @49  Inventory.__init__  method  in 0  out 2
+  [py:inventory.py::Inventory.add] @58  Inventory.add  method  in 0  out 2
+  [py:inventory.py::load_inventory] @104  load_inventory  function  in 0  out 2
+  [py:reports.py::ReportError] @12  ReportError  class  in 2  out 0
+  [py:inventory.py::Item.needs_reorder] @32  Item.needs_reorder  method  in 0  out 1
+  [py:inventory.py::Inventory.remove] @76  Inventory.remove  method  in 0  out 1
+  [py:inventory.py::Inventory.reorder_list] @87  Inventory.reorder_list  method  in 0  out 1
+  [py:inventory.py::dump_inventory] @118  dump_inventory  function  in 0  out 1
+  [py:pricing.py::PriceBook.price_list] @58  PriceBook.price_list  method  in 0  out 1
+... 1 more hubs not listed (limit 20)
+
+complexity over 19 units in 3 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+
+19 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
+  [py:reports.py::check_report_inputs] @55  check_report_inputs  cc 4  sloc 11  mass 13.3
+  [py:pricing.py::PriceBook.cheapest] @65  PriceBook.cheapest  cc 4  sloc 10  mass 12.6
+  [py:inventory.py::Inventory.add] @58  Inventory.add  cc 3  sloc 16  mass 12.0
+  [py:reports.py::reorder_report] @29  reorder_report  cc 3  sloc 13  mass 10.8
+  [py:reports.py::stock_value] @16  stock_value  cc 3  sloc 10  mass 9.5
+  [py:inventory.py::Item.needs_reorder] @32  Item.needs_reorder  cc 3  sloc 8  mass 8.5
+  [py:inventory.py::Inventory.reorder_list] @87  Inventory.reorder_list  cc 3  sloc 7  mass 7.9
+  [py:pricing.py::PriceBook.__init__] @29  PriceBook.__init__  cc 3  sloc 7  mass 7.9
+  [py:inventory.py::load_inventory] @104  load_inventory  cc 2  sloc 11  mass 6.6
+  [py:reports.py::summarise] @69  summarise  cc 2  sloc 10  mass 6.3
+  [py:inventory.py::dump_inventory] @118  dump_inventory  cc 2  sloc 9  mass 6.0
+  [py:pricing.py::PriceBook.quote] @46  PriceBook.quote  cc 2  sloc 9  mass 6.0
+  [py:inventory.py::Inventory.remove] @76  Inventory.remove  cc 2  sloc 8  mass 5.7
+  [py:inventory.py::Inventory.__init__] @49  Inventory.__init__  cc 2  sloc 7  mass 5.3
+  [py:pricing.py::PriceBook.cost_of] @38  PriceBook.cost_of  cc 2  sloc 6  mass 4.9
+  [py:inventory.py::Inventory.audit_trail] @96  Inventory.audit_trail  cc 2  sloc 5  mass 4.5
+  [py:pricing.py::PriceBook.price_list] @58  PriceBook.price_list  cc 2  sloc 5  mass 4.5
+  [py:reports.py::_format_row] @47  _format_row  cc 1  sloc 5  mass 2.2
+  [py:pricing.py::format_money] @78  format_money  cc 1  sloc 3  mass 1.7

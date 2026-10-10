@@ -549,7 +549,9 @@ def _add_diagram(subparsers: Any) -> None:
 
 
 def _add_health(subparsers: Any) -> None:
-    parser = subparsers.add_parser("health", help="orphan candidates, unused exports and hubs")
+    parser = subparsers.add_parser(
+        "health", help="orphan candidates, unused exports, hubs and complexity hotspots"
+    )
     _repo_flags(parser)
     parser.add_argument(
         "--limit",
