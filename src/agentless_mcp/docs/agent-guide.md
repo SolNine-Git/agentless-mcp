@@ -1010,7 +1010,7 @@ walk reads each file's units and blocks from the index and parses only the
 files that changed since it was built. The answer is the same with the index
 and with `--no-cache`. The time budget is the one exception: a walk that has to
 parse every file can stop earlier. On mcp-local, `health` takes 0.81 s with a
-fresh index and 3.85 s with `--no-cache`.
+fresh index and 3.63 s with `--no-cache`.
 
 ### `html` (CLI only) -- the module graph, interactive
 

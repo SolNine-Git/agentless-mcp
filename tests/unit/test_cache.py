@@ -2684,7 +2684,7 @@ def metric_arguments(root, path):
 
 def both_metrics(source, root, path):
     arguments = metric_arguments(root, path)
-    return measured(source.units_for, *arguments), measured(source.blocks_for, *arguments)
+    return measured(source.metrics_for, *arguments), measured(source.blocks_for, *arguments)
 
 
 def refuse(*_arguments):
@@ -2692,14 +2692,14 @@ def refuse(*_arguments):
     raise AssertionError(message)
 
 
-def recording(monkeypatch, module, name):
+def recording(monkeypatch, module, name, *, path_at=1):
     """Replace ``module.name`` with a wrapper that records the path of every call."""
     calls = []
     real = getattr(module, name)
 
-    def record(source, path, language):
-        calls.append(path)
-        return real(source, path, language)
+    def record(*arguments):
+        calls.append(arguments[path_at])
+        return real(*arguments)
 
     monkeypatch.setattr(module, name, record)
     return calls
@@ -2729,14 +2729,17 @@ class TestCachedMetrics:
         expected = {path: both_metrics(on_demand, metrics_repo, path) for path in METRIC_FILES}
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
         monkeypatch.setattr(grammars, "get_parser", refuse)
+        monkeypatch.setattr(fileparse, "parse_metrics", refuse)
         monkeypatch.setattr(complexity, "measure", refuse)
         monkeypatch.setattr(clones, "file_blocks", refuse)
 
         served = {path: both_metrics(source, metrics_repo, path) for path in METRIC_FILES}
 
         assert served == expected
-        assert served["app.py"][0]
-        assert served["app.py"][1].blocks
+        (units, blocks), alone = served["app.py"]
+        assert units
+        assert blocks.blocks
+        assert alone == blocks
 
     @pytest.mark.parametrize("path", UNMEASURED_FILES)
     def test_a_test_or_fixture_file_gets_facts_and_no_metrics_row(
@@ -2793,7 +2796,7 @@ class TestCachedMetrics:
         assert "does not parse" in blocks_reason
         assert (unit_count, block_count, sloc) == (0, 0, None)
         with pytest.raises(UnmeasurableSource, match="does not parse"):
-            source.units_for(*metric_arguments(metrics_repo, "broken.py"))
+            source.metrics_for(*metric_arguments(metrics_repo, "broken.py"))
 
     def test_a_language_without_metrics_has_no_row_and_is_measured_on_demand(
         self, metrics_repo, extractor
@@ -2821,10 +2824,10 @@ class TestCachedMetrics:
     ):
         cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         monkeypatch.setattr(fileparse, "METRICS_ALGORITHM", fileparse.METRICS_ALGORITHM + 1)
-        calls = recording(monkeypatch, complexity, "measure")
+        calls = recording(monkeypatch, fileparse, "parse_metrics", path_at=2)
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
 
-        source.units_for(*metric_arguments(metrics_repo, "app.py"))
+        source.metrics_for(*metric_arguments(metrics_repo, "app.py"))
         rewritten = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         again = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
@@ -2847,14 +2850,15 @@ class TestCachedMetrics:
 
     def test_another_language_is_a_miss(self, metrics_repo, extractor, monkeypatch):
         cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
-        calls = recording(monkeypatch, complexity, "measure")
-        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
         text, _, path = metric_arguments(metrics_repo, "app.py")
+        expected = measured(fileparse.parse_metrics, text, "javascript", path)
+        calls = recording(monkeypatch, fileparse, "parse_metrics", path_at=2)
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
 
-        served = measured(source.units_for, text, "javascript", path)
+        served = measured(source.metrics_for, text, "javascript", path)
 
         assert calls == ["app.py"]
-        assert served == measured(complexity.measure, text, path, "javascript")
+        assert served == expected
 
     def test_a_short_row_set_is_a_miss_with_a_warning(
         self, metrics_repo, extractor, monkeypatch, caplog
@@ -2869,9 +2873,9 @@ class TestCachedMetrics:
         on_demand = cache.OnDemandSource(extractor)
 
         with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
-            served = source.units_for(*metric_arguments(metrics_repo, "app.py"))
+            served = source.metrics_for(*metric_arguments(metrics_repo, "app.py"))
 
-        assert served == on_demand.units_for(*metric_arguments(metrics_repo, "app.py"))
+        assert served == on_demand.metrics_for(*metric_arguments(metrics_repo, "app.py"))
         assert "unit rows for app.py are unreadable" in caplog.text
 
     def test_unreadable_sloc_lines_are_a_miss_with_a_warning(self, metrics_repo, extractor, caplog):
@@ -2885,6 +2889,22 @@ class TestCachedMetrics:
 
         assert served == on_demand.blocks_for(*metric_arguments(metrics_repo, "app.py"))
         assert "block rows for app.py are unreadable" in caplog.text
+
+    def test_a_block_miss_beside_a_unit_hit_parses_only_the_blocks(
+        self, metrics_repo, extractor, monkeypatch
+    ):
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
+        run_sql(report.database, "UPDATE file_metrics SET sloc_lines = ?", '{"a": 1}')
+        arguments = metric_arguments(metrics_repo, "app.py")
+        expected = cache.OnDemandSource(extractor).metrics_for(*arguments)
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        monkeypatch.setattr(fileparse, "parse_metrics", refuse)
+        calls = recording(monkeypatch, clones, "file_blocks")
+
+        served = source.metrics_for(*arguments)
+
+        assert served == expected
+        assert calls == ["app.py"]
 
     def test_the_metric_tables_hold_only_columns_a_reader_selects(self, metrics_repo, extractor):
         report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
@@ -3007,6 +3027,7 @@ class TestWarmEqualsCold:
 
     def test_health(self, services, metrics_repo, capsys, monkeypatch):
         cold, warm = self.cold_then_warm(services, metrics_repo, capsys, "health", "--json")
+        monkeypatch.setattr(fileparse, "parse_metrics", refuse)
         monkeypatch.setattr(complexity, "measure", refuse)
         monkeypatch.setattr(clones, "file_blocks", refuse)
 
@@ -3025,7 +3046,7 @@ class TestWarmEqualsCold:
         capsys.readouterr()
         assert invoke(services, metrics_repo, "health", "--json", "--no-cache") == EXIT_OK
         cold = _json_without_receipt(capsys.readouterr().out)
-        calls = recording(monkeypatch, complexity, "measure")
+        calls = recording(monkeypatch, fileparse, "parse_metrics", path_at=2)
 
         assert invoke(services, metrics_repo, "health", "--json") == EXIT_OK
 

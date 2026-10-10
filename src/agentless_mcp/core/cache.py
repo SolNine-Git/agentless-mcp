@@ -67,7 +67,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Final, Protocol, TypeVar
 
-from agentless_mcp.core import clones, complexity, fileparse, grammars
+from agentless_mcp.core import clones, fileparse, grammars
 from agentless_mcp.core.clones import Block, FileBlocks
 from agentless_mcp.core.complexity import Unit
 from agentless_mcp.core.extractor import IdentifierRole, ParsedFacts, Ref, TreeSitterExtractor
@@ -393,8 +393,8 @@ class FileSource(Protocol):
         """Return all three fact sets for ``text``, as the extractor would."""
         ...
 
-    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
-        """Return the complexity units of ``text``, or raise, as `complexity.measure` would."""
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Return the units and blocks of ``text``, or raise, as `fileparse.parse_metrics` would."""
         ...
 
     def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
@@ -438,9 +438,9 @@ class OnDemandSource:
         """Extract all three fact sets from one parse of ``text``."""
         return self._extractor.extract_facts(text, language, path)
 
-    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
-        """Measure the complexity units of ``text`` with no cache involved."""
-        return complexity.measure(text, path, language)
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Measure the units and clone blocks of ``text`` from one parse, with no cache involved."""
+        return fileparse.parse_metrics(text, language, path)
 
     def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
         """Index the clone blocks of ``text`` with no cache involved."""
@@ -570,18 +570,22 @@ class CachedSource:
             return self._extractor.extract_facts(text, language, path)
         return ParsedFacts(symbols, imports, refs)
 
-    def units_for(self, text: str, language: str, path: str) -> tuple[Unit, ...]:
-        """Return cached complexity units when the row still describes ``text``."""
+    def metrics_for(self, text: str, language: str, path: str) -> fileparse.UnitsAndBlocks:
+        """Return cached units and clone blocks while the rows still describe ``text``."""
+        file_id = self._fresh_file_id(text, path)
         read = partial(self._unit_rows, language=language)
-        units = self._rows_or_none(read, self._fresh_file_id(text, path), path, "unit")
+        units = self._rows_or_none(read, file_id, path, "unit")
         if units is None:
-            return complexity.measure(text, path, language)
-        return _measured_or_raise(units)
+            return fileparse.parse_metrics(text, language, path)
+        return _measured_or_raise(units), self._blocks(text, language, path, file_id)
 
     def blocks_for(self, text: str, language: str, path: str) -> FileBlocks:
         """Return cached clone blocks when the row still describes ``text``."""
+        return self._blocks(text, language, path, self._fresh_file_id(text, path))
+
+    def _blocks(self, text: str, language: str, path: str, file_id: int | None) -> FileBlocks:
         read = partial(self._block_rows, language=language)
-        blocks = self._rows_or_none(read, self._fresh_file_id(text, path), path, "block")
+        blocks = self._rows_or_none(read, file_id, path, "block")
         if blocks is None:
             return clones.file_blocks(text, path, language)
         return _measured_or_raise(blocks)

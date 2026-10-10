@@ -834,8 +834,7 @@ def _measure_target(
         return refs.SkippedFile(path=target.path, reason=_skip_reason(read.skipped, target.path))
     # One failure drops the file from both figures, so erosion and clone share cover one set.
     try:
-        units = source.units_for(read.text, target.language, target.path)
-        blocks = source.blocks_for(read.text, target.language, target.path)
+        units, blocks = source.metrics_for(read.text, target.language, target.path)
     except (UnmeasurableSource, LanguageUnavailable) as exc:
         return refs.SkippedFile(path=target.path, reason=str(exc))
     return _Measured(units=units, blocks=blocks)

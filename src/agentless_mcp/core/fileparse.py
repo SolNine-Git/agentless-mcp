@@ -11,9 +11,11 @@ from dataclasses import dataclass
 from functools import cache, partial
 from typing import Final, TypeVar
 
-from agentless_mcp.core import clones, complexity
+from tree_sitter import Node
+
+from agentless_mcp.core import clones, complexity, grammars
 from agentless_mcp.core.clones import FileBlocks
-from agentless_mcp.core.complexity import Unit
+from agentless_mcp.core.complexity import SlocLines, Unit
 from agentless_mcp.core.extractor import ParsedFacts, TreeSitterExtractor
 from agentless_mcp.util.deadline import recaching
 from agentless_mcp.util.errors import UnmeasurableSource
@@ -23,6 +25,9 @@ from agentless_mcp.util.errors import UnmeasurableSource
 METRICS_ALGORITHM: Final = 1
 
 _Metric = TypeVar("_Metric")
+
+# One text's complexity units and clone blocks, as the two text forms return them.
+UnitsAndBlocks = tuple[tuple[Unit, ...], FileBlocks]
 
 
 @dataclass(frozen=True)
@@ -68,9 +73,7 @@ def parse_file(extractor: TreeSitterExtractor, text: str, language: str, path: s
         data = text.encode("utf-8")
         tree = extractor.parse(data, language)
         root = tree.root_node
-        # Both metrics read one SLOC pass. A tokenizer rejection is not cached, so each
-        # metric raises it again and keeps its own message.
-        lines = cache(partial(complexity.sloc_line_numbers, root, text, language))
+        lines = _sloc_once(root, text, language)
         metrics = FileMetrics(
             stamp=stamp,
             language=language,
@@ -83,6 +86,23 @@ def parse_file(extractor: TreeSitterExtractor, text: str, language: str, path: s
 def parse_facts(extractor: TreeSitterExtractor, text: str, language: str, path: str) -> ParsedFile:
     """Parse ``text`` for its facts alone, with no metrics."""
     return ParsedFile(extractor.extract_facts(text, language, path), None)
+
+
+def parse_metrics(text: str, language: str, path: str) -> UnitsAndBlocks:
+    """Return or raise what `complexity.measure` then `clones.file_blocks` would, from one parse."""
+    if metrics_stamp(language) is None:
+        # The text forms refuse the language before they parse, so their message wins.
+        return complexity.measure(text, path, language), clones.file_blocks(text, path, language)
+    root = grammars.get_parser(language).parse(text.encode("utf-8")).root_node
+    lines = _sloc_once(root, text, language)
+    units = complexity.measure_tree(root, path, language, lines)
+    return units, clones.file_blocks_tree(root, path, language, lines)
+
+
+def _sloc_once(root: Node, text: str, language: str) -> SlocLines:
+    # Both metrics read one SLOC pass. A tokenizer rejection is not cached, so each
+    # metric raises it again and keeps its own message.
+    return cache(partial(complexity.sloc_line_numbers, root, text, language))
 
 
 def _measured(measure: Callable[[], _Metric]) -> _Metric | Unmeasured:

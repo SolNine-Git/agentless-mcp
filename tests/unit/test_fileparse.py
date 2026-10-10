@@ -9,7 +9,13 @@ import pytest
 
 from agentless_mcp.core import clones, complexity, extractor, fileparse, grammars, normalize
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.fileparse import METRICS_ALGORITHM, Unmeasured, metrics_stamp, parse_file
+from agentless_mcp.core.fileparse import (
+    METRICS_ALGORITHM,
+    Unmeasured,
+    metrics_stamp,
+    parse_file,
+    parse_metrics,
+)
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -200,6 +206,64 @@ class TestOneParse:
         parsed = parse_file(extractor, '{"a": 1}\n', "json", "a.json")
 
         assert parsed.metrics is None
+
+
+def text_forms(text, language, path):
+    units = complexity.measure(text, path, language)
+    return units, clones.file_blocks(text, path, language)
+
+
+def counting(monkeypatch, module, name):
+    """Replace ``module.name`` with a wrapper that records the first argument of every call."""
+    calls = []
+    real = getattr(module, name)
+
+    def counted(*arguments):
+        calls.append(arguments[0])
+        return real(*arguments)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+class TestTheMetricsParse:
+    @pytest.mark.parametrize(("path", "language"), list(corpus()))
+    def test_one_parse_gives_or_raises_what_the_text_forms_do(self, path, language):
+        text = path.read_text(encoding="utf-8")
+
+        assert outcome(parse_metrics, text, language, path.name) == outcome(
+            text_forms, text, language, path.name
+        )
+
+    def test_a_file_is_parsed_once_and_its_sloc_lines_read_once(self, monkeypatch):
+        parses = counting(monkeypatch, grammars, "get_parser")
+        sloc = counting(monkeypatch, complexity, "sloc_line_numbers")
+        source = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+
+        units, blocks = parse_metrics(source, "python", "a.py")
+
+        assert parses == ["python"]
+        assert len(sloc) == 1
+        assert [unit.qualname for unit in units] == ["f"]
+        assert blocks.sloc_lines == (1, 2, 3, 4)
+
+    def test_the_units_failure_is_raised_first(self):
+        source = "def good():\n    return 1\n\ndef bad(:\n"
+
+        with pytest.raises(UnmeasurableSource) as raised:
+            parse_metrics(source, "python", "a.py")
+
+        assert outcome(complexity.measure, source, "a.py", "python") == Unmeasured(
+            str(raised.value)
+        )
+
+    def test_a_language_without_metrics_raises_the_complexity_refusal(self):
+        with pytest.raises(UnmeasurableSource) as raised:
+            parse_metrics('{"a": 1}\n', "json", "a.json")
+
+        assert outcome(complexity.measure, '{"a": 1}\n', "a.json", "json") == Unmeasured(
+            str(raised.value)
+        )
 
 
 class TestTheStamp:

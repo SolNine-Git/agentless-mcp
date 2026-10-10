@@ -18,7 +18,7 @@ import pytest
 from agentless_mcp.application import graph_service, render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import clones, complexity, resolve
+from agentless_mcp.core import clones, complexity, fileparse, resolve
 from agentless_mcp.util import deadline
 from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, UnmeasurableSource
 
@@ -1071,15 +1071,15 @@ class TestHealthComplexity:
         assert summary.files == 2
 
     def test_a_grammar_that_fails_inside_the_walk_is_named(self, graphs, tmp_path, monkeypatch):
-        measure = complexity.measure
+        parse = fileparse.parse_metrics
 
-        def unavailable(source, path, language):
+        def unavailable(source, language, path):
             if path == "other.py":
                 message = "language 'python' not warmed: run agentless-mcp warmup"
                 raise LanguageUnavailable(message)
-            return measure(source, path, language)
+            return parse(source, language, path)
 
-        monkeypatch.setattr(complexity, "measure", unavailable)
+        monkeypatch.setattr(fileparse, "parse_metrics", unavailable)
         repo = build(tmp_path, {"core.py": COMPLEX, "other.py": branchy("other", 3)})
 
         rows = graphs.health(repo).complexity.not_measured.rows
@@ -1103,15 +1103,15 @@ class TestHealthComplexity:
     def test_a_file_that_cannot_be_indexed_is_named_and_leaves_both_figures(
         self, graphs, tmp_path, monkeypatch
     ):
-        index = clones.file_blocks
+        index = clones.file_blocks_tree
 
-        def unindexable(source, path, language):
+        def unindexable(root, path, language, lines):
             if path == "other.py":
                 message = "other.py: clone blocks cannot be indexed"
                 raise UnmeasurableSource(message)
-            return index(source, path, language)
+            return index(root, path, language, lines)
 
-        monkeypatch.setattr(clones, "file_blocks", unindexable)
+        monkeypatch.setattr(clones, "file_blocks_tree", unindexable)
         repo = build(tmp_path, {"core.py": COMPLEX, "other.py": branchy("other", 3)})
 
         summary = graphs.health(repo).complexity
@@ -1120,7 +1120,30 @@ class TestHealthComplexity:
             ("other.py", "other.py: clone blocks cannot be indexed")
         ]
         assert summary.units == 3
-        assert summary.sloc == len(index(COMPLEX, "core.py", "python").sloc_lines)
+        assert summary.sloc == len(clones.file_blocks(COMPLEX, "core.py", "python").sloc_lines)
+
+    def test_the_walk_parses_each_file_once_for_both_figures(self, graphs, tmp_path, monkeypatch):
+        files = {"core.py": COMPLEX, "other.py": branchy("other", 3)}
+        units = sum(len(complexity.measure(text, path, "python")) for path, text in files.items())
+        calls = []
+        parse = fileparse.parse_metrics
+
+        def counted(source, language, path):
+            calls.append(path)
+            return parse(source, language, path)
+
+        def refuse(*_arguments):
+            message = "a text form parsed a file the walk had already parsed"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(fileparse, "parse_metrics", counted)
+        monkeypatch.setattr(complexity, "measure", refuse)
+        monkeypatch.setattr(clones, "file_blocks", refuse)
+
+        summary = graphs.health(build(tmp_path, files)).complexity
+
+        assert calls == ["core.py", "other.py"]
+        assert (summary.measured, summary.units) == (2, units)
 
     def test_a_walk_the_budget_stopped_shares_over_the_walked_files_only(
         self, graphs, tmp_path, monkeypatch

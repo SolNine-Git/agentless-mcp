@@ -207,11 +207,12 @@
   before the cache. `lint --since HEAD~5 --only clone_delta --json` is
   identical with a fresh index and with `--no-cache`, and its findings match
   the build before the cache. With a fresh index, `health` takes 0.82 s against
-  2.14 s, and that lint run takes 0.29 s against 0.90 s. A cold `index` takes
-  3.46 s against 2.65 s, and the database grows from 14,106,624 to 15,286,272
-  bytes (median of 3 interleaved runs, `/usr/bin/time`). On Loc-Bench,
-  `diffusers` indexes in 18.59 s against 10.11 s and `moto` in 36.35 s against
-  31.99 s.
+  2.14 s, and that lint run takes 0.29 s against 0.90 s. With `--no-cache`,
+  `health` takes 3.63 s against 3.86 s, because its walk parses each file once
+  for both the units and the blocks. A cold `index` takes 3.46 s against
+  2.65 s, and the database grows from 14,106,624 to 15,286,272 bytes (median of
+  3 interleaved runs, `/usr/bin/time`). On Loc-Bench, `diffusers` indexes in
+  18.59 s against 10.11 s and `moto` in 36.35 s against 31.99 s.
 
 ## 0.9.1 -- 2026-10-09
 
