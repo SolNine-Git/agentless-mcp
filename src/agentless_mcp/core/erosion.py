@@ -11,6 +11,7 @@ import difflib
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
+from functools import partial
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final, TypeVar
@@ -42,6 +43,7 @@ MATCH_COLLISION = "collision"
 MATCH_NEW = "new"
 
 _Row = TypeVar("_Row")
+_Read = TypeVar("_Read")
 
 
 @dataclass(frozen=True)
@@ -277,7 +279,7 @@ def pair_language(path: str) -> str | None:
 
 def complexity_delta(pairs: Sequence[TextPair], threshold: int) -> PairOutcome:
     """Report each unit a change grew above ``threshold``, took over it, or added over it."""
-    measured, gaps = _measure_all(pairs, _COMPLEXITY_GAPS)
+    measured, gaps = _each_pair(pairs, partial(_measure, gaps=_COMPLEXITY_GAPS))
     matches = _match_run(measured)
     found = [
         finding for match in matches if (finding := _unit_finding(match, threshold)) is not None
@@ -298,7 +300,7 @@ def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> PairOutco
     if not globs:
         return PairOutcome(_no_boundary_rows(pairs))
     admitted, rows = _admitted(pairs, globs)
-    measured, gaps = _measure_all(admitted, _CONTRACT_GAPS)
+    measured, gaps = _each_pair(admitted, partial(_measure, gaps=_CONTRACT_GAPS))
     found, keys = _new_hits(measured, _match_run(measured))
     observed = Observed(contract_keys=keys) if measured else Observed()
     return PairOutcome(_sorted([*rows, *gaps, *found]), observed)
@@ -327,7 +329,7 @@ def clone_delta(
     file a pair names is replaced by that pair. ``reported`` holds the
     ``(path, line)`` of each function ``near_duplicates`` reported in the same run.
     """
-    indexed, rows = _index_pairs(pairs)
+    indexed, rows = _each_pair(pairs, _index_pair)
     changed = {pair.path for pair in pairs}
     instances = _after_instances(indexed, index, changed)
     copies = [
@@ -341,24 +343,24 @@ def _first(value: _Row | None, fallback: _Row | None) -> _Row | None:
     return fallback if value is None else value
 
 
-def _measure_all(
-    pairs: Sequence[TextPair], gaps: _Gaps
-) -> tuple[list[_Measured], list[PairFinding]]:
+def _each_pair(
+    pairs: Sequence[TextPair], read: Callable[[TextPair, str], _Read | PairFinding]
+) -> tuple[list[_Read], list[PairFinding]]:
     if len({pair.path for pair in pairs}) != len(pairs):
         message = "each path may appear in only one text pair of a run"
         raise ValueError(message)
-    measured: list[_Measured] = []
+    outcomes: list[_Read] = []
     rows: list[PairFinding] = []
     for pair in pairs:
         language = pair_language(pair.path)
         if language is None:
             continue
-        outcome = _measure(pair, language, gaps)
+        outcome = read(pair, language)
         if isinstance(outcome, PairFinding):
             rows.append(outcome)
         else:
-            measured.append(outcome)
-    return measured, rows
+            outcomes.append(outcome)
+    return outcomes, rows
 
 
 def _measure(pair: TextPair, language: str, gaps: _Gaps) -> _Measured | PairFinding:
@@ -662,24 +664,6 @@ def _source_language(path: str) -> str:
         message = f"{path} is not a tier-1 source file, so clone_delta cannot index it"
         raise ValueError(message)
     return language
-
-
-def _index_pairs(pairs: Sequence[TextPair]) -> tuple[list[_Indexed], list[PairFinding]]:
-    if len({pair.path for pair in pairs}) != len(pairs):
-        message = "each path may appear in only one text pair of a run"
-        raise ValueError(message)
-    indexed: list[_Indexed] = []
-    rows: list[PairFinding] = []
-    for pair in pairs:
-        language = pair_language(pair.path)
-        if language is None:
-            continue
-        outcome = _index_pair(pair, language)
-        if isinstance(outcome, PairFinding):
-            rows.append(outcome)
-        else:
-            indexed.append(outcome)
-    return indexed, rows
 
 
 def _index_pair(pair: TextPair, language: str) -> _Indexed | PairFinding:
