@@ -16,7 +16,7 @@ from dataclasses import replace
 
 import pytest
 
-from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_OK, EXIT_USAGE
+from agentless_mcp.adapters.cli.formatting import EXIT_DOMAIN, EXIT_GATE, EXIT_OK, EXIT_USAGE
 from agentless_mcp.adapters.cli.main import CliServices, run
 from agentless_mcp.application import render
 from agentless_mcp.application.graph_service import GraphService
@@ -608,6 +608,44 @@ class TestLint:
         candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
 
         assert invoke(services, repo_path, "lint", "--candidates", str(candidate)) == EXIT_OK
+
+    def test_fail_on_a_listed_severity_exits_3_after_the_report(
+        self, services, repo_path, capsys, tmp_path
+    ):
+        candidate = tmp_path / "01-candidate.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        code = invoke(
+            services, repo_path, "lint", "--candidates", str(candidate), "--fail-on", "warning"
+        )
+
+        assert code == EXIT_GATE
+        assert "dangling_references" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        ("fail_on", "expected"), [("not_checked", EXIT_GATE), ("warning", EXIT_OK)]
+    )
+    def test_fail_on_matches_only_the_listed_severities(
+        self, services, repo_path, fail_on, expected
+    ):
+        candidate = repo_path / "clean.txt"
+        candidate.write_text(
+            "### core.py\n<<<<<<< SEARCH\nRATE = 3\n=======\nRATE = 4\n>>>>>>> REPLACE\n",
+            encoding="utf-8",
+        )
+
+        code = invoke(
+            services, repo_path, "lint", "--candidates", str(candidate), "--fail-on", fail_on
+        )
+
+        assert code == expected
+
+    def test_an_unknown_severity_is_a_usage_error(self, services, repo_path, tmp_path, capsys):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--fail-on", "error")
+
+        assert raised.value.code == EXIT_USAGE
+        assert "unknown severity 'error'" in capsys.readouterr().err
 
     def test_a_directory_lints_every_candidate_in_sorted_order(
         self, services, repo_path, capsys, tmp_path

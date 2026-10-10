@@ -6,9 +6,8 @@ pipeline that captures stdout gets only the receipt and the view;
 a failure is on stderr with a non-zero exit, never interleaved into a view
 that would then parse as a shorter answer.
 
-Exit codes are the same three the plan fixes, and this is the whole contract
--- every subcommand keys on the same distinction rather than deciding it
-locally:
+Exit codes are these four, and this is the whole contract -- every
+subcommand keys on the same distinction rather than deciding it locally:
 
 * ``0`` -- the call answered. An answer that is *legitimately* empty counts:
   a repository with no import cycles, no communities, no callers of a symbol
@@ -21,6 +20,8 @@ locally:
 * ``2`` -- usage or security. The request itself was not admissible: a bad
   flag or a bound out of range, an input file that could not be read, a
   missing repository root, a path or root refused.
+* ``3`` -- a gate the caller asked for failed: ``lint --fail-on`` matched a
+  finding. Apart from ``1`` so CI can tell a failed gate from a broken run.
 
 The line between ``0`` and ``1`` is *"did what the caller named exist"*, not
 *"is the answer empty"*: ``skeleton nope.py`` and ``slice nope.py`` are the
@@ -42,6 +43,7 @@ from agentless_mcp.util.textsafe import one_line
 EXIT_OK = 0
 EXIT_DOMAIN = 1
 EXIT_USAGE = 2
+EXIT_GATE = 3
 
 
 def emit(text: str) -> None:
