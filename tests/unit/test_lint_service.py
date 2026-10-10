@@ -1185,7 +1185,8 @@ class TestCloneDeltaInTheService:
             "lib.py:1",
         )
         assert row.evidence == "also at app.py:1"
-        assert row.detail is None
+        assert row.detail["sites"] == [{"path": "app.py", "line": 1, "end_line": 5}]
+        assert row.detail["sites_total"] == 1
 
     def test_the_default_run_reports_a_copy_after_the_patch_rows(self, service, clone_repo):
         findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), ALL)

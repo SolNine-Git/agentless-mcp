@@ -1056,7 +1056,9 @@ class TestLintReviewMode:
             ("clone_delta", "app.py:1"),
             ("clone_delta", "copy.py:1"),
         ]
-        assert "observed" not in entry
+        observed = entry["observed"]["clone_instances"]
+        assert [(row["path"], row["line"]) for row in observed] == [("app.py", 1), ("copy.py", 1)]
+        assert {row["key"] for row in observed} == {entry["findings"][0]["detail"]["key"]}
 
     def test_path_runs_clone_delta_when_only_names_it(self, services, reviewed, tmp_path, capsys):
         after = tmp_path / "after.py"

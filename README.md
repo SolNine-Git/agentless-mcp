@@ -570,12 +570,14 @@ the gate, which measured indistinguishable from eager on every metric.
 `contrib/hooks/agentless_erosion_gate.py` checks each Claude Code `Write` and
 `Edit` call before the call lands. It computes the whole text the call would
 leave on disk, runs `agentless-mcp lint --path REL --after FILE`, and reports
-what the change makes worse. The checks are `complexity_delta` and
-`contract_drift`. `complexity_delta` reports a function above the complexity
-threshold that gets more complex, a function that crosses the threshold, and a
-new function above it. `contract_drift` reports a silent default or a
-swallowed error in a module that `boundary_globs` names. The hook imports the
-standard library only.
+what the change makes worse. The checks are `complexity_delta`,
+`contract_drift`, and `clone_delta`. `complexity_delta` reports a function above
+the complexity threshold that gets more complex, a function that crosses the
+threshold, and a new function above it. `contract_drift` reports a silent
+default or a swallowed error in a module that `boundary_globs` names.
+`clone_delta` reports a block of 3 or more source lines and 40 or more tokens
+that the change adds while the repository already has a copy of it, with
+names and literals ignored. The hook imports the standard library only.
 
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 
@@ -589,7 +591,10 @@ standard library only.
 The repository's `erosion_gate` key in `.agentless-mcp.json` sets a mode per
 check, for example `{"erosion_gate": {"complexity_delta": "block"}}`. A check
 that the key leaves unset takes `AGENTLESS_EROSION_GATE` (`advisory` or
-`block`). Without that variable, the check takes `advisory`.
+`block`). Without that variable, the check takes `advisory`. The variable sets
+`clone_delta` too, so `AGENTLESS_EROSION_GATE=block` blocks on copies. To keep
+`clone_delta` advisory while it is on trial, set
+`{"erosion_gate": {"clone_delta": "advisory"}}`.
 `AGENTLESS_EROSION_GATE=off` turns the gate off on the whole machine, and it
 wins over every repository key.
 
@@ -605,6 +610,14 @@ not have it, the log records every call as `degraded` with the reason
 the binary's check list from `capabilities --json` and runs lint once more with
 the requested pair checks that the list names. When the binary is missing, the
 hook skips the call.
+
+`clone_delta` reads the clone blocks of every source file, so it is fast only
+with a fresh tag cache (`agentless-mcp index`, or the MCP server's background
+index). On one mcp-local file the hook takes 0.24 s with a fresh cache and
+0.84 s without one, against 0.21 s and 0.20 s for the two other checks alone
+(median of 5 interleaved runs, `/usr/bin/time`). The binary must have the same
+cache schema as the MCP server that keeps the cache fresh, because two builds
+with different schemas delete each other's database.
 
 Install the gate in Claude Code:
 
@@ -673,7 +686,8 @@ The report puts each finding in one class:
 - **unresolved**: the transcript is missing or has no result for the call.
 - **unobserved**: no later call in the same session changed the same file.
 - **acted on**: a later call brought the function back to its old complexity
-  or under the threshold, or removed the contract hit.
+  or under the threshold, removed the contract hit, or left the file with
+  fewer copies of the block.
 - **not acted on**: a later call changed the file, and the finding still holds.
 
 It prints the effective false-positive rate (not acted on, over acted on plus

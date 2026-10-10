@@ -34,7 +34,8 @@
       ],
       "observed": {
         "units_over_threshold": [],
-        "units_changed": []
+        "units_changed": [],
+        "clone_instances": []
       }
     },
     {
@@ -92,7 +93,8 @@
             "sloc_new": 5
           }
         ],
-        "contract_keys": []
+        "contract_keys": [],
+        "clone_instances": []
       }
     },
     {
@@ -148,7 +150,8 @@
             "sloc_new": 19
           }
         ],
-        "contract_keys": []
+        "contract_keys": [],
+        "clone_instances": []
       }
     },
     {
@@ -229,7 +232,8 @@
             "unit": "summarise",
             "capture": "inventory.reorder_list() or []"
           }
-        ]
+        ],
+        "clone_instances": []
       }
     },
     {
@@ -251,7 +255,20 @@
           "path": "pricing.py",
           "line": 84,
           "location": "pricing.py:84",
-          "evidence": "also at pricing.py:58"
+          "evidence": "also at pricing.py:58",
+          "detail": {
+            "key": "44765531cc846444724a5abbae5e1dbeaae7db6762b6b22e267a821ef2dad214",
+            "line": 84,
+            "end_line": 89,
+            "sites": [
+              {
+                "path": "pricing.py",
+                "line": 58,
+                "end_line": 63
+              }
+            ],
+            "sites_total": 1
+          }
         }
       ],
       "observed": {
@@ -266,6 +283,20 @@
             "cc_new": 2,
             "sloc_old": null,
             "sloc_new": 5
+          }
+        ],
+        "clone_instances": [
+          {
+            "path": "pricing.py",
+            "key": "44765531cc846444724a5abbae5e1dbeaae7db6762b6b22e267a821ef2dad214",
+            "line": 58,
+            "end_line": 63
+          },
+          {
+            "path": "pricing.py",
+            "key": "44765531cc846444724a5abbae5e1dbeaae7db6762b6b22e267a821ef2dad214",
+            "line": 84,
+            "end_line": 89
           }
         ]
       }

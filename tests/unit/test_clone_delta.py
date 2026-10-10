@@ -350,10 +350,81 @@ class TestCoverage:
         assert set(index.files) == {"a.py"}
         assert dict(index.unindexed) == {"b.py": "b.py: the reader has no blocks for it"}
 
-    def test_clone_delta_observes_nothing(self):
+
+def function_key(source, path="b.py"):
+    (block,) = file_blocks(source, path, "python").blocks
+    return block.key
+
+
+class TestDetail:
+    def test_a_finding_carries_its_key_its_span_and_its_other_sites(self):
+        ((found, detail),) = [
+            (row.finding, row.detail)
+            for row in clone_delta(
+                [TextPair("b.py", None, total())], repo(ORIGINAL), frozenset()
+            ).findings
+        ]
+
+        assert detail.as_dict() == {
+            "key": function_key(total()),
+            "line": found.line,
+            "end_line": 5,
+            "sites": [{"path": "a.py", "line": 1, "end_line": 5}],
+            "sites_total": 1,
+        }
+
+    def test_the_detail_lists_twenty_sites_and_counts_them_all(self):
+        files = {f"c{index:02}.py": total() for index in range(25)}
+
+        (row,) = clone_delta([TextPair("b.py", None, total())], repo(files), frozenset()).findings
+
+        detail = row.detail.as_dict()
+        assert erosion.MAX_CLONE_SITES == 20
+        assert [site["path"] for site in detail["sites"]] == sorted(files)[:20]
+        assert detail["sites_total"] == 25
+
+
+class TestObserved:
+    def test_a_reportable_block_with_a_copy_is_observed(self):
         outcome = clone_delta([TextPair("b.py", None, total())], repo(ORIGINAL), frozenset())
 
+        assert outcome.observed.as_dict() == {
+            "clone_instances": [
+                {"path": "b.py", "key": function_key(total()), "line": 1, "end_line": 5}
+            ]
+        }
+
+    def test_the_original_and_its_new_copy_in_one_text_are_both_observed(self):
+        pair = TextPair("a.py", total(), total() + "\n\n" + total("again"))
+
+        outcome = clone_delta([pair], repo(ORIGINAL), frozenset())
+
+        rows = outcome.observed.as_dict()["clone_instances"]
+        assert [(row["line"], row["end_line"]) for row in rows] == [(1, 5), (8, 12)]
+
+    def test_a_block_with_no_copy_is_not_observed(self):
+        outcome = clone_delta([TextPair("b.py", None, looped())], repo(ORIGINAL), frozenset())
+
+        assert outcome.observed.as_dict() == {"clone_instances": []}
+
+    def test_a_copy_under_the_token_floor_is_not_observed(self):
+        guard = "if not rows:\n    log(rows)\n    return\n"
+        index = repo({"a.py": guard})
+
+        outcome = clone_delta([TextPair("b.py", None, guard)], index, frozenset())
+
+        assert outcome.findings == ()
+        assert outcome.observed.as_dict() == {"clone_instances": []}
+
+    def test_a_run_that_indexed_no_pair_observes_nothing(self):
+        outcome = clone_delta([TextPair("README.md", None, "x")], repo(ORIGINAL), frozenset())
+
         assert outcome.observed.as_dict() == {}
+
+    def test_a_deleted_file_is_observed_with_nothing_in_its_new_text(self):
+        outcome = clone_delta([TextPair("a.py", total(), None)], repo(ORIGINAL), frozenset())
+
+        assert outcome.observed.as_dict() == {"clone_instances": []}
 
 
 class TestOtherLanguages:

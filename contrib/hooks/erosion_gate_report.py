@@ -18,6 +18,7 @@ from typing import Any, TypeVar
 LOG_VERSION = 1
 COMPLEXITY_DELTA = "complexity_delta"
 CONTRACT_DRIFT = "contract_drift"
+CLONE_DELTA = "clone_delta"
 MATCH_PASSES = ("body", "name", "collision", "new")
 CONTRACT_KEY_FIELDS = ("rule", "unit", "capture")
 OUTCOMES = ("clean", "advisory", "blocked", "degraded", "skipped")
@@ -111,12 +112,23 @@ class ContractHit:
 
 
 @dataclass(frozen=True)
+class CloneInstance:
+    """One block of a proposed text that clone_delta could report, by its Type-2 key."""
+
+    path: str
+    key: str
+    line: int
+    end_line: int
+
+
+@dataclass(frozen=True)
 class Observed:
     """The observed state of a proposed text: ``None`` for a list whose check measured no file."""
 
     units_over_threshold: tuple[UnitCC, ...] | None
     units_changed: tuple[UnitChange, ...] | None
     contract_keys: tuple[ContractHit, ...] | None
+    clone_instances: tuple[CloneInstance, ...] | None
 
 
 @dataclass(frozen=True)
@@ -134,6 +146,7 @@ class Finding:
     cc_old: int | None = None
     threshold: int | None = None
     hit: tuple[str, str, str] | None = None
+    clone: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -339,11 +352,28 @@ def _with_numbers(finding: Finding, detail: Mapping[str, object], where: str) ->
     )
 
 
+def _with_clone(finding: Finding, detail: Mapping[str, object], where: str) -> Finding:
+    key = _field(detail, "key", str, where)
+    _field(detail, "line", int, where)
+    _field(detail, "end_line", int, where)
+    _field(detail, "sites_total", int, where)
+    for index, site in enumerate(_field(detail, "sites", list, where)):
+        at = f"{where}.sites[{index}]"
+        if not isinstance(site, dict):
+            message = f"{at} is not an object"
+            raise ReportError(message)
+        _field(site, "path", str, at)
+        _field(site, "line", int, at)
+        _field(site, "end_line", int, at)
+    return replace(finding, clone=(finding.path, key))
+
+
 def _observed(value: Mapping[str, object], where: str) -> Observed:
     return Observed(
         units_over_threshold=_rows(value, "units_over_threshold", _unit_cc, where),
         units_changed=_rows(value, "units_changed", _unit_change, where),
         contract_keys=_rows(value, "contract_keys", _contract_hit, where),
+        clone_instances=_rows(value, "clone_instances", _clone_instance, where),
     )
 
 
@@ -400,6 +430,15 @@ def _contract_hit(row: Mapping[str, object], where: str) -> ContractHit:
         rule=_field(row, "rule", str, where),
         unit=_field(row, "unit", str, where),
         capture=_field(row, "capture", str, where),
+    )
+
+
+def _clone_instance(row: Mapping[str, object], where: str) -> CloneInstance:
+    return CloneInstance(
+        path=_field(row, "path", str, where),
+        key=_field(row, "key", str, where),
+        line=_field(row, "line", int, where),
+        end_line=_field(row, "end_line", int, where),
     )
 
 
@@ -572,6 +611,20 @@ def _hit_count(finding: Finding, hits: Sequence[ContractHit]) -> int:
     return sum(1 for hit in hits if (hit.path, hit.rule, hit.capture) == finding.hit)
 
 
+def _clone_acted(
+    finding: Finding, before: Sequence[CloneInstance] | None, after: Sequence[CloneInstance]
+) -> bool:
+    # The copy is undone when its file holds fewer blocks of its Type-2 key than at the finding.
+    now = _copy_count(finding, after)
+    if before is None:
+        return now == 0
+    return now < _copy_count(finding, before)
+
+
+def _copy_count(finding: Finding, instances: Sequence[CloneInstance]) -> int:
+    return sum(1 for instance in instances if (instance.path, instance.key) == finding.clone)
+
+
 CHECK_RULES: Mapping[str, CheckRule] = {
     COMPLEXITY_DELTA: CheckRule(
         with_detail=_with_numbers,
@@ -582,6 +635,11 @@ CHECK_RULES: Mapping[str, CheckRule] = {
         with_detail=_with_key,
         tracked=lambda observed: observed.contract_keys,
         acted=_contract_acted,
+    ),
+    CLONE_DELTA: CheckRule(
+        with_detail=_with_clone,
+        tracked=lambda observed: observed.clone_instances,
+        acted=_clone_acted,
     ),
 }
 KNOWN_CHECKS = tuple(CHECK_RULES)

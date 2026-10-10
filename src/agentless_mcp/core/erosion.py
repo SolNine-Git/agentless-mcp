@@ -37,6 +37,9 @@ MAX_NAMED_GAPS: Final = 10
 # leaf tokens, and nobody merges those. Groups and the clone share keep every block.
 MIN_FINDING_TOKENS: Final = 40
 
+# How many other instances one clone_delta finding's detail lists before it only counts them.
+MAX_CLONE_SITES: Final = 20
+
 MODULE_UNIT = "<module>"
 GAP_NO_BOUNDARY_GLOBS = "no_boundary_globs"
 GAP_NO_RULES = "no_rules_for_language"
@@ -113,11 +116,45 @@ class DriftGap:
 
 
 @dataclass(frozen=True)
+class CloneSite:
+    """One other instance of a copied block, in the repository after the change."""
+
+    path: str
+    line: int
+    end_line: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this site."""
+        return {"path": self.path, "line": self.line, "end_line": self.end_line}
+
+
+@dataclass(frozen=True)
+class CloneCopy:
+    """A clone_delta finding's block: its span, its Type-2 key, and its other instances."""
+
+    key: str
+    line: int
+    end_line: int
+    sites: tuple[CloneSite, ...]
+    sites_total: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this copy, with at most MAX_CLONE_SITES sites."""
+        return {
+            "key": self.key,
+            "line": self.line,
+            "end_line": self.end_line,
+            "sites": [site.as_dict() for site in self.sites],
+            "sites_total": self.sites_total,
+        }
+
+
+@dataclass(frozen=True)
 class PairFinding:
     """A pair-check finding, and the machine-readable detail behind it when it has one."""
 
     finding: Finding
-    detail: UnitDelta | DriftKey | DriftGap | None = None
+    detail: UnitDelta | DriftKey | DriftGap | CloneCopy | None = None
 
 
 @dataclass(frozen=True)
@@ -183,12 +220,27 @@ class HitState:
 
 
 @dataclass(frozen=True)
+class CloneState:
+    """One block of a new text that clone_delta could report: big enough, and with a copy."""
+
+    path: str
+    key: str
+    line: int
+    end_line: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {"path": self.path, "key": self.key, "line": self.line, "end_line": self.end_line}
+
+
+@dataclass(frozen=True)
 class Observed:
     """The state of the new text; a field is ``None`` when its check measured no file."""
 
     units_over_threshold: tuple[UnitState, ...] | None = None
     units_changed: tuple[UnitChange, ...] | None = None
     contract_keys: tuple[HitState, ...] | None = None
+    clone_instances: tuple[CloneState, ...] | None = None
 
     def merged(self, other: "Observed") -> "Observed":
         """Return this state with each field it does not hold taken from ``other``."""
@@ -340,13 +392,10 @@ def clone_delta(
     indexed, rows = _each_pair(pairs, _index_pair)
     changed = {pair.path for pair in pairs}
     instances = _after_instances(indexed, index, changed)
-    copies = [
-        block
-        for block in _added(indexed)
-        if block.tokens >= MIN_FINDING_TOKENS and len(instances[block.key]) >= clones.MIN_INSTANCES
-    ]
+    copies = [block for block in _added(indexed) if _reportable(block, instances)]
     found = [_clone_finding(block, instances[block.key]) for block in _outermost(copies, reported)]
-    return PairOutcome(_sorted([*_index_rows(index, changed), *rows, *found]))
+    observed = Observed(clone_instances=_twinned(indexed, instances)) if indexed else Observed()
+    return PairOutcome(_sorted([*_index_rows(index, changed), *rows, *found]), observed)
 
 
 def _first(value: _Row | None, fallback: _Row | None) -> _Row | None:
@@ -726,6 +775,24 @@ def _after_instances(
     return instances
 
 
+def _reportable(block: Block, instances: Mapping[str, Sequence[Block]]) -> bool:
+    return block.tokens >= MIN_FINDING_TOKENS and len(instances[block.key]) >= clones.MIN_INSTANCES
+
+
+def _twinned(
+    indexed: Sequence[_Indexed], instances: Mapping[str, Sequence[Block]]
+) -> tuple[CloneState, ...]:
+    states = (
+        CloneState(block.path, block.key, block.start_line, block.end_line)
+        for item in indexed
+        for block in item.new
+        if _reportable(block, instances)
+    )
+    return tuple(
+        sorted(states, key=lambda state: (state.path, state.line, state.end_line, state.key))
+    )
+
+
 def _exact(block: Block) -> Hashable:
     return block.exact
 
@@ -804,6 +871,16 @@ def _within(block: Block, outer: Block) -> bool:
 def _clone_finding(block: Block, instances: Sequence[Block]) -> PairFinding:
     others = sorted((other for other in instances if other is not block), key=place)
     sites = [f"{other.path}:{other.start_line}" for other in others]
+    detail = CloneCopy(
+        key=block.key,
+        line=block.start_line,
+        end_line=block.end_line,
+        sites=tuple(
+            CloneSite(other.path, other.start_line, other.end_line)
+            for other in others[:MAX_CLONE_SITES]
+        ),
+        sites_total=len(others),
+    )
     finding = Finding(
         check=CHECK_CLONE_DELTA,
         severity=Severity.ADVISORY,
@@ -814,7 +891,7 @@ def _clone_finding(block: Block, instances: Sequence[Block]) -> PairFinding:
         line=block.start_line,
         evidence=MESSAGES.clone_new_copy_evidence.format(sites=_listed(sites, MAX_DUPLICATE_SITES)),
     )
-    return PairFinding(finding)
+    return PairFinding(finding, detail)
 
 
 def _listed(items: Sequence[str], limit: int) -> str:

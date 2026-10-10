@@ -49,11 +49,12 @@ ADVISORY = "advisory"
 BLOCK = "block"
 MODES = (OFF, ADVISORY, BLOCK)
 DEFAULT_MODE = ADVISORY
-KNOWN_CHECKS = ("complexity_delta", "contract_drift")
+KNOWN_CHECKS = ("complexity_delta", "contract_drift", "clone_delta")
 CONTRACT_DRIFT = "contract_drift"
 # The contract_drift gaps that lint emits by design: the check is off for that file.
 OFF_REASONS = ("no_boundary_globs", "no_rules_for_language")
-PAIRS_INPUT = "pairs"
+# The input kinds lint accepts in the hook form: each check reads text pairs.
+HOOK_FORM_INPUTS = ("pairs", "pairs+clones")
 COVERAGE_CHECK = "coverage"
 NOT_CHECKED = "not_checked"
 SEVERITIES = ("advisory", "warning", NOT_CHECKED)
@@ -619,7 +620,7 @@ def _pair_checks(call: _LintCall, refused: _Run) -> frozenset[str]:
     if listed is None:
         reason = f"capabilities has no lint_checks, and lint said: {_last_line(refused.stderr)}"
         raise _HaltError(DEGRADED, reason)
-    return frozenset(name for name, needs in listed.items() if needs == PAIRS_INPUT)
+    return frozenset(name for name, needs in listed.items() if needs in HOOK_FORM_INPUTS)
 
 
 def parse_lint_checks(stdout: bytes) -> dict[str, str] | None:

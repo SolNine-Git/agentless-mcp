@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.application.lint_service import CHECKS, PAIR_CHECK_NAMES
+from agentless_mcp.application.lint_service import CHECKS, PAIR_CHECK_NAMES, CheckInput
 from agentless_mcp.core import cache, erosion, grammars, patchlint, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.prompts import MESSAGES
@@ -70,8 +70,16 @@ S0_EDITS = [
 ]
 
 ABSENT = object()
-CONTRACT_BLOCKS = {"complexity_delta": "advisory", "contract_drift": "block"}
-COMPLEXITY_BLOCKS = {"complexity_delta": "block", "contract_drift": "advisory"}
+CONTRACT_BLOCKS = {
+    "complexity_delta": "advisory",
+    "contract_drift": "block",
+    "clone_delta": "advisory",
+}
+COMPLEXITY_BLOCKS = {
+    "complexity_delta": "block",
+    "contract_drift": "advisory",
+    "clone_delta": "advisory",
+}
 
 
 def load_hook():
@@ -382,13 +390,21 @@ class TestModes:
     def test_the_repository_entry_wins_over_the_environment_and_the_default(self):
         modes, warnings = hook.resolve_modes({"complexity_delta": "block"}, "advisory")
 
-        assert modes == {"complexity_delta": "block", "contract_drift": "advisory"}
+        assert modes == {
+            "complexity_delta": "block",
+            "contract_drift": "advisory",
+            "clone_delta": "advisory",
+        }
         assert warnings == []
 
     def test_the_environment_sets_the_default_for_checks_the_repository_leaves_unset(self):
         modes, _ = hook.resolve_modes({"contract_drift": "off"}, "block")
 
-        assert modes == {"complexity_delta": "block", "contract_drift": "off"}
+        assert modes == {
+            "complexity_delta": "block",
+            "contract_drift": "off",
+            "clone_delta": "block",
+        }
 
     def test_an_invalid_environment_value_falls_back_to_advisory_with_a_warning(self):
         modes, warnings = hook.resolve_modes({}, "enforce")
@@ -565,9 +581,9 @@ class TestFindingsText:
             hook.ADVISORY_LABEL,
             "pkg/app.py:9: silent",
             (
-                "Erosion gate mode: complexity_delta block, contract_drift advisory. Change it "
-                "with the erosion_gate key in .agentless-mcp.json or the AGENTLESS_EROSION_GATE "
-                "variable (off, advisory, block)."
+                "Erosion gate mode: complexity_delta block, contract_drift advisory, clone_delta "
+                "advisory. Change it with the erosion_gate key in .agentless-mcp.json or the "
+                "AGENTLESS_EROSION_GATE variable (off, advisory, block)."
             ),
         ]
 
@@ -630,7 +646,8 @@ class TestPipe:
         assert gate.stub_calls() == []
 
     def test_every_check_off_in_the_repository_skips_without_lint(self, gate):
-        config = {"erosion_gate": {"complexity_delta": "off", "contract_drift": "off"}}
+        modes = dict.fromkeys(("complexity_delta", "contract_drift", "clone_delta"), "off")
+        config = {"erosion_gate": modes}
         (gate.root / ".agentless-mcp.json").write_text(json.dumps(config), encoding="utf-8")
 
         result = gate.run(gate.edit())
@@ -638,6 +655,15 @@ class TestPipe:
         assert (result.returncode, result.stdout) == (0, b"")
         assert gate.records()[0]["reason"] == "every check is off"
         assert gate.stub_calls() == []
+
+    def test_clone_delta_off_in_the_repository_leaves_the_other_two(self, gate):
+        config = {"erosion_gate": {"clone_delta": "off"}}
+        (gate.root / ".agentless-mcp.json").write_text(json.dumps(config), encoding="utf-8")
+
+        gate.run(gate.edit())
+
+        (call,) = gate.stub_calls()
+        assert call["argv"][call["argv"].index("--only") + 1] == "complexity_delta,contract_drift"
 
     def test_a_clean_call_logs_observed_as_lint_sent_it(self, gate):
         observed = {
@@ -713,12 +739,55 @@ class TestPipe:
         assert subcommands(gate) == ["lint", "capabilities", "lint"]
         assert calls[1]["argv"] == ["capabilities", "--repo", str(gate.root), "--json"]
         only = [call["argv"][call["argv"].index("--only") + 1] for call in (calls[0], calls[2])]
-        assert only == ["complexity_delta,contract_drift", "complexity_delta"]
+        assert only == ["complexity_delta,contract_drift,clone_delta", "complexity_delta"]
         record = gate.records()[0]
         assert record["dropped"] == [
-            {"check": "contract_drift", "reason": "not a pairs check in lint_checks"}
+            {"check": "contract_drift", "reason": "not a pairs check in lint_checks"},
+            {"check": "clone_delta", "reason": "not a pairs check in lint_checks"},
         ]
         assert record["checks"] == ["complexity_delta"]
+
+    def test_a_binary_without_clone_delta_runs_the_other_two(self, gate):
+        refusal = MESSAGES.lint_unknown_check.format(
+            name="clone_delta", checks="complexity_delta, contract_drift"
+        )
+        gate.respond(
+            {"code": 2, "stderr": f"agentless-mcp lint: error: argument --only: {refusal}\n"},
+            {
+                "stdout": capabilities_stdout(
+                    ("complexity_delta", "pairs"), ("contract_drift", "pairs")
+                )
+            },
+            {"stdout": lint_stdout()},
+        )
+
+        result = gate.run(gate.edit())
+
+        assert (result.returncode, result.stdout) == (0, b"")
+        record = gate.records()[0]
+        assert record["checks"] == ["complexity_delta", "contract_drift"]
+        assert record["dropped"] == [
+            {"check": "clone_delta", "reason": "not a pairs check in lint_checks"}
+        ]
+        assert record["outcome"] == "clean"
+
+    def test_a_clone_delta_listed_as_pairs_and_clones_is_kept(self, gate):
+        refusal = MESSAGES.lint_unknown_check.format(
+            name="contract_drift", checks="complexity_delta, clone_delta"
+        )
+        gate.respond(
+            {"code": 2, "stderr": f"agentless-mcp lint: error: argument --only: {refusal}\n"},
+            {
+                "stdout": capabilities_stdout(
+                    ("complexity_delta", "pairs"), ("clone_delta", "pairs+clones")
+                )
+            },
+            {"stdout": lint_stdout()},
+        )
+
+        gate.run(gate.edit())
+
+        assert gate.records()[0]["checks"] == ["complexity_delta", "clone_delta"]
 
     @pytest.mark.parametrize(
         ("capabilities", "reason"),
@@ -735,7 +804,9 @@ class TestPipe:
             (
                 {
                     "stdout": capabilities_stdout(
-                        ("complexity_delta", "pairs"), ("contract_drift", "pairs")
+                        ("complexity_delta", "pairs"),
+                        ("contract_drift", "pairs"),
+                        ("clone_delta", "pairs+clones"),
                     )
                 },
                 "lint usage error: agentless-mcp lint: error: --path needs --after",
@@ -970,7 +1041,7 @@ def test_the_log_holds_the_observed_state_that_lint_reports(gate):
     after.write_text(SOURCE.replace(*ADD_BRANCH), encoding="utf-8")
     arguments = ["--repo", str(gate.root), "--path", "pkg/app.py", "--after", str(after)]
     direct = subprocess.run(
-        [str(CLI), "lint", *arguments, "--json", "--only", "complexity_delta,contract_drift"],
+        [str(CLI), "lint", *arguments, "--json", "--only", ",".join(hook.KNOWN_CHECKS)],
         capture_output=True,
         env=gate.env,
         check=True,
@@ -995,16 +1066,12 @@ class TestTheHookAgreesWithThePackage:
 
         assert measured == hook.TIER1_SUFFIXES
 
-    def test_every_known_check_is_a_gated_check_and_a_lint_pair_check(self):
-        assert set(hook.KNOWN_CHECKS) <= set(projectconfig.GATED_CHECKS)
+    def test_the_hook_gates_exactly_the_checks_the_config_can_name(self):
+        assert hook.KNOWN_CHECKS == projectconfig.GATED_CHECKS
         assert set(hook.KNOWN_CHECKS) <= set(PAIR_CHECK_NAMES)
 
-    def test_only_clone_delta_is_held_back_from_the_gated_pair_checks(self):
-        gated_pairs = set(PAIR_CHECK_NAMES) & set(projectconfig.GATED_CHECKS)
-
-        assert gated_pairs - set(hook.KNOWN_CHECKS) <= {"clone_delta"}
-        assert "clone_delta" in projectconfig.GATED_CHECKS
-        assert "clone_delta" not in hook.KNOWN_CHECKS
+    def test_the_hook_form_inputs_are_the_pair_input_kinds(self):
+        assert set(hook.HOOK_FORM_INPUTS) == {CheckInput.PAIRS.value, CheckInput.PAIRS_CLONES.value}
 
     def test_the_mirrored_constants_match(self):
         assert hook.MODES == projectconfig.GATE_MODES
@@ -1026,7 +1093,7 @@ class TestTheHookAgreesWithThePackage:
         listed = hook.parse_lint_checks(result.stdout)
 
         assert listed == {check.name: check.needs.value for check in CHECKS}
-        assert {name for name, needs in listed.items() if needs == hook.PAIRS_INPUT} >= set(
+        assert {name for name, needs in listed.items() if needs in hook.HOOK_FORM_INPUTS} >= set(
             hook.KNOWN_CHECKS
         )
 

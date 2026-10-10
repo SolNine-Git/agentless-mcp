@@ -1205,8 +1205,9 @@ file changed since `REV`. The report has one candidate, and its id is `REV` as
 you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with
 `complexity_delta` and `contract_drift` takes 0.23 s (18 tier-1 files of 27
 changed), and `--since HEAD~50` takes 0.83 s (156 files). With `clone_delta`
-added, they take 0.90 s and 1.90 s, because `clone_delta` parses all 228
-source files outside test and fixture paths on every run.
+added, they take 0.35 s and 1.35 s with a fresh index, which holds the clone
+blocks of the 228 source files outside test and fixture paths, and 0.96 s and
+1.93 s without one, when `clone_delta` parses all 228.
 
 **`--json` carries one more field for a pair check.** Each finding has
 `check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
@@ -1220,17 +1221,20 @@ that holds the hit, or `<module>`), and `capture` (the matched text). Two
 the reason without reading the message: `{"reason": "no_boundary_globs"}` when
 no `boundary_globs` is set, and `{"reason": "no_rules_for_language",
 "language": "c"}` (or `"bash"`) for a boundary file in a language with no
-rules. A row about text that was not read, does not parse, or cannot be
-measured has no `detail`. No other finding has `detail`, and the text form
-does not print it.
+rules. A `clone_delta` finding has `detail`: `key` (the block's Type-2 key),
+`line` and `end_line` (its span in the new text), `sites` (up to 20 other
+instances after the change, each `{path, line, end_line}`, in path and line
+order), and `sites_total` (how many other instances there are). A row about
+text that was not read, does not parse, or cannot be measured has no `detail`.
+No other finding has `detail`, and the text form does not print it.
 
 **`--json` also carries `observed` on a candidate.** It describes the new text,
 not the change, so a later run on the same file can show whether a function
-got simpler or a hit went away. It has three lists, each present only when its
-check measured at least one file of the candidate. An empty list means that
-the check measured and found nothing. An absent list means that the check did
-not measure a file, and `observed` itself is absent when no list is present.
-`clone_delta` adds no list.
+got simpler, a hit went away, or a copy was removed. It has four lists, each
+present only when its check measured at least one file of the candidate. An
+empty list means that the check measured and found nothing. An absent list
+means that the check did not measure a file, and `observed` itself is absent
+when no list is present.
 
 - `units_over_threshold`: each function in the new text above the threshold,
   as `{path, unit, line, cc, sloc}`, unchanged functions included.
@@ -1242,6 +1246,11 @@ not measure a file, and `observed` itself is absent when no list is present.
 - `contract_keys`: each contract hit in the new text of every boundary file
   that `contract_drift` checked, as `{path, rule, unit, capture}`, with
   duplicates kept.
+- `clone_instances`: each block in the new text of every file `clone_delta`
+  indexed that it could report, as `{path, key, line, end_line}`: 40 or more
+  tokens, and a copy in the repository after the change. A new copy and its
+  original in the same file both appear. The list names blocks, not changes,
+  so a later run shows whether a copy went away.
 
 Every `unit` in `observed` is the function's qualified name in the new text,
 or `<module>`. A renamed function therefore appears under its new name, while
@@ -1330,7 +1339,7 @@ source lines. Old and new blocks pair within each file first, then across
 files, so a block moved to another file is not new. A new block with no other
 instance is not a finding. When a copy is the same text as its original, the
 copy is the block the line diff did not keep in place. The evidence names up to
-three other copies. A finding has no `detail`.
+three other copies, and the JSON `detail` names up to 20.
 
 `clone_delta` skips a function that `near_duplicates` reported at the same
 path and line in the same run. Two cases defeat that match, so both checks
@@ -1659,8 +1668,11 @@ toward erosion, from 1 to 100. The default is 10.
 
 `erosion_gate` maps a check name to `off`, `advisory`, or `block`. The names it
 takes are `complexity_delta`, `contract_drift`, and `clone_delta`. It is for the
-per-edit erosion hook. `lint` ignores it, because `lint` never blocks. A bad
-entry is dropped with a warning, and `capabilities` shows the entries in force.
+per-edit erosion hook. `lint` ignores it, because `lint` never blocks. A check
+the key leaves unset takes the hook's `AGENTLESS_EROSION_GATE` default, and
+that includes `clone_delta`: to keep it advisory while it is on trial, set its
+entry to `advisory`. A bad entry is dropped with a warning, and `capabilities`
+shows the entries in force.
 
 `boundary_globs` lists the modules that parse foreign data, the only files
 `lint`'s `contract_drift` checks. It is empty by default. It holds at most 64

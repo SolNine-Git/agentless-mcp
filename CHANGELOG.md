@@ -174,6 +174,22 @@
   golden gains a candidate that copies `format_money`, and the other four
   candidates' reports are byte-identical. `capabilities` lists the check under
   the input kind `pairs+clones`.
+- **The lint JSON carries `detail` on a `clone_delta` finding and a
+  `clone_instances` list in `observed`.** `detail` holds the block's Type-2
+  `key`, its `line` and `end_line`, up to 20 other `sites` as `{path, line,
+  end_line}`, and `sites_total`. `clone_instances` lists each block of the new
+  text that `clone_delta` could report, as `{path, key, line, end_line}`, so a
+  later run shows whether a copy went away. The text output does not change.
+  The lint golden gains `"clone_instances": []` in the four candidates that
+  copy nothing, and two rows and the `detail` in the one that copies
+  `format_money`.
+- **The erosion gate hook runs `clone_delta`.** It is the hook's third check,
+  advisory by default, and the trial report counts a copy as acted on when a
+  later call leaves its file with fewer copies of the block. A binary without
+  the check runs the other two and logs `clone_delta` as dropped. On one
+  mcp-local file the hook takes 0.24 s with a fresh tag cache and 0.84 s
+  without one, against 0.21 s and 0.20 s with the two other checks (median of
+  5 interleaved runs, `/usr/bin/time`).
 
 ### Changed
 

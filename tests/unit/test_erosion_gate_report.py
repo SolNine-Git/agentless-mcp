@@ -11,13 +11,16 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import erosion
+from agentless_mcp.core import cache, erosion, grammars, selfrestart
 
 ROOT = Path(__file__).parents[2]
 REPORT = ROOT / "contrib" / "hooks" / "erosion_gate_report.py"
 HOOK = ROOT / "contrib" / "hooks" / "agentless_erosion_gate.py"
 GIT_DIR = str(Path(shutil.which("git") or "git").parent)
 KEY = ("get-default-empty", "parse", 'data.get("items", [])')
+COPY = "4" * 64
+OTHER = "7" * 64
+CLI = Path(sys.executable).parent / "agentless-mcp"
 
 STUB = """#!{python}
 import json
@@ -80,6 +83,34 @@ def contract(key=KEY):
         "evidence": key[2],
         "detail": dict(zip(("rule", "unit", "capture"), key, strict=True)),
     }
+
+
+def clone(key=COPY, *, sites=None):
+    listed = [{"path": "pkg/app.py", "line": 1, "end_line": 6}] if sites is None else sites
+    return {
+        "check": "clone_delta",
+        "severity": "advisory",
+        "mode": "advisory",
+        "path": "pkg/app.py",
+        "line": 20,
+        "message": "lines 20-25 add a copy of a block",
+        "evidence": "also at pkg/app.py:1",
+        "detail": {
+            "key": key,
+            "line": 20,
+            "end_line": 25,
+            "sites": listed,
+            "sites_total": len(listed),
+        },
+    }
+
+
+def copies(*keys, path="pkg/app.py"):
+    rows = [
+        {"path": path, "key": key, "line": 10 * index + 1, "end_line": 10 * index + 6}
+        for index, key in enumerate(keys)
+    ]
+    return {"clone_instances": rows}
 
 
 def observed(units=None, keys=None, *, path="pkg/app.py"):
@@ -262,6 +293,44 @@ class TestClasses:
         trial.result("hit-later")
 
         assert classes(trial.classified()) == {"unit": "acted on", "hit": "acted on"}
+
+
+class TestCloneClasses:
+    @pytest.mark.parametrize(
+        ("at_finding", "later", "expected"),
+        [
+            ([COPY, COPY], [COPY], "acted on"),
+            ([COPY, COPY], [], "acted on"),
+            ([COPY, COPY], [COPY, COPY], "not acted on"),
+            ([COPY, COPY], [COPY, COPY, OTHER], "not acted on"),
+            (None, [], "acted on"),
+            (None, [COPY], "not acted on"),
+        ],
+    )
+    def test_a_copy_counts_by_its_key_in_its_file(self, trial, at_finding, later, expected):
+        at = None if at_finding is None else copies(*at_finding)
+        trial.add("finding", findings=[clone()], observed=at)
+        trial.result("finding")
+        trial.add("later", outcome="clean", observed=copies(*later))
+        trial.result("later")
+
+        assert classes(trial.classified()) == {"finding": expected}
+
+    def test_a_later_record_without_clone_instances_leaves_it_unobserved(self, trial):
+        trial.add("finding", findings=[clone()], observed=copies(COPY, COPY))
+        trial.result("finding")
+        trial.add("later", outcome="clean", observed=observed([("big", 9)]))
+        trial.result("later")
+
+        assert classes(trial.classified()) == {"finding": "unobserved"}
+
+    def test_a_row_in_another_file_is_not_this_copy(self, trial):
+        trial.add("finding", findings=[clone()], observed=copies(COPY, COPY))
+        trial.result("finding")
+        trial.add("later", outcome="clean", observed=copies(COPY, COPY, path="pkg/other.py"))
+        trial.result("later")
+
+        assert classes(trial.classified()) == {"finding": "acted on"}
 
 
 class TestFigures:
@@ -501,6 +570,33 @@ class TestMalformedInput:
         assert run_report(trial.write()) == 1
         assert reason in capsys.readouterr().err
 
+    @pytest.mark.parametrize(
+        ("change", "reason"),
+        [
+            (lambda detail: detail.pop("key"), "detail: key is missing"),
+            (lambda detail: detail.update(sites={}), "detail: sites is not list"),
+            (lambda detail: detail.update(sites=[[1, 2]]), "detail.sites[0] is not an object"),
+            (
+                lambda detail: detail.update(sites=[{"path": "a.py", "line": "1", "end_line": 2}]),
+                "detail.sites[0]: line is not int",
+            ),
+            (lambda detail: detail.update(sites_total=None), "detail: sites_total is not int"),
+        ],
+    )
+    def test_a_malformed_clone_detail_stops_the_report(self, trial, capsys, change, reason):
+        finding = clone()
+        change(finding["detail"])
+        trial.add("finding", findings=[finding])
+
+        assert run_report(trial.write()) == 1
+        assert reason in capsys.readouterr().err
+
+    def test_a_malformed_clone_instance_stops_the_report(self, trial, capsys):
+        trial.add("finding", outcome="clean", observed={"clone_instances": [{"path": "a.py"}]})
+
+        assert run_report(trial.write()) == 1
+        assert "clone_instances[0]: key is missing" in capsys.readouterr().err
+
     def test_a_complexity_finding_without_its_numbers_stops_the_report(self, trial, capsys):
         finding = complexity()
         del finding["detail"]["threshold"]
@@ -521,6 +617,15 @@ class TestTheReportAgreesWithTheHookAndThePackage:
             erosion.MATCH_NEW,
         )
         assert set(complexity()["detail"]) == set(delta)
+
+    def test_the_clone_detail_and_rows_match_the_package(self):
+        site = erosion.CloneSite("a.py", 1, 6)
+        detail = erosion.CloneCopy(COPY, 20, 25, (site,), 1).as_dict()
+        row = erosion.CloneState("a.py", COPY, 1, 6).as_dict()
+
+        assert set(clone()["detail"]) == set(detail)
+        assert set(clone()["detail"]["sites"][0]) == set(detail["sites"][0])
+        assert set(copies(COPY)["clone_instances"][0]) == set(row)
 
     def test_the_outcomes_version_and_checks_match_the_hook(self):
         assert set(report.OUTCOMES) == {
@@ -595,3 +700,79 @@ class TestTheReportAgreesWithTheHookAndThePackage:
 
         assert [record.outcome for record in records] == ["advisory", "clean"]
         assert [(item.finding_id, item.cls) for item in classified] == [("toolu_a#0", "acted on")]
+
+
+SUMMED = (
+    "def total(items, scale=1, offset=None):\n"
+    "    out = 0 * scale + len(items) - (offset or 0)\n"
+    "    for item in sorted(items, key=abs, reverse=True):\n"
+    "        out += item * scale - 0 + max(item, 0)\n"
+    "    return round(out, 2) if out else 0\n"
+)
+PASTED = "\n\n" + SUMMED.replace("def total(", "def again(")
+PINNED_ENV = (
+    grammars.ENV_CACHE_DIR,
+    grammars.ENV_NO_AUTO_WARM,
+    cache.ENV_NO_AUTO_INDEX,
+    selfrestart.ENV_NO_AUTO_RESTART,
+    cache.ENV_MAX_CACHE_BYTES,
+)
+
+
+def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make_git_repo):
+    root = make_git_repo({"pkg/app.py": SUMMED})
+    target = root / "pkg" / "app.py"
+    env = {name: os.environ[name] for name in PINNED_ENV if name in os.environ}
+    env.update(
+        PATH=GIT_DIR,
+        HOME=str(tmp_path),
+        TMPDIR=str(tmp_path),
+        GIT_CONFIG_GLOBAL=os.devnull,
+        XDG_CACHE_HOME=str(tmp_path / "xdg"),
+        AGENTLESS_EROSION_BIN=str(CLI),
+        AGENTLESS_EROSION_LOG=str(tmp_path / "gate.jsonl"),
+    )
+    transcript = tmp_path / "t1.jsonl"
+
+    def edit(tool_use_id, old, new):
+        payload = {
+            "session_id": "s1",
+            "transcript_path": str(transcript),
+            "tool_use_id": tool_use_id,
+            "tool_name": "Edit",
+            "cwd": str(root),
+            "tool_input": {
+                "file_path": str(target),
+                "old_string": old,
+                "new_string": new,
+                "replace_all": False,
+            },
+        }
+        subprocess.run(
+            [sys.executable, str(HOOK)],
+            input=json.dumps(payload).encode(),
+            env=env,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+
+    last = "    return round(out, 2) if out else 0\n"
+    edit("toolu_a", last, last + PASTED)
+    target.write_text(SUMMED + PASTED, encoding="utf-8")
+    edit("toolu_b", PASTED, "")
+    results = [
+        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": i}]}}
+        for i in ("toolu_a", "toolu_b")
+    ]
+    transcript.write_text("\n".join(json.dumps(r) for r in results) + "\n", encoding="utf-8")
+
+    records = report.read_log(tmp_path / "gate.jsonl")
+    classified = report.classify(records, report.read_transcripts(records))
+
+    assert [record.outcome for record in records] == ["advisory", "clean"]
+    (finding,) = records[0].findings
+    assert finding.check == "clone_delta"
+    assert len(records[0].observed.clone_instances) == 2
+    assert records[1].observed.clone_instances == ()
+    assert [(item.finding_id, item.cls) for item in classified] == [("toolu_a#0", "acted on")]
