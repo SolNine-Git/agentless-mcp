@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`lint` reports `complexity_delta`.** The check compares each edited
+  file's whole text before and after the change. It warns when a function
+  above the complexity threshold grows, when a function crosses the threshold,
+  and when a new function, or one moved from another file, arrives above it.
+  Functions are paired by body, then by name, then by rank among functions
+  that share a name, so a rename, a move within the file, or a reordering of
+  same-name functions is not a finding. Complexity is counted the scb-check
+  way. A file that does not parse or tokenize gives one `not_checked` row, and
+  the other files are still checked. The lint golden gains a candidate that
+  takes `check_report_inputs` from complexity 4 to 11, and the two existing
+  candidates' reports are byte-identical.
+- **`lint --only CHECK[,CHECK...]` runs a subset of the checks.** When it
+  names only pair checks, `lint` reads the edited files and does not scan the
+  repository. One SEARCH/REPLACE candidate on mcp-local takes 0.15 s with
+  `--only complexity_delta` and 1.48 s with every check (median of 5 runs,
+  `/usr/bin/time`, `uv run`, tag cache at a generation mismatch).
+- **`lint --path REL --after FILE` is the per-edit hook form.** It compares
+  the working-tree text at `REL` with the whole proposed text in `FILE` and
+  runs the pair checks only. Both sides are read as UTF-8 bytes with their line
+  endings kept, up to 1,000,000 bytes each. A side that is larger, unreadable,
+  or not UTF-8 gives a `not_checked` row. On one mcp-local file the hook form
+  takes 0.16 s through `uv run` and 0.14 s through the installed console
+  script (median of 5 runs, `/usr/bin/time`).
+- **The lint JSON carries `detail` on a `complexity_delta` finding.** It holds
+  `unit`, `match`, `cc_old`, `cc_new`, `sloc_old`, `sloc_new`, and
+  `threshold`. No other finding has the field, and the text output does not
+  change.
+- **Two `.agentless-mcp.json` keys.** `complexity_threshold` (1 to 100,
+  default 10) sets the threshold `complexity_delta` uses. `erosion_gate` maps
+  `complexity_delta`, `contract_drift`, or `clone_delta` to `off`, `advisory`,
+  or `block` for the per-edit hook. A bad value is dropped with a warning, and
+  `capabilities` shows both keys in the effective config.
+
 ## 0.9.1 -- 2026-10-09
 
 Fan-in tiers describe each occurrence, import aliases and package re-exports

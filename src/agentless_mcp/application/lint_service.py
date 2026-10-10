@@ -16,6 +16,10 @@ repository the candidates are judged against is the same repository for all of
 them -- and because scanning it per candidate would make a ten-candidate lint
 ten scans of the same unchanged tree.
 
+The pair checks in :mod:`agentless_mcp.core.erosion` compare each edited file's
+whole text before and after the change. A run that selects only pair checks
+reads the edited files and does not scan the repository.
+
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
 its parse errors rather than skipped -- but it is not *checked*, because the
@@ -23,26 +27,42 @@ write side refuses a partly-parsed patch whole and findings about the blocks
 that did parse would describe a patch that can never be applied.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 
 from agentless_mcp.application import render
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import cache, patchlint, refs, resolve, unidiff
+from agentless_mcp.core import (
+    cache,
+    complexity,
+    erosion,
+    patchlint,
+    projectconfig,
+    refs,
+    resolve,
+    unidiff,
+)
 from agentless_mcp.core.extractor import TreeSitterExtractor
-from agentless_mcp.core.patches import BlockError, Edit, ParseResult
+from agentless_mcp.core.patches import BlockError, Edit, EditOutcome, ParseResult, apply_edits
+from agentless_mcp.core.projectconfig import CONFIG_FILENAME, ProjectConfig
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import (
     InputUnreadable,
     OperationFailed,
     SecurityRefusal,
 )
 from agentless_mcp.util.fslimits import (
+    BoundedBytes,
     BoundedRead,
     contained_path,
+    decoded,
+    decoded_strict,
     file_stays_inside,
     read_bounded,
+    read_bounded_bytes,
 )
 
 # What a manifest at the repository root is refused with when it is a symlink
@@ -73,8 +93,78 @@ class LintCandidateInput:
     notes: tuple[unidiff.DiffNote, ...] = ()
 
 
+class CheckInput(str, Enum):
+    """What a lint check reads: a parsed patch with the repository scan, or text pairs."""
+
+    PATCH = "patch"
+    PAIRS = "pairs"
+
+
+PairRunner = Callable[[Sequence[erosion.TextPair], ProjectConfig], tuple[erosion.PairFinding, ...]]
+
+
+@dataclass(frozen=True)
+class LintCheck:
+    """One lint check, the input it needs, and its runner when it is a pair check."""
+
+    name: str
+    needs: CheckInput
+    run_pairs: PairRunner | None = None
+
+    def __post_init__(self) -> None:
+        if (self.needs is CheckInput.PAIRS) != (self.run_pairs is not None):
+            message = f"{self.name}: a pair check needs a runner, and a patch check has none"
+            raise ValueError(message)
+
+
+def _complexity_delta(
+    pairs: Sequence[erosion.TextPair], config: ProjectConfig
+) -> tuple[erosion.PairFinding, ...]:
+    threshold = projectconfig.resolve(
+        None, config.complexity_threshold, complexity.DEFAULT_THRESHOLD
+    )
+    return erosion.complexity_delta(pairs, threshold)
+
+
+CHECKS: tuple[LintCheck, ...] = (
+    LintCheck(patchlint.CHECK_UNDECLARED_IMPORTS, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_SHADOWING, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_NEAR_DUPLICATES, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_DANGLING_REFERENCES, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_DANGLING_CALLERS, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_ARITY, CheckInput.PATCH),
+    LintCheck(patchlint.CHECK_CYCLE_DELTA, CheckInput.PATCH),
+    LintCheck(erosion.CHECK_COMPLEXITY_DELTA, CheckInput.PAIRS, _complexity_delta),
+)
+CHECK_NAMES = tuple(check.name for check in CHECKS)
+PAIR_CHECK_NAMES = tuple(check.name for check in CHECKS if check.needs is CheckInput.PAIRS)
+
+
+def unknown_check_refusal(names: Collection[str]) -> str:
+    """Return why ``names`` is not a usable check selection, or an empty string."""
+    if not names:
+        return MESSAGES.lint_no_checks.format(checks=", ".join(CHECK_NAMES))
+    unknown = [name for name in names if name not in CHECK_NAMES]
+    if unknown:
+        return MESSAGES.lint_unknown_check.format(name=unknown[0], checks=", ".join(CHECK_NAMES))
+    return ""
+
+
+def proposed_check_refusal(names: Collection[str]) -> str:
+    """Return why the hook form cannot run ``names``, or an empty string."""
+    patch = [name for name in names if name not in PAIR_CHECK_NAMES]
+    if not patch:
+        return ""
+    return MESSAGES.lint_path_takes_pair_checks.format(
+        pair_checks=", ".join(PAIR_CHECK_NAMES), checks=", ".join(patch)
+    )
+
+
+Judge = Callable[[LintCandidateInput], tuple[render.LintFinding, ...]]
+
+
 class LintService:
-    """Runs the deterministic patch checks for one repository."""
+    """Runs the deterministic lint checks for one repository."""
 
     def __init__(self, extractor: TreeSitterExtractor) -> None:
         self._extractor = extractor
@@ -83,19 +173,38 @@ class LintService:
         self,
         ctx: RepoContext,
         candidates: Sequence[LintCandidateInput],
+        checks: Collection[str] = CHECK_NAMES,
     ) -> render.LintReportView:
-        """Lint every candidate against ``ctx``, sharing one scan between them."""
-        facts = self._facts(ctx)
-        source = cache.effective_source(ctx.symbols, self._extractor)
+        """Lint every candidate with ``checks``, scanning once and only for a patch check."""
+        judge = self._judge(ctx, _select(checks))
         return render.LintReportView(
             candidates=tuple(
-                render.LintCandidate(
-                    id=candidate.id,
-                    findings=_findings(candidate, ctx.root, facts, source),
-                )
+                render.LintCandidate(id=candidate.id, findings=judge(candidate))
                 for candidate in candidates
             )
         )
+
+    def lint_proposed(
+        self,
+        ctx: RepoContext,
+        path: str,
+        after: Path,
+        checks: Collection[str] = PAIR_CHECK_NAMES,
+    ) -> render.LintReportView:
+        """Compare ``path`` as the tree holds it with the whole new text in ``after``."""
+        selection = _select(checks)
+        refusal = proposed_check_refusal(checks)
+        if refusal:
+            raise OperationFailed(refusal)
+        findings = _proposed_findings(ctx, path, after, selection.pairs)
+        return render.LintReportView(candidates=(render.LintCandidate(id=path, findings=findings),))
+
+    def _judge(self, ctx: RepoContext, selection: "_Selection") -> Judge:
+        if not selection.patch:
+            return lambda candidate: _pair_only_findings(candidate, ctx, selection.pairs)
+        facts = self._facts(ctx)
+        source = cache.effective_source(ctx.symbols, self._extractor)
+        return lambda candidate: _findings(candidate, ctx, facts, source, selection)
 
     def _facts(self, ctx: RepoContext) -> patchlint.RepoFacts:
         """Assemble the pre-patch repository every check compares against.
@@ -112,6 +221,23 @@ class LintService:
             dependencies=read_declared_dependencies(ctx.root),
             resolver=resolve.build_resolver(scan, index),
         )
+
+
+@dataclass(frozen=True)
+class _Selection:
+    patch: frozenset[str]
+    pairs: tuple[PairRunner, ...]
+
+
+def _select(names: Collection[str]) -> _Selection:
+    refusal = unknown_check_refusal(names)
+    if refusal:
+        raise OperationFailed(refusal)
+    chosen = [check for check in CHECKS if check.name in names]
+    return _Selection(
+        patch=frozenset(check.name for check in chosen if check.needs is CheckInput.PATCH),
+        pairs=tuple(check.run_pairs for check in chosen if check.run_pairs is not None),
+    )
 
 
 def read_declared_dependencies(root: Path) -> patchlint.DeclaredDependencies:
@@ -249,11 +375,12 @@ def _text(path: Path, what: str) -> str:
 
 def _findings(
     candidate: LintCandidateInput,
-    root: Path,
+    ctx: RepoContext,
     facts: patchlint.RepoFacts,
     source: patchlint.FragmentSource,
+    selection: _Selection,
 ) -> tuple[render.LintFinding, ...]:
-    """Parse one candidate and run every check over the edits it yielded.
+    """Parse one candidate and run the selected checks over the edits it yielded.
 
     A block that did not parse is reported as a coverage gap rather than
     skipped: a patch half of which was unreadable, linted silently, is a clean
@@ -280,13 +407,18 @@ def _findings(
     produced no report at all, rather than nine reports and one refusal --
     which is the case a model-generated candidate set is most likely to hold.
     """
-    admitted = _oriented(_checkable(candidate, root), facts.texts)
+    admitted = _oriented(_checkable(candidate, ctx.root), facts.texts)
     if not admitted.edits:
         return admitted.rows
 
     report = patchlint.lint_patch(admitted.edits, facts, source)
     unread = tuple(_unread_row(warning) for warning in report.warnings)
-    return admitted.rows + unread + tuple(_row(finding) for finding in report.findings)
+    kept = tuple(
+        _row(finding)
+        for finding in report.findings
+        if finding.check in selection.patch or finding.check == patchlint.CHECK_COVERAGE
+    )
+    return admitted.rows + unread + kept + _tree_pair_rows(admitted.edits, ctx, selection.pairs)
 
 
 @dataclass(frozen=True)
@@ -341,6 +473,173 @@ def _oriented(admission: _Admission, texts: Mapping[str, str]) -> _Admission:
     if not misoriented:
         return admission
     return _Admission(admission.rows + tuple(_misoriented_row(problem) for problem in misoriented))
+
+
+def _pair_only_findings(
+    candidate: LintCandidateInput, ctx: RepoContext, runners: Sequence[PairRunner]
+) -> tuple[render.LintFinding, ...]:
+    checkable = _checkable(candidate, ctx.root)
+    reads = _working_reads(ctx.root, _scanned_paths(checkable.edits))
+    admitted = _oriented(checkable, _lenient_texts(reads))
+    if not admitted.edits:
+        return admitted.rows
+    return admitted.rows + _pair_rows(admitted.edits, reads, runners, ctx.config)
+
+
+def _tree_pair_rows(
+    edits: Sequence[Edit], ctx: RepoContext, runners: Sequence[PairRunner]
+) -> tuple[render.LintFinding, ...]:
+    if not runners:
+        return ()
+    reads = _working_reads(ctx.root, _pair_paths(edits))
+    return _pair_rows(edits, reads, runners, ctx.config)
+
+
+def _proposed_findings(
+    ctx: RepoContext, path: str, after: Path, runners: Sequence[PairRunner]
+) -> tuple[render.LintFinding, ...]:
+    try:
+        target = contained_path(ctx.root, path)
+    except SecurityRefusal as refusal:
+        return (_refused_row(refusal),)
+    relative = target.relative_to(ctx.root).as_posix()
+    if erosion.pair_language(relative) is None:
+        return ()
+
+    old = _old_text(relative, _working_read(target))
+    if isinstance(old, render.LintFinding):
+        return (old,)
+    new = decoded_strict(read_bounded_bytes(after))
+    if new.text is None:
+        return (_side_row(MESSAGES.pair_new_unread, relative, new),)
+    return _run_pairs([erosion.TextPair(path=relative, old=old, new=new.text)], runners, ctx.config)
+
+
+def _edited_paths(edits: Sequence[Edit]) -> list[str]:
+    return list(dict.fromkeys(edit.path for edit in edits))
+
+
+def _scanned_paths(edits: Sequence[Edit]) -> list[str]:
+    # The files `refs.scan_repo` would read into `facts.texts`, so orientation
+    # refuses a misapplied candidate whole here as it does beside the patch checks.
+    return [
+        path
+        for path in _edited_paths(edits)
+        if path != CONFIG_FILENAME and Path(path).suffix in TreeSitterExtractor.SUPPORTED_EXTENSIONS
+    ]
+
+
+def _pair_paths(edits: Sequence[Edit]) -> list[str]:
+    return [path for path in _edited_paths(edits) if erosion.pair_language(path) is not None]
+
+
+def _working_reads(root: Path, paths: Sequence[str]) -> dict[str, BoundedBytes | None]:
+    return {path: _working_read(root / path) for path in paths}
+
+
+def _working_read(path: Path) -> BoundedBytes | None:
+    # None is a file the change creates, which is not the same as one that
+    # could not be read.
+    return read_bounded_bytes(path) if path.exists() else None
+
+
+def _lenient_texts(reads: Mapping[str, BoundedBytes | None]) -> dict[str, str]:
+    texts: dict[str, str] = {}
+    for path, read in reads.items():
+        text = None if read is None else decoded(read).text
+        if text is not None:
+            texts[path] = text
+    return texts
+
+
+def _pair_rows(
+    edits: Sequence[Edit],
+    reads: Mapping[str, BoundedBytes | None],
+    runners: Sequence[PairRunner],
+    config: ProjectConfig,
+) -> tuple[render.LintFinding, ...]:
+    rows: list[render.LintFinding] = []
+    pairs: list[erosion.TextPair] = []
+    for path, path_edits in _by_path(edits).items():
+        if erosion.pair_language(path) is None:
+            continue
+        outcome = _candidate_pair(path, reads[path], path_edits)
+        if isinstance(outcome, erosion.TextPair):
+            pairs.append(outcome)
+        else:
+            rows.append(outcome)
+    return (*rows, *_run_pairs(pairs, runners, config))
+
+
+def _by_path(edits: Sequence[Edit]) -> dict[str, list[Edit]]:
+    grouped: dict[str, list[Edit]] = {}
+    for edit in edits:
+        grouped.setdefault(edit.path, []).append(edit)
+    return grouped
+
+
+def _candidate_pair(
+    path: str, read: BoundedBytes | None, edits: Sequence[Edit]
+) -> erosion.TextPair | render.LintFinding:
+    old = _old_text(path, read)
+    if isinstance(old, render.LintFinding):
+        return old
+    if old is None and not edits[0].search:
+        contents, pending = {path: edits[0].replace}, edits[1:]
+    else:
+        contents, pending = ({} if old is None else {path: old}), edits
+    applied = apply_edits(pending, contents)
+    if not applied.ok:
+        return _unapplied_row(path, applied.failures)
+    return erosion.TextPair(path=path, old=old, new=applied.new_contents.get(path, contents[path]))
+
+
+def _old_text(path: str, read: BoundedBytes | None) -> str | render.LintFinding | None:
+    if read is None:
+        return None
+    old = decoded_strict(read)
+    if old.text is None:
+        return _side_row(MESSAGES.pair_old_unread, path, old)
+    return old.text
+
+
+def _run_pairs(
+    pairs: Sequence[erosion.TextPair], runners: Sequence[PairRunner], config: ProjectConfig
+) -> tuple[render.LintFinding, ...]:
+    return tuple(_pair_row(found) for run in runners for found in run(pairs, config))
+
+
+def _pair_row(found: erosion.PairFinding) -> render.LintFinding:
+    row = _row(found.finding)
+    return row if found.detail is None else replace(row, detail=found.detail.as_dict())
+
+
+def _side_row(template: str, path: str, read: BoundedRead) -> render.LintFinding:
+    if read.skipped is None:
+        # `BoundedRead` sets exactly one of `text` and `skipped`.
+        message = f"bounded read of {read.path} set neither text nor a skip reason"
+        raise RuntimeError(message)
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=template.format(path=path, reason=read.skipped),
+        path=path,
+        line=0,
+        location=path,
+        evidence=read.skipped,
+    )
+
+
+def _unapplied_row(path: str, failures: Sequence[EditOutcome]) -> render.LintFinding:
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=MESSAGES.pair_edits_unapplied.format(failed=len(failures), path=path),
+        path=path,
+        line=0,
+        location=path,
+        evidence=failures[0].reason,
+    )
 
 
 def _note_row(note: unidiff.DiffNote) -> render.LintFinding:

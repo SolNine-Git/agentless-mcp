@@ -854,6 +854,139 @@ class TestLintOverADiff:
         assert raised.value.code == EXIT_USAGE
 
 
+def _branchy(name, cc):
+    lines = [f"def {name}(value):"]
+    for index in range(cc - 1):
+        lines += [f"    if value == {index}:", f"        return {index}"]
+    lines.append("    return -1")
+    return "\n".join(lines) + "\n"
+
+
+class TestLintSelectionAndTheHookForm:
+    """`--only`, `--path` and `--after`: the flags, their exit codes, and the JSON shape."""
+
+    def test_an_unknown_check_is_a_usage_error(self, services, repo_path, tmp_path, capsys):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--only", "nope")
+
+        assert raised.value.code == EXIT_USAGE
+        assert "unknown check 'nope'" in capsys.readouterr().err
+
+    def test_an_empty_check_name_is_a_usage_error(self, services, repo_path, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, repo_path, "lint", "--candidates", str(tmp_path), "--only", "arity,")
+        assert raised.value.code == EXIT_USAGE
+
+    def test_path_without_after_is_a_usage_error(self, services, repo_path, capsys):
+        assert invoke(services, repo_path, "lint", "--path", "core.py") == EXIT_USAGE
+        assert "--path and --after go together" in capsys.readouterr().err
+
+    def test_after_without_path_is_a_usage_error(self, services, repo_path, tmp_path, capsys):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        code = invoke(
+            services, repo_path, "lint", "--candidates", str(candidate), "--after", "x.py"
+        )
+
+        assert code == EXIT_USAGE
+        assert "--path and --after go together" in capsys.readouterr().err
+
+    def test_the_hook_form_with_a_patch_check_is_a_usage_error(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(SOURCE, encoding="utf-8")
+
+        code = invoke(
+            services,
+            repo_path,
+            "lint",
+            "--path",
+            "core.py",
+            "--after",
+            str(after),
+            "--only",
+            "complexity_delta,arity",
+        )
+
+        assert code == EXIT_USAGE
+        assert "Remove arity from --only" in capsys.readouterr().err
+
+    def test_path_beside_candidates_is_a_usage_error(self, services, repo_path, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(
+                services,
+                repo_path,
+                "lint",
+                "--candidates",
+                str(tmp_path),
+                "--path",
+                "core.py",
+                "--after",
+                "x.py",
+            )
+        assert raised.value.code == EXIT_USAGE
+
+    def test_the_hook_form_runs_every_pair_check_and_emits_detail(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(SOURCE + "\n\n" + _branchy("fresh", 12), encoding="utf-8")
+
+        code = invoke(
+            services, repo_path, "lint", "--path", "core.py", "--after", str(after), "--json"
+        )
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert entry["id"] == "core.py"
+        (finding,) = entry["findings"]
+        assert finding["check"] == "complexity_delta"
+        assert finding["location"] == "core.py:15"
+        assert finding["detail"] == {
+            "unit": "fresh",
+            "match": "new",
+            "cc_old": None,
+            "cc_new": 12,
+            "sloc_old": None,
+            "sloc_new": 24,
+            "threshold": 10,
+        }
+
+    def test_a_patch_finding_carries_no_detail(self, services, repo_path, tmp_path, capsys):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        invoke(services, repo_path, "lint", "--candidates", str(candidate), "--json")
+
+        findings = json.loads(capsys.readouterr().out)["candidates"][0]["findings"]
+        assert findings
+        assert all("detail" not in finding for finding in findings)
+
+    def test_only_pair_checks_over_candidates_drop_the_patch_rows(
+        self, services, repo_path, tmp_path, capsys
+    ):
+        candidate = tmp_path / "01.txt"
+        candidate.write_text(PATCH_WITH_A_DANGLING_CALL, encoding="utf-8")
+
+        code = invoke(
+            services,
+            repo_path,
+            "lint",
+            "--candidates",
+            str(candidate),
+            "--only",
+            "complexity_delta",
+        )
+
+        assert code == EXIT_OK
+        out = capsys.readouterr().out
+        assert "01: no findings" in out
+        assert "undeclared_imports" not in out
+        assert "dangling_references" not in out
+
+
 def _git_diff(root):
     """Return ``git diff`` for a fixture repository, as git itself writes it."""
     return subprocess.run(

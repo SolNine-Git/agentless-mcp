@@ -57,7 +57,15 @@ from agentless_mcp.application.history_service import (
     HistoryService,
     render_history,
 )
-from agentless_mcp.application.lint_service import LintService, load_candidates, load_diff
+from agentless_mcp.application.lint_service import (
+    CHECK_NAMES,
+    PAIR_CHECK_NAMES,
+    LintService,
+    load_candidates,
+    load_diff,
+    proposed_check_refusal,
+    unknown_check_refusal,
+)
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     GRANULARITIES,
@@ -110,6 +118,7 @@ from agentless_mcp.core.mermaid import DEFAULT_DIAGRAM_EDGES, DEFAULT_DIAGRAM_NO
 from agentless_mcp.core.patches import ApplyResult, Edit
 from agentless_mcp.core.symbols import StableId, parse_stable_id
 from agentless_mcp.core.treewalk import DEFAULT_MAX_ENTRIES, DEFAULT_RENDER_DEPTH
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import AgentlessError, OperationFailed
 from agentless_mcp.util.tokens import (
     COUNTER_CHARS4,
@@ -611,8 +620,37 @@ def _add_lint(subparsers: Any) -> None:
         "the checks compare it against --repo as it stands, so --repo must be a checkout "
         "of the diff's BASE, not a tree with the diff already applied",
     )
+    source.add_argument(
+        "--path",
+        metavar="REL",
+        help="a file in --repo whose proposed whole new text is in --after; runs only the "
+        "pair checks, with no repository scan (the per-edit hook form)",
+    )
+    parser.add_argument(
+        "--after",
+        metavar="FILE",
+        default=None,
+        help="the file that holds the proposed whole new text of --path",
+    )
+    parser.add_argument(
+        "--only",
+        metavar="CHECK[,CHECK...]",
+        type=_check_names,
+        default=None,
+        help=f"run only these checks: {', '.join(CHECK_NAMES)}. With only pair checks "
+        f"({', '.join(PAIR_CHECK_NAMES)}), lint reads the edited files and does not scan "
+        "the repository",
+    )
     _repo_flags(parser)
     parser.set_defaults(handler=_cmd_lint)
+
+
+def _check_names(raw: str) -> tuple[str, ...]:
+    names = tuple(dict.fromkeys(part.strip() for part in raw.split(",")))
+    refusal = unknown_check_refusal(names)
+    if refusal:
+        raise argparse.ArgumentTypeError(refusal)
+    return names
 
 
 def _add_resolve_locs(subparsers: Any) -> None:
@@ -1290,18 +1328,38 @@ def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
     not a verdict, and a lint that failed the command would be a gate nobody
     asked for standing between a candidate and the tests that actually decide.
     """
+    refusal = _lint_flag_refusal(args)
+    if refusal:
+        return fail(refusal, EXIT_USAGE)
     ctx = _context(args, services, require_git=False)
     if ctx is None:
         return EXIT_USAGE
 
+    report = _lint_report(args, ctx, services)
+    _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
+    return EXIT_OK
+
+
+def _lint_flag_refusal(args: argparse.Namespace) -> str:
+    if (args.path is None) != (args.after is None):
+        return MESSAGES.lint_path_needs_after
+    if args.path is None or args.only is None:
+        return ""
+    return proposed_check_refusal(args.only)
+
+
+def _lint_report(
+    args: argparse.Namespace, ctx: RepoContext, services: CliServices
+) -> render.LintReportView:
+    if args.path is not None:
+        checks = PAIR_CHECK_NAMES if args.only is None else args.only
+        return services.lints.lint_proposed(ctx, args.path, Path(args.after), checks)
     candidates = (
         (load_diff(Path(args.diff)),)
         if args.diff is not None
         else load_candidates(Path(args.candidates))
     )
-    report = services.lints.lint(ctx, candidates)
-    _emit(args, ctx, services, _Answer(render.render_lint(report), report.as_dict(), "candidates"))
-    return EXIT_OK
+    return services.lints.lint(ctx, candidates, CHECK_NAMES if args.only is None else args.only)
 
 
 def _diagram_summary(view: render.DiagramView) -> str:

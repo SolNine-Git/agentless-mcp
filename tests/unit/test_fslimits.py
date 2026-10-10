@@ -191,6 +191,49 @@ class TestReadBounded:
         assert result.text == "x = 1\n"
 
 
+class TestBoundedBytesAndItsTwoDecoders:
+    """One reader, two decodes: `read_bounded` replaces bad bytes, `decoded_strict` refuses them."""
+
+    def test_the_bytes_reader_keeps_crlf_line_endings(self, root):
+        crlf = root / "crlf.py"
+        crlf.write_bytes(b"x = 1\r\ny = 2\r\n")
+
+        result = fslimits.read_bounded_bytes(crlf)
+
+        assert result.data == b"x = 1\r\ny = 2\r\n"
+        assert fslimits.decoded_strict(result).text == "x = 1\r\ny = 2\r\n"
+        assert read_bounded(crlf).text == "x = 1\r\ny = 2\r\n"
+
+    def test_the_bytes_reader_reports_the_cap_and_an_unreadable_file(self, root):
+        big = root / "big.py"
+        big.write_bytes(b"#" * 5000)
+
+        capped = fslimits.read_bounded_bytes(big, max_bytes=1000)
+        missing = fslimits.read_bounded_bytes(root / "gone.py")
+
+        assert capped.data is None
+        assert capped.skipped == "skipped: 5000 bytes exceeds the per-file cap of 1000 bytes"
+        assert missing.data is None
+        assert missing.skipped is not None
+        assert missing.skipped.startswith("unreadable: ")
+
+    def test_the_strict_decode_refuses_bytes_that_are_not_utf8(self, root):
+        latin = root / "latin.py"
+        latin.write_bytes(b"x = '\xff'\n")
+
+        strict = fslimits.decoded_strict(fslimits.read_bounded_bytes(latin))
+
+        assert strict.text is None
+        assert strict.skipped == "not UTF-8 text: byte 5 is invalid start byte"
+        assert read_bounded(latin).text == "x = '\ufffd'\n"
+
+    def test_both_decodes_carry_a_skip_through(self, root):
+        skipped = fslimits.read_bounded_bytes(root / "gone.py")
+
+        assert fslimits.decoded(skipped).skipped == skipped.skipped
+        assert fslimits.decoded_strict(skipped).skipped == skipped.skipped
+
+
 class TestSymlinkLoops:
     """A loop resolves differently on the two supported interpreters.
 

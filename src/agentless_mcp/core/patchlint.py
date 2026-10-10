@@ -13,7 +13,9 @@ on :class:`RepoFacts`. This module opens nothing -- no cache, no repository,
 no source file: every check reads the facts and text the caller supplies, and
 the ``parse_*`` functions beside them take text. Reading the repository is
 :mod:`agentless_mcp.application.lint_service`'s job, the dependency manifests
-included: it reads them and hands the result over on :class:`RepoFacts`.
+included: it reads them and hands the result over on :class:`RepoFacts`. The
+pair checks, which compare one file's whole text before and after a change,
+live in :mod:`agentless_mcp.core.erosion`.
 
 ``undeclared_imports``
     A top-level package the patch imports that is in neither the repository's
@@ -208,7 +210,7 @@ REQUIREMENTS_GLOB = "requirements*.txt"
 # `AttributeError` were members and are deliberately not: those are the four
 # classes a None dereference, an off-by-one or a renamed field raises, and
 # catching them turned a crash into a `not checked` line with no traceback
-# while the other six checks reported a healthy-looking patch around it.
+# while the other checks reported a healthy-looking patch around it.
 # `UnicodeDecodeError` is a `ValueError` and is covered by it; a manifest or a
 # fragment that is not text arrives that way.
 DEGRADED_ERRORS: tuple[type[Exception], ...] = (

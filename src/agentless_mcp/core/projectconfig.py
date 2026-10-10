@@ -35,10 +35,13 @@ no failure mode here that stops a read command from answering.
 """
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, TypeVar
 
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.fslimits import file_stays_inside
 
 CONFIG_FILENAME = ".agentless-mcp.json"
@@ -57,6 +60,8 @@ MAX_MAX_FILES = 200
 MAX_STOPLIST_ENTRIES = 200
 MAX_STOPLIST_ENTRY_CHARS = 64
 MAX_TEST_CMD_CHARS = 512
+MIN_COMPLEXITY_THRESHOLD = 1
+MAX_COMPLEXITY_THRESHOLD = 100
 # Enough to name every key a hand-written file gets wrong. Past that the list
 # stops being a diagnostic and starts being a way to spend the response's
 # token budget on repository-supplied text.
@@ -84,6 +89,8 @@ KEY_TEST_CMD = "test_cmd"
 # nothing at all for TypeScript, Go, Java or Rust. Do not turn it on expecting
 # a repository-wide effect on a repository that is not Python.
 KEY_RELATION_WEIGHTS = "relation_weights"
+KEY_COMPLEXITY_THRESHOLD = "complexity_threshold"
+KEY_EROSION_GATE = "erosion_gate"
 
 KNOWN_KEYS = (
     KEY_MAP_BUDGET,
@@ -93,7 +100,14 @@ KNOWN_KEYS = (
     KEY_STOPLIST,
     KEY_TEST_CMD,
     KEY_RELATION_WEIGHTS,
+    KEY_COMPLEXITY_THRESHOLD,
+    KEY_EROSION_GATE,
 )
+
+# The checks the per-edit hook gates, and the modes it takes per check. Only
+# the hook acts on `erosion_gate`: this module validates it, capabilities shows it.
+GATED_CHECKS = ("complexity_delta", "contract_drift", "clone_delta")
+GATE_MODES = ("off", "advisory", "block")
 
 # Characters that would make a stoplist entry something other than an
 # identifier: separators, quotes and whitespace. An entry is matched against
@@ -121,6 +135,8 @@ class ProjectConfig:
     stoplist: frozenset[str] = frozenset()
     test_cmd: str | None = None
     relation_weights: bool | None = None
+    complexity_threshold: int | None = None
+    erosion_gate: Mapping[str, str] | None = None
     warnings: tuple[str, ...] = ()
 
     @property
@@ -139,6 +155,8 @@ class ProjectConfig:
             KEY_STOPLIST: sorted(self.stoplist),
             KEY_TEST_CMD: self.test_cmd,
             KEY_RELATION_WEIGHTS: self.relation_weights,
+            KEY_COMPLEXITY_THRESHOLD: self.complexity_threshold,
+            KEY_EROSION_GATE: None if self.erosion_gate is None else dict(self.erosion_gate),
             "warnings": list(self.warnings),
         }
 
@@ -272,6 +290,14 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
     stoplist = _stoplist(document, warnings)
     test_cmd = _command(document, warnings)
     relation_weights = _boolean(document, KEY_RELATION_WEIGHTS, warnings)
+    complexity_threshold = _bounded_int(
+        document,
+        KEY_COMPLEXITY_THRESHOLD,
+        MIN_COMPLEXITY_THRESHOLD,
+        MAX_COMPLEXITY_THRESHOLD,
+        warnings,
+    )
+    erosion_gate = _gate_modes(document, warnings)
 
     unknown = sorted(key for key in document if key not in KNOWN_KEYS)
     # `{key!r}` happens to escape a newline in a repository-authored key,
@@ -296,6 +322,8 @@ def parse(document: dict[str, Any], path: Path | None = None) -> ProjectConfig:
         stoplist=stoplist,
         test_cmd=test_cmd,
         relation_weights=relation_weights,
+        complexity_threshold=complexity_threshold,
+        erosion_gate=erosion_gate,
         warnings=tuple(warnings),
     )
 
@@ -347,6 +375,44 @@ def _boolean(document: dict[str, Any], key: str, warnings: list[str]) -> bool | 
         warnings.append(f"{key} in {CONFIG_FILENAME} must be true or false; ignored")
         return None
     return value
+
+
+def _gate_modes(document: dict[str, Any], warnings: list[str]) -> Mapping[str, str] | None:
+    if KEY_EROSION_GATE not in document:
+        return None
+
+    value = document[KEY_EROSION_GATE]
+    if not isinstance(value, dict):
+        warnings.append(
+            MESSAGES.config_erosion_gate_not_object.format(
+                config=CONFIG_FILENAME, modes=", ".join(GATE_MODES)
+            )
+        )
+        return None
+
+    modes = _gate_entries(value, warnings)
+    unknown = len([key for key in value if key not in GATED_CHECKS])
+    if unknown:
+        warnings.append(
+            MESSAGES.config_erosion_gate_unknown.format(
+                config=CONFIG_FILENAME, count=unknown, checks=", ".join(GATED_CHECKS)
+            )
+        )
+    return MappingProxyType(modes)
+
+
+def _gate_entries(value: dict[str, Any], warnings: list[str]) -> dict[str, str]:
+    modes: dict[str, str] = {}
+    for check in (check for check in GATED_CHECKS if check in value):
+        if value[check] in GATE_MODES:
+            modes[check] = value[check]
+        else:
+            warnings.append(
+                MESSAGES.config_erosion_gate_mode.format(
+                    check=check, config=CONFIG_FILENAME, modes=", ".join(GATE_MODES)
+                )
+            )
+    return modes
 
 
 def _stoplist(document: dict[str, Any], warnings: list[str]) -> frozenset[str]:

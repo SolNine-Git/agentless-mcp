@@ -100,6 +100,15 @@ class BoundedRead:
     skipped: str | None
 
 
+@dataclass(frozen=True)
+class BoundedBytes:
+    """An undecoded size-capped read: exactly one of ``data`` and ``skipped`` is set."""
+
+    path: Path
+    data: bytes | None
+    skipped: str | None
+
+
 def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> BoundedRead:
     """Read ``path`` as UTF-8, skipping it when it exceeds ``max_bytes``.
 
@@ -107,6 +116,34 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
     repository must not fail a whole traversal, but it must also never pass
     silently as an empty file.
     """
+    return decoded(read_bounded_bytes(path, max_bytes))
+
+
+def decoded(read: BoundedBytes) -> BoundedRead:
+    """Decode a bounded read as UTF-8 with replacement characters, as :func:`read_bounded` does."""
+    if read.data is None:
+        return BoundedRead(path=read.path, text=None, skipped=read.skipped)
+    return BoundedRead(
+        path=read.path, text=read.data.decode("utf-8", errors="replace"), skipped=None
+    )
+
+
+def decoded_strict(read: BoundedBytes) -> BoundedRead:
+    """Decode a bounded read as UTF-8, skipping it with a reason when it is not valid UTF-8."""
+    if read.data is None:
+        return BoundedRead(path=read.path, text=None, skipped=read.skipped)
+    try:
+        return BoundedRead(path=read.path, text=read.data.decode("utf-8"), skipped=None)
+    except UnicodeDecodeError as error:
+        return BoundedRead(
+            path=read.path,
+            text=None,
+            skipped=f"not UTF-8 text: byte {error.start} is {error.reason}",
+        )
+
+
+def read_bounded_bytes(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> BoundedBytes:
+    """Read ``path``'s bytes, skipping it with a reason when it exceeds ``max_bytes`` or fails."""
     at_least(max_bytes, 0, "max_bytes")
     try:
         # Symlinks are followed here, deliberately. Containment is decided
@@ -120,7 +157,7 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         descriptor = os.open(path, flags)
     except OSError as exc:
-        return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
+        return BoundedBytes(path=path, data=None, skipped=f"unreadable: {exc.strerror}")
 
     try:
         with os.fdopen(descriptor, "rb") as handle:
@@ -131,19 +168,19 @@ def read_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE_BYTES) -> Bounded
             data = handle.read(max_bytes + 1)
             final_size = os.fstat(handle.fileno()).st_size
     except OSError as exc:
-        return BoundedRead(path=path, text=None, skipped=f"unreadable: {exc.strerror}")
+        return BoundedBytes(path=path, data=None, skipped=f"unreadable: {exc.strerror}")
 
     if len(data) > max_bytes:
         observed_size = max(initial_size, final_size, len(data))
-        return BoundedRead(
+        return BoundedBytes(
             path=path,
-            text=None,
+            data=None,
             skipped=(
                 f"skipped: {observed_size} bytes exceeds the per-file cap of {max_bytes} bytes"
             ),
         )
 
-    return BoundedRead(path=path, text=data.decode("utf-8", errors="replace"), skipped=None)
+    return BoundedBytes(path=path, data=data, skipped=None)
 
 
 def bounded_walk(

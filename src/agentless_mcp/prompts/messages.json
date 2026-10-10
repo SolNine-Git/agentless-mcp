@@ -53,5 +53,22 @@
   "history_shallow_unknown": "note: git could not say whether this clone is shallow ({note}); in a shallow clone the oldest commit listed may stand in for older history",
   "complexity_language_unsupported": "{path}: complexity has no rules for language '{language}'. It measures only these languages: {languages}.",
   "complexity_does_not_parse": "{path} does not parse: the first syntax error is at line {line}. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again.",
-  "complexity_tokenizer_rejects": "{path}: Python's tokenizer rejects this file ({detail}). Complexity is measured only for a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then measure the file again."
+  "complexity_tokenizer_rejects": "{path}: Python's tokenizer rejects this file ({detail}). Complexity is measured only for a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then measure the file again.",
+  "complexity_grew": "{qualname}: complexity {old_cc} -> {new_cc}, {old_sloc} -> {new_sloc} source lines. This function is already above the threshold ({threshold}), and this change adds more branching to it. Put the new branches in a new named function and call it, or refactor this function first in its own change.",
+  "complexity_crossed": "{qualname}: complexity {old_cc} -> {new_cc}, {old_sloc} -> {new_sloc} source lines. This change takes the function over the threshold ({threshold}). Put the new branches in a new named function and call it, or refactor this function first in its own change.",
+  "complexity_new_unit": "{qualname}: complexity {new_cc}, {new_sloc} source lines. This function is new, or moved from another file, and it is above the threshold ({threshold}). Split it into smaller named functions. If it moved here unchanged, it was already above the threshold in its old file.",
+  "complexity_evidence": "cc {old_cc} -> {new_cc}; sloc {old_sloc} -> {new_sloc}; threshold {threshold}",
+  "complexity_new_unit_evidence": "cc {new_cc}; sloc {new_sloc}; threshold {threshold}",
+  "complexity_old_not_measured": "not checked: complexity_delta did not compare {path}, because its text before the change cannot be measured. {reason}",
+  "complexity_new_not_measured": "not checked: complexity_delta did not compare {path}, because its text after the change cannot be measured. {reason}",
+  "pair_old_unread": "not checked: the text of {path} before the change was not read ({reason}), so no pair check compared this file.",
+  "pair_new_unread": "not checked: the proposed text for {path} was not read ({reason}), so no pair check compared this file.",
+  "pair_edits_unapplied": "not checked: {failed} of the edits to {path} did not apply, so no pair check compared this file.",
+  "lint_unknown_check": "unknown check '{name}'. The checks are: {checks}.",
+  "lint_no_checks": "no check selected. Name at least one of these checks: {checks}.",
+  "lint_path_needs_after": "--path and --after go together: --path names the file in --repo, and --after names a file that holds its proposed new text.",
+  "lint_path_takes_pair_checks": "--path runs only the pair checks ({pair_checks}), because it supplies whole-file text and no patch. Remove {checks} from --only, or lint a patch with --candidates or --diff.",
+  "config_erosion_gate_not_object": "erosion_gate in {config} must be an object that maps a check name to one of {modes}. The key is ignored.",
+  "config_erosion_gate_mode": "erosion_gate.{check} in {config} must be one of {modes}. The entry is ignored.",
+  "config_erosion_gate_unknown": "erosion_gate in {config} holds {count} entries that name no gated check ({checks}). They are ignored."
 }

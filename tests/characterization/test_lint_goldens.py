@@ -7,8 +7,8 @@ did not happen or happened and was clean -- and none of that is visible in a
 unit test asserting one substring. A change to any of it has to show up in a
 diff a reviewer sees.
 
-The two candidates below are deliberately built to trip a different check
-each, against the committed Python fixture repository.
+The candidates below are deliberately built to trip different checks, against
+the committed Python fixture repository.
 
 Regenerate deliberately, never reflexively:
 
@@ -68,6 +68,30 @@ CALLING_CANDIDATE = """\
 """
 
 
+# Seven more decision points take `check_report_inputs` from complexity 4 to
+# 11, over the default threshold of 10, using only names the fixture defines.
+BRANCHING_CANDIDATE = """\
+### reports.py
+<<<<<<< SEARCH
+    missing: list[str] = []
+    for item in inventory.reorder_list():
+        try:
+=======
+    missing: list[str] = []
+    if not inventory.warehouse or prices is None:
+        raise ReportError("a report needs a warehouse and a price book")
+    for item in inventory.reorder_list():
+        if not item.sku:
+            raise ReportError("an item has no SKU")
+        if item.quantity < 0 or item.quantity > 10_000:
+            raise ReportError(f"implausible quantity for {item.sku}")
+        if item.sku.startswith("TMP") and not item.sku[3:].isdigit():
+            raise ReportError(f"temporary SKU {item.sku} has no number")
+        try:
+>>>>>>> REPLACE
+"""
+
+
 def context_for(repo: str) -> RepoContext:
     """A pinned context so the receipt does not depend on the working tree."""
     return RepoContext(
@@ -93,6 +117,7 @@ def build_outputs() -> dict[str, str]:
         [
             LintCandidateInput(id="01-renames", parsed=load_edits(RENAMING_CANDIDATE)),
             LintCandidateInput(id="02-calls", parsed=load_edits(CALLING_CANDIDATE)),
+            LintCandidateInput(id="03-branches", parsed=load_edits(BRANCHING_CANDIDATE)),
         ],
     )
     return {
@@ -134,3 +159,9 @@ def test_the_seeded_patch_trips_every_resolution_dependent_check():
     text = build_outputs()["lint.txt"]
     for check in ("dangling_references", "dangling_callers", "arity"):
         assert check in text, check
+
+
+def test_the_branching_candidate_crosses_the_complexity_threshold():
+    text = build_outputs()["lint.txt"]
+    assert "[warning] complexity_delta  reports.py:55" in text
+    assert "check_report_inputs: complexity 4 -> 11" in text

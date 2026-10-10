@@ -162,6 +162,68 @@ MESSAGE_ARGUMENTS = {
         "path": "src/app/svc.py",
         "detail": "IndentationError: unindent does not match any outer indentation level",
     },
+    "complexity_grew": {
+        "qualname": "register_search_tools",
+        "old_cc": 16,
+        "new_cc": 17,
+        "old_sloc": 194,
+        "new_sloc": 201,
+        "threshold": 10,
+    },
+    "complexity_crossed": {
+        "qualname": "Store.find",
+        "old_cc": 10,
+        "new_cc": 12,
+        "old_sloc": 30,
+        "new_sloc": 36,
+        "threshold": 10,
+    },
+    "complexity_new_unit": {
+        "qualname": "parse_rows",
+        "new_cc": 14,
+        "new_sloc": 40,
+        "threshold": 10,
+    },
+    "complexity_evidence": {
+        "old_cc": 16,
+        "new_cc": 17,
+        "old_sloc": 194,
+        "new_sloc": 201,
+        "threshold": 10,
+    },
+    "complexity_new_unit_evidence": {"new_cc": 14, "new_sloc": 40, "threshold": 10},
+    "complexity_old_not_measured": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12.",
+    },
+    "complexity_new_not_measured": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12.",
+    },
+    "pair_old_unread": {
+        "path": "src/app/big.py",
+        "reason": "skipped: 1200000 bytes exceeds the per-file cap of 1000000 bytes",
+    },
+    "pair_new_unread": {"path": "src/app/svc.py", "reason": "unreadable: No such file"},
+    "pair_edits_unapplied": {"failed": 1, "path": "src/app/svc.py"},
+    "lint_unknown_check": {"name": "complexity", "checks": "arity, complexity_delta"},
+    "lint_no_checks": {"checks": "arity, complexity_delta"},
+    "lint_path_needs_after": {},
+    "lint_path_takes_pair_checks": {"pair_checks": "complexity_delta", "checks": "arity"},
+    "config_erosion_gate_not_object": {
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block",
+    },
+    "config_erosion_gate_mode": {
+        "check": "complexity_delta",
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block",
+    },
+    "config_erosion_gate_unknown": {
+        "config": ".agentless-mcp.json",
+        "count": 2,
+        "checks": "complexity_delta, contract_drift, clone_delta",
+    },
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})

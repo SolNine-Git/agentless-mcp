@@ -1069,6 +1069,8 @@ MCP tools) to bypass the index for that call.
 agentless-mcp lint --candidates ./candidates
 agentless-mcp lint --candidates ./candidates/01-plus.txt --json
 agentless-mcp lint --diff change.patch --repo /tmp/base
+agentless-mcp lint --diff change.patch --repo /tmp/base --only complexity_delta
+agentless-mcp lint --path src/app.py --after /tmp/app.py.new --json
 ```
 
 Run this **before** `validate`. It is the mechanical half of a hostile
@@ -1084,7 +1086,7 @@ replace text, and the refusal names what it counted and the bound it passed.
 **`--diff` is the review case: a branch or a pull request that already exists.**
 It takes a unified diff (`git diff`, or a `format-patch` body) and maps one
 hunk to one edit. Nobody has to hand-convert a diff into SEARCH/REPLACE
-blocks to check it. Exactly one of `--candidates` and `--diff` is required.
+blocks to check it. Exactly one of `--candidates`, `--diff`, and `--path` is required.
 The thing to get right is which tree you point at. The checks compare the
 diff against `--repo` as it stands, so **`--repo` must be a checkout of the
 diff's base**, typically a `git worktree add` of the merge-base. To lint a
@@ -1095,6 +1097,31 @@ the remedy. Binary files and mode-only changes are reported the same way
 rather than dropped. A construct one edit cannot express (a rename, a `-U0`
 diff with no context lines, a combined merge diff) is refused with its
 reason, and the candidate is not half-checked.
+
+**`--only CHECK[,CHECK...]` runs a subset of the checks.** Name checks from the
+table below. An unknown name is a usage error (exit 2). `complexity_delta` is a
+pair check: it compares each edited file's whole text before and after the
+change. When `--only` names pair checks alone, `lint` reads only the edited
+files and does not scan the repository.
+
+**`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
+`--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
+working-tree text at `REL` with `FILE`, so no patch is needed. This form runs
+the pair checks only. Without `--only` it runs every pair check, and an
+`--only` that names another check is a usage error (exit 2). A path that does
+not exist yet is a new file, so every function in `FILE` counts as new. Both
+sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
+each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
+row. The report has one candidate, and its id is `REL`. A file in a language
+that has no complexity rules gives no row.
+
+**`--json` carries one more field for a pair check.** Each finding has
+`check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
+`complexity_delta` finding about one function also has `detail`: `unit` (the
+function's qualified name), `match` (`body`, `name`, `collision`, or `new`),
+`cc_old`, `cc_new`, `sloc_old`, `sloc_new`, and `threshold`. The old values are
+`null` for a new function. No other finding has `detail`, and the text form
+does not print it.
 
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
 `vote`.
@@ -1112,6 +1139,7 @@ patch is right. This decides what to look at first.
 | `dangling_callers` | warning | the patch removes or renames a symbol that files it does not touch still reference, listed with `file:line` |
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
+| `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function (or one moved from another file) arrives above it. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
 
 Two things the table cannot say.
 
@@ -1123,6 +1151,7 @@ at severity `not_checked` and names the reason:
 - a file the caller supplied no text for
 - a patch block that did not parse
 - edits that did not apply
+- a file whose text before or after the change was not read, or does not parse
 
 Silence would be the one dishonest outcome, because you cannot tell "checked
 and clean" from "never ran". `dangling_references` and `arity` need Python's
@@ -1133,7 +1162,7 @@ language rather than judge it by Python's rules.
 means `tomllib`, which the standard library gained in 3.11. This package
 takes no dependency to fill that in. On 3.10 the check reports `not_checked`
 with the reason: "reading a dependency manifest needs Python 3.11 or newer".
-The other six checks run as usual. Everything else in this package works the
+Every other check runs as usual. Everything else in this package works the
 same on 3.10.
 
 **Both advisories are deliberately timid.** `arity` passes in silence on any
@@ -1375,7 +1404,9 @@ root. Every key is optional:
   "docstrings": false,
   "stoplist": ["ctx", "helper", "handle"],
   "test_cmd": "pytest -q tests/unit",
-  "relation_weights": false
+  "relation_weights": false,
+  "complexity_threshold": 10,
+  "erosion_gate": {"complexity_delta": "advisory"}
 }
 ```
 
@@ -1415,6 +1446,14 @@ three views. Three things are worth knowing before you set it:
   in by the extractor's Python class handler alone, and every other language
   records none. On a Go, Java, Rust or TypeScript repository the key changes
   the import weighting and adds no inheritance edge at all.
+
+`complexity_threshold` sets the complexity above which `lint`'s
+`complexity_delta` reports a function, from 1 to 100. The default is 10.
+
+`erosion_gate` maps a check name to `off`, `advisory`, or `block`. The names it
+takes are `complexity_delta`, `contract_drift`, and `clone_delta`. It is for the
+per-edit erosion hook. `lint` ignores it, because `lint` never blocks. A bad
+entry is dropped with a warning, and `capabilities` shows the entries in force.
 
 ## Token counting
 

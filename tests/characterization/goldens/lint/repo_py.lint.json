@@ -64,6 +64,38 @@
           "evidence": "no dependency manifest found"
         }
       ]
+    },
+    {
+      "id": "03-branches",
+      "findings": [
+        {
+          "check": "undeclared_imports",
+          "severity": "not_checked",
+          "message": "not checked: the repository has no pyproject.toml or requirements file",
+          "path": "",
+          "line": 0,
+          "location": "(repository)",
+          "evidence": "no dependency manifest found"
+        },
+        {
+          "check": "complexity_delta",
+          "severity": "warning",
+          "message": "check_report_inputs: complexity 4 -> 11, 11 -> 19 source lines. This change takes the function over the threshold (10). Put the new branches in a new named function and call it, or refactor this function first in its own change.",
+          "path": "reports.py",
+          "line": 55,
+          "location": "reports.py:55",
+          "evidence": "cc 4 -> 11; sloc 11 -> 19; threshold 10",
+          "detail": {
+            "unit": "check_report_inputs",
+            "match": "name",
+            "cc_old": 4,
+            "cc_new": 11,
+            "sloc_old": 11,
+            "sloc_new": 19,
+            "threshold": 10
+          }
+        }
+      ]
     }
   ]
 }

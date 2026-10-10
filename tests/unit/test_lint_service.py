@@ -12,9 +12,10 @@ import pytest
 from agentless_mcp.application import lint_service
 from agentless_mcp.application.lint_service import LintCandidateInput, LintService
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import patchlint
+from agentless_mcp.core import erosion, patchlint
 from agentless_mcp.core.patches import parse_blocks
 from agentless_mcp.util import fslimits
+from agentless_mcp.util.errors import OperationFailed
 
 APP = """\
 def add(left, right):
@@ -195,3 +196,358 @@ class TestAManifestSymlinkedOutOfTheRepositoryIsRefused:
         assert "declared" in declared.packages
         assert declared.sources == (patchlint.PYPROJECT_NAME,)
         assert declared.warnings == ()
+
+
+def function(name, cc, tag=""):
+    """Python source for one function of complexity ``cc``."""
+    lines = [f"def {name}(value):"]
+    for index in range(cc - 1):
+        lines += [f"    if value == {index}:", f"        return {index}"]
+    lines.append(f'    return "{tag}"')
+    return "\n".join(lines) + "\n"
+
+
+def block(path, search, replace):
+    """One SEARCH/REPLACE block as text; both sides end with a newline or are empty."""
+    return f"### {path}\n<<<<<<< SEARCH\n{search}=======\n{replace}>>>>>>> REPLACE\n"
+
+
+ALL = lint_service.CHECK_NAMES
+PAIRS_ONLY = (erosion.CHECK_COMPLEXITY_DELTA,)
+BOTH_MODES = pytest.mark.parametrize("checks", [ALL, PAIRS_ONLY], ids=["all-checks", "pairs-only"])
+CROSSING = block("app.py", function("handle", 10), function("handle", 11))
+
+
+@pytest.fixture
+def erosion_repo(make_git_repo):
+    """A committed repository with one function at the threshold and two odd files."""
+    return make_git_repo(
+        {
+            "app.py": function("handle", 10),
+            "empty.py": "",
+            "twice.py": "x = 1\n\nx = 1\n",
+            "config.yaml": "key: value\n",
+        },
+        name="erosion",
+    )
+
+
+def findings_of(service, root, text, checks):
+    """Lint one candidate and return its findings."""
+    view = service.lint(resolve_repo(root, None), [candidate("01", text)], checks)
+    (entry,) = view.candidates
+    return entry.findings
+
+
+def checks_in(findings):
+    """The check name of each finding, in order."""
+    return [finding.check for finding in findings]
+
+
+class TestTheCheckRegistry:
+    def test_every_patchlint_check_is_registered_as_a_patch_check(self):
+        declared = {
+            getattr(patchlint, name)
+            for name in dir(patchlint)
+            if name.startswith("CHECK_") and name != "CHECK_COVERAGE"
+        }
+        registered = {
+            check.name
+            for check in lint_service.CHECKS
+            if check.needs is lint_service.CheckInput.PATCH
+        }
+        assert registered == declared
+
+    def test_complexity_delta_is_the_one_pair_check(self):
+        assert lint_service.PAIR_CHECK_NAMES == (erosion.CHECK_COMPLEXITY_DELTA,)
+
+    @pytest.mark.parametrize(
+        ("needs", "runner"),
+        [
+            (lint_service.CheckInput.PAIRS, None),
+            (lint_service.CheckInput.PATCH, lambda _pairs, _config: ()),
+        ],
+        ids=["pair-check-without-runner", "patch-check-with-runner"],
+    )
+    def test_a_check_and_its_runner_must_agree(self, needs, runner):
+        with pytest.raises(ValueError, match="a pair check needs a runner"):
+            lint_service.LintCheck("x", needs, runner)
+
+    def test_an_unknown_check_name_is_refused(self, service, erosion_repo):
+        with pytest.raises(OperationFailed, match="unknown check 'complexity'"):
+            findings_of(service, erosion_repo, CROSSING, ("complexity",))
+
+    def test_an_empty_selection_is_refused(self, service, erosion_repo):
+        with pytest.raises(OperationFailed, match="no check selected"):
+            findings_of(service, erosion_repo, CROSSING, ())
+
+
+class TestOnlyPairChecksSkipTheScan:
+    def test_neither_the_scan_nor_the_patch_checks_run(self, service, erosion_repo, monkeypatch):
+        def forbidden(*_arguments, **_keywords):
+            message = "a pair-only run must not reach this"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(LintService, "_facts", forbidden)
+        monkeypatch.setattr(patchlint, "lint_patch", forbidden)
+
+        findings = findings_of(service, erosion_repo, CROSSING, PAIRS_ONLY)
+
+        assert checks_in(findings) == [erosion.CHECK_COMPLEXITY_DELTA]
+
+    def test_a_patch_check_subset_keeps_only_its_rows_and_the_coverage_rows(
+        self, service, erosion_repo
+    ):
+        findings = findings_of(service, erosion_repo, CROSSING, (patchlint.CHECK_CYCLE_DELTA,))
+
+        assert set(checks_in(findings)) <= {patchlint.CHECK_CYCLE_DELTA, patchlint.CHECK_COVERAGE}
+
+    def test_all_checks_put_the_pair_rows_after_the_patch_rows(self, service, erosion_repo):
+        findings = findings_of(service, erosion_repo, CROSSING, ALL)
+
+        assert checks_in(findings) == [
+            patchlint.CHECK_UNDECLARED_IMPORTS,
+            erosion.CHECK_COMPLEXITY_DELTA,
+        ]
+
+
+class TestCandidatePairs:
+    @BOTH_MODES
+    def test_an_edit_that_crosses_the_threshold_is_reported(self, service, erosion_repo, checks):
+        (found,) = [
+            finding
+            for finding in findings_of(service, erosion_repo, CROSSING, checks)
+            if finding.check == erosion.CHECK_COMPLEXITY_DELTA
+        ]
+
+        assert found.location == "app.py:1"
+        assert found.evidence == "cc 10 -> 11; sloc 20 -> 22; threshold 10"
+        assert found.detail == {
+            "unit": "handle",
+            "match": "name",
+            "cc_old": 10,
+            "cc_new": 11,
+            "sloc_old": 20,
+            "sloc_new": 22,
+            "threshold": 10,
+        }
+
+    @BOTH_MODES
+    def test_an_empty_search_on_a_missing_path_creates_the_file(
+        self, service, erosion_repo, checks
+    ):
+        text = block("pkg/new.py", "", function("fresh", 12))
+
+        rows = findings_of(service, erosion_repo, text, checks)
+
+        (found,) = [row for row in rows if row.check == erosion.CHECK_COMPLEXITY_DELTA]
+        assert found.location == "pkg/new.py:1"
+        assert found.detail["match"] == "new"
+
+    @BOTH_MODES
+    def test_an_empty_search_on_an_existing_empty_file_is_misoriented(
+        self, service, erosion_repo, checks
+    ):
+        rows = findings_of(service, erosion_repo, block("empty.py", "", function("x", 12)), checks)
+
+        (row,) = rows
+        assert row.check == patchlint.CHECK_COVERAGE
+        assert "already exists in --repo" in row.message
+
+    @BOTH_MODES
+    def test_an_edit_that_does_not_apply_is_a_coverage_row(self, service, erosion_repo, checks):
+        rows = findings_of(service, erosion_repo, block("twice.py", "x = 1\n", "x = 2\n"), checks)
+
+        (row,) = [row for row in rows if row.path == "twice.py"]
+        assert row.check == patchlint.CHECK_COVERAGE
+        assert row.message == (
+            "not checked: 1 of the edits to twice.py did not apply, so no pair check compared "
+            "this file."
+        )
+
+    @BOTH_MODES
+    def test_a_file_over_the_cap_is_a_coverage_row(self, service, erosion_repo, checks):
+        filler = ("# " + "x" * 77 + "\n") * 13_000
+        (erosion_repo / "huge.py").write_text(filler + "def tail():\n    return 1\n")
+
+        rows = findings_of(
+            service, erosion_repo, block("huge.py", "    return 1\n", "    return 2\n"), checks
+        )
+
+        (row,) = [row for row in rows if row.check == patchlint.CHECK_COVERAGE]
+        assert row.message.startswith("not checked: the text of huge.py before the change was not")
+        assert row.evidence.startswith("skipped: ")
+
+    @BOTH_MODES
+    def test_a_file_that_is_not_utf8_is_a_coverage_row(self, service, erosion_repo, checks):
+        (erosion_repo / "latin.py").write_bytes(b"y = 1\nx = '\xff'\n")
+
+        rows = findings_of(service, erosion_repo, block("latin.py", "y = 1\n", "y = 2\n"), checks)
+
+        (row,) = [row for row in rows if row.path == "latin.py"]
+        assert row.evidence == "not UTF-8 text: byte 11 is invalid start byte"
+
+    @BOTH_MODES
+    def test_a_path_outside_the_repository_is_refused(self, service, erosion_repo, checks):
+        (row,) = findings_of(service, erosion_repo, ESCAPING, checks)
+
+        assert row.evidence == "path refused"
+
+    @BOTH_MODES
+    def test_a_misapplied_edit_to_another_scanned_file_suppresses_the_candidate(
+        self, service, erosion_repo, checks
+    ):
+        """Pair-only orientation reads the files the scan reads, not only the pair files."""
+        text = CROSSING + "\n" + block("config.yaml", "missing: line\n", "other: line\n")
+
+        rows = findings_of(service, erosion_repo, text, checks)
+
+        (row,) = rows
+        assert row.path == "config.yaml"
+        assert "is not against --repo" in row.message
+
+    def test_the_configured_threshold_applies(self, service, make_git_repo):
+        root = make_git_repo(
+            {"app.py": function("handle", 3), ".agentless-mcp.json": '{"complexity_threshold": 3}'},
+            name="configured",
+        )
+
+        (found,) = findings_of(
+            service, root, block("app.py", function("handle", 3), function("handle", 4)), PAIRS_ONLY
+        )
+
+        assert found.detail["threshold"] == 3
+
+
+class TestTheHookForm:
+    """`lint_proposed`: the working-tree text at a path against a whole new text."""
+
+    def proposed(self, service, root, path, after, checks=PAIRS_ONLY):
+        view = service.lint_proposed(resolve_repo(root, None), path, after, checks)
+        (entry,) = view.candidates
+        return entry
+
+    def test_a_crossing_change_is_reported_under_the_path_as_given(
+        self, service, erosion_repo, tmp_path
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(function("handle", 11))
+
+        entry = self.proposed(service, erosion_repo, "./app.py", after)
+
+        assert entry.id == "./app.py"
+        (found,) = entry.findings
+        assert found.location == "app.py:1"
+        assert found.detail["match"] == "name"
+
+    @pytest.mark.parametrize("path", ["new.py", "pkg/sub/new.py"])
+    def test_a_path_that_does_not_exist_is_a_new_file(self, service, erosion_repo, tmp_path, path):
+        after = tmp_path / "after.py"
+        after.write_text(function("fresh", 11))
+
+        (found,) = self.proposed(service, erosion_repo, path, after).findings
+
+        assert found.path == path
+        assert found.detail["match"] == "new"
+
+    def test_an_empty_proposed_text_reports_nothing(self, service, erosion_repo, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_text("")
+
+        assert self.proposed(service, erosion_repo, "app.py", after).findings == ()
+
+    def test_both_sides_reach_the_check_with_their_line_endings(
+        self, service, erosion_repo, tmp_path, monkeypatch
+    ):
+        seen = []
+        real = erosion.complexity_delta
+
+        def spy(pairs, threshold):
+            seen.extend(pairs)
+            return real(pairs, threshold)
+
+        monkeypatch.setattr(erosion, "complexity_delta", spy)
+        (erosion_repo / "app.py").write_bytes(b"x = 1\r\ny = 2\r\n")
+        after = tmp_path / "after.py"
+        after.write_bytes(b"x = 1\r\ny = 3\r\n")
+
+        self.proposed(service, erosion_repo, "app.py", after)
+
+        assert seen == [erosion.TextPair("app.py", "x = 1\r\ny = 2\r\n", "x = 1\r\ny = 3\r\n")]
+
+    @pytest.mark.parametrize("side", ["old", "new"])
+    def test_a_side_over_the_cap_is_a_coverage_row(self, service, erosion_repo, tmp_path, side):
+        oversized = ("# " + "x" * 77 + "\n") * 13_000
+        after = tmp_path / "after.py"
+        after.write_text(oversized if side == "new" else "x = 1\n")
+        if side == "old":
+            (erosion_repo / "app.py").write_text(oversized)
+
+        (row,) = self.proposed(service, erosion_repo, "app.py", after).findings
+
+        assert row.check == patchlint.CHECK_COVERAGE
+        assert row.evidence.startswith("skipped: ")
+        expected = "before the change" if side == "old" else "the proposed text for app.py"
+        assert expected in row.message
+
+    def test_a_proposed_text_that_is_not_utf8_is_a_coverage_row(
+        self, service, erosion_repo, tmp_path
+    ):
+        after = tmp_path / "after.py"
+        after.write_bytes(b"x = '\xff'\n")
+
+        (row,) = self.proposed(service, erosion_repo, "app.py", after).findings
+
+        assert row.evidence == "not UTF-8 text: byte 5 is invalid start byte"
+
+    def test_a_missing_proposed_file_is_a_coverage_row_not_a_deletion(
+        self, service, erosion_repo, tmp_path
+    ):
+        (row,) = self.proposed(service, erosion_repo, "app.py", tmp_path / "gone.py").findings
+
+        assert row.check == patchlint.CHECK_COVERAGE
+        assert row.evidence.startswith("unreadable: ")
+
+    def test_a_path_outside_the_repository_is_refused(self, service, erosion_repo, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_text("x = 1\n")
+
+        (row,) = self.proposed(service, erosion_repo, "../outside.py", after).findings
+
+        assert row.evidence == "path refused"
+        assert "../outside.py" not in row.message
+
+    def test_a_symlink_out_of_the_repository_is_refused(self, service, erosion_repo, tmp_path):
+        outside = tmp_path / "outside.py"
+        outside.write_text(function("handle", 2))
+        (erosion_repo / "link.py").symlink_to(outside)
+        after = tmp_path / "after.py"
+        after.write_text(function("handle", 12))
+
+        (row,) = self.proposed(service, erosion_repo, "link.py", after).findings
+
+        assert row.evidence == "path refused"
+
+    def test_a_language_without_complexity_rules_gives_no_row(
+        self, service, erosion_repo, tmp_path
+    ):
+        after = tmp_path / "README.md"
+        after.write_text("# notes\n")
+
+        assert self.proposed(service, erosion_repo, "README.md", after).findings == ()
+
+    def test_the_hook_form_runs_no_scan(self, service, erosion_repo, tmp_path, monkeypatch):
+        def forbidden(*_arguments, **_keywords):
+            message = "the hook form must not reach this"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(LintService, "_facts", forbidden)
+        monkeypatch.setattr(patchlint, "lint_patch", forbidden)
+        after = tmp_path / "after.py"
+        after.write_text(function("handle", 11))
+
+        assert self.proposed(service, erosion_repo, "app.py", after).findings
+
+    def test_a_patch_check_is_refused(self, service, erosion_repo, tmp_path):
+        with pytest.raises(OperationFailed, match="--path runs only the pair checks"):
+            self.proposed(service, erosion_repo, "app.py", tmp_path / "x.py", checks=("arity",))

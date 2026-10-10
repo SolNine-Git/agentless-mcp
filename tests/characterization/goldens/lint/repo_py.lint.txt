@@ -18,3 +18,11 @@
   [not_checked] undeclared_imports  (repository)
       not checked: the repository has no pyproject.toml or requirements file
       evidence: no dependency manifest found
+
+03-branches: 1 warning, 1 not_checked
+  [not_checked] undeclared_imports  (repository)
+      not checked: the repository has no pyproject.toml or requirements file
+      evidence: no dependency manifest found
+  [warning] complexity_delta  reports.py:55
+      check_report_inputs: complexity 4 -> 11, 11 -> 19 source lines. This change takes the function over the threshold (10). Put the new branches in a new named function and call it, or refactor this function first in its own change.
+      evidence: cc 4 -> 11; sloc 11 -> 19; threshold 10

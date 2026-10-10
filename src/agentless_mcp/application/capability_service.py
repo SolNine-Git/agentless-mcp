@@ -1,7 +1,7 @@
 """Build and render the runtime capability contract shared by both adapters."""
 
 import shlex
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from importlib import metadata
 from pathlib import Path
@@ -19,6 +19,7 @@ from agentless_mcp.application.symbol_service import DEFAULT_EXPAND_LIMIT
 from agentless_mcp.core import (
     cache,
     communities,
+    complexity,
     grammars,
     htmlgraph,
     locs,
@@ -251,7 +252,20 @@ def _effective_config(config: projectconfig.ProjectConfig) -> tuple[tuple[str, o
             "relation_weights",
             projectconfig.resolve(None, config.relation_weights, False),
         ),
+        (
+            "complexity_threshold",
+            projectconfig.resolve(None, config.complexity_threshold, complexity.DEFAULT_THRESHOLD),
+        ),
+        ("erosion_gate", _gate_display(config.erosion_gate)),
     )
+
+
+def _gate_display(modes: Mapping[str, str] | None) -> tuple[str, ...] | str:
+    # An object whose every entry was dropped leaves each check on the hook's
+    # default, the same as no key at all.
+    if not modes:
+        return "unset"
+    return tuple(f"{check}={mode}" for check, mode in modes.items())
 
 
 def _caps() -> tuple[tuple[str, float], ...]:

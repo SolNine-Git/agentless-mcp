@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+import pytest
+
 from agentless_mcp.application import (
     capability_service,
     envelope,
@@ -269,6 +271,35 @@ class TestTheEffectiveConfigCoversEveryKey:
         resolved = dict(capability_service._effective_config(config))
 
         assert resolved["relation_weights"] is True
+
+    def test_the_complexity_threshold_defaults_to_ten(self):
+        resolved = dict(capability_service._effective_config(projectconfig.EMPTY))
+
+        assert resolved["complexity_threshold"] == 10
+
+    def test_a_configured_complexity_threshold_is_reported(self):
+        config = projectconfig.parse({"complexity_threshold": 15})
+
+        assert dict(capability_service._effective_config(config))["complexity_threshold"] == 15
+
+    @pytest.mark.parametrize(
+        "document",
+        [{}, {"erosion_gate": {"arity": "block"}}],
+        ids=["absent", "every-entry-dropped"],
+    )
+    def test_an_erosion_gate_with_no_entry_in_force_is_unset(self, document):
+        config = projectconfig.parse(document)
+
+        assert dict(capability_service._effective_config(config))["erosion_gate"] == "unset"
+
+    def test_a_configured_erosion_gate_lists_each_mode_in_force(self):
+        config = projectconfig.parse(
+            {"erosion_gate": {"clone_delta": "advisory", "complexity_delta": "block"}}
+        )
+
+        resolved = dict(capability_service._effective_config(config))
+
+        assert resolved["erosion_gate"] == ("complexity_delta=block", "clone_delta=advisory")
 
 
 class TestTheInventoryIsComplete:

@@ -62,7 +62,7 @@ stricter escape because its grammar is not this one.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, overload
 
@@ -1313,10 +1313,13 @@ class LintFinding:
     line: int
     location: str
     evidence: str
+    # Machine-readable numbers behind a pair-check finding about one unit. JSON
+    # only, and absent from every other finding, so the existing shape holds.
+    detail: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this finding."""
-        return {
+        document = {
             "check": self.check,
             "severity": self.severity,
             "message": self.message,
@@ -1325,6 +1328,9 @@ class LintFinding:
             "location": self.location,
             "evidence": self.evidence,
         }
+        if self.detail is not None:
+            document["detail"] = dict(self.detail)
+        return document
 
 
 @dataclass(frozen=True)

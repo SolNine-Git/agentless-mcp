@@ -141,6 +141,23 @@ class MessageText:
     complexity_language_unsupported: str
     complexity_does_not_parse: str
     complexity_tokenizer_rejects: str
+    complexity_grew: str
+    complexity_crossed: str
+    complexity_new_unit: str
+    complexity_evidence: str
+    complexity_new_unit_evidence: str
+    complexity_old_not_measured: str
+    complexity_new_not_measured: str
+    pair_old_unread: str
+    pair_new_unread: str
+    pair_edits_unapplied: str
+    lint_unknown_check: str
+    lint_no_checks: str
+    lint_path_needs_after: str
+    lint_path_takes_pair_checks: str
+    config_erosion_gate_not_object: str
+    config_erosion_gate_mode: str
+    config_erosion_gate_unknown: str
 
 
 # Every tool this server can register, across both published surfaces: the
