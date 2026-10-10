@@ -21,8 +21,8 @@ whole text before and after the change. A run that selects only pair checks
 skips the repository scan the patch checks need. ``clone_delta`` reads every
 tier-1 source file outside test and fixture paths for its index, once per run,
 within a time budget. Only a run that selects it and changes a file in that
-scope reads them. Review mode reads the files changed since a commit from git
-and from the working tree.
+scope reads them. The hook form reads them from the tag cache only. Review mode
+reads the files changed since a commit from git and from the working tree.
 
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
@@ -39,7 +39,6 @@ from functools import lru_cache, partial, reduce
 from pathlib import Path
 
 from agentless_mcp.application import render
-from agentless_mcp.application.graph_service import walk_budget
 from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
@@ -271,7 +270,7 @@ class LintService:
         refusal = proposed_check_refusal(checks)
         if refusal:
             raise OperationFailed(refusal)
-        pairs = _pair_checks(ctx.root, selection, self._source(ctx))
+        pairs = _pair_checks(selection, _cache_only_index(ctx.root, self._source(ctx)))
         judged = _proposed_findings(ctx, path, after, pairs)
         return render.LintReportView(candidates=(_view(path, judged),))
 
@@ -287,13 +286,13 @@ class LintService:
         if refusal:
             raise OperationFailed(refusal)
         review = _Review(ctx.root, self._runner)
-        pairs = _pair_checks(ctx.root, selection, self._source(ctx))
+        pairs = _pair_checks(selection, _lazy_index(ctx.root, self._source(ctx)))
         judged = review.judge(revision, pairs, ctx.config)
         return render.LintReportView(candidates=(_view(revision, judged),))
 
     def _judge(self, ctx: RepoContext, selection: "_Selection") -> Judge:
         source = self._source(ctx)
-        pairs = _pair_checks(ctx.root, selection, source)
+        pairs = _pair_checks(selection, _lazy_index(ctx.root, source))
         if not selection.patch:
             return lambda candidate: _pair_only_findings(candidate, ctx, pairs)
         facts = self._facts(ctx)
@@ -339,16 +338,26 @@ def _select(names: Collection[str]) -> _Selection:
     )
 
 
-def _pair_checks(root: Path, selection: _Selection, source: cache.FileSource) -> _PairChecks:
+def _pair_checks(selection: _Selection, index: CloneIndexSource) -> _PairChecks:
+    return _PairChecks(runners=selection.pairs, clones=index if selection.clones else None)
+
+
+def _lazy_index(root: Path, source: cache.FileSource) -> CloneIndexSource:
     # The only place a run reads the whole repository for a pair check. The index is built
     # on the first clone_delta call with a pair in scope, and every candidate shares it.
-    clones = lru_cache(maxsize=1)(partial(_clone_index, root, source)) if selection.clones else None
-    return _PairChecks(runners=selection.pairs, clones=clones)
+    return lru_cache(maxsize=1)(partial(_clone_index, root, source))
+
+
+def _cache_only_index(root: Path, source: cache.FileSource) -> CloneIndexSource:
+    # The hook form runs on every edit, so it reads the index from a tag cache or not at all.
+    if source.cached:
+        return _lazy_index(root, source)
+    return partial(erosion.CloneIndex, no_tag_cache=True)
 
 
 def _clone_index(root: Path, source: cache.FileSource) -> erosion.CloneIndex:
     started = time.monotonic()
-    budget = walk_budget(deadline.remaining())
+    budget = deadline.walk_budget(deadline.remaining())
     try:
         listed = treewalk.walk_repo(root)
     except (WalkBoundExceeded, RepoResolutionError) as exc:

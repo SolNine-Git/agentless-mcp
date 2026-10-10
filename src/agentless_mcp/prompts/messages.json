@@ -104,6 +104,8 @@
   "clone_index_gaps_evidence": "first: {path}: {reason}",
   "clone_index_unlisted": "not checked: clone_delta could not list the repository files ({reason}), so it compared the changed files only with each other.",
   "clone_index_stopped": "stopped: the clone index reached its time budget before this file",
+  "clone_no_tag_cache": "not checked: in the hook form, clone_delta reads the repository's clone blocks from the tag cache only, and this run has no tag cache. Run agentless-mcp index on the repository to turn the check on.",
+  "clone_no_tag_cache_evidence": "no tag cache",
   "clone_new_copy": "lines {start}-{end} add a copy of a block, with names and literals ignored, and this repository now holds {count} copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.",
   "clone_new_copy_evidence": "also at {sites}",
   "clone_and_more": "{listed} and {count} more",

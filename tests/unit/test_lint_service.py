@@ -7,6 +7,7 @@ outside the repository, which took the whole run down with it, and a repository
 file the reader skipped, which the report has to admit it never compared.
 """
 
+import dataclasses
 import json
 import subprocess
 from types import SimpleNamespace
@@ -16,10 +17,11 @@ import pytest
 from agentless_mcp.application import lint_service
 from agentless_mcp.application.lint_service import LintCandidateInput, LintService
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import erosion, gitinfo, patchlint
+from agentless_mcp.application.symbol_service import in_metric_scope
+from agentless_mcp.core import cache, clones, erosion, gitinfo, patchlint
 from agentless_mcp.core.gitinfo import GitOutcome
 from agentless_mcp.core.patches import parse_blocks
-from agentless_mcp.util import fslimits
+from agentless_mcp.util import deadline, fslimits
 from agentless_mcp.util.errors import OperationFailed, RevisionUnresolved
 
 APP = """\
@@ -1270,7 +1272,7 @@ class TestCloneDeltaInTheService:
             asked.append(remaining)
             return 0.0
 
-        monkeypatch.setattr(lint_service, "walk_budget", spent)
+        monkeypatch.setattr(deadline, "walk_budget", spent)
         monkeypatch.setattr(lint_service, "time", SimpleNamespace(monotonic=lambda: 1000.0))
 
         findings = findings_of(service, clone_repo, add_file("lib.py", summed("again")), CLONE_ONLY)
@@ -1333,16 +1335,68 @@ class TestCloneDeltaInTheService:
 
         assert [row.location for row in clone_rows(findings)] == ["lib.py:1"]
 
-    def test_the_hook_form_runs_clone_delta_when_named(self, service, clone_repo, tmp_path):
+    def test_the_hook_form_runs_clone_delta_when_named(
+        self, service, extractor, clone_repo, tmp_path
+    ):
         after = tmp_path / "after.py"
         after.write_text(summed("again"))
-        ctx = resolve_repo(clone_repo, None)
+        cache.build_index(clone_repo, extractor, measure=in_metric_scope)
+        source = cache.open_source(clone_repo, extractor, tree_oid=None)
+        ctx = dataclasses.replace(resolve_repo(clone_repo, None), symbols=source)
 
-        (entry,) = service.lint_proposed(ctx, "lib.py", after, CLONE_ONLY).candidates
-        (default,) = service.lint_proposed(ctx, "lib.py", after).candidates
+        try:
+            (entry,) = service.lint_proposed(ctx, "lib.py", after, CLONE_ONLY).candidates
+            (default,) = service.lint_proposed(ctx, "lib.py", after).candidates
+        finally:
+            source.close()
 
+        assert source.cached
         assert [row.location for row in entry.findings] == ["lib.py:1"]
         assert clone_rows(default.findings) == []
+
+    def test_the_hook_form_without_a_tag_cache_is_off_and_parses_nothing(
+        self, service, extractor, clone_repo, monkeypatch, tmp_path
+    ):
+        class Unparsed(cache.OnDemandSource):
+            def blocks_for(self, text, language, path):
+                message = f"the hook form without a tag cache must not parse {path}"
+                raise AssertionError(message)
+
+        def forbidden(_text, path, _language):
+            message = f"the hook form without a tag cache must not parse {path}"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(clones, "file_blocks", forbidden)
+        after = tmp_path / "after.py"
+        after.write_text(summed("again"))
+        ctx = dataclasses.replace(resolve_repo(clone_repo, None), symbols=Unparsed(extractor))
+
+        (entry,) = service.lint_proposed(ctx, "lib.py", after, CLONE_ONLY).candidates
+
+        (row,) = entry.findings
+        assert (row.check, row.severity, row.location) == (
+            erosion.CHECK_CLONE_DELTA,
+            "not_checked",
+            "(repository)",
+        )
+        assert row.message == (
+            "not checked: in the hook form, clone_delta reads the repository's clone blocks "
+            "from the tag cache only, and this run has no tag cache. Run agentless-mcp index on "
+            "the repository to turn the check on."
+        )
+        assert row.evidence == "no tag cache"
+        assert row.detail == {"reason": "no_tag_cache"}
+        assert entry.observed is None
+
+    def test_the_other_forms_build_the_index_without_a_tag_cache(self, service, clone_repo):
+        candidate_rows = findings_of(
+            service, clone_repo, add_file("lib.py", summed("again")), CLONE_ONLY
+        )
+        (clone_repo / "lib.py").write_text(summed("again"))
+        reviewed = review(service, clone_repo, checks=CLONE_ONLY)
+
+        assert [row.location for row in candidate_rows] == ["lib.py:1"]
+        assert [row.location for row in reviewed.findings] == ["lib.py:1"]
 
     def test_review_mode_reports_a_new_copy(self, service, clone_repo):
         (clone_repo / "lib.py").write_text(summed("again"))

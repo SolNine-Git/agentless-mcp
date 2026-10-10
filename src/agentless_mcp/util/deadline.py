@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 
 from agentless_mcp.util.errors import CallStopped
 
+# The health complexity walk and lint's clone index stop at the lesser of this and half
+# the call's remaining allowance, so a large repository cannot cost the rest of the answer.
+WALK_BUDGET_SECONDS = 10.0
+
 
 @dataclass
 class Deadline:
@@ -84,6 +88,13 @@ def remaining() -> float | None:
     """Return the seconds left in the current call's allowance, or None outside a call."""
     deadline = _ACTIVE.get()
     return None if deadline is None else deadline.remaining()
+
+
+def walk_budget(remaining: float | None) -> float:
+    """Return a long walk's budget in seconds, given the call's remaining allowance."""
+    if remaining is None:
+        return WALK_BUDGET_SECONDS
+    return max(0.0, min(WALK_BUDGET_SECONDS, remaining / 2))
 
 
 def checkpoint() -> None:

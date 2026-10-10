@@ -506,6 +506,17 @@ class TestFreshness:
 
         assert source.receipt == "bypassed (--no-cache)"
 
+    def test_only_an_opened_index_says_it_reads_stored_rows(self, repo, extractor):
+        absent = cache.open_source(repo, extractor, tree_oid=None)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
+        bypassed = cache.open_source(repo, extractor, tree_oid=None, no_cache=True)
+        opened = cache.open_source(repo, extractor, tree_oid=None)
+
+        try:
+            assert (absent.cached, bypassed.cached, opened.cached) == (False, False, True)
+        finally:
+            opened.close()
+
     def test_a_commit_reports_a_generation_mismatch_and_names_both_generations(
         self, make_git_repo, extractor, services, capsys
     ):
@@ -3013,7 +3024,7 @@ def _json_without_receipt(output):
 
 
 class TestWarmEqualsCold:
-    """Every metric reader answers the same with the index as without it."""
+    """Every metric reader answers the same with the index as without it, but the hook form."""
 
     def cold_then_warm(self, services, root, capsys, *arguments):
         assert invoke(services, root, *arguments, "--no-cache") == EXIT_OK
@@ -3053,21 +3064,30 @@ class TestWarmEqualsCold:
         assert _json_without_receipt(capsys.readouterr().out) == cold
         assert calls == ["web.ts"]
 
-    def test_the_lint_hook_form(self, services, metrics_repo, capsys, monkeypatch, tmp_path):
+    def test_the_lint_hook_form_reads_clone_blocks_only_from_the_index(
+        self, services, metrics_repo, capsys, monkeypatch, tmp_path
+    ):
         after = tmp_path / "after.py"
         after.write_text(APP + COPY, encoding="utf-8")
         arguments = ("lint", "--path", "app.py", "--after", str(after))
         arguments = (*arguments, "--only", "clone_delta", "--json")
-
-        cold, warm = self.cold_then_warm(services, metrics_repo, capsys, *arguments)
         calls = recording(monkeypatch, clones, "file_blocks")
-        assert invoke(services, metrics_repo, *arguments) == EXIT_OK
-        served = _json_without_receipt(capsys.readouterr().out)
 
-        assert warm == cold
-        assert served == cold
+        assert invoke(services, metrics_repo, *arguments, "--no-cache") == EXIT_OK
+        (cold,) = _json_without_receipt(capsys.readouterr().out)["candidates"]
+        cold_calls = list(calls)
+        assert invoke(services, metrics_repo, "index") == EXIT_OK
+        capsys.readouterr()
+        calls.clear()
+        assert invoke(services, metrics_repo, *arguments) == EXIT_OK
+        (warm,) = _json_without_receipt(capsys.readouterr().out)["candidates"]
+
+        assert cold_calls == [], "without the index the hook form parses nothing"
+        assert [row["detail"] for row in cold["findings"]] == [{"reason": "no_tag_cache"}]
         assert calls == ["app.py", "app.py"], "only the two pair sides are parsed"
-        assert any(row["check"] == "clone_delta" for row in cold["candidates"][0]["findings"])
+        (gap,) = warm["findings"]
+        assert gap["message"].endswith("a copy of a block in them: broken.py, rejects.py.")
+        assert warm["observed"] == {"clone_instances": []}
 
     def test_lint_with_every_check(self, services, metrics_repo, capsys, tmp_path):
         before = APP.splitlines(keepends=True)

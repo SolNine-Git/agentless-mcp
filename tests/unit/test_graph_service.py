@@ -1160,14 +1160,6 @@ class TestHealthComplexity:
         assert (stopped.walked, stopped.clone_lines, stopped.clone_share) == (9, 0, 0.0)
         assert 0 < stopped.sloc < whole.sloc
 
-    @pytest.mark.parametrize(
-        ("remaining", "budget"), [(None, 10.0), (30.0, 10.0), (8.0, 4.0), (-1.0, 0.0)]
-    )
-    def test_the_walk_budget_is_the_lesser_of_the_cap_and_half_the_remainder(
-        self, remaining, budget
-    ):
-        assert graph_service.walk_budget(remaining) == budget
-
     def test_the_cli_walk_stops_at_the_cap(self, graphs, tmp_path, monkeypatch):
         files = {f"m{index:02}.py": branchy(f"f{index}", 2) for index in range(12)}
         repo = build(tmp_path, files)

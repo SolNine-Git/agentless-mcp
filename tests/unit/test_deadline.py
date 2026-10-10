@@ -112,6 +112,14 @@ class TestTheDeadline:
         assert asyncio.run(seen_by_worker()) is call
         assert deadline.active() is None
 
+    @pytest.mark.parametrize(
+        ("remaining", "budget"), [(None, 10.0), (30.0, 10.0), (8.0, 4.0), (-1.0, 0.0)]
+    )
+    def test_the_walk_budget_is_the_lesser_of_the_cap_and_half_the_remainder(
+        self, remaining, budget
+    ):
+        assert deadline.walk_budget(remaining) == budget
+
 
 class TestTheLongLoopsCheckIt:
     """Each loop that can run long stops under a spent deadline."""

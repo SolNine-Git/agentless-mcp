@@ -377,6 +377,11 @@ class FileSource(Protocol):
         """The ``cache:`` field describing this source."""
         ...
 
+    @property
+    def cached(self) -> bool:
+        """True when this source reads stored rows, so it parses only a file whose rows moved."""
+        ...
+
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Return the symbols ``text`` defines, as the extractor would."""
         ...
@@ -421,6 +426,11 @@ class OnDemandSource:
     def receipt(self) -> str:
         """The ``cache:`` field describing this source."""
         return self._status.receipt
+
+    @property
+    def cached(self) -> bool:
+        """False: this source parses every file it is asked about."""
+        return False
 
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Extract symbols from ``text`` with no cache involved."""
@@ -526,6 +536,11 @@ class CachedSource:
     def receipt(self) -> str:
         """The ``cache:`` field describing this source."""
         return self.status().receipt
+
+    @property
+    def cached(self) -> bool:
+        """True: this source reads the tag cache's rows."""
+        return True
 
     def symbols_for(self, text: str, language: str, path: str) -> list[ASTSymbol]:
         """Return cached symbols when the row still describes ``text``.

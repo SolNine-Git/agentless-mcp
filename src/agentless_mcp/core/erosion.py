@@ -43,6 +43,7 @@ MAX_CLONE_SITES: Final = 20
 MODULE_UNIT = "<module>"
 GAP_NO_BOUNDARY_GLOBS = "no_boundary_globs"
 GAP_NO_RULES = "no_rules_for_language"
+GAP_NO_TAG_CACHE = "no_tag_cache"
 
 MATCH_BODY = "body"
 MATCH_NAME = "name"
@@ -101,8 +102,8 @@ class DriftKey:
 
 
 @dataclass(frozen=True)
-class DriftGap:
-    """Why contract_drift did not check a change by design, as a reason a caller can match."""
+class CheckGap:
+    """Why a pair check did not check a change by design, as a reason a caller can match."""
 
     reason: str
     language: str | None = None
@@ -154,7 +155,7 @@ class PairFinding:
     """A pair-check finding, and the machine-readable detail behind it when it has one."""
 
     finding: Finding
-    detail: UnitDelta | DriftKey | DriftGap | CloneCopy | None = None
+    detail: UnitDelta | DriftKey | CheckGap | CloneCopy | None = None
 
 
 @dataclass(frozen=True)
@@ -282,11 +283,17 @@ def _unbounded() -> bool:
 
 @dataclass(frozen=True)
 class CloneIndex:
-    """The repository files clone_delta indexed, and why each other file was not, by path."""
+    """The files clone_delta indexed and why each other was not, or no_tag_cache for no index."""
 
     files: Mapping[str, FileBlocks] = field(default_factory=_no_files)
     unindexed: Mapping[str, str] = field(default_factory=_no_reasons)
     unlisted: str | None = None
+    no_tag_cache: bool = False
+
+    def __post_init__(self) -> None:
+        if self.no_tag_cache and (self.files or self.unindexed or self.unlisted is not None):
+            message = "a CloneIndex with no_tag_cache holds no file, no gap, and no listing error"
+            raise ValueError(message)
 
 
 @dataclass(frozen=True)
@@ -399,6 +406,8 @@ def clone_delta(
     file a pair names is replaced by that pair. ``reported`` holds the
     ``(path, line)`` of each function ``near_duplicates`` reported in the same run.
     """
+    if index.no_tag_cache:
+        return PairOutcome(_no_tag_cache_rows(pairs))
     indexed, rows = _each_pair(pairs, _index_pair)
     changed = {pair.path for pair in pairs}
     instances = _after_instances(indexed, index, changed)
@@ -456,7 +465,7 @@ def _units(
 
 
 def _not_checked(
-    check: str, path: str, message: str, evidence: str, gap: DriftGap | None = None
+    check: str, path: str, message: str, evidence: str, gap: CheckGap | None = None
 ) -> PairFinding:
     return PairFinding(
         Finding(
@@ -660,7 +669,7 @@ def _no_boundary_rows(pairs: Sequence[TextPair]) -> tuple[PairFinding, ...]:
         return ()
     message = MESSAGES.contract_no_boundary.format(config=CONFIG_FILENAME)
     evidence = MESSAGES.contract_no_boundary_evidence
-    gap = DriftGap(GAP_NO_BOUNDARY_GLOBS)
+    gap = CheckGap(GAP_NO_BOUNDARY_GLOBS)
     return (_not_checked(CHECK_CONTRACT_DRIFT, "", message, evidence, gap),)
 
 
@@ -677,7 +686,7 @@ def _admitted(
             admitted.append(pair)
         elif pair.new is not None:
             message = MESSAGES.contract_no_rules.format(language=language, path=pair.path)
-            gap = DriftGap(GAP_NO_RULES, language)
+            gap = CheckGap(GAP_NO_RULES, language)
             rows.append(_not_checked(CHECK_CONTRACT_DRIFT, pair.path, message, language, gap))
     return admitted, rows
 
@@ -942,3 +951,10 @@ def _index_rows(index: CloneIndex, changed: Collection[str]) -> list[PairFinding
         evidence = MESSAGES.clone_index_gaps_evidence.format(path=first, reason=reason)
         rows.append(_not_checked(CHECK_CLONE_DELTA, "", message, evidence=evidence))
     return rows
+
+
+def _no_tag_cache_rows(pairs: Sequence[TextPair]) -> tuple[PairFinding, ...]:
+    if all(pair_language(pair.path) is None for pair in pairs):
+        return ()
+    message, evidence = MESSAGES.clone_no_tag_cache, MESSAGES.clone_no_tag_cache_evidence
+    return (_not_checked(CHECK_CLONE_DELTA, "", message, evidence, CheckGap(GAP_NO_TAG_CACHE)),)

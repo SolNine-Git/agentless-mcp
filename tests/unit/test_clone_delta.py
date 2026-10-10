@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentless_mcp.core import erosion
+from agentless_mcp.core import clones, erosion
 from agentless_mcp.core.clones import clone_groups, file_blocks
 from agentless_mcp.core.erosion import CloneIndex, TextPair, clone_delta, clone_index
 from agentless_mcp.core.patchlint import Severity
@@ -321,6 +321,31 @@ class TestCoverage:
             "files), so it compared the changed files only with each other."
         )
         assert len(copies(results)) == 2
+
+    def test_an_index_without_a_tag_cache_gives_one_off_row_and_parses_nothing(self, monkeypatch):
+        def forbidden(_text, path, _language):
+            message = f"clone_delta without a tag cache must not parse {path}"
+            raise AssertionError(message)
+
+        monkeypatch.setattr(clones, "file_blocks", forbidden)
+        index = CloneIndex(no_tag_cache=True)
+        pairs = [TextPair("b.py", None, total("one")), TextPair("c.py", total(), total("two"))]
+
+        outcome = clone_delta(pairs, index, frozenset())
+
+        (row,) = outcome.findings
+        assert (row.finding.severity, row.finding.location) == (
+            Severity.NOT_CHECKED,
+            "(repository)",
+        )
+        assert row.finding.evidence == "no tag cache"
+        assert row.detail.as_dict() == {"reason": erosion.GAP_NO_TAG_CACHE}
+        assert outcome.observed == erosion.Observed()
+        assert clone_delta([], index, frozenset()).findings == ()
+
+    def test_an_index_without_a_tag_cache_holds_no_file(self):
+        with pytest.raises(ValueError, match="holds no file"):
+            CloneIndex(files={"a.py": file_blocks(total(), "a.py", "python")}, no_tag_cache=True)
 
     @pytest.mark.parametrize("path", ["notes.md", "data.json"])
     def test_a_pair_in_a_language_with_no_table_gives_no_row(self, path):

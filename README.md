@@ -611,19 +611,20 @@ the binary's check list from `capabilities --json` and runs lint once more with
 the requested pair checks that the list names. When the binary is missing, the
 hook skips the call.
 
-`clone_delta` reads the clone blocks of every source file outside test and
-fixture paths, so it is fast only with a fresh tag cache (`agentless-mcp
-index`, or the MCP server's background index). An edit of a test or fixture
-file reads none of them and gets no `clone_delta` row. On one mcp-local file
-the hook takes 0.24 s with a fresh cache and 0.84 s without one, against 0.21 s
-and 0.20 s for the two other checks alone (median of 5 interleaved runs,
+In the hook form, `clone_delta` reads the clone blocks of every source file
+outside test and fixture paths from the tag cache (`agentless-mcp index`, or
+the MCP server's background index). It parses only the edited file and the
+files that changed or were added since the index. Without a tag cache, the
+check is off for that call: lint gives one `not_checked` row with the reason
+`no_tag_cache`, and the hook logs `clone_delta` under `off_by_config`, not as
+a gap. An edit of a test or fixture file gets no `clone_delta` row. On one
+mcp-local file the hook takes 0.24 s with a fresh cache, against 0.21 s and
+0.20 s for the two other checks alone (median of 5 interleaved runs,
 `/usr/bin/time`). On diffusers@65ab105 without a cache, the hook-form lint of
-all three checks takes 6.31 s for a source file and 0.15 s for a test file (one
-run each). The clone index stops after 10 s and reports each file it did not
-reach in a `not_checked` row. The hook gives lint at most 9.5 s, so in a larger
-repository without a fresh cache the hook still logs the call as `degraded`.
-The binary must have the same cache schema as the MCP server that keeps the
-cache fresh, because two builds with different schemas delete each other's
+all three checks takes 0.14 s for a source file (one run). `lint --since` and
+candidate runs build the index when there is no cache, and they stop it after
+10 s. The binary must have the same cache schema as the MCP server that keeps
+the cache fresh, because two builds with different schemas delete each other's
 database.
 
 Install the gate in Claude Code:

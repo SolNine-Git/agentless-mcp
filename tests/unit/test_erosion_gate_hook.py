@@ -540,6 +540,28 @@ class TestClassification:
             (),
         )
 
+    def test_a_run_without_a_tag_cache_is_off_for_clone_delta(self):
+        row = finding(
+            check="clone_delta", severity="not_checked", detail={"reason": "no_tag_cache"}
+        )
+
+        verdict = hook.classify(hook.LintOutput((row,), None), CONTRACT_BLOCKS)
+
+        assert (verdict.outcome, verdict.off_by_config, verdict.gaps) == (
+            "clean",
+            ("clone_delta",),
+            (),
+        )
+
+    def test_an_off_reason_counts_only_for_its_own_check(self):
+        row = finding(
+            check="clone_delta", severity="not_checked", detail={"reason": "no_boundary_globs"}
+        )
+
+        verdict = hook.classify(hook.LintOutput((row,), None), CONTRACT_BLOCKS)
+
+        assert (verdict.outcome, verdict.off_by_config) == ("degraded", ())
+
     def test_any_other_not_checked_row_is_a_gap_and_never_clean(self):
         row = finding(
             check="contract_drift", severity="not_checked", message="the new text does not parse"
@@ -1031,7 +1053,10 @@ def test_the_real_cli_reports_a_branch_added_to_a_complex_function(gate):
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "pkg/app.py:1: big: complexity 12 -> 13" in context
     [record] = gate.records()
-    assert (record["outcome"], record["off_by_config"]) == ("advisory", ["contract_drift"])
+    assert (record["outcome"], record["off_by_config"]) == (
+        "advisory",
+        ["contract_drift", "clone_delta"],
+    )
     detail = record["findings"][0]["detail"]
     assert (detail["match"], detail["cc_old"], detail["cc_new"]) == ("name", 12, 13)
 
@@ -1069,6 +1094,12 @@ class TestTheHookAgreesWithThePackage:
     def test_the_hook_gates_exactly_the_checks_the_config_can_name(self):
         assert hook.KNOWN_CHECKS == projectconfig.GATED_CHECKS
         assert set(hook.KNOWN_CHECKS) <= set(PAIR_CHECK_NAMES)
+
+    def test_the_off_reasons_are_the_packages_designed_gaps(self):
+        assert hook.OFF_REASONS == {
+            erosion.CHECK_CONTRACT_DRIFT: (erosion.GAP_NO_BOUNDARY_GLOBS, erosion.GAP_NO_RULES),
+            erosion.CHECK_CLONE_DELTA: (erosion.GAP_NO_TAG_CACHE,),
+        }
 
     def test_the_hook_form_inputs_are_the_pair_input_kinds(self):
         assert set(hook.HOOK_FORM_INPUTS) == {CheckInput.PAIRS.value, CheckInput.PAIRS_CLONES.value}

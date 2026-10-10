@@ -51,8 +51,12 @@ MODES = (OFF, ADVISORY, BLOCK)
 DEFAULT_MODE = ADVISORY
 KNOWN_CHECKS = ("complexity_delta", "contract_drift", "clone_delta")
 CONTRACT_DRIFT = "contract_drift"
-# The contract_drift gaps that lint emits by design: the check is off for that file.
-OFF_REASONS = ("no_boundary_globs", "no_rules_for_language")
+CLONE_DELTA = "clone_delta"
+# The gaps that lint emits by design, by check: the check is off for that file or run.
+OFF_REASONS = {
+    CONTRACT_DRIFT: ("no_boundary_globs", "no_rules_for_language"),
+    CLONE_DELTA: ("no_tag_cache",),
+}
 # The input kinds lint accepts in the hook form: each check reads text pairs.
 HOOK_FORM_INPUTS = ("pairs", "pairs+clones")
 COVERAGE_CHECK = "coverage"
@@ -753,10 +757,9 @@ def classify(output: LintOutput, modes: Mapping[str, str]) -> Verdict:
 def _off_by_config(finding: LintFinding) -> bool:
     detail = finding.detail
     return (
-        finding.check == CONTRACT_DRIFT
-        and detail is not None
+        detail is not None
         and "reason" in detail
-        and detail["reason"] in OFF_REASONS
+        and detail["reason"] in OFF_REASONS.get(finding.check, ())
     )
 
 

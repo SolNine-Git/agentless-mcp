@@ -89,10 +89,6 @@ DEFAULT_CYCLE_LIMIT = 20
 DEFAULT_COMMUNITY_LIMIT = 20
 DEFAULT_HEALTH_LIMIT = 20
 
-# The complexity walk and lint's clone index stop at the lesser of this and half the
-# call's remaining allowance, so a large repository cannot cost the rest of the answer.
-COMPLEXITY_BUDGET_SECONDS = 10.0
-
 # How many member paths one community lists before it elides. A community is
 # usually a directory; past a dozen files the reader wants the label and the
 # count, and `list_dir` is the view that enumerates.
@@ -342,7 +338,7 @@ class GraphService:
         walk = _walk_complexity(
             ctx.root,
             _complexity_targets(resolved.scan),
-            budget=walk_budget(deadline.remaining()),
+            budget=deadline.walk_budget(deadline.remaining()),
             source=cache.effective_source(ctx.symbols, self._extractor),
         )
         threshold = projectconfig.resolve(
@@ -765,13 +761,6 @@ def _unit_stable_id(
         if unit.qualname == name or unit.qualname.endswith(f".{name}")
     ]
     return found[0] if len(found) == 1 else None
-
-
-def walk_budget(remaining: float | None) -> float:
-    """Return a metric walk's budget in seconds, given the call's remaining allowance."""
-    if remaining is None:
-        return COMPLEXITY_BUDGET_SECONDS
-    return max(0.0, min(COMPLEXITY_BUDGET_SECONDS, remaining / 2))
 
 
 def _complexity_targets(scan: refs.RepoScan) -> tuple[_Target, ...]:

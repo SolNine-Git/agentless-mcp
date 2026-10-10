@@ -1064,6 +1064,8 @@ class TestLintReviewMode:
     def test_path_runs_clone_delta_when_only_names_it(self, services, reviewed, tmp_path, capsys):
         after = tmp_path / "after.py"
         after.write_text(_branchy("again", 11), encoding="utf-8")
+        assert invoke(services, reviewed, "index") == EXIT_OK
+        capsys.readouterr()
 
         code = invoke(
             services,

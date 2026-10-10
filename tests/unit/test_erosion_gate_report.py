@@ -783,6 +783,14 @@ def test_a_removed_copy_is_acted_on_through_the_real_hook_and_cli(tmp_path, make
     target = root / "pkg" / "app.py"
     transcript = tmp_path / "t1.jsonl"
     session = HookSession(hook_env(tmp_path), transcript, root, target)
+    # The hook form reads clone blocks from the tag cache only.
+    subprocess.run(
+        [str(CLI), "index", "--repo", str(root)],
+        env=session.env,
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
 
     last = "    return round(out, 2) if out else 0\n"
     session.edit("toolu_a", last, last + PASTED)
