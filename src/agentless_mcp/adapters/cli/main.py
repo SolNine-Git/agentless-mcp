@@ -85,6 +85,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_FIND_LIMIT,
     DEFAULT_REFS_LIMIT,
     SymbolService,
+    in_metric_scope,
     kind_names,
     render_expansion,
     render_find,
@@ -1696,8 +1697,8 @@ def _cmd_index(args: argparse.Namespace, services: CliServices) -> int:
         report = cache.build_index(
             ctx.root,
             services.extractor,
-            tree_oid=ctx.tree_oid,
-            head_sha=ctx.head_sha,
+            measure=in_metric_scope,
+            git=cache.GitState(tree_oid=ctx.tree_oid, head_sha=ctx.head_sha),
             force=args.force,
         )
     except (sqlite3.Error, OSError) as error:

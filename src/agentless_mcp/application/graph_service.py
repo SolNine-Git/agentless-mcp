@@ -60,6 +60,7 @@ from agentless_mcp.application import render
 from agentless_mcp.application.map_service import focus_paths
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.application.symbol_service import (
+    in_metric_scope,
     is_fixture_path,
     is_test_path,
     rationale_nodes,
@@ -70,7 +71,6 @@ from agentless_mcp.core import (
     clones,
     communities,
     complexity,
-    grammars,
     graph,
     htmlgraph,
     mermaid,
@@ -781,11 +781,7 @@ def _complexity_targets(scan: refs.RepoScan) -> tuple[_Target, ...]:
     ]
     return tuple(
         sorted(
-            (
-                target
-                for target in candidates
-                if grammars.is_tier1(target.language) and _in_health_scope(target.path)
-            ),
+            (target for target in candidates if in_metric_scope(target.path)),
             key=lambda target: target.path,
         )
     )

@@ -19,6 +19,7 @@ import sys
 
 import pytest
 
+from agentless_mcp.application.symbol_service import in_metric_scope
 from agentless_mcp.core import cache, sandbox
 from agentless_mcp.util import filelock, platforms
 from agentless_mcp.util.errors import CacheLocked
@@ -177,6 +178,6 @@ class TestFileLock:
             filelock.exclusive(database.parent / cache.LOCK_NAME, flavour=flavour),
             pytest.raises(CacheLocked) as refusal,
         ):
-            cache.build_index(root, extractor)
+            cache.build_index(root, extractor, measure=in_metric_scope)
 
         assert str(root.resolve()) in str(refusal.value)

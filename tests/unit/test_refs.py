@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agentless_mcp.application.symbol_service import in_metric_scope
 from agentless_mcp.core import cache, refs
 from agentless_mcp.core.extractor import IdentifierRole, collect_refs, identifier_node_types
 from agentless_mcp.core.refs import (
@@ -510,7 +511,7 @@ class TestASymbolOnlyScanReadsWhatTheFullScanReads:
         root = tmp_path / "repo"
         root.mkdir()
         (root / "core.py").write_text("def quote(sku):\n    return sku\n", encoding="utf-8")
-        cache.build_index(root, extractor)
+        cache.build_index(root, extractor, measure=in_metric_scope)
         source = cache.open_source(root, extractor, tree_oid=None)
         try:
             cached = refs.scan_symbols(root, extractor, source=source)

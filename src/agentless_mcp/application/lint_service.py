@@ -40,7 +40,7 @@ from agentless_mcp.application import render
 from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import is_fixture_path, is_test_path
+from agentless_mcp.application.symbol_service import in_metric_scope
 from agentless_mcp.core import (
     cache,
     complexity,
@@ -158,15 +158,8 @@ def _clone_delta(run: PairInput) -> erosion.PairOutcome:
     if run.clones is None:
         message = "clone_delta needs the clone index, and the service built none for this run"
         raise RuntimeError(message)
-    pairs = [pair for pair in run.pairs if _in_clone_scope(pair.path)]
+    pairs = [pair for pair in run.pairs if in_metric_scope(pair.path)]
     return erosion.clone_delta(pairs, run.clones, run.reported)
-
-
-def _in_clone_scope(path: str) -> bool:
-    # health's scope rule, applied to the tier-1 files the pair checks read.
-    return erosion.pair_language(path) is not None and not (
-        is_test_path(path) or is_fixture_path(path)
-    )
 
 
 CHECKS: tuple[LintCheck, ...] = (
@@ -351,7 +344,7 @@ def _clone_index(root: Path, source: cache.FileSource) -> erosion.CloneIndex:
     texts: dict[str, str] = {}
     unread: dict[str, str] = {}
     for repo_file in listed:
-        if not _in_clone_scope(repo_file.path):
+        if not in_metric_scope(repo_file.path):
             continue
         read = decoded_strict(read_bounded_bytes(root / repo_file.path))
         if read.text is not None:

@@ -17,6 +17,7 @@ from agentless_mcp.application.capability_service import (
     render_capability_report,
 )
 from agentless_mcp.application.repo_context import resolve_repo
+from agentless_mcp.application.symbol_service import in_metric_scope
 from agentless_mcp.core import (
     cache,
     communities,
@@ -108,7 +109,7 @@ class TestTheCacheStatusIsMeasured:
 
     def test_an_opened_source_reports_its_own_generation(self, tmp_path, extractor):
         (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
-        built = cache.build_index(tmp_path, extractor)
+        built = cache.build_index(tmp_path, extractor, measure=in_metric_scope)
         source = cache.open_source(tmp_path, extractor, tree_oid=None)
         try:
             ctx = replace(resolve_repo(tmp_path, None), symbols=source)

@@ -63,7 +63,7 @@ def parse_file(extractor: TreeSitterExtractor, text: str, language: str, path: s
     """Parse ``text`` once and return its facts, units, and clone blocks."""
     stamp = metrics_stamp(language)
     if stamp is None:
-        return ParsedFile(extractor.extract_facts(text, language, path), None)
+        return parse_facts(extractor, text, language, path)
     with recaching():
         data = text.encode("utf-8")
         tree = extractor.parse(data, language)
@@ -78,6 +78,11 @@ def parse_file(extractor: TreeSitterExtractor, text: str, language: str, path: s
             blocks=_measured(lambda: clones.file_blocks_tree(root, path, language, lines)),
         )
         return ParsedFile(extractor.facts_from_tree(tree, data, language, path), metrics)
+
+
+def parse_facts(extractor: TreeSitterExtractor, text: str, language: str, path: str) -> ParsedFile:
+    """Parse ``text`` for its facts alone, with no metrics."""
+    return ParsedFile(extractor.extract_facts(text, language, path), None)
 
 
 def _measured(measure: Callable[[], _Metric]) -> _Metric | Unmeasured:

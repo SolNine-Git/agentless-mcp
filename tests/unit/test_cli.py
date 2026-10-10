@@ -9,6 +9,7 @@ it over Bash.
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from dataclasses import replace
@@ -2181,3 +2182,81 @@ class TestAutoWarmStartup:
         _ = repo_path
         assert run(["warmup", "python"], services) == EXIT_OK
         assert warm_calls == []
+
+
+SUMMED_BODY = (
+    "(items, scale=1, offset=None):\n"
+    "    out = 0 * scale + len(items) - (offset or 0)\n"
+    "    for item in sorted(items, key=abs, reverse=True):\n"
+    "        out += item * scale - 0 + max(item, 0)\n"
+    "    return round(out, 2) if out else 0\n"
+)
+
+
+def summed(name):
+    """A five-line function over the clone_delta token floor; two names are Type-2 copies."""
+    return f"def {name}{SUMMED_BODY}"
+
+
+def metric_paths(root):
+    with sqlite3.connect(cache.cache_path(root)) as connection:
+        rows = connection.execute(
+            "SELECT files.path FROM file_metrics JOIN files ON files.id = file_metrics.file_id"
+        ).fetchall()
+    return sorted(row[0] for row in rows)
+
+
+def answer(services, root, capsys, *arguments):
+    assert invoke(services, root, *arguments) == EXIT_OK
+    document = json.loads(capsys.readouterr().out)
+    document.pop("receipt")
+    return document
+
+
+class TestTheMetricScope:
+    @pytest.fixture
+    def scoped_repo(self, make_git_repo):
+        """Copies of one function in source, test, and fixture files, and one new source copy."""
+        root = make_git_repo(
+            {
+                "pkg/app.py": summed("total"),
+                "pkg/notes.md": "# notes\n",
+                "tests/test_app.py": summed("tested"),
+                "pkg/fixtures/sample.py": summed("sampled"),
+            },
+            name="scoped",
+        )
+        (root / "pkg" / "copy.py").write_text(summed("again"), encoding="utf-8")
+        return root
+
+    def test_index_stores_metrics_only_for_the_files_health_and_lint_read(
+        self, services, scoped_repo
+    ):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+
+        assert metric_paths(scoped_repo) == ["pkg/app.py", "pkg/copy.py"]
+
+    def test_health_answers_the_same_warm_and_cold(self, services, scoped_repo, capsys):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+        capsys.readouterr()
+
+        warm = answer(services, scoped_repo, capsys, "health", "--json")
+        cold = answer(services, scoped_repo, capsys, "health", "--json", "--no-cache")
+
+        assert warm == cold
+        assert warm["complexity"]["clone_lines"] == 10
+
+    def test_lint_answers_the_same_warm_and_cold(self, services, scoped_repo, capsys):
+        assert invoke(services, scoped_repo, "index") == EXIT_OK
+        capsys.readouterr()
+        checks = ("lint", "--since", "HEAD", "--only", "complexity_delta,clone_delta", "--json")
+
+        warm = answer(services, scoped_repo, capsys, *checks)
+        cold = answer(services, scoped_repo, capsys, *checks, "--no-cache")
+
+        assert warm == cold
+        (entry,) = warm["candidates"]
+        clones = [row for row in entry["findings"] if row["check"] == "clone_delta"]
+        assert [(row["location"], row["evidence"]) for row in clones] == [
+            ("pkg/copy.py:1", "also at pkg/app.py:1")
+        ]

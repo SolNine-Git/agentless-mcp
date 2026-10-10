@@ -33,7 +33,7 @@ from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
 from agentless_mcp.application.map_service import MapService
 from agentless_mcp.application.patch_service import PatchService
-from agentless_mcp.application.symbol_service import SymbolService
+from agentless_mcp.application.symbol_service import SymbolService, in_metric_scope
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import (
@@ -222,7 +222,7 @@ class TestLocation:
     def test_the_database_lives_under_the_cache_home_and_not_in_the_repo(
         self, repo, extractor, isolated_cache_home
     ):
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.database.exists()
         assert isolated_cache_home in report.database.parents
@@ -239,7 +239,7 @@ class TestLocation:
         application.mkdir(parents=True, exist_ok=True)
         application.chmod(0o755)
 
-        database = cache.build_index(repo, extractor).database
+        database = cache.build_index(repo, extractor, measure=in_metric_scope).database
 
         assert stat.S_IMODE(application.stat().st_mode) == cachedir.DIRECTORY_MODE
         assert stat.S_IMODE(database.parent.stat().st_mode) == cachedir.DIRECTORY_MODE
@@ -253,30 +253,30 @@ class TestLocation:
 
 class TestIncrementalTriad:
     def test_a_second_run_reuses_every_unchanged_file(self, repo, extractor, spy):
-        first = cache.build_index(repo, extractor)
+        first = cache.build_index(repo, extractor, measure=in_metric_scope)
         spy.clear()
 
-        second = cache.build_index(repo, extractor)
+        second = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert first.indexed == 3
         assert (second.indexed, second.reused, second.pruned) == (0, 3, 0)
         assert spy == []
 
     def test_touching_one_file_re_extracts_exactly_that_file(self, repo, extractor, spy):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "core.py").write_text(CORE + "\n\ndef discount(sku):\n    return 1\n", "utf-8")
         spy.clear()
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert spy == ["core.py"]
         assert (report.indexed, report.reused) == (1, 2)
 
     def test_a_file_defining_nothing_is_recorded_and_then_skipped(self, repo, extractor, spy):
-        first = cache.build_index(repo, extractor)
+        first = cache.build_index(repo, extractor, measure=in_metric_scope)
         spy.clear()
 
-        second = cache.build_index(repo, extractor)
+        second = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(first.database)) as connection:
             recorded = connection.execute(
@@ -293,10 +293,10 @@ class TestIncrementalTriad:
         assert spy == []
 
     def test_a_deleted_file_is_pruned(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "billing.py").unlink()
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.pruned == 1
         assert report.files == 2
@@ -309,10 +309,10 @@ class TestIncrementalTriad:
         assert rows[0] == 0
 
     def test_force_re_extracts_everything(self, repo, extractor, spy):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         spy.clear()
 
-        report = cache.build_index(repo, extractor, force=True)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope, force=True)
 
         assert sorted(spy) == ["billing.py", "core.py", "empty.py"]
         assert (report.indexed, report.reused) == (3, 0)
@@ -321,7 +321,7 @@ class TestIncrementalTriad:
         (repo / "locked.py").write_text(CORE, encoding="utf-8")
         monkeypatch.setattr(cache, "read_bounded", _refuse_one("locked.py"))
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.errors == 1
         assert report.failures[0].path == "locked.py"
@@ -337,7 +337,7 @@ class TestIncrementalTriad:
         oversize.write_text("x = 1\n" * 200_000, encoding="utf-8")
         assert oversize.stat().st_size > fslimits.DEFAULT_MAX_FILE_BYTES
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.errors == 0
         assert report.skipped == 1
@@ -353,7 +353,7 @@ class TestIncrementalTriad:
         extraction is removed from those, so one file was reported as both an
         error and a prune on the same summary line.
         """
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         original = extractor.facts_from_tree
 
         def explode(tree, data, language, path):
@@ -365,7 +365,7 @@ class TestIncrementalTriad:
         monkeypatch.setattr(extractor, "facts_from_tree", explode)
         (repo / "billing.py").write_text(BILLING + "\nEXTRA = 1\n", encoding="utf-8")
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.errors == 1
         assert report.pruned == 0
@@ -389,7 +389,7 @@ class TestIncrementalTriad:
 
         monkeypatch.setattr(extractor, "facts_from_tree", explode)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.errors == 1
         assert report.failures[0].path == "billing.py"
@@ -403,7 +403,7 @@ class TestIncrementalTriad:
         warmed = cache.grammars.warmed_languages()
         monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.errors == 0
         assert report.skipped == 1
@@ -418,10 +418,10 @@ class TestIncrementalTriad:
         (repo / "helper.go").write_text("package main\n", encoding="utf-8")
         warmed = cache.grammars.warmed_languages()
         monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
-        first = cache.build_index(repo, extractor)
+        first = cache.build_index(repo, extractor, measure=in_metric_scope)
         spy.clear()
 
-        second = cache.build_index(repo, extractor)
+        second = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(first.database)) as connection:
             stamped = connection.execute(
@@ -438,10 +438,10 @@ class TestIncrementalTriad:
         warmed = cache.grammars.warmed_languages()
         with pytest.MonkeyPatch.context() as cold:
             cold.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
-            cache.build_index(repo, extractor)
+            cache.build_index(repo, extractor, measure=in_metric_scope)
         spy.clear()
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert spy == ["helper.go"]
         assert (report.indexed, report.skipped) == (1, 0)
@@ -459,7 +459,7 @@ class TestIncrementalTriad:
         monkeypatch.setattr(extractor, "facts_from_tree", defective)
 
         with pytest.raises(error, match="renamed field"):
-            cache.build_index(repo, extractor)
+            cache.build_index(repo, extractor, measure=in_metric_scope)
 
 
 def _refuse_one(name):
@@ -484,7 +484,7 @@ class TestFreshness:
         assert invoke(services, repo, "map") == EXIT_OK
 
     def test_a_fresh_index_names_its_generation(self, repo, extractor):
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         source = cache.open_source(repo, extractor, tree_oid=None)
 
@@ -492,7 +492,7 @@ class TestFreshness:
 
     def test_the_status_names_the_generation_comparison_once(self, repo, extractor):
         """One fact, one key. ``fresh`` and ``generation_matches`` were both it."""
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
 
         document = cache.open_source(repo, extractor, tree_oid=None).status().as_dict()
 
@@ -500,7 +500,7 @@ class TestFreshness:
         assert "fresh" not in document
 
     def test_no_cache_reports_that_it_was_bypassed(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
 
         source = cache.open_source(repo, extractor, tree_oid=None, no_cache=True)
 
@@ -510,7 +510,9 @@ class TestFreshness:
         self, make_git_repo, extractor, services, capsys
     ):
         root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
-        indexed = cache.build_index(root, extractor, tree_oid=_tree_oid(root))
+        indexed = cache.build_index(
+            root, extractor, measure=in_metric_scope, git=cache.GitState(tree_oid=_tree_oid(root))
+        )
         (root / "core.py").write_text(CORE + "\n\ndef rebate(sku):\n    return 2\n", "utf-8")
         commit(root, "second")
         live = _tree_oid(root)
@@ -575,7 +577,9 @@ class TestFreshness:
         self, make_git_repo, extractor
     ):
         root = make_git_repo({"core.py": CORE})
-        cache.build_index(root, extractor, tree_oid=_tree_oid(root))
+        cache.build_index(
+            root, extractor, measure=in_metric_scope, git=cache.GitState(tree_oid=_tree_oid(root))
+        )
         changed = CORE + "\n\ndef rebate(sku):\n    return 2\n"
         (root / "core.py").write_text(changed, encoding="utf-8")
         commit(root, "second")
@@ -593,7 +597,9 @@ class TestDirtyWorktree:
         self, make_git_repo, extractor, services, capsys
     ):
         root = make_git_repo({"core.py": CORE})
-        cache.build_index(root, extractor, tree_oid=_tree_oid(root))
+        cache.build_index(
+            root, extractor, measure=in_metric_scope, git=cache.GitState(tree_oid=_tree_oid(root))
+        )
         changed = CORE + "\n\ndef rebate(sku):\n    return 2\n"
         (root / "core.py").write_text(changed, encoding="utf-8")
 
@@ -608,7 +614,9 @@ class TestDirtyWorktree:
 
     def test_an_unchanged_file_is_still_served_from_the_index(self, make_git_repo, extractor, spy):
         root = make_git_repo({"core.py": CORE, "billing.py": BILLING})
-        cache.build_index(root, extractor, tree_oid=_tree_oid(root))
+        cache.build_index(
+            root, extractor, measure=in_metric_scope, git=cache.GitState(tree_oid=_tree_oid(root))
+        )
         spy.clear()
 
         source = cache.open_source(root, extractor, tree_oid=_tree_oid(root))
@@ -620,7 +628,7 @@ class TestDirtyWorktree:
 
 class TestSchemaVersion:
     def test_a_schema_bump_drops_the_database_and_rebuilds_it(self, repo, extractor, monkeypatch):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         monkeypatch.setattr(cache, "SCHEMA_VERSION", cache.SCHEMA_VERSION + 1)
 
         rejected = cache.open_source(repo, extractor, tree_oid=None)
@@ -628,14 +636,14 @@ class TestSchemaVersion:
         assert "schema" in rejected.receipt
         assert not cache.cache_path(repo).exists()
 
-        rebuilt = cache.build_index(repo, extractor)
+        rebuilt = cache.build_index(repo, extractor, measure=in_metric_scope)
         assert cache.open_source(repo, extractor, tree_oid=None).receipt == (
             f"g:{rebuilt.generation} fresh"
         )
 
     def test_the_schema_holds_no_write_only_columns(self, repo, extractor):
         """A column written on every row and selected by nobody is not stored."""
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(report.database)) as connection:
             files = {row[1] for row in connection.execute("PRAGMA table_info(files)")}
@@ -670,7 +678,7 @@ class TestSchemaVersion:
         hands to the next insert -- retiring any other id would pass here on
         a table with no AUTOINCREMENT at all.
         """
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
         with closing(sqlite3.connect(report.database)) as connection:
             victim, newest = connection.execute(
                 "SELECT path, id FROM files ORDER BY id DESC LIMIT 1"
@@ -678,9 +686,9 @@ class TestSchemaVersion:
         retired = {newest}
 
         (repo / victim).unlink()
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "shipping.py").write_text("def ship(sku):\n    return sku\n", encoding="utf-8")
-        final = cache.build_index(repo, extractor)
+        final = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(final.database)) as connection:
             fresh = {
@@ -701,29 +709,29 @@ class TestSchemaVersion:
         its children would take away the only key that reaches them, and they
         would sit in the table forever with nothing to clean them.
         """
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "billing.py").unlink()
         (repo / "core.py").write_text(CORE + "\n\ndef extra():\n    return 1\n", "utf-8")
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(report.database)) as connection:
             for query in ORPHAN_QUERIES:
                 assert connection.execute(query).fetchone()[0] == 0, query
 
     def test_a_corrupt_database_is_discarded_by_both_readers_and_writers(self, repo, extractor):
-        database = cache.build_index(repo, extractor).database
+        database = cache.build_index(repo, extractor, measure=in_metric_scope).database
         database.write_bytes(b"not a database at all")
 
         rejected = cache.open_source(repo, extractor, tree_oid=None)
         assert rejected.receipt.startswith("none (cache discarded")
 
-        rebuilt = cache.build_index(repo, extractor)
+        rebuilt = cache.build_index(repo, extractor, measure=in_metric_scope)
         assert rebuilt.files == 3
         assert cache.open_source(repo, extractor, tree_oid=None).receipt.endswith("fresh")
 
     def test_a_closed_source_releases_its_connection(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
         assert isinstance(source, cache.CachedSource)
 
@@ -733,7 +741,7 @@ class TestSchemaVersion:
             source.status()
 
     def test_a_database_built_for_another_repository_is_refused(self, repo, extractor, tmp_path):
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
         other = tmp_path / "elsewhere"
         other.mkdir()
         target = cache.cache_path(other)
@@ -747,12 +755,12 @@ class TestSchemaVersion:
 
 class TestNonGitRepositories:
     def test_the_generation_is_a_manifest_digest(self, repo, extractor):
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.generation.startswith(cache.NOGIT_PREFIX)
 
     def test_touching_a_file_moves_the_generation(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "core.py").write_text(CORE + "\n\ndef discount(sku):\n    return 1\n", "utf-8")
 
         source = cache.open_source(repo, extractor, tree_oid=None)
@@ -772,14 +780,14 @@ class TestSingleWriter:
 
     def test_a_second_index_run_refuses_while_the_lock_is_held(self, repo, extractor):
         fcntl = pytest.importorskip("fcntl", reason="POSIX advisory locking")
-        first = cache.build_index(repo, extractor)
+        first = cache.build_index(repo, extractor, measure=in_metric_scope)
         lock_path = first.database.parent / cache.LOCK_NAME
         handle = lock_path.open("w", encoding="utf-8")
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         try:
             with pytest.raises(CacheLocked, match="could not take the index lock for"):
-                cache.build_index(repo, extractor)
+                cache.build_index(repo, extractor, measure=in_metric_scope)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             handle.close()
@@ -979,14 +987,14 @@ class TestRefsAndImportsRows:
     """The Phase 4 half of the cache: imports and references, same gate."""
 
     def test_an_index_records_rows_of_all_three_kinds(self, repo, extractor):
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.tags > 0
         assert report.imports > 0
         assert report.refs > 0
 
     def test_a_fresh_index_serves_every_kind_without_parsing(self, repo, extractor, parse_spy):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         for kind in parse_spy:
             parse_spy[kind].clear()
 
@@ -998,7 +1006,7 @@ class TestRefsAndImportsRows:
     def test_touching_one_file_reparses_exactly_that_file_for_every_kind(
         self, repo, extractor, parse_spy
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "core.py").write_text(CORE + "\n\ndef discount(sku):\n    return 1\n", "utf-8")
         for kind in parse_spy:
             parse_spy[kind].clear()
@@ -1013,7 +1021,7 @@ class TestRefsAndImportsRows:
         }
 
     def test_cached_imports_match_the_parsed_ones(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
 
         cached = source.imports_for(BILLING, "python", "billing.py")
@@ -1023,7 +1031,7 @@ class TestRefsAndImportsRows:
         assert cached  # the fixture does import something
 
     def test_cached_refs_match_the_parsed_ones(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
 
         cached = source.refs_for(CORE, "python", "core.py")
@@ -1040,7 +1048,7 @@ class TestRefsAndImportsRows:
         """
         source_text = "def handle():\n    return 1\n\n\ndef handle():\n    return 2\n"
         (repo / "handlers.py").write_text(source_text, encoding="utf-8")
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         opened = cache.open_source(repo, extractor, tree_oid=None)
 
         cached = opened.symbols_for(source_text, "python", "handlers.py")
@@ -1055,7 +1063,7 @@ class TestRefsAndImportsRows:
     def test_cached_rows_rebuild_the_same_rationale_nodes(self, repo, extractor):
         source_text = "def handle():\n    # NOTE: ordering follows RFC 2119\n    return 1\n"
         (repo / "handlers.py").write_text(source_text, encoding="utf-8")
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         opened = cache.open_source(repo, extractor, tree_oid=None)
 
         cached = opened.symbols_for(source_text, "python", "handlers.py")
@@ -1065,7 +1073,7 @@ class TestRefsAndImportsRows:
         assert cached[0].rationales[0].citations == ("RFC 2119",)
 
     def test_an_edited_file_falls_back_to_parsing_for_every_kind(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
         changed = CORE + "\n\ndef rebate(sku):\n    return 2\n"
 
@@ -1078,10 +1086,10 @@ class TestRefsAndImportsRows:
         )
 
     def test_a_pruned_file_leaves_no_rows_behind(self, repo, extractor):
-        first = cache.build_index(repo, extractor)
+        first = cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "billing.py").unlink()
 
-        second = cache.build_index(repo, extractor)
+        second = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert second.pruned == 1
         with closing(sqlite3.connect(second.database)) as connection:
@@ -1129,7 +1137,7 @@ class TestAutoIndex:
     """Issue #21: the background refresh of a stale tag cache."""
 
     def test_first_use_builds_the_absent_index(self, repo, extractor, auto_index_isolated):
-        thread = cache.start_auto_index(repo, extractor)
+        thread = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
         assert thread is not None
         thread.join(timeout=30)
         assert not thread.is_alive()
@@ -1138,15 +1146,15 @@ class TestAutoIndex:
         assert source.receipt.endswith("fresh")
 
     def test_a_current_index_starts_nothing(self, repo, extractor, auto_index_isolated):
-        cache.build_index(repo, extractor)
-        assert cache.start_auto_index(repo, extractor) is None
+        cache.build_index(repo, extractor, measure=in_metric_scope)
+        assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is None
 
     def test_the_environment_opt_out_keeps_the_refresh_off(
         self, repo, extractor, monkeypatch, auto_index_isolated
     ):
         monkeypatch.setenv(cache.ENV_NO_AUTO_INDEX, "1")
         monkeypatch.setattr(cache, "build_index", self._must_not_index)
-        assert cache.start_auto_index(repo, extractor) is None
+        assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is None
         assert cache.auto_index_in_progress(cache.cache_path(repo)) is False
 
     def test_a_running_refresh_is_not_duplicated(
@@ -1155,18 +1163,18 @@ class TestAutoIndex:
         release = threading.Event()
         real = cache.build_index
 
-        def slow(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+        def slow(root, extractor, *, measure, git=cache.NO_GIT_STATE, force=False):
             release.wait(timeout=10)
-            return real(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+            return real(root, extractor, measure=measure, git=git, force=force)
 
         monkeypatch.setattr(cache, "build_index", slow)
-        thread = cache.start_auto_index(repo, extractor)
+        thread = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
         assert thread is not None
         # The start returned while the refresh is still running: the caller is
         # served live first and the cache lands later.
         assert thread.is_alive()
         # A second first-use of the same repository joins the same refresh.
-        assert cache.start_auto_index(repo, extractor) is thread
+        assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is thread
         release.set()
         thread.join(timeout=30)
         assert not thread.is_alive()
@@ -1174,13 +1182,13 @@ class TestAutoIndex:
     def test_one_attempt_per_generation_even_after_failure(
         self, repo, extractor, monkeypatch, auto_index_isolated, caplog
     ):
-        def exploding(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+        def exploding(root, extractor, *, measure, git=cache.NO_GIT_STATE, force=False):
             message = "boom"
             raise OperationFailed(message)
 
         monkeypatch.setattr(cache, "build_index", exploding)
         with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
-            thread = cache.start_auto_index(repo, extractor)
+            thread = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
             assert thread is not None
             thread.join(timeout=10)
         assert "background index refresh" in caplog.text
@@ -1189,7 +1197,7 @@ class TestAutoIndex:
         # The generation did not move, so the failed attempt is not retried:
         # a broken build must not become a per-call retry storm.
         monkeypatch.setattr(cache, "build_index", self._must_not_index)
-        assert cache.start_auto_index(repo, extractor) is None
+        assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is None
 
     def test_a_generation_that_cannot_be_read_is_attempted_once(
         self, repo, extractor, monkeypatch, auto_index_isolated, caplog
@@ -1208,20 +1216,20 @@ class TestAutoIndex:
 
         monkeypatch.setattr(cache, "repo_generation", refuse)
         with caplog.at_level(logging.WARNING, logger="agentless_mcp.core.cache"):
-            assert cache.start_auto_index(repo, extractor) is None
-            assert cache.start_auto_index(repo, extractor) is None
+            assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is None
+            assert cache.start_auto_index(repo, extractor, measure=in_metric_scope) is None
 
         assert len(walks) == 1
         assert caplog.text.count("background index refresh") == 1
         assert cache.auto_index_in_progress(cache.cache_path(repo)) is False
 
     def test_a_new_generation_rearms_the_trigger(self, repo, extractor, auto_index_isolated):
-        first = cache.start_auto_index(repo, extractor)
+        first = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
         assert first is not None
         first.join(timeout=30)
 
         (repo / "core.py").write_text(CORE + "\nEXTRA = 1\n", encoding="utf-8")
-        second = cache.start_auto_index(repo, extractor)
+        second = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
         assert second is not None
         assert second is not first
         second.join(timeout=30)
@@ -1245,18 +1253,18 @@ class TestAutoIndex:
     def test_the_receipt_names_the_refresh_while_it_runs(
         self, repo, extractor, monkeypatch, auto_index_isolated
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         (repo / "core.py").write_text(CORE + "\nEXTRA = 1\n", encoding="utf-8")
 
         release = threading.Event()
         real = cache.build_index
 
-        def slow(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+        def slow(root, extractor, *, measure, git=cache.NO_GIT_STATE, force=False):
             release.wait(timeout=10)
-            return real(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+            return real(root, extractor, measure=measure, git=git, force=force)
 
         monkeypatch.setattr(cache, "build_index", slow)
-        thread = cache.start_auto_index(repo, extractor)
+        thread = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
         assert thread is not None
         try:
             stale = cache.open_source(repo, extractor, tree_oid=None)
@@ -1293,9 +1301,9 @@ class TestAutoIndexStartRace:
         builds = []
         real_build = cache.build_index
 
-        def counting(root, extractor, *, tree_oid=None, head_sha=None, force=False):
+        def counting(root, extractor, *, measure, git=cache.NO_GIT_STATE, force=False):
             builds.append(threading.current_thread().name)
-            return real_build(root, extractor, tree_oid=tree_oid, head_sha=head_sha, force=force)
+            return real_build(root, extractor, measure=measure, git=git, force=force)
 
         monkeypatch.setattr(cache, "build_index", counting)
 
@@ -1327,7 +1335,7 @@ class TestAutoIndexStartRace:
         handed: dict[str, object] = {}
 
         def caller(tag):
-            handed[tag] = cache.start_auto_index(repo, extractor)
+            handed[tag] = cache.start_auto_index(repo, extractor, measure=in_metric_scope)
 
         second = real_thread(target=caller, args=("second",), name="second")
         second.start()
@@ -1358,7 +1366,7 @@ class TestTheReadViewIsPinned:
     def test_rows_deleted_underneath_a_source_do_not_empty_its_answer(
         self, repo, extractor, isolated_cache_home
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
         text = (repo / "core.py").read_text(encoding="utf-8")
         assert [symbol.name for symbol in source.symbols_for(text, "python", "core.py")]
@@ -1379,7 +1387,7 @@ class TestTheReadViewIsPinned:
         # The open transaction is what holds the WAL from checkpointing, so a
         # source that never released it would grow the file for the life of
         # the process. Proved by writing from another connection after close.
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
         source.close()
 
@@ -1404,7 +1412,7 @@ class TestUnreadableRowsDegrade:
     def test_a_kind_this_build_cannot_spell_is_parsed_instead(
         self, repo, extractor, isolated_cache_home, caplog
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         self._corrupt(repo, "kind", "a-kind-from-another-version")
         source = cache.open_source(repo, extractor, tree_oid=None)
         text = (repo / "core.py").read_text(encoding="utf-8")
@@ -1417,7 +1425,7 @@ class TestUnreadableRowsDegrade:
         assert "core.py" in caplog.text
 
     def test_malformed_rationale_json_is_parsed_instead(self, repo, extractor, isolated_cache_home):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         self._corrupt(repo, "rationales", "{not json")
         source = cache.open_source(repo, extractor, tree_oid=None)
         text = (repo / "core.py").read_text(encoding="utf-8")
@@ -1442,7 +1450,7 @@ class TestDiscardingIsNotUnlocked:
         finished writing -- forever, and silently, because discarding is a
         degradation rather than an error.
         """
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo.resolve())
 
         def unusable(connection, root):
@@ -1464,7 +1472,7 @@ class TestDiscardingIsNotUnlocked:
     def test_an_unusable_database_is_still_discarded_when_nobody_holds_the_lock(
         self, repo, extractor, isolated_cache_home, monkeypatch
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo.resolve())
 
         def unusable(connection, root):
@@ -1487,7 +1495,7 @@ class TestATransientReadErrorKeepsTheDatabase:
     """
 
     def test_an_operational_error_degrades_without_deleting(self, repo, extractor, monkeypatch):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo)
 
         def refuse(connection, repo_root):
@@ -1674,7 +1682,7 @@ class TestMigrationFromEveryOlderSchema:
     def test_an_older_database_is_rebuilt_with_this_schema(self, repo, extractor, version):
         database = _write_historic_database(repo, version)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.files == 3
         with closing(sqlite3.connect(database)) as connection:
@@ -1696,13 +1704,13 @@ class TestMigrationFromEveryOlderSchema:
         that never returns its pages is counted at its high-water mark and
         evicted for space it is not using.
         """
-        scratch = cache.build_index(repo, extractor).database
+        scratch = cache.build_index(repo, extractor, measure=in_metric_scope).database
         built_from_scratch = scratch.stat().st_size
         for suffix in cache.DATABASE_SUFFIXES:
             Path(f"{scratch}{suffix}").unlink(missing_ok=True)
         database = _write_historic_database(repo, version)
 
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(database)) as connection:
             free = connection.execute("PRAGMA freelist_count").fetchone()[0]
@@ -1715,16 +1723,16 @@ class TestMigrationFromEveryOlderSchema:
     def test_the_rebuilt_database_reads_back_as_fresh(self, repo, extractor, version):
         _write_historic_database(repo, version)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
 
         assert source.receipt == f"g:{report.generation} fresh"
 
     def test_a_database_at_this_version_is_kept(self, repo, extractor):
         """The drop is for a mismatch only: a current database keeps its rows."""
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
 
-        second = cache.build_index(repo, extractor)
+        second = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert second.reused == 3
         assert second.indexed == 0
@@ -1798,7 +1806,7 @@ class TestAnIntermediateCacheIsDiscardedForItsContents:
     def test_the_stale_rows_are_re_extracted_rather_than_reused(self, repo, extractor):
         database = _seed_reusable_database(repo, INTERMEDIATE_SCHEMA_VERSION)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.reused == 0, "rows from another version were carried over"
         with closing(sqlite3.connect(database)) as connection:
@@ -1836,7 +1844,7 @@ class TestAnIntermediateCacheIsDiscardedForItsContents:
         """
         database = _seed_reusable_database(repo, cache.SCHEMA_VERSION + 1)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.reused == 0, "rows written by a newer build were carried over"
         with closing(sqlite3.connect(database)) as connection:
@@ -1887,7 +1895,7 @@ class TestAnUnreadableMetaRowIsNotAnAbsentOne:
     def test_a_meta_row_that_cannot_be_read_discards_and_rebuilds(
         self, repo, extractor, monkeypatch
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         attempts = []
         real = cache._read_meta
 
@@ -1900,7 +1908,7 @@ class TestAnUnreadableMetaRowIsNotAnAbsentOne:
 
         monkeypatch.setattr(cache, "_read_meta", refuse_once)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert len(attempts) == 2, "the second open must re-read the meta row it just rebuilt"
         assert report.files == 3
@@ -1925,7 +1933,7 @@ class TestTheFileScanObeysTheSameRuleAsTheMetaRead:
                 cache._load_entries(connection)
 
     def test_a_missing_file_table_degrades_without_deleting(self, repo, extractor):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo)
         with closing(sqlite3.connect(database)) as connection:
             connection.execute("DROP TABLE files")
@@ -1947,7 +1955,7 @@ class TestAnUnreadableIndexSaysWhyItIsRefreshed:
     def test_a_failed_open_is_logged_with_the_database_and_the_reason(
         self, repo, extractor, monkeypatch, caplog
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo.resolve())
 
         def refuse(path):
@@ -1964,7 +1972,7 @@ class TestAnUnreadableIndexSaysWhyItIsRefreshed:
     def test_a_failed_meta_read_is_logged_with_the_database_and_the_reason(
         self, repo, extractor, monkeypatch, caplog
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         database = cache.cache_path(repo.resolve())
 
         def refuse(connection):
@@ -2456,7 +2464,7 @@ class TestCacheCeilingEnforcement:
         root = tmp_path / "other"
         root.mkdir()
         (root / "core.py").write_text(CORE, encoding="utf-8")
-        os.utime(cache.build_index(root, extractor).database, (1.0, 1.0))
+        os.utime(cache.build_index(root, extractor, measure=in_metric_scope).database, (1.0, 1.0))
         return root
 
     def test_an_index_run_evicts_another_repository_over_the_ceiling(
@@ -2464,7 +2472,7 @@ class TestCacheCeilingEnforcement:
     ):
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert not cache.cache_path(victim.resolve()).exists()
         assert report.database.exists()
@@ -2481,7 +2489,7 @@ class TestCacheCeilingEnforcement:
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
         database = cache.cache_path(victim.resolve())
 
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert not database.exists()
         assert (database.parent / cache.LOCK_NAME).exists()
@@ -2504,7 +2512,7 @@ class TestCacheCeilingEnforcement:
         os.utime(database, (1.0, 1.0))
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
 
-        cache.build_index(repo, services.extractor)
+        cache.build_index(repo, services.extractor, measure=in_metric_scope)
 
         assert not database.exists()
         assert invoke(services, victim, "map") == EXIT_OK
@@ -2522,7 +2530,7 @@ class TestCacheCeilingEnforcement:
             filelock.exclusive(database.parent / cache.LOCK_NAME, flavour=flavour),
             caplog.at_level(logging.INFO, logger=cache.logger.name),
         ):
-            report = cache.build_index(repo, extractor)
+            report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert database.exists()
         assert report.evicted.databases == 0
@@ -2531,7 +2539,7 @@ class TestCacheCeilingEnforcement:
     def test_a_disabled_ceiling_evicts_nothing(self, repo, extractor, victim, monkeypatch):
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert cache.cache_path(victim.resolve()).exists()
         assert report.evicted == cache.NOTHING_EVICTED
@@ -2540,12 +2548,12 @@ class TestCacheCeilingEnforcement:
         self, repo, extractor, victim, monkeypatch
     ):
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "0")
-        quiet = cache.build_index(repo, extractor)
+        quiet = cache.build_index(repo, extractor, measure=in_metric_scope)
         assert "evicted" not in quiet.summary_line()
         assert quiet.as_dict()["evicted"] == {"databases": 0, "bytes": 0}
 
         monkeypatch.setenv(cache.ENV_MAX_CACHE_BYTES, "1")
-        loud = cache.build_index(repo, extractor, force=True)
+        loud = cache.build_index(repo, extractor, measure=in_metric_scope, force=True)
 
         assert "evicted 1 cached repository (" in loud.summary_line()
         assert loud.as_dict()["evicted"]["databases"] == 1
@@ -2555,7 +2563,7 @@ class TestAScanReadsEachFileOnce:
     def test_a_cached_scan_digests_each_file_once_for_all_three_kinds(
         self, repo, extractor, monkeypatch
     ):
-        cache.build_index(repo, extractor)
+        cache.build_index(repo, extractor, measure=in_metric_scope)
         source = cache.open_source(repo, extractor, tree_oid=None)
         digested = []
         original = cache.content_digest
@@ -2636,7 +2644,9 @@ CONFIG = '{"a": 1}\n'
 APP_TEST = "def test_total():\n    assert total([], 1) == 0\n"
 # Every Python version's tokenizer rejects this dedent, and tree-sitter parses it.
 REJECTED = "def f():\n    if x:\n        pass\n  pass\n"
-METRIC_FILES = ("app.py", "broken.py", "rejects.py", "tests/test_app.py", "tool.go", "web.ts")
+METRIC_FILES = ("app.py", "broken.py", "rejects.py", "tool.go", "web.ts")
+# Tier-1 files outside the metric scope: the index stores their facts and no metrics.
+UNMEASURED_FILES = ("tests/test_app.py", "fixtures/sample.py")
 
 
 @pytest.fixture
@@ -2644,11 +2654,13 @@ def metrics_repo(tmp_path):
     """Tier-1 files that measure, fail to parse, and fail to tokenize, and one tier-2 file."""
     root = tmp_path / "metrics"
     (root / "tests").mkdir(parents=True)
+    (root / "fixtures").mkdir()
     files = {
         "app.py": APP,
         "broken.py": BROKEN,
         "rejects.py": REJECTED,
         "tests/test_app.py": APP_TEST,
+        "fixtures/sample.py": APP,
         "tool.go": TOOL,
         "web.ts": WEB,
         "config.json": CONFIG,
@@ -2712,7 +2724,7 @@ class TestCachedMetrics:
     def test_the_cache_serves_what_parsing_gives_and_parses_nothing(
         self, metrics_repo, extractor, monkeypatch
     ):
-        cache.build_index(metrics_repo, extractor)
+        cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         on_demand = cache.OnDemandSource(extractor)
         expected = {path: both_metrics(on_demand, metrics_repo, path) for path in METRIC_FILES}
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
@@ -2726,10 +2738,51 @@ class TestCachedMetrics:
         assert served["app.py"][0]
         assert served["app.py"][1].blocks
 
+    @pytest.mark.parametrize("path", UNMEASURED_FILES)
+    def test_a_test_or_fixture_file_gets_facts_and_no_metrics_row(
+        self, metrics_repo, extractor, path
+    ):
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
+
+        assert metric_row(report.database, path) is None
+        assert metric_row(report.database, "app.py") is not None
+        indexed = cache.open_source(metrics_repo, extractor, tree_oid=None)
+        assert [
+            symbol.name for symbol in indexed.symbols_for(*metric_arguments(metrics_repo, path))
+        ]
+
+    @pytest.mark.parametrize("path", UNMEASURED_FILES)
+    def test_an_unmeasured_file_is_measured_on_demand(self, metrics_repo, extractor, path):
+        cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
+        on_demand = cache.OnDemandSource(extractor)
+        source = cache.open_source(metrics_repo, extractor, tree_oid=None)
+
+        assert both_metrics(source, metrics_repo, path) == both_metrics(
+            on_demand, metrics_repo, path
+        )
+
+    def test_the_rule_the_caller_passes_decides_which_files_get_rows(self, metrics_repo, extractor):
+        report = cache.build_index(metrics_repo, extractor, measure=lambda path: path == "web.ts")
+
+        rows = {path: metric_row(report.database, path) for path in METRIC_FILES}
+
+        assert [path for path, row in rows.items() if row is not None] == ["web.ts"]
+
+    def test_a_file_that_leaves_the_scope_loses_its_row_at_the_next_index(
+        self, metrics_repo, extractor
+    ):
+        everything = cache.build_index(metrics_repo, extractor, measure=lambda _path: True)
+        assert metric_row(everything.database, "tests/test_app.py") is not None
+
+        scoped = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
+
+        assert metric_row(scoped.database, "tests/test_app.py") is None
+        assert scoped.indexed == len(UNMEASURED_FILES)
+
     def test_a_failed_metric_keeps_its_reason_and_never_reads_as_empty(
         self, metrics_repo, extractor
     ):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
         _, _, units_reason, unit_count, blocks_reason, block_count, sloc = metric_row(
             report.database, "broken.py"
@@ -2745,7 +2798,7 @@ class TestCachedMetrics:
     def test_a_language_without_metrics_has_no_row_and_is_measured_on_demand(
         self, metrics_repo, extractor
     ):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
         on_demand = cache.OnDemandSource(extractor)
 
@@ -2758,7 +2811,7 @@ class TestCachedMetrics:
         warmed = grammars.warmed_languages()
         monkeypatch.setattr(cache.grammars, "warmed_languages", lambda: warmed - {"go"})
 
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
         assert metric_row(report.database, "tool.go") is None
         assert metric_row(report.database, "web.ts") is not None
@@ -2766,22 +2819,24 @@ class TestCachedMetrics:
     def test_a_bumped_algorithm_is_a_miss_until_the_next_index_rewrites_it(
         self, metrics_repo, extractor, monkeypatch
     ):
-        cache.build_index(metrics_repo, extractor)
+        cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         monkeypatch.setattr(fileparse, "METRICS_ALGORITHM", fileparse.METRICS_ALGORITHM + 1)
         calls = recording(monkeypatch, complexity, "measure")
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
 
         source.units_for(*metric_arguments(metrics_repo, "app.py"))
-        rewritten = cache.build_index(metrics_repo, extractor)
-        again = cache.build_index(metrics_repo, extractor)
+        rewritten = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
+        again = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
         assert calls == ["app.py"]
-        assert (rewritten.indexed, rewritten.reused) == (len(METRIC_FILES), 1)
+        # The unmeasured files carry no stamp, so a bump leaves them reused.
+        reused = 1 + len(UNMEASURED_FILES)
+        assert (rewritten.indexed, rewritten.reused) == (len(METRIC_FILES), reused)
         assert metric_row(rewritten.database, "app.py")[0] == fileparse.metrics_stamp("python")
-        assert (again.indexed, again.reused) == (0, len(METRIC_FILES) + 1)
+        assert (again.indexed, again.reused) == (0, len(METRIC_FILES) + reused)
 
     def test_a_stamp_from_another_interpreter_is_a_miss(self, metrics_repo, extractor, monkeypatch):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         run_sql(report.database, "UPDATE file_metrics SET stamp = ?", "1/py2.7")
         calls = recording(monkeypatch, clones, "file_blocks")
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
@@ -2791,7 +2846,7 @@ class TestCachedMetrics:
         assert calls == ["app.py"]
 
     def test_another_language_is_a_miss(self, metrics_repo, extractor, monkeypatch):
-        cache.build_index(metrics_repo, extractor)
+        cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         calls = recording(monkeypatch, complexity, "measure")
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
         text, _, path = metric_arguments(metrics_repo, "app.py")
@@ -2804,7 +2859,7 @@ class TestCachedMetrics:
     def test_a_short_row_set_is_a_miss_with_a_warning(
         self, metrics_repo, extractor, monkeypatch, caplog
     ):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         run_sql(
             report.database,
             "DELETE FROM units WHERE ordinal = 0 AND file_id = "
@@ -2820,7 +2875,7 @@ class TestCachedMetrics:
         assert "unit rows for app.py are unreadable" in caplog.text
 
     def test_unreadable_sloc_lines_are_a_miss_with_a_warning(self, metrics_repo, extractor, caplog):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         run_sql(report.database, "UPDATE file_metrics SET sloc_lines = ?", '{"a": 1}')
         source = cache.open_source(metrics_repo, extractor, tree_oid=None)
         on_demand = cache.OnDemandSource(extractor)
@@ -2832,7 +2887,7 @@ class TestCachedMetrics:
         assert "block rows for app.py are unreadable" in caplog.text
 
     def test_the_metric_tables_hold_only_columns_a_reader_selects(self, metrics_repo, extractor):
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(report.database)) as connection:
             columns = {
@@ -2876,11 +2931,11 @@ class TestCachedMetrics:
         }
 
     def test_a_re_indexed_file_leaves_no_metric_rows_behind(self, metrics_repo, extractor):
-        cache.build_index(metrics_repo, extractor)
+        cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
         (metrics_repo / "app.py").write_text(APP + COPY, encoding="utf-8")
         (metrics_repo / "web.ts").unlink()
 
-        report = cache.build_index(metrics_repo, extractor)
+        report = cache.build_index(metrics_repo, extractor, measure=in_metric_scope)
 
         with closing(sqlite3.connect(report.database)) as connection:
             orphans = [
@@ -2913,7 +2968,7 @@ class TestTheSixteenthSchema:
     def test_a_version_15_database_is_rebuilt_rather_than_reused(self, repo, extractor):
         database = _seed_version_15(repo)
 
-        report = cache.build_index(repo, extractor)
+        report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
         assert report.reused == 0, "rows from schema 15 were carried over"
         with closing(sqlite3.connect(database)) as connection:

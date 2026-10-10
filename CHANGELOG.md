@@ -193,21 +193,25 @@
 
 ### Changed
 
-- **The tag cache stores complexity units and clone blocks.** One parse of
-  each tier-1 file now gives its symbols, imports, references, complexity
-  units, and clone blocks, and `index` stores all five. The cache schema moves
-  to 16, so the first `index` after the upgrade rebuilds the database. `health`
-  and `lint`'s clone index read the stored units and blocks when the file's
-  digest, grammar, and metric stamp still match, and compute them otherwise. A
-  file that cannot be measured keeps its reason in the cache. The answers do
-  not change: on mcp-local, `health --json` and `lint --since HEAD~5 --only
-  clone_delta --json` are identical with a fresh index, with `--no-cache`, and
-  on the previous build. With a fresh index, `health` takes 0.81 s against
-  2.12 s, and that lint run takes 0.28 s against 0.88 s. A cold `index` takes
-  4.41 s against 2.66 s, and the database grows from 14,106,624 to 16,678,912
-  bytes (median of 5 runs, `/usr/bin/time`). On Loc-Bench, `diffusers` indexes
-  in 20.89 s against 10.08 s and `moto` in 42.83 s against 32.04 s (median of
-  3).
+- **The tag cache stores complexity units and clone blocks.** One parse of each
+  file in the metric scope now gives its symbols, imports, references,
+  complexity units, and clone blocks, and `index` stores all five. The metric
+  scope is the files that `health` and `lint`'s clone index read: tier-1 files
+  outside test and fixture paths. Other files keep their symbols, imports, and
+  references alone. The cache schema moves to 16, so the first `index` after
+  the upgrade rebuilds the database. `health` and `lint`'s clone index read the
+  stored units and blocks when the file's digest, grammar, and metric stamp
+  still match, and compute them otherwise. A file that cannot be measured keeps
+  its reason in the cache. The answers do not change. On mcp-local, `health
+  --json` is identical with a fresh index, with `--no-cache`, and on the build
+  before the cache. `lint --since HEAD~5 --only clone_delta --json` is
+  identical with a fresh index and with `--no-cache`, and its findings match
+  the build before the cache. With a fresh index, `health` takes 0.82 s against
+  2.14 s, and that lint run takes 0.29 s against 0.90 s. A cold `index` takes
+  3.46 s against 2.65 s, and the database grows from 14,106,624 to 15,286,272
+  bytes (median of 3 interleaved runs, `/usr/bin/time`). On Loc-Bench,
+  `diffusers` indexes in 18.59 s against 10.11 s and `moto` in 36.35 s against
+  31.99 s.
 
 ## 0.9.1 -- 2026-10-09
 

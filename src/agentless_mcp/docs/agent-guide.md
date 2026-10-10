@@ -1086,11 +1086,12 @@ agentless-mcp index --force               # re-extract even unchanged files
 ```
 
 The index is optional. Every read command works without it. Indexing removes
-the symbol, import and reference parses for files whose sha256 has not
-changed since the last run. For a tier-1 file the same parse also gives the
-complexity units and clone blocks that `health` and `lint`'s `clone_delta`
-read, and the index stores them too. On mcp-local a cold index takes 4.4 s
-with them, against 2.7 s without. The MCP server runs this refresh itself, in the
+the symbol, import and reference parses for files whose sha256 has not changed
+since the last run. For each file that `health` and `lint`'s `clone_delta`
+read, a tier-1 file outside test and fixture paths, the same parse also gives
+the complexity units and clone blocks, and the index stores them too. Other
+files get no metrics in the index. On mcp-local a cold index takes 3.5 s with
+them, against 2.7 s without. The MCP server runs this refresh itself, in the
 background, the first time it serves a repository whose index is absent or
 stale. Opt out with `--no-auto-index` or `AGENTLESS_MCP_NO_AUTO_INDEX`. A
 held lock is a silent skip, since another process is already refreshing. The

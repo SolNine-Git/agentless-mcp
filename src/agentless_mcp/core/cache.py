@@ -65,7 +65,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Protocol, TypeVar
+from typing import Any, Final, Protocol, TypeVar
 
 from agentless_mcp.core import clones, complexity, fileparse, grammars
 from agentless_mcp.core.clones import Block, FileBlocks
@@ -1188,6 +1188,21 @@ class _FileTags:
         return self.grammar_version.startswith(UNWARMED_STAMP_PREFIX)
 
 
+# Which repository paths get complexity units and clone blocks; the caller owns the rule.
+MetricScope = Callable[[str], bool]
+
+
+@dataclass(frozen=True)
+class GitState:
+    """The tree and the commit an index run records, ``None`` for a repository without them."""
+
+    tree_oid: str | None = None
+    head_sha: str | None = None
+
+
+NO_GIT_STATE: Final = GitState()
+
+
 @dataclass(frozen=True)
 class _IndexPlan:
     """The whole index run decided before a single row is written."""
@@ -1297,8 +1312,8 @@ def start_auto_index(
     root: Path,
     extractor: TreeSitterExtractor,
     *,
-    tree_oid: str | None = None,
-    head_sha: str | None = None,
+    measure: MetricScope,
+    git: GitState = NO_GIT_STATE,
 ) -> threading.Thread | None:
     """Start one background refresh of a stale tag cache; never blocks or raises.
 
@@ -1330,10 +1345,12 @@ def start_auto_index(
         # made again until the process restarts.
         return None
 
-    generation = _stale_generation(resolved, database, run, tree_oid)
+    generation = _stale_generation(resolved, database, run, git.tree_oid)
     if generation is None:
         return None
-    return _start_refresh(resolved, extractor, generation, tree_oid, head_sha)
+    return _start_refresh(
+        resolved, generation, partial(_auto_index, resolved, extractor, measure, git)
+    )
 
 
 def _stale_generation(
@@ -1359,11 +1376,7 @@ def _stale_generation(
 
 
 def _start_refresh(
-    root: Path,
-    extractor: TreeSitterExtractor,
-    generation: str,
-    tree_oid: str | None,
-    head_sha: str | None,
+    root: Path, generation: str, refresh: Callable[[], None]
 ) -> threading.Thread | None:
     """Register and start this generation's refresh, unless a racer got there first.
 
@@ -1376,12 +1389,7 @@ def _start_refresh(
         raced = _AUTO_INDEX_RUNS.get(database)
         if raced is not None and raced.generation == generation:
             return raced.thread
-        thread = threading.Thread(
-            target=_auto_index,
-            args=(root, extractor, tree_oid, head_sha),
-            name="tag-auto-index",
-            daemon=True,
-        )
+        thread = threading.Thread(target=refresh, name="tag-auto-index", daemon=True)
         _AUTO_INDEX_RUNS[database] = _AutoIndexRun(thread=thread, generation=generation)
         # Started under the lock, not after it. A thread that is registered but
         # not yet started reads as ``is_alive() == False``, so a second caller
@@ -1395,10 +1403,7 @@ def _start_refresh(
 
 
 def _auto_index(
-    root: Path,
-    extractor: TreeSitterExtractor,
-    tree_oid: str | None,
-    head_sha: str | None,
+    root: Path, extractor: TreeSitterExtractor, measure: MetricScope, git: GitState
 ) -> None:
     """Refresh one repository's tag cache; one log line, never an exception out."""
     # Index warm grammars rather than racing the startup warm: an index built
@@ -1407,7 +1412,7 @@ def _auto_index(
     grammars.wait_for_auto_warm()
     started = time.monotonic()
     try:
-        report = build_index(root, extractor, tree_oid=tree_oid, head_sha=head_sha)
+        report = build_index(root, extractor, measure=measure, git=git)
     except CacheLocked:
         # Another index run is refreshing the same database. Another index
         # run rather than another process: ``flock`` is per open file
@@ -1472,8 +1477,8 @@ def build_index(
     root: Path,
     extractor: TreeSitterExtractor,
     *,
-    tree_oid: str | None = None,
-    head_sha: str | None = None,
+    measure: MetricScope,
+    git: GitState = NO_GIT_STATE,
     force: bool = False,
 ) -> IndexReport:
     """Build or refresh the tag cache for one repository.
@@ -1495,13 +1500,13 @@ def build_index(
         connection = _open_for_write(database)
         try:
             previous = _load_entries(connection)
-            plan = _plan_index(resolved, extractor, previous=previous, force=force)
-            generation = repo_generation(resolved, tree_oid)
+            plan = _plan_index(resolved, extractor, previous=previous, force=force, measure=measure)
+            generation = repo_generation(resolved, git.tree_oid)
             meta = _Meta(
                 schema_version=SCHEMA_VERSION,
                 repo_root=str(resolved),
                 generation=generation,
-                head_sha=head_sha,
+                head_sha=git.head_sha,
             )
             _apply_plan(connection, plan, meta, previous)
             counts = _row_counts(connection)
@@ -1543,6 +1548,7 @@ def _plan_index(
     *,
     previous: dict[str, _FileEntry],
     force: bool,
+    measure: MetricScope,
 ) -> _IndexPlan:
     """Walk the repository and decide, per file, reuse, skip or re-extract."""
     planning = _Planning(
@@ -1550,6 +1556,7 @@ def _plan_index(
         extractor=extractor,
         previous=previous,
         force=force,
+        measure=measure,
         grammar_version=grammars.pack_version(),
         warmed=grammars.warmed_languages(),
     )
@@ -1564,6 +1571,7 @@ class _Planning:
     extractor: TreeSitterExtractor
     previous: dict[str, _FileEntry]
     force: bool
+    measure: MetricScope
     grammar_version: str
     warmed: frozenset[str]
     writes: list[_FileTags] = field(default_factory=list)
@@ -1628,12 +1636,15 @@ class _Planning:
             self._unwarmed(path, digest, entry, language)
             return
 
-        current = _FileEntry(digest, self.grammar_version, fileparse.metrics_stamp(language))
+        # A file outside the metric scope keeps facts only, so no reader finds a row for it.
+        stamp = fileparse.metrics_stamp(language) if self.measure(path) else None
+        current = _FileEntry(digest, self.grammar_version, stamp)
         if not self.force and entry is not None and entry == current:
             self.reused.append(path)
             return
 
-        self._extract(path, text, language, digest)
+        parse = fileparse.parse_file if stamp is not None else fileparse.parse_facts
+        self._extract(path, digest, lambda: parse(self.extractor, text, language, path))
 
     def _unwarmed(self, path: str, digest: str, entry: _FileEntry | None, language: str) -> None:
         # A skip, not a failure: the same wording get_language raises with,
@@ -1654,9 +1665,9 @@ class _Planning:
             )
         )
 
-    def _extract(self, path: str, text: str, language: str, digest: str) -> None:
+    def _extract(self, path: str, digest: str, parse: Callable[[], fileparse.ParsedFile]) -> None:
         try:
-            parsed = fileparse.parse_file(self.extractor, text, language, path)
+            parsed = parse()
         except EXTRACTION_FAILURES as exc:
             # The class name is part of the report: "maximum recursion depth
             # exceeded" names a defect, a bare KeyError message names nothing.

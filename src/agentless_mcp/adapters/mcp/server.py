@@ -116,6 +116,7 @@ from agentless_mcp.application.symbol_service import (
     DEFAULT_FIND_LIMIT,
     DEFAULT_REFS_LIMIT,
     SymbolService,
+    in_metric_scope,
     render_expansion,
     render_find,
     render_refs,
@@ -637,8 +638,8 @@ class ToolHandlers:
         cache.start_auto_index(
             ctx.root,
             self._services.extractor,
-            tree_oid=ctx.tree_oid,
-            head_sha=ctx.head_sha,
+            measure=in_metric_scope,
+            git=cache.GitState(tree_oid=ctx.tree_oid, head_sha=ctx.head_sha),
         )
 
     def repo_map(self, ctx: RepoContext, request: MapRequest) -> str:
