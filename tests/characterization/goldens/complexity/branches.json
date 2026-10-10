@@ -1,0 +1,51 @@
+{
+  "clones": {
+    "groups": [],
+    "sloc_lines": []
+  },
+  "erosion": 0.4020972989245732,
+  "fixture": "tests/characterization/fixtures/complexity_py/branches.py",
+  "high_cc_mass": 63.608175575157006,
+  "python": "3.13",
+  "reference": "scb-check 0.1.3",
+  "status": "ok",
+  "total_mass": 158.19100437948688,
+  "units": [
+    {
+      "cc": 6,
+      "name": "route",
+      "sloc": 9,
+      "start_line": 6
+    },
+    {
+      "cc": 6,
+      "name": "loops",
+      "sloc": 12,
+      "start_line": 17
+    },
+    {
+      "cc": 4,
+      "name": "handle",
+      "sloc": 15,
+      "start_line": 31
+    },
+    {
+      "cc": 10,
+      "name": "shapes",
+      "sloc": 6,
+      "start_line": 48
+    },
+    {
+      "cc": 5,
+      "name": "dispatch",
+      "sloc": 10,
+      "start_line": 56
+    },
+    {
+      "cc": 17,
+      "name": "busy",
+      "sloc": 14,
+      "start_line": 68
+    }
+  ]
+}

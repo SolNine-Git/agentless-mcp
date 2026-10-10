@@ -138,6 +138,9 @@ class MessageText:
     history_signature_changed: str
     history_shallow: str
     history_shallow_unknown: str
+    complexity_language_unsupported: str
+    complexity_does_not_parse: str
+    complexity_tokenizer_rejects: str
 
 
 # Every tool this server can register, across both published surfaces: the

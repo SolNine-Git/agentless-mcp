@@ -50,5 +50,8 @@
   "history_symbol_not_in_head": "unsatisfiable: {name} is not defined in the committed copy of {path}: it is new or renamed in the working tree, so no commit has touched it yet",
   "history_signature_changed": "note: {name} has a different signature in the committed copy than in the working tree; these commits follow the committed definition",
   "history_shallow": "note: this clone is shallow, so the oldest commit listed may stand in for older history",
-  "history_shallow_unknown": "note: git could not say whether this clone is shallow ({note}); in a shallow clone the oldest commit listed may stand in for older history"
+  "history_shallow_unknown": "note: git could not say whether this clone is shallow ({note}); in a shallow clone the oldest commit listed may stand in for older history",
+  "complexity_language_unsupported": "{path}: complexity has no rules for language '{language}'. It measures only these languages: {languages}.",
+  "complexity_does_not_parse": "{path} does not parse: the first syntax error is at line {line}. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again.",
+  "complexity_tokenizer_rejects": "{path}: Python's tokenizer rejects this file ({detail}). Complexity is measured only for a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then measure the file again."
 }

@@ -254,6 +254,13 @@ def _stream_and_grammar(text: str, language: str | None) -> tuple[str, bool]:
     return " ".join(_tokens(tree.root_node, blocks)), True
 
 
+def node_stream(node: Node, language: str, omit: Node | None = None) -> str:
+    """Return the normalised token stream of one parsed node, without the subtree ``omit``."""
+    blocks = frozenset(INDENT_BLOCK_NODE_TYPES.get(language, ()))
+    omit_id = None if omit is None else omit.id
+    return " ".join(_tokens(node, blocks, omit_id))
+
+
 def _label(digest: str, *, grammar: bool) -> str:
     """Prefix a digest that no grammar stands behind, leaving a real one bare."""
     return digest if grammar else TEXT_ONLY_KEY_PREFIX + digest
@@ -313,7 +320,7 @@ def _parser_for(language: str | None) -> Parser | None:
         return None
 
 
-def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
+def _tokens(root: Node, blocks: frozenset[str], omit_id: int | None = None) -> Iterator[str]:
     """Yield the normalised token stream of one parse tree.
 
     Iterative rather than recursive: a deeply nested expression in an analysed
@@ -325,6 +332,9 @@ def _tokens(root: Node, blocks: frozenset[str]) -> Iterator[str]:
         item = stack.pop()
         if isinstance(item, str):
             yield item
+            continue
+
+        if item.id == omit_id:
             continue
 
         if item.type in COMMENT_NODE_TYPES:

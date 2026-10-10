@@ -23,6 +23,7 @@ from agentless_mcp.util.errors import (
     OperationFailed,
     RepoResolutionError,
     SecurityRefusal,
+    UnmeasurableSource,
     WalkBoundExceeded,
 )
 
@@ -33,6 +34,7 @@ LEAVES = (
     OperationFailed,
     RepoResolutionError,
     SecurityRefusal,
+    UnmeasurableSource,
     WalkBoundExceeded,
 )
 

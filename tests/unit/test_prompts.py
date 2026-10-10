@@ -152,6 +152,16 @@ MESSAGE_ARGUMENTS = {
         "start": 120,
         "end": 158,
     },
+    "complexity_language_unsupported": {
+        "path": "config.yaml",
+        "language": "yaml",
+        "languages": "bash, c, python",
+    },
+    "complexity_does_not_parse": {"path": "src/app/svc.py", "line": 12},
+    "complexity_tokenizer_rejects": {
+        "path": "src/app/svc.py",
+        "detail": "IndentationError: unindent does not match any outer indentation level",
+    },
 }
 
 ENVELOPE_TEXT = json.dumps({key: f"<{key}>" for key in ENVELOPE_ARGUMENTS})

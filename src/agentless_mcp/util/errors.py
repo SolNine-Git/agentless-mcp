@@ -73,6 +73,10 @@ class LanguageUnavailable(AgentlessError):
     """
 
 
+class UnmeasurableSource(AgentlessError):
+    """A source text has no metrics: it fails to parse or tokenize, or its language has no rules."""
+
+
 class RepoResolutionError(AgentlessError):
     """A repository root could not be resolved or interrogated."""
 
