@@ -247,11 +247,11 @@
         {
           "check": "clone_delta",
           "severity": "advisory",
-          "message": "lines 84-87 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.",
+          "message": "lines 84-89 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.",
           "path": "pricing.py",
           "line": 84,
           "location": "pricing.py:84",
-          "evidence": "also at pricing.py:78"
+          "evidence": "also at pricing.py:58"
         }
       ],
       "observed": {
@@ -259,13 +259,13 @@
         "units_changed": [
           {
             "path": "pricing.py",
-            "unit": "render_price",
+            "unit": "catalogue",
             "line": 84,
             "match": "new",
             "cc_old": null,
-            "cc_new": 1,
+            "cc_new": 2,
             "sloc_old": null,
-            "sloc_new": 3
+            "sloc_new": 5
           }
         ]
       }

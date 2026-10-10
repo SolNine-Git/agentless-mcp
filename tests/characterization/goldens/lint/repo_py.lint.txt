@@ -43,5 +43,5 @@
       not checked: the repository has no pyproject.toml or requirements file
       evidence: no dependency manifest found
   [advisory] clone_delta  pricing.py:84
-      lines 84-87 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.
-      evidence: also at pricing.py:78
+      lines 84-89 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place.
+      evidence: also at pricing.py:58

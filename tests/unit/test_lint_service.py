@@ -1116,13 +1116,13 @@ CLONE_ONLY = (erosion.CHECK_CLONE_DELTA,)
 
 
 def summed(name):
-    """A five-line function; two of them with different names are Type-2 copies."""
+    """A five-line function over the clone_delta token floor; two names are Type-2 copies."""
     return (
-        f"def {name}(items):\n"
-        "    out = 0\n"
-        "    for item in items:\n"
-        "        out += item\n"
-        "    return out\n"
+        f"def {name}(items, scale=1, offset=None):\n"
+        "    out = 0 * scale + len(items) - (offset or 0)\n"
+        "    for item in sorted(items, key=abs, reverse=True):\n"
+        "        out += item * scale - 0 + max(item, 0)\n"
+        "    return round(out, 2) if out else 0\n"
     )
 
 

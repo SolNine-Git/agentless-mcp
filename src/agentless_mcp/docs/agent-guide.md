@@ -1240,7 +1240,7 @@ patch is right. This decides what to look at first.
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
 | `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
-| `clone_delta` | advisory | the change adds a block of three or more source lines that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
+| `clone_delta` | advisory | the change adds a block of three or more source lines and 40 or more tokens that has a copy elsewhere in the repository once names, literals, comments, and docstrings are ignored (a Type-2 clone). A block is a function, loop, branch, or try statement. A copy moved to another file, or renamed in place, is not a finding. One finding covers a copied function and the copied blocks inside it |
 | `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
@@ -1291,12 +1291,21 @@ Typescript and tsx share their node types, and so do c and cpp, so a copy
 between them counts. Javascript and typescript do not, because the
 typescript grammar wraps each parameter.
 
-A finding is a block the change adds whose key the repository then holds at
-least twice. Old and new blocks pair within each file first, then across
-files, so a block moved to another file is not new. A new block with no
-other instance is not a finding. When a copy is the same text as its
-original, the copy is the block the line diff did not keep in place. The
-evidence names up to three other copies. A finding has no `detail`.
+A finding is a block of 40 or more tokens that the change adds, and whose key
+the repository then holds at least twice. A token is a leaf of the Type-2
+stream: an identifier, a literal, a keyword, an operator, or a punctuation
+mark, with comments and docstrings dropped. Nearly every guard clause falls
+under 40 tokens. A guard clause here is an `if` with no `else` whose body is at
+most two statements, the last a raise, throw, or return, as when a lint rule
+makes every check build its message and then raise. On mcp-local `src/` and
+five Loc-Bench checkouts, 183 of 2,424 clone groups are guard clauses. A floor
+of 40 tokens keeps 4 of them, and a floor of 6 source lines keeps 28. The floor
+applies to findings only, so the clone groups count every block of 3 or more
+source lines. Old and new blocks pair within each file first, then across
+files, so a block moved to another file is not new. A new block with no other
+instance is not a finding. When a copy is the same text as its original, the
+copy is the block the line diff did not keep in place. The evidence names up to
+three other copies. A finding has no `detail`.
 
 `clone_delta` skips a function that `near_duplicates` reported at the same
 path and line in the same run. Two cases defeat that match, so both checks

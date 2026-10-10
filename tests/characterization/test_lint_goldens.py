@@ -117,8 +117,8 @@ DEFAULTS_CANDIDATE = """\
 >>>>>>> REPLACE
 """
 
-# A renamed copy of `format_money`: a Type-2 clone that near_duplicates does
-# not see, because its local names differ.
+# A renamed module-level copy of `PriceBook.price_list`: a Type-2 clone over the
+# clone_delta token floor that near_duplicates does not see, because its names differ.
 COPYING_CANDIDATE = '''\
 ### pricing.py
 <<<<<<< SEARCH
@@ -129,10 +129,12 @@ COPYING_CANDIDATE = '''\
     return f"{quantized} {CURRENCY}"
 
 
-def render_price(price: Decimal) -> str:
-    """Render a price with the configured currency suffix."""
-    rounded = price.quantize(CENTS, rounding=ROUND_HALF_UP)
-    return f"{rounded} {CURRENCY}"
+def catalogue(book, level: Tier) -> list[tuple[str, Decimal]]:
+    """Return every SKU with its unit price at a level, SKU order."""
+    entries: list[tuple[str, Decimal]] = []
+    for code in sorted(book._costs):
+        entries.append((code, book.quote(code, level)))
+    return entries
 >>>>>>> REPLACE
 '''
 
@@ -230,4 +232,4 @@ def test_the_defaults_candidate_reports_two_contract_hits():
 def test_the_copying_candidate_adds_a_type_two_clone():
     text = build_outputs()["lint.txt"]
     assert "[advisory] clone_delta  pricing.py:84" in text
-    assert "evidence: also at pricing.py:78" in text
+    assert "evidence: also at pricing.py:58" in text

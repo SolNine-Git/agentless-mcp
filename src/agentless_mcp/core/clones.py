@@ -42,7 +42,7 @@ class CandidateRules:
 
 @dataclass(frozen=True)
 class Block:
-    """One clone block in one text, with its Type-2 key and its exact key."""
+    """One clone block in one text, with its Type-2 key, its exact key, and its leaf count."""
 
     path: str
     start_line: int
@@ -50,6 +50,7 @@ class Block:
     key: str
     exact: str
     function: bool
+    tokens: int
 
 
 @dataclass(frozen=True)
@@ -157,7 +158,7 @@ def _blocks(root: Node, path: str, language: str, lines: tuple[int, ...]) -> tup
         if bisect.bisect_right(lines, end) - bisect.bisect_left(lines, start) < MIN_SLOC:
             continue
         key = clone_key(node, language)
-        found.append(Block(path, start, end, key.type2, key.exact, function))
+        found.append(Block(path, start, end, key.type2, key.exact, function, key.tokens))
     return tuple(sorted(found, key=lambda block: (block.start_line, -block.end_line)))
 
 

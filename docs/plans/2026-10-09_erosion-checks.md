@@ -219,6 +219,24 @@ Dropped from revision 1, because a query cannot tell the cases apart: Go `error-
   - **Identifiers.** Type identifiers count as identifiers, and Bash `word` counts as one too.
   - **Candidates.** Function candidates are D1's unit types plus the binding callables of javascript, typescript, tsx, and lua, with no binding test. D1's non-unit closures and Ruby blocks are not candidates. Ruby loops are D1's `while`, `until`, and `for` only. Rust `loop_expression` is a loop candidate. The key carries no language. Typescript and tsx share node types, and so do c and cpp, so a copy between them groups. Javascript and typescript do not, because the typescript grammar wraps each parameter in `required_parameter`.
   - **Finding rule.** A finding is an added instance whose key the after state holds at least twice. The literal "count rose" rule would report every new block with no twin.
+  - **Token floor (ERO-5b step 1b).** A finding also needs `erosion.MIN_FINDING_TOKENS` (40) tokens.
+    - A token is a leaf of the Type-2 stream: an identifier, a literal, or a node that keeps no child (a keyword, an operator, or a punctuation mark), with comments and Python docstrings dropped. `CloneKey.tokens` counts the tokens in the `clone_key` traversal, and `Block.tokens` carries the count.
+    - The floor applies to findings only. Keys, groups, `clone_sloc_lines`, the parity tests, and the D6 clone share keep the 3-SLOC candidate rule. Every key on 9,655 blocks (the mcp-local `src` snapshot, the test fixtures, chainlit, xformers) is byte-identical to the build before the count.
+    - Why 40: the guard groups count over mcp-local `src/` and five Loc-Bench checkouts (chainlit, xformers, dgl, conan, loguru). There are 2,424 groups, and 183 are guard clauses (an `if` with no else whose body is at most 2 statements, the last a raise, throw, or return).
+    - Guards are short in tokens but tall in lines, because a wrapped message adds lines. Their SLOC runs from 3 to 11. 179 of the 183 fall under 40 tokens (the largest is 28 on mcp-local `src/` and 83 on xformers).
+
+    | Floor | Guard groups left | Groups kept (src, chainlit, xformers, dgl, conan, loguru) |
+    |---|---|---|
+    | none (3 SLOC) | 183 | 200, 180, 185, 1590, 257, 12 |
+    | 5 SLOC | 64 | 105, 93, 133, 976, 92, 4 |
+    | 6 SLOC | 28 | 72, 71, 107, 741, 59, 3 |
+    | 8 SLOC | 8 | 37, 47, 70, 509, 23, 0 |
+    | 30 tokens | 19 | 86, 77, 124, 1183, 131, 4 |
+    | 40 tokens | 4 | 48, 52, 92, 903, 64, 0 |
+    | 50 tokens | 2 | 30, 33, 66, 691, 41, 0 |
+
+    - On real diffs the floor takes the self-check (step 1 against `b35e69c`) from 8 findings to 0. It takes mcp-local `--since HEAD~5` from 1 to 0, and `--since HEAD~50` from 21 to 2. The 2 kept are the `consult` and `coder` tool wrappers, which differ only in a literal.
+    - The cost is recall on short real copies. Two of the 8 self-check findings were real fragments of a copied loop, at 27 and 22 tokens.
   - **Pairing.** Within each changed file, blocks pair in three passes. First, an old block pairs with the new block on the line the line diff (`difflib.SequenceMatcher` on `\n`-split lines) kept it on, by exact key. Then blocks pair by exact key, and then by Type-2 key. The leftovers then pair across files, by exact key and then by Type-2 key. The counts equal `max(0, after - before)` per key. The passes only choose which copy is new.
   - **Nesting.** A copy that lies inside another reported copy, or inside a function the overlap rule skipped, folds into it. One pasted function is one finding.
   - **Rows.** Severity is `advisory`. The evidence names up to `patchlint.MAX_DUPLICATE_SITES` (3) other copies, then `and N more`. A finding has no `detail` and adds no `observed` list. Both arrive when `clone_delta` joins the hook in Phase 5.

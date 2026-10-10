@@ -33,6 +33,10 @@ CHECK_CLONE_DELTA = "clone_delta"
 # How many unindexed files the one clone_delta coverage row names.
 MAX_NAMED_GAPS: Final = 10
 
+# Nearly every guard clause a lint rule writes in one shape falls under 40 Type-2
+# leaf tokens, and nobody merges those. Groups and the clone share keep every block.
+MIN_FINDING_TOKENS: Final = 40
+
 MODULE_UNIT = "<module>"
 GAP_NO_BOUNDARY_GLOBS = "no_boundary_globs"
 GAP_NO_RULES = "no_rules_for_language"
@@ -323,7 +327,7 @@ def clone_index(texts: Mapping[str, str], unread: Mapping[str, str]) -> CloneInd
 def clone_delta(
     pairs: Sequence[TextPair], index: CloneIndex, reported: Collection[tuple[str, int]]
 ) -> PairOutcome:
-    """Report each block a change adds that has a Type-2 copy elsewhere once the change is in.
+    """Report each added block of at least MIN_FINDING_TOKENS leaves that has a Type-2 copy.
 
     ``index`` holds the repository as the working tree has it, and every index
     file a pair names is replaced by that pair. ``reported`` holds the
@@ -333,7 +337,9 @@ def clone_delta(
     changed = {pair.path for pair in pairs}
     instances = _after_instances(indexed, index, changed)
     copies = [
-        block for block in _added(indexed) if len(instances[block.key]) >= clones.MIN_INSTANCES
+        block
+        for block in _added(indexed)
+        if block.tokens >= MIN_FINDING_TOKENS and len(instances[block.key]) >= clones.MIN_INSTANCES
     ]
     found = [_clone_finding(block, instances[block.key]) for block in _outermost(copies, reported)]
     return PairOutcome(_sorted([*_index_rows(index, changed), *rows, *found]))

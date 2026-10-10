@@ -395,10 +395,11 @@ CLONE_LITERALS: Mapping[str, Mapping[str, str]] = MappingProxyType(
 
 @dataclass(frozen=True)
 class CloneKey:
-    """A block's sha256 keys: ``type2`` with names and literals abstracted, ``exact`` without."""
+    """A block's sha256 keys, ``type2`` abstracted and ``exact`` not, and its Type-2 leaf count."""
 
     type2: str
     exact: str
+    tokens: int
 
 
 def clone_key(node: Node, language: str) -> CloneKey:
@@ -409,6 +410,7 @@ def clone_key(node: Node, language: str) -> CloneKey:
     names: dict[str, str] = {}
     type2: list[str] = []
     exact: list[str] = []
+    leaves = 0
     stack: list[Node | str] = [node]
     while stack:
         item = stack.pop()
@@ -419,17 +421,21 @@ def clone_key(node: Node, language: str) -> CloneKey:
             name = _node_text(item)
             type2.append(names.setdefault(name, f"$VAR{len(names) + 1}"))
             exact.append(f"{item.type}={name}")
+            leaves += 1
         elif item.type in literals:
             type2.append(f"${literals[item.type]}")
             exact.append(f"{item.type}={_node_text(item)}")
+            leaves += 1
         else:
             token, pending = _opened(item, _kept_children(item, statement_drop))
             type2.append(token)
             exact.append(token)
             stack.extend(pending)
+            leaves += not pending
     return CloneKey(
         type2=hashlib.sha256("".join(type2).encode("utf-8")).hexdigest(),
         exact=hashlib.sha256(_KEY_SEPARATOR.join(exact).encode("utf-8")).hexdigest(),
+        tokens=leaves,
     )
 
 

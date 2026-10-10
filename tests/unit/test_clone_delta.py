@@ -3,31 +3,33 @@
 import pytest
 
 from agentless_mcp.core import erosion
+from agentless_mcp.core.clones import clone_groups, file_blocks
 from agentless_mcp.core.erosion import CloneIndex, TextPair, clone_delta, clone_index
 from agentless_mcp.core.patchlint import Severity
 
 
 def total(name="total", items="items", start="0"):
-    """A five-line Python function: one candidate, with a two-line loop inside it."""
+    """A five-line function of 71 leaf tokens, with a two-line loop inside it."""
     return (
-        f"def {name}({items}):\n"
-        f"    out = {start}\n"
-        f"    for item in {items}:\n"
-        f"        out += item\n"
-        f"    return out\n"
+        f"def {name}({items}, scale=1, offset=None):\n"
+        f"    out = {start} * scale + len({items}) - (offset or 0)\n"
+        f"    for item in sorted({items}, key=abs, reverse=True):\n"
+        f"        out += item * scale - {start} + max(item, 0)\n"
+        f"    return round(out, 2) if out else {start}\n"
     )
+
+
+LOOP = (
+    "for row in sorted(rows, key=len, reverse=True)[:limit]:\n"
+    "    print(row, sep=', ', end='', flush=True)\n"
+    "    found += len(row) * limit - min(len(row), limit)\n"
+)
 
 
 def looped(name="scan", seed="0"):
-    """A function whose three-line loop is a candidate of its own."""
-    return (
-        f"def {name}(rows):\n"
-        f"    found = {seed}\n"
-        f"    for row in rows:\n"
-        f"        print(row)\n"
-        f"        found += row\n"
-        f"    return found\n"
-    )
+    """A function whose three-line loop of 54 leaf tokens is a candidate of its own."""
+    body = "".join(f"    {line}\n" for line in LOOP.splitlines())
+    return f"def {name}(rows, limit=10):\n    found = {seed}\n{body}    return found\n"
 
 
 def repo(files, unread=None):
@@ -169,6 +171,52 @@ class TestNotFindings:
         assert run(pairs, files) == ()
 
 
+def padded(passes):
+    """Six five-token lines, ``passes`` one-token lines, and a header and return of 13."""
+    return "def f(a):\n" + "    a = a + 1\n" * 6 + "    pass\n" * passes + "    return a\n"
+
+
+GUARD = (
+    "def f(value):\n"
+    "    if value is None:\n"
+    '        message = "value is required"\n'
+    "        raise ValueError(message)\n"
+    "    return value\n"
+)
+
+
+class TestTheTokenFloor:
+    def test_a_copy_at_the_floor_is_a_finding(self):
+        source = padded(2)
+        (block,) = file_blocks(source, "a.py", "python").blocks
+
+        found = copies(run([TextPair("b.py", None, source.replace("f(", "g("))], {"a.py": source}))
+
+        assert block.tokens == erosion.MIN_FINDING_TOKENS
+        assert len(found) == 1
+
+    def test_a_copy_one_token_under_the_floor_is_not_a_finding(self):
+        source = padded(1)
+        (block,) = file_blocks(source, "a.py", "python").blocks
+
+        assert block.tokens == erosion.MIN_FINDING_TOKENS - 1
+        assert run([TextPair("b.py", None, source.replace("f(", "g("))], {"a.py": source}) == ()
+
+    def test_a_copied_guard_clause_is_not_a_finding(self):
+        copy = GUARD.replace("f(", "g(").replace("value is required", "missing")
+
+        assert run([TextPair("b.py", None, copy)], {"a.py": GUARD}) == ()
+
+    def test_the_floor_leaves_the_groups_alone(self):
+        copy = GUARD.replace("f(", "g(")
+        files = [file_blocks(GUARD, "a.py", "python"), file_blocks(copy, "b.py", "python")]
+
+        groups = clone_groups(files)
+
+        assert [len(group.instances) for group in groups] == [2, 2]
+        assert all(block.tokens < erosion.MIN_FINDING_TOKENS for block in files[0].blocks)
+
+
 class TestNesting:
     def test_a_copied_function_with_a_copied_loop_is_one_finding(self):
         (found,) = copies(run([TextPair("b.py", None, looped("again"))], {"a.py": looped()}))
@@ -176,15 +224,9 @@ class TestNesting:
         assert found.line == 1
 
     def test_a_copied_loop_in_a_new_function_is_reported_at_the_loop(self):
-        new = (
-            "def fresh(rows, extra):\n"
-            "    found = extra * 2\n"
-            "    for row in rows:\n"
-            "        print(row)\n"
-            "        found += row\n"
-            "    print(extra)\n"
-            "    return found\n"
-        )
+        body = "".join(f"    {line}\n" for line in LOOP.splitlines())
+        head = "def fresh(rows, extra):\n    found = extra * 2\n"
+        new = f"{head}{body}    print(extra)\n    return found\n"
 
         (found,) = copies(run([TextPair("b.py", None, new)], {"a.py": looped()}))
 
@@ -203,10 +245,9 @@ class TestTheNearDuplicatesOverlap:
         assert run([TextPair("b.py", None, looped("again"))], {"a.py": looped()}, reported) == ()
 
     def test_a_loop_at_a_reported_line_is_not_skipped(self):
-        loop = "for row in rows:\n    print(row)\n    total = row\n"
         reported = frozenset({("b.py", 1)})
 
-        (found,) = copies(run([TextPair("b.py", None, loop)], {"a.py": loop}, reported))
+        (found,) = copies(run([TextPair("b.py", None, LOOP)], {"a.py": LOOP}, reported))
 
         assert found.line == 1
 
@@ -300,7 +341,10 @@ class TestCoverage:
 
 class TestOtherLanguages:
     def test_a_go_copy_is_a_finding(self):
-        source = 'func Sum(a int, b int) int {\n\tc := a + b\n\tfmt.Println("x")\n\treturn c\n}\n'
+        source = (
+            "func Sum(a int, b int) int {\n\tc := a + b*2 - len(names)\n"
+            '\tfmt.Println("x", a, b, c, names[0])\n\treturn c * a / (b + 1)\n}\n'
+        )
         files = {"a.go": "package a\n\n" + source}
         copy = "package a\n\n" + source.replace("Sum", "Add").replace('"x"', '"y"')
 
