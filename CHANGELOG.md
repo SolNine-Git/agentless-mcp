@@ -154,7 +154,8 @@
   writes in one shape are not reported: over mcp-local `src/` and five
   Loc-Bench checkouts, the floor keeps 4 of 183 guard-clause groups and 1,159
   of 2,424 groups. On real diffs it takes mcp-local `--since HEAD~50` from 21
-  findings to 2, and the clone_delta self-check on its own change from 8 to 0. Old and new blocks pair within each file first, then across
+  findings to 2, and the clone_delta self-check on its own change from 8 to
+  0. Old and new blocks pair within each file first, then across
   files, so a block moved to another file or renamed in place is not a finding,
   and a new block with no copy is not one either. One finding covers a pasted
   function and the copied blocks inside it, and a function that
