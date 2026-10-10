@@ -66,6 +66,7 @@ from agentless_mcp.application.symbol_service import (
     symbol_card,
 )
 from agentless_mcp.core import (
+    clones,
     communities,
     complexity,
     grammars,
@@ -519,9 +520,16 @@ class ComplexityWalk:
     """What one complexity walk measured, what it could not measure, and how far it got."""
 
     units: tuple[complexity.Unit, ...]
+    blocks: tuple[clones.FileBlocks, ...]
     not_measured: tuple[refs.SkippedFile, ...]
     walked: int
     files: int
+
+
+@dataclass(frozen=True)
+class _Measured:
+    units: tuple[complexity.Unit, ...]
+    blocks: clones.FileBlocks
 
 
 @dataclass(frozen=True)
@@ -687,6 +695,7 @@ def _health_row(
 def _complexity_summary(
     walk: ComplexityWalk, *, threshold: int, limit: int
 ) -> render.HealthComplexity:
+    copied = clones.clone_sloc_lines(walk.blocks, clones.clone_groups(walk.blocks))
     return render.HealthComplexity(
         threshold=threshold,
         files=walk.files,
@@ -694,6 +703,8 @@ def _complexity_summary(
         units=len(walk.units),
         over_threshold=sum(1 for unit in walk.units if unit.cc > threshold),
         erosion=complexity.erosion(walk.units, threshold),
+        sloc=sum(len(indexed.sloc_lines) for indexed in walk.blocks),
+        clone_lines=sum(len(lines) for lines in copied.values()),
         not_measured=render.HealthUnmeasured(
             rows=walk.not_measured[:limit], total=len(walk.not_measured), limit=limit
         ),
@@ -790,6 +801,7 @@ def _skipped_targets(skipped: Iterable[refs.SkippedFile]) -> Iterator[_Target]:
 def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -> ComplexityWalk:
     started = time.monotonic()
     units: list[complexity.Unit] = []
+    blocks: list[clones.FileBlocks] = []
     not_measured: list[refs.SkippedFile] = []
     walked = 0
     for target in targets:
@@ -800,24 +812,31 @@ def _walk_complexity(root: Path, targets: Sequence[_Target], *, budget: float) -
         if isinstance(measured, refs.SkippedFile):
             not_measured.append(measured)
         else:
-            units.extend(measured)
+            units.extend(measured.units)
+            blocks.append(measured.blocks)
         walked += 1
     return ComplexityWalk(
-        units=tuple(units), not_measured=tuple(not_measured), walked=walked, files=len(targets)
+        units=tuple(units),
+        blocks=tuple(blocks),
+        not_measured=tuple(not_measured),
+        walked=walked,
+        files=len(targets),
     )
 
 
-def _measure_target(root: Path, target: _Target) -> tuple[complexity.Unit, ...] | refs.SkippedFile:
+def _measure_target(root: Path, target: _Target) -> _Measured | refs.SkippedFile:
     if target.skipped is not None:
         return refs.SkippedFile(path=target.path, reason=target.skipped)
     read = read_bounded(root / target.path)
     if read.text is None:
         return refs.SkippedFile(path=target.path, reason=_skip_reason(read.skipped, target.path))
+    # One failure drops the file from both figures, so erosion and clone share cover one set.
     try:
         units = complexity.measure(read.text, target.path, target.language)
+        blocks = clones.file_blocks(read.text, target.path, target.language)
     except (UnmeasurableSource, LanguageUnavailable) as exc:
         return refs.SkippedFile(path=target.path, reason=str(exc))
-    return units
+    return _Measured(units=units, blocks=blocks)
 
 
 def _skip_reason(skipped: str | None, path: str) -> str:

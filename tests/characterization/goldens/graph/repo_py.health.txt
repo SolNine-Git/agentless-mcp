@@ -36,7 +36,7 @@ no orphan candidates: every function has a counted edge
   [py:pricing.py::PriceBook.price_list] @58  PriceBook.price_list  method  in 0  out 1
 ... 1 more hubs not listed (limit 20)
 
-complexity over 19 units in 3 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+complexity over 19 units in 3 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.061
 
 19 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
   [py:reports.py::check_report_inputs] @55  check_report_inputs  cc 4  sloc 11  mass 13.3

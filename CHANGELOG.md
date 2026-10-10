@@ -134,6 +134,17 @@
   Over 144 Loc-Bench checkouts, the orphan, unused-export, and hub sections are
   byte-identical to the previous build, and the walk takes 0.26 s median and
   4.9 s at most.
+- **`health` reports clone share.** The complexity summary ends with the share
+  of measured source lines that sit inside a Type-2 clone instance: a
+  function, loop, branch, or try block of 3 or more lines that has a copy once
+  names, literals, comments, and docstrings are ignored. Each line counts once,
+  however many copies hold it. The JSON summary carries `sloc`, `clone_lines`,
+  and `clone_share`. A file that cannot be indexed is counted and named on the
+  `not measured` line, and it leaves both erosion and clone share. On a snapshot
+  of mcp-local `src/` (183 files), the 2,513 clone lines of 30,603 source lines
+  equal scb-check 0.1.3's `clone_loc` and `total_loc`. On mcp-local, `health`
+  takes 2.16 s against 1.39 s before (CLI, median of 3), and the graph sections
+  are byte-identical.
 - **`lint` reports `clone_delta`.** The advisory names each block a change
   adds that has a copy elsewhere in the repository once names, literals,
   comments, and docstrings are ignored (a Type-2 clone). A block is a function,

@@ -1296,12 +1296,19 @@ class HealthComplexity:
     units: int
     over_threshold: int
     erosion: float
+    sloc: int
+    clone_lines: int
     not_measured: HealthUnmeasured
 
     @property
     def measured(self) -> int:
         """How many of the walked files gave metrics."""
         return self.walked - self.not_measured.total
+
+    @property
+    def clone_share(self) -> float:
+        """Return the share of measured SLOC inside a Type-2 clone instance, 0.0 for no SLOC."""
+        return self.clone_lines / self.sloc if self.sloc else 0.0
 
     @property
     def stopped_by_budget(self) -> bool:
@@ -1319,6 +1326,9 @@ class HealthComplexity:
             "units": self.units,
             "over_threshold": self.over_threshold,
             "erosion": self.erosion,
+            "sloc": self.sloc,
+            "clone_lines": self.clone_lines,
+            "clone_share": self.clone_share,
             "not_measured": self.not_measured.as_dict(),
         }
 
@@ -1830,7 +1840,11 @@ def _complexity_lines(summary: HealthComplexity) -> list[str]:
 
 
 def _complexity_figures(summary: HealthComplexity) -> tuple[str, ...]:
-    return (f"{summary.over_threshold} over the threshold", f"erosion {summary.erosion:.3f}")
+    return (
+        f"{summary.over_threshold} over the threshold",
+        f"erosion {summary.erosion:.3f}",
+        f"clone share {summary.clone_share:.3f}",
+    )
 
 
 def _unmeasured_lines(listing: HealthUnmeasured) -> list[str]:

@@ -315,6 +315,9 @@
     "units": 24,
     "over_threshold": 0,
     "erosion": 0.0,
+    "sloc": 143,
+    "clone_lines": 9,
+    "clone_share": 0.06293706293706294,
     "not_measured": {
       "total": 0,
       "limit": 20,

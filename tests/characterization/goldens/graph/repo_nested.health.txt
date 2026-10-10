@@ -36,7 +36,7 @@ no orphan candidates: every function has a counted edge
   [py:billing/ledger.py::Ledger.__init__] @27  Ledger.__init__  method  in 0  out 1
 ... 7 more hubs not listed (limit 20)
 
-complexity over 24 units in 7 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+complexity over 24 units in 7 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.063
 
 24 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
   [py:billing/invoice.py::render_invoice] @47  render_invoice  cc 3  sloc 10  mass 9.5

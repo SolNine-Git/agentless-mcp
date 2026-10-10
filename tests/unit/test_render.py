@@ -356,6 +356,8 @@ def complexity_summary(**overrides):
         "units": 7,
         "over_threshold": 2,
         "erosion": 0.4567,
+        "sloc": 200,
+        "clone_lines": 25,
         "not_measured": render.HealthUnmeasured(rows=(), total=0, limit=20),
     }
     return render.HealthComplexity(**{**fields, **overrides})
@@ -375,11 +377,14 @@ class TestHealthComplexity:
         }
         return render.render_health(render.HealthReport(**{**fields, **overrides}))
 
-    def test_the_summary_states_units_threshold_and_erosion(self):
+    def test_the_summary_states_units_threshold_erosion_and_clone_share(self):
         assert (
             "complexity over 7 units in 3 files (threshold cc > 10): "
-            "2 over the threshold, erosion 0.457"
+            "2 over the threshold, erosion 0.457, clone share 0.125"
         ) in self.render().splitlines()
+
+    def test_no_source_lines_is_a_clone_share_of_zero(self):
+        assert complexity_summary(sloc=0, clone_lines=0).clone_share == 0.0
 
     def test_the_complexity_lines_follow_the_graph_sections(self):
         lines = self.render().splitlines()
@@ -465,11 +470,13 @@ class TestHealthComplexity:
             "units": 7,
             "over_threshold": 2,
             "erosion": 0.4567,
+            "sloc": 200,
+            "clone_lines": 25,
+            "clone_share": 0.125,
             "not_measured": {"total": 0, "limit": 20, "omitted": 0, "rows": []},
         }
         assert document["hotspots"]["rows"][0]["stable_id"] is None
         assert document["hotspots"]["rows"][0]["metric_only"] is True
-        assert "clone_share" not in document["complexity"]
 
 
 class TestImports:

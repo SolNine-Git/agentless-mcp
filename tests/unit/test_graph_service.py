@@ -18,9 +18,9 @@ import pytest
 from agentless_mcp.application import graph_service, render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import complexity, resolve
+from agentless_mcp.core import clones, complexity, resolve
 from agentless_mcp.util import deadline
-from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable
+from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, UnmeasurableSource
 
 CORE = """\
 def helper(value):
@@ -1087,6 +1087,55 @@ class TestHealthComplexity:
         assert [(entry.path, entry.reason) for entry in rows] == [
             ("other.py", "language 'python' not warmed: run agentless-mcp warmup")
         ]
+
+    def test_the_clone_share_is_clone_lines_over_the_measured_lines(self, graphs, tmp_path):
+        core = (
+            "def a(x):\n    y = x + 1\n    return y\n\n\n"
+            "def b(z):\n    w = z + 1\n    return w\n\n\n"
+            "VALUE = 3\n"
+        )
+
+        summary = graphs.health(build(tmp_path, {"core.py": core})).complexity
+
+        assert (summary.clone_lines, summary.sloc) == (6, 7)
+        assert summary.clone_share == 6 / 7
+
+    def test_a_file_that_cannot_be_indexed_is_named_and_leaves_both_figures(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        index = clones.file_blocks
+
+        def unindexable(source, path, language):
+            if path == "other.py":
+                message = "other.py: clone blocks cannot be indexed"
+                raise UnmeasurableSource(message)
+            return index(source, path, language)
+
+        monkeypatch.setattr(clones, "file_blocks", unindexable)
+        repo = build(tmp_path, {"core.py": COMPLEX, "other.py": branchy("other", 3)})
+
+        summary = graphs.health(repo).complexity
+
+        assert [(entry.path, entry.reason) for entry in summary.not_measured.rows] == [
+            ("other.py", "other.py: clone blocks cannot be indexed")
+        ]
+        assert summary.units == 3
+        assert summary.sloc == len(index(COMPLEX, "core.py", "python").sloc_lines)
+
+    def test_a_walk_the_budget_stopped_shares_over_the_walked_files_only(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        files = {f"m{index:02}.py": branchy(f"f{index}", index + 4) for index in range(1, 11)}
+        # m00 and m11 are the one Type-2 pair, and the stopped walk never reaches m11.
+        repo = build(tmp_path, {**files, "m00.py": branchy("a", 3), "m11.py": branchy("b", 3)})
+        whole = graphs.health(repo).complexity
+        monkeypatch.setattr(graph_service, "time", TickingClock())
+
+        stopped = graphs.health(repo).complexity
+
+        assert whole.clone_lines == 12
+        assert (stopped.walked, stopped.clone_lines, stopped.clone_share) == (9, 0, 0.0)
+        assert 0 < stopped.sloc < whole.sloc
 
     @pytest.mark.parametrize(
         ("remaining", "budget"), [(None, 10.0), (30.0, 10.0), (8.0, 4.0), (-1.0, 0.0)]

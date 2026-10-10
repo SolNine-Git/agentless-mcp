@@ -957,7 +957,7 @@ where a bug lives. The hub ranking is the section to read when the question is
 which symbol a change has to route through.
 
 ```
-complexity over 1770 units in 183 files (threshold cc > 10): 412 over the threshold, erosion 0.350
+complexity over 1770 units in 183 files (threshold cc > 10): 115 over the threshold, erosion 0.350, clone share 0.082
 complexity: 1 file not measured
   scripts/broken.py  scripts/broken.py does not parse: the first syntax error is at line 3. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again.
 
@@ -976,6 +976,19 @@ sections use. A function that is long and simple ranks high in `hotspots` and
 adds nothing to erosion. Whether it should be split is a judgment this
 section does not make.
 
+**Clone share is the share of source lines that sit in a copied block.** A
+block is a function, loop, branch, or try statement of 3 or more source lines.
+Two blocks are copies when they match once names, literals, comments, and
+docstrings are ignored (a Type-2 clone, the rule that `lint`'s `clone_delta`
+uses). Clone share counts each source line inside any instance of a block
+that has 2 or more instances, once, so nested and overlapping copies do not
+count a line twice. It divides that count by the source lines of the files
+the walk measured. Python follows scb-check 0.1.3: on a snapshot of mcp-local
+`src/`, the 2,513 clone lines of 30,603 source lines equal scb-check's
+`clone_loc` and `total_loc`. The share counts every copied block of 3 or more
+lines, including the short guard clauses that `clone_delta` leaves out of its
+findings. The JSON form carries `sloc`, `clone_lines`, and `clone_share`.
+
 **A hotspot row carries the unit's stable id when one agentless symbol starts
 on the same line with the same name.** Otherwise the row ends `metric-only
 unit, no stable id`, for example an arrow function bound to an object key,
@@ -984,11 +997,13 @@ which the extractor does not report as a symbol. Read such a row by its
 
 **Nothing the walk could not measure is dropped.** A file that does not parse,
 that Python's tokenizer rejects, whose grammar is not loaded, or that the scan
-skipped is counted on the `not measured` line and named with its reason. The
-walk has its own time budget: 10 s, or half of what is left of an MCP call's
-allowance, whichever is less. When the budget ends it, the answer says
-`complexity: N of M files walked before the time budget`, the summary covers
-the files walked, and the graph sections are complete.
+skipped is counted on the `not measured` line and named with its reason.
+Erosion and clone share cover the same files, so a file that cannot be measured
+or indexed is left out of both. The walk has its own time budget: 10 s, or half
+of what is left of an MCP call's allowance, whichever is less. When the budget
+ends it, the answer says
+`complexity: N of M files walked before the time budget`, the summary and the
+clone share cover the files walked, and the graph sections are complete.
 
 ### `html` (CLI only) -- the module graph, interactive
 

@@ -35,7 +35,7 @@ no orphan candidates: every function has a counted edge
   [ts:reports.ts::ReportError] @12  ReportError  class  in 1  out 0
   [ts:types.ts::addMoney] @51  addMoney  function  in 0  out 1
 
-complexity over 23 units in 4 files (threshold cc > 10): 0 over the threshold, erosion 0.000
+complexity over 23 units in 4 files (threshold cc > 10): 0 over the threshold, erosion 0.000, clone share 0.068
 
 23 units ranked by mass (named functions and methods, mass = cc * sqrt(sloc), highest first)
   [ts:types.ts::parseWarehouse] @31  parseWarehouse  cc 8  sloc 19  mass 34.9
