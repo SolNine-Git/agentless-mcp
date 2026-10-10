@@ -940,6 +940,7 @@ def _group_sites(
 
 
 _BINDING_TIERS = frozenset({resolve.Tier.SAME_FILE, resolve.Tier.IMPORTED})
+_NAMED_BINDING_ROLES = frozenset({IdentifierRole.IMPORT, IdentifierRole.MODULE_QUALIFIER})
 
 
 def _line_tiers(
@@ -966,9 +967,9 @@ def _site_tier(
     resolver: resolve.Resolver,
     target_ids: set[str],
 ) -> resolve.Tier:
-    # An import is tiered by the binding it creates. Any other site that binds
-    # nothing (parameter, local, attribute member, declaration) is a spelling only.
-    if resolution is None and site.role is IdentifierRole.IMPORT:
+    # An import is tiered by the binding it creates, and a qualifier (`Key.parse()`)
+    # by the binding it spells. Any other site that binds nothing is a spelling only.
+    if resolution is None and site.role in _NAMED_BINDING_ROLES:
         resolution = resolver.resolve(site.name, site.path)
     if resolution is None:
         return resolve.Tier.AMBIGUOUS

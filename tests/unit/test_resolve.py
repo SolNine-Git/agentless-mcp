@@ -1127,6 +1127,18 @@ class TestAliasesAndReExports:
         assert resolution is not None
         assert resolution.tier is resolve.Tier.AMBIGUOUS
 
+    def test_a_module_attribute_follows_the_package_re_export(self, tmp_path, extractor):
+        files = {
+            "pkg/__init__.py": "from .core import Array\n",
+            "pkg/core.py": "class Array:\n    pass\n",
+            "other.py": "class Array:\n    pass\n",
+            "use.py": "import pkg\n\n\ndef caller():\n    return pkg.Array()\n",
+        }
+        _, graph = resolved(write(tmp_path, files), extractor)
+        assert targets(graph, "py:use.py::caller", "Array") == [
+            ("py:pkg/core.py::Array", resolve.Tier.IMPORTED)
+        ]
+
     def test_a_wide_star_re_export_still_reaches_the_definition(self, tmp_path, extractor):
         files = {f"pkg/m{n:02d}.py": f"def f{n:02d}():\n    return {n}\n" for n in range(40)}
         files["pkg/m39.py"] += "\n\ndef helper():\n    return 0\n"

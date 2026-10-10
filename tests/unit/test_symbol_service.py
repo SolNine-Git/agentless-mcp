@@ -597,6 +597,15 @@ class TestEachLineIsOneRow:
         tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::helper")
         assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5]}
 
+    def test_an_imported_class_used_as_a_qualifier_keeps_its_import_tier(self, symbols, tmp_path):
+        files = {
+            "lib.py": "class Key:\n    @classmethod\n    def parse(cls):\n        return cls()\n",
+            "other.py": "class Key:\n    pass\n",
+            "use.py": "from lib import Key\n\n\ndef f():\n    return Key.parse()\n",
+        }
+        tiers, _ = _fan_in(symbols, tmp_path, files, "py:lib.py::Key")
+        assert _rows_in(tiers, "use.py") == {("use.py", "imported"): [1, 5]}
+
     def test_a_parameter_spelled_like_the_alias_is_not_listed(self, symbols, tmp_path):
         use = (
             "from lib import helper as h\n\n\ndef real():\n    return h()\n\n\n"

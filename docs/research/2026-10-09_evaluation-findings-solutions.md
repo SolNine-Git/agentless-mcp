@@ -609,9 +609,10 @@ the deferred row and the open half of query-shaped loading.
 | `fix-s4` | stages 1-4 | 0 of 150 | 472.7 |
 | `fix-s6` | stages 1-6 | 0 of 150 | 383.0 |
 | `fix-review` | stages 1-6 and the review fixes | 0 of 150 | 373.8 |
+| `fix-qualifier` | the qualifier and module-attribute fixes | 0 of 150 | 416.8 |
 
 No ranking moved, so no metric moved: the gate holds at every stage. The
-`map_seconds` totals are single runs and are not claimed as an effect.
+`map_seconds` totals are single runs (`fix-qualifier` ran beside the surface diff) and are not claimed as an effect.
 
 **Correctness evidence for what the retrieval tier cannot see.**
 
@@ -620,12 +621,13 @@ No ranking moved, so no metric moved: the gate holds at every stage. The
   caller as resolved-via-import. A new refs golden per fixture pins the
   output; TypeScript groups carry `locals not checked`.
 - Aliases and re-exports: on the MONAI checkout, 5,558 reference edges moved
-  from unique to resolved-via-import with the same target, 77 ambiguous
-  references resolved to one target, and none was lost. Sampled chains
-  (`swin_unetr.py` -> `monai.networks.blocks` -> `unetr_block.py`; `load`
-  and `Affine` through package re-exports) were checked against the source.
-  aiohttp: 494 edges moved to resolved-via-import. This repository and
-  `Agentless`: no change.
+  from unique to resolved-via-import with the same target, 249 new
+  resolved-via-import edges appeared, and none was lost (final build, with
+  the module-attribute walk). Sampled chains (`swin_unetr.py` ->
+  `monai.networks.blocks` -> `unetr_block.py`; `load` and `Affine` through
+  package re-exports) were checked against the source. On 97a8e7e, before
+  the review fixes: aiohttp 494 edges moved to resolved-via-import; this
+  repository and `Agentless` did not change.
 - Focus pin: the evaluation's probe (180 functions, then `target_bug`,
   budget 500) now keeps `target_bug`. The map goldens did not move.
 - History: lines inserted above a symbol no longer shift the span; the
@@ -675,6 +677,37 @@ aliased import line twice. The other seven:
 - One docstring ran past one line.
 
 All nine are fixed with tests, and the `fix-review` run repeats the gate.
+
+**Surface diff over the 150 Loc-Bench checkouts.** The retrieval tier reads
+only the ranked file list, so every changed surface was run under 0.9.0 and
+under the final build on the same 1,128 queries: the function map with the
+issue's seeds as focus, `cycles`, `refs` and `explain` on up to two seed
+names, and `refs` on three sampled symbols. Targets were picked under each
+build and were byte-identical. No model is involved, and no exit code
+changed.
+
+| Surface | Answers changed | What changed |
+|---|---|---|
+| `refs` | 130 of 678 | 1,706 lines unique to resolved-via-import, 415 ambiguous to resolved-via-import; 15 of 15 sampled were correct |
+| `explain` | 39 of 228 | 16 add only the tie notice; the rest move tiers or edges through alias resolution |
+| `map` | 42 of 150 | Every one has a seed that names a symbol (the prediction held); no file was added or lost |
+| `cycles` | 150 of 150 | The note counts internal imports only; member lists; no cycle count fell |
+
+Lines that left a binding tier: 22 resolved-via-import to ambiguous (14 are
+modin's `pandas.DataFrame`, the third-party class; 8 are aiohttp names
+imported under `TYPE_CHECKING` and assigned `None` at module level) and 92
+same-file to ambiguous (parameters that shadow the target, pytest fixtures
+among them). Two answers over the token ceiling show 10 and 12 fewer rows,
+because per-tier groups spend more of the ceiling on headers; both carry
+`truncated`. Fifteen maps list one to nine fewer symbols because a pinned
+focus symbol took their room.
+
+The first run of this diff found a regression no fixture covered: an
+imported class used as a qualifier (`OptionKey.from_string(...)`) fell from
+resolved-via-import to ambiguous on 31 lines, because the extractor marks it
+`MODULE_QUALIFIER`. Fan-in now tiers a qualifier by the binding of the name
+it spells, and a module attribute follows the package's re-exports; the
+table above is after that fix.
 
 **Not built.** Structured content, cursors and lexical search (deferred by
 design); references loaded by name (the open half of the plan, now updated

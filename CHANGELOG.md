@@ -16,20 +16,21 @@ say what they left out. The Loc-Bench retrieval ranking is byte-identical to
   the resolved graph gives it, and each line takes the best tier of the
   occurrences on it, so `helper(x).helper` stays a call. A parameter, a local,
   an attribute member or a declaration of the same name is
-  `name-only-ambiguous`, and an import line is tiered by the binding it
-  creates. A binding-tier group from a language with no scope analysis is
+  `name-only-ambiguous`. An import line is tiered by the binding it creates,
+  and an imported name used as a qualifier (`Key.parse()`) by the binding it
+  names. A binding-tier group from a language with no scope analysis is
   marked `locals not checked` (`scope_checked: false` in JSON).
 - **Import aliases and package re-exports resolve.** `from lib import helper
   as h` bound `h` to nothing, and `from pkg import helper` through
   `pkg/__init__.py` resolved only as `unique`. The resolver now follows each
   local name to the file and the original member it names, through re-exports
   and star re-exports inside packages, and a visited set ends a re-export
-  cycle. An explicit re-export of a name outranks a star import, and a star
+  cycle. A module attribute (`pkg.Name`) follows the package's re-exports
+  too. An explicit re-export of a name outranks a star import, and a star
   import does not carry a private name. Fan-in also lists the alias
   spellings, but not a parameter or local that reuses one. On MONAI, 5,558
   reference edges moved from `unique` to `resolved-via-import` with the same
-  target, 77 ambiguous references resolved to one target, and no edge was
-  lost.
+  target, 249 new `resolved-via-import` edges appeared, and no edge was lost.
 - **A focus-named symbol survives the map budget.** The function map packed
   symbols by score alone, so a symbol the focus named at the end of a large
   file was cut while the file's other functions filled the budget. Up to 10

@@ -369,7 +369,9 @@ class Resolver:
     def through_imports(self, name: str, path: str) -> tuple[Definition, ...]:
         """Follow ``name``'s from-imports in ``path`` through aliases and re-exports."""
         scope = self.scopes.get(path)
-        first = sorted(scope.members.get(name, ())) if scope is not None else []
+        return self._follow(sorted(scope.members.get(name, ())) if scope is not None else [])
+
+    def _follow(self, first: Iterable[tuple[str, str]]) -> tuple[Definition, ...]:
         pending = deque((target, member, 1) for target, member in first)
         visited: set[tuple[str, str]] = set()
         found: dict[tuple[str, int], Definition] = {}
@@ -407,7 +409,7 @@ class Resolver:
             for defining, entries in self._candidates_by_path.get(name, {}).items()
             if defining in targets
             for entry in entries
-        )
+        ) or self._follow((module, name) for module in sorted(targets))
         if not candidates:
             return None
         return Resolution(name=name, tier=Tier.IMPORTED, candidates=candidates)
