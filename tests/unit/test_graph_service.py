@@ -946,8 +946,8 @@ def outer():
     return Local
 """
 
-# A line separator inside a one-line string: the tree parses, the tokenizer does not.
-TOKENIZER_REJECTS = 'LABEL = "left\u2028right"\n\n\ndef unreachable(a):\n    return a or 1\n'
+# A dedent to no enclosing level: the tree parses, and every supported tokenizer refuses it.
+TOKENIZER_REJECTS = "def f():\n    if x:\n        pass\n  pass\n"
 
 
 class TickingClock:
