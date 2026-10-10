@@ -105,7 +105,7 @@ TEST_DIRECTORY_SEGMENTS = frozenset({"test", "tests", "testing", "spec", "specs"
 # and which shared-caller candidates rank below production, and a fixture tree
 # is neither a test that exercises the code above it nor a candidate to reuse.
 # A structural-health view needs both names excluded, so it asks for both.
-FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures"})
+FIXTURE_DIRECTORY_SEGMENTS = frozenset({"fixtures", "testdata"})
 
 # What one expansion's cards may cost: under the 16k ceiling by the receipt
 # and JSON-escaping margin, so this budget binds before the ceiling drops symbols.

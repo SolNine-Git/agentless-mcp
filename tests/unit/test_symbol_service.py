@@ -16,6 +16,7 @@ from agentless_mcp.application.symbol_service import (
     EXPAND_MAX_SEATS,
     MAX_UNRESOLVED_ROWS,
     SymbolService,
+    in_metric_scope,
     is_fixture_path,
     is_test_path,
     render_expansion,
@@ -475,14 +476,25 @@ class TestWhatCountsAsAFixturePath:
 
     @pytest.mark.parametrize(
         "path",
-        ["fixtures/repo_py/core.py", "tests/characterization/fixtures/sample.py"],
+        [
+            "fixtures/repo_py/core.py",
+            "tests/characterization/fixtures/sample.py",
+            "pkg/testdata/gen.go",
+        ],
     )
     def test_a_fixture_directory_reads_as_one(self, path):
         assert is_fixture_path(path)
 
-    @pytest.mark.parametrize("path", ["fixtures_old/core.py", "src/fixture.py", "src/core.py"])
+    @pytest.mark.parametrize(
+        "path", ["fixtures_old/core.py", "src/fixture.py", "src/core.py", "pkg/testdata.go"]
+    )
     def test_a_name_that_merely_contains_the_word_is_production(self, path):
         assert not is_fixture_path(path)
+
+    def test_a_testdata_file_has_no_metrics(self):
+        """Outside metric scope, so the clone index and the measured cache skip it."""
+        assert in_metric_scope("pkg/gen.go")
+        assert not in_metric_scope("pkg/testdata/gen.go")
 
     def test_a_fixture_is_not_reported_as_a_test(self):
         """The map lists tests as companions; a fixture has nothing to exercise."""

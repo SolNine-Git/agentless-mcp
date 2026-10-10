@@ -665,6 +665,46 @@ class TestContractDrift:
         assert findings_of(service, erosion_repo, text, CONTRACT_ONLY) == ()
 
 
+class TestPathScope:
+    """Fixtures leave every pair check; tests leave every one but complexity_delta."""
+
+    def rows(self, service, root, path, after, checks):
+        view = service.lint_proposed(resolve_repo(root, None), path, after, checks)
+        (entry,) = view.candidates
+        return [finding.check for finding in entry.findings]
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("pkg/new.py", [erosion.CHECK_COMPLEXITY_DELTA]),
+            ("tests/test_new.py", [erosion.CHECK_COMPLEXITY_DELTA]),
+            ("fixtures/new.py", []),
+            ("pkg/testdata/new.py", []),
+        ],
+    )
+    def test_complexity_delta_keeps_tests_and_drops_fixtures(
+        self, service, erosion_repo, tmp_path, path, expected
+    ):
+        after = tmp_path / "after.py"
+        after.write_text(function("fresh", 11))
+        assert self.rows(service, erosion_repo, path, after, PAIRS_ONLY) == expected
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("adapters/new_api.py", [erosion.CHECK_CONTRACT_DRIFT]),
+            ("adapters/tests/test_api.py", []),
+            ("adapters/fixtures/api.py", []),
+        ],
+    )
+    def test_contract_drift_drops_tests_and_fixtures_under_a_boundary_glob(
+        self, service, boundary_repo, tmp_path, path, expected
+    ):
+        after = tmp_path / "after.py"
+        after.write_text("def parse(data):\n    return data.get('items', [])\n")
+        assert self.rows(service, boundary_repo, path, after, CONTRACT_ONLY) == expected
+
+
 class TestObservedInEveryForm:
     """`observed` describes the new text in the candidate, hook, and review forms."""
 

@@ -42,7 +42,7 @@ from agentless_mcp.application import render
 from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.application.symbol_service import in_metric_scope
+from agentless_mcp.application.symbol_service import in_metric_scope, is_fixture_path, is_test_path
 from agentless_mcp.core import (
     cache,
     complexity,
@@ -153,11 +153,16 @@ def _complexity_delta(run: PairInput) -> erosion.PairOutcome:
     threshold = projectconfig.resolve(
         None, run.config.complexity_threshold, complexity.DEFAULT_THRESHOLD
     )
-    return erosion.complexity_delta(run.pairs, threshold)
+    # Test code is code someone maintains, so it keeps its complexity check.
+    pairs = [pair for pair in run.pairs if not is_fixture_path(pair.path)]
+    return erosion.complexity_delta(pairs, threshold)
 
 
 def _contract_drift(run: PairInput) -> erosion.PairOutcome:
-    return erosion.contract_drift(run.pairs, run.config.boundary_globs)
+    pairs = [
+        pair for pair in run.pairs if not is_test_path(pair.path) and not is_fixture_path(pair.path)
+    ]
+    return erosion.contract_drift(pairs, run.config.boundary_globs)
 
 
 def _clone_delta(run: PairInput) -> erosion.PairOutcome:
