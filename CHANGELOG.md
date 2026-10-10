@@ -7,14 +7,16 @@
 - **`lint` reports `complexity_delta`.** The check compares each edited
   file's whole text before and after the change. It warns when a function
   above the complexity threshold grows, when a function crosses the threshold,
-  and when a new function, or one moved from another file, arrives above it.
-  Functions are paired by body, then by name, then by rank among functions
-  that share a name, so a rename, a move within the file, or a reordering of
-  same-name functions is not a finding. Complexity is counted the scb-check
-  way. A file that does not parse or tokenize gives one `not_checked` row, and
-  the other files are still checked. The lint golden gains a candidate that
-  takes `check_report_inputs` from complexity 4 to 11, and the two existing
-  candidates' reports are byte-identical.
+  and when a new function arrives above it. Functions are paired by body, then
+  by name, then by rank among functions that share a name, so a rename, a
+  move, or a reordering of same-name functions is not a finding. The body pass
+  runs across all the files of one candidate, so a function moved to another
+  file is paired with its old copy. The hook form sees one file, so there a
+  function moved from another file counts as new. Complexity is counted the
+  scb-check way. A file that does not parse or tokenize gives one
+  `not_checked` row, and the other files are still checked. The lint golden
+  gains a candidate that takes `check_report_inputs` from complexity 4 to 11,
+  and the two existing candidates' reports are byte-identical.
 - **`lint --only CHECK[,CHECK...]` runs a subset of the checks.** When it
   names only pair checks, `lint` reads the edited files and does not scan the
   repository. One SEARCH/REPLACE candidate on mcp-local takes 0.15 s with
@@ -45,7 +47,10 @@
   keyed by its rule, the function that holds it, and its text with comments cut
   out. Old and new keys are compared as multisets, so a hit the file already
   had is not a finding, a renamed function keeps its hits, and a hit moved into
-  another function is a finding. With no `boundary_globs`, the check gives one
+  another function is a finding. The multisets span all the boundary files of
+  one candidate, so a hit that moves with its function to another file is not
+  new, and a function moved into a boundary module from outside brings its
+  hits in as new. With no `boundary_globs`, the check gives one
   `not_checked` row per candidate that edits a tier-1 file. A boundary file in c
   or bash gives one `not_checked` row, because those languages have no rules.
   In JSON a finding carries `detail` (`rule`, `unit`, `capture`), and these two
@@ -56,6 +61,33 @@
   0.16 s on the same copy (median of 5 runs, `/usr/bin/time`). The lint golden
   gains a candidate with two hits, and the three existing candidates' reports
   are byte-identical.
+- **`lint --since REV` is the review mode.** It compares each file changed
+  since the commit `REV` with its text in the working tree, through the pair
+  checks only. The changed files come from `git diff --raw -z -M --relative`
+  and `git ls-files --others --exclude-standard`, and each old text from one
+  bounded `git cat-file blob`. A renamed file is compared at its new path, a
+  deleted file has no new text, and an added or untracked file has no old
+  text. A binary file, a submodule, an unmerged path, a failed or timed-out
+  git call, and a run with no changed file each give a `not_checked` row. A
+  symbolic link is not compared. A patch check, `--after`, or a `REV` that
+  names no commit is a usage error (exit 2), through the new
+  `RevisionUnresolved` error. On a scratch clone of mcp-local, `--since
+  HEAD~5 --only complexity_delta,contract_drift --json` (27 changed files, 18
+  in tier-1 languages) takes 0.26 s through the installed console script and
+  0.28 s through `uv run` (median of 5 runs, `/usr/bin/time`), and 0.30 s
+  with `boundary_globs` set. `--since HEAD~50` (156 files) takes 0.85 s
+  (median of 3 runs).
+- **The lint JSON carries `observed` on each candidate.** It describes the
+  new text: `units_over_threshold` (`path`, `unit`, `line`, `cc`, `sloc`),
+  `units_changed` (`path`, `unit`, `line`, `match`, `cc_old`, `cc_new`,
+  `sloc_old`, `sloc_new`), and `contract_keys` (`path`, `rule`, `unit`,
+  `capture`). Each `unit` is the qualified name in the new text. A list is
+  present only when its check measured a file, and the text output does not
+  change. The lint JSON golden gains `observed` on its four candidates, and
+  every finding in it is unchanged. The text golden is byte-identical.
+- **`capabilities` lists the lint checks.** Text and JSON (`lint_checks`) name
+  each check and the input it reads, `patch` or `pairs`, from the check
+  registry.
 - **`boundary_globs` in `.agentless-mcp.json`.** It lists at most 64
   repo-relative globs of at most 256 characters each. `*` matches within one
   path segment, `**/` matches zero or more whole segments, and every other

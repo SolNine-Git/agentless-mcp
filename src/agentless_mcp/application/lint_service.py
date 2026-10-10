@@ -18,7 +18,8 @@ ten scans of the same unchanged tree.
 
 The pair checks in :mod:`agentless_mcp.core.erosion` compare each edited file's
 whole text before and after the change. A run that selects only pair checks
-reads the edited files and does not scan the repository.
+reads the edited files and does not scan the repository. Review mode reads the
+files changed since a commit from git and from the working tree.
 
 Nothing here decides anything. The report has no verdict, ``lint`` exits 0
 whatever it finds, and a candidate whose patch does not parse is reported with
@@ -28,17 +29,22 @@ that did parse would describe a patch that can never be applied.
 """
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
+from functools import reduce
 from pathlib import Path
 
 from agentless_mcp.application import render
+from agentless_mcp.application.history_service import GitRunner
 from agentless_mcp.application.patch_service import load_edits
 from agentless_mcp.application.repo_context import RepoContext
 from agentless_mcp.core import (
     cache,
     complexity,
     erosion,
+    gitchanges,
+    githistory,
+    gitinfo,
     patchlint,
     projectconfig,
     refs,
@@ -46,15 +52,18 @@ from agentless_mcp.core import (
     unidiff,
 )
 from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.core.gitchanges import Change, Side
 from agentless_mcp.core.patches import BlockError, Edit, EditOutcome, ParseResult, apply_edits
 from agentless_mcp.core.projectconfig import CONFIG_FILENAME, ProjectConfig
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import (
     InputUnreadable,
     OperationFailed,
+    RevisionUnresolved,
     SecurityRefusal,
 )
 from agentless_mcp.util.fslimits import (
+    DEFAULT_MAX_FILE_BYTES,
     BoundedBytes,
     BoundedRead,
     contained_path,
@@ -100,7 +109,7 @@ class CheckInput(str, Enum):
     PAIRS = "pairs"
 
 
-PairRunner = Callable[[Sequence[erosion.TextPair], ProjectConfig], tuple[erosion.PairFinding, ...]]
+PairRunner = Callable[[Sequence[erosion.TextPair], ProjectConfig], erosion.PairOutcome]
 
 
 @dataclass(frozen=True)
@@ -119,7 +128,7 @@ class LintCheck:
 
 def _complexity_delta(
     pairs: Sequence[erosion.TextPair], config: ProjectConfig
-) -> tuple[erosion.PairFinding, ...]:
+) -> erosion.PairOutcome:
     threshold = projectconfig.resolve(
         None, config.complexity_threshold, complexity.DEFAULT_THRESHOLD
     )
@@ -128,7 +137,7 @@ def _complexity_delta(
 
 def _contract_drift(
     pairs: Sequence[erosion.TextPair], config: ProjectConfig
-) -> tuple[erosion.PairFinding, ...]:
+) -> erosion.PairOutcome:
     return erosion.contract_drift(pairs, config.boundary_globs)
 
 
@@ -159,22 +168,38 @@ def unknown_check_refusal(names: Collection[str]) -> str:
 
 def proposed_check_refusal(names: Collection[str]) -> str:
     """Return why the hook form cannot run ``names``, or an empty string."""
+    return _pair_only_refusal(MESSAGES.lint_path_takes_pair_checks, names)
+
+
+def revision_check_refusal(names: Collection[str]) -> str:
+    """Return why review mode cannot run ``names``, or an empty string."""
+    return _pair_only_refusal(MESSAGES.lint_since_takes_pair_checks, names)
+
+
+def _pair_only_refusal(template: str, names: Collection[str]) -> str:
     patch = [name for name in names if name not in PAIR_CHECK_NAMES]
     if not patch:
         return ""
-    return MESSAGES.lint_path_takes_pair_checks.format(
-        pair_checks=", ".join(PAIR_CHECK_NAMES), checks=", ".join(patch)
-    )
+    return template.format(pair_checks=", ".join(PAIR_CHECK_NAMES), checks=", ".join(patch))
 
 
-Judge = Callable[[LintCandidateInput], tuple[render.LintFinding, ...]]
+@dataclass(frozen=True)
+class _Judged:
+    rows: tuple[render.LintFinding, ...]
+    observed: erosion.Observed = field(default_factory=erosion.Observed)
+
+
+Judge = Callable[[LintCandidateInput], _Judged]
 
 
 class LintService:
     """Runs the deterministic lint checks for one repository."""
 
-    def __init__(self, extractor: TreeSitterExtractor) -> None:
+    def __init__(
+        self, extractor: TreeSitterExtractor, runner: GitRunner = gitinfo.run_bounded
+    ) -> None:
         self._extractor = extractor
+        self._runner = runner
 
     def lint(
         self,
@@ -185,10 +210,7 @@ class LintService:
         """Lint every candidate with ``checks``, scanning once and only for a patch check."""
         judge = self._judge(ctx, _select(checks))
         return render.LintReportView(
-            candidates=tuple(
-                render.LintCandidate(id=candidate.id, findings=judge(candidate))
-                for candidate in candidates
-            )
+            candidates=tuple(_view(candidate.id, judge(candidate)) for candidate in candidates)
         )
 
     def lint_proposed(
@@ -203,8 +225,23 @@ class LintService:
         refusal = proposed_check_refusal(checks)
         if refusal:
             raise OperationFailed(refusal)
-        findings = _proposed_findings(ctx, path, after, selection.pairs)
-        return render.LintReportView(candidates=(render.LintCandidate(id=path, findings=findings),))
+        judged = _proposed_findings(ctx, path, after, selection.pairs)
+        return render.LintReportView(candidates=(_view(path, judged),))
+
+    def lint_revision(
+        self,
+        ctx: RepoContext,
+        revision: str,
+        checks: Collection[str] = PAIR_CHECK_NAMES,
+    ) -> render.LintReportView:
+        """Compare each file changed since ``revision`` with its text in the working tree."""
+        selection = _select(checks)
+        refusal = revision_check_refusal(checks)
+        if refusal:
+            raise OperationFailed(refusal)
+        review = _Review(ctx.root, self._runner)
+        judged = review.judge(revision, selection.pairs, ctx.config)
+        return render.LintReportView(candidates=(_view(revision, judged),))
 
     def _judge(self, ctx: RepoContext, selection: "_Selection") -> Judge:
         if not selection.patch:
@@ -386,7 +423,7 @@ def _findings(
     facts: patchlint.RepoFacts,
     source: patchlint.FragmentSource,
     selection: _Selection,
-) -> tuple[render.LintFinding, ...]:
+) -> _Judged:
     """Parse one candidate and run the selected checks over the edits it yielded.
 
     A block that did not parse is reported as a coverage gap rather than
@@ -416,7 +453,7 @@ def _findings(
     """
     admitted = _oriented(_checkable(candidate, ctx.root), facts.texts)
     if not admitted.edits:
-        return admitted.rows
+        return _Judged(admitted.rows)
 
     report = patchlint.lint_patch(admitted.edits, facts, source)
     unread = tuple(_unread_row(warning) for warning in report.warnings)
@@ -425,7 +462,8 @@ def _findings(
         for finding in report.findings
         if finding.check in selection.patch or finding.check == patchlint.CHECK_COVERAGE
     )
-    return admitted.rows + unread + kept + _tree_pair_rows(admitted.edits, ctx, selection.pairs)
+    paired = _tree_pair_rows(admitted.edits, ctx, selection.pairs)
+    return _with_rows(admitted.rows + unread + kept, paired)
 
 
 @dataclass(frozen=True)
@@ -484,42 +522,234 @@ def _oriented(admission: _Admission, texts: Mapping[str, str]) -> _Admission:
 
 def _pair_only_findings(
     candidate: LintCandidateInput, ctx: RepoContext, runners: Sequence[PairRunner]
-) -> tuple[render.LintFinding, ...]:
+) -> _Judged:
     checkable = _checkable(candidate, ctx.root)
     reads = _working_reads(ctx.root, _scanned_paths(checkable.edits))
     admitted = _oriented(checkable, _lenient_texts(reads))
     if not admitted.edits:
-        return admitted.rows
-    return admitted.rows + _pair_rows(admitted.edits, reads, runners, ctx.config)
+        return _Judged(admitted.rows)
+    return _with_rows(admitted.rows, _pair_rows(admitted.edits, reads, runners, ctx.config))
 
 
 def _tree_pair_rows(
     edits: Sequence[Edit], ctx: RepoContext, runners: Sequence[PairRunner]
-) -> tuple[render.LintFinding, ...]:
+) -> _Judged:
     if not runners:
-        return ()
+        return _Judged(())
     reads = _working_reads(ctx.root, _pair_paths(edits))
     return _pair_rows(edits, reads, runners, ctx.config)
 
 
 def _proposed_findings(
     ctx: RepoContext, path: str, after: Path, runners: Sequence[PairRunner]
-) -> tuple[render.LintFinding, ...]:
+) -> _Judged:
     try:
         target = contained_path(ctx.root, path)
     except SecurityRefusal as refusal:
-        return (_refused_row(refusal),)
+        return _Judged((_refused_row(refusal),))
     relative = target.relative_to(ctx.root).as_posix()
     if erosion.pair_language(relative) is None:
-        return ()
+        return _Judged(())
 
     old = _old_text(relative, _working_read(target))
     if isinstance(old, render.LintFinding):
-        return (old,)
+        return _Judged((old,))
     new = decoded_strict(read_bounded_bytes(after))
     if new.text is None:
-        return (_side_row(MESSAGES.pair_new_unread, relative, new),)
+        return _Judged((_side_row(MESSAGES.pair_new_unread, relative, new),))
     return _run_pairs([erosion.TextPair(path=relative, old=old, new=new.text)], runners, ctx.config)
+
+
+@dataclass(frozen=True)
+class _PairSpec:
+    path: str
+    old_path: str | None
+    new_path: str | None
+
+
+@dataclass(frozen=True)
+class _Review:
+    root: Path
+    runner: GitRunner
+
+    def judge(self, revision: str, runners: Sequence[PairRunner], config: ProjectConfig) -> _Judged:
+        commit = self._commit(revision)
+        if isinstance(commit, render.LintFinding):
+            return _Judged((commit,))
+        changes = self._changes(commit)
+        if isinstance(changes, render.LintFinding):
+            return _Judged((changes,))
+        if not changes:
+            message = MESSAGES.lint_revision_unchanged.format(revision=revision)
+            return _Judged((_review_row(message, MESSAGES.lint_revision_unchanged_evidence),))
+
+        rows, specs = _pair_specs(changes)
+        pairs: list[erosion.TextPair] = []
+        for spec in specs:
+            outcome = self._pair(commit, spec)
+            if isinstance(outcome, erosion.TextPair):
+                pairs.append(outcome)
+            else:
+                rows.append(outcome)
+        ordered = tuple(sorted(rows, key=lambda row: row.path))
+        return _with_rows(ordered, _run_pairs(pairs, runners, config))
+
+    def _commit(self, revision: str) -> str | render.LintFinding:
+        outcome = self.runner(
+            self.root,
+            gitchanges.revision_arguments(revision),
+            timeout=gitinfo.GIT_TIMEOUT_SECONDS,
+            max_output_bytes=gitchanges.MAX_COMMIT_OUTPUT_BYTES,
+        )
+        if outcome.text is not None:
+            return gitchanges.parse_commit(outcome.text)
+        if outcome.returncode is None:
+            message = MESSAGES.lint_revision_not_resolved.format(
+                revision=revision, note=outcome.note
+            )
+            return _review_row(message, outcome.note)
+        message = MESSAGES.lint_revision_unresolved.format(revision=revision, note=outcome.note)
+        raise RevisionUnresolved(message)
+
+    def _changes(self, commit: str) -> tuple[Change, ...] | render.LintFinding:
+        listed = self._listing(gitchanges.changes_arguments(commit))
+        if isinstance(listed, render.LintFinding):
+            return listed
+        untracked = self._listing(gitchanges.UNTRACKED_ARGUMENTS)
+        if isinstance(untracked, render.LintFinding):
+            return untracked
+        return (
+            *gitchanges.parse_changes(listed),
+            *(self._linked(change) for change in gitchanges.parse_untracked(untracked)),
+        )
+
+    def _listing(self, arguments: Sequence[str]) -> bytes | render.LintFinding:
+        outcome = self.runner(
+            self.root,
+            arguments,
+            timeout=gitchanges.LISTING_TIMEOUT_SECONDS,
+            max_output_bytes=gitchanges.MAX_LISTING_BYTES,
+        )
+        if outcome.truncated:
+            message = MESSAGES.lint_revision_listing_capped.format(
+                command=arguments[0], bytes=gitchanges.MAX_LISTING_BYTES
+            )
+            return _review_row(message, f"more than {gitchanges.MAX_LISTING_BYTES} bytes")
+        if outcome.stdout is None:
+            message = MESSAGES.lint_revision_unlisted.format(
+                command=arguments[0], note=outcome.note
+            )
+            return _review_row(message, outcome.note)
+        return outcome.stdout
+
+    def _linked(self, change: Change) -> Change:
+        # git lists an untracked symlink as a plain name, so the link is found here.
+        if change.new is Side.FILE and (self.root / change.path).is_symlink():
+            return replace(change, new=Side.LINK)
+        return change
+
+    def _pair(self, commit: str, spec: _PairSpec) -> erosion.TextPair | render.LintFinding:
+        old = None if spec.old_path is None else self._blob(commit, spec.old_path)
+        new = None if spec.new_path is None else _worktree_read(self.root, spec.new_path)
+        if isinstance(new, render.LintFinding):
+            return new
+        if _binary(old) or _binary(new):
+            message = MESSAGES.lint_revision_binary.format(path=spec.path)
+            evidence = MESSAGES.lint_revision_binary_evidence.format(
+                bytes=gitchanges.BINARY_PROBE_BYTES
+            )
+            return _review_row(message, evidence, spec.path)
+        old_text = _side_text(MESSAGES.pair_old_unread, spec.path, old)
+        if isinstance(old_text, render.LintFinding):
+            return old_text
+        new_text = _side_text(MESSAGES.pair_worktree_unread, spec.path, new)
+        if isinstance(new_text, render.LintFinding):
+            return new_text
+        return erosion.TextPair(path=spec.path, old=old_text, new=new_text)
+
+    def _blob(self, commit: str, path: str) -> BoundedBytes:
+        outcome = self.runner(
+            self.root,
+            githistory.blob_arguments(commit, path),
+            timeout=gitinfo.GIT_TIMEOUT_SECONDS,
+            max_output_bytes=DEFAULT_MAX_FILE_BYTES,
+        )
+        if outcome.truncated:
+            skipped = MESSAGES.pair_blob_over_cap.format(cap=DEFAULT_MAX_FILE_BYTES)
+            return BoundedBytes(path=Path(path), data=None, skipped=skipped)
+        if outcome.stdout is None:
+            return BoundedBytes(path=Path(path), data=None, skipped=outcome.note)
+        return BoundedBytes(path=Path(path), data=outcome.stdout, skipped=None)
+
+
+def _pair_specs(
+    changes: Sequence[Change],
+) -> tuple[list[render.LintFinding], list[_PairSpec]]:
+    rows: list[render.LintFinding] = []
+    specs: dict[str, _PairSpec] = {}
+    for change in changes:
+        if Side.GITLINK in (change.old, change.new):
+            message = MESSAGES.lint_revision_submodule.format(path=change.path)
+            rows.append(
+                _review_row(message, MESSAGES.lint_revision_submodule_evidence, change.path)
+            )
+        elif change.status not in gitchanges.COMPARED_STATUSES:
+            message = MESSAGES.lint_revision_status.format(path=change.path, status=change.status)
+            evidence = MESSAGES.lint_revision_status_evidence.format(status=change.status)
+            rows.append(_review_row(message, evidence, change.path))
+        else:
+            for spec in _change_specs(change):
+                specs[spec.path] = _joined(specs.get(spec.path), spec)
+    return rows, [specs[path] for path in sorted(specs)]
+
+
+def _change_specs(change: Change) -> list[_PairSpec]:
+    old_language = _side_language(change.old, change.old_path)
+    new_language = _side_language(change.new, change.path)
+    if old_language is not None and old_language == new_language:
+        return [_PairSpec(change.path, change.old_path, change.path)]
+    specs: list[_PairSpec] = []
+    if old_language is not None:
+        specs.append(_PairSpec(change.old_path, change.old_path, None))
+    if new_language is not None:
+        specs.append(_PairSpec(change.path, None, change.path))
+    return specs
+
+
+def _side_language(side: Side, path: str) -> str | None:
+    # A symlink's blob is a target path rather than source, so a link side is absent.
+    return erosion.pair_language(path) if side is Side.FILE else None
+
+
+def _joined(held: _PairSpec | None, spec: _PairSpec) -> _PairSpec:
+    # A deletion and an addition at one path, as `git rm --cached` leaves them.
+    if held is None:
+        return spec
+    return _PairSpec(spec.path, held.old_path or spec.old_path, held.new_path or spec.new_path)
+
+
+def _worktree_read(root: Path, path: str) -> BoundedBytes | render.LintFinding:
+    try:
+        target = contained_path(root, path)
+    except SecurityRefusal as refusal:
+        return _refused_row(refusal)
+    return read_bounded_bytes(target)
+
+
+def _binary(read: BoundedBytes | None) -> bool:
+    return read is not None and read.data is not None and gitchanges.looks_binary(read.data)
+
+
+def _review_row(message: str, evidence: str, path: str = "") -> render.LintFinding:
+    return render.LintFinding(
+        check=patchlint.CHECK_COVERAGE,
+        severity=patchlint.Severity.NOT_CHECKED.value,
+        message=message,
+        path=path,
+        line=0,
+        location=path or "(repository)",
+        evidence=evidence,
+    )
 
 
 def _edited_paths(edits: Sequence[Edit]) -> list[str]:
@@ -564,7 +794,7 @@ def _pair_rows(
     reads: Mapping[str, BoundedBytes | None],
     runners: Sequence[PairRunner],
     config: ProjectConfig,
-) -> tuple[render.LintFinding, ...]:
+) -> _Judged:
     rows: list[render.LintFinding] = []
     pairs: list[erosion.TextPair] = []
     for path, path_edits in _by_path(edits).items():
@@ -575,7 +805,7 @@ def _pair_rows(
             pairs.append(outcome)
         else:
             rows.append(outcome)
-    return (*rows, *_run_pairs(pairs, runners, config))
+    return _with_rows(tuple(rows), _run_pairs(pairs, runners, config))
 
 
 def _by_path(edits: Sequence[Edit]) -> dict[str, list[Edit]]:
@@ -602,18 +832,38 @@ def _candidate_pair(
 
 
 def _old_text(path: str, read: BoundedBytes | None) -> str | render.LintFinding | None:
+    return _side_text(MESSAGES.pair_old_unread, path, read)
+
+
+def _side_text(
+    template: str, path: str, read: BoundedBytes | None
+) -> str | render.LintFinding | None:
     if read is None:
         return None
-    old = decoded_strict(read)
-    if old.text is None:
-        return _side_row(MESSAGES.pair_old_unread, path, old)
-    return old.text
+    text = decoded_strict(read)
+    if text.text is None:
+        return _side_row(template, path, text)
+    return text.text
 
 
 def _run_pairs(
     pairs: Sequence[erosion.TextPair], runners: Sequence[PairRunner], config: ProjectConfig
-) -> tuple[render.LintFinding, ...]:
-    return tuple(_pair_row(found) for run in runners for found in run(pairs, config))
+) -> _Judged:
+    outcomes = [run(pairs, config) for run in runners]
+    rows = tuple(_pair_row(found) for outcome in outcomes for found in outcome.findings)
+    observed = reduce(
+        erosion.Observed.merged, (outcome.observed for outcome in outcomes), erosion.Observed()
+    )
+    return _Judged(rows, observed)
+
+
+def _with_rows(rows: tuple[render.LintFinding, ...], judged: _Judged) -> _Judged:
+    return _Judged((*rows, *judged.rows), judged.observed)
+
+
+def _view(candidate: str, judged: _Judged) -> render.LintCandidate:
+    observed = judged.observed.as_dict()
+    return render.LintCandidate(id=candidate, findings=judged.rows, observed=observed or None)
 
 
 def _pair_row(found: erosion.PairFinding) -> render.LintFinding:

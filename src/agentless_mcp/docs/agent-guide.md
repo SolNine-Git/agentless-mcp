@@ -1011,6 +1011,7 @@ The report holds:
 - the configured roots and the roots the client advertised
 - the project config in force
 - every bound (walk depth, file count, per-file bytes, output tokens)
+- the `lint` checks, each with the input it reads (`patch` or `pairs`)
 
 The report names an absent tag cache with the exact
 `agentless-mcp index --repo PATH` command that builds it. Check the report
@@ -1071,6 +1072,7 @@ agentless-mcp lint --candidates ./candidates/01-plus.txt --json
 agentless-mcp lint --diff change.patch --repo /tmp/base
 agentless-mcp lint --diff change.patch --repo /tmp/base --only complexity_delta
 agentless-mcp lint --path src/app.py --after /tmp/app.py.new --json
+agentless-mcp lint --since "$(git merge-base HEAD main)" --json
 ```
 
 Run this **before** `validate`. It is the mechanical half of a hostile
@@ -1086,7 +1088,7 @@ replace text, and the refusal names what it counted and the bound it passed.
 **`--diff` is the review case: a branch or a pull request that already exists.**
 It takes a unified diff (`git diff`, or a `format-patch` body) and maps one
 hunk to one edit. Nobody has to hand-convert a diff into SEARCH/REPLACE
-blocks to check it. Exactly one of `--candidates`, `--diff`, and `--path` is required.
+blocks to check it. Exactly one of `--candidates`, `--diff`, `--path`, and `--since` is required.
 The thing to get right is which tree you point at. The checks compare the
 diff against `--repo` as it stands, so **`--repo` must be a checkout of the
 diff's base**, typically a `git worktree add` of the merge-base. To lint a
@@ -1102,7 +1104,10 @@ reason, and the candidate is not half-checked.
 table below. An unknown name is a usage error (exit 2). `complexity_delta` and
 `contract_drift` are pair checks: they compare each edited file's whole text
 before and after the change. When `--only` names pair checks alone, `lint`
-reads only the edited files and does not scan the repository.
+reads only the edited files and does not scan the repository. The pair checks
+pair functions across all the files of one candidate, so a function moved to
+another file without other change is not a finding, and a contract hit that
+moves with its function is not new.
 
 **`--path REL --after FILE` is the per-edit hook form.** `REL` names a file in
 `--repo`, and `FILE` holds its proposed whole new text. `lint` compares the
@@ -1113,7 +1118,27 @@ not exist yet is a new file, so every function in `FILE` counts as new. Both
 sides are read as UTF-8 with their line endings kept, up to 1,000,000 bytes
 each. A side that is larger, unreadable, or not UTF-8 gives a `not_checked`
 row. The report has one candidate, and its id is `REL`. A file in a language
-that has no complexity rules gives no row.
+that has no complexity rules gives no row. The hook form sees one file, so a
+function moved here from another file counts as new.
+
+**`--since REV` is the review mode.** `lint` compares each file changed since
+the commit `REV` with its text in the working tree. Committed, staged,
+unstaged, and untracked changes all count. For a branch, pass the merge-base:
+`--since "$(git merge-base HEAD main)"`. This form runs the pair checks only.
+Without `--only` it runs every pair check, and an `--only` that names another
+check is a usage error (exit 2). `--since` with `--after` is a usage error, and
+so is a `REV` that names no commit. Each file's old text comes from git, one
+`git cat-file blob` per file. A renamed file is compared at its new path with
+its old text. A deleted file has no new text, and an added or untracked file
+has no old text. A binary file (a NUL byte in its first 8,000 bytes), a
+submodule, and a path with an unmerged status each give one `not_checked` row.
+A symbolic link is not compared, because its committed text is a target path.
+A file in a language with no complexity rules gives no row. A git call that
+fails or times out gives one `not_checked` row, and so does a run in which no
+file changed since `REV`. The report has one candidate, and its id is `REV` as
+you typed it. On a scratch clone of mcp-local, `--since HEAD~5` with both pair
+checks takes 0.26 s (18 tier-1 files of 27 changed), and `--since HEAD~50`
+takes 0.85 s (156 files).
 
 **`--json` carries one more field for a pair check.** Each finding has
 `check`, `severity`, `message`, `path`, `line`, `location`, and `evidence`. A
@@ -1131,6 +1156,29 @@ rules. A row about text that was not read, does not parse, or cannot be
 measured has no `detail`. No other finding has `detail`, and the text form
 does not print it.
 
+**`--json` also carries `observed` on a candidate.** It describes the new text,
+not the change, so a later run on the same file can show whether a function
+got simpler or a hit went away. It has three lists, each present only when its
+check measured at least one file of the candidate. An empty list means that
+the check measured and found nothing. An absent list means that the check did
+not measure a file, and `observed` itself is absent when no list is present.
+
+- `units_over_threshold`: each function in the new text above the threshold,
+  as `{path, unit, line, cc, sloc}`, unchanged functions included.
+- `units_changed`: each function the change added or altered, as `{path, unit,
+  line, match, cc_old, cc_new, sloc_old, sloc_new}`. `match` is `name`,
+  `collision`, or `new`, and the old values are `null` for a new function. A
+  function that is unchanged, or renamed or moved without other change, is not
+  listed.
+- `contract_keys`: each contract hit in the new text of every boundary file
+  that `contract_drift` checked, as `{path, rule, unit, capture}`, with
+  duplicates kept.
+
+Every `unit` in `observed` is the function's qualified name in the new text,
+or `<module>`. A renamed function therefore appears under its new name, while
+the `detail.unit` of a `contract_drift` finding keeps its old name. The text
+form does not print `observed`.
+
 **No MCP tool, by design.** Patches are write-side input, like `validate` and
 `vote`.
 
@@ -1147,8 +1195,8 @@ patch is right. This decides what to look at first.
 | `dangling_callers` | warning | the patch removes or renames a symbol that files it does not touch still reference, listed with `file:line` |
 | `arity` | advisory | a call in new code cannot fit the signature of the single, undecorated, strongly-resolved function it names |
 | `cycle_delta` | warning | an import cycle exists after the patch and did not before it, rendered as the chain that closes |
-| `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function (or one moved from another file) arrives above it. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
-| `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the file already had is not a finding, and a renamed function keeps its hits. A hit that moves into another function is a finding |
+| `complexity_delta` | warning | a function above the complexity threshold grows, a function crosses the threshold, or a new function arrives above it. In the hook form, a function moved from another file also counts as new. The threshold is 10 unless `complexity_threshold` in `.agentless-mcp.json` sets it. Complexity counts decision points the way scb-check does. Functions are paired by body, then by name, then by rank among functions that share a name, so a rename or a reordering is not a finding |
+| `contract_drift` | warning | the change adds a silent default or a swallowed error to a boundary module, a file that `boundary_globs` in `.agentless-mcp.json` matches. Each hit is keyed by its rule, the function that holds it, and its text. A hit the code already had is not a finding, and a renamed function keeps its hits, as does a function moved to another file of the same candidate. A hit that moves into another function is a finding |
 
 **`contract_drift` matches syntax, not types or data flow.** Each rule is a
 tree-sitter query, and the rule id names the syntax it matches. An empty value
@@ -1198,6 +1246,8 @@ at severity `not_checked` and names the reason:
 - a file whose text before or after the change was not read, or does not parse
 - a repository with no `boundary_globs`, for `contract_drift`
 - a boundary file in a language with no contract rules (c, bash)
+- in review mode: a binary file, a submodule, an unmerged path, a git call
+  that failed or timed out, and a run in which no file changed
 
 Silence would be the one dishonest outcome, because you cannot tell "checked
 and clean" from "never ran". `dangling_references` and `arity` need Python's

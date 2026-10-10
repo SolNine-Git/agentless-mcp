@@ -1339,10 +1339,19 @@ class LintCandidate:
 
     id: str
     findings: tuple[LintFinding, ...]
+    # What the pair checks measured in the new text. JSON only, and absent when
+    # no pair check measured a file, so "measured, nothing found" stays distinct.
+    observed: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the JSON form of this candidate's report."""
-        return {"id": self.id, "findings": [finding.as_dict() for finding in self.findings]}
+        document: dict[str, Any] = {
+            "id": self.id,
+            "findings": [finding.as_dict() for finding in self.findings],
+        }
+        if self.observed is not None:
+            document["observed"] = dict(self.observed)
+        return document
 
 
 @dataclass(frozen=True)

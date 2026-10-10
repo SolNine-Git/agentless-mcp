@@ -31,7 +31,11 @@
           "location": "(repository)",
           "evidence": "no dependency manifest found"
         }
-      ]
+      ],
+      "observed": {
+        "units_over_threshold": [],
+        "units_changed": []
+      }
     },
     {
       "id": "02-calls",
@@ -63,7 +67,33 @@
           "location": "(repository)",
           "evidence": "no dependency manifest found"
         }
-      ]
+      ],
+      "observed": {
+        "units_over_threshold": [],
+        "units_changed": [
+          {
+            "path": "inventory.py",
+            "unit": "Inventory.reorder_list",
+            "line": 87,
+            "match": "name",
+            "cc_old": 3,
+            "cc_new": 3,
+            "sloc_old": 7,
+            "sloc_new": 8
+          },
+          {
+            "path": "reports.py",
+            "unit": "_format_row",
+            "line": 47,
+            "match": "name",
+            "cc_old": 1,
+            "cc_new": 1,
+            "sloc_old": 5,
+            "sloc_new": 5
+          }
+        ],
+        "contract_keys": []
+      }
     },
     {
       "id": "03-branches",
@@ -95,7 +125,31 @@
             "threshold": 10
           }
         }
-      ]
+      ],
+      "observed": {
+        "units_over_threshold": [
+          {
+            "path": "reports.py",
+            "unit": "check_report_inputs",
+            "line": 55,
+            "cc": 11,
+            "sloc": 19
+          }
+        ],
+        "units_changed": [
+          {
+            "path": "reports.py",
+            "unit": "check_report_inputs",
+            "line": 55,
+            "match": "name",
+            "cc_old": 4,
+            "cc_new": 11,
+            "sloc_old": 11,
+            "sloc_new": 19
+          }
+        ],
+        "contract_keys": []
+      }
     },
     {
       "id": "04-defaults",
@@ -137,7 +191,46 @@
             "capture": "inventory.reorder_list() or []"
           }
         }
-      ]
+      ],
+      "observed": {
+        "units_over_threshold": [],
+        "units_changed": [
+          {
+            "path": "reports.py",
+            "unit": "check_report_inputs",
+            "line": 55,
+            "match": "name",
+            "cc_old": 4,
+            "cc_new": 4,
+            "sloc_old": 11,
+            "sloc_new": 11
+          },
+          {
+            "path": "reports.py",
+            "unit": "summarise",
+            "line": 69,
+            "match": "name",
+            "cc_old": 2,
+            "cc_new": 3,
+            "sloc_old": 10,
+            "sloc_new": 10
+          }
+        ],
+        "contract_keys": [
+          {
+            "path": "reports.py",
+            "rule": "except-pass",
+            "unit": "check_report_inputs",
+            "capture": "except LookupError: pass"
+          },
+          {
+            "path": "reports.py",
+            "rule": "or-empty-default",
+            "unit": "summarise",
+            "capture": "inventory.reorder_list() or []"
+          }
+        ]
+      }
     }
   ]
 }

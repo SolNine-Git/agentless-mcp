@@ -495,6 +495,17 @@ class TestLint:
             "cand: 1 warning, 1 advisory, 1 not_checked"
         )
 
+    def test_observed_is_json_only_and_absent_when_unset(self):
+        observed = {"units_over_threshold": [], "units_changed": []}
+        measured = render.LintCandidate(id="cand", findings=(), observed=observed)
+        unmeasured = render.LintCandidate(id="cand", findings=())
+
+        assert measured.as_dict() == {"id": "cand", "findings": [], "observed": observed}
+        assert unmeasured.as_dict() == {"id": "cand", "findings": []}
+        assert render.render_lint(render.LintReportView(candidates=(measured,))) == (
+            render.render_lint(render.LintReportView(candidates=(unmeasured,)))
+        )
+
 
 class TestSharedCallers:
     def row(self, **overrides):

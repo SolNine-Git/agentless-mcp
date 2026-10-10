@@ -991,6 +991,56 @@ class TestLintSelectionAndTheHookForm:
         assert "dangling_references" not in out
 
 
+class TestLintReviewMode:
+    """`--since REV`: the flags, their exit codes, and the JSON shape."""
+
+    @pytest.fixture
+    def reviewed(self, make_git_repo):
+        root = make_git_repo({"app.py": _branchy("handle", 10)}, name="reviewed")
+        (root / "app.py").write_text(_branchy("handle", 11), encoding="utf-8")
+        return root
+
+    def test_a_review_emits_one_candidate_named_by_the_revision(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--json")
+
+        assert code == EXIT_OK
+        (entry,) = json.loads(capsys.readouterr().out)["candidates"]
+        assert entry["id"] == "HEAD"
+        finding, gap = entry["findings"]
+        assert (finding["check"], finding["location"]) == ("complexity_delta", "app.py:1")
+        assert gap["detail"] == {"reason": "no_boundary_globs"}
+        assert [row["unit"] for row in entry["observed"]["units_changed"]] == ["handle"]
+
+    def test_the_text_form_does_not_print_observed(self, services, reviewed, capsys):
+        assert invoke(services, reviewed, "lint", "--since", "HEAD") == EXIT_OK
+        out = capsys.readouterr().out
+        assert "HEAD: 1 warning, 1 not_checked" in out
+        assert "observed" not in out
+
+    def test_since_beside_candidates_is_a_usage_error(self, services, reviewed, tmp_path):
+        with pytest.raises(SystemExit) as raised:
+            invoke(services, reviewed, "lint", "--since", "HEAD", "--candidates", str(tmp_path))
+        assert raised.value.code == EXIT_USAGE
+
+    def test_since_with_after_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--after", "x.py")
+
+        assert code == EXIT_USAGE
+        assert "--since takes no --after" in capsys.readouterr().err
+
+    def test_since_with_a_patch_check_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "HEAD", "--only", "arity")
+
+        assert code == EXIT_USAGE
+        assert "--since runs only the pair checks" in capsys.readouterr().err
+
+    def test_a_revision_that_names_no_commit_is_a_usage_error(self, services, reviewed, capsys):
+        code = invoke(services, reviewed, "lint", "--since", "no-such-branch")
+
+        assert code == EXIT_USAGE
+        assert "--since no-such-branch does not name a commit" in capsys.readouterr().err
+
+
 def _git_diff(root):
     """Return ``git diff`` for a fixture repository, as git itself writes it."""
     return subprocess.run(

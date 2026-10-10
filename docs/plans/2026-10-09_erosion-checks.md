@@ -155,7 +155,7 @@ Inputs: text pairs (D5.2), one per changed file.
 2. **Name pass.** A qualname held by exactly one unpaired unit on each side pairs those two units.
 3. **Collision pass.** For a qualname held by more than one unpaired unit on either side, sort the old cc values and the new cc values from high to low, and pair them by rank. This compares the group as a multiset, so inserting or reordering same-name units does not change the result. Example: swapping unchanged units with cc 11 and cc 20 gives the pairs (20, 20) and (11, 11), and no finding.
 
-A new unit that no pass pairs is "new". In review mode (`--since`, D5.4), the body pass runs across all changed files together, so a unit moved between files pairs with its old copy.
+A new unit that no pass pairs is "new". In every input form, the body pass runs across all the files of one run: one candidate, one hook call, or one review (`--since`, D5.4). It pairs units within each file first, then pairs the units that every file left, across files, so a unit moved between files pairs with its old copy, and a copy beside its unchanged original is new in the other file. The name and collision passes then run within each file, because a qualname carries no path. Candidates stay separate runs, because they are alternative patches.
 
 | Case | Finding |
 |---|---|
@@ -185,7 +185,7 @@ Rules: data, not code. One JSON file, `src/agentless_mcp/prompts/contract_rules.
 - `unit` is the qualname of the enclosing unit, taken from the D2 pairing so that a renamed unit keeps its old identity. A hit outside every unit uses `<module>`.
 - `capture` is the matched text with its comment nodes cut out and each run of whitespace collapsed to one space. Identifiers, receivers, and keys are kept, so `data.get("items", [])` and `resp.get("items", [])` are different keys. A comment edit inside a hit does not change its key.
 
-Old and new keys are compared as multisets, like the comment gate's `new_findings` (`comment_rules.py:216-224`). Only new keys become findings, at `warning` severity. Because the key holds the unit, moving `data.get("items", [])` from an internal helper into a response parser in the same file is a new hit. A variable rename in a boundary module re-reports its hits. That cost is accepted, because those hits sit in a module that parses foreign data.
+Old and new keys are compared as multisets, like the comment gate's `new_findings` (`comment_rules.py:216-224`). In every input form, the multisets span all the checked files of one run (D2), and each unit's identity in the key is the old unit the D2 pairing gave it, with that unit's file. A hit that moves with its function to another boundary file is therefore not new. A file outside `boundary_globs` counts on neither side, so a function moved into a boundary module brings its hits in as new. Only new keys become findings, at `warning` severity. Because the key holds the unit, moving `data.get("items", [])` from an internal helper into a response parser in the same file is a new hit. A variable rename in a boundary module re-reports its hits. That cost is accepted, because those hits sit in a module that parses foreign data.
 
 Initial rules (v1):
 
@@ -226,10 +226,17 @@ The revision 1 plan, "lazy facts" inside `RepoFacts`, conflicts with the current
    - Changed files: `git diff --name-status -M -z REV` (the working tree against `REV`, staged and unstaged changes both), plus untracked files from `git ls-files --others --exclude-standard -z`.
    - Renamed: `old` is the blob at the old path, `new` is the working-tree file at the new path. Deleted: `new` is `None`. Added or untracked: `old` is `None`.
    - Binary files and submodule entries each give one `not_checked` row. Files with a suffix outside the tier-1 set are out of scope and give no row.
+   - As built (ERO-5a): the list comes from `git diff --raw -z -M --relative REV --`, because only `--raw` carries the modes that name a submodule (`160000`) or a symlink (`120000`), and `--relative` keeps paths relative to a `--repo` below the git top level. A file is binary when a NUL byte falls in its first 8,000 bytes, git's own rule, applied to the bytes already read. A symlink side counts as absent, because its blob is a target path. A path with an unmerged or unknown status gives one `not_checked` row. A rename across languages becomes a deletion and an addition. A git call that cannot run, times out, or fails gives a `not_checked` row with exit 0, and so does a listing over 8,000,000 bytes, which checks nothing because a partial list would report moved units as new. Only a revision that git rejects is a usage error, through the `RevisionUnresolved` error (exit 2). No change since `REV` gives one `not_checked` row. The report has one candidate, and its id is `REV` as typed.
    - Blob reads: one bounded `git cat-file blob REV:PATH` per file through `run_bounded`. `run_bounded` opens no stdin pipe (`core/gitinfo.py:356-372`), so `git cat-file --batch` would need a change to its contract, and v1 does not make that change. Stage 5 of the other session already builds `cat-file blob` arguments (`core/githistory.py:80`, `blob_arguments`). Reuse that function.
    - The caller computes the merge-base, for example `--since "$(git merge-base HEAD main)"`.
 5. **Speed.** Target: a hook-form run at or under 0.25 s on mcp-local (derived target, measured in the Phase 2 gate). Codex measured CLI import plus `build_parser()` at 0.107 s median over 5 fresh processes. That leaves about 0.14 s (derived) for configuration, git, reads, grammar loading, and parsing.
 6. **Check-count text.** Update every place that says "seven checks" or "the other six checks" (`core/patchlint.py:8-10` and `:211`, `src/agentless_mcp/docs/agent-guide.md:1106-1114` and `:1136`).
+7. **`observed` on each lint JSON candidate** (ERO-5a). It describes the new text, not the change, so a later record for the same path shows whether a unit got simpler or a hit went away (D8, D9). Each list is present only when its check measured at least one file of the candidate, and `observed` is absent when no list is. Every row is an object, and every `unit` is the qualname in the new text, or `<module>`:
+   - `units_over_threshold`: `{path, unit, line, cc, sloc}` for each unit in the new text with `cc > T`, unchanged units included;
+   - `units_changed`: `{path, unit, line, match, cc_old, cc_new, sloc_old, sloc_new}` for each match that is not a body-pass match, with `match` one of `name`, `collision`, `new`, and `null` old values for a new unit;
+   - `contract_keys`: `{path, rule, unit, capture}` for each hit in the new text of each file `contract_drift` checked, with duplicates kept.
+   A `contract_drift` finding's `detail.unit` keeps its D3 meaning, the paired old identity. The text output does not change.
+8. **The check list in `capabilities`** (ERO-5a). Text and JSON (`lint_checks`) list each registered check with its input kind (`patch` or `pairs`), so the hook reads the registry and never parses an error message.
 
 ### D6. `health` complexity section (Phase 4)
 
@@ -280,7 +287,7 @@ All keys go through `KNOWN_KEYS`, are validated the existing way (a bad value is
   - sha256 of the old text and of the proposed text;
   - the mode per check, and the outcome: `clean`, `advisory`, `blocked`, `degraded`, or `skipped`, with the reason;
   - per finding: check, severity, unit qualname, line, match pass (body, name, collision, or new), cc and sloc old and new, or the D3 key;
-  - observed state of the proposed text: the cc of every unit over the threshold, and the D3 hit keys. A later record for the same path shows whether the unit got simpler or the hit went away;
+  - observed state of the proposed text: the lint JSON `observed` object (D5.7), copied as lint returns it. `units_over_threshold` rows are `{path, unit, line, cc, sloc}`, `units_changed` rows are `{path, unit, line, match, cc_old, cc_new, sloc_old, sloc_new}`, and `contract_keys` rows are `{path, rule, unit, capture}`. Every `unit` is the qualname in the proposed text. A later record for the same path shows whether the unit got simpler or the hit went away. The report compares contract hits on `(path, rule, capture)`, so a rename does not read as a fix;
   - latency.
 - **Settings**: add an entry to `contrib/hooks/settings-example.json` with `"timeout": 15`. A timed-out PreToolUse hook does not block the call, which matches the failure policy. Do not set `onFailure: block`.
 

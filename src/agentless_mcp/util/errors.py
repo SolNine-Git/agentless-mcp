@@ -81,6 +81,10 @@ class RepoResolutionError(AgentlessError):
     """A repository root could not be resolved or interrogated."""
 
 
+class RevisionUnresolved(AgentlessError):
+    """A revision the caller named does not resolve to a commit in the repository."""
+
+
 class CallStopped(AgentlessError):
     """A call stopped at a checkpoint: its time limit ran out, or its client left."""
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agentless_mcp.application import envelope, graph_service, symbol_service
+from agentless_mcp.application.lint_service import CHECKS
 from agentless_mcp.application.map_service import (
     DEFAULT_MAX_FILES,
     DEFAULT_MAX_TEST_FILES,
@@ -71,6 +72,8 @@ class CapabilityReport:
     # a server configured with no roots. The two are different answers.
     configured_roots: tuple[str, ...] | None
     client_roots: tuple[str, ...]
+    # (name, input) per lint check, in registry order.
+    lint_checks: tuple[tuple[str, str], ...]
 
     def as_dict(self) -> dict[str, Any]:
         """Return the complete machine-readable capability contract."""
@@ -92,6 +95,7 @@ class CapabilityReport:
             ],
             "extensions": dict(self.extensions),
             "scope_analysed_languages": sorted(SCOPE_ANALYSED_LANGUAGES),
+            "lint_checks": [{"name": name, "input": needs} for name, needs in self.lint_checks],
             "config": self.config.as_dict(),
             "effective_config": dict(self.effective_config),
             "caps": dict(self.caps),
@@ -148,6 +152,7 @@ def build_capability_report(
             None if configured_roots is None else tuple(str(path) for path in configured_roots)
         ),
         client_roots=tuple(str(path) for path in client_roots),
+        lint_checks=tuple((check.name, check.needs.value) for check in CHECKS),
     )
 
 
@@ -210,6 +215,8 @@ def render_capability_report(report: CapabilityReport) -> str:
         "scope analysis (a parameter or local is told from a caller): "
         + ", ".join(sorted(SCOPE_ANALYSED_LANGUAGES))
     )
+    lines.append("lint checks (CLI only), by the input each reads:")
+    lines.extend(_lint_check_lines(report.lint_checks))
     lines.append("effective project config:")
     lines.extend(f"  {name} = {_display(value)}" for name, value in report.effective_config)
     lines.append("caps:")
@@ -362,6 +369,13 @@ def _extension_lines(extensions: Sequence[tuple[str, str]]) -> list[str]:
         f"  {language}: {', '.join(sorted(suffixes))}"
         for language, suffixes in sorted(grouped.items())
     ]
+
+
+def _lint_check_lines(checks: Sequence[tuple[str, str]]) -> list[str]:
+    grouped: dict[str, list[str]] = {}
+    for name, needs in checks:
+        grouped.setdefault(needs, []).append(name)
+    return [f"  {needs}: {', '.join(names)}" for needs, names in grouped.items()]
 
 
 def _display(value: object) -> str:

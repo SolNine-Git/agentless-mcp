@@ -64,6 +64,7 @@ from agentless_mcp.application.lint_service import (
     load_candidates,
     load_diff,
     proposed_check_refusal,
+    revision_check_refusal,
     unknown_check_refusal,
 )
 from agentless_mcp.application.map_service import (
@@ -625,6 +626,13 @@ def _add_lint(subparsers: Any) -> None:
         metavar="REL",
         help="a file in --repo whose proposed whole new text is in --after; runs only the "
         "pair checks, with no repository scan (the per-edit hook form)",
+    )
+    source.add_argument(
+        "--since",
+        metavar="REV",
+        help="compare each file changed since the commit REV with its working-tree text; runs "
+        'only the pair checks (review mode). For a branch, pass --since "$(git merge-base '
+        'HEAD main)"',
     )
     parser.add_argument(
         "--after",
@@ -1341,11 +1349,21 @@ def _cmd_lint(args: argparse.Namespace, services: CliServices) -> int:
 
 
 def _lint_flag_refusal(args: argparse.Namespace) -> str:
+    if args.since is not None:
+        return _since_flag_refusal(args)
     if (args.path is None) != (args.after is None):
         return MESSAGES.lint_path_needs_after
     if args.path is None or args.only is None:
         return ""
     return proposed_check_refusal(args.only)
+
+
+def _since_flag_refusal(args: argparse.Namespace) -> str:
+    if args.after is not None:
+        return MESSAGES.lint_since_alone
+    if args.only is None:
+        return ""
+    return revision_check_refusal(args.only)
 
 
 def _lint_report(
@@ -1354,6 +1372,9 @@ def _lint_report(
     if args.path is not None:
         checks = PAIR_CHECK_NAMES if args.only is None else args.only
         return services.lints.lint_proposed(ctx, args.path, Path(args.after), checks)
+    if args.since is not None:
+        checks = PAIR_CHECK_NAMES if args.only is None else args.only
+        return services.lints.lint_revision(ctx, args.since, checks)
     candidates = (
         (load_diff(Path(args.diff)),)
         if args.diff is not None

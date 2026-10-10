@@ -8,16 +8,18 @@ file the reader skipped, which the report has to admit it never compared.
 """
 
 import json
+import subprocess
 
 import pytest
 
 from agentless_mcp.application import lint_service
 from agentless_mcp.application.lint_service import LintCandidateInput, LintService
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import erosion, patchlint
+from agentless_mcp.core import erosion, gitinfo, patchlint
+from agentless_mcp.core.gitinfo import GitOutcome
 from agentless_mcp.core.patches import parse_blocks
 from agentless_mcp.util import fslimits
-from agentless_mcp.util.errors import OperationFailed
+from agentless_mcp.util.errors import OperationFailed, RevisionUnresolved
 
 APP = """\
 def add(left, right):
@@ -644,3 +646,453 @@ class TestContractDrift:
     def test_without_globs_a_candidate_with_no_tier1_file_gets_no_row(self, service, erosion_repo):
         text = block("config.yaml", "key: value\n", "key: other\n")
         assert findings_of(service, erosion_repo, text, CONTRACT_ONLY) == ()
+
+
+class TestObservedInEveryForm:
+    """`observed` describes the new text in the candidate, hook, and review forms."""
+
+    def entry(self, service, root, text, checks=PAIRS_ONLY):
+        view = service.lint(resolve_repo(root, None), [candidate("01", text)], checks)
+        (found,) = view.candidates
+        return found
+
+    def test_a_function_moved_between_files_of_a_candidate_is_neither_new_nor_changed(
+        self, service, make_git_repo
+    ):
+        big = function("big", 15)
+        root = make_git_repo({"app.py": big + "\n" + function("small", 2)}, name="moving")
+        text = block("app.py", big + "\n", "") + block("other.py", "", big)
+
+        entry = self.entry(service, root, text)
+
+        assert entry.findings == ()
+        assert entry.observed["units_changed"] == []
+        assert entry.observed["units_over_threshold"] == [
+            {"path": "other.py", "unit": "big", "line": 1, "cc": 15, "sloc": 30}
+        ]
+
+    def test_a_renamed_function_is_not_listed_as_changed(self, service, make_git_repo):
+        root = make_git_repo({"app.py": function("handle", 12)}, name="renaming")
+        text = block("app.py", "def handle(value):\n", "def renamed(value):\n")
+
+        observed = self.entry(service, root, text).observed
+
+        assert observed["units_changed"] == []
+        assert [row["unit"] for row in observed["units_over_threshold"]] == ["renamed"]
+
+    def test_the_hook_form_lists_a_grown_function(self, service, erosion_repo, tmp_path):
+        after = tmp_path / "after.py"
+        after.write_text(function("handle", 11))
+
+        view = service.lint_proposed(resolve_repo(erosion_repo, None), "app.py", after)
+
+        (entry,) = view.candidates
+        assert entry.observed["units_changed"] == [
+            {
+                "path": "app.py",
+                "unit": "handle",
+                "line": 1,
+                "match": "name",
+                "cc_old": 10,
+                "cc_new": 11,
+                "sloc_old": 20,
+                "sloc_new": 22,
+            }
+        ]
+        assert "contract_keys" not in entry.observed
+
+    def test_the_hook_form_observes_contract_keys_in_a_boundary_file(
+        self, service, boundary_repo, tmp_path
+    ):
+        after = tmp_path / "after.py"
+        after.write_text("def parse(data):\n    return data.get('items', [])\n")
+
+        view = service.lint_proposed(resolve_repo(boundary_repo, None), "adapters/api.py", after)
+
+        (entry,) = view.candidates
+        assert entry.as_dict()["observed"]["contract_keys"] == [
+            {
+                "path": "adapters/api.py",
+                "rule": "get-default-empty",
+                "unit": "parse",
+                "capture": "data.get('items', [])",
+            }
+        ]
+
+    def test_a_candidate_that_measured_nothing_has_no_observed_field(self, service, erosion_repo):
+        entry = self.entry(service, erosion_repo, block("config.yaml", "key: value\n", "key: x\n"))
+
+        assert entry.observed is None
+        assert "observed" not in entry.as_dict()
+
+    def test_the_review_form_observes_the_working_tree(self, service, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+
+        (entry,) = service.lint_revision(resolve_repo(erosion_repo, None), "HEAD").candidates
+
+        assert [row["unit"] for row in entry.observed["units_changed"]] == ["handle"]
+        assert [row["unit"] for row in entry.observed["units_over_threshold"]] == ["handle"]
+
+
+IDENTITY = ("-c", "user.email=tests@example.invalid", "-c", "user.name=agentless-mcp tests")
+
+
+def git(root, *arguments):
+    """Run one git command in ``root`` with the pinned test identity, failing loudly."""
+    return subprocess.run(
+        ["git", "-C", str(root), *IDENTITY, *arguments],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    ).stdout
+
+
+def commit(root):
+    """Commit the whole tree."""
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "change", "-m", "A second commit for a review test.")
+
+
+def review(service, root, revision="HEAD", checks=PAIRS_ONLY):
+    """Review ``root`` against ``revision`` and return its one candidate."""
+    (entry,) = service.lint_revision(resolve_repo(root, None), revision, checks).candidates
+    return entry
+
+
+def js_function(name, cc):
+    """JavaScript source for one function of complexity ``cc``."""
+    branches = "".join(
+        f"  if (v === {index}) {{\n    return {index};\n  }}\n" for index in range(cc - 1)
+    )
+    return f"function {name}(v) {{\n{branches}  return -1;\n}}\n"
+
+
+def only_row(entry):
+    """The one finding of a review, which must be a coverage row."""
+    (row,) = entry.findings
+    assert (row.check, row.severity) == (patchlint.CHECK_COVERAGE, "not_checked")
+    return row
+
+
+class TestReviewMode:
+    """`lint_revision`: every file changed since a commit against its working-tree text."""
+
+    def test_a_modified_file_that_crosses_the_threshold_is_reported(self, service, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+
+        entry = review(service, erosion_repo)
+
+        assert entry.id == "HEAD"
+        (found,) = entry.findings
+        assert (found.check, found.location) == (erosion.CHECK_COMPLEXITY_DELTA, "app.py:1")
+        assert found.detail["match"] == "name"
+
+    def test_a_renamed_file_is_compared_at_its_new_path(self, service, erosion_repo):
+        git(erosion_repo, "mv", "app.py", "moved.py")
+        (erosion_repo / "moved.py").write_text(function("handle", 11))
+
+        found = next(row for row in review(service, erosion_repo).findings)
+
+        assert found.location == "moved.py:1"
+        assert (found.detail["match"], found.detail["cc_old"]) == ("name", 10)
+
+    def test_a_deleted_file_gives_no_row(self, service, erosion_repo):
+        (erosion_repo / "app.py").unlink()
+
+        entry = review(service, erosion_repo)
+
+        assert entry.findings == ()
+        assert entry.observed == {"units_over_threshold": [], "units_changed": []}
+
+    def test_a_function_moved_out_of_a_deleted_file_is_not_a_finding(self, service, make_git_repo):
+        root = make_git_repo({"app.py": function("big", 15)}, name="moved-out")
+        (root / "app.py").unlink()
+        (root / "other.py").write_text(function("big", 15))
+
+        entry = review(service, root)
+
+        assert entry.findings == ()
+        assert entry.observed["units_changed"] == []
+
+    def test_a_staged_file_and_an_untracked_one_report_their_functions_as_new(
+        self, service, erosion_repo
+    ):
+        (erosion_repo / "staged.py").write_text(function("staged", 11))
+        git(erosion_repo, "add", "staged.py")
+        (erosion_repo / "loose.py").write_text(function("loose", 11))
+
+        findings = review(service, erosion_repo).findings
+
+        assert [(found.path, found.detail["match"]) for found in findings] == [
+            ("loose.py", "new"),
+            ("staged.py", "new"),
+        ]
+
+    def test_committed_and_uncommitted_changes_both_count(self, service, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        commit(erosion_repo)
+        (erosion_repo / "loose.py").write_text(function("loose", 11))
+
+        findings = review(service, erosion_repo, "HEAD~1").findings
+
+        assert [found.path for found in findings] == ["app.py", "loose.py"]
+
+    def test_a_binary_file_gives_one_row(self, service, make_git_repo):
+        root = make_git_repo({"blob.py": "x = 1\n"}, name="binary")
+        (root / "blob.py").write_bytes(b"x = 1\0\n")
+
+        row = only_row(review(service, root))
+
+        assert row.location == "blob.py"
+        assert row.message == "not checked: blob.py is binary, so no pair check compared this file."
+        assert row.evidence == "a NUL byte in the first 8000 bytes"
+
+    def test_a_submodule_gives_one_row(self, service, erosion_repo):
+        head = git(erosion_repo, "rev-parse", "HEAD").decode().strip()
+        git(erosion_repo, "update-index", "--add", "--cacheinfo", f"160000,{head},vendor/lib")
+        (erosion_repo / "vendor" / "lib").mkdir(parents=True)
+
+        row = only_row(review(service, erosion_repo))
+
+        assert row.location == "vendor/lib"
+        assert row.evidence == "submodule (mode 160000)"
+        assert "is a submodule" in row.message
+
+    def test_an_untracked_nested_repository_gives_one_row(self, service, erosion_repo):
+        nested = erosion_repo / "nested"
+        nested.mkdir()
+        git(nested, "init", "-q")
+        (nested / "inner.py").write_text("x = 1\n")
+        commit(nested)
+
+        row = only_row(review(service, erosion_repo))
+
+        assert row.location == "nested"
+        assert row.evidence == "submodule (mode 160000)"
+
+    def test_a_file_removed_from_the_index_but_kept_on_disk_is_one_comparison(
+        self, service, erosion_repo
+    ):
+        git(erosion_repo, "rm", "-q", "--cached", "app.py")
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+
+        (found,) = review(service, erosion_repo).findings
+
+        assert (found.location, found.detail["match"]) == ("app.py:1", "name")
+
+    def test_a_file_outside_the_tier1_set_gives_no_row(self, service, erosion_repo):
+        (erosion_repo / "config.yaml").write_text("key: other\n")
+
+        entry = review(service, erosion_repo)
+
+        assert entry.findings == ()
+        assert "observed" not in entry.as_dict()
+
+    def test_no_change_gives_one_row(self, service, erosion_repo):
+        row = only_row(review(service, erosion_repo))
+
+        assert (
+            row.message
+            == "not checked: no file changed since HEAD, so there is nothing to compare."
+        )
+        assert row.location == "(repository)"
+
+    def test_a_symlink_that_replaced_a_file_reads_as_a_deletion(self, service, make_git_repo):
+        root = make_git_repo({"app.py": function("big", 15), "keep.py": "x = 1\n"}, name="link")
+        (root / "app.py").unlink()
+        (root / "app.py").symlink_to("keep.py")
+        (root / "alias.py").symlink_to("keep.py")
+
+        entry = review(service, root)
+
+        assert entry.findings == ()
+        assert entry.observed == {"units_over_threshold": [], "units_changed": []}
+
+    @pytest.mark.parametrize("revision", ["no-such-branch", "HEAD^{tree}", "--output=x"])
+    def test_a_revision_that_names_no_commit_is_refused(self, service, erosion_repo, revision):
+        with pytest.raises(RevisionUnresolved, match="does not name a commit"):
+            review(service, erosion_repo, revision)
+
+    def test_a_patch_check_is_refused(self, service, erosion_repo):
+        with pytest.raises(OperationFailed, match="--since runs only the pair checks"):
+            review(service, erosion_repo, checks=("arity",))
+
+    def test_a_contract_hit_moved_between_boundary_files_is_not_new(self, service, boundary_repo):
+        (boundary_repo / "adapters" / "api.py").write_text(
+            "def parse(data):\n    return data.get('items', [])\n"
+        )
+        commit(boundary_repo)
+        (boundary_repo / "adapters" / "api.py").write_text("VERSION = 2\n")
+        (boundary_repo / "adapters" / "parsing.py").write_text(
+            "def parse(data):\n    return data.get('items', [])\n"
+        )
+
+        entry = review(service, boundary_repo, checks=CONTRACT_ONLY)
+
+        assert entry.findings == ()
+        assert entry.observed["contract_keys"] == [
+            {
+                "path": "adapters/parsing.py",
+                "rule": "get-default-empty",
+                "unit": "parse",
+                "capture": "data.get('items', [])",
+            }
+        ]
+
+    def test_a_cross_language_rename_is_a_deletion_and_an_addition(self, service, erosion_repo):
+        git(erosion_repo, "mv", "app.py", "app.js")
+        (erosion_repo / "app.js").write_text(js_function("handle", 11))
+
+        (found,) = review(service, erosion_repo).findings
+
+        assert (found.location, found.detail["match"]) == ("app.js:1", "new")
+
+    def test_a_root_below_the_git_top_level_reads_paths_relative_to_it(
+        self, service, make_git_repo
+    ):
+        root = make_git_repo({"pkg/app.py": function("handle", 10)}, name="nested-root")
+        (root / "pkg" / "app.py").write_text(function("handle", 11))
+        (root / "pkg" / "loose.py").write_text(function("loose", 11))
+
+        findings = review(service, root / "pkg").findings
+
+        assert [found.location for found in findings] == ["app.py:1", "loose.py:1"]
+
+    def test_the_old_side_keeps_its_line_endings(self, service, erosion_repo, monkeypatch):
+        (erosion_repo / "crlf.py").write_bytes(b"x = 1\r\ny = 2\r\n")
+        git(erosion_repo, "-c", "core.autocrlf=false", "add", "crlf.py")
+        git(erosion_repo, "commit", "-q", "-m", "crlf", "-m", "A CRLF file for a review test.")
+        (erosion_repo / "crlf.py").write_bytes(b"x = 1\r\ny = 3\r\n")
+        seen = []
+        real = erosion.complexity_delta
+
+        def spy(pairs, threshold):
+            seen.extend(pairs)
+            return real(pairs, threshold)
+
+        monkeypatch.setattr(erosion, "complexity_delta", spy)
+
+        review(service, erosion_repo)
+
+        assert seen == [erosion.TextPair("crlf.py", "x = 1\r\ny = 2\r\n", "x = 1\r\ny = 3\r\n")]
+
+    def test_a_review_leaves_the_index_untouched(self, service, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        index = erosion_repo / ".git" / "index"
+        before = (index.read_bytes(), index.stat().st_mtime_ns)
+
+        review(service, erosion_repo)
+
+        assert (index.read_bytes(), index.stat().st_mtime_ns) == before
+
+
+def runner_failing(subcommand, outcome, when=lambda _arguments: True):
+    """A git runner that answers ``subcommand`` with ``outcome`` and runs everything else."""
+    calls = []
+
+    def runner(cwd, arguments, *, timeout, max_output_bytes):
+        calls.append((tuple(arguments), timeout, max_output_bytes))
+        if arguments[0] == subcommand and when(arguments):
+            return outcome
+        return gitinfo.run_bounded(
+            cwd, arguments, timeout=timeout, max_output_bytes=max_output_bytes
+        )
+
+    runner.calls = calls
+    return runner
+
+
+class TestReviewModeGitFailures:
+    """Every git call is bounded, and every failure is a visible row."""
+
+    def reviewed(self, extractor, root, runner):
+        return review(LintService(extractor, runner), root)
+
+    def test_every_git_call_carries_a_timeout_and_an_output_cap(self, extractor, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        runner = runner_failing("none", None)
+
+        self.reviewed(extractor, erosion_repo, runner)
+
+        assert [call[0][0] for call in runner.calls] == [
+            "rev-parse",
+            "diff",
+            "ls-files",
+            "cat-file",
+        ]
+        assert all(timeout > 0 and cap > 0 for _arguments, timeout, cap in runner.calls)
+
+    def test_a_revision_git_could_not_run_for_is_one_row(self, extractor, erosion_repo):
+        outcome = GitOutcome(None, "git is not installed, so repository state is unknown")
+
+        row = only_row(self.reviewed(extractor, erosion_repo, runner_failing("rev-parse", outcome)))
+
+        assert row.message.startswith("not checked: git did not resolve --since HEAD")
+        assert row.evidence == outcome.note
+
+    def test_a_revision_git_printed_junk_for_is_refused(self, extractor, erosion_repo):
+        outcome = GitOutcome(b"junk\n", "", returncode=0)
+
+        with pytest.raises(OperationFailed, match="did not print one full object name"):
+            self.reviewed(extractor, erosion_repo, runner_failing("rev-parse", outcome))
+
+    @pytest.mark.parametrize("subcommand", ["diff", "ls-files"])
+    def test_a_listing_that_failed_is_one_row(self, extractor, erosion_repo, subcommand):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        outcome = GitOutcome(None, f"git {subcommand} timed out after 30.0s")
+
+        row = only_row(self.reviewed(extractor, erosion_repo, runner_failing(subcommand, outcome)))
+
+        assert row.message.startswith(
+            f"not checked: git {subcommand} did not list the changed files"
+        )
+        assert row.evidence == outcome.note
+
+    def test_an_unmerged_path_is_one_row(self, extractor, erosion_repo):
+        listing = b":000000 000000 0000000 0000000 U\0app.py\0"
+        runner = runner_failing("diff", GitOutcome(listing, "", returncode=0))
+
+        row = only_row(self.reviewed(extractor, erosion_repo, runner))
+
+        assert (row.location, row.evidence) == ("app.py", "status U")
+        assert "with status U" in row.message
+
+    def test_a_listing_over_the_cap_is_one_row(self, extractor, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        outcome = GitOutcome(b":100644", "", truncated=True, returncode=0)
+
+        row = only_row(self.reviewed(extractor, erosion_repo, runner_failing("diff", outcome)))
+
+        assert "printed more than 8000000 bytes" in row.message
+
+    def test_one_blob_that_failed_costs_only_its_file(self, extractor, make_git_repo):
+        root = make_git_repo(
+            {"a.py": function("first", 10), "b.py": function("second", 10)}, name="blob-fail"
+        )
+        (root / "a.py").write_text(function("first", 11))
+        (root / "b.py").write_text(function("second", 11))
+        note = "git cat-file exited 128: fatal: bad object"
+        runner = runner_failing(
+            "cat-file",
+            GitOutcome(None, note, returncode=128),
+            lambda arguments: "a.py" in arguments[2],
+        )
+
+        gap, found = self.reviewed(extractor, root, runner).findings
+
+        assert (gap.location, gap.check) == ("a.py", patchlint.CHECK_COVERAGE)
+        assert gap.message == (
+            f"not checked: the text of a.py before the change was not read ({note}), so no pair "
+            "check compared this file."
+        )
+        assert (found.location, found.check) == ("b.py:1", erosion.CHECK_COMPLEXITY_DELTA)
+
+    def test_a_blob_over_the_cap_is_a_coverage_row(self, extractor, erosion_repo):
+        (erosion_repo / "app.py").write_text(function("handle", 11))
+        outcome = GitOutcome(b"def ", "", truncated=True, returncode=0)
+
+        row = only_row(self.reviewed(extractor, erosion_repo, runner_failing("cat-file", outcome)))
+
+        assert (
+            row.evidence == "skipped: the committed text exceeds the per-file cap of 1000000 bytes"
+        )

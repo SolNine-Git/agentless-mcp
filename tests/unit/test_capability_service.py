@@ -8,6 +8,7 @@ from agentless_mcp.application import (
     capability_service,
     envelope,
     graph_service,
+    lint_service,
     map_service,
     symbol_service,
 )
@@ -51,6 +52,20 @@ def test_the_report_names_the_languages_whose_locals_are_told_from_callers(tmp_p
     assert "scope analysis (a parameter or local is told from a caller): python" in (
         render_capability_report(report)
     )
+
+
+def test_the_report_lists_every_lint_check_with_the_input_it_reads(tmp_path, extractor):
+    (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    report = build_capability_report(resolve_repo(tmp_path, None), extractor)
+
+    assert report.as_dict()["lint_checks"] == [
+        {"name": check.name, "input": check.needs.value} for check in lint_service.CHECKS
+    ]
+    text = render_capability_report(report)
+    assert "lint checks (CLI only), by the input each reads:" in text
+    for needs in lint_service.CheckInput:
+        names = [check.name for check in lint_service.CHECKS if check.needs is needs]
+        assert f"  {needs.value}: {', '.join(names)}" in text
 
 
 class TestTheCacheStatusIsMeasured:

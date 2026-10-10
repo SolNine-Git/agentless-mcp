@@ -162,6 +162,23 @@ class MessageText:
     lint_no_checks: str
     lint_path_needs_after: str
     lint_path_takes_pair_checks: str
+    lint_since_alone: str
+    lint_since_takes_pair_checks: str
+    lint_revision_unresolved: str
+    lint_revision_not_resolved: str
+    lint_revision_unlisted: str
+    lint_revision_listing_capped: str
+    lint_revision_output_malformed: str
+    lint_revision_unchanged: str
+    lint_revision_unchanged_evidence: str
+    lint_revision_submodule: str
+    lint_revision_submodule_evidence: str
+    lint_revision_binary: str
+    lint_revision_binary_evidence: str
+    lint_revision_status: str
+    lint_revision_status_evidence: str
+    pair_worktree_unread: str
+    pair_blob_over_cap: str
     config_erosion_gate_not_object: str
     config_erosion_gate_mode: str
     config_erosion_gate_unknown: str

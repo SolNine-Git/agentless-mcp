@@ -45,7 +45,7 @@ def java_overload(parameter, cc, tag):
 
 
 def run(old, new, path="app.py", threshold=THRESHOLD):
-    return complexity_delta([TextPair(path, old, new)], threshold)
+    return complexity_delta([TextPair(path, old, new)], threshold).findings
 
 
 def only(results):
@@ -215,7 +215,7 @@ class TestDegradedInput:
                 TextPair("broken.py", "def f(:\n", "def f(:\n    pass\n"),
             ],
             THRESHOLD,
-        )
+        ).findings
 
         regression, gap = results
         assert gap.finding.path == "broken.py"
@@ -291,7 +291,7 @@ class TestScope:
                 TextPair("a.py", None, function("only", 13)),
             ],
             THRESHOLD,
-        )
+        ).findings
         assert [(found.finding.path, found.finding.line) for found in results] == [
             ("a.py", 1),
             ("b.py", 1),
@@ -304,7 +304,7 @@ API = "src/adapters/api.py"
 
 
 def drift(old, new, path=API, globs=BOUNDARY):
-    return erosion.contract_drift([TextPair(path, old, new)], globs)
+    return erosion.contract_drift([TextPair(path, old, new)], globs).findings
 
 
 def parser(name, body):
@@ -315,7 +315,7 @@ class TestContractDrift:
     def test_without_globs_one_row_stands_for_every_pair(self):
         pairs = [TextPair(f"{name}.py", "x = 1\n", "x = d.get(k, [])\n") for name in "abc"]
 
-        (gap,) = erosion.contract_drift(pairs, ())
+        (gap,) = erosion.contract_drift(pairs, ()).findings
 
         assert gap.finding.check == erosion.CHECK_CONTRACT_DRIFT
         assert gap.finding.severity is Severity.NOT_CHECKED
@@ -325,7 +325,7 @@ class TestContractDrift:
         assert gap.detail.as_dict() == {"reason": "no_boundary_globs"}
 
     def test_without_globs_and_without_pairs_there_is_no_row(self):
-        assert erosion.contract_drift([], ()) == ()
+        assert erosion.contract_drift([], ()).findings == ()
 
     def test_a_file_outside_the_globs_gives_no_row(self):
         assert drift("x = 1\n", "x = d.get(k, [])\n", path="src/core/model.py") == ()
@@ -438,7 +438,7 @@ class TestContractDrift:
                 TextPair("adapters/api.py", "x = 1\n", "x = d or []\n"),
             ],
             BOUNDARY,
-        )
+        ).findings
 
         hit, gap = results
         assert (hit.finding.path, hit.finding.severity) == ("adapters/api.py", Severity.WARNING)
@@ -466,3 +466,233 @@ class TestContractDrift:
     def test_a_typescript_boundary_file_is_checked(self):
         (found,) = drift("const a = x;\n", "const a = x ?? [];\n", path="web/adapters/api.ts")
         assert found.detail.rule == "nullish-empty-default"
+
+
+def run_all(*pairs, threshold=THRESHOLD):
+    """Run complexity_delta over several pairs as one run."""
+    return complexity_delta([TextPair(*pair) for pair in pairs], threshold)
+
+
+class TestAcrossFiles:
+    """The body pass runs across every file of one run, so a move is not a finding."""
+
+    def test_a_unit_moved_to_another_file_is_paired_by_body(self):
+        big = function("big", 15)
+        outcome = run_all(
+            ("a.py", big + function("small", 2), function("small", 2)), ("b.py", None, big)
+        )
+        assert outcome.findings == ()
+
+    def test_a_unit_moved_out_of_a_deleted_file_is_paired_by_body(self):
+        big = function("big", 15)
+        assert run_all(("a.py", big, None), ("b.py", "", big)).findings == ()
+
+    def test_a_copy_beside_its_unchanged_original_is_new_in_the_other_file(self):
+        big = function("big", 15)
+
+        (found,) = run_all(("a.py", big, big), ("b.py", None, big)).findings
+
+        assert (found.finding.path, found.detail.match) == ("b.py", erosion.MATCH_NEW)
+
+    def test_the_name_pass_stays_within_one_file(self):
+        (found,) = run_all(
+            ("a.py", function("handle", 11), ""),
+            ("b.py", None, function("handle", 12, tag="other")),
+        ).findings
+
+        assert (found.finding.path, found.detail.match) == ("b.py", erosion.MATCH_NEW)
+
+    def test_a_unit_moved_and_grown_is_new_in_its_new_file(self):
+        (found,) = run_all(
+            ("a.py", function("big", 15), ""),
+            ("b.py", None, function("big", 16)),
+        ).findings
+
+        assert (found.finding.path, found.detail.match) == ("b.py", erosion.MATCH_NEW)
+
+    def test_one_path_twice_in_a_run_is_refused(self):
+        with pytest.raises(ValueError, match="only one text pair of a run"):
+            run_all(("a.py", "", "x = 1\n"), ("a.py", "", "x = 2\n"))
+
+
+class TestObserved:
+    def test_units_over_the_threshold_include_unchanged_ones(self):
+        old = function("big", 15) + function("small", 2)
+        new = function("big", 15) + function("small", 3, tag="x") + function("fresh", 11)
+
+        observed = complexity_delta([TextPair("app.py", old, new)], THRESHOLD).observed
+
+        assert [row.as_dict() for row in observed.units_over_threshold] == [
+            {"path": "app.py", "unit": "big", "line": 1, "cc": 15, "sloc": 30},
+            {"path": "app.py", "unit": "fresh", "line": 37, "cc": 11, "sloc": 22},
+        ]
+
+    def test_units_changed_lists_each_pass_but_the_body_pass(self):
+        old = function("grows", 11) + method("A", "go", 3) + method("B", "go", 4)
+        new = (
+            function("grows", 12)
+            + method("A", "go", 5, tag="a")
+            + method("B", "go", 6, tag="b")
+            + function("fresh", 2)
+        )
+
+        observed = complexity_delta([TextPair("app.py", old, new)], THRESHOLD).observed
+
+        assert [
+            (row.unit, row.match, row.cc_old, row.cc_new) for row in observed.units_changed
+        ] == [
+            ("grows", erosion.MATCH_NAME, 11, 12),
+            ("A.go", erosion.MATCH_NAME, 3, 5),
+            ("B.go", erosion.MATCH_NAME, 4, 6),
+            ("fresh", erosion.MATCH_NEW, None, 2),
+        ]
+        assert observed.units_changed[-1].as_dict() == {
+            "path": "app.py",
+            "unit": "fresh",
+            "line": 49,
+            "match": "new",
+            "cc_old": None,
+            "cc_new": 2,
+            "sloc_old": None,
+            "sloc_new": 4,
+        }
+
+    def test_same_name_units_that_change_are_listed_as_a_collision(self):
+        old = method("A", "go", 3) + "\n" + method("A", "go", 4)
+        new = method("A", "go", 5, tag="x") + "\n" + method("A", "go", 6, tag="y")
+
+        observed = complexity_delta([TextPair("app.py", old, new)], THRESHOLD).observed
+
+        assert {row.match for row in observed.units_changed} == {erosion.MATCH_COLLISION}
+
+    @pytest.mark.parametrize(
+        "pairs",
+        [
+            [("app.py", function("big", 15), function("big", 15))],
+            [("app.py", function("big", 15), function("renamed", 15))],
+            [("app.py", function("a", 2) + function("b", 3), function("b", 3) + function("a", 2))],
+            [("a.py", function("big", 15), ""), ("b.py", None, function("big", 15))],
+        ],
+        ids=["unchanged", "renamed", "moved-within-file", "moved-across-files"],
+    )
+    def test_a_unit_the_body_pass_paired_is_not_listed(self, pairs):
+        assert run_all(*pairs).observed.units_changed == ()
+
+    def test_a_renamed_unit_is_named_by_its_new_name(self):
+        observed = run_all(("app.py", function("big", 15), function("renamed", 15))).observed
+        assert [row.unit for row in observed.units_over_threshold] == ["renamed"]
+
+    @pytest.mark.parametrize(
+        "pair",
+        [("README.md", "a\n", "b\n"), ("app.py", "x = 1\n", "def f(:\n")],
+        ids=["not-tier-1", "does-not-parse"],
+    )
+    def test_nothing_measured_observes_nothing(self, pair):
+        observed = run_all(pair).observed
+        assert observed == erosion.Observed()
+        assert observed.as_dict() == {}
+
+    def test_a_deleted_file_is_measured_with_nothing_in_its_new_text(self):
+        observed = run_all(("app.py", function("big", 15), None)).observed
+        assert observed.as_dict() == {"units_over_threshold": [], "units_changed": []}
+
+    def test_merging_keeps_each_field_a_check_measured(self):
+        complexity_side = erosion.Observed(units_over_threshold=(), units_changed=())
+        drift_side = erosion.Observed(contract_keys=())
+
+        merged = complexity_side.merged(drift_side)
+
+        assert merged.as_dict() == {
+            "units_over_threshold": [],
+            "units_changed": [],
+            "contract_keys": [],
+        }
+
+
+def drift_all(*pairs, globs=BOUNDARY):
+    """Run contract_drift over several pairs as one run."""
+    return erosion.contract_drift([TextPair(*pair) for pair in pairs], globs)
+
+
+HIT = 'return data.get("items", [])'
+
+
+class TestContractDriftAcrossFiles:
+    def test_a_hit_moved_with_its_function_to_another_boundary_file_is_not_new(self):
+        moved = parser("parse", HIT)
+        outcome = drift_all(
+            ("src/adapters/a.py", moved + parser("keep", "log(1)"), parser("keep", "log(1)")),
+            ("src/adapters/b.py", None, moved),
+        )
+        assert outcome.findings == ()
+
+    def test_a_hit_moved_out_of_a_deleted_boundary_file_is_not_new(self):
+        moved = parser("parse", HIT)
+        outcome = drift_all(("src/adapters/a.py", moved, None), ("src/adapters/b.py", "", moved))
+        assert outcome.findings == ()
+
+    def test_a_function_moved_in_from_outside_the_boundary_brings_its_hit_in_as_new(self):
+        moved = parser("parse", HIT)
+
+        (found,) = drift_all(
+            ("src/core/a.py", moved, ""), ("src/adapters/b.py", None, moved)
+        ).findings
+
+        assert (found.finding.path, found.detail.unit) == ("src/adapters/b.py", "parse")
+
+    def test_a_hit_moved_into_another_files_function_is_new(self):
+        (found,) = drift_all(
+            ("src/adapters/a.py", parser("parse", HIT), parser("parse", "return data")),
+            ("src/adapters/b.py", None, parser("other", f"log(3)\n    {HIT}")),
+        ).findings
+
+        assert (found.finding.path, found.detail.unit) == ("src/adapters/b.py", "other")
+
+    def test_a_renamed_function_keeps_its_old_name_in_the_finding_and_its_new_name_observed(self):
+        old = parser("parse", "return data")
+        new = parser("parse_items", "return data or {}")
+
+        outcome = drift_all(("src/adapters/a.py", old + "\n" + parser("x", "log(1)"), new))
+
+        assert [found.detail.unit for found in outcome.findings] == ["parse_items"]
+        assert [state.unit for state in outcome.observed.contract_keys] == ["parse_items"]
+
+    def test_a_renamed_unchanged_function_observes_its_new_name(self):
+        outcome = drift_all(("src/adapters/a.py", parser("parse", HIT), parser("parse_items", HIT)))
+
+        assert outcome.findings == ()
+        assert [state.as_dict() for state in outcome.observed.contract_keys] == [
+            {
+                "path": "src/adapters/a.py",
+                "rule": "get-default-empty",
+                "unit": "parse_items",
+                "capture": 'data.get("items", [])',
+            }
+        ]
+
+    def test_contract_keys_hold_every_hit_in_the_new_text_with_duplicates(self):
+        text = parser("parse", f"{HIT}\n    {HIT}") + "\nDEFAULTS = OVERRIDE or {}\n"
+
+        keys = drift_all(("src/adapters/a.py", text, text)).observed.contract_keys
+
+        assert [(state.rule, state.unit) for state in keys] == [
+            ("get-default-empty", "parse"),
+            ("get-default-empty", "parse"),
+            ("or-empty-default", erosion.MODULE_UNIT),
+        ]
+
+    def test_a_checked_file_without_hits_observes_an_empty_list(self):
+        observed = drift_all(("src/adapters/a.py", "x = 1\n", "x = 2\n")).observed
+        assert observed.as_dict() == {"contract_keys": []}
+
+    @pytest.mark.parametrize(
+        ("pair", "globs"),
+        [
+            (("src/adapters/a.py", "x = 1\n", "x = d or {}\n"), ()),
+            (("src/core/a.py", "x = 1\n", "x = d or {}\n"), BOUNDARY),
+            (("src/adapters/run.sh", "echo 1\n", "echo 2\n"), BOUNDARY),
+        ],
+        ids=["no-globs", "outside-the-boundary", "no-rules"],
+    )
+    def test_no_admitted_file_observes_no_keys(self, pair, globs):
+        assert drift_all(pair, globs=globs).observed == erosion.Observed()

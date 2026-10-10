@@ -7,9 +7,9 @@ they are advisory: nothing here blocks a change. This module opens no file.
 
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
 
 from agentless_mcp.core import complexity, contracts
 from agentless_mcp.core.complexity import Unit
@@ -31,6 +31,8 @@ MATCH_BODY = "body"
 MATCH_NAME = "name"
 MATCH_COLLISION = "collision"
 MATCH_NEW = "new"
+
+_Row = TypeVar("_Row")
 
 
 @dataclass(frozen=True)
@@ -104,10 +106,137 @@ class PairFinding:
 
 
 @dataclass(frozen=True)
+class UnitState:
+    """One unit of a new text with complexity above the threshold."""
+
+    path: str
+    unit: str
+    line: int
+    cc: int
+    sloc: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {
+            "path": self.path,
+            "unit": self.unit,
+            "line": self.line,
+            "cc": self.cc,
+            "sloc": self.sloc,
+        }
+
+
+@dataclass(frozen=True)
+class UnitChange:
+    """One unit a change added or altered, with ``None`` for the old side of a new unit."""
+
+    path: str
+    unit: str
+    line: int
+    match: str
+    cc_old: int | None
+    cc_new: int
+    sloc_old: int | None
+    sloc_new: int
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {
+            "path": self.path,
+            "unit": self.unit,
+            "line": self.line,
+            "match": self.match,
+            "cc_old": self.cc_old,
+            "cc_new": self.cc_new,
+            "sloc_old": self.sloc_old,
+            "sloc_new": self.sloc_new,
+        }
+
+
+@dataclass(frozen=True)
+class HitState:
+    """One contract hit in a new text, named by the unit that holds it in that text."""
+
+    path: str
+    rule: str
+    unit: str
+    capture: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form of this row."""
+        return {"path": self.path, "rule": self.rule, "unit": self.unit, "capture": self.capture}
+
+
+@dataclass(frozen=True)
+class Observed:
+    """The state of the new text; a field is ``None`` when its check measured no file."""
+
+    units_over_threshold: tuple[UnitState, ...] | None = None
+    units_changed: tuple[UnitChange, ...] | None = None
+    contract_keys: tuple[HitState, ...] | None = None
+
+    def merged(self, other: "Observed") -> "Observed":
+        """Return this state with each field it does not hold taken from ``other``."""
+        return Observed(
+            units_over_threshold=_first(self.units_over_threshold, other.units_over_threshold),
+            units_changed=_first(self.units_changed, other.units_changed),
+            contract_keys=_first(self.contract_keys, other.contract_keys),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the JSON form, with only the fields a check measured."""
+        fields: dict[str, Sequence[UnitState | UnitChange | HitState] | None] = {
+            "units_over_threshold": self.units_over_threshold,
+            "units_changed": self.units_changed,
+            "contract_keys": self.contract_keys,
+        }
+        return {
+            name: [row.as_dict() for row in rows]
+            for name, rows in fields.items()
+            if rows is not None
+        }
+
+
+@dataclass(frozen=True)
+class PairOutcome:
+    """A pair check's findings, and the state it observed in the new text."""
+
+    findings: tuple[PairFinding, ...]
+    observed: Observed = field(default_factory=Observed)
+
+
+@dataclass(frozen=True)
+class _Gaps:
+    check: str
+    old: str
+    new: str
+
+
+@dataclass(frozen=True)
+class _Measured:
+    pair: TextPair
+    language: str
+    old: tuple[Unit, ...]
+    new: tuple[Unit, ...]
+
+
+@dataclass(frozen=True)
 class _Match:
     old: Unit | None
     new: Unit
     via: str
+
+
+_COMPLEXITY_GAPS = _Gaps(
+    CHECK_COMPLEXITY_DELTA,
+    MESSAGES.complexity_old_not_measured,
+    MESSAGES.complexity_new_not_measured,
+)
+_CONTRACT_GAPS = _Gaps(
+    CHECK_CONTRACT_DRIFT,
+    MESSAGES.contract_old_not_measured,
+    MESSAGES.contract_new_not_measured,
+)
 
 
 def pair_language(path: str) -> str | None:
@@ -116,51 +245,67 @@ def pair_language(path: str) -> str | None:
     return language if language in complexity.RULES else None
 
 
-def complexity_delta(pairs: Sequence[TextPair], threshold: int) -> tuple[PairFinding, ...]:
+def complexity_delta(pairs: Sequence[TextPair], threshold: int) -> PairOutcome:
     """Report each unit a change grew above ``threshold``, took over it, or added over it."""
-    findings: list[PairFinding] = []
-    for pair in pairs:
-        language = pair_language(pair.path)
-        if language is None or pair.new is None:
-            continue
-        old_units = _units(
-            pair.old,
-            pair.path,
-            language,
-            MESSAGES.complexity_old_not_measured,
-            CHECK_COMPLEXITY_DELTA,
+    measured, gaps = _measure_all(pairs, _COMPLEXITY_GAPS)
+    matches = _match_run(measured)
+    found = [
+        finding for match in matches if (finding := _unit_finding(match, threshold)) is not None
+    ]
+    observed = (
+        Observed(
+            units_over_threshold=_over_threshold(measured, threshold),
+            units_changed=_changed(matches),
         )
-        if isinstance(old_units, PairFinding):
-            findings.append(old_units)
-            continue
-        new_units = _units(
-            pair.new,
-            pair.path,
-            language,
-            MESSAGES.complexity_new_not_measured,
-            CHECK_COMPLEXITY_DELTA,
-        )
-        if isinstance(new_units, PairFinding):
-            findings.append(new_units)
-            continue
-        for match in _match(old_units, new_units):
-            found = _unit_finding(pair.path, match, threshold)
-            if found is not None:
-                findings.append(found)
-    return tuple(sorted(findings, key=_order))
+        if measured
+        else Observed()
+    )
+    return PairOutcome(_sorted([*gaps, *found]), observed)
 
 
-def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> tuple[PairFinding, ...]:
+def contract_drift(pairs: Sequence[TextPair], globs: Sequence[str]) -> PairOutcome:
     """Report each contract-rule hit a change adds to a file that one of ``globs`` matches."""
     if not globs:
-        if not pairs:
-            return ()
-        message = MESSAGES.contract_no_boundary.format(config=CONFIG_FILENAME)
-        evidence = MESSAGES.contract_no_boundary_evidence
-        gap = DriftGap(GAP_NO_BOUNDARY_GLOBS)
-        return (_not_checked(CHECK_CONTRACT_DRIFT, "", message, evidence, gap),)
-    findings = [found for pair in pairs for found in _drift(pair, globs)]
-    return tuple(sorted(findings, key=_order))
+        return PairOutcome(_no_boundary_rows(pairs))
+    admitted, rows = _admitted(pairs, globs)
+    measured, gaps = _measure_all(admitted, _CONTRACT_GAPS)
+    found, keys = _new_hits(measured, _match_run(measured))
+    observed = Observed(contract_keys=keys) if measured else Observed()
+    return PairOutcome(_sorted([*rows, *gaps, *found]), observed)
+
+
+def _first(value: _Row | None, fallback: _Row | None) -> _Row | None:
+    return fallback if value is None else value
+
+
+def _measure_all(
+    pairs: Sequence[TextPair], gaps: _Gaps
+) -> tuple[list[_Measured], list[PairFinding]]:
+    if len({pair.path for pair in pairs}) != len(pairs):
+        message = "each path may appear in only one text pair of a run"
+        raise ValueError(message)
+    measured: list[_Measured] = []
+    rows: list[PairFinding] = []
+    for pair in pairs:
+        language = pair_language(pair.path)
+        if language is None:
+            continue
+        outcome = _measure(pair, language, gaps)
+        if isinstance(outcome, PairFinding):
+            rows.append(outcome)
+        else:
+            measured.append(outcome)
+    return measured, rows
+
+
+def _measure(pair: TextPair, language: str, gaps: _Gaps) -> _Measured | PairFinding:
+    old = _units(pair.old, pair.path, language, gaps.old, gaps.check)
+    if isinstance(old, PairFinding):
+        return old
+    new = _units(pair.new, pair.path, language, gaps.new, gaps.check)
+    if isinstance(new, PairFinding):
+        return new
+    return _Measured(pair, language, old, new)
 
 
 def _units(
@@ -192,10 +337,29 @@ def _not_checked(
     )
 
 
-def _match(old_units: Sequence[Unit], new_units: Sequence[Unit]) -> list[_Match]:
-    by_body, old_left, new_left = _body_pass(old_units, new_units)
-    by_name, new_unpaired = _name_and_collision_passes(old_left, new_left)
-    return [*by_body, *by_name, *(_Match(None, unit, MATCH_NEW) for unit in new_unpaired)]
+def _match_run(measured: Sequence[_Measured]) -> list[_Match]:
+    matches: list[_Match] = []
+    old_left: list[Unit] = []
+    new_left: list[Unit] = []
+    for item in measured:
+        paired, olds, news = _body_pass(item.old, item.new)
+        matches.extend(paired)
+        old_left.extend(olds)
+        new_left.extend(news)
+
+    # Each file pairs its own units first, so a copy beside its unchanged
+    # original is new in the other file, and a unit moved between files is not.
+    moved, old_rest, new_rest = _body_pass(old_left, new_left)
+    matches.extend(moved)
+
+    old_by_file, new_by_file = _by_file(old_rest), _by_file(new_rest)
+    for item in measured:
+        named, unpaired = _name_and_collision_passes(
+            old_by_file.get(item.pair.path, []), new_by_file.get(item.pair.path, [])
+        )
+        matches.extend(named)
+        matches.extend(_Match(None, unit, MATCH_NEW) for unit in unpaired)
+    return matches
 
 
 def _body_pass(
@@ -248,11 +412,18 @@ def _by_qualname(units: Sequence[Unit]) -> dict[str, list[Unit]]:
     return grouped
 
 
+def _by_file(units: Sequence[Unit]) -> dict[str, list[Unit]]:
+    grouped: dict[str, list[Unit]] = {}
+    for unit in units:
+        grouped.setdefault(unit.path, []).append(unit)
+    return grouped
+
+
 def _rank(unit: Unit) -> tuple[int, int]:
     return (-unit.cc, unit.start_byte)
 
 
-def _unit_finding(path: str, match: _Match, threshold: int) -> PairFinding | None:
+def _unit_finding(match: _Match, threshold: int) -> PairFinding | None:
     old, new = match.old, match.new
     if old is None:
         if new.cc <= threshold:
@@ -286,11 +457,47 @@ def _unit_finding(path: str, match: _Match, threshold: int) -> PairFinding | Non
         check=CHECK_COMPLEXITY_DELTA,
         severity=Severity.WARNING,
         message=template.format(**numbers),
-        path=path,
+        path=new.path,
         line=new.start_line,
         evidence=evidence.format(**numbers),
     )
     return PairFinding(finding, detail)
+
+
+def _over_threshold(measured: Sequence[_Measured], threshold: int) -> tuple[UnitState, ...]:
+    rows = [
+        UnitState(unit.path, unit.qualname, unit.start_line, unit.cc, unit.sloc)
+        for item in measured
+        for unit in item.new
+        if unit.cc > threshold
+    ]
+    return tuple(sorted(rows, key=_row_order))
+
+
+def _changed(matches: Sequence[_Match]) -> tuple[UnitChange, ...]:
+    rows = [
+        UnitChange(
+            path=match.new.path,
+            unit=match.new.qualname,
+            line=match.new.start_line,
+            match=match.via,
+            cc_old=None if match.old is None else match.old.cc,
+            cc_new=match.new.cc,
+            sloc_old=None if match.old is None else match.old.sloc,
+            sloc_new=match.new.sloc,
+        )
+        for match in matches
+        if match.via != MATCH_BODY
+    ]
+    return tuple(sorted(rows, key=_row_order))
+
+
+def _row_order(row: UnitState | UnitChange) -> tuple[str, int, str]:
+    return (row.path, row.line, row.unit)
+
+
+def _sorted(findings: Sequence[PairFinding]) -> tuple[PairFinding, ...]:
+    return tuple(sorted(findings, key=_order))
 
 
 def _order(found: PairFinding) -> tuple[str, int, str, str]:
@@ -298,59 +505,76 @@ def _order(found: PairFinding) -> tuple[str, int, str, str]:
     return (finding.path, finding.line, finding.message, finding.evidence)
 
 
-def _drift(pair: TextPair, globs: Sequence[str]) -> list[PairFinding]:
-    language = pair_language(pair.path)
-    if language is None or pair.new is None or not contracts.in_boundary(pair.path, globs):
-        return []
-    if not contracts.rules_for(language):
-        message = MESSAGES.contract_no_rules.format(language=language, path=pair.path)
-        gap = DriftGap(GAP_NO_RULES, language)
-        return [_not_checked(CHECK_CONTRACT_DRIFT, pair.path, message, language, gap)]
-
-    old_units = _units(
-        pair.old, pair.path, language, MESSAGES.contract_old_not_measured, CHECK_CONTRACT_DRIFT
-    )
-    if isinstance(old_units, PairFinding):
-        return [old_units]
-    new_units = _units(
-        pair.new, pair.path, language, MESSAGES.contract_new_not_measured, CHECK_CONTRACT_DRIFT
-    )
-    if isinstance(new_units, PairFinding):
-        return [new_units]
-
-    old_hits = () if pair.old is None else contracts.hits(pair.old, language, old_units)
-    new_hits = contracts.hits(pair.new, language, new_units)
-    return _new_hits(pair.path, old_hits, new_hits, _identities(old_units, new_units))
+def _no_boundary_rows(pairs: Sequence[TextPair]) -> tuple[PairFinding, ...]:
+    if not pairs:
+        return ()
+    message = MESSAGES.contract_no_boundary.format(config=CONFIG_FILENAME)
+    evidence = MESSAGES.contract_no_boundary_evidence
+    gap = DriftGap(GAP_NO_BOUNDARY_GLOBS)
+    return (_not_checked(CHECK_CONTRACT_DRIFT, "", message, evidence, gap),)
 
 
-def _identities(old_units: Sequence[Unit], new_units: Sequence[Unit]) -> dict[int, str]:
-    # A new unit that `_match` pairs keeps its old name, so a rename moves no hit.
-    return {
-        match.new.start_byte: (match.new if match.old is None else match.old).qualname
-        for match in _match(old_units, new_units)
-    }
+def _admitted(
+    pairs: Sequence[TextPair], globs: Sequence[str]
+) -> tuple[list[TextPair], list[PairFinding]]:
+    admitted: list[TextPair] = []
+    rows: list[PairFinding] = []
+    for pair in pairs:
+        language = pair_language(pair.path)
+        if language is None or not contracts.in_boundary(pair.path, globs):
+            continue
+        if contracts.rules_for(language):
+            admitted.append(pair)
+        elif pair.new is not None:
+            message = MESSAGES.contract_no_rules.format(language=language, path=pair.path)
+            gap = DriftGap(GAP_NO_RULES, language)
+            rows.append(_not_checked(CHECK_CONTRACT_DRIFT, pair.path, message, language, gap))
+    return admitted, rows
 
 
 def _new_hits(
-    path: str, old_hits: Sequence[Hit], new_hits: Sequence[Hit], identity: dict[int, str]
-) -> list[PairFinding]:
-    carried = Counter(
-        _key(hit, None if hit.unit is None else hit.unit.qualname) for hit in old_hits
-    )
+    measured: Sequence[_Measured], matches: Sequence[_Match]
+) -> tuple[list[PairFinding], tuple[HitState, ...]]:
+    # A new unit that `_match_run` paired keeps its old identity, so a rename or
+    # a move to another file of the run moves no hit.
+    identity = {
+        (match.new.path, match.new.start_byte): match.new if match.old is None else match.old
+        for match in matches
+    }
+    carried = _carried(measured)
     fresh: list[PairFinding] = []
-    for hit in new_hits:
-        key = _key(hit, None if hit.unit is None else identity[hit.unit.start_byte])
-        if carried[key]:
-            carried[key] -= 1
-        else:
-            fresh.append(_hit_finding(path, hit, key))
-    return fresh
+    states: list[HitState] = []
+    for item in measured:
+        if item.pair.new is None:
+            continue
+        for hit in contracts.hits(item.pair.new, item.language, item.new):
+            owner = None if hit.unit is None else identity[(hit.unit.path, hit.unit.start_byte)]
+            states.append(HitState(item.pair.path, hit.rule.id, _qualname(hit.unit), hit.capture))
+            key = _key(hit, owner, item.pair.path)
+            if carried[key]:
+                carried[key] -= 1
+            else:
+                drift = DriftKey(rule=hit.rule.id, unit=_qualname(owner), capture=hit.capture)
+                fresh.append(_hit_finding(item.pair.path, hit, drift))
+    return fresh, tuple(sorted(states, key=lambda state: state.path))
 
 
-def _key(hit: Hit, unit: str | None) -> DriftKey:
-    return DriftKey(
-        rule=hit.rule.id, unit=MODULE_UNIT if unit is None else unit, capture=hit.capture
+def _carried(measured: Sequence[_Measured]) -> Counter[tuple[str, str, str, str]]:
+    return Counter(
+        _key(hit, hit.unit, item.pair.path)
+        for item in measured
+        if item.pair.old is not None
+        for hit in contracts.hits(item.pair.old, item.language, item.old)
     )
+
+
+def _key(hit: Hit, owner: Unit | None, path: str) -> tuple[str, str, str, str]:
+    where = path if owner is None else owner.path
+    return (hit.rule.id, where, _qualname(owner), hit.capture)
+
+
+def _qualname(unit: Unit | None) -> str:
+    return MODULE_UNIT if unit is None else unit.qualname
 
 
 def _hit_finding(path: str, hit: Hit, key: DriftKey) -> PairFinding:
