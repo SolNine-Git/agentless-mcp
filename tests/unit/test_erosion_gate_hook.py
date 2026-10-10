@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.application.lint_service import CHECK_NAMES, PAIR_CHECK_NAMES
+from agentless_mcp.application.lint_service import CHECKS, PAIR_CHECK_NAMES
 from agentless_mcp.core import cache, erosion, grammars, patchlint, projectconfig, selfrestart
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.prompts import MESSAGES
@@ -116,6 +117,15 @@ def lint_stdout(*findings, observed=ABSENT, rel="pkg/app.py"):
     return json.dumps(
         {"receipt": receipt, "notice": "repository data below", "candidates": [candidate]}
     )
+
+
+def capabilities_stdout(*listed):
+    rows = [{"name": name, "input": needs} for name, needs in listed]
+    return json.dumps({"version": "test", "lint_checks": rows})
+
+
+def subcommands(gate):
+    return [call["argv"][0] for call in gate.stub_calls()]
 
 
 def complexity_finding(*, unit="big", line=1, cc_old=12, cc_new=13, rel="pkg/app.py"):
@@ -453,6 +463,36 @@ class TestLintOutput:
             hook.parse_lint_output(stdout, ["complexity_delta"])
 
 
+class TestLintChecks:
+    def test_the_check_list_reads_as_name_and_input(self):
+        listed = hook.parse_lint_checks(
+            capabilities_stdout(("arity", "patch"), ("complexity_delta", "pairs")).encode()
+        )
+
+        assert listed == {"arity": "patch", "complexity_delta": "pairs"}
+
+    def test_a_binary_without_a_check_list_gives_none(self):
+        assert hook.parse_lint_checks(b'{"version": "0.9.1"}') is None
+
+    @pytest.mark.parametrize(
+        ("stdout", "reason"),
+        [
+            (b"not json", "not JSON"),
+            (b'{"lint_checks": {}}', "output.lint_checks is not a list"),
+            (b'{"lint_checks": ["arity"]}', "lint_checks[0] is not an object"),
+            (b'{"lint_checks": [{"name": "arity"}]}', "lint_checks[0].input is missing"),
+            (b'{"lint_checks": [{"name": 1, "input": "patch"}]}', "lint_checks[0].name is not"),
+            (
+                capabilities_stdout(("arity", "patch"), ("arity", "pairs")).encode(),
+                "lint_checks[1].name 'arity' appears twice",
+            ),
+        ],
+    )
+    def test_another_check_list_shape_is_refused(self, stdout, reason):
+        with pytest.raises(hook._ShapeError, match=re.escape(reason)):
+            hook.parse_lint_checks(stdout)
+
+
 class TestClassification:
     def test_the_no_boundary_row_is_the_designed_off_state(self):
         row = finding(
@@ -469,17 +509,29 @@ class TestClassification:
             (),
         )
 
-    def test_any_other_not_checked_row_is_a_gap_and_never_clean(self):
+    def test_a_language_with_no_contract_rules_is_off_too(self):
         row = finding(
             check="contract_drift",
             severity="not_checked",
-            message="no rules for c",
             detail={"reason": "no_rules_for_language", "language": "c"},
         )
 
         verdict = hook.classify(hook.LintOutput((row,), None), CONTRACT_BLOCKS)
 
-        assert (verdict.outcome, verdict.reason) == ("degraded", "no rules for c")
+        assert (verdict.outcome, verdict.off_by_config, verdict.gaps) == (
+            "clean",
+            ("contract_drift",),
+            (),
+        )
+
+    def test_any_other_not_checked_row_is_a_gap_and_never_clean(self):
+        row = finding(
+            check="contract_drift", severity="not_checked", message="the new text does not parse"
+        )
+
+        verdict = hook.classify(hook.LintOutput((row,), None), CONTRACT_BLOCKS)
+
+        assert (verdict.outcome, verdict.reason) == ("degraded", "the new text does not parse")
 
     def test_a_finding_beside_a_gap_keeps_the_gap(self):
         gap = finding(check="coverage", severity="not_checked", message="not read")
@@ -589,8 +641,9 @@ class TestPipe:
 
     def test_a_clean_call_logs_observed_as_lint_sent_it(self, gate):
         observed = {
-            "units_over_threshold": [{"unit": "big", "line": 1, "cc": 12, "sloc": 24}],
-            "contract_keys": None,
+            "units_over_threshold": [
+                {"path": "pkg/app.py", "unit": "big", "line": 1, "cc": 12, "sloc": 24}
+            ],
             "units_changed": [],
         }
         gate.respond({"stdout": lint_stdout(observed=observed)})
@@ -627,19 +680,25 @@ class TestPipe:
         assert gate.records()[0]["reason"] == "malformed payload: over 4 MiB"
 
     def test_a_release_without_the_hook_form_is_degraded(self, gate):
-        gate.respond({"code": 2, "stderr": RELEASED_USAGE})
+        gate.respond({"code": 2, "stderr": RELEASED_USAGE}, {"stdout": '{"version": "0.9.1"}'})
 
         result = gate.run(gate.edit())
 
         assert (result.returncode, result.stdout) == (0, b"")
         assert gate.records()[0]["reason"] == "agentless-mcp lacks the hook form"
+        assert subcommands(gate) == ["lint", "capabilities"]
 
     def test_a_check_the_binary_does_not_offer_is_dropped_and_lint_runs_again(self, gate):
         refusal = MESSAGES.lint_unknown_check.format(
             name="contract_drift", checks="complexity_delta, cycle_delta"
         )
         gate.respond(
-            {"code": 2, "stderr": f"usage: agentless-mcp lint ...\nerror: {refusal}\n"},
+            {"code": 2, "stderr": f"agentless-mcp lint: error: argument --only: {refusal}\n"},
+            {
+                "stdout": capabilities_stdout(
+                    ("cycle_delta", "patch"), ("complexity_delta", "pairs")
+                )
+            },
             {"stdout": lint_stdout(complexity_finding())},
         )
 
@@ -650,11 +709,58 @@ class TestPipe:
             "big: complexity"
             in json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
         )
-        only = [call["argv"][call["argv"].index("--only") + 1] for call in gate.stub_calls()]
+        calls = gate.stub_calls()
+        assert subcommands(gate) == ["lint", "capabilities", "lint"]
+        assert calls[1]["argv"] == ["capabilities", "--repo", str(gate.root), "--json"]
+        only = [call["argv"][call["argv"].index("--only") + 1] for call in (calls[0], calls[2])]
         assert only == ["complexity_delta,contract_drift", "complexity_delta"]
         record = gate.records()[0]
-        assert record["dropped"] == [{"check": "contract_drift", "reason": "unknown to the binary"}]
+        assert record["dropped"] == [
+            {"check": "contract_drift", "reason": "not a pairs check in lint_checks"}
+        ]
         assert record["checks"] == ["complexity_delta"]
+
+    @pytest.mark.parametrize(
+        ("capabilities", "reason"),
+        [
+            ({"code": 1, "stderr": "boom\n"}, "capabilities exited 1: boom"),
+            (
+                {"stdout": "not json"},
+                "capabilities output: not JSON: Expecting value: line 1 column 1 (char 0)",
+            ),
+            (
+                {"stdout": capabilities_stdout(("complexity_delta", "patch"))},
+                "agentless-mcp offers none of the gated checks",
+            ),
+            (
+                {
+                    "stdout": capabilities_stdout(
+                        ("complexity_delta", "pairs"), ("contract_drift", "pairs")
+                    )
+                },
+                "lint usage error: agentless-mcp lint: error: --path needs --after",
+            ),
+            (
+                {"stdout": '{"version": "0.9.2"}'},
+                (
+                    "capabilities has no lint_checks, and lint said: agentless-mcp lint: error: "
+                    "--path needs --after"
+                ),
+            ),
+        ],
+    )
+    def test_a_check_list_that_cannot_fix_the_refusal_is_degraded(self, gate, capabilities, reason):
+        usage = "usage: agentless-mcp lint [-h] (--candidates PATH | --diff FILE | --path REL)\n"
+        gate.respond(
+            {"code": 2, "stderr": usage + "agentless-mcp lint: error: --path needs --after\n"},
+            capabilities,
+        )
+
+        result = gate.run(gate.edit())
+
+        assert (result.returncode, result.stdout) == (0, b"")
+        assert gate.records()[0]["reason"] == reason
+        assert subcommands(gate) == ["lint", "capabilities"]
 
     def test_a_missing_binary_skips(self, gate):
         named = gate.run(gate.edit(), AGENTLESS_EROSION_BIN=str(gate.tmp_path / "absent"))
@@ -854,9 +960,29 @@ def test_the_real_cli_reports_a_branch_added_to_a_complex_function(gate):
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "pkg/app.py:1: big: complexity 12 -> 13" in context
     [record] = gate.records()
-    assert record["outcome"] == "advisory"
+    assert (record["outcome"], record["off_by_config"]) == ("advisory", ["contract_drift"])
     detail = record["findings"][0]["detail"]
     assert (detail["match"], detail["cc_old"], detail["cc_new"]) == ("name", 12, 13)
+
+
+def test_the_log_holds_the_observed_state_that_lint_reports(gate):
+    after = gate.tmp_path / "proposed.py"
+    after.write_text(SOURCE.replace(*ADD_BRANCH), encoding="utf-8")
+    arguments = ["--repo", str(gate.root), "--path", "pkg/app.py", "--after", str(after)]
+    direct = subprocess.run(
+        [str(CLI), "lint", *arguments, "--json", "--only", "complexity_delta,contract_drift"],
+        capture_output=True,
+        env=gate.env,
+        check=True,
+        timeout=60,
+    )
+    expected = json.loads(direct.stdout)["candidates"][0]["observed"]
+
+    result = gate.run(gate.edit(), AGENTLESS_EROSION_BIN=str(CLI))
+
+    assert result.returncode == 0
+    assert expected["units_over_threshold"][0]["unit"] == "big"
+    assert gate.records()[0]["observed"] == expected
 
 
 class TestTheHookAgreesWithThePackage:
@@ -888,13 +1014,21 @@ class TestTheHookAgreesWithThePackage:
         assert set(hook.SEVERITIES) == {severity.value for severity in patchlint.Severity}
         assert hook.COVERAGE_CHECK == patchlint.CHECK_COVERAGE
 
-    def test_the_unknown_check_pattern_reads_lints_own_refusal(self):
-        refusal = MESSAGES.lint_unknown_check.format(
-            name="contract_drift", checks=", ".join(CHECK_NAMES)
+    def test_the_hook_reads_this_branchs_check_list(self, make_git_repo):
+        root = make_git_repo({"app.py": "x = 1\n"})
+        result = subprocess.run(
+            [str(CLI), "capabilities", "--repo", str(root), "--json"],
+            capture_output=True,
+            check=True,
+            timeout=60,
         )
 
-        assert hook.offered_checks(2, f"agentless-mcp lint: error: {refusal}") == set(CHECK_NAMES)
-        assert hook.offered_checks(1, refusal) is None
+        listed = hook.parse_lint_checks(result.stdout)
+
+        assert listed == {check.name: check.needs.value for check in CHECKS}
+        assert {name for name, needs in listed.items() if needs == hook.PAIRS_INPUT} >= set(
+            hook.KNOWN_CHECKS
+        )
 
     def test_this_branchs_usage_text_has_the_hook_form(self):
         result = subprocess.run([str(CLI), "lint"], capture_output=True, text=True, check=False)

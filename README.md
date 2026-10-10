@@ -106,6 +106,8 @@ agentless-mcp patch check --file change.patch --repo /path/to/repo
 agentless-mcp patch apply --file change.patch --repo /path/to/repo
 agentless-mcp lint --candidates ./candidates --repo /path/to/repo
 agentless-mcp lint --diff change.patch --repo /path/to/base-checkout
+agentless-mcp lint --path pkg/app.py --after /tmp/app.py --repo /path/to/repo
+agentless-mcp lint --since "$(git merge-base HEAD main)" --repo /path/to/repo
 agentless-mcp validate --candidates ./candidates --repo /path/to/repo \
   --test-cmd 'pytest -q'
 agentless-mcp vote --verdicts verdicts.jsonl
@@ -143,7 +145,9 @@ pair checks, such as `complexity_delta`, reads the edited files and does not
 scan the repository. `lint --path REL --after FILE` is the per-edit form. It
 compares `REL` as the working tree holds it with the whole proposed text in
 `FILE`, and it runs only the pair checks. The erosion gate hook calls lint this
-way.
+way. `lint --since REV` is the review mode. It compares each file changed since
+the commit `REV` with its text in the working tree, and it runs only the pair
+checks.
 
 ```sh
 agentless-mcp lint --repo /path/to/repo --path pkg/app.py --after /tmp/app.py \
@@ -595,8 +599,10 @@ wins over every repository key.
 
 The binary must have the hook form (`lint --path`). With a release that does
 not have it, the log records every call as `degraded` with the reason
-`agentless-mcp lacks the hook form`. When the binary is missing, the hook skips
-the call.
+`agentless-mcp lacks the hook form`. When lint refuses a check, the hook reads
+the binary's check list from `capabilities --json` and runs lint once more with
+the requested pair checks that the list names. When the binary is missing, the
+hook skips the call.
 
 Install the gate in Claude Code:
 

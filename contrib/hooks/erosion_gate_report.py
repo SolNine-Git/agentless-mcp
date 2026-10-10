@@ -9,11 +9,11 @@ import json
 import random
 import sys
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 LOG_VERSION = 1
 COMPLEXITY_DELTA = "complexity_delta"
@@ -64,6 +64,8 @@ EXIT_OK = 0
 EXIT_INPUT = 1
 EXIT_USAGE = 2
 
+T = TypeVar("T")
+
 CONDITION_3 = (
     "Flip condition 3 (no change to a check's rules or message since its trial started) "
     "is not in the log. Confirm it before you set a check's erosion_gate entry to block."
@@ -76,8 +78,9 @@ class ReportError(Exception):
 
 @dataclass(frozen=True)
 class UnitCC:
-    """One unit over the threshold in a record's observed state."""
+    """One unit over the threshold in a record's observed state, named as in the proposed text."""
 
+    path: str
     unit: str
     line: int
     cc: int
@@ -85,11 +88,36 @@ class UnitCC:
 
 
 @dataclass(frozen=True)
+class UnitChange:
+    """One unit the change added or altered, with ``None`` old values for a new unit."""
+
+    path: str
+    unit: str
+    line: int
+    match: str
+    cc_old: int | None
+    cc_new: int
+    sloc_old: int | None
+    sloc_new: int
+
+
+@dataclass(frozen=True)
+class ContractHit:
+    """One contract hit in a record's observed state."""
+
+    path: str
+    rule: str
+    unit: str
+    capture: str
+
+
+@dataclass(frozen=True)
 class Observed:
-    """The observed state of a proposed text: ``None`` for a list whose check did not run."""
+    """The observed state of a proposed text: ``None`` for a list whose check measured no file."""
 
     units_over_threshold: tuple[UnitCC, ...] | None
-    contract_keys: tuple[tuple[str, str, str], ...] | None
+    units_changed: tuple[UnitChange, ...] | None
+    contract_keys: tuple[ContractHit, ...] | None
 
 
 @dataclass(frozen=True)
@@ -106,7 +134,7 @@ class Finding:
     match: str | None = None
     cc_old: int | None = None
     threshold: int | None = None
-    key: tuple[str, str, str] | None = None
+    hit: tuple[str, str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -283,7 +311,8 @@ def _finding(item: object, where: str) -> Finding:
 
 def _with_key(finding: Finding, detail: Mapping[str, object], where: str) -> Finding:
     rule, unit, capture = (_field(detail, name, str, where) for name in CONTRACT_KEY_FIELDS)
-    return replace(finding, unit=unit, key=(rule, unit, capture))
+    # A hit is compared without its unit: a rename alone must not read as a fix.
+    return replace(finding, unit=unit, hit=(finding.path, rule, capture))
 
 
 def _with_numbers(finding: Finding, detail: Mapping[str, object], where: str) -> Finding:
@@ -304,53 +333,72 @@ def _with_numbers(finding: Finding, detail: Mapping[str, object], where: str) ->
 
 
 def _observed(value: Mapping[str, object], where: str) -> Observed:
-    # A list lint did not send says the same as null: that check did not run on this file.
-    units = _field(value, "units_over_threshold", (list, NULL), where, optional=True)
-    keys = _field(value, "contract_keys", (list, NULL), where, optional=True)
     return Observed(
-        units_over_threshold=None
-        if units is None
-        else tuple(
-            _unit(item, f"{where}: units_over_threshold[{n}]") for n, item in enumerate(units)
-        ),
-        contract_keys=None
-        if keys is None
-        else tuple(_key(item, f"{where}: contract_keys[{n}]") for n, item in enumerate(keys)),
+        units_over_threshold=_rows(value, "units_over_threshold", _unit_cc, where),
+        units_changed=_rows(value, "units_changed", _unit_change, where),
+        contract_keys=_rows(value, "contract_keys", _contract_hit, where),
     )
 
 
-def _unit(item: object, where: str) -> UnitCC:
-    if not isinstance(item, dict):
-        message = f"{where} is not an object"
-        raise ReportError(message)
+def _rows(
+    value: Mapping[str, object],
+    key: str,
+    parse: Callable[[Mapping[str, object], str], T],
+    where: str,
+) -> tuple[T, ...] | None:
+    # An absent list means that its check measured no file, which is not an empty result.
+    if key not in value:
+        return None
+    rows = _field(value, key, list, where)
+    parsed = []
+    for index, row in enumerate(rows):
+        at = f"{where}: observed.{key}[{index}]"
+        if not isinstance(row, dict):
+            message = f"{at} is not an object"
+            raise ReportError(message)
+        parsed.append(parse(row, at))
+    return tuple(parsed)
+
+
+def _unit_cc(row: Mapping[str, object], where: str) -> UnitCC:
     return UnitCC(
-        unit=_field(item, "unit", str, where),
-        line=_field(item, "line", int, where),
-        cc=_field(item, "cc", int, where),
-        sloc=_field(item, "sloc", int, where),
+        path=_field(row, "path", str, where),
+        unit=_field(row, "unit", str, where),
+        line=_field(row, "line", int, where),
+        cc=_field(row, "cc", int, where),
+        sloc=_field(row, "sloc", int, where),
     )
 
 
-def _key(item: object, where: str) -> tuple[str, str, str]:
-    if not isinstance(item, list) or len(item) != len(CONTRACT_KEY_FIELDS):
-        message = f"{where} is not a [rule, unit, capture] list"
+def _unit_change(row: Mapping[str, object], where: str) -> UnitChange:
+    match = _field(row, "match", str, where)
+    if match not in MATCH_PASSES:
+        message = f"{where}: match {match!r} is not one of {', '.join(MATCH_PASSES)}"
         raise ReportError(message)
-    if not all(isinstance(part, str) for part in item):
-        message = f"{where} holds a value that is not a string"
-        raise ReportError(message)
-    return (item[0], item[1], item[2])
+    return UnitChange(
+        path=_field(row, "path", str, where),
+        unit=_field(row, "unit", str, where),
+        line=_field(row, "line", int, where),
+        match=match,
+        cc_old=_field(row, "cc_old", (int, NULL), where),
+        cc_new=_field(row, "cc_new", int, where),
+        sloc_old=_field(row, "sloc_old", (int, NULL), where),
+        sloc_new=_field(row, "sloc_new", int, where),
+    )
+
+
+def _contract_hit(row: Mapping[str, object], where: str) -> ContractHit:
+    return ContractHit(
+        path=_field(row, "path", str, where),
+        rule=_field(row, "rule", str, where),
+        unit=_field(row, "unit", str, where),
+        capture=_field(row, "capture", str, where),
+    )
 
 
 def _field(
-    document: Mapping[str, object],
-    key: str,
-    kind: type | tuple[type, ...],
-    where: str,
-    *,
-    optional: bool = False,
+    document: Mapping[str, object], key: str, kind: type | tuple[type, ...], where: str
 ) -> Any:
-    if key not in document and optional:
-        return None
     if key not in document:
         message = f"{where}: {key} is missing"
         raise ReportError(message)
@@ -497,18 +545,22 @@ def _complexity_acted(finding: Finding, over: Sequence[UnitCC]) -> bool:
     limit = finding.threshold
     if finding.cc_old is not None and finding.cc_old > finding.threshold:
         limit = finding.cc_old
-    return not any(unit.unit == finding.unit and unit.cc > limit for unit in over)
+    return not any(
+        row.path == finding.path and row.unit == finding.unit and row.cc > limit for row in over
+    )
 
 
 def _contract_acted(
-    finding: Finding,
-    before: Sequence[tuple[str, str, str]] | None,
-    after: Sequence[tuple[str, str, str]],
+    finding: Finding, before: Sequence[ContractHit] | None, after: Sequence[ContractHit]
 ) -> bool:
-    now = list(after).count(finding.key)
+    now = _hit_count(finding, after)
     if before is None:
         return now == 0
-    return now < list(before).count(finding.key)
+    return now < _hit_count(finding, before)
+
+
+def _hit_count(finding: Finding, hits: Sequence[ContractHit]) -> int:
+    return sum(1 for hit in hits if (hit.path, hit.rule, hit.capture) == finding.hit)
 
 
 def sample(classified: Sequence[Classified], seed: int) -> list[Classified]:

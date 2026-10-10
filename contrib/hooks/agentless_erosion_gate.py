@@ -8,7 +8,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import shutil
 import signal
 import stat
@@ -52,7 +51,9 @@ MODES = (OFF, ADVISORY, BLOCK)
 DEFAULT_MODE = ADVISORY
 KNOWN_CHECKS = ("complexity_delta", "contract_drift")
 CONTRACT_DRIFT = "contract_drift"
-NO_BOUNDARY_GLOBS = "no_boundary_globs"
+# The contract_drift gaps that lint emits by design: the check is off for that file.
+OFF_REASONS = ("no_boundary_globs", "no_rules_for_language")
+PAIRS_INPUT = "pairs"
 COVERAGE_CHECK = "coverage"
 NOT_CHECKED = "not_checked"
 SEVERITIES = ("advisory", "warning", NOT_CHECKED)
@@ -93,9 +94,6 @@ TIER1_SUFFIXES = frozenset(
         ".tsx",
     }
 )
-
-# Lint's own refusal of an unknown --only name lists every check the binary offers.
-UNKNOWN_CHECK = re.compile(r"unknown check '(?P<name>[^']+)'\. The checks are: (?P<checks>[^.]+)\.")
 
 BLOCK_HEADER = "Erosion gate blocked this edit:"
 ADVISORY_HEADER = "Erosion gate findings for this edit (advisory, the edit is not blocked):"
@@ -560,26 +558,21 @@ def _run_lint(
     call: _LintCall, after: Path, checks: Sequence[str], record: dict[str, object]
 ) -> LintOutput:
     record["checks"] = list(checks)
-    run = _call_lint(call, after, checks)
-    offered = offered_checks(run.code, run.stderr)
-    if offered is not None:
-        checks = _offered(checks, offered, record)
+    run = _invoke(call, _lint_arguments(call, after, checks), "lint")
+    if run.code == USAGE_EXIT:
+        checks = _retry_checks(checks, _pair_checks(call, run), run, record)
         record["checks"] = list(checks)
-        run = _call_lint(call, after, checks)
+        run = _invoke(call, _lint_arguments(call, after, checks), "lint")
     if run.code != 0:
-        raise _HaltError(DEGRADED, _failure(run))
+        raise _HaltError(DEGRADED, _failure("lint", run))
     try:
         return parse_lint_output(run.stdout, checks)
     except _ShapeError as error:
         raise _HaltError(DEGRADED, f"lint output: {error}") from error
 
 
-def _call_lint(call: _LintCall, after: Path, checks: Sequence[str]) -> _Run:
-    budget = call.deadline - time.monotonic() - LOG_RESERVE_S
-    if budget <= 0:
-        raise _HaltError(DEGRADED, "no time left for lint")
-    argv = [
-        str(call.binary),
+def _lint_arguments(call: _LintCall, after: Path, checks: Sequence[str]) -> list[str]:
+    return [
         "lint",
         "--repo",
         str(call.root),
@@ -591,48 +584,85 @@ def _call_lint(call: _LintCall, after: Path, checks: Sequence[str]) -> _Run:
         "--only",
         ",".join(checks),
     ]
+
+
+def _invoke(call: _LintCall, arguments: Sequence[str], what: str) -> _Run:
+    budget = call.deadline - time.monotonic() - LOG_RESERVE_S
+    if budget <= 0:
+        raise _HaltError(DEGRADED, f"no time left for {what}")
     try:
         completed = subprocess.run(
-            argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=budget, check=False
+            [str(call.binary), *arguments],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=budget,
+            check=False,
         )
     except subprocess.TimeoutExpired:
-        raise _HaltError(DEGRADED, f"lint timed out after {budget:.1f} s") from None
+        raise _HaltError(DEGRADED, f"{what} timed out after {budget:.1f} s") from None
     except OSError as error:
         raise _HaltError(DEGRADED, f"cannot run {call.binary}: {error}") from error
     stderr = completed.stderr.decode("utf-8", errors="replace")
     return _Run(completed.returncode, completed.stdout, stderr)
 
 
-def offered_checks(code: int, stderr: str) -> frozenset[str] | None:
-    """Return the checks a binary offers when its lint refused an unknown check, else None."""
-    if code != USAGE_EXIT:
-        return None
-    refusal = UNKNOWN_CHECK.search(stderr)
-    if refusal is None:
-        return None
-    return frozenset(name.strip() for name in refusal["checks"].split(","))
+def _pair_checks(call: _LintCall, refused: _Run) -> frozenset[str]:
+    run = _invoke(call, ["capabilities", "--repo", str(call.root), "--json"], "capabilities")
+    if run.code != 0:
+        raise _HaltError(DEGRADED, _failure("capabilities", run))
+    try:
+        listed = parse_lint_checks(run.stdout)
+    except _ShapeError as error:
+        raise _HaltError(DEGRADED, f"capabilities output: {error}") from error
+    if listed is None and lacks_hook_form(refused.stderr):
+        raise _HaltError(DEGRADED, f"{BINARY_NAME} lacks the hook form")
+    if listed is None:
+        reason = f"capabilities has no lint_checks, and lint said: {_last_line(refused.stderr)}"
+        raise _HaltError(DEGRADED, reason)
+    return frozenset(name for name, needs in listed.items() if needs == PAIRS_INPUT)
 
 
-def _offered(
-    checks: Sequence[str], offered: frozenset[str], record: dict[str, object]
+def parse_lint_checks(stdout: bytes) -> dict[str, str] | None:
+    """Return each check that ``capabilities --json`` lists, with its input, or None for none."""
+    document = _json_object(stdout)
+    if "lint_checks" not in document:
+        return None
+    rows = _field(document, "lint_checks", list, "output")
+    listed: dict[str, str] = {}
+    for index, row in enumerate(rows):
+        where = f"lint_checks[{index}]"
+        if not isinstance(row, dict):
+            message = f"{where} is not an object"
+            raise _ShapeError(message)
+        name = _field(row, "name", str, where)
+        if name in listed:
+            message = f"{where}.name {name!r} appears twice"
+            raise _ShapeError(message)
+        listed[name] = _field(row, "input", str, where)
+    return listed
+
+
+def _retry_checks(
+    checks: Sequence[str], pairs: frozenset[str], refused: _Run, record: dict[str, object]
 ) -> list[str]:
-    record["dropped"] = [
-        {"check": check, "reason": "unknown to the binary"}
-        for check in checks
-        if check not in offered
-    ]
-    kept = [check for check in checks if check in offered]
+    kept = [check for check in checks if check in pairs]
     if not kept:
         raise _HaltError(DEGRADED, f"{BINARY_NAME} offers none of the gated checks")
+    if len(kept) == len(checks):
+        # Every requested check is offered, so the refusal has another cause and a retry repeats it.
+        raise _HaltError(DEGRADED, _failure("lint", refused))
+    record["dropped"] = [
+        {"check": check, "reason": "not a pairs check in lint_checks"}
+        for check in checks
+        if check not in pairs
+    ]
     return kept
 
 
-def _failure(run: _Run) -> str:
-    if run.code == USAGE_EXIT and lacks_hook_form(run.stderr):
-        return f"{BINARY_NAME} lacks the hook form"
+def _failure(what: str, run: _Run) -> str:
     if run.code == USAGE_EXIT:
-        return f"lint usage error: {_last_line(run.stderr)}"
-    return f"lint exited {run.code}: {run.stderr[-STDERR_TAIL_CHARS:].strip()}"
+        return f"{what} usage error: {_last_line(run.stderr)}"
+    return f"{what} exited {run.code}: {run.stderr[-STDERR_TAIL_CHARS:].strip()}"
 
 
 def lacks_hook_form(stderr: str) -> bool:
@@ -643,14 +673,7 @@ def lacks_hook_form(stderr: str) -> bool:
 
 def parse_lint_output(stdout: bytes, checks: Sequence[str]) -> LintOutput:
     """Return the lint hook-form JSON as typed rows, or raise on any other shape."""
-    try:
-        document = json.loads(stdout.decode("utf-8"))
-    except ValueError as error:
-        message = f"not JSON: {error}"
-        raise _ShapeError(message) from error
-    if not isinstance(document, dict):
-        message = "not a JSON object"
-        raise _ShapeError(message)
+    document = _json_object(stdout)
     candidates = _field(document, "candidates", list, "output")
     if len(candidates) != 1 or not isinstance(candidates[0], dict):
         message = f"output.candidates holds {len(candidates)} items, not one object"
@@ -666,6 +689,18 @@ def parse_lint_output(stdout: bytes, checks: Sequence[str]) -> LintOutput:
         _finding(item, f"findings[{index}]", allowed) for index, item in enumerate(findings)
     )
     return LintOutput(rows, observed)
+
+
+def _json_object(stdout: bytes) -> dict[str, object]:
+    try:
+        document = json.loads(stdout.decode("utf-8"))
+    except ValueError as error:
+        message = f"not JSON: {error}"
+        raise _ShapeError(message) from error
+    if not isinstance(document, dict):
+        message = "not a JSON object"
+        raise _ShapeError(message)
+    return document
 
 
 def _finding(item: object, where: str, allowed: set[str]) -> LintFinding:
@@ -720,7 +755,7 @@ def _off_by_config(finding: LintFinding) -> bool:
         finding.check == CONTRACT_DRIFT
         and detail is not None
         and "reason" in detail
-        and detail["reason"] == NO_BOUNDARY_GLOBS
+        and detail["reason"] in OFF_REASONS
     )
 
 

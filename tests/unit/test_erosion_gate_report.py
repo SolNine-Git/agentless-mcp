@@ -82,14 +82,19 @@ def contract(key=KEY):
     }
 
 
-def observed(units=None, keys=None):
-    return {
-        "units_over_threshold": None
-        if units is None
-        else [{"unit": unit, "line": 1, "cc": cc, "sloc": 20} for unit, cc in units],
-        "contract_keys": None if keys is None else [list(key) for key in keys],
-        "units_changed": [],
-    }
+def observed(units=None, keys=None, *, path="pkg/app.py"):
+    document = {}
+    if units is not None:
+        document["units_over_threshold"] = [
+            {"path": path, "unit": unit, "line": 1, "cc": cc, "sloc": 20} for unit, cc in units
+        ]
+        document["units_changed"] = []
+    if keys is not None:
+        document["contract_keys"] = [
+            {"path": path, "rule": rule, "unit": unit, "capture": capture}
+            for rule, unit, capture in keys
+        ]
+    return document or None
 
 
 class Trial:
@@ -226,6 +231,37 @@ class TestClasses:
         trial.result("later")
 
         assert classes(trial.classified()) == {"finding": expected}
+
+    def test_a_renamed_function_keeps_its_contract_hit(self, trial):
+        renamed = ("get-default-empty", "parse_response", 'data.get("items", [])')
+        trial.add("finding", findings=[contract()], observed=observed(keys=[KEY]))
+        trial.result("finding")
+        trial.add("later", outcome="clean", observed=observed(keys=[renamed]))
+        trial.result("later")
+
+        assert classes(trial.classified()) == {"finding": "not acted on"}
+
+    def test_a_row_for_another_path_is_not_this_findings_row(self, trial):
+        trial.add("unit", session="s1", findings=[complexity()])
+        trial.result("unit")
+        trial.add(
+            "unit-later",
+            session="s1",
+            outcome="clean",
+            observed=observed([("big", 13)], path="pkg/other.py"),
+        )
+        trial.result("unit-later")
+        trial.add("hit", session="s2", findings=[contract()], observed=observed(keys=[KEY]))
+        trial.result("hit")
+        trial.add(
+            "hit-later",
+            session="s2",
+            outcome="clean",
+            observed=observed(keys=[KEY], path="pkg/other.py"),
+        )
+        trial.result("hit-later")
+
+        assert classes(trial.classified()) == {"unit": "acted on", "hit": "acted on"}
 
 
 class TestFigures:
@@ -430,6 +466,40 @@ class TestMalformedInput:
         error = capsys.readouterr().err
         assert f"{trial.log}:2:" in error
         assert reason in error
+
+    @pytest.mark.parametrize(
+        ("rows", "reason"),
+        [
+            ({"units_over_threshold": None}, "units_over_threshold is not list"),
+            (
+                {"units_over_threshold": [{"unit": "big", "line": 1, "cc": 13, "sloc": 2}]},
+                "units_over_threshold[0]: path is missing",
+            ),
+            ({"contract_keys": [list(KEY)]}, "contract_keys[0] is not an object"),
+            (
+                {
+                    "units_changed": [
+                        {
+                            "path": "a.py",
+                            "unit": "f",
+                            "line": 1,
+                            "match": "name",
+                            "cc_old": 1,
+                            "cc_new": "2",
+                            "sloc_old": 1,
+                            "sloc_new": 2,
+                        }
+                    ]
+                },
+                "cc_new is not int",
+            ),
+        ],
+    )
+    def test_a_malformed_observed_row_stops_the_report(self, trial, capsys, rows, reason):
+        trial.add("finding", outcome="clean", observed=rows)
+
+        assert run_report(trial.write()) == 1
+        assert reason in capsys.readouterr().err
 
     def test_a_complexity_finding_without_its_numbers_stops_the_report(self, trial, capsys):
         finding = complexity()

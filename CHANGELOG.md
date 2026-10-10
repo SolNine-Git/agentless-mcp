@@ -93,6 +93,31 @@
   path segment, `**/` matches zero or more whole segments, and every other
   character is literal. A list over the cap is ignored whole, and a bad entry
   is dropped with a warning. `capabilities` shows the globs in force.
+- **A per-edit erosion gate hook for Claude Code.**
+  `contrib/hooks/agentless_erosion_gate.py` runs on each `Write` and `Edit`
+  call. It computes the whole text the call would leave on disk, with Claude
+  Code's line-ending rule for an Edit, and runs `lint --path --after` with
+  `complexity_delta` and `contract_drift`. Each check is `off`, `advisory`, or
+  `block`, from the repository's `erosion_gate` key, then
+  `AGENTLESS_EROSION_GATE`, then `advisory`. `AGENTLESS_EROSION_GATE=off`
+  turns the gate off everywhere. Advisory findings reach the model as
+  additional context, and the hook never approves a call. Blocking findings
+  stop the call with exit 2. The hook imports the standard library only, stops
+  its own work after 10 s, and fails open: a lint error, a timeout, a SIGTERM,
+  or an internal error exits 0 and is logged as `degraded`.
+  `AGENTLESS_EROSION_BIN` names the binary, and `AGENTLESS_EROSION_LOG` names
+  a JSONL log with one record per call. `settings-example.json` registers the
+  hook with a 15 s timeout. On one mcp-local file a call takes 0.20 s without
+  `boundary_globs` and 0.23 s with them (median of 5 runs, `/usr/bin/time`, on
+  a scratch clone).
+- **`contrib/hooks/erosion_gate_report.py` turns the gate log into the trial
+  figures.** It reads each record's transcript after the session and puts each
+  finding in one class: not applied, unresolved, unobserved, acted on, or not
+  acted on. It prints the effective false-positive rate per check. It writes a
+  seeded sample of up to 30 applied findings per check to a CSV file for
+  labeling, scores the filled file, and prints which checks meet the
+  advisory-to-block criterion (50 applied findings and a labeled precision of
+  90% or more).
 
 ## 0.9.1 -- 2026-10-09
 
