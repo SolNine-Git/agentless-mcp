@@ -794,9 +794,10 @@ def _walk_complexity(
     not_measured: list[refs.SkippedFile] = []
     walked = 0
     for target in targets:
-        deadline.checkpoint()
+        # The budget comes first, so a spent allowance skips the walk instead of ending the call.
         if time.monotonic() - started >= budget:
             break
+        deadline.checkpoint()
         measured = _measure_target(root, target, source)
         if isinstance(measured, refs.SkippedFile):
             not_measured.append(measured)

@@ -1185,6 +1185,33 @@ class TestHealthComplexity:
             render.render_health(report).splitlines()
         )
 
+    def test_the_graph_sections_return_when_the_allowance_ends_after_the_resolve(
+        self, graphs, tmp_path, monkeypatch
+    ):
+        repo = build(tmp_path, FILES)
+        whole = graphs.health(repo)
+        now = {"t": 1000.0}
+        monkeypatch.setattr(deadline, "time", SimpleNamespace(monotonic=lambda: now["t"]))
+        resolve = GraphService._resolve
+
+        def resolve_then_spend(self, context):
+            resolved = resolve(self, context)
+            now["t"] = 1007.0
+            return resolved
+
+        monkeypatch.setattr(GraphService, "_resolve", resolve_then_spend)
+
+        with deadline.bounded(deadline.Deadline(limit=6, grace=0, started=1000.0)):
+            spent = graphs.health(repo)
+
+        assert (spent.complexity.walked, spent.complexity.files) == (0, whole.complexity.files)
+        assert spent.complexity.stopped_by_budget
+        assert (spent.orphans, spent.unused_exports, spent.hubs) == (
+            whole.orphans,
+            whole.unused_exports,
+            whole.hubs,
+        )
+
     def test_the_graph_sections_return_whole_when_the_budget_stops_the_walk(
         self, graphs, tmp_path, monkeypatch
     ):
