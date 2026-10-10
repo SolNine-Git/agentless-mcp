@@ -66,6 +66,14 @@ class TestBodyPass:
         new = function("big", 15) + "\n\n" + function("small", 2)
         assert run(old, new) == ()
 
+    def test_a_copy_inserted_above_its_original_is_the_new_unit(self):
+        original = function("orig", 12)
+
+        found = only(run(original, function("copy", 12) + "\n\n" + original))
+
+        assert found.finding.message.startswith("copy: complexity 12, 24 source lines.")
+        assert (found.finding.line, found.detail.match) == (1, erosion.MATCH_NEW)
+
 
 class TestNamePass:
     def test_a_unit_that_grows_while_over_the_threshold_is_reported(self):
@@ -393,6 +401,15 @@ class TestContractDrift:
         body = 'return data.get("items", [])'
         assert drift(parser("parse", body), parser("parse_items", body)) == ()
 
+    def test_a_copy_inserted_above_its_original_holds_the_new_hit(self):
+        original = parser("parse", 'return data.get("items", [])')
+        new = parser("parse_again", 'return data.get("items", [])') + "\n\n" + original
+
+        (found,) = drift(original, new)
+
+        assert found.finding.message.startswith('parse_again: data.get("items", []) is new')
+        assert found.finding.line == 2
+
     def test_a_hit_outside_every_unit_belongs_to_the_module(self):
         (found,) = drift("CONFIG = {}\n", "CONFIG = LOADED or {}\n")
         assert found.detail.unit == erosion.MODULE_UNIT
@@ -486,6 +503,15 @@ class TestAcrossFiles:
     def test_a_unit_moved_out_of_a_deleted_file_is_paired_by_body(self):
         big = function("big", 15)
         assert run_all(("a.py", big, None), ("b.py", "", big)).findings == ()
+
+    def test_a_unit_moved_beside_a_renamed_copy_keeps_its_name(self):
+        big = function("big", 15)
+
+        (found,) = run_all(
+            ("a.py", big, ""), ("b.py", None, function("copy", 15)), ("c.py", None, big)
+        ).findings
+
+        assert (found.finding.path, found.detail.unit) == ("b.py", "copy")
 
     def test_a_copy_beside_its_unchanged_original_is_new_in_the_other_file(self):
         big = function("big", 15)

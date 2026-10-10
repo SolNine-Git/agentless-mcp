@@ -489,21 +489,32 @@ def _match_run(measured: Sequence[_Measured]) -> list[_Match]:
 def _body_pass(
     old_units: Sequence[Unit], new_units: Sequence[Unit]
 ) -> tuple[list[_Match], list[Unit], list[Unit]]:
-    waiting: dict[str, list[Unit]] = defaultdict(list)
-    for unit in old_units:
-        waiting[unit.body_key].append(unit)
+    old_by_body = _grouped(old_units, _by_body)
+    partner: dict[Unit, Unit] = {}
+    for body_key, news in _grouped(new_units, _by_body).items():
+        partner.update(_body_group(old_by_body.get(body_key, []), news))
 
-    matches: list[_Match] = []
-    new_left: list[Unit] = []
-    for unit in new_units:
-        queue = waiting.get(unit.body_key)
-        if queue:
-            matches.append(_Match(queue.pop(0), unit, MATCH_BODY))
-        else:
-            new_left.append(unit)
-
-    old_left = [unit for queue in waiting.values() for unit in queue]
+    matches = [_Match(partner[unit], unit, MATCH_BODY) for unit in new_units if unit in partner]
+    new_left = [unit for unit in new_units if unit not in partner]
+    taken = set(partner.values())
+    old_left = [unit for unit in old_units if unit not in taken]
     return matches, old_left, new_left
+
+
+def _body_group(olds: Sequence[Unit], news: Sequence[Unit]) -> dict[Unit, Unit]:
+    # body_key omits the unit's own name, so a renamed copy has its original's key.
+    # Same names pair first, so a copy cannot take its original's old unit.
+    old_named = _grouped(olds, _by_qualname)
+    partner = {
+        new: old
+        for qualname, named in _grouped(news, _by_qualname).items()
+        for old, new in zip(old_named.get(qualname, []), named, strict=False)
+    }
+    taken = set(partner.values())
+    old_rest = [old for old in olds if old not in taken]
+    new_rest = [new for new in news if new not in partner]
+    partner.update(zip(new_rest, old_rest, strict=False))
+    return partner
 
 
 def _name_and_collision_passes(
@@ -542,6 +553,10 @@ def _by_qualname(unit: Unit) -> str:
 
 def _by_file(unit: Unit) -> str:
     return unit.path
+
+
+def _by_body(unit: Unit) -> str:
+    return unit.body_key
 
 
 def _rank(unit: Unit) -> tuple[int, int]:
