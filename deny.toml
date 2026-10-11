@@ -6,6 +6,7 @@ yanked = "deny"
 
 [licenses]
 allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+# Above cargo-deny's 0.8 default, so that an edited license text does not pass as an allowed license.
 confidence-threshold = 0.9
 
 [licenses.private]

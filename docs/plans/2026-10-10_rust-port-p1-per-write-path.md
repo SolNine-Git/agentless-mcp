@@ -46,6 +46,15 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 - When `syntax` adds the tree-sitter crate, set the workspace `rust-version` to that crate's minimum.
 - `crates/io/clippy.toml` (the root file without the `std::fs` entries) and `crates/store/clippy.toml` (without `rusqlite::Connection::open`) arrive with their crates.
 - `cargo xtask goldens --update` and self-test violation 14 (a changed golden file) arrive with the first golden files.
+- Gaps that the P0d gates leave open:
+  - No gate checks `.config/nextest.toml`, where a default filter can skip tests, or the insta config.
+  - No gate checks `[package.metadata.cargo-machete] ignored`, which hides an unused dependency.
+  - No gate checks a per-package `rust-version` (clippy's MSRV) or `edition`, which change what the lints check.
+  - No gate checks the environment or config above the repository root (`CLIPPY_CONF_DIR`, `RUSTFLAGS`, `CARGO_HOME` config). CI's `rust` job sets none of them, and nothing checks that.
+  - The gates do not detect a proc-macro crate that builds an attribute from strings, or a third-party macro that expands to `unsafe` code. The workspace has no proc-macro crate.
+  - No lint refuses `Command::output()` outside `xtask/src/process.rs`, the one subprocess helper.
+  - rustdoc compiles doc examples, but the token walker reads their text as a literal, and nextest does not run doctests.
+  - The pre-push `cargo-erosion` hook triggers on `crates/` and `xtask/` only, but `lint --since` covers the whole change set, Python included.
 
 ## Work items, in build order
 

@@ -136,6 +136,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for kernel::KeyParseError
 impl core::panic::unwind_safe::UnwindSafe for kernel::KeyParseError
 pub struct kernel::Limit<const MIN: u32, const MAX: u32, const DEF: u32>(_)
 impl<const MIN: u32, const MAX: u32, const DEF: u32> kernel::Limit<MIN, MAX, DEF>
+pub const fn kernel::Limit<MIN, MAX, DEF>::as_usize(self) -> usize
 pub const fn kernel::Limit<MIN, MAX, DEF>::get(self) -> u32
 pub const fn kernel::Limit<MIN, MAX, DEF>::new(u32) -> core::option::Option<Self>
 impl<'de, const MIN: u32, const MAX: u32, const DEF: u32> serde_core::de::Deserialize<'de> for kernel::Limit<MIN, MAX, DEF>

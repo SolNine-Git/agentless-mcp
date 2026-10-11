@@ -34,16 +34,26 @@ APPENDED = (
     "\n\ndef _probe_edit(value):\n    if value is None:\n        return 0\n    return len(value)\n"
 )
 GRAMMAR_CACHE = "tree-sitter-language-pack"
+GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
 TAG_CACHE = "agentless-mcp"
+# Every tenth source file goes stale after the index, so the stale files spread
+# across the whole tree.
 STALE_STRIDE = 10
 RUNS = 30
 P95 = 0.95
+
+# Deadlines in seconds, above each call's measured time and inner bound, so that
+# only a hung call reaches one.
+LOCAL_DEADLINE_S = 30.0
+SYNC_DEADLINE_S = 120.0
+INDEX_DEADLINE_S = 60.0
+# Claude Code's timeout for this hook in contrib/hooks/settings-example.json.
+HOOK_DEADLINE_S = 15.0
 
 GATE_OFF = "gate off"
 ABSENT = "no tag cache"
 FRESH = "fresh tag cache"
 STALE = "stale tag cache"
-STATES = (GATE_OFF, ABSENT, FRESH, STALE)
 
 
 @dataclass(frozen=True)
@@ -114,10 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     builds = [_freeze(rev, work, grammars) for rev in args.build]
     session = Session(_payload(clone, work), python, args.runs, work)
 
-    stale, rows = "", []
-    for state in STATES:
-        stale = _prepare(state, builds, clone) or stale
-        rows += _measure(state, builds, session)
+    rows = _measure(GATE_OFF, builds, session) + _measure(ABSENT, builds, session)
+    _index_clone(builds, clone)
+    rows += _measure(FRESH, builds, session)
+    stale = _make_stale(clone)
+    rows += _measure(STALE, builds, session)
     environment = _environment(python)
     samples = [dataclasses.asdict(row) for row in rows]
     report = {"environment": environment, "stale": stale, "rows": samples}
@@ -131,13 +142,24 @@ def main(argv: list[str] | None = None) -> int:
 def _run(
     command: list[str],
     *,
+    timeout: float,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     payload: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    completed = subprocess.run(
-        command, input=payload, cwd=cwd, env=env, capture_output=True, check=False
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            input=payload,
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        message = f"{' '.join(command)} ran past its {timeout:g} s deadline and was killed"
+        raise SystemExit(message) from None
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace").strip()
         message = f"{' '.join(command)} exited with {completed.returncode}: {stderr}"
@@ -145,33 +167,44 @@ def _run(
     return completed
 
 
-def _grammar_cache() -> Path:
+def _grammar_cache() -> Path | None:
+    override = os.environ.get(GRAMMAR_OVERRIDE)
     cache_home = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    grammars = cache_home / GRAMMAR_CACHE
+    grammars = Path(override) if override else cache_home / GRAMMAR_CACHE
     if not grammars.is_dir():
         message = f"{grammars} is missing: run agentless-mcp index on any repository once"
         raise SystemExit(message)
-    return grammars
+    # Each build reads the override itself (_env keeps it), so only the XDG layout needs a link.
+    return None if override else grammars
+
+
+def _commit(repo: Path, rev: str) -> str:
+    command = ["git", "-C", str(repo), "rev-parse", "--verify", "--end-of-options"]
+    command.append(f"{rev}^{{commit}}")
+    return _run(command, timeout=LOCAL_DEADLINE_S).stdout.decode().strip()
 
 
 def _clone_mcp_local(source: Path, work: Path) -> Path:
     clone = work / "mcp-local"
-    _run(["git", "clone", "-q", "--no-hardlinks", str(source), str(clone)])
-    _run(["git", "-C", str(clone), "switch", "-q", "--detach", MCP_LOCAL_COMMIT])
+    clone_command = ["git", "clone", "-q", "--no-hardlinks", str(source), str(clone)]
+    _run(clone_command, timeout=LOCAL_DEADLINE_S)
+    commit = _commit(clone, MCP_LOCAL_COMMIT)
+    _run(["git", "-C", str(clone), "switch", "-q", "--detach", commit], timeout=LOCAL_DEADLINE_S)
     return clone
 
 
-def _freeze(rev: str, work: Path, grammars: Path) -> Build:
-    commit = _run(["git", "-C", str(REPO), "rev-parse", "--short", rev]).stdout.decode().strip()
-    build = Build(rev=f"{rev} ({commit})", root=work / f"agentless-{commit}")
-    archive = _run(["git", "-C", str(REPO), "archive", commit]).stdout
+def _freeze(rev: str, work: Path, grammars: Path | None) -> Build:
+    sha = _commit(REPO, rev)
+    build = Build(rev=f"{rev} ({sha[:7]})", root=work / f"agentless-{sha[:7]}")
+    archive = _run(["git", "-C", str(REPO), "archive", sha], timeout=LOCAL_DEADLINE_S).stdout
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(build.root, filter="data")
-    _run(["uv", "sync", "--frozen", "-q"], cwd=build.root)
+    _run(["uv", "sync", "--frozen", "-q"], cwd=build.root, timeout=SYNC_DEADLINE_S)
     for state in (ABSENT, FRESH):
         build.cache(state).mkdir()
-        # An isolated cache must still hold the grammars, or the first run downloads them.
-        (build.cache(state) / GRAMMAR_CACHE).symlink_to(grammars)
+        if grammars is not None:
+            # An isolated cache must still hold the grammars, or the first run downloads them.
+            (build.cache(state) / GRAMMAR_CACHE).symlink_to(grammars)
     return build
 
 
@@ -190,19 +223,21 @@ def _payload(clone: Path, work: Path) -> bytes:
     return json.dumps(document).encode("utf-8")
 
 
-def _prepare(state: str, builds: list[Build], clone: Path) -> str | None:
-    if state == FRESH:
-        for build in builds:
-            _run([str(build.binary), "index", "--repo", str(clone)], env=_env(build, state, None))
-    if state != STALE:
-        return None
-    files = sorted(p for p in (clone / "src").rglob("*.py") if p.name != Path(TARGET).name)
-    for path in files[::STALE_STRIDE]:
+def _index_clone(builds: list[Build], clone: Path) -> None:
+    for build in builds:
+        command = [str(build.binary), "index", "--repo", str(clone)]
+        _run(command, env=_env(build, FRESH, log=None), timeout=INDEX_DEADLINE_S)
+
+
+def _make_stale(clone: Path) -> str:
+    files = sorted((clone / "src").rglob("*.py"))
+    changed = [path for path in files if path != clone / TARGET][::STALE_STRIDE]
+    for path in changed:
         path.write_text(path.read_text(encoding="utf-8") + "\n# stale\n", encoding="utf-8")
-    return f"{len(files[::STALE_STRIDE])} of {len(files) + 1} files changed after index"
+    return f"{len(changed)} of {len(files)} files changed after index"
 
 
-def _env(build: Build, state: str, log: Path | None) -> dict[str, str]:
+def _env(build: Build, state: str, *, log: Path | None) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if not key.startswith("AGENTLESS_")}
     env["XDG_CACHE_HOME"] = str(build.cache(state))
     env["AGENTLESS_EROSION_BIN"] = str(build.binary)
@@ -215,13 +250,13 @@ def _env(build: Build, state: str, log: Path | None) -> dict[str, str]:
 def _arm(build: Build, state: str, session: Session) -> Arm:
     log = session.work / f"log-{build.root.name}-{state.replace(' ', '-')}.jsonl"
     command = [session.python, str(build.root / HOOK)]
-    return Arm(build=build, command=command, env=_env(build, state, log), log=log)
+    return Arm(build=build, command=command, env=_env(build, state, log=log), log=log)
 
 
 def _measure(state: str, builds: list[Build], session: Session) -> list[Row]:
     arms = [_arm(build, state, session) for build in builds]
     for arm in arms:
-        _run(arm.command, env=arm.env, payload=session.payload)
+        _run(arm.command, env=arm.env, payload=session.payload, timeout=HOOK_DEADLINE_S)
     before = [_fingerprint(arm.build.cache(state)) for arm in arms]
     samples = _timed(arms, session.payload, session.runs)
     rows = []
@@ -238,7 +273,7 @@ def _timed(arms: list[Arm], payload: bytes, runs: int) -> list[list[float]]:
     for _ in range(runs):
         for arm, timings in zip(arms, samples, strict=True):
             start = time.perf_counter()
-            _run(arm.command, env=arm.env, payload=payload)
+            _run(arm.command, env=arm.env, payload=payload, timeout=HOOK_DEADLINE_S)
             timings.append((time.perf_counter() - start) * 1000)
     return samples
 
@@ -272,7 +307,7 @@ def _outcomes(state: str, log: Path) -> dict[str, int]:
 def _environment(python: str) -> dict[str, object]:
     return {
         "date": time.strftime("%Y-%m-%d"),
-        "python3": _run([python, "--version"]).stdout.decode().strip(),
+        "python3": _run([python, "--version"], timeout=LOCAL_DEADLINE_S).stdout.decode().strip(),
         "cpus": os.cpu_count(),
         "system": f"{platform.system()} {platform.release()}",
         "mcp_local": MCP_LOCAL_COMMIT,

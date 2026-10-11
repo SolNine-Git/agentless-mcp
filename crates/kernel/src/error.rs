@@ -1,4 +1,4 @@
-/// Every error the tool raises: one variant per Python `AgentlessError` subclass, each with its message.
+/// Every error the tool raises: a variant names the kind, and its string is the message to show.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// The operation could not be carried out as the caller asked for it.

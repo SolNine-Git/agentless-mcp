@@ -2,36 +2,32 @@ use std::path::Path;
 
 use toml::{Table, Value};
 
-use crate::{Failure, repo, verdict};
+use crate::sources::{self, Source};
+use crate::{Failure, repo, tool_config, verdict, workspace};
 
 const SYNTAX: &str = "syntax";
-const SYNTAX_FFI: &str = "ffi.rs";
+const SYNTAX_FFI: &str = "crates/syntax/src/ffi.rs";
 // The one crate that may write unsafe code adds these, and drops `unsafe_code`.
 const SYNTAX_ADDS: [(&str, &str); 2] = [
     ("rust", "unsafe_op_in_unsafe_fn"),
     ("clippy", "undocumented_unsafe_blocks"),
 ];
-// The directories that may own a clippy.toml, and the disallowed-methods prefix each one drops.
-const CLIPPY_EXEMPT: [(&str, &str); 3] = [
-    ("crates/io", "std::fs::"),
-    ("crates/store", "rusqlite::"),
-    ("xtask", "std::fs::"),
-];
 
-/// Fail when a crate's lint table or clippy.toml drifts from the root, or `unsafe` leaves `syntax`'s FFI file.
+/// Fail when a lint table or tool config file drifts from the root, or `unsafe` leaves the syntax FFI file.
 pub fn check(root: &Path) -> Result<(), Failure> {
     let manifest: Table = repo::toml(&root.join("Cargo.toml"))?;
     let lints = workspace_lints(&manifest)?;
     let root_clippy: Table = repo::toml(&root.join("clippy.toml"))?;
-    let mut dirs = repo::crate_dirs(root)?;
-    dirs.push(root.join("xtask"));
+    let packages = workspace::packages(root)?;
     let mut problems = Vec::new();
-    for dir in &dirs {
-        let name = repo::relative(dir, root);
-        problems.extend(lint_table_problem(dir, &name, &lints)?);
-        problems.extend(clippy_problem(dir, &name, &root_clippy)?);
+    for package in &packages {
+        let name = repo::relative(&package.dir, root);
+        problems.extend(lint_table_problem(&package.dir, &name, &lints)?);
     }
-    problems.extend(unsafe_problems(root)?);
+    problems.extend(tool_config::problems(root, &root_clippy)?);
+    let sources = sources::scan(root, &packages)?;
+    problems.extend(unsafe_problems(&sources.files));
+    problems.extend(sources.problems);
     verdict(problems)
 }
 
@@ -81,69 +77,49 @@ fn syntax_lints(lints: &Table) -> Table {
     table
 }
 
-fn clippy_problem(dir: &Path, name: &str, root_clippy: &Table) -> Result<Option<String>, Failure> {
-    let path = dir.join("clippy.toml");
-    if !path.is_file() {
-        return Ok(None);
-    }
-    let found: Table = repo::toml(&path)?;
-    let dropped = CLIPPY_EXEMPT
-        .iter()
-        .find(|(exempt, _)| *exempt == name)
-        .map(|&(_, prefix)| prefix);
-    let expected = without_methods(root_clippy, dropped);
-    Ok((found != expected).then(|| match dropped {
-        Some(prefix) => format!("{name}/clippy.toml must equal the root clippy.toml without the {prefix} disallowed methods"),
-        None => format!("{name}/clippy.toml must equal the root clippy.toml"),
-    }))
-}
-
-fn without_methods(root_clippy: &Table, prefix: Option<&str>) -> Table {
-    let mut table = root_clippy.clone();
-    if let (Some(prefix), Some(Value::Array(methods))) =
-        (prefix, table.get_mut("disallowed-methods"))
-    {
-        methods.retain(|method| {
-            let path = method.get("path").and_then(Value::as_str);
-            path.is_none_or(|path| !path.starts_with(prefix))
-        });
-    }
-    table
-}
-
-fn unsafe_problems(root: &Path) -> Result<Vec<String>, Failure> {
-    let source = root.join("crates").join(SYNTAX).join("src");
-    if !source.is_dir() {
-        return Ok(Vec::new());
-    }
+fn unsafe_problems(files: &[Source]) -> Vec<String> {
     let mut problems = Vec::new();
-    for path in repo::rust_files(&source)? {
-        if path.file_name().is_some_and(|file| file == SYNTAX_FFI) {
-            continue;
-        }
-        if mentions_unsafe(&repo::read(&path)?) {
-            let file = repo::relative(&path, root);
-            problems.push(format!(
-                "{file}: unsafe code belongs in crates/{SYNTAX}/src/{SYNTAX_FFI} only"
-            ));
+    for source in files {
+        if source.file == SYNTAX_FFI {
+            problems.extend(source.scan.macro_definitions.iter().map(|definition| {
+                format!(
+                    "{SYNTAX_FFI}:{}: macro_rules! is refused here: a macro would carry unsafe out of the file",
+                    definition.line
+                )
+            }));
+        } else {
+            problems.extend(
+                source
+                    .scan
+                    .words
+                    .iter()
+                    .filter(|word| word.name == "unsafe")
+                    .map(|word| {
+                        format!(
+                            "{}:{}: unsafe code belongs in {SYNTAX_FFI} only",
+                            source.file, word.line
+                        )
+                    }),
+            );
         }
     }
-    Ok(problems)
-}
-
-fn mentions_unsafe(text: &str) -> bool {
-    text.match_indices("unsafe").any(|(index, word)| {
-        let before = text[..index].chars().next_back();
-        let after = text[index + word.len()..].chars().next();
-        let is_ident = |character: char| character.is_alphanumeric() || character == '_';
-        !before.is_some_and(is_ident) && !after.is_some_and(is_ident)
-    })
+    problems
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{mentions_unsafe, syntax_lints, without_methods};
     use toml::Table;
+
+    use super::{syntax_lints, unsafe_problems};
+    use crate::sources::Source;
+    use crate::tokens;
+
+    fn source(file: &str, text: &str) -> Source {
+        Source {
+            file: file.to_owned(),
+            scan: tokens::scan(text).unwrap(),
+        }
+    }
 
     #[test]
     fn the_syntax_table_drops_unsafe_code_and_adds_the_unsafe_lints() {
@@ -158,21 +134,35 @@ mod tests {
     }
 
     #[test]
-    fn an_exempt_directory_drops_only_its_own_prefix() {
-        let root: Table = "disallowed-methods = [{ path = \"std::fs::write\" }, { path = \"rusqlite::Connection::open\" }]"
-            .parse()
-            .unwrap();
-        let expected: Table = "disallowed-methods = [{ path = \"rusqlite::Connection::open\" }]"
-            .parse()
-            .unwrap();
-        assert_eq!(without_methods(&root, Some("std::fs::")), expected);
-        assert_eq!(without_methods(&root, None), root);
+    fn unsafe_outside_the_ffi_file_is_a_problem_with_its_line() {
+        let text = "fn f() {\n    unsafe {}\n}\n";
+        let files = [
+            source("crates/syntax/build.rs", text),
+            source("crates/syntax/tests/t.rs", text),
+            source("crates/syntax/src/sub/ffi.rs", text),
+            source("crates/syntax/src/ffi.rs", text),
+        ];
+        assert_eq!(
+            unsafe_problems(&files),
+            [
+                "crates/syntax/build.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
+                "crates/syntax/tests/t.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
+                "crates/syntax/src/sub/ffi.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
+            ]
+        );
     }
 
     #[test]
-    fn unsafe_is_found_as_a_word_only() {
-        assert!(mentions_unsafe("pub unsafe fn f() {}"));
-        assert!(mentions_unsafe("let x = unsafe { y };"));
-        assert!(!mentions_unsafe("forbid(unsafe_code) and is_unsafe()"));
+    fn a_macro_in_the_ffi_file_is_a_problem() {
+        let files = [source(
+            "crates/syntax/src/ffi.rs",
+            "\nmacro_rules! raw {\n    () => { unsafe {} };\n}\n",
+        )];
+        assert_eq!(
+            unsafe_problems(&files),
+            [
+                "crates/syntax/src/ffi.rs:2: macro_rules! is refused here: a macro would carry unsafe out of the file"
+            ]
+        );
     }
 }

@@ -22,11 +22,17 @@ impl<const MIN: u32, const MAX: u32, const DEF: u32> Limit<MIN, MAX, DEF> {
     pub const fn get(self) -> u32 {
         self.0
     }
+
+    /// Return the count as a `usize`.
+    #[must_use]
+    pub const fn as_usize(self) -> usize {
+        self.0 as usize
+    }
 }
 
 impl<const MIN: u32, const MAX: u32, const DEF: u32> Default for Limit<MIN, MAX, DEF> {
     fn default() -> Self {
-        // A default outside its own range fails the build of any type that uses it.
+        // A default outside the range fails the build where default() is used.
         const { assert!(MIN <= DEF && DEF <= MAX, "DEF is outside MIN..=MAX") };
         Self(DEF)
     }
@@ -84,5 +90,15 @@ mod tests {
         let text = serde_json::to_string(&limit).unwrap();
         assert_eq!(text, "42");
         assert_eq!(serde_json::from_str::<Rows>(&text).unwrap(), limit);
+    }
+
+    #[test]
+    fn a_limit_converts_to_a_usize_without_loss() {
+        type Widest = Limit<0, { u32::MAX }, 0>;
+        assert_eq!(Rows::default().as_usize(), 10);
+        assert_eq!(
+            Widest::new(u32::MAX).map(Widest::as_usize),
+            Some(4_294_967_295)
+        );
     }
 }

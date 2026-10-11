@@ -262,12 +262,29 @@ Before each item, write the predicted golden diff into the pull request descript
 
 Where the build differs from D2 to D8:
 
-- **Excludes**: `crates/` and `target/` need none in `pyproject.toml`. Ruff and deptry read Python only, pre-commit passes tracked files only, and `target/` is in `.gitignore`. Codespell checks the Rust sources on purpose, with `ser` (the serde module) on its ignore list.
+- **Excludes**: `crates/` needs none in `pyproject.toml`, because ruff and deptry read Python only. Codespell checks the Rust sources on purpose. Its `skip` in `pyproject.toml` lists `target`, because a bare `codespell` walk does not read `.gitignore`. The `skip` also lists the generated `public-api.txt` snapshots, where serde's module paths read as typos, and the pre-commit hook excludes them too.
 - **`rust-version`** is 1.94, the pinned toolchain, until P1 adds the tree-sitter crate (D2).
+- **Version**: the workspace version is `0.11.0-rc.1`, the first Rust release (overview decision 10), and no crate publishes (`publish = false`). Until P4 ships the wheel, the PyPI release from `pyproject.toml` is the product version.
 - **Per-crate `clippy.toml`**: the `io` and `store` files arrive with those crates in P1, and `cargo xtask lint-tables` checks each one that exists. `xtask/clippy.toml` drops the `std::fs` entries, because xtask writes the baseline and the snapshots.
-- **Goldens**: `cargo xtask goldens --update` and violation 14 move to P1, with the first golden files. The self-test runs violations 1 to 13 as 15 checks, because 5, 10 and 11 have two parts.
-- **Gate binary**: until P0c publishes 0.10.1, CI installs the gate from git at `9bb51ac`, the P0a merge that added `--fail-on`. P0c moves the pin to `agentless-mcp==0.10.1` in its own commit.
+- **Static gates**: `cargo xtask static-gates` runs `layers`, `suppressions`, and `lint-tables`, reports all three, and fails if one fails. Pre-commit and CI run it, and each of the three still runs alone. `cargo xtask nightly` prints the pinned nightly, and CI installs that toolchain for `public-api`.
+- **What the static gates read**:
+  - Tool config: `lint-tables` refuses each clippy, rustfmt, and rust-toolchain file and each `.cargo/` path in the repository, except the root files and the `clippy.toml` of `crates/io`, `crates/store`, and `xtask`. The root `.cargo/config.toml` holds only the `xtask` alias.
+  - Completeness: the gates take the packages from `cargo metadata` and tokenize every `.rs` file under `crates/` and `xtask/`. They refuse `#[path]`, `include!`, symlinks, a package outside `crates/` and `xtask/`, and a target whose source is not a `.rs` file inside its package. With those refused, the scanned files are every source file that rustc reads.
+  - Suppression count: `allow`, `expect`, `warn`, and the clippy and rustfmt tool attributes (for example `#[rustfmt::skip]`) are suppressions. Each entry in `crates/suppressions.toml` has a `count` (default 1) that must equal the suppressions of that lint in the file. An entry that matches no suppression fails as stale.
+- **Goldens**: `cargo xtask goldens --update` and violation 14 move to P1, with the first golden files.
+- **Self-test**: the base passes 12 checks, and each of 53 violation checks fails its gate: violations 1 to 13 and 15 to 18. The base adds `static-gates` and a `lint-tables` run with a `syntax` crate, the control for 10b. Violation 8 commits a zero baseline as the base. The new violations:
+  - 5c to 5o: a comment inside `#[expect]`, `#[path]`, `include!` (also renamed by a `use` item), an attribute from a macro fragment, `warn`, clippy and rustfmt tool attributes, an `expect` in `xtask/`, and `suppressions.toml` entries that do not match (a count, a stale entry, a zero count, a duplicate).
+  - 6b and 6c: no package under `crates/`, and a path dependency outside the workspace.
+  - 7b: a lib target at a custom path.
+  - 8b to 8f: a tree baseline above the base's or deleted, and a `--base` that is missing, an option, or not a commit.
+  - 10c to 10g: `unsafe` in `syntax`'s `build.rs` and in a nested `ffi.rs`, `macro_rules!` in `ffi.rs`, a nested crate with no lint table, and `#[path]` under `lint-tables`.
+  - 15a to 15e: a stray `clippy.toml`, `.clippy.toml`, `.cargo/config.toml`, and `rustfmt.toml`, and an extra root cargo alias.
+  - 16: a symlink under `crates/`.
+  - 17a to 17d: a `.txt` crate root, a crate root outside its package, and a package outside `crates/` and `xtask/`.
+  - 18: `static-gates` fails when one of its gates fails.
+- **Gate binary**: CI clones this repository into `$RUNNER_TEMP`, checks out `GATE_REV`, and runs `uv sync --frozen --no-dev`, so the gate's dependencies come from its `uv.lock`. The clone stays outside the workspace, because `lint --since` would read it there. Until P0c publishes 0.10.1, `GATE_REV` is `9bb51ac`, the P0a merge that added `--fail-on`. P0c moves `GATE_REV` to the 0.10.1 release commit in its own commit. The pre-push hook runs the uv tool install and does not check its version.
 - **Erosion with no change**: `cargo xtask erosion` skips `lint` when the tree equals the base and has no untracked files, because `lint` reports an empty change set as `not_checked`.
+- **Erosion scope**: `lint --since` covers the whole change set, Python included, and only `health` reads `crates/` (D4 names `crates/` for both). The ratchet compares `health` with the baseline at the base commit, so a change cannot raise its own baseline.
 - **Latency (D8)**: the script measured `1dc4d70` and `0037919`, the 0.10.1 candidate. P0c runs it again on the `v0.10.1` tag. Its p95 is the nearest rank, so the overview table cites the script's runs only.
 - **Hooks**: D6 named `cargo fmt` and `cargo clippy` only. Each Python check has a Rust counterpart:
 
@@ -287,7 +304,7 @@ Where the build differs from D2 to D8:
 ### P0d exit gate
 
 - The `rust` CI job is green on both platforms.
-- `scripts/gate-selftest.sh` shows each of violations 1 to 13 failing its gate and the base passing every gate. Violation 14 moves to P1 (P0d as built).
+- `scripts/gate-selftest.sh` shows the base passing its 12 checks and each of its 53 violation checks failing its gate (violations 1 to 13 and 15 to 18). Violation 14 moves to P1 (P0d as built).
 - The grammar pin and the per-grammar revision list are recorded (D1).
 - `scripts/hook_latency.py` has measured the baselines, and the design records are in `docs/analysis/` (D8).
 

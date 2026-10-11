@@ -67,7 +67,7 @@ impl Serialize for Key {
 
 impl<'de> Deserialize<'de> for Key {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let text = <&str>::deserialize(deserializer)?;
+        let text = String::deserialize(deserializer)?;
         text.parse().map_err(D::Error::custom)
     }
 }
@@ -92,6 +92,21 @@ mod tests {
         let text = serde_json::to_string(&key).unwrap();
         assert_eq!(text, format!("\"{EMPTY}\""));
         assert_eq!(serde_json::from_str::<Key>(&text).unwrap(), key);
+    }
+
+    #[test]
+    fn a_key_reads_from_an_owned_json_value() {
+        let key = serde_json::from_value::<Key>(serde_json::json!(EMPTY)).unwrap();
+        assert_eq!(key, EMPTY.parse::<Key>().unwrap());
+        let refused = serde_json::from_value::<Key>(serde_json::json!(EMPTY.to_uppercase()));
+        assert_eq!(refused.unwrap_err().to_string(), KeyParseError.to_string());
+    }
+
+    #[test]
+    fn a_key_reads_from_a_json_reader() {
+        let text = format!("\"{EMPTY}\"");
+        let key = serde_json::from_reader::<_, Key>(text.as_bytes()).unwrap();
+        assert_eq!(key, EMPTY.parse::<Key>().unwrap());
     }
 
     #[test]

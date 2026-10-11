@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::de::DeserializeOwned;
 
@@ -36,57 +35,16 @@ pub fn toml<T: DeserializeOwned>(path: &Path) -> Result<T, Failure> {
     toml::from_str(&read(path)?).map_err(|error| broken(path, &error))
 }
 
-/// Return the directories under `crates/` that hold a `Cargo.toml`, sorted.
-pub fn crate_dirs(root: &Path) -> Result<Vec<PathBuf>, Failure> {
-    let crates = root.join("crates");
-    let entries = std::fs::read_dir(&crates).map_err(|error| broken(&crates, &error))?;
-    let mut dirs = Vec::new();
-    for entry in entries {
-        let path = entry.map_err(|error| broken(&crates, &error))?.path();
-        if path.join("Cargo.toml").is_file() {
-            dirs.push(path);
-        }
-    }
-    dirs.sort();
-    Ok(dirs)
-}
-
-/// Return every `.rs` file under `dir`, sorted.
-pub fn rust_files(dir: &Path) -> Result<Vec<PathBuf>, Failure> {
-    let mut files = Vec::new();
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(current) = pending.pop() {
-        let entries = std::fs::read_dir(&current).map_err(|error| broken(&current, &error))?;
-        for entry in entries {
-            let path = entry.map_err(|error| broken(&current, &error))?.path();
-            if path.is_dir() {
-                pending.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "rs") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
-/// Run `command` to completion and return its stdout; a non-zero exit is a failure.
-pub fn stdout(command: &mut Command) -> Result<Vec<u8>, Failure> {
-    let output = command
-        .output()
-        .map_err(|error| Failure::Broken(format!("{command:?}: {error}")))?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(Failure::Broken(format!(
-            "{command:?} exited with {}: {}",
-            output.status,
-            stderr.trim()
-        )))
+/// Return whether `path` exists, without following a symlink; any error but "not found" is a failure.
+pub fn exists(path: &Path) -> Result<bool, Failure> {
+    match path.symlink_metadata() {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(broken(path, &error)),
     }
 }
 
-fn broken(path: &Path, error: &dyn std::fmt::Display) -> Failure {
+/// Return the failure for an `error` on `path`, naming the path.
+pub fn broken(path: &Path, error: &dyn std::fmt::Display) -> Failure {
     Failure::Broken(format!("{}: {error}", path.display()))
 }

@@ -409,7 +409,11 @@ exclude_also = [
 # evidence verbatim, including undecodable byte literals and misspelled enum
 # values that tests supply precisely because they are not real spellings.
 # Spell-checking a transcript means editing what was measured. The
-# pre-commit hook needs its own exclude for this, since it passes filenames
-# explicitly and those override skip patterns.
-skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit"
-ignore-words-list = "mcp,readonly,crate,ser"
+# pre-commit hook needs its own exclude for this: it names each file, and
+# codespell matches a named file by its whole path, which `.audit` does not
+# match. A tree walk matches `.audit` against the directory name.
+# The public-api.txt snapshots are generated, and serde's module paths in
+# them read as typos. The leading * matches both ./crates/... (a tree walk)
+# and crates/... (a named file).
+skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,target,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit,*crates/*/public-api.txt"
+ignore-words-list = "mcp,readonly,crate"
