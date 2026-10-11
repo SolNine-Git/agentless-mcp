@@ -7,6 +7,7 @@ overview's "Baselines" section in docs/plans/2026-10-10_rust-port-00-overview.md
 """
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import io
@@ -15,6 +16,7 @@ import math
 import os
 import platform
 import shutil
+import signal
 import sqlite3
 import statistics
 import subprocess
@@ -147,24 +149,35 @@ def _run(
     env: dict[str, str] | None = None,
     payload: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    try:
-        completed = subprocess.run(
-            command,
-            input=payload,
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        message = f"{' '.join(command)} ran past its {timeout:g} s deadline and was killed"
-        raise SystemExit(message) from None
-    if completed.returncode != 0:
-        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
-        message = f"{' '.join(command)} exited with {completed.returncode}: {stderr}"
+    stdin = subprocess.PIPE if payload is not None else None
+    with subprocess.Popen(
+        command,
+        stdin=stdin,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(payload, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            message = (
+                f"{' '.join(command)} ran past its {timeout:g} s deadline,"
+                " and its process group was killed"
+            )
+            raise SystemExit(message) from None
+        finally:
+            # Also on Ctrl-C, which cannot reach a child in its own session.
+            # An unreaped leader keeps its group id, so the kill reaches no other group.
+            if process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+    if process.returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip()
+        message = f"{' '.join(command)} exited with {process.returncode}: {detail}"
         raise SystemExit(message)
-    return completed
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _grammar_cache() -> Path | None:

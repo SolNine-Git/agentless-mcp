@@ -4,6 +4,17 @@ use std::str::FromStr;
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 
 type Bound = BTreeSet<String>;
+type Test = fn(&[TokenTree], usize) -> bool;
+
+const RULES: [(Rule, Test); 7] = [
+    (Rule::LoneHash, lone_hash),
+    (Rule::FragmentCall, fragment_call),
+    (Rule::TtFragment, tt_fragment),
+    (Rule::NestedDefinition, nested_definition),
+    (Rule::UseFragment, use_fragment),
+    (Rule::Cfg, cfg_attribute),
+    (Rule::Cfg, cfg_macro),
+];
 
 /// A name and the 1-based line it starts on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +39,26 @@ pub struct Meta {
     pub list: Option<Vec<Item>>,
 }
 
+/// A form that the gates refuse, and the 1-based line it starts on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Refused {
+    pub line: usize,
+    pub rule: Rule,
+}
+
+/// Why the gates refuse a form: each rule closes one route to code or an attribute that a gate does not see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rule {
+    Shebang,
+    LoneHash,
+    FragmentCall,
+    TtFragment,
+    NestedDefinition,
+    UseFragment,
+    Cfg,
+    IncludeName,
+}
+
 /// Everything the gates read from one file's tokens, at every depth.
 #[derive(Debug, Default)]
 pub struct Scan {
@@ -37,6 +68,7 @@ pub struct Scan {
     pub macro_definitions: Vec<Located>,
     pub use_names: Vec<Located>,
     pub words: Vec<Located>,
+    pub refused: Vec<Refused>,
 }
 
 enum Shape {
@@ -46,15 +78,39 @@ enum Shape {
     Unreadable,
 }
 
-/// Tokenize `text` as rustc does and collect its attributes, macros, use names and words.
+/// Tokenize `text` with proc-macro2 and collect its attributes, macros, use names, words and refused forms.
 pub fn scan(text: &str) -> Result<Scan, String> {
-    let stream = TokenStream::from_str(text).map_err(|error| {
+    let (body, shebang) = strip_shebang(text);
+    let stream = TokenStream::from_str(body).map_err(|error| {
         let at = error.span().start();
         format!("{}:{}: {error}", at.line, at.column + 1)
     })?;
     let mut scan = Scan::default();
-    walk(stream, &Bound::new(), &mut scan);
+    walk(stream.clone(), &Bound::new(), &mut scan);
+    scan.refused = shebang
+        .into_iter()
+        .chain(refusals(stream.clone()))
+        .chain(include_names(stream))
+        .collect();
+    scan.refused.sort_by_key(|refused| refused.line);
     Ok(scan)
+}
+
+fn strip_shebang(text: &str) -> (&str, Option<Refused>) {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    // rustc skips a first line that starts `#!` unless an attribute follows. Refusing every `#!`
+    // without `[` right after it also refuses rustc's rare `#! [..]`, so the check fails closed.
+    match text.strip_prefix("#!") {
+        Some(rest) if !rest.starts_with('[') => {
+            let body = rest.find('\n').map_or("", |at| &rest[at..]);
+            let refused = Refused {
+                line: 1,
+                rule: Rule::Shebang,
+            };
+            (body, Some(refused))
+        }
+        _ => (text, None),
+    }
 }
 
 fn walk(stream: TokenStream, bound: &Bound, scan: &mut Scan) {
@@ -76,19 +132,26 @@ fn walk(stream: TokenStream, bound: &Bound, scan: &mut Scan) {
 }
 
 fn attribute_at(tokens: &[TokenTree], index: usize, bound: &Bound, scan: &mut Scan) -> usize {
-    let line = line_of(&tokens[index]);
-    let mut next = index + 1;
-    if is_punct(tokens.get(next), '!') {
-        next += 1;
-    }
-    match tokens.get(next) {
+    let Some((at, group)) = attribute_group(tokens, index) else {
+        return index + 1;
+    };
+    let content: Vec<TokenTree> = group.stream().into_iter().collect();
+    item(&content, line_of(&tokens[index]), bound, scan);
+    walk(group.stream(), bound, scan);
+    at + 1
+}
+
+fn attribute_group(tokens: &[TokenTree], index: usize) -> Option<(usize, &Group)> {
+    let at = if is_punct(tokens.get(index + 1), '!') {
+        index + 2
+    } else {
+        index + 1
+    };
+    match tokens.get(at) {
         Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Bracket => {
-            let content: Vec<TokenTree> = group.stream().into_iter().collect();
-            item(&content, line, bound, scan);
-            walk(group.stream(), bound, scan);
-            next + 1
+            Some((at, group))
         }
-        _ => index + 1,
+        _ => None,
     }
 }
 
@@ -165,6 +228,19 @@ fn list_item(part: &[TokenTree]) -> Item {
     }
 }
 
+fn split(stream: TokenStream) -> Vec<Vec<TokenTree>> {
+    let mut parts = vec![Vec::new()];
+    for token in stream {
+        if is_punct(Some(&token), ',') {
+            parts.push(Vec::new());
+        } else if let Some(last) = parts.last_mut() {
+            last.push(token);
+        }
+    }
+    parts.retain(|part| !part.is_empty());
+    parts
+}
+
 fn path(tokens: &[TokenTree]) -> (Vec<String>, usize) {
     let mut segments = Vec::new();
     let mut used = 0;
@@ -190,21 +266,33 @@ fn ident_at(tokens: &[TokenTree], index: usize, scan: &mut Scan) -> usize {
     {
         return next;
     }
-    if is_punct(tokens.get(index + 1), '!')
-        && matches!(tokens.get(index + 2), Some(TokenTree::Group(_)))
-    {
+    if is_call(tokens, index) {
         scan.macro_calls.push(word.clone());
     }
-    if word.name == "use" && !is_punct(tokens.get(index + 1), '<') {
-        for token in tokens[index + 1..]
-            .iter()
-            .take_while(|token| !is_punct(Some(token), ';'))
-        {
-            identifiers(token, &mut scan.use_names);
-        }
+    for token in use_item(tokens, index).unwrap_or_default() {
+        identifiers(token, &mut scan.use_names);
     }
     scan.words.push(word);
     index + 1
+}
+
+fn is_call(tokens: &[TokenTree], index: usize) -> bool {
+    is_punct(tokens.get(index + 1), '!')
+        && matches!(tokens.get(index + 2), Some(TokenTree::Group(_)))
+}
+
+fn use_item(tokens: &[TokenTree], index: usize) -> Option<&[TokenTree]> {
+    let word = matches!(tokens.get(index), Some(TokenTree::Ident(ident)) if plain(ident) == "use");
+    // `use<..>` is a precise-capturing bound, not a use item.
+    if !word || is_punct(tokens.get(index + 1), '<') {
+        return None;
+    }
+    let rest = &tokens[index + 1..];
+    let end = rest
+        .iter()
+        .position(|token| is_punct(Some(token), ';'))
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
 }
 
 fn definition_at(
@@ -318,17 +406,180 @@ fn identifiers(token: &TokenTree, into: &mut Vec<Located>) {
     }
 }
 
-fn split(stream: TokenStream) -> Vec<Vec<TokenTree>> {
-    let mut parts = vec![Vec::new()];
-    for token in stream {
-        if is_punct(Some(&token), ',') {
-            parts.push(Vec::new());
-        } else if let Some(last) = parts.last_mut() {
-            last.push(token);
+fn refusals(stream: TokenStream) -> Vec<Refused> {
+    let tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let mut refused = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        for (rule, test) in RULES {
+            if test(&tokens, index) {
+                let line = line_of(token);
+                refused.push(Refused { line, rule });
+            }
+        }
+        if let TokenTree::Group(group) = token {
+            refused.extend(refusals(group.stream()));
         }
     }
-    parts.retain(|part| !part.is_empty());
-    parts
+    refused
+}
+
+fn lone_hash(tokens: &[TokenTree], index: usize) -> bool {
+    is_punct(tokens.get(index), '#') && attribute_group(tokens, index).is_none()
+}
+
+fn fragment_call(tokens: &[TokenTree], index: usize) -> bool {
+    let named = matches!(
+        tokens.get(index + 1),
+        Some(TokenTree::Group(_) | TokenTree::Ident(_))
+    );
+    let before = &tokens[..index];
+    is_punct(tokens.get(index), '!')
+        && named
+        && (after_fragment(before) || after_repetition(before))
+}
+
+fn after_fragment(before: &[TokenTree]) -> bool {
+    matches!(before, [.., dollar, TokenTree::Ident(name)]
+        if is_punct(Some(dollar), '$') && plain(name) != "crate")
+}
+
+// A repetition `$(..) sep? op` ends in `*`, `+` or `?`. A separator is one rustc token, which
+// proc-macro2 splits into at most three punctuation tokens.
+fn after_repetition(before: &[TokenTree]) -> bool {
+    let Some((op, rest)) = before.split_last() else {
+        return false;
+    };
+    let kleene = ['*', '+', '?']
+        .into_iter()
+        .any(|character| is_punct(Some(op), character));
+    let group = rest
+        .iter()
+        .rposition(|token| matches!(token, TokenTree::Group(_)));
+    kleene && group.is_some_and(|at| rest.len() - at <= 4 && opens_a_repetition(&rest[..=at]))
+}
+
+fn opens_a_repetition(through_group: &[TokenTree]) -> bool {
+    matches!(through_group, [.., dollar, TokenTree::Group(group)]
+        if is_punct(Some(dollar), '$') && group.delimiter() == Delimiter::Parenthesis)
+}
+
+fn tt_fragment(tokens: &[TokenTree], index: usize) -> bool {
+    matches!(
+        tokens.get(index..index + 4),
+        Some([TokenTree::Punct(dollar), TokenTree::Ident(_), TokenTree::Punct(colon), TokenTree::Ident(kind)])
+            if dollar.as_char() == '$' && colon.as_char() == ':' && plain(kind) == "tt"
+    )
+}
+
+fn nested_definition(tokens: &[TokenTree], index: usize) -> bool {
+    match tokens.get(index..index + 4) {
+        Some([TokenTree::Ident(word), bang, _, TokenTree::Group(body)])
+            if plain(word) == "macro_rules" && is_punct(Some(bang), '!') =>
+        {
+            defines_a_macro(body.stream())
+        }
+        _ => false,
+    }
+}
+
+fn defines_a_macro(stream: TokenStream) -> bool {
+    let tokens: Vec<TokenTree> = stream.into_iter().collect();
+    tokens.iter().enumerate().any(|(index, token)| match token {
+        TokenTree::Ident(word) => {
+            plain(word) == "macro_rules" && is_punct(tokens.get(index + 1), '!')
+        }
+        TokenTree::Group(group) => defines_a_macro(group.stream()),
+        TokenTree::Punct(_) | TokenTree::Literal(_) => false,
+    })
+}
+
+fn use_fragment(tokens: &[TokenTree], index: usize) -> bool {
+    use_item(tokens, index).is_some_and(holds_a_fragment)
+}
+
+fn holds_a_fragment(tokens: &[TokenTree]) -> bool {
+    tokens.iter().enumerate().any(|(index, token)| match token {
+        TokenTree::Punct(dollar) => {
+            dollar.as_char() == '$'
+                && !matches!(tokens.get(index + 1), Some(TokenTree::Ident(name)) if plain(name) == "crate")
+        }
+        TokenTree::Group(group) => {
+            holds_a_fragment(&group.stream().into_iter().collect::<Vec<TokenTree>>())
+        }
+        TokenTree::Ident(_) | TokenTree::Literal(_) => false,
+    })
+}
+
+fn cfg_attribute(tokens: &[TokenTree], index: usize) -> bool {
+    is_punct(tokens.get(index), '#')
+        && attribute_group(tokens, index).is_some_and(|(_, group)| {
+            hides_from_clippy(&group.stream().into_iter().collect::<Vec<TokenTree>>())
+        })
+}
+
+// clippy sets the cfg `clippy`, so a predicate that names it, or a fragment that can, removes code
+// from clippy alone.
+fn hides_from_clippy(meta: &[TokenTree]) -> bool {
+    let (segments, used) = path(meta);
+    let Some(TokenTree::Group(list)) = meta.get(used) else {
+        return false;
+    };
+    match segments.last().map(String::as_str) {
+        Some("cfg") => names_clippy_or_a_fragment(list.stream()),
+        Some("cfg_attr") => {
+            split(list.stream())
+                .split_first()
+                .is_some_and(|(predicate, attributes)| {
+                    names_clippy_or_a_fragment(predicate.clone())
+                        || attributes.iter().any(|part| hides_from_clippy(part))
+                })
+        }
+        _ => false,
+    }
+}
+
+fn cfg_macro(tokens: &[TokenTree], index: usize) -> bool {
+    match tokens.get(index..index + 3) {
+        Some([TokenTree::Ident(name), bang, TokenTree::Group(predicate)])
+            if plain(name) == "cfg" && is_punct(Some(bang), '!') =>
+        {
+            names_clippy_or_a_fragment(predicate.stream())
+        }
+        _ => false,
+    }
+}
+
+fn names_clippy_or_a_fragment(tokens: impl IntoIterator<Item = TokenTree>) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(ident) => plain(&ident) == "clippy",
+        TokenTree::Punct(punct) => punct.as_char() == '$',
+        TokenTree::Group(group) => names_clippy_or_a_fragment(group.stream()),
+        TokenTree::Literal(_) => false,
+    })
+}
+
+// A literal include! name and a name in a use item have their own refusals, so they are skipped.
+fn include_names(stream: TokenStream) -> Vec<Refused> {
+    let tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let mut refused = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        if let Some(item) = use_item(&tokens, index) {
+            index += 1 + item.len();
+            continue;
+        }
+        match &tokens[index] {
+            TokenTree::Ident(name) if plain(name) == "include" && !is_call(&tokens, index) => {
+                let line = line_of(&tokens[index]);
+                let rule = Rule::IncludeName;
+                refused.push(Refused { line, rule });
+            }
+            TokenTree::Group(group) => refused.extend(include_names(group.stream())),
+            _ => {}
+        }
+        index += 1;
+    }
+    refused
 }
 
 fn is_punct(token: Option<&TokenTree>, character: char) -> bool {
@@ -360,10 +611,39 @@ fn text(tokens: &[TokenTree]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Item, Located, Meta, Scan, scan};
+    use super::{Item, Located, Meta, Refused, Rule, Scan, scan};
+
+    const TYPED_ID: &str = include_str!("../../crates/kernel/src/id.rs");
 
     fn scanned(text: &str) -> Scan {
         scan(text).unwrap()
+    }
+
+    fn refused(text: &str) -> Vec<(usize, Rule)> {
+        refused_of(&scanned(text))
+    }
+
+    fn refused_of(found: &Scan) -> Vec<(usize, Rule)> {
+        found
+            .refused
+            .iter()
+            .map(|refused| (refused.line, refused.rule))
+            .collect()
+    }
+
+    // Each form must draw `rule` on exactly its lines. Each clean text, and typed_id!, draws nothing.
+    fn assert_rule(rule: Rule, forms: &[(&str, &[usize])], clean: &[&str]) {
+        for &(text, lines) in forms {
+            let found: Vec<usize> = refused(text)
+                .into_iter()
+                .filter(|&(_, found)| found == rule)
+                .map(|(line, _)| line)
+                .collect();
+            assert_eq!(found, lines, "{text}");
+        }
+        for text in clean.iter().chain([&TYPED_ID]) {
+            assert_eq!(refused(text), [], "{text}");
+        }
     }
 
     fn meta(line: usize, path: &str, list: Vec<Item>) -> Meta {
@@ -533,5 +813,240 @@ mod tests {
     #[test]
     fn a_file_that_does_not_tokenize_is_an_error() {
         assert!(scan("pub fn broken( {\n").is_err());
+    }
+
+    #[test]
+    fn a_shebang_line_is_refused_after_a_byte_order_mark_and_the_rest_is_read() {
+        let found = scanned("\u{feff}#!/usr/bin/env /*\n#![expect(dead_code)]\n// */\n");
+        assert_eq!(
+            found.refused,
+            [Refused {
+                line: 1,
+                rule: Rule::Shebang
+            }]
+        );
+        assert_eq!(found.attributes, [meta(2, "expect", paths(&["dead_code"]))]);
+        assert_eq!(refused("#!"), [(1, Rule::Shebang)]);
+        assert_eq!(refused("\u{feff}#![forbid(unsafe_code)]\nfn f() {}\n"), []);
+        assert_eq!(refused(TYPED_ID), []);
+    }
+
+    #[test]
+    fn a_hash_that_starts_no_attribute_is_refused() {
+        assert_rule(
+            Rule::LoneHash,
+            &[
+                (
+                    "macro_rules! h { ($h:tt) => { $h[allow(dead_code)] fn f() {} }; }\nh!(#);\n",
+                    &[2],
+                ),
+                ("macro_rules! g { ($b:meta) => { #$b fn f() {} }; }\n", &[1]),
+                (
+                    "macro_rules! j { ($h:tt, $b:tt) => { $h $b fn f() {} }; }\nj!(#, [allow(x)]);\n",
+                    &[2],
+                ),
+            ],
+            &[
+                "/// a\n//! b\n#[a]\n#![b]\nconst C: char = '#';\nconst S: &str = r#\"#\"#;\n",
+                "k!(# [allow(x)]);\n",
+            ],
+        );
+    }
+
+    #[test]
+    fn a_macro_call_named_by_a_fragment_is_refused() {
+        assert_rule(
+            Rule::FragmentCall,
+            &[
+                ("macro_rules! a { ($n:ident) => { $n!(\"p\"); }; }\n", &[1]),
+                (
+                    "macro_rules! b { ($n:ident) => { std::$n!(\"p\"); }; }\n",
+                    &[1],
+                ),
+                (
+                    "macro_rules! c { ($($p:ident)*) => { $($p)*!(\"p\"); }; }\n",
+                    &[1],
+                ),
+                (
+                    "macro_rules! d { ($($p:ident)::*) => { $($p)::*!(\"p\"); }; }\n",
+                    &[1],
+                ),
+                (
+                    "macro_rules! e { ($m:ident) => { $m! inner { () => {} } }; }\n",
+                    &[1],
+                ),
+            ],
+            &[
+                "macro_rules! f {\n    ($x:expr, $($y:expr),*) => {\n        \
+               $crate::g!($x) && $x != 1 && !($x) $(&& !$y)*\n    };\n}\n\
+               fn h(a: u8) -> bool { a * !(a) == 0 }\n",
+            ],
+        );
+    }
+
+    #[test]
+    fn the_tt_fragment_is_refused() {
+        let doc_split = "macro_rules! h {\n    ($h:tt $_d:tt) => {\n        $h[allow(dead_code)]\n        \
+                         fn never_used() {}\n    };\n}\nh!(\n    /// harmless words\n);\n";
+        assert_rule(
+            Rule::TtFragment,
+            &[
+                ("macro_rules! h { ($h:tt) => {}; }\n", &[1]),
+                (doc_split, &[2, 2]),
+            ],
+            &["macro_rules! p { ($x:ident, $t:ty) => { $x::tt::<$t>() }; }\n"],
+        );
+    }
+
+    #[test]
+    fn macro_rules_inside_a_macro_body_is_refused() {
+        let define = "macro_rules! define {\n    ($name:ident, $body:item) => {\n        \
+                      macro_rules! $name {\n            () => { $body };\n        }\n    };\n}\n";
+        assert_rule(
+            Rule::NestedDefinition,
+            &[(define, &[1])],
+            &["macro_rules! one { () => { two!(); }; }\nmacro_rules! two { () => {}; }\n"],
+        );
+    }
+
+    #[test]
+    fn a_fragment_in_a_use_item_is_refused() {
+        let rename = "macro_rules! b {\n    ($name:ident) => {\n        use std::$name as inc;\n    };\n}\n\
+                      b!(include);\ninc!(\"payload.txt\");\n";
+        assert_rule(
+            Rule::UseFragment,
+            &[
+                (rename, &[3]),
+                (
+                    "macro_rules! c { ($n:ident) => { use std::{fmt, $n as j}; }; }\n",
+                    &[1],
+                ),
+            ],
+            &[
+                "macro_rules! d { () => { use $crate::x; }; }\n",
+                "fn g() -> impl Sized + use<> {}\n",
+            ],
+        );
+    }
+
+    #[test]
+    fn a_cfg_predicate_that_names_clippy_or_holds_a_fragment_is_refused() {
+        assert_rule(
+            Rule::Cfg,
+            &[
+                ("#[cfg(all(test, not(clippy)))]\nmod a {}\n", &[1]),
+                ("#[cfg_attr(not(r#clippy), allow(x))]\nfn f() {}\n", &[1]),
+                (
+                    "#![cfg_attr(a, cfg_attr(clippy, x), y)]\n#[cfg_attr(a, cfg(clippy))]\n",
+                    &[1, 2],
+                ),
+                (
+                    "macro_rules! m { ($p:meta) => { #[cfg($p)] fn f() {} }; }\n",
+                    &[1],
+                ),
+                (
+                    "fn g() -> bool { cfg!(clippy) || std::cfg!(not(clippy)) }\n",
+                    &[1, 1],
+                ),
+            ],
+            &[
+                "#[cfg(test)]\n#[cfg_attr(test, allow(clippy::x))]\n#[cfg(feature = \"clippy\")]\n\
+               #[cfg_attr(docsrs, doc(cfg(feature = \"x\")))]\nfn f() -> bool { cfg!(test) }\n",
+            ],
+        );
+    }
+
+    #[test]
+    fn every_include_name_is_refused_once() {
+        let keyword = "macro_rules! b {\n    ($u:ident) => {\n        $u std::include as inc;\n    };\n}\nb!(use);\n";
+        assert_rule(
+            Rule::IncludeName,
+            &[
+                (keyword, &[3]),
+                (
+                    "macro_rules! r { ($n:ident) => { $n!(\"p.txt\"); }; }\nr!(include);\n",
+                    &[2],
+                ),
+                ("macro_rules! include { () => {}; }\n", &[1]),
+                ("fn f() { let r#include = 1; }\n", &[1]),
+            ],
+            &["const S: &str = include_str!(\"y\");\n"],
+        );
+        let literal = scanned("include!(\"x\");\nuse std::{fmt, include as j};\n");
+        assert_eq!(literal.refused, []);
+        assert_eq!(named(&literal.macro_calls, "include"), [1]);
+        assert_eq!(named(&literal.use_names, "include"), [2]);
+    }
+
+    #[test]
+    fn review_an_inner_meta_binding_passes() {
+        let found = scan("macro_rules! m { (#![$a:meta]) => { #![$a] }; }\n").unwrap();
+        assert!(found.unreadable.is_empty(), "{:?}", found.unreadable);
+    }
+
+    #[test]
+    fn review_an_unparsable_macro_rules_is_unreadable() {
+        let found = scan("macro_rules! bad { () => {} junk }\n").unwrap();
+        assert_eq!(found.unreadable[0].name, "macro_rules! bad");
+    }
+
+    #[test]
+    fn review_a_leading_colon_attribute_path_is_unreadable() {
+        let found = scan("#[::allow(dead_code)]\nfn f() {}\n").unwrap();
+        assert_eq!(found.unreadable.len(), 1);
+    }
+
+    #[test]
+    fn review_an_attribute_from_a_hash_fragment_is_seen() {
+        let found =
+            scan("macro_rules! h { ($h:tt) => { $h[allow(dead_code)] fn f() {} }; }\nh!(#);\n")
+                .unwrap();
+        assert!(found.attributes.is_empty());
+        assert_eq!(
+            refused_of(&found),
+            [(1, Rule::TtFragment), (2, Rule::LoneHash)],
+            "rustc applies #[allow(dead_code)] here, and the scan reports nothing"
+        );
+    }
+
+    #[test]
+    fn review_an_attribute_from_a_group_fragment_is_seen() {
+        let found =
+            scan("macro_rules! g { ($b:tt) => { #$b fn f() {} }; }\ng!([allow(dead_code)]);\n")
+                .unwrap();
+        assert_eq!(
+            refused_of(&found),
+            [(1, Rule::TtFragment), (1, Rule::LoneHash)],
+            "rustc applies #[allow(dead_code)] here, and the scan reports nothing"
+        );
+    }
+
+    #[test]
+    fn review_include_through_an_ident_fragment_is_seen() {
+        let found =
+            scan("macro_rules! r { ($n:ident) => { $n!(\"p.txt\"); }; }\nr!(include);\n").unwrap();
+        assert_eq!(named(&found.macro_calls, "n"), [1]);
+        assert_eq!(
+            refused_of(&found),
+            [(1, Rule::FragmentCall), (2, Rule::IncludeName)],
+            "rustc expands include!(\"p.txt\") here, and the scan reports nothing"
+        );
+    }
+
+    #[test]
+    fn review_a_shebang_line_does_not_hide_an_attribute() {
+        let found =
+            scan("#!/usr/bin/env /*\n#![expect(dead_code)]\n// */\nfn never_used() {}\n").unwrap();
+        assert!(
+            found.attributes.iter().any(|meta| meta.path == "expect"),
+            "rustc strips the shebang line and reads #![expect(dead_code)]"
+        );
+        assert_eq!(
+            found.refused,
+            [Refused {
+                line: 1,
+                rule: Rule::Shebang
+            }]
+        );
     }
 }

@@ -123,57 +123,72 @@ repos:
         stages: [pre-push]
 
   # The Rust workspace (crates/ and xtask/). CI's rust job runs these; the Python jobs skip them.
-  # A trigger also matches the tool config its tool reads, in any case: macOS ignores case.
+  # Each trigger matches every repository file its tool reads, in any case: macOS ignores case.
+  # Every trigger also matches the manifests, the lock, the toolchain file and .cargo/: cargo and rustup
+  # read them.
   - repo: local
     hooks:
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt --all --check
         language: system
-        files: ^(crates|xtask)/.*\.rs$|(?i:(^|/)(\.?rustfmt\.toml|rust-toolchain(\.toml)?)$)
+        files: (?i:^(crates|xtask)/.*\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?rustfmt\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
+      # Every file below crates/ and xtask/: include_str! and build scripts can read any of them.
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo clippy --workspace --all-targets -- -D warnings
         language: system
-        files: ^(crates|xtask)/.*\.rs$|(^|/)Cargo\.(toml|lock)$|(?i:(^|/)(\.?clippy\.toml|rust-toolchain(\.toml)?)$|(^|/)\.cargo/)
+        files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
       # import-linter and the noqa ratchet, for Rust: layer edges, listed suppressions, lint tables,
-      # and the tool config that cargo, clippy, rustfmt and rustup read anywhere in the repo.
+      # and the tool config that cargo, clippy, rustfmt, rustup, cargo-deny and agentless-mcp read
+      # anywhere in the repo. git's ignore rules decide which files the gate lists.
       - id: cargo-gates
         name: cargo xtask static-gates
         entry: cargo xtask static-gates
         language: system
-        files: ^(crates|xtask)/|(^|/)Cargo\.(toml|lock)$|(?i:(^|/)(\.?clippy\.toml|\.?rustfmt\.toml|rust-toolchain(\.toml)?)$|(^|/)\.cargo/)
+        files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml|\.?rustfmt\.toml|\.?deny(\.exceptions)?\.toml|\.agentless-mcp\.json|\.gitignore)$|(^|/)\.cargo/)
         pass_filenames: false
-      # deptry, for Rust: unused dependencies, licenses, advisories, and sources.
+      # deptry, for Rust: unused dependencies, licenses, advisories, and sources. cargo machete finds
+      # every manifest that .gitignore and .ignore do not exclude, then reads the .rs files of each package.
       - id: cargo-deps
         name: cargo machete and cargo deny
         entry: bash -c 'cargo machete && cargo deny check'
         language: system
-        files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
+        files: (?i:\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?deny(\.exceptions)?\.toml|\.(git)?ignore)$|(^|/)\.cargo/)
         pass_filenames: false
+      # nextest reads .config/nextest.toml, and insta reads .config/insta.yaml, insta.yaml or .insta.yaml.
       - id: cargo-test
         name: cargo tests and snapshots (pre-push)
         entry: cargo insta test --check --workspace --test-runner nextest
         language: system
-        files: ^(crates|xtask)/|^Cargo\.(toml|lock)$
+        files: (?i:^(crates|xtask)/|^\.config/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?insta\.yaml)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
       - id: cargo-public-api
         name: cargo xtask public-api (pre-push)
         entry: cargo xtask public-api
         language: system
-        files: ^crates/
+        files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
+      # lint --since reads every file that changed since the base, so every file triggers this hook.
       - id: cargo-erosion
         name: cargo xtask erosion with the uv tool agentless-mcp (pre-push)
         # The gate is the uv tool install at the version it holds. This hook does not check the version.
         # Inside uv run, a PATH lookup finds the build under test, which is never a gate.
         entry: bash -c 'gate="$(uv tool dir --bin)/agentless-mcp" && cargo xtask erosion --lint-bin "$gate" --health-bin "$gate"'
         language: system
-        files: ^(crates|xtask)/
+        pass_filenames: false
+        stages: [pre-push]
+      # Pre-push only: a policy change is legal in a commit that carries its Policy-Change trailer, and
+      # the commit stage runs before that commit exists. The trigger is the policy items and xtask.
+      - id: cargo-policy
+        name: cargo xtask policy (pre-push)
+        entry: cargo xtask policy
+        language: system
+        files: (?i:^xtask/|^(\.agentless-mcp\.json|deny\.toml|rustfmt\.toml|\.config/nextest\.toml|crates/layers\.toml)$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
 

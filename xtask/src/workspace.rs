@@ -81,3 +81,25 @@ impl Package {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Metadata;
+
+    #[test]
+    fn a_member_that_lacks_a_field_fails_the_parse_and_names_it() {
+        for (json, field) in [
+            (
+                r#"{"packages": [{"name": "k", "manifest_path": "/r/k/Cargo.toml", "dependencies": []}]}"#,
+                "targets",
+            ),
+            (
+                r#"{"packages": [{"name": "k", "manifest_path": "/r/k/Cargo.toml", "deps": [], "targets": []}]}"#,
+                "dependencies",
+            ),
+        ] {
+            let error = serde_json::from_str::<Metadata>(json).err().unwrap();
+            assert!(error.to_string().contains(field), "{error}");
+        }
+    }
+}

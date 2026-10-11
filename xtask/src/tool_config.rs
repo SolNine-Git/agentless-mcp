@@ -3,25 +3,32 @@ use std::process::Command;
 
 use toml::{Table, Value};
 
+use crate::workspace::Package;
 use crate::{Failure, process, repo};
 
-const TOOL_FILES: [&str; 6] = [
+const TOOL_FILES: [&str; 11] = [
     "clippy.toml",
     ".clippy.toml",
     "rustfmt.toml",
     ".rustfmt.toml",
     "rust-toolchain",
     "rust-toolchain.toml",
+    "deny.toml",
+    ".deny.toml",
+    "deny.exceptions.toml",
+    ".deny.exceptions.toml",
+    ".agentless-mcp.json",
 ];
-const ALLOWED: [&str; 7] = [
-    "clippy.toml",
+// The root files that may exist. Each CLIPPY_EXEMPT directory may also hold a clippy.toml.
+const ROOT_FILES: [&str; 6] = [
+    ROOT_CLIPPY,
     "rustfmt.toml",
     "rust-toolchain.toml",
-    ".cargo/config.toml",
-    "crates/io/clippy.toml",
-    "crates/store/clippy.toml",
-    "xtask/clippy.toml",
+    CARGO_CONFIG,
+    "deny.toml",
+    ".agentless-mcp.json",
 ];
+const ROOT_CLIPPY: &str = "clippy.toml";
 const CARGO_CONFIG: &str = ".cargo/config.toml";
 const XTASK_ALIAS: &str = "run --quiet --package xtask --";
 // The directories that may own a clippy.toml, and the disallowed-methods prefix each one drops.
@@ -30,20 +37,57 @@ const CLIPPY_EXEMPT: [(&str, &str); 3] = [
     ("crates/store", "rusqlite::"),
     ("xtask", "std::fs::"),
 ];
+// clippy reads the first of these that it finds, from the package directory upward.
+const CLIPPY_NAMES: [&str; 2] = [".clippy.toml", ROOT_CLIPPY];
 
-/// Return each tool config file outside the allowed set, and each allowed one whose content drifts.
-pub fn problems(root: &Path, root_clippy: &Table) -> Result<Vec<String>, Failure> {
+/// Return each tool config file outside the allowed set, each allowed one whose content drifts, and each package that clippy configures from another file.
+pub fn problems(
+    root: &Path,
+    root_clippy: &Table,
+    packages: &[Package],
+) -> Result<Vec<String>, Failure> {
     let mut problems = stray(&listed(root)?);
     problems.extend(cargo_config_problem(
         optional_table(root, CARGO_CONFIG)?.as_ref(),
     ));
     for (dir, prefix) in CLIPPY_EXEMPT {
-        let file = format!("{dir}/clippy.toml");
+        let file = exempt_clippy(dir);
         if let Some(found) = optional_table(root, &file)? {
             problems.extend(clippy_problem(&file, &found, root_clippy, prefix));
         }
     }
+    for package in packages {
+        let dir = repo::relative(&package.dir, root);
+        let nearest = nearest_clippy(root, &package.dir)?;
+        problems.extend(scope_problem(&dir, nearest.as_deref()));
+    }
     Ok(problems)
+}
+
+fn exempt_clippy(dir: &str) -> String {
+    format!("{dir}/{ROOT_CLIPPY}")
+}
+
+fn nearest_clippy(root: &Path, dir: &Path) -> Result<Option<String>, Failure> {
+    for above in dir.ancestors().take_while(|above| above.starts_with(root)) {
+        for name in CLIPPY_NAMES {
+            let file = above.join(name);
+            if repo::exists(&file)? {
+                return Ok(Some(repo::relative(&file, root)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn scope_problem(dir: &str, nearest: Option<&str>) -> Option<String> {
+    let exempt = CLIPPY_EXEMPT.iter().any(|&(exempt, _)| exempt == dir);
+    (!exempt && nearest != Some(ROOT_CLIPPY)).then(|| {
+        format!(
+            "{dir}: clippy reads {} for this package: only a package whose directory is exempt may read a clippy config other than the root clippy.toml",
+            nearest.unwrap_or("no clippy config")
+        )
+    })
 }
 
 fn listed(root: &Path) -> Result<Vec<String>, Failure> {
@@ -62,6 +106,7 @@ fn listed(root: &Path) -> Result<Vec<String>, Failure> {
         .map_err(|error| Failure::Broken(format!("git ls-files: {error}")))?;
     let mut paths = Vec::new();
     for path in text.split('\0').filter(|path| !path.is_empty()) {
+        // --cached also lists a tracked file that the worktree deleted, and no tool reads it.
         if repo::exists(&root.join(path))? {
             paths.push(path.to_owned());
         }
@@ -80,11 +125,18 @@ fn optional_table(root: &Path, file: &str) -> Result<Option<Table>, Failure> {
 fn stray(paths: &[String]) -> Vec<String> {
     paths
         .iter()
-        .filter(|path| is_tool_config(path) && !ALLOWED.contains(&path.as_str()))
+        .filter(|path| is_tool_config(path) && !allowed(path))
         .map(|path| {
-            format!("{path}: this tool config file is refused: clippy, rustfmt, rustup or cargo would read it")
+            format!("{path}: this tool config file is refused: clippy, rustfmt, rustup, cargo, cargo-deny or agentless-mcp would read it")
         })
         .collect()
+}
+
+fn allowed(path: &str) -> bool {
+    ROOT_FILES.contains(&path)
+        || CLIPPY_EXEMPT
+            .iter()
+            .any(|&(dir, _)| path == exempt_clippy(dir))
 }
 
 fn is_tool_config(path: &str) -> bool {
@@ -124,7 +176,7 @@ fn without_methods(root_clippy: &Table, prefix: &str) -> Table {
 mod tests {
     use toml::Table;
 
-    use super::{cargo_config_problem, clippy_problem, stray, without_methods};
+    use super::{cargo_config_problem, clippy_problem, scope_problem, stray, without_methods};
 
     fn strays(paths: &[&str]) -> Vec<String> {
         let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
@@ -161,6 +213,52 @@ mod tests {
             "crates/kernel/src/cargo.rs",
         ];
         assert!(strays(&allowed).is_empty());
+    }
+
+    #[test]
+    fn a_deny_or_agentless_config_outside_the_root_deny_toml_and_json_is_refused() {
+        let refused = [
+            "deny.exceptions.toml",
+            ".deny.exceptions.toml",
+            ".deny.toml",
+            "Deny.Exceptions.TOML",
+            "crates/deny.toml",
+            "crates/.agentless-mcp.json",
+            "tests/fixtures/.Agentless-MCP.json",
+        ];
+        assert_eq!(strays(&refused), refused);
+        assert!(strays(&["deny.toml", ".agentless-mcp.json", "docs/deny.md"]).is_empty());
+    }
+
+    #[test]
+    fn a_package_below_an_exempt_directory_must_read_the_root_clippy_config() {
+        assert_eq!(scope_problem("crates/kernel", Some("clippy.toml")), None);
+        assert_eq!(
+            scope_problem("crates/io", Some("crates/io/clippy.toml")),
+            None
+        );
+        assert_eq!(scope_problem("xtask", Some("clippy.toml")), None);
+        for (dir, nearest) in [
+            ("crates/io/evil", Some("crates/io/clippy.toml")),
+            ("crates/kernel", Some(".clippy.toml")),
+            ("crates/kernel", None),
+        ] {
+            assert!(scope_problem(dir, nearest).is_some(), "{dir}");
+        }
+    }
+
+    #[test]
+    fn review_a_root_config_in_another_case_is_refused() {
+        let paths: Vec<String> = [
+            "Clippy.toml",
+            ".Cargo/config.toml",
+            "RUSTFMT.TOML",
+            "Rust-Toolchain",
+        ]
+        .iter()
+        .map(|path| (*path).to_owned())
+        .collect();
+        assert_eq!(stray(&paths).len(), 4);
     }
 
     #[test]

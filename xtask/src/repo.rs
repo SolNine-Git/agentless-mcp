@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use serde::de::DeserializeOwned;
 
-use crate::Failure;
+use crate::{Failure, process};
 
 /// Return the repository root: the directory above this crate, as `cargo run` reports it.
 pub fn root() -> Result<PathBuf, Failure> {
@@ -47,4 +48,57 @@ pub fn exists(path: &Path) -> Result<bool, Failure> {
 /// Return the failure for an `error` on `path`, naming the path.
 pub fn broken(path: &Path, error: &dyn std::fmt::Display) -> Failure {
     Failure::Broken(format!("{}: {error}", path.display()))
+}
+
+/// Run git in `root` under its deadline and return its stdout; a non-zero exit is a failure.
+pub fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, Failure> {
+    let mut command = Command::new("git");
+    command.args(args).current_dir(root);
+    process::stdout(&mut command, process::GIT)
+}
+
+/// Resolve `revision` to a commit id; with none, take the merge base of HEAD and origin/main.
+pub fn base(root: &Path, revision: Option<&str>) -> Result<String, Failure> {
+    let revision = match revision {
+        Some(revision) => revision.to_owned(),
+        None => text(&git(root, &["merge-base", "HEAD", "origin/main"])?),
+    };
+    let commit = format!("{revision}^{{commit}}");
+    let verified = git(
+        root,
+        &["rev-parse", "--verify", "--end-of-options", &commit],
+    )?;
+    Ok(text(&verified))
+}
+
+/// Return the file at `path` in `revision`, or None when that commit has no such file.
+pub fn show(root: &Path, revision: &str, path: &str) -> Result<Option<Vec<u8>>, Failure> {
+    let listed = git(root, &["ls-tree", "--name-only", revision, "--", path])?;
+    if listed.is_empty() {
+        return Ok(None);
+    }
+    git(root, &["show", &format!("{revision}:{path}")]).map(Some)
+}
+
+/// List the commits in `base..HEAD` that touched `path`, merges included, each after its parents.
+pub fn touching(root: &Path, base: &str, path: &str) -> Result<Vec<String>, Failure> {
+    let range = format!("{base}..HEAD");
+    let output = git(
+        root,
+        &[
+            "log",
+            "--full-history",
+            "--reverse",
+            "--topo-order",
+            "--format=%H",
+            &range,
+            "--",
+            path,
+        ],
+    )?;
+    Ok(text(&output).lines().map(str::to_owned).collect())
+}
+
+fn text(output: &[u8]) -> String {
+    String::from_utf8_lossy(output).trim().to_owned()
 }

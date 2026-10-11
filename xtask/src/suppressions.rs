@@ -79,6 +79,7 @@ fn suppressed(meta: &Meta) -> Vec<Result<String, String>> {
         .path
         .split_once("::")
         .is_some_and(|(tool, _)| TOOLS.contains(&tool));
+    // rustfmt still honors the legacy form, as in #[cfg_attr(rustfmt, rustfmt_skip)].
     if tool || meta.path == "rustfmt_skip" {
         return vec![Ok(meta.path.clone())];
     }
@@ -292,6 +293,38 @@ mod tests {
                 .unwrap();
         assert_eq!(listed.allow[0].count, 1);
         assert!(compare(&listed.allow, &[found("unused", 3)]).is_empty());
+    }
+
+    #[test]
+    fn review_a_rustdoc_lint_and_a_repeated_lint_are_counted() {
+        let (found, problems) = suppressions(&source(
+            "#[allow(rustdoc::broken_intra_doc_links, unused, unused)]\nfn f() {}\n",
+        ));
+        assert!(problems.is_empty());
+        let lints: Vec<&str> = found.iter().map(|found| found.lint.as_str()).collect();
+        assert_eq!(
+            lints,
+            ["rustdoc::broken_intra_doc_links", "unused", "unused"]
+        );
+        let entry = Entry {
+            file: "f.rs".to_owned(),
+            lint: "unused".to_owned(),
+            count: 1,
+            reason: "r".to_owned(),
+        };
+        let twice = [
+            Found {
+                file: "f.rs".to_owned(),
+                line: 1,
+                lint: "unused".to_owned(),
+            },
+            Found {
+                file: "f.rs".to_owned(),
+                line: 1,
+                lint: "unused".to_owned(),
+            },
+        ];
+        assert_eq!(compare(&[entry], &twice).len(), 1);
     }
 
     #[test]

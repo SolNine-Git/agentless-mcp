@@ -3,6 +3,7 @@
 mod erosion;
 mod layers;
 mod lint_tables;
+mod policy;
 mod process;
 mod public_api;
 mod repo;
@@ -25,6 +26,8 @@ const USAGE: &str = "usage: cargo xtask <command>
   public-api [--update]  each library's public API matches its snapshot
   erosion --lint-bin PATH --health-bin PATH [--base REV] [--update]
                          the pinned agentless-mcp checks pass, and health does not get worse
+  policy [--base REV]    each policy file equals its version at the base, or each commit that
+                         changed it carries a Policy-Change: <path> trailer
   nightly                print the nightly toolchain that public-api needs";
 
 type Gate = fn(&Path) -> Result<(), Failure>;
@@ -73,6 +76,7 @@ fn run(command: &str, flags: &[String], root: &Path) -> Result<(), Failure> {
         ("lint-tables", []) => lint_tables::check(root),
         ("public-api", flags) => public_api::check(root, flags),
         ("erosion", flags) => erosion::check(root, flags),
+        ("policy", flags) => policy::check(root, flags),
         ("nightly", []) => {
             println!("{}", public_api::TOOLCHAIN);
             Ok(())

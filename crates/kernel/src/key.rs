@@ -74,6 +74,8 @@ impl<'de> Deserialize<'de> for Key {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, HashMap};
+
     use super::{Key, KeyParseError};
 
     // sha256 of the empty string, as Python's hashlib.sha256(b"").hexdigest() writes it.
@@ -107,6 +109,19 @@ mod tests {
         let text = format!("\"{EMPTY}\"");
         let key = serde_json::from_reader::<_, Key>(text.as_bytes()).unwrap();
         assert_eq!(key, EMPTY.parse::<Key>().unwrap());
+    }
+
+    #[test]
+    fn a_key_reads_as_a_map_key_through_from_str_and_from_value() {
+        let key: Key = EMPTY.parse().unwrap();
+        let text = format!("{{\"{EMPTY}\": 1}}");
+        let map: HashMap<Key, u32> = serde_json::from_str(&text).unwrap();
+        assert_eq!(map[&key], 1);
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let tree: BTreeMap<Key, u32> = serde_json::from_value(value).unwrap();
+        assert_eq!(tree[&key], 1);
+        let short = format!("{{\"{}\": 1}}", &EMPTY[..62]);
+        assert!(serde_json::from_str::<HashMap<Key, u32>>(&short).is_err());
     }
 
     #[test]

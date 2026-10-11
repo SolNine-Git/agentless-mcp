@@ -22,7 +22,7 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-allow_attributes = "deny"
-dbg_macro = "deny"
-todo = "deny"
-unimplemented = "deny"
+allow_attributes = "forbid"
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"

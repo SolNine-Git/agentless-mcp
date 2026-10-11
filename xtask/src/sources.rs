@@ -1,7 +1,7 @@
 use std::fs::FileType;
 use std::path::{Component, Path, PathBuf};
 
-use crate::tokens::{self, Scan};
+use crate::tokens::{self, Rule, Scan};
 use crate::workspace::Package;
 use crate::{Failure, repo};
 
@@ -13,15 +13,15 @@ pub struct Source {
     pub scan: Scan,
 }
 
-/// Every `.rs` file under crates/ and xtask/, and each way rustc could read a file outside that set.
+/// The `.rs` files under crates/ and xtask/, with the extension in any case, and each problem found while the scan read them.
 pub struct Sources {
     pub files: Vec<Source>,
     pub problems: Vec<String>,
 }
 
-/// Scan every `.rs` file under crates/ and xtask/ without following a symlink; refuse what escapes the set.
+/// Scan each `.rs` file under crates/ and xtask/ without following a symlink, and report symlinks, misplaced packages and targets, other cases of `.rs`, and refused forms.
 pub fn scan(root: &Path, packages: &[Package]) -> Result<Sources, Failure> {
-    let (paths, links) = walk(root)?;
+    let (paths, links) = list_files(root)?;
     let mut problems: Vec<String> = packages
         .iter()
         .flat_map(|package| package_problems(root, package))
@@ -32,6 +32,12 @@ pub fn scan(root: &Path, packages: &[Package]) -> Result<Sources, Failure> {
             repo::relative(link, root)
         )
     }));
+    problems.extend(paths.iter().filter(|path| !rs_exactly(path)).map(|path| {
+        format!(
+            "{}: a .rs extension in another case is refused: a case-insensitive file system serves the file to rustc",
+            repo::relative(path, root)
+        )
+    }));
     let files = paths
         .iter()
         .map(|path| source(root, path))
@@ -40,7 +46,7 @@ pub fn scan(root: &Path, packages: &[Package]) -> Result<Sources, Failure> {
     Ok(Sources { files, problems })
 }
 
-fn walk(root: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Failure> {
+fn list_files(root: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Failure> {
     let mut files = Vec::new();
     let mut links = Vec::new();
     let mut pending: Vec<PathBuf> = ROOTS.iter().map(|dir| root.join(dir)).collect();
@@ -50,7 +56,7 @@ fn walk(root: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Failure> {
                 links.push(path);
             } else if kind.is_dir() {
                 pending.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "rs") {
+            } else if rs_in_any_case(&path) {
                 files.push(path);
             }
         }
@@ -106,9 +112,16 @@ fn package_problems(root: &Path, package: &Package) -> Vec<String> {
 }
 
 fn inside(path: &Path, dir: &Path) -> bool {
-    path.starts_with(dir)
-        && !climbs(path)
-        && path.extension().is_some_and(|extension| extension == "rs")
+    path.starts_with(dir) && !climbs(path) && rs_exactly(path)
+}
+
+fn rs_exactly(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| extension == "rs")
+}
+
+fn rs_in_any_case(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
 }
 
 fn climbs(path: &Path) -> bool {
@@ -154,18 +167,52 @@ fn completeness_problems(source: &Source) -> Vec<String> {
             found.line, found.name
         )
     });
+    let refused = scan
+        .refused
+        .iter()
+        .map(|refused| format!("{file}:{}: {}", refused.line, reason(refused.rule)));
     paths
         .chain(includes)
         .chain(renames)
         .chain(unreadable)
+        .chain(refused)
         .collect()
+}
+
+fn reason(rule: Rule) -> &'static str {
+    match rule {
+        Rule::Shebang => {
+            "a first line that starts with #! and not #![ is refused: rustc skips it as a shebang"
+        }
+        Rule::LoneHash => {
+            "a # that does not start #[..] or #![..] is refused: a macro could join it into an attribute"
+        }
+        Rule::FragmentCall => {
+            "a macro call named by a fragment is refused: the gates cannot see which macro it calls"
+        }
+        Rule::TtFragment => {
+            "the tt fragment is refused: it can carry a lone # or a bracket group into an attribute"
+        }
+        Rule::NestedDefinition => {
+            "macro_rules! inside a macro_rules! body is refused: the gates cannot see the macro it defines"
+        }
+        Rule::UseFragment => {
+            "a fragment other than $crate in a use item is refused: the gates cannot see what it names"
+        }
+        Rule::Cfg => {
+            "a cfg predicate that names clippy or holds a fragment is refused: it can hide code from clippy"
+        }
+        Rule::IncludeName => {
+            "the identifier include is refused: rustc reads a file through include!. Rename the item"
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{Source, completeness_problems, package_problems};
+    use super::{Source, completeness_problems, package_problems, rs_exactly, rs_in_any_case};
     use crate::tokens;
     use crate::workspace::{Package, Target};
 
@@ -234,5 +281,42 @@ mod tests {
             .map(|problem| problem.split(':').nth(1).unwrap_or_default())
             .collect();
         assert_eq!(lines, ["1", "3", "4", "5"]);
+    }
+
+    #[test]
+    fn a_refused_form_is_a_problem_with_its_line() {
+        let source = Source {
+            file: "crates/k/src/lib.rs".to_owned(),
+            scan: tokens::scan("fn f() {}\nm!(#);\n").unwrap(),
+        };
+        assert_eq!(
+            completeness_problems(&source),
+            [
+                "crates/k/src/lib.rs:2: a # that does not start #[..] or #![..] is refused: a macro could join it into an attribute"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_rs_extension_in_another_case_is_listed_but_is_not_exact() {
+        for name in ["a.rs", "a.RS", "a.Rs"] {
+            assert!(rs_in_any_case(Path::new(name)), "{name}");
+        }
+        assert!(rs_exactly(Path::new("a.rs")));
+        assert!(!rs_exactly(Path::new("a.RS")));
+        assert!(!rs_in_any_case(Path::new("a.rst")));
+    }
+
+    #[test]
+    fn review_a_path_attribute_from_a_hash_fragment_is_refused() {
+        let text = "macro_rules! h { ($h:tt) => { $h[path = \"p.txt\"] mod hidden; }; }\nh!(#);\n";
+        let source = Source {
+            file: "crates/k/src/lib.rs".to_owned(),
+            scan: tokens::scan(text).unwrap(),
+        };
+        assert!(
+            !completeness_problems(&source).is_empty(),
+            "rustc reads p.txt here, and the gate reports nothing"
+        );
     }
 }

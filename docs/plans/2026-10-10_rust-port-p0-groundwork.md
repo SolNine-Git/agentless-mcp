@@ -268,23 +268,47 @@ Where the build differs from D2 to D8:
 - **Per-crate `clippy.toml`**: the `io` and `store` files arrive with those crates in P1, and `cargo xtask lint-tables` checks each one that exists. `xtask/clippy.toml` drops the `std::fs` entries, because xtask writes the baseline and the snapshots.
 - **Static gates**: `cargo xtask static-gates` runs `layers`, `suppressions`, and `lint-tables`, reports all three, and fails if one fails. Pre-commit and CI run it, and each of the three still runs alone. `cargo xtask nightly` prints the pinned nightly, and CI installs that toolchain for `public-api`.
 - **What the static gates read**:
-  - Tool config: `lint-tables` refuses each clippy, rustfmt, and rust-toolchain file and each `.cargo/` path in the repository, except the root files and the `clippy.toml` of `crates/io`, `crates/store`, and `xtask`. The root `.cargo/config.toml` holds only the `xtask` alias.
-  - Completeness: the gates take the packages from `cargo metadata` and tokenize every `.rs` file under `crates/` and `xtask/`. They refuse `#[path]`, `include!`, symlinks, a package outside `crates/` and `xtask/`, and a target whose source is not a `.rs` file inside its package. With those refused, the scanned files are every source file that rustc reads.
+  - Tool config: `lint-tables` refuses each clippy, rustfmt, rust-toolchain, and cargo-deny config file, each `.agentless-mcp.json`, and each `.cargo/` path in the repository, with names compared without case. It allows the root files and the `clippy.toml` of `crates/io`, `crates/store`, and `xtask`. The root `.cargo/config.toml` holds only the `xtask` alias. For each package, the nearest `clippy.toml` or `.clippy.toml` at or above its directory must be the root file, unless the package directory is one of those three. That check reads the disk, so an ignored clippy file fails it. The other checks list files through git's ignore rules.
+  - Source scope: the gates take the packages from `cargo metadata` and tokenize every file under `crates/` and `xtask/` whose extension is `.rs` in any case. They refuse these forms, each with its file and line:
+    - Files: a `.rs` extension in another case, a symlink, a package outside `crates/` and `xtask/`, and a target whose source is not a `.rs` file inside its package.
+    - Literal routes to another file: `#[path]`, `include!`, a use item that names `include`, and the identifier `include` anywhere.
+    - Macro routes: a `#` that does not start `#[..]` or `#![..]`, a macro call named by a fragment or by a repetition, the `tt` fragment, `macro_rules!` inside a `macro_rules!` body, and a fragment other than `$crate` in a use item.
+    - Hidden code: a first line that starts with `#!` and not `#![` (rustc skips it as a shebang, after a byte-order mark too), and a `cfg` or `cfg_attr` predicate or a `cfg!` argument that names `clippy` or holds a fragment.
+    - Manifests (`lint-tables`): a `[patch]` or `[replace]` table in any manifest, and a build script in any package but `syntax`.
+  - Limits of the source rules: self-test violations 5d to 5f, 16, 17a to 17d, and 19 to 21 show that each rule fails on its route. These rules do not make the scan complete. The scan reads source text, so it does not see what a proc-macro crate or a third-party macro expands to. The gate code is in the tree, so a change that rewrites xtask can loosen the gates, and no CODEOWNERS file asks for a review of that change. P1 "Carried from P0d" lists each residual.
   - Suppression count: `allow`, `expect`, `warn`, and the clippy and rustfmt tool attributes (for example `#[rustfmt::skip]`) are suppressions. Each entry in `crates/suppressions.toml` has a `count` (default 1) that must equal the suppressions of that lint in the file. An entry that matches no suppression fails as stale.
+  - Forbidden lints: the workspace sets `allow_attributes`, `dbg_macro`, `todo`, and `unimplemented` to `forbid`, not to `deny` as D2 says. rustc then rejects a suppression of them, a macro-built one too (E0453, violation 9b).
 - **Goldens**: `cargo xtask goldens --update` and violation 14 move to P1, with the first golden files.
-- **Self-test**: the base passes 12 checks, and each of 53 violation checks fails its gate: violations 1 to 13 and 15 to 18. The base adds `static-gates` and a `lint-tables` run with a `syntax` crate, the control for 10b. Violation 8 commits a zero baseline as the base. The new violations:
+- **Self-test**: the base passes 15 checks, and each of 86 violation checks fails its gate: violations 1 to 13 and 15 to 23 (measured with the uv tool gate binary: exit 0, 101 checks). The base adds `static-gates`, `policy`, a check that the `cargo-gates` and `cargo-policy` triggers match the file names their gates read, a `lint-tables` run with a `syntax` crate (the control for 10b), and a `policy` run with a `Policy-Change` trailer (the control for 22). Violation 8 commits a zero baseline as the base. Each command runs under a 120 s deadline. The new violations:
+  - 4b: `health` cannot measure a file.
   - 5c to 5o: a comment inside `#[expect]`, `#[path]`, `include!` (also renamed by a `use` item), an attribute from a macro fragment, `warn`, clippy and rustfmt tool attributes, an `expect` in `xtask/`, and `suppressions.toml` entries that do not match (a count, a stale entry, a zero count, a duplicate).
   - 6b and 6c: no package under `crates/`, and a path dependency outside the workspace.
-  - 7b: a lib target at a custom path.
-  - 8b to 8f: a tree baseline above the base's or deleted, and a `--base` that is missing, an option, or not a commit.
+  - 7b and 7c: a lib target at a custom path, and a `public-api.txt` in a package with no library target.
+  - 8b to 8j: a tree baseline above its lowest committed version or deleted, a `--base` that is missing, an option, not a commit, or given twice, a raised baseline on a branch whose base has none, a tree baseline above `health` with no committed version, and `health` at another complexity threshold.
+  - 9b: a macro-built `allow` of a lint at `forbid`.
   - 10c to 10g: `unsafe` in `syntax`'s `build.rs` and in a nested `ffi.rs`, `macro_rules!` in `ffi.rs`, a nested crate with no lint table, and `#[path]` under `lint-tables`.
-  - 15a to 15e: a stray `clippy.toml`, `.clippy.toml`, `.cargo/config.toml`, and `rustfmt.toml`, and an extra root cargo alias.
+  - 15a to 15h: a stray `clippy.toml`, `.clippy.toml`, `.cargo/config.toml`, and `rustfmt.toml`, an extra root cargo alias, a `deny.exceptions.toml`, a `.deny.toml`, and a nested `.agentless-mcp.json`.
   - 16: a symlink under `crates/`.
   - 17a to 17d: a `.txt` crate root, a crate root outside its package, and a package outside `crates/` and `xtask/`.
   - 18: `static-gates` fails when one of its gates fails.
+  - 19a to 19l: a `#` passed to a macro, before a fragment, and joined to a group, a doc comment split by `tt` fragments, a `path` attribute built by a macro, `include!` named by a fragment and by a repetition, `include` named by a fragment in a use item, the identifier `include`, a shebang line, `macro_rules!` inside a `macro_rules!` body, and a `.RS` file.
+  - 20a to 20d: `cfg(not(clippy))`, a fragment in a cfg predicate, `cfg!(clippy)`, and a build script in `kernel`.
+  - 21a to 21c: `[patch]`, `[replace]`, and a package nested under `crates/io`.
+  - 22 and 22b: a policy change with no trailer, and an uncommitted policy change.
+  - 23a and 23b: a gate file name that the `cargo-gates` trigger misses, and a trigger that drops a gate file name.
 - **Gate binary**: CI clones this repository into `$RUNNER_TEMP`, checks out `GATE_REV`, and runs `uv sync --frozen --no-dev`, so the gate's dependencies come from its `uv.lock`. The clone stays outside the workspace, because `lint --since` would read it there. Until P0c publishes 0.10.1, `GATE_REV` is `9bb51ac`, the P0a merge that added `--fail-on`. P0c moves `GATE_REV` to the 0.10.1 release commit in its own commit. The pre-push hook runs the uv tool install and does not check its version.
 - **Erosion with no change**: `cargo xtask erosion` skips `lint` when the tree equals the base and has no untracked files, because `lint` reports an empty change set as `not_checked`.
-- **Erosion scope**: `lint --since` covers the whole change set, Python included, and only `health` reads `crates/` (D4 names `crates/` for both). The ratchet compares `health` with the baseline at the base commit, so a change cannot raise its own baseline.
+- **Erosion scope**: `lint --since` covers the whole change set, Python included, and only `health` reads `crates/` (D4 names `crates/` for both).
+- **Erosion ratchet**: the reference is the lowest value of each figure across the base's `crates/erosion-baseline.json`, when the base has one, and every version of it committed in base..HEAD. The tree's baseline must not exceed the reference, and `health` must not exceed the tree's baseline or the reference. With no committed version, the tree's baseline must not exceed what `health` measures now. A deleted baseline fails when a committed version exists. `--update` writes the lower of each figure. So no commit can raise the baseline above an earlier committed version. When the base has no baseline, the commit that creates one sets the first reference (P1 "Carried from P0d").
+- **Health pins**: `cargo xtask erosion` fails when `health` counts units at a complexity threshold other than 10, stops at its time budget, does not walk every file it finds, or cannot measure a file. It fails before the ratchet runs, so `--update` never writes partial figures.
+- **Policy gate**: `cargo xtask policy [--base REV]` judges the policy items: `.agentless-mcp.json`, `deny.toml`, `rustfmt.toml`, `rust-toolchain.toml`, `.config/nextest.toml`, `crates/layers.toml`, each `clippy.toml` and `.clippy.toml` in any case (ignored files too), and the `[workspace.lints]`, `[patch]`, and `[replace]` tables of `Cargo.toml`.
+  - The reference for an item is its value at the base (by default, the merge base with `origin/main`). When the base lacks the item, the reference is its value at the commit in base..HEAD that created it.
+  - The gate compares parsed values, so a change to comments or layout is no difference.
+  - A tree value that differs from the reference fails, unless each commit that changed the item names it in a `Policy-Change: <path>` trailer. The path for a `Cargo.toml` table is `Cargo.toml`. A merge commit that keeps the value of one parent changes nothing.
+  - An uncommitted change fails, because no trailer can name it.
+  - CI runs the gate before the other gates, and the `cargo-policy` hook runs it at pre-push.
+- **Base on a push to main**: the merge base with `origin/main` is then HEAD, so CI passes the push's `before` commit as `--base` to `policy` and `erosion`, unless it is the zero SHA.
+- **CI**: a `cargo metadata --locked` step fails on a stale `Cargo.lock` before the first build. install-action runs with `fallback: none`, so it installs each tool from its own manifest, with a sha256 check, or fails. cargo-public-api 0.52.0 builds from source with `cargo install --locked`, because install-action does not ship it. The grammar cache lives under `$RUNNER_TEMP`, outside the workspace that `lint --since` reads. CI never cancels a run on main or on a `v*` tag.
 - **Latency (D8)**: the script measured `1dc4d70` and `0037919`, the 0.10.1 candidate. P0c runs it again on the `v0.10.1` tag. Its p95 is the nearest rank, so the overview table cites the script's runs only.
 - **Hooks**: D6 named `cargo fmt` and `cargo clippy` only. Each Python check has a Rust counterpart:
 
@@ -300,11 +324,12 @@ Where the build differs from D2 to D8:
 | Tests | pytest | `cargo nextest`, `cargo insta test --check` | pre-push, CI |
 | Public API | none | `cargo xtask public-api` | pre-push, CI |
 | Erosion | the erosion hook | `cargo xtask erosion` | pre-push, CI |
+| Policy files | none | `cargo xtask policy` | pre-push, CI |
 
 ### P0d exit gate
 
 - The `rust` CI job is green on both platforms.
-- `scripts/gate-selftest.sh` shows the base passing its 12 checks and each of its 53 violation checks failing its gate (violations 1 to 13 and 15 to 18). Violation 14 moves to P1 (P0d as built).
+- `scripts/gate-selftest.sh` shows the base passing its 15 checks and each of its 86 violation checks failing its gate (violations 1 to 13 and 15 to 23). Violation 14 moves to P1 (P0d as built).
 - The grammar pin and the per-grammar revision list are recorded (D1).
 - `scripts/hook_latency.py` has measured the baselines, and the design records are in `docs/analysis/` (D8).
 

@@ -1,17 +1,18 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use serde::{Deserialize, Serialize};
 
-use crate::process::{self, Finished};
-use crate::{Failure, repo, verdict};
+use crate::{Failure, process, repo, verdict};
 
 const BASELINE: &str = "crates/erosion-baseline.json";
 const CHECKS: &str = "complexity_delta,clone_delta,contract_drift";
 const FAIL_ON: &str = "warning,advisory,not_checked";
 // `lint --fail-on` exits 3 when a finding has a listed severity; 1 and 2 mean the run broke.
 const LINT_GATE_EXIT: i32 = 3;
+// over_threshold counts units above this complexity; a config file in the tree must not move it.
+const THRESHOLD: u64 = 10;
 
 struct Options {
     lint_bin: PathBuf,
@@ -29,7 +30,24 @@ struct Figures {
 
 #[derive(Deserialize)]
 struct Health {
-    complexity: Figures,
+    complexity: Complexity,
+}
+
+#[derive(Deserialize)]
+struct Complexity {
+    threshold: u64,
+    files: u64,
+    walked: u64,
+    stopped_by_budget: bool,
+    not_measured: NotMeasured,
+    erosion: f64,
+    over_threshold: u64,
+    clone_share: f64,
+}
+
+#[derive(Deserialize)]
+struct NotMeasured {
+    total: u64,
 }
 
 struct Decision {
@@ -37,10 +55,10 @@ struct Decision {
     write: Option<Figures>,
 }
 
-/// Fail when the pinned lint finds anything since the base, or a health figure rises above the base's baseline.
+/// Fail when the pinned lint finds anything since the base, or health rises above the lowest committed baseline.
 pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
     let options = parse(flags)?;
-    let base = commit(root, options.base.as_deref())?;
+    let base = repo::base(root, options.base.as_deref())?;
     let mut command = Command::new(&options.lint_bin);
     process::stdout(
         command.args(["index", "--repo"]).arg(root),
@@ -54,7 +72,7 @@ pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
         lint(root, &options.lint_bin, &base)?
     };
     let decision = ratchet(
-        base_baseline(root, &base)?,
+        committed_baseline(root, &base)?,
         tree_baseline(root)?,
         health(root, &options.health_bin)?,
         options.update,
@@ -66,161 +84,13 @@ pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
     verdict(problems)
 }
 
-fn parse(flags: &[String]) -> Result<Options, Failure> {
-    let mut lint_bin = None;
-    let mut health_bin = None;
-    let mut base = None;
-    let mut update = false;
-    let mut rest = flags.iter();
-    while let Some(flag) = rest.next() {
-        match flag.as_str() {
-            "--lint-bin" => lint_bin = Some(PathBuf::from(value(&mut rest)?)),
-            "--health-bin" => health_bin = Some(PathBuf::from(value(&mut rest)?)),
-            "--base" => base = Some(value(&mut rest)?.to_owned()),
-            "--update" => update = true,
-            _ => return Err(Failure::Usage),
-        }
-    }
-    let (Some(lint_bin), Some(health_bin)) = (lint_bin, health_bin) else {
-        return Err(Failure::Usage);
-    };
-    Ok(Options {
-        lint_bin,
-        health_bin,
-        base,
-        update,
-    })
-}
-
-fn value<'a>(rest: &mut impl Iterator<Item = &'a String>) -> Result<&'a str, Failure> {
-    rest.next()
-        .map(String::as_str)
-        .filter(|value| !value.starts_with("--"))
-        .ok_or(Failure::Usage)
-}
-
-fn commit(root: &Path, base: Option<&str>) -> Result<String, Failure> {
-    let revision = match base {
-        Some(base) => base.to_owned(),
-        None => merge_base(root)?,
-    };
-    let mut command = Command::new("git");
-    command
-        .args(["rev-parse", "--verify", "--end-of-options"])
-        .arg(format!("{revision}^{{commit}}"))
-        .current_dir(root);
-    let output = process::stdout(&mut command, process::GIT)?;
-    Ok(String::from_utf8_lossy(&output).trim().to_owned())
-}
-
-fn merge_base(root: &Path) -> Result<String, Failure> {
-    let mut command = Command::new("git");
-    command
-        .args(["merge-base", "HEAD", "origin/main"])
-        .current_dir(root);
-    let output = process::stdout(&mut command, process::GIT)?;
-    Ok(String::from_utf8_lossy(&output).trim().to_owned())
-}
-
-fn unchanged_since(root: &Path, base: &str) -> Result<bool, Failure> {
-    let mut diff = Command::new("git");
-    diff.args(["diff", "--quiet", base, "--"]).current_dir(root);
-    let status = process::run(&mut diff, process::GIT)?.status;
-    let tracked_unchanged = match status.code() {
-        Some(0) => true,
-        Some(1) => false,
-        _ => return Err(Failure::Broken(format!("{diff:?} exited with {status}"))),
-    };
-    let mut untracked = Command::new("git");
-    untracked
-        .args(["ls-files", "--others", "--exclude-standard"])
-        .current_dir(root);
-    Ok(tracked_unchanged && process::stdout(&mut untracked, process::GIT)?.is_empty())
-}
-
-fn lint(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure> {
-    let mut command = Command::new(lint_bin);
-    command
-        .args([
-            "lint",
-            "--since",
-            base,
-            "--only",
-            CHECKS,
-            "--fail-on",
-            FAIL_ON,
-            "--repo",
-        ])
-        .arg(root);
-    let finished = process::run(&mut command, process::GATE_BINARY)?;
-    forward(&finished)?;
-    let status = finished.status;
-    match status.code() {
-        Some(0) => Ok(Vec::new()),
-        Some(LINT_GATE_EXIT) => Ok(vec![format!(
-            "lint found erosion since {base}: the findings are listed above"
-        )]),
-        _ => Err(Failure::Broken(format!("{command:?} exited with {status}"))),
-    }
-}
-
-fn forward(finished: &Finished) -> Result<(), Failure> {
-    std::io::stdout()
-        .write_all(&finished.stdout)
-        .and_then(|()| std::io::stderr().write_all(&finished.stderr))
-        .map_err(|error| Failure::Broken(format!("cannot forward the lint output: {error}")))
-}
-
-fn health(root: &Path, health_bin: &Path) -> Result<Figures, Failure> {
-    let mut command = Command::new(health_bin);
-    command
-        .args(["health", "--json", "--repo"])
-        .arg(root.join("crates"));
-    let output = process::stdout(&mut command, process::GATE_BINARY)?;
-    let health: Health = serde_json::from_slice(&output)
-        .map_err(|error| Failure::Broken(format!("health --json: {error}")))?;
-    Ok(health.complexity)
-}
-
-fn base_baseline(root: &Path, base: &str) -> Result<Option<Figures>, Failure> {
-    let mut listing = Command::new("git");
-    listing
-        .args(["ls-tree", "-z", "--name-only", base, "--", BASELINE])
-        .current_dir(root);
-    if process::stdout(&mut listing, process::GIT)?.is_empty() {
-        return Ok(None);
-    }
-    let blob = format!("{base}:{BASELINE}");
-    let mut show = Command::new("git");
-    show.args(["show", &blob]).current_dir(root);
-    figures(&process::stdout(&mut show, process::GIT)?, &blob).map(Some)
-}
-
-fn tree_baseline(root: &Path) -> Result<Option<Figures>, Failure> {
-    let path = root.join(BASELINE);
-    if !repo::exists(&path)? {
-        return Ok(None);
-    }
-    figures(repo::read(&path)?.as_bytes(), BASELINE).map(Some)
-}
-
-fn figures(json: &[u8], source: &str) -> Result<Figures, Failure> {
-    serde_json::from_slice(json).map_err(|error| Failure::Broken(format!("{source}: {error}")))
-}
-
-fn write_baseline(root: &Path, figures: Figures) -> Result<(), Failure> {
-    let text = serde_json::to_string_pretty(&figures)
-        .map_err(|error| Failure::Broken(format!("{BASELINE}: {error}")))?;
-    repo::write(&root.join(BASELINE), &format!("{text}\n"))
-}
-
 fn ratchet(
-    base: Option<Figures>,
+    committed: Option<Figures>,
     tree: Option<Figures>,
     current: Figures,
     update: bool,
 ) -> Decision {
-    let (mut problems, reference) = reference(base, tree);
+    let (mut problems, reference) = reference(committed, tree, current);
     let Some(reference) = reference else {
         if !update {
             problems.push(format!(
@@ -239,24 +109,37 @@ fn ratchet(
     }
 }
 
-fn reference(base: Option<Figures>, tree: Option<Figures>) -> (Vec<String>, Option<Figures>) {
-    match (base, tree) {
-        (None, tree) => (Vec::new(), tree),
-        (Some(base), None) => (
+fn reference(
+    committed: Option<Figures>,
+    tree: Option<Figures>,
+    current: Figures,
+) -> (Vec<String>, Option<Figures>) {
+    match (committed, tree) {
+        (None, None) => (Vec::new(), None),
+        (None, Some(tree)) => (above(tree, current, "what health measures now"), Some(tree)),
+        (Some(committed), None) => (
             vec![format!(
-                "{BASELINE} is missing, but the base commit has one: restore it"
+                "{BASELINE} is missing, but a committed version exists: restore it"
             )],
-            Some(base),
+            Some(committed),
         ),
-        (Some(base), Some(tree)) => {
-            let raised = base
-                .rises(tree)
-                .into_iter()
-                .map(|rise| format!("{BASELINE} is above the base's: {rise}"))
-                .collect();
-            (raised, Some(base.lowered(tree)))
-        }
+        (Some(committed), Some(tree)) => (
+            above(tree, committed, "its lowest committed version"),
+            Some(committed.lowered(tree)),
+        ),
     }
+}
+
+fn above(tree: Figures, bound: Figures, name: &str) -> Vec<String> {
+    bound
+        .rises(tree)
+        .into_iter()
+        .map(|rise| format!("{BASELINE} is above {name}: {rise}"))
+        .collect()
+}
+
+fn lowest(versions: Vec<Figures>) -> Option<Figures> {
+    versions.into_iter().reduce(Figures::lowered)
 }
 
 impl Figures {
@@ -292,9 +175,177 @@ impl Figures {
     }
 }
 
+fn parse(flags: &[String]) -> Result<Options, Failure> {
+    let mut lint_bin = None;
+    let mut health_bin = None;
+    let mut base = None;
+    let mut update = None;
+    let mut rest = flags.iter();
+    while let Some(flag) = rest.next() {
+        match flag.as_str() {
+            "--lint-bin" => once(&mut lint_bin, PathBuf::from(value(&mut rest)?))?,
+            "--health-bin" => once(&mut health_bin, PathBuf::from(value(&mut rest)?))?,
+            "--base" => once(&mut base, value(&mut rest)?.to_owned())?,
+            "--update" => once(&mut update, true)?,
+            _ => return Err(Failure::Usage),
+        }
+    }
+    let (Some(lint_bin), Some(health_bin)) = (lint_bin, health_bin) else {
+        return Err(Failure::Usage);
+    };
+    Ok(Options {
+        lint_bin,
+        health_bin,
+        base,
+        update: update.is_some(),
+    })
+}
+
+fn once<T>(slot: &mut Option<T>, value: T) -> Result<(), Failure> {
+    match slot.replace(value) {
+        None => Ok(()),
+        Some(_) => Err(Failure::Usage),
+    }
+}
+
+fn value<'a>(rest: &mut impl Iterator<Item = &'a String>) -> Result<&'a str, Failure> {
+    rest.next()
+        .map(String::as_str)
+        .filter(|value| !value.starts_with("--"))
+        .ok_or(Failure::Usage)
+}
+
+fn unchanged_since(root: &Path, base: &str) -> Result<bool, Failure> {
+    let mut diff = Command::new("git");
+    diff.args(["diff", "--quiet", base, "--"]).current_dir(root);
+    let status = process::run(&mut diff, process::GIT)?.status;
+    let tracked_unchanged = match status.code() {
+        Some(0) => true,
+        Some(1) => false,
+        _ => return Err(Failure::Broken(format!("{diff:?} exited with {status}"))),
+    };
+    let untracked = repo::git(root, &["ls-files", "--others", "--exclude-standard"])?;
+    Ok(tracked_unchanged && untracked.is_empty())
+}
+
+fn lint(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure> {
+    let mut command = Command::new(lint_bin);
+    command
+        .args([
+            "lint",
+            "--since",
+            base,
+            "--only",
+            CHECKS,
+            "--fail-on",
+            FAIL_ON,
+            "--repo",
+        ])
+        .arg(root);
+    let output = process::run(&mut command, process::GATE_BINARY)?;
+    forward(&output)?;
+    let status = output.status;
+    match status.code() {
+        Some(0) => Ok(Vec::new()),
+        Some(LINT_GATE_EXIT) => Ok(vec![format!(
+            "lint found erosion since {base}: the findings are listed above"
+        )]),
+        _ => Err(Failure::Broken(format!("{command:?} exited with {status}"))),
+    }
+}
+
+fn forward(output: &Output) -> Result<(), Failure> {
+    std::io::stdout()
+        .write_all(&output.stdout)
+        .and_then(|()| std::io::stderr().write_all(&output.stderr))
+        .map_err(|error| Failure::Broken(format!("cannot forward the lint output: {error}")))
+}
+
+fn health(root: &Path, health_bin: &Path) -> Result<Figures, Failure> {
+    let mut command = Command::new(health_bin);
+    command
+        .args(["health", "--json", "--repo"])
+        .arg(root.join("crates"));
+    let output = process::stdout(&mut command, process::GATE_BINARY)?;
+    let health: Health = serde_json::from_slice(&output)
+        .map_err(|error| Failure::Broken(format!("health --json: {error}")))?;
+    let gaps = health.complexity.gaps();
+    if gaps.is_empty() {
+        Ok(health.complexity.figures())
+    } else {
+        Err(Failure::Broken(format!(
+            "health --json cannot judge the change: {}",
+            gaps.join("; ")
+        )))
+    }
+}
+
+impl Complexity {
+    fn gaps(&self) -> Vec<String> {
+        let mut gaps = Vec::new();
+        if self.threshold != THRESHOLD {
+            gaps.push(format!(
+                "it counted units over complexity {}, not the pinned {THRESHOLD}",
+                self.threshold
+            ));
+        }
+        if self.stopped_by_budget {
+            gaps.push("its time budget stopped the walk".to_owned());
+        }
+        if self.walked != self.files {
+            gaps.push(format!("it walked {} of {} files", self.walked, self.files));
+        }
+        if self.not_measured.total > 0 {
+            gaps.push(format!(
+                "it could not measure {} files",
+                self.not_measured.total
+            ));
+        }
+        gaps
+    }
+
+    fn figures(&self) -> Figures {
+        Figures {
+            erosion: self.erosion,
+            over_threshold: self.over_threshold,
+            clone_share: self.clone_share,
+        }
+    }
+}
+
+fn committed_baseline(root: &Path, base: &str) -> Result<Option<Figures>, Failure> {
+    let mut revisions = vec![base.to_owned()];
+    revisions.extend(repo::touching(root, base, BASELINE)?);
+    let mut versions = Vec::new();
+    for revision in revisions {
+        if let Some(json) = repo::show(root, &revision, BASELINE)? {
+            versions.push(figures(&json, &format!("{revision}:{BASELINE}"))?);
+        }
+    }
+    Ok(lowest(versions))
+}
+
+fn tree_baseline(root: &Path) -> Result<Option<Figures>, Failure> {
+    let path = root.join(BASELINE);
+    if !repo::exists(&path)? {
+        return Ok(None);
+    }
+    figures(repo::read(&path)?.as_bytes(), BASELINE).map(Some)
+}
+
+fn figures(json: &[u8], source: &str) -> Result<Figures, Failure> {
+    serde_json::from_slice(json).map_err(|error| Failure::Broken(format!("{source}: {error}")))
+}
+
+fn write_baseline(root: &Path, figures: Figures) -> Result<(), Failure> {
+    let text = serde_json::to_string_pretty(&figures)
+        .map_err(|error| Failure::Broken(format!("{BASELINE}: {error}")))?;
+    repo::write(&root.join(BASELINE), &format!("{text}\n"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Figures, parse, ratchet};
+    use super::{Figures, Health, lowest, parse, ratchet};
     use crate::Failure;
 
     const STORED: Figures = Figures {
@@ -310,6 +361,16 @@ mod tests {
 
     fn flags(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| (*word).to_owned()).collect()
+    }
+
+    fn health(threshold: u64, walked: u64, stopped: bool, not_measured: u64) -> Health {
+        let json = format!(
+            r#"{{"complexity": {{"threshold": {threshold}, "files": 7, "walked": {walked},
+            "measured": 7, "stopped_by_budget": {stopped}, "units": 38, "over_threshold": 0,
+            "erosion": 0.0, "sloc": 382, "clone_lines": 12, "clone_share": 0.03,
+            "not_measured": {{"total": {not_measured}, "limit": 20, "omitted": 0, "rows": []}}}}}}"#
+        );
+        serde_json::from_str(&json).unwrap()
     }
 
     #[test]
@@ -344,11 +405,30 @@ mod tests {
     }
 
     #[test]
-    fn a_flag_without_a_value_is_a_usage_error() {
+    fn a_flag_without_a_value_or_given_twice_is_a_usage_error() {
         for words in [
             &["--lint-bin", "a", "--health-bin", "b", "--base"][..],
             &["--lint-bin", "a", "--health-bin", "b", "--base", "--update"],
             &["--health-bin", "b", "--lint-bin"],
+            &[
+                "--base",
+                "X",
+                "--base",
+                "Y",
+                "--lint-bin",
+                "a",
+                "--health-bin",
+                "b",
+            ],
+            &["--lint-bin", "a", "--lint-bin", "c", "--health-bin", "b"],
+            &[
+                "--update",
+                "--update",
+                "--lint-bin",
+                "a",
+                "--health-bin",
+                "b",
+            ],
         ] {
             assert!(
                 matches!(parse(&flags(words)), Err(Failure::Usage)),
@@ -367,14 +447,14 @@ mod tests {
     }
 
     #[test]
-    fn the_tree_cannot_raise_the_base_baseline() {
+    fn the_tree_cannot_raise_the_lowest_committed_baseline() {
         let decision = ratchet(Some(ZERO), Some(STORED), ZERO, false);
         assert_eq!(
             decision.problems,
             [
-                "crates/erosion-baseline.json is above the base's: erosion rose from 0 to 0.2",
-                "crates/erosion-baseline.json is above the base's: units over the complexity threshold rose from 0 to 3",
-                "crates/erosion-baseline.json is above the base's: clone share rose from 0 to 0.05",
+                "crates/erosion-baseline.json is above its lowest committed version: erosion rose from 0 to 0.2",
+                "crates/erosion-baseline.json is above its lowest committed version: units over the complexity threshold rose from 0 to 3",
+                "crates/erosion-baseline.json is above its lowest committed version: clone share rose from 0 to 0.05",
             ]
         );
         let lowered_tree = ratchet(Some(STORED), Some(ZERO), STORED, false);
@@ -382,22 +462,47 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_baseline_fails_when_the_base_has_one() {
+    fn the_reference_is_the_lowest_of_every_committed_version() {
+        let mixed = Figures {
+            erosion: 0.1,
+            over_threshold: 5,
+            clone_share: 0.0,
+        };
+        let expected = Figures {
+            erosion: 0.1,
+            over_threshold: 3,
+            clone_share: 0.0,
+        };
+        assert_eq!(lowest(vec![STORED, mixed]), Some(expected));
+        assert_eq!(lowest(Vec::new()), None);
+    }
+
+    #[test]
+    fn a_deleted_baseline_fails_when_a_committed_version_exists() {
         let decision = ratchet(Some(STORED), None, STORED, false);
         assert_eq!(
             decision.problems,
-            ["crates/erosion-baseline.json is missing, but the base commit has one: restore it"]
+            ["crates/erosion-baseline.json is missing, but a committed version exists: restore it"]
         );
     }
 
     #[test]
-    fn with_no_base_baseline_the_tree_is_the_reference() {
+    fn with_no_committed_baseline_the_tree_must_not_exceed_what_health_measures() {
         assert!(
             ratchet(None, Some(STORED), STORED, false)
                 .problems
                 .is_empty()
         );
-        assert_eq!(ratchet(None, Some(ZERO), STORED, false).problems.len(), 3);
+        let inflated = ratchet(None, Some(STORED), ZERO, false);
+        assert_eq!(inflated.problems.len(), 3);
+        assert!(inflated.problems[0].contains("is above what health measures now"));
+        let rise = Figures {
+            erosion: 0.5,
+            ..STORED
+        };
+        let updated = ratchet(None, Some(STORED), rise, true);
+        assert_eq!(updated.problems, ["erosion rose from 0.2 to 0.5"]);
+        assert_eq!(updated.write, Some(STORED));
     }
 
     #[test]
@@ -433,5 +538,19 @@ mod tests {
         let bootstrap = ratchet(None, None, STORED, true);
         assert!(bootstrap.problems.is_empty());
         assert_eq!(bootstrap.write, Some(STORED));
+    }
+
+    #[test]
+    fn a_partial_or_rethresholded_health_walk_cannot_judge_the_change() {
+        assert!(health(10, 7, false, 0).complexity.gaps().is_empty());
+        assert_eq!(
+            health(100, 3, true, 2).complexity.gaps(),
+            [
+                "it counted units over complexity 100, not the pinned 10",
+                "its time budget stopped the walk",
+                "it walked 3 of 7 files",
+                "it could not measure 2 files",
+            ]
+        );
     }
 }

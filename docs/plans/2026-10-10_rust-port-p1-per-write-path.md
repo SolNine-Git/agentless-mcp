@@ -46,15 +46,30 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 - When `syntax` adds the tree-sitter crate, set the workspace `rust-version` to that crate's minimum.
 - `crates/io/clippy.toml` (the root file without the `std::fs` entries) and `crates/store/clippy.toml` (without `rusqlite::Connection::open`) arrive with their crates.
 - `cargo xtask goldens --update` and self-test violation 14 (a changed golden file) arrive with the first golden files.
+- Generated Rust is committed source. The gates refuse `include!`, so no crate reads code from `OUT_DIR`. `cargo xtask generate` writes the Rust source into `crates/<crate>/src/generated/`, and the commit holds the file. An xtask test fails when a committed file differs from a fresh generation. The static gates and clippy then read the generated code as they read any other source. Only `syntax` keeps a `build.rs`, which compiles the grammar C sources with `cc` and writes no Rust (work items 2 and 3).
 - Gaps that the P0d gates leave open:
-  - No gate checks `.config/nextest.toml`, where a default filter can skip tests, or the insta config.
+  - No gate checks the insta config. `.config/nextest.toml`, where a default filter can skip tests, is a policy item, so it changes only with a `Policy-Change` trailer.
   - No gate checks `[package.metadata.cargo-machete] ignored`, which hides an unused dependency.
   - No gate checks a per-package `rust-version` (clippy's MSRV) or `edition`, which change what the lints check.
   - No gate checks the environment or config above the repository root (`CLIPPY_CONF_DIR`, `RUSTFLAGS`, `CARGO_HOME` config). CI's `rust` job sets none of them, and nothing checks that.
-  - The gates do not detect a proc-macro crate that builds an attribute from strings, or a third-party macro that expands to `unsafe` code. The workspace has no proc-macro crate.
+  - The token scan reads source text, so the gates do not detect a proc-macro crate that builds an attribute from strings, or a third-party macro that expands to an attribute or to `unsafe` code. rustc still rejects a suppression of a lint at `forbid`, a macro-built one too (E0453). The workspace has no proc-macro crate.
   - No lint refuses `Command::output()` outside `xtask/src/process.rs`, the one subprocess helper.
   - rustdoc compiles doc examples, but the token walker reads their text as a literal, and nextest does not run doctests.
-  - The pre-push `cargo-erosion` hook triggers on `crates/` and `xtask/` only, but `lint --since` covers the whole change set, Python included.
+  - The build-script rule lists only `syntax`, and that crate's `build.rs` can still set a cfg that hides code from clippy.
+  - clippy runs the dev profile with the default features, so it does not lint code under `not(debug_assertions)` or behind a feature that is off (derived, not run). Run clippy with `--release` or `--all-features` when those builds exist.
+  - `cfg_select!` is unstable on 1.94.0 (E0658), and the cfg rule does not read it. Add it to the cfg rule when the toolchain moves to a release that accepts it.
+  - A frontmatter block (`---` at the top of a file) passes the gates. rustc 1.94.0 rejects it (E0658). Check it again when the toolchain moves.
+  - An ignored, untracked config file other than a clippy config passes the local gates, because the tool-config check lists files through git's ignore rules. CI is unaffected, because its checkout holds no ignored file.
+  - A policy file that the base lacks is accepted as its creation commit wrote it.
+  - When the base has no `crates/erosion-baseline.json`, the commit that creates it sets the first ratchet reference. The gate bounds the baseline by `health` only while no committed version exists (derived from `xtask/src/erosion.rs`, not run).
+  - On a pull request, CI's HEAD is GitHub's merge commit, which carries no trailer. If main and the pull request both change one policy file, and git merges them cleanly, the policy gate fails on that merge (derived from `xtask/src/policy.rs`, not run).
+  - The gate code is in the tree. A change that rewrites xtask, `ci.yml`, or the self-test can loosen the gates that judge it. No CODEOWNERS file or branch protection asks for a review of those paths.
+  - The quality jobs restore the grammar cache through a `restore-keys` prefix, so they can restore a cache that another key saved. Nothing verifies the grammar bundle that `agentless-mcp warmup` downloads.
+  - xtask builds on Unix only, because it puts each child process in its own process group through `std::os::unix::process::CommandExt`. CI runs Linux and macOS (overview decision 5).
+  - The self-test stops each command at 120 s. The figure is derived: about ten times the slowest cold command measured with one build job (11.4 s). If a command in a cold CI run takes longer, raise `step_deadline` from the row times in that run's log.
+  - CI builds cargo-public-api 0.52.0 from source with `cargo install --locked`, because install-action does not ship it. rust-cache keeps the binary, so only a cache miss builds it again.
+  - CI's `cargo metadata --locked` step proves `Cargo.lock` before the first build, but the `cargo +nightly public-api` run inside xtask takes no `--locked` flag.
+  - Self-test violations 7, 9, and 12 still match short texts (`public-api.txt`, `disallowed`, `itoa`) that another failure can also print.
 
 ## Work items, in build order
 
@@ -76,15 +91,15 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 
 ### 2. `prompts`
 
-- `build.rs` reads `src/agentless_mcp/prompts/*.json` (the files move into the crate when the Python tree is deleted). It emits one typed function per message; each placeholder becomes a typed argument.
-- A missing or extra placeholder fails the build. `deny_unknown_fields` applies, because the project owns these files.
+- `cargo xtask generate` reads `src/agentless_mcp/prompts/*.json` (the files move into the crate when the Python tree is deleted). It writes `crates/prompts/src/generated/` with one typed function per message, and each placeholder becomes a typed argument. The commit holds the generated file ("Carried from P0d").
+- A missing or extra placeholder fails the generator. `deny_unknown_fields` applies, because the project owns these files.
 - `contract_rules()` returns the parsed `contract_rules.json`, validated eagerly.
 - **Tests**: render every message once; parse every contract rule.
 
 ### 3. `syntax`
 
 - **`Language`**: an enum of the 22 languages, with `from_path` and `from_name`.
-- **`LangSpec`**: one TOML file per language in `crates/syntax/languages/`. `build.rs` turns them into static tables. The P1 fields are those that metrics and checks read:
+- **`LangSpec`**: one TOML file per language in `crates/syntax/languages/`. `cargo xtask generate` turns them into static tables in `crates/syntax/src/generated/`, under the same test as `prompts`. The P1 fields are those that metrics and checks read:
   - extensions and tier;
   - comment, identifier, literal, unit, bound, scope, and descend kinds;
   - decision points, with `Cond` predicates and field and token operators;
@@ -99,7 +114,7 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 - **Code, not data**:
   - `Cond`, the six predicates at `complexity.py:472-498`;
   - `NameRule`, the name and binding rules at `complexity.py:381-470`. The Rust impl owner uses the one rule that P0b B3 settled.
-- **Grammars**: the C sources vendored from `parser-sources-1.14.3.tar.zst`, with `ctype_shim.h` and utf8proc, compiled by `cc` in `build.rs` and checked against a sha256 manifest (overview, Grammar sources). `tree-sitter` is pinned to `=0.26.9`. `grammar(Language)` performs no IO.
+- **Grammars**: the C sources vendored from `parser-sources-1.14.3.tar.zst`, with `ctype_shim.h` and utf8proc, compiled by `cc` in `build.rs` and checked against a sha256 manifest (overview, Grammar sources). The build script compiles C only and writes no Rust. `tree-sitter` is pinned to `=0.26.9`. `grammar(Language)` performs no IO.
 - **`parse(lang, src) -> Result<Parsed, Unparsable>`**. `Parsed` owns:
   - the `Tree`;
   - `Flat`, built in one cursor walk: kind ids, a named bit set, spans, the subtree end index per node, and a field index for name lookups;
