@@ -6,11 +6,13 @@ use serde::de::DeserializeOwned;
 
 use crate::{Failure, process};
 
-// gitinfo.py's HARDENING_PREFIX, plus log.follow (it drops merges from `git log -- <path>`) and
-// --no-replace-objects (a replace ref rewrites a commit or a file). A diff also passes --no-ext-diff.
-const GIT_OPTIONS: [&str; 14] = [
+// gitinfo.py's HARDENING_PREFIX, log.follow (it drops merges from `git log -- <path>`), and no
+// replace ref or commit-graph file (each can rewrite a commit). A diff also passes --no-ext-diff.
+const GIT_OPTIONS: [&str; 16] = [
     "--no-optional-locks",
     "--no-replace-objects",
+    "-c",
+    "core.commitGraph=false",
     "-c",
     "core.fsmonitor=false",
     "-c",
@@ -100,6 +102,12 @@ fn fixed_git(root: &Path, inherited: impl IntoIterator<Item = OsString>) -> Comm
 
 /// Resolve `revision` to a commit id; with none, take the merge base of HEAD and origin/main.
 pub fn base(root: &Path, revision: Option<&str>) -> Result<String, Failure> {
+    // A shallow entry cuts a commit's parents, so the range from the base would lose commits.
+    if text(&git(root, &["rev-parse", "--is-shallow-repository"])?) != "false" {
+        return Err(Failure::Broken(
+            "the repository is shallow, so git cannot list every commit since the base. Fetch the full history: git fetch --unshallow".to_owned(),
+        ));
+    }
     let revision = match revision {
         Some(revision) => revision.to_owned(),
         None => text(&git(root, &["merge-base", "HEAD", "origin/main"])?),
@@ -178,7 +186,8 @@ mod tests {
     use std::path::Path;
 
     use super::fixture::{git, scratch};
-    use super::{fixed_git, text, touching};
+    use super::{base, fixed_git, text, touching};
+    use crate::Failure;
 
     fn commit(dir: &Path, file: &str, content: &str, message: &str) -> String {
         std::fs::write(dir.join(file), content).unwrap();
@@ -219,6 +228,74 @@ mod tests {
     }
 
     #[test]
+    fn a_shallow_repository_has_no_base() {
+        let dir = scratch("repo-shallow");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        let first = commit(&dir, "a", "1\n", "one");
+        let second = commit(&dir, "a", "2\n", "two");
+        let whole = base(&dir, Some(&first));
+        std::fs::write(dir.join(".git/shallow"), format!("{second}\n")).unwrap();
+        let shallow = base(&dir, Some(&first));
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(whole.unwrap(), first);
+        assert!(
+            matches!(&shallow, Err(Failure::Broken(message)) if message.contains("shallow")),
+            "{shallow:?}"
+        );
+    }
+
+    // Overwrite the first parent of `commit` in the commit-graph file. git reads the file without
+    // checking its checksum.
+    fn forge_first_parent(dir: &Path, commit: &str, parent: &str) {
+        let path = dir.join(".git/objects/info/commit-graph");
+        let mut graph = std::fs::read(&path).unwrap();
+        let chunk = |id: &[u8]| {
+            let entry = (0..usize::from(graph[6]))
+                .map(|index| &graph[8 + 12 * index..20 + 12 * index])
+                .find(|entry| &entry[..4] == id)
+                .unwrap();
+            usize::try_from(u64::from_be_bytes(entry[4..].try_into().unwrap())).unwrap()
+        };
+        let (fanout, ids, data) = (chunk(b"OIDF"), chunk(b"OIDL"), chunk(b"CDAT"));
+        let count = u32::from_be_bytes(graph[fanout + 1020..fanout + 1024].try_into().unwrap());
+        let position = |hex: &str| {
+            let id: Vec<u8> = (0..40)
+                .step_by(2)
+                .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).unwrap())
+                .collect();
+            (0..usize::try_from(count).unwrap())
+                .position(|index| graph[ids + 20 * index..ids + 20 * (index + 1)] == id[..])
+                .unwrap()
+        };
+        let entry = data + 36 * position(commit);
+        let forged = u32::try_from(position(parent)).unwrap().to_be_bytes();
+        graph[entry + 20..entry + 24].copy_from_slice(&forged);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, graph).unwrap();
+    }
+
+    #[test]
+    fn a_commit_graph_file_does_not_change_the_parents_that_git_reports() {
+        let dir = scratch("repo-commit-graph");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        let first = commit(&dir, "a", "1\n", "one");
+        let second = commit(&dir, "a", "2\n", "two");
+        let third = commit(&dir, "a", "3\n", "three");
+        let graph = ["-c", "core.commitGraph=true"];
+        git(
+            &dir,
+            &[&graph[..], &["commit-graph", "write", "--reachable"]].concat(),
+        );
+        forge_first_parent(&dir, &third, &first);
+        let parents = ["log", "-1", "--format=%P", third.as_str()];
+        let forged = git(&dir, &[&graph[..], &parents].concat());
+        let reported = super::git(&dir, &parents);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(forged, first, "the forged graph is not in use");
+        assert_eq!(text(&reported.unwrap()), second);
+    }
+
+    #[test]
     fn git_drops_each_inherited_git_variable_but_the_config_ones() {
         let inherited = [
             "GIT_DIR",
@@ -251,5 +328,6 @@ mod tests {
         assert_eq!(args[0], "--no-optional-locks");
         assert!(args.contains(&OsStr::new("log.follow=false")));
         assert!(args.contains(&OsStr::new("--no-replace-objects")));
+        assert!(args.contains(&OsStr::new("core.commitGraph=false")));
     }
 }

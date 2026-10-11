@@ -111,7 +111,7 @@ The release goes out in two steps (overview decision 10). Each step follows the 
 
 The Python tree stays in the repository, unpackaged, until the release is live and the three deployed surfaces run it. Then one pull request deletes it, in this order:
 
-1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `cargo xtask generate` and `include_str!` at the new paths. Name both directories in `DATA_DIRS` (`xtask/src/sources.rs`). If P2 added a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs`, move the guide's entry too (P1 "Port constraints").
+1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `cargo xtask generate` and `include_str!` at the new paths. Name both directories in `DATA_DIRS` (`xtask/src/sources.rs`). If P2 added a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs`, move the guide's entry too (P1 R-48).
 2. Delete:
    - `src/agentless_mcp/`;
    - `tests/unit/` and the Python parts of `tests/characterization/`, including each module's `regenerate()`; `cargo xtask goldens --update` replaces them (overview rule 6);

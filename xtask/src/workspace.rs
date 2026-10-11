@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Deserialize;
+use toml::{Table, Value};
 
 use crate::{Failure, process, repo};
 
@@ -10,18 +11,20 @@ use crate::{Failure, process, repo};
 pub const ROOTS: [&str; 2] = ["crates", "xtask"];
 /// The reviewed list of the third-party packages that the workspace uses.
 pub const DEPENDENCIES: &str = "crates/dependencies.toml";
+/// The target kind that cargo metadata gives a build script.
+pub const BUILD_SCRIPT: &str = "custom-build";
 const LIBRARY_KINDS: [&str; 6] = ["lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"];
 // cargo test and nextest build the tests of these kinds, and of the library kinds, unless `test = false`.
 const TESTED_KINDS: [&str; 2] = ["bin", "test"];
 // A proc macro runs at expansion and a build script before the compile: both run third-party code.
-const BUILD_TIME_KINDS: [&str; 2] = ["proc-macro", "custom-build"];
+const BUILD_TIME_KINDS: [&str; 2] = ["proc-macro", BUILD_SCRIPT];
 
 #[derive(Deserialize)]
 struct Metadata {
     packages: Vec<Member>,
 }
 
-// The full resolved graph, every platform included.
+// The full resolved graph, every platform included, so the list is the same on each CI platform.
 #[derive(Deserialize)]
 struct Graph {
     packages: Vec<Node>,
@@ -102,6 +105,17 @@ pub fn packages(root: &Path) -> Result<Vec<Package>, Failure> {
 /// Read the reviewed list of third-party packages.
 pub fn listed(root: &Path) -> Result<Listed, Failure> {
     repo::toml(&root.join(DEPENDENCIES))
+}
+
+/// Return the text of `key` in the root manifest's [workspace.package], which every package inherits.
+pub fn package_key(manifest: &Table, key: &str) -> Result<String, Failure> {
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get(key))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| Failure::Broken(format!("Cargo.toml has no [workspace.package] {key}")))
 }
 
 /// Return the package name of each direct dependency of the workspace packages, path dependencies left out.
@@ -215,7 +229,9 @@ mod tests {
 
     use super::{
         Dependency, Graph, Listed, Metadata, Package, build_time_packages, direct, list_problems,
+        package_key,
     };
+    use crate::Failure;
 
     fn names(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
@@ -282,6 +298,22 @@ mod tests {
         assert_eq!(listed.direct, names(&["a"]));
         assert!(toml::from_str::<Listed>("direct = []\nbuild-time = []\nallow = []\n").is_err());
         assert!(toml::from_str::<Listed>("direct = []\n").is_err());
+    }
+
+    #[test]
+    fn a_workspace_package_key_is_read_as_text_or_is_broken() {
+        let key = |text: &str| package_key(&toml::from_str(text).unwrap(), "edition");
+        let manifest = "[workspace]\nmembers = []\n[workspace.package]\nedition = \"2024\"\n";
+        assert_eq!(key(manifest).unwrap(), "2024");
+        for text in [
+            "[workspace]\nmembers = []\n",
+            "[workspace.package]\nedition = 2024\n",
+        ] {
+            assert!(
+                matches!(key(text), Err(Failure::Broken(message)) if message == "Cargo.toml has no [workspace.package] edition"),
+                "{text}"
+            );
+        }
     }
 
     #[test]

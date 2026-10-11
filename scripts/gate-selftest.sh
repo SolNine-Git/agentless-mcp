@@ -138,8 +138,19 @@ running() {
     done
 }
 
+# kill_group PID: kill the process group of PID, unless it is this script's own group.
+kill_group() {
+    local group own
+    group=$(ps -o pgid= -p "$1" || true)
+    own=$(ps -o pgid= -p $$ || true)
+    group=${group// /}
+    if [[ -n $group && $group != "${own// /}" ]]; then
+        kill -KILL -- "-$group" 2>/dev/null || true
+    fi
+}
+
 # leader_problem: start deadline.pl on a shell with a background sleep, then SIGKILL perl. Print a
-# problem if either process still runs 2 s later, and kill both.
+# problem if either process still runs 2 s later, and kill both and the leader.
 leader_problem() {
     local pids=$scratch/leader-pids helper tries=0 started=() left
     perl "$here/deadline.pl" "$step_deadline" sh -c 'sleep 60 & echo "$$ $!" >"$1"; wait' probe "$pids" \
@@ -165,6 +176,8 @@ leader_problem() {
     done
     if [[ -n $left ]]; then
         echo "processes ${left}still run 2 s after perl died"
+        # The leader that failed to kill them is in their process group.
+        kill_group "${left%% *}"
         kill -KILL "${started[@]}" 2>/dev/null || true
     fi
 }
@@ -184,6 +197,10 @@ passes "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
 passes "tests and snapshots" cargo insta test --check --workspace --test-runner nextest
 passes "cargo deny" cargo deny check
 passes "cargo machete" "${machete[@]}"
+# The match ends at the roots, so a flag added after them in either file fails it.
+passes "CI and the cargo-deps hook run the same machete command" \
+    bash -c "grep -qE -- \"\$1\" \"\$2\" && grep -qE -- \"\$1\" \"\$3\"" agree "${machete[*]}( &&|'|\$)" \
+    .github/workflows/ci.yml .pre-commit-config.yaml
 passes "xtask layers" cargo xtask layers
 passes "xtask suppressions" cargo xtask suppressions
 passes "xtask lint-tables" cargo xtask lint-tables
@@ -462,7 +479,7 @@ git show "$io_base:crates/io/src/lib.rs" >"$scratch/io-lib.rs"
 mkdir -p .git/info
 printf 'crates/io/src/lib.rs filter=hide\n' >.git/info/attributes
 git config filter.hide.clean "cat '$scratch/io-lib.rs'"
-fails "8o a clean filter that hides a committed edit" "lint found erosion since $io_base" "${erosion[@]}" "$io_base"
+fails "8o a clean filter that hides a committed edit" "lint failed the change since $io_base" "${erosion[@]}" "$io_base"
 rm .git/info/attributes
 git config --unset filter.hide.clean
 
@@ -1254,8 +1271,9 @@ fails "24d autotests = false" "crates/kernel/tests/t.rs: cargo builds no test ta
 # 25. What only the compiler sees: a suppression that a macro builds, a file that rustc
 # reads through include_str!, a cfg that rustc does not know, and the lint level or
 # check-cfg list that would let one through. Then a build-time package that
-# crates/dependencies.toml does not list, an ignored test that a macro builds, and an
-# include_str! through a name with a line feed or through a symlink.
+# crates/dependencies.toml does not list, an ignored test that a macro builds, an
+# include_str! through a name with a line feed or through a symlink, and an include_str! in a
+# build script.
 violate
 printf '\nmod probe;\n' >>crates/kernel/src/lib.rs
 cat >crates/kernel/src/probe.rs <<'R'
@@ -1329,6 +1347,12 @@ pub const NOTES: &str = include_str!("../../../docs/link/../../crates/kernel/src
 R
 fails "25i include_str! through a symlink outside crates" \
     "crates/kernel/src/lib.rs: rustc reads evil/crates/kernel/src/limit.rs" cargo xtask ground-truth
+violate
+printf 'notes\n' >docs/build-notes.md
+printf 'fn main() {\n    let notes = include_str!("../../docs/build-notes.md");\n    assert!(!notes.is_empty());\n}\n' \
+    >crates/kernel/build.rs
+fails "25j include_str! in a build script" "crates/kernel/build.rs: rustc reads docs/build-notes.md" \
+    cargo xtask ground-truth
 
 if ((failures > 0)); then
     echo "$failures of $((bases + checks)) checks failed"

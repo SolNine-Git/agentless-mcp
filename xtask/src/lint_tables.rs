@@ -3,7 +3,7 @@ use std::path::Path;
 use toml::{Table, Value};
 
 use crate::sources::{self, Source};
-use crate::workspace::{Package, Target};
+use crate::workspace::{BUILD_SCRIPT, Package, Target};
 use crate::{Failure, repo, tool_config, verdict, workspace};
 
 const SYNTAX: &str = "syntax";
@@ -52,19 +52,9 @@ pub fn check(root: &Path) -> Result<(), Failure> {
 
 fn inherited(manifest: &Table) -> Result<Inherited, Failure> {
     Ok(Inherited {
-        edition: workspace_package_key(manifest, "edition")?,
-        rust_version: workspace_package_key(manifest, "rust-version")?,
+        edition: workspace::package_key(manifest, "edition")?,
+        rust_version: workspace::package_key(manifest, "rust-version")?,
     })
-}
-
-fn workspace_package_key(manifest: &Table, key: &str) -> Result<String, Failure> {
-    manifest
-        .get("workspace")
-        .and_then(|workspace| workspace.get("package"))
-        .and_then(|package| package.get(key))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| Failure::Broken(format!("Cargo.toml has no [workspace.package] {key}")))
 }
 
 fn manifest_problems(name: &str, own: &Table, lints: &Table) -> Vec<String> {
@@ -187,7 +177,7 @@ fn build_script_problem(name: &str, package: &Package) -> Option<String> {
     let script = package
         .targets
         .iter()
-        .find(|target| target.kind.iter().any(|kind| kind == "custom-build"));
+        .find(|target| target.kind.iter().any(|kind| kind == BUILD_SCRIPT));
     script.filter(|_| !listed.iter().any(|dir| dir == name)).map(|target| {
         format!(
             "{name}: build script {} is refused: it can set a cfg that hides code from clippy, and only {} may have one. Move the logic into the crate's code",

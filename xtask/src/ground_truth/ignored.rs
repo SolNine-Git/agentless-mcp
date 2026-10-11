@@ -57,7 +57,7 @@ pub fn problems(ignored: &[String], entries: &[Entry]) -> Vec<String> {
         ignored.join(", ")
     };
     vec![format!(
-        "the ignored tests that cargo nextest lists ({}: {names}) and the #[ignore] attributes that crates/suppressions.toml counts ({counted}) differ in number. A macro or an attribute that the token scan cannot read can add #[ignore], and a cfg can remove a test that the ledger counts. Run each test, or list each #[ignore] (lint = \"ignore\") in review",
+        "the ignored tests that cargo nextest lists ({}: {names}) and the #[ignore] attributes that crates/suppressions.toml counts ({counted}) differ in number. A macro or an attribute that the token scan cannot read can add #[ignore], and a cfg can remove a test that the ledger counts. Run each test. To skip a test under one cfg, put the cfg on the test (#[cfg(not(miri))]), or skip at run time (if cfg!(miri) {{ return; }}). To turn a test off everywhere, write #[ignore] unconditionally and list it (lint = \"ignore\") in review",
         ignored.len()
     )]
 }

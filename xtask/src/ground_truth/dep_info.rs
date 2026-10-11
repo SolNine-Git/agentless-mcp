@@ -133,7 +133,8 @@ fn comments<'a>(mut lines: impl Iterator<Item = &'a str>) -> Result<(), String> 
     }
 }
 
-// rustc writes a space in a path as `\ ` and changes no other character.
+// rustc writes a space in a path as `\ ` and changes no other character. So a name that ends in a
+// backslash joins the next input, and the `<input>:` check breaks.
 fn words(text: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut current = String::new();
@@ -156,6 +157,7 @@ mod tests {
 
     use super::{Allowed, canonical, inputs, problems};
     use crate::Failure;
+    use crate::repo::fixture::scratch;
     use crate::sources::Source;
     use crate::tokens;
     use crate::workspace::Package;
@@ -273,10 +275,7 @@ my\\ notes.md:\nCargo.toml:\n";
 
     #[test]
     fn each_input_is_canonical_through_a_symlink_and_a_missing_one_is_broken() {
-        let scratch = std::env::temp_dir().join(format!("xtask-dep-info-{}", std::process::id()));
-        if scratch.exists() {
-            std::fs::remove_dir_all(&scratch).unwrap();
-        }
+        let scratch = scratch("dep-info");
         for dir in [
             "evil/a/b",
             "evil/crates/kernel/src",

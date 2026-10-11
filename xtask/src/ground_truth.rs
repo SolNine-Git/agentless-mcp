@@ -45,8 +45,8 @@ fn problems(root: &Path) -> Result<Vec<String>, Failure> {
     Ok(problems)
 }
 
-// The checks that read what the build left: the resolved graph, the dep-info files, the diagnostics and the
-// test binaries.
+// Only after a build that compiled: the dep-info files and the diagnostics come from it, and cargo
+// nextest list would fail on the same compile error.
 fn built_problems(
     root: &Path,
     packages: &[Package],

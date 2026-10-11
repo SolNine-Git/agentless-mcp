@@ -7,7 +7,8 @@ use warnings;
 use POSIX ();
 
 my $seconds = shift @ARGV;
-# How often the leader checks for the command's exit and for the helper's death.
+# How often the leader checks for the command's exit and for the helper's death. Each command ends at
+# most one interval late.
 my $poll = 0.02;
 my $helper = $$;
 pipe(my $reader, my $writer) or die "deadline: cannot open a pipe: $!\n";

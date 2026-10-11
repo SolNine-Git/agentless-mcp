@@ -39,7 +39,7 @@ struct Listing {
     special: Vec<PathBuf>,
 }
 
-/// Scan each `.rs` file under crates/ and xtask/ without following a symlink, and report each other entry outside the allowed set, misplaced packages and targets, test files that cargo does not build, other cases of `.rs`, and refused forms.
+/// Scan each `.rs` file under crates/ and xtask/ without following a symlink, and report each other entry outside the allowed set (git-ignored data files apart), misplaced packages and targets, test files that cargo does not build, other cases of `.rs`, and refused forms.
 pub fn scan(root: &Path, packages: &[Package]) -> Result<Sources, Failure> {
     let listing = list_files(root)?;
     let ignored = ignored(root)?;
@@ -355,8 +355,9 @@ mod tests {
 
     use super::{
         Source, completeness_problems, data_problem, ignored_data, package_problems, rs_exactly,
-        rs_in_any_case, untested_problems,
+        rs_in_any_case, scan, untested_problems,
     };
+    use crate::repo::fixture::{git, scratch};
     use crate::tokens;
     use crate::workspace::{Package, Target};
 
@@ -503,6 +504,31 @@ mod tests {
         ] {
             assert!(!ignored_data(judged, &ignored), "{judged}");
         }
+    }
+
+    #[test]
+    fn the_scan_skips_the_data_files_that_git_ignores() {
+        let dir = scratch("sources-ignored");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        for sub in ["crates/kernel/src", "crates/kernel/scratch", "xtask"] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        std::fs::write(dir.join(".gitignore"), "*.swp\nscratch/\n").unwrap();
+        for file in [
+            "crates/kernel/src/.lib.rs.swp",
+            "crates/kernel/scratch/notes.txt",
+            "crates/kernel/notes.txt",
+        ] {
+            std::fs::write(dir.join(file), "").unwrap();
+        }
+        let scanned = scan(&dir, &[]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let problems = scanned.unwrap().problems;
+        let files: Vec<&str> = problems
+            .iter()
+            .map(|problem| problem.split(':').next().unwrap_or_default())
+            .collect();
+        assert_eq!(files, ["crates/kernel/notes.txt"], "{problems:?}");
     }
 
     #[test]

@@ -315,8 +315,8 @@ jobs:
           echo "GATE_BIN=$gate/.venv/bin/agentless-mcp" >> "$GITHUB_ENV"
           "$gate/.venv/bin/agentless-mcp" warmup
 
-      # On a push to main the merge base is HEAD, so policy and erosion judge the pushed range (a zero SHA: a new branch).
-      # A v* tag keeps the merge base, because the push run of each main commit already judged it.
+      # On a push to main the merge base is HEAD, so policy and erosion judge the pushed range. A new
+      # branch (zero SHA) and a v* tag keep the merge base: each main commit's push run judged it.
       - name: Gate base on a push to main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before != '0000000000000000000000000000000000000000'
         env:
@@ -345,8 +345,8 @@ jobs:
       - name: Static gates
         run: cargo xtask static-gates
 
-      # The compiler judges what the token rules cannot see: force-warned suppressions, the files rustc
-      # reads, and the cfg names.
+      # What the token rules cannot see: force-warned suppressions, the files rustc reads, the cfg names,
+      # the build-time packages, and the ignored tests.
       - name: Ground truth
         run: cargo xtask ground-truth
 

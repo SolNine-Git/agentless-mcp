@@ -324,7 +324,7 @@ fn lint(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure
     match status.code() {
         Some(0) => Ok(Vec::new()),
         Some(LINT_GATE_EXIT) => Ok(vec![format!(
-            "lint found erosion since {base}: the findings are listed above"
+            "lint failed the change since {base}: its report is above"
         )]),
         _ => Err(Failure::Broken(format!(
             "{} exited with {status}",
@@ -600,7 +600,6 @@ mod tests {
 
     const ORIGINAL: &str = "fn a() {}\n";
 
-    // A scratch repository whose one commit holds a.rs.
     fn based(name: &str) -> (PathBuf, String) {
         let dir = scratch(name);
         git(&dir, &["init", "-q", "-b", "main"]);

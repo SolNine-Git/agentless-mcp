@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use crate::workspace::BUILD_SCRIPT;
 use crate::{Failure, process};
 
 // A hang guard: far above a cold run, on a slower runner with a cold registry too.
 const CLIPPY: Duration = Duration::from_secs(60);
 const DEAD_CODE: &str = "dead_code";
-const BUILD_SCRIPT: &str = "custom-build";
 
 /// Whether a run compiles each target with the test harness.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -231,6 +231,7 @@ mod tests {
 
     use super::{Mode, Run, Target, clippy, dep_info_path, parse};
     use crate::Failure;
+    use crate::repo::fixture::scratch;
 
     const WORKSPACE: &str = "/r/xtask/Cargo.toml";
 
@@ -371,11 +372,7 @@ mod tests {
 
     #[test]
     fn the_dep_info_file_named_for_a_real_build_script_exists() {
-        let scratch =
-            std::env::temp_dir().join(format!("xtask-build-script-{}", std::process::id()));
-        if scratch.exists() {
-            std::fs::remove_dir_all(&scratch).unwrap();
-        }
+        let scratch = scratch("build-script");
         std::fs::create_dir_all(scratch.join("src")).unwrap();
         let manifest =
             "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n";

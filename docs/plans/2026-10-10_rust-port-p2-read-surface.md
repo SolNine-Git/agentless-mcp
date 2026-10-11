@@ -133,7 +133,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **orient**:
   - `health` is its own module, out of the graph service (finding B14): orphans, unused exports, hubs, the complexity summary, hotspots, and the walk budget (`src/agentless_mcp/application/graph_service.py:540-836`; `walk_budget` in `src/agentless_mcp/util/deadline.py:93-97`);
   - `cycles`, `communities`, `diagram`, and `path`.
-- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`). The ground-truth dep-info check refuses an `include_str!` of a file that is not a scanned `.rs` file, so this item needs a decision first: generate the sections into committed Rust with `cargo xtask generate` (P1 work item 2), or add a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs` with a self-test row. No such list exists today (P1 "Port constraints").
+- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`). The ground-truth dep-info check refuses an `include_str!` of a file that is not a scanned `.rs` file, so this item needs a decision first: generate the sections into committed Rust with `cargo xtask generate` (P1 work item 2), or add a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs` with a self-test row. No such list exists today (P1 R-48).
 - **capabilities** gains the read operations' limits from the same `Limit` constants (finding E6).
 - **index**: the CLI command over the `store` writer.
 - **Tests**:

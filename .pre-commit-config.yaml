@@ -149,19 +149,17 @@ repos:
         language: system
         files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml|\.?rustfmt\.toml|\.?deny(\.exceptions)?\.toml|\.agentless-mcp\.json|\.(git|rg)?ignore)$|(^|/)\.cargo/)|[^\x20-\x7e]
         pass_filenames: false
-      # deptry, for Rust: unused dependencies, licenses, advisories, and sources. cargo machete reads
-      # every manifest under crates/ and xtask/, where static-gates keeps each package, then the .rs
-      # files of each package. --no-ignore: an ignore file or a hidden directory hides no manifest.
-      # The roots replace --skip-target-dir, which skips a package in any directory named target.
+      # deptry for Rust. machete reads every manifest under crates/ and xtask/ (where static-gates keeps
+      # each package): --no-ignore, and roots instead of --skip-target-dir, which skips any dir named target.
       - id: cargo-deps
         name: cargo machete and cargo deny
         entry: bash -c 'cargo machete --no-ignore crates xtask && cargo deny check'
         language: system
         files: (?i:\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?deny(\.exceptions)?\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
-      # The compiler judges what the token rules cannot see: force-warned suppressions, the files rustc
-      # reads, and the cfg names. rustc can read any repository file through an include, so every file
-      # triggers this hook.
+      # What the token rules cannot see: force-warned suppressions, the files rustc reads, the cfg names,
+      # the build-time packages, and the ignored tests. rustc can read any repository file through an
+      # include, so every file triggers this hook.
       - id: cargo-ground-truth
         name: cargo xtask ground-truth (pre-push)
         entry: cargo xtask ground-truth

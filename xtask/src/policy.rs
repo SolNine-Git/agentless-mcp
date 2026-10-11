@@ -108,7 +108,7 @@ fn head_problems(path: &str, history: &History, reference: &Reference) -> Vec<St
         .filter(|step| !step.approved)
         .map(|step| {
             format!(
-                "{path}: commit {} changes this policy file without a `{TRAILER}: {path}` trailer. Reword that commit with the trailer, or revert its change",
+                "{path}: commit {} changes this policy file without a `{TRAILER}: {path}` trailer: an exact line in the last paragraph of the message, where each line is a trailer, in a commit with no `encoding` header and no NUL byte. Reword that commit with the trailer, or revert its change",
                 step.commit
             )
         })
@@ -250,22 +250,51 @@ fn ids(record: &str) -> Result<(String, Vec<String>), Failure> {
     Ok((id, ids.collect()))
 }
 
-// The trailer block is the message's last paragraph, never its title. A line approves a path only
-// when it is exactly `Policy-Change: <path>`, so a malformed line approves nothing.
+// The trailer block is the message's last paragraph, never its title, and each of its lines is a
+// trailer. A line approves a path only when it is exactly `Policy-Change: <path>`.
 fn trailers(object: &[u8]) -> Vec<String> {
-    let message = object
-        .windows(2)
-        .position(|pair| pair == b"\n\n")
-        .map_or(&[][..], |end| &object[end + 2..]);
+    let Some(message) = shown_message(object) else {
+        return Vec::new();
+    };
     let lines: Vec<&[u8]> = message.split(|&byte| byte == b'\n').collect();
     let paragraphs: Vec<&[&[u8]]> = lines
         .split(|line| line.iter().all(u8::is_ascii_whitespace))
         .filter(|paragraph| !paragraph.is_empty())
         .collect();
     match paragraphs.as_slice() {
-        [_title, .., last] => last.iter().copied().filter_map(approval).collect(),
+        [_title, .., last] if last.iter().all(|line| is_trailer(line)) => {
+            last.iter().copied().filter_map(approval).collect()
+        }
         _ => Vec::new(),
     }
+}
+
+// git shows a message only up to a NUL byte, and recodes it from an `encoding` header, so the raw
+// bytes of such a commit are not the message that git shows.
+fn shown_message(object: &[u8]) -> Option<&[u8]> {
+    if object.contains(&0) {
+        return None;
+    }
+    let end = object.windows(2).position(|pair| pair == b"\n\n")?;
+    let encoded = object[..end]
+        .split(|&byte| byte == b'\n')
+        .any(|line| line.starts_with(b"encoding"));
+    (!encoded).then(|| &object[end + 2..])
+}
+
+// git's trailer line: a token of ASCII letters, digits and `-`, optional blanks, then `:`. A line that
+// starts with a blank continues the trailer above it, so it is not one here.
+fn is_trailer(line: &[u8]) -> bool {
+    let token = line
+        .iter()
+        .take_while(|byte| byte.is_ascii_alphanumeric() || **byte == b'-')
+        .count();
+    let rest = &line[token..];
+    let blanks = rest
+        .iter()
+        .take_while(|byte| matches!(byte, b' ' | b'\t'))
+        .count();
+    token > 0 && rest.get(blanks) == Some(&b':')
 }
 
 fn approval(line: &[u8]) -> Option<String> {
@@ -400,7 +429,7 @@ mod tests {
         assert_eq!(
             judge(PATH, &loosened(false)),
             [
-                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer. Reword that commit with the trailer, or revert its change"
+                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer: an exact line in the last paragraph of the message, where each line is a trailer, in a commit with no `encoding` header and no NUL byte. Reword that commit with the trailer, or revert its change"
             ]
         );
         assert!(judge(PATH, &loosened(true)).is_empty());
@@ -567,7 +596,7 @@ mod tests {
         assert_eq!(
             judge(PATH, &history),
             [
-                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer. Reword that commit with the trailer, or revert its change"
+                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer: an exact line in the last paragraph of the message, where each line is a trailer, in a commit with no `encoding` header and no NUL byte. Reword that commit with the trailer, or revert its change"
             ]
         );
     }
@@ -676,6 +705,29 @@ mod tests {
             assert!(found(refused).is_empty(), "{refused:?}");
         }
         assert!(trailers(header.as_bytes()).is_empty());
+    }
+
+    #[test]
+    fn a_message_that_git_reads_another_way_approves_nothing() {
+        let header = "tree t\nparent p\nauthor a\ncommitter c\n";
+        let approves = |object: String| !trailers(object.as_bytes()).is_empty();
+        let message = "loosen\n\nPolicy-Change: clippy.toml\n";
+        assert!(approves(format!("{header}\n{message}")));
+        // git recodes a message from its encoding header, and shows it only up to a NUL byte.
+        assert!(!approves(format!("{header}encoding IBM037\n\n{message}")));
+        assert!(!approves(format!("{header}\nloosen\0\n\n{message}")));
+        let block = "Policy-Change: clippy.toml\nCo-Authored-By: t <t@invalid>\n";
+        assert!(approves(format!("{header}\nloosen\n\n{block}")));
+        for mixed in [
+            "Policy-Change: clippy.toml\n\x0b\nnot a trailer\n",
+            "The limit rises.\nPolicy-Change: clippy.toml\n",
+            "Policy-Change: clippy.toml\n more\n",
+        ] {
+            assert!(
+                !approves(format!("{header}\nloosen\n\n{mixed}")),
+                "{mixed:?}"
+            );
+        }
     }
 
     #[test]

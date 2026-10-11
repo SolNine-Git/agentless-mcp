@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::{Failure, process, repo};
+use crate::{Failure, process, repo, workspace};
 
 // A hang guard, far above the call's run time.
 const LINT_TABLE: Duration = Duration::from_secs(10);
@@ -109,8 +109,8 @@ pub fn configured(root: &Path) -> Result<Vec<Configured>, Failure> {
 
 /// Read the [workspace.package] edition of the root manifest, which every target builds with.
 pub fn edition(root: &Path) -> Result<String, Failure> {
-    let path = root.join(MANIFEST);
-    parse_edition(&repo::read(&path)?).map_err(|error| repo::broken(&path, &error))
+    let manifest: toml::Table = repo::toml(&root.join(MANIFEST))?;
+    workspace::package_key(&manifest, "edition")
 }
 
 // A lint's default level can depend on the edition: edition 2024 warns on unsafe_op_in_unsafe_fn.
@@ -259,17 +259,6 @@ fn parse_configured(text: &str) -> Result<Vec<Configured>, String> {
     Ok(configured)
 }
 
-fn parse_edition(text: &str) -> Result<String, String> {
-    let manifest: toml::Table = toml::from_str(text).map_err(|error| error.to_string())?;
-    manifest
-        .get("workspace")
-        .and_then(|workspace| workspace.get("package"))
-        .and_then(|package| package.get("edition"))
-        .and_then(toml::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| "[workspace.package] sets no edition".to_owned())
-}
-
 impl Setting {
     fn configured(self, name: String) -> Result<Configured, String> {
         let (level, priority, check_cfg) = match self {
@@ -324,7 +313,7 @@ mod tests {
 
     use super::{
         Configured, Level, Table, cfg_problems, force_warned, help, levels, parse_configured,
-        parse_edition, parse_table,
+        parse_table,
     };
 
     const HELP: &str = "
@@ -534,14 +523,6 @@ Lint groups loaded by this crate:
             .map(|arg| arg.to_str().unwrap())
             .collect();
         assert_eq!(args, ["--edition=2024", "-W", "help"]);
-        let manifest = "[workspace]\nmembers = []\n[workspace.package]\nedition = \"2024\"\n";
-        assert_eq!(parse_edition(manifest).unwrap(), "2024");
-        for text in [
-            "[workspace]\nmembers = []\n",
-            "[workspace.package]\nedition = 2024\n",
-        ] {
-            assert!(parse_edition(text).is_err(), "{text}");
-        }
     }
 
     #[test]
