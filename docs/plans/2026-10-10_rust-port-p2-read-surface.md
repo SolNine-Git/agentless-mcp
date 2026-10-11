@@ -99,7 +99,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
   - `totals` and the convergence `delta` use built-in `sum()` (`graph.py:532`, 558): `pycompat::sum_builtin`.
   - `dangling` and `incoming` are plain `+=` loops in adjacency order (`graph.py:547-551`): a plain loop in the same order.
   - The update is `(1.0 - damping) * personalization[node] + damping * (incoming[node] + dangling * personalization[node])`, with that grouping (`graph.py:553-556`).
-  - Personalization divides each seed weight by a built-in `sum()`, and falls back to a uniform share `1.0 / len(nodes)` (`graph.py:974-986`).
+  - Personalization divides each seed weight by a built-in `sum()`, and falls back to a uniform share `1.0 / len(nodes)` (`graph.py:974-985`).
   - Then `rank_order` (`graph.py:614-633`): sort by (-rank, path) with exact float comparison, then the seeds first in that order. Then `flood` (`graph.py:660-720`).
 - **`communities`** (`src/agentless_mcp/core/communities.py`): local moving in sorted node order (391). For each node:
   - its degree is subtracted from its community's total before scoring and added to the chosen community after (394, 409);
@@ -133,7 +133,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **orient**:
   - `health` is its own module, out of the graph service (finding B14): orphans, unused exports, hubs, the complexity summary, hotspots, and the walk budget (`src/agentless_mcp/application/graph_service.py:540-836`; `walk_budget` in `src/agentless_mcp/util/deadline.py:93-97`);
   - `cycles`, `communities`, `diagram`, and `path`.
-- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-160`).
+- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`).
 - **capabilities** gains the read operations' limits from the same `Limit` constants (finding E6).
 - **index**: the CLI command over the `store` writer.
 - **Tests**:
@@ -164,7 +164,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 ## Parity harness
 
 - **Goldens**: the 12 map, 27 graph, and 10 skeleton goldens. The Rust tests build the pinned snapshot with a fake `GitRead` (head `0000000f`), as `tests/characterization/test_map_goldens.py:78-86` pins it for Python.
-- **Black-box Python tests**: the tests that run the CLI as a subprocess take a driver that runs the Rust binary for read subcommands. Receipt line 2 is normalized. Count them when P2 starts. This gate is narrow: most CLI tests call the adapter in process and do not port. The goldens, the facts fixtures, Loc-Bench, and the surface diff carry the parity proof.
+- **Black-box Python tests**: the tests that run the CLI as a subprocess take a driver that runs the Rust binary for read subcommands. Receipt line 2 is normalized. At `1dc4d70` there are 35, all in `tests/unit/test_cli.py`: `TestSubprocess` (8), `TestPatchSubprocess` (21), and `TestValidateAndVoteSubprocess` (6). This gate is narrow: most CLI tests call the adapter in process and do not port. The goldens, the facts fixtures, Loc-Bench, and the surface diff carry the parity proof.
 - **Loc-Bench retrieval tier**: run on a frozen copy of the P2 build, per AGENTS.md and the loc-bench-harness. Byte-diff `ranked_files` against the stored 0.10.1 arm. The harness runs `uv run --project <dir> agentless-mcp` (loc-bench-harness `src/loc_bench_harness/agentless.py:79`), so it cannot run a Rust binary. Before P2 starts, add a binary-path option to the harness, in its own repository.
 - **Surface diff** (`docs/analysis/benchmark-methodology.md`, "The release regression gate"). The tool exists only in a session scratchpad today. Before P2 starts, commit it to `scripts/`.
   - Write the prediction first.

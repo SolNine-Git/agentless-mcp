@@ -307,7 +307,8 @@ operation accepts and requires.
 
 This v2 surface is the default. For the transition, `--surface v1` publishes
 the previous twelve per-question tools (`repo_map`, `expand_symbols`, and the
-rest) and `--surface both` publishes the union; v1 remains for one release.
+rest) and `--surface both` publishes the union. Both are deprecated, and 0.11.0
+removes them.
 `find_referencing_symbols`, `capabilities` and `history` stand alone on both
 surfaces, so the union is fifteen names rather than eighteen. The mapping
 between the surfaces is in

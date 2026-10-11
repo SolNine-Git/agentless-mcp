@@ -71,6 +71,7 @@ ENVELOPE_ARGUMENTS = {
 }
 
 MESSAGE_ARGUMENTS = {
+    "surface_v1_deprecated": {"surface": "v1"},
     "server_no_roots": {},
     "server_root_required": {"roots": "/srv/app, /srv/other"},
     "unknown_operation": {
@@ -113,6 +114,7 @@ MESSAGE_ARGUMENTS = {
     "map_file_unreached": {"count": 9},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
     "explain_tie": {"count": 2, "target": "shared"},
+    "communities_not_converged": {},
     "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},

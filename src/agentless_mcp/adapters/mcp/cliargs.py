@@ -20,8 +20,6 @@ import sys
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import Literal
 
@@ -29,30 +27,19 @@ from agentless_mcp.application.repo_context import resolved_allowlist
 from agentless_mcp.core import cache, grammars, selfrestart
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import SecurityRefusal
-
-# The distribution name from pyproject, which the installed metadata is the only
-# source of truth for. It equals the server's advertised name today by
-# coincidence, not by rule.
-DISTRIBUTION_NAME = "agentless-mcp"
-
-# Announced in the initialize handshake when the metadata is absent, which
-# happens only in a source tree that was never installed. Not an empty string:
-# a blank version reads as a server that answered rather than one that could
-# not look itself up.
-UNKNOWN_VERSION = "0+unknown"
+from agentless_mcp.util.version import DISTRIBUTION_NAME, UNKNOWN_VERSION, package_version
 
 
 def server_version() -> str:
     """The version the initialize handshake advertises for this server."""
-    try:
-        return distribution_version(DISTRIBUTION_NAME)
-    except PackageNotFoundError:
+    version = package_version()
+    if version == UNKNOWN_VERSION:
         sys.stderr.write(
             f"agentless-mcp-server: no installed metadata for {DISTRIBUTION_NAME}, so the "
             f"initialize handshake will report version {UNKNOWN_VERSION}. This is a source "
             "tree that was never installed; install it to report a real version.\n"
         )
-        return UNKNOWN_VERSION
+    return version
 
 
 # The transports this server will start. stdio is the default because a client
@@ -97,6 +84,14 @@ SURFACE_V2: Literal["v2"] = "v2"
 SURFACE_BOTH: Literal["both"] = "both"
 SURFACES = (SURFACE_V1, SURFACE_V2, SURFACE_BOTH)
 Surface = Literal["v1", "v2", "both"]
+
+
+def warn_if_deprecated(surface: Surface) -> None:
+    """Warn on stderr when ``surface`` publishes the deprecated v1 tools."""
+    if surface != SURFACE_V2:
+        sys.stderr.write(
+            f"agentless-mcp-server: {MESSAGES.surface_v1_deprecated.format(surface=surface)}\n"
+        )
 
 
 def _root_lines(text: str) -> list[Path]:
@@ -462,7 +457,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             "which tool surface to publish: v2 (the default) is the six "
             "consolidated intent-shaped tools, v1 is the original twelve for "
             "un-migrated operators, both publishes the union for a transition "
-            "window"
+            "window. v1 and both are deprecated and are removed in 0.11.0"
         ),
     )
     parser.add_argument(

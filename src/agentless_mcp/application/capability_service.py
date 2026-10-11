@@ -3,7 +3,6 @@
 import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +35,7 @@ from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_WALK_FILES,
 )
+from agentless_mcp.util.version import package_version
 
 # What a cold language reports while this process's own background warm is
 # still running. :func:`grammars.loaded_capabilities` cannot say it: it
@@ -138,7 +138,7 @@ def build_capability_report(
         else ""
     )
     return CapabilityReport(
-        version=_distribution_version(),
+        version=package_version(),
         pack_version=grammars.pack_version(),
         grammar_cache=str(grammars.cache_dir()),
         cache_status=status,
@@ -229,14 +229,6 @@ def _roots_line(roots: tuple[str, ...] | None) -> str:
     if roots is None:
         return UNRESTRICTED_ROOTS
     return ", ".join(roots) or "none configured"
-
-
-def _distribution_version() -> str:
-    """Return the installed package version, or a placeholder outside one."""
-    try:
-        return metadata.version("agentless-mcp")
-    except metadata.PackageNotFoundError:
-        return "unknown"
 
 
 def _effective_config(config: projectconfig.ProjectConfig) -> tuple[tuple[str, object], ...]:

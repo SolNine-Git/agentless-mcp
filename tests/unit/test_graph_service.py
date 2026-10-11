@@ -11,6 +11,7 @@ import json
 import math
 import re
 from dataclasses import replace
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +19,8 @@ import pytest
 from agentless_mcp.application import graph_service, render
 from agentless_mcp.application.graph_service import DiagramRequest, GraphService, PathOptions
 from agentless_mcp.application.repo_context import resolve_repo
-from agentless_mcp.core import clones, complexity, fileparse, resolve
+from agentless_mcp.core import clones, communities, complexity, fileparse, resolve
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import deadline
 from agentless_mcp.util.errors import AgentlessError, LanguageUnavailable, UnmeasurableSource
 
@@ -644,6 +646,23 @@ class TestCommunities:
 
         assert "modularity 0.720 at resolution 0.25" in listed
         assert "modularity at resolution 1: 0.160" in listed
+
+    def test_a_settled_partition_says_so_and_carries_no_note(self, graphs, repo):
+        report = graphs.communities(repo)
+
+        assert report.as_dict()["converged"] is True
+        assert MESSAGES.communities_not_converged not in render.render_communities(report)
+
+    def test_a_partition_cut_off_by_the_pass_bound_is_labeled_partial(
+        self, graphs, repo, monkeypatch
+    ):
+        one_pass = partial(communities.detect_communities, max_passes=1)
+        monkeypatch.setattr(communities, "detect_communities", one_pass)
+
+        report = graphs.communities(repo)
+
+        assert report.as_dict()["converged"] is False
+        assert MESSAGES.communities_not_converged in render.render_communities(report)
 
     def test_an_unscaled_score_is_not_printed_twice(self, graphs, repo):
         listed = render.render_communities(graphs.communities(repo))

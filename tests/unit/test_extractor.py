@@ -121,6 +121,13 @@ class TestFunctionExtraction:
         assert fetch.is_async is True
         assert "async def" in fetch.signature
 
+    @pytest.mark.parametrize("prefix", ["r", "u", "b", "f", "rb", "Rb"])
+    @pytest.mark.parametrize("quote", ['"', "'", '"""', "'''"])
+    def test_a_prefixed_docstring_loses_its_quotes(self, prefix, quote):
+        source = f"def documented():\n    {prefix}{quote}Doc.{quote}\n"
+        (symbol,) = make_extractor().extract_from_source(source, "python", "test.py")
+        assert symbol.docstring == "Doc."
+
 
 NESTED_PYTHON = """\
 def outer():
@@ -280,6 +287,23 @@ class Color(StrEnum):
         symbols = ext.extract_from_source(source, "python", "test.py")
         color = next(s for s in symbols if s.name == "Color")
         assert color.kind == SymbolKind.ENUM
+
+    @pytest.mark.parametrize(
+        ("bases", "kind"),
+        [
+            ("ProtocolError", SymbolKind.CLASS),
+            ("Enumerable", SymbolKind.CLASS),
+            ("typing.Protocol", SymbolKind.PROTOCOL),
+            ("Protocol[T]", SymbolKind.PROTOCOL),
+            ("enum.Enum", SymbolKind.ENUM),
+            ("enum.IntEnum", SymbolKind.ENUM),
+            ("str, Enum", SymbolKind.ENUM),
+        ],
+    )
+    def test_the_kind_compares_whole_base_names(self, bases, kind):
+        source = f"class Sample({bases}):\n    pass\n"
+        (sample,) = make_extractor().extract_from_source(source, "python", "test.py")
+        assert sample.kind == kind
 
 
 class TestEdgeCases:

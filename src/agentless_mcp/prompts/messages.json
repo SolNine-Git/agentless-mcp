@@ -1,4 +1,5 @@
 {
+  "surface_v1_deprecated": "--surface {surface} publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping.",
   "server_no_roots": "no repositories are served: this server was started with no roots. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line. A root advertised by the client can only select among the roots the server is configured with; it cannot add one.",
   "server_root_required": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: {roots}",
   "unknown_operation": "{tool} has no operation named '{operation}'. Valid operations are: {operations}. Retry with one of those.",
@@ -22,6 +23,7 @@
   "map_file_unreached": "... {count} symbols in this file; the focus has no reference path to it, so no budget shows them",
   "refs_target_unresolved": "{target} resolves to no symbol; these are the references to the name {name}, wherever it is defined",
   "explain_tie": "ambiguous: {count} definitions match {target} equally; this explains the first in path order. Pass a stable id to explain another.",
+  "communities_not_converged": "note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer",
   "stable_ids_pattern": "stable ids: {pattern}",
   "overview_stable_ids": "stable ids: {pattern} -- nested symbols qualify as Class.method",
   "slice_range_beyond_file": "unsatisfiable: line range {start}-{end} is beyond {path} ({total} lines)",

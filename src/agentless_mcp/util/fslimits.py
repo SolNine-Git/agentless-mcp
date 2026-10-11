@@ -207,8 +207,8 @@ def bounded_walk(
     ordinary container image. It cannot yield either, because the cycle it is
     there to stop has the same signature. So it logs the pruned directory at
     warning level and carries on, which is the only report an iterator with no
-    second channel can make. A directory that cannot be stat'ed is skipped and
-    logged the same way.
+    second channel can make. A directory or a file that cannot be stat'ed is
+    skipped and logged the same way.
 
     Gitignore awareness lives in :mod:`agentless_mcp.core.treewalk`, not here:
     this function is the security bound, and a bound that consults repository
@@ -247,11 +247,8 @@ def bounded_walk(
 
         for name in sorted(filenames):
             candidate = current / name
-            if not file_stays_inside(candidate, resolved_root):
-                continue
-
-            relative = candidate.relative_to(resolved_root)
-            if include is not None and not include(relative):
+            size = _served_size(candidate, resolved_root, include)
+            if size is None:
                 continue
 
             files_yielded += 1
@@ -262,7 +259,7 @@ def bounded_walk(
                 )
                 raise WalkBoundExceeded(message)
 
-            bytes_yielded += _size_of(candidate)
+            bytes_yielded += size
             if bytes_yielded > max_bytes:
                 message = (
                     f"walk refused: more than {max_bytes} bytes under {resolved_root}; "
@@ -273,12 +270,20 @@ def bounded_walk(
             yield candidate
 
 
+def _served_size(candidate: Path, root: Path, include: Callable[[Path], bool] | None) -> int | None:
+    if not file_stays_inside(candidate, root):
+        return None
+    if include is not None and not include(candidate.relative_to(root)):
+        return None
+    return file_size(candidate)
+
+
 def _claim_directory(directory: Path, seen: set[tuple[int, int]]) -> bool:
     """Record ``directory`` by (device, inode); False when it was seen before.
 
-    This is the only place in the module that drops files from an answer
-    without raising, so both ways of returning False name the directory in a
-    warning. A walk that came back short leaves a trace of where it stopped.
+    Both ways of returning False name the directory in a warning, as
+    :func:`file_size` names a file it drops. A walk that came back short leaves
+    a trace of where it stopped.
     """
     try:
         info = directory.stat()
@@ -315,9 +320,10 @@ def file_stays_inside(candidate: Path, root: Path) -> bool:
     return candidate.is_file()
 
 
-def _size_of(path: Path) -> int:
-    """Return the file size, or 0 when it cannot be stat'ed."""
+def file_size(path: Path) -> int | None:
+    """Return the file size, or None after a warning when it cannot be stat'ed."""
     try:
         return path.stat().st_size
-    except OSError:
-        return 0
+    except OSError as exc:
+        logger.warning("walk skipped %s: %s", path, exc)
+        return None

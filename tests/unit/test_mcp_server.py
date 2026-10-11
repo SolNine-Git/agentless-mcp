@@ -33,7 +33,6 @@ from agentless_mcp.adapters.mcp.cliargs import (
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENCY,
     DEFAULT_RECACHE_GRACE_SECONDS,
-    DISTRIBUTION_NAME,
     MAX_CONCURRENCY,
     MIN_CONCURRENCY,
     SURFACE_BOTH,
@@ -53,16 +52,18 @@ from agentless_mcp.adapters.mcp.server import (
     effective_client_roots,
 )
 from agentless_mcp.adapters.mcp.server import build_server as build_surface_server
+from agentless_mcp.application.capability_service import build_capability_report
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.map_service import MapService
-from agentless_mcp.application.repo_context import resolved_allowlist
+from agentless_mcp.application.repo_context import resolve_repo, resolved_allowlist
 from agentless_mcp.application.symbol_service import SymbolService, in_metric_scope
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import cache, projectconfig
 from agentless_mcp.prompts import PARAMETER_DESCRIPTIONS
-from agentless_mcp.util import deadline
+from agentless_mcp.util import deadline, version
 from agentless_mcp.util.errors import CallStopped, SecurityRefusal
+from agentless_mcp.util.version import DISTRIBUTION_NAME
 
 
 def build_server(handlers):
@@ -262,6 +263,25 @@ class TestAutoIndexTrigger:
         monkeypatch.setattr(cache, "start_auto_index", self._must_not_start)
         handlers = ToolHandlers([one_repo], services)
         handlers.refresh_in_background(handlers.resolve(None, no_cache=True), no_cache=True)
+
+    def test_a_tool_call_arms_the_refresh_off_the_event_loop(self, services, one_repo, monkeypatch):
+        armed_on = []
+
+        def record(root, extractor, *, measure, git=cache.NO_GIT_STATE):
+            armed_on.append(threading.current_thread())
+
+        monkeypatch.setattr(cache, "start_auto_index", record)
+        server = build_server(ToolHandlers([one_repo], services))
+
+        async def go():
+            async with Client(server) as client:
+                await client.call_tool("list_dir", {})
+            return threading.current_thread()
+
+        loop_thread = asyncio.run(go())
+
+        assert armed_on
+        assert loop_thread not in armed_on
 
     @staticmethod
     def _must_not_start(root, extractor, *, measure, git=cache.NO_GIT_STATE):
@@ -1583,12 +1603,20 @@ class TestHandshakeVersion:
         assert server.version != fastmcp.__version__
 
     def test_missing_metadata_is_announced_rather_than_blank(self, capsys, monkeypatch):
-        def absent(name):
-            raise importlib.metadata.PackageNotFoundError(name)
-
-        monkeypatch.setattr(cliargs, "distribution_version", absent)
-        assert server_version() == cliargs.UNKNOWN_VERSION
+        monkeypatch.setattr(version, "distribution_version", self._absent)
+        assert server_version() == version.UNKNOWN_VERSION
         assert DISTRIBUTION_NAME in capsys.readouterr().err
+
+    def test_the_handshake_and_the_capability_report_share_one_fallback(
+        self, services, one_repo, monkeypatch
+    ):
+        monkeypatch.setattr(version, "distribution_version", self._absent)
+        report = build_capability_report(resolve_repo(one_repo, None), services.extractor)
+        assert report.version == server_version() == version.UNKNOWN_VERSION
+
+    @staticmethod
+    def _absent(name):
+        raise importlib.metadata.PackageNotFoundError(name)
 
 
 class TestAnalyzeStructure:

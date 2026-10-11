@@ -148,7 +148,7 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 
 ### 7. `store`: the `tags.db` reader (decision 9)
 
-- **`TagsDb::open(root) -> Option<TagsDb>`**: opens the Python cache at the path `src/agentless_mcp/util/cachedir.py` computes, read-only (`mode=ro`, `query_only`). It returns `None` for a missing file, a `meta` schema other than 16 (`src/agentless_mcp/core/cache.py:185`), or a read error, and the caller reports the `no_tag_cache` gap. SQLite WAL readers do not wait for the writer.
+- **`TagsDb::open(root) -> Option<TagsDb>`**: opens the Python cache at the path `src/agentless_mcp/util/cachedir.py` computes, read-only (`mode=ro`, `query_only`). It returns `None` for a missing file, a `meta` schema other than 17 (`src/agentless_mcp/core/cache.py:185`), or a read error, and the caller reports the `no_tag_cache` gap. SQLite WAL readers do not wait for the writer.
 - **Reads**: the `files` rows (path, sha256) and the `blocks` rows of each file (`cache.py:2117-2220`). `blocks_for(path, text)` returns the stored blocks when the row's sha256 equals the text's. Otherwise the caller measures the text in memory and writes nothing, as `cache.py:597-606` does.
 - **No writer in P1.** The P2 store adds the Rust file, the writer, plan, and eviction.
 - **Tests**:
@@ -262,7 +262,7 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 |---|---|
 | The tokenizer differs from CPython on a rare form | The corpus and the fuzz job find it; each mismatch becomes a fixture. The gate needs zero differences. |
 | The latency gate fails | Profile before changing design. The likely costs are the repository listing and reading every in-scope file for the clone index (`lint_service.py:359-373`). |
-| Histogram pairing differs from SequenceMatcher on a real edit | Counts never change. A different reported copy is accepted (decision 6) only for a fixture on the accepted list, and the move-plus-copy test pins the chosen case. |
-| A Python change bumps the `tags.db` schema during P1 to P3 | The reader accepts schema 16 only and reports `no_tag_cache` otherwise, so the hook stays safe. Overview rule 7 forbids the bump without a matching reader change. |
+| Histogram pairing differs from SequenceMatcher on a real edit | Counts never change. A different reported copy is accepted (decision 6) only for a fixture on the accepted list, and the move-plus-copy test pins the chosen case. Python's `SequenceMatcher` keeps `autojunk` on: in a new text of 200 or more lines, a line that makes up more than 1% of it leaves the match index, and Histogram has no such rule. A fixture of 200 or more lines with many brace-only lines pins that case. |
+| A Python change bumps the `tags.db` schema during P1 to P3 | The reader accepts schema 17 only and reports `no_tag_cache` otherwise, so the hook stays safe. Overview rule 7 forbids the bump without a matching reader change. |
 | `Flat` memory is too high on large files | It is about 22 bytes per node (estimate); P1 records it. If needed, drop `Flat` for files over a size and walk the `Tree` instead. |
 | The language-pack crate's static mode does not build on macOS | Fall back to per-grammar crates at the same revisions, and collect each grammar's license from its pinned source. |

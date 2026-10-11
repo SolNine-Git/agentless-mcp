@@ -904,6 +904,7 @@ def cases():
         standard_modularity=0.5,
         resolution=1.0,
         files=2,
+        converged=True,
     )
     cycle = render.CycleRow(files=("core.py", "app.py"))
     cycle_report = render.CycleReport(cycles=(cycle,), total=1, limit=10)

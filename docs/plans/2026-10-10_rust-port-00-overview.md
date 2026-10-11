@@ -1,6 +1,6 @@
 # Rust Port of agentless-mcp: Overview
 
-**Date**: 2026-10-10 | **Status**: approved design; phase plans revised after the validation at `1dc4d70`; nothing built | **Design page**: [agentless-rs Blueprint](https://claude.ai/artifact/Qo75kbiyP12HhMN1E17Nsp) (revision 4, private) | **Phase plans**: [P0](2026-10-10_rust-port-p0-groundwork.md), [P1](2026-10-10_rust-port-p1-per-write-path.md), [P2](2026-10-10_rust-port-p2-read-surface.md), [P3](2026-10-10_rust-port-p3-write-surface.md), [P4](2026-10-10_rust-port-p4-mcp-and-retirement.md)
+**Date**: 2026-10-10 | **Status**: approved design; P0a merged (PR #60); P0b in progress on `feat/rust-port` | **Design page**: [agentless-rs Blueprint](https://claude.ai/artifact/Qo75kbiyP12HhMN1E17Nsp) (revision 4, private) | **Phase plans**: [P0](2026-10-10_rust-port-p0-groundwork.md), [P1](2026-10-10_rust-port-p1-per-write-path.md), [P2](2026-10-10_rust-port-p2-read-surface.md), [P3](2026-10-10_rust-port-p3-write-surface.md), [P4](2026-10-10_rust-port-p4-mcp-and-retirement.md)
 
 ## Problem Statement
 
@@ -17,10 +17,10 @@ The owner chose to rewrite every layer, the MCP server included, in Rust as one 
 | 3 | The four defects the goldens pin | Fixed in Python first, each with a predicted golden diff. |
 | 4 | Grammars | All 22 linked into the binary. A new language comes in a release as one table row, its grammar, and its queries. A run-time path waits until users ask for grammars the project will not ship. |
 | 5 | Windows | Not supported for now. Linux and macOS, as CI runs today. |
-| 6 | Clone pairing | The `similar` crate's `Algorithm::Histogram`, pinned to an exact version. No golden depends on the matcher (measured). |
+| 6 | Clone pairing | The `similar` crate's `Algorithm::Histogram`, pinned to an exact version. The lint golden's one `clone_delta` row runs through the matcher (`erosion.py:787`, keyed at 857), and it is matcher-invariant: rebuilt with `SequenceMatcher` (autojunk on and off) and with `git diff --diff-algorithm=histogram`, the lint goldens are byte-identical (measured 2026-10-10). Python keeps `autojunk` on, and Histogram has no such rule (P1 risks). |
 | 7 | Community hash and pass count | Deleted. An unconverged grouping is shown as a one-line note. |
 | 8 | Test and fixture paths | Fixtures (and `testdata`) skipped by every check. Tests skipped by `health`, `clone_delta`, and `contract_drift`. Tests kept for `complexity_delta`. |
-| 9 | The cache the Rust hook reads in P1 to P3 | The Python `tags.db` (schema 16), read-only. A missing file or another schema version gives the `no_tag_cache` gap, as the Python hook form does. The Rust store's own file arrives in P2 for the Rust CLI, and the hook moves to it in P4, when the Rust MCP server fills it. |
+| 9 | The cache the Rust hook reads in P1 to P3 | The Python `tags.db` (schema 17, which 0.10.1 writes), read-only. A missing file or another schema version gives the `no_tag_cache` gap, as the Python hook form does. The Rust store's own file arrives in P2 for the Rust CLI, and the hook moves to it in P4, when the Rust MCP server fills it. |
 | 10 | Version of the Rust release | `0.11.0-rc.1` in Cargo, which maturin publishes as the PyPI pre-release `0.11.0rc1`. Plain installs skip a pre-release, so they stay on Python 0.10.1 while the deployed surfaces opt in. `0.11.0` follows when the P4 gates pass and the trial is clean. `1.0.0` waits for more validation. |
 
 ## Architecture
@@ -79,7 +79,7 @@ The proposed P1 latency thresholds are p50 50 ms or less and p95 100 ms or less 
 
 ## Baselines (measured 2026-10-10)
 
-The hook figures come from a frozen copy of `1dc4d70` (`git archive`, then `uv sync --frozen`) and a clone of mcp-local at `f17af96`. The payload is a Write of `src/readers/document_readers.py` (2,225 lines) with one 4-line function appended. Each figure is 30 runs of `python3 contrib/hooks/agentless_erosion_gate.py` with `AGENTLESS_EROSION_GATE=advisory` and an isolated `XDG_CACHE_HOME`. P1 commits the method as `scripts/hook_latency.py`.
+The hook figures come from a frozen copy of `1dc4d70` (`git archive`, then `uv sync --frozen`) and a clone of mcp-local at `f17af96`. The payload is a Write of `src/readers/document_readers.py` (2,225 lines) with one 4-line function appended. Each figure is 30 runs of `python3 contrib/hooks/agentless_erosion_gate.py` with `AGENTLESS_EROSION_GATE=advisory` and an isolated `XDG_CACHE_HOME`. P0d commits the method as `scripts/hook_latency.py` (D8), and P1 scores its latency gate with the same script.
 
 | Figure | Value (median / p95) | Commit |
 |---|---|---|
@@ -96,4 +96,6 @@ The hook figures come from a frozen copy of `1dc4d70` (`git archive`, then `uv s
 
 ## Evidence
 
-The design page holds the 79 review findings (ids A1-F15, S1-S2), the 47 Codex review findings (V1-V47) and their resolutions, the parity ledger, and the alternatives that were measured and rejected. The phase plans cite those ids. The plan validation of 2026-10-10 (a Claude `validate` run at `1dc4d70`, each finding re-checked against the code) produced decision 9 and the revisions in each phase plan.
+The design page holds the 79 review findings (ids A1-F15, S1-S2), the 47 Codex review findings (V1-V47) and their resolutions, the parity ledger, and the alternatives that were measured and rejected. The phase plans cite those ids. The plan validation of 2026-10-10 (a Claude `validate` run at `1dc4d70`, each finding re-checked against the code) produced decision 9 and the revisions in each phase plan. A second validation the same day (at `7c816e3`) corrected decision 6, two citations, the P0 status, and P0d (D8).
+
+Every Python line citation in these plans is at `1dc4d70` unless it names another commit. Read one with `git show 1dc4d70:<path>`: P0a and P0b moved the code since.

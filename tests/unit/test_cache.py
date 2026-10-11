@@ -49,7 +49,12 @@ from agentless_mcp.core import (
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import symbol_stable_id
 from agentless_mcp.util import cachedir, filelock, fslimits, platforms
-from agentless_mcp.util.errors import CacheLocked, OperationFailed, UnmeasurableSource
+from agentless_mcp.util.errors import (
+    CacheLocked,
+    OperationFailed,
+    UnmeasurableSource,
+    WalkBoundExceeded,
+)
 
 CORE = '''\
 """Core."""
@@ -2981,9 +2986,9 @@ class TestCachedMetrics:
         assert metric_row(report.database, "app.py")[5] > 0
 
 
-# A v15 database whose core.py rows would pass this build's reuse check, stamp and all.
-def _seed_version_15(repo):
-    database = _seed_reusable_database(repo, 15)
+# An older database whose core.py rows would pass this build's reuse check, stamp and all.
+def _seed_measured_database(repo, version):
+    database = _seed_reusable_database(repo, version)
     with closing(sqlite3.connect(database, isolation_level=None)) as connection:
         connection.execute(
             "INSERT INTO file_metrics (file_id, stamp, language, units_reason, unit_count, "
@@ -2995,26 +3000,53 @@ def _seed_version_15(repo):
     return database
 
 
-class TestTheSixteenthSchema:
-    def test_a_version_15_database_is_rebuilt_rather_than_reused(self, repo, extractor):
-        database = _seed_version_15(repo)
+class TestAnOlderMeasuredSchema:
+    @pytest.mark.parametrize("version", [15, 16])
+    def test_the_database_is_rebuilt_rather_than_reused(self, repo, extractor, version):
+        database = _seed_measured_database(repo, version)
 
         report = cache.build_index(repo, extractor, measure=in_metric_scope)
 
-        assert report.reused == 0, "rows from schema 15 were carried over"
+        assert report.reused == 0, f"rows from schema {version} were carried over"
         with closing(sqlite3.connect(database)) as connection:
             names = {row[0] for row in connection.execute("SELECT name FROM tags")}
-            assert _read_schema_version(connection) == cache.SCHEMA_VERSION == 16
+            assert _read_schema_version(connection) == cache.SCHEMA_VERSION == 17
         assert STALE_TAG_NAME not in names
         assert metric_row(database, "core.py")[3] > 0
 
-    def test_a_reader_discards_a_version_15_database(self, repo, extractor):
-        database = _seed_version_15(repo)
+    @pytest.mark.parametrize("version", [15, 16])
+    def test_a_reader_discards_the_database(self, repo, extractor, version):
+        database = _seed_measured_database(repo, version)
 
         source = cache.open_source(repo, extractor, tree_oid=None)
 
         assert "schema" in source.receipt
         assert not database.exists()
+
+
+class TestAFailedOpenLeaksNoConnection:
+    def test_a_generation_walk_that_fails_closes_the_connection(self, repo, extractor, monkeypatch):
+        cache.build_index(repo, extractor, measure=in_metric_scope)
+        opened = []
+        connect = cache._connect
+
+        def spy(database):
+            opened.append(connect(database))
+            return opened[-1]
+
+        def refuse(root, tree_oid):
+            message = "the manifest walk hit its file bound"
+            raise WalkBoundExceeded(message)
+
+        monkeypatch.setattr(cache, "_connect", spy)
+        monkeypatch.setattr(cache, "repo_generation", refuse)
+
+        with pytest.raises(WalkBoundExceeded):
+            cache.open_source(repo, extractor, tree_oid=None)
+
+        (connection,) = opened
+        with pytest.raises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
 
 
 def _json_without_receipt(output):

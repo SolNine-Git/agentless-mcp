@@ -22,7 +22,7 @@ from agentless_mcp.util.errors import UnmeasurableSource
 
 # Bump on any change to what `complexity.measure` or `clones.file_blocks` returns for one
 # text: their tables, SLOC rules, normalizer, token count, or messages. test_fileparse pins it.
-METRICS_ALGORITHM: Final = 1
+METRICS_ALGORITHM: Final = 2
 
 _Metric = TypeVar("_Metric")
 

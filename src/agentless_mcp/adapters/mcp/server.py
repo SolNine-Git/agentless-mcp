@@ -71,7 +71,6 @@ from agentless_mcp.adapters.mcp.cliargs import (
     DEFAULT_CALL_LIMIT_SECONDS,
     DEFAULT_MAX_CONCURRENCY,
     DEFAULT_RECACHE_GRACE_SECONDS,
-    DISTRIBUTION_NAME,
     SURFACE_BOTH,
     SURFACE_V1,
     SURFACE_V2,
@@ -82,6 +81,7 @@ from agentless_mcp.adapters.mcp.cliargs import (
     http_binding,
     parse_args,
     server_version,
+    warn_if_deprecated,
 )
 from agentless_mcp.application import envelope, render
 from agentless_mcp.application.capability_service import (
@@ -133,6 +133,7 @@ from agentless_mcp.prompts import MESSAGES, PARAMETER_DESCRIPTIONS, TOOL_DESCRIP
 from agentless_mcp.util import bounds, deadline, fslimits, textsafe
 from agentless_mcp.util.errors import AgentlessError, OperationFailed, SecurityRefusal
 from agentless_mcp.util.tokens import TokenCounter
+from agentless_mcp.util.version import DISTRIBUTION_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -1213,7 +1214,8 @@ def build_server(
             # Resolving runs the git snapshot to its 5 s bound and opens the tag
             # cache, so it leaves the loop for the same reason a handler does.
             ctx = await offload(handlers.resolve, repo_root, roots, no_cache=no_cache)
-            handlers.refresh_in_background(ctx, no_cache=no_cache)
+            # Arming walks the repository's file stats and opens SQLite, so it leaves the loop too.
+            await offload(handlers.refresh_in_background, ctx, no_cache=no_cache)
             try:
                 yield ctx
             finally:
@@ -1880,6 +1882,7 @@ def _register_v2(
 def serve(argv: Sequence[str] | None, services: ServerServices) -> int:
     """Start the server. Returns only when the transport closes."""
     args = parse_args(argv)
+    warn_if_deprecated(args.surface)
     handlers = ToolHandlers(
         resolved_allowlist(args.root),
         services,

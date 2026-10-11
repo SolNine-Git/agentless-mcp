@@ -1,6 +1,6 @@
 # Rust Port, Phase 0: Groundwork
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
+**Date**: 2026-10-10 | **Status**: P0a merged (PR #60, `9bb51ac`); P0b in progress; P0c and P0d not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
 
 ## Goal
 
@@ -11,9 +11,9 @@ Make the Python build correct before it becomes the parity base, release it, and
 | Part | Branch | Content |
 |---|---|---|
 | P0a | `fix/erosion-followups` | Fixes to the erosion features that 0.10.0 shipped. |
-| P0b | `fix/pre-port-defects` | Defects that predate this branch, the approved deprecations, and the grammar-pin decision (D1 runs before P0b merges). |
+| P0b | `feat/rust-port` | Defects that predate this branch, the approved deprecations, and the grammar-pin decision (D1 runs before P0b merges). |
 | P0c | release | Python 0.10.1, the parity base and the gate binary. |
-| P0d | `feat/rust-workspace` | The workspace, `kernel`, CI, and the gates. |
+| P0d | `feat/rust-port` | The workspace, `kernel`, CI, and the gates. |
 
 ## P0a: Erosion-check fixes (`fix/erosion-followups`)
 
@@ -65,7 +65,7 @@ Make the Python build correct before it becomes the parity base, release it, and
 - Every golden diff was predicted; A1 to A3 predict none.
 - `lint --since d7f0c52` shows no fixture warning.
 
-## P0b: Pre-port defects and deprecations (`fix/pre-port-defects`)
+## P0b: Pre-port defects and deprecations (`feat/rust-port`)
 
 Before each item, write the predicted golden diff into the pull request description: list the golden files and the lines expected to change. Regenerate with each module's `regenerate()` only after the prediction is written. A diff that was not predicted stops the item.
 
@@ -86,16 +86,21 @@ Before each item, write the predicted golden diff into the pull request descript
 ### B3. One owner name for a Rust impl (decision 3)
 
 - `extractor.py:3812-3813` names the owner with the whole type text (`Foo<T>`). `src/agentless_mcp/core/complexity.py:408-412` takes the first `type_identifier` (`Foo`).
-- Change: one function in the extractor computes the owner from the impl's `type` field (the first `type_identifier`). The complexity code imports it, which the one-parse layer contract permits (complexity sits above extractor).
-- Tests: `impl<T> Foo<T>`, `impl Trait for Foo<T>`, `impl<'a> Foo<'a>`, and a plain `impl Foo`.
+- Change: one function in the extractor computes the owner from the impl's `type` field: the first `type_identifier`, else the first `primitive_type`, so `impl Trait for i32` keeps its owner `i32`. The complexity code imports it, which the one-parse layer contract permits (complexity sits above extractor).
+- Tests: `impl<T> Foo<T>`, `impl Trait for Foo<T>`, `impl<'a> Foo<'a>`, `impl Trait for i32`, and a plain `impl Foo`. The extractor's owner and the complexity unit's owner agree in each case.
 - Prediction: stable ids of methods in generic impls change from `Foo<T>.bar` to `Foo.bar`. List each such fixture method.
 
 ### B4. Java records set a scope (decision 3)
 
 - The Java row (`extractor.py:403-414`) lacks `record_declaration` and `compact_constructor_declaration`; `complexity.py:623-640` has both.
 - Change: add `record_declaration` to the class node types and `compact_constructor_declaration` to the function node types. Check that the record body shape is handled by the class extractor.
-- Tests: a nested record (`class A { record R(int x) { void m() {} } }`) gives symbol parent `A.R` and unit `A.R.m`; a compact constructor is a symbol.
+- Tests: in a nested record (`class A { record R(int x) { void m() {} } }`), `R` has parent `A`, and `m` and the compact constructor have parent `R`. The extractor names only the innermost type as the owner, for every nested Java class, while complexity names the chain (`A.R.m`). That difference predates B4 and stays open.
 - Prediction: Java fixtures with records gain symbols.
+
+### B1 to B4: cache versions
+
+- B1 to B4 change stored rows without changing their shape, so `SCHEMA_VERSION` goes from 16 to 17 (`src/agentless_mcp/core/cache.py:185`). B3 changes the complexity unit of an `impl` on a primitive type, so `METRICS_ALGORITHM` goes from 1 to 2 (`src/agentless_mcp/core/fileparse.py:25`).
+- Tests: a version 15 or 16 database is rebuilt, and a reader discards it.
 
 ### B5. Communities: delete the hash, show a partial grouping (decision 7)
 
@@ -163,7 +168,7 @@ Before each item, write the predicted golden diff into the pull request descript
 - Install it as the gate binary: `uv tool install agentless-mcp==0.10.1`.
 - Freeze a copy of the 0.10.1 build without `.git` and `.venv`. It is the parity base for every later phase.
 
-## P0d: Workspace and gates (`feat/rust-workspace`)
+## P0d: Workspace and gates (`feat/rust-port`)
 
 ### D1. Pin the grammar sources (runs before P0b merges)
 
@@ -173,6 +178,7 @@ Before each item, write the predicted golden diff into the pull request descript
 - Compare the grammar revisions one by one against the Python wheel's. Write the list into the overview.
 - If no crate version matches and links statically: in P0b, bump the Python pin (both files) and the crate together, with a predicted golden diff. Never bump one alone, as `pyproject.toml:27-33` says.
 - The grammar licenses come from the pinned grammar sources. The Python wheel ships no notice file to copy.
+- Expect the vendored path. On 2026-10-10 the crate's latest version is 1.21.3. Its default features are `download` and `dynamic-loading`, its build script depends on `ureq`, it declares no static-linking feature, and docs.rs fails to build it (the last successful docs.rs build is 1.9.0-rc.6).
 
 ### D2. Workspace root
 
@@ -247,17 +253,24 @@ Before each item, write the predicted golden diff into the pull request descript
   14. A changed golden file (the byte comparison of overview rule 6).
 - CI runs the self-test.
 
+### D8. The latency script and the design records
+
+- `scripts/hook_latency.py` commits the overview's baseline method: a frozen copy without `.git` and `.venv`, the mcp-local `f17af96` Write payload, 30 runs per cache state, and an isolated `XDG_CACHE_HOME`. It measures the four baseline rows for `1dc4d70` and for 0.10.1, and the overview table then cites the script's runs. P1 scores its latency gate with the same script.
+- Copy the design page's records into `docs/analysis/`: the findings (A1-F15, S1-S2), the Codex findings (V1-V47) and their resolutions, the parity ledger, and the measured alternatives. The phase plans cite those ids, so they must resolve inside the repository before P1 starts.
+
 ### P0d exit gate
 
 - The `rust` CI job is green on both platforms.
 - `scripts/gate-selftest.sh` shows each of the 14 violations failing its gate and the base passing every gate.
 - The grammar pin and the per-grammar revision list are recorded (D1).
+- `scripts/hook_latency.py` has measured the baselines, and the design records are in `docs/analysis/` (D8).
 
 ## Risks
 
 | Risk | Response |
 |---|---|
 | No language-pack crate version matches 1.14.3 and links statically | D1 runs before P0b merges. Bump both pins together in P0b with a predicted golden diff. If D1 finishes after 0.10.1, the bump needs 0.10.2, a new frozen base, and a new stored Loc-Bench arm. |
+| A change to stored rows (the B1 to B4 schema bump, 16 to 17) lands after 0.10.1 | The bump is in P0b, so it lands before P0c freezes the base. A later one needs 0.10.2, a new frozen base, and a new stored Loc-Bench arm. |
 | B3 changes stable ids that an agent holds across calls | Stable ids are per-session handles, not stored contracts. Record the change in CHANGELOG under Changed. |
 | Block mode in `.agentless-mcp.json` stops a needed Python defect fix | A complexity finding names its fix: extract a function. Do not lower the mode. |
 | The gate binary itself has a defect | It is pinned. A gate defect is fixed in a new Python patch release, and the pin moves in its own commit. |

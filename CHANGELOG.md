@@ -10,8 +10,27 @@
   still means the run failed, so CI can tell a broken run from a failed gate.
   Without the flag, `lint` exits 0 on a run that happened, as before. An
   unknown severity is a usage error (exit 2).
+- **The communities report says when its partition is partial.** The JSON
+  form adds `"converged"`, and the text form adds one note when community
+  detection stopped at its pass limit before the partition settled. The
+  service always had the flag and dropped it on the way to the report.
 
 ### Changed
+
+- **A Rust `impl` names its owner by the type's first name, in symbols and in
+  complexity units alike.** A method in `impl<T> Foo<T>` was `Foo<T>.bar` in
+  the symbol map and `Foo.bar` as a complexity unit. Both now say `Foo.bar`,
+  so the stable ids of methods in generic impls change. An `impl` on a
+  primitive type (`impl Trait for i32`) gives its complexity units the owner
+  `i32`, where they had none.
+- **Every tag cache rebuilds once.** The fixes below change rows the cache
+  stores without changing their shape, so the schema goes from 16 to 17 and
+  the metrics stamp from 1 to 2. A version 15 or 16 database is rebuilt, and a
+  reader discards it.
+- **Outside an install, `capabilities` reports the version `0+unknown`**, the
+  value the MCP handshake already reported. The two surfaces had separate
+  lookups with different fallbacks. One function in `util/version.py` owns
+  both.
 
 - **The erosion checks share one path-scope rule.** Fixture paths are outside
   every check, and `complexity_delta` now skips them too. Test paths are
@@ -22,7 +41,35 @@
   no longer warns on `tests/characterization/fixtures/complexity_py/branches.py`
   and `tokenize_rejects.py`. No golden changed.
 
+### Deprecated
+
+- **`--surface v1` and `--surface both`.** The server writes a warning on
+  stderr at start-up for either, and 0.11.0 removes the v1 tools. The mapping
+  from each v1 tool to its v2 call is in
+  `agentless-mcp guide --section the-two-surfaces`.
+
 ### Fixed
+
+- **A docstring with a string prefix loses its quotes.** `r"""Doc."""` read
+  as `"""Doc.""` in skeletons and cards. The prefix is now dropped before the
+  quotes are, for `r`, `u`, `b`, `f`, and the two-letter forms.
+- **A Python class kind compares whole base names.** `Bar(ProtocolError)` was
+  a protocol and `Foo(Enumerable)` an enum, because the test was a substring
+  match. The kinds now come from `Protocol`, `Enum`, `IntEnum`, and `StrEnum`
+  as whole base names.
+- **A Java record is a scope.** A record and its compact constructor were
+  missing from the symbol map, and a record's methods named the enclosing
+  class as their owner. They now name the record, as a nested class's methods
+  name that class.
+- **The MCP server arms the background index off the event loop.** The arming
+  walks the repository's file stats and opens SQLite with a 5 s busy timeout,
+  and it ran on the loop that serves every client. A test pins the worker
+  thread.
+- **A cache open that fails its generation walk closes its connection.** The
+  read transaction stayed open when the walk hit its bound.
+- **A file that cannot be stat'ed drops out of both walks, with a warning.**
+  The bounded walk returned it with size 0, and the git-listed walk dropped it
+  without a word. Both now skip it and name it in the log.
 
 - **The erosion gate hook reads `.agentless-mcp.json` with lint's rules.** The
   hook opened the file with no checks, so a config symlinked from outside the

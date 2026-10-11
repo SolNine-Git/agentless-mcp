@@ -39,7 +39,7 @@ from typing import cast
 
 from agentless_mcp.adapters.cli.formatting import EXIT_USAGE, fail
 from agentless_mcp.adapters.cli.main import CliServices, build_parser, run
-from agentless_mcp.adapters.mcp.cliargs import DISTRIBUTION_NAME, parse_args
+from agentless_mcp.adapters.mcp.cliargs import parse_args
 from agentless_mcp.application.graph_service import GraphService
 from agentless_mcp.application.history_service import HistoryService
 from agentless_mcp.application.lint_service import LintService
@@ -56,6 +56,7 @@ from agentless_mcp.util.tokens import (
     Chars4Counter,
     TokenCounter,
 )
+from agentless_mcp.util.version import DISTRIBUTION_NAME
 
 SERVER_MODULE = "agentless_mcp.adapters.mcp.server"
 
