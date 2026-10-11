@@ -164,20 +164,52 @@ def _run(
         except subprocess.TimeoutExpired:
             message = (
                 f"{' '.join(command)} ran past its {timeout:g} s deadline,"
-                " and its process group was killed"
+                " and the processes it started were killed"
             )
             raise SystemExit(message) from None
         finally:
             # Also on Ctrl-C, which cannot reach a child in its own session.
-            # An unreaped leader keeps its group id, so the kill reaches no other group.
             if process.returncode is None:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
+                _kill_tree(process.pid)
     if process.returncode != 0:
         detail = stderr.decode("utf-8", errors="replace").strip()
         message = f"{' '.join(command)} exited with {process.returncode}: {detail}"
         raise SystemExit(message)
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _kill_tree(leader: int) -> None:
+    # The leader is not reaped yet, so its group id names no other group. A process that leaves
+    # its group and whose parent exits before this runs (a setsid daemon) escapes the walk.
+    listing = subprocess.run(
+        ["ps", "-A", "-o", "pid=", "-o", "ppid=", "-o", "pgid="],
+        capture_output=True,
+        check=True,
+        timeout=LOCAL_DEADLINE_S,
+    ).stdout.decode()
+    pids, groups = _descendants(listing, leader)
+    for pid in pids:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+    for group in groups:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(group, signal.SIGKILL)
+
+
+def _descendants(listing: str, leader: int) -> tuple[list[int], set[int]]:
+    # A descendant can start its own process group, so the walk follows parents, not groups.
+    children: dict[int, list[int]] = {}
+    group: dict[int, int] = {}
+    for line in listing.splitlines():
+        pid, ppid, pgid = (int(field) for field in line.split())
+        children.setdefault(ppid, []).append(pid)
+        group[pid] = pgid
+    tree = [leader]
+    position = 0
+    while position < len(tree):
+        tree.extend(children.get(tree[position], []))
+        position += 1
+    return tree, {leader} | {group[pid] for pid in tree if pid in group}
 
 
 def _grammar_cache() -> Path | None:

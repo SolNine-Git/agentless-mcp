@@ -14,41 +14,62 @@ pub const METADATA: Duration = Duration::from_secs(120);
 pub const GATE_BINARY: Duration = Duration::from_secs(300);
 pub const BUILD: Duration = Duration::from_secs(1800);
 const SIGNAL: Duration = Duration::from_secs(5);
-// After the child exits, its readers only need to be scheduled to reach the end of each pipe.
+// After the child exits, its readers only need to be scheduled to reach the end of each pipe. A
+// process that holds a pipe past this is a leak, whatever deadline remains.
 const GRACE: Duration = Duration::from_secs(2);
 // std has no wait with a timeout, so `wait` polls.
 const POLL: Duration = Duration::from_millis(10);
+// A command can carry hundreds of flags, so a message shows this many words: the program and its
+// first arguments.
+const LABEL_WORDS: usize = 25;
 
 type Pipe = Receiver<std::io::Result<Vec<u8>>>;
 
 /// Run `command` with no input and captured output; kill its process group and fail when it outlives `deadline`.
 pub fn run(command: &mut Command, deadline: Duration) -> Result<Output, Failure> {
     let until = Instant::now() + deadline;
-    // Its own group lets the deadline kill its descendants too. A terminal Ctrl-C then misses it,
-    // and it fails at its next write to the closed pipe or ends on its own.
+    // Its own group lets the deadline kill its descendants too. A terminal Ctrl-C then stops only
+    // xtask: the child runs on, with no deadline, until it writes to the closed pipe or exits.
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
         .spawn()
-        .map_err(|error| Failure::Broken(format!("{command:?}: {error}")))?;
+        .map_err(|error| Failure::Broken(format!("{}: {error}", label(command))))?;
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
     let waited = wait(&mut child, until)
-        .map_err(|error| Failure::Broken(format!("{command:?}: {error}")))?;
+        .map_err(|error| Failure::Broken(format!("{}: {error}", label(command))))?;
     let Some(status) = waited else {
         return Err(stop(&mut child, command, deadline));
     };
-    let held = format!(
-        "{command:?} exited with {status}, but a process it started held its output open past the deadline of {deadline:?}"
-    );
-    let readers_until = until.max(Instant::now() + GRACE);
+    let readers_until = Instant::now() + GRACE;
+    let outputs =
+        receive(&stdout, readers_until, command)?.zip(receive(&stderr, readers_until, command)?);
+    let Some((stdout, stderr)) = outputs else {
+        return Err(held(child.id(), command, status));
+    };
     Ok(Output {
         status,
-        stdout: receive(&stdout, readers_until, command, &held)?,
-        stderr: receive(&stderr, readers_until, command, &held)?,
+        stdout,
+        stderr,
     })
+}
+
+/// Return `command` for a message: its program and first arguments, and a count of the rest.
+pub fn label(command: &Command) -> String {
+    let words: Vec<String> = std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|word| word.display().to_string())
+        .collect();
+    let left_out = words.len().saturating_sub(LABEL_WORDS);
+    let shown = words[..words.len() - left_out].join(" ");
+    if left_out == 0 {
+        shown
+    } else {
+        format!("{shown} and {left_out} more arguments")
+    }
 }
 
 /// Run `command` under `deadline` and return its stdout; a non-zero exit is a failure.
@@ -59,7 +80,8 @@ pub fn stdout(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, Fail
     } else {
         let stderr = String::from_utf8_lossy(&finished.stderr);
         Err(Failure::Broken(format!(
-            "{command:?} exited with {}: {}",
+            "{} exited with {}: {}",
+            label(command),
             finished.status,
             stderr.trim()
         )))
@@ -94,7 +116,8 @@ fn wait(child: &mut Child, until: Instant) -> std::io::Result<Option<ExitStatus>
 
 fn stop(child: &mut Child, command: &Command, deadline: Duration) -> Failure {
     let mut notes = vec![format!(
-        "{command:?} did not finish within its deadline of {deadline:?}"
+        "{} did not finish within its deadline of {deadline:?}",
+        label(command)
     )];
     // The leader is not reaped yet, so no other process group can hold its id.
     if let Err(error) = kill_group(child.id()) {
@@ -102,6 +125,19 @@ fn stop(child: &mut Child, command: &Command, deadline: Duration) -> Failure {
     }
     if let Err(error) = child.kill().and_then(|()| child.wait()) {
         notes.push(format!("cannot kill and reap it: {error}"));
+    }
+    Failure::Broken(notes.join("; "))
+}
+
+fn held(leader: u32, command: &Command, status: ExitStatus) -> Failure {
+    let mut notes = vec![format!(
+        "{} exited with {status}, but a process it started held its output open past the {GRACE:?} grace after the exit",
+        label(command)
+    )];
+    // The leader is reaped, so its group id stays reserved only while a member lives. A holder that
+    // left the group (setsid) survives, and the kernel may then reuse the empty group's id.
+    if let Err(error) = kill_group(leader) {
+        notes.push(format!("cannot kill its process group: {error}"));
     }
     Failure::Broken(notes.join("; "))
 }
@@ -125,23 +161,26 @@ fn kill_group(leader: u32) -> Result<(), String> {
                 Ok,
             )
         })
-        .map_err(|error| format!("{command:?}: {error}"))?;
+        .map_err(|error| format!("{}: {error}", label(&command)))?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("{command:?} exited with {status}"))
+        Err(format!("{} exited with {status}", label(&command)))
     }
 }
 
-fn receive(pipe: &Pipe, until: Instant, command: &Command, held: &str) -> Result<Vec<u8>, Failure> {
+// None: the pipe stayed open until `until`.
+fn receive(pipe: &Pipe, until: Instant, command: &Command) -> Result<Option<Vec<u8>>, Failure> {
     match pipe.recv_timeout(until.saturating_duration_since(Instant::now())) {
-        Ok(Ok(bytes)) => Ok(bytes),
+        Ok(Ok(bytes)) => Ok(Some(bytes)),
         Ok(Err(error)) => Err(Failure::Broken(format!(
-            "{command:?}: cannot read its output: {error}"
+            "{}: cannot read its output: {error}",
+            label(command)
         ))),
-        Err(RecvTimeoutError::Timeout) => Err(Failure::Broken(held.to_owned())),
+        Err(RecvTimeoutError::Timeout) => Ok(None),
         Err(RecvTimeoutError::Disconnected) => Err(Failure::Broken(format!(
-            "{command:?}: its output reader stopped"
+            "{}: its output reader stopped",
+            label(command)
         ))),
     }
 }
@@ -152,7 +191,7 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use super::{run, stdout};
+    use super::{label, run, stdout};
     use crate::Failure;
 
     const LONG: Duration = Duration::from_secs(10);
@@ -245,6 +284,37 @@ mod tests {
             ),
             "{message}"
         );
+    }
+
+    #[test]
+    fn a_held_pipe_fails_after_the_grace_under_a_long_deadline_and_its_holder_dies() {
+        let dir = std::env::temp_dir().join(format!("xtask-held-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("pid");
+        let script = format!("sleep 30 & echo $! > '{}'; echo done", pid_file.display());
+        let started = Instant::now();
+        let outcome = run(&mut shell(&script), LONG);
+        let elapsed = started.elapsed();
+        let holder = std::fs::read_to_string(&pid_file).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(elapsed < Duration::from_secs(4), "waited {elapsed:?}");
+        assert!(
+            matches!(outcome, Err(Failure::Broken(message)) if message.contains("held its output open past the 2s grace"))
+        );
+        assert!(gone(holder.trim()), "holder {holder} outlived the run");
+    }
+
+    #[test]
+    fn a_label_names_the_program_and_counts_the_arguments_it_leaves_out() {
+        let mut command = Command::new("cargo");
+        command.args((0..40).map(|index| format!("--force-warn=lint{index}")));
+        let shown = label(&command);
+        assert!(shown.starts_with("cargo --force-warn=lint0 "), "{shown}");
+        assert!(
+            shown.ends_with(" --force-warn=lint23 and 16 more arguments"),
+            "{shown}"
+        );
+        assert_eq!(label(Command::new("git").arg("log")), "git log");
     }
 
     #[test]

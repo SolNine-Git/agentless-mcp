@@ -3,7 +3,7 @@ use std::path::Path;
 use toml::{Table, Value};
 
 use crate::sources::{self, Source};
-use crate::workspace::Package;
+use crate::workspace::{Package, Target};
 use crate::{Failure, repo, tool_config, verdict, workspace};
 
 const SYNTAX: &str = "syntax";
@@ -13,25 +13,35 @@ const SYNTAX_ADDS: [(&str, &str); 2] = [
     ("rust", "unsafe_op_in_unsafe_fn"),
     ("clippy", "undocumented_unsafe_blocks"),
 ];
+// rustc's unsafe_code lint covers global_asm!, which holds no `unsafe` token in edition 2024.
+const UNSAFE_WORDS: [&str; 2] = ["unsafe", "global_asm"];
 // The crates under crates/ that may have a build script: a build script can set a cfg that only
 // builds outside clippy see, so each one is listed here for review.
 const BUILD_SCRIPTS: [&str; 1] = [SYNTAX];
-// cargo builds a [patch] or [replace] package from wherever it points, outside every gate's scan.
+// In the root manifest, cargo builds a [patch] or [replace] package from wherever it points, outside
+// every gate's scan. cargo ignores both tables in a package manifest.
 const OVERRIDES: [&str; 2] = ["patch", "replace"];
+const TARGET_TABLES: [&str; 5] = ["lib", "bin", "test", "bench", "example"];
 
-/// Fail when a lint table or tool config drifts from the root, a manifest overrides a dependency, a build script is not listed, or `unsafe` leaves the syntax FFI file.
+// The settings that every package inherits from [workspace.package].
+struct Inherited {
+    edition: String,
+    rust_version: String,
+}
+
+/// Fail when a lint table or tool config drifts from the root, a manifest overrides a dependency or turns tests off, a target leaves the workspace edition or rust-version, a build script is not listed, or unsafe code leaves the syntax FFI file.
 pub fn check(root: &Path) -> Result<(), Failure> {
     let manifest: Table = repo::toml(&root.join("Cargo.toml"))?;
     let lints = workspace_lints(&manifest)?;
+    let inherited = inherited(&manifest)?;
     let root_clippy: Table = repo::toml(&root.join("clippy.toml"))?;
     let packages = workspace::packages(root)?;
     let mut problems = override_problems("Cargo.toml", &manifest);
     for package in &packages {
         let name = repo::relative(&package.dir, root);
         let own: Table = repo::toml(&package.dir.join("Cargo.toml"))?;
-        problems.extend(lint_table_problem(&own, &name, &lints));
-        problems.extend(override_problems(&format!("{name}/Cargo.toml"), &own));
-        problems.extend(build_script_problem(&name, package));
+        problems.extend(manifest_problems(&name, &own, &lints));
+        problems.extend(target_problems(&name, package, &inherited));
     }
     problems.extend(tool_config::problems(root, &root_clippy, &packages)?);
     let sources = sources::scan(root, &packages)?;
@@ -40,14 +50,133 @@ pub fn check(root: &Path) -> Result<(), Failure> {
     verdict(problems)
 }
 
+fn inherited(manifest: &Table) -> Result<Inherited, Failure> {
+    Ok(Inherited {
+        edition: workspace_package_key(manifest, "edition")?,
+        rust_version: workspace_package_key(manifest, "rust-version")?,
+    })
+}
+
+fn workspace_package_key(manifest: &Table, key: &str) -> Result<String, Failure> {
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get(key))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| Failure::Broken(format!("Cargo.toml has no [workspace.package] {key}")))
+}
+
+fn manifest_problems(name: &str, own: &Table, lints: &Table) -> Vec<String> {
+    let file = format!("{name}/Cargo.toml");
+    let mut problems: Vec<String> = lint_table_problem(own, name, lints).into_iter().collect();
+    problems.extend(override_problems(&file, own));
+    problems.extend(package_table_problems(&file, own));
+    problems.extend(harness_problems(&file, own));
+    problems
+}
+
+fn target_problems(name: &str, package: &Package, inherited: &Inherited) -> Vec<String> {
+    let mut problems: Vec<String> = build_script_problem(name, package).into_iter().collect();
+    problems.extend(rust_version_problem(name, package, &inherited.rust_version));
+    for target in &package.targets {
+        problems.extend(edition_problem(name, target, &inherited.edition));
+        problems.extend(test_problems(name, target));
+    }
+    problems
+}
+
 fn override_problems(file: &str, manifest: &Table) -> Vec<String> {
     OVERRIDES
         .into_iter()
         .filter(|table| manifest.contains_key(*table))
         .map(|table| {
-            format!("{file}: [{table}] is refused: cargo would build a package that no gate reads")
+            format!(
+                "{file}: [{table}] is refused: in the root manifest cargo builds a package that no gate reads, and elsewhere cargo ignores it. Depend on a published version, or make the crate a workspace member under crates/"
+            )
         })
         .collect()
+}
+
+fn package_table_problems(file: &str, manifest: &Table) -> Vec<String> {
+    let mut problems = Vec::new();
+    if manifest.contains_key("profile") {
+        problems.push(format!(
+            "{file}: [profile] is refused: cargo ignores a profile outside the root manifest. Set the profile in the root Cargo.toml, with a Policy-Change trailer"
+        ));
+    }
+    let machete = manifest
+        .get("package")
+        .and_then(|package| package.get("metadata"))
+        .and_then(|metadata| metadata.get("cargo-machete"));
+    if machete.is_some() {
+        problems.push(format!(
+            "{file}: [package.metadata.cargo-machete] is refused: it hides a dependency from cargo machete. Remove the unused dependency"
+        ));
+    }
+    problems
+}
+
+// cargo metadata does not report `harness`, so the manifest is the only source for it.
+fn harness_problems(file: &str, manifest: &Table) -> Vec<String> {
+    TARGET_TABLES
+        .into_iter()
+        .flat_map(|key| {
+            target_tables(manifest, key)
+                .into_iter()
+                .filter(|table| table.get("harness") == Some(&Value::Boolean(false)))
+                .map(move |_| {
+                    format!(
+                        "{file}: harness = false in a {key} target is refused: nextest then runs the target's own main, which can report no test. Remove the key, and write #[test] functions"
+                    )
+                })
+        })
+        .collect()
+}
+
+fn target_tables<'a>(manifest: &'a Table, key: &str) -> Vec<&'a Table> {
+    match manifest.get(key) {
+        Some(Value::Table(table)) => vec![table],
+        Some(Value::Array(tables)) => tables.iter().filter_map(Value::as_table).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn rust_version_problem(name: &str, package: &Package, rust_version: &str) -> Option<String> {
+    let found = package.rust_version.as_deref();
+    (found != Some(rust_version)).then(|| {
+        format!(
+            "{name}: rust-version is {}, not the workspace rust-version {rust_version}: clippy turns off each lint whose fix needs a newer Rust. Write rust-version.workspace = true",
+            found.unwrap_or("unset")
+        )
+    })
+}
+
+fn edition_problem(name: &str, target: &Target, edition: &str) -> Option<String> {
+    (target.edition != edition).then(|| {
+        format!(
+            "{name}: target {} builds with edition {}, not the workspace edition {edition}: an older edition accepts an unsafe attribute with no unsafe token. Write edition.workspace = true, and remove edition from each target table",
+            target.name, target.edition
+        )
+    })
+}
+
+fn test_problems(name: &str, target: &Target) -> Vec<String> {
+    let mut problems = Vec::new();
+    if target.tested_by_default() && !target.test {
+        problems.push(format!(
+            "{name}: target {} sets test = false: cargo test and nextest then skip its tests. Remove the key",
+            target.name
+        ));
+    }
+    let required = target.required_features.as_ref();
+    if required.is_some_and(|features| !features.is_empty()) {
+        problems.push(format!(
+            "{name}: target {} has required-features: cargo skips the target, its lints and its tests unless those features are on. Remove required-features",
+            target.name
+        ));
+    }
+    problems
 }
 
 fn build_script_problem(name: &str, package: &Package) -> Option<String> {
@@ -61,7 +190,7 @@ fn build_script_problem(name: &str, package: &Package) -> Option<String> {
         .find(|target| target.kind.iter().any(|kind| kind == "custom-build"));
     script.filter(|_| !listed.iter().any(|dir| dir == name)).map(|target| {
         format!(
-            "{name}: build script {} is refused: it can set a cfg that hides code from clippy, and only {} may have one",
+            "{name}: build script {} is refused: it can set a cfg that hides code from clippy, and only {} may have one. Move the logic into the crate's code",
             target.name,
             listed.join(", ")
         )
@@ -119,7 +248,7 @@ fn unsafe_problems(files: &[Source]) -> Vec<String> {
         if source.file == SYNTAX_FFI {
             problems.extend(source.scan.macro_definitions.iter().map(|definition| {
                 format!(
-                    "{SYNTAX_FFI}:{}: macro_rules! is refused here: a macro would carry unsafe out of the file",
+                    "{SYNTAX_FFI}:{}: macro_rules! is refused here: a macro would carry unsafe out of the file. Write each unsafe item out in full",
                     definition.line
                 )
             }));
@@ -129,11 +258,11 @@ fn unsafe_problems(files: &[Source]) -> Vec<String> {
                     .scan
                     .words
                     .iter()
-                    .filter(|word| word.name == "unsafe")
+                    .filter(|word| UNSAFE_WORDS.contains(&word.name.as_str()))
                     .map(|word| {
                         format!(
-                            "{}:{}: unsafe code belongs in {SYNTAX_FFI} only",
-                            source.file, word.line
+                            "{}:{}: `{}` is unsafe code, and unsafe code belongs in {SYNTAX_FFI} only. Move it into that file",
+                            source.file, word.line, word.name
                         )
                     }),
             );
@@ -148,7 +277,11 @@ mod tests {
 
     use toml::Table;
 
-    use super::{build_script_problem, override_problems, syntax_lints, unsafe_problems};
+    use super::{
+        Inherited, build_script_problem, inherited, manifest_problems, override_problems,
+        syntax_lints, target_problems, unsafe_problems,
+    };
+    use crate::Failure;
     use crate::sources::Source;
     use crate::tokens;
     use crate::workspace::{Package, Target};
@@ -157,6 +290,17 @@ mod tests {
         Source {
             file: file.to_owned(),
             scan: tokens::scan(text).unwrap(),
+        }
+    }
+
+    fn target(kind: &str) -> Target {
+        Target {
+            name: format!("{kind}-target"),
+            kind: vec![kind.to_owned()],
+            src_path: PathBuf::from("/r/crates/p/build.rs"),
+            edition: "2024".to_owned(),
+            test: true,
+            required_features: None,
         }
     }
 
@@ -169,8 +313,8 @@ mod tests {
         assert_eq!(
             override_problems("Cargo.toml", &manifest),
             [
-                "Cargo.toml: [patch] is refused: cargo would build a package that no gate reads",
-                "Cargo.toml: [replace] is refused: cargo would build a package that no gate reads",
+                "Cargo.toml: [patch] is refused: in the root manifest cargo builds a package that no gate reads, and elsewhere cargo ignores it. Depend on a published version, or make the crate a workspace member under crates/",
+                "Cargo.toml: [replace] is refused: in the root manifest cargo builds a package that no gate reads, and elsewhere cargo ignores it. Depend on a published version, or make the crate a workspace member under crates/",
             ]
         );
         let plain: Table = "[dependencies]\npatch = \"1\"\n".parse().unwrap();
@@ -178,24 +322,134 @@ mod tests {
     }
 
     #[test]
+    fn a_package_profile_machete_list_or_harness_false_is_refused() {
+        let lints: Table = "rust = { unsafe_code = \"forbid\" }".parse().unwrap();
+        let manifest: Table =
+            "[package]\nname = \"k\"\n[package.metadata.cargo-machete]\nignored = [\"itoa\"]\n\
+                               [lints]\nworkspace = true\n[profile.dev]\ndebug-assertions = false\n\
+                               [lib]\nharness = false\n[[test]]\nname = \"a\"\nharness = true\n\
+                               [[test]]\nname = \"b\"\nharness = false\n"
+                .parse()
+                .unwrap();
+        let problems = manifest_problems("crates/k", &manifest, &lints);
+        let heads: Vec<&str> = problems
+            .iter()
+            .map(|problem| problem.split(" is refused").next().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            heads,
+            [
+                "crates/k/Cargo.toml: [profile]",
+                "crates/k/Cargo.toml: [package.metadata.cargo-machete]",
+                "crates/k/Cargo.toml: harness = false in a lib target",
+                "crates/k/Cargo.toml: harness = false in a test target",
+            ]
+        );
+        let plain: Table =
+            "[package]\nname = \"k\"\n[package.metadata.docs]\nx = 1\n[lints]\nworkspace = true\n"
+                .parse()
+                .unwrap();
+        assert!(manifest_problems("crates/k", &plain, &lints).is_empty());
+    }
+
+    #[test]
+    fn a_target_off_the_workspace_edition_or_a_package_off_its_rust_version_is_refused() {
+        let inherited = Inherited {
+            edition: "2024".to_owned(),
+            rust_version: "1.94".to_owned(),
+        };
+        let mut old = target("lib");
+        old.edition = "2021".to_owned();
+        let mut package = Package {
+            name: "p".to_owned(),
+            dir: PathBuf::from("/r/crates/p"),
+            rust_version: Some("1.94".to_owned()),
+            dependencies: Vec::new(),
+            targets: vec![target("lib"), old],
+        };
+        assert_eq!(
+            target_problems("crates/p", &package, &inherited),
+            [
+                "crates/p: target lib-target builds with edition 2021, not the workspace edition 2024: an older edition accepts an unsafe attribute with no unsafe token. Write edition.workspace = true, and remove edition from each target table"
+            ]
+        );
+        package.targets.pop();
+        assert!(target_problems("crates/p", &package, &inherited).is_empty());
+        for found in [Some("1.85"), None] {
+            package.rust_version = found.map(str::to_owned);
+            assert_eq!(
+                target_problems("crates/p", &package, &inherited).len(),
+                1,
+                "{found:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_target_whose_tests_cargo_skips_is_refused() {
+        let inherited = Inherited {
+            edition: "2024".to_owned(),
+            rust_version: "1.94".to_owned(),
+        };
+        let untested = |kind: &str| Target {
+            test: false,
+            ..target(kind)
+        };
+        let gated = |features: &[&str]| Target {
+            required_features: Some(
+                features
+                    .iter()
+                    .map(|feature| (*feature).to_owned())
+                    .collect(),
+            ),
+            ..target("test")
+        };
+        let package = |targets: Vec<Target>| Package {
+            name: "p".to_owned(),
+            dir: PathBuf::from("/r/crates/p"),
+            rust_version: Some("1.94".to_owned()),
+            dependencies: Vec::new(),
+            targets,
+        };
+        let refused = package(vec![
+            untested("lib"),
+            untested("proc-macro"),
+            untested("bin"),
+            untested("test"),
+            gated(&["x"]),
+        ]);
+        assert_eq!(target_problems("crates/p", &refused, &inherited).len(), 5);
+        let clean = package(vec![
+            untested("example"),
+            untested("bench"),
+            gated(&[]),
+            target("lib"),
+        ]);
+        assert!(target_problems("crates/p", &clean, &inherited).is_empty());
+    }
+
+    #[test]
+    fn the_workspace_edition_and_rust_version_have_no_default() {
+        let manifest: Table = "[workspace.package]\nedition = \"2024\"\n".parse().unwrap();
+        assert!(matches!(
+            inherited(&manifest),
+            Err(Failure::Broken(message)) if message == "Cargo.toml has no [workspace.package] rust-version"
+        ));
+    }
+
+    #[test]
     fn a_build_script_outside_the_listed_crates_is_refused() {
         let package = |kinds: &[&str]| Package {
             name: "p".to_owned(),
             dir: PathBuf::from("/r/crates/p"),
+            rust_version: None,
             dependencies: Vec::new(),
-            targets: kinds
-                .iter()
-                .map(|kind| Target {
-                    name: format!("{kind}-target"),
-                    kind: vec![(*kind).to_owned()],
-                    src_path: PathBuf::from("/r/crates/p/build.rs"),
-                })
-                .collect(),
+            targets: kinds.iter().map(|kind| target(kind)).collect(),
         };
         let scripted = package(&["lib", "custom-build"]);
         assert_eq!(
             build_script_problem("crates/kernel", &scripted),
-            Some("crates/kernel: build script custom-build-target is refused: it can set a cfg that hides code from clippy, and only crates/syntax may have one".to_owned())
+            Some("crates/kernel: build script custom-build-target is refused: it can set a cfg that hides code from clippy, and only crates/syntax may have one. Move the logic into the crate's code".to_owned())
         );
         assert_eq!(build_script_problem("crates/syntax", &scripted), None);
         assert_eq!(
@@ -228,9 +482,24 @@ mod tests {
         assert_eq!(
             unsafe_problems(&files),
             [
-                "crates/syntax/build.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
-                "crates/syntax/tests/t.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
-                "crates/syntax/src/sub/ffi.rs:2: unsafe code belongs in crates/syntax/src/ffi.rs only",
+                "crates/syntax/build.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
+                "crates/syntax/tests/t.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
+                "crates/syntax/src/sub/ffi.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
+            ]
+        );
+    }
+
+    #[test]
+    fn global_asm_outside_the_ffi_file_is_a_problem() {
+        let text = "core::arch::global_asm!(\"\");\n";
+        let files = [
+            source("crates/syntax/src/lib.rs", text),
+            source("crates/syntax/src/ffi.rs", text),
+        ];
+        assert_eq!(
+            unsafe_problems(&files),
+            [
+                "crates/syntax/src/lib.rs:1: `global_asm` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file"
             ]
         );
     }
@@ -244,7 +513,7 @@ mod tests {
         assert_eq!(
             unsafe_problems(&files),
             [
-                "crates/syntax/src/ffi.rs:2: macro_rules! is refused here: a macro would carry unsafe out of the file"
+                "crates/syntax/src/ffi.rs:2: macro_rules! is refused here: a macro would carry unsafe out of the file. Write each unsafe item out in full"
             ]
         );
     }

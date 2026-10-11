@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde_json::Value;
 use toml::Table;
 
-use crate::{Failure, repo, verdict};
+use crate::{Failure, repo, tool_config, verdict};
 
 const TRAILER: &str = "Policy-Change";
 const FILES: [(&str, Format); 6] = [
@@ -16,14 +15,19 @@ const FILES: [(&str, Format); 6] = [
     ("crates/layers.toml", Format::Toml),
 ];
 const MANIFEST: &str = "Cargo.toml";
-const MANIFEST_TABLES: [&[&str]; 3] = [&["workspace", "lints"], &["patch"], &["replace"]];
-const CLIPPY_NAMES: [&str; 2] = ["clippy.toml", ".clippy.toml"];
 
 #[derive(Clone, Copy)]
 enum Format {
     Json,
     Toml,
     Manifest,
+}
+
+// Each file compares in its own format: a TOML float keeps NaN and infinity, and a NaN equals nothing.
+#[derive(Clone, Debug, PartialEq)]
+enum Value {
+    Json(serde_json::Value),
+    Toml(Table),
 }
 
 struct Item {
@@ -50,7 +54,7 @@ struct History {
     tree: Option<Value>,
 }
 
-/// Fail when a policy file differs from its reference, unless each commit that changed it carries a `Policy-Change: <path>` trailer.
+/// Fail when a policy file at HEAD or in the working tree differs from its reference, unless each commit that changed it, merges included, carries a `Policy-Change: <path>` trailer and one of them made HEAD's value.
 pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
     let base = repo::base(root, parse(flags)?)?;
     let commits = commits(root, &base)?;
@@ -71,34 +75,48 @@ fn parse(flags: &[String]) -> Result<Option<&str>, Failure> {
 
 fn judge(path: &str, history: &History) -> Vec<String> {
     let (reference, creation) = reference(history);
-    if history.tree.as_ref() == reference {
-        return Vec::new();
-    }
-    if history.tree != history.head {
-        return vec![format!(
+    let mut problems = head_problems(path, history, reference, creation);
+    if history.tree != history.head && history.tree.as_ref() != reference {
+        problems.push(format!(
             "{path}: the working tree changes this policy file: commit the change with a `{TRAILER}: {path}` trailer"
-        )];
+        ));
+    }
+    problems
+}
+
+fn head_problems(
+    path: &str,
+    history: &History,
+    reference: Option<&Value>,
+    creation: Option<&str>,
+) -> Vec<String> {
+    let head = history.head.as_ref();
+    if head == reference {
+        return Vec::new();
     }
     let changes: Vec<&Step> = history
         .steps
         .iter()
         .filter(|step| Some(step.commit.as_str()) != creation && changed(step))
         .collect();
-    if changes.is_empty() {
-        return vec![format!(
-            "{path}: this policy file differs from its reference, but no commit after the reference changes it"
-        )];
-    }
-    changes
+    let mut problems: Vec<String> = changes
         .iter()
         .filter(|step| !step.approved)
         .map(|step| {
             format!(
-                "{path}: commit {} changes this policy file without a `{TRAILER}: {path}` trailer",
+                "{path}: commit {} changes this policy file without a `{TRAILER}: {path}` trailer. Reword that commit with the trailer, or revert its change",
                 step.commit
             )
         })
-        .collect()
+        .collect();
+    // A merge that keeps a parent's value changes nothing, so a parent from outside the range can
+    // bring a value that no commit in the range made.
+    if !changes.iter().any(|step| step.value.as_ref() == head) {
+        problems.push(format!(
+            "{path}: HEAD holds a value that no commit after the reference made: a merge brought it from outside the range. Redo the merge so that it keeps the value from inside the range, then change the value in a commit with a `{TRAILER}: {path}` trailer"
+        ));
+    }
+    problems
 }
 
 fn reference(history: &History) -> (Option<&Value>, Option<&str>) {
@@ -121,22 +139,30 @@ fn changed(step: &Step) -> bool {
 
 fn items(root: &Path, base: &str) -> Result<Vec<Item>, Failure> {
     let range = format!("{base}..HEAD");
-    // Ignored files count: clippy reads them too.
-    let listed = repo::git(root, &["ls-files", "-z", "--cached", "--others"])?;
-    let touched = repo::git(
-        root,
-        &[
-            "log",
-            "-z",
-            "-m",
-            "--no-renames",
-            "--name-only",
-            "--format=",
-            &range,
-        ],
-    )?;
-    let mut clippy = clippy_paths(&listed)?;
-    clippy.extend(clippy_paths(&touched)?);
+    // The base and HEAD trees name a file that the index dropped. The tool-config gate owns
+    // untracked and ignored files.
+    let listings = [
+        repo::git(root, &["ls-files", "-z", "--cached"])?,
+        // -m lists the paths a merge changes, and --no-renames keeps both sides of a rename.
+        repo::git(
+            root,
+            &[
+                "log",
+                "-z",
+                "-m",
+                "--no-renames",
+                "--name-only",
+                "--format=",
+                &range,
+            ],
+        )?,
+        repo::git(root, &["ls-tree", "-r", "-z", "--name-only", base])?,
+        repo::git(root, &["ls-tree", "-r", "-z", "--name-only", "HEAD"])?,
+    ];
+    let mut clippy = Vec::new();
+    for listing in &listings {
+        clippy.extend(clippy_paths(listing)?);
+    }
     clippy.sort();
     clippy.dedup();
     let files = FILES
@@ -162,9 +188,8 @@ fn clippy_paths(output: &[u8]) -> Result<Vec<String>, Failure> {
 }
 
 fn is_clippy(path: &str) -> bool {
-    // Compare in lowercase: a case-insensitive file system (macOS) serves Clippy.toml as clippy.toml.
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
-    CLIPPY_NAMES.contains(&name.as_str())
+    tool_config::CLIPPY_NAMES.contains(&name.as_str())
 }
 
 fn commits(root: &Path, base: &str) -> Result<HashMap<String, Commit>, Failure> {
@@ -249,9 +274,11 @@ fn tree_version(root: &Path, item: &Item) -> Result<Option<Value>, Failure> {
 impl Format {
     fn value(self, bytes: &[u8], source: &str) -> Result<Value, Failure> {
         let parsed = match self {
-            Self::Json => serde_json::from_slice(bytes).map_err(|error| error.to_string()),
-            Self::Toml => toml_table(bytes).and_then(|table| json(&table)),
-            Self::Manifest => toml_table(bytes).and_then(|table| json(&picked(&table))),
+            Self::Json => serde_json::from_slice(bytes)
+                .map(Value::Json)
+                .map_err(|error| error.to_string()),
+            Self::Toml => toml_table(bytes).map(Value::Toml),
+            Self::Manifest => toml_table(bytes).map(|table| Value::Toml(policy_view(table))),
         };
         parsed.map_err(|error| Failure::Broken(format!("{source}: {error}")))
     }
@@ -262,28 +289,23 @@ fn toml_table(bytes: &[u8]) -> Result<Table, String> {
     toml::from_str(text).map_err(|error| error.to_string())
 }
 
-fn json(table: &Table) -> Result<Value, String> {
-    serde_json::to_value(table).map_err(|error| error.to_string())
-}
-
-fn picked(manifest: &Table) -> Table {
-    MANIFEST_TABLES
-        .iter()
-        .filter_map(|keys| {
-            let (first, rest) = keys.split_first()?;
-            let found = rest
-                .iter()
-                .try_fold(manifest.get(*first)?, |value, key| value.get(key))?;
-            Some((keys.join("."), found.clone()))
-        })
-        .collect()
+// Ordinary work changes the dependency list and the version. Every other key is policy, so a key
+// that cargo or a gate tool starts to read needs a trailer from the first change.
+fn policy_view(mut manifest: Table) -> Table {
+    if let Some(toml::Value::Table(workspace)) = manifest.get_mut("workspace") {
+        workspace.remove("dependencies");
+        if let Some(toml::Value::Table(package)) = workspace.get_mut("package") {
+            package.remove("version");
+        }
+    }
+    manifest
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, json};
+    use serde_json::json;
 
-    use super::{Format, History, Step, commit, is_clippy, judge, parse};
+    use super::{Format, History, Step, Value, commit, is_clippy, judge, parse};
     use crate::Failure;
 
     const PATH: &str = "clippy.toml";
@@ -298,7 +320,8 @@ mod tests {
     }
 
     fn lines(limit: u64) -> Value {
-        json!({"too-many-lines-threshold": limit})
+        let text = format!("too-many-lines-threshold = {limit}\n");
+        Format::Toml.value(text.as_bytes(), PATH).unwrap()
     }
 
     fn at_head(base: Option<Value>, steps: Vec<Step>) -> History {
@@ -322,7 +345,7 @@ mod tests {
         assert_eq!(
             judge(PATH, &loosened(false)),
             [
-                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer"
+                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer. Reword that commit with the trailer, or revert its change"
             ]
         );
         assert!(judge(PATH, &loosened(true)).is_empty());
@@ -372,6 +395,89 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_that_brings_a_value_from_outside_the_range_fails() {
+        let stale = [Some(lines(59)), Some(lines(1000))];
+        let tighten = || step("c1", true, Some(lines(59)), &[Some(lines(60))]);
+        let merge = step("m1", false, Some(lines(1000)), &stale);
+        let problems = judge(PATH, &at_head(Some(lines(60)), vec![tighten(), merge]));
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(
+            problems[0].starts_with(
+                "clippy.toml: HEAD holds a value that no commit after the reference made"
+            ),
+            "{problems:?}"
+        );
+        let kept = step("m1", false, Some(lines(59)), &stale);
+        assert!(judge(PATH, &at_head(Some(lines(60)), vec![tighten(), kept])).is_empty());
+    }
+
+    #[test]
+    fn head_is_judged_when_the_working_tree_is_back_at_the_reference() {
+        let loosened = step("c1", false, Some(lines(100)), &[Some(lines(60))]);
+        let mut history = at_head(Some(lines(60)), vec![loosened]);
+        history.tree = Some(lines(60));
+        assert_eq!(
+            judge(PATH, &history),
+            [
+                "clippy.toml: commit c1 changes this policy file without a `Policy-Change: clippy.toml` trailer. Reword that commit with the trailer, or revert its change"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_policy_file_deleted_in_the_working_tree_fails() {
+        let history = History {
+            base: Some(lines(60)),
+            steps: Vec::new(),
+            head: Some(lines(60)),
+            tree: None,
+        };
+        assert_eq!(
+            judge(PATH, &history),
+            [
+                "clippy.toml: the working tree changes this policy file: commit the change with a `Policy-Change: clippy.toml` trailer"
+            ]
+        );
+    }
+
+    #[test]
+    fn toml_values_compare_as_toml_so_a_nan_fails_closed() {
+        let value = |text: &str| Format::Toml.value(text.as_bytes(), PATH).ok();
+        assert_ne!(value("x = nan\n"), value("x = inf\n"));
+        assert_ne!(value("x = inf\n"), value("x = -inf\n"));
+        assert_ne!(value("x = nan\n"), value("x = nan\n"));
+    }
+
+    #[test]
+    fn the_root_manifest_is_policy_except_its_dependencies_and_version() {
+        let manifest = |text: &str| Format::Manifest.value(text.as_bytes(), "Cargo.toml").ok();
+        let root = "[workspace]\nmembers = [\"crates/*\"]\n\n[workspace.package]\nversion = \"1.0.0\"\nrust-version = \"1.94\"\n\n[workspace.dependencies]\nserde = \"1\"\n";
+        let ordinary = root
+            .replace("1.0.0", "1.0.1")
+            .replace("serde = \"1\"", "serde = \"1.0.200\"\nitoa = \"1\"");
+        assert_eq!(manifest(root), manifest(&ordinary));
+        let members = "members = [\"crates/*\"]";
+        for policy in [
+            root.replace(
+                members,
+                "members = [\"crates/*\"]\nexclude = [\"crates/kernel\"]",
+            ),
+            root.replace(members, "members = [\"crates/a\"]"),
+            root.replace(
+                members,
+                "members = [\"crates/*\"]\ndefault-members = [\"xtask\"]",
+            ),
+            root.replace("1.94", "1.0"),
+            format!("{root}\n[workspace.metadata.cargo-machete]\nignored = [\"serde\"]\n"),
+            format!("{root}\n[profile.dev]\ndebug-assertions = false\n"),
+            format!("{root}\n[patch.crates-io]\nserde = {{ path = \"vendor/serde\" }}\n"),
+            format!("{root}\n[replace]\n\"serde:1.0.0\" = {{ path = \"vendor/serde\" }}\n"),
+        ] {
+            assert_ne!(manifest(root), manifest(&policy), "{policy}");
+        }
+    }
+
+    #[test]
     fn values_compare_parsed_so_comments_and_layout_do_not_count() {
         let value = |text: &str| Format::Toml.value(text.as_bytes(), PATH).ok();
         assert_eq!(value("a = 1\nb = 2\n"), value("# why\nb = 2\na   = 1\n"));
@@ -387,7 +493,7 @@ mod tests {
         assert_ne!(manifest(lints), manifest(&patched));
         assert_eq!(
             Format::Json.value(b"{\"a\": [1]}", "x").ok(),
-            Some(json!({"a": [1]}))
+            Some(Value::Json(json!({"a": [1]})))
         );
     }
 

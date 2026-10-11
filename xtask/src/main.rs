@@ -1,6 +1,7 @@
 //! Development gates for this workspace: each command exits non-zero when its gate fails.
 
 mod erosion;
+mod ground_truth;
 mod layers;
 mod lint_tables;
 mod policy;
@@ -16,21 +17,75 @@ mod workspace;
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask <command>
-  static-gates           run layers, suppressions and lint-tables, and report all three
-  layers                 every crate depends only on crates in lower layers
-  suppressions           every allow, expect, warn, clippy:: or rustfmt:: attribute is listed
-                         in crates/suppressions.toml
-  lint-tables            lint tables and tool config files match the root ones, and unsafe
-                         stays in crates/syntax/src/ffi.rs
-  public-api [--update]  each library's public API matches its snapshot
-  erosion --lint-bin PATH --health-bin PATH [--base REV] [--update]
-                         the pinned agentless-mcp checks pass, and health does not get worse
-  policy [--base REV]    each policy file equals its version at the base, or each commit that
-                         changed it carries a Policy-Change: <path> trailer
-  nightly                print the nightly toolchain that public-api needs";
-
 type Gate = fn(&Path) -> Result<(), Failure>;
+type FlagGate = fn(&Path, &[String]) -> Result<(), Failure>;
+
+enum Handler {
+    Plain(Gate),
+    Flags(FlagGate),
+    Print(&'static str),
+}
+
+struct Task {
+    name: &'static str,
+    usage: &'static str,
+    handler: Handler,
+}
+
+const TASKS: [Task; 9] = [
+    Task {
+        name: "static-gates",
+        usage: "  static-gates           run layers, suppressions and lint-tables, and report all three",
+        handler: Handler::Plain(static_gates),
+    },
+    Task {
+        name: "layers",
+        usage: "  layers                 every crate depends only on crates in lower layers",
+        handler: Handler::Plain(layers::check),
+    },
+    Task {
+        name: "suppressions",
+        usage: "  suppressions           every allow, expect, warn, ignore, clippy:: or rustfmt:: attribute is
+                         listed in crates/suppressions.toml",
+        handler: Handler::Plain(suppressions::check),
+    },
+    Task {
+        name: "lint-tables",
+        usage: "  lint-tables            lint tables and tool config files match the root ones, and unsafe
+                         stays in crates/syntax/src/ffi.rs",
+        handler: Handler::Plain(lint_tables::check),
+    },
+    Task {
+        name: "ground-truth",
+        usage: "  ground-truth           clippy with each warn and deny lint force-warned finds only the
+                         suppressions that crates/suppressions.toml lists, rustc reads only
+                         scanned sources, and an unknown cfg fails the build",
+        handler: Handler::Plain(ground_truth::check),
+    },
+    Task {
+        name: "public-api",
+        usage: "  public-api [--update]  each library's public API matches its snapshot",
+        handler: Handler::Flags(public_api::check),
+    },
+    Task {
+        name: "erosion",
+        usage: "  erosion --lint-bin PATH --health-bin PATH [--base REV] [--update]
+                         the pinned agentless-mcp checks pass, and health does not get worse",
+        handler: Handler::Flags(erosion::check),
+    },
+    Task {
+        name: "policy",
+        usage: "  policy [--base REV]    each policy file at HEAD and in the working tree equals its version at
+                         the base, or each commit that changed it carries a Policy-Change: <path>
+                         trailer and one of those commits made HEAD's value",
+        handler: Handler::Flags(policy::check),
+    },
+    Task {
+        name: "nightly",
+        usage: "  nightly                print the nightly toolchain that public-api needs",
+        handler: Handler::Print(public_api::TOOLCHAIN),
+    },
+];
 
 const STATIC_GATES: [(&str, Gate); 3] = [
     ("layers", layers::check),
@@ -69,20 +124,24 @@ fn main() -> ExitCode {
 }
 
 fn run(command: &str, flags: &[String], root: &Path) -> Result<(), Failure> {
-    match (command, flags) {
-        ("static-gates", []) => static_gates(root),
-        ("layers", []) => layers::check(root),
-        ("suppressions", []) => suppressions::check(root),
-        ("lint-tables", []) => lint_tables::check(root),
-        ("public-api", flags) => public_api::check(root, flags),
-        ("erosion", flags) => erosion::check(root, flags),
-        ("policy", flags) => policy::check(root, flags),
-        ("nightly", []) => {
-            println!("{}", public_api::TOOLCHAIN);
+    let task = TASKS
+        .iter()
+        .find(|task| task.name == command)
+        .ok_or(Failure::Usage)?;
+    match (&task.handler, flags) {
+        (Handler::Plain(gate), []) => gate(root),
+        (Handler::Flags(gate), flags) => gate(root, flags),
+        (Handler::Print(text), []) => {
+            println!("{text}");
             Ok(())
         }
-        _ => Err(Failure::Usage),
+        (Handler::Plain(_) | Handler::Print(_), _) => Err(Failure::Usage),
     }
+}
+
+fn usage() -> String {
+    let lines: Vec<&str> = TASKS.iter().map(|task| task.usage).collect();
+    format!("usage: cargo xtask <command>\n{}", lines.join("\n"))
 }
 
 fn static_gates(root: &Path) -> Result<(), Failure> {
@@ -109,7 +168,7 @@ fn static_gates(root: &Path) -> Result<(), Failure> {
 
 fn report(failure: &Failure) {
     match failure {
-        Failure::Usage => eprintln!("{USAGE}"),
+        Failure::Usage => eprintln!("{}", usage()),
         Failure::Gate(problems) => {
             for problem in problems {
                 eprintln!("{problem}");

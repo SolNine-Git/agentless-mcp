@@ -11,6 +11,9 @@ const LISTED: &str = "crates/suppressions.toml";
 // warn counts too: `#![warn(warnings)]` overrides `-D warnings`, so it lowers every lint.
 const LINT_LEVELS: [&str; 3] = ["allow", "expect", "warn"];
 const TOOLS: [&str; 2] = ["clippy", "rustfmt"];
+// Each suppresses as a whole: rustfmt's legacy skip, as in #[cfg_attr(rustfmt, rustfmt_skip)], and
+// #[ignore], which turns a test off.
+const WHOLE: [&str; 2] = ["rustfmt_skip", "ignore"];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -20,9 +23,9 @@ struct Listed {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Entry {
-    file: String,
-    lint: String,
+pub(crate) struct Entry {
+    pub(crate) file: String,
+    pub(crate) lint: String,
     #[serde(default = "one")]
     count: usize,
     reason: String,
@@ -34,9 +37,9 @@ struct Found {
     lint: String,
 }
 
-/// Fail unless crates/suppressions.toml lists each lint-level and tool attribute in crates/ and xtask/ exactly.
+/// Fail unless crates/suppressions.toml lists each lint-level and tool attribute, and each #[ignore], in crates/ and xtask/ exactly.
 pub fn check(root: &Path) -> Result<(), Failure> {
-    let listed: Listed = repo::toml(&root.join(LISTED))?;
+    let listed = entries(root)?;
     let sources = sources::scan(root, &workspace::packages(root)?)?;
     let mut problems = sources.problems;
     let mut found = Vec::new();
@@ -45,8 +48,13 @@ pub fn check(root: &Path) -> Result<(), Failure> {
         found.extend(suppressions);
         problems.extend(unreadable);
     }
-    problems.extend(compare(&listed.allow, &found));
+    problems.extend(compare(&listed, &found));
     verdict(problems)
+}
+
+pub(crate) fn entries(root: &Path) -> Result<Vec<Entry>, Failure> {
+    let listed: Listed = repo::toml(&root.join(LISTED))?;
+    Ok(listed.allow)
 }
 
 fn one() -> usize {
@@ -65,7 +73,7 @@ fn suppressions(source: &Source) -> (Vec<Found>, Vec<String>) {
                     lint,
                 }),
                 Err(text) => problems.push(format!(
-                    "{}:{}: the gates cannot read the lint `{text}` in #[{}]",
+                    "{}:{}: the gates cannot read the lint `{text}` in #[{}]. Write the lint name literally",
                     source.file, meta.line, meta.path
                 )),
             }
@@ -79,8 +87,7 @@ fn suppressed(meta: &Meta) -> Vec<Result<String, String>> {
         .path
         .split_once("::")
         .is_some_and(|(tool, _)| TOOLS.contains(&tool));
-    // rustfmt still honors the legacy form, as in #[cfg_attr(rustfmt, rustfmt_skip)].
-    if tool || meta.path == "rustfmt_skip" {
+    if tool || WHOLE.contains(&meta.path.as_str()) {
         return vec![Ok(meta.path.clone())];
     }
     if !LINT_LEVELS.contains(&meta.path.as_str()) {
@@ -115,7 +122,7 @@ fn compare(listed: &[Entry], found: &[Found]) -> Vec<String> {
             .filter(|entry| !lines.contains_key(&(entry.file.as_str(), entry.lint.as_str())))
             .map(|entry| {
                 format!(
-                    "{LISTED}: {} in {} is stale: the file does not suppress it",
+                    "{LISTED}: {} in {} is stale: the file does not suppress it. Remove the entry",
                     entry.lint, entry.file
                 )
             }),
@@ -129,13 +136,17 @@ fn entry_problems(listed: &[Entry]) -> Vec<String> {
     for entry in listed {
         let place = format!("{LISTED}: {} in {}", entry.lint, entry.file);
         if entry.reason.trim().is_empty() {
-            problems.push(format!("{place} has no reason"));
+            problems.push(format!(
+                "{place} has no reason. Write why the code needs the suppression"
+            ));
         }
         if entry.count == 0 {
-            problems.push(format!("{place} has a count of 0"));
+            problems.push(format!(
+                "{place} has a count of 0. Remove the count, or set it to the number of suppressions in the file"
+            ));
         }
         if !seen.insert((&entry.file, &entry.lint)) {
-            problems.push(format!("{place} is listed twice"));
+            problems.push(format!("{place} is listed twice. Merge the two entries"));
         }
     }
     problems
@@ -148,10 +159,14 @@ fn found_problems(listed: &[Entry], file: &str, lint: &str, lines: &[usize]) -> 
     {
         None => lines
             .iter()
-            .map(|line| format!("{file}:{line}: the {lint} suppression has no entry in {LISTED}"))
+            .map(|line| {
+                format!(
+                    "{file}:{line}: the {lint} suppression has no entry in {LISTED}. Remove it, or add an entry with its reason"
+                )
+            })
             .collect(),
         Some(entry) if entry.count != lines.len() => vec![format!(
-            "{file}: {lint} is suppressed {} times, but {LISTED} lists {}",
+            "{file}: {lint} is suppressed {} times, but {LISTED} lists {}. Make the two counts equal",
             lines.len(),
             entry.count
         )],
@@ -241,6 +256,16 @@ mod tests {
     }
 
     #[test]
+    fn an_ignored_test_is_a_suppression() {
+        let text = "#[test]\n#[ignore]\nfn a() {}\n#[ignore = \"slow\"]\nfn b() {}\n\
+                    #[cfg_attr(miri, ignore)]\nfn c() {}\n#[should_panic]\nfn d() {}\n";
+        assert_eq!(
+            lints(text),
+            expected(&[(2, "ignore"), (4, "ignore"), (6, "ignore")])
+        );
+    }
+
+    #[test]
     fn a_warn_attribute_is_a_suppression() {
         let text = "#![cfg_attr(all(), warn(warnings))]\n#[warn(clippy::dbg_macro)]\nfn f() {}\n";
         assert_eq!(
@@ -262,7 +287,9 @@ mod tests {
         let twice = [found("dead_code", 2), found("dead_code", 5)];
         assert_eq!(
             compare(&[entry("dead_code", 1, "r")], &twice),
-            ["f.rs: dead_code is suppressed 2 times, but crates/suppressions.toml lists 1"]
+            [
+                "f.rs: dead_code is suppressed 2 times, but crates/suppressions.toml lists 1. Make the two counts equal"
+            ]
         );
         assert!(compare(&[entry("dead_code", 2, "r")], &twice).is_empty());
     }
@@ -271,7 +298,9 @@ mod tests {
     fn a_stale_entry_fails() {
         assert_eq!(
             compare(&[entry("dead_code", 1, "r")], &[]),
-            ["crates/suppressions.toml: dead_code in f.rs is stale: the file does not suppress it"]
+            [
+                "crates/suppressions.toml: dead_code in f.rs is stale: the file does not suppress it. Remove the entry"
+            ]
         );
     }
 
@@ -280,8 +309,8 @@ mod tests {
         assert_eq!(
             compare(&[], &[found("unused", 4), found("unused", 7)]),
             [
-                "f.rs:4: the unused suppression has no entry in crates/suppressions.toml",
-                "f.rs:7: the unused suppression has no entry in crates/suppressions.toml",
+                "f.rs:4: the unused suppression has no entry in crates/suppressions.toml. Remove it, or add an entry with its reason",
+                "f.rs:7: the unused suppression has no entry in crates/suppressions.toml. Remove it, or add an entry with its reason",
             ]
         );
     }
@@ -333,9 +362,9 @@ mod tests {
         assert_eq!(
             compare(&listed, &[found("unused", 3)]),
             [
-                "crates/suppressions.toml: unused in f.rs has no reason",
-                "crates/suppressions.toml: unused in f.rs has a count of 0",
-                "crates/suppressions.toml: unused in f.rs is listed twice",
+                "crates/suppressions.toml: unused in f.rs has no reason. Write why the code needs the suppression",
+                "crates/suppressions.toml: unused in f.rs has a count of 0. Remove the count, or set it to the number of suppressions in the file",
+                "crates/suppressions.toml: unused in f.rs is listed twice. Merge the two entries",
             ]
         );
     }

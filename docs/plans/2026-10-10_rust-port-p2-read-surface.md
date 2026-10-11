@@ -133,7 +133,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **orient**:
   - `health` is its own module, out of the graph service (finding B14): orphans, unused exports, hubs, the complexity summary, hotspots, and the walk budget (`src/agentless_mcp/application/graph_service.py:540-836`; `walk_budget` in `src/agentless_mcp/util/deadline.py:93-97`);
   - `cycles`, `communities`, `diagram`, and `path`.
-- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`).
+- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`). The ground-truth dep-info check refuses an `include_str!` of a file that is not a scanned `.rs` file, so this item needs a decision first: generate the sections into committed Rust with `cargo xtask generate`, or add the file to the dep-info allowed set in review (P1 "Port constraints").
 - **capabilities** gains the read operations' limits from the same `Limit` constants (finding E6).
 - **index**: the CLI command over the `store` writer.
 - **Tests**:
@@ -149,7 +149,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **Communities**: the one-line note when not converged.
 - **Diagrams**:
   - mermaid (`src/agentless_mcp/core/mermaid.py:191-283`, label allow-list, ids `n{i}`, `_distinct` ordinals);
-  - HTML (`src/agentless_mcp/core/htmlgraph.py:64-164`), with the template through `include_str!`, compact sorted ASCII JSON, `<`, `>`, and `&` escaped, and edges sorted lexically by id.
+  - HTML (`src/agentless_mcp/core/htmlgraph.py:64-164`), with the template through `include_str!`, compact sorted ASCII JSON, `<`, `>`, and `&` escaped, and edges sorted lexically by id. The template meets the same dep-info rule as the guide.
 - **Numbers**: text uses `{:.4f}`, `:g`, and `.3f`. JSON uses `round_half_even(x, 6)`, then `float_repr`, with negative zero shown as zero.
 - **Listings**: one `Bounded<T>` serializer replaces 13 listing classes and 36 `as_dict` methods in `render.py` (finding E3).
 - **Token counter**: the default `chars4` counter counts code points, and `--token-counter tiktoken` uses the `cl100k_base` encoding (`src/agentless_mcp/util/tokens.py`; `src/agentless_mcp/bootstrap.py:66`). The Rust port uses `tiktoken-rs` with the same encoding, behind the same flag. The counts must match the Python counts on the fixture corpus, as fixtures generated under 0.10.1 with the `tokens` extra.

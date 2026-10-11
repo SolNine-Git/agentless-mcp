@@ -98,6 +98,7 @@ mod tests {
         Package {
             name: name.to_owned(),
             dir: PathBuf::from(dir),
+            rust_version: None,
             dependencies,
             targets: Vec::new(),
         }

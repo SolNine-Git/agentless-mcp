@@ -19,6 +19,7 @@ toml = "0.9"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unexpected_cfgs = "forbid"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

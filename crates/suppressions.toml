@@ -1,6 +1,6 @@
-# Each allow, expect, or warn attribute, and each clippy:: or rustfmt:: tool attribute, in crates/
-# or xtask/ needs an entry here: file, lint, count (how many times the file has it; default 1),
-# and reason. The owner approves each entry in review.
+# Each allow, expect, or warn attribute, each clippy:: or rustfmt:: tool attribute, and each
+# #[ignore] (lint = "ignore") in crates/ or xtask/ needs an entry here: file, lint, count (how many
+# times the file has it; default 1), and reason. The owner approves each entry in review.
 # [[allow]]
 # file = "crates/io/src/write.rs"
 # lint = "clippy::too_many_lines"

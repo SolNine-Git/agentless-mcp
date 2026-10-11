@@ -1,12 +1,13 @@
 use std::path::Path;
-use std::process::Command;
 
 use toml::{Table, Value};
 
-use crate::workspace::Package;
-use crate::{Failure, process, repo};
+use crate::workspace::{self, Package};
+use crate::{Failure, repo};
 
-const TOOL_FILES: [&str; 11] = [
+// cargo machete skips each path that an .ignore file names. .rgignore is the same format for the
+// walkers that read it.
+const TOOL_FILES: [&str; 13] = [
     "clippy.toml",
     ".clippy.toml",
     "rustfmt.toml",
@@ -18,6 +19,8 @@ const TOOL_FILES: [&str; 11] = [
     "deny.exceptions.toml",
     ".deny.exceptions.toml",
     ".agentless-mcp.json",
+    ".ignore",
+    ".rgignore",
 ];
 // The root files that may exist. Each CLIPPY_EXEMPT directory may also hold a clippy.toml.
 const ROOT_FILES: [&str; 6] = [
@@ -38,15 +41,27 @@ const CLIPPY_EXEMPT: [(&str, &str); 3] = [
     ("xtask", "std::fs::"),
 ];
 // clippy reads the first of these that it finds, from the package directory upward.
-const CLIPPY_NAMES: [&str; 2] = [".clippy.toml", ROOT_CLIPPY];
+pub(crate) const CLIPPY_NAMES: [&str; 2] = [".clippy.toml", ROOT_CLIPPY];
 
-/// Return each tool config file outside the allowed set, each allowed one whose content drifts, and each package that clippy configures from another file.
+/// Return each non-ASCII path, each tool config file outside crates/ and xtask/ and the allowed set, each allowed one whose content drifts, and each package that clippy configures from another file.
 pub fn problems(
     root: &Path,
     root_clippy: &Table,
     packages: &[Package],
 ) -> Result<Vec<String>, Failure> {
-    let mut problems = stray(&listed(root)?);
+    let listed = listed(root)?;
+    let mut problems = non_ascii_problems(&listed);
+    // The source walk judges every file under crates/ and xtask/ on disk, so it reports those.
+    problems.extend(
+        listed
+            .iter()
+            .filter(|path| {
+                !workspace::ROOTS
+                    .iter()
+                    .any(|dir| Path::new(path).starts_with(dir))
+            })
+            .filter_map(|path| stray_problem(path)),
+    );
     problems.extend(cargo_config_problem(
         optional_table(root, CARGO_CONFIG)?.as_ref(),
     ));
@@ -82,36 +97,77 @@ fn nearest_clippy(root: &Path, dir: &Path) -> Result<Option<String>, Failure> {
 
 fn scope_problem(dir: &str, nearest: Option<&str>) -> Option<String> {
     let exempt = CLIPPY_EXEMPT.iter().any(|&(exempt, _)| exempt == dir);
-    (!exempt && nearest != Some(ROOT_CLIPPY)).then(|| {
+    let expected = if exempt {
+        exempt_clippy(dir)
+    } else {
+        ROOT_CLIPPY.to_owned()
+    };
+    (nearest != Some(expected.as_str())).then(|| {
         format!(
-            "{dir}: clippy reads {} for this package: only a package whose directory is exempt may read a clippy config other than the root clippy.toml",
+            "{dir}: clippy reads {} for this package: it must read {expected}. Remove the nearer clippy config, or move the package",
             nearest.unwrap_or("no clippy config")
         )
     })
 }
 
 fn listed(root: &Path) -> Result<Vec<String>, Failure> {
-    let mut command = Command::new("git");
-    command
-        .args([
+    let visible = repo::git(
+        root,
+        &[
             "ls-files",
             "-z",
             "--cached",
             "--others",
             "--exclude-standard",
-        ])
-        .current_dir(root);
-    let output = process::stdout(&mut command, process::GIT)?;
-    let text = String::from_utf8(output)
-        .map_err(|error| Failure::Broken(format!("git ls-files: {error}")))?;
+        ],
+    )?;
+    // An ignored file counts, because the tools read it. The listing matches names only, so it stays
+    // small in target/ and .venv/, and a tool config name there fails too.
+    let names = ignored_names();
+    let mut args = vec![
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--",
+    ];
+    args.extend(names.iter().map(String::as_str));
+    let ignored = repo::git(root, &args)?;
     let mut paths = Vec::new();
-    for path in text.split('\0').filter(|path| !path.is_empty()) {
-        // --cached also lists a tracked file that the worktree deleted, and no tool reads it.
-        if repo::exists(&root.join(path))? {
-            paths.push(path.to_owned());
+    for output in [visible, ignored] {
+        let text = String::from_utf8(output)
+            .map_err(|error| Failure::Broken(format!("git ls-files: {error}")))?;
+        for path in text.split('\0').filter(|path| !path.is_empty()) {
+            // --cached also lists a tracked file that the worktree deleted, and no tool reads it.
+            if repo::exists(&root.join(path))? {
+                paths.push(path.to_owned());
+            }
         }
     }
+    paths.sort();
+    paths.dedup();
     Ok(paths)
+}
+
+fn ignored_names() -> Vec<String> {
+    TOOL_FILES
+        .iter()
+        .map(|name| format!(":(icase,glob)**/{name}"))
+        .chain([":(icase,glob)**/.cargo/**".to_owned()])
+        .collect()
+}
+
+fn non_ascii_problems(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|path| !path.is_ascii())
+        .map(|path| {
+            format!(
+                "{path}: a non-ASCII path is refused: APFS may fold its case beyond ASCII, and the gates fold ASCII case only. Rename it with ASCII characters"
+            )
+        })
+        .collect()
 }
 
 fn optional_table(root: &Path, file: &str) -> Result<Option<Table>, Failure> {
@@ -122,14 +178,12 @@ fn optional_table(root: &Path, file: &str) -> Result<Option<Table>, Failure> {
     }
 }
 
-fn stray(paths: &[String]) -> Vec<String> {
-    paths
-        .iter()
-        .filter(|path| is_tool_config(path) && !allowed(path))
-        .map(|path| {
-            format!("{path}: this tool config file is refused: clippy, rustfmt, rustup, cargo, cargo-deny or agentless-mcp would read it")
-        })
-        .collect()
+pub(crate) fn stray_problem(path: &str) -> Option<String> {
+    (is_tool_config(path) && !allowed(path)).then(|| {
+        format!(
+            "{path}: this tool config file is refused: clippy, rustfmt, rustup, cargo, cargo-deny, cargo-machete, agentless-mcp or an ignore-file walker can read it. Delete it: put a setting in the root file, and write a test's config at run time"
+        )
+    })
 }
 
 fn allowed(path: &str) -> bool {
@@ -139,7 +193,7 @@ fn allowed(path: &str) -> bool {
             .any(|&(dir, _)| path == exempt_clippy(dir))
 }
 
-fn is_tool_config(path: &str) -> bool {
+pub(crate) fn is_tool_config(path: &str) -> bool {
     // Compare in lowercase: a case-insensitive file system (macOS) serves Clippy.toml as clippy.toml.
     let lower = path.to_ascii_lowercase();
     let mut parts: Vec<&str> = lower.split('/').collect();
@@ -176,12 +230,15 @@ fn without_methods(root_clippy: &Table, prefix: &str) -> Table {
 mod tests {
     use toml::Table;
 
-    use super::{cargo_config_problem, clippy_problem, scope_problem, stray, without_methods};
+    use super::{
+        cargo_config_problem, clippy_problem, ignored_names, non_ascii_problems, scope_problem,
+        stray_problem, without_methods,
+    };
 
     fn strays(paths: &[&str]) -> Vec<String> {
-        let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
-        stray(&paths)
-            .into_iter()
+        paths
+            .iter()
+            .filter_map(|path| stray_problem(path))
             .map(|problem| problem.split(':').next().unwrap_or_default().to_owned())
             .collect()
     }
@@ -199,6 +256,9 @@ mod tests {
             "rust-toolchain",
             "crates/kernel/rust-toolchain.toml",
             "crates/Clippy.toml",
+            ".ignore",
+            "crates/.IGNORE",
+            ".rgignore",
         ];
         assert_eq!(strays(&refused), refused);
         let allowed = [
@@ -231,34 +291,65 @@ mod tests {
     }
 
     #[test]
-    fn a_package_below_an_exempt_directory_must_read_the_root_clippy_config() {
+    fn a_package_reads_the_root_clippy_config_and_an_exempt_one_reads_its_own() {
         assert_eq!(scope_problem("crates/kernel", Some("clippy.toml")), None);
         assert_eq!(
             scope_problem("crates/io", Some("crates/io/clippy.toml")),
             None
         );
-        assert_eq!(scope_problem("xtask", Some("clippy.toml")), None);
+        assert_eq!(scope_problem("xtask", Some("xtask/clippy.toml")), None);
         for (dir, nearest) in [
             ("crates/io/evil", Some("crates/io/clippy.toml")),
             ("crates/kernel", Some(".clippy.toml")),
             ("crates/kernel", None),
+            ("xtask", Some("xtask/.clippy.toml")),
+            ("xtask", Some("clippy.toml")),
         ] {
-            assert!(scope_problem(dir, nearest).is_some(), "{dir}");
+            assert!(scope_problem(dir, nearest).is_some(), "{dir} {nearest:?}");
         }
+        assert_eq!(
+            scope_problem("xtask", Some("xtask/.clippy.toml")).unwrap(),
+            "xtask: clippy reads xtask/.clippy.toml for this package: it must read xtask/clippy.toml. Remove the nearer clippy config, or move the package"
+        );
     }
 
     #[test]
     fn review_a_root_config_in_another_case_is_refused() {
-        let paths: Vec<String> = [
+        let paths = [
             "Clippy.toml",
             ".Cargo/config.toml",
             "RUSTFMT.TOML",
             "Rust-Toolchain",
+        ];
+        assert_eq!(strays(&paths), paths);
+    }
+
+    #[test]
+    fn a_non_ascii_path_is_refused() {
+        let paths: Vec<String> = [
+            "ru\u{17f}tfmt.toml",
+            "crates/kernel/src/probe.r\u{17f}",
+            "docs/a.md",
         ]
         .iter()
         .map(|path| (*path).to_owned())
         .collect();
-        assert_eq!(stray(&paths).len(), 4);
+        let problems = non_ascii_problems(&paths);
+        assert_eq!(problems.len(), 2);
+        for (problem, path) in problems.iter().zip(&paths) {
+            assert!(
+                problem.starts_with(&format!("{path}: a non-ASCII path is refused")),
+                "{problem}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_ignored_listing_names_every_tool_config_in_any_case() {
+        let names = ignored_names();
+        assert!(names.contains(&":(icase,glob)**/.clippy.toml".to_owned()));
+        assert!(names.contains(&":(icase,glob)**/.ignore".to_owned()));
+        assert_eq!(names.last().unwrap(), ":(icase,glob)**/.cargo/**");
     }
 
     #[test]

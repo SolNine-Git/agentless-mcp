@@ -6,6 +6,7 @@ use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 type Bound = BTreeSet<String>;
 type Test = fn(&[TokenTree], usize) -> bool;
 
+// Each test finds its rule's form at one token, at every depth. sources::reason says why each is refused.
 const RULES: [(Rule, Test); 7] = [
     (Rule::LoneHash, lone_hash),
     (Rule::FragmentCall, fragment_call),
@@ -46,7 +47,7 @@ pub struct Refused {
     pub rule: Rule,
 }
 
-/// Why the gates refuse a form: each rule closes one route to code or an attribute that a gate does not see.
+/// Why the gates refuse a form: each rule refuses one route to code or an attribute that a gate does not see.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rule {
     Shebang,
@@ -428,13 +429,11 @@ fn lone_hash(tokens: &[TokenTree], index: usize) -> bool {
 }
 
 fn fragment_call(tokens: &[TokenTree], index: usize) -> bool {
-    let named = matches!(
-        tokens.get(index + 1),
-        Some(TokenTree::Group(_) | TokenTree::Ident(_))
-    );
+    // `!=` is the one form with a `!` after a fragment that calls no macro.
+    let not_equal = is_punct(tokens.get(index + 1), '=');
     let before = &tokens[..index];
     is_punct(tokens.get(index), '!')
-        && named
+        && !not_equal
         && (after_fragment(before) || after_repetition(before))
 }
 
@@ -558,7 +557,8 @@ fn names_clippy_or_a_fragment(tokens: impl IntoIterator<Item = TokenTree>) -> bo
     })
 }
 
-// A literal include! name and a name in a use item have their own refusals, so they are skipped.
+// A macro can build a use item or a call around a bare include, as in b!(use) with $u std::include as inc.
+// A literal include! call and a use item have their own refusals, so this pass skips them.
 fn include_names(stream: TokenStream) -> Vec<Refused> {
     let tokens: Vec<TokenTree> = stream.into_iter().collect();
     let mut refused = Vec::new();
@@ -855,9 +855,18 @@ mod tests {
 
     #[test]
     fn a_macro_call_named_by_a_fragment_is_refused() {
+        let named_definition = "macro_rules! define {\n    ($define:ident, $name:ident, $item:item) => {\n        \
+                                $define! $name {\n            () => {\n                $item\n            };\n        \
+                                }\n    };\n}\n";
         assert_rule(
             Rule::FragmentCall,
             &[
+                (named_definition, &[3]),
+                (
+                    "macro_rules! r { ($($d:ident)*, $n:ident) => { $($d)*! $n { () => {} } }; }\n",
+                    &[1],
+                ),
+                ("macro_rules! l { ($d:ident) => { $d! \"x\" }; }\n", &[1]),
                 ("macro_rules! a { ($n:ident) => { $n!(\"p\"); }; }\n", &[1]),
                 (
                     "macro_rules! b { ($n:ident) => { std::$n!(\"p\"); }; }\n",
@@ -880,6 +889,9 @@ mod tests {
                 "macro_rules! f {\n    ($x:expr, $($y:expr),*) => {\n        \
                $crate::g!($x) && $x != 1 && !($x) $(&& !$y)*\n    };\n}\n\
                fn h(a: u8) -> bool { a * !(a) == 0 }\n",
+                "macro_rules! n { ($x:expr) => { $x!= 1 }; }\n",
+                "macro_rules! a { ($($x:expr),*) => { true $(&& !$x)* }; }\n",
+                "macro_rules! b { ($($x:expr),*) => { [$(!$x),*] }; }\n",
             ],
         );
     }

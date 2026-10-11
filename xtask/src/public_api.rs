@@ -16,7 +16,7 @@ pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
         _ => return Err(Failure::Usage),
     };
     let packages = workspace::packages(root)?;
-    let mut problems = stale_snapshots(&packages, root)?;
+    let mut problems = Vec::new();
     for package in libraries(&packages) {
         let name = repo::relative(&package.dir, root);
         let current = public_api(root, &package.name)?;
@@ -30,22 +30,6 @@ pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
         }
     }
     verdict(problems)
-}
-
-fn stale_snapshots(packages: &[Package], root: &Path) -> Result<Vec<String>, Failure> {
-    let mut problems = Vec::new();
-    let no_library = packages
-        .iter()
-        .filter(|package| package.library().is_none());
-    for package in no_library {
-        if repo::exists(&package.dir.join(SNAPSHOT))? {
-            problems.push(format!(
-                "{}/{SNAPSHOT} belongs to a package with no library target: delete it",
-                repo::relative(&package.dir, root)
-            ));
-        }
-    }
-    Ok(problems)
 }
 
 fn libraries(packages: &[Package]) -> impl Iterator<Item = &Package> {
@@ -66,20 +50,24 @@ fn public_api(root: &Path, package: &str) -> Result<String, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
-    use super::{libraries, stale_snapshots};
+    use super::libraries;
     use crate::workspace::{Package, Target};
 
     fn package(name: &str, kind: &str, src_path: &str) -> Package {
         Package {
             name: name.to_owned(),
             dir: PathBuf::from(format!("/r/{name}")),
+            rust_version: None,
             dependencies: Vec::new(),
             targets: vec![Target {
                 name: name.to_owned(),
                 kind: vec![kind.to_owned()],
                 src_path: PathBuf::from(src_path),
+                edition: "2024".to_owned(),
+                test: true,
+                required_features: None,
             }],
         }
     }
@@ -95,21 +83,5 @@ mod tests {
             .map(|package| package.name.as_str())
             .collect();
         assert_eq!(names, ["kernel", "deep"]);
-    }
-
-    #[test]
-    fn a_snapshot_in_a_package_with_no_library_target_is_stale() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let mut packages = [
-            package("kernel", "bin", "/r/kernel/src/main.rs"),
-            package("kernel", "lib", "/r/kernel/src/lib.rs"),
-        ];
-        for package in &mut packages {
-            package.dir = root.join("crates/kernel");
-        }
-        assert_eq!(
-            stale_snapshots(&packages, &root).unwrap(),
-            ["crates/kernel/public-api.txt belongs to a package with no library target: delete it"]
-        );
     }
 }

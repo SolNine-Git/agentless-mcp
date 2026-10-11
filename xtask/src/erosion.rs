@@ -13,6 +13,7 @@ const FAIL_ON: &str = "warning,advisory,not_checked";
 const LINT_GATE_EXIT: i32 = 3;
 // over_threshold counts units above this complexity; a config file in the tree must not move it.
 const THRESHOLD: u64 = 10;
+const HIDDEN_SHOWN: usize = 3;
 
 struct Options {
     lint_bin: PathBuf,
@@ -64,13 +65,7 @@ pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
         command.args(["index", "--repo"]).arg(root),
         process::GATE_BINARY,
     )?;
-    let mut problems = if unchanged_since(root, &base)? {
-        // lint reports an empty change set as not_checked, which the gate would count as a finding.
-        eprintln!("xtask: nothing changed since {base}, so lint has nothing to compare");
-        Vec::new()
-    } else {
-        lint(root, &options.lint_bin, &base)?
-    };
+    let mut problems = changes(root, &options.lint_bin, &base)?;
     let decision = ratchet(
         committed_baseline(root, &base)?,
         tree_baseline(root)?,
@@ -140,6 +135,36 @@ fn above(tree: Figures, bound: Figures, name: &str) -> Vec<String> {
 
 fn lowest(versions: Vec<Figures>) -> Option<Figures> {
     versions.into_iter().reduce(Figures::lowered)
+}
+
+fn committed_baseline(root: &Path, base: &str) -> Result<Option<Figures>, Failure> {
+    let mut revisions = vec![base.to_owned()];
+    revisions.extend(repo::touching(root, base, BASELINE)?);
+    let mut versions = Vec::new();
+    for revision in revisions {
+        if let Some(json) = repo::show(root, &revision, BASELINE)? {
+            versions.push(figures(&json, &format!("{revision}:{BASELINE}"))?);
+        }
+    }
+    Ok(lowest(versions))
+}
+
+fn tree_baseline(root: &Path) -> Result<Option<Figures>, Failure> {
+    let path = root.join(BASELINE);
+    if !repo::exists(&path)? {
+        return Ok(None);
+    }
+    figures(repo::read(&path)?.as_bytes(), BASELINE).map(Some)
+}
+
+fn figures(json: &[u8], source: &str) -> Result<Figures, Failure> {
+    serde_json::from_slice(json).map_err(|error| Failure::Broken(format!("{source}: {error}")))
+}
+
+fn write_baseline(root: &Path, figures: Figures) -> Result<(), Failure> {
+    let text = serde_json::to_string_pretty(&figures)
+        .map_err(|error| Failure::Broken(format!("{BASELINE}: {error}")))?;
+    repo::write(&root.join(BASELINE), &format!("{text}\n"))
 }
 
 impl Figures {
@@ -215,14 +240,57 @@ fn value<'a>(rest: &mut impl Iterator<Item = &'a String>) -> Result<&'a str, Fai
         .ok_or(Failure::Usage)
 }
 
+fn changes(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure> {
+    if let Some(problem) = hidden_problem(&repo::git(root, &["ls-files", "-v", "-z"])?)? {
+        return Ok(vec![problem]);
+    }
+    if unchanged_since(root, base)? {
+        // lint reports an empty change set as not_checked, which the gate would count as a finding.
+        eprintln!("xtask: nothing changed since {base}, so lint has nothing to compare");
+        return Ok(Vec::new());
+    }
+    lint(root, lint_bin, base)
+}
+
+// git diff, and lint's change set that it builds, skip an edit to a file marked assume-unchanged
+// (a lowercase tag) or skip-worktree (S).
+fn hidden_problem(listing: &[u8]) -> Result<Option<String>, Failure> {
+    let text = std::str::from_utf8(listing)
+        .map_err(|error| Failure::Broken(format!("git ls-files -v: {error}")))?;
+    let mut hidden = Vec::new();
+    for entry in text.split('\0').filter(|entry| !entry.is_empty()) {
+        let (tag, path) = entry.split_once(' ').ok_or_else(|| {
+            Failure::Broken(format!(
+                "git ls-files -v printed a malformed entry: {entry:?}"
+            ))
+        })?;
+        if tag == "S" || tag.chars().any(|letter| letter.is_ascii_lowercase()) {
+            hidden.push(path);
+        }
+    }
+    Ok((!hidden.is_empty()).then(|| {
+        let shown: Vec<&str> = hidden.iter().take(HIDDEN_SHOWN).copied().collect();
+        format!(
+            "{} tracked files carry an assume-unchanged or skip-worktree mark, so git hides their edits from erosion (first: {}). Clear each mark with git update-index --no-assume-unchanged --no-skip-worktree <path>",
+            hidden.len(),
+            shown.join(", ")
+        )
+    }))
+}
+
 fn unchanged_since(root: &Path, base: &str) -> Result<bool, Failure> {
-    let mut diff = Command::new("git");
-    diff.args(["diff", "--quiet", base, "--"]).current_dir(root);
+    let mut diff = repo::git_command(root);
+    diff.args(["diff", "--quiet", base, "--"]);
     let status = process::run(&mut diff, process::GIT)?.status;
     let tracked_unchanged = match status.code() {
         Some(0) => true,
         Some(1) => false,
-        _ => return Err(Failure::Broken(format!("{diff:?} exited with {status}"))),
+        _ => {
+            return Err(Failure::Broken(format!(
+                "{} exited with {status}",
+                process::label(&diff)
+            )));
+        }
     };
     let untracked = repo::git(root, &["ls-files", "--others", "--exclude-standard"])?;
     Ok(tracked_unchanged && untracked.is_empty())
@@ -250,7 +318,10 @@ fn lint(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure
         Some(LINT_GATE_EXIT) => Ok(vec![format!(
             "lint found erosion since {base}: the findings are listed above"
         )]),
-        _ => Err(Failure::Broken(format!("{command:?} exited with {status}"))),
+        _ => Err(Failure::Broken(format!(
+            "{} exited with {status}",
+            process::label(&command)
+        ))),
     }
 }
 
@@ -313,39 +384,9 @@ impl Complexity {
     }
 }
 
-fn committed_baseline(root: &Path, base: &str) -> Result<Option<Figures>, Failure> {
-    let mut revisions = vec![base.to_owned()];
-    revisions.extend(repo::touching(root, base, BASELINE)?);
-    let mut versions = Vec::new();
-    for revision in revisions {
-        if let Some(json) = repo::show(root, &revision, BASELINE)? {
-            versions.push(figures(&json, &format!("{revision}:{BASELINE}"))?);
-        }
-    }
-    Ok(lowest(versions))
-}
-
-fn tree_baseline(root: &Path) -> Result<Option<Figures>, Failure> {
-    let path = root.join(BASELINE);
-    if !repo::exists(&path)? {
-        return Ok(None);
-    }
-    figures(repo::read(&path)?.as_bytes(), BASELINE).map(Some)
-}
-
-fn figures(json: &[u8], source: &str) -> Result<Figures, Failure> {
-    serde_json::from_slice(json).map_err(|error| Failure::Broken(format!("{source}: {error}")))
-}
-
-fn write_baseline(root: &Path, figures: Figures) -> Result<(), Failure> {
-    let text = serde_json::to_string_pretty(&figures)
-        .map_err(|error| Failure::Broken(format!("{BASELINE}: {error}")))?;
-    repo::write(&root.join(BASELINE), &format!("{text}\n"))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Figures, Health, lowest, parse, ratchet};
+    use super::{Figures, Health, hidden_problem, lowest, parse, ratchet};
     use crate::Failure;
 
     const STORED: Figures = Figures {
@@ -526,6 +567,26 @@ mod tests {
             ratchet(Some(STORED), Some(STORED), current, false).write,
             None
         );
+    }
+
+    #[test]
+    fn a_file_whose_edits_git_hides_fails_and_a_plain_listing_passes() {
+        let plain = b"H Cargo.toml\0M crates/a.rs\0C crates/b.rs\0";
+        assert!(hidden_problem(plain).unwrap().is_none());
+        let marked = b"H Cargo.toml\0h crates/a.rs\0S crates/b.rs\0s c\0H d\0S e\0";
+        let problem = hidden_problem(marked).unwrap().unwrap();
+        assert!(
+            problem.starts_with("4 tracked files carry an assume-unchanged or skip-worktree mark"),
+            "{problem}"
+        );
+        assert!(
+            problem.contains("(first: crates/a.rs, crates/b.rs, c)"),
+            "{problem}"
+        );
+        assert!(matches!(
+            hidden_problem(b"no-tag\0"),
+            Err(Failure::Broken(_))
+        ));
     }
 
     #[test]
