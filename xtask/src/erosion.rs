@@ -271,7 +271,7 @@ fn hidden_problem(listing: &[u8]) -> Result<Option<String>, Failure> {
     Ok((!hidden.is_empty()).then(|| {
         let shown: Vec<&str> = hidden.iter().take(HIDDEN_SHOWN).copied().collect();
         format!(
-            "{} tracked files carry an assume-unchanged or skip-worktree mark, so git hides their edits from erosion (first: {}). Clear each mark with git update-index --no-assume-unchanged --no-skip-worktree <path>",
+            "tracked files with an assume-unchanged or skip-worktree mark: {} (first: {}). git hides their edits from erosion. Clear each mark with git update-index --no-assume-unchanged --no-skip-worktree <path>",
             hidden.len(),
             shown.join(", ")
         )
@@ -279,21 +279,29 @@ fn hidden_problem(listing: &[u8]) -> Result<Option<String>, Failure> {
 }
 
 fn unchanged_since(root: &Path, base: &str) -> Result<bool, Failure> {
+    // A push sends commits, so stored trees decide first: no clean filter runs on a stored blob.
+    Ok(quiet_diff(root, &[base, "HEAD"])?
+        && quiet_diff(root, &["HEAD"])?
+        && repo::git(root, &["ls-files", "--others", "--exclude-standard"])?.is_empty())
+}
+
+// A diff driver that git trusts for its exit code can report an edit as no change.
+fn quiet_diff(root: &Path, revisions: &[&str]) -> Result<bool, Failure> {
     let mut diff = repo::git_command(root);
-    diff.args(["diff", "--quiet", base, "--"]);
-    let status = process::run(&mut diff, process::GIT)?.status;
-    let tracked_unchanged = match status.code() {
-        Some(0) => true,
-        Some(1) => false,
-        _ => {
-            return Err(Failure::Broken(format!(
-                "{} exited with {status}",
-                process::label(&diff)
-            )));
-        }
-    };
-    let untracked = repo::git(root, &["ls-files", "--others", "--exclude-standard"])?;
-    Ok(tracked_unchanged && untracked.is_empty())
+    diff.args(["diff", "--quiet", "--no-ext-diff", "--no-textconv"])
+        .args(revisions)
+        .arg("--");
+    let finished = process::run(&mut diff, process::GIT)?;
+    match finished.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(Failure::Broken(format!(
+            "{} exited with {}: {}",
+            process::label(&diff),
+            finished.status,
+            String::from_utf8_lossy(&finished.stderr).trim()
+        ))),
+    }
 }
 
 fn lint(root: &Path, lint_bin: &Path, base: &str) -> Result<Vec<String>, Failure> {
@@ -386,8 +394,11 @@ impl Complexity {
 
 #[cfg(test)]
 mod tests {
-    use super::{Figures, Health, hidden_problem, lowest, parse, ratchet};
+    use std::path::{Path, PathBuf};
+
+    use super::{Figures, Health, hidden_problem, lowest, parse, ratchet, unchanged_since};
     use crate::Failure;
+    use crate::repo::fixture::{git, scratch};
 
     const STORED: Figures = Figures {
         erosion: 0.2,
@@ -576,17 +587,83 @@ mod tests {
         let marked = b"H Cargo.toml\0h crates/a.rs\0S crates/b.rs\0s c\0H d\0S e\0";
         let problem = hidden_problem(marked).unwrap().unwrap();
         assert!(
-            problem.starts_with("4 tracked files carry an assume-unchanged or skip-worktree mark"),
-            "{problem}"
-        );
-        assert!(
-            problem.contains("(first: crates/a.rs, crates/b.rs, c)"),
+            problem.starts_with(
+                "tracked files with an assume-unchanged or skip-worktree mark: 4 (first: crates/a.rs, crates/b.rs, c)."
+            ),
             "{problem}"
         );
         assert!(matches!(
             hidden_problem(b"no-tag\0"),
             Err(Failure::Broken(_))
         ));
+    }
+
+    const ORIGINAL: &str = "fn a() {}\n";
+
+    // A scratch repository whose one commit holds a.rs.
+    fn based(name: &str) -> (PathBuf, String) {
+        let dir = scratch(name);
+        git(&dir, &["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("a.rs"), ORIGINAL).unwrap();
+        git(&dir, &["add", "-A"]);
+        git(&dir, &["commit", "-q", "-m", "base"]);
+        let base = git(&dir, &["rev-parse", "HEAD"]);
+        (dir, base)
+    }
+
+    fn configure(dir: &Path, attributes: &str, config: &[(&str, &str)]) {
+        std::fs::create_dir_all(dir.join(".git/info")).unwrap();
+        std::fs::write(dir.join(".git/info/attributes"), attributes).unwrap();
+        for (key, value) in config {
+            git(dir, &["config", key, value]);
+        }
+    }
+
+    fn edit(dir: &Path) {
+        std::fs::write(dir.join("a.rs"), "fn a() { if true {} }\n").unwrap();
+    }
+
+    #[test]
+    fn a_diff_driver_that_git_trusts_hides_no_edit() {
+        let (dir, base) = based("erosion-driver");
+        let driver = [
+            ("diff.quiet.command", "true"),
+            ("diff.quiet.trustExitCode", "true"),
+        ];
+        configure(&dir, "*.rs diff=quiet\n", &driver);
+        let untouched = unchanged_since(&dir, &base);
+        edit(&dir);
+        let uncommitted = unchanged_since(&dir, &base);
+        git(&dir, &["commit", "-q", "-am", "edit"]);
+        let committed = unchanged_since(&dir, &base);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(untouched, Ok(true)));
+        assert!(matches!(uncommitted, Ok(false)));
+        assert!(matches!(committed, Ok(false)));
+    }
+
+    #[test]
+    fn diff_trust_exit_code_alone_does_not_break_the_change_test() {
+        let (dir, base) = based("erosion-trust");
+        configure(&dir, "", &[("diff.trustExitCode", "true")]);
+        edit(&dir);
+        let unchanged = unchanged_since(&dir, &base);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(unchanged, Ok(false)));
+    }
+
+    // git add runs the clean filter too, so the edit is committed before the filter is set.
+    #[test]
+    fn a_clean_filter_hides_no_committed_edit() {
+        let (dir, base) = based("erosion-filter");
+        edit(&dir);
+        git(&dir, &["commit", "-q", "-am", "edit"]);
+        std::fs::write(dir.join(".git/original.rs"), ORIGINAL).unwrap();
+        let clean = format!("cat '{}'", dir.join(".git/original.rs").display());
+        configure(&dir, "*.rs filter=hide\n", &[("filter.hide.clean", &clean)]);
+        let unchanged = unchanged_since(&dir, &base);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(unchanged, Ok(false)));
     }
 
     #[test]

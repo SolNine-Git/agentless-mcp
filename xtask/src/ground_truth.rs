@@ -1,6 +1,7 @@
 mod cargo_clippy;
 mod coverage;
 mod dep_info;
+mod ignored;
 mod lints;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,39 +18,59 @@ use crate::{Failure, repo, sources, suppressions, verdict, workspace};
 // the workspace crates each time this check and the normal clippy run take turns.
 const TARGET_DIR: &str = "target/ground-truth";
 const MANIFEST: &str = "Cargo.toml";
+const BUILD_TIME: &str = "build-time";
+const BUILD_TIME_IS: &str =
+    "a third-party package with a proc-macro or build-script target in the resolved graph";
 
-/// Fail unless clippy, with each warn and deny lint force-warned, finds only suppressions that crates/suppressions.toml lists for the target, rustc reads only scanned sources and allowed data, and the workspace forbids unknown cfgs.
+/// Fail unless clippy, with each warn and deny lint force-warned, finds only suppressions that crates/suppressions.toml lists for the target, rustc reads only scanned sources, manifests and clippy configs, the workspace forbids unknown cfgs, crates/dependencies.toml lists each build-time package, and the ledger counts each ignored test.
 ///
-/// Residuals: a macro- or derive-built suppression of a lint that the same target already lists. `dead_code` in
-/// a bin's test-only code (the test harness allows it on `main`). Lints in external macro output, which clippy
-/// and rustc skip. The cfg names that rustc knows (`docsrs`, `miri`, target and panic values). A build script's
-/// check-cfg.
+/// Residuals: docs/plans/2026-10-10_rust-port-p1-per-write-path.md, section "Accepted residuals".
 pub fn check(root: &Path) -> Result<(), Failure> {
     verdict(problems(root)?)
 }
 
 fn problems(root: &Path) -> Result<Vec<String>, Failure> {
     let packages = workspace::packages(root)?;
-    let table = lints::table(root)?;
+    let table = lints::table(root, &lints::edition(root)?)?;
     let configured = lints::configured(root)?;
     let levels = lints::levels(&table, &configured)
         .map_err(|error| Failure::Broken(format!("{MANIFEST}: {error}")))?;
     let mut problems = lints::cfg_problems(&levels, &configured);
     let run = clippy(root, &packages, &lints::force_warned(&levels))?;
-    if !run.errors.is_empty() {
+    if run.errors.is_empty() {
+        problems.extend(built_problems(root, &packages, &run, &table.groups)?);
+    } else {
         problems.extend(run.errors);
-        return Ok(problems);
     }
-    let files = dep_info_files(root, &packages, &run.units)?;
-    let sources = sources::scan(root, &packages)?;
-    let allowed = Allowed::new(root, &sources.files, &packages);
+    Ok(problems)
+}
+
+// The checks that read what the build left: the resolved graph, the dep-info files, the diagnostics and the
+// test binaries.
+fn built_problems(
+    root: &Path,
+    packages: &[Package],
+    run: &Run,
+    groups: &BTreeMap<String, Vec<String>>,
+) -> Result<Vec<String>, Failure> {
+    let listed = workspace::listed(root)?;
+    let mut problems = workspace::list_problems(
+        BUILD_TIME,
+        BUILD_TIME_IS,
+        &workspace::build_time(root)?,
+        &listed.build_time,
+    );
+    let files = dep_info_files(root, packages, &run.units)?;
+    let sources = sources::scan(root, packages)?;
+    let allowed = Allowed::new(root, &sources.files, packages);
     for (target, paths) in &files {
         problems.extend(dep_info::problems(root, target, paths, &allowed));
     }
     let entries = suppressions::entries(root)?;
+    problems.extend(ignored::problems(&ignored::tests(root)?, &entries));
     let ledger = Ledger {
         entries: &entries,
-        groups: &table.groups,
+        groups,
     };
     let relative = relative_files(root, &files);
     problems.extend(coverage::problems(
@@ -87,7 +108,9 @@ fn dep_info_files(
 ) -> Result<BTreeMap<PathBuf, BTreeSet<PathBuf>>, Failure> {
     let mut files: BTreeMap<PathBuf, BTreeSet<PathBuf>> = BTreeMap::new();
     for unit in units {
-        let paths = dep_info::paths(&repo::read(&unit.dep_info)?, root);
+        let inputs = dep_info::inputs(&repo::read(&unit.dep_info)?)
+            .map_err(|error| repo::broken(&unit.dep_info, &error))?;
+        let paths = dep_info::canonical(root, &inputs)?;
         if !paths.contains(&unit.target) {
             return Err(Failure::Broken(format!(
                 "{}: the dep-info file does not list its crate root {}",

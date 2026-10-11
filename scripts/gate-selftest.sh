@@ -3,8 +3,8 @@
 # Copies the tree into a scratch git repository with no remote, checks that the
 # base passes every gate, then applies one violation at a time and checks that
 # the matching gate fails with the matching message. It needs network access:
-# cargo deny checks advisories and yanked crates, violations 11 to 13 add
-# crates that cargo fetches, and the hook trigger check installs the dev
+# cargo deny checks advisories and yanked crates, violations 11 to 13 and 25f
+# add crates that cargo fetches, and the hook trigger check installs the dev
 # group that uv.lock holds.
 set -euo pipefail
 
@@ -23,17 +23,24 @@ timed_out=124
 failures=0
 bases=0
 checks=0
-# The long s in UTF-8, for non-ASCII file names.
+# Characters for file names that the gates refuse: the long s in UTF-8, and two control characters.
 long_s=$(printf '\305\277')
+start_of_heading=$'\001'
+line_feed=$'\n'
 
 git -C "$root" ls-files -z --cached --others --exclude-standard \
     | tar -C "$root" --null -T - -cf - | tar -C "$work" -xf -
 cd "$work"
-# From here on, git, xtask and the gate binary read only the scratch repository's config: no
-# inherited GIT_ variable and no global or system file, so no hook or setting of the owner's applies.
+# From here on, no hook or setting of the owner's applies: no GIT_ variable, no global or system git
+# config, and an empty XDG_CONFIG_HOME, where git, uv and nextest find their user files.
 while IFS= read -r name; do unset "$name"; done < <(compgen -e | grep '^GIT_' || true)
-export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME=$scratch/config
+mkdir "$XDG_CONFIG_HOME"
 git init -q
+# A commit starts git maintenance in the background, which can still write to .git when the EXIT trap
+# removes the scratch directory.
+git config maintenance.auto false
+git config gc.auto 0
 # A scratch identity, because the isolated config holds none.
 git config user.name selftest
 git config user.email selftest@invalid
@@ -47,8 +54,9 @@ erosion=(cargo xtask erosion --lint-bin "$gate_bin" --health-bin "$gate_bin" --b
 # internal API. The dev group goes into a scratch environment.
 triggers=(env UV_PROJECT_ENVIRONMENT="$scratch/venv" uv run --frozen --only-group dev
     python -I "$here/hook_triggers.py" .pre-commit-config.yaml .)
-# As CI and the cargo-deps hook run it: an ignore file or a hidden directory hides no manifest.
-machete=(cargo machete --no-ignore --skip-target-dir)
+# As CI and the cargo-deps hook run it: an ignore file, a hidden directory or a directory named target
+# hides no manifest under the roots.
+machete=(cargo machete --no-ignore crates xtask)
 
 deadline() {
     perl "$here/deadline.pl" "$step_deadline" "$@" </dev/null
@@ -92,7 +100,8 @@ fails() {
 
 violate() {
     git reset -q --hard "$base"
-    git clean -q -fdx -e target
+    # Only the root target/, which ground-truth builds in: a row can add a directory crates/target.
+    git clean -q -fdx -e /target
 }
 
 # commit [-m PARAGRAPH]...: commit every change. A last paragraph can carry a trailer.
@@ -116,6 +125,59 @@ allow_entry() {
 raise_baseline() {
     printf '{\n  "erosion": 1.0,\n  "over_threshold": 99,\n  "clone_share": 1.0\n}\n' >crates/erosion-baseline.json
 }
+
+# running PID...: print each PID whose process has not ended. A zombie has ended.
+running() {
+    local pid stat
+    for pid in "$@"; do
+        stat=$(ps -o stat= -p "$pid" || true)
+        stat=${stat// /}
+        if [[ -n $stat && $stat != Z* ]]; then
+            printf '%s ' "$pid"
+        fi
+    done
+}
+
+# leader_problem: start deadline.pl on a shell with a background sleep, then SIGKILL perl. Print a
+# problem if either process still runs 2 s later, and kill both.
+leader_problem() {
+    local pids=$scratch/leader-pids helper tries=0 started=() left
+    perl "$here/deadline.pl" "$step_deadline" sh -c 'sleep 60 & echo "$$ $!" >"$1"; wait' probe "$pids" \
+        </dev/null >/dev/null 2>&1 &
+    helper=$!
+    until [[ -s $pids ]] || ((tries == 50)); do
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    kill -KILL "$helper"
+    wait "$helper" 2>/dev/null || true
+    if [[ ! -s $pids ]]; then
+        echo "the command did not start in 5 s"
+        return
+    fi
+    read -r -a started <"$pids"
+    left=$(running "${started[@]}")
+    tries=0
+    while [[ -n $left ]] && ((tries < 20)); do
+        sleep 0.1
+        tries=$((tries + 1))
+        left=$(running "${started[@]}")
+    done
+    if [[ -n $left ]]; then
+        echo "processes ${left}still run 2 s after perl died"
+        kill -KILL "${started[@]}" 2>/dev/null || true
+    fi
+}
+
+# deadline.pl's leader must kill the command when perl itself dies, or a killed run leaves it running.
+bases=$((bases + 1))
+leader=$(leader_problem)
+if [[ -z $leader ]]; then
+    echo "ok   base passes: deadline.pl kills its command when perl dies"
+else
+    echo "FAIL base fails: deadline.pl kills its command when perl dies: $leader"
+    failures=$((failures + 1))
+fi
 
 passes "cargo fmt" cargo fmt --all --check
 passes "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
@@ -242,7 +304,8 @@ fails "5p ignore attribute" "crates/kernel/src/probe.rs:4: the ignore suppressio
     cargo xtask suppressions
 
 # 6. An upward crate edge: kernel (layer 0) depends on prompts (layer 1). Then no
-# package under crates/, and a path dependency outside the workspace.
+# package under crates/, a path dependency outside the workspace, and a third-party
+# dependency that crates/dependencies.toml does not list.
 violate
 mkdir -p crates/prompts/src
 printf '[package]\nname = "prompts"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
@@ -262,6 +325,11 @@ printf '\n[dependencies.outside]\npath = "%s"\n' "$outside" >>crates/kernel/Carg
 printf 'outside = 0\n' >>crates/layers.toml
 sed -i.bak 's/^kernel = 0$/kernel = 1/' crates/layers.toml && rm crates/layers.toml.bak
 fails "6c path dependency outside the workspace" "which is not a workspace package" \
+    cargo xtask layers
+violate
+printf '\n[dependencies.itoa]\nversion = "1"\n' >>crates/kernel/Cargo.toml
+fails "6d an unlisted direct dependency" \
+    "itoa is a direct third-party dependency of a workspace package, and crates/dependencies.toml does not list it in \`direct\`" \
     cargo xtask layers
 
 # 7. A new public function in kernel, the same in a lib target at a custom path, and a
@@ -285,7 +353,9 @@ fails "7d public-api.txt in a source directory" "crates/kernel/src/public-api.tx
 # 8. A health figure above the base's baseline. Then a tree baseline above the lowest
 # committed one or deleted, and a --base that is missing, an option, not a commit, or
 # given twice. Then a base with no baseline, health that counts at another threshold,
-# health that walks part of the tree, and an edit that a skip-worktree mark hides.
+# health that walks part of the tree, and an edit that a skip-worktree mark hides. Then
+# repository config that hides a committed edit from git diff: an external diff driver
+# that git trusts, and a clean filter. diff.trustExitCode alone must not break the gate.
 violate
 printf '{\n  "erosion": 0.0,\n  "over_threshold": 0,\n  "clone_share": 0.0\n}\n' >crates/erosion-baseline.json
 commit
@@ -352,9 +422,49 @@ fails "8l health walked part of the tree" "health --json cannot judge the change
 violate
 printf '\n/// Added.\npub const ADDED: u8 = 1;\n' >>crates/kernel/src/id.rs
 git update-index --skip-worktree crates/kernel/src/id.rs
-fails "8m an edit that a skip-worktree mark hides" "1 tracked files carry an assume-unchanged or skip-worktree mark" \
+fails "8m an edit that a skip-worktree mark hides" "tracked files with an assume-unchanged or skip-worktree mark: 1" \
     "${erosion[@]}" "$base"
 git update-index --no-skip-worktree crates/kernel/src/id.rs
+
+# io_drift: commit a boundary crate crates/io as io_base, then an edit that lint reports as a
+# contract drift. The base holds the crate's lock entry: an uncommitted one is a change that lint reads.
+io_drift() {
+    mkdir -p crates/io/src
+    printf '[package]\nname = "io"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
+        >crates/io/Cargo.toml
+    printf 'pub fn port(text: &str) -> Option<u32> {\n    text.parse().ok()\n}\n' >crates/io/src/lib.rs
+    deadline cargo metadata --format-version 1 --offline >/dev/null
+    commit
+    io_base=$(git rev-parse HEAD)
+    printf 'pub fn port(text: &str) -> u32 {\n    text.parse().unwrap_or_default()\n}\n' >crates/io/src/lib.rs
+    commit
+}
+violate
+io_drift
+mkdir -p .git/info
+printf '*.rs diff=quiet\n' >.git/info/attributes
+git config diff.quiet.command true
+git config diff.quiet.trustExitCode true
+fails "8n an external diff driver that git trusts" "] contract_drift  crates/io/src/lib.rs:2" \
+    "${erosion[@]}" "$io_base"
+rm .git/info/attributes
+git config --unset diff.quiet.command
+git config --unset diff.quiet.trustExitCode
+violate
+printf '\n// A remark.\n' >>crates/kernel/src/lib.rs
+commit
+git config diff.trustExitCode true
+passes "xtask erosion with diff.trustExitCode set" "${erosion[@]}" "$base"
+git config --unset diff.trustExitCode
+violate
+io_drift
+git show "$io_base:crates/io/src/lib.rs" >"$scratch/io-lib.rs"
+mkdir -p .git/info
+printf 'crates/io/src/lib.rs filter=hide\n' >.git/info/attributes
+git config filter.hide.clean "cat '$scratch/io-lib.rs'"
+fails "8o a clean filter that hides a committed edit" "lint found erosion since $io_base" "${erosion[@]}" "$io_base"
+rm .git/info/attributes
+git config --unset filter.hide.clean
 
 # 9. A file write outside the io crate, and a macro-built allow of a lint at forbid.
 violate
@@ -482,7 +592,8 @@ violate
 printf '\n[dependencies.itoa]\ngit = "https://github.com/dtolnay/itoa"\n' >>crates/kernel/Cargo.toml
 fails "11b cargo deny sources" "source-not-allowed" cargo deny check sources
 
-# 12. An unused dependency, then the same in a manifest that .gitignore names.
+# 12. An unused dependency, then the same in a manifest that .gitignore names, and in a
+# package in a directory named target.
 violate
 printf '\n[dependencies.itoa]\nversion = "1"\n' >>crates/kernel/Cargo.toml
 fails "12 cargo machete" "itoa" "${machete[@]}"
@@ -490,6 +601,12 @@ violate
 printf '\n[dependencies.itoa]\nversion = "1"\n' >>crates/kernel/Cargo.toml
 printf '/crates/kernel/Cargo.toml\n' >>.gitignore
 fails "12b cargo machete reads an ignored manifest" "itoa" "${machete[@]}"
+violate
+mkdir -p crates/target/src
+printf '[package]\nname = "tgt"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies.itoa]\nversion = "1"\n' \
+    >crates/target/Cargo.toml
+: >crates/target/src/lib.rs
+fails "12c cargo machete reads a package in crates/target" "crates/target/Cargo.toml" "${machete[@]}"
 
 # 13. A snapshot that was never accepted.
 violate
@@ -503,7 +620,7 @@ fails "13 cargo insta test --check" "snapshot assertion for 'pending' failed" \
 
 # 15. A tool config file outside the allowed set, and an extra root cargo alias. Then
 # ignore files that a walker reads, tool config files that git ignores, an exempt package
-# that reads another clippy config, and a non-ASCII name.
+# that reads another clippy config, a non-ASCII name, and a control character in a name.
 violate
 sed '/disallowed-methods/,$d' clippy.toml >crates/clippy.toml
 fails "15a crates/clippy.toml" "this tool config file is refused" cargo xtask lint-tables
@@ -566,8 +683,15 @@ printf '//! Io.\n' >crates/io/src/lib.rs
 fails "15p crates/io without its own clippy.toml" \
     "crates/io: clippy reads clippy.toml for this package: it must read crates/io/clippy.toml" cargo xtask lint-tables
 violate
-cp rustfmt.toml "ru${long_s}tfmt.toml"
-fails "15q a non-ASCII tool config name" "ru${long_s}tfmt.toml: a non-ASCII path is refused" cargo xtask lint-tables
+# APFS folds this name to rustfmt.toml, so it lives in a directory that holds no rustfmt.toml.
+mkdir -p docs/fold-probe
+cp rustfmt.toml "docs/fold-probe/ru${long_s}tfmt.toml"
+fails "15q a non-ASCII tool config name" "docs/fold-probe/ru${long_s}tfmt.toml: a non-ASCII path is refused" \
+    cargo xtask lint-tables
+violate
+printf 'notes\n' >"docs/a${start_of_heading}b.md"
+fails "15r a control character in a path" 'docs/a\u{1}b.md: a path with a control character is refused' \
+    cargo xtask lint-tables
 
 # 16. A symlink under crates/.
 violate
@@ -892,7 +1016,10 @@ fails "21e cargo-machete metadata in a package" "crates/kernel/Cargo.toml: [pack
 # with the trailer, and a policy file loosened in the working tree. Then a reference on a
 # sibling commit, a merge that brings back a value from before the reference, HEAD judged
 # when the tree is back at the reference, a deletion in the index, the root manifest's
-# keys, a NaN, and log.follow set where xtask's git calls would read it.
+# keys, a NaN, and log.follow set where xtask's git calls would read it. Then a second
+# commit that creates a policy file the base lacks, git config, a replace ref or a graft
+# that would make a commit seem approved, a malformed trailer, and a change to the
+# dependency list.
 # unapproved FILE: what policy prints when HEAD changes FILE with no trailer.
 unapproved() {
     echo "$1: commit $(git rev-parse HEAD) changes this policy file without a"
@@ -998,10 +1125,70 @@ violate
 loosening_merge
 fails "22o log.follow through GIT_CONFIG_COUNT" "$(unapproved clippy.toml)" \
     env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=log.follow GIT_CONFIG_VALUE_0=true cargo xtask policy --base "$base"
+violate
+git rm -q clippy.toml
+commit
+lacking=$(git rev-parse HEAD)
+git show "$base:clippy.toml" >clippy.toml
+commit
+created=$(git rev-parse HEAD)
+git reset -q --hard "$lacking"
+git show "$base:clippy.toml" >clippy.toml
+lines 1000
+commit
+passes "xtask policy with one commit that creates a policy file" cargo xtask policy --base "$lacking"
+loose=$(git rev-parse HEAD)
+merge_with "$created"
+fails "22p a second commit that creates a policy file" \
+    "clippy.toml: commit $loose changes this policy file without a" cargo xtask policy --base "$lacking"
+violate
+lines 1000
+commit -m "pc: clippy.toml"
+git config trailer.pc.key Policy-Change
+fails "22q a trailer alias in the repository config" "$(unapproved clippy.toml)" cargo xtask policy --base "$base"
+git config --unset trailer.pc.key
+violate
+lines 1000
+commit --cleanup=verbatim -m "Policy-Change: clippy.toml" -m "; reviewed by nobody"
+git config core.commentChar ';'
+fails "22r a trailer above a paragraph that core.commentChar hides" "$(unapproved clippy.toml)" \
+    cargo xtask policy --base "$base"
+git config --unset core.commentChar
+violate
+lines 1000
+commit --cleanup=verbatim -m "Policy-Change: deny.toml$(printf '\037')clippy.toml"
+fails "22s a 0x1f byte in a trailer value" "$(unapproved clippy.toml)" cargo xtask policy --base "$base"
+violate
+lines 1000
+commit
+replaced=$(git rev-parse HEAD)
+git replace "$replaced" "$({
+    git cat-file commit "$replaced"
+    printf '\nPolicy-Change: clippy.toml\n'
+} | git hash-object -t commit -w --stdin)"
+fails "22t a replace ref that adds a trailer" "$(unapproved clippy.toml)" cargo xtask policy --base "$base"
+git replace -d "$replaced" >/dev/null
+violate
+lines 1000
+commit
+loose=$(git rev-parse HEAD)
+commit --allow-empty -m "Policy-Change: clippy.toml"
+mkdir -p .git/info
+printf '%s %s\n' "$(git rev-parse HEAD)" "$base" >.git/info/grafts
+fails "22u a graft that drops a commit from the range" "clippy.toml: commit $loose changes this policy file without a" \
+    cargo xtask policy --base "$base"
+rm .git/info/grafts
+violate
+printf '\n[dependencies.itoa]\nversion = "1"\n' >>crates/kernel/Cargo.toml
+sed -i.bak 's/^direct = \[/direct = ["itoa", /' crates/dependencies.toml && rm crates/dependencies.toml.bak
+commit
+fails "22v a dependency listed with no trailer" "$(unapproved crates/dependencies.toml)" \
+    cargo xtask policy --base "$base"
 
 # 23. A hook trigger and its gate's file list that drift apart, from either side. Then each
 # pre-commit key that can switch a cargo hook off: a hook's exclude or types, the top-level
-# files, the stages, a files key on a hook that must run on every file, and a renamed hook.
+# files, the stages, a files key on a hook that must run on every file, a renamed hook, and
+# the hook types that pre-commit install sets.
 violate
 sed -i.bak 's/"deny.exceptions.toml"/"deny.drift.toml"/' xtask/src/tool_config.rs && rm xtask/src/tool_config.rs.bak
 fails "23a a gate file name that the trigger misses" "the cargo-gates trigger misses deny.drift.toml" \
@@ -1033,6 +1220,11 @@ violate
 sed -i.bak 's/^      - id: cargo-ground-truth$/      - id: ground-truth/' .pre-commit-config.yaml
 rm .pre-commit-config.yaml.bak
 fails "23h a renamed ground-truth hook" "no cargo-ground-truth hook" "${triggers[@]}"
+violate
+sed -i.bak 's/^default_install_hook_types: \[pre-commit, pre-push\]$/default_install_hook_types: [pre-commit]/' \
+    .pre-commit-config.yaml && rm .pre-commit-config.yaml.bak
+fails "23i no pre-push in default_install_hook_types" "default_install_hook_types does not hold pre-push" \
+    "${triggers[@]}"
 
 # 24. A manifest key that drops tests from nextest: test = false, required-features,
 # harness = false, and autotests = false beside a file in tests/.
@@ -1061,7 +1253,9 @@ fails "24d autotests = false" "crates/kernel/tests/t.rs: cargo builds no test ta
 
 # 25. What only the compiler sees: a suppression that a macro builds, a file that rustc
 # reads through include_str!, a cfg that rustc does not know, and the lint level or
-# check-cfg list that would let one through.
+# check-cfg list that would let one through. Then a build-time package that
+# crates/dependencies.toml does not list, an ignored test that a macro builds, and an
+# include_str! through a name with a line feed or through a symlink.
 violate
 printf '\nmod probe;\n' >>crates/kernel/src/lib.rs
 cat >crates/kernel/src/probe.rs <<'R'
@@ -1094,6 +1288,47 @@ sed -i.bak 's/^unexpected_cfgs = "forbid"$/unexpected_cfgs = { level = "forbid",
     Cargo.toml && rm Cargo.toml.bak
 printf '\n#[cfg(hidden)]\npub fn probe() {}\n' >>crates/kernel/src/limit.rs
 fails "25e a check-cfg list" "Cargo.toml: unexpected_cfgs has a check-cfg list" cargo xtask ground-truth
+violate
+printf '\n[dependencies.anyhow]\nversion = "1"\n' >>crates/kernel/Cargo.toml
+sed -i.bak 's/^direct = \[/direct = ["anyhow", /' crates/dependencies.toml && rm crates/dependencies.toml.bak
+fails "25f an unlisted build-time package" \
+    "anyhow is a third-party package with a proc-macro or build-script target in the resolved graph, and crates/dependencies.toml does not list it in \`build-time\`" \
+    cargo xtask ground-truth
+violate
+printf '\nmod probe;\n' >>crates/kernel/src/lib.rs
+cat >crates/kernel/src/probe.rs <<'R'
+#[cfg(test)]
+mod tests {
+    macro_rules! with {
+        ($m:meta, $i:item) => {
+            #[$m]
+            $i
+        };
+    }
+
+    with!(ignore = "quiet", #[test] fn always_fails() { assert_eq!(1, 2); });
+}
+R
+fails "25g an ignore attribute that a macro builds" "differ in number" cargo xtask ground-truth
+violate
+printf 'unreviewed data\n' >"docs/a${line_feed}Cargo.toml"
+cat >>crates/kernel/src/lib.rs <<'R'
+
+/// Data read at compile time.
+pub const NOTES: &str = include_str!("../../../docs/a\nCargo.toml");
+R
+fails "25h include_str! of a name with a line feed" "no blank line follows the rule" cargo xtask ground-truth
+violate
+mkdir -p evil/a/b evil/crates/kernel/src
+printf 'unreviewed data\n' >evil/crates/kernel/src/limit.rs
+ln -s ../evil/a/b docs/link
+cat >>crates/kernel/src/lib.rs <<'R'
+
+/// Data read at compile time.
+pub const NOTES: &str = include_str!("../../../docs/link/../../crates/kernel/src/limit.rs");
+R
+fails "25i include_str! through a symlink outside crates" \
+    "crates/kernel/src/lib.rs: rustc reads evil/crates/kernel/src/limit.rs" cargo xtask ground-truth
 
 if ((failures > 0)); then
     echo "$failures of $((bases + checks)) checks failed"

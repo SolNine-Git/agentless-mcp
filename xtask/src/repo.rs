@@ -6,10 +6,11 @@ use serde::de::DeserializeOwned;
 
 use crate::{Failure, process};
 
-// gitinfo.py's HARDENING_PREFIX, so that no config runs a program or changes the output, plus
-// log.follow (it drops merges from `git log -- <path>`) and trailer.separators (it widens a trailer).
-const GIT_OPTIONS: [&str; 15] = [
+// gitinfo.py's HARDENING_PREFIX, plus log.follow (it drops merges from `git log -- <path>`) and
+// --no-replace-objects (a replace ref rewrites a commit or a file). A diff also passes --no-ext-diff.
+const GIT_OPTIONS: [&str; 14] = [
     "--no-optional-locks",
+    "--no-replace-objects",
     "-c",
     "core.fsmonitor=false",
     "-c",
@@ -22,11 +23,12 @@ const GIT_OPTIONS: [&str; 15] = [
     "log.showSignature=false",
     "-c",
     "log.follow=false",
-    "-c",
-    "trailer.separators=:",
 ];
 // They move where config is read from, not which repository is read (gitinfo.py GIT_CONFIG_KEPT).
 const GIT_CONFIG_KEPT: [&str; 2] = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"];
+// A graft file rewrites parents as a replace ref does. Nothing exists below /dev/null, and git is
+// silent when the open fails with ENOTDIR.
+const NO_GRAFTS: &str = "/dev/null/grafts";
 
 /// Return the repository root: the directory above this crate, as `cargo run` reports it.
 pub fn root() -> Result<PathBuf, Failure> {
@@ -78,7 +80,7 @@ pub fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, Failure> {
     process::stdout(git_command(root).args(args), process::GIT)
 }
 
-/// Return a git command in `root` with the fixed options, and without the inherited GIT_ variables but the config ones.
+/// Return a git command in `root` with the fixed options, no graft file, and without the inherited GIT_ variables but the config ones.
 pub fn git_command(root: &Path) -> Command {
     fixed_git(root, std::env::vars_os().map(|(name, _)| name))
 }
@@ -92,6 +94,7 @@ fn fixed_git(root: &Path, inherited: impl IntoIterator<Item = OsString>) -> Comm
             command.env_remove(&name);
         }
     }
+    command.env("GIT_GRAFT_FILE", NO_GRAFTS);
     command
 }
 
@@ -142,15 +145,14 @@ fn text(output: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::ffi::{OsStr, OsString};
+pub(crate) mod fixture {
     use std::path::{Path, PathBuf};
 
-    use super::{fixed_git, git_command, text, touching};
+    use super::{git_command, text};
     use crate::process;
 
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("xtask-repo-{}-{name}", std::process::id()));
+    pub(crate) fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("xtask-{}-{name}", std::process::id()));
         if dir.exists() {
             std::fs::remove_dir_all(&dir).unwrap();
         }
@@ -158,40 +160,62 @@ mod tests {
         dir
     }
 
-    // Setup reads no user or system config, so no user hook runs and the identity is fixed.
-    fn setup(dir: &Path, args: &[&str]) -> String {
+    // It reads no user or system config, so no user hook runs and the identity is fixed.
+    pub(crate) fn git(dir: &Path, args: &[&str]) -> String {
         let mut command = git_command(dir);
         command
             .args(["-c", "user.name=t", "-c", "user.email=t@invalid"])
             .args(args)
-            .current_dir(dir)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1");
         text(&process::stdout(&mut command, process::GIT).unwrap())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::{OsStr, OsString};
+    use std::path::Path;
+
+    use super::fixture::{git, scratch};
+    use super::{fixed_git, text, touching};
 
     fn commit(dir: &Path, file: &str, content: &str, message: &str) -> String {
         std::fs::write(dir.join(file), content).unwrap();
-        setup(dir, &["add", "-A"]);
-        setup(dir, &["commit", "-q", "-m", message]);
-        setup(dir, &["rev-parse", "HEAD"])
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", message]);
+        git(dir, &["rev-parse", "HEAD"])
     }
 
     #[test]
     fn touching_lists_an_evil_merge_whatever_log_follow_the_repository_sets() {
-        let dir = scratch("follow");
-        setup(&dir, &["init", "-q", "-b", "main"]);
-        setup(&dir, &["config", "log.follow", "true"]);
+        let dir = scratch("repo-follow");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "log.follow", "true"]);
         let base = commit(&dir, "clippy.toml", "a = 60\n", "base");
-        setup(&dir, &["checkout", "-q", "-b", "side"]);
+        git(&dir, &["checkout", "-q", "-b", "side"]);
         commit(&dir, "other", "x\n", "side");
-        setup(&dir, &["checkout", "-q", "main"]);
+        git(&dir, &["checkout", "-q", "main"]);
         let tighten = commit(&dir, "clippy.toml", "a = 59\n", "tighten");
-        setup(&dir, &["merge", "-q", "--no-ff", "--no-commit", "side"]);
+        git(&dir, &["merge", "-q", "--no-ff", "--no-commit", "side"]);
         let merge = commit(&dir, "clippy.toml", "a = 1000\n", "merge");
         let listed = touching(&dir, &base, "clippy.toml");
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(listed.unwrap(), [tighten, merge]);
+    }
+
+    #[test]
+    fn a_graft_file_does_not_change_the_parents_that_git_reports() {
+        let dir = scratch("repo-graft");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        let first = commit(&dir, "a", "1\n", "one");
+        let second = commit(&dir, "a", "2\n", "two");
+        let third = commit(&dir, "a", "3\n", "three");
+        std::fs::create_dir_all(dir.join(".git/info")).unwrap();
+        std::fs::write(dir.join(".git/info/grafts"), format!("{third} {first}\n")).unwrap();
+        let parents = super::git(&dir, &["log", "-1", "--format=%P", &third]);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(text(&parents.unwrap()), second);
     }
 
     #[test]
@@ -201,6 +225,7 @@ mod tests {
             "GIT_CONFIG_GLOBAL",
             "PATH",
             "GIT_CONFIG_COUNT",
+            "GIT_GRAFT_FILE",
             "GIT_CONFIG_NOSYSTEM",
         ]
         .map(OsString::from);
@@ -211,9 +236,20 @@ mod tests {
             .map(|(name, _)| name)
             .collect();
         assert_eq!(removed, ["GIT_CONFIG_COUNT", "GIT_DIR"]);
-        assert_eq!(command.get_envs().count(), 2);
+        let grafts = command
+            .get_envs()
+            .find(|(name, _)| *name == "GIT_GRAFT_FILE");
+        assert_eq!(
+            grafts,
+            Some((
+                OsStr::new("GIT_GRAFT_FILE"),
+                Some(OsStr::new("/dev/null/grafts"))
+            ))
+        );
+        assert_eq!(command.get_envs().count(), 3);
         let args: Vec<&OsStr> = command.get_args().collect();
         assert_eq!(args[0], "--no-optional-locks");
         assert!(args.contains(&OsStr::new("log.follow=false")));
+        assert!(args.contains(&OsStr::new("--no-replace-objects")));
     }
 }

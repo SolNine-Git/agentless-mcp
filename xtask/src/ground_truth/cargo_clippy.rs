@@ -9,6 +9,7 @@ use crate::{Failure, process};
 // A hang guard: far above a cold run, on a slower runner with a cold registry too.
 const CLIPPY: Duration = Duration::from_secs(60);
 const DEAD_CODE: &str = "dead_code";
+const BUILD_SCRIPT: &str = "custom-build";
 
 /// Whether a run compiles each target with the test harness.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -194,7 +195,7 @@ fn place(spans: &[Span]) -> String {
 }
 
 fn unit(target: &Target, output: &Path) -> Result<Unit, Failure> {
-    dep_info_path(&target.name, output)
+    dep_info_path(target, output)
         .map(|dep_info| Unit {
             target: target.src_path.clone(),
             dep_info,
@@ -207,13 +208,18 @@ fn unit(target: &Target, output: &Path) -> Result<Unit, Failure> {
         })
 }
 
-// rustc names each output of a unit <crate>-<hash>, with lib before an .rmeta or a library, and its dep-info
-// <crate>-<hash>.d.
-fn dep_info_path(target_name: &str, output: &Path) -> Option<PathBuf> {
-    let name = output.file_name()?.to_str()?;
-    let stem = name.split('.').next()?;
+// rustc names a unit's outputs <crate>-<hash>, with lib before an .rmeta or a library. cargo reports a build
+// script as build-script-build in a <package>-<hash> directory. The dep-info is <crate>-<hash>.d.
+fn dep_info_path(target: &Target, output: &Path) -> Option<PathBuf> {
+    let build_script = target.kind.iter().any(|kind| kind == BUILD_SCRIPT);
+    let hashed = if build_script {
+        output.parent()?.file_name()?
+    } else {
+        output.file_name()?
+    };
+    let stem = hashed.to_str()?.split('.').next()?;
     let (_, hash) = stem.rsplit_once('-')?;
-    let crate_name = target_name.replace('-', "_");
+    let crate_name = target.name.replace('-', "_");
     Some(output.with_file_name(format!("{crate_name}-{hash}.d")))
 }
 
@@ -223,10 +229,18 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{ExitStatus, Output};
 
-    use super::{Mode, Run, dep_info_path, parse};
+    use super::{Mode, Run, Target, clippy, dep_info_path, parse};
     use crate::Failure;
 
     const WORKSPACE: &str = "/r/xtask/Cargo.toml";
+
+    fn target(name: &str, kind: &str) -> Target {
+        Target {
+            name: name.to_owned(),
+            kind: vec![kind.to_owned()],
+            src_path: PathBuf::from("/r/src/lib.rs"),
+        }
+    }
 
     fn message(manifest: &str, kind: &str, level: &str, code: &str) -> String {
         format!(
@@ -332,23 +346,58 @@ mod tests {
             run.units[0].dep_info,
             Path::new("/r/target/debug/deps/xtask-b0f036fad7d412e7.d")
         );
-        for (name, output, dep_info) in [
+        for (name, kind, output, dep_info) in [
             (
                 "my-crate",
+                "lib",
                 "/t/deps/libmy_crate-0a1b.rlib",
                 "/t/deps/my_crate-0a1b.d",
             ),
             (
                 "build-script-build",
-                "/t/build/k-77/build_script_build-77",
-                "/t/build/k-77/build_script_build-77.d",
+                "custom-build",
+                "/t/debug/build/syntax-76f54d1fb342e5ad/build-script-build",
+                "/t/debug/build/syntax-76f54d1fb342e5ad/build_script_build-76f54d1fb342e5ad.d",
             ),
         ] {
             assert_eq!(
-                dep_info_path(name, Path::new(output)).unwrap(),
+                dep_info_path(&target(name, kind), Path::new(output)).unwrap(),
                 Path::new(dep_info)
             );
         }
-        assert!(dep_info_path("x", Path::new("/t/deps/nohash.rmeta")).is_none());
+        let library = target("x", "lib");
+        assert!(dep_info_path(&library, Path::new("/t/deps/nohash.rmeta")).is_none());
+    }
+
+    #[test]
+    fn the_dep_info_file_named_for_a_real_build_script_exists() {
+        let scratch =
+            std::env::temp_dir().join(format!("xtask-build-script-{}", std::process::id()));
+        if scratch.exists() {
+            std::fs::remove_dir_all(&scratch).unwrap();
+        }
+        std::fs::create_dir_all(scratch.join("src")).unwrap();
+        let manifest =
+            "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n";
+        for (file, text) in [
+            ("Cargo.toml", manifest),
+            ("build.rs", "fn main() {}\n"),
+            ("src/lib.rs", ""),
+        ] {
+            std::fs::write(scratch.join(file), text).unwrap();
+        }
+        // cargo reports paths under the canonical directory: on macOS the temp dir is under a symlink.
+        let root = std::fs::canonicalize(&scratch).unwrap();
+        let built = clippy(&root, &root.join("target"), &[], &["--lib"]);
+        let run = parse(&built.unwrap(), Mode::Normal, &[root.join("Cargo.toml")]).unwrap();
+        let named: Vec<(PathBuf, bool)> = run
+            .units
+            .iter()
+            .filter(|unit| unit.target == root.join("build.rs"))
+            .map(|unit| (unit.dep_info.clone(), unit.dep_info.is_file()))
+            .collect();
+        std::fs::remove_dir_all(&scratch).unwrap();
+        assert!(!named.is_empty(), "cargo reported no build script unit");
+        assert!(named.iter().all(|(_, exists)| *exists), "{named:?}");
     }
 }

@@ -78,7 +78,7 @@ Serve the v2 MCP surface from the Rust binary on rmcp. Move the search-gate hook
 - **Targets**: Linux x86_64 and aarch64 (manylinux), and macOS arm64 and x86_64. An sdist is published too, and it builds with a Rust toolchain and the vendored grammar sources (P0 D1).
 - **Notices**: the grammar licenses from the pinned grammar sources (P0 D1), and `cargo about` for the other crates. The wheel and the release archive include them.
 - **CI**: one release job builds every wheel. It then installs each wheel in a clean environment, runs `agentless-mcp --version` and one `map` call, and uploads to PyPI only after all pass.
-- **Lint and tests per shipped build**: before it builds the wheels, the release job runs `cargo clippy -- -D warnings` and the tests for each wheel target and with the release profile (its `panic` and `debug_assertions` settings). The `rust` CI job lints and tests only Linux x86_64 and macOS arm64 in the dev profile, so code under a target or profile cfg that only a wheel turns on is unchecked until this job exists (P1 "Carried from P0d").
+- **Lint and tests per shipped build**: before it builds the wheels, the release job runs `cargo clippy -- -D warnings` and the tests for each wheel target and with the release profile (its `panic` and `debug_assertions` settings). The `rust` CI job lints and tests only Linux x86_64 and macOS arm64 in the dev profile, so code under a target or profile cfg that only a wheel turns on is unchecked until this job exists (P1 "Accepted residuals", R-13).
 
 ### 5. Release
 
@@ -111,7 +111,7 @@ The release goes out in two steps (overview decision 10). Each step follows the 
 
 The Python tree stays in the repository, unpackaged, until the release is live and the three deployed surfaces run it. Then one pull request deletes it, in this order:
 
-1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `cargo xtask generate` and `include_str!` at the new paths. Name both directories in `DATA_DIRS` (`xtask/src/sources.rs`). If P2 added the guide to the dep-info allowed set, move that entry too (P1 "Port constraints").
+1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `cargo xtask generate` and `include_str!` at the new paths. Name both directories in `DATA_DIRS` (`xtask/src/sources.rs`). If P2 added a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs`, move the guide's entry too (P1 "Port constraints").
 2. Delete:
    - `src/agentless_mcp/`;
    - `tests/unit/` and the Python parts of `tests/characterization/`, including each module's `regenerate()`; `cargo xtask goldens --update` replaces them (overview rule 6);

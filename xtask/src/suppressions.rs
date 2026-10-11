@@ -27,7 +27,7 @@ pub(crate) struct Entry {
     pub(crate) file: String,
     pub(crate) lint: String,
     #[serde(default = "one")]
-    count: usize,
+    pub(crate) count: usize,
     reason: String,
 }
 

@@ -40,7 +40,8 @@ const TASKS: [Task; 9] = [
     },
     Task {
         name: "layers",
-        usage: "  layers                 every crate depends only on crates in lower layers",
+        usage: "  layers                 every crate depends only on crates in lower layers, and
+                         crates/dependencies.toml lists each direct third-party dependency",
         handler: Handler::Plain(layers::check),
     },
     Task {
@@ -59,7 +60,9 @@ const TASKS: [Task; 9] = [
         name: "ground-truth",
         usage: "  ground-truth           clippy with each warn and deny lint force-warned finds only the
                          suppressions that crates/suppressions.toml lists, rustc reads only
-                         scanned sources, and an unknown cfg fails the build",
+                         scanned sources, an unknown cfg fails the build,
+                         crates/dependencies.toml lists each build-time package, and the
+                         ledger counts each ignored test",
         handler: Handler::Plain(ground_truth::check),
     },
     Task {
@@ -75,9 +78,10 @@ const TASKS: [Task; 9] = [
     },
     Task {
         name: "policy",
-        usage: "  policy [--base REV]    each policy file at HEAD and in the working tree equals its version at
-                         the base, or each commit that changed it carries a Policy-Change: <path>
-                         trailer and one of those commits made HEAD's value",
+        usage: "  policy [--base REV]    each policy file at HEAD and in the working tree equals its reference
+                         (its version at the base, or at the one commit that created it), or each
+                         commit that changed it carries a Policy-Change: <path> trailer and one of
+                         those commits made HEAD's value",
         handler: Handler::Flags(policy::check),
     },
     Task {

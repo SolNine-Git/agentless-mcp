@@ -6,13 +6,14 @@ use toml::Table;
 use crate::{Failure, repo, tool_config, verdict};
 
 const TRAILER: &str = "Policy-Change";
-const FILES: [(&str, Format); 6] = [
+const FILES: [(&str, Format); 7] = [
     (".agentless-mcp.json", Format::Json),
     ("deny.toml", Format::Toml),
     ("rustfmt.toml", Format::Toml),
     ("rust-toolchain.toml", Format::Toml),
     (".config/nextest.toml", Format::Toml),
     ("crates/layers.toml", Format::Toml),
+    ("crates/dependencies.toml", Format::Toml),
 ];
 const MANIFEST: &str = "Cargo.toml";
 
@@ -54,6 +55,12 @@ struct History {
     tree: Option<Value>,
 }
 
+enum Reference<'a> {
+    Base(Option<&'a Value>),
+    Created { value: &'a Value, commit: &'a str },
+    SeveralCreations,
+}
+
 /// Fail when a policy file at HEAD or in the working tree differs from its reference, unless each commit that changed it, merges included, carries a `Policy-Change: <path>` trailer and one of them made HEAD's value.
 pub fn check(root: &Path, flags: &[String]) -> Result<(), Failure> {
     let base = repo::base(root, parse(flags)?)?;
@@ -74,9 +81,10 @@ fn parse(flags: &[String]) -> Result<Option<&str>, Failure> {
 }
 
 fn judge(path: &str, history: &History) -> Vec<String> {
-    let (reference, creation) = reference(history);
-    let mut problems = head_problems(path, history, reference, creation);
-    if history.tree != history.head && history.tree.as_ref() != reference {
+    let reference = reference(history);
+    let mut problems = head_problems(path, history, &reference);
+    // head_problems judges HEAD, so the tree only has to match HEAD or undo HEAD's change.
+    if history.tree != history.head && !reference.holds(history.tree.as_ref()) {
         problems.push(format!(
             "{path}: the working tree changes this policy file: commit the change with a `{TRAILER}: {path}` trailer"
         ));
@@ -84,20 +92,16 @@ fn judge(path: &str, history: &History) -> Vec<String> {
     problems
 }
 
-fn head_problems(
-    path: &str,
-    history: &History,
-    reference: Option<&Value>,
-    creation: Option<&str>,
-) -> Vec<String> {
+fn head_problems(path: &str, history: &History, reference: &Reference) -> Vec<String> {
     let head = history.head.as_ref();
-    if head == reference {
+    if reference.holds(head) {
         return Vec::new();
     }
+    let exempt = reference.exempt();
     let changes: Vec<&Step> = history
         .steps
         .iter()
-        .filter(|step| Some(step.commit.as_str()) != creation && changed(step))
+        .filter(|step| Some(step.commit.as_str()) != exempt && changed(step))
         .collect();
     let mut problems: Vec<String> = changes
         .iter()
@@ -119,18 +123,46 @@ fn head_problems(
     problems
 }
 
-fn reference(history: &History) -> (Option<&Value>, Option<&str>) {
+fn reference(history: &History) -> Reference<'_> {
     if history.base.is_some() {
-        return (history.base.as_ref(), None);
+        return Reference::Base(history.base.as_ref());
     }
-    // A file the base lacks takes its version at the commit that created it.
-    history
-        .steps
+    // A file the base lacks takes its version at the one commit that created it. With several, a
+    // merge's parent order would pick one, so none is the reference.
+    let mut creations = history.steps.iter().filter_map(creation);
+    match (creations.next(), creations.next()) {
+        (None, _) => Reference::Base(None),
+        (Some((value, commit)), None) => Reference::Created { value, commit },
+        (Some(_), Some(_)) => Reference::SeveralCreations,
+    }
+}
+
+// A creation adds the file where every parent lacks it, a root commit included.
+fn creation(step: &Step) -> Option<(&Value, &str)> {
+    let value = step.value.as_ref()?;
+    step.parents
         .iter()
-        .find(|step| step.value.is_some())
-        .map_or((None, None), |step| {
-            (step.value.as_ref(), Some(step.commit.as_str()))
-        })
+        .all(Option::is_none)
+        .then_some((value, step.commit.as_str()))
+}
+
+impl Reference<'_> {
+    fn holds(&self, value: Option<&Value>) -> bool {
+        match self {
+            Self::Base(reference) => *reference == value,
+            Self::Created {
+                value: reference, ..
+            } => Some(*reference) == value,
+            Self::SeveralCreations => false,
+        }
+    }
+
+    fn exempt(&self) -> Option<&str> {
+        match self {
+            Self::Created { commit, .. } => Some(commit),
+            Self::Base(_) | Self::SeveralCreations => None,
+        }
+    }
 }
 
 fn changed(step: &Step) -> bool {
@@ -193,34 +225,56 @@ fn is_clippy(path: &str) -> bool {
 }
 
 fn commits(root: &Path, base: &str) -> Result<HashMap<String, Commit>, Failure> {
-    let format = format!("--format=%H %P%x1f%(trailers:key={TRAILER},valueonly,separator=%x1f)");
-    let output = repo::git(root, &["log", "-z", &format, &format!("{base}..HEAD")])?;
+    let output = repo::git(
+        root,
+        &["log", "-z", "--format=%H %P", &format!("{base}..HEAD")],
+    )?;
     let text = String::from_utf8(output)
         .map_err(|error| Failure::Broken(format!("git log {base}..HEAD: {error}")))?;
-    text.split('\0')
-        .filter(|record| !record.trim().is_empty())
-        .map(commit)
-        .collect()
+    let mut commits = HashMap::new();
+    for record in text.split('\0').filter(|record| !record.trim().is_empty()) {
+        let (id, parents) = ids(record)?;
+        // git's trailer parser follows core.commentChar and trailer aliases. The raw object does not.
+        let object = repo::git(root, &["cat-file", "commit", &id])?;
+        let trailers = trailers(&object);
+        commits.insert(id, Commit { parents, trailers });
+    }
+    Ok(commits)
 }
 
-fn commit(record: &str) -> Result<(String, Commit), Failure> {
-    let malformed = || Failure::Broken(format!("git log printed a malformed record: {record:?}"));
-    let (ids, trailers) = record.split_once('\x1f').ok_or_else(malformed)?;
-    let mut ids = ids.split_whitespace().map(str::to_owned);
-    let id = ids.next().ok_or_else(malformed)?;
-    let trailers = trailers
-        .split('\x1f')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
+fn ids(record: &str) -> Result<(String, Vec<String>), Failure> {
+    let mut ids = record.split_whitespace().map(str::to_owned);
+    let id = ids.next().ok_or_else(|| {
+        Failure::Broken(format!("git log printed a malformed record: {record:?}"))
+    })?;
+    Ok((id, ids.collect()))
+}
+
+// The trailer block is the message's last paragraph, never its title. A line approves a path only
+// when it is exactly `Policy-Change: <path>`, so a malformed line approves nothing.
+fn trailers(object: &[u8]) -> Vec<String> {
+    let message = object
+        .windows(2)
+        .position(|pair| pair == b"\n\n")
+        .map_or(&[][..], |end| &object[end + 2..]);
+    let lines: Vec<&[u8]> = message.split(|&byte| byte == b'\n').collect();
+    let paragraphs: Vec<&[&[u8]]> = lines
+        .split(|line| line.iter().all(u8::is_ascii_whitespace))
+        .filter(|paragraph| !paragraph.is_empty())
         .collect();
-    Ok((
-        id,
-        Commit {
-            parents: ids.collect(),
-            trailers,
-        },
-    ))
+    match paragraphs.as_slice() {
+        [_title, .., last] => last.iter().copied().filter_map(approval).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn approval(line: &[u8]) -> Option<String> {
+    let path = std::str::from_utf8(line)
+        .ok()?
+        .strip_prefix(TRAILER)?
+        .strip_prefix(": ")?;
+    let clean = !path.is_empty() && !path.chars().any(char::is_control);
+    clean.then(|| path.to_owned())
 }
 
 fn history(
@@ -305,8 +359,9 @@ fn policy_view(mut manifest: Table) -> Table {
 mod tests {
     use serde_json::json;
 
-    use super::{Format, History, Step, Value, commit, is_clippy, judge, parse};
+    use super::{Format, History, Step, Value, commits, ids, is_clippy, judge, parse, trailers};
     use crate::Failure;
+    use crate::repo::fixture::{git, scratch};
 
     const PATH: &str = "clippy.toml";
 
@@ -361,6 +416,99 @@ mod tests {
         let problems = judge(PATH, &at_head(None, vec![created, loosened]));
         assert_eq!(problems.len(), 1);
         assert!(problems[0].contains("commit c2 changes"), "{problems:?}");
+    }
+
+    #[test]
+    fn with_several_creation_commits_none_is_exempt_whatever_the_parent_order() {
+        let sibling = || step("s0", false, Some(lines(1000)), &[None]);
+        let created = || step("c0", false, Some(lines(60)), &[None]);
+        let tightened = || step("t", true, Some(lines(59)), &[Some(lines(60))]);
+        let merge = |parents: &[Option<Value>]| step("m", false, Some(lines(1000)), parents);
+        let sibling_first = vec![
+            sibling(),
+            created(),
+            tightened(),
+            merge(&[Some(lines(1000)), Some(lines(59))]),
+        ];
+        let port_first = vec![
+            created(),
+            tightened(),
+            sibling(),
+            merge(&[Some(lines(59)), Some(lines(1000))]),
+        ];
+        for steps in [sibling_first, port_first] {
+            let problems = judge(PATH, &at_head(None, steps));
+            assert_eq!(problems.len(), 2, "{problems:?}");
+            for commit in ["s0", "c0"] {
+                let named = format!("commit {commit} changes");
+                assert!(
+                    problems.iter().any(|problem| problem.contains(&named)),
+                    "{problems:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_file_deleted_and_created_again_needs_a_trailer_on_each_change() {
+        let history = |approved| {
+            at_head(
+                None,
+                vec![
+                    step("c0", approved, Some(lines(60)), &[None]),
+                    step("d1", approved, None, &[Some(lines(60))]),
+                    step("c1", approved, Some(lines(1000)), &[None]),
+                    step("d2", approved, None, &[Some(lines(1000))]),
+                ],
+            )
+        };
+        assert_eq!(judge(PATH, &history(false)).len(), 4);
+        assert!(judge(PATH, &history(true)).is_empty());
+    }
+
+    #[test]
+    fn trailers_come_from_the_raw_message_whatever_the_config_or_a_replace_ref_says() {
+        let dir = scratch("policy-trailers");
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "core.commentChar", ";"]);
+        git(&dir, &["config", "trailer.pc.key", "Policy-Change"]);
+        git(&dir, &["commit", "-q", "--allow-empty", "-m", "base"]);
+        let base = git(&dir, &["rev-parse", "HEAD"]);
+        let messages = [
+            "comment\n\nPolicy-Change: clippy.toml\n\n; reviewed by nobody\n",
+            "alias\n\npc: clippy.toml\n",
+            "replaced\n",
+            "approved\n\nPolicy-Change: clippy.toml\nCo-Authored-By: t <t@invalid>\n",
+        ];
+        let mut ids = Vec::new();
+        for message in messages {
+            let words = [
+                "commit",
+                "-q",
+                "--allow-empty",
+                "--cleanup=verbatim",
+                "-m",
+                message,
+            ];
+            git(&dir, &words);
+            ids.push(git(&dir, &["rev-parse", "HEAD"]));
+        }
+        let tree = git(&dir, &["rev-parse", &format!("{}^{{tree}}", ids[2])]);
+        let parent = git(&dir, &["rev-parse", &format!("{}^", ids[2])]);
+        let approved_copy = ["-m", "replaced", "-m", "Policy-Change: clippy.toml"];
+        let copy = git(
+            &dir,
+            &[&["commit-tree", &tree, "-p", &parent][..], &approved_copy].concat(),
+        );
+        git(&dir, &["replace", &ids[2], &copy]);
+        let found = commits(&dir, &base);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let found = found.unwrap();
+        let approved: Vec<bool> = ids
+            .iter()
+            .map(|id| !found[id].trailers.is_empty())
+            .collect();
+        assert_eq!(approved, [false, false, false, true]);
     }
 
     #[test]
@@ -498,13 +646,36 @@ mod tests {
     }
 
     #[test]
-    fn a_log_record_gives_the_commit_its_parents_and_its_trailers() {
-        let (id, found) = commit("c3 p1 p2\x1fCargo.toml\x1f deny.toml ").unwrap();
+    fn a_log_record_gives_the_commit_and_its_parents() {
+        let (id, parents) = ids("c3 p1 p2").unwrap();
         assert_eq!(id, "c3");
-        assert_eq!(found.parents, ["p1", "p2"]);
-        assert_eq!(found.trailers, ["Cargo.toml", "deny.toml"]);
-        assert!(commit("c4 p1\x1f").unwrap().1.trailers.is_empty());
-        assert!(matches!(commit("no separator"), Err(Failure::Broken(_))));
+        assert_eq!(parents, ["p1", "p2"]);
+        assert!(ids("c4 ").unwrap().1.is_empty());
+    }
+
+    #[test]
+    fn only_an_exact_trailer_line_in_the_last_paragraph_approves() {
+        let header = "tree t\nparent p\nauthor a\ncommitter c\ngpgsig -----BEGIN-----\n \n s\n -----END-----\n";
+        let found = |message: &str| trailers(format!("{header}\n{message}").as_bytes());
+        let block =
+            "Policy-Change: Cargo.toml\nPolicy-Change: deny.toml\nCo-Authored-By: t <t@invalid>";
+        assert_eq!(
+            found(&format!("loosen\n\n{block}\n\n")),
+            ["Cargo.toml", "deny.toml"]
+        );
+        for refused in [
+            "loosen\n\nPolicy-Change: clippy.toml\n\n; reviewed by nobody\n",
+            "loosen\n\npc: clippy.toml\n",
+            "loosen\n\nPolicy-Change: deny.toml\u{1f}clippy.toml\n",
+            "loosen\n\nPolicy-Change: clippy.toml\r\n",
+            "loosen\n\npolicy-change: clippy.toml\n",
+            "loosen\n\nPolicy-Change:clippy.toml\n",
+            "loosen\n\nPolicy-Change: \n",
+            "Policy-Change: clippy.toml\n",
+        ] {
+            assert!(found(refused).is_empty(), "{refused:?}");
+        }
+        assert!(trailers(header.as_bytes()).is_empty());
     }
 
     #[test]

@@ -315,9 +315,8 @@ jobs:
           echo "GATE_BIN=$gate/.venv/bin/agentless-mcp" >> "$GITHUB_ENV"
           "$gate/.venv/bin/agentless-mcp" warmup
 
-      # On a push to main, the merge base with origin/main is HEAD, so policy and erosion would judge
-      # nothing. They judge the pushed range instead. A zero SHA means that the push created the branch.
-      # A v* tag keeps the merge base: that judges a tag off main, and a push run judged each main commit.
+      # On a push to main the merge base is HEAD, so policy and erosion judge the pushed range (a zero SHA: a new branch).
+      # A v* tag keeps the merge base, because the push run of each main commit already judged it.
       - name: Gate base on a push to main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before != '0000000000000000000000000000000000000000'
         env:
@@ -336,11 +335,12 @@ jobs:
       - name: Test
         run: cargo insta test --check --workspace --test-runner nextest
 
-      # --no-ignore: an ignore file or a hidden directory hides no manifest from machete.
+      # --no-ignore: an ignore file or a hidden directory hides no manifest from machete. The roots hold
+      # every package, and unlike --skip-target-dir they keep a package in a directory named target.
       - name: Dependencies
         run: |
           cargo deny check
-          cargo machete --no-ignore --skip-target-dir
+          cargo machete --no-ignore crates xtask
 
       - name: Static gates
         run: cargo xtask static-gates

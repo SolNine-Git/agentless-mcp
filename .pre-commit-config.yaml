@@ -141,22 +141,21 @@ repos:
         language: system
         files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
-      # import-linter and the noqa ratchet, for Rust: layer edges, listed suppressions, lint tables,
-      # and the tool config that cargo, clippy, rustfmt, rustup, cargo-deny, agentless-mcp and the
-      # ignore-file walkers read anywhere. git's ignore rules decide which files the gate lists.
-      # A non-ASCII path fails anywhere. Its class stays outside (?i:), which folds some to ASCII.
+      # import-linter and the noqa ratchet, for Rust: the trigger matches every tool config file anywhere.
+      # The non-ASCII class stays outside (?i:), which folds some non-ASCII characters to ASCII.
       - id: cargo-gates
         name: cargo xtask static-gates
         entry: cargo xtask static-gates
         language: system
-        files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml|\.?rustfmt\.toml|\.?deny(\.exceptions)?\.toml|\.agentless-mcp\.json|\.(git|rg)?ignore)$|(^|/)\.cargo/)|[^\x00-\x7f]
+        files: (?i:^(crates|xtask)/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml|\.?rustfmt\.toml|\.?deny(\.exceptions)?\.toml|\.agentless-mcp\.json|\.(git|rg)?ignore)$|(^|/)\.cargo/)|[^\x20-\x7e]
         pass_filenames: false
       # deptry, for Rust: unused dependencies, licenses, advisories, and sources. cargo machete reads
-      # every manifest outside the target directories, then the .rs files of each package. --no-ignore:
-      # an ignore file or a hidden directory hides no manifest.
+      # every manifest under crates/ and xtask/, where static-gates keeps each package, then the .rs
+      # files of each package. --no-ignore: an ignore file or a hidden directory hides no manifest.
+      # The roots replace --skip-target-dir, which skips a package in any directory named target.
       - id: cargo-deps
         name: cargo machete and cargo deny
-        entry: bash -c 'cargo machete --no-ignore --skip-target-dir && cargo deny check'
+        entry: bash -c 'cargo machete --no-ignore crates xtask && cargo deny check'
         language: system
         files: (?i:\.rs$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?deny(\.exceptions)?\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
@@ -199,7 +198,7 @@ repos:
         name: cargo xtask policy (pre-push)
         entry: cargo xtask policy
         language: system
-        files: (?i:^xtask/|^(\.agentless-mcp\.json|deny\.toml|rustfmt\.toml|\.config/nextest\.toml|crates/layers\.toml)$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml)$|(^|/)\.cargo/)
+        files: (?i:^xtask/|^(\.agentless-mcp\.json|deny\.toml|rustfmt\.toml|\.config/nextest\.toml|crates/(dependencies|layers)\.toml)$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?clippy\.toml)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
 

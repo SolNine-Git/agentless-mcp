@@ -8,12 +8,22 @@ type Layers = BTreeMap<String, u8>;
 
 const NO_PACKAGES: &str =
     "cargo metadata lists no package under crates/: layers has nothing to check";
+const DIRECT: &str = "direct";
+const DIRECT_IS: &str = "a direct third-party dependency of a workspace package";
 
-/// Fail when a crate under `crates/` has no layer or depends upward, or a path dependency leaves the workspace.
+/// Fail when a crate under `crates/` has no layer or depends upward, a path dependency leaves the workspace, or the direct third-party dependencies differ from crates/dependencies.toml.
 pub fn check(root: &Path) -> Result<(), Failure> {
     let layers: Layers = repo::toml(&root.join("crates/layers.toml"))?;
+    let listed = workspace::listed(root)?;
     let packages = workspace::packages(root)?;
-    verdict(problems(&packages, &root.join("crates"), &layers))
+    let mut problems = problems(&packages, &root.join("crates"), &layers);
+    problems.extend(workspace::list_problems(
+        DIRECT,
+        DIRECT_IS,
+        &workspace::direct(&packages),
+        &listed.direct,
+    ));
+    verdict(problems)
 }
 
 fn problems(packages: &[Package], crates: &Path, layers: &Layers) -> Vec<String> {

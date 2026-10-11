@@ -7,8 +7,9 @@ use crate::{Failure, repo, tool_config};
 
 const MANIFEST: &str = "Cargo.toml";
 const SNAPSHOT: &str = "public-api.txt";
-// The gates' own data: the erosion baseline, the layer table and the suppression ledger.
-const GATE_DATA: [&str; 3] = [
+// The gates' own data: the third-party list, the erosion baseline, the layer table and the suppression ledger.
+const GATE_DATA: [&str; 4] = [
+    workspace::DEPENDENCIES,
     "crates/erosion-baseline.json",
     "crates/layers.toml",
     "crates/suppressions.toml",
@@ -41,11 +42,12 @@ struct Listing {
 /// Scan each `.rs` file under crates/ and xtask/ without following a symlink, and report each other entry outside the allowed set, misplaced packages and targets, test files that cargo does not build, other cases of `.rs`, and refused forms.
 pub fn scan(root: &Path, packages: &[Package]) -> Result<Sources, Failure> {
     let listing = list_files(root)?;
+    let ignored = ignored(root)?;
     let mut problems: Vec<String> = packages
         .iter()
         .flat_map(|package| package_problems(root, package))
         .collect();
-    problems.extend(listing_problems(root, &listing, packages));
+    problems.extend(listing_problems(root, &listing, packages, &ignored));
     let files = listing
         .sources
         .iter()
@@ -84,7 +86,43 @@ fn list_files(root: &Path) -> Result<Listing, Failure> {
     Ok(listing)
 }
 
-fn listing_problems(root: &Path, listing: &Listing, packages: &[Package]) -> Vec<String> {
+// Every git-ignored entry below crates/ and xtask/: a wholly ignored directory is one entry that ends in `/`.
+fn ignored(root: &Path) -> Result<Vec<String>, Failure> {
+    let mut args = vec![
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "--",
+    ];
+    args.extend(workspace::ROOTS);
+    let output = repo::git(root, &args)?;
+    let text = String::from_utf8(output)
+        .map_err(|error| Failure::Broken(format!("git ls-files: {error}")))?;
+    Ok(text
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+// No tool reads an ignored editor or system file. tool_config leaves crates/ and xtask/ to this walk, so an
+// ignored tool config stays refused here.
+fn ignored_data(file: &str, ignored: &[String]) -> bool {
+    !tool_config::is_tool_config(file)
+        && ignored.iter().any(|entry| {
+            file == entry || (entry.ends_with('/') && file.starts_with(entry.as_str()))
+        })
+}
+
+fn listing_problems(
+    root: &Path,
+    listing: &Listing,
+    packages: &[Package],
+    ignored: &[String],
+) -> Vec<String> {
     let links = listing.links.iter().map(|link| {
         format!(
             "{}: a symlink under crates/ or xtask/ is refused: the gates do not follow it. Replace the link with a copy of its target",
@@ -107,6 +145,7 @@ fn listing_problems(root: &Path, listing: &Listing, packages: &[Package]) -> Vec
     let data = listing
         .data
         .iter()
+        .filter(|path| !ignored_data(&repo::relative(path, root), ignored))
         .filter_map(|path| data_problem(root, path, packages));
     let untested = packages
         .iter()
@@ -315,8 +354,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        Source, completeness_problems, data_problem, package_problems, rs_exactly, rs_in_any_case,
-        untested_problems,
+        Source, completeness_problems, data_problem, ignored_data, package_problems, rs_exactly,
+        rs_in_any_case, untested_problems,
     };
     use crate::tokens;
     use crate::workspace::{Package, Target};
@@ -440,6 +479,29 @@ mod tests {
         ] {
             let found = problem(refused).unwrap_or_default();
             assert!(found.starts_with(&format!("{refused}: {says}")), "{found}");
+        }
+    }
+
+    #[test]
+    fn an_ignored_data_file_is_skipped_and_an_ignored_tool_config_is_not() {
+        let ignored = [
+            "crates/kernel/src/.lib.rs.swp".to_owned(),
+            "crates/kernel/scratch/".to_owned(),
+        ];
+        for skipped in [
+            "crates/kernel/src/.lib.rs.swp",
+            "crates/kernel/scratch/notes.txt",
+            "crates/kernel/scratch/deep/x.bin",
+        ] {
+            assert!(ignored_data(skipped, &ignored), "{skipped}");
+        }
+        for judged in [
+            "crates/kernel/src/lib.rs.swp",
+            "crates/kernel/scratchpad.txt",
+            "crates/kernel/scratch/rustfmt.toml",
+            "crates/kernel/scratch/.cargo/config.toml",
+        ] {
+            assert!(!ignored_data(judged, &ignored), "{judged}");
         }
     }
 

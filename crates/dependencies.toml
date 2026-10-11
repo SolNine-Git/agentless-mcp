@@ -1,0 +1,18 @@
+# The third-party packages that the workspace uses. The owner reviews each name, and each change needs a
+# commit with a `Policy-Change: crates/dependencies.toml` trailer. A stale name fails too.
+# direct: the package name of each dependency of a workspace package that is not a path dependency, of
+# every kind and target. `cargo xtask layers` checks it.
+direct = ["proc-macro2", "serde", "serde_json", "thiserror", "toml"]
+# build-time: each third-party package in the resolved graph with a proc-macro or build-script target. Its
+# code runs on every build. `cargo xtask ground-truth` checks it.
+build-time = [
+    "proc-macro2",
+    "quote",
+    "serde",
+    "serde_core",
+    "serde_derive",
+    "serde_json",
+    "thiserror",
+    "thiserror-impl",
+    "zmij",
+]

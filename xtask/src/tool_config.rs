@@ -43,7 +43,7 @@ const CLIPPY_EXEMPT: [(&str, &str); 3] = [
 // clippy reads the first of these that it finds, from the package directory upward.
 pub(crate) const CLIPPY_NAMES: [&str; 2] = [".clippy.toml", ROOT_CLIPPY];
 
-/// Return each non-ASCII path, each tool config file outside crates/ and xtask/ and the allowed set, each allowed one whose content drifts, and each package that clippy configures from another file.
+/// Return each non-ASCII path and each path with a control character, each tool config file outside crates/ and xtask/ and the allowed set, each allowed one whose content drifts, and each package that clippy configures from another file.
 pub fn problems(
     root: &Path,
     root_clippy: &Table,
@@ -51,6 +51,7 @@ pub fn problems(
 ) -> Result<Vec<String>, Failure> {
     let listed = listed(root)?;
     let mut problems = non_ascii_problems(&listed);
+    problems.extend(control_problems(&listed));
     // The source walk judges every file under crates/ and xtask/ on disk, so it reports those.
     problems.extend(
         listed
@@ -170,6 +171,19 @@ fn non_ascii_problems(paths: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn control_problems(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|path| path.chars().any(|character| character.is_ascii_control()))
+        .map(|path| {
+            format!(
+                "{}: a path with a control character is refused: rustc's dep-info writes the name unescaped, so a line feed splits it. Rename it without control characters",
+                path.escape_debug()
+            )
+        })
+        .collect()
+}
+
 fn optional_table(root: &Path, file: &str) -> Result<Option<Table>, Failure> {
     if repo::exists(&root.join(file))? {
         repo::toml(&root.join(file)).map(Some)
@@ -231,8 +245,8 @@ mod tests {
     use toml::Table;
 
     use super::{
-        cargo_config_problem, clippy_problem, ignored_names, non_ascii_problems, scope_problem,
-        stray_problem, without_methods,
+        cargo_config_problem, clippy_problem, control_problems, ignored_names, non_ascii_problems,
+        scope_problem, stray_problem, without_methods,
     };
 
     fn strays(paths: &[&str]) -> Vec<String> {
@@ -342,6 +356,33 @@ mod tests {
                 "{problem}"
             );
         }
+    }
+
+    #[test]
+    fn a_path_with_a_control_character_is_refused_and_named_escaped() {
+        let paths: Vec<String> = [
+            "docs/a\nCargo.toml",
+            "docs/b\u{7f}",
+            "docs/c\td",
+            "docs/a.md",
+        ]
+        .iter()
+        .map(|path| (*path).to_owned())
+        .collect();
+        let named: Vec<String> = control_problems(&paths)
+            .iter()
+            .map(|problem| {
+                problem
+                    .split(": a path")
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(
+            named,
+            ["docs/a\\nCargo.toml", "docs/b\\u{7f}", "docs/c\\td"]
+        );
     }
 
     #[test]

@@ -92,11 +92,9 @@ impl Level {
     }
 }
 
-/// Read the lint table that `clippy-driver -W help` prints, under its deadline.
-pub fn table(root: &Path) -> Result<Table, Failure> {
-    let mut command = Command::new("clippy-driver");
-    command.args(["-W", "help"]).current_dir(root);
-    let output = process::stdout(&mut command, LINT_TABLE)?;
+/// Read the lint table that `clippy-driver -W help` prints for `edition`, under its deadline.
+pub fn table(root: &Path, edition: &str) -> Result<Table, Failure> {
+    let output = process::stdout(&mut help(root, edition), LINT_TABLE)?;
     String::from_utf8(output)
         .map_err(|error| error.to_string())
         .and_then(|text| parse_table(&text))
@@ -107,6 +105,22 @@ pub fn table(root: &Path) -> Result<Table, Failure> {
 pub fn configured(root: &Path) -> Result<Vec<Configured>, Failure> {
     let path = root.join(MANIFEST);
     parse_configured(&repo::read(&path)?).map_err(|error| repo::broken(&path, &error))
+}
+
+/// Read the [workspace.package] edition of the root manifest, which every target builds with.
+pub fn edition(root: &Path) -> Result<String, Failure> {
+    let path = root.join(MANIFEST);
+    parse_edition(&repo::read(&path)?).map_err(|error| repo::broken(&path, &error))
+}
+
+// A lint's default level can depend on the edition: edition 2024 warns on unsafe_op_in_unsafe_fn.
+fn help(root: &Path, edition: &str) -> Command {
+    let mut command = Command::new("clippy-driver");
+    command
+        .arg(format!("--edition={edition}"))
+        .args(["-W", "help"])
+        .current_dir(root);
+    command
 }
 
 /// Return each lint's level in the normal clippy run: its default, then the workspace entries by priority.
@@ -122,9 +136,9 @@ pub fn levels(table: &Table, configured: &[Configured]) -> Result<BTreeMap<Strin
     Ok(levels)
 }
 
-/// Return each lint that the normal run warns about or denies, so that an attribute can lower it unseen.
+/// Return each lint that the normal run warns about or denies: the lints that a source attribute could lower.
 pub fn force_warned(levels: &BTreeMap<String, Level>) -> Vec<String> {
-    // rustc refuses an attribute that lowers a forbidden lint (E0453), so forbid needs no force-warn.
+    // rustc and clippy-driver refuse an attribute that lowers a forbidden lint (E0453), so forbid needs no force-warn.
     levels
         .iter()
         .filter(|(name, level)| {
@@ -245,6 +259,17 @@ fn parse_configured(text: &str) -> Result<Vec<Configured>, String> {
     Ok(configured)
 }
 
+fn parse_edition(text: &str) -> Result<String, String> {
+    let manifest: toml::Table = toml::from_str(text).map_err(|error| error.to_string())?;
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("edition"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| "[workspace.package] sets no edition".to_owned())
+}
+
 impl Setting {
     fn configured(self, name: String) -> Result<Configured, String> {
         let (level, priority, check_cfg) = match self {
@@ -295,8 +320,11 @@ fn members(table: &Table, name: &str) -> Result<Vec<String>, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::{
-        Configured, Level, Table, cfg_problems, force_warned, levels, parse_configured, parse_table,
+        Configured, Level, Table, cfg_problems, force_warned, help, levels, parse_configured,
+        parse_edition, parse_table,
     };
 
     const HELP: &str = "
@@ -496,6 +524,24 @@ Lint groups loaded by this crate:
                 },
             ]
         );
+    }
+
+    #[test]
+    fn the_lint_table_is_read_for_the_workspace_edition() {
+        let command = help(Path::new("/r"), "2024");
+        let args: Vec<&str> = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect();
+        assert_eq!(args, ["--edition=2024", "-W", "help"]);
+        let manifest = "[workspace]\nmembers = []\n[workspace.package]\nedition = \"2024\"\n";
+        assert_eq!(parse_edition(manifest).unwrap(), "2024");
+        for text in [
+            "[workspace]\nmembers = []\n",
+            "[workspace.package]\nedition = 2024\n",
+        ] {
+            assert!(parse_edition(text).is_err(), "{text}");
+        }
     }
 
     #[test]

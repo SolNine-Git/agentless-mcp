@@ -43,10 +43,17 @@ CARGO = [
     ".cargo/config.toml",
 ]
 SOURCES = ["crates/kernel/src/lib.rs", "xtask/src/main.rs"]
-# Each hook's inputs beyond CARGO. tool_config refuses a non-ASCII path anywhere, and the Kelvin
-# sign folds to an ASCII letter under ignore case. The policy hook runs on the gate in xtask.
+# Each hook's inputs beyond CARGO. tool_config refuses a control or non-ASCII character in any path,
+# and the Kelvin sign folds to an ASCII letter under ignore case. The policy hook runs on xtask.
 INPUTS = dict.fromkeys(STAGES, SOURCES) | {
-    "cargo-gates": [*SOURCES, f"docs/{chr(0xE9)}.md", f"docs/{chr(0x212A)}.md"],
+    "cargo-gates": [
+        *SOURCES,
+        "crates/dependencies.toml",
+        "docs/a\x01.md",
+        "docs/a\x7f.md",
+        f"docs/{chr(0xE9)}.md",
+        f"docs/{chr(0x212A)}.md",
+    ],
     "cargo-policy": ["xtask/src/policy.rs"],
 }
 # The hook, the Rust file and constant that list file names, and whether the gate reads a name in
@@ -73,7 +80,7 @@ def main() -> int:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             Path(path).write_text("x = 1\n", encoding="utf-8")
         classifier = Classifier.from_config(paths, config["files"], config["exclude"])
-        problems = _problems(hooks, classifier, inputs)
+        problems = _install_problems(config) + _problems(hooks, classifier, inputs)
     if problems:
         print("\n".join(problems))
     return 1 if problems else 0
@@ -129,6 +136,17 @@ def _cargo_hooks(config: dict[str, Any]) -> dict[str, Hook]:
         for raw in repo["hooks"]
         if raw["id"].startswith("cargo-")
     }
+
+
+def _install_problems(config: dict[str, Any]) -> list[str]:
+    installed = config["default_install_hook_types"]
+    used = sorted({stage for stages in STAGES.values() for stage in stages})
+    return [
+        f"default_install_hook_types does not hold {stage}: pre-commit install sets no {stage}"
+        " git hook, so the cargo hooks at that stage do not run"
+        for stage in used
+        if stage not in installed
+    ]
 
 
 def _problems(
