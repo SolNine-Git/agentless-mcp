@@ -1,6 +1,6 @@
 # Rust Port, Phase 1: The Per-Write Path
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P0 (0.10.1 released, workspace and gates live) | **Branch**: `feat/rust-p1-per-write` | **Est. Rust lines**: about 8,000
+**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P0 (0.10.1 released, workspace and gates live) | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 8,000
 
 ## Goal
 
@@ -40,6 +40,12 @@ Each dependency exists when its user is built. `cargo xtask layers` checks this 
 ## Binary name
 
 The `agentless` crate builds a binary named `agentless-mcp`, so commands and hook settings keep their spelling. Until P4 the Python 0.10.1 tool owns `agentless-mcp` on `PATH`. The Rust binary is therefore installed outside `PATH`, and called by absolute path from the hook settings and the latency script.
+
+## Carried from P0d
+
+- When `syntax` adds the tree-sitter crate, set the workspace `rust-version` to that crate's minimum.
+- `crates/io/clippy.toml` (the root file without the `std::fs` entries) and `crates/store/clippy.toml` (without `rusqlite::Connection::open`) arrive with their crates.
+- `cargo xtask goldens --update` and self-test violation 14 (a changed golden file) arrive with the first golden files.
 
 ## Work items, in build order
 
@@ -84,7 +90,7 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 - **Code, not data**:
   - `Cond`, the six predicates at `complexity.py:472-498`;
   - `NameRule`, the name and binding rules at `complexity.py:381-470`. The Rust impl owner uses the one rule that P0b B3 settled.
-- **Grammars**: linked statically through the language-pack crate pinned in P0 D1. `grammar(Language)` performs no IO.
+- **Grammars**: the C sources vendored from `parser-sources-1.14.3.tar.zst`, with `ctype_shim.h` and utf8proc, compiled by `cc` in `build.rs` and checked against a sha256 manifest (overview, Grammar sources). `tree-sitter` is pinned to `=0.26.9`. `grammar(Language)` performs no IO.
 - **`parse(lang, src) -> Result<Parsed, Unparsable>`**. `Parsed` owns:
   - the `Tree`;
   - `Flat`, built in one cursor walk: kind ids, a named bit set, spans, the subtree end index per node, and a field index for name lookups;
@@ -265,4 +271,4 @@ The `agentless` crate builds a binary named `agentless-mcp`, so commands and hoo
 | Histogram pairing differs from SequenceMatcher on a real edit | Counts never change. A different reported copy is accepted (decision 6) only for a fixture on the accepted list, and the move-plus-copy test pins the chosen case. Python's `SequenceMatcher` keeps `autojunk` on: in a new text of 200 or more lines, a line that makes up more than 1% of it leaves the match index, and Histogram has no such rule. A fixture of 200 or more lines with many brace-only lines pins that case. |
 | A Python change bumps the `tags.db` schema during P1 to P3 | The reader accepts schema 17 only and reports `no_tag_cache` otherwise, so the hook stays safe. Overview rule 7 forbids the bump without a matching reader change. |
 | `Flat` memory is too high on large files | It is about 22 bytes per node (estimate); P1 records it. If needed, drop `Flat` for files over a size and walk the `Tree` instead. |
-| The language-pack crate's static mode does not build on macOS | Fall back to per-grammar crates at the same revisions, and collect each grammar's license from its pinned source. |
+| The vendored grammar sources do not build on macOS | The D1 build was measured on Linux only. Build them on the macOS CI row before P1 relies on them. The scanners of ruby, scala and swift export globals without a language prefix; none collide among the 22. |

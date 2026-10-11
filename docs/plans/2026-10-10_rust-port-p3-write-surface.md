@@ -1,6 +1,6 @@
 # Rust Port, Phase 3: The Write Surface
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P2 released | **Branch**: `feat/rust-p3-write` | **Est. Rust lines**: about 3,500
+**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P2 released | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 3,500
 
 ## Goal
 

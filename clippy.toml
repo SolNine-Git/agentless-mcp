@@ -1,0 +1,14 @@
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 4
+disallowed-methods = [
+    { path = "std::fs::write", reason = "file writes go through the io crate" },
+    { path = "std::fs::rename", reason = "file writes go through the io crate" },
+    { path = "std::fs::copy", reason = "file writes go through the io crate" },
+    { path = "std::fs::create_dir_all", reason = "file writes go through the io crate" },
+    { path = "std::fs::remove_file", reason = "file writes go through the io crate" },
+    { path = "std::fs::remove_dir_all", reason = "file writes go through the io crate" },
+    { path = "std::fs::File::create", reason = "file writes go through the io crate" },
+    { path = "std::fs::OpenOptions::open", reason = "file writes go through the io crate" },
+    { path = "rusqlite::Connection::open", reason = "SQLite opens go through the store crate" },
+]

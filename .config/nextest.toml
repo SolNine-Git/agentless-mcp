@@ -1,0 +1,3 @@
+[profile.default]
+# A test that runs past 30 s twice over is killed and fails.
+slow-timeout = { period = "30s", terminate-after = 2 }

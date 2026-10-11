@@ -87,7 +87,7 @@ repos:
         exclude: ^\.audit/
         args:
           - --skip=*.pyc,.git,.mypy_cache,.ruff_cache,.pytest_cache,__pycache__,uv.lock
-          - --ignore-words-list=mcp,readonly,crate
+          - --ignore-words-list=mcp,readonly,crate,ser
           - --check-filenames
           - --check-hidden
 
@@ -118,6 +118,58 @@ repos:
         name: pytest (unit suite, pre-push)
         entry: bash -c 'uv run pytest tests/unit -q 2>/dev/null || uv run pytest tests -q'
         language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+  # The Rust workspace (crates/ and xtask/). CI's rust job runs these; the Python jobs skip them.
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --check
+        language: system
+        files: ^(crates|xtask)/.*\.rs$
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        files: ^(crates|xtask)/.*\.rs$|^(Cargo\.toml|Cargo\.lock|clippy\.toml)$|/Cargo\.toml$
+        pass_filenames: false
+      # import-linter and the noqa ratchet, for Rust: layer edges, listed suppressions, lint tables.
+      - id: cargo-gates
+        name: cargo xtask (layers, suppressions, lint tables)
+        entry: bash -c 'cargo xtask layers && cargo xtask suppressions && cargo xtask lint-tables'
+        language: system
+        files: ^(crates|xtask)/|^(Cargo\.toml|Cargo\.lock|clippy\.toml)$
+        pass_filenames: false
+      # deptry, for Rust: unused dependencies, licenses, advisories, and sources.
+      - id: cargo-deps
+        name: cargo machete and cargo deny
+        entry: bash -c 'cargo machete && cargo deny check'
+        language: system
+        files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
+        pass_filenames: false
+      - id: cargo-test
+        name: cargo tests and snapshots (pre-push)
+        entry: cargo insta test --check --workspace --test-runner nextest
+        language: system
+        files: ^(crates|xtask)/|^Cargo\.(toml|lock)$
+        pass_filenames: false
+        stages: [pre-push]
+      - id: cargo-public-api
+        name: cargo xtask public-api (pre-push)
+        entry: cargo xtask public-api
+        language: system
+        files: ^crates/
+        pass_filenames: false
+        stages: [pre-push]
+      - id: cargo-erosion
+        name: cargo xtask erosion with the uv tool agentless-mcp (pre-push)
+        # The uv tool is the pinned gate; a PATH lookup inside uv run finds the build under test.
+        entry: bash -c 'gate="$(uv tool dir --bin)/agentless-mcp" && cargo xtask erosion --lint-bin "$gate" --health-bin "$gate"'
+        language: system
+        files: ^(crates|xtask)/
         pass_filenames: false
         stages: [pre-push]
 

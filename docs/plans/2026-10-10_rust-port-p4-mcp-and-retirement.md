@@ -1,6 +1,6 @@
 # Rust Port, Phase 4: The MCP Door and Retirement
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-p4-mcp`, then `chore/retire-python` | **Est. Rust lines**: about 800, plus the gate report
+**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-port`, then `chore/retire-python` | **Est. Rust lines**: about 800, plus the gate report
 
 ## Goal
 

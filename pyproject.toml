@@ -412,4 +412,4 @@ exclude_also = [
 # pre-commit hook needs its own exclude for this, since it passes filenames
 # explicitly and those override skip patterns.
 skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit"
-ignore-words-list = "mcp,readonly,crate"
+ignore-words-list = "mcp,readonly,crate,ser"

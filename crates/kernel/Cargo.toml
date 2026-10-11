@@ -1,0 +1,19 @@
+[package]
+name = "kernel"
+description = "Value types every agentless crate shares: errors, limits, bounded rows, digests, spans, and ids."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

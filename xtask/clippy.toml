@@ -1,0 +1,6 @@
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 4
+disallowed-methods = [
+    { path = "rusqlite::Connection::open", reason = "SQLite opens go through the store crate" },
+]

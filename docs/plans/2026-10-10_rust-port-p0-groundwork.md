@@ -1,6 +1,6 @@
 # Rust Port, Phase 0: Groundwork
 
-**Date**: 2026-10-10 | **Status**: P0a merged (PR #60, `9bb51ac`); P0b in progress; P0c and P0d not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
+**Date**: 2026-10-10 | **Status**: P0a merged (PR #60, `9bb51ac`); P0b (`0037919`) and P0d committed on `feat/rust-port`; P0c next | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
 
 ## Goal
 
@@ -258,10 +258,36 @@ Before each item, write the predicted golden diff into the pull request descript
 - `scripts/hook_latency.py` commits the overview's baseline method: a frozen copy without `.git` and `.venv`, the mcp-local `f17af96` Write payload, 30 runs per cache state, and an isolated `XDG_CACHE_HOME`. It measures the four baseline rows for `1dc4d70` and for 0.10.1, and the overview table then cites the script's runs. P1 scores its latency gate with the same script.
 - Copy the design page's records into `docs/analysis/`: the findings (A1-F15, S1-S2), the Codex findings (V1-V47) and their resolutions, the parity ledger, and the measured alternatives. The phase plans cite those ids, so they must resolve inside the repository before P1 starts.
 
+### P0d as built
+
+Where the build differs from D2 to D8:
+
+- **Excludes**: `crates/` and `target/` need none in `pyproject.toml`. Ruff and deptry read Python only, pre-commit passes tracked files only, and `target/` is in `.gitignore`. Codespell checks the Rust sources on purpose, with `ser` (the serde module) on its ignore list.
+- **`rust-version`** is 1.94, the pinned toolchain, until P1 adds the tree-sitter crate (D2).
+- **Per-crate `clippy.toml`**: the `io` and `store` files arrive with those crates in P1, and `cargo xtask lint-tables` checks each one that exists. `xtask/clippy.toml` drops the `std::fs` entries, because xtask writes the baseline and the snapshots.
+- **Goldens**: `cargo xtask goldens --update` and violation 14 move to P1, with the first golden files. The self-test runs violations 1 to 13 as 15 checks, because 5, 10 and 11 have two parts.
+- **Gate binary**: until P0c publishes 0.10.1, CI installs the gate from git at `9bb51ac`, the P0a merge that added `--fail-on`. P0c moves the pin to `agentless-mcp==0.10.1` in its own commit.
+- **Erosion with no change**: `cargo xtask erosion` skips `lint` when the tree equals the base and has no untracked files, because `lint` reports an empty change set as `not_checked`.
+- **Latency (D8)**: the script measured `1dc4d70` and `0037919`, the 0.10.1 candidate. P0c runs it again on the `v0.10.1` tag. Its p95 is the nearest rank, so the overview table cites the script's runs only.
+- **Hooks**: D6 named `cargo fmt` and `cargo clippy` only. Each Python check has a Rust counterpart:
+
+| Check | Python | Rust | Runs at |
+|---|---|---|---|
+| Format | ruff format | `cargo fmt --check` | pre-commit, CI |
+| Lint | ruff | `cargo clippy -D warnings`, pedantic | pre-commit, CI |
+| Types | mypy | rustc, through clippy | pre-commit, CI |
+| Layers | import-linter | `cargo xtask layers` | pre-commit, CI |
+| Dependencies | deptry | `cargo machete`, `cargo deny` | pre-commit, CI |
+| Suppressions and lint tables | none | `cargo xtask suppressions`, `lint-tables` | pre-commit, CI |
+| Spelling | codespell | codespell | pre-commit |
+| Tests | pytest | `cargo nextest`, `cargo insta test --check` | pre-push, CI |
+| Public API | none | `cargo xtask public-api` | pre-push, CI |
+| Erosion | the erosion hook | `cargo xtask erosion` | pre-push, CI |
+
 ### P0d exit gate
 
 - The `rust` CI job is green on both platforms.
-- `scripts/gate-selftest.sh` shows each of the 14 violations failing its gate and the base passing every gate.
+- `scripts/gate-selftest.sh` shows each of violations 1 to 13 failing its gate and the base passing every gate. Violation 14 moves to P1 (P0d as built).
 - The grammar pin and the per-grammar revision list are recorded (D1).
 - `scripts/hook_latency.py` has measured the baselines, and the design records are in `docs/analysis/` (D8).
 

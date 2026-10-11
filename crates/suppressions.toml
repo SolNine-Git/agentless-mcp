@@ -1,0 +1,3 @@
+# Each allow or expect attribute in crates/ needs an entry here: file, lint, and reason.
+# The owner approves each entry in review.
+allow = []
