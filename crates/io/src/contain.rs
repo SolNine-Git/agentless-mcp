@@ -119,6 +119,18 @@ pub fn file_size(path: &Path) -> io::Result<u64> {
     fs::metadata(path).map(|metadata| metadata.len())
 }
 
+/// Returns the [`file_size`] of a candidate that [`file_stays_inside`] admits, and `None` for one
+/// it refuses, with one lstat for a regular file.
+#[must_use]
+pub fn contained_file_size(candidate: &Path, root: &Path) -> Option<io::Result<u64>> {
+    let metadata = fs::symlink_metadata(candidate).ok()?;
+    if metadata.file_type().is_symlink() {
+        let inside = fs::canonicalize(candidate).is_ok_and(|target| target.starts_with(root));
+        return inside.then(|| file_size(candidate));
+    }
+    metadata.is_file().then_some(Ok(metadata.len()))
+}
+
 enum Part {
     Name(Vec<u8>),
     // Marks the end of a symlink's target parts; the resolved path so far is that link's target.
@@ -225,6 +237,20 @@ mod tests {
         for (candidate, expected) in all {
             let found = file_stays_inside(&tree.join(&candidate), &root);
             assert_eq!(found, expected, "candidate {candidate}");
+        }
+    }
+
+    #[test]
+    fn contained_file_size_admits_what_file_stays_inside_admits_with_its_size() {
+        let layout: Vec<Value> = fixture("contain", "layout");
+        let tree = build(&layout);
+        let root = tree.join("root");
+        let all: Vec<(String, bool)> = fixture("contain", "file_stays_inside");
+        for (candidate, expected) in all {
+            let candidate = tree.join(&candidate);
+            let found = contained_file_size(&candidate, &root).map(Result::ok);
+            let sized = expected.then(|| file_size(&candidate).ok());
+            assert_eq!(found, sized, "candidate {candidate:?}");
         }
     }
 

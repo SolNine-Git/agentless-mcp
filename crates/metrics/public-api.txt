@@ -22,7 +22,6 @@ impl core::marker::UnsafeUnpin for metrics::TokenizeErrorKind
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::TokenizeErrorKind
 impl core::panic::unwind_safe::UnwindSafe for metrics::TokenizeErrorKind
 pub enum metrics::Unmeasurable
-pub metrics::Unmeasurable::DocstringQuery(syntax::query::QueryRunError)
 pub metrics::Unmeasurable::DoesNotParse
 pub metrics::Unmeasurable::DoesNotParse::line: u32
 pub metrics::Unmeasurable::Tokenizer(metrics::TokenizeError)
@@ -88,6 +87,19 @@ impl core::marker::Unpin for metrics::FileMetrics
 impl core::marker::UnsafeUnpin for metrics::FileMetrics
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::FileMetrics
 impl core::panic::unwind_safe::UnwindSafe for metrics::FileMetrics
+pub struct metrics::Measurable
+impl metrics::Measurable
+pub fn metrics::Measurable::blocks(&self) -> alloc::vec::Vec<metrics::Block>
+pub fn metrics::Measurable::new(syntax::parsed::Parsed) -> core::result::Result<metrics::Measurable, metrics::Unmeasurable>
+pub fn metrics::Measurable::parsed(&self) -> &syntax::parsed::Parsed
+pub fn metrics::Measurable::units(&self) -> alloc::vec::Vec<metrics::Unit>
+impl core::marker::Freeze for metrics::Measurable
+impl core::marker::Send for metrics::Measurable
+impl core::marker::Sync for metrics::Measurable
+impl core::marker::Unpin for metrics::Measurable
+impl core::marker::UnsafeUnpin for metrics::Measurable
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Measurable
+impl core::panic::unwind_safe::UnwindSafe for metrics::Measurable
 pub struct metrics::TokenizeError
 pub metrics::TokenizeError::kind: metrics::TokenizeErrorKind
 pub metrics::TokenizeError::message: alloc::string::String

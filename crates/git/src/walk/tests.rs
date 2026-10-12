@@ -165,11 +165,11 @@ fn a_subdirectory_root_still_honours_the_repository_gitignore() {
 fn a_file_that_is_gone_before_the_stat_is_skipped_and_named() {
     let scratch = Scratch::new();
     let root = git_repo(&scratch);
-    // The containment check passes, as it does when the file goes between the two calls.
+    // The probe admits the file and then its stat fails, as when the file goes between two calls.
     let names = vec!["gone.py".to_owned(), "pkg/mod.py".to_owned()];
 
     let (files, warnings) =
-        admit(&root, names, BOUNDS, |_| true, io::file_size).expect("within the bounds");
+        admit(&root, names, BOUNDS, |path| Some(io::file_size(path))).expect("within the bounds");
     let listed: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
     assert_eq!(listed, ["pkg/mod.py"]);
     let gone = root.join("gone.py");
@@ -181,7 +181,9 @@ fn a_file_that_is_gone_before_the_stat_is_skipped_and_named() {
 fn a_path_deeper_than_the_bound_is_refused() {
     let names = vec!["a/b/c.py".to_owned()];
     let bounds = Bounds { depth: 1, ..BOUNDS };
-    let error = admit(Path::new("/repo"), names, bounds, |_| true, |_| Ok(1))
+    // The depth refusal comes before the stat failure of the same path.
+    let unstatable = |_: &Path| Some(Err(std::io::ErrorKind::NotFound.into()));
+    let error = admit(Path::new("/repo"), names, bounds, unstatable)
         .expect_err("depth 2 passes a bound of 1");
     let expected = "walk refused: path depth 2 exceeds the limit of 1 under /repo; point the \
                     call at a subdirectory instead";
@@ -196,7 +198,7 @@ fn a_path_deeper_than_the_bound_is_refused() {
 fn the_byte_bound_is_enforced() {
     let names = vec!["a.py".to_owned(), "b.py".to_owned()];
     let bounds = Bounds { bytes: 5, ..BOUNDS };
-    let error = admit(Path::new("/repo"), names, bounds, |_| true, |_| Ok(3))
+    let error = admit(Path::new("/repo"), names, bounds, |_| Some(Ok(3)))
         .expect_err("6 bytes pass a bound of 5");
     let expected = "walk refused: more than 5 bytes under /repo; point the call at a \
                     subdirectory or raise the byte bound";

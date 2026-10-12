@@ -128,8 +128,8 @@ impl Git {
     fn walk_within(&self, root: &Path, bounds: Bounds) -> Result<Walk, WalkError> {
         let root = resolved_directory(root)?;
         let (names, mut warnings) = self.names(&root, bounds.files)?;
-        let inside = |candidate: &Path| io::file_stays_inside(candidate, &root);
-        let (files, skipped) = admit(&root, names, bounds, inside, io::file_size)?;
+        let probe = |candidate: &Path| io::contained_file_size(candidate, &root);
+        let (files, skipped) = admit(&root, names, bounds, probe)?;
         warnings.extend(skipped);
         Ok(Walk { files, warnings })
     }
@@ -332,8 +332,7 @@ fn admit(
     root: &Path,
     mut names: Vec<String>,
     bounds: Bounds,
-    inside: impl Fn(&Path) -> bool,
-    size: impl Fn(&Path) -> std::io::Result<u64>,
+    probe: impl Fn(&Path) -> Option<std::io::Result<u64>>,
 ) -> Result<(Vec<RepoFile>, Vec<WalkWarning>), WalkError> {
     names.sort_unstable();
     names.dedup();
@@ -344,15 +343,15 @@ fn admit(
         let candidate = root.join(&name);
         // Git lists an index entry for a file deleted in the tree, and a tracked symlink wherever
         // it points. The containment rule of the bounded walk drops both.
-        if !inside(&candidate) {
+        let Some(size) = probe(&candidate) else {
             continue;
-        }
+        };
         let depth = Path::new(&name).components().count().saturating_sub(1);
         if depth > bounds.depth {
             let (limit, root) = (bounds.depth, root.to_path_buf());
             return Err(WalkError::TooDeep { depth, limit, root });
         }
-        let size = match size(&candidate) {
+        let size = match size {
             Ok(size) => size,
             Err(error) => {
                 let path = candidate;

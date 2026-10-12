@@ -13,7 +13,7 @@ use crate::globs::in_boundary;
 use crate::matching::{Paired, UnitRef, file_units, match_run};
 use crate::observed::{HitState, Observed, Outcome};
 use crate::pair::{CONTRACT_GAPS, Measured, Pair, Sides, each_pair, read_sides};
-use crate::rules::{CompiledRule, Hit, compile, hits, rules_for};
+use crate::rules::{CompiledRules, Hit, compile, hits, rules_for};
 
 const MODULE_UNIT: &str = "<module>";
 
@@ -24,7 +24,7 @@ type HitKey<'a> = (&'static str, &'a str, &'a str, String);
 /// # Errors
 ///
 /// Returns an error when two admitted pairs name one path, when a side fails in a way that is
-/// not a parse or tokenizer failure, or when a contract rule does not compile or run.
+/// not a parse or tokenizer failure, or when the contract rule query fails on a tree.
 pub fn contract_drift(pairs: &[&Pair], globs: &[String]) -> Result<Outcome, Error> {
     if globs.is_empty() {
         return Ok(Outcome {
@@ -101,7 +101,7 @@ fn new_hits(
     measured: &[Sides<'_>],
     matches: &[Paired<'_>],
 ) -> Result<(Vec<PairFinding>, Vec<HitState>), Error> {
-    let rules = compiled(measured)?;
+    let rules = compiled(measured);
     let identity: HashMap<(usize, u32), UnitRef<'_>> = matches
         .iter()
         .map(|paired| {
@@ -117,7 +117,7 @@ fn new_hits(
             continue;
         };
         let path = sides.pair.path();
-        let new_units = &new.metrics.units;
+        let new_units = &new.units;
         for hit in side_hits(sides, new, &rules)? {
             let own = hit.unit.map(|index| &new_units[index]);
             let owner = own.map(|unit| identity[&(file, unit.start_byte)]);
@@ -141,33 +141,30 @@ fn new_hits(
     Ok((fresh, states))
 }
 
-fn compiled(measured: &[Sides<'_>]) -> Result<HashMap<Language, Vec<CompiledRule>>, Error> {
+fn compiled(measured: &[Sides<'_>]) -> HashMap<Language, CompiledRules> {
     let mut rules = HashMap::new();
     for sides in measured {
         if let Entry::Vacant(slot) = rules.entry(sides.language) {
-            slot.insert(compile(sides.language)?);
+            slot.insert(compile(sides.language));
         }
     }
-    Ok(rules)
+    rules
 }
 
 fn side_hits<'r>(
     sides: &Sides<'_>,
     side: &Measured,
-    rules: &'r HashMap<Language, Vec<CompiledRule>>,
+    rules: &'r HashMap<Language, CompiledRules>,
 ) -> Result<Vec<Hit<'r>>, Error> {
-    let language_rules = rules.get(&sides.language).map_or(&[][..], Vec::as_slice);
-    hits(
-        &side.parsed,
-        sides.pair.path(),
-        &side.metrics.units,
-        language_rules,
-    )
+    let Some(compiled) = rules.get(&sides.language) else {
+        return Ok(Vec::new());
+    };
+    hits(side.parsed(), sides.pair.path(), &side.units, compiled)
 }
 
 fn carried<'a>(
     measured: &[Sides<'a>],
-    rules: &HashMap<Language, Vec<CompiledRule>>,
+    rules: &HashMap<Language, CompiledRules>,
 ) -> Result<HashMap<HitKey<'a>, usize>, Error> {
     let mut carried = HashMap::new();
     for sides in measured {
@@ -175,7 +172,7 @@ fn carried<'a>(
             continue;
         };
         let path = sides.pair.path();
-        let old_units = &old.metrics.units;
+        let old_units = &old.units;
         for hit in side_hits(sides, old, rules)? {
             let owner = hit
                 .unit

@@ -1,20 +1,15 @@
 use std::collections::BTreeSet;
-use std::sync::OnceLock;
 
-use syntax::{Language, NodeId, Parsed, Point, Query, SlocRule, Spec};
+use syntax::{NodeId, Parsed, Point, SlocRule, Spec};
 
 use crate::kinds::Kinds;
 use crate::tokenize::python_sloc;
 use crate::{Unmeasurable, line};
 
-// The statement-level strings: a `string` child of a block or of the module.
-const STATEMENT_STRINGS: &str =
-    "(block (string) @statement_string) (module (string) @statement_string)";
-
 pub(crate) fn lines(parsed: &Parsed, spec: &Spec, kinds: &Kinds) -> Result<Vec<u32>, Unmeasurable> {
     match spec.sloc {
         SlocRule::Leaves => Ok(leaf_lines(parsed, spec)),
-        SlocRule::PythonTokens => python_lines(parsed, kinds),
+        SlocRule::PythonTokens => python_lines(parsed, spec, kinds),
     }
 }
 
@@ -36,27 +31,30 @@ fn leaf_lines(parsed: &Parsed, spec: &Spec) -> Vec<u32> {
 }
 
 // The tokenizer's code lines, without the lines of a docstring that owns its lines.
-fn python_lines(parsed: &Parsed, kinds: &Kinds) -> Result<Vec<u32>, Unmeasurable> {
+fn python_lines(parsed: &Parsed, spec: &Spec, kinds: &Kinds) -> Result<Vec<u32>, Unmeasurable> {
     let source = parsed.source();
     let tokens = python_sloc(source).map_err(Unmeasurable::Tokenizer)?;
-    let captures = parsed
-        .captures(docstring_query())
-        .map_err(Unmeasurable::DocstringQuery)?;
     let text_lines = text::splitlines(source, false);
-    let docstrings: BTreeSet<u32> = captures
-        .iter()
-        .filter(|capture| is_docstring(parsed, kinds, capture.node, &text_lines))
-        .flat_map(|capture| {
-            line(parsed.start_point(capture.node))..=line(parsed.end_point(capture.node))
-        })
+    let docstrings: BTreeSet<u32> = statement_strings(parsed, spec, kinds)
+        .filter(|&node| is_docstring(parsed, kinds, node, &text_lines))
+        .flat_map(|node| line(parsed.start_point(node))..=line(parsed.end_point(node)))
         .collect();
     Ok(tokens.difference(&docstrings).copied().collect())
 }
 
-fn docstring_query() -> &'static Query {
-    static QUERY: OnceLock<Query> = OnceLock::new();
-    QUERY.get_or_init(|| {
-        Query::new(Language::Python, STATEMENT_STRINGS).expect("the docstring query compiles")
+// The statement-level strings: a named `string` child of a statement parent.
+fn statement_strings<'a>(
+    parsed: &'a Parsed,
+    spec: &'a Spec,
+    kinds: &'a Kinds,
+) -> impl Iterator<Item = NodeId> + 'a {
+    let parents = spec.statement_parents.as_ref();
+    parsed.descendants(parsed.root()).filter(move |&node| {
+        parsed.is_named(node)
+            && kinds.string.contains(parsed.kind(node))
+            && parsed
+                .parent(node)
+                .is_some_and(|parent| parents.is_some_and(|set| set.contains(parsed.kind(parent))))
     })
 }
 
@@ -84,10 +82,25 @@ fn split_at_char(text: &str, count: u32) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::docstring_query;
+    use syntax::{Language, SlocRule};
 
+    // A docstring is a string child of a block or of the module, so the scan reads those parents.
     #[test]
-    fn the_docstring_query_compiles() {
-        assert_eq!(docstring_query().pattern_count(), 2);
+    fn the_token_rule_reads_the_block_and_the_module_as_statement_parents() {
+        let rules = Language::ALL
+            .into_iter()
+            .filter_map(|language| Some((language, language.spec()?)))
+            .filter(|(_, spec)| spec.sloc == SlocRule::PythonTokens);
+        let mut count = 0;
+        for (language, spec) in rules {
+            let expected = language.kinds(&["block", "module"]);
+            assert_eq!(
+                spec.statement_parents.as_ref(),
+                Some(&expected),
+                "{language:?}"
+            );
+            count += 1;
+        }
+        assert_eq!(count, 1);
     }
 }

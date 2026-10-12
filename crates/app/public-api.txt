@@ -438,6 +438,18 @@ impl<T> core::marker::Unpin for app::Noted<T> where T: core::marker::Unpin
 impl<T> core::marker::UnsafeUnpin for app::Noted<T> where T: core::marker::UnsafeUnpin
 impl<T> core::panic::unwind_safe::RefUnwindSafe for app::Noted<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for app::Noted<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct app::Opening
+pub app::Opening::note: alloc::string::String
+pub app::Opening::session: core::result::Result<app::Noted<app::Session>, app::Error>
+impl core::fmt::Debug for app::Opening
+pub fn app::Opening::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for app::Opening
+impl core::marker::Send for app::Opening
+impl !core::marker::Sync for app::Opening
+impl core::marker::Unpin for app::Opening
+impl core::marker::UnsafeUnpin for app::Opening
+impl !core::panic::unwind_safe::RefUnwindSafe for app::Opening
+impl !core::panic::unwind_safe::UnwindSafe for app::Opening
 pub struct app::PairSelection
 impl app::PairSelection
 pub fn app::PairSelection::checks(self) -> impl core::iter::traits::iterator::Iterator<Item = app::PairCheck>
@@ -477,20 +489,6 @@ impl core::marker::Unpin for app::Repo
 impl core::marker::UnsafeUnpin for app::Repo
 impl core::panic::unwind_safe::RefUnwindSafe for app::Repo
 impl core::panic::unwind_safe::UnwindSafe for app::Repo
-pub struct app::Resolved
-pub app::Resolved::repo: app::Repo
-pub app::Resolved::snapshot: git::snapshot::Snapshot
-impl core::clone::Clone for app::Resolved
-pub fn app::Resolved::clone(&self) -> Self
-impl core::fmt::Debug for app::Resolved
-pub fn app::Resolved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for app::Resolved
-impl core::marker::Send for app::Resolved
-impl core::marker::Sync for app::Resolved
-impl core::marker::Unpin for app::Resolved
-impl core::marker::UnsafeUnpin for app::Resolved
-impl core::panic::unwind_safe::RefUnwindSafe for app::Resolved
-impl core::panic::unwind_safe::UnwindSafe for app::Resolved
 pub struct app::Roots
 pub app::Roots::client: alloc::vec::Vec<alloc::string::String>
 pub app::Roots::configured: core::option::Option<alloc::vec::Vec<alloc::string::String>>
@@ -534,7 +532,7 @@ pub app::Session::repo: app::Repo
 pub app::Session::snapshot: git::snapshot::Snapshot
 pub app::Session::tags: app::Tags
 impl app::Session
-pub fn app::Session::open(&app::Services, app::Resolved, bool) -> core::result::Result<app::Noted<app::Session>, app::Error>
+pub fn app::Session::open(&app::Services, app::Repo, bool) -> app::Opening
 impl core::fmt::Debug for app::Session
 pub fn app::Session::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Session
@@ -590,5 +588,5 @@ pub fn app::in_metric_scope(&str) -> bool
 pub fn app::is_fixture_path(&str) -> bool
 pub fn app::is_test_path(&str) -> bool
 pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> core::result::Result<app::Noted<app::LintReport>, app::Error>
-pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Resolved, app::Error>
+pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
 pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>

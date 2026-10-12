@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use text::CodePointString;
 
-use crate::{file_size, file_stays_inside, resolve, strerror};
+use crate::{contained_file_size, resolve, strerror};
 
 /// The deepest directory, in levels below the root, that [`walk`] enters.
 pub const MAX_WALK_DEPTH: usize = 20;
@@ -269,12 +269,10 @@ impl Walker {
     }
 
     fn take_file(&mut self, candidate: PathBuf) -> Result<(), WalkRefusal> {
-        if !file_stays_inside(&candidate, &self.root) {
-            return Ok(());
-        }
-        let size = match file_size(&candidate) {
-            Ok(size) => size,
-            Err(error) => {
+        let size = match contained_file_size(&candidate, &self.root) {
+            None => return Ok(()),
+            Some(Ok(size)) => size,
+            Some(Err(error)) => {
                 let path = candidate;
                 self.walk.skipped.push(WalkSkip::Unstatable { path, error });
                 return Ok(());

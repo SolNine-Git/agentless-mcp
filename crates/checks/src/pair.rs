@@ -1,9 +1,9 @@
 //! Text pairs with each side parsed and measured once, and how a check reads the sides.
 
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use metrics::{FileMetrics, Unmeasurable};
+use metrics::{Block, Measurable, Unit, Unmeasurable};
 use prompts::{Count, Template, Text, messages};
 use syntax::{Language, Parsed};
 
@@ -29,25 +29,90 @@ pub struct Pair {
     new: Option<Side>,
 }
 
-type Side = Result<Measured, SideError>;
+/// One side of a pair: its text parsed and measured, or why it did not measure.
+pub struct Side {
+    text: Arc<str>,
+    outcome: Result<Measured, SideError>,
+}
+
+/// One text of a pair that the checks measure, with the language they read it as.
+#[derive(Clone, Copy, Debug)]
+pub struct SideText<'a> {
+    language: Language,
+    text: &'a str,
+}
+
+impl SideText<'_> {
+    /// Parse and measure the text.
+    #[must_use]
+    pub fn measure(&self) -> Side {
+        let text: Arc<str> = Arc::from(self.text);
+        Side {
+            outcome: measured(self.language, Arc::clone(&text)),
+            text,
+        }
+    }
+}
+
+impl Side {
+    /// Find the clone blocks of a side that measured, so that each later read finds them.
+    pub fn find_blocks(&self) {
+        if let Ok(measured) = &self.outcome {
+            measured.blocks();
+        }
+    }
+}
 
 pub(crate) struct Measured {
-    pub(crate) parsed: Parsed,
-    pub(crate) metrics: FileMetrics,
+    measurable: Measurable,
+    pub(crate) units: Vec<Unit>,
+    blocks: OnceLock<Vec<Block>>,
+}
+
+impl Measured {
+    pub(crate) fn parsed(&self) -> &Parsed {
+        self.measurable.parsed()
+    }
+
+    // Only clone_delta reads blocks, so a side finds them on the first read.
+    pub(crate) fn blocks(&self) -> &[Block] {
+        self.blocks.get_or_init(|| self.measurable.blocks())
+    }
 }
 
 impl Pair {
-    /// Parse and measure each side of `pair` that exists, when its path is tier-1 source.
+    /// Measure each side of `pairs` that exists, with `map` turning the texts into sides in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `map` returns a different number of sides than it was given texts.
     #[must_use]
-    pub fn measure(pair: TextPair) -> Pair {
-        let language = pair_language(&pair.path);
-        let side = |text: Option<String>| Some(measured(language?, text?));
-        Pair {
-            old: side(pair.old),
-            new: side(pair.new),
-            language,
-            path: pair.path,
-        }
+    pub fn measure_all(
+        pairs: Vec<TextPair>,
+        map: impl FnOnce(&[SideText<'_>]) -> Vec<Side>,
+    ) -> Vec<Pair> {
+        let languages: Vec<Option<Language>> =
+            pairs.iter().map(|pair| pair_language(&pair.path)).collect();
+        let sides = {
+            let texts: Vec<SideText<'_>> = pairs
+                .iter()
+                .zip(&languages)
+                .flat_map(|(pair, language)| side_texts(pair, *language))
+                .collect();
+            let sides = map(&texts);
+            assert_eq!(
+                sides.len(),
+                texts.len(),
+                "the map returns one side per text"
+            );
+            sides
+        };
+        let mut sides = sides.into_iter();
+        pairs
+            .into_iter()
+            .zip(languages)
+            .map(|(pair, language)| assembled(pair, language, &mut sides))
+            .collect()
     }
 
     /// Return the repo-relative path.
@@ -62,8 +127,47 @@ impl Pair {
         self.language
     }
 
+    /// Return each side that exists, the old side first.
+    pub fn sides(&self) -> impl Iterator<Item = &Side> {
+        [&self.old, &self.new].into_iter().flatten()
+    }
+
+    /// Return the clone blocks of the side whose text is `text`, or `None` when no side has it.
+    #[must_use]
+    pub fn measured_blocks(&self, text: &str) -> Option<Result<Vec<Block>, SideError>> {
+        let side = self.sides().find(|side| *side.text == *text)?;
+        Some(match &side.outcome {
+            Ok(measured) => Ok(measured.blocks().to_vec()),
+            Err(error) => Err(error.clone()),
+        })
+    }
+
     pub(crate) fn has_new(&self) -> bool {
         self.new.is_some()
+    }
+}
+
+// The old text, then the new text, of a pair whose path is tier-1 source.
+fn side_texts(pair: &TextPair, language: Option<Language>) -> impl Iterator<Item = SideText<'_>> {
+    [&pair.old, &pair.new].into_iter().filter_map(move |text| {
+        Some(SideText {
+            language: language?,
+            text: text.as_deref()?,
+        })
+    })
+}
+
+fn assembled(
+    pair: TextPair,
+    language: Option<Language>,
+    sides: &mut impl Iterator<Item = Side>,
+) -> Pair {
+    let mut next = |text: Option<String>| text.and(language).and_then(|_| sides.next());
+    Pair {
+        old: next(pair.old),
+        new: next(pair.new),
+        language,
+        path: pair.path,
     }
 }
 
@@ -73,30 +177,36 @@ pub fn pair_language(path: &str) -> Option<Language> {
     Language::from_path(path).filter(|language| language.spec().is_some())
 }
 
-/// Parse `text` as `language` and measure it: the in-memory block source of the clone index.
+/// Parse `text` as `language` and find its clone blocks: the in-memory block source of the index.
 ///
 /// # Errors
 ///
 /// Returns an error when the text does not parse into a usable tree, or does not measure.
-pub fn measure_text(language: Language, text: &str) -> Result<FileMetrics, SideError> {
-    measured(language, text).map(|side| side.metrics)
+pub fn measure_blocks(language: Language, text: &str) -> Result<Vec<Block>, SideError> {
+    measurable(language, text.into()).map(|measurable| measurable.blocks())
 }
 
-fn measured(language: Language, text: impl Into<Arc<str>>) -> Side {
-    let parsed = syntax::parse(language, text.into()).map_err(SideError::Unparsable)?;
-    let metrics = metrics::measure(&parsed).map_err(SideError::Unmeasurable)?;
-    Ok(Measured { parsed, metrics })
+fn measured(language: Language, text: Arc<str>) -> Result<Measured, SideError> {
+    let measurable = measurable(language, text)?;
+    Ok(Measured {
+        units: measurable.units(),
+        measurable,
+        blocks: OnceLock::new(),
+    })
 }
 
-static NOTHING: FileMetrics = FileMetrics {
-    units: Vec::new(),
-    blocks: Vec::new(),
-    sloc_lines: Vec::new(),
-};
+fn measurable(language: Language, text: Arc<str>) -> Result<Measurable, SideError> {
+    let parsed = syntax::parse(language, text).map_err(SideError::Unparsable)?;
+    Measurable::new(parsed).map_err(SideError::Unmeasurable)
+}
 
 // A side that does not exist measures as an empty text.
-pub(crate) fn metrics(side: Option<&Measured>) -> &FileMetrics {
-    side.map_or(&NOTHING, |measured| &measured.metrics)
+pub(crate) fn units(side: Option<&Measured>) -> &[Unit] {
+    side.map_or(&[], |measured| &measured.units)
+}
+
+pub(crate) fn blocks(side: Option<&Measured>) -> &[Block] {
+    side.map_or(&[], Measured::blocks)
 }
 
 pub(crate) struct Reasons {
@@ -205,7 +315,7 @@ fn read_side<'a>(
     template: &Template<(Text, Text)>,
     gaps: &Gaps,
 ) -> Result<Read<Option<&'a Measured>>, Error> {
-    match side {
+    match side.map(|side| &side.outcome) {
         None => Ok(Read::Value(None)),
         Some(Ok(measured)) => Ok(Read::Value(Some(measured))),
         Some(Err(error)) => {

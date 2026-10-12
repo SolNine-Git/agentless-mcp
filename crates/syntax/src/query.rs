@@ -74,6 +74,15 @@ impl Query {
     pub fn pattern_count(&self) -> usize {
         self.query.pattern_count()
     }
+
+    /// Return the byte offset in the query source where pattern `index` starts.
+    ///
+    /// # Panics
+    /// Panics when `index` is not below the pattern count.
+    #[must_use]
+    pub fn start_byte_for_pattern(&self, index: usize) -> usize {
+        self.query.start_byte_for_pattern(index)
+    }
 }
 
 impl Parsed {

@@ -73,10 +73,6 @@ pub checks::Error::Query::path: alloc::string::String
 pub checks::Error::Query::source: syntax::query::QueryRunError
 pub checks::Error::RepeatedPath
 pub checks::Error::RepeatedPath::path: alloc::string::String
-pub checks::Error::Rule
-pub checks::Error::Rule::id: &'static str
-pub checks::Error::Rule::language: &'static str
-pub checks::Error::Rule::problem: checks::RuleProblem
 pub checks::Error::Side
 pub checks::Error::Side::path: alloc::string::String
 pub checks::Error::Side::source: checks::SideError
@@ -116,28 +112,6 @@ impl core::marker::Unpin for checks::Match
 impl core::marker::UnsafeUnpin for checks::Match
 impl core::panic::unwind_safe::RefUnwindSafe for checks::Match
 impl core::panic::unwind_safe::UnwindSafe for checks::Match
-pub enum checks::RuleProblem
-pub checks::RuleProblem::Captures
-pub checks::RuleProblem::Compile(syntax::query::QueryError)
-pub checks::RuleProblem::Predicates(alloc::vec::Vec<alloc::string::String>)
-impl core::clone::Clone for checks::RuleProblem
-pub fn checks::RuleProblem::clone(&self) -> Self
-impl core::cmp::Eq for checks::RuleProblem
-impl core::cmp::PartialEq for checks::RuleProblem
-pub fn checks::RuleProblem::eq(&self, &Self) -> bool
-impl core::error::Error for checks::RuleProblem
-impl core::fmt::Debug for checks::RuleProblem
-pub fn checks::RuleProblem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for checks::RuleProblem
-pub fn checks::RuleProblem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for checks::RuleProblem
-impl core::marker::Freeze for checks::RuleProblem
-impl core::marker::Send for checks::RuleProblem
-impl core::marker::Sync for checks::RuleProblem
-impl core::marker::Unpin for checks::RuleProblem
-impl core::marker::UnsafeUnpin for checks::RuleProblem
-impl core::panic::unwind_safe::RefUnwindSafe for checks::RuleProblem
-impl core::panic::unwind_safe::UnwindSafe for checks::RuleProblem
 pub enum checks::Severity
 pub checks::Severity::Advisory
 pub checks::Severity::NotChecked
@@ -392,9 +366,11 @@ impl core::panic::unwind_safe::UnwindSafe for checks::Outcome
 pub struct checks::Pair
 impl checks::Pair
 pub fn checks::Pair::language(&self) -> core::option::Option<syntax::language::Language>
-pub fn checks::Pair::measure(checks::TextPair) -> checks::Pair
+pub fn checks::Pair::measure_all(alloc::vec::Vec<checks::TextPair>, impl core::ops::function::FnOnce(&[checks::SideText<'_>]) -> alloc::vec::Vec<checks::Side>) -> alloc::vec::Vec<checks::Pair>
+pub fn checks::Pair::measured_blocks(&self, &str) -> core::option::Option<core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>>
 pub fn checks::Pair::path(&self) -> &str
-impl core::marker::Freeze for checks::Pair
+pub fn checks::Pair::sides(&self) -> impl core::iter::traits::iterator::Iterator<Item = &checks::Side>
+impl !core::marker::Freeze for checks::Pair
 impl core::marker::Send for checks::Pair
 impl core::marker::Sync for checks::Pair
 impl core::marker::Unpin for checks::Pair
@@ -421,6 +397,31 @@ impl core::marker::Unpin for checks::PairFinding
 impl core::marker::UnsafeUnpin for checks::PairFinding
 impl core::panic::unwind_safe::RefUnwindSafe for checks::PairFinding
 impl core::panic::unwind_safe::UnwindSafe for checks::PairFinding
+pub struct checks::Side
+impl checks::Side
+pub fn checks::Side::find_blocks(&self)
+impl !core::marker::Freeze for checks::Side
+impl core::marker::Send for checks::Side
+impl core::marker::Sync for checks::Side
+impl core::marker::Unpin for checks::Side
+impl core::marker::UnsafeUnpin for checks::Side
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Side
+impl core::panic::unwind_safe::UnwindSafe for checks::Side
+pub struct checks::SideText<'a>
+impl checks::SideText<'_>
+pub fn checks::SideText<'_>::measure(&self) -> checks::Side
+impl<'a> core::clone::Clone for checks::SideText<'a>
+pub fn checks::SideText<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for checks::SideText<'a>
+pub fn checks::SideText<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for checks::SideText<'a>
+impl<'a> core::marker::Freeze for checks::SideText<'a>
+impl<'a> core::marker::Send for checks::SideText<'a>
+impl<'a> core::marker::Sync for checks::SideText<'a>
+impl<'a> core::marker::Unpin for checks::SideText<'a>
+impl<'a> core::marker::UnsafeUnpin for checks::SideText<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for checks::SideText<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for checks::SideText<'a>
 pub struct checks::TextPair
 pub checks::TextPair::new: core::option::Option<alloc::string::String>
 pub checks::TextPair::old: core::option::Option<alloc::string::String>
@@ -521,5 +522,5 @@ pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex) -> core::resul
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>
-pub fn checks::measure_text(syntax::language::Language, &str) -> core::result::Result<metrics::FileMetrics, checks::SideError>
+pub fn checks::measure_blocks(syntax::language::Language, &str) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>
 pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>

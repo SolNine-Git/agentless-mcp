@@ -14,20 +14,6 @@ pub enum SideError {
     Recorded(String),
 }
 
-/// Why a contract rule cannot run.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum RuleProblem {
-    /// The query does not compile against the rule's grammar.
-    #[error("does not compile: {0}")]
-    Compile(syntax::QueryError),
-    /// The query does not capture `@hit`, or it has another capture without a `_` prefix.
-    #[error("must capture @hit, and every other capture must start with _")]
-    Captures,
-    /// The query uses predicates outside the allowed set.
-    #[error("uses predicates outside the allowed set: {}", .0.join(", "))]
-    Predicates(Vec<String>),
-}
-
 /// A failure that stops a check run: bad input or data, never a property of the change.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -50,16 +36,6 @@ pub enum Error {
         path: String,
         /// The failure.
         source: SideError,
-    },
-    /// A contract rule cannot run.
-    #[error("contract rule {id} for {language} {problem}")]
-    Rule {
-        /// The rule id.
-        id: &'static str,
-        /// The rule's language.
-        language: &'static str,
-        /// What is wrong with the rule.
-        problem: RuleProblem,
     },
     /// A contract rule's query failed on one tree.
     #[error("contract rule {id} for {language} failed on {path}: {source}")]

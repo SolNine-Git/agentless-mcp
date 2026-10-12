@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use checks::{CloneIndex, Observed, PairFinding};
 use serde::Serialize;
 
-use crate::pairs::{Judged, Lookup, built_index, run_pairs};
+use crate::pairs::{IndexOf, Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
 use crate::{Error, PairSelection, Repo, Services, Tags};
@@ -100,17 +100,16 @@ pub(crate) fn lint_with(
 ) -> Result<Noted<LintReport>, Error> {
     let warnings = RefCell::new(Vec::new());
     let BlockSource { cached, lookup } = source;
-    let mut index = || -> Result<CloneIndex, Error> {
-        let (files, found) = built_index(services, &repo.root, lookup)?;
+    let mut index = |measured: &[&checks::Pair]| -> Result<CloneIndex, Error> {
+        let (files, found) = built_index(services, &repo.root, lookup, measured)?;
         warnings.borrow_mut().extend(found);
         Ok(CloneIndex::Built(files))
     };
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
             let compared = proposed(&repo.root, path, after, services.cwd.as_deref());
-            let mut no_cache = || Ok(CloneIndex::NoTagCache);
-            let index: &mut dyn FnMut() -> Result<CloneIndex, Error> =
-                if cached { &mut index } else { &mut no_cache };
+            let mut no_cache = |_: &[&checks::Pair]| Ok(CloneIndex::NoTagCache);
+            let index: &mut IndexOf<'_> = if cached { &mut index } else { &mut no_cache };
             (
                 path,
                 judge_proposed(compared, request.checks, &repo.config, index)?,
@@ -135,7 +134,7 @@ fn judge_proposed(
     compared: Proposed,
     checks: PairSelection,
     config: &io::ProjectConfig,
-    index: &mut dyn FnMut() -> Result<CloneIndex, Error>,
+    index: &mut IndexOf<'_>,
 ) -> Result<Judged, Error> {
     match compared {
         Proposed::Pair(pair) => run_pairs(vec![pair], checks, config, index),

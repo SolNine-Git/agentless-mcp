@@ -9,7 +9,7 @@ use metrics::Block;
 
 use crate::diff::matching_blocks;
 use crate::index::IndexedFiles;
-use crate::pair::{Measured, Sides, metrics};
+use crate::pair::{Measured, Sides, blocks};
 
 pub(crate) const MIN_FINDING_TOKENS: u32 = 40;
 
@@ -58,9 +58,9 @@ impl<'a> Run<'a> {
         }
         for sides in read {
             let path = sides.pair.path();
-            let new = run.push_all(path, &metrics(sides.new).blocks);
+            let new = run.push_all(path, blocks(sides.new));
             run.add_instances(&new);
-            let old = run.push_all(path, &metrics(sides.old).blocks);
+            let old = run.push_all(path, blocks(sides.old));
             let unchanged = unchanged_lines(sides.old, sides.new);
             run.indexed.push(Indexed {
                 old,
@@ -220,8 +220,8 @@ fn unchanged_lines(old: Option<&Measured>, new: Option<&Measured>) -> HashMap<us
     let (Some(old), Some(new)) = (old, new) else {
         return HashMap::new();
     };
-    let old_rows: Vec<&str> = old.parsed.source().split('\n').collect();
-    let new_rows: Vec<&str> = new.parsed.source().split('\n').collect();
+    let old_rows: Vec<&str> = old.parsed().source().split('\n').collect();
+    let new_rows: Vec<&str> = new.parsed().source().split('\n').collect();
     matching_blocks(&old_rows, &new_rows)
         .into_iter()
         .flat_map(|(first, second, size)| {

@@ -1,7 +1,9 @@
 //! The repository state a receipt reports: HEAD, the tree, the dirty count, and whose state it is.
 
 use std::ffi::OsStr;
+use std::panic;
 use std::path::{Path, PathBuf};
+use std::thread::{self, ScopedJoinHandle};
 
 use crate::{Git, GitOutcome, Limits};
 
@@ -41,18 +43,27 @@ impl Git {
         io::resolve(Path::new(&top)).ok()
     }
 
-    /// Reads HEAD, the tree and the dirty count of the repository that encloses `root`.
+    /// Reads HEAD, the tree and the dirty count of `root`, given the top level that [`Git::root`]
+    /// found for `root`.
     #[must_use]
-    pub fn snapshot(&self, root: &Path) -> Snapshot {
-        let Some(enclosing) = self.root(root) else {
+    pub fn snapshot(&self, root: &Path, enclosing: Option<&Path>) -> Snapshot {
+        let Some(enclosing) = enclosing else {
             return Snapshot::outside(root);
         };
-        let head = self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD"]);
-        let tree = self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD^{tree}"]);
-        let status = self.receipt(root, "status", &["--porcelain"]);
+        let [head, tree, status] = self.state(root);
         let owned = io::resolve(root).is_ok_and(|resolved| resolved == enclosing);
-        let borrowed = (!owned).then_some(enclosing.as_path());
+        let borrowed = (!owned).then_some(enclosing);
         Snapshot::read(root, borrowed, head, tree, status)
+    }
+
+    // The three calls only read the repository, so they run at the same time.
+    fn state(&self, root: &Path) -> [Read; 3] {
+        thread::scope(|scope| {
+            let head = scope.spawn(|| self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD"]));
+            let tree = scope.spawn(|| self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD^{tree}"]));
+            let status = self.receipt(root, "status", &["--porcelain"]);
+            [joined(head), joined(tree), status]
+        })
     }
 
     fn receipt(&self, dir: &Path, subcommand: &'static str, rest: &[&str]) -> Read {
@@ -110,6 +121,13 @@ fn receipt(subcommand: &str, outcome: GitOutcome) -> Read {
         GitOutcome::Failed(failure) => Err(failure.to_string()),
         GitOutcome::Unfinished(unfinished) => Err(unfinished.to_string()),
     }
+}
+
+// A panic in the thread reaches the caller with its own payload.
+fn joined<T>(handle: ScopedJoinHandle<'_, T>) -> T {
+    handle
+        .join()
+        .unwrap_or_else(|payload| panic::resume_unwind(payload))
 }
 
 fn dirty_count(text: &str) -> usize {

@@ -215,7 +215,7 @@ impl git::Git
 pub fn git::Git::new(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>) -> Self
 impl git::Git
 pub fn git::Git::root(&self, &std::path::Path) -> core::option::Option<std::path::PathBuf>
-pub fn git::Git::snapshot(&self, &std::path::Path) -> git::Snapshot
+pub fn git::Git::snapshot(&self, &std::path::Path, core::option::Option<&std::path::Path>) -> git::Snapshot
 impl git::Git
 pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
 impl git::Git

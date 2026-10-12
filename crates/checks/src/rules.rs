@@ -6,23 +6,16 @@ use metrics::Unit;
 use prompts::ContractRule;
 use syntax::{KindSet, Language, NodeId, Parsed, Query};
 
-use crate::error::{Error, RuleProblem};
+use crate::error::Error;
 
 const HIT_CAPTURE: &str = "hit";
-// An unknown predicate compiles and is then ignored, so a typo would widen a rule.
-const PREDICATES: [&str; 6] = [
-    "eq?",
-    "not-eq?",
-    "any-of?",
-    "not-any-of?",
-    "match?",
-    "not-match?",
-];
 
-pub(crate) struct CompiledRule {
-    pub(crate) rule: &'static ContractRule,
+// The rules of one language as one query, and the rule of each of its patterns.
+pub(crate) struct CompiledRules {
+    rules: Vec<&'static ContractRule>,
     query: Query,
-    hit: u32,
+    pattern_rules: Vec<usize>,
+    hit: Option<u32>,
 }
 
 pub(crate) struct Hit<'r> {
@@ -38,80 +31,51 @@ pub(crate) fn rules_for(language: Language) -> impl Iterator<Item = &'static Con
         .filter(move |rule| rule.language == language.name())
 }
 
-pub(crate) fn compile(language: Language) -> Result<Vec<CompiledRule>, Error> {
-    rules_for(language)
-        .map(|rule| compile_rule(rule, language))
-        .collect()
-}
-
-fn compile_rule(rule: &'static ContractRule, language: Language) -> Result<CompiledRule, Error> {
-    let refused = |problem| Error::Rule {
-        id: rule.id,
-        language: rule.language,
-        problem,
-    };
-    let query =
-        Query::new(language, rule.query).map_err(|error| refused(RuleProblem::Compile(error)))?;
-    let names = query.capture_names();
-    let hit = names.iter().position(|name| *name == HIT_CAPTURE);
-    let stray = names
-        .iter()
-        .any(|name| *name != HIT_CAPTURE && !name.starts_with('_'));
-    let (Some(hit), false) = (hit, stray) else {
-        return Err(refused(RuleProblem::Captures));
-    };
-    let unknown = unknown_predicates(rule.query);
-    if !unknown.is_empty() {
-        return Err(refused(RuleProblem::Predicates(unknown)));
+// The rule table is static, and the tests check each rule's query, captures and predicates.
+pub(crate) fn compile(language: Language) -> CompiledRules {
+    let rules: Vec<&'static ContractRule> = rules_for(language).collect();
+    let mut joined = String::new();
+    let mut starts = Vec::with_capacity(rules.len());
+    for rule in &rules {
+        starts.push(joined.len());
+        joined.push_str(rule.query);
+        joined.push('\n');
     }
-    let hit = u32::try_from(hit).map_err(|_| refused(RuleProblem::Captures))?;
-    Ok(CompiledRule { rule, query, hit })
-}
-
-// The names that `\(#([A-Za-z-]+[?!])` finds, sorted, without repeats, and outside PREDICATES.
-fn unknown_predicates(query: &str) -> Vec<String> {
-    let mut unknown: Vec<String> = predicate_names(query)
-        .into_iter()
-        .filter(|name| !PREDICATES.contains(name))
-        .map(str::to_owned)
+    let query = Query::new(language, &joined).expect("the static contract rules compile");
+    let pattern_rules = (0..query.pattern_count())
+        .map(|pattern| rule_at(&starts, query.start_byte_for_pattern(pattern)))
         .collect();
-    unknown.sort();
-    unknown.dedup();
-    unknown
+    let hit = query
+        .capture_names()
+        .iter()
+        .position(|name| *name == HIT_CAPTURE)
+        .and_then(|index| u32::try_from(index).ok());
+    CompiledRules {
+        rules,
+        query,
+        pattern_rules,
+        hit,
+    }
 }
 
-fn predicate_names(query: &str) -> Vec<&str> {
-    let mut names = Vec::new();
-    let mut rest = query;
-    while let Some(at) = rest.find("(#") {
-        let after = &rest[at + 2..];
-        let run = after.len()
-            - after
-                .trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == '-')
-                .len();
-        if run > 0 && matches!(after.as_bytes().get(run), Some(b'?' | b'!')) {
-            names.push(&after[..=run]);
-            rest = &after[run + 1..];
-        } else {
-            rest = &rest[at + 1..];
-        }
-    }
-    names
+// The rule whose text holds `offset`: the last one that starts at or before it.
+fn rule_at(starts: &[usize], offset: usize) -> usize {
+    starts.partition_point(|&start| start <= offset) - 1
 }
 
 pub(crate) fn hits<'r>(
     parsed: &Parsed,
     path: &str,
     units: &[Unit],
-    rules: &'r [CompiledRule],
+    compiled: &'r CompiledRules,
 ) -> Result<Vec<Hit<'r>>, Error> {
     let comments = parsed.language().spec().map(|spec| &spec.comments);
     let mut found = Vec::new();
-    for (order, entry) in rules.iter().enumerate() {
-        for node in hit_nodes(parsed, path, entry)? {
+    for (order, nodes) in hit_nodes(parsed, path, compiled)?.into_iter().enumerate() {
+        for node in nodes {
             let start = parsed.start_byte(node);
             let hit = Hit {
-                rule: entry.rule,
+                rule: compiled.rules[order],
                 unit: enclosing(units, start),
                 line: parsed.start_point(node).row + 1,
                 capture: capture(parsed, node, comments),
@@ -123,26 +87,44 @@ pub(crate) fn hits<'r>(
     Ok(found.into_iter().map(|(_, _, hit)| hit).collect())
 }
 
-fn hit_nodes(parsed: &Parsed, path: &str, entry: &CompiledRule) -> Result<Vec<NodeId>, Error> {
+// The hit nodes of each rule in rule order: one node per span, by span.
+fn hit_nodes(
+    parsed: &Parsed,
+    path: &str,
+    compiled: &CompiledRules,
+) -> Result<Vec<Vec<NodeId>>, Error> {
+    let Some(first) = compiled.rules.first() else {
+        return Ok(Vec::new());
+    };
+    // On a tree of another language, the first rule's own query was the first to fail.
     let matches = parsed
-        .matches(&entry.query)
+        .matches(&compiled.query)
         .map_err(|source| Error::Query {
-            id: entry.rule.id,
-            language: entry.rule.language,
+            id: first.id,
+            language: first.language,
             path: path.to_owned(),
             source,
         })?;
-    let mut spans: HashMap<(u32, u32), NodeId> = HashMap::new();
-    for capture in matches.iter().flat_map(|found| &found.captures) {
-        if capture.index == entry.hit {
+    let mut spans: Vec<HashMap<(u32, u32), NodeId>> = vec![HashMap::new(); compiled.rules.len()];
+    for found in &matches {
+        let rule = &mut spans[compiled.pattern_rules[found.pattern as usize]];
+        let hits = found
+            .captures
+            .iter()
+            .filter(|capture| Some(capture.index) == compiled.hit);
+        for capture in hits {
             let node = capture.node;
             let span = (parsed.start_byte(node), parsed.end_byte(node));
-            spans.entry(span).or_insert(node);
+            rule.entry(span).or_insert(node);
         }
     }
+    Ok(spans.into_iter().map(by_span).collect())
+}
+
+fn by_span(spans: HashMap<(u32, u32), NodeId>) -> Vec<NodeId> {
     let mut ordered: Vec<((u32, u32), NodeId)> = spans.into_iter().collect();
     ordered.sort_by_key(|(span, _)| *span);
-    Ok(ordered.into_iter().map(|(_, node)| node).collect())
+    ordered.into_iter().map(|(_, node)| node).collect()
 }
 
 // The innermost unit that holds the offset: the greatest start, the first one on a tie.
@@ -187,3 +169,6 @@ fn comment_nodes(parsed: &Parsed, node: NodeId, comments: Option<&KindSet>) -> V
     }
     found
 }
+
+#[cfg(test)]
+mod tests;

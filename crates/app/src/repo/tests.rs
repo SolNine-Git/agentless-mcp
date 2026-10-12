@@ -37,16 +37,10 @@ fn any_directory_is_a_repository_root() {
     let plain = sandbox.mkdir("plain");
     let services = sandbox.services(sandbox.path());
 
-    let resolved = resolve(&services, Some(Path::new("plain"))).expect("a directory resolves");
+    let repo = resolve(&services, Some(Path::new("plain"))).expect("a directory resolves");
 
-    assert_eq!(resolved.repo.root, plain);
-    assert_eq!(resolved.repo.config, io::ProjectConfig::default());
-    assert_eq!(resolved.snapshot.head_sha, None);
-    let note = format!(
-        "{} is not inside a git repository: HEAD and dirty count are unknown",
-        plain.display()
-    );
-    assert_eq!(resolved.snapshot.note, note);
+    assert_eq!(repo.root, plain);
+    assert_eq!(repo.config, io::ProjectConfig::default());
 }
 
 #[test]
@@ -67,11 +61,9 @@ fn without_a_root_the_enclosing_git_root_is_used() {
     let root = sandbox.repo("repo", &[("pkg/a.py", "x = 1\n")]);
     let services = sandbox.services(&root.join("pkg"));
 
-    let resolved = resolve(&services, None).expect("the git root resolves");
+    let repo = resolve(&services, None).expect("the git root resolves");
 
-    assert_eq!(resolved.repo.root, root);
-    assert_eq!(resolved.snapshot.dirty_count, Some(0));
-    assert_eq!(resolved.snapshot.head_sha.map(|head| head.len()), Some(8));
+    assert_eq!(repo.root, root);
 }
 
 #[test]
@@ -80,9 +72,9 @@ fn without_a_root_or_a_git_root_the_start_directory_is_used() {
     let plain = sandbox.mkdir("plain");
     let services = sandbox.services(&plain);
 
-    let resolved = resolve(&services, None).expect("the start directory resolves");
+    let repo = resolve(&services, None).expect("the start directory resolves");
 
-    assert_eq!(resolved.repo.root, plain);
+    assert_eq!(repo.root, plain);
 }
 
 #[test]

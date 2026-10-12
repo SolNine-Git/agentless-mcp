@@ -341,6 +341,10 @@ impl Reader<'_> {
 
     fn scalar(&mut self) -> Result<JsonValue, JsonError> {
         let rest = &self.text[self.at..];
+        // No constant starts with a digit or with '-' and a digit, so a number skips the scan.
+        if let [b'0'..=b'9', ..] | [b'-', b'0'..=b'9', ..] = rest.as_bytes() {
+            return self.number();
+        }
         for (word, value) in CONSTANTS {
             if rest.starts_with(word) {
                 self.at += word.len();

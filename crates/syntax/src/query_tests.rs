@@ -122,6 +122,21 @@ fn a_query_reports_its_names_and_patterns() {
 }
 
 #[test]
+fn each_pattern_starts_where_its_text_starts() {
+    let first = "(call) @hit\n";
+    let joined = format!("{first}(identifier) @a (string) @b\n");
+    let query = Query::new(Language::Python, &joined).expect("the query compiles");
+    let starts: Vec<usize> = (0..query.pattern_count())
+        .map(|pattern| query.start_byte_for_pattern(pattern))
+        .collect();
+    let second = first.len();
+    assert_eq!(
+        starts,
+        [0, second, joined.find("(string)").expect("a third pattern")]
+    );
+}
+
+#[test]
 fn a_query_that_does_not_compile_names_its_place() {
     let error = Query::new(Language::Python, "(call)\n(no_such_kind)")
         .err()

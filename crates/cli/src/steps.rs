@@ -80,13 +80,15 @@ pub(crate) fn open(
     streams: &mut Streams<'_>,
 ) -> Result<Session, u8> {
     let repo = flags.repo.as_deref().map(Path::new);
-    let resolved = app::resolve(services, repo)
+    let repo = app::resolve(services, repo)
         .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
-    let note = &resolved.snapshot.note;
+    let opening = Session::open(services, repo, flags.no_cache);
+    let note = &opening.note;
     if !note.is_empty() {
         report(streams.err, &format!("agentless-mcp: {}\n", one_line(note)));
     }
-    let opened = Session::open(services, resolved, flags.no_cache)
+    let opened = opening
+        .session
         .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
     diagnostics(streams, &opened.diagnostics);
     Ok(opened.value)

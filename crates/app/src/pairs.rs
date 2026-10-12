@@ -1,13 +1,17 @@
 //! The pair run: the path filter of each check, one measure per pair, and the clone index.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Instant;
 
-use checks::{CloneIndex, IndexedFiles, Observed, Outcome, Pair, PairFinding, SideError, TextPair};
+use checks::{
+    CloneIndex, IndexedFiles, Observed, Outcome, Pair, PairFinding, Side, SideError, SideText,
+    TextPair,
+};
 use metrics::Block;
 use syntax::Language;
 
+use crate::parallel;
 use crate::rows::bounded_read;
 use crate::{
     Error, PairCheck, PairSelection, Services, in_metric_scope, is_fixture_path, is_test_path,
@@ -34,19 +38,24 @@ pub(crate) enum Stored {
 // The lookup of one file's stored blocks by path, text and language.
 pub(crate) type Lookup<'a> = dyn FnMut(&str, &str, Language) -> Stored + 'a;
 
+// The clone index of a run, given the measured pairs that clone_delta keeps.
+pub(crate) type IndexOf<'a> = dyn FnMut(&[&Pair]) -> Result<CloneIndex, Error> + 'a;
+
 // Each selected check runs on the pairs its path rule keeps, in registry order. The index is
 // built on the first clone_delta call that keeps a pair.
 pub(crate) fn run_pairs(
     pairs: Vec<TextPair>,
     selection: PairSelection,
     config: &io::ProjectConfig,
-    index: &mut dyn FnMut() -> Result<CloneIndex, Error>,
+    index: &mut IndexOf<'_>,
 ) -> Result<Judged, Error> {
-    let measured: Vec<Pair> = pairs
+    let kept: Vec<TextPair> = pairs
         .into_iter()
         .filter(|pair| selection.checks().any(|check| keeps(check, &pair.path)))
-        .map(Pair::measure)
         .collect();
+    let measured = Pair::measure_all(kept, |texts| {
+        parallel::map_in_order(texts, parallel::threads(), SideText::measure)
+    });
     let mut rows = Vec::new();
     let mut observed = Observed::default();
     for check in selection.checks() {
@@ -75,7 +84,7 @@ fn run_check(
     check: PairCheck,
     pairs: &[&Pair],
     config: &io::ProjectConfig,
-    index: &mut dyn FnMut() -> Result<CloneIndex, Error>,
+    index: &mut IndexOf<'_>,
 ) -> Result<Option<Outcome>, Error> {
     let outcome = match check {
         PairCheck::ComplexityDelta => {
@@ -86,9 +95,18 @@ fn run_check(
         }
         PairCheck::ContractDrift => checks::contract_drift(pairs, &config.boundary_globs),
         PairCheck::CloneDelta if pairs.is_empty() => return Ok(None),
-        PairCheck::CloneDelta => checks::clone_delta(pairs, &index()?),
+        PairCheck::CloneDelta => {
+            find_blocks(pairs);
+            checks::clone_delta(pairs, &index(pairs)?)
+        }
     };
     Ok(Some(outcome?))
+}
+
+// Only clone_delta reads blocks, so the pool finds them before the index and the check read them.
+fn find_blocks(pairs: &[&Pair]) {
+    let sides: Vec<&Side> = pairs.iter().flat_map(|pair| pair.sides()).collect();
+    parallel::map_in_order(&sides, parallel::threads(), |side| side.find_blocks());
 }
 
 // The budget starts before the walk, so the walk and the reads count against it.
@@ -96,6 +114,7 @@ pub(crate) fn built_index(
     services: &Services,
     root: &Path,
     lookup: &mut Lookup<'_>,
+    measured: &[&Pair],
 ) -> Result<(IndexedFiles, Vec<String>), Error> {
     let started = Instant::now();
     let walk = match services.git.walk(root) {
@@ -111,8 +130,12 @@ pub(crate) fn built_index(
     let mut warnings: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
     let (texts, unread) = scope_texts(root, &walk.files);
     let budget = services.walk_budget;
+    let pairs: HashMap<&str, &Pair> = measured.iter().map(|pair| (pair.path(), *pair)).collect();
     let blocks_of = |path: &str, text: &str, language: Language| {
-        stored_blocks(lookup(path, text, language), text, language, &mut warnings)
+        let stored = lookup(path, text, language);
+        stored_blocks(stored, &mut warnings, || {
+            measured_blocks(pairs.get(path).copied(), text, language)
+        })
     };
     let files = checks::clone_index(&texts, &unread, blocks_of, || started.elapsed() < budget)?;
     Ok((files, warnings))
@@ -137,9 +160,8 @@ fn scope_texts(root: &Path, files: &[git::RepoFile]) -> (Texts, Texts) {
 
 fn stored_blocks(
     stored: Stored,
-    text: &str,
-    language: Language,
     warnings: &mut Vec<String>,
+    measure: impl FnOnce() -> Result<Vec<Block>, SideError>,
 ) -> Result<Vec<Block>, SideError> {
     match stored {
         Stored::Hit(blocks) => return Ok(blocks),
@@ -147,7 +169,18 @@ fn stored_blocks(
         Stored::Unreadable(warning) => warnings.push(warning),
         Stored::Miss => {}
     }
-    checks::measure_text(language, text).map(|measured| measured.blocks)
+    measure()
+}
+
+// A side of the run with the same path and text already holds the measure, so the text is not
+// measured twice.
+fn measured_blocks(
+    pair: Option<&Pair>,
+    text: &str,
+    language: Language,
+) -> Result<Vec<Block>, SideError> {
+    pair.and_then(|pair| pair.measured_blocks(text))
+        .unwrap_or_else(|| checks::measure_blocks(language, text))
 }
 
 #[cfg(test)]

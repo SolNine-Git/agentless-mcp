@@ -57,7 +57,9 @@ pub fn read_bounded(path: &Path) -> Result<Vec<u8>, Skipped> {
 fn read_capped(mut file: File) -> io::Result<(Vec<u8>, (u64, u64))> {
     let before = file.metadata()?.len();
     let limit = u64::try_from(MAX_FILE_BYTES + 1).unwrap_or(u64::MAX);
-    let mut data = Vec::new();
+    // The spare byte lets the read that finds the end go into the buffer without a regrow.
+    let room = usize::try_from(before.min(limit)).map_or(MAX_FILE_BYTES + 1, |size| size + 1);
+    let mut data = Vec::with_capacity(room);
     (&mut file).take(limit).read_to_end(&mut data)?;
     let after = file.metadata()?.len();
     Ok((data, (before, after)))

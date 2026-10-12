@@ -14,7 +14,7 @@ pub use sum::compensated_sum;
 pub use tokenize::{TokenizeError, TokenizeErrorKind};
 
 use kernel::Key;
-use syntax::{Language, Parsed, Point, QueryRunError};
+use syntax::{Language, Parsed, Point, Spec};
 
 use crate::kinds::Kinds;
 
@@ -94,22 +94,69 @@ pub enum Unmeasurable {
     /// The Python tokenizer rejects the source.
     #[error("{0}")]
     Tokenizer(TokenizeError),
-    /// The docstring query did not run to its end.
-    #[error("the docstring query failed: {0}")]
-    DocstringQuery(QueryRunError),
 }
 
 /// Measures the units, clone blocks, and SLOC lines of one parsed file.
 ///
 /// # Errors
 ///
-/// Returns [`Unmeasurable`] when the language has no rules, the tree holds a syntax error, the
-/// tokenizer rejects a Python source, or the docstring query stops at its match limit.
-///
-/// # Panics
-///
-/// Panics when the constant docstring query does not compile.
+/// Returns [`Unmeasurable`] when the language has no rules, the tree holds a syntax error, or the
+/// tokenizer rejects a Python source.
 pub fn measure(parsed: &Parsed) -> Result<FileMetrics, Unmeasurable> {
+    let (spec, kinds, sloc_lines) = checked(parsed)?;
+    Ok(FileMetrics {
+        units: units::units(parsed, spec, &kinds, &sloc_lines),
+        blocks: clones::blocks(parsed, spec, &kinds, &sloc_lines),
+        sloc_lines,
+    })
+}
+
+/// A parsed file that measures, with its SLOC lines: the source of its units and its blocks.
+pub struct Measurable {
+    parsed: Parsed,
+    spec: &'static Spec,
+    kinds: Kinds,
+    sloc_lines: Vec<u32>,
+}
+
+impl Measurable {
+    /// Checks that `parsed` measures, and finds its SLOC lines.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Unmeasurable`] when the language has no rules, the tree holds a syntax error, or
+    /// the tokenizer rejects a Python source.
+    pub fn new(parsed: Parsed) -> Result<Measurable, Unmeasurable> {
+        let (spec, kinds, sloc_lines) = checked(&parsed)?;
+        Ok(Measurable {
+            parsed,
+            spec,
+            kinds,
+            sloc_lines,
+        })
+    }
+
+    /// Returns the parse.
+    #[must_use]
+    pub fn parsed(&self) -> &Parsed {
+        &self.parsed
+    }
+
+    /// Returns the units by start byte.
+    #[must_use]
+    pub fn units(&self) -> Vec<Unit> {
+        units::units(&self.parsed, self.spec, &self.kinds, &self.sloc_lines)
+    }
+
+    /// Returns the clone blocks by start line, the outer block first.
+    #[must_use]
+    pub fn blocks(&self) -> Vec<Block> {
+        clones::blocks(&self.parsed, self.spec, &self.kinds, &self.sloc_lines)
+    }
+}
+
+// The rules and the SLOC lines of a parsed file that measures.
+fn checked(parsed: &Parsed) -> Result<(&'static Spec, Kinds, Vec<u32>), Unmeasurable> {
     let language = parsed.language();
     let spec = language
         .spec()
@@ -120,11 +167,7 @@ pub fn measure(parsed: &Parsed) -> Result<FileMetrics, Unmeasurable> {
     }
     let kinds = Kinds::new(language);
     let sloc_lines = sloc::lines(parsed, spec, &kinds)?;
-    Ok(FileMetrics {
-        units: units::units(parsed, spec, &kinds, &sloc_lines),
-        blocks: clones::blocks(parsed, spec, &kinds, &sloc_lines),
-        sloc_lines,
-    })
+    Ok((spec, kinds, sloc_lines))
 }
 
 /// Returns the version stamp of stored metrics for `language`, or `None` when it has no rules.

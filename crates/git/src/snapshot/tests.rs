@@ -11,6 +11,10 @@ const SAMPLE: [(&str, &str); 2] = [("a.py", "x = 1\n"), ("sub/b.py", "y = 2\n")]
 // One generated case: the input, whether git was cut off, then the text, note, and dirty count.
 type ReceiptCase = (String, bool, Option<String>, String, Option<usize>);
 
+fn snapshot_of(git: &Git, root: &Path) -> Snapshot {
+    git.snapshot(root, git.root(root).as_deref())
+}
+
 #[test]
 fn the_receipt_text_and_dirty_count_match_the_generated_cases() {
     let cases: Vec<ReceiptCase> = cases("receipt", "receipt");
@@ -37,7 +41,7 @@ fn the_receipt_text_and_dirty_count_match_the_generated_cases() {
 fn a_snapshot_reports_head_tree_and_a_clean_tree() {
     let scratch = Scratch::new();
     let root = scratch.repo("repo", &SAMPLE);
-    let snapshot = scratch.git().snapshot(&root);
+    let snapshot = snapshot_of(&scratch.git(), &root);
 
     assert_eq!(snapshot.head_sha.as_deref().map(str::len), Some(8));
     assert_eq!(snapshot.tree_oid.as_deref().map(str::len), Some(8));
@@ -52,7 +56,7 @@ fn a_snapshot_counts_modified_and_untracked_paths() {
     scratch.write("repo/a.py", "x = 2\n");
     scratch.write("repo/new.py", "z = 3\n");
 
-    assert_eq!(scratch.git().snapshot(&root).dirty_count, Some(2));
+    assert_eq!(snapshot_of(&scratch.git(), &root).dirty_count, Some(2));
 }
 
 #[test]
@@ -60,7 +64,7 @@ fn a_nested_directory_says_whose_state_it_reported() {
     let scratch = Scratch::new();
     let root = scratch.repo("repo", &SAMPLE);
     let nested = root.join("sub");
-    let snapshot = scratch.git().snapshot(&nested);
+    let snapshot = snapshot_of(&scratch.git(), &nested);
 
     let expected = format!(
         "{} is not the top of its git repository: HEAD and dirty count describe {}",
@@ -76,9 +80,9 @@ fn a_nested_directory_still_reports_the_head_it_is_cached_under() {
     let root = scratch.repo("repo", &SAMPLE);
     scratch.write("repo/a.py", "x = 2\n");
     let git = scratch.git();
-    let nested = git.snapshot(&root.join("sub"));
+    let nested = snapshot_of(&git, &root.join("sub"));
 
-    assert_eq!(nested.head_sha, git.snapshot(&root).head_sha);
+    assert_eq!(nested.head_sha, snapshot_of(&git, &root).head_sha);
     assert_eq!(nested.dirty_count, Some(1));
 }
 
@@ -86,7 +90,7 @@ fn a_nested_directory_still_reports_the_head_it_is_cached_under() {
 fn a_directory_outside_git_is_all_unknown_with_a_note() {
     let scratch = Scratch::new();
     let plain = scratch.create_dir("plain");
-    let snapshot = scratch.git().snapshot(&plain);
+    let snapshot = snapshot_of(&scratch.git(), &plain);
 
     let note = format!(
         "{} is not inside a git repository: HEAD and dirty count are unknown",
@@ -105,7 +109,7 @@ fn a_directory_outside_git_is_all_unknown_with_a_note() {
 fn a_repository_without_commits_reports_the_reason() {
     let scratch = Scratch::new();
     let root = scratch.init("empty");
-    let snapshot = scratch.git().snapshot(&root);
+    let snapshot = snapshot_of(&scratch.git(), &root);
 
     assert_eq!(snapshot.head_sha, None);
     assert_eq!(snapshot.dirty_count, Some(0));
@@ -130,7 +134,7 @@ fn a_missing_git_binary_is_a_note_not_a_failure() {
         read,
         Err("git is not installed, so repository state is unknown".to_owned())
     );
-    assert_eq!(git.snapshot(&scratch.root).dirty_count, None);
+    assert_eq!(snapshot_of(&git, &scratch.root).dirty_count, None);
 }
 
 #[test]
@@ -192,11 +196,11 @@ fn a_git_dir_pointing_elsewhere_does_not_move_the_head() {
     let scratch = Scratch::new();
     let analysed = scratch.repo("analysed", &[("m.py", "value = 1\n")]);
     let elsewhere = scratch.repo("elsewhere", &[("n.py", "value = 2\n")]);
-    let expected = scratch.git().snapshot(&analysed).head_sha;
+    let expected = snapshot_of(&scratch.git(), &analysed).head_sha;
     let other = elsewhere.join(".git");
     let git = Git::new(scratch.env_with(&[("GIT_DIR", other.as_os_str())]));
 
-    assert_eq!(git.snapshot(&analysed).head_sha, expected);
+    assert_eq!(snapshot_of(&git, &analysed).head_sha, expected);
 }
 
 #[test]
@@ -206,7 +210,7 @@ fn a_broken_index_file_does_not_make_a_clean_tree_dirty() {
     let missing = scratch.root.join("nonexistent");
     let git = Git::new(scratch.env_with(&[("GIT_INDEX_FILE", missing.as_os_str())]));
 
-    assert_eq!(git.snapshot(&analysed).dirty_count, Some(0));
+    assert_eq!(snapshot_of(&git, &analysed).dirty_count, Some(0));
 }
 
 #[test]
@@ -214,14 +218,14 @@ fn the_kept_names_cannot_redirect_git_at_another_repository() {
     let scratch = Scratch::new();
     let analysed = scratch.repo("analysed", &[("m.py", "value = 1\n")]);
     let elsewhere = scratch.repo("elsewhere", &[("n.py", "value = 2\n")]);
-    let expected = scratch.git().snapshot(&analysed).head_sha;
+    let expected = snapshot_of(&scratch.git(), &analysed).head_sha;
     let config = elsewhere.join(".git").join("config");
     let git = Git::new(scratch.env_with(&[
         ("GIT_CONFIG_GLOBAL", config.as_os_str()),
         ("GIT_CONFIG_NOSYSTEM", OsStr::new("1")),
     ]));
 
-    assert_eq!(git.snapshot(&analysed).head_sha, expected);
+    assert_eq!(snapshot_of(&git, &analysed).head_sha, expected);
 }
 
 // Rewrites HEAD with a gpgsig header, so that git offers the commit to the signing program.
@@ -273,7 +277,7 @@ fn the_snapshot_reads_run_no_program_a_repository_names() {
     };
     let before = fired();
 
-    assert!(scratch.git().snapshot(&root).head_sha.is_some());
+    assert!(snapshot_of(&scratch.git(), &root).head_sha.is_some());
     assert_eq!(
         fired(),
         before,

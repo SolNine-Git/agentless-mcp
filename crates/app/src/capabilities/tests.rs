@@ -44,8 +44,9 @@ fn session(sandbox: &Sandbox, case: &Case) -> Session {
             .expect("a sandbox path");
         sandbox.put(relative.to_str().expect("UTF-8"), "not a database");
     }
-    let resolved = resolve(&services, Some(&root)).expect("the repository resolves");
-    Session::open(&services, resolved, case.no_cache)
+    let repo = resolve(&services, Some(&root)).expect("the repository resolves");
+    Session::open(&services, repo, case.no_cache)
+        .session
         .expect("a session")
         .value
 }

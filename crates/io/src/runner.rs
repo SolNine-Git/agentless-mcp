@@ -1,9 +1,14 @@
 //! One child process under a deadline and output caps, with its outcome as a value.
 
-use std::ffi::OsString;
+use std::env;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::io::{self, Read};
-use std::path::PathBuf;
+use std::fs;
+use std::io::{self, ErrorKind, Read};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SendError, Sender};
 use std::thread;
@@ -78,7 +83,7 @@ impl fmt::Display for NotRun {
 /// Runs `spec.program` once, kills it at the deadline or when stdout passes its cap, and reaps it.
 #[must_use]
 pub fn run(spec: &Spec) -> Outcome {
-    let mut child = match command(spec).spawn() {
+    let mut child = match spawn(spec) {
         Ok(child) => child,
         Err(error) => return Outcome::NotRun(not_run(error, spec)),
     };
@@ -91,8 +96,63 @@ pub fn run(spec: &Spec) -> Outcome {
     }
 }
 
-fn command(spec: &Spec) -> Command {
-    let mut command = Command::new(&spec.program);
+// A full path spares the fork that a PATH search in the child costs. When that start fails, the
+// child's own search runs, so its outcome and error stay what the search alone gives.
+fn spawn(spec: &Spec) -> io::Result<Child> {
+    if let Some(found) = found_on_path(spec, probe) {
+        let mut command = command(spec, found.as_os_str());
+        command.arg0(&spec.program);
+        if let Ok(child) = command.spawn() {
+            return Ok(child);
+        }
+    }
+    command(spec, &spec.program).spawn()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Candidate {
+    Absent,
+    Runnable,
+    Unknown,
+}
+
+// The file that execvp would start for a bare program name, when a stat can tell. None leaves the
+// search to execvp: no PATH, a relative entry first, or a candidate that a stat cannot judge.
+fn found_on_path(spec: &Spec, probe: impl Fn(&Path) -> Candidate) -> Option<PathBuf> {
+    let program = spec.program.as_os_str();
+    if program.is_empty() || program.as_bytes().contains(&b'/') {
+        return None;
+    }
+    let (_, path) = spec.env.iter().rev().find(|(name, _)| name == "PATH")?;
+    for directory in env::split_paths(path) {
+        if !directory.is_absolute() {
+            return None;
+        }
+        let candidate = directory.join(program);
+        match probe(&candidate) {
+            Candidate::Absent => {}
+            Candidate::Runnable => return Some(candidate),
+            Candidate::Unknown => return None,
+        }
+    }
+    None
+}
+
+// execvp passes over a missing file, as here. All three execute bits let every user start a file.
+fn probe(candidate: &Path) -> Candidate {
+    match fs::metadata(candidate) {
+        Ok(metadata) if metadata.is_file() && metadata.permissions().mode() & 0o111 == 0o111 => {
+            Candidate::Runnable
+        }
+        Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+            Candidate::Absent
+        }
+        _ => Candidate::Unknown,
+    }
+}
+
+fn command(spec: &Spec, program: &OsStr) -> Command {
+    let mut command = Command::new(program);
     command
         .args(&spec.args)
         .current_dir(&spec.cwd)
@@ -268,8 +328,8 @@ fn remaining(deadline: Option<Instant>) -> Duration {
 mod tests {
     use super::*;
     use crate::fixtures::tree;
+    use crate::testing::Tree;
     use std::os::unix::process::ExitStatusExt;
-    use std::path::Path;
 
     const LONG: Duration = Duration::from_secs(20);
 
@@ -412,5 +472,105 @@ mod tests {
             matches!(outcome, Outcome::NotRun(NotRun::Spawn(_))),
             "{outcome:?}"
         );
+    }
+
+    #[test]
+    fn a_bare_name_resolves_only_when_each_earlier_entry_is_absent() {
+        let probe = |candidate: &Path| match candidate.parent().and_then(Path::to_str) {
+            Some("/absent") => Candidate::Absent,
+            Some("/runnable") => Candidate::Runnable,
+            _ => Candidate::Unknown,
+        };
+        let found = |program: &str, paths: &[&str]| {
+            let env = paths
+                .iter()
+                .map(|path| ("PATH".into(), path.into()))
+                .collect();
+            let spec = Spec {
+                program: program.into(),
+                env,
+                ..sh("", LONG)
+            };
+            found_on_path(&spec, probe)
+        };
+        let runnable = Some(PathBuf::from("/runnable/git"));
+        assert_eq!(found("git", &["/absent:/runnable:/other"]), runnable);
+        assert_eq!(found("git", &["/other", "/absent:/runnable"]), runnable);
+        for (program, paths) in [
+            ("git", &["/absent:/other:/runnable"][..]),
+            ("git", &["relative:/runnable"]),
+            ("git", &[":/runnable"]),
+            ("git", &["/absent"]),
+            ("git", &[]),
+            ("bin/git", &["/runnable"]),
+            ("", &["/runnable"]),
+        ] {
+            assert_eq!(found(program, paths), None, "{program:?} on {paths:?}");
+        }
+    }
+
+    #[test]
+    fn the_probe_runs_only_a_file_that_every_user_may_start() {
+        let tree = tree();
+        for (name, mode) in [("all", 0o755), ("owner", 0o744), ("none", 0o644)] {
+            tree.write_file(name, "").expect("the tree takes a file");
+            tree.chmod(name, mode);
+        }
+        tree.create_dir("directory")
+            .expect("the tree takes a directory");
+        let probed = |name: &str| probe(&tree.join(name));
+        assert_eq!(probed("all"), Candidate::Runnable);
+        for name in ["owner", "none", "directory"] {
+            assert_eq!(probed(name), Candidate::Unknown, "{name}");
+        }
+        assert_eq!(probed("missing"), Candidate::Absent);
+        assert_eq!(probed("all/below"), Candidate::Absent);
+    }
+
+    #[test]
+    fn a_relative_path_entry_first_starts_what_execvp_starts() {
+        let tree = tree();
+        placed_program(&tree, "relative", 0o755);
+        placed_program(&tree, "absolute", 0o755);
+        let path = [PathBuf::from("relative"), tree.join("absolute")];
+        let (started, reference) = started_and_reference(&tree, &path);
+        assert_eq!(started, reference);
+    }
+
+    #[test]
+    fn a_program_without_the_execute_bit_earlier_starts_what_execvp_starts() {
+        let tree = tree();
+        placed_program(&tree, "plain", 0o644);
+        placed_program(&tree, "runnable", 0o755);
+        let path = [tree.join("plain"), tree.join("runnable")];
+        let (started, reference) = started_and_reference(&tree, &path);
+        assert_eq!(started, reference);
+    }
+
+    // The program prints the name of its directory, so the output names the file that started.
+    fn placed_program(tree: &Tree, directory: &str, mode: u32) {
+        let relative = format!("{directory}/prog");
+        tree.create_dir(directory)
+            .expect("the tree takes a directory");
+        let script = format!("#!/bin/sh\nprintf {directory}\n");
+        tree.write_file(&relative, script)
+            .expect("the tree takes a file");
+        tree.chmod(&relative, mode);
+    }
+
+    // env(1) starts the program through execvp, which makes the reference search of `path`.
+    fn started_and_reference(tree: &Tree, path: &[PathBuf]) -> (Vec<u8>, Vec<u8>) {
+        let path = env::join_paths(path).expect("a PATH value");
+        let spec = |program: &str, args: &[&str]| Spec {
+            program: program.into(),
+            args: args.iter().map(OsString::from).collect(),
+            cwd: tree.path().to_path_buf(),
+            env: vec![("PATH".into(), path.clone())],
+            ..sh("", LONG)
+        };
+        let started = exited(run(&spec("prog", &[]))).1;
+        let reference = exited(run(&spec("/usr/bin/env", &["prog"]))).1;
+        assert!(!reference.is_empty(), "the reference started no program");
+        (started, reference)
     }
 }

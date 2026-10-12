@@ -395,6 +395,7 @@ pub fn syntax::Query::capture_names(&self) -> &[&str]
 pub fn syntax::Query::language(&self) -> syntax::Language
 pub fn syntax::Query::new(syntax::Language, &str) -> core::result::Result<syntax::Query, syntax::QueryError>
 pub fn syntax::Query::pattern_count(&self) -> usize
+pub fn syntax::Query::start_byte_for_pattern(&self, usize) -> usize
 impl core::marker::Freeze for syntax::Query
 impl core::marker::Send for syntax::Query
 impl core::marker::Sync for syntax::Query

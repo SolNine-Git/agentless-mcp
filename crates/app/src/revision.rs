@@ -13,8 +13,11 @@ use prompts::messages::{
     LINT_REVISION_UNRESOLVED, PAIR_BLOB_OVER_CAP, PAIR_OLD_UNREAD, PAIR_WORKTREE_UNREAD,
 };
 
-use crate::Error;
 use crate::rows::{Gap, bounded_read, coverage, refused_row, side_text};
+use crate::{Error, parallel};
+
+// Each old side is one git process. More than four at a time read no faster.
+const MAX_BLOB_READS: usize = 4;
 
 // What the revision form compares: the coverage rows, sorted by path, and the text pairs.
 pub(crate) struct Compared {
@@ -45,9 +48,11 @@ pub(crate) fn compared(git: &git::Git, root: &Path, revision: &str) -> Result<Co
         return Ok(alone(coverage(message, "", evidence)));
     }
     let (mut rows, specs) = pair_specs(&changes);
+    let threads = parallel::threads().min(MAX_BLOB_READS);
+    let read = parallel::map_in_order(&specs, threads, |spec| pair(git, root, &commit, spec));
     let mut pairs = Vec::new();
-    for spec in &specs {
-        match pair(git, root, &commit, spec) {
+    for result in read {
+        match result {
             Ok(pair) => pairs.push(pair),
             Err(row) => rows.push(*row),
         }

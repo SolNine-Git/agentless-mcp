@@ -1,4 +1,4 @@
-//! The repository an operation reads: its resolved root, its config, and its git state.
+//! The repository an operation reads: its resolved root and its config.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -45,22 +45,13 @@ fn start_dir(services: &Services) -> Result<&Path, Error> {
         .map_err(|unread| kernel::Error::RepoResolution(unread.to_string()).into())
 }
 
-/// A repository and the git state read when it was resolved.
-#[derive(Clone, Debug)]
-pub struct Resolved {
-    /// The repository.
-    pub repo: Repo,
-    /// HEAD, the tree, the dirty count, and the note on what is unknown.
-    pub snapshot: git::Snapshot,
-}
-
 /// Resolves the repository a command is about: `repo` when given, else the git root that encloses
-/// the start-up directory, else that directory.
+/// the start-up directory, else that directory. Loads its config.
 ///
 /// # Errors
 ///
 /// Returns a repository-resolution error when the root is not a directory or not a UTF-8 path.
-pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Resolved, Error> {
+pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Repo, Error> {
     let raw = if let Some(path) = repo {
         expand_user(path, services.home.as_deref())
     } else {
@@ -68,12 +59,8 @@ pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Resolved, Err
         services.git.root(cwd).unwrap_or_else(|| cwd.to_path_buf())
     };
     let root = root_directory(&below_cwd(services, &raw)?)?;
-    let snapshot = services.git.snapshot(&root);
     let config = io::load_config(&root);
-    Ok(Resolved {
-        repo: Repo { root, config },
-        snapshot,
-    })
+    Ok(Repo { root, config })
 }
 
 fn root_directory(raw: &Path) -> Result<PathBuf, Error> {

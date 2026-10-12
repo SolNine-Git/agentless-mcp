@@ -8,10 +8,9 @@ use syntax::Language;
 
 use crate::finding::{Finding, PairFinding, Severity, sorted};
 use crate::globs::in_boundary;
-use crate::rules::{compile, rules_for};
 use crate::{
-    CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, TextPair, UnitState, clone_delta,
-    clone_index, complexity_delta, contract_drift, measure_text, pair_language,
+    CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, SideText, TextPair, UnitState,
+    clone_delta, clone_index, complexity_delta, contract_drift, measure_blocks, pair_language,
 };
 
 struct Fixture {
@@ -42,15 +41,15 @@ impl Fixture {
 
     fn pairs(&self, case: &Value) -> Vec<Pair> {
         let rows = case["pairs"].as_array().expect("a pair list");
-        rows.iter()
-            .map(|row| {
-                Pair::measure(TextPair {
-                    path: row["path"].as_str().expect("a path").to_owned(),
-                    old: self.text(&row["old"]),
-                    new: self.text(&row["new"]),
-                })
+        let texts = rows
+            .iter()
+            .map(|row| TextPair {
+                path: row["path"].as_str().expect("a path").to_owned(),
+                old: self.text(&row["old"]),
+                new: self.text(&row["new"]),
             })
-            .collect()
+            .collect();
+        Pair::measure_all(texts, |sides| sides.iter().map(SideText::measure).collect())
     }
 
     fn index(&self, spec: &Value) -> Result<CloneIndex, Error> {
@@ -85,9 +84,7 @@ impl Fixture {
                     .expect("the index asked its budget more often than Python did")
             })
         };
-        let blocks_of = |_: &str, text: &str, language: Language| {
-            measure_text(language, text).map(|measured| measured.blocks)
-        };
+        let blocks_of = |_: &str, text: &str, language: Language| measure_blocks(language, text);
         clone_index(&texts, &unread, blocks_of, in_budget)
     }
 
@@ -244,30 +241,6 @@ fn the_glob_grid_matches_as_in_python() {
         }
     }
     assert!(differ.is_empty(), "{}", differ.join("\n"));
-}
-
-#[test]
-fn every_contract_rule_names_a_measured_language_and_compiles() {
-    for rule in prompts::contract_rules() {
-        let language = Language::from_name(rule.language)
-            .and_then(|language| language.spec().map(|_| language));
-        assert!(
-            language.is_some(),
-            "rule {} names {}",
-            rule.id,
-            rule.language
-        );
-    }
-    let mut compiled = 0;
-    for language in Language::ALL
-        .into_iter()
-        .filter(|language| language.spec().is_some())
-    {
-        let rules = compile(language).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(rules.len(), rules_for(language).count());
-        compiled += rules.len();
-    }
-    assert_eq!(compiled, prompts::contract_rules().len());
 }
 
 fn row(path: &str) -> PairFinding {

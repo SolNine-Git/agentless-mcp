@@ -70,6 +70,8 @@ At the end of a phase, three commits, each with the owner's go:
 | 2026-10-12 | Every gate passes on a working tree that a commit cannot reproduce. | `.gitignore` `target/` hid `crates/hook/src/target/tests.rs`; a clean clone of a scratch commit failed to build | Before a phase commit, build and test from a clean clone of a scratch commit |
 | 2026-10-12 | `pre-commit run --files` on untracked files reports Passed while a fixer rewrites a file. | ruff-format changed `scripts/cli_fixtures.py` and the hook passed; pre-commit finds a fixer's change with `git diff` | Stage the files in a scratch copy before the pre-commit run |
 | 2026-10-12 | Only the full-tree check finds a CI script that the phase breaks. | `gate-selftest.sh` rows 3, 6b and 8n assumed the P0 workspace; no executor owned the script | The PM's pre-commit verification runs every CI job's commands |
+| 2026-10-12 | One target directory shared by two copies of the tree gives false results. | Cargo hashes workspace path packages relative to the workspace root, so a second copy reused the first copy's artifacts (`O1`) | One target directory per tree copy |
+| 2026-10-12 | Timings in a fresh clone measure git, not the code. | `git status` took 17 to 24 ms per call until `git update-index --really-refresh`, then 1.7 ms; a subprocess timeout quantized every time to 50 ms | Refresh the index in each timing clone; no subprocess timeout in a timing driver |
 
 ## Cost log
 
@@ -108,3 +110,5 @@ At the end of a phase, three commits, each with the owner's go:
 | P1 verification | Opus | 210,814 | 28.1 min | Every gate, 12 generators twice, cli 394 of 394 and hook 944 of 944 equal; found 1 blocker (a gitignored source file) and 3 smaller items |
 | P1 verification fixes | Opus | 180,998 (2 runs) | 2 runs, 42.5 min in all | Module rename, one format fix, 5 self-test rows; self-test 177 of 177 rows from a clean clone of a scratch commit |
 | `pycompat` split by domain | Opus | 254,883 plan + 754,344 build | 17.3 min plan, 56.7 min build | 104 files; 516 tests (the `max_first` test left with its function); fixtures byte-equal; 18 doc lines; the `pystr` module rename followed |
+| `/optimize` reviews A, B, C | Opus | 410,113 + 363,890 + 378,018 | 24.7, 30.7 and 27.2 min, in parallel | 3 hot paths profiled; 20 distinct findings after merging duplicates, 14 applied, 6 rejected (a parity hazard, a lost self-check, 4 low gains) |
+| `/optimize` builds O1, O2, O3 | Opus | 501,097 + 369,388 + 319,364 | 74.3, 28.5 and 27.4 min, in parallel | `lint --since HEAD~1` 256 to 129 ms; hook fresh 39.6 to 28.6 ms; output equal in every A/B run |

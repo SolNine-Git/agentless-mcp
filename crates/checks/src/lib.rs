@@ -19,14 +19,14 @@ mod tests;
 pub use clone::clone_delta;
 pub use complexity::complexity_delta;
 pub use contract::contract_drift;
-pub use error::{Error, RuleProblem, SideError};
+pub use error::{Error, SideError};
 pub use finding::{
     CheckGap, CloneCopy, CloneSite, Detail, DriftKey, Finding, Match, PairFinding, Severity,
     UnitDelta,
 };
 pub use index::{CloneIndex, IndexedFiles, clone_index};
 pub use observed::{CloneState, HitState, Observed, Outcome, UnitChange, UnitState};
-pub use pair::{Pair, TextPair, measure_text, pair_language};
+pub use pair::{Pair, Side, SideText, TextPair, measure_blocks, pair_language};
 
 /// The name of the check that reports units a change grows past the complexity threshold.
 pub const COMPLEXITY_DELTA: &str = "complexity_delta";

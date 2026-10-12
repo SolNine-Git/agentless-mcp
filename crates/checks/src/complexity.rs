@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::finding::{Detail, Finding, Match, PairFinding, Severity, UnitDelta, sorted};
 use crate::matching::{Paired, file_units, match_run};
 use crate::observed::{Observed, Outcome, UnitChange, UnitState};
-use crate::pair::{COMPLEXITY_GAPS, Pair, Sides, each_pair, metrics, read_sides};
+use crate::pair::{COMPLEXITY_GAPS, Pair, Sides, each_pair, read_sides, units};
 
 /// Report each unit that a change grows above `threshold`, takes over it, or adds over it.
 ///
@@ -107,12 +107,7 @@ fn delta(paired: &Paired<'_>, threshold: u32) -> UnitDelta {
 fn over_threshold(measured: &[Sides<'_>], threshold: u32) -> Vec<UnitState> {
     let mut rows: Vec<UnitState> = measured
         .iter()
-        .flat_map(|sides| {
-            metrics(sides.new)
-                .units
-                .iter()
-                .map(move |unit| (sides, unit))
-        })
+        .flat_map(|sides| units(sides.new).iter().map(move |unit| (sides, unit)))
         .filter(|(_, unit)| unit.cc > threshold)
         .map(|(sides, unit)| UnitState {
             path: sides.pair.path().to_owned(),

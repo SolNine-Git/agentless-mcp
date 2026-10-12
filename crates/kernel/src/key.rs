@@ -44,20 +44,35 @@ impl FromStr for Key {
             return Err(KeyParseError);
         }
         let mut bytes = [0; KEY_BYTES];
+        // One check after the loop keeps the loop free of branches.
+        let mut seen = 0;
         for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
-            *byte = (nibble(pair[0])? << 4) | nibble(pair[1])?;
+            let (high, low) = (NIBBLES[usize::from(pair[0])], NIBBLES[usize::from(pair[1])]);
+            seen |= high | low;
+            *byte = (high << 4) | (low & 0x0f);
+        }
+        if seen > 0x0f {
+            return Err(KeyParseError);
         }
         Ok(Self(bytes))
     }
 }
 
-const fn nibble(digit: u8) -> Result<u8, KeyParseError> {
-    match digit {
-        b'0'..=b'9' => Ok(digit - b'0'),
-        b'a'..=b'f' => Ok(digit - b'a' + 10),
-        _ => Err(KeyParseError),
+// The value of each lowercase hexadecimal digit, and 0xff for every other byte.
+const NIBBLES: [u8; 256] = {
+    let mut table = [0xff; 256];
+    let mut digit = b'0';
+    while digit <= b'9' {
+        table[digit as usize] = digit - b'0';
+        digit += 1;
     }
-}
+    let mut letter = b'a';
+    while letter <= b'f' {
+        table[letter as usize] = letter - b'a' + 10;
+        letter += 1;
+    }
+    table
+};
 
 impl Serialize for Key {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -131,5 +146,44 @@ mod tests {
         for text in [&EMPTY[..62], uppercase.as_str(), not_hex.as_str()] {
             assert_eq!(text.parse::<Key>(), Err(KeyParseError));
         }
+    }
+
+    // Every byte a text can hold, at a high and a low digit place, against a digit-by-digit decode.
+    #[test]
+    fn the_table_decode_equals_a_digit_by_digit_decode() {
+        let mut texts = Vec::new();
+        for at in 0..EMPTY.len() {
+            for byte in 0..0x80_u8 {
+                let mut text = EMPTY.to_owned();
+                text.replace_range(at..=at, char::from(byte).encode_utf8(&mut [0; 4]));
+                texts.push(text);
+            }
+        }
+        for character in ('\u{80}'..='\u{ffff}').chain(['\u{10000}', '\u{10ffff}']) {
+            let width = character.len_utf8();
+            texts.push(format!("{character}{}", &EMPTY[width..]));
+            texts.push(format!("{}{character}", &EMPTY[..EMPTY.len() - width]));
+        }
+        for text in &texts {
+            let found = text.parse::<Key>().ok().map(|key| *key.bytes());
+            assert_eq!(found, digit_by_digit(text), "{text:?}");
+        }
+    }
+
+    fn digit_by_digit(text: &str) -> Option<[u8; 32]> {
+        let nibble = |digit: u8| match digit {
+            b'0'..=b'9' => Some(digit - b'0'),
+            b'a'..=b'f' => Some(digit - b'a' + 10),
+            _ => None,
+        };
+        let digits = text.as_bytes();
+        let mut bytes = [0; 32];
+        if digits.len() != 64 {
+            return None;
+        }
+        for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
+            *byte = (nibble(pair[0])? << 4) | nibble(pair[1])?;
+        }
+        Some(bytes)
     }
 }

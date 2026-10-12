@@ -7,7 +7,7 @@ use std::hash::Hash;
 use metrics::Unit;
 
 use crate::finding::Match;
-use crate::pair::{Sides, metrics};
+use crate::pair::{Sides, units};
 
 // `file` and `index` are the unit's identity within its side of the run.
 #[derive(Clone, Copy)]
@@ -41,8 +41,8 @@ pub(crate) fn file_units<'a>(measured: &[Sides<'a>]) -> Vec<FileUnits<'a>> {
         .iter()
         .enumerate()
         .map(|(file, sides)| FileUnits {
-            old: unit_refs(file, sides.pair.path(), &metrics(sides.old).units),
-            new: unit_refs(file, sides.pair.path(), &metrics(sides.new).units),
+            old: unit_refs(file, sides.pair.path(), units(sides.old)),
+            new: unit_refs(file, sides.pair.path(), units(sides.new)),
         })
         .collect()
 }

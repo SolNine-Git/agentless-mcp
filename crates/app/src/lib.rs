@@ -5,6 +5,7 @@ mod env;
 mod error;
 mod lint;
 mod pairs;
+mod parallel;
 mod proposed;
 mod registry;
 mod repo;
@@ -29,7 +30,7 @@ pub use proposed::After;
 pub use registry::{
     CHECKS, CheckInput, FormKind, LintCheck, PairCheck, PairSelection, unknown_check_refusal,
 };
-pub use repo::{Repo, Resolved, resolve};
+pub use repo::{Repo, resolve};
 pub use rows::COVERAGE;
 pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
-pub use tags::{CacheReport, Session, Tags};
+pub use tags::{CacheReport, Opening, Session, Tags};

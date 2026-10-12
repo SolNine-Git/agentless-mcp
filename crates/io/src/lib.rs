@@ -26,7 +26,9 @@ pub use config::{
     CONFIG_FILENAME, GateMode, GatedCheck, Granularity, MAX_BOUNDARY_GLOB_CHARS,
     MAX_BOUNDARY_GLOBS, ProjectConfig, load_config,
 };
-pub use contain::{Refusal, contained_path, file_size, file_stays_inside, resolve};
+pub use contain::{
+    Refusal, contained_file_size, contained_path, file_size, file_stays_inside, resolve,
+};
 pub use files::{remove_file, touch};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
