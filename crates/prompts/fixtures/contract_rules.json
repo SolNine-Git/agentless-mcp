@@ -1,0 +1,212 @@
+[
+  {
+    "id": "get-default-empty",
+    "language": "python",
+    "message": "A missing key reads as an empty value, so a renamed or removed field looks like no data. Read the field in one parse step that raises when the key is missing.",
+    "query": "(call function: (attribute attribute: (identifier) @_m) arguments: (argument_list . (_) . (_) @_d .) (#eq? @_m \"get\") (#any-of? @_d \"[]\" \"{}\" \"\\\"\\\"\" \"''\" \"0\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-default",
+    "language": "python",
+    "message": "A missing or falsy value reads as an empty container, so a changed response shape looks like no data. Check for the missing value in the parse step and raise there.",
+    "query": "(boolean_operator operator: \"or\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "getattr-default",
+    "language": "python",
+    "message": "A missing attribute reads as the default, so a renamed field looks like a present one. Read the attribute directly, or check for it in the parse step and raise there.",
+    "query": "(call function: (identifier) @_f arguments: (argument_list . (_) . (_) . (_) .) (#eq? @_f \"getattr\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "except-return-default",
+    "language": "python",
+    "message": "The handler turns an error into an ordinary value, so a failure looks like an empty result. Let the error propagate, or raise a named error that carries the context.",
+    "query": "(except_clause (block (return_statement (_) @_v) @hit) (#any-of? @_v \"None\" \"False\" \"0\" \"[]\" \"{}\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "except-pass",
+    "language": "python",
+    "message": "The handler drops the error, so a failure looks like success. Handle the error, or let it propagate.",
+    "query": "(except_clause [(block . (pass_statement) .) (block . (pass_statement) . (comment) .)]) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "nullish-empty-default",
+    "language": "javascript",
+    "message": "A missing value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"??\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "nullish-empty-default",
+    "language": "typescript",
+    "message": "A missing value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"??\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "nullish-empty-default",
+    "language": "tsx",
+    "message": "A missing value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"??\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-default",
+    "language": "javascript",
+    "message": "A missing or falsy value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"||\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-default",
+    "language": "typescript",
+    "message": "A missing or falsy value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"||\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-default",
+    "language": "tsx",
+    "message": "A missing or falsy value reads as an empty container, so a renamed or removed field looks like no data. Validate the response in one parse step that throws when the field is missing.",
+    "query": "(binary_expression operator: \"||\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-return-default",
+    "language": "javascript",
+    "message": "The handler turns an error into an ordinary value, so a failure looks like an empty result. Rethrow the error, or throw a named error that carries the context.",
+    "query": "(catch_clause body: (statement_block (return_statement (_) @_v) @hit) (#any-of? @_v \"null\" \"undefined\" \"false\" \"0\" \"[]\" \"{}\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-return-default",
+    "language": "typescript",
+    "message": "The handler turns an error into an ordinary value, so a failure looks like an empty result. Rethrow the error, or throw a named error that carries the context.",
+    "query": "(catch_clause body: (statement_block (return_statement (_) @_v) @hit) (#any-of? @_v \"null\" \"undefined\" \"false\" \"0\" \"[]\" \"{}\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-return-default",
+    "language": "tsx",
+    "message": "The handler turns an error into an ordinary value, so a failure looks like an empty result. Rethrow the error, or throw a named error that carries the context.",
+    "query": "(catch_clause body: (statement_block (return_statement (_) @_v) @hit) (#any-of? @_v \"null\" \"undefined\" \"false\" \"0\" \"[]\" \"{}\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-empty",
+    "language": "javascript",
+    "message": "The handler drops the error, so a failure looks like success. Handle the error, or let it propagate.",
+    "query": "(catch_clause body: (statement_block) @_b (#any-of? @_b \"{}\")) @hit\n(catch_clause body: (statement_block . (comment) .)) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-empty",
+    "language": "typescript",
+    "message": "The handler drops the error, so a failure looks like success. Handle the error, or let it propagate.",
+    "query": "(catch_clause body: (statement_block) @_b (#any-of? @_b \"{}\")) @hit\n(catch_clause body: (statement_block . (comment) .)) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-empty",
+    "language": "tsx",
+    "message": "The handler drops the error, so a failure looks like success. Handle the error, or let it propagate.",
+    "query": "(catch_clause body: (statement_block) @_b (#any-of? @_b \"{}\")) @hit\n(catch_clause body: (statement_block . (comment) .)) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "err-check-returns-nil",
+    "language": "go",
+    "message": "The branch sees an error and returns nil as the last value, so the caller sees success. Return the error, wrapped with its context.",
+    "query": "(if_statement condition: (binary_expression left: (identifier) @_e operator: \"!=\" right: (nil)) consequence: (block (statement_list (return_statement (expression_list (_) @_last .)) @hit)) (#eq? @_e \"err\") (#eq? @_last \"nil\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "unwrap-or-default",
+    "language": "rust",
+    "message": "A None or an Err reads as the type's default value, so a missing field looks like an empty one. Return the error with ?, or handle the None case.",
+    "query": "(call_expression function: (field_expression field: (field_identifier) @_m) (#eq? @_m \"unwrap_or_default\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "unwrap-or-empty",
+    "language": "rust",
+    "message": "A None or an Err reads as an empty value, so a missing field looks like no data. Return the error with ?, or handle the None case.",
+    "query": "(call_expression function: (field_expression field: (field_identifier) @_m) arguments: (arguments . (_) @_d .) (#eq? @_m \"unwrap_or\") (#any-of? @_d \"vec![]\" \"Vec::new()\" \"String::new()\" \"HashMap::new()\" \"HashSet::new()\" \"BTreeMap::new()\" \"BTreeSet::new()\" \"VecDeque::new()\" \"\\\"\\\"\" \"0\" \"Default::default()\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "ok-statement",
+    "language": "rust",
+    "message": "The statement turns a Result into an Option and drops it, so the error is never seen. Handle the Result, or return the error with ?.",
+    "query": "(expression_statement (call_expression function: (field_expression field: (field_identifier) @_m) arguments: (arguments)) @hit (#eq? @_m \"ok\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-empty",
+    "language": "java",
+    "message": "The handler drops the exception, so a failure looks like success. Handle the exception, or let it propagate.",
+    "query": "(catch_clause body: (block) @_b (#any-of? @_b \"{}\")) @hit\n(catch_clause body: (block . [(line_comment) (block_comment)] .)) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-return-null",
+    "language": "java",
+    "message": "The handler turns an exception into null, so a failure looks like a missing value. Rethrow the exception, or throw a named exception that carries the context.",
+    "query": "(catch_clause body: (block (return_statement (null_literal)) @hit))",
+    "severity": "warning"
+  },
+  {
+    "id": "get-or-default-empty",
+    "language": "java",
+    "message": "A missing key reads as an empty value, so a renamed or removed field looks like no data. Check for the key in the parse step and throw there.",
+    "query": "(method_invocation name: (identifier) @_m arguments: (argument_list . (_) . (_) @_d .) (#eq? @_m \"getOrDefault\") (#any-of? @_d \"\\\"\\\"\" \"0\" \"List.of()\" \"Set.of()\" \"Map.of()\" \"Collections.emptyList()\" \"Collections.emptySet()\" \"Collections.emptyMap()\" \"new ArrayList<>()\" \"new HashMap<>()\" \"new HashSet<>()\" \"new LinkedList<>()\" \"new TreeMap<>()\" \"new TreeSet<>()\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "rescue-nil",
+    "language": "ruby",
+    "message": "The rescue turns an error into nil, so a failure looks like a missing value. Rescue a named error class and handle it, or let the error propagate.",
+    "query": "(rescue_modifier handler: (nil)) @hit\n(rescue body: (then . (nil) .)) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "fetch-default-empty",
+    "language": "ruby",
+    "message": "A missing key reads as an empty value, so fetch no longer raises KeyError for it. Call fetch without a default, so a missing key raises.",
+    "query": "(call method: (identifier) @_m arguments: (argument_list . (_) . (_) @_d .) (#eq? @_m \"fetch\") (#any-of? @_d \"[]\" \"{}\" \"\\\"\\\"\" \"''\" \"0\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-default",
+    "language": "ruby",
+    "message": "A nil or false value reads as an empty container, so a renamed or removed field looks like no data. Check for the missing value in the parse step and raise there.",
+    "query": "(binary operator: \"||\" right: (_) @_d (#any-of? @_d \"[]\" \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "or-empty-table",
+    "language": "lua",
+    "message": "A nil or false value reads as an empty table, so a missing field looks like no data. Check for the missing value in the parse step and raise an error there.",
+    "query": "(binary_expression left: (_) \"or\" right: (table_constructor) @_d (#any-of? @_d \"{}\")) @hit",
+    "severity": "warning"
+  },
+  {
+    "id": "pcall-statement",
+    "language": "lua",
+    "message": "The statement discards the status that pcall returns, so an error is never seen. Read the status and the error, and handle them.",
+    "query": "(chunk (function_call name: (identifier) @_f) @hit (#eq? @_f \"pcall\"))\n(block (function_call name: (identifier) @_f) @hit (#eq? @_f \"pcall\"))",
+    "severity": "warning"
+  },
+  {
+    "id": "catch-all-empty",
+    "language": "cpp",
+    "message": "The handler catches every exception and drops it, so a failure looks like success. Catch the exception types you can handle, or let them propagate.",
+    "query": "(catch_clause parameters: (parameter_list \"...\") body: (compound_statement) @_b (#any-of? @_b \"{}\")) @hit\n(catch_clause parameters: (parameter_list \"...\") body: (compound_statement . (comment) .)) @hit",
+    "severity": "warning"
+  }
+]

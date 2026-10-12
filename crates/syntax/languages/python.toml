@@ -1,0 +1,59 @@
+name = "python"
+tier = 1
+extensions = [".py"]
+probe = "x = 1\n"
+probe_root = "module"
+comments = ["comment"]
+sloc = "python_tokens"
+statement_parents = ["block", "module"]
+
+[units]
+units = ["function_definition"]
+scopes = ["class_definition"]
+bound = []
+descend = ["block", "class_definition", "decorated_definition"]
+name = "field"
+
+[decisions]
+points = [
+    "assert_statement",
+    "boolean_operator",
+    "conditional_expression",
+    "dictionary_comprehension",
+    "elif_clause",
+    "except_clause",
+    "for_statement",
+    "generator_expression",
+    "if_clause",
+    "if_statement",
+    "list_comprehension",
+    "set_comprehension",
+    "while_statement",
+]
+
+[decisions.conditional]
+
+[decisions.field_operators]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["function_definition"]
+blocks = [
+    "for_statement",
+    "if_statement",
+    "match_statement",
+    "try_statement",
+    "while_statement",
+    "with_statement",
+]
+skip = "type_checking"
+identifiers = ["identifier"]
+indent_blocks = ["block"]
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"FLOAT" = ["float"]
+"INT" = ["integer"]
+"NONE" = ["none"]
+"STR" = ["string", "string_content"]

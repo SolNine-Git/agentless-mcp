@@ -1,0 +1,5 @@
+name = "sql"
+tier = 2
+extensions = [".sql"]
+probe = "CREATE TABLE probe (id INTEGER);\n"
+probe_root = "program"

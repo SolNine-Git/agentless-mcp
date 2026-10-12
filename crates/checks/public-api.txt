@@ -1,0 +1,525 @@
+pub mod checks
+pub enum checks::CheckGap
+pub checks::CheckGap::NoBoundaryGlobs
+pub checks::CheckGap::NoRulesForLanguage(syntax::language::Language)
+pub checks::CheckGap::NoTagCache
+impl checks::CheckGap
+pub const fn checks::CheckGap::reason(self) -> &'static str
+impl core::clone::Clone for checks::CheckGap
+pub fn checks::CheckGap::clone(&self) -> Self
+impl core::cmp::Eq for checks::CheckGap
+impl core::cmp::PartialEq for checks::CheckGap
+pub fn checks::CheckGap::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CheckGap
+pub fn checks::CheckGap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::CheckGap
+impl core::marker::StructuralPartialEq for checks::CheckGap
+impl serde_core::ser::Serialize for checks::CheckGap
+pub fn checks::CheckGap::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::CheckGap
+impl core::marker::Send for checks::CheckGap
+impl core::marker::Sync for checks::CheckGap
+impl core::marker::Unpin for checks::CheckGap
+impl core::marker::UnsafeUnpin for checks::CheckGap
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CheckGap
+impl core::panic::unwind_safe::UnwindSafe for checks::CheckGap
+pub enum checks::CloneIndex
+pub checks::CloneIndex::Built(checks::IndexedFiles)
+pub checks::CloneIndex::NoTagCache
+impl core::clone::Clone for checks::CloneIndex
+pub fn checks::CloneIndex::clone(&self) -> Self
+impl core::cmp::Eq for checks::CloneIndex
+impl core::cmp::PartialEq for checks::CloneIndex
+pub fn checks::CloneIndex::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CloneIndex
+pub fn checks::CloneIndex::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CloneIndex
+impl core::marker::Freeze for checks::CloneIndex
+impl core::marker::Send for checks::CloneIndex
+impl core::marker::Sync for checks::CloneIndex
+impl core::marker::Unpin for checks::CloneIndex
+impl core::marker::UnsafeUnpin for checks::CloneIndex
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneIndex
+impl core::panic::unwind_safe::UnwindSafe for checks::CloneIndex
+pub enum checks::Detail
+pub checks::Detail::Copy(checks::CloneCopy)
+pub checks::Detail::Drift(checks::DriftKey)
+pub checks::Detail::Gap(checks::CheckGap)
+pub checks::Detail::Unit(checks::UnitDelta)
+impl core::clone::Clone for checks::Detail
+pub fn checks::Detail::clone(&self) -> Self
+impl core::cmp::Eq for checks::Detail
+impl core::cmp::PartialEq for checks::Detail
+pub fn checks::Detail::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Detail
+pub fn checks::Detail::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Detail
+impl serde_core::ser::Serialize for checks::Detail
+pub fn checks::Detail::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::Detail
+impl core::marker::Send for checks::Detail
+impl core::marker::Sync for checks::Detail
+impl core::marker::Unpin for checks::Detail
+impl core::marker::UnsafeUnpin for checks::Detail
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Detail
+impl core::panic::unwind_safe::UnwindSafe for checks::Detail
+pub enum checks::Error
+pub checks::Error::NotIndexable
+pub checks::Error::NotIndexable::path: alloc::string::String
+pub checks::Error::Query
+pub checks::Error::Query::id: &'static str
+pub checks::Error::Query::language: &'static str
+pub checks::Error::Query::path: alloc::string::String
+pub checks::Error::Query::source: syntax::query::QueryRunError
+pub checks::Error::RepeatedPath
+pub checks::Error::RepeatedPath::path: alloc::string::String
+pub checks::Error::Rule
+pub checks::Error::Rule::id: &'static str
+pub checks::Error::Rule::language: &'static str
+pub checks::Error::Rule::problem: checks::RuleProblem
+pub checks::Error::Side
+pub checks::Error::Side::path: alloc::string::String
+pub checks::Error::Side::source: checks::SideError
+impl core::error::Error for checks::Error
+pub fn checks::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for checks::Error
+pub fn checks::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for checks::Error
+pub fn checks::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for checks::Error
+impl core::marker::Send for checks::Error
+impl core::marker::Sync for checks::Error
+impl core::marker::Unpin for checks::Error
+impl core::marker::UnsafeUnpin for checks::Error
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Error
+impl core::panic::unwind_safe::UnwindSafe for checks::Error
+pub enum checks::Match
+pub checks::Match::Body
+pub checks::Match::Collision
+pub checks::Match::Name
+pub checks::Match::New
+impl core::clone::Clone for checks::Match
+pub fn checks::Match::clone(&self) -> Self
+impl core::cmp::Eq for checks::Match
+impl core::cmp::PartialEq for checks::Match
+pub fn checks::Match::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Match
+pub fn checks::Match::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::Match
+impl core::marker::StructuralPartialEq for checks::Match
+impl serde_core::ser::Serialize for checks::Match
+pub fn checks::Match::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::Match
+impl core::marker::Send for checks::Match
+impl core::marker::Sync for checks::Match
+impl core::marker::Unpin for checks::Match
+impl core::marker::UnsafeUnpin for checks::Match
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Match
+impl core::panic::unwind_safe::UnwindSafe for checks::Match
+pub enum checks::RuleProblem
+pub checks::RuleProblem::Captures
+pub checks::RuleProblem::Compile(syntax::query::QueryError)
+pub checks::RuleProblem::Predicates(alloc::vec::Vec<alloc::string::String>)
+impl core::clone::Clone for checks::RuleProblem
+pub fn checks::RuleProblem::clone(&self) -> Self
+impl core::cmp::Eq for checks::RuleProblem
+impl core::cmp::PartialEq for checks::RuleProblem
+pub fn checks::RuleProblem::eq(&self, &Self) -> bool
+impl core::error::Error for checks::RuleProblem
+impl core::fmt::Debug for checks::RuleProblem
+pub fn checks::RuleProblem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for checks::RuleProblem
+pub fn checks::RuleProblem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::RuleProblem
+impl core::marker::Freeze for checks::RuleProblem
+impl core::marker::Send for checks::RuleProblem
+impl core::marker::Sync for checks::RuleProblem
+impl core::marker::Unpin for checks::RuleProblem
+impl core::marker::UnsafeUnpin for checks::RuleProblem
+impl core::panic::unwind_safe::RefUnwindSafe for checks::RuleProblem
+impl core::panic::unwind_safe::UnwindSafe for checks::RuleProblem
+pub enum checks::Severity
+pub checks::Severity::Advisory
+pub checks::Severity::NotChecked
+pub checks::Severity::Warning
+impl checks::Severity
+pub const checks::Severity::ALL: [checks::Severity; 3]
+pub const fn checks::Severity::as_str(self) -> &'static str
+impl core::clone::Clone for checks::Severity
+pub fn checks::Severity::clone(&self) -> Self
+impl core::cmp::Eq for checks::Severity
+impl core::cmp::PartialEq for checks::Severity
+pub fn checks::Severity::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Severity
+pub fn checks::Severity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for checks::Severity
+impl core::marker::StructuralPartialEq for checks::Severity
+impl serde_core::ser::Serialize for checks::Severity
+pub fn checks::Severity::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::Severity
+impl core::marker::Send for checks::Severity
+impl core::marker::Sync for checks::Severity
+impl core::marker::Unpin for checks::Severity
+impl core::marker::UnsafeUnpin for checks::Severity
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Severity
+impl core::panic::unwind_safe::UnwindSafe for checks::Severity
+pub enum checks::SideError
+pub checks::SideError::Recorded(alloc::string::String)
+pub checks::SideError::Unmeasurable(metrics::Unmeasurable)
+pub checks::SideError::Unparsable(syntax::parsed::Unparsable)
+impl core::clone::Clone for checks::SideError
+pub fn checks::SideError::clone(&self) -> Self
+impl core::cmp::Eq for checks::SideError
+impl core::cmp::PartialEq for checks::SideError
+pub fn checks::SideError::eq(&self, &Self) -> bool
+impl core::error::Error for checks::SideError
+impl core::fmt::Debug for checks::SideError
+pub fn checks::SideError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for checks::SideError
+pub fn checks::SideError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::SideError
+impl core::marker::Freeze for checks::SideError
+impl core::marker::Send for checks::SideError
+impl core::marker::Sync for checks::SideError
+impl core::marker::Unpin for checks::SideError
+impl core::marker::UnsafeUnpin for checks::SideError
+impl core::panic::unwind_safe::RefUnwindSafe for checks::SideError
+impl core::panic::unwind_safe::UnwindSafe for checks::SideError
+pub struct checks::CloneCopy
+pub checks::CloneCopy::end_line: u32
+pub checks::CloneCopy::key: kernel::key::Key
+pub checks::CloneCopy::line: u32
+pub checks::CloneCopy::sites: alloc::vec::Vec<checks::CloneSite>
+pub checks::CloneCopy::sites_total: usize
+impl core::clone::Clone for checks::CloneCopy
+pub fn checks::CloneCopy::clone(&self) -> Self
+impl core::cmp::Eq for checks::CloneCopy
+impl core::cmp::PartialEq for checks::CloneCopy
+pub fn checks::CloneCopy::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CloneCopy
+pub fn checks::CloneCopy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CloneCopy
+impl serde_core::ser::Serialize for checks::CloneCopy
+pub fn checks::CloneCopy::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::CloneCopy
+impl core::marker::Send for checks::CloneCopy
+impl core::marker::Sync for checks::CloneCopy
+impl core::marker::Unpin for checks::CloneCopy
+impl core::marker::UnsafeUnpin for checks::CloneCopy
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneCopy
+impl core::panic::unwind_safe::UnwindSafe for checks::CloneCopy
+pub struct checks::CloneSite
+pub checks::CloneSite::end_line: u32
+pub checks::CloneSite::line: u32
+pub checks::CloneSite::path: alloc::string::String
+impl core::clone::Clone for checks::CloneSite
+pub fn checks::CloneSite::clone(&self) -> Self
+impl core::cmp::Eq for checks::CloneSite
+impl core::cmp::PartialEq for checks::CloneSite
+pub fn checks::CloneSite::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CloneSite
+pub fn checks::CloneSite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CloneSite
+impl serde_core::ser::Serialize for checks::CloneSite
+pub fn checks::CloneSite::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::CloneSite
+impl core::marker::Send for checks::CloneSite
+impl core::marker::Sync for checks::CloneSite
+impl core::marker::Unpin for checks::CloneSite
+impl core::marker::UnsafeUnpin for checks::CloneSite
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneSite
+impl core::panic::unwind_safe::UnwindSafe for checks::CloneSite
+pub struct checks::CloneState
+pub checks::CloneState::end_line: u32
+pub checks::CloneState::key: kernel::key::Key
+pub checks::CloneState::line: u32
+pub checks::CloneState::path: alloc::string::String
+impl core::clone::Clone for checks::CloneState
+pub fn checks::CloneState::clone(&self) -> Self
+impl core::cmp::Eq for checks::CloneState
+impl core::cmp::PartialEq for checks::CloneState
+pub fn checks::CloneState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::CloneState
+pub fn checks::CloneState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::CloneState
+impl serde_core::ser::Serialize for checks::CloneState
+pub fn checks::CloneState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::CloneState
+impl core::marker::Send for checks::CloneState
+impl core::marker::Sync for checks::CloneState
+impl core::marker::Unpin for checks::CloneState
+impl core::marker::UnsafeUnpin for checks::CloneState
+impl core::panic::unwind_safe::RefUnwindSafe for checks::CloneState
+impl core::panic::unwind_safe::UnwindSafe for checks::CloneState
+pub struct checks::DriftKey
+pub checks::DriftKey::capture: alloc::string::String
+pub checks::DriftKey::rule: alloc::string::String
+pub checks::DriftKey::unit: alloc::string::String
+impl core::clone::Clone for checks::DriftKey
+pub fn checks::DriftKey::clone(&self) -> Self
+impl core::cmp::Eq for checks::DriftKey
+impl core::cmp::PartialEq for checks::DriftKey
+pub fn checks::DriftKey::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::DriftKey
+pub fn checks::DriftKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::DriftKey
+impl serde_core::ser::Serialize for checks::DriftKey
+pub fn checks::DriftKey::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::DriftKey
+impl core::marker::Send for checks::DriftKey
+impl core::marker::Sync for checks::DriftKey
+impl core::marker::Unpin for checks::DriftKey
+impl core::marker::UnsafeUnpin for checks::DriftKey
+impl core::panic::unwind_safe::RefUnwindSafe for checks::DriftKey
+impl core::panic::unwind_safe::UnwindSafe for checks::DriftKey
+pub struct checks::Finding
+pub checks::Finding::check: &'static str
+pub checks::Finding::evidence: alloc::string::String
+pub checks::Finding::line: u32
+pub checks::Finding::message: alloc::string::String
+pub checks::Finding::path: alloc::string::String
+pub checks::Finding::severity: checks::Severity
+impl checks::Finding
+pub fn checks::Finding::location(&self) -> alloc::string::String
+impl core::clone::Clone for checks::Finding
+pub fn checks::Finding::clone(&self) -> Self
+impl core::cmp::Eq for checks::Finding
+impl core::cmp::PartialEq for checks::Finding
+pub fn checks::Finding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::Finding
+pub fn checks::Finding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Finding
+impl serde_core::ser::Serialize for checks::Finding
+pub fn checks::Finding::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for checks::Finding
+impl core::marker::Send for checks::Finding
+impl core::marker::Sync for checks::Finding
+impl core::marker::Unpin for checks::Finding
+impl core::marker::UnsafeUnpin for checks::Finding
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Finding
+impl core::panic::unwind_safe::UnwindSafe for checks::Finding
+pub struct checks::HitState
+pub checks::HitState::capture: alloc::string::String
+pub checks::HitState::path: alloc::string::String
+pub checks::HitState::rule: alloc::string::String
+pub checks::HitState::unit: alloc::string::String
+impl core::clone::Clone for checks::HitState
+pub fn checks::HitState::clone(&self) -> Self
+impl core::cmp::Eq for checks::HitState
+impl core::cmp::PartialEq for checks::HitState
+pub fn checks::HitState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::HitState
+pub fn checks::HitState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::HitState
+impl serde_core::ser::Serialize for checks::HitState
+pub fn checks::HitState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::HitState
+impl core::marker::Send for checks::HitState
+impl core::marker::Sync for checks::HitState
+impl core::marker::Unpin for checks::HitState
+impl core::marker::UnsafeUnpin for checks::HitState
+impl core::panic::unwind_safe::RefUnwindSafe for checks::HitState
+impl core::panic::unwind_safe::UnwindSafe for checks::HitState
+pub struct checks::IndexedFiles
+pub checks::IndexedFiles::files: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<metrics::Block>>
+pub checks::IndexedFiles::unindexed: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub checks::IndexedFiles::unlisted: core::option::Option<alloc::string::String>
+impl core::clone::Clone for checks::IndexedFiles
+pub fn checks::IndexedFiles::clone(&self) -> Self
+impl core::cmp::Eq for checks::IndexedFiles
+impl core::cmp::PartialEq for checks::IndexedFiles
+pub fn checks::IndexedFiles::eq(&self, &Self) -> bool
+impl core::default::Default for checks::IndexedFiles
+pub fn checks::IndexedFiles::default() -> Self
+impl core::fmt::Debug for checks::IndexedFiles
+pub fn checks::IndexedFiles::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::IndexedFiles
+impl core::marker::Freeze for checks::IndexedFiles
+impl core::marker::Send for checks::IndexedFiles
+impl core::marker::Sync for checks::IndexedFiles
+impl core::marker::Unpin for checks::IndexedFiles
+impl core::marker::UnsafeUnpin for checks::IndexedFiles
+impl core::panic::unwind_safe::RefUnwindSafe for checks::IndexedFiles
+impl core::panic::unwind_safe::UnwindSafe for checks::IndexedFiles
+pub struct checks::Observed
+pub checks::Observed::clone_instances: core::option::Option<alloc::vec::Vec<checks::CloneState>>
+pub checks::Observed::contract_keys: core::option::Option<alloc::vec::Vec<checks::HitState>>
+pub checks::Observed::units_changed: core::option::Option<alloc::vec::Vec<checks::UnitChange>>
+pub checks::Observed::units_over_threshold: core::option::Option<alloc::vec::Vec<checks::UnitState>>
+impl checks::Observed
+pub fn checks::Observed::merged(self, checks::Observed) -> checks::Observed
+impl core::clone::Clone for checks::Observed
+pub fn checks::Observed::clone(&self) -> Self
+impl core::cmp::Eq for checks::Observed
+impl core::cmp::PartialEq for checks::Observed
+pub fn checks::Observed::eq(&self, &Self) -> bool
+impl core::default::Default for checks::Observed
+pub fn checks::Observed::default() -> Self
+impl core::fmt::Debug for checks::Observed
+pub fn checks::Observed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Observed
+impl serde_core::ser::Serialize for checks::Observed
+pub fn checks::Observed::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::Observed
+impl core::marker::Send for checks::Observed
+impl core::marker::Sync for checks::Observed
+impl core::marker::Unpin for checks::Observed
+impl core::marker::UnsafeUnpin for checks::Observed
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Observed
+impl core::panic::unwind_safe::UnwindSafe for checks::Observed
+pub struct checks::Outcome
+pub checks::Outcome::findings: alloc::vec::Vec<checks::PairFinding>
+pub checks::Outcome::observed: checks::Observed
+impl core::clone::Clone for checks::Outcome
+pub fn checks::Outcome::clone(&self) -> Self
+impl core::cmp::Eq for checks::Outcome
+impl core::cmp::PartialEq for checks::Outcome
+pub fn checks::Outcome::eq(&self, &Self) -> bool
+impl core::default::Default for checks::Outcome
+pub fn checks::Outcome::default() -> Self
+impl core::fmt::Debug for checks::Outcome
+pub fn checks::Outcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::Outcome
+impl serde_core::ser::Serialize for checks::Outcome
+pub fn checks::Outcome::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::Outcome
+impl core::marker::Send for checks::Outcome
+impl core::marker::Sync for checks::Outcome
+impl core::marker::Unpin for checks::Outcome
+impl core::marker::UnsafeUnpin for checks::Outcome
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Outcome
+impl core::panic::unwind_safe::UnwindSafe for checks::Outcome
+pub struct checks::Pair
+impl checks::Pair
+pub fn checks::Pair::language(&self) -> core::option::Option<syntax::language::Language>
+pub fn checks::Pair::measure(checks::TextPair) -> checks::Pair
+pub fn checks::Pair::path(&self) -> &str
+impl core::marker::Freeze for checks::Pair
+impl core::marker::Send for checks::Pair
+impl core::marker::Sync for checks::Pair
+impl core::marker::Unpin for checks::Pair
+impl core::marker::UnsafeUnpin for checks::Pair
+impl core::panic::unwind_safe::RefUnwindSafe for checks::Pair
+impl core::panic::unwind_safe::UnwindSafe for checks::Pair
+pub struct checks::PairFinding
+pub checks::PairFinding::detail: core::option::Option<checks::Detail>
+pub checks::PairFinding::finding: checks::Finding
+impl core::clone::Clone for checks::PairFinding
+pub fn checks::PairFinding::clone(&self) -> Self
+impl core::cmp::Eq for checks::PairFinding
+impl core::cmp::PartialEq for checks::PairFinding
+pub fn checks::PairFinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::PairFinding
+pub fn checks::PairFinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::PairFinding
+impl serde_core::ser::Serialize for checks::PairFinding
+pub fn checks::PairFinding::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::PairFinding
+impl core::marker::Send for checks::PairFinding
+impl core::marker::Sync for checks::PairFinding
+impl core::marker::Unpin for checks::PairFinding
+impl core::marker::UnsafeUnpin for checks::PairFinding
+impl core::panic::unwind_safe::RefUnwindSafe for checks::PairFinding
+impl core::panic::unwind_safe::UnwindSafe for checks::PairFinding
+pub struct checks::TextPair
+pub checks::TextPair::new: core::option::Option<alloc::string::String>
+pub checks::TextPair::old: core::option::Option<alloc::string::String>
+pub checks::TextPair::path: alloc::string::String
+impl core::clone::Clone for checks::TextPair
+pub fn checks::TextPair::clone(&self) -> Self
+impl core::cmp::Eq for checks::TextPair
+impl core::cmp::PartialEq for checks::TextPair
+pub fn checks::TextPair::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::TextPair
+pub fn checks::TextPair::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::TextPair
+impl core::marker::Freeze for checks::TextPair
+impl core::marker::Send for checks::TextPair
+impl core::marker::Sync for checks::TextPair
+impl core::marker::Unpin for checks::TextPair
+impl core::marker::UnsafeUnpin for checks::TextPair
+impl core::panic::unwind_safe::RefUnwindSafe for checks::TextPair
+impl core::panic::unwind_safe::UnwindSafe for checks::TextPair
+pub struct checks::UnitChange
+pub checks::UnitChange::cc_new: u32
+pub checks::UnitChange::cc_old: core::option::Option<u32>
+pub checks::UnitChange::line: u32
+pub checks::UnitChange::path: alloc::string::String
+pub checks::UnitChange::sloc_new: u32
+pub checks::UnitChange::sloc_old: core::option::Option<u32>
+pub checks::UnitChange::unit: alloc::string::String
+pub checks::UnitChange::via: checks::Match
+impl core::clone::Clone for checks::UnitChange
+pub fn checks::UnitChange::clone(&self) -> Self
+impl core::cmp::Eq for checks::UnitChange
+impl core::cmp::PartialEq for checks::UnitChange
+pub fn checks::UnitChange::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::UnitChange
+pub fn checks::UnitChange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::UnitChange
+impl serde_core::ser::Serialize for checks::UnitChange
+pub fn checks::UnitChange::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::UnitChange
+impl core::marker::Send for checks::UnitChange
+impl core::marker::Sync for checks::UnitChange
+impl core::marker::Unpin for checks::UnitChange
+impl core::marker::UnsafeUnpin for checks::UnitChange
+impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitChange
+impl core::panic::unwind_safe::UnwindSafe for checks::UnitChange
+pub struct checks::UnitDelta
+pub checks::UnitDelta::cc_new: u32
+pub checks::UnitDelta::cc_old: core::option::Option<u32>
+pub checks::UnitDelta::sloc_new: u32
+pub checks::UnitDelta::sloc_old: core::option::Option<u32>
+pub checks::UnitDelta::threshold: u32
+pub checks::UnitDelta::unit: alloc::string::String
+pub checks::UnitDelta::via: checks::Match
+impl core::clone::Clone for checks::UnitDelta
+pub fn checks::UnitDelta::clone(&self) -> Self
+impl core::cmp::Eq for checks::UnitDelta
+impl core::cmp::PartialEq for checks::UnitDelta
+pub fn checks::UnitDelta::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::UnitDelta
+pub fn checks::UnitDelta::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::UnitDelta
+impl serde_core::ser::Serialize for checks::UnitDelta
+pub fn checks::UnitDelta::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::UnitDelta
+impl core::marker::Send for checks::UnitDelta
+impl core::marker::Sync for checks::UnitDelta
+impl core::marker::Unpin for checks::UnitDelta
+impl core::marker::UnsafeUnpin for checks::UnitDelta
+impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitDelta
+impl core::panic::unwind_safe::UnwindSafe for checks::UnitDelta
+pub struct checks::UnitState
+pub checks::UnitState::cc: u32
+pub checks::UnitState::line: u32
+pub checks::UnitState::path: alloc::string::String
+pub checks::UnitState::sloc: u32
+pub checks::UnitState::unit: alloc::string::String
+impl core::clone::Clone for checks::UnitState
+pub fn checks::UnitState::clone(&self) -> Self
+impl core::cmp::Eq for checks::UnitState
+impl core::cmp::PartialEq for checks::UnitState
+pub fn checks::UnitState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for checks::UnitState
+pub fn checks::UnitState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for checks::UnitState
+impl serde_core::ser::Serialize for checks::UnitState
+pub fn checks::UnitState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for checks::UnitState
+impl core::marker::Send for checks::UnitState
+impl core::marker::Sync for checks::UnitState
+impl core::marker::Unpin for checks::UnitState
+impl core::marker::UnsafeUnpin for checks::UnitState
+impl core::panic::unwind_safe::RefUnwindSafe for checks::UnitState
+impl core::panic::unwind_safe::UnwindSafe for checks::UnitState
+pub const checks::CLONE_DELTA: &str
+pub const checks::COMPLEXITY_DELTA: &str
+pub const checks::CONTRACT_DRIFT: &str
+pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
+pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::measure_text(syntax::language::Language, &str) -> core::result::Result<metrics::FileMetrics, checks::SideError>
+pub fn checks::pair_language(&str) -> core::option::Option<syntax::language::Language>

@@ -1,0 +1,27 @@
+[package]
+name = "hook"
+description = "The erosion gate that Claude Code runs before each Write and Edit: the payload, the proposed text, the in-process lint, the decision, and the log record."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app = { path = "../app" }
+checks = { path = "../checks" }
+git = { path = "../git" }
+io = { path = "../io" }
+kernel = { path = "../kernel" }
+pycompat = { path = "../pycompat" }
+serde.workspace = true
+sha2.workspace = true
+signal-hook.workspace = true
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde_json.workspace = true

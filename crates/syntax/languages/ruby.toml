@@ -1,0 +1,54 @@
+name = "ruby"
+tier = 1
+extensions = [".rb"]
+probe = "x = 1\n"
+probe_root = "program"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["method", "singleton_method"]
+scopes = ["class", "module"]
+bound = []
+name = "field"
+
+[decisions]
+points = [
+    "conditional",
+    "elsif",
+    "for",
+    "if",
+    "if_guard",
+    "if_modifier",
+    "rescue",
+    "rescue_modifier",
+    "unless",
+    "unless_guard",
+    "unless_modifier",
+    "until",
+    "until_modifier",
+    "when",
+    "while",
+    "while_modifier",
+]
+
+[decisions.conditional]
+"in_clause" = "counted_ruby_arm"
+
+[decisions.field_operators]
+"binary" = ["&&", "and", "or", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["method", "singleton_method"]
+blocks = ["begin", "case", "case_match", "for", "if", "unless", "until", "while"]
+identifiers = ["class_variable", "constant", "global_variable", "identifier", "instance_variable"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"FLOAT" = ["complex", "float", "rational"]
+"INT" = ["integer"]
+"NONE" = ["nil"]
+"STR" = ["character", "delimited_symbol", "hash_key_symbol", "regex", "simple_symbol", "string"]

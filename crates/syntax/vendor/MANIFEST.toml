@@ -1,0 +1,1023 @@
+# Written by scripts/vendor_grammars.py. crates/syntax/tests/vendor.rs checks it.
+pack = "xberg-io/tree-sitter-language-pack"
+version = "1.14.3"
+asset = "parser-sources-1.14.3.tar.zst"
+asset_sha256 = "f13bcf0be1b9a99c45ead43671ae311346c2a10807c3fdc7c76407445ea7f2c7"
+archive = "grammars-1.14.3.tar.zst"
+archive_sha256 = "7a4706854053ccd736e995e3a438ba6c2eb3840bc11ee693fd4d10c48fab9c11"
+
+[[language]]
+name = "bash"
+symbol = "bash"
+repo = "https://github.com/tree-sitter/tree-sitter-bash"
+rev = "a06c2e4415e9bc0346c6b86d401879ffb44058f7"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "c"
+symbol = "c"
+repo = "https://github.com/tree-sitter/tree-sitter-c"
+rev = "b780e47fc780ddc8da13afa35a3f4ed5c157823d"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "cpp"
+symbol = "cpp"
+repo = "https://github.com/tree-sitter/tree-sitter-cpp"
+rev = "8b5b49eb196bec7040441bee33b2c9a4838d6967"
+license = "MIT"
+abi = 15
+
+[[language]]
+name = "csharp"
+symbol = "c_sharp"
+repo = "https://github.com/tree-sitter/tree-sitter-c-sharp"
+rev = "9150f7d56bb47f1a809fa23623f1ba1413e93fa9"
+license = "MIT"
+abi = 15
+
+[[language]]
+name = "go"
+symbol = "go"
+repo = "https://github.com/tree-sitter/tree-sitter-go"
+rev = "2346a3ab1bb3857b48b29d779a1ef9799a248cd7"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "hcl"
+symbol = "hcl"
+repo = "https://github.com/MichaHoffmann/tree-sitter-hcl"
+rev = "64ad62785d442eb4d45df3a1764962dafd5bc98b"
+license = "Apache-2.0"
+abi = 14
+
+[[language]]
+name = "java"
+symbol = "java"
+repo = "https://github.com/tree-sitter/tree-sitter-java"
+rev = "e10607b45ff745f5f876bfa3e94fbcc6b44bdc11"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "javascript"
+symbol = "javascript"
+repo = "https://github.com/tree-sitter/tree-sitter-javascript"
+rev = "58404d8cf191d69f2674a8fd507bd5776f46cb11"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "json"
+symbol = "json"
+repo = "https://github.com/tree-sitter/tree-sitter-json"
+rev = "001c28d7a29832b06b0e831ec77845553c89b56d"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "kotlin"
+symbol = "kotlin"
+repo = "https://github.com/fwcd/tree-sitter-kotlin"
+rev = "c8ac3d2627240160b999a2c100de3babbdb8f419"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "lua"
+symbol = "lua"
+repo = "https://github.com/MunifTanjim/tree-sitter-lua"
+rev = "4fbec840c34149b7d5fe10097c93a320ee4af053"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "php"
+symbol = "php"
+repo = "https://github.com/tree-sitter/tree-sitter-php"
+rev = "3fda2fb9577166c6399834917f9844f30370beea"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "python"
+symbol = "python"
+repo = "https://github.com/tree-sitter/tree-sitter-python"
+rev = "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "ruby"
+symbol = "ruby"
+repo = "https://github.com/tree-sitter/tree-sitter-ruby"
+rev = "ad907a69da0c8a4f7a943a7fe012712208da6dee"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "rust"
+symbol = "rust"
+repo = "https://github.com/tree-sitter/tree-sitter-rust"
+rev = "77a3747266f4d621d0757825e6b11edcbf991ca5"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "scala"
+symbol = "scala"
+repo = "https://github.com/tree-sitter/tree-sitter-scala"
+rev = "b4464dce74d84cd43ff1813cd8d85226812c968b"
+license = "MIT"
+abi = 15
+
+[[language]]
+name = "sql"
+symbol = "sql"
+repo = "https://github.com/DerekStride/tree-sitter-sql"
+rev = "c2e1e08db1ea20dc23bdb8d228a81a8756e9c450"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "swift"
+symbol = "swift"
+repo = "https://github.com/alex-pinkus/tree-sitter-swift"
+rev = "28fe3a8a85586aa297524fe6164140b9521dcaff"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "toml"
+symbol = "toml"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-toml"
+rev = "64b56832c2cffe41758f28e05c756a3a98d16f41"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "tsx"
+symbol = "tsx"
+repo = "https://github.com/tree-sitter/tree-sitter-typescript"
+rev = "75b3874edb2dc714fb1fd77a32013d0f8699989f"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "typescript"
+symbol = "typescript"
+repo = "https://github.com/tree-sitter/tree-sitter-typescript"
+rev = "75b3874edb2dc714fb1fd77a32013d0f8699989f"
+license = "MIT"
+abi = 14
+
+[[language]]
+name = "yaml"
+symbol = "yaml"
+repo = "https://github.com/tree-sitter-grammars/tree-sitter-yaml"
+rev = "a1c4812a73ec5e089de8e441fdea3a921e8d5079"
+license = "MIT"
+abi = 14
+
+[[file]]
+path = "licenses/bash/LICENSE"
+size = 1080
+sha256 = "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559"
+origin = "https://github.com/tree-sitter/tree-sitter-bash/blob/a06c2e4415e9bc0346c6b86d401879ffb44058f7/LICENSE"
+
+[[file]]
+path = "licenses/c/LICENSE"
+size = 1080
+sha256 = "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+origin = "https://github.com/tree-sitter/tree-sitter-c/blob/b780e47fc780ddc8da13afa35a3f4ed5c157823d/LICENSE"
+
+[[file]]
+path = "licenses/cpp/LICENSE"
+size = 1080
+sha256 = "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+origin = "https://github.com/tree-sitter/tree-sitter-cpp/blob/8b5b49eb196bec7040441bee33b2c9a4838d6967/LICENSE"
+
+[[file]]
+path = "licenses/csharp/LICENSE"
+size = 1133
+sha256 = "778fb7d63b8c1844da315648c02f325c4713a6f4a5d19644fd413421422776d3"
+origin = "https://github.com/tree-sitter/tree-sitter-c-sharp/blob/9150f7d56bb47f1a809fa23623f1ba1413e93fa9/LICENSE"
+
+[[file]]
+path = "licenses/go/LICENSE"
+size = 1080
+sha256 = "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+origin = "https://github.com/tree-sitter/tree-sitter-go/blob/2346a3ab1bb3857b48b29d779a1ef9799a248cd7/LICENSE"
+
+[[file]]
+path = "licenses/hcl/LICENSE"
+size = 11357
+sha256 = "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+origin = "https://github.com/MichaHoffmann/tree-sitter-hcl/blob/64ad62785d442eb4d45df3a1764962dafd5bc98b/LICENSE"
+
+[[file]]
+path = "licenses/java/LICENSE"
+size = 1069
+sha256 = "52ed137b039cd9c46409bc22e89938af911c95b157feae2d040b51e6084369a7"
+origin = "https://github.com/tree-sitter/tree-sitter-java/blob/e10607b45ff745f5f876bfa3e94fbcc6b44bdc11/LICENSE"
+
+[[file]]
+path = "licenses/javascript/LICENSE"
+size = 1080
+sha256 = "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+origin = "https://github.com/tree-sitter/tree-sitter-javascript/blob/58404d8cf191d69f2674a8fd507bd5776f46cb11/LICENSE"
+
+[[file]]
+path = "licenses/json/LICENSE"
+size = 1080
+sha256 = "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+origin = "https://github.com/tree-sitter/tree-sitter-json/blob/001c28d7a29832b06b0e831ec77845553c89b56d/LICENSE"
+
+[[file]]
+path = "licenses/kotlin/LICENSE"
+size = 1071
+sha256 = "948495f61768f7de26bcc61113d8cd95f50bbc15adb678c28c941c6c8fcd5903"
+origin = "https://github.com/fwcd/tree-sitter-kotlin/blob/c8ac3d2627240160b999a2c100de3babbdb8f419/LICENSE"
+
+[[file]]
+path = "licenses/lua/LICENSE.md"
+size = 1079
+sha256 = "9a32b02e4c917b1ce6b5e79d8ea81e25cefd7f27d89c7235f2afb262c06cf32e"
+origin = "https://github.com/MunifTanjim/tree-sitter-lua/blob/4fbec840c34149b7d5fe10097c93a320ee4af053/LICENSE.md"
+
+[[file]]
+path = "licenses/php/LICENSE"
+size = 1166
+sha256 = "664764fabf40c0b318e06324a5a12379092a2df25b8cbf2415f71bc0bb352346"
+origin = "https://github.com/tree-sitter/tree-sitter-php/blob/3fda2fb9577166c6399834917f9844f30370beea/LICENSE"
+
+[[file]]
+path = "licenses/python/LICENSE"
+size = 1080
+sha256 = "d724405ce238a22c0d35769c5a36b386ad5958192efe8bbb304fb2896254575f"
+origin = "https://github.com/tree-sitter/tree-sitter-python/blob/26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64/LICENSE"
+
+[[file]]
+path = "licenses/ruby/LICENSE"
+size = 1075
+sha256 = "ee006f02a3d856df282e409be2a86e24a65bb573a98b9c28343771141351bb6b"
+origin = "https://github.com/tree-sitter/tree-sitter-ruby/blob/ad907a69da0c8a4f7a943a7fe012712208da6dee/LICENSE"
+
+[[file]]
+path = "licenses/rust/LICENSE"
+size = 1080
+sha256 = "31d5b6f4243d5c7c6e1c4ebbbb9f6407bd1457a08bcc4f706521710341acba36"
+origin = "https://github.com/tree-sitter/tree-sitter-rust/blob/77a3747266f4d621d0757825e6b11edcbf991ca5/LICENSE"
+
+[[file]]
+path = "licenses/scala/LICENSE"
+size = 1091
+sha256 = "1f95ed26e1f4074074c9c7083e61c0a9e4c3b9f435745044995f3beb4ed28575"
+origin = "https://github.com/tree-sitter/tree-sitter-scala/blob/b4464dce74d84cd43ff1813cd8d85226812c968b/LICENSE"
+
+[[file]]
+path = "licenses/sql/LICENSE"
+size = 1069
+sha256 = "3b3e4e4252d5d7d1c18e1257005f23242bf0580ad619204fd093c99b8c56748d"
+origin = "https://github.com/DerekStride/tree-sitter-sql/blob/c2e1e08db1ea20dc23bdb8d228a81a8756e9c450/LICENSE"
+
+[[file]]
+path = "licenses/swift/LICENSE"
+size = 1068
+sha256 = "3533cec129bb4bba015c0d61d86dd7c3b7e82110e4d2ff7837a01eff5bad5ccc"
+origin = "https://github.com/alex-pinkus/tree-sitter-swift/blob/28fe3a8a85586aa297524fe6164140b9521dcaff/LICENSE"
+
+[[file]]
+path = "licenses/toml/LICENSE"
+size = 1116
+sha256 = "b727eee929bee836e8102cecf749a795b199f291b58c885bcd81cae727ac5a46"
+origin = "https://github.com/tree-sitter-grammars/tree-sitter-toml/blob/64b56832c2cffe41758f28e05c756a3a98d16f41/LICENSE"
+
+[[file]]
+path = "licenses/tree-sitter-language-pack/LICENSE"
+size = 1060
+sha256 = "a072c04f582d847b35e348b4160e7845b753cce4503783320717b3c69416e207"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/LICENSE"
+
+[[file]]
+path = "licenses/tsx/LICENSE"
+size = 1080
+sha256 = "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559"
+origin = "https://github.com/tree-sitter/tree-sitter-typescript/blob/75b3874edb2dc714fb1fd77a32013d0f8699989f/LICENSE"
+
+[[file]]
+path = "licenses/typescript/LICENSE"
+size = 1080
+sha256 = "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559"
+origin = "https://github.com/tree-sitter/tree-sitter-typescript/blob/75b3874edb2dc714fb1fd77a32013d0f8699989f/LICENSE"
+
+[[file]]
+path = "licenses/yaml/LICENSE"
+size = 1105
+sha256 = "2d181298822a124f6d106118dcc69c8d4d26ac668559be29682c452e712b0947"
+origin = "https://github.com/tree-sitter-grammars/tree-sitter-yaml/blob/a1c4812a73ec5e089de8e441fdea3a921e8d5079/LICENSE"
+
+[[file]]
+path = "parsers/bash/src/parser.c"
+size = 9929470
+sha256 = "d0914cfee537a03572948e31fab296362bb592f01680489021ed79e65887a05c"
+origin = "asset:parsers/bash/src/parser.c"
+
+[[file]]
+path = "parsers/bash/src/scanner.c"
+size = 45602
+sha256 = "7cc25d70626f8939b35ecd504bf724e2001b817412aa29bceb4c4955a91558a9"
+origin = "asset:parsers/bash/src/scanner.c"
+
+[[file]]
+path = "parsers/bash/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/bash/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/bash/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/bash/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/bash/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/bash/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/c/src/parser.c"
+size = 3870729
+sha256 = "cdebec3ffb6585a53a114b331f9c1fe8ea3f52056070ed151666d3298f1c2e74"
+origin = "asset:parsers/c/src/parser.c"
+
+[[file]]
+path = "parsers/c/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/c/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/c/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/c/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/c/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/c/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/cpp/src/parser.c"
+size = 25857209
+sha256 = "0007727b6e1fbc07657b6a4bf5dc39f524c6009fa347f9faaf180fa9ab17e999"
+origin = "asset:parsers/cpp/src/parser.c"
+
+[[file]]
+path = "parsers/cpp/src/scanner.c"
+size = 5169
+sha256 = "cf60387d290271f4d2fb558d0569b2b9ef879cb72206a9df5cc73b0b1a4b20ff"
+origin = "asset:parsers/cpp/src/scanner.c"
+
+[[file]]
+path = "parsers/cpp/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/cpp/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/cpp/src/tree_sitter/array.h"
+size = 13720
+sha256 = "4483dc3d37ab62fc8cabd5cfbd7de8267a2b1e3b12da3a90a5b8b324dacd5498"
+origin = "asset:parsers/cpp/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/cpp/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/cpp/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/csharp/src/parser.c"
+size = 32021728
+sha256 = "2549deeed0c8aeb84f42f9ccd3cf9de047a0c609387075a97784fddb2d1770cd"
+origin = "asset:parsers/csharp/src/parser.c"
+
+[[file]]
+path = "parsers/csharp/src/scanner.c"
+size = 23064
+sha256 = "2ee1241a6a275e72a06838f5df927700bd405c16b48f986e2c33d1264cae4818"
+origin = "asset:parsers/csharp/src/scanner.c"
+
+[[file]]
+path = "parsers/csharp/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/csharp/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/csharp/src/tree_sitter/array.h"
+size = 10431
+sha256 = "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+origin = "asset:parsers/csharp/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/csharp/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/csharp/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/go/src/parser.c"
+size = 1555733
+sha256 = "47514a6fecab7aa0aca09e2c973c55427f64229e46f3954a771d23728ed3335c"
+origin = "asset:parsers/go/src/parser.c"
+
+[[file]]
+path = "parsers/go/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/go/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/go/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/go/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/go/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/go/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/hcl/src/parser.c"
+size = 611047
+sha256 = "06602502fa1daedcb361549ec51f6f23fba5497163dd06bcd845696ee6d56ac3"
+origin = "asset:parsers/hcl/src/parser.c"
+
+[[file]]
+path = "parsers/hcl/src/scanner.c"
+size = 16154
+sha256 = "846b6e63d4b352c6cf9de1255ca100100e52b1a3f8a7b9805c501bbc83d41966"
+origin = "asset:parsers/hcl/src/scanner.c"
+
+[[file]]
+path = "parsers/hcl/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/hcl/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/hcl/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/hcl/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/hcl/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/hcl/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/java/src/parser.c"
+size = 2561266
+sha256 = "4add5150cf4531eb5dd97f3343dcf65cd11704c84711348b328582b83424a0e4"
+origin = "asset:parsers/java/src/parser.c"
+
+[[file]]
+path = "parsers/java/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/java/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/java/src/tree_sitter/array.h"
+size = 10431
+sha256 = "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+origin = "asset:parsers/java/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/java/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/java/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/javascript/src/parser.c"
+size = 2835682
+sha256 = "14eeaf354068ad64d30fdd38367485ba016955b339fc91ef0221f2cf0315e0d0"
+origin = "asset:parsers/javascript/src/parser.c"
+
+[[file]]
+path = "parsers/javascript/src/scanner.c"
+size = 10576
+sha256 = "b3d3f64284d97bf80749c026862427782cf7ecc0b7dc094e6698ab311c9a42c7"
+origin = "asset:parsers/javascript/src/scanner.c"
+
+[[file]]
+path = "parsers/javascript/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/javascript/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/javascript/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/javascript/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/javascript/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/javascript/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/json/src/parser.c"
+size = 27668
+sha256 = "e8e1ff5df0d73e3b82574129724e68ef4fa0faf1b8c43dd3f5c1a84839f830ab"
+origin = "asset:parsers/json/src/parser.c"
+
+[[file]]
+path = "parsers/json/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/json/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/json/src/tree_sitter/array.h"
+size = 10420
+sha256 = "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1"
+origin = "asset:parsers/json/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/json/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/json/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/kotlin/src/parser.c"
+size = 33716905
+sha256 = "04f52fe1c452c396eaeccf135700c4f3367098c093dffb9d86796807db9d3fb7"
+origin = "asset:parsers/kotlin/src/parser.c"
+
+[[file]]
+path = "parsers/kotlin/src/scanner.c"
+size = 34940
+sha256 = "6369123ff1892c5bf811ecb2e5f0b22b1c58c814cab28aa6ad4fef2101c814fc"
+origin = "asset:parsers/kotlin/src/scanner.c"
+
+[[file]]
+path = "parsers/kotlin/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/kotlin/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/kotlin/src/tree_sitter/array.h"
+size = 10431
+sha256 = "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+origin = "asset:parsers/kotlin/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/kotlin/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/kotlin/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/lua/src/parser.c"
+size = 324731
+sha256 = "f27bed6f236145bd89097a1d7fd26377c8202fc89e3f126ab4c8aef72849d99c"
+origin = "asset:parsers/lua/src/parser.c"
+
+[[file]]
+path = "parsers/lua/src/scanner.c"
+size = 4559
+sha256 = "35bbd630b5a7421d46d2e91185eeea09bf78565d44cb676b63ca20d0f1b54bbd"
+origin = "asset:parsers/lua/src/scanner.c"
+
+[[file]]
+path = "parsers/lua/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/lua/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/lua/src/tree_sitter/array.h"
+size = 10431
+sha256 = "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+origin = "asset:parsers/lua/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/lua/src/tree_sitter/parser.h"
+size = 7678
+sha256 = "11b654fbba7770b1c710cc14b169be2deb5d89c0f87233d4605037c26c1ff657"
+origin = "asset:parsers/lua/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/php/common/scanner.h"
+size = 18018
+sha256 = "b882662c76677999dc22c4fe0146626282170171dcca2af5b6a38e1c1829352c"
+origin = "asset:parsers/php/common/scanner.h"
+
+[[file]]
+path = "parsers/php/src/parser.c"
+size = 7269215
+sha256 = "814a76a3a61899df323a070eac4f71cae24f8ea189340f7892f6195ef80f14f9"
+origin = "asset:parsers/php/src/parser.c"
+
+[[file]]
+path = "parsers/php/src/scanner.c"
+size = 592
+sha256 = "05c80f4fcb792b57528fc5fe9a8a13e4dec5f1a40717a433387c7b88142eacaa"
+origin = "asset:parsers/php/src/scanner.c"
+
+[[file]]
+path = "parsers/php/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/php/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/php/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/php/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/php/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/php/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/python/src/parser.c"
+size = 3410745
+sha256 = "18b235c1b25644a9cd78426108f9c946fdc233eafb4a894363154888d3b233eb"
+origin = "asset:parsers/python/src/parser.c"
+
+[[file]]
+path = "parsers/python/src/scanner.c"
+size = 15470
+sha256 = "6db82134ac2d4c90a1a1475487a625cface02662ebda9b7478cad9c7147e9afe"
+origin = "asset:parsers/python/src/scanner.c"
+
+[[file]]
+path = "parsers/python/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/python/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/python/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/python/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/python/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/python/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/ruby/src/parser.c"
+size = 15277808
+sha256 = "4ce468358b6f4e25a35c8cf6bc0eaf60665bc22d602f8c939323c2347255cd15"
+origin = "asset:parsers/ruby/src/parser.c"
+
+[[file]]
+path = "parsers/ruby/src/scanner.c"
+size = 37383
+sha256 = "88c1c036d5af7c22a1bc9cc5e50411d414ac9624afed676d42957c566ac4083d"
+origin = "asset:parsers/ruby/src/scanner.c"
+
+[[file]]
+path = "parsers/ruby/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/ruby/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/ruby/src/tree_sitter/array.h"
+size = 10420
+sha256 = "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1"
+origin = "asset:parsers/ruby/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/ruby/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/ruby/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/rust/src/parser.c"
+size = 6503551
+sha256 = "a94cb0a5c106946ac8fefc4b99970449d6295e43f54c7a31a0ab09ce38827a6c"
+origin = "asset:parsers/rust/src/parser.c"
+
+[[file]]
+path = "parsers/rust/src/scanner.c"
+size = 12588
+sha256 = "9609a2f92dbb7c32bc056fd8fb94e5478428f04496696aa08b048a9b66caf283"
+origin = "asset:parsers/rust/src/scanner.c"
+
+[[file]]
+path = "parsers/rust/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/rust/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/rust/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/rust/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/rust/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/rust/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/scala/src/parser.c"
+size = 31531003
+sha256 = "27a76a128a0f6e3f4405985af27e672c49965e606c6049dcf586cd99bbb98f6c"
+origin = "asset:parsers/scala/src/parser.c"
+
+[[file]]
+path = "parsers/scala/src/scanner.c"
+size = 45460
+sha256 = "3cdfa4b2e85332f5396511a5410e54b39faa8a6af50f1a64dafea718bae49d29"
+origin = "asset:parsers/scala/src/scanner.c"
+
+[[file]]
+path = "parsers/scala/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/scala/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/scala/src/tree_sitter/array.h"
+size = 13269
+sha256 = "31e60a1bff6f715afacce03b5b70efe42b58371b4f9595dd4af52a577ff9608c"
+origin = "asset:parsers/scala/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/scala/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/scala/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/sql/src/parser.c"
+size = 41602584
+sha256 = "81eabc1c13479808e29a318a72b23d06ef56b125665d8396e651c89b75550a07"
+origin = "asset:parsers/sql/src/parser.c"
+
+[[file]]
+path = "parsers/sql/src/scanner.c"
+size = 4844
+sha256 = "de17b5cffc3c86f56cf6630abb969330c3c839a81ece0b901bdac0ecee93c403"
+origin = "asset:parsers/sql/src/scanner.c"
+
+[[file]]
+path = "parsers/sql/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/sql/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/sql/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/sql/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/sql/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/sql/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/swift/src/parser.c"
+size = 20671710
+sha256 = "98fc812d5085b611f7156c72e994213f8c05955cf6ac253dfc9347bee70cf1b8"
+origin = "asset:parsers/swift/src/parser.c"
+
+[[file]]
+path = "parsers/swift/src/scanner.c"
+size = 29895
+sha256 = "f3d6271d64f58c39eed544104a70ca2cf9ecbf80c5d900620f1afd38836542cb"
+origin = "asset:parsers/swift/src/scanner.c"
+
+[[file]]
+path = "parsers/swift/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/swift/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/swift/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/swift/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/swift/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/swift/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/toml/src/parser.c"
+size = 133991
+sha256 = "1991a2608e6f0214e563fe5f762e8df72954dc69a3dd9a1e22ea8a870e4052c3"
+origin = "asset:parsers/toml/src/parser.c"
+
+[[file]]
+path = "parsers/toml/src/scanner.c"
+size = 2578
+sha256 = "b25ff3b5034f40046e9a041d1e9110aa46d081706bbd1b748b480701aa6f5bde"
+origin = "asset:parsers/toml/src/scanner.c"
+
+[[file]]
+path = "parsers/toml/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/toml/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/toml/src/tree_sitter/array.h"
+size = 10420
+sha256 = "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1"
+origin = "asset:parsers/toml/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/toml/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/toml/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/tsx/common/scanner.h"
+size = 10097
+sha256 = "da66ef2bd14a3f7ea743e25ba068c6c9aae2c3509db200ff80c4a0e6116e564c"
+origin = "asset:parsers/tsx/common/scanner.h"
+
+[[file]]
+path = "parsers/tsx/src/parser.c"
+size = 8769870
+sha256 = "1902cb53fa7ff5179df89b2eea863165e84c8cc866226419dc26921d8c055885"
+origin = "asset:parsers/tsx/src/parser.c"
+
+[[file]]
+path = "parsers/tsx/src/scanner.c"
+size = 535
+sha256 = "f4118d8616dde68b9aaba1344ce7099defd12eee7277aedcc78bd57d3b4f4342"
+origin = "asset:parsers/tsx/src/scanner.c"
+
+[[file]]
+path = "parsers/tsx/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/tsx/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/tsx/src/tree_sitter/array.h"
+size = 10420
+sha256 = "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1"
+origin = "asset:parsers/tsx/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/tsx/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/tsx/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/typescript/common/scanner.h"
+size = 10097
+sha256 = "da66ef2bd14a3f7ea743e25ba068c6c9aae2c3509db200ff80c4a0e6116e564c"
+origin = "asset:parsers/typescript/common/scanner.h"
+
+[[file]]
+path = "parsers/typescript/src/parser.c"
+size = 8745894
+sha256 = "74fe453edd70f4eae9af0a1050cbd7943d8971d59165b6aaebbaa0a0b716d1aa"
+origin = "asset:parsers/typescript/src/parser.c"
+
+[[file]]
+path = "parsers/typescript/src/scanner.c"
+size = 570
+sha256 = "b9fbf674cc093bae35a2c4fb6eb3b0824d1a061c2c28742ae28ecec75c660ab8"
+origin = "asset:parsers/typescript/src/scanner.c"
+
+[[file]]
+path = "parsers/typescript/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/typescript/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/typescript/src/tree_sitter/array.h"
+size = 10420
+sha256 = "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1"
+origin = "asset:parsers/typescript/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/typescript/src/tree_sitter/parser.h"
+size = 7039
+sha256 = "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a"
+origin = "asset:parsers/typescript/src/tree_sitter/parser.h"
+
+[[file]]
+path = "parsers/yaml/src/parser.c"
+size = 1288836
+sha256 = "1787dd7c02e224d879e8767a83f88676d6ed0b55bb7fef4f950c76470a15e7ab"
+origin = "asset:parsers/yaml/src/parser.c"
+
+[[file]]
+path = "parsers/yaml/src/scanner.c"
+size = 51548
+sha256 = "a510c0ca699cf3853bd2192bf103e11132414bc002fe952a88a7106ffb5d44e9"
+origin = "asset:parsers/yaml/src/scanner.c"
+
+[[file]]
+path = "parsers/yaml/src/schema.core.c"
+size = 6630
+sha256 = "91e56c3f3ae6fad1803b739ce4eb4568a782a9aec710f733db2f3e38d407a4d5"
+origin = "asset:parsers/yaml/src/schema.core.c"
+
+[[file]]
+path = "parsers/yaml/src/schema.json.c"
+size = 3065
+sha256 = "3a18e4406aa8cdaea2806483e11c50e1a392fd72cf8f54ab7f189b3728836949"
+origin = "asset:parsers/yaml/src/schema.json.c"
+
+[[file]]
+path = "parsers/yaml/src/schema.legacy.c"
+size = 18624
+sha256 = "4f7ca12361e848214beceaa95ae615048317039ea4736c6eec956e3e8da4694c"
+origin = "asset:parsers/yaml/src/schema.legacy.c"
+
+[[file]]
+path = "parsers/yaml/src/tree_sitter/alloc.h"
+size = 985
+sha256 = "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+origin = "asset:parsers/yaml/src/tree_sitter/alloc.h"
+
+[[file]]
+path = "parsers/yaml/src/tree_sitter/array.h"
+size = 13453
+sha256 = "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+origin = "asset:parsers/yaml/src/tree_sitter/array.h"
+
+[[file]]
+path = "parsers/yaml/src/tree_sitter/parser.h"
+size = 7624
+sha256 = "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+origin = "asset:parsers/yaml/src/tree_sitter/parser.h"
+
+[[file]]
+path = "shim/ctype_shim.h"
+size = 8700
+sha256 = "a44d1bcda083ce3bcfe9defc8cafcdfc0f1e175af74786c8980582e0e00e5f12"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/crates/ts-pack-core/src/ctype_shim.h"
+
+[[file]]
+path = "shim/utf8proc/LICENSE.md"
+size = 5125
+sha256 = "3b510150d34f248a221bb88e1d811238d6c6c18b51231822c42974c39bb07256"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/crates/ts-pack-core/third_party/utf8proc/LICENSE.md"
+
+[[file]]
+path = "shim/utf8proc/utf8proc.c"
+size = 32643
+sha256 = "1f36d14e69e4a5f0658635496f5a9b1f76c418dc36841d2c39d61ab61a258c5d"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/crates/ts-pack-core/third_party/utf8proc/utf8proc.c"
+
+[[file]]
+path = "shim/utf8proc/utf8proc.h"
+size = 33458
+sha256 = "d947b38124a9f218631b537dd7a367f6a2a6a992c72caa46b3f3e7c81e6138ee"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/crates/ts-pack-core/third_party/utf8proc/utf8proc.h"
+
+[[file]]
+path = "shim/utf8proc/utf8proc_data.c"
+size = 2347972
+sha256 = "6aa28d305d65af54260a3521278715c49c4e2445c9c017e8ebf38da3735422e5"
+origin = "https://raw.githubusercontent.com/xberg-io/tree-sitter-language-pack/v1.14.3/crates/ts-pack-core/third_party/utf8proc/utf8proc_data.c"

@@ -12,7 +12,7 @@ use coverage::Ledger;
 use dep_info::Allowed;
 
 use crate::workspace::Package;
-use crate::{Failure, repo, sources, suppressions, verdict, workspace};
+use crate::{Failure, lint_tables, repo, sources, suppressions, verdict, workspace};
 
 // Apart from the normal target dir: each unit's fingerprint holds CLIPPY_ARGS, so a shared dir would rebuild
 // the workspace crates each time this check and the normal clippy run take turns.
@@ -36,13 +36,23 @@ fn problems(root: &Path) -> Result<Vec<String>, Failure> {
     let levels = lints::levels(&table, &configured)
         .map_err(|error| Failure::Broken(format!("{MANIFEST}: {error}")))?;
     let mut problems = lints::cfg_problems(&levels, &configured);
-    let run = clippy(root, &packages, &lints::force_warned(&levels))?;
+    let run = clippy(root, &packages, &forced(&levels))?;
     if run.errors.is_empty() {
         problems.extend(built_problems(root, &packages, &run, &table.groups)?);
     } else {
         problems.extend(run.errors);
     }
     Ok(problems)
+}
+
+// The syntax package raises two unsafe lints above the workspace levels, so an attribute could
+// lower them there: they are force-warned with the workspace's warn and deny lints.
+fn forced(levels: &BTreeMap<String, lints::Level>) -> Vec<String> {
+    let mut forced = lints::force_warned(levels);
+    forced.extend(lint_tables::syntax_raised());
+    forced.sort_unstable();
+    forced.dedup();
+    forced
 }
 
 // Only after a build that compiled: the dep-info files and the diagnostics come from it, and cargo
@@ -161,8 +171,25 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
 
-    use super::unbuilt;
+    use super::{forced, lints, unbuilt};
     use crate::workspace::{Package, Target};
+
+    #[test]
+    fn the_syntax_unsafe_lints_are_force_warned_once() {
+        let levels = BTreeMap::from([
+            ("dead_code".to_owned(), lints::Level::Warn),
+            ("unsafe_op_in_unsafe_fn".to_owned(), lints::Level::Warn),
+            ("unused".to_owned(), lints::Level::Allow),
+        ]);
+        assert_eq!(
+            forced(&levels),
+            [
+                "clippy::undocumented_unsafe_blocks",
+                "dead_code",
+                "unsafe_op_in_unsafe_fn"
+            ]
+        );
+    }
 
     fn target(src_path: &str) -> Target {
         Target {

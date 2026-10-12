@@ -1,0 +1,5 @@
+name = "csharp"
+tier = 2
+extensions = [".cs"]
+probe = "class Probe {}\n"
+probe_root = "compilation_unit"

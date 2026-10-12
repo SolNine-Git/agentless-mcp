@@ -1,0 +1,35 @@
+pub mod render
+pub enum render::Error
+pub render::Error::Json(serde_json::error::Error)
+impl core::convert::From<serde_json::error::Error> for render::Error
+pub fn render::Error::from(serde_json::error::Error) -> Self
+impl core::error::Error for render::Error
+pub fn render::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for render::Error
+pub fn render::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for render::Error
+pub fn render::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for render::Error
+impl core::marker::Send for render::Error
+impl core::marker::Sync for render::Error
+impl core::marker::Unpin for render::Error
+impl core::marker::UnsafeUnpin for render::Error
+impl !core::panic::unwind_safe::RefUnwindSafe for render::Error
+impl !core::panic::unwind_safe::UnwindSafe for render::Error
+pub struct render::Receipt<'a>
+impl<'a> render::Receipt<'a>
+pub fn render::Receipt<'a>::of(&'a app::tags::Session) -> render::Receipt<'a>
+impl<'a> core::fmt::Debug for render::Receipt<'a>
+pub fn render::Receipt<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for render::Receipt<'a>
+impl<'a> core::marker::Send for render::Receipt<'a>
+impl<'a> core::marker::Sync for render::Receipt<'a>
+impl<'a> core::marker::Unpin for render::Receipt<'a>
+impl<'a> core::marker::UnsafeUnpin for render::Receipt<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for render::Receipt<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for render::Receipt<'a>
+pub fn render::capabilities_json(&render::Receipt<'_>, &app::capabilities::Capabilities<'_>) -> core::result::Result<alloc::string::String, render::Error>
+pub fn render::capabilities_text(&render::Receipt<'_>, &app::capabilities::Capabilities<'_>) -> alloc::string::String
+pub fn render::lint_json(&render::Receipt<'_>, &app::lint::LintReport) -> core::result::Result<alloc::string::String, render::Error>
+pub fn render::lint_text(&render::Receipt<'_>, &app::lint::LintReport) -> alloc::string::String
+pub fn render::one_line(&str) -> alloc::borrow::Cow<'_, str>

@@ -229,11 +229,9 @@ sed -n '/fn from_str/,/^    }/p' crates/kernel/src/key.rs \
 commit
 fails "2 clone_delta" "] clone_delta  crates/kernel/src/copied.rs:1" "${erosion[@]}" "$base"
 
-# 3. unwrap_or_default() on a parsed value in a boundary crate.
+# 3. unwrap_or_default() on a parsed value in a boundary crate. The io crate keeps its manifest,
+# because other packages depend on its features.
 violate
-mkdir -p crates/io/src
-printf '[package]\nname = "io"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
-    >crates/io/Cargo.toml
 printf 'pub fn port(text: &str) -> u32 {\n    text.parse().unwrap_or_default()\n}\n' >crates/io/src/lib.rs
 commit
 fails "3 contract_drift" "] contract_drift  crates/io/src/lib.rs:2" "${erosion[@]}" "$base"
@@ -331,7 +329,8 @@ printf '[package]\nname = "prompts"\nversion.workspace = true\nedition.workspace
 printf '\n[dependencies.prompts]\npath = "../prompts"\n' >>crates/kernel/Cargo.toml
 fails "6 xtask layers" "depends on prompts" cargo xtask layers
 violate
-rm -rf crates/kernel
+# Every package directory goes, so no path dependency is left without its package.
+rm -rf crates/*/
 fails "6b no package under crates" "layers has nothing to check" cargo xtask layers
 violate
 mkdir -p "$outside/src"
@@ -443,14 +442,11 @@ fails "8m an edit that a skip-worktree mark hides" "tracked files with an assume
     "${erosion[@]}" "$base"
 git update-index --no-skip-worktree crates/kernel/src/id.rs
 
-# io_drift: commit a boundary crate crates/io as io_base, then an edit that lint reports as a
-# contract drift. The base holds the crate's lock entry: an uncommitted one is a change that lint reads.
+# io_drift: commit a new lib.rs in the boundary crate crates/io as io_base, then an edit that lint
+# reports as a contract drift. The crate keeps its manifest, because other packages depend on its
+# features.
 io_drift() {
-    mkdir -p crates/io/src
-    printf '[package]\nname = "io"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
-        >crates/io/Cargo.toml
     printf 'pub fn port(text: &str) -> Option<u32> {\n    text.parse().ok()\n}\n' >crates/io/src/lib.rs
-    deadline cargo metadata --format-version 1 --offline >/dev/null
     commit
     io_base=$(git rev-parse HEAD)
     printf 'pub fn port(text: &str) -> u32 {\n    text.parse().unwrap_or_default()\n}\n' >crates/io/src/lib.rs
@@ -693,10 +689,8 @@ printf 'xtask/.clippy.toml\n' >>.gitignore
 fails "15o an ignored xtask/.clippy.toml" \
     "xtask: clippy reads xtask/.clippy.toml for this package: it must read xtask/clippy.toml" cargo xtask lint-tables
 violate
-mkdir -p crates/io/src
-printf '[package]\nname = "io"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
-    >crates/io/Cargo.toml
-printf '//! Io.\n' >crates/io/src/lib.rs
+# The io crate keeps its manifest, because other packages depend on its features.
+rm crates/io/clippy.toml
 fails "15p crates/io without its own clippy.toml" \
     "crates/io: clippy reads clippy.toml for this package: it must read crates/io/clippy.toml" cargo xtask lint-tables
 violate
@@ -1011,8 +1005,8 @@ printf '\n[replace]\n"fake:1.0.0" = { path = "vendor/fake" }\n' >>Cargo.toml
 fails "21b [replace]" "Cargo.toml: [replace] is refused" cargo xtask lint-tables
 violate
 mkdir -p crates/io/src crates/io/evil/src
-printf '[package]\nname = "io"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n\n[dependencies]\nevil = { path = "evil" }\n' \
-    >crates/io/Cargo.toml
+# The io crate keeps its manifest, because other packages depend on its features.
+printf '\n[dependencies.evil]\npath = "evil"\n' >>crates/io/Cargo.toml
 printf '[package]\nname = "evil"\nversion.workspace = true\nedition.workspace = true\npublish.workspace = true\n\n[lints]\nworkspace = true\n' \
     >crates/io/evil/Cargo.toml
 printf '//! Io.\n\npub use evil::write;\n' >crates/io/src/lib.rs

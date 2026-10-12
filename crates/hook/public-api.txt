@@ -1,0 +1,23 @@
+pub mod hook
+pub struct hook::Output
+pub hook::Output::code: u8
+pub hook::Output::stderr: alloc::string::String
+pub hook::Output::stdout: alloc::string::String
+impl core::clone::Clone for hook::Output
+pub fn hook::Output::clone(&self) -> Self
+impl core::cmp::Eq for hook::Output
+impl core::cmp::PartialEq for hook::Output
+pub fn hook::Output::eq(&self, &Self) -> bool
+impl core::default::Default for hook::Output
+pub fn hook::Output::default() -> Self
+impl core::fmt::Debug for hook::Output
+pub fn hook::Output::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for hook::Output
+impl core::marker::Freeze for hook::Output
+impl core::marker::Send for hook::Output
+impl core::marker::Sync for hook::Output
+impl core::marker::Unpin for hook::Output
+impl core::marker::UnsafeUnpin for hook::Output
+impl core::panic::unwind_safe::RefUnwindSafe for hook::Output
+impl core::panic::unwind_safe::UnwindSafe for hook::Output
+pub fn hook::erosion(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> hook::Output

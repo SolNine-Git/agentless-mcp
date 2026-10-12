@@ -14,9 +14,24 @@ const GATE_DATA: [&str; 4] = [
     "crates/layers.toml",
     "crates/suppressions.toml",
 ];
-// Test data directories (fixtures, snapshots) that tests read at run time, each named in review. A file
+// Data directories that build scripts, the generator and tests read, each named in review. A file
 // that no rule allows fails, so a new tool's config file fails by default.
-const DATA_DIRS: [&str; 0] = [];
+const DATA_DIRS: [&str; 14] = [
+    "crates/app/fixtures",
+    "crates/checks/fixtures",
+    "crates/cli/fixtures",
+    "crates/git/fixtures",
+    "crates/hook/fixtures",
+    "crates/io/fixtures",
+    "crates/metrics/fixtures",
+    "crates/prompts/fixtures",
+    "crates/pycompat/fixtures",
+    "crates/render/fixtures",
+    "crates/store/fixtures",
+    "crates/syntax/fixtures",
+    "crates/syntax/languages",
+    "crates/syntax/vendor",
+];
 
 /// One source file: its path relative to the root, and what its tokens hold.
 pub struct Source {

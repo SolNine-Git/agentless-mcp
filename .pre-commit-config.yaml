@@ -42,6 +42,8 @@ repos:
       # Prevent accidental commits of large files
       - id: check-added-large-files
         args: [--maxkb=1000]
+        # The vendored grammar archive is about 4.8 MB. Its MANIFEST.toml and a syntax test check it.
+        exclude: ^crates/syntax/vendor/grammars-1\.14\.3\.tar\.zst$
       # Check for symlinks that don't point to anything
       - id: check-symlinks
 
@@ -85,10 +87,13 @@ repos:
         # The audit record quotes evidence verbatim, including strings that
         # are misspelled on purpose. Correcting it would edit the transcript.
         # The public-api.txt snapshots are generated, and serde's module paths in them read as typos.
-        exclude: ^(\.audit/|crates/.*/public-api\.txt$)
+        # The crates' fixtures/ files are generated test data, and their escaped inputs read as typos.
+        exclude: ^(\.audit/|crates/.*/public-api\.txt$|crates/[^/]+/fixtures/)
         args:
           - --skip=*.pyc,.git,.mypy_cache,.ruff_cache,.pytest_cache,__pycache__,uv.lock
           - --ignore-words-list=mcp,readonly,crate
+          # serde_json exports Formatter only at serde_json::ser::Formatter, so the regex removes that path.
+          - '--ignore-regex=(?<!\w)serde_json::ser::'
           - --check-filenames
           - --check-hidden
 

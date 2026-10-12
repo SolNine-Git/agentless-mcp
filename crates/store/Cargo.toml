@@ -1,0 +1,28 @@
+[package]
+name = "store"
+description = "The read side of the tag cache: the database path, the open checks, the clone block rows, the receipt texts, and the discard of an unusable database."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+io = { path = "../io" }
+kernel = { path = "../kernel" }
+libc = "0.2.180"
+metrics = { path = "../metrics" }
+prompts = { path = "../prompts" }
+pycompat = { path = "../pycompat" }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
+sha2.workspace = true
+syntax = { path = "../syntax" }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde.workspace = true
+serde_json.workspace = true

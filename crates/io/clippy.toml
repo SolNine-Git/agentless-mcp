@@ -1,0 +1,7 @@
+# Tighter than clippy's defaults (100 lines, 7 arguments, no nesting limit), so that functions stay small.
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 4
+disallowed-methods = [
+    { path = "rusqlite::Connection::open", reason = "SQLite opens go through the store crate" },
+]

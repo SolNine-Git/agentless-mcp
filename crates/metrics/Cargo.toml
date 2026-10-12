@@ -1,0 +1,23 @@
+[package]
+name = "metrics"
+description = "Complexity units, source line counts, and clone blocks with their keys, measured from one parse."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { path = "../kernel" }
+pycompat = { path = "../pycompat" }
+sha2.workspace = true
+syntax = { path = "../syntax" }
+thiserror.workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true

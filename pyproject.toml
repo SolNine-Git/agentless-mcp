@@ -415,5 +415,8 @@ exclude_also = [
 # The public-api.txt snapshots are generated, and serde's module paths in
 # them read as typos. The leading * matches both ./crates/... (a tree walk)
 # and crates/... (a named file).
-skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,target,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit,*crates/*/public-api.txt"
+# The crates' fixtures/ files are generated test data, and their escaped inputs read as typos.
+skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,target,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit,*crates/*/public-api.txt,*crates/*/fixtures/*"
 ignore-words-list = "mcp,readonly,crate"
+# serde_json exports Formatter only at serde_json::ser::Formatter, so the regex removes that path.
+ignore-regex = '(?<!\w)serde_json::ser::'

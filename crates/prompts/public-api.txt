@@ -1,0 +1,240 @@
+pub mod prompts
+pub mod prompts::envelope
+pub const prompts::envelope::CEILING_TRUNCATION: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::envelope::JSON_CEILING_OVERSIZED_ITEM: prompts::Template<prompts::Count>
+pub const prompts::envelope::JSON_CEILING_TRIMMED: prompts::Template<prompts::Count>
+pub const prompts::envelope::JSON_CEILING_UNTRIMMABLE: prompts::Template<prompts::Count>
+pub const prompts::envelope::NOTICE: &str
+pub const prompts::envelope::RECEIPT_CONFIG: prompts::Template<prompts::Text>
+pub const prompts::envelope::RECEIPT_CONFIG_WARNING: prompts::Template<prompts::Text>
+pub const prompts::envelope::RECEIPT_HEADER: &str
+pub const prompts::envelope::RECEIPT_LINE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::envelope::RECEIPT_NOTE: prompts::Template<prompts::Text>
+pub const prompts::envelope::RECEIPT_SUMMARY: prompts::Template<prompts::Text>
+pub const prompts::envelope::SERVICE_TRUNCATION: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub mod prompts::messages
+pub const prompts::messages::CACHE_ABSENT_REFRESHING: &str
+pub const prompts::messages::CACHE_BUILD_HINT: prompts::Template<prompts::Text>
+pub const prompts::messages::CACHE_DISCARDED_NO_INDEX: &str
+pub const prompts::messages::CACHE_DISCARDED_OLD_SCHEMA: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::CACHE_DISCARDED_OTHER_REPO: prompts::Template<prompts::Text>
+pub const prompts::messages::CACHE_STALE_REFRESHING: &str
+pub const prompts::messages::CACHE_STALE_REMEDIATION: prompts::Template<prompts::Text>
+pub const prompts::messages::CLONE_AND_MORE: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::CLONE_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::CLONE_INDEX_GAPS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::CLONE_INDEX_GAPS_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CLONE_INDEX_STOPPED: &str
+pub const prompts::messages::CLONE_INDEX_UNLISTED: prompts::Template<prompts::Text>
+pub const prompts::messages::CLONE_LANGUAGE_UNSUPPORTED: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::CLONE_NEW_COPY: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::CLONE_NEW_COPY_EVIDENCE: prompts::Template<prompts::Text>
+pub const prompts::messages::CLONE_NEW_NOT_INDEXED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CLONE_NO_TAG_CACHE: &str
+pub const prompts::messages::CLONE_NO_TAG_CACHE_EVIDENCE: &str
+pub const prompts::messages::CLONE_OLD_NOT_INDEXED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CLONE_TOKENIZER_REJECTS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::COMMUNITIES_NOT_CONVERGED: &str
+pub const prompts::messages::COMPLEXITY_CROSSED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_DOES_NOT_PARSE: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_EVIDENCE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_GREW: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_LANGUAGE_UNSUPPORTED: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::COMPLEXITY_NEW_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::COMPLEXITY_NEW_UNIT: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_NEW_UNIT_EVIDENCE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::COMPLEXITY_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::COMPLEXITY_TOKENIZER_REJECTS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CONFIG_BOUNDARY_GLOBS_DROPPED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::CONFIG_BOUNDARY_GLOBS_NOT_LIST: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::CONFIG_BOUNDARY_GLOBS_TOO_MANY: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::CONFIG_EROSION_GATE_MODE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::CONFIG_EROSION_GATE_NOT_OBJECT: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CONFIG_EROSION_GATE_UNKNOWN: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::CONTRACT_EVIDENCE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::CONTRACT_NEW_HIT: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::CONTRACT_NEW_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CONTRACT_NO_BOUNDARY: prompts::Template<prompts::Text>
+pub const prompts::messages::CONTRACT_NO_BOUNDARY_EVIDENCE: &str
+pub const prompts::messages::CONTRACT_NO_RULES: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::CONTRACT_OLD_NOT_MEASURED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPLAIN_TIE: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::FIND_NO_MATCHES: prompts::Template<prompts::Text>
+pub const prompts::messages::FIND_NO_MATCHES_KIND: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::FIND_UNPARSED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::GROUPED_IDS: prompts::Template<prompts::Count>
+pub const prompts::messages::HISTORY_BODY_TRUNCATED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_DIRTY_FILE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_DIRTY_UNKNOWN: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Text)>
+pub const prompts::messages::HISTORY_GIT_FAILED: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_GIT_OUTPUT_MALFORMED: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_MORE_COMMITS: prompts::Template<prompts::Count>
+pub const prompts::messages::HISTORY_NO_COMMITS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_NO_GIT: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_OUTPUT_CAPPED: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_OUTPUT_CAPPED_NO_COMMITS: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_PATH_NOT_IN_HEAD: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_SEATS_CAPPED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_SHALLOW: &str
+pub const prompts::messages::HISTORY_SHALLOW_UNKNOWN: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_SIGNATURE_CHANGED: prompts::Template<prompts::Text>
+pub const prompts::messages::HISTORY_SPAN_BEYOND_HEAD: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::HISTORY_SYMBOL_NOT_IN_HEAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::HISTORY_TARGET_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_NO_CHECKS: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_PATH_NEEDS_AFTER: &str
+pub const prompts::messages::LINT_PATH_TAKES_PAIR_CHECKS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_REVISION_BINARY: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_BINARY_EVIDENCE: prompts::Template<prompts::Count>
+pub const prompts::messages::LINT_REVISION_LISTING_CAPPED: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::LINT_REVISION_NOT_RESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_REVISION_OUTPUT_MALFORMED: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_STATUS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_REVISION_STATUS_EVIDENCE: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_SUBMODULE: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_SUBMODULE_EVIDENCE: &str
+pub const prompts::messages::LINT_REVISION_UNCHANGED: prompts::Template<prompts::Text>
+pub const prompts::messages::LINT_REVISION_UNCHANGED_EVIDENCE: &str
+pub const prompts::messages::LINT_REVISION_UNLISTED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_REVISION_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_SINCE_ALONE: &str
+pub const prompts::messages::LINT_SINCE_TAKES_PAIR_CHECKS: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_UNKNOWN_CHECK: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::LINT_UNKNOWN_SEVERITY: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::MAP_FILE_UNREACHED: prompts::Template<prompts::Count>
+pub const prompts::messages::MAP_LIMIT_OUT_OF_RANGE: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::MAP_UNRESOLVED_SEEDS: prompts::Template<prompts::Text>
+pub const prompts::messages::OP_REJECTS_PARAMETERS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::OP_REQUIRES_PARAMETERS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
+pub const prompts::messages::OVERVIEW_STABLE_IDS: prompts::Template<prompts::Text>
+pub const prompts::messages::PAIR_BLOB_OVER_CAP: prompts::Template<prompts::Count>
+pub const prompts::messages::PAIR_EDITS_UNAPPLIED: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::PAIR_NEW_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::PAIR_OLD_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::PAIR_WORKTREE_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::PATH_NEEDS_ENDPOINTS: prompts::Template<prompts::Text>
+pub const prompts::messages::REFS_TARGET_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::REPO_REFUSED_NOT_ALLOWED: prompts::Template<prompts::Text>
+pub const prompts::messages::REPO_REFUSED_NO_ROOTS: &str
+pub const prompts::messages::ROOTS_FILE_HINT: prompts::Template<prompts::Text>
+pub const prompts::messages::ROOTS_FILE_UNREADABLE: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::SCAN_SKIPPED_FILES: prompts::Template<(prompts::Count, prompts::Text)>
+pub const prompts::messages::SERVER_NO_ROOTS: &str
+pub const prompts::messages::SERVER_ROOT_REQUIRED: prompts::Template<prompts::Text>
+pub const prompts::messages::SLICE_RANGE_BEYOND_FILE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count, prompts::Count)>
+pub const prompts::messages::SLICE_RANGE_NOT_A_RANGE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
+pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
+pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
+pub const prompts::messages::UNKNOWN_OPERATION: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub enum prompts::Severity
+pub prompts::Severity::Advisory
+pub prompts::Severity::Warning
+impl core::clone::Clone for prompts::Severity
+pub fn prompts::Severity::clone(&self) -> Self
+impl core::cmp::Eq for prompts::Severity
+impl core::cmp::PartialEq for prompts::Severity
+pub fn prompts::Severity::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::Severity
+pub fn prompts::Severity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Severity
+impl core::marker::StructuralPartialEq for prompts::Severity
+impl core::marker::Freeze for prompts::Severity
+impl core::marker::Send for prompts::Severity
+impl core::marker::Sync for prompts::Severity
+impl core::marker::Unpin for prompts::Severity
+impl core::marker::UnsafeUnpin for prompts::Severity
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Severity
+impl core::panic::unwind_safe::UnwindSafe for prompts::Severity
+pub struct prompts::ContractRule
+pub prompts::ContractRule::id: &'static str
+pub prompts::ContractRule::language: &'static str
+pub prompts::ContractRule::message: &'static str
+pub prompts::ContractRule::query: &'static str
+pub prompts::ContractRule::severity: prompts::Severity
+impl core::clone::Clone for prompts::ContractRule
+pub fn prompts::ContractRule::clone(&self) -> Self
+impl core::cmp::Eq for prompts::ContractRule
+impl core::cmp::PartialEq for prompts::ContractRule
+pub fn prompts::ContractRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for prompts::ContractRule
+pub fn prompts::ContractRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::ContractRule
+impl core::marker::StructuralPartialEq for prompts::ContractRule
+impl core::marker::Freeze for prompts::ContractRule
+impl core::marker::Send for prompts::ContractRule
+impl core::marker::Sync for prompts::ContractRule
+impl core::marker::Unpin for prompts::ContractRule
+impl core::marker::UnsafeUnpin for prompts::ContractRule
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::ContractRule
+impl core::panic::unwind_safe::UnwindSafe for prompts::ContractRule
+pub struct prompts::Count
+impl core::clone::Clone for prompts::Count
+pub fn prompts::Count::clone(&self) -> Self
+impl core::fmt::Debug for prompts::Count
+pub fn prompts::Count::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Count
+impl prompts::Kind for prompts::Count
+pub type prompts::Count::Value<'a> = usize
+impl core::marker::Freeze for prompts::Count
+impl core::marker::Send for prompts::Count
+impl core::marker::Sync for prompts::Count
+impl core::marker::Unpin for prompts::Count
+impl core::marker::UnsafeUnpin for prompts::Count
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Count
+impl core::panic::unwind_safe::UnwindSafe for prompts::Count
+pub struct prompts::Template<S>
+impl<S: prompts::Signature> prompts::Template<S>
+pub fn prompts::Template<S>::render(&self, <S as prompts::Signature>::Values) -> alloc::string::String
+impl<S> core::marker::Freeze for prompts::Template<S> where core::marker::PhantomData<S>: core::marker::Freeze
+impl<S> core::marker::Send for prompts::Template<S> where core::marker::PhantomData<S>: core::marker::Send
+impl<S> core::marker::Sync for prompts::Template<S> where core::marker::PhantomData<S>: core::marker::Sync
+impl<S> core::marker::Unpin for prompts::Template<S> where core::marker::PhantomData<S>: core::marker::Unpin
+impl<S> core::marker::UnsafeUnpin for prompts::Template<S> where core::marker::PhantomData<S>: core::marker::UnsafeUnpin
+impl<S> core::panic::unwind_safe::RefUnwindSafe for prompts::Template<S> where core::marker::PhantomData<S>: core::panic::unwind_safe::RefUnwindSafe
+impl<S> core::panic::unwind_safe::UnwindSafe for prompts::Template<S> where core::marker::PhantomData<S>: core::panic::unwind_safe::UnwindSafe
+pub struct prompts::Text
+impl core::clone::Clone for prompts::Text
+pub fn prompts::Text::clone(&self) -> Self
+impl core::fmt::Debug for prompts::Text
+pub fn prompts::Text::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for prompts::Text
+impl prompts::Kind for prompts::Text
+pub type prompts::Text::Value<'a> = &'a str
+impl core::marker::Freeze for prompts::Text
+impl core::marker::Send for prompts::Text
+impl core::marker::Sync for prompts::Text
+impl core::marker::Unpin for prompts::Text
+impl core::marker::UnsafeUnpin for prompts::Text
+impl core::panic::unwind_safe::RefUnwindSafe for prompts::Text
+impl core::panic::unwind_safe::UnwindSafe for prompts::Text
+pub trait prompts::Kind
+pub type prompts::Kind::Value<'a>: core::fmt::Display
+impl prompts::Kind for prompts::Count
+pub type prompts::Count::Value<'a> = usize
+impl prompts::Kind for prompts::Text
+pub type prompts::Text::Value<'a> = &'a str
+pub trait prompts::Signature
+pub type prompts::Signature::Values<'a>
+pub fn prompts::Signature::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind, E: prompts::Kind, F: prompts::Kind> prompts::Signature for (A, B, C, D, E, F)
+pub type (A, B, C, D, E, F)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value, <E as prompts::Kind>::Value, <F as prompts::Kind>::Value)
+pub fn (A, B, C, D, E, F)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind, E: prompts::Kind> prompts::Signature for (A, B, C, D, E)
+pub type (A, B, C, D, E)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value, <E as prompts::Kind>::Value)
+pub fn (A, B, C, D, E)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind, D: prompts::Kind> prompts::Signature for (A, B, C, D)
+pub type (A, B, C, D)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value, <D as prompts::Kind>::Value)
+pub fn (A, B, C, D)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<A: prompts::Kind, B: prompts::Kind, C: prompts::Kind> prompts::Signature for (A, B, C)
+pub type (A, B, C)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value, <C as prompts::Kind>::Value)
+pub fn (A, B, C)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<A: prompts::Kind, B: prompts::Kind> prompts::Signature for (A, B)
+pub type (A, B)::Values<'a> = (<A as prompts::Kind>::Value, <B as prompts::Kind>::Value)
+pub fn (A, B)::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+impl<K: prompts::Kind> prompts::Signature for K
+pub type K::Values<'a> = <K as prompts::Kind>::Value
+pub fn K::texts(Self::Values) -> alloc::vec::Vec<alloc::string::String>
+pub fn prompts::contract_rules() -> &'static [prompts::ContractRule]

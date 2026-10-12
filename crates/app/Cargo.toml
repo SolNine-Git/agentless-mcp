@@ -1,0 +1,29 @@
+[package]
+name = "app"
+description = "The operations layer: the lint pair forms, capabilities, the repository context, and the start-up configuration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+checks = { path = "../checks" }
+git = { path = "../git" }
+io = { path = "../io" }
+kernel = { path = "../kernel" }
+metrics = { path = "../metrics" }
+prompts = { path = "../prompts" }
+pycompat = { path = "../pycompat" }
+serde.workspace = true
+store = { path = "../store" }
+syntax = { path = "../syntax" }
+thiserror.workspace = true
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde_json.workspace = true

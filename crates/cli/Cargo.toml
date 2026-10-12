@@ -1,0 +1,23 @@
+[package]
+name = "cli"
+description = "The command line of lint and capabilities: the argparse-compatible parser and help, the steps of each command, and the exit codes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app = { path = "../app" }
+kernel = { path = "../kernel" }
+prompts = { path = "../prompts" }
+pycompat = { path = "../pycompat" }
+render = { path = "../render" }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde_json.workspace = true

@@ -4,6 +4,9 @@ Development-time only, with the standard library alone. The method is the
 overview's "Baselines" section in docs/plans/2026-10-10_rust-port-00-overview.md.
 
     python3 -I scripts/hook_latency.py --mcp-local ../mcp-local --build 1dc4d70 --build HEAD
+
+With --rust, a built Rust agentless-mcp runs `hook erosion` as one more arm. It reads the tag
+cache of the last --build, so that build must write the cache schema the Rust hook reads.
 """
 
 import argparse
@@ -64,6 +67,8 @@ class Build:
 
     rev: str
     root: Path
+    # The Rust hook's command line; None runs the build's Python hook script.
+    hook: tuple[str, ...] | None = None
 
     @property
     def binary(self) -> Path:
@@ -111,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--mcp-local", type=Path, required=True, help="a local mcp-local clone")
     parser.add_argument("--build", action="append", required=True, help="a commit of this repo")
+    parser.add_argument("--rust", type=Path, help="a built Rust agentless-mcp binary")
     parser.add_argument("--runs", type=int, default=RUNS)
     parser.add_argument("--work", type=Path, help="an empty or absent scratch directory")
     args = parser.parse_args(argv)
@@ -124,10 +130,13 @@ def main(argv: list[str] | None = None) -> int:
     grammars = _grammar_cache()
     clone = _clone_mcp_local(args.mcp_local, work)
     builds = [_freeze(rev, work, grammars) for rev in args.build]
+    if args.rust is not None:
+        rust = str(args.rust.resolve())
+        builds.append(Build(f"rust {rust}", builds[-1].root, (rust, "hook", "erosion")))
     session = Session(_payload(clone, work), python, args.runs, work)
 
     rows = _measure(GATE_OFF, builds, session) + _measure(ABSENT, builds, session)
-    _index_clone(builds, clone)
+    _index_clone([build for build in builds if build.hook is None], clone)
     rows += _measure(FRESH, builds, session)
     stale = _make_stale(clone)
     rows += _measure(STALE, builds, session)
@@ -293,8 +302,9 @@ def _env(build: Build, state: str, *, log: Path | None) -> dict[str, str]:
 
 
 def _arm(build: Build, state: str, session: Session) -> Arm:
-    log = session.work / f"log-{build.root.name}-{state.replace(' ', '-')}.jsonl"
-    command = [session.python, str(build.root / HOOK)]
+    name = build.root.name if build.hook is None else f"{build.root.name}-rust"
+    log = session.work / f"log-{name}-{state.replace(' ', '-')}.jsonl"
+    command = [session.python, str(build.root / HOOK)] if build.hook is None else list(build.hook)
     return Arm(build=build, command=command, env=_env(build, state, log=log), log=log)
 
 

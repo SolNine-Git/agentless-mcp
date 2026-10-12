@@ -232,6 +232,20 @@ fn syntax_lints(lints: &Table) -> Table {
     table
 }
 
+/// Return the lints that the syntax package raises above the workspace levels, as rustc names them.
+pub fn syntax_raised() -> Vec<String> {
+    SYNTAX_ADDS
+        .iter()
+        .map(|(group, lint)| {
+            if *group == "clippy" {
+                format!("clippy::{lint}")
+            } else {
+                (*lint).to_owned()
+            }
+        })
+        .collect()
+}
+
 fn unsafe_problems(files: &[Source]) -> Vec<String> {
     let mut problems = Vec::new();
     for source in files {

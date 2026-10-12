@@ -1,0 +1,44 @@
+name = "rust"
+tier = 1
+extensions = [".rs"]
+probe = "fn main() {}\n"
+probe_root = "source_file"
+comments = ["block_comment", "line_comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_item"]
+scopes = ["impl_item", "mod_item", "trait_item"]
+bound = []
+name = "rust_impl"
+
+[decisions]
+points = ["for_expression", "if_expression", "while_expression"]
+
+[decisions.conditional]
+"match_arm" = "counted_rust_arm"
+"match_pattern" = "has_condition"
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "||"]
+
+[decisions.token_operators]
+"let_chain" = ["&&"]
+
+[clones]
+functions = ["function_item"]
+blocks = [
+    "for_expression",
+    "if_expression",
+    "loop_expression",
+    "match_expression",
+    "while_expression",
+]
+identifiers = ["field_identifier", "identifier", "shorthand_field_identifier", "type_identifier"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["boolean_literal"]
+"FLOAT" = ["float_literal"]
+"INT" = ["integer_literal"]
+"STR" = ["char_literal", "raw_string_literal", "string_literal"]

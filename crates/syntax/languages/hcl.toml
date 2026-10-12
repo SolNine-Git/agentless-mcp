@@ -1,0 +1,5 @@
+name = "hcl"
+tier = 2
+extensions = [".hcl", ".tf"]
+probe = "resource \"null_resource\" \"probe\" {}\n"
+probe_root = "config_file"

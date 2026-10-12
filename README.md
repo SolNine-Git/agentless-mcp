@@ -607,9 +607,9 @@ wins over every repository key.
 
 | Variable | Effect |
 |---|---|
-| `AGENTLESS_EROSION_GATE` | `off` turns the gate off everywhere. `advisory` or `block` sets the default mode. |
-| `AGENTLESS_EROSION_BIN` | The `agentless-mcp` binary to run. Without it, the hook runs `agentless-mcp` from `PATH`. |
-| `AGENTLESS_EROSION_LOG` | A file path. The hook appends one JSON line per call to this file. |
+| `AGENTLESS_EROSION_GATE` | `off` turns the gate off everywhere. `advisory` or `block` sets the default mode. Both hooks read it. |
+| `AGENTLESS_EROSION_BIN` | The Python script only: the `agentless-mcp` binary that it runs. Without it, the script runs `agentless-mcp` from `PATH`. The Rust hook, `agentless-mcp hook erosion`, runs lint in its own process and ignores this variable. |
+| `AGENTLESS_EROSION_LOG` | A file path. The hook appends one JSON line per call to this file. In a record from the Rust hook, `binary` is the path of the running `agentless-mcp`. |
 
 The binary must have the hook form (`lint --path`). With a release that does
 not have it, the log records every call as `degraded` with the reason

@@ -1,0 +1,39 @@
+[package]
+name = "syntax"
+description = "The vendored tree-sitter grammars, a parse with a flat node table, the language tables, and queries."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unexpected_cfgs = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+allow_attributes = "forbid"
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+undocumented_unsafe_blocks = "deny"
+
+[dependencies]
+thiserror.workspace = true
+tree-sitter.workspace = true
+tree-sitter-language.workspace = true
+
+[build-dependencies]
+cc.workspace = true
+ruzstd.workspace = true
+tar.workspace = true
+
+[dev-dependencies]
+ruzstd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+toml.workspace = true

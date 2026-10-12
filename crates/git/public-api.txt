@@ -1,0 +1,289 @@
+pub mod git
+pub enum git::GitOutcome
+pub git::GitOutcome::Capped(alloc::vec::Vec<u8>)
+pub git::GitOutcome::Failed(git::Failure)
+pub git::GitOutcome::Printed(alloc::vec::Vec<u8>)
+pub git::GitOutcome::Unfinished(git::Unfinished)
+impl core::clone::Clone for git::GitOutcome
+pub fn git::GitOutcome::clone(&self) -> Self
+impl core::cmp::Eq for git::GitOutcome
+impl core::cmp::PartialEq for git::GitOutcome
+pub fn git::GitOutcome::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::GitOutcome
+pub fn git::GitOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::GitOutcome
+impl core::marker::Freeze for git::GitOutcome
+impl core::marker::Send for git::GitOutcome
+impl core::marker::Sync for git::GitOutcome
+impl core::marker::Unpin for git::GitOutcome
+impl core::marker::UnsafeUnpin for git::GitOutcome
+impl core::panic::unwind_safe::RefUnwindSafe for git::GitOutcome
+impl core::panic::unwind_safe::UnwindSafe for git::GitOutcome
+pub enum git::Malformed
+pub git::Malformed::Mode(alloc::string::String)
+pub git::Malformed::NoMeta
+pub git::Malformed::NoPath
+pub git::Malformed::NotOneObjectName
+impl core::clone::Clone for git::Malformed
+pub fn git::Malformed::clone(&self) -> Self
+impl core::cmp::Eq for git::Malformed
+impl core::cmp::PartialEq for git::Malformed
+pub fn git::Malformed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Malformed
+pub fn git::Malformed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::Malformed
+pub fn git::Malformed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Malformed
+impl core::marker::Freeze for git::Malformed
+impl core::marker::Send for git::Malformed
+impl core::marker::Sync for git::Malformed
+impl core::marker::Unpin for git::Malformed
+impl core::marker::UnsafeUnpin for git::Malformed
+impl core::panic::unwind_safe::RefUnwindSafe for git::Malformed
+impl core::panic::unwind_safe::UnwindSafe for git::Malformed
+pub enum git::Side
+pub git::Side::Absent
+pub git::Side::File
+pub git::Side::Gitlink
+pub git::Side::Link
+impl core::clone::Clone for git::Side
+pub fn git::Side::clone(&self) -> Self
+impl core::cmp::Eq for git::Side
+impl core::cmp::PartialEq for git::Side
+pub fn git::Side::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Side
+pub fn git::Side::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for git::Side
+pub fn git::Side::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for git::Side
+impl core::marker::StructuralPartialEq for git::Side
+impl core::marker::Freeze for git::Side
+impl core::marker::Send for git::Side
+impl core::marker::Sync for git::Side
+impl core::marker::Unpin for git::Side
+impl core::marker::UnsafeUnpin for git::Side
+impl core::panic::unwind_safe::RefUnwindSafe for git::Side
+impl core::panic::unwind_safe::UnwindSafe for git::Side
+pub enum git::Toplevel
+pub git::Toplevel::Capped
+pub git::Toplevel::Failed
+pub git::Toplevel::Failed::code: i32
+pub git::Toplevel::Failed::stderr: alloc::vec::Vec<u8>
+pub git::Toplevel::Found(alloc::vec::Vec<u8>)
+pub git::Toplevel::NotInstalled
+pub git::Toplevel::NotRepository
+pub git::Toplevel::NotRun
+pub git::Toplevel::NotRun::errno: core::option::Option<i32>
+pub git::Toplevel::NotRun::message: alloc::string::String
+pub git::Toplevel::TimedOut
+impl core::clone::Clone for git::Toplevel
+pub fn git::Toplevel::clone(&self) -> Self
+impl core::cmp::Eq for git::Toplevel
+impl core::cmp::PartialEq for git::Toplevel
+pub fn git::Toplevel::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Toplevel
+pub fn git::Toplevel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Toplevel
+impl core::marker::Freeze for git::Toplevel
+impl core::marker::Send for git::Toplevel
+impl core::marker::Sync for git::Toplevel
+impl core::marker::Unpin for git::Toplevel
+impl core::marker::UnsafeUnpin for git::Toplevel
+impl core::panic::unwind_safe::RefUnwindSafe for git::Toplevel
+impl core::panic::unwind_safe::UnwindSafe for git::Toplevel
+pub enum git::Unfinished
+pub git::Unfinished::NotInstalled
+pub git::Unfinished::NotRun
+pub git::Unfinished::NotRun::reason: alloc::string::String
+pub git::Unfinished::NotRun::subcommand: &'static str
+pub git::Unfinished::TimedOut
+pub git::Unfinished::TimedOut::after: &'static str
+pub git::Unfinished::TimedOut::subcommand: &'static str
+impl core::clone::Clone for git::Unfinished
+pub fn git::Unfinished::clone(&self) -> Self
+impl core::cmp::Eq for git::Unfinished
+impl core::cmp::PartialEq for git::Unfinished
+pub fn git::Unfinished::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Unfinished
+pub fn git::Unfinished::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::Unfinished
+pub fn git::Unfinished::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Unfinished
+impl core::marker::Freeze for git::Unfinished
+impl core::marker::Send for git::Unfinished
+impl core::marker::Sync for git::Unfinished
+impl core::marker::Unpin for git::Unfinished
+impl core::marker::UnsafeUnpin for git::Unfinished
+impl core::panic::unwind_safe::RefUnwindSafe for git::Unfinished
+impl core::panic::unwind_safe::UnwindSafe for git::Unfinished
+pub enum git::WalkError
+pub git::WalkError::ListingCapped
+pub git::WalkError::ListingCapped::root: std::path::PathBuf
+pub git::WalkError::Refused(io::walk::WalkRefusal)
+pub git::WalkError::TooDeep
+pub git::WalkError::TooDeep::depth: usize
+pub git::WalkError::TooDeep::limit: usize
+pub git::WalkError::TooDeep::root: std::path::PathBuf
+pub git::WalkError::Unlisted
+pub git::WalkError::Unlisted::note: alloc::string::String
+pub git::WalkError::Unlisted::root: std::path::PathBuf
+impl core::convert::From<git::WalkError> for kernel::error::Error
+pub fn kernel::error::Error::from(git::WalkError) -> Self
+impl core::fmt::Debug for git::WalkError
+pub fn git::WalkError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::WalkError
+pub fn git::WalkError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for git::WalkError
+impl core::marker::Send for git::WalkError
+impl core::marker::Sync for git::WalkError
+impl core::marker::Unpin for git::WalkError
+impl core::marker::UnsafeUnpin for git::WalkError
+impl core::panic::unwind_safe::RefUnwindSafe for git::WalkError
+impl core::panic::unwind_safe::UnwindSafe for git::WalkError
+pub enum git::WalkWarning
+pub git::WalkWarning::IgnoreUnchecked
+pub git::WalkWarning::IgnoreUnchecked::reason: git::Unfinished
+pub git::WalkWarning::IgnoreUnchecked::root: std::path::PathBuf
+pub git::WalkWarning::IgnoreUnchecked::top: std::path::PathBuf
+pub git::WalkWarning::NotUtf8
+pub git::WalkWarning::NotUtf8::count: usize
+pub git::WalkWarning::NotUtf8::root: std::path::PathBuf
+pub git::WalkWarning::NotUtf8Walked
+pub git::WalkWarning::NotUtf8Walked::count: usize
+pub git::WalkWarning::NotUtf8Walked::root: std::path::PathBuf
+pub git::WalkWarning::Skipped(io::walk::WalkSkip)
+impl core::fmt::Debug for git::WalkWarning
+pub fn git::WalkWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::WalkWarning
+pub fn git::WalkWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for git::WalkWarning
+impl core::marker::Send for git::WalkWarning
+impl core::marker::Sync for git::WalkWarning
+impl core::marker::Unpin for git::WalkWarning
+impl core::marker::UnsafeUnpin for git::WalkWarning
+impl !core::panic::unwind_safe::RefUnwindSafe for git::WalkWarning
+impl !core::panic::unwind_safe::UnwindSafe for git::WalkWarning
+pub struct git::Change
+pub git::Change::new: git::Side
+pub git::Change::old: git::Side
+pub git::Change::old_path: alloc::string::String
+pub git::Change::path: alloc::string::String
+pub git::Change::status: char
+impl core::clone::Clone for git::Change
+pub fn git::Change::clone(&self) -> Self
+impl core::cmp::Eq for git::Change
+impl core::cmp::PartialEq for git::Change
+pub fn git::Change::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Change
+pub fn git::Change::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Change
+impl core::marker::Freeze for git::Change
+impl core::marker::Send for git::Change
+impl core::marker::Sync for git::Change
+impl core::marker::Unpin for git::Change
+impl core::marker::UnsafeUnpin for git::Change
+impl core::panic::unwind_safe::RefUnwindSafe for git::Change
+impl core::panic::unwind_safe::UnwindSafe for git::Change
+pub struct git::Failure
+pub git::Failure::code: i32
+pub git::Failure::detail: alloc::string::String
+pub git::Failure::subcommand: &'static str
+impl core::clone::Clone for git::Failure
+pub fn git::Failure::clone(&self) -> Self
+impl core::cmp::Eq for git::Failure
+impl core::cmp::PartialEq for git::Failure
+pub fn git::Failure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Failure
+pub fn git::Failure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::Failure
+pub fn git::Failure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Failure
+impl core::marker::Freeze for git::Failure
+impl core::marker::Send for git::Failure
+impl core::marker::Sync for git::Failure
+impl core::marker::Unpin for git::Failure
+impl core::marker::UnsafeUnpin for git::Failure
+impl core::panic::unwind_safe::RefUnwindSafe for git::Failure
+impl core::panic::unwind_safe::UnwindSafe for git::Failure
+pub struct git::Git
+impl git::Git
+pub fn git::Git::blob(&self, &std::path::Path, &str, &str) -> git::GitOutcome
+pub fn git::Git::changes(&self, &std::path::Path, &str) -> git::GitOutcome
+pub fn git::Git::untracked(&self, &std::path::Path) -> git::GitOutcome
+pub fn git::Git::verify(&self, &std::path::Path, &str) -> git::GitOutcome
+impl git::Git
+pub fn git::Git::new(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>) -> Self
+impl git::Git
+pub fn git::Git::root(&self, &std::path::Path) -> core::option::Option<std::path::PathBuf>
+pub fn git::Git::snapshot(&self, &std::path::Path) -> git::Snapshot
+impl git::Git
+pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
+impl git::Git
+pub fn git::Git::walk(&self, &std::path::Path) -> core::result::Result<git::Walk, git::WalkError>
+impl core::clone::Clone for git::Git
+pub fn git::Git::clone(&self) -> Self
+impl core::marker::Freeze for git::Git
+impl core::marker::Send for git::Git
+impl core::marker::Sync for git::Git
+impl core::marker::Unpin for git::Git
+impl core::marker::UnsafeUnpin for git::Git
+impl core::panic::unwind_safe::RefUnwindSafe for git::Git
+impl core::panic::unwind_safe::UnwindSafe for git::Git
+pub struct git::RepoFile
+pub git::RepoFile::path: alloc::string::String
+pub git::RepoFile::size: u64
+impl core::clone::Clone for git::RepoFile
+pub fn git::RepoFile::clone(&self) -> Self
+impl core::cmp::Eq for git::RepoFile
+impl core::cmp::PartialEq for git::RepoFile
+pub fn git::RepoFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::RepoFile
+pub fn git::RepoFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::RepoFile
+impl core::marker::Freeze for git::RepoFile
+impl core::marker::Send for git::RepoFile
+impl core::marker::Sync for git::RepoFile
+impl core::marker::Unpin for git::RepoFile
+impl core::marker::UnsafeUnpin for git::RepoFile
+impl core::panic::unwind_safe::RefUnwindSafe for git::RepoFile
+impl core::panic::unwind_safe::UnwindSafe for git::RepoFile
+pub struct git::Snapshot
+pub git::Snapshot::dirty_count: core::option::Option<usize>
+pub git::Snapshot::head_sha: core::option::Option<alloc::string::String>
+pub git::Snapshot::note: alloc::string::String
+pub git::Snapshot::tree_oid: core::option::Option<alloc::string::String>
+impl core::clone::Clone for git::Snapshot
+pub fn git::Snapshot::clone(&self) -> Self
+impl core::cmp::Eq for git::Snapshot
+impl core::cmp::PartialEq for git::Snapshot
+pub fn git::Snapshot::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Snapshot
+pub fn git::Snapshot::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Snapshot
+impl core::marker::Freeze for git::Snapshot
+impl core::marker::Send for git::Snapshot
+impl core::marker::Sync for git::Snapshot
+impl core::marker::Unpin for git::Snapshot
+impl core::marker::UnsafeUnpin for git::Snapshot
+impl core::panic::unwind_safe::RefUnwindSafe for git::Snapshot
+impl core::panic::unwind_safe::UnwindSafe for git::Snapshot
+pub struct git::Walk
+pub git::Walk::files: alloc::vec::Vec<git::RepoFile>
+pub git::Walk::warnings: alloc::vec::Vec<git::WalkWarning>
+impl core::fmt::Debug for git::Walk
+pub fn git::Walk::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for git::Walk
+impl core::marker::Send for git::Walk
+impl core::marker::Sync for git::Walk
+impl core::marker::Unpin for git::Walk
+impl core::marker::UnsafeUnpin for git::Walk
+impl !core::panic::unwind_safe::RefUnwindSafe for git::Walk
+impl !core::panic::unwind_safe::UnwindSafe for git::Walk
+pub const git::BINARY_PROBE_BYTES: usize
+pub const git::COMPARED_STATUSES: [char; 7]
+pub const git::MAX_LISTING_BYTES: usize
+pub const git::UNTRACKED: char
+pub fn git::looks_binary(&[u8]) -> bool
+pub fn git::parse_changes(&[u8]) -> core::result::Result<alloc::vec::Vec<git::Change>, git::Malformed>
+pub fn git::parse_commit(&[u8]) -> core::result::Result<alloc::string::String, git::Malformed>
+pub fn git::parse_untracked(&[u8]) -> alloc::vec::Vec<git::Change>

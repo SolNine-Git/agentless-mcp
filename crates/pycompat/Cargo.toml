@@ -1,0 +1,17 @@
+[package]
+name = "pycompat"
+description = "CPython behaviors the port must match: string splitting, float formatting, JSON form, and the SLOC rule."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = "0.2.180"
+serde.workspace = true
+serde_json.workspace = true

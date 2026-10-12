@@ -1,0 +1,97 @@
+pub mod metrics
+pub enum metrics::Unmeasurable
+pub metrics::Unmeasurable::DocstringQuery(syntax::query::QueryRunError)
+pub metrics::Unmeasurable::DoesNotParse
+pub metrics::Unmeasurable::DoesNotParse::line: u32
+pub metrics::Unmeasurable::Tokenizer(pycompat::sloc::TokenizeError)
+pub metrics::Unmeasurable::Unsupported
+pub metrics::Unmeasurable::Unsupported::language: syntax::language::Language
+impl core::clone::Clone for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Unmeasurable
+impl core::cmp::PartialEq for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::eq(&self, &Self) -> bool
+impl core::error::Error for metrics::Unmeasurable
+impl core::fmt::Debug for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::Unmeasurable
+impl core::marker::Freeze for metrics::Unmeasurable
+impl core::marker::Send for metrics::Unmeasurable
+impl core::marker::Sync for metrics::Unmeasurable
+impl core::marker::Unpin for metrics::Unmeasurable
+impl core::marker::UnsafeUnpin for metrics::Unmeasurable
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Unmeasurable
+impl core::panic::unwind_safe::UnwindSafe for metrics::Unmeasurable
+pub struct metrics::Block
+pub metrics::Block::end_line: u32
+pub metrics::Block::exact: kernel::key::Key
+pub metrics::Block::function: bool
+pub metrics::Block::key: kernel::key::Key
+pub metrics::Block::start_line: u32
+pub metrics::Block::tokens: u32
+impl core::clone::Clone for metrics::Block
+pub fn metrics::Block::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Block
+impl core::cmp::PartialEq for metrics::Block
+pub fn metrics::Block::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::Block
+pub fn metrics::Block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for metrics::Block
+impl core::marker::StructuralPartialEq for metrics::Block
+impl core::marker::Freeze for metrics::Block
+impl core::marker::Send for metrics::Block
+impl core::marker::Sync for metrics::Block
+impl core::marker::Unpin for metrics::Block
+impl core::marker::UnsafeUnpin for metrics::Block
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Block
+impl core::panic::unwind_safe::UnwindSafe for metrics::Block
+pub struct metrics::FileMetrics
+pub metrics::FileMetrics::blocks: alloc::vec::Vec<metrics::Block>
+pub metrics::FileMetrics::sloc_lines: alloc::vec::Vec<u32>
+pub metrics::FileMetrics::units: alloc::vec::Vec<metrics::Unit>
+impl core::clone::Clone for metrics::FileMetrics
+pub fn metrics::FileMetrics::clone(&self) -> Self
+impl core::cmp::Eq for metrics::FileMetrics
+impl core::cmp::PartialEq for metrics::FileMetrics
+pub fn metrics::FileMetrics::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::FileMetrics
+pub fn metrics::FileMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::FileMetrics
+impl core::marker::Freeze for metrics::FileMetrics
+impl core::marker::Send for metrics::FileMetrics
+impl core::marker::Sync for metrics::FileMetrics
+impl core::marker::Unpin for metrics::FileMetrics
+impl core::marker::UnsafeUnpin for metrics::FileMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::FileMetrics
+impl core::panic::unwind_safe::UnwindSafe for metrics::FileMetrics
+pub struct metrics::Unit
+pub metrics::Unit::body_key: kernel::key::Key
+pub metrics::Unit::cc: u32
+pub metrics::Unit::end_byte: u32
+pub metrics::Unit::qualname: alloc::string::String
+pub metrics::Unit::sloc: u32
+pub metrics::Unit::start_byte: u32
+pub metrics::Unit::start_line: u32
+impl core::clone::Clone for metrics::Unit
+pub fn metrics::Unit::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Unit
+impl core::cmp::PartialEq for metrics::Unit
+pub fn metrics::Unit::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::Unit
+pub fn metrics::Unit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::Unit
+impl core::marker::Freeze for metrics::Unit
+impl core::marker::Send for metrics::Unit
+impl core::marker::Sync for metrics::Unit
+impl core::marker::Unpin for metrics::Unit
+impl core::marker::UnsafeUnpin for metrics::Unit
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Unit
+impl core::panic::unwind_safe::UnwindSafe for metrics::Unit
+pub const metrics::DEFAULT_THRESHOLD: u32
+pub const metrics::MIN_INSTANCES: usize
+pub const metrics::MIN_SLOC: usize
+pub fn metrics::measure(&syntax::parsed::Parsed) -> core::result::Result<metrics::FileMetrics, metrics::Unmeasurable>
+pub fn metrics::place<'a>(&'a str, &metrics::Block) -> (&'a str, u32, u32)
+pub fn metrics::stamp(syntax::language::Language) -> core::option::Option<&'static str>

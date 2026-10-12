@@ -1,0 +1,67 @@
+name = "javascript"
+tier = 1
+extensions = [".cjs", ".js", ".mjs"]
+probe = "const x = 1;\n"
+probe_root = "program"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_declaration", "generator_function_declaration", "method_definition"]
+scopes = ["class", "class_declaration"]
+bound = ["arrow_function", "function_expression", "generator_function"]
+name = "field"
+binding = "javascript"
+
+[decisions]
+points = [
+    "catch_clause",
+    "do_statement",
+    "for_in_statement",
+    "for_statement",
+    "if_statement",
+    "switch_case",
+    "ternary_expression",
+    "while_statement",
+]
+
+[decisions.conditional]
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "??", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = [
+    "arrow_function",
+    "function_declaration",
+    "function_expression",
+    "generator_function",
+    "generator_function_declaration",
+    "method_definition",
+]
+blocks = [
+    "do_statement",
+    "for_in_statement",
+    "for_statement",
+    "if_statement",
+    "switch_statement",
+    "try_statement",
+    "while_statement",
+]
+identifiers = [
+    "identifier",
+    "private_property_identifier",
+    "property_identifier",
+    "shorthand_property_identifier",
+    "shorthand_property_identifier_pattern",
+    "statement_identifier",
+]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"NONE" = ["null", "undefined"]
+"NUM" = ["number"]
+"STR" = ["regex", "string", "template_string"]

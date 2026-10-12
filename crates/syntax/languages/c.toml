@@ -1,0 +1,42 @@
+name = "c"
+tier = 1
+extensions = [".c", ".h"]
+probe = "int main(void) { return 0; }\n"
+probe_root = "translation_unit"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_definition"]
+scopes = []
+bound = []
+name = "c_declarator"
+
+[decisions]
+points = [
+    "conditional_expression",
+    "do_statement",
+    "for_statement",
+    "if_statement",
+    "while_statement",
+]
+
+[decisions.conditional]
+"case_statement" = "not_default_case"
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["function_definition"]
+blocks = ["do_statement", "for_statement", "if_statement", "switch_statement", "while_statement"]
+identifiers = ["field_identifier", "identifier", "statement_identifier", "type_identifier"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"NONE" = ["null"]
+"NUM" = ["number_literal"]
+"STR" = ["char_literal", "string_literal", "system_lib_string"]

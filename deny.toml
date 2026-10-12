@@ -12,9 +12,16 @@ confidence-threshold = 0.9
 [licenses.private]
 ignore = true
 
+# rusqlite's statement cache reaches foldhash through hashlink and hashbrown.
+[[licenses.exceptions]]
+crate = "foldhash"
+allow = ["Zlib"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# A path dependency between the workspace's private crates names no version; a registry one still must.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

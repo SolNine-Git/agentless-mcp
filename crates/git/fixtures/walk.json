@@ -1,0 +1,19 @@
+{
+ "decoded_paths": [
+  ["app.py\u0000bad\u00ff.py\u0000pkg/mod.py\u0000", 20000, {"paths": ["app.py", "pkg/mod.py"], "undecodable": [1]}],
+  ["\u00c3\u00bcber/na\u00c3\u00afve.py\u0000", 20000, {"paths": ["\u00fcber/na\u00efve.py"], "undecodable": []}],
+  ["f0.py\u0000f1.py\u0000f2.py\u0000f3.py\u0000f4.py\u0000f5.py\u0000", 5, {"refused": "walk refused: more than 5 files under /repo; point the call at a subdirectory or raise the file bound"}],
+  ["f0.py\u0000f1.py\u0000f2.py\u0000f3.py\u0000f4.py\u0000", 5, {"paths": ["f0.py", "f1.py", "f2.py", "f3.py", "f4.py"], "undecodable": []}],
+  ["a.py\u0000a.py\u0000a.py\u0000b.py\u0000", 2, {"paths": ["a.py", "b.py"], "undecodable": []}],
+  ["", 20000, {"paths": [], "undecodable": []}],
+  ["\u0000\u0000\u0000", 20000, {"paths": [], "undecodable": []}],
+  ["a.py\u0000b.py", 20000, {"paths": ["a.py", "b.py"], "undecodable": []}],
+  ["bad\u00ff.py\u0000bad\u00ff.py\u0000ok.py\u0000", 20000, {"paths": ["ok.py"], "undecodable": [2]}],
+  ["s\u00ed\u00a0\u0080.py\u0000o\u00c0\u0080.py\u0000p\u00e2\u0082\u0000", 20000, {"paths": [], "undecodable": [3]}],
+  ["nested/\u0000x.py\u0000", 20000, {"paths": ["nested/", "x.py"], "undecodable": []}],
+  ["a.py\u0000a.py\u0000", 1, {"paths": ["a.py"], "undecodable": []}],
+  ["a.py\u0000b.py\u0000", 1, {"refused": "walk refused: more than 1 files under /repo; point the call at a subdirectory or raise the file bound"}],
+  ["x\u00ff\u0000y\u00ff\u0000z\u00ff\u0000", 1, {"paths": [], "undecodable": [3]}],
+  ["a.py\u0000", 0, {"refused": "walk refused: more than 0 files under /repo; point the call at a subdirectory or raise the file bound"}]
+ ]
+}

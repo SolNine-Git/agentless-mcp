@@ -1,6 +1,7 @@
 //! Development gates for this workspace: each command exits non-zero when its gate fails.
 
 mod erosion;
+mod generate;
 mod ground_truth;
 mod layers;
 mod lint_tables;
@@ -32,7 +33,7 @@ struct Task {
     handler: Handler,
 }
 
-const TASKS: [Task; 9] = [
+const TASKS: [Task; 10] = [
     Task {
         name: "static-gates",
         usage: "  static-gates           run layers, suppressions and lint-tables, and report all three",
@@ -83,6 +84,11 @@ const TASKS: [Task; 9] = [
                          commit that changed it carries a Policy-Change: <path> trailer and one of
                          those commits made HEAD's value",
         handler: Handler::Flags(policy::check),
+    },
+    Task {
+        name: "generate",
+        usage: "  generate               write the generated Rust of the prompts and syntax crates",
+        handler: Handler::Plain(generate::run),
     },
     Task {
         name: "nightly",

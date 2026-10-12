@@ -3,18 +3,44 @@
 # be in both keys.
 # direct: the package name of each dependency of a workspace package that is not a path dependency, of
 # every kind and target. `cargo xtask layers` checks it.
-direct = ["proc-macro2", "serde", "serde_json", "thiserror", "toml"]
+direct = [
+    "cc",
+    "libc",
+    "proc-macro2",
+    "rusqlite",
+    "ruzstd",
+    "serde",
+    "serde_json",
+    "sha2",
+    "signal-hook",
+    "tar",
+    "thiserror",
+    "toml",
+    "tree-sitter",
+    "tree-sitter-language",
+    "wait-timeout",
+]
 # build-time: each third-party package with a proc-macro or build-script target in the resolved graph,
 # read with every feature on (`cargo metadata --all-features`). Its code runs on every build.
 # `cargo xtask ground-truth` checks it after its clippy build, and names each package that the list lacks.
 build-time = [
+    "libc",
+    "libsqlite3-sys",
     "proc-macro2",
     "quote",
     "serde",
     "serde_core",
     "serde_derive",
     "serde_json",
+    "signal-hook",
     "thiserror",
     "thiserror-impl",
+    "tree-sitter",
+    "tree-sitter-language",
     "zmij",
 ]
+# Vendored C code, outside cargo: crates/syntax/vendor/grammars-1.14.3.tar.zst holds the C sources of
+# 22 tree-sitter grammars from the parser-sources-1.14.3 release asset of tree-sitter-language-pack,
+# the pack's ctype_shim.h, and utf8proc 2.10. Each grammar keeps its own license (MIT, or Apache-2.0
+# for hcl), and the archive holds each license text under licenses/. MANIFEST.toml beside the archive
+# lists each file with its source, size and sha256.
