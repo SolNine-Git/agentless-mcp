@@ -196,13 +196,20 @@ def grammar(
     name: str, definition: dict[str, str], licenses: dict[str, str], files: dict[str, bytes]
 ) -> Grammar:
     repo = definition["repo"]
-    found = ABI.search(files[f"parsers/{name}/src/parser.c"])
+    parser = files[f"parsers/{name}/src/parser.c"]
+    found = ABI.search(parser)
     if found is None:
         message = f"{name}: parser.c has no LANGUAGE_VERSION"
         raise ValueError(message)
+    # The pack names the symbol only when it differs from the name. A renamed key would otherwise
+    # record the name, so the archived parser must define the symbol.
+    symbol = definition.get("c_symbol", name)
+    if f"tree_sitter_{symbol}(".encode() not in parser:
+        message = f"{name}: parser.c defines no tree_sitter_{symbol}"
+        raise ValueError(message)
     return Grammar(
         name=name,
-        symbol=definition.get("c_symbol", name),
+        symbol=symbol,
         repo=repo,
         rev=definition["rev"],
         license=licenses[repo.removeprefix("https://github.com/")],

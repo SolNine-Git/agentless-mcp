@@ -67,6 +67,26 @@ pub fn strip(s: &str) -> &str {
     s.trim_matches(is_space)
 }
 
+/// Returns whether `byte` is ASCII whitespace: space, tab, LF, VT, FF or CR.
+#[must_use]
+pub fn is_ascii_space(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ')
+}
+
+/// Removes [`is_ascii_space`] bytes from both ends of `bytes`.
+#[must_use]
+pub fn strip_bytes(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|&byte| !is_ascii_space(byte))
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|&byte| !is_ascii_space(byte))
+        .map_or(start, |last| last + 1);
+    &bytes[start..end]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +126,22 @@ mod tests {
         check_pairs(env!("CARGO_MANIFEST_DIR"), "text", "strip", |input| {
             strip(input).to_owned()
         });
+    }
+
+    #[test]
+    fn is_ascii_space_cases() {
+        let spaces: BTreeSet<u8> = cases(env!("CARGO_MANIFEST_DIR"), "text", "is_ascii_space");
+        for byte in 0..=u8::MAX {
+            let expected = spaces.contains(&byte);
+            assert_eq!(is_ascii_space(byte), expected, "mismatch for {byte:#04x}");
+        }
+    }
+
+    #[test]
+    fn strip_bytes_cases() {
+        let all: Vec<(Vec<u8>, Vec<u8>)> = cases(env!("CARGO_MANIFEST_DIR"), "text", "strip_bytes");
+        for (input, expected) in all {
+            assert_eq!(strip_bytes(&input), expected, "input: {input:?}");
+        }
     }
 }

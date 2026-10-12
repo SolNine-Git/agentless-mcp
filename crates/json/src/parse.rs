@@ -7,12 +7,13 @@ use text::CodePointString;
 
 // One more level ends the reference decoder with a recursion error (fixture `max_depth`).
 const MAX_DEPTH: usize = 9998;
+// The reference converts an integer text of more digits only after a raised limit.
+const MAX_INT_DIGITS: usize = 4300;
 
 /// A JSON value: integers of any size, `NaN` and infinities, and strings that can hold a lone
 /// surrogate.
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
-    /// `null`.
     Null,
     /// `true` or `false`.
     Bool(bool),
@@ -22,7 +23,6 @@ pub enum JsonValue {
     Float(f64),
     /// A string. An escape of a lone surrogate keeps that surrogate in it.
     Str(CodePointString),
-    /// An array.
     Array(Vec<JsonValue>),
     /// An object: each key once, in first-seen order, with the last value given for it.
     Object(Vec<(CodePointString, JsonValue)>),
@@ -52,56 +52,96 @@ fn take_children(value: &mut JsonValue, pending: &mut Vec<JsonValue>) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JsonErrorKind {
     /// No value starts at the position.
-    ExpectingValue = 0,
+    ExpectingValue,
     /// An object key does not start with a double quote.
-    ExpectingPropertyName = 1,
+    ExpectingPropertyName,
     /// An object key is not followed by a colon.
-    ExpectingColon = 2,
+    ExpectingColon,
     /// An item is not followed by a comma or by the closing bracket.
-    ExpectingComma = 3,
+    ExpectingComma,
     /// A comma comes right before the closing brace of an object.
-    ObjectTrailingComma = 4,
+    ObjectTrailingComma,
     /// A comma comes right before the closing bracket of an array.
-    ArrayTrailingComma = 5,
+    ArrayTrailingComma,
     /// A string has no closing double quote.
-    UnterminatedString = 6,
+    UnterminatedString,
     /// A string holds a character below U+0020.
-    ControlCharacter = 7,
+    ControlCharacter,
     /// A backslash escape is not one that JSON defines.
-    InvalidEscape = 8,
+    InvalidEscape,
     /// A unicode escape does not have four hex digits.
-    InvalidUnicodeEscape = 9,
+    InvalidUnicodeEscape,
     /// Text other than whitespace follows the value.
-    ExtraData = 10,
+    ExtraData,
     /// The text starts with U+FEFF.
-    ByteOrderMark = 11,
-    /// Objects nest more than 9998 levels deep.
-    ObjectTooDeep = 12,
-    /// Arrays nest more than 9998 levels deep.
-    ArrayTooDeep = 13,
+    ByteOrderMark,
+    /// Objects nest deeper than the depth limit.
+    ObjectTooDeep,
+    /// Arrays nest deeper than the depth limit.
+    ArrayTooDeep,
+    /// An integer has more digits than the integer text limit. It is a value error, not a
+    /// syntax error, so its message names no position.
+    IntTooLong {
+        /// The digits of the integer, without its sign.
+        digits: usize,
+    },
 }
 
-// Indexed by the JsonErrorKind discriminants.
-const MESSAGES: [&str; 14] = [
-    "Expecting value",
-    "Expecting property name enclosed in double quotes",
-    "Expecting ':' delimiter",
-    "Expecting ',' delimiter",
-    "Illegal trailing comma before end of object",
-    "Illegal trailing comma before end of array",
-    "Unterminated string starting at",
-    "Invalid control character at",
-    "Invalid \\escape",
-    "Invalid \\uXXXX escape",
-    "Extra data",
-    "Unexpected UTF-8 BOM (decode using utf-8-sig)",
-    "maximum recursion depth exceeded while decoding a JSON object from a unicode string",
-    "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+const MESSAGES: [(JsonErrorKind, &str); 14] = [
+    (JsonErrorKind::ExpectingValue, "Expecting value"),
+    (
+        JsonErrorKind::ExpectingPropertyName,
+        "Expecting property name enclosed in double quotes",
+    ),
+    (JsonErrorKind::ExpectingColon, "Expecting ':' delimiter"),
+    (JsonErrorKind::ExpectingComma, "Expecting ',' delimiter"),
+    (
+        JsonErrorKind::ObjectTrailingComma,
+        "Illegal trailing comma before end of object",
+    ),
+    (
+        JsonErrorKind::ArrayTrailingComma,
+        "Illegal trailing comma before end of array",
+    ),
+    (
+        JsonErrorKind::UnterminatedString,
+        "Unterminated string starting at",
+    ),
+    (
+        JsonErrorKind::ControlCharacter,
+        "Invalid control character at",
+    ),
+    (JsonErrorKind::InvalidEscape, "Invalid \\escape"),
+    (
+        JsonErrorKind::InvalidUnicodeEscape,
+        "Invalid \\uXXXX escape",
+    ),
+    (JsonErrorKind::ExtraData, "Extra data"),
+    (
+        JsonErrorKind::ByteOrderMark,
+        "Unexpected UTF-8 BOM (decode using utf-8-sig)",
+    ),
+    (
+        JsonErrorKind::ObjectTooDeep,
+        "maximum recursion depth exceeded while decoding a JSON object from a unicode string",
+    ),
+    (
+        JsonErrorKind::ArrayTooDeep,
+        "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+    ),
 ];
 
 impl fmt::Display for JsonErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(MESSAGES[*self as usize])
+        if let Self::IntTooLong { digits } = self {
+            return write!(
+                f,
+                "Exceeds the limit ({MAX_INT_DIGITS} digits) for integer string conversion: value \
+                 has {digits} digits; use sys.set_int_max_str_digits() to increase the limit"
+            );
+        }
+        let message = MESSAGES.iter().find(|(kind, _)| kind == self);
+        f.write_str(message.map_or("", |(_, message)| message))
     }
 }
 
@@ -126,6 +166,9 @@ impl fmt::Display for JsonError {
             line,
             column,
         } = self;
+        if let JsonErrorKind::IntTooLong { .. } = kind {
+            return kind.fmt(f);
+        }
         write!(f, "{kind}: line {line} column {column} (char {pos})")
     }
 }
@@ -373,16 +416,26 @@ impl Reader<'_> {
             end = exponent_end;
         }
         let literal = &self.text[start..end];
-        self.at = end;
         if !is_float {
-            // JSON allows no leading zero, so -0 is the one integer whose text changes.
-            let digits = if literal == "-0" { "0" } else { literal };
-            return Ok(JsonValue::Int(digits.to_owned()));
+            return self.integer(literal, start, end);
         }
+        self.at = end;
         literal
             .parse()
             .map(JsonValue::Float)
             .map_err(|_| self.error_at(JsonErrorKind::ExpectingValue, start))
+    }
+
+    // The integer `literal` that starts at `start` and ends at `end`.
+    fn integer(&mut self, literal: &str, start: usize, end: usize) -> Result<JsonValue, JsonError> {
+        let digits = literal.trim_start_matches('-').len();
+        if digits > MAX_INT_DIGITS {
+            return Err(self.error_at(JsonErrorKind::IntTooLong { digits }, start));
+        }
+        self.at = end;
+        // JSON allows no leading zero, so -0 is the one integer whose text changes.
+        let text = if literal == "-0" { "0" } else { literal };
+        Ok(JsonValue::Int(text.to_owned()))
     }
 
     // Reads the string whose opening quote is at `self.at`.
@@ -549,23 +602,43 @@ mod tests {
         }
     }
 
+    // The outcome in the reference's form: a value, a syntax error, or a value error.
+    fn outcome(document: &str) -> Value {
+        match parse(document) {
+            Ok(value) => json!(["ok", tagged(&value)]),
+            Err(
+                error @ JsonError {
+                    kind: JsonErrorKind::IntTooLong { .. },
+                    ..
+                },
+            ) => json!(["value_error", error.to_string()]),
+            Err(error) => {
+                json!([
+                    "error",
+                    error.kind.to_string(),
+                    error.pos,
+                    error.line,
+                    error.column
+                ])
+            }
+        }
+    }
+
     #[test]
     fn parse_cases() {
         let all: Vec<(String, Value)> = cases(env!("CARGO_MANIFEST_DIR"), "json", "loads");
         for (document, expected) in all {
-            let found = match parse(&document) {
-                Ok(value) => json!(["ok", tagged(&value)]),
-                Err(error) => {
-                    json!([
-                        "error",
-                        error.kind.to_string(),
-                        error.pos,
-                        error.line,
-                        error.column
-                    ])
-                }
-            };
-            assert_eq!(found, expected, "document: {document:?}");
+            assert_eq!(outcome(&document), expected, "document: {document:?}");
+        }
+    }
+
+    #[test]
+    fn an_integer_past_the_digit_limit_is_a_value_error() {
+        let all: Vec<((String, String, usize, String), Value)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "json", "long_ints");
+        for ((prefix, digit, count, suffix), expected) in all {
+            let document = format!("{prefix}{}{suffix}", digit.repeat(count));
+            assert_eq!(outcome(&document), expected, "{prefix:?} {count} x {digit}");
         }
     }
 

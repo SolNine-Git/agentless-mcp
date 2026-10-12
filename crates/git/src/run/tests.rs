@@ -113,7 +113,7 @@ fn a_signal_shows_as_its_negative_number() {
 }
 
 #[test]
-fn the_exit_note_matches_the_generated_cases() {
+fn the_exit_note_matches_the_reference_cases() {
     let cases: Vec<(String, i32, String)> = cases("receipt", "exit_note");
     for (stderr, code, expected) in cases {
         let stderr = latin(&stderr);
@@ -135,6 +135,25 @@ fn a_cut_listing_is_capped_and_keeps_its_bytes() {
 fn a_deadline_names_the_call_and_its_seconds() {
     let outcome = classify("log", LIMITS, io::Outcome::TimedOut);
     assert_eq!(note(&outcome), "git log timed out after 5.0s");
+}
+
+// The note shows the deadline in its reference spelling, an int or a float, so the text and the
+// seconds are two fields that must agree.
+#[test]
+fn every_limits_text_spells_its_seconds() {
+    let every = [
+        ("changes LISTING", crate::changes::LISTING),
+        ("changes COMMIT", crate::changes::COMMIT),
+        ("changes BLOB", crate::changes::BLOB),
+        ("snapshot RECEIPT", crate::snapshot::RECEIPT),
+        ("toplevel TOPLEVEL", crate::toplevel::TOPLEVEL),
+        ("walk LISTING", crate::walk::LISTING),
+        ("walk IGNORE", crate::walk::IGNORE),
+    ];
+    for (name, limits) in every {
+        let whole = limits.shown.strip_suffix(".0").unwrap_or(limits.shown);
+        assert_eq!(whole, limits.seconds.to_string(), "{name}");
+    }
 }
 
 #[test]

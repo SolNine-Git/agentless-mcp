@@ -10,7 +10,6 @@ mod templates;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 
 use crate::{Failure, process, repo};
 
@@ -18,7 +17,6 @@ const ENVELOPE: &str = "src/agentless_mcp/prompts/envelope.json";
 const MESSAGES: &str = "src/agentless_mcp/prompts/messages.json";
 const RULES: &str = "src/agentless_mcp/prompts/contract_rules.json";
 const OUTPUT: &str = "crates/prompts/src/generated";
-const RUSTFMT: Duration = Duration::from_secs(60);
 
 type Files = Vec<(&'static str, String)>;
 
@@ -116,7 +114,7 @@ fn format_in(root: &Path, dir: &Path, sources: Files) -> Result<Files, Failure> 
         .args(["--edition", "2024", "--config-path"])
         .arg(root.join("rustfmt.toml"))
         .args(&paths);
-    process::stdout(&mut command, RUSTFMT)?;
+    process::stdout(&mut command, process::RUSTFMT)?;
     sources
         .into_iter()
         .zip(&paths)

@@ -22,7 +22,13 @@ pub fn float_text(x: f64) -> String {
         return format!("{sign}0.0");
     }
 
-    let text = format!("{:e}", x.abs());
+    // The shortest form gives the digit count. It rounds an exact tie up, and the exact form at
+    // that count rounds a tie to the even digit.
+    let shortest = format!("{:e}", x.abs());
+    let count = shortest.split('e').next().map_or(0, |mantissa| {
+        mantissa.bytes().filter(u8::is_ascii_digit).count()
+    });
+    let text = format!("{:.*e}", count.saturating_sub(1), x.abs());
     let (mantissa, exponent_text) = text
         .split_once('e')
         .expect("finite nonzero f64 scientific formatting always contains an exponent");
@@ -115,6 +121,23 @@ mod tests {
         for (x, expected) in all {
             assert_eq!(float_text(float(&x)), expected, "x: {x}");
         }
+    }
+
+    // Exact decimal ties: 2247601717616233.25, -3906101348481.40625 and 1761169953.31640625.
+    #[test]
+    fn float_text_of_an_exact_tie_matches_repr() {
+        let shown = [
+            0x431f_f0ba_37e6_79a5,
+            0xc28c_6bae_4444_0b40,
+            0x41da_3e54_8854_4000,
+        ]
+        .map(|bits| float_text(f64::from_bits(bits)));
+        let expected = [
+            "2247601717616233.2",
+            "-3906101348481.4062",
+            "1761169953.3164062",
+        ];
+        assert_eq!(shown, expected);
     }
 
     #[test]

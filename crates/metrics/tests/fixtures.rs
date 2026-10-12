@@ -1,15 +1,16 @@
 //! Each generated case measures to the units, blocks, and SLOC lines, or the refusal, it records.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use kernel::Key;
 use metrics::{
-    Block, FileMetrics, TokenizeError, TokenizeErrorKind, Unit, Unmeasurable, measure, stamp,
+    Block, FileMetrics, Measurable, TokenizeError, TokenizeErrorKind, Unit, Unmeasurable, measure,
+    stamp,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use syntax::{Language, Tier, parse};
+use syntax::{Language, Parsed, Tier, parse};
+use text::testing::document;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,32 +55,59 @@ struct BlockRow {
 
 #[test]
 fn every_case_measures_as_recorded() {
-    let mut failures = Vec::new();
-    let mut count = 0;
-    for language in Language::ALL.into_iter().filter(|l| l.tier() == Tier::One) {
-        let cases: Vec<Case> = read(language.name());
-        for case in cases {
-            count += 1;
-            let parsed = parse(language, Arc::from(case.source.as_str()))
+    assert_every_case(|parsed| measure(&parsed), |expected| expected);
+}
+
+// The entry point that the checks use gives what `measure` gives, apart from the SLOC lines.
+#[test]
+fn every_case_measures_as_recorded_through_measurable() {
+    assert_every_case(
+        |parsed| {
+            Measurable::new(parsed).map(|measurable| (measurable.units(), measurable.blocks()))
+        },
+        |expected| expected.map(|metrics| (metrics.units, metrics.blocks)),
+    );
+}
+
+fn assert_every_case<T: PartialEq + std::fmt::Debug>(
+    found: impl Fn(Parsed) -> Result<T, Unmeasurable>,
+    shown: impl Fn(Result<FileMetrics, Unmeasurable>) -> Result<T, Unmeasurable>,
+) {
+    let cases = tier1_cases();
+    let failures: Vec<String> = cases
+        .iter()
+        .filter_map(|(language, case)| {
+            let parsed = parse(*language, Arc::from(case.source.as_str()))
                 .unwrap_or_else(|error| panic!("{} {}: {error}", language.name(), case.name));
-            let found = measure(&parsed);
-            let expected = expected(&case);
-            if found != expected {
-                failures.push(format!(
-                    "{} {}:\n  expected {expected:?}\n  found    {found:?}",
-                    language.name(),
+            let (found, expected) = (found(parsed), shown(expected(case)));
+            (found != expected).then(|| {
+                let name = language.name();
+                format!(
+                    "{name} {}:\n  expected {expected:?}\n  found    {found:?}",
                     case.name
-                ));
-            }
-        }
-    }
-    assert!(count > 0);
+                )
+            })
+        })
+        .collect();
+    assert!(!cases.is_empty());
     assert!(
         failures.is_empty(),
-        "{} of {count} cases differ:\n{}",
+        "{} of {} cases differ:\n{}",
         failures.len(),
+        cases.len(),
         failures.join("\n")
     );
+}
+
+fn tier1_cases() -> Vec<(Language, Case)> {
+    Language::ALL
+        .into_iter()
+        .filter(|language| language.tier() == Tier::One)
+        .flat_map(|language| {
+            let cases: Vec<Case> = read(language.name());
+            cases.into_iter().map(move |case| (language, case))
+        })
+        .collect()
 }
 
 #[test]
@@ -111,12 +139,7 @@ fn a_language_with_no_stamp_is_unsupported() {
 }
 
 fn read<T: DeserializeOwned>(file: &str) -> T {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(format!("{file}.json"));
-    let shown = path.display();
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"))
+    document(env!("CARGO_MANIFEST_DIR"), file)
 }
 
 fn expected(case: &Case) -> Result<FileMetrics, Unmeasurable> {

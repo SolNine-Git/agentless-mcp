@@ -19,7 +19,7 @@ import struct
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -27,14 +27,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from unittest import mock
 
+import stdlib_fixtures
 import tree_sitter_language_pack as pack
-from fixture_files import Fixture, matches, write_or_check
+from fixture_files import Fixture, Identity, git_env, matches, run_git, write_or_check
 
 from agentless_mcp.core import cache
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.fileparse import Unmeasured
 from agentless_mcp.core.treewalk import RepoFile
-from agentless_mcp.util import cachedir
+from agentless_mcp.util import cachedir, filelock, platforms
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "crates" / "store" / "fixtures"
@@ -43,20 +44,11 @@ SOURCES = REPO / "tests" / "characterization" / "fixtures"
 AGENTLESS = Path(sys.executable).with_name("agentless-mcp")
 ROOT = "/agentless-store-fixture/repo"
 CREATED_AT = "2026-01-01T00:00:00+00:00"
-GIT_DATE = "2026-01-01T00:00:00Z"
 INDEX_SECONDS = 300
-GIT_SECONDS = 60
 STALE = "0" * 40
-GIT_ENV = {
-    "GIT_AUTHOR_NAME": "fixture",
-    "GIT_AUTHOR_EMAIL": "fixture@invalid",
-    "GIT_AUTHOR_DATE": GIT_DATE,
-    "GIT_COMMITTER_NAME": "fixture",
-    "GIT_COMMITTER_EMAIL": "fixture@invalid",
-    "GIT_COMMITTER_DATE": GIT_DATE,
-    "GIT_CONFIG_GLOBAL": os.devnull,
-    "GIT_CONFIG_NOSYSTEM": "1",
-}
+IDENTITY = Identity("fixture", "fixture@invalid", "2026-01-01T00:00:00Z")
+# The stdlib generator writes files into this crate's fixture directory too.
+SHARED = [stdlib_fixtures.CRATES / path for path in stdlib_fixtures.BUILDERS]
 
 # A damage: a kind and its arguments. The Rust tests apply the same damage to their own copy.
 Damage = list[Any]
@@ -110,6 +102,10 @@ LOOKUP_SQL = {
     "key_not_utf8": (
         "UPDATE blocks SET type2_key = CAST(X'41C328' AS TEXT) WHERE file_id = :file_id"
     ),
+    "key_not_utf8_with_nul": (
+        "UPDATE blocks SET type2_key = CAST(X'41C30042' AS TEXT) WHERE file_id = :file_id"
+    ),
+    "start_line_separator": "UPDATE blocks SET start_line = '\x1c5' WHERE file_id = :file_id",
 }
 
 RECEIPT_ROOTS = [
@@ -164,6 +160,12 @@ VALUES: list[object] = [
     b"\x00\xff\t",
     b"",
     b" 5 ",
+    "\x1c5",
+    "5\x1f",
+    "\x855",
+    b"\x1c5",
+    b"\xc2\xa05",
+    b"\x0b5",
 ]
 
 SLOC_VALUES: list[object] = [
@@ -212,10 +214,14 @@ SLOC_VALUES: list[object] = [
     "[1, [2]]",
     "[" + "9" * 4300 + "]",
     "[-" + "9" * 4300 + "]",
+    "[" + "9" * 4301 + "]",
+    "[1, -" + "8" * 4301 + "]",
     "[" + ", ".join(["123"] * 2000) + "]",
 ]
 
-DISCARDS = ["plain", "sidecars", "locked", "read_only"]
+DISCARDS = ["plain", "sidecars", "locked", "read_only", "unlink_refused"]
+# The setups whose failure comes from a directory mode: the lock open, then the unlink.
+MODE_SETUPS = ("read_only", "unlink_refused")
 
 
 @dataclass(frozen=True)
@@ -228,8 +234,8 @@ class Reader:
 
 def main() -> int:
     built: dict[str, bytes] = {}
-    builders = {"cases": partial(cases_fixture, built)}
-    code = write_or_check(__doc__.splitlines()[0], FIXTURES, builders)
+    builders: dict[str, Callable[[], Fixture]] = {"cases": partial(cases_fixture, built)}
+    code = write_or_check(__doc__.splitlines()[0], FIXTURES, builders, SHARED)
     if "database" not in built:
         return code
     return max(code, database_result(built["database"], check="--check" in sys.argv[1:]))
@@ -280,15 +286,12 @@ def build_database(work: Path) -> Path:
 
 
 def git(repo: Path, *args: str) -> None:
-    command = ["git", "-C", str(repo), *args]
-    env = {**os.environ, **GIT_ENV}
-    subprocess.run(command, check=True, env=env, capture_output=True, timeout=GIT_SECONDS)
+    run_git(repo, IDENTITY, *args)
 
 
 def run_index(work: Path, repo: Path, grammars: Path) -> None:
     env = {
-        **os.environ,
-        **GIT_ENV,
+        **git_env(IDENTITY, os.environ),
         "HOME": str(work / "home"),
         "XDG_CACHE_HOME": str(work / "cache"),
         "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR": str(grammars),
@@ -388,7 +391,9 @@ def open_case(
         damaged(reader, damage) as copy,
         exclusive_writer(copy, held=locked),
         mock.patch.object(cache, "cache_path", return_value=copy),
-        mock.patch.object(cache, "SQLITE_TIMEOUT_SECONDS", 0.0 if locked else 5.0),
+        mock.patch.object(
+            cache, "SQLITE_TIMEOUT_SECONDS", 0.0 if locked else cache.SQLITE_TIMEOUT_SECONDS
+        ),
     ):
         source = cache.open_source(
             Path(ROOT), reader.extractor, tree_oid=tree_oid, no_cache=damage[0] == "bypass"
@@ -419,7 +424,7 @@ def lookup_cases(reader: Reader) -> list[object]:
         lookup_case(reader, name, DAMAGED_FILE, "none", ["sql", [statement]])
         for name, statement in LOOKUP_SQL.items()
     ]
-    return plain + edited + damaged_cases
+    return [*plain, *edited, *damaged_cases]
 
 
 def lookup_case(reader: Reader, name: str, path: str, edit: str, damage: Damage) -> list[object]:
@@ -568,9 +573,8 @@ def held_lock(directory: Path, *, held: bool) -> Iterator[None]:
     if not held:
         yield
         return
-    fcntl = __import__("fcntl")
-    with (directory / cache.LOCK_NAME).open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    flavour = platforms.family(sys.platform)
+    with filelock.exclusive(directory / cache.LOCK_NAME, flavour=flavour):
         yield
 
 
@@ -581,9 +585,11 @@ def discard_case(reader: Reader, setup: str) -> list[object]:
     if setup == "sidecars":
         (directory / "tags.db-wal").write_bytes(b"")
         (directory / "tags.db-shm").write_bytes(b"")
+    if setup == "unlink_refused":
+        (directory / cache.LOCK_NAME).write_bytes(b"")
     warnings: list[str] = []
     with captured(warnings), held_lock(directory, held=setup == "locked"):
-        if setup == "read_only":
+        if setup in MODE_SETUPS:
             directory.chmod(0o555)
         cache._discard_unlocked(copy, Path(ROOT))
         directory.chmod(0o700)

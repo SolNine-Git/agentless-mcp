@@ -17,6 +17,7 @@ import shlex
 import struct
 import sys
 import tokenize
+import traceback
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -44,6 +45,68 @@ SPLITLINES = [
 ]
 SPLIT_WHITESPACE = ["", "   ", " a  b ", "a\x1fb\u3000c", "a\u200bb", "\x85x\xa0y\t", "\u2028a\x1c"]
 STRIP = ["", "  ", " a b ", "\x1fa\x1c", "\u3000a\u2029", "\u200ba\u200b", "\xa0\x85a"]
+STRIP_BYTES = [
+    b"",
+    b" \t\n\x0b\x0c\r",
+    b" a b ",
+    b"\x1ca\x1f",
+    b"\x85a\xa0",
+    b"\xc2\xa0a",
+    b"\x00a ",
+]
+# No case holds a digit outside ASCII: the Rust rule refuses those.
+INT_TEXT = [
+    "0",
+    "-0",
+    "+5",
+    "0005",
+    "1_0",
+    "1_000_000",
+    "9223372036854775807",
+    "-9223372036854775808",
+    "99999999999999999999999",
+    " 5 ",
+    "\t-12\n",
+    "\x0b5\x0c",
+    "\r5",
+    "\x855",
+    "\xa05\u3000",
+    "\u20285\u2029",
+    "\x1c5",
+    "5\x1f",
+    "\x1d5",
+    "\x7f5",
+    "\u200b5",
+    "",
+    " ",
+    "+",
+    "-",
+    "+-5",
+    "- 5",
+    "_1",
+    "1_",
+    "1__0",
+    "+_1",
+    "1 2",
+    "1.0",
+    "0x10",
+    "5\x00",
+]
+INT_BYTES = [
+    b"0",
+    b"-12",
+    b"+1_0",
+    b" 5\r\n",
+    b"\x0b5",
+    b"\x1c5",
+    b"5\x1f",
+    b"\x855",
+    b"\xc2\xa05",
+    b"\xa05",
+    b"",
+    b"1__0",
+    b"\xff",
+]
 
 FLOAT_REPR = [
     0.0,
@@ -96,6 +159,10 @@ FLOAT_REPR = [
     10332.17500334878,
     7763.63165660779,
     3.2504078464356366e-17,
+    # Exact decimal ties: the shortest digits break each one to the even digit.
+    2247601717616233.25,
+    -3906101348481.40625,
+    1761169953.31640625,
 ]
 ROUND_VALUES = [
     2.675,
@@ -355,6 +422,17 @@ LOADS = [
     "[[[[",
     '{"a": [1, {"b": }]}',
 ]
+# Integers at and past the integer text limit, as a prefix, a digit, its count and a suffix.
+LONG_INTS: list[tuple[str, str, int, str]] = [
+    ("[", "1", 4300, "]"),
+    ("", "9", 4301, ""),
+    ("-", "1", 4301, ""),
+    ('{"a": [1, ', "3", 5000, "]}"),
+    ("[", "1", 4301, ", x]"),
+    ("[x, ", "1", 4301, "]"),
+    ("[1.", "1", 4301, "]"),
+    ("\n\n[0, ", "7", 4301, "]"),
+]
 REPR = [
     "",
     "a",
@@ -441,7 +519,25 @@ def text_fixture() -> Fixture:
         "fsdecode": [
             [list(raw), code_points(raw.decode("utf-8", "surrogateescape"))] for raw in FSDECODE
         ],
+        **integer_sections(),
     }
+
+
+def integer_sections() -> Fixture:
+    return {
+        "is_ascii_space": [byte for byte in range(256) if bytes([byte]).isspace()],
+        "strip_bytes": [[list(raw), list(raw.strip())] for raw in STRIP_BYTES],
+        "int_text": [[text, int_value(text)] for text in INT_TEXT],
+        "int_bytes": [[list(raw), int_value(raw)] for raw in INT_BYTES],
+    }
+
+
+def int_value(text: str | bytes) -> str | None:
+    # The decimal text of int(text), or None for a text that int() refuses.
+    try:
+        return str(int(text))
+    except ValueError:
+        return None
 
 
 def word_fixture() -> Fixture:
@@ -458,9 +554,15 @@ def shell_fixture() -> Fixture:
 
 def os_fixture() -> Fixture:
     # The messages are the C library's, so the test that reads these runs on Linux only.
+    errors = [OSError(code, os.strerror(code)) for code in range(141)]
     return {
-        "os_error_repr": [[code, repr(OSError(code, os.strerror(code)))] for code in range(141)],
+        "os_error_repr": [[error.errno, repr(error)] for error in errors],
+        "os_error_line": [[error.errno, last_traceback_line(error)] for error in errors],
     }
+
+
+def last_traceback_line(error: BaseException) -> str:
+    return traceback.format_exception_only(error)[-1].rstrip("\n")
 
 
 def difflib_fixture() -> Fixture:
@@ -549,7 +651,12 @@ def json_fixture() -> Fixture:
         ],
         "loads": [[doc, loaded(doc)] for doc in LOADS],
         "max_depth": [max_depth()],
+        "long_ints": [[parts, loaded(long_int_doc(*parts))] for parts in LONG_INTS],
     }
+
+
+def long_int_doc(prefix: str, digit: str, count: int, suffix: str) -> str:
+    return prefix + digit * count + suffix
 
 
 def loaded(doc: str) -> list[object]:
@@ -557,6 +664,8 @@ def loaded(doc: str) -> list[object]:
         value = json.loads(doc)
     except json.JSONDecodeError as error:
         return ["error", error.msg, error.pos, error.lineno, error.colno]
+    except ValueError as error:
+        return ["value_error", str(error)]
     return ["ok", tagged(value)]
 
 
@@ -771,9 +880,26 @@ def sloc_sources() -> list[str]:
     sources += [
         "(" * 199 + ")" * 199 + "\n",
         "(" * 201 + "\n",
+        *(indented(depth) for depth in (99, 100)),
+        "(" * 200 + ")" * 200 + "\n",
+        *(nested_fstring(depth) for depth in (149, 150)),
+        "f'{z:{y:{w}}}'\n",
+        "if a:\n\tb\n    c\n",
         "if a:\n" + "".join(" " * (i + 1) + f"if a{i}:\n" for i in range(101)),
     ]
     return sources + sloc_edge_sources()
+
+
+def indented(depth: int) -> str:
+    # `depth` blocks, each one level deeper, around one statement.
+    return "".join(" " * i + f"if a{i}:\n" for i in range(depth)) + " " * depth + "x\n"
+
+
+def nested_fstring(depth: int) -> str:
+    text = "x"
+    for _ in range(depth):
+        text = "f'{" + text + "}'"
+    return text + "\n"
 
 
 def sloc_edge_sources() -> list[str]:
@@ -890,4 +1016,6 @@ def fixtures() -> dict[Path, bytes]:
 
 
 if __name__ == "__main__":
-    sys.exit(write_or_check_files(__doc__.splitlines()[0], CRATES, fixtures))
+    # Other generators own the rest of the files in these fixture directories.
+    shared = [CRATES / name / "fixtures" for name in ("checks", "io", "metrics", "store")]
+    sys.exit(write_or_check_files(__doc__.splitlines()[0], CRATES, fixtures, shared))

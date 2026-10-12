@@ -12,7 +12,6 @@ equals the recorded one, so a call that a test patched stays out. seeded.json ho
 characterization fixtures of every tier-1 language and the outcome of each check for each edit.
 """
 
-import argparse
 import hashlib
 import inspect
 import json
@@ -23,6 +22,8 @@ from types import ModuleType
 from typing import Any, TypeVar
 
 import pytest
+from fixture_files import write_or_check_files
+from stdlib_fixtures import BUILDERS as STDLIB_FIXTURES
 
 from agentless_mcp.core import complexity, contracts, erosion
 from agentless_mcp.core.clones import Block
@@ -32,6 +33,8 @@ from agentless_mcp.util.errors import UnmeasurableSource
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "crates" / "checks" / "fixtures"
+# stdlib_fixtures.py writes diff.json into the same directory.
+SHARED = [ROOT / "crates" / path for path in STDLIB_FIXTURES]
 UNIT_TESTS = ROOT / "tests" / "unit"
 TEST_TARGETS = (
     str(UNIT_TESTS / "test_erosion.py"),
@@ -120,7 +123,6 @@ class IndexSpec:
         return CLONE_INDEX(self.texts, self.unread, FILE_BLOCKS, replay(self.budget))
 
     def as_json(self, texts: Texts) -> Json:
-        """Return the JSON form of this spec."""
         return {
             "texts": texts.files(self.texts),
             "unread": self.unread,
@@ -192,12 +194,10 @@ class Recorder:
         return value
 
     def complexity_delta(self, pairs: Sequence[TextPair], threshold: int) -> PairOutcome:
-        """Record one complexity_delta call."""
         call = Call("complexity_delta", self.node, {"pairs": tuple(pairs), "threshold": threshold})
         return self.record(call, lambda: COMPLEXITY_DELTA(pairs, threshold), outcome_json)
 
     def contract_drift(self, pairs: Sequence[TextPair], globs: Sequence[str]) -> PairOutcome:
-        """Record one contract_drift call."""
         call = Call("contract_drift", self.node, {"pairs": tuple(pairs), "globs": tuple(globs)})
         return self.record(call, lambda: CONTRACT_DRIFT(pairs, globs), outcome_json)
 
@@ -207,7 +207,6 @@ class Recorder:
         index: CloneIndex,
         reported: Collection[tuple[str, int]],
     ) -> PairOutcome:
-        """Record one clone_delta call, with the spec of the index it reads."""
         inputs = {"pairs": tuple(pairs), "index": self.spec_of(index), "reported": set(reported)}
         call = Call("clone_delta", self.node, inputs)
         return self.record(call, lambda: CLONE_DELTA(pairs, index, reported), outcome_json)
@@ -219,7 +218,6 @@ class Recorder:
         blocks_of: Callable[..., Any] = FILE_BLOCKS,
         in_budget: Callable[[], bool] = UNBOUNDED,
     ) -> CloneIndex:
-        """Record one clone_index call, with each answer its budget gave."""
         answers: list[bool] | None = None if in_budget is UNBOUNDED else []
 
         def budget() -> bool:
@@ -235,13 +233,11 @@ class Recorder:
         return index
 
     def pair_language(self, path: str) -> str | None:
-        """Record the language of one path."""
         language = PAIR_LANGUAGE(path)
         self.languages[path] = language
         return language
 
     def in_boundary(self, path: str, globs: Sequence[str]) -> bool:
-        """Record one boundary test that the glob tests make."""
         inside = IN_BOUNDARY(path, globs)
         if GLOB_CLASS not in self.node:
             return inside
@@ -265,7 +261,6 @@ class Recorder:
 
 
 def outcome_json(outcome: PairOutcome) -> Json:
-    """Return the JSON form of a pair-check outcome."""
     return {
         "findings": [lint_row(found) for found in outcome.findings],
         "observed": outcome.observed.as_dict(),
@@ -532,7 +527,6 @@ def with_hit(rows: list[str], unit: Unit, language: str) -> str:
 
 
 def moved_path(path: str) -> str:
-    """Return the path of the new file that a moved unit goes to."""
     head, _, name = path.rpartition("/")
     return f"{head}/moved_{name}"
 
@@ -558,35 +552,19 @@ def compact(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
-def fixture_texts() -> dict[str, str]:
-    """Return the text of each fixture file, by file name."""
+def fixture_contents() -> dict[Path, bytes]:
     recorder = record_tests()
-    return {
+    texts = {
         "recorded.json": dumped(recorded_fixture(recorder)),
         "seeded.json": dumped(seeded_fixture()),
     }
+    return {FIXTURES / name: text.encode("utf-8") for name, text in texts.items()}
 
 
-def main() -> None:
-    """Write the fixtures, or with --check, fail when a committed fixture is stale."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="compare, and write nothing")
-    arguments = parser.parse_args()
-    wanted = fixture_texts()
-    if arguments.check:
-        stale = [
-            name
-            for name, text in wanted.items()
-            if not (FIXTURES / name).is_file() or (FIXTURES / name).read_text("utf-8") != text
-        ]
-        if stale:
-            message = f"stale fixtures in {FIXTURES}: {', '.join(stale)}"
-            raise SystemExit(message)
-        return
-    FIXTURES.mkdir(parents=True, exist_ok=True)
-    for name, text in wanted.items():
-        (FIXTURES / name).write_text(text, encoding="utf-8")
+def main() -> int:
+    """Write the fixtures, or compare them with --check, and return the exit status."""
+    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, fixture_contents, SHARED)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -18,7 +18,8 @@ test-support = ["text/test-support"]
 [dependencies]
 json = { path = "../json" }
 kernel = { path = "../kernel" }
-libc = "0.2.180"
+libc.workspace = true
+prompts = { path = "../prompts" }
 serde.workspace = true
 text = { path = "../text" }
 wait-timeout = "0.2.1"

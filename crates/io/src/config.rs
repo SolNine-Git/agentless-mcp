@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Read};
+use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
@@ -20,6 +20,7 @@ pub const CONFIG_FILENAME: &str = ".agentless-mcp.json";
 pub const MAX_BOUNDARY_GLOBS: usize = 64;
 /// The most characters in one boundary glob.
 pub const MAX_BOUNDARY_GLOB_CHARS: usize = 256;
+// A config file is a handful of scalars, so a larger file is not a config.
 pub(crate) const MAX_CONFIG_BYTES: u64 = 65_536;
 // In the order that the unknown-key warning lists them.
 pub(crate) const KNOWN_KEYS: [&str; 10] = [
@@ -62,7 +63,6 @@ pub struct ProjectConfig {
     /// The `boundary_globs` values, in file order.
     pub boundary_globs: Vec<String>,
     /// Each problem, in the order that the load found it.
-    // Two warning texts are prompts texts, so only the caller can render the list.
     #[serde(skip)]
     pub warnings: Vec<ConfigWarning>,
 }
@@ -164,29 +164,22 @@ fn read_object(
     }
 }
 
-// O_NONBLOCK keeps a FIFO from stalling the open, and the stat judges the file that was opened.
+// The path checks run first, so no open reaches a FIFO, a device or a file outside the root.
+// O_NONBLOCK and O_NOCTTY guard a swap after the checks, and the fstat judges the opened file.
 fn read_bytes(path: &Path, repo_root: &Path) -> Result<Option<Vec<u8>>, FileRefusal> {
-    let opened = OpenOptions::new()
+    if !present(path, repo_root)? {
+        return Ok(None);
+    }
+    let file = OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(path);
-    let file = match opened {
-        Ok(file) => file,
-        Err(error) => return open_failure(path, repo_root, &error),
-    };
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path)
+        .map_err(|error| FileRefusal::Unreadable(strerror(&error)))?;
     let metadata = file
         .metadata()
         .map_err(|error| FileRefusal::Unstatable(strerror(&error)))?;
     if !metadata.is_file() {
         return Err(FileRefusal::NotRegular);
-    }
-    if !stays_inside(path, repo_root) {
-        return Err(FileRefusal::Outside);
-    }
-    if metadata.len() > MAX_CONFIG_BYTES {
-        return Err(FileRefusal::TooLarge {
-            size: metadata.len(),
-        });
     }
     let mut bytes = Vec::new();
     file.take(MAX_CONFIG_BYTES + 1)
@@ -198,20 +191,26 @@ fn read_bytes(path: &Path, repo_root: &Path) -> Result<Option<Vec<u8>>, FileRefu
     Ok(Some(bytes))
 }
 
-// Names a failed open by what is at the path: nothing, something that is not a regular file, a
-// file outside the root, or a file that cannot be read.
-fn open_failure(
-    path: &Path,
-    repo_root: &Path,
-    error: &io::Error,
-) -> Result<Option<Vec<u8>>, FileRefusal> {
-    match fs::metadata(path) {
-        Ok(metadata) if !metadata.is_file() => Err(FileRefusal::NotRegular),
-        Ok(_) if !stays_inside(path, repo_root) => Err(FileRefusal::Outside),
-        Ok(_) => Err(FileRefusal::Unreadable(strerror(error))),
-        Err(_) if path.is_symlink() => Err(FileRefusal::NotRegular),
-        Err(_) => Ok(None),
+// Whether a file is at `path`. A path that is not a regular file inside the root, or a file over
+// the cap, gives its refusal.
+fn present(path: &Path, repo_root: &Path) -> Result<bool, FileRefusal> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(_) if path.is_symlink() => return Err(FileRefusal::NotRegular),
+        Err(_) => return Ok(false),
+    };
+    if !metadata.is_file() {
+        return Err(FileRefusal::NotRegular);
     }
+    if !stays_inside(path, repo_root) {
+        return Err(FileRefusal::Outside);
+    }
+    if metadata.len() > MAX_CONFIG_BYTES {
+        return Err(FileRefusal::TooLarge {
+            size: metadata.len(),
+        });
+    }
+    Ok(true)
 }
 
 fn stays_inside(path: &Path, repo_root: &Path) -> bool {
@@ -221,13 +220,14 @@ fn stays_inside(path: &Path, repo_root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::{Placed, build, fixture};
+    use crate::fixtures::{Placed, build, fixture, has_mode};
     use crate::testing::Tree;
-    use crate::warning::{GateWarning, GlobsWarning};
     use serde_json::{Map, Value, json};
+    use std::process::{Command, Stdio};
     use std::sync::mpsc;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+    use wait_timeout::ChildExt;
 
     fn described(config: &ProjectConfig, tree: &Tree) -> Value {
         let mut fields = Map::new();
@@ -261,37 +261,9 @@ mod tests {
         });
         fields.insert("erosion_gate".to_owned(), json!(gate));
         fields.insert("boundary_globs".to_owned(), json!(config.boundary_globs));
-        let warnings: Vec<Value> = config.warnings.iter().map(typed).collect();
+        let warnings: Vec<String> = config.warnings.iter().map(ToString::to_string).collect();
         fields.insert("warnings".to_owned(), json!(warnings));
         Value::Object(fields)
-    }
-
-    fn typed(warning: &ConfigWarning) -> Value {
-        match warning {
-            ConfigWarning::File(refusal) => json!(["text", refusal.to_string()]),
-            ConfigWarning::Value(value) => json!(["text", value.to_string()]),
-            ConfigWarning::Stoplist(stoplist) => json!(["text", stoplist.to_string()]),
-            ConfigWarning::TestCmd(test_cmd) => json!(["text", test_cmd.to_string()]),
-            ConfigWarning::Unknown(unknown) => json!(["text", unknown.to_string()]),
-            ConfigWarning::ErosionGate(gate) => typed_gate(*gate),
-            ConfigWarning::BoundaryGlobs(globs) => typed_globs(*globs),
-        }
-    }
-
-    fn typed_gate(warning: GateWarning) -> Value {
-        match warning {
-            GateWarning::NotObject => json!(["erosion_gate_not_object"]),
-            GateWarning::Mode(check) => json!(["erosion_gate_mode", check.name()]),
-            GateWarning::Unknown { count } => json!(["erosion_gate_unknown", count]),
-        }
-    }
-
-    fn typed_globs(warning: GlobsWarning) -> Value {
-        match warning {
-            GlobsWarning::NotList => json!(["boundary_globs_not_list"]),
-            GlobsWarning::TooMany { count } => json!(["boundary_globs_too_many", count]),
-            GlobsWarning::Dropped { count } => json!(["boundary_globs_dropped", count]),
-        }
     }
 
     // Loads `text` as the config file of a new tree.
@@ -330,9 +302,60 @@ mod tests {
         let all: Vec<(String, Vec<Value>, Value)> = fixture("config", "files");
         for (name, layout, expected) in all {
             let tree = build(&layout);
+            if has_mode(&layout) && !tree.modes_bind() {
+                continue;
+            }
             let found = described(&load_config(&tree.join("root")), &tree);
             assert_eq!(found, expected, "case {name}");
         }
+    }
+
+    // The writer blocks in its open until a reader opens the FIFO, so its exit shows an open.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn load_config_never_opens_a_fifo_outside_the_root() {
+        let layout = [
+            json!(["dir", "root"]),
+            json!(["dir", "outside"]),
+            json!(["fifo", "outside/pipe"]),
+            json!(["link", "root/.agentless-mcp.json", "../outside/pipe"]),
+        ];
+        let tree = build(&layout);
+        let mut writer = Command::new("sh")
+            .args(["-c", "exec 3>\"$0\""])
+            .arg(tree.join("outside/pipe"))
+            .stdin(Stdio::null())
+            .spawn()
+            .expect("sh starts");
+        let blocked = blocked_in_open(writer.id());
+        let config = load_config(&tree.join("root"));
+        let released = writer.wait_timeout(Duration::from_millis(500));
+        writer.kill().expect("the writer is killed");
+        writer.wait().expect("the writer is reaped");
+        assert!(blocked, "the writer did not reach its open within the wait");
+        assert_eq!(
+            config.warnings,
+            [ConfigWarning::File(FileRefusal::NotRegular)]
+        );
+        let released = released.expect("the wait for the writer");
+        assert_eq!(
+            released, None,
+            "the load opened the FIFO and released the writer"
+        );
+    }
+
+    // The kernel names the wait of a FIFO open for a missing partner in the task's wchan.
+    #[cfg(target_os = "linux")]
+    fn blocked_in_open(pid: u32) -> bool {
+        let wchan = format!("/proc/{pid}/wchan");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if fs::read_to_string(&wchan).is_ok_and(|text| text == "wait_for_partner") {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        false
     }
 
     #[test]

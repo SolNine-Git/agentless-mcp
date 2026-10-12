@@ -18,6 +18,7 @@ use wait_timeout::ChildExt;
 
 use crate::strerror;
 
+// The default Linux pipe capacity, so one read can empty a full pipe.
 const CHUNK_BYTES: usize = 65_536;
 
 /// What to run and the bounds it runs under. stdin is null; the child gets `env` and nothing else.
@@ -31,7 +32,8 @@ pub struct Spec {
     pub cwd: PathBuf,
     /// The complete environment of the child.
     pub env: Vec<(OsString, OsString)>,
-    /// The time from the spawn to the end of the reap.
+    /// The time from the spawn until the runner kills the child. The reap after a kill has no
+    /// bound.
     pub timeout: Duration,
     /// The most stdout bytes kept; one byte more kills the child.
     pub stdout_cap: usize,
@@ -44,7 +46,6 @@ pub struct Spec {
 pub enum Outcome {
     /// The child exited, or a signal ended it, before the deadline.
     Exited {
-        /// The exit status.
         status: ExitStatus,
         /// All of stdout.
         stdout: Vec<u8>,
@@ -446,18 +447,36 @@ mod tests {
         assert_eq!(Path::new(printed.trim_end()), tree.path());
     }
 
+    fn assert_not_found(spec: &Spec) {
+        match run(spec) {
+            Outcome::NotRun(not_run @ NotRun::ProgramNotFound(_)) => {
+                assert_eq!(not_run.to_string(), "No such file or directory");
+            }
+            other => panic!("expected a missing program, got {other:?}"),
+        }
+    }
+
     #[test]
     fn a_missing_program_is_not_run() {
         let spec = Spec {
             program: "/nonexistent-io-runner-test/program".into(),
             ..sh("", LONG)
         };
-        match run(&spec) {
-            Outcome::NotRun(not_run @ NotRun::ProgramNotFound(_)) => {
-                assert_eq!(not_run.to_string(), "No such file or directory");
-            }
-            other => panic!("expected a missing program, got {other:?}"),
-        }
+        assert_not_found(&spec);
+    }
+
+    #[test]
+    fn a_bare_name_on_no_path_entry_is_not_found() {
+        let tree = tree();
+        let empty = tree
+            .create_dir("empty")
+            .expect("the tree takes a directory");
+        let spec = Spec {
+            program: "io-runner-test-absent-program".into(),
+            env: vec![("PATH".into(), empty.into_os_string())],
+            ..sh("", LONG)
+        };
+        assert_not_found(&spec);
     }
 
     #[test]

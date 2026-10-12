@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::{Failure, process, repo, workspace};
+use crate::{Failure, lint_tables, process, repo, workspace};
 
 // A hang guard, far above the call's run time.
 const LINT_TABLE: Duration = Duration::from_secs(10);
@@ -243,15 +243,11 @@ fn parse_configured(text: &str) -> Result<Vec<Configured>, String> {
     let manifest: Manifest = toml::from_str(text).map_err(|error| error.to_string())?;
     let mut configured = Vec::new();
     for (tool, table) in manifest.workspace.lints {
-        let prefix = match tool.as_str() {
-            "rust" => "",
-            "clippy" => "clippy::",
-            other => {
-                return Err(format!(
-                    "[workspace.lints.{other}]: the ground-truth check reads only the rust and clippy tables. Teach xtask/src/ground_truth/lints.rs the tool in review"
-                ));
-            }
-        };
+        let prefix = lint_tables::lint_prefix(&tool).ok_or_else(|| {
+            format!(
+                "[workspace.lints.{tool}]: the ground-truth check reads only the rust and clippy tables. Teach xtask/src/lint_tables.rs the tool in review"
+            )
+        })?;
         for (name, setting) in table {
             configured.push(setting.configured(format!("{prefix}{}", lint_name(&name)))?);
         }

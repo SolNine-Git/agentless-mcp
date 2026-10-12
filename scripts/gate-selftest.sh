@@ -28,8 +28,10 @@ long_s=$(printf '\305\277')
 start_of_heading=$'\001'
 line_feed=$'\n'
 
+# New mtimes make cargo rebuild the packages, whose binaries would otherwise keep the last run's
+# deleted work path.
 git -C "$root" ls-files -z --cached --others --exclude-standard \
-    | tar -C "$root" --null -T - -cf - | tar -C "$work" -xf -
+    | tar -C "$root" --null -T - -cf - | tar -C "$work" -xmf -
 cd "$work"
 # From here on, no hook or setting of the owner's applies: no GIT_ variable, no global or system git
 # config, and an empty XDG_CONFIG_HOME, where git, uv and nextest find their user files.

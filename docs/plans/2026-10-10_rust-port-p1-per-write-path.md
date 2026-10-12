@@ -179,9 +179,9 @@ Each item is a route that the gates leave open after P0d, or a review finding th
 
 ### 2. `prompts`
 
-- `cargo xtask generate` reads `src/agentless_mcp/prompts/*.json` (the files move into the crate when the Python tree is deleted). It writes `crates/prompts/src/generated/` with one typed function per message, and each placeholder becomes a typed argument. The commit holds the generated file ("Do in P1"). This item adds the `cargo xtask generate` task.
+- `cargo xtask generate` reads `envelope.json`, `messages.json` and `contract_rules.json` in `src/agentless_mcp/prompts/` (the files move into the crate when the Python tree is deleted). It writes `crates/prompts/src/generated/`: each message becomes a typed template const, and one generic `Template::render` takes the typed values of its placeholders. The commit holds the generated files ("Do in P1"). This item adds the `cargo xtask generate` task.
 - A missing or extra placeholder fails the generator. `deny_unknown_fields` applies, because the project owns these files.
-- `contract_rules()` returns the parsed `contract_rules.json`, validated eagerly.
+- The generator checks `contract_rules.json` and writes it as a static table. `contract_rules()` returns that table.
 - **Tests**: render every message once; parse every contract rule.
 
 ### 3. `syntax`

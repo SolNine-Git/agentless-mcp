@@ -8,20 +8,17 @@ use serde::Serialize;
 use crate::pairs::{IndexOf, Judged, Lookup, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
-use crate::{Error, PairSelection, Repo, Services, Tags};
+use crate::{Error, Noted, PairSelection, Repo, Services, Tags};
 
-/// Runs the pair checks of `request` on `repo`, with the clone blocks that `tags` stores.
-///
-/// # Errors
-///
-/// Returns a revision that names no commit, git output that does not parse, or a check that
-/// fails on input it cannot read.
+/// Runs the pair checks of `request` on `repo`, with the clone blocks that `tags` stores. The
+/// error is a revision that names no commit, git output that does not parse, or a check that
+/// fails on input it cannot read. The warnings come with either outcome.
 pub fn lint(
     services: &Services,
     repo: &Repo,
     tags: &Tags,
     request: &LintRequest,
-) -> Result<Noted<LintReport>, Error> {
+) -> Noted<Result<LintReport, Error>> {
     let mut lookup = |path: &str, text: &str, language| tags.stored(path, text, language);
     let source = BlockSource {
         cached: tags.cached(),
@@ -75,41 +72,47 @@ pub struct LintCandidate {
     pub observed: Option<Observed>,
 }
 
-/// A value and the warnings to print on stderr, in the order they arose.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Noted<T> {
-    /// The value.
-    pub value: T,
-    /// The warnings.
-    pub diagnostics: Vec<String>,
-}
-
 // The tag cache as the lint run reads it: whether one is usable, and its stored blocks.
 pub(crate) struct BlockSource<'a> {
     pub(crate) cached: bool,
     pub(crate) lookup: &'a mut Lookup<'a>,
 }
 
-// Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
-// file. The revision form measures each file in memory instead.
+// The clone index walk raises the warnings, so they reach the caller with either outcome.
 pub(crate) fn lint_with(
     services: &Services,
     repo: &Repo,
     source: BlockSource<'_>,
     request: &LintRequest,
-) -> Result<Noted<LintReport>, Error> {
+) -> Noted<Result<LintReport, Error>> {
     let warnings = RefCell::new(Vec::new());
     let BlockSource { cached, lookup } = source;
     let mut index = |measured: &[&checks::Pair]| -> Result<CloneIndex, Error> {
-        let (files, found) = built_index(services, &repo.root, lookup, measured)?;
-        warnings.borrow_mut().extend(found);
-        Ok(CloneIndex::Built(files))
+        let built = built_index(services, &repo.root, lookup, measured);
+        warnings.borrow_mut().extend(built.diagnostics);
+        built.value.map(CloneIndex::Built)
     };
+    let report = report(services, repo, cached, request, &mut index);
+    Noted {
+        value: report,
+        diagnostics: warnings.into_inner(),
+    }
+}
+
+// Without a usable tag cache, the proposed form reports the no_tag_cache gap and reads no other
+// file. The revision form measures each file in memory instead.
+fn report(
+    services: &Services,
+    repo: &Repo,
+    cached: bool,
+    request: &LintRequest,
+    index: &mut IndexOf<'_>,
+) -> Result<LintReport, Error> {
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
             let compared = proposed(&repo.root, path, after, services.cwd.as_deref());
             let mut no_cache = |_: &[&checks::Pair]| Ok(CloneIndex::NoTagCache);
-            let index: &mut IndexOf<'_> = if cached { &mut index } else { &mut no_cache };
+            let index: &mut IndexOf<'_> = if cached { index } else { &mut no_cache };
             (
                 path,
                 judge_proposed(compared, request.checks, &repo.config, index)?,
@@ -117,16 +120,12 @@ pub(crate) fn lint_with(
         }
         LintForm::Revision { revision } => {
             let compared = compared(&services.git, &repo.root, revision)?;
-            let judged = run_pairs(compared.pairs, request.checks, &repo.config, &mut index)?;
+            let judged = run_pairs(compared.pairs, request.checks, &repo.config, index)?;
             (revision, with_rows(compared.rows, judged))
         }
     };
-    let candidate = candidate(id, judged);
-    Ok(Noted {
-        value: LintReport {
-            candidates: vec![candidate],
-        },
-        diagnostics: warnings.into_inner(),
+    Ok(LintReport {
+        candidates: vec![candidate(id, judged)],
     })
 }
 

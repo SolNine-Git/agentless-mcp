@@ -6,6 +6,8 @@ use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
+use crate::strerror;
+
 /// Why [`append_line`] did not append the whole line.
 #[derive(Debug)]
 pub enum AppendError {
@@ -23,7 +25,7 @@ pub enum AppendError {
 impl fmt::Display for AppendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(error) => write!(f, "{error}"),
+            Self::Io(error) => f.write_str(&strerror(error)),
             Self::Short { written, expected } => write!(f, "wrote {written} of {expected} bytes"),
         }
     }
@@ -95,6 +97,8 @@ mod tests {
         append_line(&blocker, b"x\n").expect("the plain file is created");
         let refused = append_line(&blocker.join("log"), b"x\n");
         assert!(matches!(refused, Err(AppendError::Io(_))), "{refused:?}");
+        let shown = refused.map_err(|error| error.to_string());
+        assert_eq!(shown, Err("File exists".to_owned()), "the OS message alone");
     }
 
     #[test]

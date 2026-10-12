@@ -80,6 +80,11 @@ fn members(archive: &[u8]) -> BTreeMap<String, Vec<u8>> {
     found
 }
 
+fn archive(manifest: &Manifest) -> Vec<u8> {
+    let path = vendor().join(&manifest.archive);
+    std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
 #[test]
 fn the_archive_holds_exactly_the_files_the_manifest_lists() {
     let manifest = manifest();
@@ -88,9 +93,7 @@ fn the_archive_holds_exactly_the_files_the_manifest_lists() {
         manifest.archive,
         format!("grammars-{}.tar.zst", manifest.version)
     );
-    let archive_path = vendor().join(&manifest.archive);
-    let archive = std::fs::read(&archive_path)
-        .unwrap_or_else(|error| panic!("{}: {error}", archive_path.display()));
+    let archive = archive(&manifest);
     assert_eq!(
         sha256(&archive),
         manifest.archive_sha256,
@@ -109,6 +112,35 @@ fn the_archive_holds_exactly_the_files_the_manifest_lists() {
         assert_eq!(data.len(), file.size, "{}: size", file.path);
         assert_eq!(sha256(data), file.sha256, "{}: sha256", file.path);
         assert!(!file.origin.is_empty(), "{}: origin", file.path);
+    }
+}
+
+#[test]
+fn the_build_script_unpacks_the_archive_that_the_manifest_names() {
+    let manifest = manifest();
+    let path = vendor().with_file_name("build.rs");
+    let script = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let constant = format!("const ARCHIVE: &str = \"vendor/{}\";", manifest.archive);
+    assert!(script.contains(&constant), "build.rs lacks {constant}");
+}
+
+#[test]
+fn each_archived_parser_defines_the_symbol_that_the_manifest_records() {
+    let manifest = manifest();
+    let members = members(&archive(&manifest));
+    for grammar in &manifest.language {
+        let parser = &members[&format!("parsers/{}/src/parser.c", grammar.name)];
+        let definition = format!("tree_sitter_{}(", grammar.symbol);
+        let needle = definition.as_bytes();
+        assert!(
+            parser
+                .windows(needle.len())
+                .rev()
+                .any(|bytes| bytes == needle),
+            "{}: parser.c defines no {definition}",
+            grammar.name
+        );
     }
 }
 

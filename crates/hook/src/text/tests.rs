@@ -4,7 +4,7 @@ use io::testing::cases;
 use serde::de::DeserializeOwned;
 use text::CodePointString;
 
-use super::{codec_text, grouped, last_line, lossy, os_error_line, os_error_text, sha256_hex};
+use super::{codec_text, grouped, last_line, lossy, os_error_text, sha256_hex};
 use crate::record::seconds;
 use crate::testing::{MANIFEST_DIR, latin};
 
@@ -13,7 +13,7 @@ fn text_cases<T: DeserializeOwned>(section: &str) -> T {
 }
 
 #[test]
-fn the_codec_text_matches_the_generated_cases() {
+fn the_codec_text_matches_the_reference_cases() {
     let all: Vec<(String, String)> = text_cases("codec");
     assert!(!all.is_empty());
     for (raw, expected) in all {
@@ -24,7 +24,7 @@ fn the_codec_text_matches_the_generated_cases() {
 }
 
 #[test]
-fn an_os_error_with_a_file_matches_the_generated_cases() {
+fn an_os_error_with_a_file_matches_the_reference_cases() {
     let all: Vec<(i32, String, String)> = text_cases("os_error");
     assert!(!all.is_empty());
     for (errno, path, expected) in all {
@@ -43,12 +43,12 @@ fn an_os_error_line_names_the_class_and_the_errno() {
     assert!(!all.is_empty());
     for (errno, expected) in all {
         let error = std::io::Error::from_raw_os_error(errno);
-        assert_eq!(os_error_line(&error), expected, "errno {errno}");
+        assert_eq!(io::os_error_line(&error), expected, "errno {errno}");
     }
 }
 
 #[test]
-fn the_last_line_matches_the_generated_cases() {
+fn the_last_line_matches_the_reference_cases() {
     let all: Vec<(String, String)> = text_cases("last_line");
     assert!(!all.is_empty());
     for (text, expected) in all {
@@ -57,7 +57,7 @@ fn the_last_line_matches_the_generated_cases() {
 }
 
 #[test]
-fn grouped_digits_match_the_generated_cases() {
+fn grouped_digits_match_the_reference_cases() {
     let all: Vec<(usize, String)> = text_cases("grouped");
     assert!(!all.is_empty());
     for (count, expected) in all {
@@ -66,7 +66,7 @@ fn grouped_digits_match_the_generated_cases() {
 }
 
 #[test]
-fn the_time_stamp_matches_the_generated_cases() {
+fn the_time_stamp_matches_the_reference_cases() {
     let all: Vec<(String, String)> = text_cases("seconds");
     assert!(!all.is_empty());
     for (nanos, expected) in all {
@@ -77,7 +77,7 @@ fn the_time_stamp_matches_the_generated_cases() {
 }
 
 #[test]
-fn the_digest_matches_the_generated_cases() {
+fn the_digest_matches_the_reference_cases() {
     let all: Vec<(String, String)> = text_cases("sha256");
     assert!(!all.is_empty());
     for (text, expected) in all {

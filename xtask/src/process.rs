@@ -13,6 +13,7 @@ pub const GIT: Duration = Duration::from_secs(30);
 pub const METADATA: Duration = Duration::from_secs(120);
 pub const GATE_BINARY: Duration = Duration::from_secs(300);
 pub const BUILD: Duration = Duration::from_secs(1800);
+pub const RUSTFMT: Duration = Duration::from_secs(60);
 const SIGNAL: Duration = Duration::from_secs(5);
 // After the child exits, its readers only need to be scheduled to reach the end of each pipe. A
 // process that holds a pipe past this is a leak, whatever deadline remains.

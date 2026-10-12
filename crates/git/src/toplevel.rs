@@ -8,7 +8,7 @@ use crate::run::exit_code;
 use crate::{Git, Limits};
 
 // A root path is far shorter than the cap. The caller's timeout replaces `seconds`.
-const TOPLEVEL: Limits = Limits {
+pub(crate) const TOPLEVEL: Limits = Limits {
     seconds: 2,
     shown: "2.0",
     cap: 65_536,

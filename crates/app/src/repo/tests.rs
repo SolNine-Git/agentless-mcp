@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::{Repo, expand_user, resolve};
 use crate::Error;
-use crate::testing::{Sandbox, cases};
+use crate::testing::{MANIFEST_DIR, Sandbox};
 
 fn refusal(error: Error) -> kernel::Error {
     let Error::Kind(kind) = error else {
@@ -14,7 +14,8 @@ fn refusal(error: Error) -> kernel::Error {
 
 #[test]
 fn a_leading_tilde_becomes_the_home_directory() {
-    let rows: Vec<(String, String, String)> = cases("repo", "expand_user");
+    let rows: Vec<(String, String, String)> =
+        io::testing::cases(MANIFEST_DIR, "repo", "expand_user");
     for (path, home, expected) in rows {
         let found = expand_user(Path::new(&path), Some(OsStr::new(&home)));
         assert_eq!(

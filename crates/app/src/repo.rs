@@ -58,9 +58,7 @@ pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Repo, Error> 
         let cwd = start_dir(services)?;
         services.git.root(cwd).unwrap_or_else(|| cwd.to_path_buf())
     };
-    let root = root_directory(&below_cwd(services, &raw)?)?;
-    let config = io::load_config(&root);
-    Ok(Repo { root, config })
+    Repo::load(services, &raw)
 }
 
 fn root_directory(raw: &Path) -> Result<PathBuf, Error> {
@@ -70,11 +68,16 @@ fn root_directory(raw: &Path) -> Result<PathBuf, Error> {
         let message = format!("not a directory: {}", root.display());
         return Err(kernel::Error::RepoResolution(message).into());
     }
-    if root.to_str().is_none() {
-        let message = format!("not a UTF-8 path: {}", root.display());
-        return Err(kernel::Error::RepoResolution(message).into());
-    }
+    root_text(&root)?;
     Ok(root)
+}
+
+// The root as text, or the refusal of a root that is not a UTF-8 path.
+pub(crate) fn root_text(root: &Path) -> Result<&str, Error> {
+    root.to_str().ok_or_else(|| {
+        let message = format!("not a UTF-8 path: {}", root.display());
+        kernel::Error::RepoResolution(message).into()
+    })
 }
 
 // A leading "~" or "~/" becomes the home directory. "~user" stays as it is.

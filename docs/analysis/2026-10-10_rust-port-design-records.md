@@ -2,7 +2,7 @@
 
 **Date**: 2026-10-10 | **Source**: the design page "agentless-rs Blueprint", revision 3 (a private claude.ai page) | **Plans**: [2026-10-10_rust-port-00-overview.md](../plans/2026-10-10_rust-port-00-overview.md)
 
-This file copies the records the phase plans cite, so that every id resolves inside the repository. A script generated it from the page's own data, and no row was retyped. The page was written at `1b17fb2` on `feat/erosion-checks` (agentless-mcp 0.9.1). Every file and line in the evidence columns is at that commit: read one with `git show 1b17fb2:src/agentless_mcp/<path>`.
+This file copies the records the phase plans cite, so that every id resolves inside the repository. A script generated it from the page's own data, and no row was retyped. After P1, the parity ledger records the approved deviations, and the rows that named the `pycompat` crate name the crates that hold its code now. The page was written at `1b17fb2` on `feat/erosion-checks` (agentless-mcp 0.9.1). Every file and line in the evidence columns is at that commit: read one with `git show 1b17fb2:src/agentless_mcp/<path>`.
 
 The phase plans supersede the page's crate table, phases, line budget, and decisions table, so this file leaves them out.
 
@@ -71,7 +71,7 @@ Each decision removes a class of finding. The ids name rows in the findings tabl
 | One check interface | Ten checks implement one Check trait and declare what input they need. The runner builds only that input, applies one error guard and one sort, and emits one Finding type. One cascade matcher serves unit pairing and clone pairing. The three pair checks live below the graph, so the per-write path does not need it. | C5, C6, C9, C14 |
 | Ports with fakes | Git, the file system (including writes), processes, the clock, and the store sit behind traits. The application never touches the OS directly. One contract suite runs against each real and fake implementation. A probe has an error channel: no repository is an answer, and a failed probe is an error. | D3, D9, D13, E10 |
 | A complete cache key | One table keyed by path, content digest, and an analysis version that hashes the grammar build, the query text, and the metric algorithm. One writer holds the file lock. A corrupt row is rebuilt and reported. Freshness, the index plan, and eviction are pure functions. Today eight tables are read one file at a time, and freshness is decided in two places. | D2, D4, D7, D11 |
-| Parity in quarantine | Every Python-specific behavior the goldens need lives in pycompat, one function each, with fixtures from a pinned CPython. When a quirk is no longer wanted, one function and one golden change. | B15, F3 |
+| Parity in quarantine | Every Python-specific behavior the goldens need lives in the crate that owns its domain (text, json, metrics, checks, io or store), one function each, with fixtures from a pinned CPython. When a quirk is no longer wanted, one function and one golden change. | B15, F3 |
 | Load once per call | A call loads repository facts once and derives the rest lazily. Today imports resolve twice per graph call, PageRank runs and is discarded, and files are read three times per hook call. | B2, B8, B13, C16, D9 |
 | The hook runs in process | agentless hook replaces four Python scripts. There is no second process, no temp file, no JSON round trip, and no capability probe. The hook uses the same config reader as lint, so the two cannot disagree. | E9, F12, F13, F15 |
 
@@ -122,7 +122,7 @@ Six review agents each read one block of the code. "Measured" means a command pr
 | B12 | B | Inefficiency | explain does whole-repository work for one node. | graph_service.py:257-277; resolve.py:513-525 | Use the targeted fan-in that resolved_sites already supports. | 10 | read |
 | B13 | B | Inefficiency | communities runs PageRank and an import resolution, then reads only the graph. | graph_service.py:353-384 | Derive values lazily on RepoFacts. | 0 | read |
 | B14 | B | Design | Health and the complexity walk live inside the graph service, and services import each other sideways. | graph_service.py:59-68, 502-847; map_service.py:40-48 | A separate health operation; path classes in their own module. | 0 | read |
-| B15 | B | Defect | Output depends on the interpreter: sum() is compensated on 3.12+ while the package supports 3.10; some edge order depends on the hash seed. | pyproject.toml:14; graph.py:558, 795-806; communities.py:364-371 | pycompat::fsum_neumaier; sorted iteration. | 0 | codex |
+| B15 | B | Defect | Output depends on the interpreter: sum() is compensated on 3.12+ while the package supports 3.10; some edge order depends on the hash seed. | pyproject.toml:14; graph.py:558, 795-806; communities.py:364-371 | metrics::compensated_sum; sorted iteration. | 0 | codex |
 | C1 | C | Waste | 2,241 docstring lines, only 207 on public API; one docstring is false (it says patchlint never calls resolve_elisions). | patches.py:742-747 vs patchlint.py:846-866; normalize.py:29 | One-line contracts; parity notes become named tests. | 2000 | read |
 | C2 | C | Waste | Hand-written serialization and a 200-line verdict reader; two functions build the same vote candidate. | erosion.py:77-260; validate_service.py:345-392, 990-1189, 1081-1111 | Serde derive, then the reader's order and uniqueness checks as plain code. | 390 | read |
 | C3 | C | Design | A hand-written 380-line Python lexer re-scans text that is already parsed, to check call arity. | patchlint.py:1263-1643 | Typed parameter shapes from parse nodes; keep the conservative refusals. | 300 | read |
@@ -189,7 +189,7 @@ Six review agents each read one block of the code. "Measured" means a command pr
 | A config that resolves outside the repository, or a FIFO or other non-regular file, is refused by lint but read by the hook. A FIFO can stall the hook. | agentless_erosion_gate.py:394-397; projectconfig.py:197-213 | verified | Fix now in Python; the Rust hook shares the reader. |
 | Auto-index opens SQLite on the event loop, and an error at cache.py:1006 can skip connection cleanup. | server.py:1216; cache.py:1006, 1458 | codex | Fix now; offload the work and guarantee cleanup. |
 | Two _size_of rules disagree: one keeps an unstatable file, the other drops it. | fslimits.py:323; treewalk.py:184 | codex | Pick one failure rule and its diagnostic. |
-| Float output can differ between Python 3.10/3.11 and 3.12+, which the package also supports. | pyproject.toml:14; graph.py:558; communities.py:371 | codex | Goldens are 3.13; pycompat pins that rule; add cancellation-sensitive sums. |
+| Float output can differ between Python 3.10/3.11 and 3.12+, which the package also supports. | pyproject.toml:14; graph.py:558; communities.py:371 | codex | Goldens are 3.13; metrics::compensated_sum pins that rule; add cancellation-sensitive sums. |
 | The version string falls back to "0+unknown" in one place and "unknown" in another. | cliargs.py:42; capability_service.py:239 | verified | Gone in Rust (compile-time version). |
 | complexity_delta warns on test fixtures in --since mode. | lint --since output on this branch; lint_service.py:805 | measured | Fix in Python first: skip fixtures in every check (recommendation 8). |
 | extract_facts on an unsupported language raises. The empty-result promise is on the symbol and import APIs, not on extract_facts. | extractor.py:1435, 1989 | codex | Define aggregate behavior; Language::from_path returns None. |
@@ -201,10 +201,10 @@ Behaviors that the goldens, the hook, and other tools depend on. Each one gets o
 
 | Area | Behavior that must match | Home |
 |---|---|---|
-| Numbers | Python float repr (1e-05, 3.0); round(x, 6) half-even; :.4f, :g, and :.3f; compensated sum() as on 3.12+; negative zero shown as zero; max() keeps the first maximum. | pycompat |
-| Text | Lengths in code points (caps 80, 120, 200, 240 with ...); Python whitespace includes \x1c-\x1f and \x85; splitlines() against split("\n"); errors="replace" decoding; one byte-column slice of a str on purpose. | pycompat |
-| JSON | json.dumps(indent=2) plus a newline; ensure_ascii with surrogate pairs; insertion order; the compact, sorted, ASCII form inside the HTML export; the fingerprint separators. | pycompat::PyJson |
-| Python SLOC | Pinned CPython 3.13 tokenize over splitlines(keepends=True), ignoring COMMENT, NL, NEWLINE, INDENT, DEDENT, ENDMARKER; f-strings per PEP 701; Unicode and indentation rules; rejection and its diagnostic class. | pycompat::python_sloc |
+| Numbers | Python float repr (1e-05, 3.0); round(x, 6) half-even; :.4f, :g, and :.3f; compensated sum() as on 3.12+; negative zero shown as zero; max() keeps the first maximum. | json (float_text, round_half_even), metrics (compensated_sum). max() has no home: P1 deleted max_first, which had no caller. |
+| Text | Lengths in code points (caps 80, 120, 200, 240 with ...); Python whitespace includes \x1c-\x1f and \x85; splitlines() against split("\n"); errors="replace" decoding; one byte-column slice of a str on purpose. | text |
+| JSON | json.dumps(indent=2) plus a newline; ensure_ascii with surrogate pairs; insertion order; the compact, sorted, ASCII form inside the HTML export; the fingerprint separators. | json (JsonForm) |
+| Python SLOC | Pinned CPython 3.13 tokenize over splitlines(keepends=True), ignoring COMMENT, NL, NEWLINE, INDENT, DEDENT, ENDMARKER; f-strings per PEP 701; Unicode and indentation rules; rejection and its diagnostic class. | metrics (python_sloc) |
 | Diff | Clone pairing moves to the similar crate's Histogram diff, pinned (recommendation 6; no golden changes, measured). file_key hashes a unified diff with lineterm="" over Python splitlines(); keys can differ from Python-built keys when a token holds a line break, so a verdict file is never mixed across the two builds. | checks, patch |
 | Ordering | Sorted paths (UTF-8 byte order equals code-point order); stable sorts; rank order (-rank, path) with seeds first; community, cycle, and HTML edge tie rules; first-seen order where Python used dict.fromkeys. | graph, render |
 | Ranking | PageRank: damping 0.85, backflow 0.5, strict L1 delta below 1e-6, at most 100 iterations, edge weight count*mult*evidence/(1+ln(1+spread)) left to right. | graph |
@@ -215,6 +215,71 @@ Behaviors that the goldens, the hook, and other tools depend on. Each one gets o
 | Hook files | The JSONL record schema that erosion_gate_report reads; the decision output (additionalContext text, exit 2 with stderr); the search-gate marker file and its location. | hook |
 | Reports | The erosion gate report's classes, rates, and labelling CSV. | hook |
 | Cache | A clean break: a new file name, so the Python and Rust builds do not delete each other's cache; the same directory scheme and 0700 modes. | store |
+
+### Approved deviations
+
+Each row is a behavior where the Rust build differs from the Python build on purpose, and the owner or the PM approved it. An id `<unit> Dn` is the deviation number in that P1 unit's report. An id that starts with R or P is a finding of the P1 review, which the review fixes commit (commit 4) fixed or recorded. The Python column describes the Python build in this repository, which P1 did not change.
+
+| Id | Python build | Rust build |
+|---|---|---|
+| cli D1 | Every command and every `lint` form runs. | `map`, the other 20 commands that P1 does not port, `lint --candidates` and `lint --diff` exit 2 with "this build does not run {name} yet. Run it with the Python agentless-mcp." or the `lint {flag}` form of that text. `{cmd} --help` is refused too. Unknown arguments around an unported command are not reported. |
+| cli D2 | There is no `hook` command. | `hook erosion` runs the erosion gate in process. `hook` is not in `--help`. Any other `hook` argv gives "agentless-mcp: hook takes one argument: erosion" and exit 2. |
+| cli D3 | On a terminal with no COLUMNS, the help wraps to the terminal width. `int()` reads COLUMNS, so non-ASCII digits count, and the negative-number rule also takes non-ASCII digits. | On a terminal with no COLUMNS, the help wraps at 80. A COLUMNS value with non-ASCII digits is invalid, and the negative-number rule reads ASCII digits only. COLUMNS is capped at 2^24, which changes no line of the P1 texts. |
+| cli D4 | `--token-counter tiktoken` counts with tiktoken when the `tokens` extra is installed. | tiktoken is always refused, with the Python text for a missing extra and exit 2. |
+| cli D5, render D2 | `--no-auto-warm` and `AGENTLESS_MCP_NO_AUTO_WARM` stop the background grammar warm-up. While a warm-up runs, capabilities shows a "warming now" group. | Both have no effect, because the grammars are linked into the binary. capabilities never shows the "warming now" group. |
+| app D1, cli D6 | capabilities reports the package version and the grammar cache directory. | capabilities reports the crate version `0.11.0-rc.1`, and "(linked into the binary)" as the grammar cache. |
+| cli D7 | A large output that breaks the pipe in mid-write takes the Python failure path. | Rust does not copy that path. A stdout that is closed before the write gives the same two lines and exit 120 in both builds. |
+| cli D8, R5-1 | An uncaught exception prints a traceback and exits 1. | A panic prints one line, "agentless-mcp: internal error: {message} ({file}:{line})", and exits 1. Since commit 4 the panic hook does no I/O, and the main thread prints the line of the first panic only, so a panic on a helper thread cannot hang the process. |
+| app D2, checks D1, render D5 | An error that Python does not catch prints a traceback and exits 1. Examples: a checks failure (an unsupported language, a parser failure, a contract rule that does not compile, a failed query), a NUL byte in --repo, an unknown home directory at the cache open (RuntimeError), and a JSON serializer error such as a config path that is not UTF-8. | The same cases print one stderr line and exit 1. An unknown home gives "Could not determine home directory." A file that does not parse and a tokenizer refusal stay not_checked rows in both builds. |
+| checks D5 | A repeated path in one run raises an error whose message names no path. | The error names the path. |
+| cli D9 | A --path or --since that is not UTF-8 runs as surrogate-escaped text. | It refuses with "{flag} is not valid UTF-8: {lossy}" and exit 2. Other arguments that are not UTF-8 show U+FFFD in messages. |
+| app D4, cli D11 | `~user` in --repo expands to that user's home directory. A root that is not UTF-8 is accepted. | `~user` stays unexpanded. A root that is not UTF-8 gives the repository error "not a UTF-8 path: ...". |
+| cli D10 | lint and capabilities do not check the current directory at start-up. | An unreadable current directory stops lint and capabilities at start-up with "cannot read the current directory: {repr}" and exit 1. The hook fails open there in both builds. |
+| app D3, hook D9 | The hook's lint opens the tag cache with the git snapshot, the generation and the row counts, and it can warm grammars. In a repository with no commit, a failed nogit walk degrades the hook. | The hook form reads no snapshot, no generation and no row counts, and it does no nogit walk. The output differs only in a repository with no commit whose nogit walk fails. |
+| app D5 | An existence check of the old side that fails with EACCES raises. | The old side reads as absent, so the file counts as new. |
+| R4-3 | `lint --path` through a symlink to a target whose name is not UTF-8 reports the pair under the name with a surrogate escape (\udcXX) for each byte that is not UTF-8. | It reports the pair under the name with U+FFFD for each such byte. Generated case: `symlink_to_latin_name` in crates/app/fixtures/lint.json. |
+| R2-1 (owner ruling) | A tree whose only error is a hidden MISSING token (the root error flag is set, and no ERROR or MISSING node is visible) raises StopIteration: lint exits 1, index exits 1, and the hook degrades. | It reports "does not parse" at the line of the innermost node that holds the error. lint gives the does-not-parse not_checked row, the clone index records the does-not-parse reason, and the hook gives the outcome of any file that does not parse. Measured: 195 of 82,800 probe parses change (c 74, go 56, cpp 54, python 9, bash 2), and all of them are hidden-only trees. |
+| P-2 (owner ruling) | For each backslash before a brace in a non-raw f-string, CPython's tokenizer prints "<string>:N: SyntaxWarning: invalid escape sequence '\{'" on stderr, once per measure. | It prints nothing. |
+| hook D1 | The log's `binary` is the path of the agentless-mcp binary that the hook ran. | `binary` is the path of the running executable. |
+| hook D2 | `config_warnings` holds the hook's own texts for a file refusal, a gate value that is not an object and a bad mode. An erosion_gate entry that names no gated check gives no warning. | `config_warnings` holds the io texts that lint and capabilities print, the warning for an entry that names no gated check included. Warnings about other keys stay out in both builds. Measured over the 35 config cases of the hook plan with the release binary of `91a768f`: the modes are equal in 35, and the warning lists are equal in 13 and differ in 22. |
+| hook D3 | AGENTLESS_EROSION_BIN selects the binary. A bad value, or no binary on PATH, gives SKIPPED. | AGENTLESS_EROSION_BIN is ignored. |
+| hook D4 | A lint failure gives "lint exited N: <stderr tail>" or "lint usage error: ...". | A lint failure gives "lint failed: {error}". |
+| hook D5 | An internal error gives "internal error: {class}: {message}". | A panic gives "internal error: panic: {message}". |
+| hook D6 | On an internal error or a failed log append, stderr holds a first line and then the traceback. | stderr holds the same first line, then one error line, and no traceback. |
+| hook D7 | The hook's own git call (the repository root) runs with the full environment. | It runs with the GIT_* variables removed and the hardening prefix, as the git calls of lint do in both builds. |
+| hook D8 | json.loads keeps a lone surrogate (a `\ud800` escape in the payload) in a Python str. A file whose name is not UTF-8 is linted. | Identity fields are lossy. A lone surrogate in file_path gives "malformed payload: tool_input.file_path holds a lone surrogate". A file name that is not UTF-8 gives SKIPPED. A relative path that is not UTF-8 gives "lint failed: not a UTF-8 path". |
+| git D1 | A pipe read, a wait or a kill that fails after the spawn raises. | The call gives the note "git S could not be run: <OS message>". |
+| git D3 | The fallback walk keeps a name that is not UTF-8. | It drops the name with a NotUtf8Walked warning. The fallback walk runs only for a root without git, or for a root that the enclosing repository ignores. |
+| git D4 | A root path with a NUL byte, or a failed getcwd, raises. | `Git::root` returns no root, the snapshot treats the root as borrowed and adds the note, and the walk gives "not a directory: <root>". |
+| git D5, git D6, io D6 | A walk problem goes to the log as str(OSError), for example "[Errno 2] ...: 'P'". An unreadable directory is skipped silently. | A walk problem is a record that app prints: "walk skipped {path}: {strerror}". An unreadable directory gives the new Unlisted record. |
+| io D3, hook D10 | A config nested deeper than 9998 levels crashes the reader (RecursionError). A config integer of more than 4300 digits crashes it with a traceback (ValueError: Exceeds the limit (4300 digits) ...). | Both give the ".agentless-mcp.json is not valid JSON (...)" warning. For the integer, the text in the parentheses starts "Exceeds the limit". In a hook payload and in a cached sloc row, both builds give the same text for an integer of more than 4300 digits. |
+| io D4 | A lone surrogate in a stoplist entry or in test_cmd is kept. | The stoplist entry is dropped, and test_cmd gives "must be a non-empty string". |
+| io D5, R1-2, R1-7 | `projectconfig.load` (lint and capabilities) refuses a config that resolves outside the repository or is not a regular file. The Python hook opens the config first, with O_NONBLOCK, and then checks the open descriptor. | load_config checks the path with stat, then containment, then the size, and only then opens it with O_NONBLOCK and O_NOCTTY and checks the descriptor with fstat. The texts equal the texts of Python lint, and the output does not change. A config that cannot be opened and is over the cap gives the size text in both builds. |
+| io D7 | The cache touch uses utime(NULL), which also accepts write permission. | The touch sets the times through std, so the kernel requires the caller to own the file. A failed touch prints nothing in both builds. |
+| store D3 | SQLite NOMEM (code 7) raises MemoryError. A conversion failure in the meta table crashes. | NOMEM folds into the Operational class, so the file stays. A meta conversion failure gives a warning with its class, and the file stays. |
+| store D7 | A row whose key is not 64 lowercase hex characters, or whose line or token count does not fit in u32, is served. The Python writer never stores such values. | The rows are refused: Unreadable, with a ValueError-class warning. |
+| store D8 | These crash: a meta schema_version that is not an integer, a Path.exists that gets EACCES, int(inf) (OverflowError), and JSON nested too deep (RecursionError). int() accepts text with non-ASCII digits and integers above i64. | "cache unreadable: invalid literal ...", "cache unreadable: Permission denied", and warnings with the ValueError or JSONDecodeError class. Text with non-ASCII digits and integers above i64 give "invalid literal". |
+| store D9 | The read goes through a read-write connection and leaves no -shm or -wal file. | A read-only open of a WAL database in a writable directory leaves tags.db-shm (32 KiB) and tags.db-wal (0 B). The next Python read-write close removes them. |
+| R1-8 | json.dumps writes a non-finite float as NaN or Infinity. | json::to_text writes it as null. No caller reaches a non-finite value: the only floats are the hook's ts and latency_ms. |
+
+These differences are inside the crate APIs and change no P1 output. A P2 caller must not depend on the Python form:
+
+| Id | Python build | Rust build |
+|---|---|---|
+| syntax D3 | py-tree-sitter `captures()` gives a dict whose order is not document order (66, 282, 169 on clones.js). | `captures()` gives tree-sitter's order, sorted by start byte. No P1 caller depends on capture order. |
+| checks D4 | The identity of a unit or a block is dataclass value equality. | The identity is positional: (file, index), or the arena id. The results differ only when two units are equal in every field. |
+
+### Known limits
+
+Each limit below is measured or read, and no fix is in P1.
+
+- When the OS refuses to start a pipe-reader thread in the io runner, the git call fails and the command exits 0 with a note that the Python build does not print. A later git call gives "could not be run: Resource temporarily unavailable". The first git call (the root) gives "<repo> is not inside a git repository: HEAD and dirty count are unknown". Measured with the thread-start failure shim.
+- On a file system that ignores case, a tag cache inside the worktree that is spelled with another case counts as outside, so it opens while the snapshot runs (`91a768f`).
+- A FIFO in the tree, or a symlink to one, makes `lint --path` and the read of the clone index hang in both builds, because read_bounded opens with a blocking open. Fix both builds together.
+
+### Deploy prerequisite
+
+Every install moves to tag cache schema 17 before a Rust hook goes live. A build that reads schema 17 discards a schema-16 cache, and the Python build at this branch discards it too, so this is a version-skew prerequisite for every build, not a hazard of the Rust build alone.
 
 ## Codex review of revision 1
 

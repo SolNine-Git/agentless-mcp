@@ -37,16 +37,4 @@ pub enum Error {
         /// The failure.
         source: SideError,
     },
-    /// A contract rule's query failed on one tree.
-    #[error("contract rule {id} for {language} failed on {path}: {source}")]
-    Query {
-        /// The rule id.
-        id: &'static str,
-        /// The rule's language.
-        language: &'static str,
-        /// The path of the text the query ran on.
-        path: String,
-        /// The failure.
-        source: syntax::QueryRunError,
-    },
 }

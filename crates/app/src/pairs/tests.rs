@@ -89,16 +89,36 @@ fn a_pair_finds_only_a_side_with_the_same_text() {
 }
 
 #[test]
+fn the_walk_warnings_reach_the_lint_diagnostics() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("a.py", SOURCE)]);
+    sandbox.apply(&["latin_name", "repo/bad\u{ff}.py", "z = 1\n"].map(serde_json::Value::from));
+    let services = sandbox.services(sandbox.path());
+    let mut lookup = |_: &str, _: &str, _| Stored::Miss;
+
+    let built = built_index(&services, &root, &mut lookup, &[]);
+
+    let files = built.value.expect("an index");
+    assert_eq!(files.files.keys().collect::<Vec<_>>(), ["a.py"]);
+    let warning = format!(
+        "git listed 1 path(s) under {} whose names are not valid UTF-8. The tree omits them.",
+        root.display()
+    );
+    assert_eq!(built.diagnostics, [warning]);
+}
+
+#[test]
 fn a_root_the_walk_refuses_is_one_unlisted_reason() {
     let sandbox = Sandbox::new();
     let services = sandbox.services(sandbox.path());
     let missing = sandbox.path().join("missing");
     let mut lookup = |path: &str, _: &str, _| panic!("{path}: nothing to look up");
 
-    let (files, warnings) = built_index(&services, &missing, &mut lookup, &[]).expect("an index");
+    let built = built_index(&services, &missing, &mut lookup, &[]);
 
+    let files = built.value.expect("an index");
     let unlisted = format!("not a directory: {}", missing.display());
     assert_eq!(files.unlisted, Some(unlisted));
     assert!(files.files.is_empty());
-    assert_eq!(warnings, Vec::<String>::new());
+    assert_eq!(built.diagnostics, Vec::<String>::new());
 }

@@ -1,9 +1,9 @@
 use std::fmt::Write as _;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use text::testing::document;
 use tree_sitter::Node;
 
 use crate::{FieldId, Language, NodeId, Parsed, parse};
@@ -20,11 +20,7 @@ struct Case {
 }
 
 fn cases() -> Vec<Case> {
-    let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
-    let path = PathBuf::from(dir).join("fixtures").join("parse.json");
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+    document(env!("CARGO_MANIFEST_DIR"), "parse")
 }
 
 fn parsed(case: &Case) -> Parsed {
@@ -229,4 +225,13 @@ fn points_count_rows_by_line_feed_and_columns_by_byte() {
 fn a_parse_is_send_and_sync() {
     fn shared<T: Send + Sync>() {}
     shared::<Parsed>();
+}
+
+#[test]
+fn a_kind_name_at_another_address_resolves_by_name() {
+    let kinds = crate::kinds::table(Language::Python);
+    let copy: &'static str = String::from("identifier").leak();
+    assert_eq!(kinds.id(copy), kinds.id_by_name("identifier"));
+    assert!(kinds.id(copy).is_some());
+    assert_eq!(kinds.id(String::from("no such kind").leak()), None);
 }

@@ -9,7 +9,7 @@ use text::CodePointString;
 
 const TAIL_CHARS: usize = 300;
 
-// CPython's UnicodeDecodeError text: one byte, or the span of a longer bad sequence.
+// The decode-error text: one byte, or the span of a longer bad sequence.
 pub(crate) fn codec_text(bytes: &[u8], error: io::NotUtf8) -> String {
     let io::NotUtf8 { start, end, reason } = error;
     if end == start + 1 {
@@ -22,17 +22,7 @@ pub(crate) fn codec_text(bytes: &[u8], error: io::NotUtf8) -> String {
     format!("'utf-8' codec can't decode bytes in position {start}-{last}: {reason}")
 }
 
-// The class and the text of an OS error, as the last line of a CPython traceback shows them.
-pub(crate) fn os_error_line(error: &std::io::Error) -> String {
-    let repr = io::os_error_class_text(error);
-    let class = repr.split('(').next().unwrap_or("OSError");
-    match error.raw_os_error() {
-        Some(code) => format!("{class}: [Errno {code}] {}", io::strerror(error)),
-        None => format!("{class}: {}", io::strerror(error)),
-    }
-}
-
-// CPython's str() of an OS error that names a file.
+// An OS error that names a file: "[Errno N] message: 'path'".
 pub(crate) fn os_error_text(error: &std::io::Error, path: &Path) -> String {
     let message = io::strerror(error);
     match error.raw_os_error() {

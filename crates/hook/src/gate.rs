@@ -19,6 +19,7 @@ use crate::text::{panic_text, sha256_hex, shown};
 use crate::verdict::{self, Decision};
 use crate::worker::{self, Job, LintFn, Linted};
 
+// A git timeout ends the call as degraded, so a hung git costs one edit at most this long.
 const GIT_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(crate) struct Ports<'a> {

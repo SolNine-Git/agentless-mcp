@@ -219,7 +219,7 @@ pub fn git::Git::snapshot(&self, &std::path::Path, core::option::Option<&std::pa
 impl git::Git
 pub fn git::Git::toplevel(&self, &std::path::Path, core::time::Duration) -> git::Toplevel
 impl git::Git
-pub fn git::Git::walk(&self, &std::path::Path) -> core::result::Result<git::Walk, git::WalkError>
+pub fn git::Git::walk(&self, &std::path::Path) -> git::Walk
 impl core::clone::Clone for git::Git
 pub fn git::Git::clone(&self) -> Self
 impl core::marker::Freeze for git::Git
@@ -268,7 +268,7 @@ impl core::marker::UnsafeUnpin for git::Snapshot
 impl core::panic::unwind_safe::RefUnwindSafe for git::Snapshot
 impl core::panic::unwind_safe::UnwindSafe for git::Snapshot
 pub struct git::Walk
-pub git::Walk::files: alloc::vec::Vec<git::RepoFile>
+pub git::Walk::files: core::result::Result<alloc::vec::Vec<git::RepoFile>, git::WalkError>
 pub git::Walk::warnings: alloc::vec::Vec<git::WalkWarning>
 impl core::fmt::Debug for git::Walk
 pub fn git::Walk::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -282,7 +282,6 @@ impl !core::panic::unwind_safe::UnwindSafe for git::Walk
 pub const git::BINARY_PROBE_BYTES: usize
 pub const git::COMPARED_STATUSES: [char; 7]
 pub const git::MAX_LISTING_BYTES: usize
-pub const git::UNTRACKED: char
 pub fn git::looks_binary(&[u8]) -> bool
 pub fn git::parse_changes(&[u8]) -> core::result::Result<alloc::vec::Vec<git::Change>, git::Malformed>
 pub fn git::parse_commit(&[u8]) -> core::result::Result<alloc::string::String, git::Malformed>

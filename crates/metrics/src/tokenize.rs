@@ -3,6 +3,8 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
+// Fixed values, not tuning: tokenize.json pins each one (99/100 indents, 200/201 parens, 149/150
+// f-strings, format-spec depth 2/3, and a tab against four spaces for the tab size).
 const MAX_INDENT: usize = 100;
 const MAX_LEVEL: usize = 200;
 const MAX_FSTRING_LEVEL: usize = 150;

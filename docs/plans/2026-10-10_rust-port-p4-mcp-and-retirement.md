@@ -116,9 +116,13 @@ The Python tree stays in the repository, unpackaged, until the release is live a
    - `src/agentless_mcp/`;
    - `tests/unit/` and the Python parts of `tests/characterization/`, including each module's `regenerate()`; `cargo xtask goldens --update` replaces them (overview rule 6);
    - `contrib/hooks/*.py`;
-   - the Python fixture generators `scripts/stdlib_fixtures.py`, `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py`, `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`. Their committed fixtures stay as data;
+   - every Python fixture generator in `scripts/`, and the module they share. Their committed fixtures stay as data. That is:
+     - the P1 generators `scripts/{app,checks,cli,git,hook,io,metrics,prompts,render,stdlib,store,syntax}_fixtures.py` and `scripts/syntax_tables.py`;
+     - the later `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py` and `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`;
+     - `scripts/fixture_files.py`, which only the generators and `tests/unit/` import;
    - the Python-only CI jobs (`ci.yml` fresh-install, no-extras, wheel data);
-   - the Python lint configuration with no files left to check: the ruff, mypy, import-linter, and deptry hooks in `.pre-commit-config.yaml`, and their sections in `pyproject.toml`. `codespell` stays, because it also checks the docs and the Rust code.
+   - the Python lint configuration that only the deleted package needs: the mypy hook (its `files` is `^src/`), the import-linter and deptry hooks in `.pre-commit-config.yaml`, and their sections in `pyproject.toml`. ruff stays, because `scripts/hook_triggers.py` and `scripts/vendor_grammars.py` remain. `codespell` stays, because it also checks the docs and the Rust code.
+   - `scripts/hook_latency.py` needs an owner decision before this step: it times the Python hook of an archived commit, and its `--rust` arm reads that build's `tags.db`, which the P4 hook no longer reads. Rewrite it for the Rust store, or delete it.
 3. Keep `tests/characterization/fixtures/` and `goldens/`. The Rust tests read them byte for byte.
 4. Rewrite AGENTS.md: the commands (`cargo nextest run`, `cargo xtask layers`, `cargo xtask erosion`), where things live (the crate layer table), and the release steps for maturin. The benchmark methodology stays.
 5. Update the README install and the hook settings (`contrib/hooks/settings-example.json` calls `agentless-mcp hook ...`). Update `docs/skills/agentless-mcp/SKILL.md`.

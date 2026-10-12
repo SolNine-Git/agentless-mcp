@@ -48,8 +48,12 @@ pub(crate) fn side_text(
     path: &str,
     read: Result<Vec<u8>, String>,
 ) -> Result<String, Gap> {
+    decoded(read).map_err(|reason| Box::new(side_row(template, path, reason)))
+}
+
+// The text of a read, or the reason that the read or the strict decode gave.
+pub(crate) fn decoded(read: Result<Vec<u8>, String>) -> Result<String, String> {
     read.and_then(|bytes| io::decode_strict(bytes).map_err(|error| error.to_string()))
-        .map_err(|reason| Box::new(side_row(template, path, reason)))
 }
 
 // A bounded read of a working-tree file, with the skip text as the error.

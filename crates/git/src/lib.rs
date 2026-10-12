@@ -11,7 +11,7 @@ mod walk;
 mod testing;
 
 pub use changes::{
-    BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_LISTING_BYTES, Malformed, Side, UNTRACKED,
+    BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_LISTING_BYTES, Malformed, Side,
     looks_binary, parse_changes, parse_commit, parse_untracked,
 };
 pub use run::{Failure, Git, GitOutcome, Unfinished};

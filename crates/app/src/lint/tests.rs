@@ -5,10 +5,10 @@ use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{BlockSource, LintForm, LintReport, LintRequest, Noted, lint, lint_with};
+use super::{BlockSource, LintForm, LintReport, LintRequest, lint, lint_with};
 use crate::pairs::Stored;
-use crate::testing::{Sandbox, cases};
-use crate::{After, Error, FormKind, PairSelection, Repo, Tags};
+use crate::testing::{MANIFEST_DIR, Sandbox};
+use crate::{After, Error, FormKind, Noted, PairSelection, Repo, Tags};
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -31,12 +31,12 @@ struct Scenario {
     expected: Expected,
 }
 
-fn shown(sandbox: &Sandbox, found: Result<Noted<LintReport>, Error>) -> Expected {
+fn shown(sandbox: &Sandbox, found: Noted<Result<LintReport, Error>>) -> Expected {
     let place = sandbox.path().display().to_string();
-    match found {
-        Ok(noted) => {
-            assert_eq!(noted.diagnostics, Vec::<String>::new());
-            let text = to_text(&noted.value, JsonForm::Compact).expect("a report serializes");
+    assert_eq!(found.diagnostics, Vec::<String>::new());
+    match found.value {
+        Ok(report) => {
+            let text = to_text(&report, JsonForm::Compact).expect("a report serializes");
             Expected::Report(text.replace(&place, "<SANDBOX>"))
         }
         Err(Error::Kind(kind)) => {
@@ -114,16 +114,17 @@ fn judged(scenario: &Scenario, in_memory: bool) -> Expected {
         };
         lint_with(&services, &repo, source, &request)
     } else {
-        let tags = Tags::open(&services, &repo).expect("the cache root is known");
-        assert!(!tags.value.cached(), "{}: no tag cache", scenario.name);
-        lint(&services, &repo, &tags.value, &request)
+        let tags = Tags::open(&services, &repo).value;
+        let tags = tags.expect("the cache root is known");
+        assert!(!tags.cached(), "{}: no tag cache", scenario.name);
+        lint(&services, &repo, &tags, &request)
     };
     shown(&sandbox, found)
 }
 
 #[test]
-fn each_proposed_scenario_gives_the_python_report_from_a_file_and_from_memory() {
-    let scenarios: Vec<Scenario> = cases("lint", "proposed");
+fn each_proposed_scenario_gives_the_reference_report_from_a_file_and_from_memory() {
+    let scenarios: Vec<Scenario> = io::testing::cases(MANIFEST_DIR, "lint", "proposed");
     for scenario in &scenarios {
         assert_eq!(
             judged(scenario, false),
@@ -147,8 +148,8 @@ fn each_proposed_scenario_gives_the_python_report_from_a_file_and_from_memory() 
 }
 
 #[test]
-fn each_revision_scenario_gives_the_python_report() {
-    let scenarios: Vec<Scenario> = cases("lint", "revision");
+fn each_revision_scenario_gives_the_reference_report() {
+    let scenarios: Vec<Scenario> = io::testing::cases(MANIFEST_DIR, "lint", "revision");
     for scenario in &scenarios {
         assert_eq!(
             judged(scenario, false),
@@ -178,9 +179,10 @@ fn a_run_without_clone_delta_never_reads_a_stored_block() {
         checks: PairSelection::edited_files(),
     };
 
-    let found = lint_with(&services, &repo, source, &request).expect("a report");
+    let found = lint_with(&services, &repo, source, &request).value;
+    let found = found.expect("a report");
 
-    let checks: Vec<&str> = found.value.candidates[0]
+    let checks: Vec<&str> = found.candidates[0]
         .findings
         .iter()
         .map(|row| row.finding.check)
@@ -196,7 +198,8 @@ fn a_relative_after_file_with_an_unread_cwd_gives_the_new_side_row() {
     let unread = crate::EnvConfig::with_unread_cwd([], &std::io::Error::from_raw_os_error(2));
     services.cwd = Err(unread.cwd().expect_err("the cwd is unread").clone());
     let repo = Repo::load(&services, &root).expect("an absolute root needs no cwd");
-    let tags = Tags::open(&services, &repo).expect("the cache root is known");
+    let tags = Tags::open(&services, &repo).value;
+    let tags = tags.expect("the cache root is known");
     let request = LintRequest {
         form: LintForm::Proposed {
             path: "app.py".to_owned(),
@@ -205,9 +208,10 @@ fn a_relative_after_file_with_an_unread_cwd_gives_the_new_side_row() {
         checks: PairSelection::edited_files(),
     };
 
-    let found = lint(&services, &repo, &tags.value, &request).expect("a report");
+    let found = lint(&services, &repo, &tags, &request).value;
+    let found = found.expect("a report");
 
-    let rows = &found.value.candidates[0].findings;
+    let rows = &found.candidates[0].findings;
     let messages: Vec<&str> = rows
         .iter()
         .map(|row| row.finding.message.as_str())

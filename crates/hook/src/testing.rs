@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use app::EnvConfig;
-use io::testing::Tree;
+use io::testing::{Identity, Tree};
 
 use crate::call::Clock;
 
@@ -13,6 +13,13 @@ pub(crate) const WALL_SECONDS: u64 = 1_760_000_000;
 
 // The crate directory, whose fixtures/ io::testing::cases reads.
 pub(crate) const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
+// The commit identity of every setup repository. The hook generator pins the same one.
+const IDENTITY: Identity = Identity {
+    name: "hook tests",
+    email: "hook@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 pub(crate) use io::testing::latin;
 
@@ -92,6 +99,11 @@ impl Sandbox {
         self.tree.chmod(relative, mode);
     }
 
+    // False for root, which searches a directory whose mode is 000.
+    pub(crate) fn modes_bind(&self) -> bool {
+        self.tree.modes_bind()
+    }
+
     // The fixture text with the sandbox's own paths in place of the placeholders.
     pub(crate) fn placed(&self, text: &str) -> String {
         text.replace("<ROOT>", &self.root().display().to_string())
@@ -106,48 +118,26 @@ impl Sandbox {
 
     // The start-up environment: PATH to find git, HOME and the cache home inside the sandbox.
     pub(crate) fn env(&self, extra: &[(&str, OsString)]) -> EnvConfig {
-        let path = std::env::var_os("PATH").expect("the tests find git through PATH");
-        let home = self.path().join("home");
-        let fixed = [
-            ("PATH", path),
-            ("HOME", home.clone().into_os_string()),
-            ("XDG_CACHE_HOME", home.join(".cache").into_os_string()),
-            ("GIT_CONFIG_NOSYSTEM", OsString::from("1")),
-            ("GIT_CONFIG_GLOBAL", OsString::from("/dev/null")),
-        ];
-        let vars = fixed
-            .into_iter()
-            .chain(extra.iter().cloned())
-            .map(|(name, value)| (OsString::from(name), value));
+        let mut vars = self.vars();
+        vars.extend(
+            extra
+                .iter()
+                .map(|(name, value)| (OsString::from(name), value.clone())),
+        );
         EnvConfig::new(vars, self.path().to_path_buf())
+    }
+
+    fn vars(&self) -> Vec<(OsString, OsString)> {
+        io::testing::hermetic_env(&self.path().join("home"))
     }
 
     // Runs one setup git command in the repository with a pinned identity and clock.
     pub(crate) fn git(&self, args: &[&str]) {
-        let pinned = [
-            ("GIT_AUTHOR_NAME", "hook tests"),
-            ("GIT_AUTHOR_EMAIL", "hook@example.invalid"),
-            ("GIT_AUTHOR_DATE", "2026-02-01T00:00:00Z"),
-            ("GIT_COMMITTER_NAME", "hook tests"),
-            ("GIT_COMMITTER_EMAIL", "hook@example.invalid"),
-            ("GIT_COMMITTER_DATE", "2026-02-01T00:00:00Z"),
-        ];
-        let mut env = self.env(&[]).vars().to_vec();
-        env.extend(pinned.map(|(name, value)| (OsString::from(name), OsString::from(value))));
-        let mut command = vec![OsString::from("-C"), self.root().into_os_string()];
-        command.extend(args.iter().map(OsString::from));
-        let spec = io::Spec {
-            program: OsString::from("git"),
-            args: command,
-            cwd: PathBuf::from("."),
-            env,
-            timeout: Duration::from_secs(30),
-            stdout_cap: 1 << 20,
-            stderr_cap: 1 << 16,
-        };
-        match io::run(&spec) {
-            io::Outcome::Exited { status, .. } if status.success() => {}
-            outcome => panic!("git {args:?}: {outcome:?}"),
-        }
+        drop(io::testing::run_git(
+            &self.root(),
+            args,
+            &self.vars(),
+            &IDENTITY,
+        ));
     }
 }

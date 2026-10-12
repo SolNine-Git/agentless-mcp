@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{CAPS, CapValue, Setting, capabilities};
-use crate::testing::{Sandbox, cases};
+use crate::testing::{MANIFEST_DIR, Sandbox};
 use crate::{Session, resolve};
 
 #[derive(Deserialize)]
@@ -15,7 +15,8 @@ struct Case {
     report: String,
 }
 
-// The two fields that differ from Python by design: the build version and the grammar source.
+// The two fields that differ from the reference by design: the build version and the grammar
+// source.
 fn deviating(report: &str) -> (&'static str, &'static str) {
     let document: Value = serde_json::from_str(report).expect("a JSON report");
     let field = |name: &str| -> &'static str {
@@ -47,13 +48,13 @@ fn session(sandbox: &Sandbox, case: &Case) -> Session {
     let repo = resolve(&services, Some(&root)).expect("the repository resolves");
     Session::open(&services, repo, case.no_cache)
         .session
-        .expect("a session")
         .value
+        .expect("a session")
 }
 
 #[test]
-fn each_report_equals_the_python_report_apart_from_the_build_fields() {
-    let reports: Vec<Case> = cases("capabilities", "reports");
+fn each_report_equals_the_reference_report_apart_from_the_build_fields() {
+    let reports: Vec<Case> = io::testing::cases(MANIFEST_DIR, "capabilities", "reports");
     for case in &reports {
         let sandbox = Sandbox::new();
         let session = session(&sandbox, case);
@@ -96,7 +97,7 @@ fn the_build_fields_name_this_build() {
 }
 
 #[test]
-fn the_text_of_a_value_is_the_python_text() {
+fn the_text_of_a_value_is_the_reference_text() {
     let list = Setting::List(vec!["a".to_owned(), "b".to_owned()]);
     let shown: Vec<String> = [
         Setting::Bool(true),

@@ -1,12 +1,16 @@
 //! The fixture files, and test trees built from their layouts.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::testing::{self, Tree};
+use crate::{Outcome, Spec, run};
+
+const MKFIFO_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) fn fixture<T: DeserializeOwned>(file: &str, section: &str) -> T {
     testing::cases(env!("CARGO_MANIFEST_DIR"), file, section)
@@ -51,8 +55,19 @@ fn make(tree: &Tree, entry: &Value) -> std::io::Result<()> {
         "padded" => tree.write_file(path, padded(text(2), &entry[3])).map(drop),
         "link" => tree.symlink(path, tree.unplaced(text(2))).map(drop),
         "fifo" => mkfifo(&tree.join(path)),
+        "mode" => tree.set_mode(path, mode(&entry[2])),
         kind => panic!("unknown layout entry kind {kind}"),
     }
+}
+
+// A layout whose `mode` entry refuses a read expects that refusal only where modes bind.
+pub(crate) fn has_mode(layout: &[Value]) -> bool {
+    layout.iter().any(|entry| entry[0] == "mode")
+}
+
+fn mode(value: &Value) -> u32 {
+    let mode = value.as_u64().and_then(|mode| u32::try_from(mode).ok());
+    mode.unwrap_or_else(|| panic!("a mode: {value}"))
 }
 
 fn bytes(value: &Value) -> Vec<u8> {
@@ -69,12 +84,21 @@ fn padded(text: &str, size: &Value) -> Vec<u8> {
     content
 }
 
-fn mkfifo(path: &Path) -> std::io::Result<()> {
-    let status = Command::new("mkfifo").arg(path).status()?;
-    if status.success() {
-        return Ok(());
+pub(crate) fn mkfifo(path: &Path) -> std::io::Result<()> {
+    let found = std::env::var_os("PATH").map(|path| (OsString::from("PATH"), path));
+    let spec = Spec {
+        program: OsString::from("mkfifo"),
+        args: vec![path.as_os_str().to_owned()],
+        cwd: PathBuf::from("."),
+        env: found.into_iter().collect(),
+        timeout: MKFIFO_TIMEOUT,
+        stdout_cap: 1 << 10,
+        stderr_cap: 1 << 10,
+    };
+    match run(&spec) {
+        Outcome::Exited { status, .. } if status.success() => Ok(()),
+        outcome => Err(std::io::Error::other(format!(
+            "mkfifo did not succeed: {outcome:?}"
+        ))),
     }
-    Err(std::io::Error::other(format!(
-        "mkfifo exited with {status}"
-    )))
 }

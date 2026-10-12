@@ -10,7 +10,8 @@ pub fn literal(text: &str) -> String {
     literal_within(text, WIDTH)
 }
 
-/// Returns `text` as `literal` does, with at most `first` characters on the first line.
+/// Returns `text` as `literal` does, with at most `first` bytes on the first line unless its first
+/// word is longer.
 pub fn literal_within(text: &str, first: usize) -> String {
     let mut lines = Vec::new();
     let mut line = String::new();
@@ -51,7 +52,8 @@ fn escape(c: char) -> String {
         '\n' => "\\n".to_owned(),
         '\r' => "\\r".to_owned(),
         '\t' => "\\t".to_owned(),
-        c if c.is_control() => format!("\\u{{{:x}}}", u32::from(c)),
+        // Outside ASCII a character can be invisible, and rustc refuses a raw U+202E in a literal.
+        c if c.is_ascii_control() || !c.is_ascii() => format!("\\u{{{:x}}}", u32::from(c)),
         c => c.to_string(),
     }
 }
@@ -67,10 +69,18 @@ mod tests {
     #[test]
     fn quotes_backslashes_and_control_characters_are_escaped() {
         assert_eq!(
-            literal("a\"b\\c\nd\re\tf\u{1}g"),
-            r#""a\"b\\c\nd\re\tf\u{1}g""#
+            literal("a\"b\\c\nd\re\tf\u{1}g\u{7f}"),
+            r#""a\"b\\c\nd\re\tf\u{1}g\u{7f}""#
         );
-        assert_eq!(literal("{x} \u{e9}"), "\"{x} \u{e9}\"");
+    }
+
+    #[test]
+    fn every_character_outside_ascii_is_escaped() {
+        assert_eq!(literal("{x} \u{e9}"), r#""{x} \u{e9}""#);
+        assert_eq!(
+            literal("a\u{202e}b\u{85}\u{a0}\u{1f600}"),
+            r#""a\u{202e}b\u{85}\u{a0}\u{1f600}""#
+        );
     }
 
     #[test]
@@ -96,7 +106,7 @@ mod tests {
             let first = line.trim_start().chars().next();
             assert!(first.is_some_and(|c| !c.is_whitespace()), "{made}");
         }
-        let escaped = format!("\"{long}  {long}\\n\\t{long} \u{a0}{long}\"");
+        let escaped = format!("\"{long}  {long}\\n\\t{long} \\u{{a0}}{long}\"");
         assert_eq!(rejoined(&made), escaped);
     }
 }

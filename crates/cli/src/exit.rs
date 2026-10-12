@@ -62,16 +62,10 @@ pub fn write_answer(streams: &mut Streams<'_>, out: &str, err: &str, code: u8) -
 // The report of an answer that stdout did not take: the error class for the errno, then the
 // errno and its message.
 fn flush_failure(error: &io::Error) -> String {
-    let repr = ::io::os_error_class_text(error);
-    let class = repr
-        .split_once('(')
-        .map_or(repr.as_str(), |(class, _)| class);
-    let message = ::io::strerror(error);
-    let detail = match error.raw_os_error() {
-        Some(code) => format!("[Errno {code}] {message}"),
-        None => message,
-    };
-    format!("Exception ignored on flushing sys.stdout:\n{class}: {detail}\n")
+    format!(
+        "Exception ignored on flushing sys.stdout:\n{}\n",
+        ::io::os_error_line(error)
+    )
 }
 
 /// Writes the refusal of a `hook` command line other than `hook erosion`, and returns 2.

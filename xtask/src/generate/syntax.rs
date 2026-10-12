@@ -126,7 +126,7 @@ enum LiteralClass {
     Null,
 }
 
-/// Reads every language file, in name order, or gives each problem.
+/// Reads every language file, sorted by file name.
 pub fn read(root: &Path) -> Result<Vec<(String, String)>, Failure> {
     let dir = root.join(LANGUAGES);
     let entries = std::fs::read_dir(&dir).map_err(|error| repo::broken(&dir, &error))?;
@@ -198,7 +198,8 @@ fn render(files: &[File]) -> String {
     text
 }
 
-// Only the tests read the probe's root kind: it shows that each grammar sits in its own slot.
+// Only the tests read the probe's root kind. Roots repeat (c and cpp, java and javascript), so the
+// parse digests, not the roots, show that each grammar sits in its own slot.
 fn probe_roots(files: &[File]) -> String {
     let roots: Vec<String> = files.iter().map(|file| literal(&file.probe_root)).collect();
     format!(

@@ -24,14 +24,14 @@ use std::sync::Arc;
 
 use app::{EnvConfig, Services};
 
-use crate::call::{Call, SystemClock};
+use crate::call::{Call, Clock, SystemClock};
 use crate::gate::Ports;
+use crate::signals::Watch;
 use crate::text::panic_text;
 
 const ENV_GATE: &str = "AGENTLESS_EROSION_GATE";
 const ENV_LOG: &str = "AGENTLESS_EROSION_LOG";
 const OFF: &str = "off";
-const CONFIG_FILENAME: &str = io::CONFIG_FILENAME;
 
 /// What the process writes for one call: the exit code, stdout, and stderr.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -47,11 +47,20 @@ pub struct Output {
 /// Gates the one `PreToolUse` payload that `stdin` holds, and returns what the process writes.
 #[must_use]
 pub fn erosion(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
+    erosion_with(env, services, stdin, Box::new(SystemClock))
+}
+
+fn erosion_with(
+    env: &EnvConfig,
+    services: &Services,
+    stdin: &mut dyn Read,
+    clock: Box<dyn Clock>,
+) -> Output {
     if env.var(ENV_GATE) == Some(OsStr::new(OFF)) {
         return Output::default();
     }
     // Fail open: no panic leaves this function.
-    panic::catch_unwind(AssertUnwindSafe(|| gated(env, services, stdin))).unwrap_or_else(
+    panic::catch_unwind(AssertUnwindSafe(|| gated(env, services, stdin, clock))).unwrap_or_else(
         |payload| {
             let message = panic_text(&*payload);
             Output {
@@ -62,9 +71,14 @@ pub fn erosion(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Ou
     )
 }
 
-fn gated(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
+fn gated(
+    env: &EnvConfig,
+    services: &Services,
+    stdin: &mut dyn Read,
+    clock: Box<dyn Clock>,
+) -> Output {
     let log = env.var(ENV_LOG).map(OsStr::to_os_string);
-    let call = Arc::new(Call::new(Box::new(SystemClock), log));
+    let call = Arc::new(Call::new(clock, log));
     let watch = signals::watch(Arc::clone(&call));
     let ports = Ports {
         services,
@@ -72,7 +86,11 @@ fn gated(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
         lint: worker::in_process,
         binary: binary(),
     };
-    let mut output = gate::run(&call, &ports, stdin);
+    watched(gate::run(&call, &ports, stdin), watch)
+}
+
+// Stops the SIGTERM watch, or puts the note of its failure first on stderr.
+fn watched(mut output: Output, watch: std::io::Result<Watch>) -> Output {
     match watch {
         Ok(watch) => watch.stop(),
         Err(error) => {
@@ -87,3 +105,6 @@ fn gated(env: &EnvConfig, services: &Services, stdin: &mut dyn Read) -> Output {
 fn binary() -> Option<String> {
     std::env::current_exe().ok().map(|path| text::shown(&path))
 }
+
+#[cfg(test)]
+mod tests;

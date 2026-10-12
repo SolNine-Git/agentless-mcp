@@ -10,24 +10,31 @@ With --check, the script compares its output with the committed fixtures and wri
 
 import dataclasses
 import json
+import logging
 import os
 import posixpath
-import subprocess
+import re
 import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from fixture_files import Fixture, write_or_check
+from fixture_files import Fixture, Identity, hermetic_env, run_git, write_or_check
 
 from agentless_mcp.application import capability_service, lint_service, symbol_service
 from agentless_mcp.application.repo_context import resolve_repo
 from agentless_mcp.core import cache, gitchanges, gitinfo
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.gitinfo import GitOutcome
-from agentless_mcp.util.errors import OperationFailed, RevisionUnresolved
+from agentless_mcp.util.errors import (
+    OperationFailed,
+    RepoResolutionError,
+    RevisionUnresolved,
+    WalkBoundExceeded,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "crates" / "app" / "fixtures"
 GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
@@ -422,6 +429,18 @@ PROPOSED = [
         {"text": function("handle", 12)},
         COMPLEXITY,
     ),
+    proposed(
+        "symlink_to_latin_name",
+        [
+            ["mkdir", "repo"],
+            ["latin_name", "repo/bad\xff.py", function("handle", 1)],
+            ["latin_symlink", "repo/link.py", "bad\xff.py"],
+            ["init", "repo"],
+        ],
+        "link.py",
+        {"text": function("handle", 3)},
+        DEFAULT,
+    ),
     proposed("readme", EROSION, "README.md", {"text": "# notes\n"}, COMPLEXITY),
     proposed("default_checks_grown", EROSION, "app.py", {"text": function("handle", 11)}, DEFAULT),
     proposed(
@@ -613,20 +632,7 @@ REVISION = [
     ),
 ]
 
-PINNED = {
-    "GIT_AUTHOR_NAME": "app tests",
-    "GIT_AUTHOR_EMAIL": "app@example.invalid",
-    "GIT_AUTHOR_DATE": "2026-02-01T00:00:00Z",
-    "GIT_COMMITTER_NAME": "app tests",
-    "GIT_COMMITTER_EMAIL": "app@example.invalid",
-    "GIT_COMMITTER_DATE": "2026-02-01T00:00:00Z",
-}
-
-
-def run_git(directory: Path, *arguments: str) -> bytes:
-    command = ["git", "-C", str(directory), *arguments]
-    env = {**os.environ, **PINNED}
-    return subprocess.run(command, check=True, capture_output=True, env=env, timeout=30).stdout
+IDENTITY = Identity("app tests", "app@example.invalid", "2026-02-01T00:00:00Z")
 
 
 def _write(_sandbox: Path, target: Path, rest: list[object]) -> None:
@@ -636,6 +642,23 @@ def _write(_sandbox: Path, target: Path, rest: list[object]) -> None:
 def _bytes(_sandbox: Path, target: Path, rest: list[object]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(str(rest[0]).encode("latin-1"))
+
+
+def _latin_name(sandbox: Path, target: Path, rest: list[object]) -> None:
+    # The file name is the latin-1 bytes of its path, so a character above U+007F is no UTF-8.
+    relative = str(target.relative_to(sandbox)).encode("latin-1")
+    named = Path(os.fsdecode(os.fsencode(sandbox) + b"/" + relative))
+    named.parent.mkdir(parents=True, exist_ok=True)
+    named.write_bytes(str(rest[0]).encode())
+
+
+def _mtime(_sandbox: Path, target: Path, rest: list[object]) -> None:
+    ns = int(datetime.fromisoformat(str(rest[0])).timestamp()) * 10**9
+    os.utime(target, ns=(ns, ns))
+
+
+def _latin_symlink(_sandbox: Path, target: Path, rest: list[object]) -> None:
+    target.symlink_to(os.fsdecode(str(rest[0]).encode("latin-1")))
 
 
 def _repeat(_sandbox: Path, target: Path, rest: list[object]) -> None:
@@ -655,26 +678,29 @@ def _mkdir(_sandbox: Path, target: Path, _rest: list[object]) -> None:
 
 
 def _init(_sandbox: Path, target: Path, _rest: list[object]) -> None:
-    run_git(target, "init", "--quiet", "-b", "main")
+    run_git(target, IDENTITY, "init", "--quiet", "-b", "main")
 
 
 def _commit(_sandbox: Path, target: Path, _rest: list[object]) -> None:
-    run_git(target, "add", "-A")
-    run_git(target, "commit", "--quiet", "--allow-empty", "-m", "fixture")
+    run_git(target, IDENTITY, "add", "-A")
+    run_git(target, IDENTITY, "commit", "--quiet", "--allow-empty", "-m", "fixture")
 
 
 def _gitlink(_sandbox: Path, target: Path, rest: list[object]) -> None:
-    head = run_git(target, "rev-parse", "HEAD").decode().strip()
-    run_git(target, "update-index", "--add", "--cacheinfo", f"160000,{head},{rest[0]}")
+    head = run_git(target, IDENTITY, "rev-parse", "HEAD").decode().strip()
+    run_git(target, IDENTITY, "update-index", "--add", "--cacheinfo", f"160000,{head},{rest[0]}")
 
 
 def _git(_sandbox: Path, target: Path, rest: list[object]) -> None:
-    run_git(target, *(str(argument) for argument in rest))
+    run_git(target, IDENTITY, *(str(argument) for argument in rest))
 
 
 STEPS: dict[str, Callable[[Path, Path, list[object]], None]] = {
     "write": _write,
     "bytes": _bytes,
+    "latin_name": _latin_name,
+    "latin_symlink": _latin_symlink,
+    "mtime": _mtime,
     "repeat": _repeat,
     "symlink": _symlink,
     "remove": _remove,
@@ -729,7 +755,9 @@ def judged(sandbox: Path, scenario: dict[str, object]) -> dict[str, object]:
     except (OperationFailed, RevisionUnresolved) as refused:
         message = str(refused).replace(str(sandbox), "<SANDBOX>")
         return {"error": [type(refused).__name__, message]}
-    return {"report": json.dumps(view.as_dict()).replace(str(sandbox), "<SANDBOX>")}
+    report = json.dumps(view.as_dict()).replace(str(sandbox), "<SANDBOX>")
+    # The approved non-UTF-8 rule: the Rust build names a byte that is not UTF-8 with U+FFFD.
+    return {"report": re.sub(r"\\udc[89a-f][0-9a-f]", r"\\ufffd", report)}
 
 
 @contextmanager
@@ -737,13 +765,7 @@ def isolated(sandbox: Path) -> Iterator[None]:
     """Point HOME, the caches and the git config at ``sandbox`` for one scenario."""
     home = sandbox / "home"
     home.mkdir()
-    env = {
-        "HOME": str(home),
-        "XDG_CACHE_HOME": str(home / ".cache"),
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-    }
-    with mock.patch.dict(os.environ, env):
+    with mock.patch.dict(os.environ, hermetic_env(home)):
         yield
 
 
@@ -839,8 +861,83 @@ def capabilities_fixture() -> Fixture:
     return {"reports": [capability_row(case) for case in CAPABILITY_CASES]}
 
 
+DEEP = "/".join(f"d{level}" for level in range(1, 22))
+UNCOMMITTED = [
+    ["mkdir", "repo"],
+    ["init", "repo"],
+    ["write", "repo/a.py", "def f(x):\n    return x\n"],
+    ["latin_name", "repo/bad\xff.py", "z = 1\n"],
+]
+# Fixed mtimes, so the digest of the walked files is the same in every run.
+PINNED_TREE = [
+    ["mkdir", "repo"],
+    ["write", "repo/a.py", "x = 1\n"],
+    ["write", "repo/pkg/b.py", "y = 22\n"],
+    ["mtime", "repo/a.py", "2000-01-01T00:00:00Z"],
+    ["mtime", "repo/pkg/b.py", "2001-02-03T04:05:06Z"],
+]
+# A repository with no commit has no tree id, so a usable cache takes its generation from a walk.
+# A pinned case records the generation too.
+GENERATION_CASES: list[dict[str, object]] = [
+    {"name": "walk_warned", "steps": UNCOMMITTED, "cache_home": None, "pinned": False},
+    {
+        "name": "walk_refused_after_warnings",
+        "steps": [*UNCOMMITTED, ["write", f"repo/{DEEP}/x.txt", "x\n"]],
+        "cache_home": "rel",
+        "pinned": False,
+    },
+    {"name": "digest_outside_git", "steps": PINNED_TREE, "cache_home": None, "pinned": True},
+]
+
+
+class _Warnings(logging.Handler):
+    """The warnings the Python build logs, as its command line prints them on stderr."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(record.getMessage())
+
+
+def generation_row(case: dict[str, object]) -> dict[str, object]:
+    with tempfile.TemporaryDirectory(prefix="app-fixture-") as made:
+        sandbox = Path(made).resolve()
+        with isolated(sandbox):
+            steps = case["steps"]
+            assert isinstance(steps, list)
+            for step in steps:
+                apply(sandbox, step)
+            if case["cache_home"] is not None:
+                os.environ["XDG_CACHE_HOME"] = str(case["cache_home"])
+            root = sandbox / "repo"
+            warnings = _Warnings()
+            logging.getLogger().addHandler(warnings)
+            generation, refused = None, None
+            try:
+                # The cache open reads the cache root first, then the generation.
+                cache.cache_path(root)
+                generation = cache.repo_generation(root, None)
+            except (RepoResolutionError, WalkBoundExceeded) as error:
+                refused = str(error).replace(str(sandbox), "<SANDBOX>")
+            finally:
+                logging.getLogger().removeHandler(warnings)
+    lines = [line.replace(str(sandbox), "<SANDBOX>") for line in warnings.lines]
+    pinned = generation if case["pinned"] else None
+    return {**case, "warnings": lines, "refused": refused, "generation": pinned}
+
+
+def generation_fixture() -> Fixture:
+    return {
+        "cases": [generation_row(case) for case in GENERATION_CASES],
+        "walk_budget_seconds": [lint_service.deadline.WALK_BUDGET_SECONDS],
+    }
+
+
 BUILDERS: dict[str, Callable[[], Fixture]] = {
     "capabilities": capabilities_fixture,
+    "generation": generation_fixture,
     "lint": lint_fixture,
     "outcomes": outcomes_fixture,
     "registry": registry_fixture,

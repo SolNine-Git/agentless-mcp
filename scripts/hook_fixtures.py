@@ -26,7 +26,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from fixture_files import Fixture, write_or_check
+from fixture_files import (
+    Fixture,
+    Identity,
+    hermetic_env,
+    refuse_real_caches,
+    run_git,
+    write_or_check,
+)
 
 from agentless_mcp.core import projectconfig
 
@@ -36,6 +43,7 @@ HOOK_PATH = REPO / "contrib" / "hooks" / "agentless_erosion_gate.py"
 LINT_BINARY = REPO / ".venv" / "bin" / "agentless-mcp"
 GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
 WALL_SECONDS = 1_760_000_000.0
+IDENTITY = Identity("hook tests", "hook@example.invalid", "2026-02-01T00:00:00Z")
 SEED = 20261011
 # The seeded Edit sample: the share of Edits on a missing file, and the share with replace_all.
 MISSING_SHARE = 0.05
@@ -239,6 +247,15 @@ PAYLOAD_RAW: list[tuple[str, bytes]] = [
     ("depth_9998", b"[" * 9998 + b"]" * 9998),
     ("depth_9999", b"[" * 9999 + b"]" * 9999),
     ("object_depth_9999", b'{"a": ' * 9999 + b"1" + b"}" * 9999),
+    # The integer digit limit: 4300 digits read, one more refuses the document, sign excluded.
+    *[
+        (name, json.dumps(_write("/r/a.py")).encode("ascii")[:-1] + b', "n": ' + number + b"}")
+        for name, number in [
+            ("int_4300_digits", b"1" * 4300),
+            ("int_4301_digits", b"1" * 4301),
+            ("negative_int_4301_digits", b"-" + b"1" * 4301),
+        ]
+    ],
 ]
 # Each repeated payload: one character and its count.
 PAYLOAD_REPEATED: list[tuple[str, int]] = [
@@ -803,16 +820,7 @@ def pipe_scenarios() -> list[Scenario]:
 
 
 def _git(root: Path, args: list[str], env: dict[str, str]) -> None:
-    pinned = {
-        "GIT_AUTHOR_NAME": "hook tests",
-        "GIT_AUTHOR_EMAIL": "hook@example.invalid",
-        "GIT_AUTHOR_DATE": "2026-02-01T00:00:00Z",
-        "GIT_COMMITTER_NAME": "hook tests",
-        "GIT_COMMITTER_EMAIL": "hook@example.invalid",
-        "GIT_COMMITTER_DATE": "2026-02-01T00:00:00Z",
-    }
-    command = ["git", "-C", str(root), *args]
-    subprocess.run(command, env={**env, **pinned}, check=True, capture_output=True, timeout=60)
+    run_git(root, IDENTITY, *args, env=env)
 
 
 def _put(sandbox: Path, step: list[object]) -> None:
@@ -880,13 +888,8 @@ def _normalized_record(log: Path, sandbox: Path, gate: str | None) -> str | None
 
 
 def _scenario_env(sandbox: Path, log: Path, gate: str | None) -> dict[str, str]:
-    home = sandbox / "home"
     env = {
-        "PATH": os.environ["PATH"],
-        "HOME": str(home),
-        "XDG_CACHE_HOME": str(home / ".cache"),
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
+        **hermetic_env(sandbox / "home"),
         GRAMMAR_OVERRIDE: os.environ[GRAMMAR_OVERRIDE],
         "AGENTLESS_MCP_NO_DOWNLOAD": "1",
         "AGENTLESS_MCP_NO_AUTO_WARM": "1",
@@ -971,8 +974,8 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
 
 def main() -> int:
     """Refuse a run that could reach the user's caches, then write or check the fixtures."""
-    override = os.environ.get(GRAMMAR_OVERRIDE)
-    if not override or Path(override).resolve().is_relative_to(Path.home() / ".cache"):
+    refuse_real_caches()
+    if not os.environ.get(GRAMMAR_OVERRIDE):
         sys.exit(f"refused: set {GRAMMAR_OVERRIDE} to a scratch copy of the grammar libraries")
     if not LINT_BINARY.is_file():
         sys.exit(f"refused: {LINT_BINARY} is missing; run uv sync first")

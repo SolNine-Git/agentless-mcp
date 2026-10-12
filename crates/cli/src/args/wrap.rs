@@ -3,6 +3,8 @@
 
 use std::ops::Range;
 
+use text::is_ascii_space;
+
 pub(crate) fn collapse(text: &str) -> String {
     let words: Vec<&str> = text
         .split(is_space_char)
@@ -76,7 +78,7 @@ fn break_long_word(
 }
 
 fn is_blank(text: &str, chunk: &Range<usize>) -> bool {
-    text[chunk.clone()].bytes().all(is_space)
+    text[chunk.clone()].bytes().all(is_ascii_space)
 }
 
 // Splits `text` into chunks: runs of spaces, dash runs between words, and words that end at a
@@ -85,8 +87,12 @@ fn split(text: &[u8]) -> Vec<Range<usize>> {
     let mut chunks = Vec::new();
     let mut start = 0;
     while start < text.len() {
-        let end = if is_space(text[start]) {
-            start + text[start..].iter().take_while(|&&b| is_space(b)).count()
+        let end = if is_ascii_space(text[start]) {
+            start
+                + text[start..]
+                    .iter()
+                    .take_while(|&&b| is_ascii_space(b))
+                    .count()
         } else if let Some(end) = dash_run(text, start) {
             end
         } else {
@@ -110,7 +116,7 @@ fn word_end(text: &[u8], start: usize) -> usize {
         if text[end] == b'-' && letters_before(text, end) && letters_after(text, end) {
             return end + 1;
         }
-        if is_space(text[end]) || (is_punct(text[end - 1]) && dashes_then_word(text, end)) {
+        if is_ascii_space(text[end]) || (is_punct(text[end - 1]) && dashes_then_word(text, end)) {
             return end;
         }
     }
@@ -140,12 +146,8 @@ fn dashes_then_word(text: &[u8], start: usize) -> bool {
     count >= 2 && text.get(start + count).is_some_and(|&b| is_word(b))
 }
 
-fn is_space(b: u8) -> bool {
-    matches!(b, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ')
-}
-
 fn is_space_char(c: char) -> bool {
-    u8::try_from(c).is_ok_and(is_space)
+    u8::try_from(c).is_ok_and(is_ascii_space)
 }
 
 fn is_word(b: u8) -> bool {

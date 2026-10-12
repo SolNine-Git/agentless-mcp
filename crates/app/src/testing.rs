@@ -1,27 +1,21 @@
 use std::ffi::OsString;
-use std::fs;
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use io::testing::Tree;
-use serde::de::DeserializeOwned;
+use io::testing::{Identity, Tree};
 
 use crate::{EnvConfig, Services};
 
-// The cases of one section of crates/app/fixtures/<file>.json.
-pub(crate) fn cases<T: DeserializeOwned>(file: &str, section: &str) -> T {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(format!("{file}.json"));
-    let shown = path.display();
-    let text = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let mut sections: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let value = sections
-        .remove(section)
-        .unwrap_or_else(|| panic!("{shown}: no section {section}"));
-    serde_json::from_value(value).unwrap_or_else(|error| panic!("{shown}: {section}: {error}"))
-}
+// The crate whose fixtures `cases` reads.
+pub(crate) const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
+// The commit identity of every setup repository. The app generator pins the same one.
+const IDENTITY: Identity = Identity {
+    name: "app tests",
+    email: "app@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 // A test's own directory, with an environment in which no git or cache config reaches the code.
 pub(crate) struct Sandbox {
@@ -61,21 +55,22 @@ impl Sandbox {
         self.tree.mkdir(relative)
     }
 
+    pub(crate) fn chmod(&self, relative: &str, mode: u32) {
+        self.tree.chmod(relative, mode);
+    }
+
+    // False for root, which writes into a directory whose mode forbids it.
+    pub(crate) fn modes_bind(&self) -> bool {
+        self.tree.modes_bind()
+    }
+
     // The start-up environment: PATH to find git, HOME and the cache home inside the sandbox.
     pub(crate) fn env(&self, cwd: &Path) -> EnvConfig {
-        let path = std::env::var_os("PATH").expect("the tests find git through PATH");
-        let home = self.path().join("home");
-        let vars = [
-            ("PATH", path),
-            ("HOME", home.clone().into_os_string()),
-            ("XDG_CACHE_HOME", home.join(".cache").into_os_string()),
-            ("GIT_CONFIG_NOSYSTEM", OsString::from("1")),
-            ("GIT_CONFIG_GLOBAL", OsString::from("/dev/null")),
-        ];
-        EnvConfig::new(
-            vars.map(|(name, value)| (OsString::from(name), value)),
-            cwd.to_path_buf(),
-        )
+        EnvConfig::new(self.vars(), cwd.to_path_buf())
+    }
+
+    fn vars(&self) -> Vec<(OsString, OsString)> {
+        io::testing::hermetic_env(&self.path().join("home"))
     }
 
     pub(crate) fn services(&self, cwd: &Path) -> Services {
@@ -84,19 +79,7 @@ impl Sandbox {
 
     // Runs one setup git command in `dir` with a pinned identity and clock, and returns stdout.
     pub(crate) fn git(&self, dir: &Path, args: &[&str]) -> Vec<u8> {
-        let pinned = [
-            ("GIT_AUTHOR_NAME", "app tests"),
-            ("GIT_AUTHOR_EMAIL", "app@example.invalid"),
-            ("GIT_AUTHOR_DATE", "2026-02-01T00:00:00Z"),
-            ("GIT_COMMITTER_NAME", "app tests"),
-            ("GIT_COMMITTER_EMAIL", "app@example.invalid"),
-            ("GIT_COMMITTER_DATE", "2026-02-01T00:00:00Z"),
-        ];
-        let mut env = self.env(dir).vars().to_vec();
-        env.extend(pinned.map(|(name, value)| (OsString::from(name), OsString::from(value))));
-        let mut command = vec![OsString::from("-C"), dir.as_os_str().to_owned()];
-        command.extend(args.iter().map(OsString::from));
-        tool("git", command, env)
+        io::testing::run_git(dir, args, &self.vars(), &IDENTITY)
     }
 
     // A new repository at `relative` with one commit of `files`.
@@ -130,6 +113,16 @@ impl Sandbox {
         match words[0] {
             "write" => drop(self.put(words[1], words[2])),
             "bytes" => drop(self.put(words[1], latin(words[2]))),
+            "latin_name" => {
+                let name = OsString::from_vec(latin(words[1]));
+                let written = self.tree.write_file(&name, words[2]);
+                written.unwrap_or_else(|error| panic!("{name:?}: {error}"));
+            }
+            "latin_symlink" => {
+                let target = OsString::from_vec(latin(words[2]));
+                let linked = self.tree.symlink(words[1], target);
+                linked.unwrap_or_else(|error| panic!("{}: {error}", words[1]));
+            }
             "symlink" => {
                 let target = words[2].replace("<SANDBOX>", &self.path().display().to_string());
                 let linked = self.tree.symlink(words[1], target);
@@ -137,6 +130,7 @@ impl Sandbox {
             }
             "remove" => drop(io::remove_file(&place).expect("a file to remove")),
             "mkdir" => drop(self.mkdir(words[1])),
+            "mtime" => set_mtime(&place, words[2]),
             _ => self.git_step(&place, words),
         }
     }
@@ -164,6 +158,17 @@ impl Sandbox {
 }
 
 pub(crate) use io::testing::latin;
+
+// Sets the modification time of `path` to `when`, an ISO 8601 time that touch -d reads.
+pub(crate) fn set_mtime(path: &Path, when: &str) {
+    let path_variable = std::env::var_os("PATH").expect("the tests find touch through PATH");
+    let args = vec![
+        OsString::from("-d"),
+        OsString::from(when),
+        path.as_os_str().to_owned(),
+    ];
+    tool("touch", args, vec![(OsString::from("PATH"), path_variable)]);
+}
 
 // Runs one setup program with a deadline and returns its stdout. A failed run ends the test.
 pub(crate) fn tool(program: &str, args: Vec<OsString>, env: Vec<(OsString, OsString)>) -> Vec<u8> {

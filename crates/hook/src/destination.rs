@@ -1,4 +1,5 @@
-//! Where the call writes: the tier-1 rule, the repository root, the path below it, and the old text.
+//! Where the call writes: the tier-1 rule, the repository root, the path below it, and the old
+//! text.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -8,9 +9,9 @@ use std::time::Duration;
 use git::{Git, Toplevel};
 
 use crate::halt::Halt;
-use crate::text::{codec_text, grouped, last_line, os_error_line, os_error_text, shown};
+use crate::text::{codec_text, grouped, last_line, os_error_text, shown};
 
-// The NUL rule of CPython's path conversion, which its realpath reaches first through lstat.
+// A path with a NUL byte names no file. The reason names lstat, the first call that refuses it.
 const EMBEDDED_NUL: &str = "ValueError: lstat: embedded null character in path";
 
 pub(crate) fn resolve(given: &Path) -> Result<PathBuf, Halt> {
@@ -18,7 +19,7 @@ pub(crate) fn resolve(given: &Path) -> Result<PathBuf, Halt> {
         if error.kind() == ErrorKind::InvalidInput {
             Halt::internal(EMBEDDED_NUL)
         } else {
-            Halt::internal(os_error_line(&error))
+            Halt::internal(io::os_error_line(&error))
         }
     })
 }
@@ -39,8 +40,14 @@ fn not_tier1(name: &str) -> Halt {
 
 // The root comes from where the caller writes, and containment is tested on the resolved file.
 pub(crate) fn root(git: &Git, given: &Path, budget: Duration) -> Result<PathBuf, Halt> {
-    match git.toplevel(&anchor(given), budget) {
-        Toplevel::Found(stdout) => found(&stdout),
+    let stdout = halt_for(git.toplevel(&anchor(given), budget), budget)?;
+    found(&stdout)
+}
+
+// The printed top level, or the halt that each other answer of `git rev-parse` gives.
+fn halt_for(toplevel: Toplevel, budget: Duration) -> Result<Vec<u8>, Halt> {
+    match toplevel {
+        Toplevel::Found(stdout) => Ok(stdout),
         Toplevel::NotRepository => Err(Halt::skipped("not in a git repository")),
         Toplevel::Failed { code, stderr } => {
             let last = last_line(&String::from_utf8_lossy(&stderr));

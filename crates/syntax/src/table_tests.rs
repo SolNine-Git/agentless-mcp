@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::Value;
+use text::testing::document;
 
 use crate::generated::languages::PROBE_ROOTS;
 use crate::tables::Measured;
@@ -21,14 +21,6 @@ struct RuleCase {
     name: String,
     language: String,
     results: Vec<(u32, String, Value)>,
-}
-
-pub(crate) fn fixture<T: serde::de::DeserializeOwned>(name: &str) -> T {
-    let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
-    let path = PathBuf::from(dir).join("fixtures").join(name);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
 fn table_names(measured: &Measured) -> Vec<&'static str> {
@@ -170,12 +162,13 @@ fn a_path_selects_its_language_by_the_last_suffix_of_its_final_component() {
 }
 
 #[test]
-fn every_rule_returns_what_the_python_rule_returns() {
-    let sources: BTreeMap<String, String> = fixture::<Vec<Source>>("parse.json")
-        .into_iter()
-        .map(|source| (source.name, source.source))
-        .collect();
-    let cases: Vec<RuleCase> = fixture("rules.json");
+fn every_rule_returns_what_the_reference_rule_returns() {
+    let sources: BTreeMap<String, String> =
+        document::<Vec<Source>>(env!("CARGO_MANIFEST_DIR"), "parse")
+            .into_iter()
+            .map(|source| (source.name, source.source))
+            .collect();
+    let cases: Vec<RuleCase> = document(env!("CARGO_MANIFEST_DIR"), "rules");
     let checked: usize = cases.iter().map(|case| case.results.len()).sum();
     assert!(checked > 3000, "the fixture holds {checked} results");
     for case in &cases {

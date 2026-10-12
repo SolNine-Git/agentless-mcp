@@ -6,12 +6,12 @@ use io::{GateMode, GatedCheck};
 use super::{config_warnings, resolve};
 use crate::testing::{MANIFEST_DIR, Sandbox, latin};
 
-// One generated case: the name, the config bytes (None: no file), the environment value, the
+// One reference case: the name, the config bytes (None: no file), the environment value, the
 // modes as CPython's json.dumps writes them, and the warnings the log gets.
 type ModesCase = (String, Option<String>, Option<String>, String, Vec<String>);
 
 #[test]
-fn the_modes_and_the_warnings_match_the_generated_cases() {
+fn the_modes_and_the_warnings_match_the_reference_cases() {
     let all: Vec<ModesCase> = cases(MANIFEST_DIR, "modes", "modes");
     assert!(!all.is_empty());
     for (name, config, env, expected_modes, expected_warnings) in all {

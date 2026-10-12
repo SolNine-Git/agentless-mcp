@@ -11,6 +11,7 @@ use crate::diff::matching_blocks;
 use crate::index::IndexedFiles;
 use crate::pair::{Measured, Sides, blocks};
 
+// Guard clauses written in one shape fall under 40 Type-2 leaf tokens, and nobody merges those.
 pub(crate) const MIN_FINDING_TOKENS: u32 = 40;
 
 #[derive(Clone, Copy)]

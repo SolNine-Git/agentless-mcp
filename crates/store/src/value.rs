@@ -1,9 +1,9 @@
 //! A fetched column value, and the conversions that the cache reader applies to it.
 
-use json::{JsonValue, float_text, parse};
+use json::{JsonErrorKind, JsonValue, float_text, parse};
 use rusqlite::Row;
 use rusqlite::types::ValueRef;
-use text::{CodePointString, strip};
+use text::{CodePointString, IntText, int_bytes, int_text};
 
 use crate::{SqlClass, SqlError};
 
@@ -13,6 +13,9 @@ const INT_REPR_CHARS: usize = 200;
 const SLOC_REPR_CHARS: usize = 80;
 // The most digits of an integer that the sloc_lines scanner decides on its own.
 const MAX_PLAIN_DIGITS: usize = 4300;
+const NOT_A_NUMBER: &str =
+    "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'";
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Cell {
@@ -38,14 +41,14 @@ impl Cell {
 
     // The integer conversion: an integer, a truncated float, or a decimal text.
     pub(crate) fn int(&self) -> Result<i64, SqlError> {
-        let text = match self {
+        let found = match self {
             Self::Integer(value) => return Ok(*value),
             Self::Real(value) => return real_int(*value),
             Self::Null => return Err(SqlError::new(SqlClass::Type, NOT_A_NUMBER)),
-            Self::Text(text) => Some(text.as_str()),
-            Self::Blob(bytes) => std::str::from_utf8(bytes).ok(),
+            Self::Text(text) => int_text(text),
+            Self::Blob(bytes) => int_bytes(bytes),
         };
-        text.and_then(parse_int).ok_or_else(|| {
+        found.and_then(int_value).ok_or_else(|| {
             let shown: String = self.repr().chars().take(INT_REPR_CHARS).collect();
             let message = format!("invalid literal for int() with base 10: {shown}");
             SqlError::new(SqlClass::Value, message)
@@ -95,9 +98,6 @@ impl Cell {
     }
 }
 
-const NOT_A_NUMBER: &str =
-    "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'";
-
 // The stored value must be the JSON text of a list of integers. The values are not used.
 pub(crate) fn check_sloc(raw: &Cell) -> Result<(), SqlError> {
     if let Cell::Text(text) = raw
@@ -111,9 +111,14 @@ pub(crate) fn check_sloc(raw: &Cell) -> Result<(), SqlError> {
 // The full parse decides each value that the scanner refuses, and gives the error.
 pub(crate) fn parsed_sloc(raw: &Cell) -> Result<(), SqlError> {
     let parsed = match raw {
-        Cell::Text(text) => Some(
-            parse(text).map_err(|error| SqlError::new(SqlClass::JsonDecode, error.to_string()))?,
-        ),
+        Cell::Text(text) => Some(parse(text).map_err(|error| {
+            // An integer past the digit limit is a value error of the integer conversion.
+            let class = match error.kind {
+                JsonErrorKind::IntTooLong { .. } => SqlClass::Value,
+                _ => SqlClass::JsonDecode,
+            };
+            SqlError::new(class, error.to_string())
+        })?),
         _ => None,
     };
     if let Some(JsonValue::Array(items)) = &parsed
@@ -208,17 +213,17 @@ fn real_int(value: f64) -> Result<i64, SqlError> {
     })
 }
 
-// A decimal integer with an optional sign and surrounding whitespace. One underscore may separate
-// two digits.
-fn parse_int(text: &str) -> Option<i64> {
-    let number = strip(text);
-    let digits = number.strip_prefix(['+', '-']).unwrap_or(number);
-    let valid = digits
-        .split('_')
-        .all(|group| !group.is_empty() && group.bytes().all(|byte| byte.is_ascii_digit()));
-    valid
-        .then(|| number.replace('_', "").parse().ok())
-        .flatten()
+// The value of a decimal integer text, or None past the 64-bit range.
+fn int_value(found: IntText<'_>) -> Option<i64> {
+    let magnitude = found.digits().try_fold(0_i128, |value, digit| {
+        value.checked_mul(10)?.checked_add(i128::from(digit))
+    })?;
+    i64::try_from(if found.negative {
+        -magnitude
+    } else {
+        magnitude
+    })
+    .ok()
 }
 
 fn bytes_repr(bytes: &[u8]) -> String {
@@ -254,5 +259,3 @@ fn push_byte(out: &mut String, byte: u8, quote: u8) {
         }
     }
 }
-
-const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";

@@ -248,6 +248,20 @@ impl Parsed {
             .find(|node| self.is_error(*node) || self.is_missing(*node))
     }
 
+    /// Return the first node in document order whose subtree holds an error and none of whose
+    /// children's subtrees does, or `None` for a tree with no error.
+    #[must_use]
+    pub fn innermost_error(&self) -> Option<NodeId> {
+        let mut node = self.root();
+        if !self.has_error(node) {
+            return None;
+        }
+        while let Some(child) = self.children(node).find(|child| self.has_error(*child)) {
+            node = child;
+        }
+        Some(node)
+    }
+
     pub(crate) fn node_id(&self, node: Node) -> Option<NodeId> {
         descendant_offset(self.tree.root_node(), node).map(NodeId)
     }

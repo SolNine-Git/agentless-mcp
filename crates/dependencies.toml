@@ -42,5 +42,6 @@ build-time = [
 # Vendored C code, outside cargo: crates/syntax/vendor/grammars-1.14.3.tar.zst holds the C sources of
 # 22 tree-sitter grammars from the parser-sources-1.14.3 release asset of tree-sitter-language-pack,
 # the pack's ctype_shim.h, and utf8proc 2.10. Each grammar keeps its own license (MIT, or Apache-2.0
-# for hcl), and the archive holds each license text under licenses/. MANIFEST.toml beside the archive
-# lists each file with its source, size and sha256.
+# for hcl), under licenses/. utf8proc 2.10 (MIT, with Unicode data terms) keeps its license at
+# shim/utf8proc/LICENSE.md. MANIFEST.toml beside the archive lists each file with its source, size
+# and sha256.

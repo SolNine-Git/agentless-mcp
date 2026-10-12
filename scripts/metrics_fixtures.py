@@ -19,6 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fixture_files import write_or_check_files
+from stdlib_fixtures import BUILDERS as STDLIB_FIXTURES
 
 from agentless_mcp.core import clones, complexity, fileparse, grammars, normalize
 from agentless_mcp.core.extractor import error_nodes
@@ -28,6 +29,8 @@ from agentless_mcp.util.errors import UnmeasurableSource
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "tests" / "characterization" / "fixtures"
 FIXTURES = ROOT / "crates" / "metrics" / "fixtures"
+# stdlib_fixtures.py writes tokenize.json, word.json and sum.json into the same directory.
+SHARED = [ROOT / "crates" / path for path in STDLIB_FIXTURES]
 DIRECTORY_LANGUAGES = {"py": "python"}
 
 Case = dict[str, object]
@@ -316,7 +319,7 @@ SNIPPETS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
 
 def main() -> int:
     """Write the fixtures, or compare them with --check, and return the exit status."""
-    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, fixtures)
+    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, fixtures, SHARED)
 
 
 def fixtures() -> dict[Path, bytes]:

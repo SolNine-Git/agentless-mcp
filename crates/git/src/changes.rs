@@ -11,26 +11,26 @@ use crate::{Git, GitOutcome, Limits};
 
 /// The stdout cap of the change listings; a listing cut short would hide a changed file.
 pub const MAX_LISTING_BYTES: usize = 8_000_000;
-/// The leading bytes that [`looks_binary`] searches for a NUL byte.
+/// The leading bytes that [`looks_binary`] searches for a NUL byte: git's own binary rule.
 pub const BINARY_PROBE_BYTES: usize = 8_000;
-/// The status of an untracked file.
-pub const UNTRACKED: char = '?';
+const UNTRACKED: char = '?';
 /// The statuses whose two sides the review compares.
 pub const COMPARED_STATUSES: [char; 7] = ['A', 'C', 'D', 'M', 'R', 'T', UNTRACKED];
 
 // Rename detection compares every added file with every deleted one, and the untracked listing
 // walks the whole tree, so both get more time than a receipt call.
-const LISTING: Limits = Limits {
+pub(crate) const LISTING: Limits = Limits {
     seconds: 30,
     shown: "30.0",
     cap: MAX_LISTING_BYTES,
 };
-const COMMIT: Limits = Limits {
+// rev-parse prints one object name, so this cap bounds only a git that prints something else.
+pub(crate) const COMMIT: Limits = Limits {
     seconds: 5,
     shown: "5.0",
     cap: 4_096,
 };
-const BLOB: Limits = Limits {
+pub(crate) const BLOB: Limits = Limits {
     seconds: 5,
     shown: "5.0",
     cap: io::MAX_FILE_BYTES,

@@ -160,3 +160,27 @@ fn line_starts(source: &str) -> Result<Vec<u32>, FlatError> {
 fn index_u32(index: usize) -> Result<u32, FlatError> {
     u32::try_from(index).map_err(|_| FlatError::TooLarge)
 }
+
+#[cfg(test)]
+mod tests {
+    use tree_sitter::Parser;
+
+    use super::{Flat, FlatError};
+    use crate::Language;
+    use crate::kinds::table;
+
+    // A parse of valid UTF-8 never splits a character, so the tree of one text meets another.
+    #[test]
+    fn a_record_off_a_char_boundary_is_refused() {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&Language::Python.grammar())
+            .expect("the grammar loads");
+        let tree = parser.parse("a = b\n", None).expect("a tree");
+        let kinds = table(Language::Python);
+        assert!(Flat::build(&tree, "a = b\n", kinds).is_ok());
+        // Record 2 (module, assignment, identifier) is `a` at bytes 0..1, inside the bytes of "é".
+        let refused = Flat::build(&tree, "\u{e9}= b\n", kinds).err();
+        assert_eq!(refused, Some(FlatError::Boundary(2)));
+    }
+}

@@ -3,12 +3,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use io::{CONFIG_FILENAME, ConfigWarning, GateMode, GateWarning, GatedCheck, GlobsWarning};
-use prompts::messages::{
-    CACHE_BUILD_HINT, CONFIG_BOUNDARY_GLOBS_DROPPED, CONFIG_BOUNDARY_GLOBS_NOT_LIST,
-    CONFIG_BOUNDARY_GLOBS_TOO_MANY, CONFIG_EROSION_GATE_MODE, CONFIG_EROSION_GATE_NOT_OBJECT,
-    CONFIG_EROSION_GATE_UNKNOWN,
-};
+use prompts::messages::CACHE_BUILD_HINT;
 use serde::{Serialize, Serializer};
 use store::CacheState;
 use syntax::Language;
@@ -45,15 +40,14 @@ const fn int(value: usize) -> CapValue {
     CapValue::Int(value as u64)
 }
 
-/// Every bound the services apply, in report order. Most belong to operations that later phases
-/// port; they keep the values that those operations apply.
+/// Every bound the services apply, in report order.
 pub const CAPS: [(&str, CapValue); 27] = [
     ("max_walk_depth", int(io::MAX_WALK_DEPTH)),
     ("max_walk_files", int(io::MAX_WALK_FILES)),
     ("max_file_bytes", int(io::MAX_FILE_BYTES)),
     ("max_output_tokens", CapValue::Int(MAX_OUTPUT_TOKENS)),
     ("max_config_warnings", CapValue::Int(MAX_CONFIG_WARNINGS)),
-    ("max_map_files", CapValue::Int(10)),
+    ("max_map_files", CapValue::Int(DEFAULT_MAX_FILES as u64)),
     ("max_test_companions", CapValue::Int(5)),
     ("test_companion_depth", CapValue::Int(2)),
     ("default_find_limit", CapValue::Int(20)),
@@ -77,9 +71,8 @@ pub const CAPS: [(&str, CapValue); 27] = [
     ("max_path_visited", CapValue::Int(20_000)),
 ];
 
-// The map defaults that effective_config reports until the map operation is ported.
+// The map default that effective_config and the max_map_files cap report.
 const DEFAULT_MAX_FILES: u32 = 10;
-const DEFAULT_GRANULARITY: &str = "function";
 const TEST_CMD_HIDDEN: &str = "configured (CLI validate only; value hidden)";
 
 /// One resolved project setting.
@@ -249,48 +242,7 @@ pub fn capabilities(session: &Session) -> Result<Capabilities<'_>, Error> {
 /// Returns the text of each warning of `config`, in load order.
 #[must_use]
 pub fn config_warnings(config: &io::ProjectConfig) -> Vec<String> {
-    config.warnings.iter().map(warning_text).collect()
-}
-
-fn warning_text(warning: &ConfigWarning) -> String {
-    match warning {
-        ConfigWarning::File(refusal) => refusal.to_string(),
-        ConfigWarning::Value(value) => value.to_string(),
-        ConfigWarning::Stoplist(stoplist) => stoplist.to_string(),
-        ConfigWarning::TestCmd(test_cmd) => test_cmd.to_string(),
-        ConfigWarning::Unknown(unknown) => unknown.to_string(),
-        ConfigWarning::ErosionGate(gate) => gate_text(*gate),
-        ConfigWarning::BoundaryGlobs(globs) => globs_text(*globs),
-    }
-}
-
-fn gate_text(warning: GateWarning) -> String {
-    let modes = GateMode::ALL.map(GateMode::name).join(", ");
-    match warning {
-        GateWarning::NotObject => CONFIG_EROSION_GATE_NOT_OBJECT.render((CONFIG_FILENAME, &modes)),
-        GateWarning::Mode(check) => {
-            CONFIG_EROSION_GATE_MODE.render((CONFIG_FILENAME, check.name(), &modes))
-        }
-        GateWarning::Unknown { count } => {
-            let checks = GatedCheck::ALL.map(GatedCheck::name).join(", ");
-            CONFIG_EROSION_GATE_UNKNOWN.render((CONFIG_FILENAME, &checks, count))
-        }
-    }
-}
-
-fn globs_text(warning: GlobsWarning) -> String {
-    let (limit, chars) = (io::MAX_BOUNDARY_GLOBS, io::MAX_BOUNDARY_GLOB_CHARS);
-    match warning {
-        GlobsWarning::NotList => {
-            CONFIG_BOUNDARY_GLOBS_NOT_LIST.render((CONFIG_FILENAME, limit, chars))
-        }
-        GlobsWarning::TooMany { count } => {
-            CONFIG_BOUNDARY_GLOBS_TOO_MANY.render((CONFIG_FILENAME, count, limit))
-        }
-        GlobsWarning::Dropped { count } => {
-            CONFIG_BOUNDARY_GLOBS_DROPPED.render((CONFIG_FILENAME, count, chars))
-        }
-    }
+    config.warnings.iter().map(ToString::to_string).collect()
 }
 
 fn cache_view(session: &Session) -> Result<CacheView, Error> {
@@ -366,7 +318,8 @@ fn effective_config(config: &io::ProjectConfig) -> Vec<(&'static str, Setting)> 
         .map_or_else(|| Setting::Text("auto".to_owned()), Setting::Int);
     let granularity = config
         .granularity
-        .map_or(DEFAULT_GRANULARITY, io::Granularity::name);
+        .unwrap_or(io::Granularity::Function)
+        .name();
     let test_cmd = if config
         .test_cmd
         .as_deref()

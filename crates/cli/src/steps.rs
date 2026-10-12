@@ -87,11 +87,11 @@ pub(crate) fn open(
     if !note.is_empty() {
         report(streams.err, &format!("agentless-mcp: {}\n", one_line(note)));
     }
-    let opened = opening
+    diagnostics(streams, &opening.session.diagnostics);
+    opening
         .session
-        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
-    diagnostics(streams, &opened.diagnostics);
-    Ok(opened.value)
+        .value
+        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))
 }
 
 pub(crate) fn diagnostics(streams: &mut Streams<'_>, lines: &[String]) {
@@ -120,22 +120,15 @@ fn columns(env: &EnvConfig) -> isize {
     count.map_or(DEFAULT_COLUMNS, |count| count.min(MAX_COLUMNS))
 }
 
-// A decimal integer with an optional sign, surrounding whitespace, and single underscores
-// between digits.
+// A decimal integer by the text crate's integer rule. A value past isize saturates, and
+// MAX_COLUMNS caps it.
 fn integer(text: &str) -> Option<isize> {
-    let text = text::strip(text);
-    let (negative, digits) = match text.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, text.strip_prefix('+').unwrap_or(text)),
-    };
-    let grouped = !digits.starts_with('_') && !digits.ends_with('_') && !digits.contains("__");
-    if digits.is_empty() || !grouped {
-        return None;
-    }
-    let mut value: isize = 0;
-    for byte in digits.bytes().filter(|&b| b != b'_') {
-        let digit = byte.is_ascii_digit().then(|| isize::from(byte - b'0'))?;
-        value = value.saturating_mul(10).saturating_add(digit);
-    }
-    Some(if negative { -value } else { value })
+    let found = text::int_text(text)?;
+    let value = found.digits().fold(0isize, |value, digit| {
+        value.saturating_mul(10).saturating_add(isize::from(digit))
+    });
+    Some(if found.negative { -value } else { value })
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,10 @@
+{
+ "cases": [
+  {"name": "walk_warned", "steps": [["mkdir", "repo"], ["init", "repo"], ["write", "repo/a.py", "def f(x):\n    return x\n"], ["latin_name", "repo/bad\u00ff.py", "z = 1\n"]], "cache_home": null, "pinned": false, "warnings": ["git listed 1 path(s) under <SANDBOX>/repo whose names are not valid UTF-8. The tree omits them."], "refused": null, "generation": null},
+  {"name": "walk_refused_after_warnings", "steps": [["mkdir", "repo"], ["init", "repo"], ["write", "repo/a.py", "def f(x):\n    return x\n"], ["latin_name", "repo/bad\u00ff.py", "z = 1\n"], ["write", "repo/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/x.txt", "x\n"]], "cache_home": "rel", "pinned": false, "warnings": ["XDG_CACHE_HOME='rel' is relative and was ignored; the XDG specification requires an absolute path, and a relative one would put the cache inside whichever directory the call was made from -- including the repository being analysed", "git listed 1 path(s) under <SANDBOX>/repo whose names are not valid UTF-8. The tree omits them."], "refused": "walk refused: path depth 21 exceeds the limit of 20 under <SANDBOX>/repo; point the call at a subdirectory instead", "generation": null},
+  {"name": "digest_outside_git", "steps": [["mkdir", "repo"], ["write", "repo/a.py", "x = 1\n"], ["write", "repo/pkg/b.py", "y = 22\n"], ["mtime", "repo/a.py", "2000-01-01T00:00:00Z"], ["mtime", "repo/pkg/b.py", "2001-02-03T04:05:06Z"]], "cache_home": null, "pinned": true, "warnings": [], "refused": null, "generation": "nogit:aa182db4a5d7802f"}
+ ],
+ "walk_budget_seconds": [
+  10.0
+ ]
+}

@@ -49,25 +49,58 @@ pub fn os_error_class_text(error: &io::Error) -> String {
     let Some(code) = error.raw_os_error() else {
         return format!("OSError({message})");
     };
-    let class = CLASSES
+    format!("{}({code}, {message})", class(code))
+}
+
+/// Returns the class name for the errno of `error`, the errno, and the message, for example
+/// `PermissionError: [Errno 13] Permission denied`. An error without an errno gives
+/// `OSError: <message>`.
+#[must_use]
+pub fn os_error_line(error: &io::Error) -> String {
+    let message = strerror(error);
+    match error.raw_os_error() {
+        Some(code) => format!("{}: [Errno {code}] {message}", class(code)),
+        None => format!("OSError: {message}"),
+    }
+}
+
+fn class(code: i32) -> &'static str {
+    CLASSES
         .iter()
         .find(|(errno, _)| *errno == code)
-        .map_or("OSError", |(_, class)| class);
-    format!("{class}({code}, {message})")
+        .map_or("OSError", |(_, class)| class)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // The messages are the C library's, so the tests that call this run on Linux only.
+    #[cfg(target_os = "linux")]
+    fn check_errno_cases(section: &str, shown: impl Fn(&io::Error) -> String) {
+        let all: Vec<(i32, String)> = crate::fixtures::fixture("oserror", section);
+        for (code, expected) in all {
+            let error = io::Error::from_raw_os_error(code);
+            assert_eq!(shown(&error), expected, "{section}: errno {code}");
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn os_error_class_text_cases() {
-        let all: Vec<(i32, String)> = crate::fixtures::fixture("oserror", "os_error_repr");
-        for (code, expected) in all {
-            let error = io::Error::from_raw_os_error(code);
-            assert_eq!(os_error_class_text(&error), expected, "errno {code}");
-        }
+        check_errno_cases("os_error_repr", os_error_class_text);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn os_error_line_cases() {
+        check_errno_cases("os_error_line", os_error_line);
+    }
+
+    #[test]
+    fn an_error_without_an_errno_has_the_base_class_line() {
+        let custom = io::Error::other("it's custom");
+        assert_eq!(os_error_line(&custom), "OSError: it's custom");
     }
 
     #[test]

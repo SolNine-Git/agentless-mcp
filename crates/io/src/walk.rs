@@ -20,12 +20,13 @@ pub const MAX_WALK_FILES: usize = 20_000;
 /// The most bytes, summed over the files, that [`walk`] returns.
 pub const MAX_WALK_BYTES: u64 = 200_000_000;
 
-/// The files a walk found, and what it passed over on the way.
+/// The files a walk found, or the refusal that stopped it, and what it passed over first.
 #[derive(Debug)]
 pub struct Walk {
-    /// Each file, as a path below the resolved root, in walk order.
-    pub files: Vec<PathBuf>,
-    /// Each directory or file the walk passed over, in walk order.
+    /// Each file, as a path below the resolved root, in walk order, or why the walk refused.
+    pub files: Result<Vec<PathBuf>, WalkRefusal>,
+    /// Each directory or file the walk passed over, in walk order, those before a refusal
+    /// included.
     pub skipped: Vec<WalkSkip>,
 }
 
@@ -50,9 +51,7 @@ pub enum WalkSkip {
     Revisited {
         /// The directory.
         path: PathBuf,
-        /// The device number.
         device: u64,
-        /// The inode number.
         inode: u64,
     },
 }
@@ -89,21 +88,18 @@ pub enum WalkRefusal {
     TooDeep {
         /// The directory's depth below the root.
         depth: usize,
-        /// The bound.
         limit: usize,
         /// The resolved root.
         root: PathBuf,
     },
     /// The tree holds more files than the file bound.
     TooManyFiles {
-        /// The bound.
         limit: usize,
         /// The resolved root.
         root: PathBuf,
     },
     /// The files hold more bytes than the byte bound.
     TooManyBytes {
-        /// The bound.
         limit: u64,
         /// The resolved root.
         root: PathBuf,
@@ -149,12 +145,10 @@ impl From<WalkRefusal> for kernel::Error {
 
 /// Lists each file under `root`, depth first and sorted by name within each directory. It enters
 /// no symlinked directory and each directory once, and it lists a symlinked file only when its
-/// target stays inside the root.
-///
-/// # Errors
-///
-/// Returns a [`WalkRefusal`] when the root is not a directory or the tree passes a bound.
-pub fn walk(root: &Path) -> Result<Walk, WalkRefusal> {
+/// target stays inside the root. The files are a [`WalkRefusal`] when the root is not a directory
+/// or the tree passes a bound.
+#[must_use]
+pub fn walk(root: &Path) -> Walk {
     let bounds = Bounds {
         depth: MAX_WALK_DEPTH,
         files: MAX_WALK_FILES,
@@ -170,28 +164,40 @@ struct Bounds {
     bytes: u64,
 }
 
-fn walk_within(root: &Path, bounds: Bounds) -> Result<Walk, WalkRefusal> {
-    let root = resolve(root).map_err(|_| WalkRefusal::NotDirectory {
-        root: root.to_path_buf(),
-    })?;
-    if !root.is_dir() {
-        return Err(WalkRefusal::NotDirectory { root });
-    }
+fn walk_within(root: &Path, bounds: Bounds) -> Walk {
+    let root = match walkable(root) {
+        Ok(root) => root,
+        Err(refusal) => {
+            return Walk {
+                files: Err(refusal),
+                skipped: Vec::new(),
+            };
+        }
+    };
     let mut walker = Walker {
         bounds,
         seen: HashSet::new(),
         bytes: 0,
-        walk: Walk {
-            files: Vec::new(),
-            skipped: Vec::new(),
-        },
+        files: Vec::new(),
+        skipped: Vec::new(),
         root,
     };
-    let mut pending = vec![walker.root.clone()];
-    while let Some(directory) = pending.pop() {
-        pending.extend(walker.visit(&directory)?.into_iter().rev());
+    let finished = walker.run();
+    Walk {
+        files: finished.map(|()| walker.files),
+        skipped: walker.skipped,
     }
-    Ok(walker.walk)
+}
+
+// The resolved root, when it names a directory.
+fn walkable(root: &Path) -> Result<PathBuf, WalkRefusal> {
+    let resolved = resolve(root).map_err(|_| WalkRefusal::NotDirectory {
+        root: root.to_path_buf(),
+    })?;
+    if !resolved.is_dir() {
+        return Err(WalkRefusal::NotDirectory { root: resolved });
+    }
+    Ok(resolved)
 }
 
 struct Walker {
@@ -199,7 +205,8 @@ struct Walker {
     bounds: Bounds,
     seen: HashSet<(u64, u64)>,
     bytes: u64,
-    walk: Walk,
+    files: Vec<PathBuf>,
+    skipped: Vec<WalkSkip>,
 }
 
 #[derive(Default)]
@@ -209,13 +216,22 @@ struct Listing {
 }
 
 impl Walker {
+    // Walks the tree from the root, and stops at the first bound that the tree passes.
+    fn run(&mut self) -> Result<(), WalkRefusal> {
+        let mut pending = vec![self.root.clone()];
+        while let Some(directory) = pending.pop() {
+            pending.extend(self.visit(&directory)?.into_iter().rev());
+        }
+        Ok(())
+    }
+
     // Takes the files of `directory` and returns its subdirectories in walk order.
     fn visit(&mut self, directory: &Path) -> Result<Vec<PathBuf>, WalkRefusal> {
         let listing = match list(directory) {
             Ok(listing) => listing,
             Err(error) => {
                 let path = directory.to_path_buf();
-                self.walk.skipped.push(WalkSkip::Unlisted { path, error });
+                self.skipped.push(WalkSkip::Unlisted { path, error });
                 return Ok(Vec::new());
             }
         };
@@ -252,14 +268,14 @@ impl Walker {
         let metadata = match fs::metadata(directory) {
             Ok(metadata) => metadata,
             Err(error) => {
-                self.walk.skipped.push(WalkSkip::Unstatable { path, error });
+                self.skipped.push(WalkSkip::Unstatable { path, error });
                 return false;
             }
         };
         let (device, inode) = (metadata.dev(), metadata.ino());
         let fresh = self.seen.insert((device, inode));
         if !fresh {
-            self.walk.skipped.push(WalkSkip::Revisited {
+            self.skipped.push(WalkSkip::Revisited {
                 path,
                 device,
                 inode,
@@ -274,12 +290,12 @@ impl Walker {
             Some(Ok(size)) => size,
             Some(Err(error)) => {
                 let path = candidate;
-                self.walk.skipped.push(WalkSkip::Unstatable { path, error });
+                self.skipped.push(WalkSkip::Unstatable { path, error });
                 return Ok(());
             }
         };
         let root = self.root.clone();
-        if self.walk.files.len() >= self.bounds.files {
+        if self.files.len() >= self.bounds.files {
             let limit = self.bounds.files;
             return Err(WalkRefusal::TooManyFiles { limit, root });
         }
@@ -288,7 +304,7 @@ impl Walker {
             let limit = self.bounds.bytes;
             return Err(WalkRefusal::TooManyBytes { limit, root });
         }
-        self.walk.files.push(candidate);
+        self.files.push(candidate);
         Ok(())
     }
 }
@@ -328,11 +344,16 @@ mod tests {
     use crate::testing::Tree;
     use serde_json::{Value, json};
 
+    const DEFAULT: Bounds = Bounds {
+        depth: MAX_WALK_DEPTH,
+        files: MAX_WALK_FILES,
+        bytes: MAX_WALK_BYTES,
+    };
+
     fn walked(tree: &Tree, root: &Path, bounds: Bounds) -> Value {
-        match walk_within(root, bounds) {
-            Ok(walk) => {
-                let files: Vec<String> = walk
-                    .files
+        match walk_within(root, bounds).files {
+            Ok(files) => {
+                let files: Vec<String> = files
                     .iter()
                     .map(|path| tree.placed(&path.to_string_lossy()))
                     .collect();
@@ -340,6 +361,29 @@ mod tests {
             }
             Err(refusal) => json!(["refused", tree.placed(&refusal.to_string())]),
         }
+    }
+
+    // A root that holds `closed`, which mode 000 keeps from being listed, and `open/f`. It returns
+    // the walk within `bounds`, and whether the mode refused the listing (it does not for root).
+    fn walked_past_a_closed_directory(bounds: Bounds) -> (Tree, Walk, bool) {
+        let tree = build(&[
+            json!(["dir", "root/closed"]),
+            json!(["file", "root/closed/f", "x"]),
+            json!(["dir", "root/open"]),
+            json!(["file", "root/open/f", "y"]),
+        ]);
+        let binds = tree.modes_bind();
+        tree.chmod("root/closed", 0o000);
+        let walked = walk_within(&tree.join("root"), bounds);
+        tree.chmod("root/closed", 0o700);
+        (tree, walked, binds)
+    }
+
+    fn unlisted(walked: &Walk) -> &Path {
+        let [WalkSkip::Unlisted { path, .. }] = &walked.skipped[..] else {
+            panic!("expected one unlisted record, got {:?}", walked.skipped);
+        };
+        path
     }
 
     #[test]
@@ -364,13 +408,8 @@ mod tests {
         let tree = build(&layout);
         let all: Vec<(String, Value)> = fixture("walk", "roots");
         for (root, expected) in all {
-            let bounds = Bounds {
-                depth: MAX_WALK_DEPTH,
-                files: MAX_WALK_FILES,
-                bytes: MAX_WALK_BYTES,
-            };
             assert_eq!(
-                walked(&tree, &tree.join(&root), bounds),
+                walked(&tree, &tree.join(&root), DEFAULT),
                 expected,
                 "root {root}"
             );
@@ -389,25 +428,60 @@ mod tests {
             },
             seen: HashSet::new(),
             bytes: 0,
-            walk: Walk {
-                files: Vec::new(),
-                skipped: Vec::new(),
-            },
+            files: Vec::new(),
+            skipped: Vec::new(),
         };
         let directory = tree.join("d");
         assert!(walker.claim(&directory));
         assert!(!walker.claim(&directory));
-        let [WalkSkip::Revisited { path, .. }] = &walker.walk.skipped[..] else {
-            panic!("expected one revisit record, got {:?}", walker.walk.skipped);
+        let [WalkSkip::Revisited { path, .. }] = &walker.skipped[..] else {
+            panic!("expected one revisit record, got {:?}", walker.skipped);
         };
         assert_eq!(path, &directory);
     }
 
     #[test]
+    fn a_directory_that_cannot_be_listed_is_skipped_with_a_record() {
+        let (tree, walked, binds) = walked_past_a_closed_directory(DEFAULT);
+        let files = walked
+            .files
+            .as_ref()
+            .expect("the tree is within every bound");
+        if !binds {
+            assert_eq!(
+                files,
+                &[tree.join("root/closed/f"), tree.join("root/open/f")]
+            );
+            return;
+        }
+        assert_eq!(files, &[tree.join("root/open/f")]);
+        assert_eq!(unlisted(&walked), tree.join("root/closed"));
+    }
+
+    #[test]
+    fn a_refused_walk_keeps_the_skips_before_the_refusal() {
+        let bounds = Bounds {
+            files: 0,
+            ..DEFAULT
+        };
+        let (tree, walked, binds) = walked_past_a_closed_directory(bounds);
+        let refusal = walked.files.as_ref().expect_err("no file fits the bound");
+        assert!(
+            matches!(refusal, WalkRefusal::TooManyFiles { .. }),
+            "{refusal:?}"
+        );
+        if binds {
+            assert_eq!(unlisted(&walked), tree.join("root/closed"));
+        }
+    }
+
+    #[test]
     fn the_default_walk_lists_the_tree() {
         let tree = build(&[json!(["dir", "d"]), json!(["file", "d/f", "x"])]);
-        let walk = walk(tree.path()).expect("the tree is within every default bound");
-        assert_eq!(walk.files, [tree.join("d/f")]);
+        let files = walk(tree.path())
+            .files
+            .expect("the tree is within every bound");
+        assert_eq!(files, [tree.join("d/f")]);
     }
 
     #[test]

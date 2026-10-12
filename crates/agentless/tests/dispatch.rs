@@ -26,21 +26,7 @@ fn sandbox() -> Tree {
 }
 
 fn env(tree: &Tree, extra: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
-    let path = std::env::var_os("PATH").expect("the tests find git through PATH");
-    let home = tree.path().join("home");
-    let mut vars = vec![
-        (OsString::from("PATH"), path),
-        (OsString::from("HOME"), home.clone().into_os_string()),
-        (
-            OsString::from("XDG_CACHE_HOME"),
-            home.join(".cache").into_os_string(),
-        ),
-        (OsString::from("GIT_CONFIG_NOSYSTEM"), OsString::from("1")),
-        (
-            OsString::from("GIT_CONFIG_GLOBAL"),
-            OsString::from("/dev/null"),
-        ),
-    ];
+    let mut vars = io::testing::hermetic_env(&tree.path().join("home"));
     vars.extend(
         extra
             .iter()

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use app::{LintReport, Services};
+use app::{EnvConfig, LintReport, Services};
 use io::testing::cases;
 use serde_json::Value;
 
@@ -13,7 +13,7 @@ use crate::testing::{MANIFEST_DIR, Sandbox, Steps, latin};
 use crate::worker::{LintFn, in_process};
 use crate::{ENV_GATE, ENV_LOG, Output};
 
-// One generated case: the name, the setup steps, the payload, the gate variable, the log form,
+// One reference case: the name, the setup steps, the payload, the gate variable, the log form,
 // and the expected code, stdout, stderr, compared stderr lines, and record line.
 type Scenario = (
     String,
@@ -106,7 +106,7 @@ fn logged(path: &Path) -> Option<String> {
 }
 
 #[test]
-fn each_scenario_gives_the_python_hooks_reply_and_record() {
+fn each_scenario_gives_the_reference_reply_and_record() {
     let all: Vec<Scenario> = cases(MANIFEST_DIR, "scenarios", "scenarios");
     assert!(all.len() > 30, "{} scenarios", all.len());
     for (name, steps, payload, gate, log_form, expected) in all {
@@ -176,8 +176,14 @@ fn timed(offsets: &[Duration], lint: LintFn) -> (Output, Value) {
     )
 }
 
-const SLOW: LintFn = |_, _, _| {
-    thread::sleep(Duration::from_millis(300));
+// A lint that never returns: its thread parks until the test process exits.
+const STUCK: LintFn = |_, _, _| {
+    loop {
+        thread::park();
+    }
+};
+
+const NO_CANDIDATE: LintFn = |_, _, _| {
     Ok(LintReport {
         candidates: Vec::new(),
     })
@@ -210,8 +216,8 @@ fn a_call_with_no_time_left_for_lint_is_degraded_after_the_digests() {
 #[test]
 fn a_lint_that_outlives_the_deadline_is_degraded_without_a_wait_for_it() {
     let started = Instant::now();
-    let (output, record) = timed(&[MS(0), MS(0), MS(9400)], SLOW);
-    assert!(started.elapsed() < MS(1000), "{:?}", started.elapsed());
+    let (output, record) = timed(&[MS(0), MS(0), MS(9400)], STUCK);
+    assert!(started.elapsed() < MS(2000), "{:?}", started.elapsed());
     assert_eq!(output, Output::default());
     assert_eq!(record["reason"], "lint timed out after 0.1 s");
 }
@@ -236,6 +242,52 @@ fn a_panic_in_lint_is_an_internal_error_that_exits_0() {
     assert_eq!(output.stderr, expected);
     assert_eq!(record["reason"], "internal error: panic: a defect in lint");
     assert_eq!(record["dropped"], serde_json::json!([]));
+}
+
+#[test]
+fn a_lint_with_no_candidate_is_an_internal_error() {
+    let (output, record) = timed(&[MS(0)], NO_CANDIDATE);
+    assert_eq!((output.code, output.stdout.as_str()), (0, ""));
+    let path = record["path"].as_str().expect("the path is set");
+    let expected = format!(
+        "erosion gate internal error: tool_use_id=u1 path={path}\nlint returned 0 candidates, \
+         not one\n"
+    );
+    assert_eq!(output.stderr, expected);
+    assert_eq!(
+        record["reason"],
+        "internal error: lint returned 0 candidates, not one"
+    );
+}
+
+#[test]
+fn git_absent_from_path_degrades_with_the_cannot_run_git_text() {
+    let sandbox = repo_with_file();
+    let empty = sandbox.mkdir("empty-bin");
+    let log = sandbox.path().join("erosion.jsonl");
+    let mut vars: Vec<(OsString, OsString)> = sandbox.env(&[]).vars().to_vec();
+    vars.retain(|(name, _)| name != "PATH");
+    vars.push((OsString::from("PATH"), empty.into_os_string()));
+    let env = EnvConfig::new(vars, sandbox.path().to_path_buf());
+    let services = Services::new(&env);
+    let call = Call::new(Box::new(Steps::fixed()), Some(log.clone().into_os_string()));
+    let ports = Ports {
+        services: &services,
+        env_gate: None,
+        lint: in_process,
+        binary: None,
+    };
+
+    let output = run(&call, &ports, &mut write_payload(&sandbox).as_slice());
+
+    assert_eq!(output, Output::default());
+    let record: Value =
+        serde_json::from_str(&logged(&log).expect("a record")).expect("the record is JSON");
+    assert_eq!(record["outcome"], "degraded");
+    assert_eq!(
+        record["reason"],
+        "cannot run git: [Errno 2] No such file or directory: 'git'"
+    );
 }
 
 #[test]

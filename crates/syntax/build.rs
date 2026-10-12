@@ -1,8 +1,9 @@
 //! Unpack the vendored grammar archive into `OUT_DIR` and compile its C sources into one static library.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -45,15 +46,33 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed={ARCHIVE}");
     let root = out_dir.join("grammars");
-    unpack(&manifest_dir.join(ARCHIVE), &root);
-    let objects = compile_grammars(&root, jobs());
+    let archive = manifest_dir.join(ARCHIVE);
+    unpack(&archive, &root);
+    let unpacked = Unpacked {
+        members: members(&archive),
+        root,
+    };
+    let objects = compile_grammars(&unpacked, jobs());
     let mut library = base();
-    utf8proc(&mut library, &root);
+    utf8proc(&mut library, &unpacked.root);
     library
         .objects(objects)
-        .file(root.join("shim/utf8proc/utf8proc.c"))
+        .file(unpacked.root.join("shim/utf8proc/utf8proc.c"))
         .cargo_metadata(true)
         .compile(LIBRARY);
+}
+
+// The unpack root and the archive's paths below it. OUT_DIR outlives a grammar bump, so a file that
+// only an older archive held can still be on disk: a compile decision asks the archive, not the disk.
+struct Unpacked {
+    root: PathBuf,
+    members: BTreeSet<PathBuf>,
+}
+
+impl Unpacked {
+    fn holds(&self, path: &Path) -> bool {
+        self.members.iter().any(|member| member.starts_with(path))
+    }
 }
 
 fn jobs() -> usize {
@@ -63,22 +82,41 @@ fn jobs() -> usize {
         .unwrap_or(1)
 }
 
-fn unpack(archive: &Path, into: &Path) {
+fn tar_stream(archive: &Path) -> tar::Archive<impl Read> {
     let file = File::open(archive).unwrap_or_else(|error| panic!("{}: {error}", archive.display()));
     let decoder = ruzstd::decoding::StreamingDecoder::new(BufReader::new(file))
         .unwrap_or_else(|error| panic!("{}: not a zstd frame: {error}", archive.display()));
-    // The sources are build output in OUT_DIR, not a runtime write, so tar writes them for the build.
     tar::Archive::new(decoder)
+}
+
+fn unpack(archive: &Path, into: &Path) {
+    // OUT_DIR belongs to this build, so the unpack writes nothing outside the build directory.
+    tar_stream(archive)
         .unpack(into)
         .unwrap_or_else(|error| panic!("{}: unpack failed: {error}", archive.display()));
 }
 
-fn compile_grammars(root: &Path, jobs: usize) -> Vec<PathBuf> {
+fn members(archive: &Path) -> BTreeSet<PathBuf> {
+    let mut stream = tar_stream(archive);
+    let entries = stream
+        .entries()
+        .unwrap_or_else(|error| panic!("{}: not a tar stream: {error}", archive.display()));
+    entries
+        .map(|entry| {
+            let entry = entry.unwrap_or_else(|error| panic!("{}: {error}", archive.display()));
+            let path = entry.path();
+            path.unwrap_or_else(|error| panic!("{}: {error}", archive.display()))
+                .into_owned()
+        })
+        .collect()
+}
+
+fn compile_grammars(unpacked: &Unpacked, jobs: usize) -> Vec<PathBuf> {
     let next = AtomicUsize::new(0);
     let compiled: Compiled = Mutex::new(Vec::new());
     thread::scope(|scope| {
         for _ in 0..jobs.clamp(1, GRAMMARS.len()) {
-            scope.spawn(|| worker(root, &next, &compiled));
+            scope.spawn(|| worker(unpacked, &next, &compiled));
         }
     });
     let mut compiled = compiled.into_inner().expect("a compile thread panicked");
@@ -89,13 +127,13 @@ fn compile_grammars(root: &Path, jobs: usize) -> Vec<PathBuf> {
         .collect()
 }
 
-fn worker(root: &Path, next: &AtomicUsize, compiled: &Compiled) {
+fn worker(unpacked: &Unpacked, next: &AtomicUsize, compiled: &Compiled) {
     loop {
         let index = next.fetch_add(1, Ordering::Relaxed);
         let Some(name) = GRAMMARS.get(index) else {
             return;
         };
-        let objects = grammar_objects(root, name);
+        let objects = grammar_objects(unpacked, name);
         compiled
             .lock()
             .expect("a compile thread panicked")
@@ -103,16 +141,16 @@ fn worker(root: &Path, next: &AtomicUsize, compiled: &Compiled) {
     }
 }
 
-fn grammar_objects(root: &Path, name: &str) -> Vec<PathBuf> {
-    let dir = root.join("parsers").join(name);
-    let mut parser = grammar_build(&dir);
-    parser.file(dir.join("src/parser.c"));
+fn grammar_objects(unpacked: &Unpacked, name: &str) -> Vec<PathBuf> {
+    let dir = Path::new("parsers").join(name);
+    let mut parser = grammar_build(unpacked, &dir);
+    parser.file(unpacked.root.join(&dir).join("src/parser.c"));
     let mut objects = parser.compile_intermediates();
     let scanner = dir.join("src/scanner.c");
-    if scanner.exists() {
-        let mut build = grammar_build(&dir);
-        shim(&mut build, root);
-        build.file(scanner);
+    if unpacked.holds(&scanner) {
+        let mut build = grammar_build(unpacked, &dir);
+        shim(&mut build, &unpacked.root);
+        build.file(unpacked.root.join(scanner));
         objects.extend(build.compile_intermediates());
     }
     objects
@@ -134,12 +172,12 @@ fn base() -> cc::Build {
     build
 }
 
-fn grammar_build(dir: &Path) -> cc::Build {
+fn grammar_build(unpacked: &Unpacked, dir: &Path) -> cc::Build {
     let mut build = base();
-    build.flag(format!("-I{}", dir.join("src").display()));
-    let common = dir.join("common");
-    if common.exists() {
-        build.flag(format!("-I{}", common.display()));
+    let source = unpacked.root.join(dir);
+    build.flag(format!("-I{}", source.join("src").display()));
+    if unpacked.holds(&dir.join("common")) {
+        build.flag(format!("-I{}", source.join("common").display()));
     }
     build
 }

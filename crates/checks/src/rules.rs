@@ -6,8 +6,6 @@ use metrics::Unit;
 use prompts::ContractRule;
 use syntax::{KindSet, Language, NodeId, Parsed, Query};
 
-use crate::error::Error;
-
 const HIT_CAPTURE: &str = "hit";
 
 // The rules of one language as one query, and the rule of each of its patterns.
@@ -65,13 +63,12 @@ fn rule_at(starts: &[usize], offset: usize) -> usize {
 
 pub(crate) fn hits<'r>(
     parsed: &Parsed,
-    path: &str,
     units: &[Unit],
     compiled: &'r CompiledRules,
-) -> Result<Vec<Hit<'r>>, Error> {
+) -> Vec<Hit<'r>> {
     let comments = parsed.language().spec().map(|spec| &spec.comments);
     let mut found = Vec::new();
-    for (order, nodes) in hit_nodes(parsed, path, compiled)?.into_iter().enumerate() {
+    for (order, nodes) in hit_nodes(parsed, compiled).into_iter().enumerate() {
         for node in nodes {
             let start = parsed.start_byte(node);
             let hit = Hit {
@@ -84,27 +81,14 @@ pub(crate) fn hits<'r>(
         }
     }
     found.sort_by_key(|(start, order, _)| (*start, *order));
-    Ok(found.into_iter().map(|(_, _, hit)| hit).collect())
+    found.into_iter().map(|(_, _, hit)| hit).collect()
 }
 
 // The hit nodes of each rule in rule order: one node per span, by span.
-fn hit_nodes(
-    parsed: &Parsed,
-    path: &str,
-    compiled: &CompiledRules,
-) -> Result<Vec<Vec<NodeId>>, Error> {
-    let Some(first) = compiled.rules.first() else {
-        return Ok(Vec::new());
-    };
-    // On a tree of another language, the first rule's own query was the first to fail.
+fn hit_nodes(parsed: &Parsed, compiled: &CompiledRules) -> Vec<Vec<NodeId>> {
     let matches = parsed
         .matches(&compiled.query)
-        .map_err(|source| Error::Query {
-            id: first.id,
-            language: first.language,
-            path: path.to_owned(),
-            source,
-        })?;
+        .expect("the caller compiles for the tree's language, and no run holds u32::MAX matches");
     let mut spans: Vec<HashMap<(u32, u32), NodeId>> = vec![HashMap::new(); compiled.rules.len()];
     for found in &matches {
         let rule = &mut spans[compiled.pattern_rules[found.pattern as usize]];
@@ -118,7 +102,7 @@ fn hit_nodes(
             rule.entry(span).or_insert(node);
         }
     }
-    Ok(spans.into_iter().map(by_span).collect())
+    spans.into_iter().map(by_span).collect()
 }
 
 fn by_span(spans: HashMap<(u32, u32), NodeId>) -> Vec<NodeId> {

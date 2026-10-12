@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::cases::cases;
+use crate::SqlClass;
 use crate::value::{Cell, check_sloc, parsed_sloc, plain_int_list};
 
 #[test]
@@ -46,6 +47,39 @@ fn the_sloc_scanner_accepts_exactly_what_the_full_parse_accepts() {
         (5_000..15_000).contains(&accepted),
         "{accepted} of 20000 accepted"
     );
+}
+
+#[test]
+fn int_of_a_text_padded_with_an_information_separator_is_refused() {
+    let error = Cell::Text("\u{1c}5".to_owned())
+        .int()
+        .map_err(|error| error.repr());
+    let expected = "ValueError(\"invalid literal for int() with base 10: '\\\\x1c5'\")";
+    assert_eq!(error, Err(expected.to_owned()));
+}
+
+#[test]
+fn int_of_a_utf8_blob_padded_with_a_no_break_space_is_refused() {
+    let error = Cell::Blob(b"\xc2\xa05".to_vec())
+        .int()
+        .map_err(|error| error.class);
+    assert_eq!(error, Err(SqlClass::Value));
+}
+
+#[test]
+fn int_keeps_the_64_bit_range() {
+    let read = |text: &str| Cell::Text(text.to_owned()).int().ok();
+    assert_eq!(read("-9_223_372_036_854_775_808"), Some(i64::MIN));
+    assert_eq!(read(" 9223372036854775807\n"), Some(i64::MAX));
+    assert_eq!(read("9223372036854775808"), None);
+    assert_eq!(read(&"9".repeat(5000)), None);
+}
+
+#[test]
+fn an_integer_past_the_digit_limit_is_a_value_error_of_the_sloc_value() {
+    let cell = Cell::Text(format!("[{}]", "9".repeat(4_301)));
+    let error = check_sloc(&cell).map_err(|error| error.class);
+    assert_eq!(error, Err(SqlClass::Value));
 }
 
 #[test]

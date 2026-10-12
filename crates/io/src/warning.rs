@@ -3,13 +3,19 @@
 use std::fmt;
 
 use json::JsonError;
+use prompts::messages::{
+    CONFIG_BOUNDARY_GLOBS_DROPPED, CONFIG_BOUNDARY_GLOBS_NOT_LIST, CONFIG_BOUNDARY_GLOBS_TOO_MANY,
+    CONFIG_EROSION_GATE_MODE, CONFIG_EROSION_GATE_NOT_OBJECT, CONFIG_EROSION_GATE_UNKNOWN,
+};
 use text::CodePointString;
 
-use crate::config::{CONFIG_FILENAME, GatedCheck, KNOWN_KEYS, MAX_CONFIG_BYTES};
+use crate::config::{
+    CONFIG_FILENAME, GateMode, GatedCheck, Granularity, KNOWN_KEYS, MAX_BOUNDARY_GLOB_CHARS,
+    MAX_BOUNDARY_GLOBS, MAX_CONFIG_BYTES,
+};
 use crate::keys::{MAX_STOPLIST_ENTRIES, MAX_STOPLIST_ENTRY_CHARS, MAX_TEST_CMD_CHARS};
 
-/// One problem that a config load found. Each inner value displays as its warning text, apart
-/// from `ErosionGate` and `BoundaryGlobs`, whose texts belong to the prompts text.
+/// One problem that a config load found. It displays as its warning text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConfigWarning {
     /// The file was not used.
@@ -28,6 +34,20 @@ pub enum ConfigWarning {
     BoundaryGlobs(GlobsWarning),
 }
 
+impl fmt::Display for ConfigWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File(refusal) => refusal.fmt(f),
+            Self::Value(value) => value.fmt(f),
+            Self::Stoplist(stoplist) => stoplist.fmt(f),
+            Self::TestCmd(test_cmd) => test_cmd.fmt(f),
+            Self::Unknown(unknown) => unknown.fmt(f),
+            Self::ErosionGate(gate) => gate.fmt(f),
+            Self::BoundaryGlobs(globs) => globs.fmt(f),
+        }
+    }
+}
+
 /// Why the config file was not used. It displays as the warning text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FileRefusal {
@@ -37,14 +57,14 @@ pub enum FileRefusal {
     Outside,
     /// The stat of the opened file failed, with the OS message.
     Unstatable(String),
-    /// The file holds more than 65,536 bytes.
+    /// The file holds more bytes than the config cap.
     TooLarge {
         /// The size from the stat.
         size: u64,
     },
     /// The open or the read failed, with the OS message.
     Unreadable(String),
-    /// The file grew past 65,536 bytes during the read.
+    /// The file grew past the config cap during the read.
     Grew,
     /// The file is not UTF-8 text.
     NotUtf8,
@@ -85,31 +105,19 @@ impl fmt::Display for FileRefusal {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueWarning {
     /// The value is not an integer.
-    NotInteger {
-        /// The key.
-        key: &'static str,
-    },
+    NotInteger { key: &'static str },
     /// The integer is outside its bounds.
     OutOfRange {
-        /// The key.
         key: &'static str,
         /// The least value allowed.
         low: u32,
         /// The greatest value allowed.
         high: u32,
     },
-    /// The value is not one of the allowed strings.
-    NotChoice {
-        /// The key.
-        key: &'static str,
-        /// The allowed strings, joined by ", ".
-        choices: &'static str,
-    },
+    /// The value is not a [`Granularity`] name.
+    NotChoice { key: &'static str },
     /// The value is not `true` or `false`.
-    NotBoolean {
-        /// The key.
-        key: &'static str,
-    },
+    NotBoolean { key: &'static str },
 }
 
 impl fmt::Display for ValueWarning {
@@ -123,7 +131,8 @@ impl fmt::Display for ValueWarning {
                     "{key} in {name} must be between {low} and {high}; ignored"
                 )
             }
-            Self::NotChoice { key, choices } => {
+            Self::NotChoice { key } => {
+                let choices = Granularity::ALL.map(Granularity::name).join(", ");
                 write!(f, "{key} in {name} must be one of {choices}; ignored")
             }
             Self::NotBoolean { key } => write!(f, "{key} in {name} must be true or false; ignored"),
@@ -136,7 +145,7 @@ impl fmt::Display for ValueWarning {
 pub enum StoplistWarning {
     /// The value is not a list; the key is ignored.
     NotList,
-    /// The list holds more than 200 entries; the rest are ignored.
+    /// The list holds more entries than the stoplist cap. The rest are ignored.
     OverCap {
         /// The entries in the list.
         count: usize,
@@ -172,7 +181,7 @@ impl fmt::Display for StoplistWarning {
 pub enum TestCmdWarning {
     /// The value is not a string, or it holds only whitespace.
     Empty,
-    /// The string is longer than 512 characters.
+    /// The string is longer than the test command cap.
     TooLong,
     /// The string holds a line break.
     Multiline,
@@ -199,7 +208,7 @@ impl fmt::Display for TestCmdWarning {
 pub enum UnknownKeyWarning {
     /// One unknown key.
     Key(CodePointString),
-    /// The unknown keys after the first eight, which get no warning of their own.
+    /// The unknown keys past the warning cap, which get no warning of their own.
     Suppressed {
         /// The keys without a warning.
         count: usize,
@@ -226,7 +235,7 @@ impl fmt::Display for UnknownKeyWarning {
     }
 }
 
-/// An `erosion_gate` problem. Its text is the prompts text of the same name.
+/// An `erosion_gate` problem. It displays as the prompts text of the same name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GateWarning {
     /// `config_erosion_gate_not_object`: the value is not an object.
@@ -234,18 +243,32 @@ pub enum GateWarning {
     /// `config_erosion_gate_mode`: the check's mode is not a known mode.
     Mode(GatedCheck),
     /// `config_erosion_gate_unknown`: entries that name no gated check.
-    Unknown {
-        /// The entries.
-        count: usize,
-    },
+    Unknown { count: usize },
 }
 
-/// A `boundary_globs` problem. Its text is the prompts text of the same name.
+impl fmt::Display for GateWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let modes = GateMode::ALL.map(GateMode::name).join(", ");
+        let text = match *self {
+            Self::NotObject => CONFIG_EROSION_GATE_NOT_OBJECT.render((CONFIG_FILENAME, &modes)),
+            Self::Mode(check) => {
+                CONFIG_EROSION_GATE_MODE.render((CONFIG_FILENAME, check.name(), &modes))
+            }
+            Self::Unknown { count } => {
+                let checks = GatedCheck::ALL.map(GatedCheck::name).join(", ");
+                CONFIG_EROSION_GATE_UNKNOWN.render((CONFIG_FILENAME, &checks, count))
+            }
+        };
+        f.write_str(&text)
+    }
+}
+
+/// A `boundary_globs` problem. It displays as the prompts text of the same name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GlobsWarning {
     /// `config_boundary_globs_not_list`: the value is not a list.
     NotList,
-    /// `config_boundary_globs_too_many`: the list holds more than 64 globs.
+    /// `config_boundary_globs_too_many`: the list holds more globs than [`MAX_BOUNDARY_GLOBS`].
     TooMany {
         /// The globs in the list.
         count: usize,
@@ -255,4 +278,20 @@ pub enum GlobsWarning {
         /// The entries dropped.
         count: usize,
     },
+}
+
+impl fmt::Display for GlobsWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (limit, chars) = (MAX_BOUNDARY_GLOBS, MAX_BOUNDARY_GLOB_CHARS);
+        let text = match *self {
+            Self::NotList => CONFIG_BOUNDARY_GLOBS_NOT_LIST.render((CONFIG_FILENAME, limit, chars)),
+            Self::TooMany { count } => {
+                CONFIG_BOUNDARY_GLOBS_TOO_MANY.render((CONFIG_FILENAME, count, limit))
+            }
+            Self::Dropped { count } => {
+                CONFIG_BOUNDARY_GLOBS_DROPPED.render((CONFIG_FILENAME, count, chars))
+            }
+        };
+        f.write_str(&text)
+    }
 }

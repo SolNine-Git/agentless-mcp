@@ -104,10 +104,7 @@ pub fn contained_path(root: &Path, candidate: &Path) -> Result<PathBuf, Refusal>
 /// and resolves inside `root`, which must be resolved.
 #[must_use]
 pub fn file_stays_inside(candidate: &Path, root: &Path) -> bool {
-    if candidate.is_symlink() {
-        return fs::canonicalize(candidate).is_ok_and(|target| target.starts_with(root));
-    }
-    candidate.is_file()
+    contained_file_size(candidate, root).is_some()
 }
 
 /// Returns the size of the file that `path` names, following symlinks.
@@ -120,7 +117,7 @@ pub fn file_size(path: &Path) -> io::Result<u64> {
 }
 
 /// Returns the [`file_size`] of a candidate that [`file_stays_inside`] admits, and `None` for one
-/// it refuses, with one lstat for a regular file.
+/// it refuses. `root` must be resolved. A regular file costs one lstat.
 #[must_use]
 pub fn contained_file_size(candidate: &Path, root: &Path) -> Option<io::Result<u64>> {
     let metadata = fs::symlink_metadata(candidate).ok()?;

@@ -58,9 +58,10 @@ pub(crate) fn proposed(root: &Path, path: &str, after: &After, cwd: StartDir<'_>
     }
 }
 
+// A name that is not UTF-8 shows U+FFFD in the report, and the pair still reads the real file.
 fn relative_path(root: &Path, target: &Path) -> Option<String> {
-    let relative = target.strip_prefix(root).ok()?.to_str()?;
-    Some(relative.to_owned())
+    let relative = target.strip_prefix(root).ok()?;
+    Some(relative.to_string_lossy().into_owned())
 }
 
 // A text in memory meets the size cap that a file of the same bytes meets.

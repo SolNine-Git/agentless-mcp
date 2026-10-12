@@ -32,8 +32,32 @@ impl core::marker::Unpin for text::CodePointString
 impl core::marker::UnsafeUnpin for text::CodePointString
 impl core::panic::unwind_safe::RefUnwindSafe for text::CodePointString
 impl core::panic::unwind_safe::UnwindSafe for text::CodePointString
+pub struct text::IntText<'a>
+pub text::IntText::negative: bool
+impl<'a> text::IntText<'a>
+pub fn text::IntText<'a>::digits(self) -> impl core::iter::traits::iterator::Iterator<Item = u8> + 'a
+impl<'a> core::clone::Clone for text::IntText<'a>
+pub fn text::IntText<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for text::IntText<'a>
+impl<'a> core::cmp::PartialEq for text::IntText<'a>
+pub fn text::IntText<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for text::IntText<'a>
+pub fn text::IntText<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for text::IntText<'a>
+impl<'a> core::marker::StructuralPartialEq for text::IntText<'a>
+impl<'a> core::marker::Freeze for text::IntText<'a>
+impl<'a> core::marker::Send for text::IntText<'a>
+impl<'a> core::marker::Sync for text::IntText<'a>
+impl<'a> core::marker::Unpin for text::IntText<'a>
+impl<'a> core::marker::UnsafeUnpin for text::IntText<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for text::IntText<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for text::IntText<'a>
+pub fn text::int_bytes(&[u8]) -> core::option::Option<text::IntText<'_>>
+pub fn text::int_text(&str) -> core::option::Option<text::IntText<'_>>
+pub fn text::is_ascii_space(u8) -> bool
 pub fn text::is_printable(u32) -> bool
 pub fn text::is_space(char) -> bool
 pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn text::splitlines(&str, bool) -> alloc::vec::Vec<&str>
 pub fn text::strip(&str) -> &str
+pub fn text::strip_bytes(&[u8]) -> &[u8]

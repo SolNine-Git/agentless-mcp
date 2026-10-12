@@ -24,3 +24,4 @@ thiserror.workspace = true
 [dev-dependencies]
 checks = { path = "../checks" }
 syntax = { path = "../syntax" }
+text = { path = "../text", features = ["test-support"] }

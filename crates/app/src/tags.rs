@@ -2,7 +2,6 @@
 //! status that the receipt and the capabilities report describe.
 
 use std::os::unix::fs::MetadataExt;
-use std::panic;
 use std::path::{Path, PathBuf};
 use std::thread;
 
@@ -10,7 +9,15 @@ use store::{CacheState, CacheStatus, ManifestEntry, RowCounts, SqlError, TagsDb}
 use syntax::Language;
 
 use crate::pairs::Stored;
+use crate::repo::root_text;
 use crate::{Error, Noted, Repo, Services};
+
+const NO_ROWS: RowCounts = RowCounts {
+    files: 0,
+    tags: 0,
+    imports: 0,
+    refs: 0,
+};
 
 /// The tag cache of one repository, as lint reads stored clone blocks from it.
 #[derive(Debug)]
@@ -21,21 +28,24 @@ pub struct Tags {
 impl Tags {
     /// Opens the tag cache of `repo` for the hook form: the open, the discard of a refused
     /// database, and the time stamp of a usable one. It reads no generation and no row counts.
-    ///
-    /// # Errors
-    ///
-    /// Returns an operation failure when the home directory that the cache root needs is unknown.
-    pub fn open(services: &Services, repo: &Repo) -> Result<Noted<Tags>, Error> {
+    /// The error is an operation failure when the home directory that the cache root needs is
+    /// unknown.
+    #[must_use]
+    pub fn open(services: &Services, repo: &Repo) -> Noted<Result<Tags, Error>> {
+        let located = match Located::new(services, &repo.root) {
+            Ok(located) => located,
+            Err(error) => return Noted::new(Err(error)),
+        };
         let Opened {
             database,
             source,
             mut diagnostics,
-        } = Located::new(services, &repo.root)?.open(false);
+        } = located.open(false);
         diagnostics.extend(discarded(&source, &database));
-        Ok(Noted {
-            value: Tags::stamped(source, &database),
+        Noted {
+            value: Ok(Tags::stamped(source, &database)),
             diagnostics,
-        })
+        }
     }
 
     // Only a usable database gets the time stamp, which keeps it out of the eviction sweep.
@@ -50,9 +60,8 @@ impl Tags {
         Tags { db }
     }
 
-    /// Returns true when a usable tag cache backs the clone index.
-    #[must_use]
-    pub fn cached(&self) -> bool {
+    // True when a usable tag cache backs the clone index.
+    pub(crate) fn cached(&self) -> bool {
         self.db.is_some()
     }
 
@@ -67,6 +76,11 @@ impl Tags {
             store::Lookup::Unreadable(failure) => Stored::Unreadable(failure.to_string()),
         }
     }
+}
+
+// A failed stamp only ages the database for the eviction sweep, so it prints nothing.
+fn touch(database: &Path) {
+    let _ = io::touch(database);
 }
 
 /// What the receipt and the capabilities report say about the tag cache of one call.
@@ -99,8 +113,9 @@ pub struct Opening {
     /// Each reason a git value is unknown or borrowed, joined with "; ", or empty.
     pub note: String,
     /// The session, or an operation failure when the cache root's home directory is unknown, or
-    /// the walk refusal when the generation of a tree outside git needs a walk that fails.
-    pub session: Result<Noted<Session>, Error>,
+    /// the walk refusal when the generation of a tree outside git needs a walk that fails. The
+    /// warnings come with either outcome.
+    pub session: Noted<Result<Session, Error>>,
 }
 
 impl Session {
@@ -113,7 +128,10 @@ impl Session {
         let (snapshot, counted) =
             read_and_open(services, &repo.root, enclosing.as_deref(), no_cache);
         let note = snapshot.note.clone();
-        let session = counted.and_then(|counted| assembled(services, repo, snapshot, counted));
+        let session = match counted {
+            Ok(counted) => assembled(services, repo, snapshot, counted),
+            Err(error) => Noted::new(Err(error)),
+        };
         Opening { note, session }
     }
 }
@@ -129,12 +147,9 @@ fn read_and_open(
     let snapshot = || services.git.snapshot(root, enclosing);
     match Located::new(services, root) {
         Ok(located) if outside(&located.database, enclosing) => thread::scope(|scope| {
-            let running = scope.spawn(snapshot);
+            let running = io::spawn_or_run(scope, &snapshot);
             let counted = located.open(no_cache).counted();
-            let snapshot = running
-                .join()
-                .unwrap_or_else(|payload| panic::resume_unwind(payload));
-            (snapshot, Ok(counted))
+            (running.joined(), Ok(counted))
         }),
         located => {
             let snapshot = snapshot();
@@ -149,13 +164,14 @@ fn outside(database: &Path, enclosing: Option<&Path>) -> bool {
         .is_some_and(|top| io::resolve(database).is_ok_and(|resolved| !resolved.starts_with(top)))
 }
 
-// The discard, the generation and the stamp come after the snapshot.
+// The discard, the generation and the stamp come after the snapshot. The warnings keep that
+// order: the cache root, the discard, then the generation walk.
 fn assembled(
     services: &Services,
     repo: Repo,
     snapshot: git::Snapshot,
     counted: Counted,
-) -> Result<Noted<Session>, Error> {
+) -> Noted<Result<Session, Error>> {
     let Counted { opened, counts } = counted;
     let Opened {
         database,
@@ -164,21 +180,24 @@ fn assembled(
     } = opened;
     diagnostics.extend(discarded(&source, &database));
     let tree = snapshot.tree_oid.as_deref();
-    let (state, tags) = settled(services, &repo.root, tree, source, &database)?;
-    let status = CacheStatus {
-        path: database,
-        state,
-    };
-    let session = Session {
-        repo,
-        snapshot,
-        tags,
-        cache: report(status, counts),
-    };
-    Ok(Noted {
+    let settled = settled(services, &repo.root, tree, source, &database);
+    diagnostics.extend(settled.diagnostics);
+    let session = settled.value.map(|(state, tags)| {
+        let status = CacheStatus {
+            path: database,
+            state,
+        };
+        Session {
+            repo,
+            snapshot,
+            tags,
+            cache: report(status, counts),
+        }
+    });
+    Noted {
         value: session,
         diagnostics,
-    })
+    }
 }
 
 // The state the receipt describes. A usable database gets its generation first, then the stamp.
@@ -188,16 +207,16 @@ fn settled(
     tree: Option<&str>,
     source: store::Source,
     database: &Path,
-) -> Result<(CacheState, Tags), Error> {
+) -> Noted<Result<(CacheState, Tags), Error>> {
     let state = match &source {
-        store::Source::Bypassed => CacheState::Bypassed,
-        store::Source::Absent => CacheState::Absent { note: None },
-        store::Source::Refused(refusal) => CacheState::Absent {
+        store::Source::Bypassed => Noted::new(Ok(CacheState::Bypassed)),
+        store::Source::Absent => Noted::new(Ok(CacheState::Absent { note: None })),
+        store::Source::Refused(refusal) => Noted::new(Ok(CacheState::Absent {
             note: Some(refusal.clone()),
-        },
-        store::Source::Usable(db) => indexed(services, root, tree, db)?,
+        })),
+        store::Source::Usable(db) => indexed(services, root, tree, db),
     };
-    Ok((state, Tags::stamped(source, database)))
+    state.map(|state| state.map(|state| (state, Tags::stamped(source, database))))
 }
 
 // Where one repository's database lies, and the warnings that its cache root gave.
@@ -214,7 +233,7 @@ impl Located {
             .as_ref()
             .map_err(|home| kernel::Error::OperationFailed(home.to_string()))?;
         let diagnostics = cache_root.ignored.iter().map(ToString::to_string).collect();
-        let repo_root = utf8(root)?.to_owned();
+        let repo_root = root_text(root)?.to_owned();
         let database = store::database_path(&cache_root.path, &repo_root);
         Ok(Located {
             database,
@@ -259,13 +278,6 @@ struct Counted {
     counts: Result<RowCounts, SqlError>,
 }
 
-const NO_ROWS: RowCounts = RowCounts {
-    files: 0,
-    tags: 0,
-    imports: 0,
-    refs: 0,
-};
-
 // Removes a refused database that the store says to discard, and returns a failed removal.
 fn discarded(source: &store::Source, database: &Path) -> Option<String> {
     if let store::Source::Refused(refusal) = source
@@ -283,45 +295,47 @@ fn indexed(
     root: &Path,
     tree: Option<&str>,
     db: &TagsDb,
-) -> Result<CacheState, Error> {
-    let repo_generation = match tree {
-        Some(tree) => tree.to_owned(),
-        None => store::nogit_generation(&manifest(services, root)?),
+) -> Noted<Result<CacheState, Error>> {
+    let generation = match tree {
+        Some(tree) => Noted::new(Ok(tree.to_owned())),
+        None => {
+            manifest(services, root).map(|entries| entries.map(|e| store::nogit_generation(&e)))
+        }
     };
-    Ok(CacheState::Indexed {
-        generation: db.generation().to_owned(),
-        repo_generation,
-        repo_root: utf8(root)?.to_owned(),
+    generation.map(|generation| {
+        Ok(CacheState::Indexed {
+            generation: db.generation().to_owned(),
+            repo_generation: generation?,
+            repo_root: root_text(root)?.to_owned(),
+        })
     })
 }
 
-fn manifest(services: &Services, root: &Path) -> Result<Vec<ManifestEntry>, Error> {
-    let walk = services.git.walk(root).map_err(kernel::Error::from)?;
+// The walk warnings come with either outcome, as the walk raised them.
+fn manifest(services: &Services, root: &Path) -> Noted<Result<Vec<ManifestEntry>, Error>> {
+    let walk = services.git.walk(root);
     let entries = walk
         .files
-        .into_iter()
-        .map(|file| {
-            let stamp = root
-                .join(&file.path)
-                .metadata()
-                .ok()
-                .map(|meta| store::FileStamp {
-                    size: meta.size(),
-                    mtime_ns: i128::from(meta.mtime()) * 1_000_000_000
-                        + i128::from(meta.mtime_nsec()),
-                });
-            ManifestEntry {
-                path: file.path,
-                stamp,
-            }
-        })
-        .collect();
-    Ok(entries)
+        .map_err(|refusal| kernel::Error::from(refusal).into());
+    Noted {
+        value: entries.map(|files| files.into_iter().map(|file| entry(root, file)).collect()),
+        diagnostics: walk.warnings.iter().map(ToString::to_string).collect(),
+    }
 }
 
-// A failed stamp only ages the database for the eviction sweep, so it prints nothing.
-fn touch(database: &Path) {
-    let _ = io::touch(database);
+fn entry(root: &Path, file: git::RepoFile) -> ManifestEntry {
+    let stamp = root
+        .join(&file.path)
+        .metadata()
+        .ok()
+        .map(|meta| store::FileStamp {
+            size: meta.size(),
+            mtime_ns: i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec()),
+        });
+    ManifestEntry {
+        path: file.path,
+        stamp,
+    }
 }
 
 fn report(status: CacheStatus, counts: Result<RowCounts, SqlError>) -> CacheReport {
@@ -334,13 +348,6 @@ fn report(status: CacheStatus, counts: Result<RowCounts, SqlError>) -> CacheRepo
         counts,
         receipt,
     }
-}
-
-fn utf8(root: &Path) -> Result<&str, Error> {
-    root.to_str().ok_or_else(|| {
-        let message = format!("not a UTF-8 path: {}", root.display());
-        kernel::Error::RepoResolution(message).into()
-    })
 }
 
 #[cfg(test)]

@@ -255,6 +255,7 @@ dependencies = [
  "json",
  "kernel",
  "libc",
+ "prompts",
  "serde",
  "serde_json",
  "text",
@@ -341,6 +342,7 @@ name = "prompts"
 version = "0.11.0-rc.1"
 dependencies = [
  "serde_json",
+ "text",
 ]
 
 [[package]]
@@ -558,6 +560,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tar",
+ "text",
  "thiserror",
  "toml",
  "tree-sitter",

@@ -188,7 +188,7 @@ def query_case(name: str, language: str, source: str) -> dict[str, object]:
     tree = parsed(language, source)
     index = {node.id: position for position, (node, _) in enumerate(preorder(tree))}
     runs = [
-        query_run(Query(grammars.get_language(language), text), tree, index)
+        {"query": text, **query_run(Query(grammars.get_language(language), text), tree, index)}
         for text in QUERIES[language]
     ]
     return {"name": name, "language": language, "runs": runs}

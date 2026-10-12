@@ -71,6 +71,8 @@ fn the_fixture_opens_at_its_generation_with_its_row_counts() {
 #[test]
 fn an_unreadable_file_names_the_failed_open_without_its_path() {
     let scratch = Scratch::new();
+    // Where modes do not bind, as for root, the open reads the file.
+    let binds = scratch.tree.modes_bind();
     scratch
         .tree
         .set_mode("tags.db", 0o000)
@@ -80,6 +82,10 @@ fn an_unreadable_file_names_the_failed_open_without_its_path() {
         .tree
         .set_mode("tags.db", 0o600)
         .expect("the mode is set back");
+    if !binds {
+        assert!(matches!(source, Source::Usable(_)), "{source:?}");
+        return;
+    }
     let Source::Refused(refusal) = source else {
         panic!("an unreadable file is refused: {source:?}");
     };
@@ -91,12 +97,18 @@ fn an_unreadable_file_names_the_failed_open_without_its_path() {
 #[test]
 fn a_stat_failure_other_than_a_missing_file_is_unreadable() {
     let scratch = Scratch::new();
+    // Where modes do not bind, as for root, the stat finds no database.
+    let binds = scratch.tree.modes_bind();
     let tree = &scratch.tree;
     tree.create_dir("closed").expect("a directory");
     tree.set_mode("closed", 0o000).expect("the mode is set");
     let source = open(&tree.join("closed/tags.db"), ROOT, BUSY);
     tree.set_mode("closed", 0o700)
         .expect("the mode is set back");
+    if !binds {
+        assert!(matches!(source, Source::Absent), "{source:?}");
+        return;
+    }
     let Source::Refused(refusal) = source else {
         panic!("a database behind a closed directory is refused: {source:?}");
     };

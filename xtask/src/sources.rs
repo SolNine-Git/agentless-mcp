@@ -191,7 +191,7 @@ fn data_problem(root: &Path, path: &Path, packages: &[Package]) -> Option<String
             .any(|dir| Path::new(&file).starts_with(dir));
     (!(manifest || snapshot || data)).then(|| {
         format!(
-            "{file}: this file is refused: crates/ and xtask/ hold only package manifests, .rs files, a library's public-api.txt, the gate data, and the test data directories that DATA_DIRS in xtask/src/sources.rs names. Move the file out, or name its test data directory there in review"
+            "{file}: this file is refused: crates/ and xtask/ hold only package manifests, .rs files, a library's public-api.txt, the gate data, and the data directories that DATA_DIRS in xtask/src/sources.rs names. Move the file out, or name its data directory there in review"
         )
     })
 }

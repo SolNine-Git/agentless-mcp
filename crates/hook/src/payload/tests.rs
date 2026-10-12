@@ -57,7 +57,7 @@ fn shown(result: Result<Payload, Halt>) -> (Option<String>, Value) {
 }
 
 #[test]
-fn each_payload_reads_as_the_generated_case_says() {
+fn each_payload_reads_as_the_reference_case_says() {
     let all: Vec<(String, Value, Value)> = cases(MANIFEST_DIR, "payload", "payload");
     assert!(!all.is_empty());
     for (name, given, expected) in all {

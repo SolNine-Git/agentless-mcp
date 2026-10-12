@@ -12,9 +12,10 @@ use metrics::Block;
 use syntax::Language;
 
 use crate::parallel;
-use crate::rows::bounded_read;
+use crate::rows::{bounded_read, decoded};
 use crate::{
-    Error, PairCheck, PairSelection, Services, in_metric_scope, is_fixture_path, is_test_path,
+    Error, Noted, PairCheck, PairSelection, Services, in_metric_scope, is_fixture_path,
+    is_test_path,
 };
 
 // The rows of one run in check order, and what the checks measured.
@@ -109,26 +110,31 @@ fn find_blocks(pairs: &[&Pair]) {
     parallel::map_in_order(&sides, parallel::threads(), |side| side.find_blocks());
 }
 
-// The budget starts before the walk, so the walk and the reads count against it.
+// The budget starts before the walk, so the walk and the reads count against it. The walk
+// warnings come with every outcome, a refused walk and a failed index included.
 pub(crate) fn built_index(
     services: &Services,
     root: &Path,
     lookup: &mut Lookup<'_>,
     measured: &[&Pair],
-) -> Result<(IndexedFiles, Vec<String>), Error> {
+) -> Noted<Result<IndexedFiles, Error>> {
     let started = Instant::now();
-    let walk = match services.git.walk(root) {
-        Ok(walk) => walk,
+    let walk = services.git.walk(root);
+    let mut warnings: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
+    let files = match walk.files {
+        Ok(files) => files,
         Err(refusal) => {
             let unlisted = IndexedFiles {
                 unlisted: Some(refusal.to_string()),
                 ..IndexedFiles::default()
             };
-            return Ok((unlisted, Vec::new()));
+            return Noted {
+                value: Ok(unlisted),
+                diagnostics: warnings,
+            };
         }
     };
-    let mut warnings: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
-    let (texts, unread) = scope_texts(root, &walk.files);
+    let (texts, unread) = scope_texts(root, &files);
     let budget = services.walk_budget;
     let pairs: HashMap<&str, &Pair> = measured.iter().map(|pair| (pair.path(), *pair)).collect();
     let blocks_of = |path: &str, text: &str, language: Language| {
@@ -137,8 +143,11 @@ pub(crate) fn built_index(
             measured_blocks(pairs.get(path).copied(), text, language)
         })
     };
-    let files = checks::clone_index(&texts, &unread, blocks_of, || started.elapsed() < budget)?;
-    Ok((files, warnings))
+    let indexed = checks::clone_index(&texts, &unread, blocks_of, || started.elapsed() < budget);
+    Noted {
+        value: indexed.map_err(Error::from),
+        diagnostics: warnings,
+    }
 }
 
 type Texts = BTreeMap<String, String>;
@@ -148,9 +157,7 @@ fn scope_texts(root: &Path, files: &[git::RepoFile]) -> (Texts, Texts) {
     let mut texts = BTreeMap::new();
     let mut unread = BTreeMap::new();
     for file in files.iter().filter(|file| in_metric_scope(&file.path)) {
-        let read = bounded_read(&root.join(&file.path))
-            .and_then(|bytes| io::decode_strict(bytes).map_err(|error| error.to_string()));
-        match read {
+        match decoded(bounded_read(&root.join(&file.path))) {
             Ok(text) => texts.insert(file.path.clone(), text),
             Err(reason) => unread.insert(file.path.clone(), reason),
         };

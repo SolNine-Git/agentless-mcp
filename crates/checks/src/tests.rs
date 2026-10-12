@@ -1,41 +1,36 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::PathBuf;
 
-use metrics::Block;
+use metrics::{Block, Unmeasurable};
 use serde_json::{Map, Value, json};
-use syntax::Language;
+use syntax::{Language, Unparsable};
+use text::testing::document;
 
 use crate::finding::{Finding, PairFinding, Severity, sorted};
 use crate::globs::in_boundary;
+use crate::pair::{COMPLEXITY_REASONS, side_reason};
 use crate::{
-    CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, SideText, TextPair, UnitState,
-    clone_delta, clone_index, complexity_delta, contract_drift, measure_blocks, pair_language,
+    CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, SideError, SideText, TextPair,
+    UnitState, clone_delta, clone_index, complexity_delta, contract_drift, measure_blocks,
+    pair_language,
 };
 
-struct Fixture {
+pub(crate) struct Fixture {
     texts: BTreeMap<String, String>,
     document: Value,
 }
 
 impl Fixture {
-    fn load(name: &str) -> Fixture {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures")
-            .join(name);
-        let text =
-            fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        let document: Value = serde_json::from_str(&text)
-            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    pub(crate) fn load(file: &str) -> Fixture {
+        let document: Value = document(env!("CARGO_MANIFEST_DIR"), file);
         let texts = serde_json::from_value(document["texts"].clone()).expect("a text table");
         Fixture { texts, document }
     }
 
-    fn text(&self, key: &Value) -> Option<String> {
+    pub(crate) fn text(&self, key: &Value) -> Option<String> {
         key.as_str().map(|key| self.texts[key].clone())
     }
 
-    fn cases(&self) -> &[Value] {
+    pub(crate) fn cases(&self) -> &[Value] {
         self.document["cases"].as_array().expect("a case list")
     }
 
@@ -81,7 +76,7 @@ impl Fixture {
             answers.as_mut().is_none_or(|answers| {
                 answers
                     .next()
-                    .expect("the index asked its budget more often than Python did")
+                    .expect("the index asked its budget more often than the recorded run did")
             })
         };
         let blocks_of = |_: &str, text: &str, language: Language| measure_blocks(language, text);
@@ -136,7 +131,7 @@ fn raised(error: &Error) -> Value {
         Error::RepeatedPath { .. } | Error::NotIndexable { .. } => {
             json!({ "raised": "ValueError" })
         }
-        other => json!({ "raised": other.to_string() }),
+        Error::Side { .. } => json!({ "raised": error.to_string() }),
     }
 }
 
@@ -160,7 +155,7 @@ fn block_json(block: &Block) -> Value {
     })
 }
 
-fn assert_python_outcomes(name: &str, at_least: usize) {
+fn assert_reference_outcomes(name: &str, at_least: usize) {
     let fixture = Fixture::load(name);
     let total = fixture.cases().len();
     assert!(total >= at_least, "only {total} cases in {name}");
@@ -169,7 +164,7 @@ fn assert_python_outcomes(name: &str, at_least: usize) {
         let actual = fixture.run(case);
         if actual != case["expect"] {
             differ.push(format!(
-                "{} {}\n  python: {}\n  rust:   {}",
+                "{} {}\n  reference: {}\n  rust:      {}",
                 case["check"], case["name"], case["expect"], actual
             ));
         }
@@ -183,18 +178,18 @@ fn assert_python_outcomes(name: &str, at_least: usize) {
 }
 
 #[test]
-fn the_recorded_test_cases_give_the_python_outcomes() {
-    assert_python_outcomes("recorded.json", 100);
+fn the_recorded_test_cases_give_the_reference_outcomes() {
+    assert_reference_outcomes("recorded", 100);
 }
 
 #[test]
-fn the_seeded_edits_of_every_tier1_language_give_the_python_outcomes() {
-    assert_python_outcomes("seeded.json", 500);
+fn the_seeded_edits_of_every_tier1_language_give_the_reference_outcomes() {
+    assert_reference_outcomes("seeded", 500);
 }
 
 #[test]
-fn each_path_gets_the_language_python_gives_it() {
-    let fixture = Fixture::load("recorded.json");
+fn each_path_gets_the_reference_language() {
+    let fixture = Fixture::load("recorded");
     let rows = fixture.document["pair_language"]
         .as_array()
         .expect("a language table");
@@ -207,8 +202,8 @@ fn each_path_gets_the_language_python_gives_it() {
 }
 
 #[test]
-fn each_boundary_glob_row_matches_as_in_python() {
-    let fixture = Fixture::load("recorded.json");
+fn each_boundary_glob_row_matches_as_the_reference_matches_it() {
+    let fixture = Fixture::load("recorded");
     let rows = fixture.document["boundary"]
         .as_array()
         .expect("a boundary table");
@@ -225,8 +220,8 @@ fn each_boundary_glob_row_matches_as_in_python() {
 }
 
 #[test]
-fn the_glob_grid_matches_as_in_python() {
-    let fixture = Fixture::load("recorded.json");
+fn the_glob_grid_matches_as_the_reference_matches_it() {
+    let fixture = Fixture::load("recorded");
     let grid = &fixture.document["boundary_grid"];
     let globs: Vec<String> = serde_json::from_value(grid["globs"].clone()).expect("globs");
     let paths: Vec<String> = serde_json::from_value(grid["paths"].clone()).expect("paths");
@@ -299,4 +294,61 @@ fn merging_keeps_each_field_this_state_holds_and_fills_the_rest() {
 fn every_severity_is_listed_once_in_the_order_the_refusals_name_them() {
     let names: Vec<&str> = Severity::ALL.iter().map(|s| s.as_str()).collect();
     assert_eq!(names, ["advisory", "warning", "not_checked"]);
+}
+
+#[test]
+fn a_side_without_a_usable_tree_stops_the_run_with_its_path() {
+    let language = Language::Python;
+    let error = SideError::Unparsable(Unparsable::NoTree { language });
+    let stopped = side_reason("src/a.py", &error, &COMPLEXITY_REASONS)
+        .expect_err("a side with no tree is not a row");
+    assert!(matches!(&stopped, Error::Side { path, .. } if path == "src/a.py"));
+    assert_eq!(
+        stopped.to_string(),
+        "src/a.py: the Python parser returned no tree"
+    );
+}
+
+// Recorded deviation: the reference crashes on a side whose only error is a hidden MISSING token.
+#[test]
+fn a_side_with_only_a_hidden_error_does_not_parse_where_the_reference_crashes() {
+    let source = "int f(void) { return 0; }\n#define X 1";
+    let refused = measure_blocks(Language::C, source).err();
+    let line = Unmeasurable::DoesNotParse { line: 2 };
+    assert_eq!(refused, Some(SideError::Unmeasurable(line)));
+    let pair = TextPair {
+        path: "src/a.c".to_owned(),
+        old: None,
+        new: Some(source.to_owned()),
+    };
+    let pairs = Pair::measure_all(vec![pair], |texts| {
+        texts.iter().map(SideText::measure).collect()
+    });
+    let outcome = complexity_delta(&[&pairs[0]], 10).expect("a row, not an error");
+    let messages: Vec<&str> = outcome
+        .findings
+        .iter()
+        .map(|row| row.finding.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "not checked: complexity_delta did not compare src/a.c, because its text after the \
+             change cannot be measured. src/a.c does not parse: the first syntax error is at line \
+             2. Complexity is measured only for a file that parses. Fix the syntax error, then \
+             measure the file again."
+        ]
+    );
+}
+
+#[test]
+#[should_panic(expected = "the map returns one side per text")]
+fn a_map_that_returns_fewer_sides_than_texts_panics() {
+    let pair = TextPair {
+        path: "a.py".to_owned(),
+        old: Some("x = 1\n".to_owned()),
+        new: Some("x = 2\n".to_owned()),
+    };
+    let fewer = |texts: &[SideText<'_>]| texts.iter().skip(1).map(SideText::measure).collect();
+    let _pairs = Pair::measure_all(vec![pair], fewer);
 }

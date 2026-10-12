@@ -149,12 +149,6 @@ impl PairSelection {
             .into_iter()
             .filter(move |check| self.chosen[*check as usize])
     }
-
-    /// Returns true when the selection holds `check`.
-    #[must_use]
-    pub fn contains(self, check: PairCheck) -> bool {
-        self.chosen[check as usize]
-    }
 }
 
 /// Returns why `names` is not a usable check selection, or `None` when every name is a check.

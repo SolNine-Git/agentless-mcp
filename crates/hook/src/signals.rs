@@ -29,7 +29,7 @@ pub(crate) fn watch(call: Arc<Call>) -> std::io::Result<Watch> {
 }
 
 impl Watch {
-    // After the decision a SIGTERM is ignored, as the Python hook's SIG_IGN does.
+    // After the decision SIGTERM is ignored: the registry keeps its handler with no action.
     pub(crate) fn stop(self) {
         self.handle.close();
         if let Err(payload) = self.thread.join() {

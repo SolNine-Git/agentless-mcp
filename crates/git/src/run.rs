@@ -27,6 +27,7 @@ const HARDENING_PREFIX: [&str; 11] = [
 // These two move where git reads config from, never which repository it reads.
 const CONFIG_KEPT: [&str; 2] = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"];
 
+// A note quotes only the first stderr line, so the rest is read past.
 const MAX_STDERR_BYTES: usize = 65_536;
 
 /// Runs git with the hardening argv prefix, a scrubbed environment, and a bound on every call.

@@ -103,13 +103,13 @@ fn row(value: &Value) -> PairFinding {
 }
 
 #[test]
-fn the_verdict_and_the_reply_match_the_generated_cases() {
+fn the_verdict_and_the_reply_match_the_reference_cases() {
     let all: Vec<(String, Value, Vec<Value>, Value)> = cases(MANIFEST_DIR, "classify", "classify");
     assert!(!all.is_empty());
     for (name, given_modes, given_rows, expected) in all {
         let modes = modes(&given_modes);
         let rows: Vec<PairFinding> = given_rows.iter().map(row).collect();
-        let verdict = classify(&rows, modes).expect("each generated row names a gated check");
+        let verdict = classify(&rows, modes).expect("each reference row names a gated check");
         let decision = verdict.decision(modes).expect("the reply serializes");
         assert_eq!(Value::from(decision.code), expected["code"], "case {name}");
         assert_eq!(decision.stdout, expected["stdout"], "case {name}");

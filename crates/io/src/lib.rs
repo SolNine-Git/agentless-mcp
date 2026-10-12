@@ -1,5 +1,5 @@
-//! The tool's file and process operations. Each returns typed values and holds no policy of its
-//! callers.
+//! The tool's file and process operations, and the schema of the project config that it reads.
+//! Each operation returns typed values.
 
 mod append;
 mod cache;
@@ -11,6 +11,7 @@ mod lock;
 mod oserror;
 mod read;
 mod runner;
+mod spawn;
 mod walk;
 mod warning;
 
@@ -32,9 +33,10 @@ pub use contain::{
 pub use files::{remove_file, touch};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
-pub use oserror::{os_error_class_text, strerror};
+pub use oserror::{os_error_class_text, os_error_line, strerror};
 pub use read::{MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, decode_strict, read_bounded};
 pub use runner::{NotRun, Outcome, Spec, run};
+pub use spawn::{Started, spawn_or_run};
 pub use walk::{MAX_WALK_BYTES, MAX_WALK_DEPTH, MAX_WALK_FILES, Walk, WalkRefusal, WalkSkip, walk};
 pub use warning::{
     ConfigWarning, FileRefusal, GateWarning, GlobsWarning, StoplistWarning, TestCmdWarning,

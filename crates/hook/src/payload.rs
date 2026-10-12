@@ -8,7 +8,7 @@ use text::CodePointString;
 
 use crate::halt::Halt;
 use crate::record::Identity;
-use crate::text::{codec_text, lossy, os_error_line};
+use crate::text::{codec_text, lossy};
 
 const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
 const WRITE: &str = "Write";
@@ -42,7 +42,7 @@ pub(crate) fn read(stdin: &mut dyn Read) -> Result<Vec<u8>, Halt> {
     stdin
         .take(limit)
         .read_to_end(&mut raw)
-        .map_err(|error| Halt::internal(os_error_line(&error)))?;
+        .map_err(|error| Halt::internal(io::os_error_line(&error)))?;
     if raw.len() > MAX_PAYLOAD_BYTES {
         return Err(Halt::malformed("over 4 MiB"));
     }
@@ -76,7 +76,7 @@ pub(crate) fn identity(document: &JsonValue) -> Identity {
     }
 }
 
-// The fields in CPython's order, so the first problem found is the one it reports.
+// The fields in a fixed order, so a payload with two problems always reports the same one.
 pub(crate) fn payload(document: &JsonValue) -> Result<Payload, Halt> {
     let JsonValue::Object(fields) = document else {
         return Err(Halt::malformed("the payload is not a JSON object"));

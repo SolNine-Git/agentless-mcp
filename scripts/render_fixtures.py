@@ -17,7 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from fixture_files import Fixture, write_or_check
+from fixture_files import Fixture, refuse_real_caches, write_or_check
 
 from agentless_mcp.application import capability_service, envelope, lint_service, render
 from agentless_mcp.application.repo_context import RepoContext
@@ -476,4 +476,5 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
 
 
 if __name__ == "__main__":
+    refuse_real_caches()
     sys.exit(write_or_check(__doc__.splitlines()[0], FIXTURES, BUILDERS))

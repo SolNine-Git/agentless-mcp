@@ -83,6 +83,21 @@ mod tests {
     }
 
     #[test]
+    fn each_lock_error_displays_its_reason() {
+        let denied = LockError::Open(io::Error::from_raw_os_error(libc::EACCES));
+        let refused = LockError::Refused(io::Error::from_raw_os_error(libc::ENOLCK));
+        let shown = [denied, LockError::Held, refused].map(|error| error.to_string());
+        assert_eq!(
+            shown,
+            [
+                "the lock file cannot be opened: Permission denied",
+                "another process holds the lock",
+                "the lock was refused: No locks available",
+            ]
+        );
+    }
+
+    #[test]
     fn a_missing_directory_is_an_open_error() {
         let tree = tree();
         let refused = try_lock(&tree.join("missing/write.lock"));

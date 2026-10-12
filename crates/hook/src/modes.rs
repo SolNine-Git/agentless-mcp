@@ -66,18 +66,16 @@ fn default_mode(env_value: Option<&OsStr>) -> (GateMode, Option<String>) {
 
 // The warnings about the file itself and about the `erosion_gate` key, in the config's order.
 pub(crate) fn config_warnings(config: &ProjectConfig) -> Vec<String> {
-    let texts = app::config_warnings(config);
     config
         .warnings
         .iter()
-        .zip(texts)
-        .filter(|(warning, _)| {
+        .filter(|warning| {
             matches!(
                 warning,
                 ConfigWarning::File(_) | ConfigWarning::ErosionGate(_)
             )
         })
-        .map(|(_, text)| text)
+        .map(ToString::to_string)
         .collect()
 }
 

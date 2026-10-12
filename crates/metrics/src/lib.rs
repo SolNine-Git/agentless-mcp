@@ -14,7 +14,7 @@ pub use sum::compensated_sum;
 pub use tokenize::{TokenizeError, TokenizeErrorKind};
 
 use kernel::Key;
-use syntax::{Language, Parsed, Point, Spec};
+use syntax::{Language, NodeId, Parsed, Point, Spec};
 
 use crate::kinds::Kinds;
 
@@ -70,7 +70,7 @@ pub struct Block {
     pub key: Key,
     /// The exact key: every token as written.
     pub exact: Key,
-    /// Whether the block is a function.
+    /// Whether a function kind, not a control-block kind, made the block.
     pub function: bool,
     /// The count of identifiers, literals, and nodes that keep no child.
     pub tokens: u32,
@@ -81,14 +81,12 @@ pub struct Block {
 pub enum Unmeasurable {
     /// The language has no metrics rules.
     #[error("{language:?} has no metrics rules")]
-    Unsupported {
-        /// The language of the parse.
-        language: Language,
-    },
-    /// The tree holds an ERROR or MISSING node.
+    Unsupported { language: Language },
+    /// The tree holds an ERROR or MISSING node, visible or hidden.
     #[error("the source does not parse at line {line}")]
     DoesNotParse {
-        /// The 1-based line of the first ERROR or MISSING node.
+        /// The 1-based line of the first visible ERROR or MISSING node, or else of the innermost
+        /// node that holds the error.
         line: u32,
     },
     /// The Python tokenizer rejects the source.
@@ -161,13 +159,22 @@ fn checked(parsed: &Parsed) -> Result<(&'static Spec, Kinds, Vec<u32>), Unmeasur
     let spec = language
         .spec()
         .ok_or(Unmeasurable::Unsupported { language })?;
-    if let Some(node) = parsed.first_error() {
+    if let Some(node) = error_node(parsed) {
         let line = line(parsed.start_point(node));
         return Err(Unmeasurable::DoesNotParse { line });
     }
     let kinds = Kinds::new(language);
     let sloc_lines = sloc::lines(parsed, spec, &kinds)?;
     Ok((spec, kinds, sloc_lines))
+}
+
+// The guard keys on the root's error flag. A hidden MISSING token sets it with no visible ERROR or
+// MISSING node, and then the innermost node that holds the error names the line.
+fn error_node(parsed: &Parsed) -> Option<NodeId> {
+    if !parsed.has_error(parsed.root()) {
+        return None;
+    }
+    parsed.first_error().or_else(|| parsed.innermost_error())
 }
 
 /// Returns the version stamp of stored metrics for `language`, or `None` when it has no rules.
@@ -194,16 +201,68 @@ fn lines_within(lines: &[u32], start: u32, end: u32) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use serde::de::DeserializeOwned;
-    use std::path::Path;
+    use kernel::Key;
+    use syntax::{Language, parse};
 
-    pub(crate) fn cases<T: DeserializeOwned>(file: &str) -> T {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures")
-            .join(format!("{file}.json"));
-        let shown = path.display();
-        let text =
-            std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"))
+    use super::{Block, Measurable, Unmeasurable, measure, place};
+
+    // Recorded deviation: the reference crashes on a tree whose only error is a hidden MISSING
+    // token, so these lines are the innermost erroneous node's, not a generated case.
+    #[test]
+    fn a_tree_with_only_a_hidden_error_does_not_parse_where_the_reference_crashes() {
+        let cases = [
+            (Language::C, "#include <stdio.h>", 1),
+            (Language::Cpp, "#pragma once", 1),
+            (Language::C, "int f(void) { return 0; }\n#define X 1", 2),
+            (Language::Go, "package p\n\nf", 1),
+        ];
+        for (language, source, line) in cases {
+            let parsed = parse(language, source.into()).expect("a tree");
+            assert!(
+                parsed.first_error().is_none(),
+                "{source:?} has a visible error"
+            );
+            let refused = Some(Unmeasurable::DoesNotParse { line });
+            assert_eq!(measure(&parsed).err(), refused, "{source:?}");
+            assert_eq!(Measurable::new(parsed).err(), refused, "{source:?}");
+        }
+    }
+
+    // Recorded deviation: the reference prints a SyntaxWarning line on stderr for each backslash
+    // before a brace in an f-string, and this build has no warning channel.
+    #[test]
+    fn an_fstring_backslash_before_a_brace_measures_with_no_error() {
+        let parsed = parse(Language::Python, "x = f\"\\{y}\"\n".into()).expect("a tree");
+        let measured = measure(&parsed).expect("it measures");
+        assert_eq!(measured.sloc_lines, [1]);
+    }
+
+    #[test]
+    fn place_orders_by_path_then_start_line_then_end_line() {
+        let block = |start_line, end_line| Block {
+            start_line,
+            end_line,
+            key: Key::new([0; 32]),
+            exact: Key::new([0; 32]),
+            function: false,
+            tokens: 0,
+        };
+        let (wide, narrow, later) = (block(2, 9), block(2, 5), block(3, 4));
+        let mut placed = vec![
+            place("b.py", &narrow),
+            place("a.py", &later),
+            place("a.py", &wide),
+            place("a.py", &narrow),
+        ];
+        placed.sort_unstable();
+        assert_eq!(
+            placed,
+            [
+                ("a.py", 2, 5),
+                ("a.py", 2, 9),
+                ("a.py", 3, 4),
+                ("b.py", 2, 5)
+            ]
+        );
     }
 }

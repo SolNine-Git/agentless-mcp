@@ -48,7 +48,8 @@ impl fmt::Display for HomeUnknown {
 impl std::error::Error for HomeUnknown {}
 
 /// Returns `$XDG_CACHE_HOME/agentless-mcp` when that value is absolute after whitespace is
-/// removed, else `$HOME/.cache/agentless-mcp`. It reads the variables through `env`.
+/// removed, else `$HOME/.cache/agentless-mcp`. It reads the variables through `env`. When `env`
+/// has no HOME, the home comes from `std::env::home_dir()`.
 ///
 /// # Errors
 ///

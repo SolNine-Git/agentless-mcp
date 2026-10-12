@@ -1,14 +1,20 @@
-//! A temporary directory tree for tests, removed when it drops, and the fixture section reader.
+//! A temporary directory tree for tests, removed when it drops, a hermetic test environment, a
+//! setup git runner with a pinned identity, and the fixture readers.
 
+use std::ffi::OsString;
 use std::fs::{self, Permissions};
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
-pub use text::testing::cases;
+pub use text::testing::{cases, document};
+
+use crate::{Outcome, Spec, run};
 
 static TREES: AtomicUsize = AtomicUsize::new(0);
+const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A new directory under the temporary directory. The drop removes it and everything in it.
 #[derive(Debug)]
@@ -131,6 +137,22 @@ impl Tree {
         set.unwrap_or_else(|error| panic!("{relative}: {error}"));
     }
 
+    /// Returns whether a file mode can refuse this process. Root, or a process with
+    /// `CAP_DAC_OVERRIDE`, reads a file whose mode is 000.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the probe file cannot be written, changed or removed.
+    #[must_use]
+    pub fn modes_bind(&self) -> bool {
+        let probe = self.write_file(".mode-probe", "");
+        let probe = probe.unwrap_or_else(|error| panic!("a probe file: {error}"));
+        self.chmod(".mode-probe", 0o000);
+        let binds = fs::File::open(&probe).is_err();
+        fs::remove_file(&probe).unwrap_or_else(|error| panic!("the probe file stays: {error}"));
+        binds
+    }
+
     // An absolute path would replace the root in a join and land outside the tree.
     fn below(&self, relative: &Path) -> io::Result<PathBuf> {
         if relative.is_absolute() {
@@ -146,6 +168,94 @@ impl Drop for Tree {
         if let Err(error) = fs::remove_dir_all(&self.root) {
             eprintln!("the test tree {} stays: {error}", self.root.display());
         }
+    }
+}
+
+/// The author and committer that a setup commit records, and its clock. The object ids of a
+/// fixture depend on these values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Identity {
+    /// The author and committer name.
+    pub name: &'static str,
+    /// The author and committer email.
+    pub email: &'static str,
+    /// The author and committer date, for example `2026-02-01T00:00:00Z`.
+    pub date: &'static str,
+}
+
+impl Identity {
+    /// Returns the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables that pin this identity.
+    #[must_use]
+    pub fn vars(&self) -> [(OsString, OsString); 6] {
+        [
+            ("GIT_AUTHOR_NAME", self.name),
+            ("GIT_AUTHOR_EMAIL", self.email),
+            ("GIT_AUTHOR_DATE", self.date),
+            ("GIT_COMMITTER_NAME", self.name),
+            ("GIT_COMMITTER_EMAIL", self.email),
+            ("GIT_COMMITTER_DATE", self.date),
+        ]
+        .map(|(name, value)| (OsString::from(name), OsString::from(value)))
+    }
+}
+
+/// Returns an environment that no ambient config reaches: the PATH of the process, `home` as HOME,
+/// `home/.cache` as `XDG_CACHE_HOME`, and no system or global git config.
+///
+/// # Panics
+///
+/// Panics when the process has no PATH.
+#[must_use]
+pub fn hermetic_env(home: &Path) -> Vec<(OsString, OsString)> {
+    let path = std::env::var_os("PATH").expect("the tests find git through PATH");
+    vec![
+        (OsString::from("PATH"), path),
+        (OsString::from("HOME"), home.as_os_str().to_owned()),
+        (
+            OsString::from("XDG_CACHE_HOME"),
+            home.join(".cache").into_os_string(),
+        ),
+        (OsString::from("GIT_CONFIG_NOSYSTEM"), OsString::from("1")),
+        (
+            OsString::from("GIT_CONFIG_GLOBAL"),
+            OsString::from("/dev/null"),
+        ),
+    ]
+}
+
+/// Runs one setup command `git -C <dir> <args>` with `env` and the pinned `identity`, under a
+/// deadline, and returns its stdout.
+///
+/// # Panics
+///
+/// Panics with the outcome when git does not exit 0 before the deadline.
+#[must_use]
+pub fn run_git(
+    dir: &Path,
+    args: &[&str],
+    env: &[(OsString, OsString)],
+    identity: &Identity,
+) -> Vec<u8> {
+    let target = [OsString::from("-C"), dir.as_os_str().to_owned()];
+    let spec = Spec {
+        program: OsString::from("git"),
+        args: target
+            .into_iter()
+            .chain(args.iter().map(OsString::from))
+            .collect(),
+        cwd: PathBuf::from("."),
+        env: env.iter().cloned().chain(identity.vars()).collect(),
+        timeout: GIT_TIMEOUT,
+        stdout_cap: 1 << 24,
+        stderr_cap: 1 << 16,
+    };
+    match run(&spec) {
+        Outcome::Exited { status, stdout, .. } if status.success() => stdout,
+        Outcome::Exited { status, stderr, .. } => {
+            let shown = String::from_utf8_lossy(&stderr);
+            panic!("git {args:?} in {}: {status}: {shown}", dir.display())
+        }
+        outcome => panic!("git {args:?} in {}: {outcome:?}", dir.display()),
     }
 }
 
@@ -187,6 +297,36 @@ mod tests {
         assert_eq!(mode & 0o777, 0o600);
         drop(tree);
         assert!(!root.exists(), "the drop removes the tree");
+    }
+
+    const IDENTITY: Identity = Identity {
+        name: "io tests",
+        email: "io@example.invalid",
+        date: "2026-02-01T00:00:00Z",
+    };
+
+    #[test]
+    fn a_setup_commit_records_the_pinned_identity_and_clock() {
+        let tree = Tree::new().expect("the temporary directory takes a tree");
+        let repo = tree.mkdir("repo");
+        let env = hermetic_env(&tree.join("home"));
+        let _ = run_git(&repo, &["init", "--quiet", "-b", "main"], &env, &IDENTITY);
+        let commit = ["commit", "--quiet", "--allow-empty", "-m", "fixture"];
+        let _ = run_git(&repo, &commit, &env, &IDENTITY);
+        // Epoch seconds, because the ISO form of a UTC date differs between git versions.
+        let format = "--format=%an|%ae|%at|%cn|%ce|%ct";
+        let shown = run_git(&repo, &["log", "-1", format], &env, &IDENTITY);
+        let expected = "io tests|io@example.invalid|1769904000|\
+                        io tests|io@example.invalid|1769904000\n";
+        assert_eq!(String::from_utf8_lossy(&shown), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "git [\"no-such-command\"]")]
+    fn a_failed_setup_command_names_its_arguments() {
+        let tree = Tree::new().expect("the temporary directory takes a tree");
+        let env = hermetic_env(&tree.join("home"));
+        let _ = run_git(tree.path(), &["no-such-command"], &env, &IDENTITY);
     }
 
     #[test]

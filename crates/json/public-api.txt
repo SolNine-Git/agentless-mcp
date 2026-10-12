@@ -1,19 +1,21 @@
 pub mod json
 pub enum json::JsonErrorKind
-pub json::JsonErrorKind::ArrayTooDeep = 13
-pub json::JsonErrorKind::ArrayTrailingComma = 5
-pub json::JsonErrorKind::ByteOrderMark = 11
-pub json::JsonErrorKind::ControlCharacter = 7
-pub json::JsonErrorKind::ExpectingColon = 2
-pub json::JsonErrorKind::ExpectingComma = 3
-pub json::JsonErrorKind::ExpectingPropertyName = 1
-pub json::JsonErrorKind::ExpectingValue = 0
-pub json::JsonErrorKind::ExtraData = 10
-pub json::JsonErrorKind::InvalidEscape = 8
-pub json::JsonErrorKind::InvalidUnicodeEscape = 9
-pub json::JsonErrorKind::ObjectTooDeep = 12
-pub json::JsonErrorKind::ObjectTrailingComma = 4
-pub json::JsonErrorKind::UnterminatedString = 6
+pub json::JsonErrorKind::ArrayTooDeep
+pub json::JsonErrorKind::ArrayTrailingComma
+pub json::JsonErrorKind::ByteOrderMark
+pub json::JsonErrorKind::ControlCharacter
+pub json::JsonErrorKind::ExpectingColon
+pub json::JsonErrorKind::ExpectingComma
+pub json::JsonErrorKind::ExpectingPropertyName
+pub json::JsonErrorKind::ExpectingValue
+pub json::JsonErrorKind::ExtraData
+pub json::JsonErrorKind::IntTooLong
+pub json::JsonErrorKind::IntTooLong::digits: usize
+pub json::JsonErrorKind::InvalidEscape
+pub json::JsonErrorKind::InvalidUnicodeEscape
+pub json::JsonErrorKind::ObjectTooDeep
+pub json::JsonErrorKind::ObjectTrailingComma
+pub json::JsonErrorKind::UnterminatedString
 impl core::clone::Clone for json::JsonErrorKind
 pub fn json::JsonErrorKind::clone(&self) -> Self
 impl core::cmp::Eq for json::JsonErrorKind

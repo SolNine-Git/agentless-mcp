@@ -4,6 +4,7 @@ mod capabilities;
 mod env;
 mod error;
 mod lint;
+mod noted;
 mod pairs;
 mod parallel;
 mod proposed;
@@ -25,7 +26,8 @@ pub use capabilities::{
 pub use checks::{CheckGap, Detail, Finding, Observed, PairFinding, Severity};
 pub use env::{EnvConfig, Services, UnreadCwd, WALK_BUDGET};
 pub use error::Error;
-pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, Noted, lint};
+pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, lint};
+pub use noted::Noted;
 pub use proposed::After;
 pub use registry::{
     CHECKS, CheckInput, FormKind, LintCheck, PairCheck, PairSelection, unknown_check_refusal,

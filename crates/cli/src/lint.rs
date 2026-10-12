@@ -35,18 +35,19 @@ pub(crate) fn run(lint: &Lint, services: &Services, streams: &mut Streams<'_>) -
         Ok(session) => session,
         Err(code) => return code,
     };
-    let noted = match app::lint(services, &session.repo, &session.tags, &request) {
-        Ok(noted) => noted,
+    let noted = app::lint(services, &session.repo, &session.tags, &request);
+    diagnostics(streams, &noted.diagnostics);
+    let report = match noted.value {
+        Ok(report) => report,
         Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
     };
-    diagnostics(streams, &noted.diagnostics);
     let receipt = Receipt::of(&session);
     let rendered = if lint.flags.json {
-        render::lint_json(&receipt, &noted.value)
+        render::lint_json(&receipt, &report)
     } else {
-        Ok(render::lint_text(&receipt, &noted.value))
+        Ok(render::lint_text(&receipt, &report))
     };
-    answer(streams, rendered, gate(&noted.value, &lint.fail_on))
+    answer(streams, rendered, gate(&report, &lint.fail_on))
 }
 
 // The flag refusals, in order: --since with --after, --since with a patch check, --path without

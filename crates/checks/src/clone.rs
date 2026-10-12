@@ -12,11 +12,13 @@ use crate::index::{CloneIndex, IndexedFiles};
 use crate::observed::{CloneState, Observed, Outcome};
 use crate::pair::{CLONE_GAPS, Pair, each_pair, read_sides};
 
+// The detail lists this many instances, then only counts them.
 const MAX_CLONE_SITES: usize = 20;
+// The evidence names this many sites. The message count stays exact.
 const MAX_DUPLICATE_SITES: usize = 3;
 const MAX_NAMED_GAPS: usize = 10;
 
-/// Report each added block of at least 40 leaves that has a Type-2 copy, against `index`.
+/// Report each added block that is big enough to report and has a Type-2 copy, against `index`.
 ///
 /// # Errors
 ///

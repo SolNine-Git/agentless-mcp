@@ -4,18 +4,23 @@
 
 use std::ffi::OsString;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use io::testing::Tree;
+use io::testing::{Identity, Tree};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_agentless-mcp");
 const WAIT: Duration = Duration::from_secs(30);
 const STEP: Duration = Duration::from_millis(10);
 // The shell enters `gone`, removes it, and then becomes the hook, so the hook starts there.
 const IN_DELETED_DIRECTORY: &str = r#"cd gone && rmdir "$PWD" && exec "$0" hook erosion"#;
+const IDENTITY: Identity = Identity {
+    name: "hook tests",
+    email: "hook@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 struct Ran {
     status: ExitStatus,
@@ -25,48 +30,22 @@ struct Ran {
 }
 
 fn env(tree: &Tree) -> Vec<(OsString, OsString)> {
-    let path = std::env::var_os("PATH").expect("the test finds git and sh through PATH");
-    let home = tree.path().join("home");
-    let fixed = [
-        ("PATH", path),
-        ("HOME", home.clone().into_os_string()),
-        ("XDG_CACHE_HOME", home.join(".cache").into_os_string()),
-        ("GIT_CONFIG_NOSYSTEM", OsString::from("1")),
-        ("GIT_CONFIG_GLOBAL", OsString::from("/dev/null")),
-        ("GIT_AUTHOR_NAME", OsString::from("hook tests")),
-        ("GIT_AUTHOR_EMAIL", OsString::from("hook@example.invalid")),
-        ("GIT_COMMITTER_NAME", OsString::from("hook tests")),
-        (
-            "GIT_COMMITTER_EMAIL",
-            OsString::from("hook@example.invalid"),
-        ),
-        (
-            "AGENTLESS_EROSION_LOG",
-            tree.path().join("log/erosion.jsonl").into_os_string(),
-        ),
-    ];
-    fixed
-        .into_iter()
-        .map(|(name, value)| (OsString::from(name), value))
-        .collect()
+    let mut vars = io::testing::hermetic_env(&tree.path().join("home"));
+    let log = tree.path().join("log/erosion.jsonl");
+    vars.push((
+        OsString::from("AGENTLESS_EROSION_LOG"),
+        log.into_os_string(),
+    ));
+    vars
 }
 
 fn git(tree: &Tree, args: &[&str]) {
-    let mut command = vec![OsString::from("-C"), tree.join("repo").into_os_string()];
-    command.extend(args.iter().map(OsString::from));
-    let spec = io::Spec {
-        program: OsString::from("git"),
-        args: command,
-        cwd: PathBuf::from("."),
-        env: env(tree),
-        timeout: WAIT,
-        stdout_cap: 1 << 16,
-        stderr_cap: 1 << 16,
-    };
-    match io::run(&spec) {
-        io::Outcome::Exited { status, .. } if status.success() => {}
-        outcome => panic!("git {args:?}: {outcome:?}"),
-    }
+    drop(io::testing::run_git(
+        &tree.join("repo"),
+        args,
+        &env(tree),
+        &IDENTITY,
+    ));
 }
 
 // A repository with one committed file, and the directory the hook starts in.

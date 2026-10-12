@@ -11,7 +11,6 @@ File-system cases build their tree in a temporary directory; the fixtures name i
 import json
 import logging
 import os
-import re
 import sys
 import tempfile
 from collections.abc import Callable, Iterator
@@ -19,10 +18,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import stdlib_fixtures
 from fixture_files import Fixture, write_or_check
 
 from agentless_mcp.core import projectconfig
-from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util import cachedir, fslimits
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
 
@@ -333,6 +332,18 @@ CONFIG_FILES: list[list[Any]] = [
     ],
     ["link_to_directory", [["dir", "root"], ["dir", "root/sub"], ["link", CONFIG_PATH, "sub"]]],
     ["too_large", [["dir", "root"], ["padded", CONFIG_PATH, '{"map_budget": 300}', 65537]]],
+    [
+        "unreadable",
+        [["dir", "root"], ["file", CONFIG_PATH, '{"map_budget": 300}'], ["mode", CONFIG_PATH, 0]],
+    ],
+    [
+        "unreadable_too_large",
+        [
+            ["dir", "root"],
+            ["padded", CONFIG_PATH, '{"map_budget": 300}', 70000],
+            ["mode", CONFIG_PATH, 0],
+        ],
+    ],
     ["at_cap", [["dir", "root"], ["padded", CONFIG_PATH, '{"map_budget": 300}', 65536]]],
     ["not_utf8", [["dir", "root"], ["bytes", CONFIG_PATH, list(b'{"a": "\xff"}')]]],
     [
@@ -388,8 +399,18 @@ def make(base: Path, entry: Entry) -> None:
         os.mkfifo(path)
     elif kind == "link":
         path.symlink_to(rest[0].replace("{base}", str(base)))
+    elif kind == "mode":
+        refused_mode(path, rest[0])
     else:
         path.write_bytes(content(kind, rest))
+
+
+def refused_mode(path: Path, mode: int) -> None:
+    # Root reads a file whose mode refuses it, so the expected refusal needs another user.
+    path.chmod(mode)
+    if os.access(path, os.R_OK):
+        message = f"{path}: mode {mode:o} does not refuse this process; run as another user"
+        raise SystemExit(message)
 
 
 def content(kind: str, rest: list[Any]) -> bytes:
@@ -502,51 +523,8 @@ def loaded(layout: list[Entry]) -> dict[str, object]:
         config = projectconfig.load(base / "root")
         described = config.as_dict()
         described["path"] = None if config.path is None else placed(str(config.path), base)
-        described["warnings"] = [typed_warning(warning) for warning in config.warnings]
+        described["warnings"] = list(config.warnings)
         return described
-
-
-def prompt_pattern(name: str) -> re.Pattern[str]:
-    # The constant placeholders take their values; `check` and `count` capture what the call put.
-    constants = {
-        "config": CONFIG,
-        "modes": ", ".join(projectconfig.GATE_MODES),
-        "checks": ", ".join(projectconfig.GATED_CHECKS),
-        "limit": str(projectconfig.MAX_BOUNDARY_GLOBS),
-        "chars": str(projectconfig.MAX_BOUNDARY_GLOB_CHARS),
-    }
-    parts = re.split(r"\{(\w+)\}", getattr(MESSAGES, f"config_{name}"))
-    pieces = []
-    for index, part in enumerate(parts):
-        if index % 2 == 0:
-            pieces.append(re.escape(part))
-        elif part in constants:
-            pieces.append(re.escape(constants[part]))
-        else:
-            pieces.append(r"(\w+)")
-    return re.compile("".join(pieces) + r"\Z")
-
-
-PROMPTED = {
-    name: prompt_pattern(name)
-    for name in (
-        "erosion_gate_not_object",
-        "erosion_gate_mode",
-        "erosion_gate_unknown",
-        "boundary_globs_not_list",
-        "boundary_globs_too_many",
-        "boundary_globs_dropped",
-    )
-}
-
-
-def typed_warning(warning: str) -> list[object]:
-    # A warning from prompts/messages.json is a typed value in Rust, so it is stored as its fields.
-    for name, pattern in PROMPTED.items():
-        found = pattern.match(warning)
-        if found:
-            return [name, *(int(group) if group.isdigit() else group for group in found.groups())]
-    return ["text", warning]
 
 
 def cache_fixture() -> Fixture:
@@ -600,4 +578,6 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
 
 
 if __name__ == "__main__":
-    sys.exit(write_or_check(__doc__.splitlines()[0], FIXTURES, BUILDERS))
+    # The stdlib generator writes files into this crate's fixture directory too.
+    shared = [stdlib_fixtures.CRATES / path for path in stdlib_fixtures.BUILDERS]
+    sys.exit(write_or_check(__doc__.splitlines()[0], FIXTURES, BUILDERS, shared))

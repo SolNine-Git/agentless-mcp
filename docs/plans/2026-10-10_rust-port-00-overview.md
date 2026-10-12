@@ -29,26 +29,28 @@ One Cargo workspace in this repository, under `crates/`, beside `src/agentless_m
 
 | Layer | Crate | Job | Depends on | Built in |
 |---|---|---|---|---|
-| L8 | `agentless` | Binary. Reads argv and the environment once, builds `app::Services`, picks a door. | cli, mcp, hook, app, store, git, io | P1 (mcp joins in P4) |
-| L7 | `cli` | Command line generated from the operation table; exit codes. | app, render, prompts | P1, grows in P2, P3 |
-| L7 | `mcp` | MCP server on rmcp, stdio and streamable HTTP. | app, render, prompts | P4 |
-| L7 | `hook` | Claude Code hooks in process. | app, render, prompts, io | P1 (erosion gate), P4 (search gate) |
-| L6 | `render` | Text output and the envelope; JSON through the Python-compatible formatter. | app, prompts, json, text, kernel | P1, grows in P2 |
-| L5 | `app` | One module per operation, the operation table, `Services`, `Session`. | patchcheck, checks, graph, store, git, io, facts, metrics, patch, prompts, kernel | P1, grows in P2, P3 |
-| L4 | `patchcheck` | The seven patch checks. | checks, facts, graph, patch, metrics, syntax, kernel | P3 |
-| L3 | `checks` | Check trait, one Finding type, cascade matcher, path-scope rule, the three pair checks. | metrics, syntax, prompts, kernel | P1 |
-| L3 | `graph` | Name resolution, tiers, file and symbol graphs, ranking, communities, cycles, paths. | facts, metrics, kernel | P2 |
-| L3 | `store` | Until P4, a read-only reader of the Python `tags.db` for the hook (decision 9). From P2, the Rust per-file cache under a complete artifact key, with pure freshness, plan, and eviction. | facts, metrics, io, kernel | P1 (`tags.db` reader), P2 (own store), P4 (reader deleted) |
-| L3 | `git` | Git queries as typed values through the one runner. | io, kernel | P1 (`log_span` in P2, worktrees in P3) |
-| L2 | `facts` | Symbols, imports, references; skeleton, slices, locations. | syntax, kernel | P2 |
-| L2 | `metrics` | Units, complexity, lines, body keys, clone blocks and keys. | syntax, text, kernel | P1 |
-| L2 | `patch` | SEARCH/REPLACE and unified diff parsing, apply, vote. | syntax, kernel | P3 |
-| L2 | `io` | Process runner, bounded walk/read/write, lock, deadline, config read once. The only crate that writes files. | json, text, kernel | P1 (write port in P3) |
-| L1 | `syntax` | Language table, static grammars, parse, flat index, queries. The only crate with `unsafe`. | text, kernel | P1, grows in P2 |
-| L1 | `prompts` | Caller-facing strings from JSON; one typed function per message. | kernel | P1 |
-| L1 | `json` | JSON text in two fixed forms, JSON read into values, and the shortest float text. | text | P1 |
-| L0 | `text` | Line breaks, whitespace, the printable rule, and text that can hold a lone surrogate. | none | P1 |
-| L0 | `kernel` | Error enum, ids, spans, keys, `Bounded<T>`, `Limit<MIN, MAX, DEF>`. | none | P0 |
+| L8 | `agentless` | Binary. Reads argv and the environment once, builds `app::Services`, picks a door. | [`Cargo.toml`](../../crates/agentless/Cargo.toml); planned: mcp (P4) | P1 (mcp joins in P4) |
+| L7 | `cli` | Command line generated from the operation table; exit codes. | [`Cargo.toml`](../../crates/cli/Cargo.toml) | P1, grows in P2, P3 |
+| L7 | `mcp` | MCP server on rmcp, stdio and streamable HTTP. | planned: app, render, prompts | P4 |
+| L7 | `hook` | Claude Code hooks in process. | [`Cargo.toml`](../../crates/hook/Cargo.toml) | P1 (erosion gate), P4 (search gate) |
+| L6 | `render` | Text output and the envelope; JSON through the Python-compatible formatter. | [`Cargo.toml`](../../crates/render/Cargo.toml) | P1, grows in P2 |
+| L5 | `app` | One module per operation, the operation table, `Services`, `Session`. | [`Cargo.toml`](../../crates/app/Cargo.toml); planned: facts, graph (P2), patch, patchcheck (P3) | P1, grows in P2, P3 |
+| L4 | `patchcheck` | The seven patch checks. | planned: checks, facts, graph, patch, metrics, syntax, kernel | P3 |
+| L3 | `checks` | Check trait, one Finding type, cascade matcher, path-scope rule, the three pair checks. | [`Cargo.toml`](../../crates/checks/Cargo.toml) | P1 |
+| L3 | `graph` | Name resolution, tiers, file and symbol graphs, ranking, communities, cycles, paths. | planned: facts, metrics, kernel | P2 |
+| L3 | `store` | Until P4, a read-only reader of the Python `tags.db` for the hook (decision 9). From P2, the Rust per-file cache under a complete artifact key, with pure freshness, plan, and eviction. | [`Cargo.toml`](../../crates/store/Cargo.toml); planned: facts (P2) | P1 (`tags.db` reader), P2 (own store), P4 (reader deleted) |
+| L3 | `git` | Git queries as typed values through the one runner. | [`Cargo.toml`](../../crates/git/Cargo.toml) | P1 (`log_span` in P2, worktrees in P3) |
+| L2 | `facts` | Symbols, imports, references; skeleton, slices, locations. | planned: syntax, kernel | P2 |
+| L2 | `metrics` | Units, complexity, lines, body keys, clone blocks and keys. | [`Cargo.toml`](../../crates/metrics/Cargo.toml) | P1 |
+| L2 | `patch` | SEARCH/REPLACE and unified diff parsing, apply, vote. | planned: syntax, kernel | P3 |
+| L2 | `io` | Process runner, bounded walk/read/write, lock, deadline, config read once. The only crate that writes files. | [`Cargo.toml`](../../crates/io/Cargo.toml) | P1 (write port in P3) |
+| L1 | `syntax` | Language table, static grammars, parse, flat index, queries. The only crate with `unsafe`. | [`Cargo.toml`](../../crates/syntax/Cargo.toml) | P1, grows in P2 |
+| L1 | `prompts` | Caller-facing strings from JSON: typed template consts and one generic `render`. | [`Cargo.toml`](../../crates/prompts/Cargo.toml) | P1 |
+| L1 | `json` | JSON text in two fixed forms, JSON read into values, and the shortest float text. | [`Cargo.toml`](../../crates/json/Cargo.toml) | P1 |
+| L0 | `text` | Line breaks, whitespace, the printable rule, and text that can hold a lone surrogate. | [`Cargo.toml`](../../crates/text/Cargo.toml) | P1 |
+| L0 | `kernel` | Error enum, ids, spans, keys, `Bounded<T>`, `Limit<MIN, MAX, DEF>`. | [`Cargo.toml`](../../crates/kernel/Cargo.toml) | P0 |
+
+For a built crate, its `Cargo.toml` lists its dependencies, and `crates/layers.toml` holds the layer of every crate, the planned ones included. `cargo xtask static-gates` checks each edge against the layer table. An edge marked planned is not built yet.
 
 ## Phase Map
 

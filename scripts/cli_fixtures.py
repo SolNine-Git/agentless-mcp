@@ -25,7 +25,14 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fixture_files import Fixture, write_or_check
+from fixture_files import (
+    Fixture,
+    Identity,
+    hermetic_env,
+    refuse_real_caches,
+    run_git,
+    write_or_check,
+)
 
 from agentless_mcp.adapters.cli.main import build_parser
 from agentless_mcp.core import grammars
@@ -50,14 +57,7 @@ from agentless_mcp.bootstrap import cli_main
 raise SystemExit(cli_main())
 """
 
-PINNED = {
-    "GIT_AUTHOR_NAME": "cli tests",
-    "GIT_AUTHOR_EMAIL": "cli@example.invalid",
-    "GIT_AUTHOR_DATE": "2026-02-01T00:00:00Z",
-    "GIT_COMMITTER_NAME": "cli tests",
-    "GIT_COMMITTER_EMAIL": "cli@example.invalid",
-    "GIT_COMMITTER_DATE": "2026-02-01T00:00:00Z",
-}
+IDENTITY = Identity("cli tests", "cli@example.invalid", "2026-02-01T00:00:00Z")
 
 # Texts that pin the wrap rules beyond the help strings: hyphens, dash runs, long words.
 WRAP_EXTRAS = [
@@ -78,7 +78,11 @@ HELP_ARGVS = [
     ["capabilities", "--repo"],
 ]
 WIDTHS = [None, "1", "10", "20", "40", "60", "79", "80", "81", "100", "120", "200", "1000"]
-ODD_COLUMNS = ["abc", "0", "-5", " 90 ", "1_00", "+70", "", "1__0", "_1"]
+ODD_COLUMNS = [
+    *["abc", "0", "-5", " 90 ", "1_00", "+70", "", "1__0", "_1"],
+    # int() strips no U+001C..U+001F, which str.isspace counts, and it strips U+0085.
+    *["\x1c40", "40\x1f", "\x8540"],
+]
 
 CORPUS: list[list[str]] = [
     [],
@@ -205,6 +209,16 @@ HOOK_FORM = [
     ["write", "after.py", SOURCE + "\n\n" + branchy("fresh", 12)],
 ]
 PLAIN = [["write", "plain/a.py", "x = 1\n"], ["write", "after.py", "x = 2\n"]]
+DEEP = "/".join(f"d{level}" for level in range(1, 22))
+# The clone index walk warns about a name that is not UTF-8, then refuses a path at depth 21.
+WALK_REFUSED = [
+    ["init", "repo"],
+    ["write", "repo/a.py", "def f(x):\n    return x\n"],
+    ["commit", "repo"],
+    ["write", "repo/a.py", "def f(x):\n    if x:\n        return 1\n    return x\n"],
+    ["latin", "repo/bad\xff.py", "z = 1\n"],
+    ["write", f"repo/{DEEP}/x.txt", "x\n"],
+]
 ROOT = "<SANDBOX>/repo"
 SINCE = ["lint", "--since", "HEAD"]
 
@@ -284,21 +298,22 @@ SCENARIOS: list[dict[str, object]] = [
         "argv": ["lint", "--path", "a.py", "--after", "<SANDBOX>/after.py"],
     },
     {"name": "capabilities_outside_git", "steps": PLAIN, "cwd": "plain", "argv": ["capabilities"]},
+    {
+        "name": "since_walk_refused_after_a_warning",
+        "steps": WALK_REFUSED,
+        "cwd": "repo",
+        "argv": [*SINCE, "--only", "clone_delta", "--json"],
+    },
 ]
 
 
 def environment(sandbox: Path, columns: str | None) -> dict[str, str]:
     """The whole environment of one run: nothing of the caller's reaches it but PATH."""
-    home = sandbox / "home"
     env = {
-        "PATH": os.environ["PATH"],
-        "HOME": str(home),
-        "XDG_CACHE_HOME": str(home / ".cache"),
+        **hermetic_env(sandbox / "home"),
         GRAMMAR_OVERRIDE: os.environ[GRAMMAR_OVERRIDE],
         "AGENTLESS_MCP_NO_AUTO_WARM": "1",
         "AGENTLESS_MCP_NO_DOWNLOAD": "1",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": "/dev/null",
         "LANG": "C.UTF-8",
     }
     if columns is not None:
@@ -339,13 +354,6 @@ def parser_fixture() -> Fixture:
     return {"runs": rows}
 
 
-def run_git(directory: Path, env: dict[str, str], *arguments: str) -> None:
-    command = ["git", "-C", str(directory), *arguments]
-    subprocess.run(
-        command, check=True, capture_output=True, env={**env, **PINNED}, timeout=TIMEOUT_SECONDS
-    )
-
-
 def apply(sandbox: Path, env: dict[str, str], step: list[str]) -> None:
     """Run one scenario step in ``sandbox``. The Rust test runs the same steps."""
     kind, place, *rest = step
@@ -353,12 +361,17 @@ def apply(sandbox: Path, env: dict[str, str], step: list[str]) -> None:
     if kind == "write":
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(rest[0], encoding="utf-8")
+    elif kind == "latin":
+        # The file name is the latin-1 bytes of `place`, so a character above U+007F is no UTF-8.
+        named = Path(os.fsdecode(os.fsencode(sandbox) + b"/" + place.encode("latin-1")))
+        named.parent.mkdir(parents=True, exist_ok=True)
+        named.write_text(rest[0], encoding="utf-8")
     elif kind == "init":
         target.mkdir(parents=True, exist_ok=True)
-        run_git(target, env, "init", "--quiet", "-b", "main")
+        run_git(target, IDENTITY, "init", "--quiet", "-b", "main", env=env)
     elif kind == "commit":
-        run_git(target, env, "add", "-A")
-        run_git(target, env, "commit", "--quiet", "-m", "fixture")
+        run_git(target, IDENTITY, "add", "-A", env=env)
+        run_git(target, IDENTITY, "commit", "--quiet", "-m", "fixture", env=env)
     else:
         sys.exit(f"refused: no scenario step {kind}")
 
@@ -457,6 +470,7 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
 
 
 if __name__ == "__main__":
+    refuse_real_caches()
     if not os.environ.get(GRAMMAR_OVERRIDE):
         sys.exit(f"refused: set {GRAMMAR_OVERRIDE} to a scratch copy of the grammar libraries")
     # The Rust build links every grammar, so a cold grammar here would pin a different answer.

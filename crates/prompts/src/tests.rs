@@ -1,18 +1,14 @@
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use serde_json::{Map, Value};
+use text::testing::document;
 
 use crate::generated::catalog::CATALOG;
 use crate::template::fill;
 use crate::{Severity, contract_rules, envelope, messages};
 
-fn fixture(name: &str) -> Value {
-    let dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
-    let path = PathBuf::from(dir).join("fixtures").join(name);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+fn fixture(file: &str) -> Value {
+    document(env!("CARGO_MANIFEST_DIR"), file)
 }
 
 struct Case<'f> {
@@ -58,7 +54,7 @@ impl<'f> Case<'f> {
 
 #[test]
 fn every_template_renders_the_text_of_the_fixture() {
-    let fixture = fixture("render.json");
+    let fixture = fixture("render");
     let mut mismatches = Vec::new();
     for (file, key, names, pieces) in CATALOG {
         let case = Case::of(&fixture, file, key);
@@ -81,7 +77,7 @@ fn every_template_renders_the_text_of_the_fixture() {
 
 #[test]
 fn the_fixture_and_the_catalog_hold_the_same_templates() {
-    let fixture = fixture("render.json");
+    let fixture = fixture("render");
     let files: BTreeSet<&str> = fixture
         .as_object()
         .unwrap()
@@ -109,7 +105,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
 
 #[test]
 fn a_typed_render_puts_each_value_in_its_place() {
-    let fixture = fixture("render.json");
+    let fixture = fixture("render");
     let case = Case::of(&fixture, "messages", "find_no_matches");
     assert_eq!(
         messages::FIND_NO_MATCHES.render(case.text("query")),
@@ -135,7 +131,7 @@ fn a_typed_render_puts_each_value_in_its_place() {
 
 #[test]
 fn a_typed_render_of_five_and_six_values_keeps_their_order() {
-    let fixture = fixture("render.json");
+    let fixture = fixture("render");
     let case = Case::of(&fixture, "messages", "complexity_evidence");
     let numbers =
         ["old_cc", "new_cc", "old_sloc", "new_sloc", "threshold"].map(|name| case.count(name));
@@ -156,7 +152,7 @@ fn a_typed_render_of_five_and_six_values_keeps_their_order() {
 
 #[test]
 fn a_text_with_no_values_is_the_fixture_text() {
-    let fixture = fixture("render.json");
+    let fixture = fixture("render");
     assert_eq!(
         envelope::RECEIPT_HEADER,
         Case::of(&fixture, "envelope", "receipt_header").text
@@ -176,7 +172,7 @@ fn severity_name(severity: Severity) -> &'static str {
 
 #[test]
 fn the_contract_rules_are_the_fixture_records_in_order() {
-    let fixture = fixture("contract_rules.json");
+    let fixture = fixture("contract_rules");
     let records = fixture.as_array().unwrap();
     let rules = contract_rules();
     assert_eq!(rules.len(), records.len());

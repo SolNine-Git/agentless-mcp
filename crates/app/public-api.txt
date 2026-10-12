@@ -423,6 +423,9 @@ impl core::panic::unwind_safe::UnwindSafe for app::LintRequest
 pub struct app::Noted<T>
 pub app::Noted::diagnostics: alloc::vec::Vec<alloc::string::String>
 pub app::Noted::value: T
+impl<T> app::Noted<T>
+pub fn app::Noted<T>::map<U>(self, impl core::ops::function::FnOnce(T) -> U) -> app::Noted<U>
+pub fn app::Noted<T>::new(T) -> Self
 impl<T: core::clone::Clone> core::clone::Clone for app::Noted<T>
 pub fn app::Noted<T>::clone(&self) -> Self
 impl<T: core::cmp::Eq> core::cmp::Eq for app::Noted<T>
@@ -440,7 +443,7 @@ impl<T> core::panic::unwind_safe::RefUnwindSafe for app::Noted<T> where T: core:
 impl<T> core::panic::unwind_safe::UnwindSafe for app::Noted<T> where T: core::panic::unwind_safe::UnwindSafe
 pub struct app::Opening
 pub app::Opening::note: alloc::string::String
-pub app::Opening::session: core::result::Result<app::Noted<app::Session>, app::Error>
+pub app::Opening::session: app::Noted<core::result::Result<app::Session, app::Error>>
 impl core::fmt::Debug for app::Opening
 pub fn app::Opening::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Opening
@@ -453,7 +456,6 @@ impl !core::panic::unwind_safe::UnwindSafe for app::Opening
 pub struct app::PairSelection
 impl app::PairSelection
 pub fn app::PairSelection::checks(self) -> impl core::iter::traits::iterator::Iterator<Item = app::PairCheck>
-pub fn app::PairSelection::contains(self, app::PairCheck) -> bool
 pub fn app::PairSelection::edited_files() -> app::PairSelection
 pub fn app::PairSelection::from_names(&[alloc::string::String], app::FormKind) -> core::result::Result<app::PairSelection, alloc::string::String>
 pub fn app::PairSelection::of(&[app::PairCheck]) -> core::result::Result<app::PairSelection, alloc::string::String>
@@ -544,8 +546,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for app::Session
 impl !core::panic::unwind_safe::UnwindSafe for app::Session
 pub struct app::Tags
 impl app::Tags
-pub fn app::Tags::cached(&self) -> bool
-pub fn app::Tags::open(&app::Services, &app::Repo) -> core::result::Result<app::Noted<app::Tags>, app::Error>
+pub fn app::Tags::open(&app::Services, &app::Repo) -> app::Noted<core::result::Result<app::Tags, app::Error>>
 impl core::fmt::Debug for app::Tags
 pub fn app::Tags::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Tags
@@ -587,6 +588,6 @@ pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc
 pub fn app::in_metric_scope(&str) -> bool
 pub fn app::is_fixture_path(&str) -> bool
 pub fn app::is_test_path(&str) -> bool
-pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> core::result::Result<app::Noted<app::LintReport>, app::Error>
+pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
 pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
 pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>

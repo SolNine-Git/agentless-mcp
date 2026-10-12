@@ -1,11 +1,17 @@
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use io::testing::Tree;
+use io::testing::{Identity, Tree};
 use serde::de::DeserializeOwned;
 
 use crate::Git;
+
+// The commit identity and clock of every setup repository, so each object id is the same.
+const IDENTITY: Identity = Identity {
+    name: "agentless-mcp tests",
+    email: "tests@example.invalid",
+    date: "2026-01-01T00:00:00Z",
+};
 
 pub(crate) fn cases<T: DeserializeOwned>(file: &str, section: &str) -> T {
     io::testing::cases(env!("CARGO_MANIFEST_DIR"), file, section)
@@ -18,11 +24,7 @@ pub(crate) fn path_before(bin: PathBuf) -> OsString {
     std::env::join_paths(entries).expect("a PATH value")
 }
 
-// A fixture stores bytes as a string with one character per byte.
-pub(crate) fn latin(text: &str) -> Vec<u8> {
-    let byte = |c: char| u8::try_from(u32::from(c)).unwrap_or_else(|_| panic!("{c:?} is no byte"));
-    text.chars().map(byte).collect()
-}
+pub(crate) use io::testing::latin;
 
 // A temporary tree that the test owns, built and removed through the io crate.
 pub(crate) struct Scratch {
@@ -67,6 +69,11 @@ impl Scratch {
 
     pub(crate) fn set_mode(&self, relative: &str, mode: u32) {
         self.tree.chmod(relative, mode);
+    }
+
+    // False for root, which reads a directory whose mode is 000.
+    pub(crate) fn modes_bind(&self) -> bool {
+        self.tree.modes_bind()
     }
 
     // The base environment a test hands to `Git::new`: no config file reaches git.
@@ -119,33 +126,7 @@ impl Scratch {
 
     // Runs one setup git command in `dir`, with a deadline, and returns its stdout.
     pub(crate) fn run_git(&self, dir: &Path, args: &[&str]) -> Vec<u8> {
-        let identity = [
-            ("GIT_AUTHOR_NAME", "agentless-mcp tests"),
-            ("GIT_AUTHOR_EMAIL", "tests@example.invalid"),
-            ("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z"),
-            ("GIT_COMMITTER_NAME", "agentless-mcp tests"),
-            ("GIT_COMMITTER_EMAIL", "tests@example.invalid"),
-            ("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z"),
-        ];
-        let mut env = self.env();
-        env.extend(identity.map(|(name, value)| (OsString::from(name), OsString::from(value))));
-        let target = [OsString::from("-C"), dir.as_os_str().to_owned()];
-        let spec = io::Spec {
-            program: OsString::from("git"),
-            args: target
-                .into_iter()
-                .chain(args.iter().map(OsString::from))
-                .collect(),
-            cwd: PathBuf::from("."),
-            env,
-            timeout: Duration::from_secs(30),
-            stdout_cap: 1 << 20,
-            stderr_cap: 1 << 16,
-        };
-        match io::run(&spec) {
-            io::Outcome::Exited { status, stdout, .. } if status.success() => stdout,
-            outcome => panic!("git {args:?} in {}: {outcome:?}", dir.display()),
-        }
+        io::testing::run_git(dir, args, &self.env(), &IDENTITY)
     }
 
     // A directory that holds one program named `git` with `body` and `mode`, for a PATH entry.

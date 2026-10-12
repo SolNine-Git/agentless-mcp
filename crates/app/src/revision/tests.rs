@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use super::{PairSpec, blob_from, commit_from, listing_from, pair_specs};
 use crate::Error;
-use crate::testing::{cases, latin};
+use crate::testing::{MANIFEST_DIR, latin};
 
 const SHA: &str = "08ec32abb9b149de9d10310c24bd12bd1fe8d874";
 
@@ -83,8 +83,8 @@ fn blob(case: &str) -> Answer {
 }
 
 #[test]
-fn each_git_outcome_gives_the_python_answer() {
-    let rows: Vec<(String, String, Answer)> = cases("outcomes", "steps");
+fn each_git_outcome_gives_the_reference_answer() {
+    let rows: Vec<(String, String, Answer)> = io::testing::cases(MANIFEST_DIR, "outcomes", "steps");
     for (case, step, expected) in rows {
         let found = match step.as_str() {
             "commit" => committed(&case),
@@ -121,8 +121,9 @@ fn change((status, path, old_path, old, new): &ChangeRow) -> Change {
 }
 
 #[test]
-fn each_change_gives_the_python_rows_and_specs() {
-    let rows: Vec<(Vec<ChangeRow>, Vec<String>, Vec<SpecRow>)> = cases("outcomes", "pair_specs");
+fn each_change_gives_the_reference_rows_and_specs() {
+    let rows: Vec<(Vec<ChangeRow>, Vec<String>, Vec<SpecRow>)> =
+        io::testing::cases(MANIFEST_DIR, "outcomes", "pair_specs");
     for (input, expected_rows, expected_specs) in rows {
         let changes: Vec<Change> = input.iter().map(change).collect();
         let (found_rows, found_specs) = pair_specs(&changes);

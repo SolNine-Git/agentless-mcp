@@ -7,7 +7,7 @@ use crate::payload::{Change, EditInput};
 use crate::record::Outcome;
 use crate::testing::MANIFEST_DIR;
 
-// One generated case: the tool, the old text (None: no file), the content or old_string, the
+// One reference case: the tool, the old text (None: no file), the content or old_string, the
 // new_string, replace_all, and the expected ["text", text, eol] or ["skip", reason].
 type EditCase = (
     String,
@@ -47,7 +47,7 @@ fn shown(result: Result<Proposal, Halt>) -> serde_json::Value {
 }
 
 #[test]
-fn the_proposed_text_matches_the_generated_cases() {
+fn the_proposed_text_matches_the_reference_cases() {
     let all: Vec<EditCase> = cases(MANIFEST_DIR, "edit", "edit");
     assert!(all.len() > 1000, "{} cases", all.len());
     for (kind, old, first, second, replace_all, expected) in all {

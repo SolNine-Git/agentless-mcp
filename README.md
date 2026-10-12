@@ -586,6 +586,10 @@ default or a swallowed error in a module that `boundary_globs` names.
 that the change adds while the repository already has a copy of it, with
 names and literals ignored. The hook imports the standard library only.
 
+The Rust build runs the same gate in its own process as
+`agentless-mcp hook erosion`, but that hook is not yet the installed default,
+so the install steps below use the Python script.
+
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 
 - `advisory` adds the findings to the model's context. The call then goes

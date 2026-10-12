@@ -65,12 +65,18 @@ impl CodePointString {
     }
 
     /// Appends the code point `code`, which can be a lone surrogate.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `code` is past U+10FFFF, the last code point.
     pub fn push(&mut self, code: u32) {
+        assert!(code <= 0x10_ffff, "{code:#x} is past the last code point");
         if let Some(c) = char::from_u32(code) {
             self.push_str(c.encode_utf8(&mut [0; 4]));
             return;
         }
-        // A lone surrogate: the three bytes that the UTF-8 pattern gives its code point.
+        // Each other value up to U+10FFFF is a lone surrogate: the three bytes that the UTF-8
+        // pattern gives its code point.
         let [low, high, ..] = code.to_le_bytes();
         self.bytes.extend([
             0xe0 | (high >> 4),
@@ -156,6 +162,18 @@ mod tests {
                 .collect();
             assert_eq!(decoded, expected, "bytes: {bytes:x?}");
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "0x110000 is past the last code point")]
+    fn push_refuses_a_value_above_the_last_code_point() {
+        CodePointString::default().push(0x11_0000);
+    }
+
+    #[test]
+    fn push_takes_the_last_code_point() {
+        let text = from_code_points(&[0x10_ffff]);
+        assert_eq!(text.code_points().collect::<Vec<_>>(), [0x10_ffff]);
     }
 
     #[test]

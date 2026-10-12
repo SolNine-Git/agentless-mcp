@@ -1,5 +1,6 @@
 //! The start-up configuration, read once, and the services every operation shares.
 
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::ErrorKind;
@@ -43,16 +44,17 @@ impl fmt::Display for UnreadCwd {
 }
 
 impl EnvConfig {
-    /// Keeps `vars` and `cwd` as the start-up environment and working directory.
+    /// Keeps `vars` and `cwd` as the start-up environment and working directory. A repeated name
+    /// keeps its first value.
     pub fn new(vars: impl IntoIterator<Item = (OsString, OsString)>, cwd: PathBuf) -> Self {
         Self {
-            vars: vars.into_iter().collect(),
+            vars: first_of_each(vars),
             cwd: Ok(cwd),
         }
     }
 
     /// Keeps `vars` as the start-up environment, and `error` as why the working directory is
-    /// unknown.
+    /// unknown. A repeated name keeps its first value.
     pub fn with_unread_cwd(
         vars: impl IntoIterator<Item = (OsString, OsString)>,
         error: &std::io::Error,
@@ -63,7 +65,7 @@ impl EnvConfig {
             message: error.to_string(),
         };
         Self {
-            vars: vars.into_iter().collect(),
+            vars: first_of_each(vars),
             cwd: Err(unread),
         }
     }
@@ -73,12 +75,11 @@ impl EnvConfig {
     pub fn var(&self, name: &str) -> Option<&OsStr> {
         self.vars
             .iter()
-            .rev()
             .find(|(key, _)| key == name)
             .map(|(_, value)| value.as_os_str())
     }
 
-    /// Returns every variable, in start-up order.
+    /// Returns every variable, in start-up order, with one entry for each name.
     #[must_use]
     pub fn vars(&self) -> &[(OsString, OsString)] {
         &self.vars
@@ -92,6 +93,16 @@ impl EnvConfig {
     pub fn cwd(&self) -> Result<&Path, &UnreadCwd> {
         self.cwd.as_deref()
     }
+}
+
+// One value for each name, so `var`, the git child and its PATH search all read the same entry.
+fn first_of_each(
+    vars: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Vec<(OsString, OsString)> {
+    let mut seen = HashSet::new();
+    vars.into_iter()
+        .filter(|(name, _)| seen.insert(name.clone()))
+        .collect()
 }
 
 /// The ports and settings that every operation reads.
@@ -123,3 +134,6 @@ impl Services {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

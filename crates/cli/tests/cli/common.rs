@@ -2,23 +2,20 @@
 //! run of the command line, and the fixture files.
 
 use std::ffi::OsString;
-use std::fs;
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use app::{EnvConfig, Services};
 use cli::Streams;
-use io::testing::Tree;
+use io::testing::{Identity, Tree};
 use serde_json::Value;
 
-pub const PINNED: [(&str, &str); 6] = [
-    ("GIT_AUTHOR_NAME", "cli tests"),
-    ("GIT_AUTHOR_EMAIL", "cli@example.invalid"),
-    ("GIT_AUTHOR_DATE", "2026-02-01T00:00:00Z"),
-    ("GIT_COMMITTER_NAME", "cli tests"),
-    ("GIT_COMMITTER_EMAIL", "cli@example.invalid"),
-    ("GIT_COMMITTER_DATE", "2026-02-01T00:00:00Z"),
-];
+// The commit identity of every setup repository. The cli generator pins the same one.
+const IDENTITY: Identity = Identity {
+    name: "cli tests",
+    email: "cli@example.invalid",
+    date: "2026-02-01T00:00:00Z",
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Outcome {
@@ -50,17 +47,7 @@ impl Sandbox {
     }
 
     pub fn vars(&self) -> Vec<(OsString, OsString)> {
-        let path = std::env::var_os("PATH").expect("the tests find git through PATH");
-        let home = self.path().join("home");
-        let vars = [
-            ("PATH", path),
-            ("HOME", home.clone().into_os_string()),
-            ("XDG_CACHE_HOME", home.join(".cache").into_os_string()),
-            ("GIT_CONFIG_NOSYSTEM", OsString::from("1")),
-            ("GIT_CONFIG_GLOBAL", OsString::from("/dev/null")),
-        ];
-        vars.map(|(name, value)| (OsString::from(name), value))
-            .to_vec()
+        io::testing::hermetic_env(&self.path().join("home"))
     }
 
     pub fn run(&self, args: &[OsString], cwd: &Path, columns: Option<&str>) -> Outcome {
@@ -88,12 +75,23 @@ impl Sandbox {
             .expect("a written file")
     }
 
+    // A file whose name is the latin-1 bytes of `relative`, so a character above U+007F is no
+    // UTF-8.
+    pub fn write_latin(&self, relative: &str, text: &str) -> PathBuf {
+        if let Some((parent, _)) = relative.rsplit_once('/') {
+            self.tree.create_dir(parent).expect("a parent directory");
+        }
+        let name = OsString::from_vec(io::testing::latin(relative));
+        self.tree.write_file(name, text).expect("a written file")
+    }
+
     // Runs one scenario step of crates/cli/fixtures/scenarios.json, as the generator ran it.
     pub fn step(&self, step: &[Value]) {
         let word = |at: usize| step[at].as_str().expect("a step word");
         let place = self.path().join(word(1));
         match word(0) {
             "write" => drop(self.write(word(1), word(2))),
+            "latin" => drop(self.write_latin(word(1), word(2))),
             "init" => {
                 self.tree
                     .create_dir(word(1))
@@ -109,50 +107,13 @@ impl Sandbox {
     }
 
     pub fn git(&self, dir: &Path, args: &[&str]) -> Vec<u8> {
-        let mut env = self.vars();
-        env.extend(PINNED.map(|(name, value)| (OsString::from(name), OsString::from(value))));
-        let mut words = vec![OsString::from("-C"), dir.as_os_str().to_owned()];
-        words.extend(args.iter().map(OsString::from));
-        let spec = io::Spec {
-            program: OsString::from("git"),
-            args: words,
-            cwd: PathBuf::from("."),
-            env,
-            timeout: Duration::from_secs(30),
-            stdout_cap: 1 << 24,
-            stderr_cap: 1 << 16,
-        };
-        let outcome = io::run(&spec);
-        let io::Outcome::Exited {
-            status,
-            stdout,
-            stderr,
-        } = outcome
-        else {
-            panic!("git did not finish: {outcome:?}");
-        };
-        let shown = String::from_utf8_lossy(&stderr);
-        assert!(status.success(), "git {args:?}: {shown}");
-        stdout
+        io::testing::run_git(dir, args, &self.vars(), &IDENTITY)
     }
 }
 
 // The cases of one section of crates/cli/fixtures/<file>.json.
 pub fn cases(file: &str, section: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(format!("{file}.json"));
-    let shown = path.display();
-    let text = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let mut sections: serde_json::Map<String, Value> =
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let cases = sections
-        .remove(section)
-        .unwrap_or_else(|| panic!("{shown}: no {section}"));
-    cases
-        .as_array()
-        .cloned()
-        .unwrap_or_else(|| panic!("{shown}: {section} is no list"))
+    io::testing::cases(env!("CARGO_MANIFEST_DIR"), file, section)
 }
 
 pub fn words(value: &Value) -> Vec<String> {

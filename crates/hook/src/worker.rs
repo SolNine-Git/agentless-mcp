@@ -11,14 +11,14 @@ use crate::text::panic_text;
 
 pub(crate) type LintFn = fn(&Services, &Repo, &LintRequest) -> Result<LintReport, app::Error>;
 
-// What the subprocess did in the Python hook: the cache open, then lint.
+// The whole check of one proposed text: the cache open, then lint.
 pub(crate) fn in_process(
     services: &Services,
     repo: &Repo,
     request: &LintRequest,
 ) -> Result<LintReport, app::Error> {
-    let tags = app::Tags::open(services, repo)?.value;
-    Ok(app::lint(services, repo, &tags, request)?.value)
+    let tags = app::Tags::open(services, repo).value?;
+    app::lint(services, repo, &tags, request).value
 }
 
 // Everything the thread owns, so that it can outlive the wait.
@@ -42,8 +42,8 @@ struct Slot {
     filled: Condvar,
 }
 
-// Waits at most `budget`. A thread that is still running at the deadline runs on until the
-// process exits; it writes no file and holds no lock that the gate needs.
+// Waits at most `budget`. A thread still running at the deadline runs on until the process
+// exits. It only reads, apart from the cache's time stamp, so the exit leaves nothing half written.
 pub(crate) fn run(lint: LintFn, job: Job, budget: Duration) -> std::io::Result<Linted> {
     let slot = Arc::new(Slot::default());
     let filled = Arc::clone(&slot);

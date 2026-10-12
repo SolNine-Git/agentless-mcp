@@ -9,14 +9,14 @@ use crate::{Git, GitOutcome, Limits, Unfinished};
 
 // `--others` lists the whole untracked tree, so this listing is as large as a repository the tool
 // does not own. The file bound accepts far less.
-const LISTING: Limits = Limits {
+pub(crate) const LISTING: Limits = Limits {
     seconds: 30,
     shown: "30",
     cap: 16_000_000,
 };
 
 // `check-ignore -q` prints nothing, so this cap bounds only a git that answers with something else.
-const IGNORE: Limits = Limits {
+pub(crate) const IGNORE: Limits = Limits {
     seconds: 30,
     shown: "30",
     cap: 65_536,
@@ -37,12 +37,13 @@ pub struct RepoFile {
     pub size: u64,
 }
 
-/// The files a walk lists, sorted by path, and what the walk passed over.
+/// The files a walk lists, or the refusal that stopped it, and what the walk passed over first.
 #[derive(Debug)]
 pub struct Walk {
-    /// Each file, sorted by path.
-    pub files: Vec<RepoFile>,
-    /// Each warning, in the order the walk raised it. It displays as a log line.
+    /// Each file, sorted by path, or why the walk refused the root.
+    pub files: Result<Vec<RepoFile>, WalkError>,
+    /// Each warning, in the order the walk raised it, those before a refusal included. It
+    /// displays as a log line.
     pub warnings: Vec<WalkWarning>,
 }
 
@@ -111,37 +112,63 @@ struct Bounds {
     bytes: u64,
 }
 
-// The names below the root, and the warnings raised while finding them.
-type Found = (Vec<String>, Vec<WalkWarning>);
+// The names one listing found below the root, and the warnings it raised.
+type Listed = (Vec<String>, Vec<WalkWarning>);
+
+// The names below the root, or why they could not be listed, and the warnings raised first.
+struct Found {
+    names: Result<Vec<String>, WalkError>,
+    warnings: Vec<WalkWarning>,
+}
 
 impl Git {
-    /// Lists each file under `root` that git does not ignore, within the walk bounds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`WalkError`] when the root is not a directory, git cannot list it, or the files
-    /// pass a bound.
-    pub fn walk(&self, root: &Path) -> Result<Walk, WalkError> {
+    /// Lists each file under `root` that git does not ignore, within the walk bounds, or refuses
+    /// the root when it is not a directory, git cannot list it, or the files pass a bound.
+    #[must_use]
+    pub fn walk(&self, root: &Path) -> Walk {
         self.walk_within(root, BOUNDS)
     }
 
-    fn walk_within(&self, root: &Path, bounds: Bounds) -> Result<Walk, WalkError> {
-        let root = resolved_directory(root)?;
-        let (names, mut warnings) = self.names(&root, bounds.files)?;
+    fn walk_within(&self, root: &Path, bounds: Bounds) -> Walk {
+        let root = match resolved_directory(root) {
+            Ok(root) => root,
+            Err(error) => return refused(error, Vec::new()),
+        };
+        let Found {
+            names,
+            mut warnings,
+        } = self.names(&root, bounds.files);
+        let names = match names {
+            Ok(names) => names,
+            Err(error) => return refused(error, warnings),
+        };
         let probe = |candidate: &Path| io::contained_file_size(candidate, &root);
-        let (files, skipped) = admit(&root, names, bounds, probe)?;
-        warnings.extend(skipped);
-        Ok(Walk { files, warnings })
+        let admitted = admit(&root, names, bounds, probe);
+        warnings.extend(admitted.warnings);
+        Walk {
+            files: admitted.files,
+            warnings,
+        }
     }
 
-    fn names(&self, root: &Path, max_files: usize) -> Result<Found, WalkError> {
+    fn names(&self, root: &Path, max_files: usize) -> Found {
         let (listed, unchecked) = self.listing_speaks_for(root);
-        let (names, warnings) = if listed {
-            self.listed(root, max_files)?
+        let found = if listed {
+            match self.listed(root, max_files) {
+                Ok((names, warnings)) => Found {
+                    names: Ok(names),
+                    warnings,
+                },
+                Err(error) => refused_names(error, Vec::new()),
+            }
         } else {
-            walked(root)?
+            walked(root)
         };
-        Ok((names, unchecked.into_iter().chain(warnings).collect()))
+        let warnings = unchecked.into_iter().chain(found.warnings).collect();
+        Found {
+            names: found.names,
+            warnings,
+        }
     }
 
     // Git's listing describes the root only when the answering repository owns it. A root that the
@@ -162,7 +189,7 @@ impl Git {
         ignore_verdict(top, root, self.run(top, "check-ignore", &rest, IGNORE))
     }
 
-    fn listed(&self, root: &Path, max_files: usize) -> Result<Found, WalkError> {
+    fn listed(&self, root: &Path, max_files: usize) -> Result<Listed, WalkError> {
         let rest = ["--cached", "--others", "--exclude-standard", "-z"].map(OsStr::new);
         listed_names(root, self.run(root, "ls-files", &rest, LISTING), max_files)
     }
@@ -260,7 +287,7 @@ fn ignore_verdict(top: &Path, root: &Path, outcome: GitOutcome) -> (bool, Option
     }
 }
 
-fn listed_names(root: &Path, outcome: GitOutcome, max_files: usize) -> Result<Found, WalkError> {
+fn listed_names(root: &Path, outcome: GitOutcome, max_files: usize) -> Result<Listed, WalkError> {
     let unlisted = |note: String| WalkError::Unlisted {
         root: root.to_path_buf(),
         note,
@@ -310,20 +337,35 @@ fn decoded_names(
     Ok((names, undecodable))
 }
 
-fn walked(root: &Path) -> Result<Found, WalkError> {
-    let walk = io::walk(root).map_err(WalkError::Refused)?;
+// The skips of a bounded walk come with either outcome, as the walk raised them.
+fn walked(root: &Path) -> Found {
+    let walk = io::walk(root);
     let mut warnings: Vec<WalkWarning> =
         walk.skipped.into_iter().map(WalkWarning::Skipped).collect();
+    let files = match walk.files {
+        Ok(files) => files,
+        Err(refusal) => return refused_names(WalkError::Refused(refusal), warnings),
+    };
     let mut names = Vec::new();
-    for file in &walk.files {
+    for file in &files {
         // A path outside the root keeps its absolute form, which the containment check refuses.
         let relative = file.strip_prefix(root).unwrap_or(file);
         names.extend(relative.to_str().map(str::to_owned));
     }
-    let count = walk.files.len() - names.len();
+    let count = files.len() - names.len();
     let root = root.to_path_buf();
     warnings.extend((count > 0).then_some(WalkWarning::NotUtf8Walked { count, root }));
-    Ok((names, warnings))
+    Found {
+        names: Ok(names),
+        warnings,
+    }
+}
+
+fn refused_names(error: WalkError, warnings: Vec<WalkWarning>) -> Found {
+    Found {
+        names: Err(error),
+        warnings,
+    }
 }
 
 // Keeps each name whose file stays inside the root and can be measured, in path order, and refuses
@@ -333,7 +375,7 @@ fn admit(
     mut names: Vec<String>,
     bounds: Bounds,
     probe: impl Fn(&Path) -> Option<std::io::Result<u64>>,
-) -> Result<(Vec<RepoFile>, Vec<WalkWarning>), WalkError> {
+) -> Walk {
     names.sort_unstable();
     names.dedup();
     let mut files = Vec::new();
@@ -349,7 +391,7 @@ fn admit(
         let depth = Path::new(&name).components().count().saturating_sub(1);
         if depth > bounds.depth {
             let (limit, root) = (bounds.depth, root.to_path_buf());
-            return Err(WalkError::TooDeep { depth, limit, root });
+            return refused(WalkError::TooDeep { depth, limit, root }, warnings);
         }
         let size = match size {
             Ok(size) => size,
@@ -364,18 +406,26 @@ fn admit(
         };
         total = total.saturating_add(size);
         if files.len() >= bounds.files {
-            return Err(too_many_files(bounds.files, root));
+            return refused(too_many_files(bounds.files, root), warnings);
         }
         if total > bounds.bytes {
             let (limit, root) = (bounds.bytes, root.to_path_buf());
-            return Err(WalkError::Refused(io::WalkRefusal::TooManyBytes {
-                limit,
-                root,
-            }));
+            let error = io::WalkRefusal::TooManyBytes { limit, root };
+            return refused(WalkError::Refused(error), warnings);
         }
         files.push(RepoFile { path: name, size });
     }
-    Ok((files, warnings))
+    Walk {
+        files: Ok(files),
+        warnings,
+    }
+}
+
+fn refused(error: WalkError, warnings: Vec<WalkWarning>) -> Walk {
+    Walk {
+        files: Err(error),
+        warnings,
+    }
 }
 
 fn too_many_files(limit: usize, root: &Path) -> WalkError {

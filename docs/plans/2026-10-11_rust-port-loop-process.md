@@ -31,9 +31,11 @@ At the end of a phase, three commits, each with the owner's go:
 2. The `/optimize` batch.
 3. The fixes from `/pr-review`.
 
+The owner can order one more commit: a pure move, which moves or renames code and changes no output. It holds the moves, the renames and the edits they force. P1 has four commits, because the owner ordered the split of `pycompat` by domain (`0c38d41`) between the initial build and the `/optimize` batch.
+
 ## Standing rules
 
-- Three commits per phase (see above). Never one per file.
+- Three commits per phase (see above), plus a pure-move commit only when the owner orders one. Never one per file.
 - `/pr-review` runs only at the end of a phase. No review panels, and no gate hardening.
 - No speed target before a measured first-pass baseline. Measure, profile, rank the gains by effort, and let the owner pick where to stop.
 - Report the agent tokens at each crate boundary. Ask the owner when a unit passes about 1.5M agent tokens without passing its checks.
@@ -72,6 +74,11 @@ At the end of a phase, three commits, each with the owner's go:
 | 2026-10-12 | Only the full-tree check finds a CI script that the phase breaks. | `gate-selftest.sh` rows 3, 6b and 8n assumed the P0 workspace; no executor owned the script | The PM's pre-commit verification runs every CI job's commands |
 | 2026-10-12 | One target directory shared by two copies of the tree gives false results. | Cargo hashes workspace path packages relative to the workspace root, so a second copy reused the first copy's artifacts (`O1`) | One target directory per tree copy |
 | 2026-10-12 | Timings in a fresh clone measure git, not the code. | `git status` took 17 to 24 ms per call until `git update-index --really-refresh`, then 1.7 ms; a subprocess timeout quantized every time to 50 ms | Refresh the index in each timing clone; no subprocess timeout in a timing driver |
+| 2026-10-12 | Green differentials do not reach failure paths. | 394 of 394 and 944 of 944 equal, while a panic on a helper thread, or a refused thread start, hung the command line (review R5-1, panel S1, shown with an LD_PRELOAD shim) | Every concurrency change gets a failure-injection test: a helper panic and a refused thread start |
+| 2026-10-12 | A parity figure measured with a stand-in says nothing about the Rust build. | Hook D2 "equal in 10" came from the Python lint loader in place of Rust; the release binary gave 13 equal | A parity figure names the binary that produced it |
+| 2026-10-12 | A fix to the Python build is work on code that P4 deletes. | The owner reversed "fix both builds" for R2-1 and P-2 | A Python-side parity defect gets the correct Rust behavior and a parity ledger row; src/agentless_mcp does not change |
+| 2026-10-12 | An executor that renames with sed skips the Edit hooks. | Unit C made 3 test-only renames with sed; clippy, fmt and pre-commit ran afterwards | Renames go through Edit; only the formatter rewrites files outside Edit |
+| 2026-10-12 | A session rate limit stops every running agent at once. | Units B, C and D stopped mid-step; each resumed through SendMessage with its context, and status.md showed the state | Resume a stopped executor with SendMessage, not a new agent; every brief keeps status.md current |
 
 ## Cost log
 
@@ -103,7 +110,7 @@ At the end of a phase, three commits, each with the owner's go:
 | `store` build | Opus | 483,793 | 35.8 min | 16 tests from the Python reader's fixtures; brought in `foldhash`, whose license exception another executor had removed |
 | `app` build | Opus | about 420,000 (753,136 with the plan) | 3 sessions | 35 tests; end-to-end differential 0 differences in 128 runs; the PM check found a fixture that held the executor's scratch path |
 | `render` build | Opus | 415,133 | 27.6 min | Both lint goldens byte-exact; started from the approved `app` API before `app` finished |
-| `hook` plan | Opus | 275,548 | 17.4 min | 35 measured config cases: modes equal in all, log warning texts equal in 10 (deviation D2) |
+| `hook` plan | Opus | 275,548 | 17.4 min | 35 measured config cases: modes equal in all, log warning texts equal in 10 with the Python lint loader as a stand-in for Rust (deviation D2); the release binary later measured 13 equal and 22 different |
 | `cli` plan | Opus | 234,725 | 12.7 min | clap matched 0 of 12 captured help texts; a hand-written argparse subset chosen for byte parity |
 | `cli` build | Opus | 618,289 in the last of 3 runs (the earlier runs are not in this figure) | 3 runs, the last 11.0 min | 30 tests in the PM run; full-binary differential 394 of 394 equal; its first `main` held the stream locks across the hook call, which hung the hook's SIGTERM path; the hook executor found it and `cli` fixed it |
 | `hook` build | Opus | 873,772 in the last of 3 runs (the earlier runs are not in this figure) | 3 runs, the last 40.6 min | 517 workspace tests in the PM run; hook differential 944 calls with 0 differences; found the stream-lock hang and the unreadable-cwd difference, both fixed without a new deviation |
@@ -112,3 +119,7 @@ At the end of a phase, three commits, each with the owner's go:
 | `pycompat` split by domain | Opus | 254,883 plan + 754,344 build | 17.3 min plan, 56.7 min build | 104 files; 516 tests (the `max_first` test left with its function); fixtures byte-equal; 18 doc lines; the `pystr` module rename followed |
 | `/optimize` reviews A, B, C | Opus | 410,113 + 363,890 + 378,018 | 24.7, 30.7 and 27.2 min, in parallel | 3 hot paths profiled; 20 distinct findings after merging duplicates, 14 applied, 6 rejected (a parity hazard, a lost self-check, 4 low gains) |
 | `/optimize` builds O1, O2, O3 | Opus | 501,097 + 369,388 + 319,364 | 74.3, 28.5 and 27.4 min, in parallel | `lint --since HEAD~1` 256 to 129 ms; hook fresh 39.6 to 28.6 ms; output equal in every A/B run |
+| `/optimize` verification | Opus | 204,898 | 28.6 min | 540 tests, every gate, 12 generators twice, cli 394 of 394 and hook 944 of 944 equal, latency |
+| P1 `/pr-review` blocks R1 to R6 | Opus | 444,973 + 448,069 + 441,805 + 475,921 + 410,440 + 387,935 | not recorded (3 at a time) | 4 MUST, 20 SHOULD, about 60 Advisory over 341 files |
+| P1 `/pr-review` panel and peer | Opus | panel not recorded; peer 511,397 | peer 29.7 min | Panel confirmed 24 of 24; the panel and the peer found a spawn-failure hang, a second home of the int rule and an unrecorded stderr warning |
+| P1 review fixes A, B, C, D | Opus | 600,560 + 783,218 + 579,747 + 438,574 (B, C, D as reported after a rate-limit stop and resume) | A 43.5 min; B, C, D in 2 runs each | 608 workspace tests (540 before); 13 generators twice; both MUST findings fixed; 2 owner rulings recorded as deviations |

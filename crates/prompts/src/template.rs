@@ -3,6 +3,48 @@
 use std::fmt::Display;
 use std::marker::PhantomData;
 
+/// A message template whose placeholders take the values that `S` names.
+pub struct Template<S> {
+    pieces: &'static [Piece],
+    signature: PhantomData<S>,
+}
+
+impl<S: Signature> Template<S> {
+    pub(crate) const fn new(pieces: &'static [Piece]) -> Self {
+        Self {
+            pieces,
+            signature: PhantomData,
+        }
+    }
+
+    /// Returns the template text with each placeholder replaced by its value.
+    #[must_use]
+    pub fn render(&self, values: S::Values<'_>) -> String {
+        fill(self.pieces, &S::texts(values))
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn pieces(&self) -> &'static [Piece] {
+        self.pieces
+    }
+}
+
+pub(crate) enum Piece {
+    Text(&'static str),
+    Value(usize),
+}
+
+pub(crate) fn fill(pieces: &[Piece], values: &[String]) -> String {
+    let mut text = String::new();
+    for piece in pieces {
+        match *piece {
+            Piece::Text(literal) => text.push_str(literal),
+            Piece::Value(position) => text.push_str(&values[position]),
+        }
+    }
+    text
+}
+
 /// The placeholder kind that takes text.
 #[derive(Clone, Copy, Debug)]
 pub struct Text;
@@ -115,46 +157,4 @@ impl<A: Kind, B: Kind, C: Kind, D: Kind, E: Kind, F: Kind> Signature for (A, B, 
             values.5.to_string(),
         ]
     }
-}
-
-pub(crate) enum Piece {
-    Text(&'static str),
-    Value(usize),
-}
-
-/// A message template whose placeholders take the values that `S` names.
-pub struct Template<S> {
-    pieces: &'static [Piece],
-    signature: PhantomData<S>,
-}
-
-impl<S: Signature> Template<S> {
-    pub(crate) const fn new(pieces: &'static [Piece]) -> Self {
-        Self {
-            pieces,
-            signature: PhantomData,
-        }
-    }
-
-    /// Returns the template text with each placeholder replaced by its value.
-    #[must_use]
-    pub fn render(&self, values: S::Values<'_>) -> String {
-        fill(self.pieces, &S::texts(values))
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn pieces(&self) -> &'static [Piece] {
-        self.pieces
-    }
-}
-
-pub(crate) fn fill(pieces: &[Piece], values: &[String]) -> String {
-    let mut text = String::new();
-    for piece in pieces {
-        match *piece {
-            Piece::Text(literal) => text.push_str(literal),
-            Piece::Value(position) => text.push_str(&values[position]),
-        }
-    }
-    text
 }

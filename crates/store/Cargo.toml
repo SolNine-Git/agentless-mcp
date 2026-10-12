@@ -15,7 +15,7 @@ workspace = true
 io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
-libc = "0.2.180"
+libc.workspace = true
 metrics = { path = "../metrics" }
 prompts = { path = "../prompts" }
 rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }

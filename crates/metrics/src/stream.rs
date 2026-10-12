@@ -6,7 +6,8 @@ use syntax::{NodeId, Parsed, Spec};
 use crate::digest::Joined;
 use crate::word::is_word;
 
-// Two control characters that no source token is written with mark an indent block's bounds.
+// Two control characters mark an indent block's bounds. A string literal that holds one raw can
+// collide with them, which at worst makes the keys of two files equal.
 const BLOCK_OPEN: &str = "\x01";
 const BLOCK_CLOSE: &str = "\x02";
 
@@ -127,12 +128,13 @@ fn is_directive(body: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use text::testing::document;
+
     use super::directive_text;
-    use crate::tests::cases;
 
     #[test]
     fn directive_text_cases() {
-        let found: Vec<(String, String)> = cases("directives");
+        let found: Vec<(String, String)> = document(env!("CARGO_MANIFEST_DIR"), "directives");
         assert!(!found.is_empty());
         for (comment, expected) in found {
             let text = directive_text(&comment).unwrap_or_default();

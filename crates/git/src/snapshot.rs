@@ -1,13 +1,14 @@
 //! The repository state a receipt reports: HEAD, the tree, the dirty count, and whose state it is.
 
 use std::ffi::OsStr;
-use std::panic;
 use std::path::{Path, PathBuf};
-use std::thread::{self, ScopedJoinHandle};
+use std::thread;
 
 use crate::{Git, GitOutcome, Limits};
 
-const RECEIPT: Limits = Limits {
+// Every call reads the receipt, so it must not hang: 5 s is far above a healthy git status, and
+// the cap bounds only a pathological answer.
+pub(crate) const RECEIPT: Limits = Limits {
     seconds: 5,
     shown: "5.0",
     cap: 8_000_000,
@@ -58,11 +59,13 @@ impl Git {
 
     // The three calls only read the repository, so they run at the same time.
     fn state(&self, root: &Path) -> [Read; 3] {
+        let head = || self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD"]);
+        let tree = || self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD^{tree}"]);
         thread::scope(|scope| {
-            let head = scope.spawn(|| self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD"]));
-            let tree = scope.spawn(|| self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD^{tree}"]));
+            let head = io::spawn_or_run(scope, &head);
+            let tree = io::spawn_or_run(scope, &tree);
             let status = self.receipt(root, "status", &["--porcelain"]);
-            [joined(head), joined(tree), status]
+            [head.joined(), tree.joined(), status]
         })
     }
 
@@ -112,7 +115,7 @@ impl Snapshot {
 fn receipt(subcommand: &str, outcome: GitOutcome) -> Read {
     match outcome {
         GitOutcome::Printed(stdout) => {
-            Ok(String::from_utf8_lossy(strip_bytes(&stdout)).into_owned())
+            Ok(String::from_utf8_lossy(text::strip_bytes(&stdout)).into_owned())
         }
         GitOutcome::Capped(_) => Err(format!(
             "git {subcommand} printed more than {} bytes",
@@ -123,33 +126,12 @@ fn receipt(subcommand: &str, outcome: GitOutcome) -> Read {
     }
 }
 
-// A panic in the thread reaches the caller with its own payload.
-fn joined<T>(handle: ScopedJoinHandle<'_, T>) -> T {
-    handle
-        .join()
-        .unwrap_or_else(|payload| panic::resume_unwind(payload))
-}
-
 fn dirty_count(text: &str) -> usize {
     let lines = text::splitlines(text, false);
     lines
         .iter()
         .filter(|line| !text::strip(line).is_empty())
         .count()
-}
-
-// The ASCII whitespace of a byte string, vertical tab included.
-fn strip_bytes(bytes: &[u8]) -> &[u8] {
-    let space = |byte: &u8| matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'\x0b' | b'\x0c');
-    let start = bytes
-        .iter()
-        .position(|byte| !space(byte))
-        .unwrap_or(bytes.len());
-    let end = bytes
-        .iter()
-        .rposition(|byte| !space(byte))
-        .map_or(start, |last| last + 1);
-    &bytes[start..end]
 }
 
 fn parent(path: &Path) -> &Path {

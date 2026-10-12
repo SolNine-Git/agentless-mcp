@@ -1,8 +1,12 @@
+use std::collections::BTreeSet;
 use std::iter;
 
-use syntax::{Language, Query};
+use serde_json::Value;
+use syntax::{Language, NodeId, Parsed, Query};
 
-use super::{HIT_CAPTURE, compile, rules_for};
+use super::{HIT_CAPTURE, compile, hit_nodes, rules_for};
+use crate::pair_language;
+use crate::tests::Fixture;
 
 // An unknown predicate compiles and is then ignored, so a typo would widen a rule.
 const PREDICATES: [&str; 6] = [
@@ -58,6 +62,73 @@ fn each_language_query_maps_every_pattern_to_its_rule() {
         compiled += found.rules.len();
     }
     assert_eq!(compiled, prompts::contract_rules().len());
+}
+
+// The one guard of the combined query: each rule, run alone, finds the hit spans that the combined
+// query gives that rule, on every seeded text.
+#[test]
+fn each_rule_alone_finds_the_hits_that_the_combined_query_gives_it() {
+    let mut compared = 0;
+    for (language, text) in seeded_sources() {
+        let Ok(parsed) = syntax::parse(language, text.as_str().into()) else {
+            continue;
+        };
+        let compiled = compile(language);
+        let combined: Vec<Vec<Span>> = hit_nodes(&parsed, &compiled)
+            .iter()
+            .map(|nodes| nodes.iter().map(|node| span(&parsed, *node)).collect())
+            .collect();
+        let alone: Vec<Vec<Span>> = compiled
+            .rules
+            .iter()
+            .map(|rule| alone_spans(&parsed, rule.query))
+            .collect();
+        assert_eq!(combined, alone, "{language:?}:\n{text}");
+        compared += usize::from(!compiled.rules.is_empty());
+    }
+    assert!(compared > 100, "only {compared} texts have rules");
+}
+
+type Span = (u32, u32);
+
+fn seeded_sources() -> BTreeSet<(Language, String)> {
+    let seeded = Fixture::load("seeded");
+    let rows: Vec<&Value> = seeded
+        .cases()
+        .iter()
+        .flat_map(|case| case["pairs"].as_array().into_iter().flatten())
+        .collect();
+    rows.iter()
+        .filter_map(|row| Some((pair_language(row["path"].as_str()?)?, *row)))
+        .flat_map(|(language, row)| {
+            let texts = [seeded.text(&row["old"]), seeded.text(&row["new"])];
+            texts
+                .into_iter()
+                .flatten()
+                .map(move |text| (language, text))
+        })
+        .collect()
+}
+
+fn span(parsed: &Parsed, node: NodeId) -> Span {
+    (parsed.start_byte(node), parsed.end_byte(node))
+}
+
+fn alone_spans(parsed: &Parsed, query: &str) -> Vec<Span> {
+    let query = Query::new(parsed.language(), query).expect("the rule compiles");
+    let hit = query
+        .capture_names()
+        .iter()
+        .position(|name| *name == HIT_CAPTURE);
+    let spans: BTreeSet<Span> = parsed
+        .matches(&query)
+        .expect("the rule runs on a tree of its language")
+        .iter()
+        .flat_map(|found| found.captures.iter())
+        .filter(|capture| hit == Some(capture.index as usize))
+        .map(|capture| span(parsed, capture.node))
+        .collect();
+    spans.into_iter().collect()
 }
 
 #[test]

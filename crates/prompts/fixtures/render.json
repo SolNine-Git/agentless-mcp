@@ -699,9 +699,9 @@
     },
     "map_limit_out_of_range": {
       "arguments": {
-        "limit": "500",
-        "maximum": "200",
-        "minimum": "1"
+        "limit": 500,
+        "maximum": 200,
+        "minimum": 1
       },
       "text": "orient operation 'map' rejects limit=500: the map's file cap runs 1-200, which is the same bound repo_map publishes as max_files. The wider ceiling on this parameter belongs to the communities and cycles listings that share it. Retry with a limit in range."
     },

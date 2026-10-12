@@ -2,31 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use serde::Deserialize;
+use text::testing::document;
 
-use crate::table_tests::fixture;
 use crate::{Language, Parsed, Query, QueryRunError, parse};
-
-// The query texts of scripts/syntax_fixtures.py, in its order.
-const QUERIES: [(&str, &[&str]); 3] = [
-    (
-        "python",
-        &[
-            "(block (string) @statement_string) (module (string) @statement_string)",
-            "(call function: (identifier) @_f (#any-of? @_f \"len\" \"print\" \"range\" \"sum\")) @hit",
-            "(return_statement (identifier) @_x (#eq? @_x \"total\")) @hit (identifier) @name",
-        ],
-    ),
-    (
-        "javascript",
-        &[
-            "(call_expression function: (member_expression property: (property_identifier) @p)) @hit",
-        ],
-    ),
-    (
-        "rust",
-        &["(function_item name: (identifier) @name) @function"],
-    ),
-];
 
 #[derive(Deserialize)]
 struct Source {
@@ -39,11 +17,18 @@ struct Source {
 struct QueryCase {
     name: String,
     language: String,
-    runs: Vec<Run>,
+    runs: Vec<RecordedRun>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RecordedRun {
+    query: String,
+    matches: Vec<(u32, Vec<(u32, u32)>)>,
+    captures: BTreeMap<String, Vec<u32>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct Run {
     matches: Vec<(u32, Vec<(u32, u32)>)>,
     captures: BTreeMap<String, Vec<u32>>,
@@ -90,32 +75,34 @@ fn sorted(mut run: Run) -> Run {
 }
 
 #[test]
-fn every_query_run_equals_the_python_run() {
-    let sources: BTreeMap<String, String> = fixture::<Vec<Source>>("parse.json")
-        .into_iter()
-        .map(|source| (source.name, source.source))
-        .collect();
-    let cases: Vec<QueryCase> = fixture("queries.json");
+fn every_query_run_equals_the_reference_run() {
+    let sources: BTreeMap<String, String> =
+        document::<Vec<Source>>(env!("CARGO_MANIFEST_DIR"), "parse")
+            .into_iter()
+            .map(|source| (source.name, source.source))
+            .collect();
+    let cases: Vec<QueryCase> = document(env!("CARGO_MANIFEST_DIR"), "queries");
     assert!(cases.len() > 90, "the fixture holds {} cases", cases.len());
     for case in cases {
         let language = Language::from_name(&case.language).expect("a known language");
-        let (_, texts) = QUERIES
-            .iter()
-            .find(|(name, _)| *name == case.language)
-            .expect("the language has queries");
         let parsed = parse(language, Arc::from(sources[&case.name].as_str())).expect("it parses");
-        assert_eq!(case.runs.len(), texts.len(), "{}", case.name);
-        for (text, expected) in texts.iter().zip(case.runs) {
-            let query = Query::new(language, text).expect("the query compiles");
+        assert!(!case.runs.is_empty(), "{}", case.name);
+        for recorded in case.runs {
+            let query = Query::new(language, &recorded.query).expect("the query compiles");
             let found = sorted(run(&parsed, &query));
-            assert_eq!(found, sorted(expected), "{}: {text}", case.name);
+            let expected = Run {
+                matches: recorded.matches,
+                captures: recorded.captures,
+            };
+            assert_eq!(found, sorted(expected), "{}: {}", case.name, recorded.query);
         }
     }
 }
 
 #[test]
 fn a_query_reports_its_names_and_patterns() {
-    let query = Query::new(Language::Python, QUERIES[0].1[2]).expect("the query compiles");
+    let text = "(return_statement (identifier) @_x (#eq? @_x \"total\")) @hit (identifier) @name";
+    let query = Query::new(Language::Python, text).expect("the query compiles");
     assert_eq!(query.capture_names(), ["_x", "hit", "name"]);
     assert_eq!(query.pattern_count(), 2);
     assert_eq!(query.language(), Language::Python);

@@ -8,11 +8,12 @@ With --check, the script compares its output with the committed files and writes
 tests/unit/test_rust_language_tables.py runs the same comparison under pytest.
 """
 
-import argparse
 import json
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+
+from fixture_files import write_or_check_files
 
 from agentless_mcp.core import clones, complexity, grammars, normalize
 from agentless_mcp.core.extractor import (
@@ -53,41 +54,17 @@ SLOC_RULES: Mapping[Callable[..., object], str] = {
 SKIP_RULES: Mapping[Callable[..., object], str] = {clones._is_type_checking_block: "type_checking"}
 
 
-def main(argv: list[str] | None = None) -> int:
+def main() -> int:
     """Write the language files, or compare them with --check, and return the exit status."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--check", action="store_true", help="compare with the committed files, write nothing"
-    )
-    args = parser.parse_args(argv)
-    files = rendered()
-    if args.check:
-        stale = stale_files(files)
-        for name in stale:
-            print(f"stale: {LANGUAGES / name}", file=sys.stderr)
-        return 1 if stale else 0
-    LANGUAGES.mkdir(parents=True, exist_ok=True)
-    for name, text in files.items():
-        (LANGUAGES / name).write_text(text, encoding="utf-8")
-    print(f"wrote {len(files)} files in {LANGUAGES}")
-    return 0
+    return write_or_check_files(__doc__.splitlines()[0], LANGUAGES, contents)
 
 
-def rendered() -> dict[str, str]:
-    """Return each language file's name and text."""
-    return {f"{language}.toml": render(language) for language in grammars.ALL_LANGUAGES}
-
-
-def stale_files(files: Mapping[str, str]) -> list[str]:
-    """Return the names of the files that differ from the committed ones, extra files included."""
-    present = {path.name for path in LANGUAGES.glob("*.toml")}
-    changed = [
-        name
-        for name, text in files.items()
-        if not (LANGUAGES / name).is_file()
-        or (LANGUAGES / name).read_text(encoding="utf-8") != text
-    ]
-    return sorted({*changed, *(present - set(files))})
+def contents() -> dict[Path, bytes]:
+    """Return the bytes of each language file, by path."""
+    return {
+        LANGUAGES / f"{language}.toml": render(language).encode("utf-8")
+        for language in grammars.ALL_LANGUAGES
+    }
 
 
 def render(language: str) -> str:

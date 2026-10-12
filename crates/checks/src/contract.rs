@@ -23,8 +23,8 @@ type HitKey<'a> = (&'static str, &'a str, &'a str, String);
 ///
 /// # Errors
 ///
-/// Returns an error when two admitted pairs name one path, when a side fails in a way that is
-/// not a parse or tokenizer failure, or when the contract rule query fails on a tree.
+/// Returns an error when two admitted pairs name one path, or when a side fails in a way that is
+/// not a parse or tokenizer failure.
 pub fn contract_drift(pairs: &[&Pair], globs: &[String]) -> Result<Outcome, Error> {
     if globs.is_empty() {
         return Ok(Outcome {
@@ -38,7 +38,7 @@ pub fn contract_drift(pairs: &[&Pair], globs: &[String]) -> Result<Outcome, Erro
     })?;
     findings.extend(gaps);
     let matches = match_run(&file_units(&measured));
-    let (found, keys) = new_hits(&measured, &matches)?;
+    let (found, keys) = new_hits(&measured, &matches);
     findings.extend(found);
     let observed = if measured.is_empty() {
         Observed::default()
@@ -97,10 +97,7 @@ fn no_rules_row(path: &str, language: Language) -> PairFinding {
 
 // A new unit that the matching paired keeps its old identity, so a rename or a move to
 // another file of the run moves no hit.
-fn new_hits(
-    measured: &[Sides<'_>],
-    matches: &[Paired<'_>],
-) -> Result<(Vec<PairFinding>, Vec<HitState>), Error> {
+fn new_hits(measured: &[Sides<'_>], matches: &[Paired<'_>]) -> (Vec<PairFinding>, Vec<HitState>) {
     let rules = compiled(measured);
     let identity: HashMap<(usize, u32), UnitRef<'_>> = matches
         .iter()
@@ -109,7 +106,7 @@ fn new_hits(
             ((new.file, new.unit.start_byte), paired.old.unwrap_or(new))
         })
         .collect();
-    let mut carried = carried(measured, &rules)?;
+    let mut carried = carried(measured, &rules);
     let mut fresh = Vec::new();
     let mut states = Vec::new();
     for (file, sides) in measured.iter().enumerate() {
@@ -118,7 +115,7 @@ fn new_hits(
         };
         let path = sides.pair.path();
         let new_units = &new.units;
-        for hit in side_hits(sides, new, &rules)? {
+        for hit in side_hits(new, &rules) {
             let own = hit.unit.map(|index| &new_units[index]);
             let owner = own.map(|unit| identity[&(file, unit.start_byte)]);
             let rule = hit.rule.id;
@@ -138,7 +135,7 @@ fn new_hits(
         }
     }
     states.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok((fresh, states))
+    (fresh, states)
 }
 
 fn compiled(measured: &[Sides<'_>]) -> HashMap<Language, CompiledRules> {
@@ -151,21 +148,18 @@ fn compiled(measured: &[Sides<'_>]) -> HashMap<Language, CompiledRules> {
     rules
 }
 
-fn side_hits<'r>(
-    sides: &Sides<'_>,
-    side: &Measured,
-    rules: &'r HashMap<Language, CompiledRules>,
-) -> Result<Vec<Hit<'r>>, Error> {
-    let Some(compiled) = rules.get(&sides.language) else {
-        return Ok(Vec::new());
-    };
-    hits(side.parsed(), sides.pair.path(), &side.units, compiled)
+// The rules come from the tree's own language, so the query never meets a tree of another one.
+fn side_hits<'r>(side: &Measured, rules: &'r HashMap<Language, CompiledRules>) -> Vec<Hit<'r>> {
+    let parsed = side.parsed();
+    rules
+        .get(&parsed.language())
+        .map_or_else(Vec::new, |compiled| hits(parsed, &side.units, compiled))
 }
 
 fn carried<'a>(
     measured: &[Sides<'a>],
     rules: &HashMap<Language, CompiledRules>,
-) -> Result<HashMap<HitKey<'a>, usize>, Error> {
+) -> HashMap<HitKey<'a>, usize> {
     let mut carried = HashMap::new();
     for sides in measured {
         let Some(old) = sides.old else {
@@ -173,14 +167,14 @@ fn carried<'a>(
         };
         let path = sides.pair.path();
         let old_units = &old.units;
-        for hit in side_hits(sides, old, rules)? {
+        for hit in side_hits(old, rules) {
             let owner = hit
                 .unit
                 .map(|index| (path, old_units[index].qualname.as_str()));
             *carried.entry(hit_key(&hit, owner, path)).or_insert(0) += 1;
         }
     }
-    Ok(carried)
+    carried
 }
 
 fn hit_key<'a>(hit: &Hit<'_>, owner: Option<(&'a str, &'a str)>, path: &'a str) -> HitKey<'a> {

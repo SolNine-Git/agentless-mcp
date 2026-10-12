@@ -11,7 +11,9 @@ use crate::Output;
 use crate::record::{self, Outcome, Record};
 use crate::verdict::Decision;
 
+// Under Claude Code's 15 s hook timeout, so the call settles and logs before the SIGTERM.
 const DEADLINE: Duration = Duration::from_secs(10);
+// Held back from the time of every step, so the log record is still written.
 const LOG_RESERVE: Duration = Duration::from_millis(500);
 const TERMINATED: &str = "terminated";
 
@@ -66,7 +68,7 @@ impl Call {
         }
     }
 
-    // The two fields the internal-error line names, as CPython's %s shows them.
+    // The two fields the internal-error line names, with "None" for one not set yet.
     pub(crate) fn whose(&self) -> (String, String) {
         let none = || "None".to_owned();
         match &*self.lock() {

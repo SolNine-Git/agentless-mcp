@@ -233,17 +233,28 @@ fn syntax_lints(lints: &Table) -> Table {
 }
 
 /// Return the lints that the syntax package raises above the workspace levels, as rustc names them.
+///
+/// # Panics
+/// Panics when `SYNTAX_ADDS` names a lint table that `lint_prefix` does not know.
 pub fn syntax_raised() -> Vec<String> {
     SYNTAX_ADDS
         .iter()
         .map(|(group, lint)| {
-            if *group == "clippy" {
-                format!("clippy::{lint}")
-            } else {
-                (*lint).to_owned()
-            }
+            let prefix = lint_prefix(group)
+                .unwrap_or_else(|| panic!("SYNTAX_ADDS names the unknown lint table {group}"));
+            format!("{prefix}{lint}")
         })
         .collect()
+}
+
+/// Return what rustc puts before the name of a lint from the `[lints.<table>]` table, or `None`
+/// for a table that no gate reads.
+pub fn lint_prefix(table: &str) -> Option<&'static str> {
+    match table {
+        "rust" => Some(""),
+        "clippy" => Some("clippy::"),
+        _ => None,
+    }
 }
 
 fn unsafe_problems(files: &[Source]) -> Vec<String> {
@@ -282,8 +293,8 @@ mod tests {
     use toml::Table;
 
     use super::{
-        Inherited, build_script_problem, inherited, manifest_problems, override_problems,
-        syntax_lints, target_problems, unsafe_problems,
+        Inherited, build_script_problem, inherited, lint_prefix, manifest_problems,
+        override_problems, syntax_lints, syntax_raised, target_problems, unsafe_problems,
     };
     use crate::Failure;
     use crate::sources::Source;
@@ -518,6 +529,20 @@ mod tests {
             unsafe_problems(&files),
             [
                 "crates/syntax/src/ffi.rs:2: macro_rules! is refused here: a macro would carry unsafe out of the file. Write each unsafe item out in full"
+            ]
+        );
+    }
+
+    #[test]
+    fn only_the_rust_and_clippy_tables_have_a_lint_prefix() {
+        assert_eq!(lint_prefix("rust"), Some(""));
+        assert_eq!(lint_prefix("clippy"), Some("clippy::"));
+        assert_eq!(lint_prefix("rustdoc"), None);
+        assert_eq!(
+            syntax_raised(),
+            [
+                "unsafe_op_in_unsafe_fn",
+                "clippy::undocumented_unsafe_blocks"
             ]
         );
     }

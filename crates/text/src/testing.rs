@@ -1,29 +1,44 @@
-//! The fixture section reader and the fixture decoders for the tests of every crate. They live in
-//! text because it is the lowest crate with fixtures, so each crate above can depend on it.
+//! The fixture readers and the fixture decoders for the tests of every crate. They live in text
+//! because it is the lowest crate with fixtures, so each crate above can depend on it.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
+
+/// Returns the whole fixture file `<manifest_dir>/fixtures/<file>.json` as a `T`.
+///
+/// # Panics
+///
+/// Panics when the file cannot be read or parsed, or its document is no `T`.
+#[must_use]
+pub fn document<T: DeserializeOwned>(manifest_dir: &str, file: &str) -> T {
+    let path = fixture_path(manifest_dir, file);
+    let shown = path.display();
+    let text = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"))
+}
 
 /// Returns the section `section` of the fixture file `<manifest_dir>/fixtures/<file>.json`.
 ///
 /// # Panics
 ///
-/// Panics when the file cannot be read or parsed, has no such section, or the section is no `T`.
+/// Panics as [`document`] does, and when the file has no such section or the section is no `T`.
 #[must_use]
 pub fn cases<T: DeserializeOwned>(manifest_dir: &str, file: &str, section: &str) -> T {
-    let path = Path::new(manifest_dir)
-        .join("fixtures")
-        .join(format!("{file}.json"));
+    let mut sections: serde_json::Map<String, serde_json::Value> = document(manifest_dir, file);
+    let path = fixture_path(manifest_dir, file);
     let shown = path.display();
-    let text = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let mut sections: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
     let value = sections
         .remove(section)
         .unwrap_or_else(|| panic!("{shown}: no section {section}"));
     serde_json::from_value(value).unwrap_or_else(|error| panic!("{shown}: {section}: {error}"))
+}
+
+fn fixture_path(manifest_dir: &str, file: &str) -> PathBuf {
+    Path::new(manifest_dir)
+        .join("fixtures")
+        .join(format!("{file}.json"))
 }
 
 /// Returns the bits of a float that a fixture stores as "0x" and 16 hex digits.
@@ -92,5 +107,24 @@ pub fn check_runs(manifest_dir: &str, file: &str, section: &str, inside: impl Fn
             expected,
             "{section}: mismatch for U+{code:04X}"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_document_holds_each_section_that_cases_reads() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let whole: serde_json::Map<String, serde_json::Value> = document(manifest_dir, "text");
+        let section: serde_json::Value = cases(manifest_dir, "text", "strip");
+        assert_eq!(whole.get("strip"), Some(&section));
+    }
+
+    #[test]
+    #[should_panic(expected = "no section absent")]
+    fn a_missing_section_names_itself() {
+        let _: serde_json::Value = cases(env!("CARGO_MANIFEST_DIR"), "text", "absent");
     }
 }

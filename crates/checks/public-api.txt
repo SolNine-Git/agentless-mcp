@@ -66,11 +66,6 @@ impl core::panic::unwind_safe::UnwindSafe for checks::Detail
 pub enum checks::Error
 pub checks::Error::NotIndexable
 pub checks::Error::NotIndexable::path: alloc::string::String
-pub checks::Error::Query
-pub checks::Error::Query::id: &'static str
-pub checks::Error::Query::language: &'static str
-pub checks::Error::Query::path: alloc::string::String
-pub checks::Error::Query::source: syntax::query::QueryRunError
 pub checks::Error::RepeatedPath
 pub checks::Error::RepeatedPath::path: alloc::string::String
 pub checks::Error::Side

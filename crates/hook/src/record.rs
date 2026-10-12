@@ -152,7 +152,7 @@ impl Record {
     }
 }
 
-// Whole seconds stay whole; any other time divides the nanosecond count, as CPython's time.time().
+// Whole seconds stay whole. Any other time divides the nanosecond count by 1e9.
 pub(crate) fn seconds(wall: SystemTime) -> f64 {
     let nanos = wall
         .duration_since(UNIX_EPOCH)

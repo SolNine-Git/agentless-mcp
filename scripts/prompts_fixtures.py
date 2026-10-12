@@ -6,13 +6,16 @@ Development-time only. Run it from the repository root:
 
 render.json holds, for each template, the arguments that tests/unit/test_prompts.py gives it and
 the text that Python's str.format makes from them. contract_rules.json holds the contract rule
-records in their load order.
+records in their load order. With --check, the script compares its output with the committed
+fixtures and writes nothing.
 """
 
 import ast
 import dataclasses
 import json
 from pathlib import Path
+
+from fixture_files import write_or_check_files
 
 from agentless_mcp.prompts import CONTRACT_RULES, ENVELOPE, MESSAGES
 
@@ -56,18 +59,25 @@ def render_cases(tables: dict[str, Arguments]) -> dict[str, dict[str, object]]:
     return cases
 
 
-def write(name: str, data: object) -> None:
-    """Write one fixture file as sorted, indented JSON with a final newline."""
-    text = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    (FIXTURES / name).write_text(text, encoding="utf-8")
+def dumped(data: object) -> bytes:
+    """Return ``data`` as sorted, indented JSON with a final newline."""
+    return (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def main() -> None:
-    """Write render.json and contract_rules.json."""
-    FIXTURES.mkdir(parents=True, exist_ok=True)
-    write("render.json", render_cases(argument_tables()))
-    write("contract_rules.json", [dataclasses.asdict(rule) for rule in CONTRACT_RULES])
+def contents() -> dict[Path, bytes]:
+    """Return the bytes of render.json and contract_rules.json, by path."""
+    return {
+        FIXTURES / "render.json": dumped(render_cases(argument_tables())),
+        FIXTURES / "contract_rules.json": dumped(
+            [dataclasses.asdict(rule) for rule in CONTRACT_RULES]
+        ),
+    }
+
+
+def main() -> int:
+    """Write the fixtures, or compare them with --check, and return the exit status."""
+    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, contents)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

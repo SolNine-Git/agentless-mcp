@@ -31,6 +31,8 @@ impl core::cmp::PartialEq for io::ConfigWarning
 pub fn io::ConfigWarning::eq(&self, &Self) -> bool
 impl core::fmt::Debug for io::ConfigWarning
 pub fn io::ConfigWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for io::ConfigWarning
+pub fn io::ConfigWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for io::ConfigWarning
 impl core::marker::Freeze for io::ConfigWarning
 impl core::marker::Send for io::ConfigWarning
@@ -104,6 +106,8 @@ impl core::cmp::PartialEq for io::GateWarning
 pub fn io::GateWarning::eq(&self, &Self) -> bool
 impl core::fmt::Debug for io::GateWarning
 pub fn io::GateWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for io::GateWarning
+pub fn io::GateWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for io::GateWarning
 impl core::marker::StructuralPartialEq for io::GateWarning
 impl core::marker::Freeze for io::GateWarning
@@ -154,6 +158,8 @@ impl core::cmp::Eq for io::GlobsWarning
 impl core::cmp::PartialEq for io::GlobsWarning
 pub fn io::GlobsWarning::eq(&self, &Self) -> bool
 impl core::fmt::Debug for io::GlobsWarning
+pub fn io::GlobsWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for io::GlobsWarning
 pub fn io::GlobsWarning::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for io::GlobsWarning
 impl core::marker::StructuralPartialEq for io::GlobsWarning
@@ -371,7 +377,6 @@ pub enum io::ValueWarning
 pub io::ValueWarning::NotBoolean
 pub io::ValueWarning::NotBoolean::key: &'static str
 pub io::ValueWarning::NotChoice
-pub io::ValueWarning::NotChoice::choices: &'static str
 pub io::ValueWarning::NotChoice::key: &'static str
 pub io::ValueWarning::NotInteger
 pub io::ValueWarning::NotInteger::key: &'static str
@@ -592,8 +597,20 @@ impl core::marker::Unpin for io::Spec
 impl core::marker::UnsafeUnpin for io::Spec
 impl core::panic::unwind_safe::RefUnwindSafe for io::Spec
 impl core::panic::unwind_safe::UnwindSafe for io::Spec
+pub struct io::Started<'scope, T>(_)
+impl<T> io::Started<'_, T>
+pub fn io::Started<'_, T>::joined(self) -> T
+impl<'scope, T: core::fmt::Debug> core::fmt::Debug for io::Started<'scope, T>
+pub fn io::Started<'scope, T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'scope, T> core::marker::Freeze for io::Started<'scope, T> where State<'scope, T>: core::marker::Freeze
+impl<'scope, T> core::marker::Send for io::Started<'scope, T> where State<'scope, T>: core::marker::Send
+impl<'scope, T> core::marker::Sync for io::Started<'scope, T> where State<'scope, T>: core::marker::Sync
+impl<'scope, T> core::marker::Unpin for io::Started<'scope, T> where State<'scope, T>: core::marker::Unpin
+impl<'scope, T> core::marker::UnsafeUnpin for io::Started<'scope, T> where State<'scope, T>: core::marker::UnsafeUnpin
+impl<'scope, T> !core::panic::unwind_safe::RefUnwindSafe for io::Started<'scope, T>
+impl<'scope, T> !core::panic::unwind_safe::UnwindSafe for io::Started<'scope, T>
 pub struct io::Walk
-pub io::Walk::files: alloc::vec::Vec<std::path::PathBuf>
+pub io::Walk::files: core::result::Result<alloc::vec::Vec<std::path::PathBuf>, io::WalkRefusal>
 pub io::Walk::skipped: alloc::vec::Vec<io::WalkSkip>
 impl core::fmt::Debug for io::Walk
 pub fn io::Walk::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -620,12 +637,14 @@ pub fn io::file_size(&std::path::Path) -> core::io::error::Result<u64>
 pub fn io::file_stays_inside(&std::path::Path, &std::path::Path) -> bool
 pub fn io::load_config(&std::path::Path) -> io::ProjectConfig
 pub fn io::os_error_class_text(&core::io::error::Error) -> alloc::string::String
+pub fn io::os_error_line(&core::io::error::Error) -> alloc::string::String
 pub fn io::parse_config(&[(text::code_point_string::CodePointString, json::parse::JsonValue)], core::option::Option<std::path::PathBuf>) -> io::ProjectConfig
 pub fn io::read_bounded(&std::path::Path) -> core::result::Result<alloc::vec::Vec<u8>, io::Skipped>
 pub fn io::remove_file(&std::path::Path) -> core::io::error::Result<bool>
 pub fn io::resolve(&std::path::Path) -> core::io::error::Result<std::path::PathBuf>
 pub fn io::run(&io::Spec) -> io::Outcome
+pub fn io::spawn_or_run<'scope, T, F>(&'scope std::thread::scoped::Scope<'scope, '_>, &'scope F) -> io::Started<'scope, T> where F: core::ops::function::Fn() -> T + core::marker::Sync, T: core::marker::Send + 'scope
 pub fn io::strerror(&core::io::error::Error) -> alloc::string::String
 pub fn io::touch(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::try_lock(&std::path::Path) -> core::result::Result<io::LockGuard, io::LockError>
-pub fn io::walk(&std::path::Path) -> core::result::Result<io::Walk, io::WalkRefusal>
+pub fn io::walk(&std::path::Path) -> io::Walk

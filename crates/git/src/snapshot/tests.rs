@@ -8,7 +8,7 @@ use crate::{Git, GitOutcome, Unfinished};
 
 const SAMPLE: [(&str, &str); 2] = [("a.py", "x = 1\n"), ("sub/b.py", "y = 2\n")];
 
-// One generated case: the input, whether git was cut off, then the text, note, and dirty count.
+// One reference case: the input, whether git was cut off, then the text, note, and dirty count.
 type ReceiptCase = (String, bool, Option<String>, String, Option<usize>);
 
 fn snapshot_of(git: &Git, root: &Path) -> Snapshot {
@@ -16,7 +16,7 @@ fn snapshot_of(git: &Git, root: &Path) -> Snapshot {
 }
 
 #[test]
-fn the_receipt_text_and_dirty_count_match_the_generated_cases() {
+fn the_receipt_text_and_dirty_count_match_the_reference_cases() {
     let cases: Vec<ReceiptCase> = cases("receipt", "receipt");
     assert!(!cases.is_empty());
     for (raw, truncated, text, note, dirty) in cases {
@@ -162,6 +162,21 @@ fn a_process_that_cannot_be_spawned_degrades_with_its_reason() {
     );
     let note = "git rev-parse could not be run: Too many open files";
     assert_eq!(snapshot.note, [note, note, note].join("; "));
+}
+
+#[test]
+fn the_note_joins_the_borrowed_note_then_head_tree_and_status() {
+    let failed = |note: &str| Err(note.to_owned());
+    let snapshot = Snapshot::read(
+        Path::new("/r/sub"),
+        Some(Path::new("/r")),
+        failed("head"),
+        failed("tree"),
+        failed("status"),
+    );
+
+    let borrowed = "/r/sub is not the top of its git repository: HEAD and dirty count describe /r";
+    assert_eq!(snapshot.note, format!("{borrowed}; head; tree; status"));
 }
 
 #[test]

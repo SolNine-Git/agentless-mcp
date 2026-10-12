@@ -1,6 +1,6 @@
 [package]
 name = "text"
-description = "Text rules that the tokenizer, the checks and the renderers share: line breaks, whitespace, the printable rule, and text that can hold a lone surrogate."
+description = "Text rules that the tokenizer, the checks and the renderers share: line breaks, whitespace, the printable rule, decimal integer text, and text that can hold a lone surrogate."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

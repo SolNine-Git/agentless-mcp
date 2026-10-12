@@ -18,7 +18,11 @@ use crate::warning::{
 pub(crate) const MAX_STOPLIST_ENTRIES: usize = 200;
 pub(crate) const MAX_STOPLIST_ENTRY_CHARS: usize = 64;
 pub(crate) const MAX_TEST_CMD_CHARS: usize = 512;
+// Enough to name each key that a hand-written file gets wrong. More would fill the reply with
+// repository text.
 const MAX_UNKNOWN_KEY_WARNINGS: usize = 8;
+// Separators, quotes and shell characters. An entry matches identifier text, so an entry with one
+// never matches.
 const FORBIDDEN_NAME_CHARS: &str = "/\\:;'\"`$*?<>|\0";
 
 struct IntKey {
@@ -27,6 +31,7 @@ struct IntKey {
     high: u32,
 }
 
+// Each range holds the values that answer the key's question. It is not a limit of the code.
 const MAP_BUDGET: IntKey = IntKey {
     name: "map_budget",
     low: 200,
@@ -118,11 +123,7 @@ fn granularity(document: &Document, warnings: &mut Vec<ConfigWarning>) -> Option
         .find(|choice| text == Some(choice.name()));
     if found.is_none() {
         let key = "granularity";
-        let choices = "function, file";
-        warnings.push(ConfigWarning::Value(ValueWarning::NotChoice {
-            key,
-            choices,
-        }));
+        warnings.push(ConfigWarning::Value(ValueWarning::NotChoice { key }));
     }
     found
 }

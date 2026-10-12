@@ -30,11 +30,11 @@ const REPORTED: LintFn = |_, _, _| {
     })
 };
 
-const SLOW: LintFn = |_, _, _| {
-    thread::sleep(Duration::from_millis(300));
-    Ok(LintReport {
-        candidates: Vec::new(),
-    })
+// A lint that never returns: its thread parks until the test process exits.
+const STUCK: LintFn = |_, _, _| {
+    loop {
+        thread::park();
+    }
 };
 
 const FAILING: LintFn =
@@ -53,10 +53,10 @@ fn a_report_in_time_comes_back() {
 fn a_lint_that_outlives_the_budget_times_out_without_a_wait_for_it() {
     let sandbox = Sandbox::new();
     let started = Instant::now();
-    let linted = run(SLOW, job(&sandbox), Duration::from_millis(50)).expect("the thread starts");
+    let linted = run(STUCK, job(&sandbox), Duration::from_millis(50)).expect("the thread starts");
     assert!(matches!(linted, Linted::TimedOut), "{linted:?}");
     assert!(
-        started.elapsed() < Duration::from_millis(250),
+        started.elapsed() < Duration::from_secs(2),
         "{:?}",
         started.elapsed()
     );

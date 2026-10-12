@@ -18,17 +18,7 @@ use crate::Receipt;
 
 // The cases of one section of crates/render/fixtures/<file>.json.
 pub(crate) fn cases<T: DeserializeOwned>(file: &str, section: &str) -> T {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(format!("{file}.json"));
-    let shown = path.display();
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let mut sections: serde_json::Map<String, Value> =
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let value = sections
-        .remove(section)
-        .unwrap_or_else(|| panic!("{shown}: no section {section}"));
-    serde_json::from_value(value).unwrap_or_else(|error| panic!("{shown}: {section}: {error}"))
+    text::testing::cases(env!("CARGO_MANIFEST_DIR"), file, section)
 }
 
 // The report types hold static texts, so a test value outlives its fixture row.

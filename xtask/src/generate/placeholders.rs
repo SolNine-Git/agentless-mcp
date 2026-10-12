@@ -120,3 +120,39 @@ pub fn stale(used: &BTreeSet<&str>) -> Vec<String> {
 pub fn unknown(name: &str) -> String {
     format!("the placeholder {{{name}}} is not in the type table in {TABLE}: add it with its kind")
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Map, Value};
+
+    use super::{Kind, PLACEHOLDERS};
+    use crate::repo;
+
+    // A Text placeholder may take an int, as the reference passes some, but a count is never text.
+    #[test]
+    fn every_count_placeholder_takes_an_integer_sample() {
+        let path = repo::root()
+            .unwrap()
+            .join("crates/prompts/fixtures/render.json");
+        let fixture: Value = serde_json::from_str(&repo::read(&path).unwrap()).unwrap();
+        let samples = fixture
+            .as_object()
+            .unwrap()
+            .values()
+            .flat_map(|templates| templates.as_object().unwrap().iter())
+            .flat_map(|(key, case)| arguments(case).iter().map(move |sample| (key, sample)));
+        let strays: Vec<String> = samples
+            .filter(|(_, (name, value))| is_count(name) && !value.is_u64())
+            .map(|(key, (name, value))| format!("{key}: {name} = {value}"))
+            .collect();
+        assert!(strays.is_empty(), "{}", strays.join("\n"));
+    }
+
+    fn arguments(case: &Value) -> &Map<String, Value> {
+        case["arguments"].as_object().unwrap()
+    }
+
+    fn is_count(name: &str) -> bool {
+        PLACEHOLDERS.contains(&(name, Kind::Count))
+    }
+}

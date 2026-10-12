@@ -340,6 +340,7 @@ pub fn syntax::Parsed::field_of(&self, syntax::NodeId) -> core::option::Option<s
 pub fn syntax::Parsed::first_error(&self) -> core::option::Option<syntax::NodeId>
 pub fn syntax::Parsed::first_of_kind(&self, syntax::NodeId, &syntax::KindSet) -> core::option::Option<syntax::NodeId>
 pub fn syntax::Parsed::has_error(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::innermost_error(&self) -> core::option::Option<syntax::NodeId>
 pub fn syntax::Parsed::is_error(&self, syntax::NodeId) -> bool
 pub fn syntax::Parsed::is_leaf(&self, syntax::NodeId) -> bool
 pub fn syntax::Parsed::is_missing(&self, syntax::NodeId) -> bool

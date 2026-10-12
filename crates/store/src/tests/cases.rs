@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use io::testing::Tree;
+use io::testing::{Tree, latin};
 use rusqlite::{Connection, OpenFlags, named_params};
 use serde::Deserialize;
 use serde_json::Value;
@@ -183,10 +183,4 @@ pub(super) fn exclusive_writer(database: &Path) -> Connection {
         )
         .expect("the writer takes the exclusive lock");
     connection
-}
-
-// The fixtures store bytes as a string with one character per byte.
-fn latin(text: &str) -> Vec<u8> {
-    let byte = |c: char| u8::try_from(u32::from(c)).unwrap_or_else(|_| panic!("{c:?} is no byte"));
-    text.chars().map(byte).collect()
 }

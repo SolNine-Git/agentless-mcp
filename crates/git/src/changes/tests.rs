@@ -4,7 +4,10 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{Change, Side, looks_binary, parse_changes, parse_commit, parse_untracked};
+use super::{
+    BLOB, COMMIT, Change, LISTING, Side, looks_binary, parse_changes, parse_commit, parse_untracked,
+};
+use crate::run::classify;
 use crate::testing::{Scratch, cases, latin, path_before};
 use crate::{Git, GitOutcome};
 
@@ -75,7 +78,7 @@ fn calls() -> [(Call, Vec<&'static str>, usize); 4] {
 }
 
 #[test]
-fn parse_changes_matches_the_generated_cases() {
+fn parse_changes_matches_the_reference_cases() {
     let cases: Vec<(String, Parsed)> = cases("changes", "parse_changes");
     assert!(!cases.is_empty());
     for (raw, expected) in cases {
@@ -89,7 +92,7 @@ fn parse_changes_matches_the_generated_cases() {
 }
 
 #[test]
-fn parse_untracked_matches_the_generated_cases() {
+fn parse_untracked_matches_the_reference_cases() {
     let cases: Vec<(String, Vec<Row>)> = cases("changes", "parse_untracked");
     assert!(!cases.is_empty());
     for (raw, expected) in cases {
@@ -100,7 +103,7 @@ fn parse_untracked_matches_the_generated_cases() {
 }
 
 #[test]
-fn parse_commit_matches_the_generated_cases() {
+fn parse_commit_matches_the_reference_cases() {
     let cases: Vec<(String, Committed)> = cases("changes", "parse_commit");
     assert!(!cases.is_empty());
     for (raw, expected) in cases {
@@ -114,7 +117,7 @@ fn parse_commit_matches_the_generated_cases() {
 }
 
 #[test]
-fn looks_binary_matches_the_generated_cases() {
+fn looks_binary_matches_the_reference_cases() {
     let cases: Vec<(String, bool)> = cases("changes", "looks_binary");
     assert!(!cases.is_empty());
     for (raw, expected) in cases {
@@ -138,6 +141,24 @@ fn each_change_call_sends_its_arguments_after_the_directory() {
         let expected: Vec<&str> = ["-C", directory].into_iter().chain(arguments).collect();
         let lines: Vec<&str> = argv.lines().collect();
         assert!(lines.ends_with(&expected), "{lines:?}");
+    }
+}
+
+// The cap test above ties each call to its bounds. This pins the note each deadline gives.
+#[test]
+fn each_change_call_names_its_deadline_in_the_timeout_note() {
+    let calls = [
+        ("rev-parse", COMMIT, "git rev-parse timed out after 5.0s"),
+        ("diff", LISTING, "git diff timed out after 30.0s"),
+        ("ls-files", LISTING, "git ls-files timed out after 30.0s"),
+        ("cat-file", BLOB, "git cat-file timed out after 5.0s"),
+    ];
+    for (subcommand, limits, expected) in calls {
+        let outcome = classify(subcommand, limits, io::Outcome::TimedOut);
+        let GitOutcome::Unfinished(unfinished) = outcome else {
+            panic!("{subcommand}: a deadline is unfinished, not {outcome:?}");
+        };
+        assert_eq!(unfinished.to_string(), expected);
     }
 }
 

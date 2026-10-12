@@ -2,13 +2,13 @@
 //! the text and exit code each outcome gives.
 
 use checks::{CheckGap, Detail, Finding, PairFinding, Severity};
-use io::{GateMode, GatedCheck};
+use io::{CONFIG_FILENAME, GateMode, GatedCheck};
 use serde::Serialize;
 
+use crate::ENV_GATE;
 use crate::halt::Halt;
 use crate::modes::Modes;
 use crate::record::{Gap, Logged, Outcome, Settled};
-use crate::{CONFIG_FILENAME, ENV_GATE};
 
 const MAX_LISTED: usize = 15;
 const BLOCK_EXIT: u8 = 2;

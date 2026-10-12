@@ -176,7 +176,7 @@ repos:
         name: cargo tests and snapshots (pre-push)
         entry: cargo insta test --check --workspace --test-runner nextest
         language: system
-        files: (?i:^(crates|xtask)/|^\.config/|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?insta\.yaml)$|(^|/)\.cargo/)
+        files: (?i:^(crates|xtask)/|^\.config/|^src/agentless_mcp/prompts/(envelope|messages|contract_rules)\.json$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?insta\.yaml)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
       - id: cargo-public-api
