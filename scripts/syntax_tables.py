@@ -74,6 +74,7 @@ def render(language: str) -> str:
         f"extensions = {array(extensions(language))}",
         f"probe = {string(grammars._PROBE_SAMPLES[language])}",
         f"probe_root = {string(probe_root(language))}",
+        f"comments = {array(present(language, COMMENT_NODE_TYPES))}",
     ]
     if language in complexity.RULES:
         lines += measured(language)
@@ -105,10 +106,7 @@ def present(language: str, names: Iterable[str]) -> list[str]:
 
 def measured(language: str) -> list[str]:
     rules = complexity.RULES[language]
-    lines = [
-        f"comments = {array(present(language, COMMENT_NODE_TYPES))}",
-        f"sloc = {string(SLOC_RULES[rules.sloc_lines])}",
-    ]
+    lines = [f"sloc = {string(SLOC_RULES[rules.sloc_lines])}"]
     drop = normalize._STATEMENT_DROPS.get(language)
     if drop is not None:
         if drop is not normalize._is_python_docstring:

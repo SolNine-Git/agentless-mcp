@@ -59,11 +59,11 @@ pub(crate) struct Table {
     pub(crate) tier: Tier,
     pub(crate) extensions: Names,
     pub(crate) probe: &'static str,
+    pub(crate) comments: Names,
     pub(crate) measured: Option<&'static Measured>,
 }
 
 pub(crate) struct Measured {
-    pub(crate) comments: Names,
     pub(crate) sloc: SlocRule,
     pub(crate) statement_parents: Option<Names>,
     pub(crate) units: UnitTable,

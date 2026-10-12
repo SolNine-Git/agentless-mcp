@@ -26,7 +26,6 @@ struct RuleCase {
 fn table_names(measured: &Measured) -> Vec<&'static str> {
     let (units, decisions, clones) = (&measured.units, &measured.decisions, &measured.clones);
     let mut names: Vec<&'static str> = [
-        measured.comments,
         measured.statement_parents.unwrap_or_default(),
         units.units,
         units.scopes,
@@ -57,6 +56,12 @@ fn table_names(measured: &Measured) -> Vec<&'static str> {
 #[test]
 fn every_kind_that_a_table_names_exists_in_its_grammar() {
     for language in Language::ALL {
+        for name in language.table().comments {
+            assert!(
+                !language.kinds(&[name]).is_empty(),
+                "{language:?} has no kind {name}"
+            );
+        }
         let Some(measured) = language.table().measured else {
             continue;
         };

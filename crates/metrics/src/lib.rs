@@ -8,7 +8,6 @@ mod stream;
 mod sum;
 mod tokenize;
 mod units;
-mod word;
 
 pub use sum::compensated_sum;
 pub use tokenize::{TokenizeError, TokenizeErrorKind};

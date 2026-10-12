@@ -12,6 +12,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".bash", ".sh"],
         probe: "x=1\n",
+        comments: &["comment"],
         measured: Some(&BASH),
     },
     Table {
@@ -19,6 +20,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".c", ".h"],
         probe: "int main(void) { return 0; }\n",
+        comments: &["comment"],
         measured: Some(&C),
     },
     Table {
@@ -26,6 +28,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".cc", ".cpp", ".cxx", ".hpp", ".hxx"],
         probe: "int main(void) { return 0; }\n",
+        comments: &["comment"],
         measured: Some(&CPP),
     },
     Table {
@@ -33,6 +36,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".cs"],
         probe: "class Probe {}\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -40,6 +44,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".go"],
         probe: "package main\n",
+        comments: &["comment"],
         measured: Some(&GO),
     },
     Table {
@@ -47,6 +52,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".hcl", ".tf"],
         probe: "resource \"null_resource\" \"probe\" {}\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -54,6 +60,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".java"],
         probe: "class A {}\n",
+        comments: &["block_comment", "line_comment"],
         measured: Some(&JAVA),
     },
     Table {
@@ -61,6 +68,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".cjs", ".js", ".mjs"],
         probe: "const x = 1;\n",
+        comments: &["comment"],
         measured: Some(&JAVASCRIPT),
     },
     Table {
@@ -68,6 +76,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".json"],
         probe: "{\"x\": 1}\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -75,6 +84,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".kt", ".kts"],
         probe: "val x = 1\n",
+        comments: &["line_comment"],
         measured: None,
     },
     Table {
@@ -82,6 +92,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".lua"],
         probe: "local x = 1\n",
+        comments: &["comment"],
         measured: Some(&LUA),
     },
     Table {
@@ -89,6 +100,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".php"],
         probe: "<?php\n$x = 1;\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -96,6 +108,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".py"],
         probe: "x = 1\n",
+        comments: &["comment"],
         measured: Some(&PYTHON),
     },
     Table {
@@ -103,6 +116,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".rb"],
         probe: "x = 1\n",
+        comments: &["comment"],
         measured: Some(&RUBY),
     },
     Table {
@@ -110,6 +124,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".rs"],
         probe: "fn main() {}\n",
+        comments: &["block_comment", "line_comment"],
         measured: Some(&RUST),
     },
     Table {
@@ -117,6 +132,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".scala"],
         probe: "object Probe {}\n",
+        comments: &["block_comment", "comment"],
         measured: None,
     },
     Table {
@@ -124,6 +140,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".sql"],
         probe: "CREATE TABLE probe (id INTEGER);\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -131,6 +148,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".swift"],
         probe: "let x = 1\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -138,6 +156,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".toml"],
         probe: "x = 1\n",
+        comments: &["comment"],
         measured: None,
     },
     Table {
@@ -145,6 +164,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".tsx"],
         probe: "const x = 1;\n",
+        comments: &["comment"],
         measured: Some(&TSX),
     },
     Table {
@@ -152,6 +172,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::One,
         extensions: &[".ts"],
         probe: "const x: number = 1;\n",
+        comments: &["comment"],
         measured: Some(&TYPESCRIPT),
     },
     Table {
@@ -159,6 +180,7 @@ pub(crate) static TABLES: [Table; 22] = [
         tier: Tier::Two,
         extensions: &[".yaml", ".yml"],
         probe: "x: 1\n",
+        comments: &["comment"],
         measured: None,
     },
 ];
@@ -227,7 +249,6 @@ pub(crate) static PROBE_ROOTS: [&str; 22] = [
 ];
 
 static BASH: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -281,7 +302,6 @@ static BASH: Measured = Measured {
 };
 
 static C: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -335,7 +355,6 @@ static C: Measured = Measured {
 };
 
 static CPP: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -404,7 +423,6 @@ static CPP: Measured = Measured {
 };
 
 static GO: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -464,7 +482,6 @@ static GO: Measured = Measured {
 };
 
 static JAVA: Measured = Measured {
-    comments: &["block_comment", "line_comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -545,7 +562,6 @@ static JAVA: Measured = Measured {
 };
 
 static JAVASCRIPT: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -618,7 +634,6 @@ static JAVASCRIPT: Measured = Measured {
 };
 
 static LUA: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -663,7 +678,6 @@ static LUA: Measured = Measured {
 };
 
 static PYTHON: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::PythonTokens,
     statement_parents: Some(&["block", "module"]),
     units: UnitTable {
@@ -719,7 +733,6 @@ static PYTHON: Measured = Measured {
 };
 
 static RUBY: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -796,7 +809,6 @@ static RUBY: Measured = Measured {
 };
 
 static RUST: Measured = Measured {
-    comments: &["block_comment", "line_comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -847,7 +859,6 @@ static RUST: Measured = Measured {
 };
 
 static TSX: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {
@@ -921,7 +932,6 @@ static TSX: Measured = Measured {
 };
 
 static TYPESCRIPT: Measured = Measured {
-    comments: &["comment"],
     sloc: SlocRule::Leaves,
     statement_parents: None,
     units: UnitTable {

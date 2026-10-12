@@ -3,3 +3,4 @@ tier = 2
 extensions = [".kt", ".kts"]
 probe = "val x = 1\n"
 probe_root = "source_file"
+comments = ["line_comment"]

@@ -3,3 +3,4 @@ tier = 2
 extensions = [".php"]
 probe = "<?php\n$x = 1;\n"
 probe_root = "program"
+comments = ["comment"]

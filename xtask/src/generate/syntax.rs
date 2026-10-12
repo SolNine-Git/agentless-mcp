@@ -22,7 +22,7 @@ struct File {
     extensions: Vec<String>,
     probe: String,
     probe_root: String,
-    comments: Option<Vec<String>>,
+    comments: Vec<String>,
     sloc: Option<SlocRule>,
     statement_parents: Option<Vec<String>>,
     units: Option<UnitTable>,
@@ -165,7 +165,6 @@ fn parse(name: &str, text: &str) -> Result<File, String> {
         return Err(format!("the file name must be {}.toml", file.name));
     }
     let measured = [
-        file.comments.is_some(),
         file.sloc.is_some(),
         file.units.is_some(),
         file.decisions.is_some(),
@@ -176,7 +175,7 @@ fn parse(name: &str, text: &str) -> Result<File, String> {
         2 if measured.iter().all(|present| !present) && file.statement_parents.is_none() => {
             Ok(file)
         }
-        1 => Err("a tier-1 file needs comments, sloc, units, decisions and clones".to_owned()),
+        1 => Err("a tier-1 file needs sloc, units, decisions and clones".to_owned()),
         2 => Err("a tier-2 file holds no measurement tables".to_owned()),
         tier => Err(format!("tier {tier} is not 1 or 2")),
     }
@@ -228,11 +227,12 @@ fn table(file: &File) -> String {
         "None".to_owned()
     };
     format!(
-        "Table {{ name: {}, tier: Tier::{tier}, extensions: {}, probe: {}, \
+        "Table {{ name: {}, tier: Tier::{tier}, extensions: {}, probe: {}, comments: {}, \
          measured: {measured} }},\n",
         literal(&file.name),
         names(&file.extensions),
         literal(&file.probe),
+        names(&file.comments),
     )
 }
 
@@ -267,20 +267,15 @@ fn extensions(files: &[File]) -> String {
 }
 
 fn measured(file: &File) -> String {
-    let (Some(comments), Some(sloc), Some(units), Some(decisions), Some(clones)) = (
-        &file.comments,
-        &file.sloc,
-        &file.units,
-        &file.decisions,
-        &file.clones,
-    ) else {
+    let (Some(sloc), Some(units), Some(decisions), Some(clones)) =
+        (&file.sloc, &file.units, &file.decisions, &file.clones)
+    else {
         return String::new();
     };
     format!(
-        "\nstatic {}: Measured = Measured {{ comments: {}, sloc: SlocRule::{sloc:?}, \
+        "\nstatic {}: Measured = Measured {{ sloc: SlocRule::{sloc:?}, \
          statement_parents: {}, units: {}, decisions: {}, clones: {} }};\n",
         file.name.to_uppercase(),
-        names(comments),
         optional(file.statement_parents.as_deref()),
         unit_table(units),
         decision_table(decisions),
@@ -388,24 +383,27 @@ mod tests {
         assert!(module(&files).is_ok());
     }
 
+    // The keys that every language file holds, apart from its tier.
+    const HEAD: &str =
+        "name = \"go\"\nextensions = []\nprobe = \"\"\nprobe_root = \"\"\ncomments = []\n";
+
     #[test]
     fn a_file_name_must_match_its_language() {
-        let text = "name = \"go\"\ntier = 2\nextensions = []\nprobe = \"\"\nprobe_root = \"\"\n";
-        assert!(parse("go.toml", text).is_ok());
-        assert!(parse("rust.toml", text).unwrap_err().contains("go.toml"));
+        let text = format!("{HEAD}tier = 2\n");
+        assert!(parse("go.toml", &text).is_ok());
+        assert!(parse("rust.toml", &text).unwrap_err().contains("go.toml"));
     }
 
     #[test]
     fn a_tier_one_file_needs_its_tables_and_an_unknown_rule_fails() {
-        let tier_one =
-            "name = \"go\"\ntier = 1\nextensions = []\nprobe = \"\"\nprobe_root = \"\"\n";
-        assert!(parse("go.toml", tier_one).unwrap_err().contains("tier-1"));
-        let unknown = "name = \"go\"\ntier = 2\nextensions = []\nprobe = \"\"\nprobe_root = \"\"\n\
-                       sloc = \"lines\"\n";
-        assert!(parse("go.toml", unknown).is_err());
-        let extra =
-            "name = \"go\"\ntier = 2\nextensions = []\nprobe = \"\"\nprobe_root = \"\"\nx = 1\n";
-        assert!(parse("go.toml", extra).is_err());
+        let tier_one = format!("{HEAD}tier = 1\n");
+        assert!(parse("go.toml", &tier_one).unwrap_err().contains("tier-1"));
+        let unknown = format!("{HEAD}tier = 2\nsloc = \"lines\"\n");
+        assert!(parse("go.toml", &unknown).is_err());
+        let extra = format!("{HEAD}tier = 2\nx = 1\n");
+        assert!(parse("go.toml", &extra).is_err());
+        let no_comments = format!("{}tier = 2\n", HEAD.replace("comments = []\n", ""));
+        assert!(parse("go.toml", &no_comments).is_err());
     }
 
     #[test]

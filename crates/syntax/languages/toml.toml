@@ -3,3 +3,4 @@ tier = 2
 extensions = [".toml"]
 probe = "x = 1\n"
 probe_root = "document"
+comments = ["comment"]

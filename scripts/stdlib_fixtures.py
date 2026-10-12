@@ -28,6 +28,7 @@ CRATES = Path(__file__).resolve().parents[1] / "crates"
 INF = math.inf
 NAN = math.nan
 WORD = re.compile(r"\w")
+DECIMAL = re.compile(r"\d")
 
 SPLITLINES = [
     "",
@@ -515,6 +516,8 @@ def text_fixture() -> Fixture:
         "split_whitespace": [[text, text.split()] for text in SPLIT_WHITESPACE],
         "strip": [[text, text.strip()] for text in STRIP],
         "not_printable": code_ranges(lambda char: not char.isprintable()),
+        "word": code_ranges(lambda char: WORD.fullmatch(char) is not None),
+        "decimal": code_ranges(lambda char: DECIMAL.fullmatch(char) is not None),
         "repr": [[code_points(text), repr(text)] for text in REPR],
         "fsdecode": [
             [list(raw), code_points(raw.decode("utf-8", "surrogateescape"))] for raw in FSDECODE
@@ -538,12 +541,6 @@ def int_value(text: str | bytes) -> str | None:
         return str(int(text))
     except ValueError:
         return None
-
-
-def word_fixture() -> Fixture:
-    return {
-        "word": code_ranges(lambda char: WORD.fullmatch(char) is not None),
-    }
 
 
 def shell_fixture() -> Fixture:
@@ -1003,7 +1000,6 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
     "json/fixtures/json.json": json_fixture,
     "json/fixtures/float.json": float_fixture,
     "metrics/fixtures/tokenize.json": sloc_fixture,
-    "metrics/fixtures/word.json": word_fixture,
     "metrics/fixtures/sum.json": sum_fixture,
     "checks/fixtures/diff.json": difflib_fixture,
     "io/fixtures/oserror.json": os_fixture,

@@ -2,9 +2,9 @@ use std::borrow::Cow;
 
 use kernel::Key;
 use syntax::{NodeId, Parsed, Spec};
+use text::is_word;
 
 use crate::digest::Joined;
-use crate::word::is_word;
 
 // Two control characters mark an indent block's bounds. A string literal that holds one raw can
 // collide with them, which at worst makes the keys of two files equal.

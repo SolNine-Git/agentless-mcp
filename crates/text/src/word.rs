@@ -1,10 +1,21 @@
-//! The word-character class of regular expressions on text, from the Unicode 15.1 tables.
+//! The word-character and decimal-digit classes of regular expressions on text, from the Unicode
+//! 15.1 tables.
 
-// Whether `c` is a word character: a letter, a digit or other number, or `_`.
+/// Returns whether `c` is a word character: a letter, a digit or other number, or `_`.
 #[must_use]
-pub(crate) fn is_word(c: char) -> bool {
-    // A code point is a word character when an odd count of bounds is at or below it.
-    WORD_BOUNDS.partition_point(|&bound| bound <= u32::from(c)) % 2 == 1
+pub fn is_word(c: char) -> bool {
+    in_runs(&WORD_BOUNDS, c)
+}
+
+/// Returns whether `c` is a decimal digit: a character of the Unicode category `Decimal_Number`.
+#[must_use]
+pub fn is_decimal(c: char) -> bool {
+    in_runs(&DECIMAL_BOUNDS, c)
+}
+
+// A code point is in the class when an odd count of bounds is at or below it.
+fn in_runs(bounds: &[u32], c: char) -> bool {
+    bounds.partition_point(|&bound| bound <= u32::from(c)) % 2 == 1
 }
 
 // Each pair is the first code point of a run of word characters and the first code point after
@@ -146,15 +157,39 @@ const WORD_BOUNDS: [u32; 1498] = [
     0x31350, 0x323b0,
 ];
 
+// Each pair is the first code point of a run of decimal digits and the first code point after
+// that run.
+const DECIMAL_BOUNDS: [u32; 128] = [
+    0x30, 0x3a, 0x660, 0x66a, 0x6f0, 0x6fa, 0x7c0, 0x7ca, 0x966, 0x970, 0x9e6, 0x9f0, 0xa66, 0xa70,
+    0xae6, 0xaf0, 0xb66, 0xb70, 0xbe6, 0xbf0, 0xc66, 0xc70, 0xce6, 0xcf0, 0xd66, 0xd70, 0xde6,
+    0xdf0, 0xe50, 0xe5a, 0xed0, 0xeda, 0xf20, 0xf2a, 0x1040, 0x104a, 0x1090, 0x109a, 0x17e0,
+    0x17ea, 0x1810, 0x181a, 0x1946, 0x1950, 0x19d0, 0x19da, 0x1a80, 0x1a8a, 0x1a90, 0x1a9a, 0x1b50,
+    0x1b5a, 0x1bb0, 0x1bba, 0x1c40, 0x1c4a, 0x1c50, 0x1c5a, 0xa620, 0xa62a, 0xa8d0, 0xa8da, 0xa900,
+    0xa90a, 0xa9d0, 0xa9da, 0xa9f0, 0xa9fa, 0xaa50, 0xaa5a, 0xabf0, 0xabfa, 0xff10, 0xff1a,
+    0x104a0, 0x104aa, 0x10d30, 0x10d3a, 0x11066, 0x11070, 0x110f0, 0x110fa, 0x11136, 0x11140,
+    0x111d0, 0x111da, 0x112f0, 0x112fa, 0x11450, 0x1145a, 0x114d0, 0x114da, 0x11650, 0x1165a,
+    0x116c0, 0x116ca, 0x11730, 0x1173a, 0x118e0, 0x118ea, 0x11950, 0x1195a, 0x11c50, 0x11c5a,
+    0x11d50, 0x11d5a, 0x11da0, 0x11daa, 0x11f50, 0x11f5a, 0x16a60, 0x16a6a, 0x16ac0, 0x16aca,
+    0x16b50, 0x16b5a, 0x1d7ce, 0x1d800, 0x1e140, 0x1e14a, 0x1e2f0, 0x1e2fa, 0x1e4f0, 0x1e4fa,
+    0x1e950, 0x1e95a, 0x1fbf0, 0x1fbfa,
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use text::testing::check_runs;
+    use crate::testing::check_runs;
 
     #[test]
     fn is_word_cases() {
-        check_runs(env!("CARGO_MANIFEST_DIR"), "word", "word", |code| {
+        check_runs(env!("CARGO_MANIFEST_DIR"), "text", "word", |code| {
             char::from_u32(code).is_some_and(is_word)
+        });
+    }
+
+    #[test]
+    fn is_decimal_cases() {
+        check_runs(env!("CARGO_MANIFEST_DIR"), "text", "decimal", |code| {
+            char::from_u32(code).is_some_and(is_decimal)
         });
     }
 }

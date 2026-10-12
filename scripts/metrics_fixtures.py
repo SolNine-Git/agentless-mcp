@@ -29,7 +29,7 @@ from agentless_mcp.util.errors import UnmeasurableSource
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "tests" / "characterization" / "fixtures"
 FIXTURES = ROOT / "crates" / "metrics" / "fixtures"
-# stdlib_fixtures.py writes tokenize.json, word.json and sum.json into the same directory.
+# stdlib_fixtures.py writes tokenize.json and sum.json into the same directory.
 SHARED = [ROOT / "crates" / path for path in STDLIB_FIXTURES]
 DIRECTORY_LANGUAGES = {"py": "python"}
 

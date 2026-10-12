@@ -65,7 +65,7 @@ fn resolve(language: Language, measured: &Measured) -> Spec {
         decisions: DecisionRules::resolve(language, &measured.decisions),
         clones: CloneRules::resolve(language, &measured.clones),
         sloc: measured.sloc,
-        comments: language.kinds(measured.comments),
+        comments: language.kinds(language.table().comments),
         statement_parents: measured
             .statement_parents
             .map(|names| language.kinds(names)),

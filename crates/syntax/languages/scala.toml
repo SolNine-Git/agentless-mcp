@@ -3,3 +3,4 @@ tier = 2
 extensions = [".scala"]
 probe = "object Probe {}\n"
 probe_root = "compilation_unit"
+comments = ["block_comment", "comment"]

@@ -3,3 +3,4 @@ tier = 2
 extensions = [".yaml", ".yml"]
 probe = "x: 1\n"
 probe_root = "stream"
+comments = ["comment"]
