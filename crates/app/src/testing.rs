@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use io::testing::{Identity, Tree};
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 use crate::{EnvConfig, Services};
 
@@ -158,6 +160,28 @@ impl Sandbox {
 }
 
 pub(crate) use io::testing::latin;
+
+// The cases of one fixture section that this platform can build. APFS refuses a file name or link
+// target that is not UTF-8, so on macOS the cases whose steps write one are left out.
+pub(crate) fn buildable_cases<T: DeserializeOwned>(
+    fixture: &str,
+    section: &str,
+    steps: fn(&T) -> &[Vec<Value>],
+) -> Vec<T> {
+    let all: Vec<T> = io::testing::cases(MANIFEST_DIR, fixture, section);
+    let chosen: Vec<T> = all
+        .into_iter()
+        .filter(|case| !cfg!(target_os = "macos") || !writes_raw_names(steps(case)))
+        .collect();
+    assert!(!chosen.is_empty(), "{fixture} {section}: no case to build");
+    chosen
+}
+
+fn writes_raw_names(steps: &[Vec<Value>]) -> bool {
+    steps
+        .iter()
+        .any(|step| matches!(step[0].as_str(), Some("latin_name" | "latin_symlink")))
+}
 
 // Sets the modification time of `path` to `when`, an ISO 8601 time that touch -d reads.
 pub(crate) fn set_mtime(path: &Path, when: &str) {

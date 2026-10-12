@@ -34,7 +34,13 @@ mod tests {
             cases(env!("CARGO_MANIFEST_DIR"), "sum", "sum_builtin");
         for (values, expected) in all {
             let got = compensated_sum(&floats(&values));
-            assert_eq!(got.to_bits(), bits(&expected), "values: {values:?}");
+            let want = f64::from_bits(bits(&expected));
+            // The CPU sets the sign of a NaN that an operation creates, and no output shows it.
+            if want.is_nan() {
+                assert!(got.is_nan(), "values: {values:?}");
+            } else {
+                assert_eq!(got.to_bits(), want.to_bits(), "values: {values:?}");
+            }
         }
     }
 }

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use store::CacheState;
 
 use super::{Located, Opened, Session, Tags, assembled, outside, settled};
-use crate::testing::{MANIFEST_DIR, Sandbox, set_mtime};
+use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases, set_mtime};
 use crate::{EnvConfig, Noted, Repo, Services};
 
 // The repository root and the generation that the store crate's fixture database records.
@@ -124,8 +124,7 @@ fn services_for(sandbox: &Sandbox, cache_home: Option<&str>) -> Services {
 // walked files. The cache root and walk warnings come with either outcome, in reference order.
 #[test]
 fn each_generation_walk_gives_the_reference_warnings_and_outcome() {
-    let found: Vec<GenerationCase> = io::testing::cases(MANIFEST_DIR, "generation", "cases");
-    assert!(!found.is_empty());
+    let found = buildable_cases("generation", "cases", |case: &GenerationCase| &case.steps);
     for case in found {
         let sandbox = Sandbox::new();
         for step in &case.steps {

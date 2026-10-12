@@ -1,5 +1,7 @@
 use std::ffi::OsStr;
 use std::fs;
+// APFS refuses a file name that is not UTF-8, so the tests that write one do not run on macOS.
+#[cfg(not(target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -306,6 +308,7 @@ fn a_listing_over_the_output_cap_is_refused_rather_than_cut() {
     ));
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn a_name_that_is_not_utf8_reaches_the_decoder_as_raw_bytes() {
     let scratch = Scratch::new();
@@ -323,6 +326,7 @@ fn a_name_that_is_not_utf8_reaches_the_decoder_as_raw_bytes() {
     assert_eq!(shown(&walk.warnings), [expected]);
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn a_refused_walk_keeps_the_listing_warning_raised_before_it() {
     let scratch = Scratch::new();
@@ -345,6 +349,7 @@ fn a_refused_walk_keeps_the_listing_warning_raised_before_it() {
     assert_eq!(shown(&walk.warnings), [expected]);
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn the_bounded_walk_drops_a_name_that_is_not_utf8_with_a_warning() {
     let scratch = Scratch::new();

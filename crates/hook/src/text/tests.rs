@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use io::testing::cases;
 use serde::de::DeserializeOwned;
 use text::CodePointString;
 
-use super::{codec_text, grouped, last_line, lossy, os_error_text, sha256_hex};
+use super::{codec_text, grouped, last_line, lossy, sha256_hex};
 use crate::record::seconds;
 use crate::testing::{MANIFEST_DIR, latin};
 
@@ -23,6 +21,9 @@ fn the_codec_text_matches_the_reference_cases() {
     }
 }
 
+// The reference errno numbers and messages are the Linux C library's, so these two tests run on
+// Linux only.
+#[cfg(target_os = "linux")]
 #[test]
 fn an_os_error_with_a_file_matches_the_reference_cases() {
     let all: Vec<(i32, String, String)> = text_cases("os_error");
@@ -30,13 +31,14 @@ fn an_os_error_with_a_file_matches_the_reference_cases() {
     for (errno, path, expected) in all {
         let error = std::io::Error::from_raw_os_error(errno);
         assert_eq!(
-            os_error_text(&error, Path::new(&path)),
+            super::os_error_text(&error, std::path::Path::new(&path)),
             expected,
             "errno {errno}"
         );
     }
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn an_os_error_line_names_the_class_and_the_errno() {
     let all: Vec<(i32, String)> = text_cases("os_error_line");

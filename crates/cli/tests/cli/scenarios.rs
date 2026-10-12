@@ -29,11 +29,17 @@ fn replay(case: &Value) -> Outcome {
     }
 }
 
+// APFS refuses a file name that is not UTF-8, so on macOS a scenario that writes one is left out.
+fn buildable(case: &Value) -> bool {
+    let steps = case["steps"].as_array().expect("a step list");
+    !cfg!(target_os = "macos") || !steps.iter().any(|step| step[0] == "latin")
+}
+
 #[test]
 fn every_scenario_answers_as_the_fixture() {
     let runs = cases("scenarios", "runs");
     let mut failed = Vec::new();
-    for case in &runs {
+    for case in runs.iter().filter(|case| buildable(case)) {
         let (got, want) = (replay(case), expected(case));
         if got != want {
             let name = case["name"].as_str().unwrap_or_default();

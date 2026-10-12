@@ -88,6 +88,8 @@ fn a_pair_finds_only_a_side_with_the_same_text() {
     assert_eq!(found.measured_blocks("x = 1\n"), None);
 }
 
+// APFS refuses a file name that is not UTF-8.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn the_walk_warnings_reach_the_lint_diagnostics() {
     let sandbox = Sandbox::new();

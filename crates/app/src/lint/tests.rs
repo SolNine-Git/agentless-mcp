@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::{BlockSource, LintForm, LintReport, LintRequest, lint, lint_with};
 use crate::pairs::Stored;
-use crate::testing::{MANIFEST_DIR, Sandbox};
+use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases};
 use crate::{After, Error, FormKind, Noted, PairSelection, Repo, Tags};
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -124,7 +124,7 @@ fn judged(scenario: &Scenario, in_memory: bool) -> Expected {
 
 #[test]
 fn each_proposed_scenario_gives_the_reference_report_from_a_file_and_from_memory() {
-    let scenarios: Vec<Scenario> = io::testing::cases(MANIFEST_DIR, "lint", "proposed");
+    let scenarios = buildable_cases("lint", "proposed", |scenario: &Scenario| &scenario.steps);
     for scenario in &scenarios {
         assert_eq!(
             judged(scenario, false),
