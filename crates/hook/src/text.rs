@@ -4,8 +4,8 @@ use std::any::Any;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
-use pycompat::PyStr;
 use sha2::{Digest, Sha256};
+use text::CodePointString;
 
 const TAIL_CHARS: usize = 300;
 
@@ -24,17 +24,17 @@ pub(crate) fn codec_text(bytes: &[u8], error: io::NotUtf8) -> String {
 
 // The class and the text of an OS error, as the last line of a CPython traceback shows them.
 pub(crate) fn os_error_line(error: &std::io::Error) -> String {
-    let repr = pycompat::os_error_repr(error);
+    let repr = io::os_error_class_text(error);
     let class = repr.split('(').next().unwrap_or("OSError");
     match error.raw_os_error() {
-        Some(code) => format!("{class}: [Errno {code}] {}", pycompat::strerror(error)),
-        None => format!("{class}: {}", pycompat::strerror(error)),
+        Some(code) => format!("{class}: [Errno {code}] {}", io::strerror(error)),
+        None => format!("{class}: {}", io::strerror(error)),
     }
 }
 
 // CPython's str() of an OS error that names a file.
 pub(crate) fn os_error_text(error: &std::io::Error, path: &Path) -> String {
-    let message = pycompat::strerror(error);
+    let message = io::strerror(error);
     match error.raw_os_error() {
         Some(code) => format!("[Errno {code}] {message}: {}", repr(path)),
         None => message,
@@ -42,15 +42,15 @@ pub(crate) fn os_error_text(error: &std::io::Error, path: &Path) -> String {
 }
 
 pub(crate) fn repr(path: &Path) -> String {
-    PyStr::fsdecode(path.as_os_str().as_bytes()).repr()
+    CodePointString::from_utf8_escaped(path.as_os_str().as_bytes()).quoted()
 }
 
 // The last line with text, stripped and cut to its last 300 characters.
 pub(crate) fn last_line(text: &str) -> String {
-    let lines = pycompat::splitlines(text, false);
+    let lines = text::splitlines(text, false);
     let Some(line) = lines
         .iter()
-        .map(|line| pycompat::strip(line))
+        .map(|line| text::strip(line))
         .rfind(|line| !line.is_empty())
     else {
         return "(no output)".to_owned();
@@ -59,7 +59,7 @@ pub(crate) fn last_line(text: &str) -> String {
     line.chars().skip(skip).collect()
 }
 
-pub(crate) fn lossy(text: &PyStr) -> String {
+pub(crate) fn lossy(text: &CodePointString) -> String {
     text.code_points()
         .map(|code| char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER))
         .collect()

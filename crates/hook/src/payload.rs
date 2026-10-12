@@ -3,7 +3,8 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use pycompat::{JsonErrorKind, JsonValue, PyStr};
+use json::{JsonErrorKind, JsonValue};
+use text::CodePointString;
 
 use crate::halt::Halt;
 use crate::record::Identity;
@@ -13,18 +14,18 @@ const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
 const WRITE: &str = "Write";
 const EDIT: &str = "Edit";
 
-type Fields = [(PyStr, JsonValue)];
+type Fields = [(CodePointString, JsonValue)];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EditInput {
-    pub(crate) old_string: PyStr,
-    pub(crate) new_string: PyStr,
+    pub(crate) old_string: CodePointString,
+    pub(crate) new_string: CodePointString,
     pub(crate) replace_all: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Change {
-    Write(PyStr),
+    Write(CodePointString),
     Edit(EditInput),
 }
 
@@ -51,7 +52,7 @@ pub(crate) fn read(stdin: &mut dyn Read) -> Result<Vec<u8>, Halt> {
 pub(crate) fn document(raw: &[u8]) -> Result<JsonValue, Halt> {
     let text =
         io::decode_strict(raw.to_vec()).map_err(|error| Halt::malformed(codec_text(raw, error)))?;
-    pycompat::loads(&text).map_err(|error| match error.kind {
+    json::parse(&text).map_err(|error| match error.kind {
         JsonErrorKind::ObjectTooDeep | JsonErrorKind::ArrayTooDeep => {
             Halt::internal(format!("RecursionError: {}", error.kind))
         }
@@ -127,7 +128,7 @@ fn edit_input(input: &Fields) -> Result<EditInput, Halt> {
     })
 }
 
-fn path<'a>(value: &'a PyStr, place: &str) -> Result<&'a Path, Halt> {
+fn path<'a>(value: &'a CodePointString, place: &str) -> Result<&'a Path, Halt> {
     value
         .as_str()
         .map(Path::new)
@@ -135,7 +136,7 @@ fn path<'a>(value: &'a PyStr, place: &str) -> Result<&'a Path, Halt> {
 }
 
 fn get<'a>(fields: &'a Fields, key: &str) -> Option<&'a JsonValue> {
-    let key = PyStr::from(key);
+    let key = CodePointString::from(key);
     fields
         .iter()
         .find(|(name, _)| *name == key)
@@ -150,7 +151,7 @@ fn mistyped(key: &str, place: &str, kind: &str) -> Halt {
     Halt::malformed(format!("{place}.{key} is not a {kind}"))
 }
 
-fn string<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a PyStr, Halt> {
+fn string<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a CodePointString, Halt> {
     match field(fields, key, place)? {
         JsonValue::Str(value) => Ok(value),
         _ => Err(mistyped(key, place, "str")),

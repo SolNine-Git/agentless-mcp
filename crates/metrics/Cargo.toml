@@ -13,11 +13,12 @@ workspace = true
 
 [dependencies]
 kernel = { path = "../kernel" }
-pycompat = { path = "../pycompat" }
 sha2.workspace = true
 syntax = { path = "../syntax" }
+text = { path = "../text" }
 thiserror.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
 serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

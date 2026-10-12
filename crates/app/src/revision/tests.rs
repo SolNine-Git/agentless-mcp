@@ -1,5 +1,5 @@
 use git::{Change, Failure, GitOutcome, Side, Unfinished};
-use pycompat::{JsonForm, dumps};
+use json::{JsonForm, to_text};
 use serde::Deserialize;
 
 use super::{PairSpec, blob_from, commit_from, listing_from, pair_specs};
@@ -41,7 +41,7 @@ fn outcome(case: &str, subcommand: &'static str, after: &'static str) -> GitOutc
 }
 
 fn row(finding: &checks::PairFinding) -> Answer {
-    Answer::Row(dumps(finding, JsonForm::Compact).expect("a row serializes"))
+    Answer::Row(to_text(finding, JsonForm::Compact).expect("a row serializes"))
 }
 
 fn bytes(data: Vec<u8>) -> Answer {
@@ -128,7 +128,7 @@ fn each_change_gives_the_python_rows_and_specs() {
         let (found_rows, found_specs) = pair_specs(&changes);
         let shown: Vec<String> = found_rows
             .iter()
-            .map(|found| dumps(found, JsonForm::Compact).expect("a row serializes"))
+            .map(|found| to_text(found, JsonForm::Compact).expect("a row serializes"))
             .collect();
         let specs: Vec<PairSpec> = expected_specs
             .into_iter()

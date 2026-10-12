@@ -168,9 +168,7 @@ fn capture(parsed: &Parsed, node: NodeId, comments: Option<&KindSet>) -> String 
         cursor = range.end;
     }
     kept.push_str(&source[cursor..parsed.end_byte(node) as usize]);
-    pycompat::split_whitespace(&kept)
-        .collect::<Vec<_>>()
-        .join(" ")
+    text::split_whitespace(&kept).collect::<Vec<_>>().join(" ")
 }
 
 fn comment_nodes(parsed: &Parsed, node: NodeId, comments: Option<&KindSet>) -> Vec<NodeId> {

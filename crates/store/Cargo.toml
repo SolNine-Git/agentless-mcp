@@ -13,16 +13,18 @@ workspace = true
 
 [dependencies]
 io = { path = "../io" }
+json = { path = "../json" }
 kernel = { path = "../kernel" }
 libc = "0.2.180"
 metrics = { path = "../metrics" }
 prompts = { path = "../prompts" }
-pycompat = { path = "../pycompat" }
 rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
 sha2.workspace = true
 syntax = { path = "../syntax" }
+text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
 serde.workspace = true
 serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

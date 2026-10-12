@@ -53,7 +53,7 @@ fn no_payload_holds_a_key_of_the_envelope() {
 }
 
 fn top_level_keys(payload: &impl Serialize) -> Vec<String> {
-    let text = pycompat::dumps(payload, pycompat::JsonForm::Compact);
+    let text = json::to_text(payload, json::JsonForm::Compact);
     let text = text.unwrap_or_else(|error| panic!("{error}"));
     let document: serde_json::Map<String, Value> =
         serde_json::from_str(&text).unwrap_or_else(|error| panic!("{error}"));

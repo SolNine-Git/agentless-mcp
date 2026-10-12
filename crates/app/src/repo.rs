@@ -77,8 +77,8 @@ pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Resolved, Err
 }
 
 fn root_directory(raw: &Path) -> Result<PathBuf, Error> {
-    let root = io::resolve(raw)
-        .map_err(|error| kernel::Error::OperationFailed(pycompat::strerror(&error)))?;
+    let root =
+        io::resolve(raw).map_err(|error| kernel::Error::OperationFailed(io::strerror(&error)))?;
     if !root.is_dir() {
         let message = format!("not a directory: {}", root.display());
         return Err(kernel::Error::RepoResolution(message).into());

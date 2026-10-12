@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::PyStr;
+use text::CodePointString;
 
 // One more level ends the reference decoder with a recursion error (fixture `max_depth`).
 const MAX_DEPTH: usize = 9998;
@@ -21,11 +21,11 @@ pub enum JsonValue {
     /// A number with a fraction or an exponent, or `NaN`, `Infinity` or `-Infinity`.
     Float(f64),
     /// A string. An escape of a lone surrogate keeps that surrogate in it.
-    Str(PyStr),
+    Str(CodePointString),
     /// An array.
     Array(Vec<JsonValue>),
     /// An object: each key once, in first-seen order, with the last value given for it.
-    Object(Vec<(PyStr, JsonValue)>),
+    Object(Vec<(CodePointString, JsonValue)>),
 }
 
 impl Drop for JsonValue {
@@ -48,7 +48,7 @@ fn take_children(value: &mut JsonValue, pending: &mut Vec<JsonValue>) {
     }
 }
 
-/// Why [`loads`] refused a text. It displays as its message.
+/// Why [`parse`] refused a text. It displays as its message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JsonErrorKind {
     /// No value starts at the position.
@@ -105,7 +105,7 @@ impl fmt::Display for JsonErrorKind {
     }
 }
 
-/// A text that [`loads`] refused: the reason, and where it was found.
+/// A text that [`parse`] refused: the reason, and where it was found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct JsonError {
     /// The reason.
@@ -137,7 +137,7 @@ impl std::error::Error for JsonError {}
 /// # Errors
 ///
 /// Returns a [`JsonError`] when `text` is not one JSON value.
-pub fn loads(text: &str) -> Result<JsonValue, JsonError> {
+pub fn parse(text: &str) -> Result<JsonValue, JsonError> {
     let mut reader = Reader { text, at: 0 };
     if text.starts_with('\u{feff}') {
         return Err(reader.error(JsonErrorKind::ByteOrderMark));
@@ -184,9 +184,9 @@ enum Frame {
 
 #[derive(Default)]
 struct Object {
-    pairs: Vec<(PyStr, JsonValue)>,
-    slots: HashMap<PyStr, usize>,
-    key: PyStr,
+    pairs: Vec<(CodePointString, JsonValue)>,
+    slots: HashMap<CodePointString, usize>,
+    key: CodePointString,
 }
 
 struct Shape {
@@ -382,10 +382,10 @@ impl Reader<'_> {
     }
 
     // Reads the string whose opening quote is at `self.at`.
-    fn string(&mut self) -> Result<PyStr, JsonError> {
+    fn string(&mut self) -> Result<CodePointString, JsonError> {
         let begin = self.at;
         self.at += 1;
-        let mut text = PyStr::default();
+        let mut text = CodePointString::default();
         loop {
             let stop = self.chunk_end(begin)?;
             text.push_str(&self.text[self.at..stop]);
@@ -412,7 +412,7 @@ impl Reader<'_> {
     }
 
     // Reads the escape after the backslash at `self.at - 1`.
-    fn escape(&mut self, begin: usize, text: &mut PyStr) -> Result<(), JsonError> {
+    fn escape(&mut self, begin: usize, text: &mut CodePointString) -> Result<(), JsonError> {
         let Some(&code) = self.text.as_bytes().get(self.at) else {
             return Err(self.error_at(JsonErrorKind::UnterminatedString, begin));
         };
@@ -428,7 +428,7 @@ impl Reader<'_> {
     }
 
     // Reads the unicode escape whose `u` is at `self.at`, and joins a surrogate pair of escapes.
-    fn unicode_escape(&mut self, text: &mut PyStr) -> Result<(), JsonError> {
+    fn unicode_escape(&mut self, text: &mut CodePointString) -> Result<(), JsonError> {
         let u_at = self.at;
         let mut end = u_at + 5;
         let invalid = |at| self.error_at(JsonErrorKind::InvalidUnicodeEscape, at);
@@ -518,10 +518,10 @@ fn exponent_end(bytes: &[u8], at: usize) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::cases;
     use serde_json::{Value, json};
+    use text::testing::cases;
 
-    fn code_points(text: &PyStr) -> Vec<u32> {
+    fn code_points(text: &CodePointString) -> Vec<u32> {
         text.code_points().collect()
     }
 
@@ -546,10 +546,10 @@ mod tests {
     }
 
     #[test]
-    fn loads_cases() {
-        let all: Vec<(String, Value)> = cases("json", "loads");
+    fn parse_cases() {
+        let all: Vec<(String, Value)> = cases(env!("CARGO_MANIFEST_DIR"), "json", "loads");
         for (document, expected) in all {
-            let found = match loads(&document) {
+            let found = match parse(&document) {
                 Ok(value) => json!(["ok", tagged(&value)]),
                 Err(error) => {
                     json!([
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn nesting_one_level_past_the_limit_is_refused() {
-        let [limit]: [usize; 1] = cases("json", "max_depth");
+        let [limit]: [usize; 1] = cases(env!("CARGO_MANIFEST_DIR"), "json", "max_depth");
         assert_eq!(MAX_DEPTH, limit);
         for (opener, middle, closer, kind) in [
             ("[", "", "]", JsonErrorKind::ArrayTooDeep),
@@ -576,17 +576,17 @@ mod tests {
             let nested =
                 |depth| format!("{}{middle}{}", opener.repeat(depth), closer.repeat(depth));
             assert!(
-                loads(&nested(limit)).is_ok(),
+                parse(&nested(limit)).is_ok(),
                 "{opener} nested {limit} deep"
             );
-            let refused = loads(&nested(limit + 1)).map(drop);
+            let refused = parse(&nested(limit + 1)).map(drop);
             assert_eq!(refused.map_err(|error| error.kind), Err(kind));
         }
     }
 
     #[test]
     fn an_error_displays_its_message_line_column_and_position() {
-        let error = loads("{\"a\":1\n\n,\"b\"}").unwrap_err();
+        let error = parse("{\"a\":1\n\n,\"b\"}").unwrap_err();
         assert_eq!(
             error.to_string(),
             "Expecting ':' delimiter: line 3 column 5 (char 12)"

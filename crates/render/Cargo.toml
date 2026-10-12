@@ -14,10 +14,11 @@ workspace = true
 [dependencies]
 app = { path = "../app" }
 io = { path = "../io" }
+json = { path = "../json" }
 prompts = { path = "../prompts" }
-pycompat = { path = "../pycompat" }
 serde.workspace = true
 serde_json.workspace = true
+text = { path = "../text" }
 thiserror.workspace = true
 
 [dev-dependencies]

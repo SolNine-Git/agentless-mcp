@@ -59,7 +59,7 @@ fn default_mode(env_value: Option<&OsStr>) -> (GateMode, Option<String>) {
     if let Some(mode) = named {
         return (mode, None);
     }
-    let shown = pycompat::PyStr::fsdecode(value.as_bytes()).repr();
+    let shown = text::CodePointString::from_utf8_escaped(value.as_bytes()).quoted();
     let warning = format!("{ENV_GATE}={shown} is not off, advisory, or block, so advisory applies");
     (GateMode::Advisory, Some(warning))
 }

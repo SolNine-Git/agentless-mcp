@@ -52,12 +52,8 @@ impl fmt::Display for TokenizeError {
 
 impl std::error::Error for TokenizeError {}
 
-/// Returns the line numbers on which a counted token of `source` starts.
-///
-/// # Errors
-///
-/// Returns a [`TokenizeError`] when `source` does not tokenize.
-pub fn python_sloc(source: &str) -> Result<BTreeSet<u32>, TokenizeError> {
+// The line numbers on which a counted token of `source` starts, or the failure to tokenize it.
+pub(crate) fn python_sloc(source: &str) -> Result<BTreeSet<u32>, TokenizeError> {
     Scanner::new(source).run()
 }
 
@@ -692,7 +688,7 @@ impl Scanner {
 
 fn scan_buffer(source: &str) -> (Vec<char>, bool) {
     let mut chars = Vec::with_capacity(source.len() + 1);
-    for piece in crate::splitlines(source, true) {
+    for piece in text::splitlines(source, true) {
         // A line with a null byte stops the scan, which fails when it reaches the cut.
         if piece.contains('\0') {
             return (chars, true);
@@ -766,15 +762,17 @@ fn tab_error() -> TokenizeError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::cases;
+    use text::testing::cases;
 
     #[test]
     fn fixture_cases() {
-        let lines: Vec<(String, BTreeSet<u32>)> = cases("sloc", "lines");
+        let lines: Vec<(String, BTreeSet<u32>)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "tokenize", "lines");
         for (source, expected) in lines {
             assert_eq!(python_sloc(&source), Ok(expected), "source: {source:?}");
         }
-        let errors: Vec<(String, String, String)> = cases("sloc", "errors");
+        let errors: Vec<(String, String, String)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "tokenize", "errors");
         for (source, class_name, message) in errors {
             let err = python_sloc(&source).expect_err(&source);
             let got = (err.kind.class_name().to_owned(), err.message);

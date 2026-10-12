@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use syntax::{Language, NodeId, Parsed, Point, Query, SlocRule, Spec};
 
 use crate::kinds::Kinds;
+use crate::tokenize::python_sloc;
 use crate::{Unmeasurable, line};
 
 // The statement-level strings: a `string` child of a block or of the module.
@@ -27,7 +28,7 @@ fn leaf_lines(parsed: &Parsed, spec: &Spec) -> Vec<u32> {
         }
         if parsed.child_count(node) > 0 {
             stack.extend(parsed.children(node));
-        } else if !pycompat::strip(parsed.text(node)).is_empty() {
+        } else if !text::strip(parsed.text(node)).is_empty() {
             lines.insert(line(parsed.start_point(node)));
         }
     }
@@ -37,11 +38,11 @@ fn leaf_lines(parsed: &Parsed, spec: &Spec) -> Vec<u32> {
 // The tokenizer's code lines, without the lines of a docstring that owns its lines.
 fn python_lines(parsed: &Parsed, kinds: &Kinds) -> Result<Vec<u32>, Unmeasurable> {
     let source = parsed.source();
-    let tokens = pycompat::python_sloc(source).map_err(Unmeasurable::Tokenizer)?;
+    let tokens = python_sloc(source).map_err(Unmeasurable::Tokenizer)?;
     let captures = parsed
         .captures(docstring_query())
         .map_err(Unmeasurable::DocstringQuery)?;
-    let text_lines = pycompat::splitlines(source, false);
+    let text_lines = text::splitlines(source, false);
     let docstrings: BTreeSet<u32> = captures
         .iter()
         .filter(|capture| is_docstring(parsed, kinds, capture.node, &text_lines))
@@ -70,7 +71,7 @@ fn owns_its_lines(start: Point, end: Point, text_lines: &[&str]) -> bool {
     let line_at = |row: u32| text_lines.get(row as usize).copied().unwrap_or("");
     let (before, _) = split_at_char(line_at(start.row), start.column);
     let (_, after) = split_at_char(line_at(end.row), end.column);
-    pycompat::strip(before).is_empty() && pycompat::strip(after).is_empty()
+    text::strip(before).is_empty() && text::strip(after).is_empty()
 }
 
 fn split_at_char(text: &str, count: u32) -> (&str, &str) {

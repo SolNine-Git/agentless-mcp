@@ -225,7 +225,7 @@ pub(crate) fn exit_code(status: ExitStatus) -> i32 {
 
 fn first_line(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
-    let lines = pycompat::splitlines(pycompat::strip(&text), false);
+    let lines = text::splitlines(text::strip(&text), false);
     lines
         .first()
         .map_or_else(|| "no detail".to_owned(), |line| (*line).to_owned())

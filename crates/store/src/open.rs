@@ -87,7 +87,7 @@ pub(crate) fn open(database: &Path, repo_root: &str, busy: Duration) -> Source {
         Err(error) if absent(&error) => Source::Absent,
         Err(error) => Source::Refused(Refusal::Unreadable(SqlError::new(
             SqlClass::Operational,
-            pycompat::strerror(&error),
+            ::io::strerror(&error),
         ))),
         // SQLite reports a directory as an I/O error, and the note names the failed open instead.
         Ok(found) if found.is_dir() => Source::Refused(Refusal::Unreadable(SqlError::new(

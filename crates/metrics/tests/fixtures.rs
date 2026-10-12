@@ -4,8 +4,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use kernel::Key;
-use metrics::{Block, FileMetrics, Unit, Unmeasurable, measure, stamp};
-use pycompat::{TokenizeError, TokenizeErrorKind};
+use metrics::{
+    Block, FileMetrics, TokenizeError, TokenizeErrorKind, Unit, Unmeasurable, measure, stamp,
+};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use syntax::{Language, Tier, parse};

@@ -121,7 +121,7 @@ fn columns(env: &EnvConfig) -> isize {
 // A decimal integer with an optional sign, surrounding whitespace, and single underscores
 // between digits.
 fn integer(text: &str) -> Option<isize> {
-    let text = pycompat::strip(text);
+    let text = text::strip(text);
     let (negative, digits) = match text.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, text.strip_prefix('+').unwrap_or(text)),

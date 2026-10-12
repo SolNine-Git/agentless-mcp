@@ -1,8 +1,8 @@
-//! The text forms of an OS error: its message, and the repr of the exception class for its errno.
+//! The text forms of an OS error: its message, and its class name with its errno and message.
 
 use std::io;
 
-use crate::PyStr;
+use text::CodePointString;
 
 // The errno values that have an exception class of their own; every other errno is OSError.
 const CLASSES: [(i32, &str); 19] = [
@@ -40,12 +40,12 @@ pub fn strerror(error: &io::Error) -> String {
     }
 }
 
-/// Returns the repr of the exception for `error`: the class for its errno, the errno, and the
-/// message, for example `PermissionError(13, 'Permission denied')`. An error without an errno
-/// gives `OSError('<message>')`.
+/// Returns the class name for the errno of `error`, the errno, and the quoted message, for
+/// example `PermissionError(13, 'Permission denied')`. An error without an errno gives
+/// `OSError('<message>')`.
 #[must_use]
-pub fn os_error_repr(error: &io::Error) -> String {
-    let message = PyStr::from(strerror(error).as_str()).repr();
+pub fn os_error_class_text(error: &io::Error) -> String {
+    let message = CodePointString::from(strerror(error).as_str()).quoted();
     let Some(code) = error.raw_os_error() else {
         return format!("OSError({message})");
     };
@@ -62,24 +62,24 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn os_error_repr_cases() {
-        let all: Vec<(i32, String)> = crate::fixtures::cases("os", "os_error_repr");
+    fn os_error_class_text_cases() {
+        let all: Vec<(i32, String)> = crate::fixtures::fixture("oserror", "os_error_repr");
         for (code, expected) in all {
             let error = io::Error::from_raw_os_error(code);
-            assert_eq!(os_error_repr(&error), expected, "errno {code}");
+            assert_eq!(os_error_class_text(&error), expected, "errno {code}");
         }
     }
 
     #[test]
     fn each_errno_class_and_the_fallbacks() {
         let missing = io::Error::from_raw_os_error(libc::ENOENT);
-        assert!(os_error_repr(&missing).starts_with("FileNotFoundError("));
+        assert!(os_error_class_text(&missing).starts_with("FileNotFoundError("));
         let timeout = io::Error::from_raw_os_error(libc::ETIMEDOUT);
-        assert!(os_error_repr(&timeout).starts_with("TimeoutError("));
+        assert!(os_error_class_text(&timeout).starts_with("TimeoutError("));
         let invalid = io::Error::from_raw_os_error(libc::EINVAL);
-        assert!(os_error_repr(&invalid).starts_with("OSError("));
+        assert!(os_error_class_text(&invalid).starts_with("OSError("));
         let custom = io::Error::other("it's custom");
-        assert_eq!(os_error_repr(&custom), "OSError(\"it's custom\")");
+        assert_eq!(os_error_class_text(&custom), "OSError(\"it's custom\")");
         assert_eq!(strerror(&custom), "it's custom");
     }
 }

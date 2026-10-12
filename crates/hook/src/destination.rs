@@ -87,7 +87,7 @@ fn found(stdout: &[u8]) -> Result<PathBuf, Halt> {
     let text = io::decode_strict(stdout.to_vec()).map_err(|error| {
         Halt::internal(format!("UnicodeDecodeError: {}", codec_text(stdout, error)))
     })?;
-    resolve(Path::new(pycompat::strip(&text)))
+    resolve(Path::new(text::strip(&text)))
 }
 
 fn not_run(errno: Option<i32>, message: &str) -> Halt {

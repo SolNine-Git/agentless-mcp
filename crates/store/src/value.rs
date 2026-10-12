@@ -1,8 +1,9 @@
 //! A fetched column value, and the conversions that the cache reader applies to it.
 
-use pycompat::{JsonValue, PyStr, float_repr, loads, strip};
+use json::{JsonValue, float_text, parse};
 use rusqlite::Row;
 use rusqlite::types::ValueRef;
+use text::{CodePointString, strip};
 
 use crate::{SqlClass, SqlError};
 
@@ -76,8 +77,8 @@ impl Cell {
         match self {
             Self::Null => "None".to_owned(),
             Self::Integer(value) => value.to_string(),
-            Self::Real(value) => float_repr(*value),
-            Self::Text(text) => PyStr::from(text.as_str()).repr(),
+            Self::Real(value) => float_text(*value),
+            Self::Text(text) => CodePointString::from(text.as_str()).quoted(),
             Self::Blob(bytes) => bytes_repr(bytes),
         }
     }
@@ -99,7 +100,7 @@ const NOT_A_NUMBER: &str =
 pub(crate) fn check_sloc(raw: &Cell) -> Result<(), SqlError> {
     let parsed = match raw {
         Cell::Text(text) => Some(
-            loads(text).map_err(|error| SqlError::new(SqlClass::JsonDecode, error.to_string()))?,
+            parse(text).map_err(|error| SqlError::new(SqlClass::JsonDecode, error.to_string()))?,
         ),
         _ => None,
     };

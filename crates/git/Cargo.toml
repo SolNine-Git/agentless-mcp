@@ -14,7 +14,7 @@ workspace = true
 [dependencies]
 io = { path = "../io" }
 kernel = { path = "../kernel" }
-pycompat = { path = "../pycompat" }
+text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }

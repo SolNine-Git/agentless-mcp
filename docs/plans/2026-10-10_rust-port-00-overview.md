@@ -25,7 +25,7 @@ The owner chose to rewrite every layer, the MCP server included, in Rust as one 
 
 ## Architecture
 
-One Cargo workspace in this repository, under `crates/`, beside `src/agentless_mcp` until the Python tree is deleted after P4. Nineteen crates in nine layers. A crate depends only on crates in lower layers. Cargo refuses cycles, and a layer test (P0) refuses every other upward edge.
+One Cargo workspace in this repository, under `crates/`, beside `src/agentless_mcp` until the Python tree is deleted after P4. Twenty crates in nine layers. A crate depends only on crates in lower layers. Cargo refuses cycles, and a layer test (P0) refuses every other upward edge.
 
 | Layer | Crate | Job | Depends on | Built in |
 |---|---|---|---|---|
@@ -33,20 +33,21 @@ One Cargo workspace in this repository, under `crates/`, beside `src/agentless_m
 | L7 | `cli` | Command line generated from the operation table; exit codes. | app, render, prompts | P1, grows in P2, P3 |
 | L7 | `mcp` | MCP server on rmcp, stdio and streamable HTTP. | app, render, prompts | P4 |
 | L7 | `hook` | Claude Code hooks in process. | app, render, prompts, io | P1 (erosion gate), P4 (search gate) |
-| L6 | `render` | Text output and the envelope; JSON through the Python-compatible formatter. | app, prompts, pycompat, kernel | P1, grows in P2 |
+| L6 | `render` | Text output and the envelope; JSON through the Python-compatible formatter. | app, prompts, json, text, kernel | P1, grows in P2 |
 | L5 | `app` | One module per operation, the operation table, `Services`, `Session`. | patchcheck, checks, graph, store, git, io, facts, metrics, patch, prompts, kernel | P1, grows in P2, P3 |
 | L4 | `patchcheck` | The seven patch checks. | checks, facts, graph, patch, metrics, syntax, kernel | P3 |
 | L3 | `checks` | Check trait, one Finding type, cascade matcher, path-scope rule, the three pair checks. | metrics, syntax, prompts, kernel | P1 |
-| L3 | `graph` | Name resolution, tiers, file and symbol graphs, ranking, communities, cycles, paths. | facts, pycompat, kernel | P2 |
+| L3 | `graph` | Name resolution, tiers, file and symbol graphs, ranking, communities, cycles, paths. | facts, metrics, kernel | P2 |
 | L3 | `store` | Until P4, a read-only reader of the Python `tags.db` for the hook (decision 9). From P2, the Rust per-file cache under a complete artifact key, with pure freshness, plan, and eviction. | facts, metrics, io, kernel | P1 (`tags.db` reader), P2 (own store), P4 (reader deleted) |
+| L3 | `git` | Git queries as typed values through the one runner. | io, kernel | P1 (`log_span` in P2, worktrees in P3) |
 | L2 | `facts` | Symbols, imports, references; skeleton, slices, locations. | syntax, kernel | P2 |
-| L2 | `metrics` | Units, complexity, lines, body keys, clone blocks and keys. | syntax, pycompat, kernel | P1 |
+| L2 | `metrics` | Units, complexity, lines, body keys, clone blocks and keys. | syntax, text, kernel | P1 |
 | L2 | `patch` | SEARCH/REPLACE and unified diff parsing, apply, vote. | syntax, kernel | P3 |
-| L2 | `git` | Git queries as typed values through the one runner. | io, kernel | P1 (`log_span` in P2, worktrees in P3) |
-| L1 | `syntax` | Language table, static grammars, parse, flat index, queries. The only crate with `unsafe`. | pycompat, kernel | P1, grows in P2 |
-| L1 | `io` | Process runner, bounded walk/read/write, lock, deadline, config read once. The only crate that writes files. | kernel | P1 (write port in P3) |
+| L2 | `io` | Process runner, bounded walk/read/write, lock, deadline, config read once. The only crate that writes files. | json, text, kernel | P1 (write port in P3) |
+| L1 | `syntax` | Language table, static grammars, parse, flat index, queries. The only crate with `unsafe`. | text, kernel | P1, grows in P2 |
 | L1 | `prompts` | Caller-facing strings from JSON; one typed function per message. | kernel | P1 |
-| L0 | `pycompat` | Every Python behavior the goldens need, one function each. | none | P1 |
+| L1 | `json` | JSON text in two fixed forms, JSON read into values, and the shortest float text. | text | P1 |
+| L0 | `text` | Line breaks, whitespace, the printable rule, and text that can hold a lone surrogate. | none | P1 |
 | L0 | `kernel` | Error enum, ids, spans, keys, `Bounded<T>`, `Limit<MIN, MAX, DEF>`. | none | P0 |
 
 ## Phase Map
@@ -75,7 +76,7 @@ The proposed P1 latency thresholds are p50 50 ms or less and p95 100 ms or less 
 8. **Parity questions go to the ledger.** A Python behavior that a golden or a consumer depends on gets one owner in one crate (see the parity ledger in [the design records](../analysis/2026-10-10_rust-port-design-records.md)) and a fixture made by the pinned CPython 3.13 at development time. No test runs Python.
 9. **Hermetic tests.** No listening ports, no real clock, no ambient environment, no shared state. `cargo nextest` with a per-test timeout.
 10. **Benchmarks follow docs/analysis/benchmark-methodology.md.** Never against the shared working tree; a frozen copy or a detached worktree only.
-11. **Mutation score.** From P1, a nightly `cargo mutants` job runs on the pure crates (`kernel`, `pycompat`, `metrics`, `checks`, then `facts`, `graph`, and `patch` as they arrive). Its first run sets the floor, and the floor only rises.
+11. **Mutation score.** From P1, a nightly `cargo mutants` job runs on the pure crates (`kernel`, `text`, `json`, `metrics`, `checks`, then `facts`, `graph`, and `patch` as they arrive). Its first run sets the floor, and the floor only rises.
 
 ## Grammar sources (D1, measured 2026-10-10)
 

@@ -5,7 +5,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::Path;
 
-use pycompat::PyStr;
+use text::CodePointString;
 
 use crate::{Git, GitOutcome, Limits};
 
@@ -147,7 +147,7 @@ pub fn parse_untracked(raw: &[u8]) -> Vec<Change> {
 /// Returns [`Malformed::NotOneObjectName`] when the stripped text is not 40 or 64 hex digits.
 pub fn parse_commit(stdout: &[u8]) -> Result<String, Malformed> {
     let text = String::from_utf8_lossy(stdout);
-    let name = pycompat::strip(&text);
+    let name = text::strip(&text);
     let hex = name
         .bytes()
         .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
@@ -172,7 +172,7 @@ impl fmt::Display for Malformed {
             Self::NoPath => f.write_str("a diff record ends before its path"),
             Self::Mode(mode) => {
                 let shown: String = mode.chars().take(MODE_SHOWN_CHARS).collect();
-                let quoted = PyStr::from(shown.as_str()).repr();
+                let quoted = CodePointString::from(shown.as_str()).quoted();
                 write!(
                     f,
                     "a diff record carries the mode {quoted}, which names no file type"

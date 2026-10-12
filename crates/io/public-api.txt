@@ -41,7 +41,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for io::ConfigWarning
 impl core::panic::unwind_safe::UnwindSafe for io::ConfigWarning
 pub enum io::FileRefusal
 pub io::FileRefusal::Grew
-pub io::FileRefusal::NotJson(pycompat::loads::JsonError)
+pub io::FileRefusal::NotJson(json::parse::JsonError)
 pub io::FileRefusal::NotObject
 pub io::FileRefusal::NotRegular
 pub io::FileRefusal::NotUtf8
@@ -325,7 +325,7 @@ impl core::marker::UnsafeUnpin for io::TestCmdWarning
 impl core::panic::unwind_safe::RefUnwindSafe for io::TestCmdWarning
 impl core::panic::unwind_safe::UnwindSafe for io::TestCmdWarning
 pub enum io::UnknownKeyWarning
-pub io::UnknownKeyWarning::Key(pycompat::pystr::PyStr)
+pub io::UnknownKeyWarning::Key(text::code_point_string::CodePointString)
 pub io::UnknownKeyWarning::Suppressed
 pub io::UnknownKeyWarning::Suppressed::count: usize
 impl core::clone::Clone for io::UnknownKeyWarning
@@ -618,11 +618,13 @@ pub fn io::decode_strict(alloc::vec::Vec<u8>) -> core::result::Result<alloc::str
 pub fn io::file_size(&std::path::Path) -> core::io::error::Result<u64>
 pub fn io::file_stays_inside(&std::path::Path, &std::path::Path) -> bool
 pub fn io::load_config(&std::path::Path) -> io::ProjectConfig
-pub fn io::parse_config(&[(pycompat::pystr::PyStr, pycompat::loads::JsonValue)], core::option::Option<std::path::PathBuf>) -> io::ProjectConfig
+pub fn io::os_error_class_text(&core::io::error::Error) -> alloc::string::String
+pub fn io::parse_config(&[(text::code_point_string::CodePointString, json::parse::JsonValue)], core::option::Option<std::path::PathBuf>) -> io::ProjectConfig
 pub fn io::read_bounded(&std::path::Path) -> core::result::Result<alloc::vec::Vec<u8>, io::Skipped>
 pub fn io::remove_file(&std::path::Path) -> core::io::error::Result<bool>
 pub fn io::resolve(&std::path::Path) -> core::io::error::Result<std::path::PathBuf>
 pub fn io::run(&io::Spec) -> io::Outcome
+pub fn io::strerror(&core::io::error::Error) -> alloc::string::String
 pub fn io::touch(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::try_lock(&std::path::Path) -> core::result::Result<io::LockGuard, io::LockError>
 pub fn io::walk(&std::path::Path) -> core::result::Result<io::Walk, io::WalkRefusal>

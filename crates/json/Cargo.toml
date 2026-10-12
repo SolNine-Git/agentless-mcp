@@ -1,6 +1,6 @@
 [package]
-name = "pycompat"
-description = "CPython behaviors the port must match: string splitting, float formatting, JSON form, and the SLOC rule."
+name = "json"
+description = "JSON text in two fixed forms, JSON text read into values with the place of each refusal, and the shortest float text."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-libc = "0.2.180"
 serde.workspace = true
 serde_json.workspace = true
+text = { path = "../text" }
+
+[dev-dependencies]
+text = { path = "../text", features = ["test-support"] }

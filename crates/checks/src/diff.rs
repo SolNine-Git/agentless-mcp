@@ -6,12 +6,8 @@ use std::collections::HashMap;
 // One matching block: the start in `a`, the start in `b`, and the length.
 type Block = (usize, usize, usize);
 
-/// Returns the matching blocks of `a` and `b` as (start in `a`, start in `b`, length), in
-/// order, adjacent blocks merged, and then `(a.len(), b.len(), 0)`. When `b` holds 200 or more
-/// lines, a line that occurs more than `b.len() / 100 + 1` times in `b` starts no match, and a
-/// match can still extend across it.
 #[must_use]
-pub fn matching_blocks(a: &[&str], b: &[&str]) -> Vec<(usize, usize, usize)> {
+pub(crate) fn matching_blocks(a: &[&str], b: &[&str]) -> Vec<(usize, usize, usize)> {
     let matcher = Matcher {
         a,
         b,
@@ -163,11 +159,12 @@ fn merge_adjacent(found: &[Block]) -> Vec<Block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::cases;
+    use text::testing::cases;
 
     #[test]
     fn matching_blocks_cases() {
-        let all: Vec<(Vec<String>, Vec<String>, Vec<Block>)> = cases("difflib", "matching_blocks");
+        let all: Vec<(Vec<String>, Vec<String>, Vec<Block>)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "diff", "matching_blocks");
         for (a, b, expected) in all {
             let a: Vec<&str> = a.iter().map(String::as_str).collect();
             let b: Vec<&str> = b.iter().map(String::as_str).collect();

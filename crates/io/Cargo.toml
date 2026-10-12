@@ -13,15 +13,16 @@ workspace = true
 
 [features]
 # io::testing::Tree and io::testing::cases, for the tests of other crates.
-test-support = ["dep:serde_json"]
+test-support = ["text/test-support"]
 
 [dependencies]
+json = { path = "../json" }
 kernel = { path = "../kernel" }
 libc = "0.2.180"
-pycompat = { path = "../pycompat" }
 serde.workspace = true
-serde_json = { workspace = true, optional = true }
+text = { path = "../text" }
 wait-timeout = "0.2.1"
 
 [dev-dependencies]
 serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

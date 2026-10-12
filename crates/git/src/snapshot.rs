@@ -113,10 +113,10 @@ fn receipt(subcommand: &str, outcome: GitOutcome) -> Read {
 }
 
 fn dirty_count(text: &str) -> usize {
-    let lines = pycompat::splitlines(text, false);
+    let lines = text::splitlines(text, false);
     lines
         .iter()
-        .filter(|line| !pycompat::strip(line).is_empty())
+        .filter(|line| !text::strip(line).is_empty())
         .count()
 }
 

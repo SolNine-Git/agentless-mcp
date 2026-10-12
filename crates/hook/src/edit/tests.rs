@@ -1,5 +1,5 @@
 use io::testing::cases;
-use pycompat::PyStr;
+use text::CodePointString;
 
 use super::{Eol, LoneSurrogate, Proposal, proposal};
 use crate::halt::Halt;
@@ -20,11 +20,11 @@ type EditCase = (
 
 fn change(kind: &str, first: &str, second: Option<&str>, replace_all: bool) -> Change {
     if kind == "write" {
-        return Change::Write(PyStr::from(first));
+        return Change::Write(CodePointString::from(first));
     }
     Change::Edit(EditInput {
-        old_string: PyStr::from(first),
-        new_string: PyStr::from(second.expect("an Edit case has a new_string")),
+        old_string: CodePointString::from(first),
+        new_string: CodePointString::from(second.expect("an Edit case has a new_string")),
         replace_all,
     })
 }
@@ -63,8 +63,8 @@ fn the_proposed_text_matches_the_generated_cases() {
 #[test]
 fn a_lone_surrogate_in_new_string_leaves_no_utf8_text_but_keeps_the_eol() {
     let edit = Change::Edit(EditInput {
-        old_string: PyStr::from("b"),
-        new_string: PyStr::fsdecode(b"\xff"),
+        old_string: CodePointString::from("b"),
+        new_string: CodePointString::from_utf8_escaped(b"\xff"),
         replace_all: false,
     });
     let found = proposal(&edit, Some("a\r\nb\r\n")).expect("the Edit applies");
@@ -75,8 +75,8 @@ fn a_lone_surrogate_in_new_string_leaves_no_utf8_text_but_keeps_the_eol() {
 #[test]
 fn a_lone_surrogate_in_old_string_is_never_in_the_file() {
     let edit = Change::Edit(EditInput {
-        old_string: PyStr::fsdecode(b"\xff"),
-        new_string: PyStr::from("x"),
+        old_string: CodePointString::from_utf8_escaped(b"\xff"),
+        new_string: CodePointString::from("x"),
         replace_all: false,
     });
     let halt = proposal(&edit, Some("a\n")).expect_err("Claude Code fails this Edit");

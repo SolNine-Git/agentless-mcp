@@ -1,10 +1,11 @@
 //! The envelope: the receipt around a body, and the token ceiling over the whole answer.
 
+use json::{JsonForm, to_text};
 use prompts::envelope::{
     CEILING_TRUNCATION, JSON_CEILING_OVERSIZED_ITEM, JSON_CEILING_TRIMMED, NOTICE, RECEIPT_HEADER,
 };
-use pycompat::{JsonForm, dumps, splitlines};
 use serde::Serialize;
+use text::splitlines;
 
 use crate::Error;
 use crate::count::{chars_to_tokens, tokens};
@@ -163,7 +164,7 @@ fn document<P: Serialize>(
         payload,
         truncated,
     };
-    let mut text = dumps(&document, JsonForm::Indented)?;
+    let mut text = to_text(&document, JsonForm::Indented)?;
     text.push('\n');
     Ok(text)
 }

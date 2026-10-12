@@ -1,4 +1,4 @@
-use pycompat::{JsonForm, dumps};
+use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -66,7 +66,7 @@ fn each_report_equals_the_python_report_apart_from_the_build_fields() {
             .and_then(|parent| parent.file_name());
         let key = key.expect("a key directory").to_str().expect("UTF-8");
 
-        let text = dumps(&report, JsonForm::Compact).expect("a report serializes");
+        let text = to_text(&report, JsonForm::Compact).expect("a report serializes");
 
         let shown = text
             .replace(key, "<KEY>")

@@ -3,9 +3,8 @@
 use std::path::PathBuf;
 
 use prompts::messages::CACHE_STALE_REMEDIATION;
-use pycompat::shlex_quote;
 
-use crate::Refusal;
+use crate::{Refusal, shell_quote};
 
 /// What the call found in the cache.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,7 +54,7 @@ impl CacheStatus {
                 repo_generation,
                 repo_root,
             } => {
-                let remediation = CACHE_STALE_REMEDIATION.render(&shlex_quote(repo_root));
+                let remediation = CACHE_STALE_REMEDIATION.render(&shell_quote(repo_root));
                 format!(
                     "g:{generation} generation mismatch (repo g:{repo_generation}); {remediation}"
                 )

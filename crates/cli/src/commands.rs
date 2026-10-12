@@ -281,7 +281,7 @@ fn severity_names() -> String {
 // The `--only` value: names split at commas, trimmed, each kept once in its first place.
 fn check_names(arg: &Arg) -> Result<Value, String> {
     let mut names: Vec<String> = Vec::new();
-    for name in arg.text.split(',').map(pycompat::strip) {
+    for name in arg.text.split(',').map(text::strip) {
         if !names.iter().any(|kept| kept == name) {
             names.push(name.to_owned());
         }
@@ -297,7 +297,7 @@ fn severities(arg: &Arg) -> Result<Value, String> {
     let names: Vec<String> = arg
         .text
         .split(',')
-        .map(|n| pycompat::strip(n).to_owned())
+        .map(|n| text::strip(n).to_owned())
         .collect();
     let known = |name: &String| Severity::ALL.iter().any(|s| s.as_str() == name.as_str());
     match names.iter().find(|name| !known(name)) {

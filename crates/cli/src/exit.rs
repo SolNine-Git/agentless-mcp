@@ -62,11 +62,11 @@ pub fn write_answer(streams: &mut Streams<'_>, out: &str, err: &str, code: u8) -
 // The report of an answer that stdout did not take: the error class for the errno, then the
 // errno and its message.
 fn flush_failure(error: &io::Error) -> String {
-    let repr = pycompat::os_error_repr(error);
+    let repr = ::io::os_error_class_text(error);
     let class = repr
         .split_once('(')
         .map_or(repr.as_str(), |(class, _)| class);
-    let message = pycompat::strerror(error);
+    let message = ::io::strerror(error);
     let detail = match error.raw_os_error() {
         Some(code) => format!("[Errno {code}] {message}"),
         None => message,
@@ -100,7 +100,7 @@ pub fn internal_error_line(info: &PanicHookInfo<'_>) -> String {
 /// Returns the one stderr line that reports an unreadable start-up directory.
 #[must_use]
 pub fn cwd_failure_line(error: &io::Error) -> String {
-    let shown = pycompat::os_error_repr(error);
+    let shown = ::io::os_error_class_text(error);
     format!(
         "{PREFIX}{}\n",
         one_line(&format!("cannot read the current directory: {shown}"))

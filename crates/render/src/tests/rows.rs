@@ -9,7 +9,7 @@ use checks::{
     CloneCopy, CloneSite, CloneState, DriftKey, HitState, Match, UnitChange, UnitDelta, UnitState,
 };
 use io::ProjectConfig;
-use pycompat::JsonValue;
+use json::JsonValue;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -40,7 +40,7 @@ fn leak(text: &str) -> &'static str {
 type ConfigRow = (String, Option<String>);
 
 fn parsed_config((document, path): &ConfigRow) -> ProjectConfig {
-    let value = pycompat::loads(document);
+    let value = json::parse(document);
     let Ok(JsonValue::Object(pairs)) = &value else {
         panic!("{document}: not a JSON object");
     };

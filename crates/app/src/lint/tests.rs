@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use pycompat::{JsonForm, dumps};
+use json::{JsonForm, to_text};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -36,7 +36,7 @@ fn shown(sandbox: &Sandbox, found: Result<Noted<LintReport>, Error>) -> Expected
     match found {
         Ok(noted) => {
             assert_eq!(noted.diagnostics, Vec::<String>::new());
-            let text = dumps(&noted.value, JsonForm::Compact).expect("a report serializes");
+            let text = to_text(&noted.value, JsonForm::Compact).expect("a report serializes");
             Expected::Report(text.replace(&place, "<SANDBOX>"))
         }
         Err(Error::Kind(kind)) => {

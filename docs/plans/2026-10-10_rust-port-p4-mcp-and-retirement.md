@@ -116,7 +116,7 @@ The Python tree stays in the repository, unpackaged, until the release is live a
    - `src/agentless_mcp/`;
    - `tests/unit/` and the Python parts of `tests/characterization/`, including each module's `regenerate()`; `cargo xtask goldens --update` replaces them (overview rule 6);
    - `contrib/hooks/*.py`;
-   - the Python fixture generators `scripts/pycompat_fixtures.py`, `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py`, `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`. Their committed fixtures stay as data;
+   - the Python fixture generators `scripts/stdlib_fixtures.py`, `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py`, `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`. Their committed fixtures stay as data;
    - the Python-only CI jobs (`ci.yml` fresh-install, no-extras, wheel data);
    - the Python lint configuration with no files left to check: the ruff, mypy, import-linter, and deptry hooks in `.pre-commit-config.yaml`, and their sections in `pyproject.toml`. `codespell` stays, because it also checks the docs and the Rust code.
 3. Keep `tests/characterization/fixtures/` and `goldens/`. The Rust tests read them byte for byte.

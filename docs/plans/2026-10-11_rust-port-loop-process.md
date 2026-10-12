@@ -17,7 +17,7 @@ This document records how each unit of the port is built, and what each lesson c
 ## The loop, per unit
 
 1. **Scope.** A scoping worker lists the Python call sites and the arguments they pass. The spec covers what the callers use, nothing more.
-2. **Cases.** The committed generator (`scripts/pycompat_fixtures.py` for `pycompat`) writes the inputs and expected outputs from CPython 3.13 into `crates/<crate>/fixtures/*.json`. Tests read the JSON at run time. No test runs Python, and no case is typed by hand.
+2. **Cases.** The committed generator (for example `scripts/stdlib_fixtures.py` for `text` and `json`) writes the inputs and expected outputs from CPython 3.13 into `crates/<crate>/fixtures/*.json`. Tests read the JSON at run time. No test runs Python, and no case is typed by hand.
 3. **Brief.** The PM writes the brief: what exists, the owned files, the spec, the definition of done, and the stop rule. Executor rules: `/var/tmp/claude-rust-port/p1/common.md`. A brief for a third-party API includes the crate's real source from `~/.cargo/registry`.
 4. **Plan.** The executor writes a short plan. For a design-heavy unit (crate interfaces, the `tags.db` reader, the hook) the PM approves it first and sends the owner a summary. For other units the executor continues without a wait.
 5. **Build.** The executor implements the unit until fmt, clippy `-D warnings`, the tests and the gates pass. After 3 failed attempts at the same check, it stops and reports.
@@ -107,3 +107,4 @@ At the end of a phase, three commits, each with the owner's go:
 | `hook` build | Opus | 873,772 in the last of 3 runs (the earlier runs are not in this figure) | 3 runs, the last 40.6 min | 517 workspace tests in the PM run; hook differential 944 calls with 0 differences; found the stream-lock hang and the unreadable-cwd difference, both fixed without a new deviation |
 | P1 verification | Opus | 210,814 | 28.1 min | Every gate, 12 generators twice, cli 394 of 394 and hook 944 of 944 equal; found 1 blocker (a gitignored source file) and 3 smaller items |
 | P1 verification fixes | Opus | 180,998 (2 runs) | 2 runs, 42.5 min in all | Module rename, one format fix, 5 self-test rows; self-test 177 of 177 rows from a clean clone of a scratch commit |
+| `pycompat` split by domain | Opus | 254,883 plan + 754,344 build | 17.3 min plan, 56.7 min build | 104 files; 516 tests (the `max_first` test left with its function); fixtures byte-equal; 18 doc lines; the `pystr` module rename followed |

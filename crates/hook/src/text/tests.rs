@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use io::testing::cases;
-use pycompat::PyStr;
 use serde::de::DeserializeOwned;
+use text::CodePointString;
 
 use super::{codec_text, grouped, last_line, lossy, os_error_line, os_error_text, sha256_hex};
 use crate::record::seconds;
@@ -72,7 +72,7 @@ fn the_time_stamp_matches_the_generated_cases() {
     for (nanos, expected) in all {
         let nanos: u64 = nanos.parse().expect("a count of nanoseconds");
         let wall = std::time::UNIX_EPOCH + std::time::Duration::from_nanos(nanos);
-        assert_eq!(pycompat::float_repr(seconds(wall)), expected, "{nanos} ns");
+        assert_eq!(json::float_text(seconds(wall)), expected, "{nanos} ns");
     }
 }
 
@@ -87,6 +87,6 @@ fn the_digest_matches_the_generated_cases() {
 
 #[test]
 fn a_lone_surrogate_shows_as_the_replacement_character() {
-    let text = PyStr::fsdecode(b"a\xffb");
+    let text = CodePointString::from_utf8_escaped(b"a\xffb");
     assert_eq!(lossy(&text), "a\u{fffd}b");
 }

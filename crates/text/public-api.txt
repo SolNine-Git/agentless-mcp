@@ -1,0 +1,39 @@
+pub mod text
+pub struct text::CodePointString
+impl text::CodePointString
+pub fn text::CodePointString::as_str(&self) -> core::option::Option<&str>
+pub fn text::CodePointString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + '_
+pub fn text::CodePointString::from_utf8_escaped(&[u8]) -> Self
+pub fn text::CodePointString::push(&mut self, u32)
+pub fn text::CodePointString::push_str(&mut self, &str)
+pub fn text::CodePointString::quoted(&self) -> alloc::string::String
+impl core::clone::Clone for text::CodePointString
+pub fn text::CodePointString::clone(&self) -> Self
+impl core::cmp::Eq for text::CodePointString
+impl core::cmp::Ord for text::CodePointString
+pub fn text::CodePointString::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for text::CodePointString
+pub fn text::CodePointString::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for text::CodePointString
+pub fn text::CodePointString::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<&str> for text::CodePointString
+pub fn text::CodePointString::from(&str) -> Self
+impl core::default::Default for text::CodePointString
+pub fn text::CodePointString::default() -> Self
+impl core::fmt::Debug for text::CodePointString
+pub fn text::CodePointString::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for text::CodePointString
+pub fn text::CodePointString::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for text::CodePointString
+impl core::marker::Freeze for text::CodePointString
+impl core::marker::Send for text::CodePointString
+impl core::marker::Sync for text::CodePointString
+impl core::marker::Unpin for text::CodePointString
+impl core::marker::UnsafeUnpin for text::CodePointString
+impl core::panic::unwind_safe::RefUnwindSafe for text::CodePointString
+impl core::panic::unwind_safe::UnwindSafe for text::CodePointString
+pub fn text::is_printable(u32) -> bool
+pub fn text::is_space(char) -> bool
+pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn text::splitlines(&str, bool) -> alloc::vec::Vec<&str>
+pub fn text::strip(&str) -> &str

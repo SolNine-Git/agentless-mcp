@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use io::testing::cases;
-use pycompat::PyStr;
 use serde_json::{Value, json};
+use text::CodePointString;
 
 use super::{Change, Payload, document, identity, payload, read};
 use crate::halt::Halt;
@@ -32,7 +32,7 @@ fn parsed(bytes: &[u8]) -> (Identity, Result<Payload, Halt>) {
     (identity(&document), payload(&document))
 }
 
-fn text(value: &PyStr) -> Value {
+fn text(value: &CodePointString) -> Value {
     value.as_str().map_or(Value::Null, |text| json!(text))
 }
 

@@ -155,7 +155,7 @@ fn advisory_reply(text: &str) -> Result<String, Halt> {
             additional_context: text,
         },
     };
-    pycompat::dumps(&reply, pycompat::JsonForm::Compact)
+    json::to_text(&reply, json::JsonForm::Compact)
         .map_err(|error| Halt::internal(format!("TypeError: {error}")))
 }
 

@@ -1,7 +1,7 @@
 //! The text Claude Code writes for a Write or an Edit, and the Edits that Claude Code itself fails.
 
-use pycompat::PyStr;
 use serde::Serialize;
+use text::CodePointString;
 
 use crate::halt::Halt;
 use crate::payload::{Change, EditInput};
@@ -72,7 +72,7 @@ pub(crate) fn edited_text(old: &str, edit: &EditInput) -> Result<Proposal, Halt>
 
 // The old_string to replace, or the reason Claude Code fails the Edit.
 fn check_edit<'a>(normalized: &str, edit: &'a EditInput) -> Result<&'a str, Halt> {
-    if edit.old_string == PyStr::default() {
+    if edit.old_string == CodePointString::default() {
         return Err(Halt::skipped(
             "Edit with an empty old_string, which Claude Code fails",
         ));
@@ -99,7 +99,7 @@ fn check_edit<'a>(normalized: &str, edit: &'a EditInput) -> Result<&'a str, Halt
     Ok(needle)
 }
 
-fn utf8(text: &PyStr) -> Result<String, LoneSurrogate> {
+fn utf8(text: &CodePointString) -> Result<String, LoneSurrogate> {
     text.as_str().map(str::to_owned).ok_or(LoneSurrogate)
 }
 

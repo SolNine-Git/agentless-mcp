@@ -7,8 +7,9 @@ use std::io::{self, Read};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-use pycompat::{JsonValue, PyStr, loads};
+use json::{JsonValue, parse};
 use serde::Serialize;
+use text::CodePointString;
 
 use crate::warning::{ConfigWarning, FileRefusal};
 use crate::{byte_count, file_stays_inside, parse_config, resolve, strerror};
@@ -151,12 +152,12 @@ pub fn load_config(repo_root: &Path) -> ProjectConfig {
 fn read_object(
     path: &Path,
     repo_root: &Path,
-) -> Result<Option<Vec<(PyStr, JsonValue)>>, FileRefusal> {
+) -> Result<Option<Vec<(CodePointString, JsonValue)>>, FileRefusal> {
     let Some(bytes) = read_bytes(path, repo_root)? else {
         return Ok(None);
     };
     let text = String::from_utf8(bytes).map_err(|_| FileRefusal::NotUtf8)?;
-    let mut document = loads(&text).map_err(FileRefusal::NotJson)?;
+    let mut document = parse(&text).map_err(FileRefusal::NotJson)?;
     match &mut document {
         JsonValue::Object(entries) => Ok(Some(std::mem::take(entries))),
         _ => Err(FileRefusal::NotObject),
@@ -319,7 +320,7 @@ mod tests {
         for (text, expected) in all {
             let (tree, config) = loaded_document(&text);
             let shown =
-                pycompat::dumps(&config, pycompat::JsonForm::Compact).expect("a config serializes");
+                json::to_text(&config, json::JsonForm::Compact).expect("a config serializes");
             assert_eq!(tree.placed(&shown), expected, "document {text:?}");
         }
     }

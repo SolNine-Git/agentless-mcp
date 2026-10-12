@@ -1,10 +1,11 @@
-"""Write the pycompat test fixtures: each case input with the result that CPython 3.13 computes.
+"""Write the test fixtures whose results the CPython 3.13 standard library computes.
 
 Development-time only. Run it from the repository root:
 
-    uv run --python 3.13 --no-project python scripts/pycompat_fixtures.py
+    uv run --python 3.13 --no-project python scripts/stdlib_fixtures.py
 
-With --check, the script compares its output with the committed fixtures and writes nothing.
+The script writes fixtures for the text, json, metrics, checks, io and store crates. With --check,
+the script compares its output with the committed fixtures and writes nothing.
 """
 
 import json
@@ -20,9 +21,9 @@ from collections.abc import Callable
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from fixture_files import Fixture, write_or_check
+from fixture_files import Fixture, render, write_or_check_files
 
-FIXTURES = Path(__file__).resolve().parents[1] / "crates" / "pycompat" / "fixtures"
+CRATES = Path(__file__).resolve().parents[1] / "crates"
 INF = math.inf
 NAN = math.nan
 WORD = re.compile(r"\w")
@@ -212,17 +213,6 @@ SUM_BUILTIN = [
         -9758.738803124023,
     ],
     [1.0, 1e-16, 1e-16, 1e-16, -1.0],
-]
-MAX_FIRST = [
-    [],
-    [1.0],
-    [1.0, 2.0, 2.0],
-    [3.0, 1.0, 3.0],
-    [1.0, NAN, 2.0],
-    [NAN, 1.0],
-    [2.0, NAN, 2.0, 5.0, 5.0],
-    [-0.0, 0.0],
-    [0.0, -0.0],
 ]
 
 DUMPS = [
@@ -447,11 +437,21 @@ def text_fixture() -> Fixture:
         "split_whitespace": [[text, text.split()] for text in SPLIT_WHITESPACE],
         "strip": [[text, text.strip()] for text in STRIP],
         "not_printable": code_ranges(lambda char: not char.isprintable()),
-        "word": code_ranges(lambda char: WORD.fullmatch(char) is not None),
         "repr": [[code_points(text), repr(text)] for text in REPR],
         "fsdecode": [
             [list(raw), code_points(raw.decode("utf-8", "surrogateescape"))] for raw in FSDECODE
         ],
+    }
+
+
+def word_fixture() -> Fixture:
+    return {
+        "word": code_ranges(lambda char: WORD.fullmatch(char) is not None),
+    }
+
+
+def shell_fixture() -> Fixture:
+    return {
         "shlex_quote": [[text, shlex.quote(text)] for text in SHLEX_QUOTE],
     }
 
@@ -530,6 +530,11 @@ def float_fixture() -> Fixture:
             for x in values
             for ndigits in digits
         ],
+    }
+
+
+def sum_fixture() -> Fixture:
+    return {
         "sum_builtin": [
             [[bits(x) for x in values], bits(float(sum(values)))] for values in SUM_BUILTIN
         ],
@@ -606,15 +611,6 @@ def reads_nested(opener: str, depth: int) -> bool:
     except RecursionError:
         return False
     return True
-
-
-def order_fixture() -> Fixture:
-    return {
-        "max_first": [
-            [[bits(key) for key in keys], max(range(len(keys)), key=keys.__getitem__, default=None)]
-            for keys in MAX_FIRST
-        ],
-    }
 
 
 def sloc_fixture() -> Fixture:
@@ -875,16 +871,23 @@ def sloc_edge_sources() -> list[str]:
     return sources
 
 
+# Each fixture file, by its path below crates/, with the builder of its sections.
 BUILDERS: dict[str, Callable[[], Fixture]] = {
-    "text": text_fixture,
-    "float": float_fixture,
-    "json": json_fixture,
-    "order": order_fixture,
-    "sloc": sloc_fixture,
-    "os": os_fixture,
-    "difflib": difflib_fixture,
+    "text/fixtures/text.json": text_fixture,
+    "json/fixtures/json.json": json_fixture,
+    "json/fixtures/float.json": float_fixture,
+    "metrics/fixtures/tokenize.json": sloc_fixture,
+    "metrics/fixtures/word.json": word_fixture,
+    "metrics/fixtures/sum.json": sum_fixture,
+    "checks/fixtures/diff.json": difflib_fixture,
+    "io/fixtures/oserror.json": os_fixture,
+    "store/fixtures/shell.json": shell_fixture,
 }
 
 
+def fixtures() -> dict[Path, bytes]:
+    return {CRATES / path: render(build()) for path, build in BUILDERS.items()}
+
+
 if __name__ == "__main__":
-    sys.exit(write_or_check(__doc__.splitlines()[0], FIXTURES, BUILDERS))
+    sys.exit(write_or_check_files(__doc__.splitlines()[0], CRATES, fixtures))

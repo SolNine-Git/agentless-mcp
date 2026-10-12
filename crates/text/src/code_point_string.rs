@@ -4,17 +4,17 @@ use crate::is_printable;
 
 /// Text as a sequence of code points, where a lone surrogate (U+D800 to U+DFFF) can occur.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PyStr {
+pub struct CodePointString {
     // Generalized UTF-8: a lone surrogate takes the 3-byte form of its code point, so the byte
     // order is the code point order.
     bytes: Vec<u8>,
 }
 
-impl PyStr {
-    /// Decodes `bytes` as UTF-8 with the `surrogateescape` handler: a byte that is not part of
-    /// valid UTF-8 becomes the code point U+DC00 plus that byte.
+impl CodePointString {
+    /// Decodes `bytes` as UTF-8: a byte that is not part of valid UTF-8 becomes the code point
+    /// U+DC00 plus that byte.
     #[must_use]
-    pub fn fsdecode(bytes: &[u8]) -> Self {
+    pub fn from_utf8_escaped(bytes: &[u8]) -> Self {
         let mut text = Self::default();
         for chunk in bytes.utf8_chunks() {
             text.push_str(chunk.valid());
@@ -49,22 +49,23 @@ impl PyStr {
         })
     }
 
-    /// Returns the `repr` of the text: quoted, with each quote, backslash and character that is
-    /// not printable written as an escape.
+    /// Returns the text quoted, with each quote, backslash and character that is not printable
+    /// written as an escape.
     #[must_use]
-    pub fn repr(&self) -> String {
+    pub fn quoted(&self) -> String {
         let has = |wanted: char| self.code_points().any(|code| code == u32::from(wanted));
         let quote = if has('\'') && !has('"') { '"' } else { '\'' };
         let mut out = String::with_capacity(self.bytes.len() + 2);
         out.push(quote);
         for code in self.code_points() {
-            push_repr(&mut out, code, quote);
+            push_quoted(&mut out, code, quote);
         }
         out.push(quote);
         out
     }
 
-    pub(crate) fn push(&mut self, code: u32) {
+    /// Appends the code point `code`, which can be a lone surrogate.
+    pub fn push(&mut self, code: u32) {
         if let Some(c) = char::from_u32(code) {
             self.push_str(c.encode_utf8(&mut [0; 4]));
             return;
@@ -78,12 +79,13 @@ impl PyStr {
         ]);
     }
 
-    pub(crate) fn push_str(&mut self, text: &str) {
+    /// Appends `text`.
+    pub fn push_str(&mut self, text: &str) {
         self.bytes.extend_from_slice(text.as_bytes());
     }
 }
 
-impl From<&str> for PyStr {
+impl From<&str> for CodePointString {
     fn from(text: &str) -> Self {
         Self {
             bytes: text.as_bytes().to_vec(),
@@ -91,7 +93,7 @@ impl From<&str> for PyStr {
     }
 }
 
-fn push_repr(out: &mut String, code: u32, quote: char) {
+fn push_quoted(out: &mut String, code: u32, quote: char) {
     match char::from_u32(code) {
         Some(c) if c == quote || c == '\\' => {
             out.push('\\');
@@ -125,10 +127,10 @@ fn push_escape(out: &mut String, code: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::cases;
+    use crate::testing::cases;
 
-    fn from_code_points(codes: &[u32]) -> PyStr {
-        let mut text = PyStr::default();
+    fn from_code_points(codes: &[u32]) -> CodePointString {
+        let mut text = CodePointString::default();
         for &code in codes {
             text.push(code);
         }
@@ -136,20 +138,22 @@ mod tests {
     }
 
     #[test]
-    fn repr_cases() {
-        let all: Vec<(Vec<u32>, String)> = cases("text", "repr");
+    fn quoted_cases() {
+        let all: Vec<(Vec<u32>, String)> = cases(env!("CARGO_MANIFEST_DIR"), "text", "repr");
         for (codes, expected) in all {
             let text = from_code_points(&codes);
             assert_eq!(text.code_points().collect::<Vec<_>>(), codes);
-            assert_eq!(text.repr(), expected, "code points: {codes:x?}");
+            assert_eq!(text.quoted(), expected, "code points: {codes:x?}");
         }
     }
 
     #[test]
-    fn fsdecode_cases() {
-        let all: Vec<(Vec<u8>, Vec<u32>)> = cases("text", "fsdecode");
+    fn from_utf8_escaped_cases() {
+        let all: Vec<(Vec<u8>, Vec<u32>)> = cases(env!("CARGO_MANIFEST_DIR"), "text", "fsdecode");
         for (bytes, expected) in all {
-            let decoded: Vec<u32> = PyStr::fsdecode(&bytes).code_points().collect();
+            let decoded: Vec<u32> = CodePointString::from_utf8_escaped(&bytes)
+                .code_points()
+                .collect();
             assert_eq!(decoded, expected, "bytes: {bytes:x?}");
         }
     }
@@ -158,14 +162,17 @@ mod tests {
     fn a_lone_surrogate_has_no_str_form_and_sorts_by_code_point() {
         let surrogate = from_code_points(&[0xd800]);
         assert_eq!(surrogate.as_str(), None);
-        assert_eq!(PyStr::from("ab").as_str(), Some("ab"));
+        assert_eq!(CodePointString::from("ab").as_str(), Some("ab"));
         let mut sorted = [
             from_code_points(&[0xe000]),
             surrogate.clone(),
             from_code_points(&[0xd7ff]),
         ];
         sorted.sort();
-        let firsts: Vec<u32> = sorted.iter().flat_map(PyStr::code_points).collect();
+        let firsts: Vec<u32> = sorted
+            .iter()
+            .flat_map(CodePointString::code_points)
+            .collect();
         assert_eq!(firsts, [0xd7ff, 0xd800, 0xe000]);
     }
 }

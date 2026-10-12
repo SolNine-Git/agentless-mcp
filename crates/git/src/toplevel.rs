@@ -70,7 +70,7 @@ fn classify(outcome: io::Outcome) -> Toplevel {
         io::Outcome::NotRun(io::NotRun::Spawn(error)) | io::Outcome::Lost(error) => {
             Toplevel::NotRun {
                 errno: error.raw_os_error(),
-                message: pycompat::strerror(&error),
+                message: io::strerror(&error),
             }
         }
     }

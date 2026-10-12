@@ -1,4 +1,4 @@
-//! Float text form, decimal rounding, and compensated summation, with exact results.
+//! Float text form and decimal rounding, with exact results.
 
 use std::fmt::Write;
 
@@ -10,7 +10,7 @@ const MAX_ROUND_DIGITS: u32 = 323;
 /// # Panics
 /// Panics if Rust's own finite float formatting does not expose the expected fields.
 #[must_use]
-pub fn float_repr(x: f64) -> String {
+pub fn float_text(x: f64) -> String {
     if x.is_nan() {
         return "nan".to_owned();
     }
@@ -62,29 +62,6 @@ pub fn round_half_even(x: f64, ndigits: u32) -> f64 {
         .expect("Rust's own exactly rounded float formatting parses back to f64")
 }
 
-/// Sums `values` with Neumaier compensation, starting from 0.0.
-#[must_use]
-pub fn sum_builtin(values: &[f64]) -> f64 {
-    let mut result = 0.0f64;
-    let mut c = 0.0f64;
-
-    for x in values {
-        let t = result + x;
-        if result.abs() >= x.abs() {
-            c += (result - t) + x;
-        } else {
-            c += (x - t) + result;
-        }
-        result = t;
-    }
-
-    if c != 0.0 && c.is_finite() {
-        result += c;
-    }
-
-    result
-}
-
 fn append_positional(out: &mut String, digits: &str, e: i32) {
     if e >= 0 {
         let integer_len =
@@ -130,31 +107,23 @@ fn append_scientific(out: &mut String, digits: &str, e: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::{bits, cases, float, floats};
+    use text::testing::{bits, cases, float};
 
     #[test]
-    fn test_float_repr() {
-        let all: Vec<(String, String)> = cases("float", "float_repr");
+    fn test_float_text() {
+        let all: Vec<(String, String)> = cases(env!("CARGO_MANIFEST_DIR"), "float", "float_repr");
         for (x, expected) in all {
-            assert_eq!(float_repr(float(&x)), expected, "x: {x}");
+            assert_eq!(float_text(float(&x)), expected, "x: {x}");
         }
     }
 
     #[test]
     fn test_round_half_even() {
-        let all: Vec<(String, u32, String)> = cases("float", "round_half_even");
+        let all: Vec<(String, u32, String)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "float", "round_half_even");
         for (x, ndigits, expected) in all {
             let got = round_half_even(float(&x), ndigits);
             assert_eq!(got.to_bits(), bits(&expected), "x: {x}, ndigits: {ndigits}");
-        }
-    }
-
-    #[test]
-    fn test_sum_builtin() {
-        let all: Vec<(Vec<String>, String)> = cases("float", "sum_builtin");
-        for (values, expected) in all {
-            let got = sum_builtin(&floats(&values));
-            assert_eq!(got.to_bits(), bits(&expected), "values: {values:?}");
         }
     }
 }

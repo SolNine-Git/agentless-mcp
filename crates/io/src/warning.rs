@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use pycompat::{JsonError, PyStr};
+use json::JsonError;
+use text::CodePointString;
 
 use crate::config::{CONFIG_FILENAME, GatedCheck, KNOWN_KEYS, MAX_CONFIG_BYTES};
 use crate::keys::{MAX_STOPLIST_ENTRIES, MAX_STOPLIST_ENTRY_CHARS, MAX_TEST_CMD_CHARS};
@@ -197,7 +198,7 @@ impl fmt::Display for TestCmdWarning {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnknownKeyWarning {
     /// One unknown key.
-    Key(PyStr),
+    Key(CodePointString),
     /// The unknown keys after the first eight, which get no warning of their own.
     Suppressed {
         /// The keys without a warning.
@@ -212,7 +213,7 @@ impl fmt::Display for UnknownKeyWarning {
             Self::Key(key) => write!(
                 f,
                 "unknown key {} in {name}: ignored (known keys: {})",
-                key.repr(),
+                key.quoted(),
                 KNOWN_KEYS.join(", ")
             ),
             Self::Suppressed { count } => {

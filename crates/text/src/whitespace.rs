@@ -70,12 +70,12 @@ pub fn strip(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::{cases, check_text_cases};
+    use crate::testing::{cases, check_pairs};
     use std::collections::BTreeSet;
 
     #[test]
     fn is_space_cases() {
-        let spaces: BTreeSet<u32> = cases("text", "is_space");
+        let spaces: BTreeSet<u32> = cases(env!("CARGO_MANIFEST_DIR"), "text", "is_space");
         for c in '\0'..=char::MAX {
             let expected = spaces.contains(&u32::from(c));
             assert_eq!(is_space(c), expected, "mismatch for {c:?}");
@@ -84,7 +84,8 @@ mod tests {
 
     #[test]
     fn splitlines_cases() {
-        let all: Vec<(String, bool, Vec<String>)> = cases("text", "splitlines");
+        let all: Vec<(String, bool, Vec<String>)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "text", "splitlines");
         for (input, keepends, expected) in all {
             assert_eq!(splitlines(&input, keepends), expected, "input: {input:?}");
         }
@@ -92,7 +93,8 @@ mod tests {
 
     #[test]
     fn split_whitespace_cases() {
-        let all: Vec<(String, Vec<String>)> = cases("text", "split_whitespace");
+        let all: Vec<(String, Vec<String>)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "text", "split_whitespace");
         for (input, expected) in all {
             let fields: Vec<&str> = split_whitespace(&input).collect();
             assert_eq!(fields, expected, "input: {input:?}");
@@ -101,6 +103,8 @@ mod tests {
 
     #[test]
     fn strip_cases() {
-        check_text_cases("strip", |input| strip(input).to_owned());
+        check_pairs(env!("CARGO_MANIFEST_DIR"), "text", "strip", |input| {
+            strip(input).to_owned()
+        });
     }
 }

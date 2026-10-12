@@ -1,0 +1,105 @@
+pub mod json
+pub enum json::JsonErrorKind
+pub json::JsonErrorKind::ArrayTooDeep = 13
+pub json::JsonErrorKind::ArrayTrailingComma = 5
+pub json::JsonErrorKind::ByteOrderMark = 11
+pub json::JsonErrorKind::ControlCharacter = 7
+pub json::JsonErrorKind::ExpectingColon = 2
+pub json::JsonErrorKind::ExpectingComma = 3
+pub json::JsonErrorKind::ExpectingPropertyName = 1
+pub json::JsonErrorKind::ExpectingValue = 0
+pub json::JsonErrorKind::ExtraData = 10
+pub json::JsonErrorKind::InvalidEscape = 8
+pub json::JsonErrorKind::InvalidUnicodeEscape = 9
+pub json::JsonErrorKind::ObjectTooDeep = 12
+pub json::JsonErrorKind::ObjectTrailingComma = 4
+pub json::JsonErrorKind::UnterminatedString = 6
+impl core::clone::Clone for json::JsonErrorKind
+pub fn json::JsonErrorKind::clone(&self) -> Self
+impl core::cmp::Eq for json::JsonErrorKind
+impl core::cmp::PartialEq for json::JsonErrorKind
+pub fn json::JsonErrorKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for json::JsonErrorKind
+pub fn json::JsonErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for json::JsonErrorKind
+pub fn json::JsonErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for json::JsonErrorKind
+impl core::marker::StructuralPartialEq for json::JsonErrorKind
+impl core::marker::Freeze for json::JsonErrorKind
+impl core::marker::Send for json::JsonErrorKind
+impl core::marker::Sync for json::JsonErrorKind
+impl core::marker::Unpin for json::JsonErrorKind
+impl core::marker::UnsafeUnpin for json::JsonErrorKind
+impl core::panic::unwind_safe::RefUnwindSafe for json::JsonErrorKind
+impl core::panic::unwind_safe::UnwindSafe for json::JsonErrorKind
+pub enum json::JsonForm
+pub json::JsonForm::Compact
+pub json::JsonForm::Indented
+impl core::clone::Clone for json::JsonForm
+pub fn json::JsonForm::clone(&self) -> Self
+impl core::cmp::Eq for json::JsonForm
+impl core::cmp::PartialEq for json::JsonForm
+pub fn json::JsonForm::eq(&self, &Self) -> bool
+impl core::fmt::Debug for json::JsonForm
+pub fn json::JsonForm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for json::JsonForm
+impl core::marker::StructuralPartialEq for json::JsonForm
+impl core::marker::Freeze for json::JsonForm
+impl core::marker::Send for json::JsonForm
+impl core::marker::Sync for json::JsonForm
+impl core::marker::Unpin for json::JsonForm
+impl core::marker::UnsafeUnpin for json::JsonForm
+impl core::panic::unwind_safe::RefUnwindSafe for json::JsonForm
+impl core::panic::unwind_safe::UnwindSafe for json::JsonForm
+pub enum json::JsonValue
+pub json::JsonValue::Array(alloc::vec::Vec<json::JsonValue>)
+pub json::JsonValue::Bool(bool)
+pub json::JsonValue::Float(f64)
+pub json::JsonValue::Int(alloc::string::String)
+pub json::JsonValue::Null
+pub json::JsonValue::Object(alloc::vec::Vec<(text::code_point_string::CodePointString, json::JsonValue)>)
+pub json::JsonValue::Str(text::code_point_string::CodePointString)
+impl core::clone::Clone for json::JsonValue
+pub fn json::JsonValue::clone(&self) -> Self
+impl core::cmp::PartialEq for json::JsonValue
+pub fn json::JsonValue::eq(&self, &Self) -> bool
+impl core::fmt::Debug for json::JsonValue
+pub fn json::JsonValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for json::JsonValue
+impl core::ops::drop::Drop for json::JsonValue
+pub fn json::JsonValue::drop(&mut self)
+impl core::marker::Freeze for json::JsonValue
+impl core::marker::Send for json::JsonValue
+impl core::marker::Sync for json::JsonValue
+impl core::marker::Unpin for json::JsonValue
+impl core::marker::UnsafeUnpin for json::JsonValue
+impl core::panic::unwind_safe::RefUnwindSafe for json::JsonValue
+impl core::panic::unwind_safe::UnwindSafe for json::JsonValue
+pub struct json::JsonError
+pub json::JsonError::column: usize
+pub json::JsonError::kind: json::JsonErrorKind
+pub json::JsonError::line: usize
+pub json::JsonError::pos: usize
+impl core::clone::Clone for json::JsonError
+pub fn json::JsonError::clone(&self) -> Self
+impl core::cmp::Eq for json::JsonError
+impl core::cmp::PartialEq for json::JsonError
+pub fn json::JsonError::eq(&self, &Self) -> bool
+impl core::error::Error for json::JsonError
+impl core::fmt::Debug for json::JsonError
+pub fn json::JsonError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for json::JsonError
+pub fn json::JsonError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for json::JsonError
+impl core::marker::StructuralPartialEq for json::JsonError
+impl core::marker::Freeze for json::JsonError
+impl core::marker::Send for json::JsonError
+impl core::marker::Sync for json::JsonError
+impl core::marker::Unpin for json::JsonError
+impl core::marker::UnsafeUnpin for json::JsonError
+impl core::panic::unwind_safe::RefUnwindSafe for json::JsonError
+impl core::panic::unwind_safe::UnwindSafe for json::JsonError
+pub fn json::float_text(f64) -> alloc::string::String
+pub fn json::parse(&str) -> core::result::Result<json::JsonValue, json::JsonError>
+pub fn json::round_half_even(f64, u32) -> f64
+pub fn json::to_text<T: serde_core::ser::Serialize + ?core::marker::Sized>(&T, json::JsonForm) -> core::result::Result<alloc::string::String, serde_json::error::Error>

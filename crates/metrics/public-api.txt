@@ -1,9 +1,31 @@
 pub mod metrics
+pub enum metrics::TokenizeErrorKind
+pub metrics::TokenizeErrorKind::Indentation
+pub metrics::TokenizeErrorKind::Tab
+pub metrics::TokenizeErrorKind::Token
+impl metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::class_name(self) -> &'static str
+impl core::clone::Clone for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::clone(&self) -> Self
+impl core::cmp::Eq for metrics::TokenizeErrorKind
+impl core::cmp::PartialEq for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for metrics::TokenizeErrorKind
+impl core::marker::StructuralPartialEq for metrics::TokenizeErrorKind
+impl core::marker::Freeze for metrics::TokenizeErrorKind
+impl core::marker::Send for metrics::TokenizeErrorKind
+impl core::marker::Sync for metrics::TokenizeErrorKind
+impl core::marker::Unpin for metrics::TokenizeErrorKind
+impl core::marker::UnsafeUnpin for metrics::TokenizeErrorKind
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::TokenizeErrorKind
+impl core::panic::unwind_safe::UnwindSafe for metrics::TokenizeErrorKind
 pub enum metrics::Unmeasurable
 pub metrics::Unmeasurable::DocstringQuery(syntax::query::QueryRunError)
 pub metrics::Unmeasurable::DoesNotParse
 pub metrics::Unmeasurable::DoesNotParse::line: u32
-pub metrics::Unmeasurable::Tokenizer(pycompat::sloc::TokenizeError)
+pub metrics::Unmeasurable::Tokenizer(metrics::TokenizeError)
 pub metrics::Unmeasurable::Unsupported
 pub metrics::Unmeasurable::Unsupported::language: syntax::language::Language
 impl core::clone::Clone for metrics::Unmeasurable
@@ -66,6 +88,27 @@ impl core::marker::Unpin for metrics::FileMetrics
 impl core::marker::UnsafeUnpin for metrics::FileMetrics
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::FileMetrics
 impl core::panic::unwind_safe::UnwindSafe for metrics::FileMetrics
+pub struct metrics::TokenizeError
+pub metrics::TokenizeError::kind: metrics::TokenizeErrorKind
+pub metrics::TokenizeError::message: alloc::string::String
+impl core::clone::Clone for metrics::TokenizeError
+pub fn metrics::TokenizeError::clone(&self) -> Self
+impl core::cmp::Eq for metrics::TokenizeError
+impl core::cmp::PartialEq for metrics::TokenizeError
+pub fn metrics::TokenizeError::eq(&self, &Self) -> bool
+impl core::error::Error for metrics::TokenizeError
+impl core::fmt::Debug for metrics::TokenizeError
+pub fn metrics::TokenizeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for metrics::TokenizeError
+pub fn metrics::TokenizeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::TokenizeError
+impl core::marker::Freeze for metrics::TokenizeError
+impl core::marker::Send for metrics::TokenizeError
+impl core::marker::Sync for metrics::TokenizeError
+impl core::marker::Unpin for metrics::TokenizeError
+impl core::marker::UnsafeUnpin for metrics::TokenizeError
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::TokenizeError
+impl core::panic::unwind_safe::UnwindSafe for metrics::TokenizeError
 pub struct metrics::Unit
 pub metrics::Unit::body_key: kernel::key::Key
 pub metrics::Unit::cc: u32
@@ -92,6 +135,7 @@ impl core::panic::unwind_safe::UnwindSafe for metrics::Unit
 pub const metrics::DEFAULT_THRESHOLD: u32
 pub const metrics::MIN_INSTANCES: usize
 pub const metrics::MIN_SLOC: usize
+pub fn metrics::compensated_sum(&[f64]) -> f64
 pub fn metrics::measure(&syntax::parsed::Parsed) -> core::result::Result<metrics::FileMetrics, metrics::Unmeasurable>
 pub fn metrics::place<'a>(&'a str, &metrics::Block) -> (&'a str, u32, u32)
 pub fn metrics::stamp(syntax::language::Language) -> core::option::Option<&'static str>

@@ -37,7 +37,7 @@ impl UnreadCwd {
 
 impl fmt::Display for UnreadCwd {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let reason = pycompat::strerror(&self.error());
+        let reason = io::strerror(&self.error());
         write!(f, "the start-up directory is unreadable: {reason}")
     }
 }

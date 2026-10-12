@@ -122,7 +122,7 @@ impl Call {
         };
         let shown = target.to_string_lossy();
         let id = record.tool_use_id.as_deref().unwrap_or("None");
-        let line = match pycompat::dumps(record, pycompat::JsonForm::Compact) {
+        let line = match json::to_text(record, json::JsonForm::Compact) {
             Ok(text) => format!("{text}\n"),
             Err(error) => {
                 return format!(
@@ -133,7 +133,7 @@ impl Call {
         match io::append_line(Path::new(target), line.as_bytes()) {
             Ok(()) => String::new(),
             Err(io::AppendError::Io(error)) => {
-                let repr = pycompat::os_error_repr(&error);
+                let repr = io::os_error_class_text(&error);
                 format!("erosion gate cannot append to {shown}: tool_use_id={id}\n{repr}\n")
             }
             Err(io::AppendError::Short { written, expected }) => format!(

@@ -7,6 +7,7 @@ use std::hash::Hash;
 use kernel::Key;
 use metrics::Block;
 
+use crate::diff::matching_blocks;
 use crate::index::IndexedFiles;
 use crate::pair::{Measured, Sides, metrics};
 
@@ -221,7 +222,7 @@ fn unchanged_lines(old: Option<&Measured>, new: Option<&Measured>) -> HashMap<us
     };
     let old_rows: Vec<&str> = old.parsed.source().split('\n').collect();
     let new_rows: Vec<&str> = new.parsed.source().split('\n').collect();
-    pycompat::matching_blocks(&old_rows, &new_rows)
+    matching_blocks(&old_rows, &new_rows)
         .into_iter()
         .flat_map(|(first, second, size)| {
             (0..size).map(move |at| (first + at + 1, second + at + 1))

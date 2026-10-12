@@ -28,10 +28,10 @@ dependencies = [
  "checks",
  "git",
  "io",
+ "json",
  "kernel",
  "metrics",
  "prompts",
- "pycompat",
  "serde",
  "serde_json",
  "store",
@@ -78,10 +78,10 @@ dependencies = [
  "kernel",
  "metrics",
  "prompts",
- "pycompat",
  "serde",
  "serde_json",
  "syntax",
+ "text",
  "thiserror",
 ]
 
@@ -93,9 +93,9 @@ dependencies = [
  "io",
  "kernel",
  "prompts",
- "pycompat",
  "render",
  "serde_json",
+ "text",
 ]
 
 [[package]]
@@ -189,9 +189,9 @@ version = "0.11.0-rc.1"
 dependencies = [
  "io",
  "kernel",
- "pycompat",
  "serde",
  "serde_json",
+ "text",
 ]
 
 [[package]]
@@ -220,12 +220,13 @@ dependencies = [
  "checks",
  "git",
  "io",
+ "json",
  "kernel",
- "pycompat",
  "serde",
  "serde_json",
  "sha2",
  "signal-hook",
+ "text",
 ]
 
 [[package]]
@@ -251,11 +252,12 @@ dependencies = [
 name = "io"
 version = "0.11.0-rc.1"
 dependencies = [
+ "json",
  "kernel",
  "libc",
- "pycompat",
  "serde",
  "serde_json",
+ "text",
  "wait-timeout",
 ]
 
@@ -264,6 +266,15 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "json"
+version = "0.11.0-rc.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "text",
+]
 
 [[package]]
 name = "kernel"
@@ -302,11 +313,11 @@ name = "metrics"
 version = "0.11.0-rc.1"
 dependencies = [
  "kernel",
- "pycompat",
  "serde",
  "serde_json",
  "sha2",
  "syntax",
+ "text",
  "thiserror",
 ]
 
@@ -329,15 +340,6 @@ dependencies = [
 name = "prompts"
 version = "0.11.0-rc.1"
 dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "pycompat"
-version = "0.11.0-rc.1"
-dependencies = [
- "libc",
- "serde",
  "serde_json",
 ]
 
@@ -386,11 +388,12 @@ dependencies = [
  "app",
  "checks",
  "io",
+ "json",
  "prompts",
- "pycompat",
  "serde",
  "serde_json",
  "syntax",
+ "text",
  "thiserror",
 ]
 
@@ -515,16 +518,17 @@ name = "store"
 version = "0.11.0-rc.1"
 dependencies = [
  "io",
+ "json",
  "kernel",
  "libc",
  "metrics",
  "prompts",
- "pycompat",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "syntax",
+ "text",
 ]
 
 [[package]]
@@ -568,6 +572,14 @@ checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
 dependencies = [
  "filetime",
  "libc",
+]
+
+[[package]]
+name = "text"
+version = "0.11.0-rc.1"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

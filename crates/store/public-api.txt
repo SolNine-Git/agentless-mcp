@@ -279,3 +279,4 @@ pub fn store::database_path(&std::path::Path, &str) -> std::path::PathBuf
 pub fn store::discard(&std::path::Path) -> store::Discarded
 pub fn store::nogit_generation(&[store::ManifestEntry]) -> alloc::string::String
 pub fn store::open_source(&std::path::Path, &str, bool) -> store::Source
+pub fn store::shell_quote(&str) -> alloc::string::String

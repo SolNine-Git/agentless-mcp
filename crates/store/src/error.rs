@@ -5,7 +5,7 @@ use std::fmt;
 use prompts::messages::{
     CACHE_DISCARDED_NO_INDEX, CACHE_DISCARDED_OLD_SCHEMA, CACHE_DISCARDED_OTHER_REPO,
 };
-use pycompat::PyStr;
+use text::CodePointString;
 
 use crate::SCHEMA_VERSION;
 
@@ -91,7 +91,7 @@ impl SqlError {
     /// `DatabaseError('database disk image is malformed')`.
     #[must_use]
     pub fn repr(&self) -> String {
-        let message = PyStr::from(self.message.as_str()).repr();
+        let message = CodePointString::from(self.message.as_str()).quoted();
         format!("{}({message})", self.class.name())
     }
 }

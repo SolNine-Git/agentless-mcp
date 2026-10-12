@@ -155,7 +155,7 @@ fn golden_rows(units: &[GoldenUnit]) -> Vec<(String, u32, u32, u32)> {
 // square root of its SLOC.
 fn erosion(units: &[Unit], threshold: u32) -> f64 {
     let mass = |unit: &Unit| f64::from(unit.cc) * f64::from(unit.sloc).sqrt();
-    let total = pycompat::sum_builtin(&units.iter().map(mass).collect::<Vec<_>>());
+    let total = metrics::compensated_sum(&units.iter().map(mass).collect::<Vec<_>>());
     if total <= 0.0 {
         return 0.0;
     }
@@ -164,7 +164,7 @@ fn erosion(units: &[Unit], threshold: u32) -> f64 {
         .filter(|unit| unit.cc > threshold)
         .map(mass)
         .collect();
-    pycompat::sum_builtin(&high) / total
+    metrics::compensated_sum(&high) / total
 }
 
 fn groups(measured: &FileMetrics) -> Vec<Vec<[u32; 2]>> {

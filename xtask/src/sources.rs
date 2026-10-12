@@ -16,21 +16,22 @@ const GATE_DATA: [&str; 4] = [
 ];
 // Data directories that build scripts, the generator and tests read, each named in review. A file
 // that no rule allows fails, so a new tool's config file fails by default.
-const DATA_DIRS: [&str; 14] = [
+const DATA_DIRS: [&str; 15] = [
     "crates/app/fixtures",
     "crates/checks/fixtures",
     "crates/cli/fixtures",
     "crates/git/fixtures",
     "crates/hook/fixtures",
     "crates/io/fixtures",
+    "crates/json/fixtures",
     "crates/metrics/fixtures",
     "crates/prompts/fixtures",
-    "crates/pycompat/fixtures",
     "crates/render/fixtures",
     "crates/store/fixtures",
     "crates/syntax/fixtures",
     "crates/syntax/languages",
     "crates/syntax/vendor",
+    "crates/text/fixtures",
 ];
 
 /// One source file: its path relative to the root, and what its tokens hold.

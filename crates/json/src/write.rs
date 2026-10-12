@@ -22,7 +22,7 @@ pub enum JsonForm {
 /// # Panics
 ///
 /// Panics if the formatter writes a byte outside ASCII, which it never does.
-pub fn dumps<T: Serialize + ?Sized>(
+pub fn to_text<T: Serialize + ?Sized>(
     value: &T,
     form: JsonForm,
 ) -> Result<String, serde_json::Error> {
@@ -110,7 +110,7 @@ macro_rules! item_events {
 impl Formatter for JsonFormatter {
     fn write_f64<W: ?Sized + io::Write>(&mut self, writer: &mut W, value: f64) -> io::Result<()> {
         // serde_json writes a non-finite float as null before it reaches the formatter.
-        writer.write_all(crate::float_repr(value).as_bytes())
+        writer.write_all(crate::float_text(value).as_bytes())
     }
 
     fn write_string_fragment<W: ?Sized + io::Write>(
@@ -148,20 +148,20 @@ impl Formatter for JsonFormatter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::cases;
+    use text::testing::cases;
 
     #[test]
-    fn dumps_matches_fixed_forms() {
-        let all: Vec<(String, String, String)> = cases("json", "dumps");
+    fn to_text_matches_fixed_forms() {
+        let all: Vec<(String, String, String)> = cases(env!("CARGO_MANIFEST_DIR"), "json", "dumps");
         for (document, expected_indented, expected_compact) in all {
             let value: serde_json::Value =
                 serde_json::from_str(&document).expect("the fixture document is JSON");
             assert_eq!(
-                dumps(&value, JsonForm::Indented).expect("indenting should succeed"),
+                to_text(&value, JsonForm::Indented).expect("indenting should succeed"),
                 expected_indented
             );
             assert_eq!(
-                dumps(&value, JsonForm::Compact).expect("compacting should succeed"),
+                to_text(&value, JsonForm::Compact).expect("compacting should succeed"),
                 expected_compact
             );
         }

@@ -3,7 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use pycompat::{JsonValue, PyStr, is_printable, is_space, strip};
+use json::JsonValue;
+use text::{CodePointString, is_printable, is_space, strip};
 
 use crate::config::{
     GateMode, GatedCheck, Granularity, KNOWN_KEYS, MAX_BOUNDARY_GLOB_CHARS, MAX_BOUNDARY_GLOBS,
@@ -42,7 +43,7 @@ const COMPLEXITY_THRESHOLD: IntKey = IntKey {
     high: 100,
 };
 
-type Document = [(PyStr, JsonValue)];
+type Document = [(CodePointString, JsonValue)];
 
 /// Checks each key of a decoded config object. A bad value gives a warning and no value; the
 /// value warnings come first, in key order, and the unknown keys after them.
@@ -233,7 +234,7 @@ fn erosion_gate(
     Some(modes)
 }
 
-fn is_gated(key: &PyStr) -> bool {
+fn is_gated(key: &CodePointString) -> bool {
     GatedCheck::ALL
         .iter()
         .any(|check| key.as_str() == Some(check.name()))
@@ -283,7 +284,7 @@ fn relative_glob(entry: &JsonValue) -> Option<&str> {
 }
 
 fn unknown_keys(document: &Document, warnings: &mut Vec<ConfigWarning>) {
-    let mut unknown: Vec<&PyStr> = document
+    let mut unknown: Vec<&CodePointString> = document
         .iter()
         .map(|(key, _)| key)
         .filter(|key| !KNOWN_KEYS.iter().any(|known| key.as_str() == Some(known)))
@@ -303,10 +304,10 @@ fn unknown_keys(document: &Document, warnings: &mut Vec<ConfigWarning>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pycompat::loads;
+    use json::parse;
 
     fn parsed(text: &str) -> ProjectConfig {
-        let mut document = loads(text).expect("the test document is JSON");
+        let mut document = parse(text).expect("the test document is JSON");
         let JsonValue::Object(entries) = &mut document else {
             panic!("the test document is an object");
         };

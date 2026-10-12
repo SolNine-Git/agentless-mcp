@@ -1,8 +1,8 @@
 //! The word-character class of regular expressions on text, from the Unicode 15.1 tables.
 
-/// Returns whether `c` is a word character: a letter, a digit or other number, or `_`.
+// Whether `c` is a word character: a letter, a digit or other number, or `_`.
 #[must_use]
-pub fn is_word(c: char) -> bool {
+pub(crate) fn is_word(c: char) -> bool {
     // A code point is a word character when an odd count of bounds is at or below it.
     WORD_BOUNDS.partition_point(|&bound| bound <= u32::from(c)) % 2 == 1
 }
@@ -149,10 +149,12 @@ const WORD_BOUNDS: [u32; 1498] = [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::check_runs;
+    use text::testing::check_runs;
 
     #[test]
     fn is_word_cases() {
-        check_runs("word", |code| char::from_u32(code).is_some_and(is_word));
+        check_runs(env!("CARGO_MANIFEST_DIR"), "word", "word", |code| {
+            char::from_u32(code).is_some_and(is_word)
+        });
     }
 }

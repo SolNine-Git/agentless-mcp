@@ -173,5 +173,5 @@ fn whole(count: u128) -> f64 {
 }
 
 pub(crate) fn milliseconds(elapsed: std::time::Duration) -> f64 {
-    pycompat::round_half_even(elapsed.as_secs_f64() * 1000.0, 1)
+    json::round_half_even(elapsed.as_secs_f64() * 1000.0, 1)
 }

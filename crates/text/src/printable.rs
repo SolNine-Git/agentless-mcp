@@ -145,10 +145,15 @@ const NOT_PRINTABLE_BOUNDS: [u32; 1426] = [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::check_runs;
+    use crate::testing::check_runs;
 
     #[test]
     fn is_printable_cases() {
-        check_runs("not_printable", |code| !is_printable(code));
+        check_runs(
+            env!("CARGO_MANIFEST_DIR"),
+            "text",
+            "not_printable",
+            |code| !is_printable(code),
+        );
     }
 }

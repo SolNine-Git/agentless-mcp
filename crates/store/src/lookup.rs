@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use kernel::Key;
 use metrics::Block;
-use pycompat::PyStr;
 use syntax::{Language, PACK_VERSION};
+use text::CodePointString;
 
 use crate::open::fetch;
 use crate::value::{Cell, check_sloc};
@@ -166,7 +166,7 @@ fn number(value: i64, column: &str) -> Result<u32, SqlError> {
 
 fn key(text: &str, column: &str) -> Result<Key, SqlError> {
     text.parse().map_err(|_| {
-        let shown = PyStr::from(text).repr();
+        let shown = CodePointString::from(text).quoted();
         let message = format!("{column} {shown} is not 64 lowercase hexadecimal characters");
         SqlError::new(SqlClass::Value, message)
     })

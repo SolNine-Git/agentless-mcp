@@ -3,7 +3,7 @@
 /// Returns `text` as one shell word: unchanged when each character is an ASCII letter or digit
 /// or one of `_@%+=:,./-`, else in single quotes with each single quote written as `'"'"'`.
 #[must_use]
-pub fn shlex_quote(text: &str) -> String {
+pub fn shell_quote(text: &str) -> String {
     if text.is_empty() {
         return "''".to_owned();
     }
@@ -19,10 +19,15 @@ pub fn shlex_quote(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::check_text_cases;
+    use text::testing::check_pairs;
 
     #[test]
-    fn shlex_quote_cases() {
-        check_text_cases("shlex_quote", shlex_quote);
+    fn shell_quote_cases() {
+        check_pairs(
+            env!("CARGO_MANIFEST_DIR"),
+            "shell",
+            "shlex_quote",
+            shell_quote,
+        );
     }
 }

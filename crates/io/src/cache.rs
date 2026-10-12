@@ -5,7 +5,7 @@ use std::fmt;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
 
-use pycompat::{PyStr, is_space};
+use text::{CodePointString, is_space};
 
 const APPLICATION_DIR: &str = "agentless-mcp";
 
@@ -30,7 +30,7 @@ impl fmt::Display for RelativeCacheHome {
             "XDG_CACHE_HOME={} is relative and was ignored; the XDG specification requires an \
              absolute path, and a relative one would put the cache inside whichever directory the \
              call was made from -- including the repository being analysed",
-            PyStr::fsdecode(self.0.as_bytes()).repr()
+            CodePointString::from_utf8_escaped(self.0.as_bytes()).quoted()
         )
     }
 }

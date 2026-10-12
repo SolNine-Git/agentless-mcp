@@ -6,7 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use serde::de::DeserializeOwned;
+pub use text::testing::cases;
 
 static TREES: AtomicUsize = AtomicUsize::new(0);
 
@@ -147,26 +147,6 @@ impl Drop for Tree {
             eprintln!("the test tree {} stays: {error}", self.root.display());
         }
     }
-}
-
-/// Returns the section `section` of the fixture file `<manifest_dir>/fixtures/<file>.json`.
-///
-/// # Panics
-///
-/// Panics when the file cannot be read or parsed, has no such section, or the section is no `T`.
-#[must_use]
-pub fn cases<T: DeserializeOwned>(manifest_dir: &str, file: &str, section: &str) -> T {
-    let path = Path::new(manifest_dir)
-        .join("fixtures")
-        .join(format!("{file}.json"));
-    let shown = path.display();
-    let text = fs::read_to_string(&path).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let mut sections: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
-    let value = sections
-        .remove(section)
-        .unwrap_or_else(|| panic!("{shown}: no section {section}"));
-    serde_json::from_value(value).unwrap_or_else(|error| panic!("{shown}: {section}: {error}"))
 }
 
 /// Returns the bytes that `text` stores, one byte per character, as a fixture stores bytes.

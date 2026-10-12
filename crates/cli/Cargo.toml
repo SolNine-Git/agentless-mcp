@@ -13,10 +13,11 @@ workspace = true
 
 [dependencies]
 app = { path = "../app" }
+io = { path = "../io" }
 kernel = { path = "../kernel" }
 prompts = { path = "../prompts" }
-pycompat = { path = "../pycompat" }
 render = { path = "../render" }
+text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }

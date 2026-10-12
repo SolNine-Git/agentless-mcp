@@ -36,7 +36,7 @@ impl fmt::Display for CapValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int(value) => write!(f, "{value}"),
-            Self::Float(value) => f.write_str(&pycompat::float_repr(*value)),
+            Self::Float(value) => f.write_str(&json::float_text(*value)),
         }
     }
 }
@@ -323,7 +323,7 @@ fn cache_hint(session: &Session) -> String {
     match &session.cache.status.state {
         CacheState::Absent { .. } => {
             let root = session.repo.root.display().to_string();
-            CACHE_BUILD_HINT.render(&pycompat::shlex_quote(&root))
+            CACHE_BUILD_HINT.render(&store::shell_quote(&root))
         }
         _ => String::new(),
     }

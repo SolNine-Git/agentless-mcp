@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use pycompat::PyStr;
+use text::CodePointString;
 
 use super::help::{help_text, usage_text};
 use super::{Arg, Chosen, Command, Exit, Kind, Namespace, Parsed, Parser, Value};
@@ -290,7 +290,7 @@ impl Run<'_> {
     ) -> Result<Option<Tuple>, Exit> {
         let long = reading.option.as_bytes().get(1) == Some(&b'-');
         if long || value.text.is_empty() || reading.equals || value.text.starts_with('-') {
-            let shown = PyStr::from(value.text.as_str()).repr();
+            let shown = CodePointString::from(value.text.as_str()).quoted();
             return Err(self.action_error(index, &format!("ignored explicit argument {shown}")));
         }
         let mut chars = value.text.chars();
@@ -364,7 +364,7 @@ impl Run<'_> {
         if choices.is_empty() || choices.contains(&text.as_str()) {
             return Ok(value);
         }
-        let shown = PyStr::from(text.as_str()).repr();
+        let shown = CodePointString::from(text.as_str()).quoted();
         let message = format!(
             "invalid choice: {shown} (choose from {})",
             choices.join(", ")

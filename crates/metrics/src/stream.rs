@@ -4,6 +4,7 @@ use kernel::Key;
 use syntax::{NodeId, Parsed, Spec};
 
 use crate::digest::Joined;
+use crate::word::is_word;
 
 // Two control characters that no source token is written with mark an indent block's bounds.
 const BLOCK_OPEN: &str = "\x01";
@@ -99,7 +100,7 @@ fn visit<'a>(parsed: &'a Parsed, spec: &Spec, node: NodeId) -> Visit<'a> {
 
 // A directive comment keeps its whitespace-collapsed text. A prose comment drops out of the stream.
 fn directive_text(comment: &str) -> Option<String> {
-    let text = pycompat::split_whitespace(comment)
+    let text = text::split_whitespace(comment)
         .collect::<Vec<_>>()
         .join(" ");
     is_directive(without_marker(&text)).then_some(text)
@@ -120,7 +121,7 @@ fn is_directive(body: &str) -> bool {
         .any(|prefix| body.starts_with(prefix))
         || DIRECTIVE_WORDS.iter().any(|word| {
             body.strip_prefix(word)
-                .is_some_and(|rest| !rest.chars().next().is_some_and(pycompat::is_word))
+                .is_some_and(|rest| !rest.chars().next().is_some_and(is_word))
         })
 }
 

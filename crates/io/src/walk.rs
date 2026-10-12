@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use pycompat::PyStr;
+use text::CodePointString;
 
 use crate::{file_size, file_stays_inside, resolve, strerror};
 
@@ -319,7 +319,7 @@ fn names_directory(entry: &DirEntry) -> bool {
 
 // Names sort by code point, with each byte that is not UTF-8 read as a lone surrogate.
 fn sorted(mut names: Vec<OsString>) -> Vec<OsString> {
-    names.sort_by_cached_key(|name| PyStr::fsdecode(name.as_bytes()));
+    names.sort_by_cached_key(|name| CodePointString::from_utf8_escaped(name.as_bytes()));
     names
 }
 

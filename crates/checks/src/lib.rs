@@ -4,6 +4,7 @@ mod clone;
 mod complexity;
 mod contract;
 mod copies;
+mod diff;
 mod error;
 mod finding;
 mod globs;

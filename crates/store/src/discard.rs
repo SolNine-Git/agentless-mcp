@@ -4,8 +4,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use io::LockError;
-use pycompat::os_error_repr;
+use io::{LockError, os_error_class_text};
 
 const LOCK_NAME: &str = "write.lock";
 // The sidecars go first and the primary last: a sidecar that stays keeps the primary visible to
@@ -36,7 +35,7 @@ impl fmt::Display for DiscardFailure {
             f,
             "tag cache {} could not be discarded: {}",
             self.database.display(),
-            os_error_repr(&self.cause)
+            os_error_class_text(&self.cause)
         )
     }
 }

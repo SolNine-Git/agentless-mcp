@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use checks::{CheckGap, Detail, Finding, Match, PairFinding, Severity, UnitDelta};
 use io::testing::cases;
 use io::{GateMode, GatedCheck};
-use pycompat::{JsonForm, dumps};
+use json::{JsonForm, to_text};
 use serde_json::Value;
 
 use super::classify;
@@ -138,7 +138,7 @@ fn the_verdict_and_the_reply_match_the_generated_cases() {
 
 // The compact JSON text of a value, as CPython's json.dumps writes it.
 fn shown<T: serde::Serialize>(value: &T) -> String {
-    dumps(value, JsonForm::Compact).expect("the value serializes")
+    to_text(value, JsonForm::Compact).expect("the value serializes")
 }
 
 #[test]

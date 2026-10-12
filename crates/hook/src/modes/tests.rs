@@ -23,7 +23,7 @@ fn the_modes_and_the_warnings_match_the_generated_cases() {
         let loaded = io::load_config(&root);
         let (modes, env_warning) =
             resolve(loaded.erosion_gate.as_ref(), env.as_deref().map(OsStr::new));
-        let shown = pycompat::dumps(&modes, pycompat::JsonForm::Compact).expect("modes serialize");
+        let shown = json::to_text(&modes, json::JsonForm::Compact).expect("modes serialize");
         assert_eq!(shown, expected_modes, "case {name}");
         let mut warnings = config_warnings(&loaded);
         warnings.extend(env_warning);

@@ -5,10 +5,15 @@ mod digest;
 mod kinds;
 mod sloc;
 mod stream;
+mod sum;
+mod tokenize;
 mod units;
+mod word;
+
+pub use sum::compensated_sum;
+pub use tokenize::{TokenizeError, TokenizeErrorKind};
 
 use kernel::Key;
-use pycompat::TokenizeError;
 use syntax::{Language, Parsed, Point, QueryRunError};
 
 use crate::kinds::Kinds;

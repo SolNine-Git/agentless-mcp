@@ -6,6 +6,7 @@ mod error;
 mod lookup;
 mod nogit;
 mod open;
+mod shell;
 mod status;
 mod value;
 
@@ -17,6 +18,7 @@ pub use error::{Refusal, SqlClass, SqlError};
 pub use lookup::{Lookup, RowFailure};
 pub use nogit::{FileStamp, ManifestEntry, nogit_generation};
 pub use open::{RowCounts, Source, TagsDb, open_source};
+pub use shell::shell_quote;
 pub use status::{CacheState, CacheStatus};
 
 use std::path::{Path, PathBuf};
