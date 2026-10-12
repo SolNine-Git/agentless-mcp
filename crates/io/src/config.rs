@@ -223,10 +223,14 @@ mod tests {
     use crate::fixtures::{Placed, build, fixture, has_mode};
     use crate::testing::Tree;
     use serde_json::{Map, Value, json};
+    #[cfg(target_os = "linux")]
     use std::process::{Command, Stdio};
     use std::sync::mpsc;
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    #[cfg(target_os = "linux")]
+    use std::time::Instant;
+    #[cfg(target_os = "linux")]
     use wait_timeout::ChildExt;
 
     fn described(config: &ProjectConfig, tree: &Tree) -> Value {

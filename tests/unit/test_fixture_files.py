@@ -62,6 +62,7 @@ def test_check_reports_an_extra_file_and_writes_nothing(
     _write(tmp_path / "orphan.json", "{}")
     contents = {tmp_path / "made.json": b"{}\n"}
     monkeypatch.setattr(sys, "argv", ["generator", "--check"])
+    monkeypatch.setattr(helpers, "PYTHON", sys.version_info[:2])
     assert helpers.write_or_check_files("test", tmp_path, lambda: contents) == 1
     assert not (tmp_path / "made.json").exists()
     assert capsys.readouterr().err.splitlines() == [
