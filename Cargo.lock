@@ -207,6 +207,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph"
+version = "0.11.0-rc.1"
+dependencies = [
+ "facts",
+ "metrics",
+ "serde",
+ "serde_json",
+ "syntax",
+ "text",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
