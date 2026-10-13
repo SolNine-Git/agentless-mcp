@@ -1,8 +1,11 @@
 use std::os::unix::fs::PermissionsExt;
 
-use super::cases::writer;
-use super::indexed::{Cache, PYTHON, indexed, observed};
-use crate::{FACTS_SCHEMA_VERSION, WriteError, Writer, analysis};
+use super::cases::{ROOT, writer};
+use super::indexed::{Cache, GENERATION, PYTHON, indexed, observed};
+use crate::{
+    FACTS_SCHEMA_VERSION, NewMeta, SqlClass, SqlError, WriteError, Writer, analysis, analyze,
+    encode, plan, settle,
+};
 
 #[test]
 fn a_held_lock_refuses_the_writer_and_names_its_directory() {
@@ -98,6 +101,43 @@ fn the_rows_are_written_in_path_order() {
         .and_then(Iterator::collect)
         .expect("the rows read");
     assert_eq!(paths, ["a.py", "b.py", "c.py"]);
+}
+
+// The first row in path order whose blobs did not encode refuses the write with its error. The
+// delete of the pruned row goes back with the rest.
+#[test]
+fn a_row_whose_blobs_did_not_encode_refuses_the_write() {
+    let cache = Cache::new();
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+    let (opened, _) = Writer::open(&cache.database);
+    let opened = opened.expect("the writer opens");
+    let walked = observed(&[("c.py", PYTHON), ("b.py", PYTHON)]);
+    let plan = plan(opened.previous(), walked, analysis(), false);
+    let parsed = plan
+        .extract
+        .iter()
+        .map(|planned| {
+            analyze(&planned.file, planned.measure).map(|parsed| {
+                let mut encoded = encode(&parsed);
+                encoded.blobs = Err(SqlError::new(SqlClass::Interface, &*planned.file.path));
+                encoded
+            })
+        })
+        .collect();
+    let meta = NewMeta {
+        repo_root: ROOT,
+        generation: GENERATION,
+        created: 1,
+    };
+
+    let refused = opened.write(&settle(plan, parsed), meta);
+
+    assert_eq!(refused, Err(SqlError::new(SqlClass::Interface, "b.py")));
+    let paths: Vec<String> = writer(&cache.database)
+        .prepare("SELECT path FROM files")
+        .and_then(|mut statement| statement.query_map((), |row| row.get(0))?.collect())
+        .expect("the rows read");
+    assert_eq!(paths, ["a.py"]);
 }
 
 // A database of another layout loses its tables, so nothing of it is reused.

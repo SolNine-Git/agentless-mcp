@@ -4,7 +4,23 @@ use facts::{Facts, Import, Ref, Symbol};
 use kernel::Span;
 use serde::{Deserialize, Serialize};
 
-use crate::{Measured, SqlClass, SqlError};
+use crate::{Analysis, Measured, SqlClass, SqlError};
+
+/// One analysis as its row stores it: the counts, and the blobs or the first encode error.
+#[derive(Debug)]
+pub struct Encoded {
+    pub(crate) symbols: usize,
+    pub(crate) imports: usize,
+    pub(crate) refs: usize,
+    pub(crate) blobs: Result<Blobs, SqlError>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Blobs {
+    pub(crate) metrics: Option<Vec<u8>>,
+    pub(crate) symbols: Vec<u8>,
+    pub(crate) rest: Vec<u8>,
+}
 
 // Every Facts field but the symbols, which have a blob of their own so that a read of the
 // symbols never decodes the references.
@@ -22,11 +38,32 @@ struct OwnedRest {
     errors: Vec<Span>,
 }
 
-pub(crate) fn encode_symbols(symbols: &[Symbol]) -> Result<Vec<u8>, SqlError> {
+/// Encodes `analysis` for its row. A blob that does not encode fails the write of the row.
+#[must_use]
+pub fn encode(analysis: &Analysis) -> Encoded {
+    let facts = &analysis.facts;
+    Encoded {
+        symbols: facts.symbols.len(),
+        imports: facts.imports.len(),
+        refs: facts.refs.len(),
+        blobs: blobs(analysis),
+    }
+}
+
+// The metrics, then the symbols, then the rest: the first that fails names the error.
+fn blobs(analysis: &Analysis) -> Result<Blobs, SqlError> {
+    Ok(Blobs {
+        metrics: analysis.metrics.as_ref().map(encode_metrics).transpose()?,
+        symbols: encode_symbols(&analysis.facts.symbols)?,
+        rest: encode_rest(&analysis.facts)?,
+    })
+}
+
+fn encode_symbols(symbols: &[Symbol]) -> Result<Vec<u8>, SqlError> {
     encoded(&symbols)
 }
 
-pub(crate) fn encode_rest(facts: &Facts) -> Result<Vec<u8>, SqlError> {
+fn encode_rest(facts: &Facts) -> Result<Vec<u8>, SqlError> {
     encoded(&Rest {
         imports: &facts.imports,
         refs: &facts.refs,
@@ -34,7 +71,7 @@ pub(crate) fn encode_rest(facts: &Facts) -> Result<Vec<u8>, SqlError> {
     })
 }
 
-pub(crate) fn encode_metrics(measured: &Measured) -> Result<Vec<u8>, SqlError> {
+fn encode_metrics(measured: &Measured) -> Result<Vec<u8>, SqlError> {
     encoded(measured)
 }
 

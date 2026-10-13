@@ -30,6 +30,7 @@ pub use analysis::{
     Analysis, FACTS_SCHEMA_VERSION, FACTS_VERSION, FileText, Measured, Unmeasured, analysis,
     analyze,
 };
+pub use blob::{Encoded, encode};
 pub use discard::{DiscardFailure, Discarded, discard, discard_facts};
 pub use error::{Refusal, SqlClass, SqlError};
 pub use freshness::{Freshness, IndexMeta, freshness};

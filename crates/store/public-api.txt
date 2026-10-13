@@ -252,6 +252,16 @@ impl core::marker::Unpin for store::DiscardFailure
 impl core::marker::UnsafeUnpin for store::DiscardFailure
 impl !core::panic::unwind_safe::RefUnwindSafe for store::DiscardFailure
 impl !core::panic::unwind_safe::UnwindSafe for store::DiscardFailure
+pub struct store::Encoded
+impl core::fmt::Debug for store::Encoded
+pub fn store::Encoded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::Encoded
+impl core::marker::Send for store::Encoded
+impl core::marker::Sync for store::Encoded
+impl core::marker::Unpin for store::Encoded
+impl core::marker::UnsafeUnpin for store::Encoded
+impl core::panic::unwind_safe::RefUnwindSafe for store::Encoded
+impl core::panic::unwind_safe::UnwindSafe for store::Encoded
 pub struct store::EvictionReport
 pub store::EvictionReport::databases: u64
 pub store::EvictionReport::size: u64
@@ -700,6 +710,7 @@ pub fn store::analyze(&store::FileText, bool) -> core::result::Result<store::Ana
 pub fn store::database_path(&std::path::Path, &str) -> std::path::PathBuf
 pub fn store::discard(&std::path::Path) -> store::Discarded
 pub fn store::discard_facts(&std::path::Path) -> store::Discarded
+pub fn store::encode(&store::Analysis) -> store::Encoded
 pub fn store::enforce_cache_limit(&std::path::Path, &std::path::Path, core::option::Option<u64>, f64) -> (store::EvictionReport, alloc::vec::Vec<alloc::string::String>)
 pub fn store::evict_plan(&[store::CacheEntry], u64, &std::path::Path, f64) -> alloc::vec::Vec<store::CacheEntry>
 pub fn store::facts_database_path(&std::path::Path, &str) -> std::path::PathBuf
@@ -709,6 +720,6 @@ pub fn store::nogit_generation(&[store::ManifestEntry]) -> alloc::string::String
 pub fn store::open_facts(&std::path::Path, &str, bool) -> store::Source<store::FactsDb>
 pub fn store::open_source(&std::path::Path, &str, bool) -> store::Source
 pub fn store::plan(&store::Previous, alloc::vec::Vec<store::Observed>, kernel::key::Key, bool) -> store::Plan
-pub fn store::settle(store::Plan, alloc::vec::Vec<core::result::Result<store::Analysis, syntax::parsed::Unparsable>>) -> store::Settled
+pub fn store::settle(store::Plan, alloc::vec::Vec<core::result::Result<store::Encoded, syntax::parsed::Unparsable>>) -> store::Settled
 pub fn store::shell_quote(&str) -> alloc::string::String
 pub type store::Measured = core::result::Result<metrics::FileMetrics, store::Unmeasured>

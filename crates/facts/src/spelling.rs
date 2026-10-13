@@ -28,10 +28,23 @@ pub(crate) fn truncate(text: &str, limit: usize) -> String {
     kept + ELLIPSIS
 }
 
-// Collapse each whitespace run to one space, strip the ends, and cap the result.
+// Collapse each whitespace run to one space, strip the ends, and cap the result. The join stops
+// past the cap: the cut depends only on that and on the first code points.
 pub(crate) fn normalise_signature(signature: &str) -> String {
-    let words: Vec<&str> = text::split_whitespace(signature).collect();
-    truncate(&words.join(" "), SIGNATURE_MAX_CHARS)
+    let mut joined = String::new();
+    let mut chars = 0;
+    for word in text::split_whitespace(signature) {
+        if chars > SIGNATURE_MAX_CHARS {
+            break;
+        }
+        if !joined.is_empty() {
+            joined.push(' ');
+            chars += 1;
+        }
+        joined.push_str(word);
+        chars += word.chars().count();
+    }
+    truncate(&joined, SIGNATURE_MAX_CHARS)
 }
 
 // Strip the whitespace, then one pair of matching quotes of the first kind that wraps the text.
@@ -83,6 +96,29 @@ mod tests {
         let cuts: Vec<(String, usize, String)> = cases(manifest(), "views", "truncate");
         for (text, limit, expected) in cuts {
             assert_eq!(truncate(&text, limit), expected, "{text:?} at {limit}");
+        }
+    }
+
+    #[test]
+    fn a_signature_near_the_cap_is_the_cut_of_the_whole_join() {
+        let x = |count: usize| "x".repeat(count);
+        let pinned = [
+            (format!("{} ab", x(77)), format!("{} ab", x(77))),
+            (format!("{}\nabc", x(77)), format!("{}...", x(77))),
+            (format!("{}\n\n  y z", x(76)), format!("{} y z", x(76))),
+            (format!("{}\t yy", x(78)), format!("{}...", x(77))),
+            (format!("k = {}\r\n w2", x(73)), format!("k = {} w2", x(73))),
+        ];
+        for (text, expected) in pinned {
+            assert_eq!(normalise_signature(&text), expected, "{text:?}");
+        }
+        for head in 74..=84 {
+            for gap in [" ", "\n", "\r\n", " \n\t "] {
+                let text = format!("{}{gap}yy{gap}z{gap}{}{gap}", x(head), "w".repeat(90));
+                let whole: Vec<&str> = text::split_whitespace(&text).collect();
+                let expected = truncate(&whole.join(" "), 80);
+                assert_eq!(normalise_signature(&text), expected, "{text:?}");
+            }
         }
     }
 

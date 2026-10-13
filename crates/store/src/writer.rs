@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use io::{LockError, LockGuard};
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior, params};
 
-use crate::blob::{encode_metrics, encode_rest, encode_symbols};
 use crate::discard::{FACTS_LOCK_NAME, remove_database};
 use crate::open::{BUSY_TIMEOUT, connect_with, fetch, has_meta};
 use crate::plan::{Entry, NewRow};
@@ -90,7 +89,8 @@ impl Writer {
     ///
     /// # Errors
     ///
-    /// Returns the [`SqlError`] of a statement that fails; nothing is written then.
+    /// Returns the [`SqlError`] of a statement that fails, or of the first row in path order
+    /// whose blobs did not encode; nothing is written then.
     pub fn write(mut self, settled: &Settled, meta: NewMeta<'_>) -> Result<RowCounts, SqlError> {
         let transaction = self
             .connection
@@ -226,23 +226,18 @@ fn bytes(cell: Cell) -> Vec<u8> {
 }
 
 fn insert(transaction: &Transaction<'_>, row: &NewRow) -> Result<(), SqlError> {
-    let facts = &row.analysis.facts;
-    let metrics = row
-        .analysis
-        .metrics
-        .as_ref()
-        .map(encode_metrics)
-        .transpose()?;
+    let encoded = &row.encoded;
+    let blobs = encoded.blobs.as_ref().map_err(SqlError::clone)?;
     let values = params![
         row.file.path,
         row.file.language.name(),
         row.digest.bytes().as_slice(),
-        count(facts.symbols.len()),
-        count(facts.imports.len()),
-        count(facts.refs.len()),
-        metrics,
-        encode_symbols(&facts.symbols)?,
-        encode_rest(facts)?,
+        count(encoded.symbols),
+        count(encoded.imports),
+        count(encoded.refs),
+        blobs.metrics,
+        blobs.symbols,
+        blobs.rest,
     ];
     run(transaction, schema::INSERT, values)
 }

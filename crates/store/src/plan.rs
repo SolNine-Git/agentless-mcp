@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use kernel::Key;
 use syntax::{Language, Unparsable};
 
-use crate::{Analysis, EvictionReport, FileText, IndexFailure, IndexReport, IndexSkip, RowCounts};
+use crate::{Encoded, EvictionReport, FileText, IndexFailure, IndexReport, IndexSkip, RowCounts};
 
 /// One walked file of a known language, as the caller observed it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,7 +154,7 @@ fn row_matches(entry: &Entry, planned: &Extract, language: Language) -> bool {
 pub(crate) struct NewRow {
     pub(crate) file: FileText,
     pub(crate) digest: Key,
-    pub(crate) analysis: Analysis,
+    pub(crate) encoded: Encoded,
 }
 
 /// The plan joined to its parse results: the rows to write, the paths to delete, and the report
@@ -197,15 +197,15 @@ impl Settled {
     }
 }
 
-/// Joins the parse results, one for each file of `plan.extract` in its order, to the plan. A
-/// file that does not parse fails, and its old row goes with the rows of files that were not
-/// read whole.
+/// Joins the encoded parse results, one for each file of `plan.extract` in its order, to the
+/// plan. A file that does not parse fails, and its old row goes with the rows of files that were
+/// not read whole.
 ///
 /// # Panics
 ///
 /// Panics when `parsed` does not hold one result for each planned file.
 #[must_use]
-pub fn settle(plan: Plan, parsed: Vec<Result<Analysis, Unparsable>>) -> Settled {
+pub fn settle(plan: Plan, parsed: Vec<Result<Encoded, Unparsable>>) -> Settled {
     assert_eq!(
         plan.extract.len(),
         parsed.len(),
@@ -224,10 +224,10 @@ pub fn settle(plan: Plan, parsed: Vec<Result<Analysis, Unparsable>>) -> Settled 
     let mut rows = Vec::new();
     for ((planned, position), result) in extract.into_iter().zip(positions).zip(parsed) {
         match result {
-            Ok(analysis) => rows.push(NewRow {
+            Ok(encoded) => rows.push(NewRow {
                 file: planned.file,
                 digest: planned.digest,
-                analysis,
+                encoded,
             }),
             Err(unparsable) => {
                 seen.remove(&planned.file.path);

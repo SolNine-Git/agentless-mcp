@@ -8,7 +8,7 @@ use syntax::Language;
 use super::cases::ROOT;
 use crate::{
     EvictionReport, FileText, IndexReport, NewMeta, Observed, Read, Writer, analysis, analyze,
-    plan, settle,
+    encode, plan, settle,
 };
 
 pub(super) const GENERATION: &str = "0123abcd";
@@ -51,7 +51,7 @@ pub(super) fn observed(files: &[(&str, &str)]) -> Vec<Observed> {
         .collect()
 }
 
-// Indexes `observed` into `database` with one serial parse of each planned file.
+// Indexes `observed` into `database` with one serial parse and encode of each planned file.
 pub(super) fn indexed(database: &Path, observed: Vec<Observed>, force: bool) -> IndexReport {
     let (writer, warnings) = Writer::open(database);
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -60,7 +60,7 @@ pub(super) fn indexed(database: &Path, observed: Vec<Observed>, force: bool) -> 
     let parsed = plan
         .extract
         .iter()
-        .map(|planned| analyze(&planned.file, planned.measure))
+        .map(|planned| analyze(&planned.file, planned.measure).map(|parsed| encode(&parsed)))
         .collect();
     let settled = settle(plan, parsed);
     let meta = NewMeta {

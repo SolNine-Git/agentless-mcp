@@ -96,7 +96,7 @@ fn pair_symbol(tree: &Tree, node: NodeId, key: &str, owner: &str) -> Symbol {
         SymbolKind::Constant
     };
     Symbol::at(tree, node, key, kind)
-        .signed(&tree.text(node).replace('\n', " "))
+        .signed(tree.text(node))
         .owned_by(owner)
 }
 
@@ -167,7 +167,7 @@ fn hcl_attribute(tree: &Tree, node: NodeId) -> Option<Symbol> {
     });
     Some(
         Symbol::at(tree, node, tree.text(name), SymbolKind::Constant)
-            .signed(&tree.text(node).replace('\n', " "))
+            .signed(tree.text(node))
             .owned_by(&owner),
     )
 }
@@ -213,7 +213,7 @@ fn sql_statement(tree: &Tree, node: NodeId) -> Vec<Symbol> {
     } else {
         SymbolKind::TypeAlias
     };
-    let symbol = Symbol::at(tree, node, name, kind).signed(&tree.text(node).replace('\n', " "));
+    let symbol = Symbol::at(tree, node, name, kind).signed(tree.text(node));
     let mut symbols = vec![symbol];
     if table {
         symbols.extend(columns(tree, node, name));

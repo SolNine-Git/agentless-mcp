@@ -1,5 +1,5 @@
-//! The index operation: walk and read the repository, plan each file, parse the misses on a
-//! bounded pool, write agentless.db in one transaction, then sweep the cache root.
+//! The index operation: walk and read the repository, plan each file, parse and encode the
+//! misses on a bounded pool, write agentless.db in one transaction, then sweep the cache root.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -135,7 +135,10 @@ fn written(
                 store::analysis(),
                 force,
             );
-            let parsed = map_in_order(&plan.extract, parser.threads, parser.parse);
+            // Each worker encodes the blobs of its file, so the write runs only the inserts.
+            let parsed = map_in_order(&plan.extract, parser.threads, |planned| {
+                (parser.parse)(planned).map(|analysis| store::encode(&analysis))
+            });
             let settled = store::settle(plan, parsed);
             let generation = repo_generation(services, &place.root, tree);
             diagnostics.extend(generation.diagnostics);

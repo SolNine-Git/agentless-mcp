@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use text::testing::document;
 use tree_sitter::Node;
 
-use crate::{FieldId, Language, NodeId, Parsed, parse};
+use crate::{FieldCursor, FieldId, Language, NodeId, Parsed, parse};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -172,6 +172,38 @@ fn assert_fields(parsed: &Parsed, node: Node, id: NodeId, name: &str) {
             .child_by_field(id, field)
             .map(|child| node_at(parsed, child).id());
         assert_eq!(found, expected, "{at}: child by field");
+    }
+}
+
+// Every field of the grammar, so every field that a facts walker reads.
+#[test]
+fn a_field_cursor_answers_as_child_by_field_in_document_and_reverse_order() {
+    for case in &cases() {
+        let parsed = parsed(case);
+        let count = u16::try_from(parsed.tree.language().field_count()).expect("fits u16");
+        let fields: Vec<FieldId> = (1..=count)
+            .filter_map(|raw| core::num::NonZeroU16::new(raw).map(FieldId))
+            .collect();
+        let lookups: Vec<(NodeId, FieldId, Option<NodeId>)> = parsed
+            .descendants(parsed.root())
+            .flat_map(|node| fields.iter().map(move |field| (node, *field)))
+            .map(|(node, field)| (node, field, parsed.child_by_field(node, field)))
+            .collect();
+        assert_cursor(&parsed, lookups.iter(), &case.name);
+        let reverse = format!("{} in reverse", case.name);
+        assert_cursor(&parsed, lookups.iter().rev(), &reverse);
+    }
+}
+
+fn assert_cursor<'a>(
+    parsed: &Parsed,
+    lookups: impl Iterator<Item = &'a (NodeId, FieldId, Option<NodeId>)>,
+    name: &str,
+) {
+    let mut cursor = FieldCursor::new(parsed);
+    for (node, field, expected) in lookups {
+        let found = cursor.child_by_field(*node, *field);
+        assert_eq!(found, *expected, "{name}: {node:?} {field:?}");
     }
 }
 

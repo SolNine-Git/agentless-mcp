@@ -361,6 +361,17 @@ impl core::marker::Unpin for syntax::Extraction
 impl core::marker::UnsafeUnpin for syntax::Extraction
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::Extraction
 impl core::panic::unwind_safe::UnwindSafe for syntax::Extraction
+pub struct syntax::FieldCursor<'p>
+impl<'p> syntax::FieldCursor<'p>
+pub fn syntax::FieldCursor<'p>::child_by_field(&mut self, syntax::NodeId, syntax::FieldId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::FieldCursor<'p>::new(&'p syntax::Parsed) -> syntax::FieldCursor<'p>
+impl<'p> core::marker::Freeze for syntax::FieldCursor<'p>
+impl<'p> core::marker::Send for syntax::FieldCursor<'p>
+impl<'p> core::marker::Sync for syntax::FieldCursor<'p>
+impl<'p> core::marker::Unpin for syntax::FieldCursor<'p>
+impl<'p> core::marker::UnsafeUnpin for syntax::FieldCursor<'p>
+impl<'p> core::panic::unwind_safe::RefUnwindSafe for syntax::FieldCursor<'p>
+impl<'p> core::panic::unwind_safe::UnwindSafe for syntax::FieldCursor<'p>
 pub struct syntax::FieldId(_)
 impl core::clone::Clone for syntax::FieldId
 pub fn syntax::FieldId::clone(&self) -> Self

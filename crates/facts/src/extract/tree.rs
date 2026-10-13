@@ -1,7 +1,8 @@
+use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use kernel::Span;
-use syntax::{FieldId, KindSet, Language, NodeId, Parsed};
+use syntax::{FieldCursor, FieldId, KindSet, Language, NodeId, Parsed};
 
 // The fields that the walkers read by name.
 #[derive(Clone, Copy)]
@@ -67,6 +68,8 @@ static FIELDS: [OnceLock<Fields>; Language::ALL.len()] = [const { OnceLock::new(
 pub(super) struct Tree<'a> {
     pub(super) parsed: &'a Parsed,
     fields: &'static Fields,
+    // The walkers share the tree by reference, and each field read moves the cursor.
+    cursor: RefCell<FieldCursor<'a>>,
 }
 
 impl<'a> Tree<'a> {
@@ -74,7 +77,11 @@ impl<'a> Tree<'a> {
         let language = parsed.language();
         let fields =
             FIELDS[language as usize].get_or_init(|| FIELD_NAMES.map(|name| language.field(name)));
-        Tree { parsed, fields }
+        Tree {
+            parsed,
+            fields,
+            cursor: RefCell::new(FieldCursor::new(parsed)),
+        }
     }
 
     pub(super) fn root(&self) -> NodeId {
@@ -82,7 +89,8 @@ impl<'a> Tree<'a> {
     }
 
     pub(super) fn field(&self, node: NodeId, field: Field) -> Option<NodeId> {
-        self.parsed.child_by_field(node, self.field_id(field)?)
+        let field = self.field_id(field)?;
+        self.cursor.borrow_mut().child_by_field(node, field)
     }
 
     pub(super) fn field_id(&self, field: Field) -> Option<FieldId> {

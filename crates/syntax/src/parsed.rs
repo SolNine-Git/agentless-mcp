@@ -43,7 +43,7 @@ pub struct Parsed {
     language: Language,
     source: Arc<str>,
     pub(crate) tree: Tree,
-    flat: Flat,
+    pub(crate) flat: Flat,
 }
 
 /// Parse all of `source` as `language`.
@@ -229,7 +229,7 @@ impl Parsed {
         cursor.goto_descendant(node.0 as usize);
         let from = cursor.node();
         let found = from.child_by_field_id(field.0.get())?;
-        descendant_offset(from, found).map(|offset| NodeId(node.0 + offset))
+        descendant_offset(&mut from.walk(), found).map(|offset| NodeId(node.0 + offset))
     }
 
     /// Return the node's children that hang under `field`, in order.
@@ -271,7 +271,7 @@ impl Parsed {
     }
 
     pub(crate) fn node_id(&self, node: Node) -> Option<NodeId> {
-        descendant_offset(self.tree.root_node(), node).map(NodeId)
+        descendant_offset(&mut self.tree.walk(), node).map(NodeId)
     }
 
     fn flag(&self, node: NodeId, bit: u8) -> bool {
@@ -283,12 +283,12 @@ fn point((row, column): (u32, u32)) -> Point {
     Point { row, column }
 }
 
-// The preorder offset of `target` below `from`, which equals their distance in the flat table.
-fn descendant_offset(from: Node, target: Node) -> Option<u32> {
-    let mut cursor = from.walk();
+// The preorder offset of `target` below the node that `cursor` starts at, which equals their
+// distance in the flat table.
+pub(crate) fn descendant_offset(cursor: &mut TreeCursor, target: Node) -> Option<u32> {
     while cursor.node().id() != target.id() {
         let next = cursor.node().child_with_descendant(target)?;
-        if !(cursor.goto_first_child() && goto_sibling(&mut cursor, next)) {
+        if !(cursor.goto_first_child() && goto_sibling(cursor, next)) {
             return None;
         }
     }

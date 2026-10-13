@@ -6,8 +6,8 @@ use syntax::Unparsable;
 use super::indexed::{PYTHON, file, observed};
 use crate::plan::Entry;
 use crate::{
-    Analysis, IndexFailure, IndexSkip, Observed, Plan, Previous, Read, analysis, analyze, plan,
-    settle,
+    Encoded, IndexFailure, IndexSkip, Observed, Plan, Previous, Read, analysis, analyze, encode,
+    plan, settle,
 };
 
 const OTHER: &str = "x = 1\n";
@@ -41,10 +41,10 @@ fn planned(plan: &Plan) -> Vec<&str> {
         .collect()
 }
 
-fn parsed(plan: &Plan) -> Vec<Result<Analysis, Unparsable>> {
+fn parsed(plan: &Plan) -> Vec<Result<Encoded, Unparsable>> {
     plan.extract
         .iter()
-        .map(|planned| analyze(&planned.file, planned.measure))
+        .map(|planned| analyze(&planned.file, planned.measure).map(|parsed| encode(&parsed)))
         .collect()
 }
 
