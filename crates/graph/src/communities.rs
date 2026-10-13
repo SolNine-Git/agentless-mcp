@@ -1,7 +1,7 @@
 //! Communities of the file graph: modularity local moving over the symmetrised graph, each
 //! community labelled by the directory a strict majority of its members share.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use metrics::compensated_sum;
 
@@ -114,7 +114,7 @@ fn symmetrise(graph: &FileGraph<'_>) -> Weighted {
 #[derive(Default)]
 struct Cells {
     order: Vec<(usize, f64)>,
-    at: BTreeMap<usize, usize>,
+    at: HashMap<usize, usize>,
 }
 
 impl Cells {

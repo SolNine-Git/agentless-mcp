@@ -1,7 +1,7 @@
 //! The file graph: one weighted edge per (referrer, definer) pair of files, with the weights the
 //! ranking and the communities read.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::names::{NameIndex, common_name_damping, name_multiplier};
 use crate::scan::{FileFacts, in_name_graph};
@@ -28,7 +28,8 @@ pub struct Weighting<'s> {
 pub struct FileGraph<'a> {
     nodes: Vec<&'a str>,
     edges: Vec<(&'a str, &'a str, f64)>,
-    pairs: BTreeMap<(&'a str, &'a str), usize>,
+    // Lookup only: `edges` holds the order.
+    pairs: HashMap<(&'a str, &'a str), usize>,
 }
 
 impl<'a> FileGraph<'a> {
@@ -54,7 +55,7 @@ impl<'a> FileGraph<'a> {
         let mut graph = FileGraph {
             nodes,
             edges: Vec::new(),
-            pairs: BTreeMap::new(),
+            pairs: HashMap::new(),
         };
         for (position, file) in files.iter().enumerate() {
             for (target, weight) in graph.file_edges(file, index, scopes.at(position), weighting) {
@@ -102,7 +103,7 @@ impl<'a> FileGraph<'a> {
         let mut graph = FileGraph {
             nodes,
             edges: Vec::new(),
-            pairs: BTreeMap::new(),
+            pairs: HashMap::new(),
         };
         for &(source, target, weight) in edges {
             assert!(graph.position(source).is_some() && graph.position(target).is_some());
@@ -158,17 +159,15 @@ impl<'a> FileGraph<'a> {
         index: &NameIndex<'a>,
         stoplist: &BTreeSet<String>,
     ) -> Vec<(&'a str, f64)> {
-        let mut counts: BTreeMap<&str, u32> = BTreeMap::new();
-        for reference in file
-            .facts
-            .refs
-            .iter()
+        let mut names: Vec<&str> = (file.facts.refs.iter())
             .filter(|reference| reference.is_reference())
-        {
-            *counts.entry(reference.name.as_str()).or_insert(0) += 1;
-        }
+            .map(|reference| reference.name.as_str())
+            .collect();
+        names.sort_unstable();
         let mut contributions = Vec::new();
-        for (name, count) in counts {
+        for run in names.chunk_by(|left, right| left == right) {
+            let name = run[0];
+            let count = u32::try_from(run.len()).expect("a file holds fewer than 2^32 references");
             let targets = index.defining_paths(name);
             // A same-file definition shadows repository-wide name matches.
             if targets.binary_search(&file.path.as_str()).is_ok() {

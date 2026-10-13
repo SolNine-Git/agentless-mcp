@@ -72,8 +72,12 @@ pub(crate) fn resolve_imported_submodule<'a>(
     resolve_import_target(importer, &dotted, relative_level, paths)
 }
 
+// Every candidate starts with its base, so a base that no path starts with skips its suffixes.
 fn first_candidate<'a>(bases: &[String], paths: &PathIndex<'a>) -> Option<&'a str> {
     bases.iter().find_map(|base| {
+        if !paths.has_prefix(base) {
+            return None;
+        }
         MODULE_SUFFIXES.iter().find_map(|suffix| {
             let candidate = if base.is_empty() {
                 suffix.strip_prefix('/').unwrap_or(suffix).to_owned()

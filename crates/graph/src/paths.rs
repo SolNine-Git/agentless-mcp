@@ -163,6 +163,15 @@ impl<'a> PathIndex<'a> {
             .map(|found| self.paths[found])
     }
 
+    // The paths that start with one prefix form one run of the sorted list, so the first path
+    // at or after the prefix decides.
+    pub(crate) fn has_prefix(&self, prefix: &str) -> bool {
+        let at = self.paths.partition_point(|path| *path < prefix);
+        self.paths
+            .get(at)
+            .is_some_and(|path| path.starts_with(prefix))
+    }
+
     pub(crate) fn suffix_match(&self, module: &str) -> Option<&'a str> {
         let tail = module_tail(module)?;
         self.by_tail.get(&tail).copied()

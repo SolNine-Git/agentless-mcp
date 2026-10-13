@@ -1,6 +1,6 @@
 //! The name index: where each name is defined and where it is spelled, across one scan.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use facts::{Ref, StableId, Symbol};
 
@@ -89,6 +89,8 @@ struct NameEntry<'a> {
 pub struct NameIndex<'a> {
     files: &'a [FileFacts],
     names: Vec<&'a str>,
+    // Lookup only: every order the index gives out comes from `names`.
+    positions: HashMap<&'a str, usize>,
     entries: Vec<NameEntry<'a>>,
 }
 
@@ -97,10 +99,16 @@ impl<'a> NameIndex<'a> {
     #[must_use]
     pub fn build(files: &'a [FileFacts]) -> NameIndex<'a> {
         let names = sorted_names(files);
+        let positions = names
+            .iter()
+            .enumerate()
+            .map(|(at, name)| (*name, at))
+            .collect();
         let mut index = NameIndex {
             files,
             entries: names.iter().map(|_| NameEntry::default()).collect(),
             names,
+            positions,
         };
         for (file_index, file) in files.iter().enumerate() {
             if in_name_graph(file) {
@@ -160,7 +168,7 @@ impl<'a> NameIndex<'a> {
     }
 
     pub(crate) fn position(&self, name: &str) -> Option<usize> {
-        self.names.binary_search(&name).ok()
+        self.positions.get(name).copied()
     }
 
     pub(crate) fn definitions_at(&self, position: usize) -> &[Definition<'a>] {
@@ -216,8 +224,9 @@ fn count_file(count: &mut u32, last: &mut Option<usize>, file_index: usize) {
     }
 }
 
+// Each name is spelled many times, so the dedup comes before the sort.
 fn sorted_names(files: &[FileFacts]) -> Vec<&str> {
-    let mut names: Vec<&str> = files
+    let unique: HashSet<&str> = files
         .iter()
         .filter(|file| in_name_graph(file))
         .flat_map(|file| {
@@ -230,8 +239,8 @@ fn sorted_names(files: &[FileFacts]) -> Vec<&str> {
             )
         })
         .collect();
+    let mut names: Vec<&str> = unique.into_iter().collect();
     names.sort_unstable();
-    names.dedup();
     names
 }
 

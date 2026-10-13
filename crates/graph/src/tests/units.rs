@@ -111,3 +111,30 @@ fn import_targets_match_the_reference() {
         assert_eq!(names, case.submodules, "{importer} {:?}", statement.module);
     }
 }
+
+#[test]
+fn a_base_with_no_path_under_it_finds_nothing() {
+    let paths = PathIndex::build(["lib/a.py", "lib/b/__init__.py", "main.py"]);
+    // The base "lib/c" sorts between two paths, "zzz" after all of them, "aaa" before.
+    assert_eq!(resolve_import_target("lib/a.py", "c", 1, &paths), None);
+    assert_eq!(resolve_import_target("main.py", "zzz", 0, &paths), None);
+    assert_eq!(resolve_import_target("main.py", "aaa", 0, &paths), None);
+    assert_eq!(
+        resolve_import_target("lib/a.py", "b", 1, &paths),
+        Some("lib/b/__init__.py")
+    );
+}
+
+#[test]
+fn a_hit_on_the_last_suffix_alone_is_found() {
+    // The empty suffix comes last, so every other candidate of "lib/tool" misses first.
+    let paths = PathIndex::build(["lib/tool", "lib/tool.d/run.sh", "lib/tools.py"]);
+    assert_eq!(
+        resolve_import_target("lib/main.py", "tool", 1, &paths),
+        Some("lib/tool")
+    );
+    assert_eq!(
+        resolve_import_target("lib/main.py", "tool", 0, &paths),
+        Some("lib/tool")
+    );
+}
