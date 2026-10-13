@@ -8,11 +8,12 @@ use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags, Params, Row};
 
+use crate::freshness::rejection;
 use crate::value::Cell;
-use crate::{Refusal, SCHEMA_VERSION, SqlClass, SqlError};
+use crate::{IndexMeta, Refusal, SCHEMA_VERSION, SqlClass, SqlError};
 
 // A writer that holds an exclusive lock delays a reader by at most this long.
-const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 const HAS_TABLE: &str = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?";
 const META: &str =
@@ -24,9 +25,9 @@ const COUNT_TAGS: &str = "SELECT COUNT(*) FROM tags";
 const COUNT_IMPORTS: &str = "SELECT COUNT(*) FROM imports";
 const COUNT_REFS: &str = "SELECT COUNT(*) FROM refs";
 
-/// What the open of a repository's database found.
+/// What the open of a repository's database found: the tag cache by default, or agentless.db.
 #[derive(Debug)]
-pub enum Source {
+pub enum Source<D = TagsDb> {
     /// The caller asked to parse every file itself.
     Bypassed,
     /// No database exists at the path.
@@ -34,7 +35,7 @@ pub enum Source {
     /// A database exists and is not used.
     Refused(Refusal),
     /// A database that this build reads, with one read snapshot held open.
-    Usable(TagsDb),
+    Usable(D),
 }
 
 /// An open database that passed the index checks. The drop ends its read snapshot.
@@ -66,12 +67,6 @@ pub(crate) struct Entry {
     pub(crate) file_id: i64,
 }
 
-struct Meta {
-    schema_version: i64,
-    repo_root: String,
-    generation: String,
-}
-
 /// Opens the database at `database` for the repository `repo_root`, unless `no_cache` asks to
 /// parse every file instead. The database is opened read-only, and a refused one is not changed.
 #[must_use]
@@ -83,6 +78,12 @@ pub fn open_source(database: &Path, repo_root: &str, no_cache: bool) -> Source {
 }
 
 pub(crate) fn open(database: &Path, repo_root: &str, busy: Duration) -> Source {
+    found(database, || TagsDb::open(database, repo_root, busy))
+}
+
+// The checks before either database opens: a missing file is absent, and a path that cannot be
+// read or is a directory is refused and left in place.
+pub(crate) fn found<D>(database: &Path, open: impl FnOnce() -> Result<D, Refusal>) -> Source<D> {
     match std::fs::metadata(database) {
         Err(error) if absent(&error) => Source::Absent,
         Err(error) => Source::Refused(Refusal::Unreadable(SqlError::new(
@@ -94,7 +95,7 @@ pub(crate) fn open(database: &Path, repo_root: &str, busy: Duration) -> Source {
             SqlClass::Operational,
             "unable to open database file",
         ))),
-        Ok(_) => match TagsDb::open(database, repo_root, busy) {
+        Ok(_) => match open() {
             Ok(opened) => Source::Usable(opened),
             Err(refusal) => Source::Refused(refusal),
         },
@@ -154,8 +155,16 @@ impl TagsDb {
     }
 }
 
-fn connect(database: &Path, busy: Duration) -> Result<Connection, SqlError> {
+pub(crate) fn connect(database: &Path, busy: Duration) -> Result<Connection, SqlError> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    connect_with(database, flags, busy)
+}
+
+pub(crate) fn connect_with(
+    database: &Path,
+    flags: OpenFlags,
+    busy: Duration,
+) -> Result<Connection, SqlError> {
     let connection =
         Connection::open_with_flags(database, flags).map_err(|error| opened(error, database))?;
     connection
@@ -178,42 +187,43 @@ fn opened(error: rusqlite::Error, database: &Path) -> SqlError {
 fn read_index(
     connection: &Connection,
     repo_root: &str,
-) -> Result<(Meta, HashMap<String, Entry>), Refusal> {
+) -> Result<(IndexMeta, HashMap<String, Entry>), Refusal> {
     connection
         .execute("BEGIN", ())
         .map_err(SqlError::from_sqlite)?;
-    let meta = read_meta(connection)?.ok_or(Refusal::NoIndex)?;
-    if let Some(refusal) = rejection(&meta, repo_root) {
+    let (meta, _head_sha) = read_meta(connection, META)?.ok_or(Refusal::NoIndex)?;
+    if let Some(refusal) = rejection(&meta, SCHEMA_VERSION, repo_root) {
         return Err(refusal);
     }
     let entries = load_entries(connection)?;
     Ok((meta, entries))
 }
 
-fn read_meta(connection: &Connection) -> Result<Option<Meta>, SqlError> {
-    if fetch::<1>(connection, HAS_TABLE, ["meta"], 1)?.is_empty() {
+// Asked directly: an error around the SELECT would also cover a disk that fails.
+pub(crate) fn has_meta(connection: &Connection) -> Result<bool, SqlError> {
+    Ok(!fetch::<1>(connection, HAS_TABLE, ["meta"], 1)?.is_empty())
+}
+
+// `sql` selects the schema version, the repository root, the generation, and one more column,
+// whose cell comes back as it is. None means no meta table or no meta row.
+pub(crate) fn read_meta(
+    connection: &Connection,
+    sql: &str,
+) -> Result<Option<(IndexMeta, Cell)>, SqlError> {
+    if !has_meta(connection)? {
         return Ok(None);
     }
-    let Some([schema_version, repo_root, generation, _head_sha]) =
-        fetch::<4>(connection, META, (), 1)?.into_iter().next()
+    let Some([schema, repo_root, generation, more]) =
+        fetch::<4>(connection, sql, (), 1)?.into_iter().next()
     else {
         return Ok(None);
     };
-    Ok(Some(Meta {
-        schema_version: schema_version.int()?,
+    let meta = IndexMeta {
+        schema: schema.int()?,
         repo_root: repo_root.text(),
         generation: generation.text(),
-    }))
-}
-
-fn rejection(meta: &Meta, repo_root: &str) -> Option<Refusal> {
-    if meta.schema_version != i64::from(SCHEMA_VERSION) {
-        let found = meta.schema_version;
-        return Some(Refusal::Schema { found });
-    }
-    (meta.repo_root != repo_root).then(|| Refusal::OtherRepository {
-        repo_root: meta.repo_root.clone(),
-    })
+    };
+    Ok(Some((meta, more)))
 }
 
 fn load_entries(connection: &Connection) -> Result<HashMap<String, Entry>, SqlError> {

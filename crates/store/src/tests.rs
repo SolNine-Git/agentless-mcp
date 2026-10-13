@@ -1,10 +1,16 @@
 mod cases;
 mod discards;
+mod indexed;
 mod lookups;
 mod opens;
 mod parity;
+mod plans;
+mod references;
+mod sources;
+mod sweeps;
 mod texts;
 mod values;
+mod writes;
 
 use crate::TagsDb;
 

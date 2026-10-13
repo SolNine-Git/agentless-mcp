@@ -40,7 +40,10 @@ fn every_scenario_answers_as_the_fixture() {
     let runs = cases("scenarios", "runs");
     let mut failed = Vec::new();
     for case in runs.iter().filter(|case| buildable(case)) {
-        let (got, want) = (replay(case), expected(case));
+        let (got, want) = (
+            with_this_cache_file(replay(case)),
+            with_this_cache_file(expected(case)),
+        );
         if got != want {
             let name = case["name"].as_str().unwrap_or_default();
             failed.push(format!("{name}\n got {got:?}\nwant {want:?}"));
@@ -57,4 +60,13 @@ fn every_scenario_answers_as_the_fixture() {
         failed.len(),
         failed.join("\n")
     );
+}
+
+// The reference capabilities report names its tag cache. This build reports agentless.db in the
+// same directory (the D7 deviation).
+fn with_this_cache_file(outcome: Outcome) -> Outcome {
+    Outcome {
+        out: outcome.out.replace("/<KEY>/tags.db", "/<KEY>/agentless.db"),
+        ..outcome
+    }
 }

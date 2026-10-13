@@ -1,0 +1,25 @@
+{
+ "restricting": [
+  ["/c/agentless-mcp", 1, "could not restrict /c/agentless-mcp to owner-only: PermissionError(1, 'Operation not permitted')"],
+  ["/c/agentless-mcp/0123456789abcdef", 1, "could not restrict /c/agentless-mcp/0123456789abcdef to owner-only: PermissionError(1, 'Operation not permitted')"]
+ ],
+ "listing": [
+  ["/c/agentless-mcp", 13, "cache root /c/agentless-mcp could not be listed, so nothing was evicted: PermissionError(13, 'Permission denied')"]
+ ],
+ "weighing": [
+  ["/c/agentless-mcp/0123456789abcdef/agentless.db", "-wal", 13, "could not weigh /c/agentless-mcp/0123456789abcdef/agentless.db-wal for the cache ceiling: PermissionError(13, 'Permission denied')"]
+ ],
+ "recheck": [
+  ["/c/agentless-mcp/0123456789abcdef/agentless.db", 13, "could not re-check /c/agentless-mcp/0123456789abcdef/agentless.db before eviction; kept: PermissionError(13, 'Permission denied')"]
+ ],
+ "eviction": [
+  ["/c/agentless-mcp/0123456789abcdef/agentless.db", 13, "could not evict /c/agentless-mcp/0123456789abcdef/agentless.db: PermissionError(13, 'Permission denied')"]
+ ],
+ "reclaim": [
+  ["OperationalError", "database or disk is full", "could not reclaim free pages after the schema migration (OperationalError('database or disk is full')); the database is correct but still holds the space the old schema used. A VACUUM needs free disk for a second copy of the file"]
+ ],
+ "rows": [
+  ["/c/agentless-mcp/0123456789abcdef/agentless.db", "symbol", "a.py", "DatabaseError", "database disk image is malformed", "tag cache /c/agentless-mcp/0123456789abcdef/agentless.db: symbol rows for a.py are unreadable (DatabaseError('database disk image is malformed')); parsing the file instead"],
+  ["/c/agentless-mcp/0123456789abcdef/agentless.db", "block", "a.py", "DatabaseError", "database disk image is malformed", "tag cache /c/agentless-mcp/0123456789abcdef/agentless.db: block rows for a.py are unreadable (DatabaseError('database disk image is malformed')); parsing the file instead"]
+ ]
+}

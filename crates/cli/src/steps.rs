@@ -56,7 +56,7 @@ fn execute(invocation: Invocation, services: &Services, streams: &mut Streams<'_
 }
 
 fn capabilities(flags: &RepoFlags, services: &Services, streams: &mut Streams<'_>) -> u8 {
-    let session = match open(flags, services, streams) {
+    let session = match open_with(flags, services, streams, Session::open_facts) {
         Ok(session) => session,
         Err(code) => return code,
     };
@@ -73,16 +73,27 @@ fn capabilities(flags: &RepoFlags, services: &Services, streams: &mut Streams<'_
     answer(streams, rendered, EXIT_OK)
 }
 
-// Resolves the repository, reports its note, and opens its cache, with each diagnostic on stderr.
+// Resolves the repository, reports its note, and opens its tag cache, with each diagnostic on
+// stderr.
 pub(crate) fn open(
     flags: &RepoFlags,
     services: &Services,
     streams: &mut Streams<'_>,
 ) -> Result<Session, u8> {
+    open_with(flags, services, streams, Session::open)
+}
+
+// As `open`, with the cache that `opener` opens: the tag cache or agentless.db.
+pub(crate) fn open_with(
+    flags: &RepoFlags,
+    services: &Services,
+    streams: &mut Streams<'_>,
+    opener: fn(&Services, app::Repo, bool) -> app::Opening,
+) -> Result<Session, u8> {
     let repo = flags.repo.as_deref().map(Path::new);
     let repo = app::resolve(services, repo)
         .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
-    let opening = Session::open(services, repo, flags.no_cache);
+    let opening = opener(services, repo, flags.no_cache);
     let note = &opening.note;
     if !note.is_empty() {
         report(streams.err, &format!("agentless-mcp: {}\n", one_line(note)));

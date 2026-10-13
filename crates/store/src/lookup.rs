@@ -30,20 +30,23 @@ pub enum Lookup {
     Unreadable(RowFailure),
 }
 
-/// Block rows that could not be read. It displays as the warning line.
+/// Stored rows of one file that could not be read. It displays as the warning line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowFailure {
-    database: PathBuf,
-    path: String,
-    cause: String,
+    pub(crate) database: PathBuf,
+    // The word for what the rows hold, such as "block".
+    pub(crate) kind: &'static str,
+    pub(crate) path: String,
+    pub(crate) cause: String,
 }
 
 impl fmt::Display for RowFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "tag cache {}: block rows for {} are unreadable ({}); parsing the file instead",
+            "tag cache {}: {} rows for {} are unreadable ({}); parsing the file instead",
             self.database.display(),
+            self.kind,
             self.path,
             self.cause
         )
@@ -77,6 +80,7 @@ impl TagsDb {
             .unwrap_or_else(|cause| {
                 Lookup::Unreadable(RowFailure {
                     database: self.database.clone(),
+                    kind: "block",
                     path: path.to_owned(),
                     cause: cause.repr(),
                 })

@@ -13,6 +13,7 @@ pub use sum::compensated_sum;
 pub use tokenize::{TokenizeError, TokenizeErrorKind};
 
 use kernel::Key;
+use serde::{Deserialize, Serialize};
 use syntax::{Language, NodeId, Parsed, Point, Spec};
 
 use crate::kinds::Kinds;
@@ -29,7 +30,7 @@ pub const MIN_INSTANCES: usize = 2;
 const STAMP: &str = "2/py3.13";
 
 /// The units, clone blocks, and SLOC lines of one parsed file.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileMetrics {
     /// The units by start byte.
     pub units: Vec<Unit>,
@@ -40,7 +41,7 @@ pub struct FileMetrics {
 }
 
 /// One function or method with its qualified name, span, body key, cc, and SLOC.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unit {
     /// The scope, owner, and name, joined with dots.
     pub qualname: String,
@@ -59,7 +60,7 @@ pub struct Unit {
 }
 
 /// One function or control block that clone detection compares.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     /// The 1-based line where the block starts.
     pub start_line: u32,

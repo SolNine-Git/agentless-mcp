@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use io::{LockError, os_error_class_text};
 
 const LOCK_NAME: &str = "write.lock";
+pub(crate) const FACTS_LOCK_NAME: &str = "agentless.lock";
 // The sidecars go first and the primary last: a sidecar that stays keeps the primary visible to
 // the next sweep.
-const SUFFIXES: [&str; 3] = ["-shm", "-wal", ""];
+pub(crate) const SUFFIXES: [&str; 3] = ["-shm", "-wal", ""];
 
 /// What the discard of a database did.
 #[derive(Debug)]
@@ -40,32 +41,50 @@ impl fmt::Display for DiscardFailure {
     }
 }
 
-/// Removes the database at `database` and its `-wal` and `-shm` sidecars, while it holds the
+/// Removes the tag cache at `database` and its `-wal` and `-shm` sidecars, while it holds the
 /// index write lock in the same directory.
 #[must_use]
 pub fn discard(database: &Path) -> Discarded {
+    discard_under(database, LOCK_NAME)
+}
+
+/// Removes agentless.db at `database` and its sidecars, while it holds agentless.lock in the same
+/// directory.
+#[must_use]
+pub fn discard_facts(database: &Path) -> Discarded {
+    discard_under(database, FACTS_LOCK_NAME)
+}
+
+fn discard_under(database: &Path, lock_name: &str) -> Discarded {
     let failed = |cause| {
         Discarded::Failed(DiscardFailure {
             database: database.to_path_buf(),
             cause,
         })
     };
-    let lock = match io::try_lock(&database.with_file_name(LOCK_NAME)) {
+    let lock = match io::try_lock(&database.with_file_name(lock_name)) {
         Ok(lock) => lock,
         Err(LockError::Held | LockError::Refused(_)) => return Discarded::LeftInPlace,
         Err(LockError::Open(cause)) => return failed(cause),
     };
-    let removed = SUFFIXES
-        .iter()
-        .try_for_each(|suffix| io::remove_file(&with_suffix(database, suffix)).map(drop));
+    let removed = remove_database(database);
     drop(lock);
     match removed {
-        Ok(()) => Discarded::Removed,
+        Ok(_) => Discarded::Removed,
         Err(cause) => failed(cause),
     }
 }
 
-fn with_suffix(database: &Path, suffix: &str) -> PathBuf {
+// The caller holds the lock. True when the primary file was there to remove.
+pub(crate) fn remove_database(database: &Path) -> std::io::Result<bool> {
+    let mut existed = false;
+    for suffix in SUFFIXES {
+        existed = io::remove_file(&with_suffix(database, suffix))?;
+    }
+    Ok(existed)
+}
+
+pub(crate) fn with_suffix(database: &Path, suffix: &str) -> PathBuf {
     let mut name = OsString::from(database);
     name.push(suffix);
     PathBuf::from(name)

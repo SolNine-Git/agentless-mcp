@@ -30,7 +30,7 @@ pub use config::{
 pub use contain::{
     Refusal, contained_file_size, contained_path, file_size, file_stays_inside, resolve,
 };
-pub use files::{remove_file, touch};
+pub use files::{create_private_dir, remove_file, touch};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
 pub use oserror::{os_error_class_text, os_error_line, strerror};

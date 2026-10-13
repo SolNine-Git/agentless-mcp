@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde::Deserialize;
-use store::CacheState;
+use store::{CacheState, TagsDb};
 
 use super::{Located, Opened, Session, Tags, assembled, outside, settled};
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases, set_mtime};
@@ -39,9 +39,9 @@ fn a_usable_database_gets_its_generation_then_the_stamp() {
 
     let tree = Some(FIXTURE_GENERATION);
     let settled = settled(&services, sandbox.path(), tree, source, &database);
-    let (state, tags) = settled.value.expect("a generation");
+    let (state, db) = settled.value.expect("a generation");
 
-    assert!(tags.cached());
+    assert!(db.is_some());
     assert!(modified(&database) > before);
     let expected = CacheState::Indexed {
         generation: FIXTURE_GENERATION.to_owned(),
@@ -59,9 +59,9 @@ fn a_bypassed_database_gets_no_stamp() {
     let source = store::open_source(&database, FIXTURE_ROOT, true);
 
     let settled = settled(&services, sandbox.path(), None, source, &database);
-    let (state, tags) = settled.value.expect("no generation");
+    let (state, db) = settled.value.expect("no generation");
 
-    assert!(!tags.cached());
+    assert!(db.is_none());
     assert_eq!(modified(&database), before);
     assert_eq!(state, CacheState::Bypassed);
 }
@@ -133,7 +133,7 @@ fn each_generation_walk_gives_the_reference_warnings_and_outcome() {
         let services = services_for(&sandbox, case.cache_home.as_deref());
         let root = sandbox.path().join("repo");
         let repo = Repo::load(&services, &root).expect("the repository loads");
-        let located = Located::new(&services, &root).expect("a cache root");
+        let located = Located::new::<TagsDb>(&services, &root).expect("a cache root");
         let database = sandbox.copy(&fixture(), "cache/tags.db");
         let opened = Opened {
             source: store::open_source(&database, FIXTURE_ROOT, false),

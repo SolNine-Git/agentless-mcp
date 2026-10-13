@@ -7,8 +7,6 @@ use prompts::messages::{
 };
 use text::CodePointString;
 
-use crate::SCHEMA_VERSION;
-
 /// The class of a read failure. It decides whether a refused database is discarded, and it names
 /// the failure in a row warning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +128,8 @@ pub enum Refusal {
     Schema {
         /// The schema version that the database records.
         found: i64,
+        /// The schema version that this build reads for that database.
+        expected: u16,
     },
     /// The database was built for another repository.
     OtherRepository {
@@ -162,8 +162,8 @@ impl fmt::Display for Refusal {
             Self::Unreadable(error) => write!(f, "cache unreadable: {error}"),
             Self::Corrupt(error) => write!(f, "cache discarded: {error}"),
             Self::NoIndex => f.write_str(CACHE_DISCARDED_NO_INDEX),
-            Self::Schema { found } => {
-                let values = (found.to_string(), usize::from(SCHEMA_VERSION));
+            Self::Schema { found, expected } => {
+                let values = (found.to_string(), usize::from(*expected));
                 f.write_str(&CACHE_DISCARDED_OLD_SCHEMA.render((&values.0, values.1)))
             }
             Self::OtherRepository { repo_root } => {

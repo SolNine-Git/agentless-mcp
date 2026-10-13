@@ -1,11 +1,14 @@
-//! The tag cache an operation reads: opened read-only, a refused database discarded, and the
-//! status that the receipt and the capabilities report describe.
+//! The cache an operation reads: the tag cache for lint and the hook, agentless.db for the read
+//! operations and capabilities. Each opens read-only, a refused database is discarded, and the
+//! status describes it for the receipt and the capabilities report.
 
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::thread;
 
-use store::{CacheState, CacheStatus, ManifestEntry, RowCounts, SqlError, TagsDb};
+use store::{
+    CacheState, CacheStatus, FactSource, FactsDb, ManifestEntry, RowCounts, SqlError, TagsDb,
+};
 use syntax::Language;
 
 use crate::pairs::Stored;
@@ -32,7 +35,7 @@ impl Tags {
     /// unknown.
     #[must_use]
     pub fn open(services: &Services, repo: &Repo) -> Noted<Result<Tags, Error>> {
-        let located = match Located::new(services, &repo.root) {
+        let located = match Located::new::<TagsDb>(services, &repo.root) {
             Ok(located) => located,
             Err(error) => return Noted::new(Err(error)),
         };
@@ -40,24 +43,14 @@ impl Tags {
             database,
             source,
             mut diagnostics,
-        } = located.open(false);
+        } = located.open::<TagsDb>(false);
         diagnostics.extend(discarded(&source, &database));
         Noted {
-            value: Ok(Tags::stamped(source, &database)),
+            value: Ok(Tags {
+                db: stamped(source, &database),
+            }),
             diagnostics,
         }
-    }
-
-    // Only a usable database gets the time stamp, which keeps it out of the eviction sweep.
-    fn stamped(source: store::Source, database: &Path) -> Tags {
-        let db = match source {
-            store::Source::Usable(db) => {
-                touch(database);
-                Some(db)
-            }
-            _ => None,
-        };
-        Tags { db }
     }
 
     // True when a usable tag cache backs the clone index.
@@ -78,12 +71,23 @@ impl Tags {
     }
 }
 
+// Only a usable database gets the time stamp, which keeps it out of the eviction sweep.
+fn stamped<D>(source: store::Source<D>, database: &Path) -> Option<D> {
+    match source {
+        store::Source::Usable(db) => {
+            touch(database);
+            Some(db)
+        }
+        _ => None,
+    }
+}
+
 // A failed stamp only ages the database for the eviction sweep, so it prints nothing.
 fn touch(database: &Path) {
     let _ = io::touch(database);
 }
 
-/// What the receipt and the capabilities report say about the tag cache of one call.
+/// What the receipt and the capabilities report say about the cache of one call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheReport {
     /// The database path and what the call found there.
@@ -94,15 +98,18 @@ pub struct CacheReport {
     pub receipt: String,
 }
 
-/// One command's repository, its git state, and its tag cache.
+/// One command's repository, its git state, and the cache it reads.
 #[derive(Debug)]
 pub struct Session {
     /// The repository.
     pub repo: Repo,
     /// HEAD, the tree, the dirty count, and the note on what is unknown.
     pub snapshot: git::Snapshot,
-    /// The tag cache that lint reads blocks from.
+    /// The tag cache that lint reads blocks from; closed in a session over agentless.db.
     pub tags: Tags,
+    /// The facts and metrics of each file: agentless.db rows in a session over agentless.db,
+    /// else parses.
+    pub facts: FactSource,
     /// The cache status, its row counts and its receipt text.
     pub cache: CacheReport,
 }
@@ -121,39 +128,113 @@ pub struct Opening {
 impl Session {
     /// Reads the git state of `repo` and opens its tag cache, unless `no_cache` asks to parse every
     /// file: the open, the discard of a refused database, the generation, the time stamp, and the
-    /// row counts.
+    /// row counts. Lint reads this session.
     #[must_use]
     pub fn open(services: &Services, repo: Repo, no_cache: bool) -> Opening {
-        let enclosing = services.git.root(&repo.root);
-        let (snapshot, counted) =
-            read_and_open(services, &repo.root, enclosing.as_deref(), no_cache);
-        let note = snapshot.note.clone();
-        let session = match counted {
-            Ok(counted) => assembled(services, repo, snapshot, counted),
-            Err(error) => Noted::new(Err(error)),
-        };
-        Opening { note, session }
+        open_with::<TagsDb>(services, repo, no_cache)
+    }
+
+    /// Reads the git state of `repo` and opens its agentless.db in the same steps as
+    /// [`Session::open`]. The read operations and capabilities read this session.
+    #[must_use]
+    pub fn open_facts(services: &Services, repo: Repo, no_cache: bool) -> Opening {
+        open_with::<FactsDb>(services, repo, no_cache)
+    }
+}
+
+fn open_with<D: CacheFile>(services: &Services, repo: Repo, no_cache: bool) -> Opening {
+    let enclosing = services.git.root(&repo.root);
+    let (snapshot, counted) =
+        read_and_open::<D>(services, &repo.root, enclosing.as_deref(), no_cache);
+    let note = snapshot.note.clone();
+    let session = match counted {
+        Ok(counted) => assembled(services, repo, snapshot, counted),
+        Err(error) => Noted::new(Err(error)),
+    };
+    Opening { note, session }
+}
+
+// The cache file that a session opens, and the two readers that a session holds of it.
+trait CacheFile: Sized {
+    fn path(cache_root: &Path, repo_root: &str) -> PathBuf;
+    fn open(database: &Path, repo_root: &str, no_cache: bool) -> store::Source<Self>;
+    fn discard(database: &Path) -> store::Discarded;
+    fn generation(&self) -> &str;
+    fn row_counts(&self) -> Result<RowCounts, SqlError>;
+    fn readers(db: Option<Self>) -> (Tags, FactSource);
+}
+
+impl CacheFile for TagsDb {
+    fn path(cache_root: &Path, repo_root: &str) -> PathBuf {
+        store::database_path(cache_root, repo_root)
+    }
+
+    fn open(database: &Path, repo_root: &str, no_cache: bool) -> store::Source<Self> {
+        store::open_source(database, repo_root, no_cache)
+    }
+
+    fn discard(database: &Path) -> store::Discarded {
+        store::discard(database)
+    }
+
+    fn generation(&self) -> &str {
+        TagsDb::generation(self)
+    }
+
+    fn row_counts(&self) -> Result<RowCounts, SqlError> {
+        TagsDb::row_counts(self)
+    }
+
+    fn readers(db: Option<Self>) -> (Tags, FactSource) {
+        (Tags { db }, FactSource::parsing())
+    }
+}
+
+impl CacheFile for FactsDb {
+    fn path(cache_root: &Path, repo_root: &str) -> PathBuf {
+        store::facts_database_path(cache_root, repo_root)
+    }
+
+    fn open(database: &Path, repo_root: &str, no_cache: bool) -> store::Source<Self> {
+        store::open_facts(database, repo_root, no_cache)
+    }
+
+    fn discard(database: &Path) -> store::Discarded {
+        store::discard_facts(database)
+    }
+
+    fn generation(&self) -> &str {
+        FactsDb::generation(self)
+    }
+
+    fn row_counts(&self) -> Result<RowCounts, SqlError> {
+        FactsDb::row_counts(self)
+    }
+
+    fn readers(db: Option<Self>) -> (Tags, FactSource) {
+        let facts = db.map_or_else(FactSource::parsing, FactSource::reading);
+        (Tags { db: None }, facts)
     }
 }
 
 // A read-only open creates files beside the database, and `git status` counts them when they lie
 // in the worktree. So only a database outside the worktree opens while the snapshot runs.
-fn read_and_open(
+fn read_and_open<D: CacheFile>(
     services: &Services,
     root: &Path,
     enclosing: Option<&Path>,
     no_cache: bool,
-) -> (git::Snapshot, Result<Counted, Error>) {
+) -> (git::Snapshot, Result<Counted<D>, Error>) {
     let snapshot = || services.git.snapshot(root, enclosing);
-    match Located::new(services, root) {
+    match Located::new::<D>(services, root) {
         Ok(located) if outside(&located.database, enclosing) => thread::scope(|scope| {
             let running = io::spawn_or_run(scope, &snapshot);
-            let counted = located.open(no_cache).counted();
+            let counted = located.open::<D>(no_cache).counted();
             (running.joined(), Ok(counted))
         }),
         located => {
             let snapshot = snapshot();
-            let counted = located.map(|located| located.open(no_cache).counted());
+            let counted = located.map(|located| located.open::<D>(no_cache).counted());
             (snapshot, counted)
         }
     }
@@ -166,11 +247,11 @@ fn outside(database: &Path, enclosing: Option<&Path>) -> bool {
 
 // The discard, the generation and the stamp come after the snapshot. The warnings keep that
 // order: the cache root, the discard, then the generation walk.
-fn assembled(
+fn assembled<D: CacheFile>(
     services: &Services,
     repo: Repo,
     snapshot: git::Snapshot,
-    counted: Counted,
+    counted: Counted<D>,
 ) -> Noted<Result<Session, Error>> {
     let Counted { opened, counts } = counted;
     let Opened {
@@ -182,7 +263,8 @@ fn assembled(
     let tree = snapshot.tree_oid.as_deref();
     let settled = settled(services, &repo.root, tree, source, &database);
     diagnostics.extend(settled.diagnostics);
-    let session = settled.value.map(|(state, tags)| {
+    let session = settled.value.map(|(state, db)| {
+        let (tags, facts) = D::readers(db);
         let status = CacheStatus {
             path: database,
             state,
@@ -191,6 +273,7 @@ fn assembled(
             repo,
             snapshot,
             tags,
+            facts,
             cache: report(status, counts),
         }
     });
@@ -201,22 +284,22 @@ fn assembled(
 }
 
 // The state the receipt describes. A usable database gets its generation first, then the stamp.
-fn settled(
+fn settled<D: CacheFile>(
     services: &Services,
     root: &Path,
     tree: Option<&str>,
-    source: store::Source,
+    source: store::Source<D>,
     database: &Path,
-) -> Noted<Result<(CacheState, Tags), Error>> {
+) -> Noted<Result<(CacheState, Option<D>), Error>> {
     let state = match &source {
         store::Source::Bypassed => Noted::new(Ok(CacheState::Bypassed)),
         store::Source::Absent => Noted::new(Ok(CacheState::Absent { note: None })),
         store::Source::Refused(refusal) => Noted::new(Ok(CacheState::Absent {
             note: Some(refusal.clone()),
         })),
-        store::Source::Usable(db) => indexed(services, root, tree, db),
+        store::Source::Usable(db) => indexed(services, root, tree, db.generation()),
     };
-    state.map(|state| state.map(|state| (state, Tags::stamped(source, database))))
+    state.map(|state| state.map(|state| (state, stamped(source, database))))
 }
 
 // Where one repository's database lies, and the warnings that its cache root gave.
@@ -227,14 +310,14 @@ struct Located {
 }
 
 impl Located {
-    fn new(services: &Services, root: &Path) -> Result<Located, Error> {
+    fn new<D: CacheFile>(services: &Services, root: &Path) -> Result<Located, Error> {
         let cache_root = services
             .cache_root
             .as_ref()
             .map_err(|home| kernel::Error::OperationFailed(home.to_string()))?;
         let diagnostics = cache_root.ignored.iter().map(ToString::to_string).collect();
         let repo_root = root_text(root)?.to_owned();
-        let database = store::database_path(&cache_root.path, &repo_root);
+        let database = D::path(&cache_root.path, &repo_root);
         Ok(Located {
             database,
             repo_root,
@@ -242,8 +325,8 @@ impl Located {
         })
     }
 
-    fn open(self, no_cache: bool) -> Opened {
-        let source = store::open_source(&self.database, &self.repo_root, no_cache);
+    fn open<D: CacheFile>(self, no_cache: bool) -> Opened<D> {
+        let source = D::open(&self.database, &self.repo_root, no_cache);
         Opened {
             database: self.database,
             source,
@@ -253,14 +336,14 @@ impl Located {
 }
 
 // The open of one repository's database, and the warnings that its cache root gave.
-struct Opened {
+struct Opened<D> {
     database: PathBuf,
-    source: store::Source,
+    source: store::Source<D>,
     diagnostics: Vec<String>,
 }
 
-impl Opened {
-    fn counted(self) -> Counted {
+impl<D: CacheFile> Opened<D> {
+    fn counted(self) -> Counted<D> {
         let counts = match &self.source {
             store::Source::Usable(db) => db.row_counts(),
             _ => Ok(NO_ROWS),
@@ -273,42 +356,50 @@ impl Opened {
 }
 
 // An open database and its row counts: zero without a usable database, or the error of a count.
-struct Counted {
-    opened: Opened,
+struct Counted<D> {
+    opened: Opened<D>,
     counts: Result<RowCounts, SqlError>,
 }
 
 // Removes a refused database that the store says to discard, and returns a failed removal.
-fn discarded(source: &store::Source, database: &Path) -> Option<String> {
+fn discarded<D: CacheFile>(source: &store::Source<D>, database: &Path) -> Option<String> {
     if let store::Source::Refused(refusal) = source
         && refusal.discards()
-        && let store::Discarded::Failed(failure) = store::discard(database)
+        && let store::Discarded::Failed(failure) = D::discard(database)
     {
         return Some(failure.to_string());
     }
     None
 }
 
-// The generation of the repository now: the tree id, or a digest of the walked files.
+// The generation that the database was built at, beside the repository's generation now.
 fn indexed(
     services: &Services,
     root: &Path,
     tree: Option<&str>,
-    db: &TagsDb,
+    built: &str,
 ) -> Noted<Result<CacheState, Error>> {
-    let generation = match tree {
-        Some(tree) => Noted::new(Ok(tree.to_owned())),
-        None => {
-            manifest(services, root).map(|entries| entries.map(|e| store::nogit_generation(&e)))
-        }
-    };
-    generation.map(|generation| {
+    repo_generation(services, root, tree).map(|generation| {
         Ok(CacheState::Indexed {
-            generation: db.generation().to_owned(),
+            generation: built.to_owned(),
             repo_generation: generation?,
             repo_root: root_text(root)?.to_owned(),
         })
     })
+}
+
+// The generation of the repository now: the tree id, or a digest of the walked files.
+pub(crate) fn repo_generation(
+    services: &Services,
+    root: &Path,
+    tree: Option<&str>,
+) -> Noted<Result<String, Error>> {
+    match tree {
+        Some(tree) => Noted::new(Ok(tree.to_owned())),
+        None => {
+            manifest(services, root).map(|entries| entries.map(|e| store::nogit_generation(&e)))
+        }
+    }
 }
 
 // The walk warnings come with either outcome, as the walk raised them.

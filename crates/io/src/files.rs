@@ -1,9 +1,38 @@
-//! Single-file changes: remove a file, and mark a file as used now.
+//! Single-file changes: remove a file, mark a file as used now, and create an owner-only
+//! directory.
 
-use std::fs::{self, File, FileTimes};
+use std::fs::{self, DirBuilder, File, FileTimes, Permissions};
 use std::io;
-use std::path::Path;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+const PRIVATE_MODE: u32 = 0o700;
+
+/// Creates `directory` with mode 0700 and its missing parents with the default mode, then sets
+/// mode 0700 on its parent and on itself. It returns each mode change that failed.
+///
+/// # Errors
+///
+/// Returns the error of a creation that failed, or of a path that exists and is not a directory.
+pub fn create_private_dir(directory: &Path) -> io::Result<Vec<(PathBuf, io::Error)>> {
+    if let Some(parent) = directory.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match DirBuilder::new().mode(PRIVATE_MODE).create(directory) {
+        Err(error) if error.kind() != io::ErrorKind::AlreadyExists || !directory.is_dir() => {
+            return Err(error);
+        }
+        _ => {}
+    }
+    let levels = directory.parent().into_iter().chain([directory]);
+    Ok(levels
+        .filter_map(|path| {
+            let changed = fs::set_permissions(path, Permissions::from_mode(PRIVATE_MODE));
+            changed.err().map(|error| (path.to_path_buf(), error))
+        })
+        .collect())
+}
 
 /// Removes the file `path`, and returns false when nothing was there.
 ///
@@ -77,6 +106,60 @@ mod tests {
             modified >= recent && accessed >= recent,
             "{modified:?} {accessed:?}"
         );
+    }
+
+    #[test]
+    fn a_private_directory_is_owner_only_at_both_levels() {
+        let tree = tree();
+        let parent = tree.create_dir("cache").expect("the parent is created");
+        fs::set_permissions(&parent, Permissions::from_mode(0o755)).expect("the mode is set");
+        let directory = parent.join("key");
+
+        let failed = create_private_dir(&directory).expect("the directory is created");
+        let again = create_private_dir(&directory).expect("an existing directory is kept");
+
+        assert!(failed.is_empty() && again.is_empty());
+        for path in [&parent, &directory] {
+            let mode = fs::metadata(path)
+                .expect("the path exists")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700, "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn missing_parents_take_the_default_mode() {
+        let tree = tree();
+        let plain = tree
+            .create_dir("plain")
+            .expect("a default directory is created");
+        let top = tree.join("top");
+        let directory = top.join("cache/key");
+
+        create_private_dir(&directory).expect("the directories are created");
+
+        let mode = |path: &Path| {
+            fs::metadata(path)
+                .expect("the path exists")
+                .permissions()
+                .mode()
+        };
+        assert_eq!(
+            mode(&top),
+            mode(&plain),
+            "only the leaf and its parent are restricted"
+        );
+    }
+
+    #[test]
+    fn a_file_in_the_place_of_the_directory_is_an_error() {
+        let tree = tree();
+        let path = tree.write_file("key", "x").expect("the file is written");
+
+        let refused = create_private_dir(&path).expect_err("a file is not a directory");
+
+        assert_eq!(refused.kind(), io::ErrorKind::AlreadyExists);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! The capabilities report: the build, the grammars, the tag cache, the config, and the caps.
+//! The capabilities report: the build, the grammars, the cache, the config, and the caps.
 
 use std::fmt;
 use std::sync::Arc;
@@ -118,7 +118,7 @@ pub struct LanguageCapability {
     pub detail: String,
 }
 
-/// The tag cache as the capabilities report describes it.
+/// The session's cache as the capabilities report describes it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CacheView {
     /// The `cache:` field of the receipt.
@@ -178,7 +178,7 @@ pub struct Capabilities<'a> {
     pub pack_version: &'static str,
     /// Where the grammars come from.
     pub grammar_cache: &'static str,
-    /// The tag cache.
+    /// The session's cache: agentless.db for the capabilities command.
     pub cache: CacheView,
     /// Each grammar, in name order.
     pub languages: Vec<LanguageCapability>,
@@ -281,7 +281,7 @@ fn cache_hint(session: &Session) -> String {
     }
 }
 
-fn language(language: Language) -> LanguageCapability {
+pub(crate) fn language(language: Language) -> LanguageCapability {
     let (probe_ok, detail) = probe(language);
     LanguageCapability {
         name: language.name(),

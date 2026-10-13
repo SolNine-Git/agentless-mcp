@@ -61,6 +61,10 @@ impl core::fmt::Debug for metrics::Block
 pub fn metrics::Block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for metrics::Block
 impl core::marker::StructuralPartialEq for metrics::Block
+impl serde_core::ser::Serialize for metrics::Block
+pub fn metrics::Block::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::Block
+pub fn metrics::Block::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for metrics::Block
 impl core::marker::Send for metrics::Block
 impl core::marker::Sync for metrics::Block
@@ -80,6 +84,10 @@ pub fn metrics::FileMetrics::eq(&self, &Self) -> bool
 impl core::fmt::Debug for metrics::FileMetrics
 pub fn metrics::FileMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for metrics::FileMetrics
+impl serde_core::ser::Serialize for metrics::FileMetrics
+pub fn metrics::FileMetrics::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::FileMetrics
+pub fn metrics::FileMetrics::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for metrics::FileMetrics
 impl core::marker::Send for metrics::FileMetrics
 impl core::marker::Sync for metrics::FileMetrics
@@ -137,6 +145,10 @@ pub fn metrics::Unit::eq(&self, &Self) -> bool
 impl core::fmt::Debug for metrics::Unit
 pub fn metrics::Unit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for metrics::Unit
+impl serde_core::ser::Serialize for metrics::Unit
+pub fn metrics::Unit::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::Unit
+pub fn metrics::Unit::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for metrics::Unit
 impl core::marker::Send for metrics::Unit
 impl core::marker::Sync for metrics::Unit

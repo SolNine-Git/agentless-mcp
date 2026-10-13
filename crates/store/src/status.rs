@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use prompts::messages::CACHE_STALE_REMEDIATION;
+use prompts::messages::{CACHE_ABSENT_REFRESHING, CACHE_STALE_REFRESHING, CACHE_STALE_REMEDIATION};
 
 use crate::{Refusal, shell_quote};
 
@@ -37,13 +37,19 @@ pub struct CacheStatus {
 }
 
 impl CacheStatus {
-    /// Returns the `cache:` field of the receipt.
+    /// Returns the `cache:` field of the receipt when no background refresh runs.
     #[must_use]
     pub fn receipt(&self) -> String {
+        self.receipt_while(false)
+    }
+
+    /// Returns the `cache:` field of the receipt. `refreshing` says that a background refresh of
+    /// this database runs, which the field names in place of the remediation.
+    #[must_use]
+    pub fn receipt_while(&self, refreshing: bool) -> String {
         match &self.state {
             CacheState::Bypassed => "bypassed (--no-cache)".to_owned(),
-            CacheState::Absent { note: None } => "none".to_owned(),
-            CacheState::Absent { note: Some(note) } => format!("none ({note})"),
+            CacheState::Absent { note } => absent(note.as_ref(), refreshing),
             CacheState::Indexed {
                 generation,
                 repo_generation,
@@ -54,7 +60,11 @@ impl CacheStatus {
                 repo_generation,
                 repo_root,
             } => {
-                let remediation = CACHE_STALE_REMEDIATION.render(&shell_quote(repo_root));
+                let remediation = if refreshing {
+                    CACHE_STALE_REFRESHING.to_owned()
+                } else {
+                    CACHE_STALE_REMEDIATION.render(&shell_quote(repo_root))
+                };
                 format!(
                     "g:{generation} generation mismatch (repo g:{repo_generation}); {remediation}"
                 )
@@ -79,4 +89,20 @@ impl CacheStatus {
             CacheState::Indexed { generation, repo_generation, .. } if generation == repo_generation
         )
     }
+}
+
+// The refusal note and the refresh notice, joined with "; ", in parentheses after "none".
+fn absent(note: Option<&Refusal>, refreshing: bool) -> String {
+    let note = note.map(ToString::to_string);
+    let notes: Vec<&str> = [
+        note.as_deref(),
+        refreshing.then_some(CACHE_ABSENT_REFRESHING),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if notes.is_empty() {
+        return "none".to_owned();
+    }
+    format!("none ({})", notes.join("; "))
 }

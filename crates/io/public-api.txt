@@ -632,6 +632,7 @@ pub fn io::append_line(&std::path::Path, &[u8]) -> core::result::Result<(), io::
 pub fn io::cache_root(impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<io::CacheRoot, io::HomeUnknown>
 pub fn io::contained_file_size(&std::path::Path, &std::path::Path) -> core::option::Option<core::io::error::Result<u64>>
 pub fn io::contained_path(&std::path::Path, &std::path::Path) -> core::result::Result<std::path::PathBuf, io::Refusal>
+pub fn io::create_private_dir(&std::path::Path) -> core::io::error::Result<alloc::vec::Vec<(std::path::PathBuf, core::io::error::Error)>>
 pub fn io::decode_strict(alloc::vec::Vec<u8>) -> core::result::Result<alloc::string::String, io::NotUtf8>
 pub fn io::file_size(&std::path::Path) -> core::io::error::Result<u64>
 pub fn io::file_stays_inside(&std::path::Path, &std::path::Path) -> bool

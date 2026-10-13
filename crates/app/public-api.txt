@@ -1,7 +1,11 @@
 pub mod app
 pub use app::CheckGap
 pub use app::Detail
+pub use app::EvictionReport
 pub use app::Finding
+pub use app::IndexFailure
+pub use app::IndexReport
+pub use app::IndexSkip
 pub use app::Observed
 pub use app::PairFinding
 pub use app::Severity
@@ -315,6 +319,26 @@ impl core::marker::Unpin for app::EnvConfig
 impl core::marker::UnsafeUnpin for app::EnvConfig
 impl core::panic::unwind_safe::RefUnwindSafe for app::EnvConfig
 impl core::panic::unwind_safe::UnwindSafe for app::EnvConfig
+pub struct app::IndexRequest
+pub app::IndexRequest::force: bool
+pub app::IndexRequest::max_cache_bytes: core::option::Option<std::ffi::os_str::OsString>
+impl core::clone::Clone for app::IndexRequest
+pub fn app::IndexRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::IndexRequest
+impl core::cmp::PartialEq for app::IndexRequest
+pub fn app::IndexRequest::eq(&self, &Self) -> bool
+impl core::default::Default for app::IndexRequest
+pub fn app::IndexRequest::default() -> Self
+impl core::fmt::Debug for app::IndexRequest
+pub fn app::IndexRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::IndexRequest
+impl core::marker::Freeze for app::IndexRequest
+impl core::marker::Send for app::IndexRequest
+impl core::marker::Sync for app::IndexRequest
+impl core::marker::Unpin for app::IndexRequest
+impl core::marker::UnsafeUnpin for app::IndexRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::IndexRequest
+impl core::panic::unwind_safe::UnwindSafe for app::IndexRequest
 pub struct app::LanguageCapability
 pub app::LanguageCapability::abi: core::option::Option<usize>
 pub app::LanguageCapability::detail: alloc::string::String
@@ -549,11 +573,13 @@ impl !core::panic::unwind_safe::RefUnwindSafe for app::Services
 impl !core::panic::unwind_safe::UnwindSafe for app::Services
 pub struct app::Session
 pub app::Session::cache: app::CacheReport
+pub app::Session::facts: store::source::FactSource
 pub app::Session::repo: app::Repo
 pub app::Session::snapshot: git::snapshot::Snapshot
 pub app::Session::tags: app::Tags
 impl app::Session
 pub fn app::Session::open(&app::Services, app::Repo, bool) -> app::Opening
+pub fn app::Session::open_facts(&app::Services, app::Repo, bool) -> app::Opening
 impl core::fmt::Debug for app::Session
 pub fn app::Session::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Session
@@ -634,6 +660,7 @@ pub fn app::capabilities(&app::Session) -> core::result::Result<app::Capabilitie
 pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc::string::String>
 pub fn app::guide_text() -> &'static str
 pub fn app::in_metric_scope(&str) -> bool
+pub fn app::index(&app::Services, &app::Repo, &git::snapshot::Snapshot, &app::IndexRequest) -> app::Noted<core::result::Result<store::report::IndexReport, app::Error>>
 pub fn app::is_fixture_path(&str) -> bool
 pub fn app::is_test_path(&str) -> bool
 pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>

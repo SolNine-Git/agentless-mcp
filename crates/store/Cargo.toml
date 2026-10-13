@@ -1,6 +1,6 @@
 [package]
 name = "store"
-description = "The read side of the tag cache: the database path, the open checks, the clone block rows, the receipt texts, and the discard of an unusable database."
+description = "The caches: the read side of the tag cache, and agentless.db with its one parse per file, its read source, its index writer, and the ceiling sweep."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+facts = { path = "../facts" }
 io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
@@ -19,12 +20,12 @@ libc.workspace = true
 metrics = { path = "../metrics" }
 prompts = { path = "../prompts" }
 rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 syntax = { path = "../syntax" }
 text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
-serde.workspace = true
-serde_json.workspace = true
 text = { path = "../text", features = ["test-support"] }

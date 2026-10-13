@@ -1,25 +1,52 @@
-//! The read side of the tag cache: the database path, the open checks, the clone block rows, the
-//! receipt texts, and the discard of an unusable database.
+//! The caches. The read side of the tag cache: the database path, the open checks, the clone
+//! block rows, the receipt texts, and the discard of an unusable database. And agentless.db: the
+//! one parse that fills a row, the cache-or-parse read source, the index plan and its writer, and
+//! the ceiling sweep.
 
+mod analysis;
+mod blob;
 mod discard;
 mod error;
+mod freshness;
 mod lookup;
 mod nogit;
 mod open;
+mod plan;
+mod reader;
+mod report;
+mod schema;
 mod shell;
+mod source;
 mod status;
+mod sweep;
 mod value;
+mod warnings;
+mod writer;
 
 #[cfg(test)]
 mod tests;
 
-pub use discard::{DiscardFailure, Discarded, discard};
+pub use analysis::{
+    Analysis, FACTS_SCHEMA_VERSION, FACTS_VERSION, FileText, Measured, Unmeasured, analysis,
+    analyze,
+};
+pub use discard::{DiscardFailure, Discarded, discard, discard_facts};
 pub use error::{Refusal, SqlClass, SqlError};
+pub use freshness::{Freshness, IndexMeta, freshness};
 pub use lookup::{Lookup, RowFailure};
 pub use nogit::{FileStamp, ManifestEntry, nogit_generation};
 pub use open::{RowCounts, Source, TagsDb, open_source};
+pub use plan::{Extract, Observed, Plan, Previous, Read, Settled, plan, settle};
+pub use reader::{FactsDb, open_facts};
+pub use report::{EvictionReport, IndexFailure, IndexReport, IndexSkip};
 pub use shell::shell_quote;
+pub use source::{FactSource, Served};
 pub use status::{CacheState, CacheStatus};
+pub use sweep::{
+    CacheEntry, DEFAULT_MAX_CACHE_BYTES, MAX_CACHE_BYTES_VARIABLE, PROTECTED_SECONDS,
+    enforce_cache_limit, evict_plan, max_cache_bytes,
+};
+pub use writer::{NewMeta, WriteError, Writer};
 
 use std::path::{Path, PathBuf};
 
@@ -30,14 +57,25 @@ use sha2::{Digest, Sha256};
 pub const SCHEMA_VERSION: u16 = 17;
 
 const DATABASE_NAME: &str = "tags.db";
+const FACTS_DATABASE_NAME: &str = "agentless.db";
 const KEY_LENGTH: usize = 16;
 
 /// Returns `<cache_root>/<key>/tags.db`, where the key is the first 16 hexadecimal digits of the
 /// sha256 of `repo_root`.
 #[must_use]
 pub fn database_path(cache_root: &Path, repo_root: &str) -> PathBuf {
+    key_directory(cache_root, repo_root).join(DATABASE_NAME)
+}
+
+/// Returns `<cache_root>/<key>/agentless.db`, in the directory of the repository's tag cache.
+#[must_use]
+pub fn facts_database_path(cache_root: &Path, repo_root: &str) -> PathBuf {
+    key_directory(cache_root, repo_root).join(FACTS_DATABASE_NAME)
+}
+
+fn key_directory(cache_root: &Path, repo_root: &str) -> PathBuf {
     let key = sha256_hex(repo_root.as_bytes());
-    cache_root.join(&key[..KEY_LENGTH]).join(DATABASE_NAME)
+    cache_root.join(&key[..KEY_LENGTH])
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

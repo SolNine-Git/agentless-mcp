@@ -39,17 +39,24 @@ fn session(sandbox: &Sandbox, case: &Case) -> Session {
     let services = sandbox.services(sandbox.path());
     if case.corrupt == Some(true) {
         let cache_root = services.cache_root.as_ref().expect("a cache root");
-        let database = store::database_path(&cache_root.path, root.to_str().expect("UTF-8"));
+        let root_text = root.to_str().expect("UTF-8");
+        let database = store::facts_database_path(&cache_root.path, root_text);
         let relative = database
             .strip_prefix(sandbox.path())
             .expect("a sandbox path");
         sandbox.put(relative.to_str().expect("UTF-8"), "not a database");
     }
     let repo = resolve(&services, Some(&root)).expect("the repository resolves");
-    Session::open(&services, repo, case.no_cache)
+    Session::open_facts(&services, repo, case.no_cache)
         .session
         .value
         .expect("a session")
+}
+
+// The reference build reports its tag cache. This build reports agentless.db, in the same
+// directory and with the same texts.
+fn reported_by_this_build(report: &str) -> String {
+    report.replace("/tags.db\"", "/agentless.db\"")
 }
 
 #[test]
@@ -73,7 +80,7 @@ fn each_report_equals_the_reference_report_apart_from_the_build_fields() {
         let shown = text
             .replace(key, "<KEY>")
             .replace(&sandbox.path().display().to_string(), "<SANDBOX>");
-        assert_eq!(shown, case.report, "{}", case.name);
+        assert_eq!(shown, reported_by_this_build(&case.report), "{}", case.name);
     }
 }
 
