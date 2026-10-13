@@ -1,18 +1,27 @@
 //! The git reads the tool makes: a hardened bounded runner, the repository snapshot, the change
-//! listing parsers, and the repository walk.
+//! listing parsers, the repository walk, the history of a line span, and commit churn.
 
 mod changes;
+mod churn;
+mod history;
 mod run;
 mod snapshot;
 mod toplevel;
 mod walk;
 
 #[cfg(test)]
+mod recipe;
+#[cfg(test)]
 mod testing;
 
 pub use changes::{
     BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_LISTING_BYTES, Malformed, Side,
     looks_binary, parse_changes, parse_commit, parse_untracked,
+};
+pub use churn::{CHURN_WINDOW_DAYS, Churn};
+pub use history::{
+    Commit, CommitId, HistoryFailure, LineRange, MAX_HISTORY_OUTPUT_BYTES, SpanLog, SpanLogError,
+    SpanQuery,
 };
 pub use run::{Failure, Git, GitOutcome, Unfinished};
 pub use snapshot::Snapshot;

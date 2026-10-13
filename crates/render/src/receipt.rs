@@ -2,14 +2,15 @@
 
 use std::path::Path;
 
-use app::{ConfigView, Session};
+use app::{Chars4, ConfigView, Session};
 use io::ProjectConfig;
 use prompts::envelope::{
     NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_HEADER, RECEIPT_LINE, RECEIPT_NOTE,
+    RECEIPT_SUMMARY,
 };
 use serde::Serialize;
 
-use crate::count::chars_to_tokens;
+use crate::count::Ceiling;
 use crate::textsafe::one_line;
 
 // No block but the body may take more than this share of the ceiling.
@@ -71,11 +72,11 @@ impl<'a> Receipt<'a> {
     }
 
     // The JSON receipt. The config appears only when a file was read or a warning arose.
-    pub(crate) fn fields(&self, max_tokens: usize) -> Fields<'_> {
+    pub(crate) fn fields(&self, ceiling: &Ceiling<'_>) -> Fields<'_> {
         let config =
             (self.config.path.is_some() || !self.warnings.is_empty()).then(|| ConfigView {
                 config: self.config,
-                warnings: bounded_warnings(&self.warnings, max_tokens),
+                warnings: bounded_warnings(&self.warnings, ceiling),
             });
         Fields {
             repo: self.root.display().to_string(),
@@ -103,23 +104,36 @@ pub(crate) struct Fields<'a> {
     config: Option<ConfigView<'a>>,
 }
 
+/// Returns the receipt lines that a command writes to stderr: the tool lines, the summary line,
+/// then the config warnings, bounded at the standard ceiling with the chars4 counter.
+#[must_use]
+pub fn receipt_lines(receipt: &Receipt<'_>, summary: &str) -> Vec<String> {
+    let ceiling = Ceiling::standard(&Chars4);
+    let mut lines = receipt.tool_lines();
+    // The summary names repository content, so it gets the escape of every other value here.
+    lines.push(RECEIPT_SUMMARY.render(&one_line(summary)));
+    let warnings = bounded_warnings(&receipt.warnings, &ceiling);
+    lines.extend(warnings.iter().map(|warning| warning_line(warning)));
+    lines
+}
+
 pub(crate) fn warning_line(warning: &str) -> String {
     RECEIPT_CONFIG_WARNING.render(&one_line(warning))
 }
 
-// The first warnings that fit the count bound and the block share, in order. A warning that does
-// not fit is stepped over, so the kept ones are not always a prefix, and a count line says so.
-pub(crate) fn bounded_warnings(warnings: &[String], max_tokens: usize) -> Vec<String> {
+// The first warnings that fit the count bound and the block share, in order. A skipped warning
+// leaves a gap, and a count line says so. The counter measures the joined block each time.
+pub(crate) fn bounded_warnings(warnings: &[String], ceiling: &Ceiling<'_>) -> Vec<String> {
     let limit = usize::try_from(app::MAX_CONFIG_WARNINGS).unwrap_or(usize::MAX);
-    let budget = max_tokens / BLOCK_SHARE;
+    let budget = ceiling.tokens / BLOCK_SHARE;
     let mut kept = Vec::new();
-    let mut block_chars = 0;
+    let mut block = String::new();
     for warning in warnings.iter().take(limit) {
-        let line_chars = warning_line(warning).chars().count() + 1;
-        if chars_to_tokens(block_chars + line_chars) > budget {
+        let probe = format!("{block}{}\n", warning_line(warning));
+        if ceiling.count(&probe) > budget {
             continue;
         }
-        block_chars += line_chars;
+        block = probe;
         kept.push(warning.clone());
     }
     if kept.len() < warnings.len() {

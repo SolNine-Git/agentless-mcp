@@ -92,8 +92,9 @@ repos:
         args:
           - --skip=*.pyc,.git,.mypy_cache,.ruff_cache,.pytest_cache,__pycache__,uv.lock
           - --ignore-words-list=mcp,readonly,crate
-          # serde_json exports Formatter only at serde_json::ser::Formatter, so the regex removes that path.
-          - '--ignore-regex=(?<!\w)serde_json::ser::'
+          # serde exports SerializeMap only at serde::ser::SerializeMap, and serde_json exports
+          # Formatter only at serde_json::ser::Formatter, so the regex removes both paths.
+          - '--ignore-regex=(?<!\w)serde_json::ser::|(?<!\w)serde::ser::'
           - --check-filenames
           - --check-hidden
 

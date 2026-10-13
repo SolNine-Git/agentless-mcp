@@ -1,15 +1,24 @@
+use app::Chars4;
 use serde::Serialize;
 use serde_json::Value;
 
 use super::rows::{CapabilityRow, ReceiptRow, cases, report};
+use crate::count::Ceiling;
 use crate::envelope::{wrap, wrap_json};
+
+fn chars4(tokens: usize) -> Ceiling<'static> {
+    Ceiling {
+        counter: &Chars4,
+        tokens,
+    }
+}
 
 #[test]
 fn each_body_wraps_as_the_fixture_says() {
     let all: Vec<(ReceiptRow, String, usize, String)> = cases("envelope", "text");
     for (row, body, ceiling, expected) in all {
         let config = row.config();
-        let wrapped = wrap(&row.receipt(&config), &body, ceiling);
+        let wrapped = wrap(&row.receipt(&config), &body, &chars4(ceiling));
         assert_eq!(wrapped, expected, "{body:?} at {ceiling}");
     }
 }
@@ -19,7 +28,7 @@ fn each_lint_document_wraps_as_the_fixture_says() {
     let all: Vec<(ReceiptRow, Vec<Value>, usize, String)> = cases("envelope", "json");
     for (row, rows, ceiling, expected) in all {
         let config = row.config();
-        let wrapped = wrap_json(&row.receipt(&config), &report(&rows), ceiling);
+        let wrapped = wrap_json(&row.receipt(&config), &report(&rows), &chars4(ceiling));
         let wrapped = wrapped.unwrap_or_else(|error| panic!("{rows:?}: {error}"));
         assert_eq!(wrapped, expected, "{rows:?} at {ceiling}");
     }

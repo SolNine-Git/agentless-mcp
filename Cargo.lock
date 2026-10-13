@@ -36,6 +36,7 @@ dependencies = [
  "serde_json",
  "store",
  "syntax",
+ "text",
  "thiserror",
 ]
 
@@ -203,6 +204,7 @@ dependencies = [
  "kernel",
  "serde",
  "serde_json",
+ "sha2",
  "text",
 ]
 

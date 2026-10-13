@@ -1,15 +1,23 @@
-//! The token estimate that every bound in an answer uses: one token per four characters.
+//! The output ceiling: the token count that no answer may pass, and the counter that measures
+//! text against it.
 
-pub(crate) fn tokens(text: &str) -> usize {
-    chars_to_tokens(text.chars().count())
+use app::TokenCounter;
+
+pub(crate) struct Ceiling<'a> {
+    pub(crate) counter: &'a dyn TokenCounter,
+    pub(crate) tokens: usize,
 }
 
-// Floor division, so a text of fewer than four characters costs nothing.
-pub(crate) const fn chars_to_tokens(chars: usize) -> usize {
-    chars / 4
-}
+impl<'a> Ceiling<'a> {
+    // The answer ceiling. It saturates, so a target with a narrow usize keeps all text.
+    pub(crate) fn standard(counter: &'a dyn TokenCounter) -> Self {
+        Self {
+            counter,
+            tokens: usize::try_from(app::MAX_OUTPUT_TOKENS).unwrap_or(usize::MAX),
+        }
+    }
 
-// The answer ceiling as a count. It saturates, so a target with a narrow usize keeps all text.
-pub(crate) fn ceiling() -> usize {
-    usize::try_from(app::MAX_OUTPUT_TOKENS).unwrap_or(usize::MAX)
+    pub(crate) fn count(&self, text: &str) -> usize {
+        self.counter.count(text)
+    }
 }

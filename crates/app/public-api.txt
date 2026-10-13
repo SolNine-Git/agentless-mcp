@@ -260,6 +260,23 @@ impl<'a> core::marker::Unpin for app::Capabilities<'a>
 impl<'a> core::marker::UnsafeUnpin for app::Capabilities<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::Capabilities<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for app::Capabilities<'a>
+pub struct app::Chars4
+impl app::TokenCounter for app::Chars4
+pub fn app::Chars4::count(&self, &str) -> usize
+impl core::clone::Clone for app::Chars4
+pub fn app::Chars4::clone(&self) -> Self
+impl core::default::Default for app::Chars4
+pub fn app::Chars4::default() -> Self
+impl core::fmt::Debug for app::Chars4
+pub fn app::Chars4::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Chars4
+impl core::marker::Freeze for app::Chars4
+impl core::marker::Send for app::Chars4
+impl core::marker::Sync for app::Chars4
+impl core::marker::Unpin for app::Chars4
+impl core::marker::UnsafeUnpin for app::Chars4
+impl core::panic::unwind_safe::RefUnwindSafe for app::Chars4
+impl core::panic::unwind_safe::UnwindSafe for app::Chars4
 pub struct app::ConfigView<'a>
 pub app::ConfigView::config: &'a io::config::ProjectConfig
 pub app::ConfigView::warnings: alloc::vec::Vec<alloc::string::String>
@@ -513,6 +530,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::Roots
 impl core::panic::unwind_safe::UnwindSafe for app::Roots
 pub struct app::Services
 pub app::Services::cache_root: core::result::Result<io::cache::CacheRoot, io::cache::HomeUnknown>
+pub app::Services::clock: alloc::rcs::arc::Arc<dyn app::Clock>
+pub app::Services::counter: alloc::rcs::arc::Arc<dyn app::TokenCounter>
 pub app::Services::cwd: core::result::Result<std::path::PathBuf, app::UnreadCwd>
 pub app::Services::git: git::run::Git
 pub app::Services::home: core::option::Option<std::ffi::os_str::OsString>
@@ -526,8 +545,8 @@ impl core::marker::Send for app::Services
 impl core::marker::Sync for app::Services
 impl core::marker::Unpin for app::Services
 impl core::marker::UnsafeUnpin for app::Services
-impl core::panic::unwind_safe::RefUnwindSafe for app::Services
-impl core::panic::unwind_safe::UnwindSafe for app::Services
+impl !core::panic::unwind_safe::RefUnwindSafe for app::Services
+impl !core::panic::unwind_safe::UnwindSafe for app::Services
 pub struct app::Session
 pub app::Session::cache: app::CacheReport
 pub app::Session::repo: app::Repo
@@ -544,6 +563,24 @@ impl core::marker::Unpin for app::Session
 impl core::marker::UnsafeUnpin for app::Session
 impl !core::panic::unwind_safe::RefUnwindSafe for app::Session
 impl !core::panic::unwind_safe::UnwindSafe for app::Session
+pub struct app::SystemClock
+impl app::Clock for app::SystemClock
+pub fn app::SystemClock::now(&self) -> std::time::Instant
+pub fn app::SystemClock::wall(&self) -> std::time::SystemTime
+impl core::clone::Clone for app::SystemClock
+pub fn app::SystemClock::clone(&self) -> Self
+impl core::default::Default for app::SystemClock
+pub fn app::SystemClock::default() -> Self
+impl core::fmt::Debug for app::SystemClock
+pub fn app::SystemClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::SystemClock
+impl core::marker::Freeze for app::SystemClock
+impl core::marker::Send for app::SystemClock
+impl core::marker::Sync for app::SystemClock
+impl core::marker::Unpin for app::SystemClock
+impl core::marker::UnsafeUnpin for app::SystemClock
+impl core::panic::unwind_safe::RefUnwindSafe for app::SystemClock
+impl core::panic::unwind_safe::UnwindSafe for app::SystemClock
 pub struct app::Tags
 impl app::Tags
 pub fn app::Tags::open(&app::Services, &app::Repo) -> app::Noted<core::result::Result<app::Tags, app::Error>>
@@ -583,11 +620,25 @@ pub const app::GRAMMAR_CACHE: &str
 pub const app::MAX_CONFIG_WARNINGS: u64
 pub const app::MAX_OUTPUT_TOKENS: u64
 pub const app::WALK_BUDGET: core::time::Duration
+pub trait app::Clock: core::marker::Send + core::marker::Sync
+pub fn app::Clock::now(&self) -> std::time::Instant
+pub fn app::Clock::wall(&self) -> std::time::SystemTime
+impl app::Clock for app::SystemClock
+pub fn app::SystemClock::now(&self) -> std::time::Instant
+pub fn app::SystemClock::wall(&self) -> std::time::SystemTime
+pub trait app::TokenCounter: core::marker::Send + core::marker::Sync
+pub fn app::TokenCounter::count(&self, &str) -> usize
+impl app::TokenCounter for app::Chars4
+pub fn app::Chars4::count(&self, &str) -> usize
 pub fn app::capabilities(&app::Session) -> core::result::Result<app::Capabilities<'_>, app::Error>
 pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc::string::String>
+pub fn app::guide_text() -> &'static str
 pub fn app::in_metric_scope(&str) -> bool
 pub fn app::is_fixture_path(&str) -> bool
 pub fn app::is_test_path(&str) -> bool
 pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
 pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
+pub fn app::section_names() -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
+pub fn app::section_text(&str) -> core::option::Option<&'static str>
 pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>
+pub fn app::unknown_section(&text::code_point_string::CodePointString) -> alloc::string::String

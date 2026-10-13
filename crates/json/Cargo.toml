@@ -1,6 +1,6 @@
 [package]
 name = "json"
-description = "JSON text in two fixed forms, JSON text read into values with the place of each refusal, and the shortest float text."
+description = "JSON text in three fixed forms, JSON text read into values with the place of each refusal, the shortest float text, and the fixed-point and general float texts."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

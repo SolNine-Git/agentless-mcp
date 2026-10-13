@@ -3,6 +3,9 @@
 use std::fmt::Write;
 
 const MAX_ROUND_DIGITS: u32 = 323;
+const GENERAL_DIGITS: usize = 6;
+// The general form is positional below this decimal exponent, the digit count.
+const GENERAL_EXPONENT_LIMIT: i32 = 6;
 
 /// Formats `x` with the fewest digits that parse back to `x`, in exponent
 /// form below 1e-4 and from 1e16.
@@ -11,13 +14,10 @@ const MAX_ROUND_DIGITS: u32 = 323;
 /// Panics if Rust's own finite float formatting does not expose the expected fields.
 #[must_use]
 pub fn float_text(x: f64) -> String {
-    if x.is_nan() {
-        return "nan".to_owned();
+    if let Some(text) = non_finite(x) {
+        return text;
     }
     let sign = if x.is_sign_negative() { "-" } else { "" };
-    if x.is_infinite() {
-        return format!("{sign}inf");
-    }
     if x == 0.0 {
         return format!("{sign}0.0");
     }
@@ -50,6 +50,46 @@ pub fn float_text(x: f64) -> String {
     out
 }
 
+/// Formats `x` with `places` digits after the point, its exact value rounded half to even. NaN
+/// is "nan" and an infinity is "inf" or "-inf".
+#[must_use]
+pub fn fixed(x: f64, places: usize) -> String {
+    non_finite(x).unwrap_or_else(|| format!("{x:.places$}"))
+}
+
+/// Formats `x` with six significant digits and no trailing zeros: positional from 1e-4 to below
+/// 1e6, exponent form outside. NaN is "nan" and an infinity is "inf" or "-inf".
+///
+/// # Panics
+/// Panics if Rust's own finite float formatting does not expose the expected fields.
+#[must_use]
+pub fn general(x: f64) -> String {
+    if let Some(text) = non_finite(x) {
+        return text;
+    }
+    // One exact rounding gives the six digits and the exponent after rounding, so 999999.5 lays
+    // out as 1e+06. The layout below never rounds again.
+    let text = format!("{:.*e}", GENERAL_DIGITS - 1, x.abs());
+    let (mantissa, exponent_text) = text
+        .split_once('e')
+        .expect("finite f64 scientific formatting always contains an exponent");
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_end_matches('0');
+    let e: i32 = exponent_text
+        .parse()
+        .expect("exponent from f64 scientific formatting is a valid i32");
+
+    let mut out = if x.is_sign_negative() { "-" } else { "" }.to_owned();
+    if digits.is_empty() {
+        out.push('0');
+    } else if (-4..GENERAL_EXPONENT_LIMIT).contains(&e) {
+        append_plain(&mut out, digits, e);
+    } else {
+        append_scientific(&mut out, digits, e);
+    }
+    out
+}
+
 /// Rounds the exact value of `x` to `ndigits` decimal places, with an exact
 /// tie going to the even digit.
 ///
@@ -66,6 +106,36 @@ pub fn round_half_even(x: f64, ndigits: u32) -> f64 {
     format!("{x:.precision$}")
         .parse()
         .expect("Rust's own exactly rounded float formatting parses back to f64")
+}
+
+fn non_finite(x: f64) -> Option<String> {
+    if x.is_nan() {
+        return Some("nan".to_owned());
+    }
+    x.is_infinite()
+        .then(|| if x < 0.0 { "-inf" } else { "inf" }.to_owned())
+}
+
+// The digits laid out at decimal exponent `e`, with no point when no fraction digit is left.
+fn append_plain(out: &mut String, digits: &str, e: i32) {
+    if e < 0 {
+        out.push_str("0.");
+        for _ in 1..e.unsigned_abs() {
+            out.push('0');
+        }
+        out.push_str(digits);
+        return;
+    }
+    let integer_len = usize::try_from(e).expect("nonnegative decimal exponent fits usize") + 1;
+    if integer_len >= digits.len() {
+        out.push_str(digits);
+        out.extend(std::iter::repeat_n('0', integer_len - digits.len()));
+    } else {
+        let (integer, fraction) = digits.split_at(integer_len);
+        out.push_str(integer);
+        out.push('.');
+        out.push_str(fraction);
+    }
 }
 
 fn append_positional(out: &mut String, digits: &str, e: i32) {
@@ -147,6 +217,30 @@ mod tests {
         for (x, ndigits, expected) in all {
             let got = round_half_even(float(&x), ndigits);
             assert_eq!(got.to_bits(), bits(&expected), "x: {x}, ndigits: {ndigits}");
+        }
+    }
+
+    #[test]
+    fn fixed_matches_the_reference_cases() {
+        let all: Vec<(String, usize, String)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "format/format", "fixed");
+        assert!(!all.is_empty());
+        for (x, places, expected) in all {
+            assert_eq!(
+                fixed(float(&x), places),
+                expected,
+                "x: {x}, places: {places}"
+            );
+        }
+    }
+
+    #[test]
+    fn general_matches_the_reference_cases() {
+        let all: Vec<(String, String)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "format/format", "general");
+        assert!(!all.is_empty());
+        for (x, expected) in all {
+            assert_eq!(general(float(&x)), expected, "x: {x}");
         }
     }
 }

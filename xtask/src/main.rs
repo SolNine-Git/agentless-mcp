@@ -87,7 +87,7 @@ const TASKS: [Task; 10] = [
     },
     Task {
         name: "generate",
-        usage: "  generate               write the generated Rust of the prompts and syntax crates",
+        usage: "  generate               write the generated prompt, syntax and guide Rust",
         handler: Handler::Plain(generate::run),
     },
     Task {

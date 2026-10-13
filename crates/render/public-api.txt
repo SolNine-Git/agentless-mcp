@@ -33,3 +33,4 @@ pub fn render::capabilities_text(&render::Receipt<'_>, &app::capabilities::Capab
 pub fn render::lint_json(&render::Receipt<'_>, &app::lint::LintReport) -> core::result::Result<alloc::string::String, render::Error>
 pub fn render::lint_text(&render::Receipt<'_>, &app::lint::LintReport) -> alloc::string::String
 pub fn render::one_line(&str) -> alloc::borrow::Cow<'_, str>
+pub fn render::receipt_lines(&render::Receipt<'_>, &str) -> alloc::vec::Vec<alloc::string::String>

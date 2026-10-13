@@ -418,5 +418,6 @@ exclude_also = [
 # The crates' fixtures/ files are generated test data, and their escaped inputs read as typos.
 skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,target,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit,*crates/*/public-api.txt,*crates/*/fixtures/*"
 ignore-words-list = "mcp,readonly,crate"
-# serde_json exports Formatter only at serde_json::ser::Formatter, so the regex removes that path.
-ignore-regex = '(?<!\w)serde_json::ser::'
+# serde exports SerializeMap only at serde::ser::SerializeMap, and serde_json exports Formatter
+# only at serde_json::ser::Formatter, so the regex removes both paths.
+ignore-regex = '(?<!\w)serde_json::ser::|(?<!\w)serde::ser::'

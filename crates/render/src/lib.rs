@@ -10,9 +10,11 @@ mod receipt;
 mod tests;
 mod textsafe;
 
-use app::{Capabilities, LintReport};
+use app::{Capabilities, Chars4, LintReport};
 
-pub use receipt::Receipt;
+use count::Ceiling;
+
+pub use receipt::{Receipt, receipt_lines};
 pub use textsafe::one_line;
 
 /// The JSON form of an answer could not be written.
@@ -26,7 +28,8 @@ pub enum Error {
 /// Returns the lint report as text under its receipt.
 #[must_use]
 pub fn lint_text(receipt: &Receipt<'_>, report: &LintReport) -> String {
-    envelope::wrap(receipt, &lint::render_lint(report), count::ceiling())
+    let body = lint::render_lint(report);
+    envelope::wrap(receipt, &body, &Ceiling::standard(&Chars4))
 }
 
 /// Returns the lint report as a JSON document that starts with its receipt.
@@ -35,14 +38,14 @@ pub fn lint_text(receipt: &Receipt<'_>, report: &LintReport) -> String {
 ///
 /// Returns the serializer's error for a value it cannot write.
 pub fn lint_json(receipt: &Receipt<'_>, report: &LintReport) -> Result<String, Error> {
-    envelope::wrap_json(receipt, report, count::ceiling())
+    envelope::wrap_json(receipt, report, &Ceiling::standard(&Chars4))
 }
 
 /// Returns the capabilities report as text under its receipt.
 #[must_use]
 pub fn capabilities_text(receipt: &Receipt<'_>, report: &Capabilities<'_>) -> String {
     let body = capabilities::render_capabilities(report);
-    envelope::wrap(receipt, &body, count::ceiling())
+    envelope::wrap(receipt, &body, &Ceiling::standard(&Chars4))
 }
 
 /// Returns the capabilities report as a JSON document that starts with its receipt.
@@ -54,5 +57,5 @@ pub fn capabilities_json(
     receipt: &Receipt<'_>,
     report: &Capabilities<'_>,
 ) -> Result<String, Error> {
-    envelope::wrap_json(receipt, report, count::ceiling())
+    envelope::wrap_json(receipt, report, &Ceiling::standard(&Chars4))
 }

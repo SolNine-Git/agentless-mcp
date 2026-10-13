@@ -1,6 +1,9 @@
+use app::Chars4;
+
 use super::rows::{CapabilityRow, ReceiptRow, cases};
 use crate::capabilities::render_capabilities;
 use crate::capabilities_text;
+use crate::count::Ceiling;
 use crate::envelope::wrap_json;
 
 #[test]
@@ -18,7 +21,11 @@ fn each_document_wraps_as_the_fixture_says() {
     for (receipt_row, row, ceiling, expected) in all {
         let (receipt_config, config) = (receipt_row.config(), row.config());
         let receipt = receipt_row.receipt(&receipt_config);
-        let wrapped = wrap_json(&receipt, &row.capabilities(&config), ceiling);
+        let ceiling_of = Ceiling {
+            counter: &Chars4,
+            tokens: ceiling,
+        };
+        let wrapped = wrap_json(&receipt, &row.capabilities(&config), &ceiling_of);
         let wrapped = wrapped.unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(wrapped, expected, "at {ceiling}");
     }

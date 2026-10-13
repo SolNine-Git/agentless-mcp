@@ -1,6 +1,6 @@
 [package]
 name = "git"
-description = "The git reads the tool makes: a hardened bounded runner, the repository snapshot, the change listing parsers, and the repository walk."
+description = "The git reads the tool makes: a hardened bounded runner, the repository snapshot, the change listing parsers, the repository walk, the history of a line span, and commit churn."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,3 +20,4 @@ text = { path = "../text" }
 io = { path = "../io", features = ["test-support"] }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true

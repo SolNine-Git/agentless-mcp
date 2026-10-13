@@ -1,6 +1,6 @@
 [package]
 name = "app"
-description = "The operations layer: the lint pair forms, capabilities, the repository context, and the start-up configuration."
+description = "The operations layer: the lint pair forms, capabilities, the repository context, the start-up configuration with the clock and token counter ports, and the agent guide."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,6 +22,7 @@ prompts = { path = "../prompts" }
 serde.workspace = true
 store = { path = "../store" }
 syntax = { path = "../syntax" }
+text = { path = "../text" }
 thiserror.workspace = true
 
 [dev-dependencies]

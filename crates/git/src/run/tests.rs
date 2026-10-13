@@ -149,6 +149,8 @@ fn every_limits_text_spells_its_seconds() {
         ("toplevel TOPLEVEL", crate::toplevel::TOPLEVEL),
         ("walk LISTING", crate::walk::LISTING),
         ("walk IGNORE", crate::walk::IGNORE),
+        ("history HISTORY", crate::history::HISTORY),
+        ("history PROBE", crate::history::PROBE),
     ];
     for (name, limits) in every {
         let whole = limits.shown.strip_suffix(".0").unwrap_or(limits.shown);

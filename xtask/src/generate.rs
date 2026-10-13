@@ -1,6 +1,8 @@
-//! `cargo xtask generate`: writes crates/prompts/src/generated/ from the prompt JSON files, and
-//! crates/syntax/src/generated/ from the language files.
+//! `cargo xtask generate`: writes crates/prompts/src/generated/ from the prompt JSON files,
+//! crates/syntax/src/generated/ from the language files, and crates/app/src/generated/ from the
+//! agent guide.
 
+mod guide;
 mod literal;
 mod placeholders;
 mod rules;
@@ -20,10 +22,17 @@ const OUTPUT: &str = "crates/prompts/src/generated";
 
 type Files = Vec<(&'static str, String)>;
 
-/// Writes each generated file of crates/prompts/src/generated/ and crates/syntax/src/generated/.
+/// Writes each generated file of crates/prompts/src/generated/, crates/syntax/src/generated/ and
+/// crates/app/src/generated/.
 pub fn run(root: &Path) -> Result<(), Failure> {
     write_all(root, OUTPUT, fresh(root)?)?;
-    write_all(root, syntax::OUTPUT, fresh_syntax(root)?)
+    write_all(root, syntax::OUTPUT, fresh_syntax(root)?)?;
+    write_all(root, guide::OUTPUT, fresh_guide(root)?)
+}
+
+fn fresh_guide(root: &Path) -> Result<Files, Failure> {
+    let module = guide::module(&repo::read(&root.join(guide::SOURCE))?).map_err(Failure::Gate)?;
+    formatted(root, vec![(guide::FILE, module)])
 }
 
 fn write_all(root: &Path, dir: &str, files: Files) -> Result<(), Failure> {
@@ -132,8 +141,8 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        ENVELOPE, Files, MESSAGES, OUTPUT, RULES, fresh, fresh_syntax, rules, sources, syntax,
-        templates,
+        ENVELOPE, Files, MESSAGES, OUTPUT, RULES, fresh, fresh_guide, fresh_syntax, guide, rules,
+        sources, syntax, templates,
     };
     use crate::repo;
 
@@ -169,6 +178,7 @@ mod tests {
         let root = repo::root().unwrap();
         assert_fresh(OUTPUT, &fresh(&root).unwrap());
         assert_fresh(syntax::OUTPUT, &fresh_syntax(&root).unwrap());
+        assert_fresh(guide::OUTPUT, &fresh_guide(&root).unwrap());
     }
 
     #[test]

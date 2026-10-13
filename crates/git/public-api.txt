@@ -19,6 +19,29 @@ impl core::marker::Unpin for git::GitOutcome
 impl core::marker::UnsafeUnpin for git::GitOutcome
 impl core::panic::unwind_safe::RefUnwindSafe for git::GitOutcome
 impl core::panic::unwind_safe::UnwindSafe for git::GitOutcome
+pub enum git::HistoryFailure
+pub git::HistoryFailure::NoGit
+pub git::HistoryFailure::NoPath
+pub git::HistoryFailure::Other
+pub git::HistoryFailure::SpanBeyondHead
+impl git::HistoryFailure
+pub fn git::HistoryFailure::of(&str) -> Self
+impl core::clone::Clone for git::HistoryFailure
+pub fn git::HistoryFailure::clone(&self) -> Self
+impl core::cmp::Eq for git::HistoryFailure
+impl core::cmp::PartialEq for git::HistoryFailure
+pub fn git::HistoryFailure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::HistoryFailure
+pub fn git::HistoryFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for git::HistoryFailure
+impl core::marker::StructuralPartialEq for git::HistoryFailure
+impl core::marker::Freeze for git::HistoryFailure
+impl core::marker::Send for git::HistoryFailure
+impl core::marker::Sync for git::HistoryFailure
+impl core::marker::Unpin for git::HistoryFailure
+impl core::marker::UnsafeUnpin for git::HistoryFailure
+impl core::panic::unwind_safe::RefUnwindSafe for git::HistoryFailure
+impl core::panic::unwind_safe::UnwindSafe for git::HistoryFailure
 pub enum git::Malformed
 pub git::Malformed::Mode(alloc::string::String)
 pub git::Malformed::NoMeta
@@ -64,6 +87,24 @@ impl core::marker::Unpin for git::Side
 impl core::marker::UnsafeUnpin for git::Side
 impl core::panic::unwind_safe::RefUnwindSafe for git::Side
 impl core::panic::unwind_safe::UnwindSafe for git::Side
+pub enum git::SpanLogError
+pub git::SpanLogError::Malformed(alloc::string::String)
+pub git::SpanLogError::Unanswered(alloc::string::String)
+impl core::clone::Clone for git::SpanLogError
+pub fn git::SpanLogError::clone(&self) -> Self
+impl core::cmp::Eq for git::SpanLogError
+impl core::cmp::PartialEq for git::SpanLogError
+pub fn git::SpanLogError::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::SpanLogError
+pub fn git::SpanLogError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::SpanLogError
+impl core::marker::Freeze for git::SpanLogError
+impl core::marker::Send for git::SpanLogError
+impl core::marker::Sync for git::SpanLogError
+impl core::marker::Unpin for git::SpanLogError
+impl core::marker::UnsafeUnpin for git::SpanLogError
+impl core::panic::unwind_safe::RefUnwindSafe for git::SpanLogError
+impl core::panic::unwind_safe::UnwindSafe for git::SpanLogError
 pub enum git::Toplevel
 pub git::Toplevel::Capped
 pub git::Toplevel::Failed
@@ -184,6 +225,68 @@ impl core::marker::Unpin for git::Change
 impl core::marker::UnsafeUnpin for git::Change
 impl core::panic::unwind_safe::RefUnwindSafe for git::Change
 impl core::panic::unwind_safe::UnwindSafe for git::Change
+pub struct git::Churn
+pub git::Churn::commits: usize
+pub git::Churn::last_commit_ts: core::option::Option<i64>
+impl core::clone::Clone for git::Churn
+pub fn git::Churn::clone(&self) -> Self
+impl core::cmp::Eq for git::Churn
+impl core::cmp::PartialEq for git::Churn
+pub fn git::Churn::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Churn
+pub fn git::Churn::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for git::Churn
+impl core::marker::StructuralPartialEq for git::Churn
+impl core::marker::Freeze for git::Churn
+impl core::marker::Send for git::Churn
+impl core::marker::Sync for git::Churn
+impl core::marker::Unpin for git::Churn
+impl core::marker::UnsafeUnpin for git::Churn
+impl core::panic::unwind_safe::RefUnwindSafe for git::Churn
+impl core::panic::unwind_safe::UnwindSafe for git::Churn
+pub struct git::Commit
+pub git::Commit::authored: alloc::string::String
+pub git::Commit::body: alloc::string::String
+pub git::Commit::sha: alloc::string::String
+pub git::Commit::subject: alloc::string::String
+impl core::clone::Clone for git::Commit
+pub fn git::Commit::clone(&self) -> Self
+impl core::cmp::Eq for git::Commit
+impl core::cmp::PartialEq for git::Commit
+pub fn git::Commit::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::Commit
+pub fn git::Commit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::Commit
+impl core::marker::Freeze for git::Commit
+impl core::marker::Send for git::Commit
+impl core::marker::Sync for git::Commit
+impl core::marker::Unpin for git::Commit
+impl core::marker::UnsafeUnpin for git::Commit
+impl core::panic::unwind_safe::RefUnwindSafe for git::Commit
+impl core::panic::unwind_safe::UnwindSafe for git::Commit
+pub struct git::CommitId(_)
+impl git::CommitId
+pub fn git::CommitId::as_str(&self) -> &str
+pub fn git::CommitId::parse(&str) -> core::option::Option<Self>
+impl core::clone::Clone for git::CommitId
+pub fn git::CommitId::clone(&self) -> Self
+impl core::cmp::Eq for git::CommitId
+impl core::cmp::PartialEq for git::CommitId
+pub fn git::CommitId::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::CommitId
+pub fn git::CommitId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for git::CommitId
+pub fn git::CommitId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for git::CommitId
+pub fn git::CommitId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for git::CommitId
+impl core::marker::Freeze for git::CommitId
+impl core::marker::Send for git::CommitId
+impl core::marker::Sync for git::CommitId
+impl core::marker::Unpin for git::CommitId
+impl core::marker::UnsafeUnpin for git::CommitId
+impl core::panic::unwind_safe::RefUnwindSafe for git::CommitId
+impl core::panic::unwind_safe::UnwindSafe for git::CommitId
 pub struct git::Failure
 pub git::Failure::code: i32
 pub git::Failure::detail: alloc::string::String
@@ -212,6 +315,12 @@ pub fn git::Git::changes(&self, &std::path::Path, &str) -> git::GitOutcome
 pub fn git::Git::untracked(&self, &std::path::Path) -> git::GitOutcome
 pub fn git::Git::verify(&self, &std::path::Path, &str) -> git::GitOutcome
 impl git::Git
+pub fn git::Git::churn(&self, &std::path::Path, &[&str]) -> core::option::Option<alloc::collections::btree::map::BTreeMap<alloc::string::String, git::Churn>>
+impl git::Git
+pub fn git::Git::differs(&self, &std::path::Path, &str, &git::CommitId) -> core::result::Result<bool, alloc::string::String>
+pub fn git::Git::is_shallow(&self, &std::path::Path) -> core::result::Result<bool, alloc::string::String>
+pub fn git::Git::log_span(&self, &std::path::Path, &git::SpanQuery<'_>) -> core::result::Result<git::SpanLog, git::SpanLogError>
+impl git::Git
 pub fn git::Git::new(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>) -> Self
 impl git::Git
 pub fn git::Git::root(&self, &std::path::Path) -> core::option::Option<std::path::PathBuf>
@@ -229,6 +338,27 @@ impl core::marker::Unpin for git::Git
 impl core::marker::UnsafeUnpin for git::Git
 impl core::panic::unwind_safe::RefUnwindSafe for git::Git
 impl core::panic::unwind_safe::UnwindSafe for git::Git
+pub struct git::LineRange
+impl git::LineRange
+pub const fn git::LineRange::end(self) -> u32
+pub const fn git::LineRange::new(u32, u32) -> core::option::Option<Self>
+pub const fn git::LineRange::start(self) -> u32
+impl core::clone::Clone for git::LineRange
+pub fn git::LineRange::clone(&self) -> Self
+impl core::cmp::Eq for git::LineRange
+impl core::cmp::PartialEq for git::LineRange
+pub fn git::LineRange::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::LineRange
+pub fn git::LineRange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for git::LineRange
+impl core::marker::StructuralPartialEq for git::LineRange
+impl core::marker::Freeze for git::LineRange
+impl core::marker::Send for git::LineRange
+impl core::marker::Sync for git::LineRange
+impl core::marker::Unpin for git::LineRange
+impl core::marker::UnsafeUnpin for git::LineRange
+impl core::panic::unwind_safe::RefUnwindSafe for git::LineRange
+impl core::panic::unwind_safe::UnwindSafe for git::LineRange
 pub struct git::RepoFile
 pub git::RepoFile::path: alloc::string::String
 pub git::RepoFile::size: u64
@@ -267,6 +397,45 @@ impl core::marker::Unpin for git::Snapshot
 impl core::marker::UnsafeUnpin for git::Snapshot
 impl core::panic::unwind_safe::RefUnwindSafe for git::Snapshot
 impl core::panic::unwind_safe::UnwindSafe for git::Snapshot
+pub struct git::SpanLog
+pub git::SpanLog::capped: bool
+pub git::SpanLog::commits: alloc::vec::Vec<git::Commit>
+impl core::clone::Clone for git::SpanLog
+pub fn git::SpanLog::clone(&self) -> Self
+impl core::cmp::Eq for git::SpanLog
+impl core::cmp::PartialEq for git::SpanLog
+pub fn git::SpanLog::eq(&self, &Self) -> bool
+impl core::fmt::Debug for git::SpanLog
+pub fn git::SpanLog::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for git::SpanLog
+impl core::marker::Freeze for git::SpanLog
+impl core::marker::Send for git::SpanLog
+impl core::marker::Sync for git::SpanLog
+impl core::marker::Unpin for git::SpanLog
+impl core::marker::UnsafeUnpin for git::SpanLog
+impl core::panic::unwind_safe::RefUnwindSafe for git::SpanLog
+impl core::panic::unwind_safe::UnwindSafe for git::SpanLog
+pub struct git::SpanQuery<'a>
+pub git::SpanQuery::lines: git::LineRange
+pub git::SpanQuery::max_count: core::num::nonzero::NonZeroUsize
+pub git::SpanQuery::path: &'a str
+pub git::SpanQuery::revision: &'a git::CommitId
+impl<'a> core::clone::Clone for git::SpanQuery<'a>
+pub fn git::SpanQuery<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for git::SpanQuery<'a>
+impl<'a> core::cmp::PartialEq for git::SpanQuery<'a>
+pub fn git::SpanQuery<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for git::SpanQuery<'a>
+pub fn git::SpanQuery<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for git::SpanQuery<'a>
+impl<'a> core::marker::StructuralPartialEq for git::SpanQuery<'a>
+impl<'a> core::marker::Freeze for git::SpanQuery<'a>
+impl<'a> core::marker::Send for git::SpanQuery<'a>
+impl<'a> core::marker::Sync for git::SpanQuery<'a>
+impl<'a> core::marker::Unpin for git::SpanQuery<'a>
+impl<'a> core::marker::UnsafeUnpin for git::SpanQuery<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for git::SpanQuery<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for git::SpanQuery<'a>
 pub struct git::Walk
 pub git::Walk::files: core::result::Result<alloc::vec::Vec<git::RepoFile>, git::WalkError>
 pub git::Walk::warnings: alloc::vec::Vec<git::WalkWarning>
@@ -280,7 +449,9 @@ impl core::marker::UnsafeUnpin for git::Walk
 impl !core::panic::unwind_safe::RefUnwindSafe for git::Walk
 impl !core::panic::unwind_safe::UnwindSafe for git::Walk
 pub const git::BINARY_PROBE_BYTES: usize
+pub const git::CHURN_WINDOW_DAYS: u32
 pub const git::COMPARED_STATUSES: [char; 7]
+pub const git::MAX_HISTORY_OUTPUT_BYTES: usize
 pub const git::MAX_LISTING_BYTES: usize
 pub fn git::looks_binary(&[u8]) -> bool
 pub fn git::parse_changes(&[u8]) -> core::result::Result<alloc::vec::Vec<git::Change>, git::Malformed>

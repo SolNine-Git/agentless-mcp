@@ -1,10 +1,10 @@
-//! JSON text in two fixed forms, JSON text read into values with the place of each refusal, and
-//! the shortest float text.
+//! JSON text in three fixed forms, JSON text read into values with the place of each refusal, the
+//! shortest float text, and the fixed-point and general float texts.
 
 mod float;
 mod parse;
 mod write;
 
-pub use float::{float_text, round_half_even};
+pub use float::{fixed, float_text, general, round_half_even};
 pub use parse::{JsonError, JsonErrorKind, JsonValue, parse};
 pub use write::{JsonForm, to_text};

@@ -5,7 +5,11 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
+
+use crate::clock::{Clock, SystemClock};
+use crate::tokens::{Chars4, TokenCounter};
 
 /// The time the clone index may spend on the repository walk and the files it reads.
 pub const WALK_BUDGET: Duration = Duration::from_secs(10);
@@ -119,10 +123,15 @@ pub struct Services {
     pub cache_root: Result<io::CacheRoot, io::HomeUnknown>,
     /// The time the clone index may spend.
     pub walk_budget: Duration,
+    /// The wall and monotonic clocks.
+    pub clock: Arc<dyn Clock>,
+    /// The token counter of every budget and of the output ceiling.
+    pub counter: Arc<dyn TokenCounter>,
 }
 
 impl Services {
-    /// Builds the services from the start-up environment.
+    /// Builds the services from the start-up environment, with the system clocks and the
+    /// [`Chars4`] counter.
     #[must_use]
     pub fn new(env: &EnvConfig) -> Self {
         Self {
@@ -131,6 +140,8 @@ impl Services {
             home: env.var("HOME").map(OsStr::to_os_string),
             cache_root: io::cache_root(|name| env.var(name).map(OsStr::to_os_string)),
             walk_budget: WALK_BUDGET,
+            clock: Arc::new(SystemClock),
+            counter: Arc::new(Chars4),
         }
     }
 }
