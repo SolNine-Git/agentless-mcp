@@ -236,10 +236,16 @@ checkouts in `loc-bench-harness/repos/`, on the same queries:
 - `refs --json` and `explain` on the record's seed names
 - `refs --json` on a few symbols sampled from the scan
 
-Pick the targets under each build and require the two target lists to be
-byte-identical. Otherwise a target the old build answered and the new one
-does not is never sampled, and a regression hides by construction. Then
-report:
+The tool is `scripts/surface_dump.py`, which runs under the base build's
+interpreter, and `scripts/surface_cmp.py`. Their docstrings give the
+commands and the scratch environment. `surface_dump.py targets` samples the
+targets once from the base build's full scan, because the one listing that
+both command lines print, `find-symbol`, stops at 500 rows and at the token
+ceiling (it cut 134 of 150 instances at 8930bd6). Each `surface_dump.py
+dump` records the `find-symbol` listing of its own build, and
+`surface_cmp.py` refuses two dumps whose listings or target lists differ by
+one byte. Otherwise a symbol that only one build lists is never compared,
+and a regression hides by construction. Then report:
 
 - per surface, how many answers changed
 - for `refs`, how many lines moved from each tier to each other tier,
