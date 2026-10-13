@@ -68,6 +68,7 @@ impl ReceiptRow {
                 .warnings
                 .clone()
                 .unwrap_or_else(|| app::config_warnings(config)),
+            counter: &app::Chars4,
         }
     }
 }

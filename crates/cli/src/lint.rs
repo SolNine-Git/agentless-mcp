@@ -41,7 +41,7 @@ pub(crate) fn run(lint: &Lint, services: &Services, streams: &mut Streams<'_>) -
         Ok(report) => report,
         Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
     };
-    let receipt = Receipt::of(&session);
+    let receipt = Receipt::of(&session).counted_by(&*services.counter);
     let rendered = if lint.flags.json {
         render::lint_json(&receipt, &report)
     } else {

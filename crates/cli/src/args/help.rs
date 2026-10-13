@@ -2,6 +2,8 @@
 
 use std::ops::Range;
 
+use app::ops::Arity;
+
 use super::wrap::{collapse, wrap};
 use super::{Action, Kind, Parser};
 
@@ -57,14 +59,14 @@ fn usage_body(parser: &Parser, width: isize) -> String {
     let (optionals, positionals) = split(parser);
     let opt_parts = parts(parser, &optionals);
     let pos_parts = parts(parser, &positionals);
-    let words: Vec<&str> = std::iter::once(parser.prog)
+    let words: Vec<&str> = std::iter::once(parser.prog.as_str())
         .chain(opt_parts.iter().chain(&pos_parts).map(String::as_str))
         .collect();
     let usage = words.join(" ");
     if cols(PREFIX) + cols(&usage) <= width {
         return usage;
     }
-    wrapped(parser.prog, &opt_parts, &pos_parts, width).join("\n")
+    wrapped(&parser.prog, &opt_parts, &pos_parts, width).join("\n")
 }
 
 // A short program name keeps the parts beside it; a long one stands on its own line.
@@ -148,7 +150,7 @@ fn parts(parser: &Parser, indices: &[usize]) -> Vec<String> {
         let action = &parser.actions[index];
         let part = usage_part(action);
         let grouped = span.as_ref().is_some_and(|span| span.contains(&at));
-        if action.strings.is_empty() || grouped {
+        if action.strings.is_empty() || action.required || grouped {
             part
         } else {
             format!("[{part}]")
@@ -187,7 +189,18 @@ fn usage_part(action: &Action) -> String {
     match action.kind {
         Kind::Help | Kind::Flag => action.strings[0].to_owned(),
         Kind::Value { .. } => format!("{} {}", action.strings[0], metavar(action)),
+        Kind::Positional(arity) => positional_part(arity, &metavar(action)),
         Kind::Commands(_) => format!("{} ...", metavar(action)),
+    }
+}
+
+// A positional's usage shows how many values it takes.
+fn positional_part(arity: Arity, metavar: &str) -> String {
+    match arity {
+        Arity::One => metavar.to_owned(),
+        Arity::Optional => format!("[{metavar}]"),
+        Arity::Any => format!("[{metavar} ...]"),
+        Arity::OneOrMore => format!("{metavar} [{metavar} ...]"),
     }
 }
 
@@ -195,7 +208,7 @@ fn invocation(action: &Action) -> String {
     match action.kind {
         Kind::Help | Kind::Flag => action.strings.join(", "),
         Kind::Value { .. } => format!("{} {}", action.strings.join(", "), metavar(action)),
-        Kind::Commands(_) => metavar(action),
+        Kind::Positional(_) | Kind::Commands(_) => metavar(action),
     }
 }
 
@@ -206,7 +219,7 @@ fn metavar(action: &Action) -> String {
     let choices: Vec<&str> = match action.kind {
         Kind::Value { choices, .. } => choices.to_vec(),
         Kind::Commands(commands) => commands.iter().map(|command| command.name).collect(),
-        Kind::Help | Kind::Flag => Vec::new(),
+        Kind::Help | Kind::Flag | Kind::Positional(_) => Vec::new(),
     };
     if choices.is_empty() {
         action.dest.to_uppercase()

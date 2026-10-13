@@ -1,10 +1,14 @@
 //! The declarations of the command line: the top parser, its subcommands, and the `lint` and
-//! `capabilities` parsers with their help texts.
+//! `capabilities` parsers with their help texts. The read subcommands' parsers come from
+//! `app::ops::OPS`.
 
+use app::ops::{JSON, NO_CACHE, OPS, Op, REPO};
 use app::{CHECKS, CheckInput, Severity};
 use prompts::messages::LINT_UNKNOWN_SEVERITY;
 
-use crate::args::{Action, Arg, Command, Convert, Group, Kind, Parser, Value};
+use crate::args::{
+    Action, Arg, Command, Convert, Form, Group, Kind, Parser, TEXT, Value, action, help_action,
+};
 
 pub(crate) const PROG: &str = "agentless-mcp";
 pub(crate) const CHARS4: &str = "chars4";
@@ -16,10 +20,6 @@ const TOKEN_COUNTER_HELP: &str = "how token budgets are estimated (default: char
 const NO_AUTO_WARM_HELP: &str = "do not warm cold grammars in the background at startup; \
     grammars then warm only through an explicit warmup (AGENTLESS_MCP_NO_AUTO_WARM in the \
     environment does the same)";
-const HELP_HELP: &str = "show this help message and exit";
-const REPO_HELP: &str = "repository root (default: the git root enclosing the current directory)";
-const JSON_HELP: &str = "emit JSON instead of text";
-const NO_CACHE_HELP: &str = "parse on demand and ignore the tag cache for this call";
 const LINT_DESCRIPTION: &str = "Run the deterministic patch checks and print what they found. \
     Advisories, warnings and coverage gaps are all reported. By default none of them fails the \
     command: the exit code is 0 unless the invocation itself was unusable. --fail-on makes a \
@@ -31,70 +31,71 @@ const DIFF_HELP: &str = "a unified diff to check instead (git diff, or a format-
     BASE, not a tree with the diff already applied";
 const AFTER_HELP: &str = "the file that holds the proposed whole new text of --path";
 
-const TEXT: Convert = |arg| Ok(Value::Text(arg.clone()));
-
+// The subcommands in the reference order. A read subcommand names its entry of OPS.
 pub(crate) static COMMANDS: [Command; 24] = [
-    unported("map", "ranked, token-budgeted repository map"),
-    unported("tree", "gitignore-aware directory tree"),
-    unported("skeleton", "signatures with bodies elided"),
-    unported("expand", "full bodies for named stable ids"),
-    unported("slice", "numbered lines with scope headers"),
-    unported("find-symbol", "substring or qualified symbol lookup"),
-    unported("refs", "fan-in: what references this symbol"),
-    unported(
-        "history",
-        "why does this code exist: the commits that touched a symbol's lines",
-    ),
-    unported("explain", "one symbol card: definition, fan-out, fan-in"),
-    unported("path", "shortest resolved path between two symbols"),
-    unported("cycles", "module-level import cycles"),
-    unported("communities", "which files belong together"),
-    unported("diagram", "mermaid flowchart of the module graph"),
-    unported(
-        "health",
-        "orphan candidates, unused exports, hubs and complexity hotspots",
-    ),
-    unported("html", "interactive HTML export of the module graph"),
-    unported(
-        "resolve-locs",
-        "turn class:/function:/line: strings into intervals",
-    ),
+    read(&OPS[0]),
+    read(&OPS[1]),
+    read(&OPS[2]),
+    read(&OPS[3]),
+    read(&OPS[4]),
+    read(&OPS[5]),
+    read(&OPS[6]),
+    read(&OPS[7]),
+    read(&OPS[8]),
+    read(&OPS[9]),
+    read(&OPS[10]),
+    read(&OPS[11]),
+    read(&OPS[12]),
+    read(&OPS[13]),
+    read(&OPS[14]),
+    read(&OPS[15]),
     unported("patch", "SEARCH/REPLACE patch machinery (write side)"),
     Command {
         name: "lint",
         help: "deterministic hallucination checks over candidate patches (write side)",
-        parser: Some(lint),
+        form: Form::Built(lint),
     },
     unported("validate", "run candidate patches against the tests"),
     unported("vote", "rank validated candidates by equivalence cluster"),
-    unported("warmup", "fetch and probe grammars; fails loudly"),
-    unported("index", "build or refresh the tag cache"),
+    read(&OPS[16]),
+    read(&OPS[17]),
     Command {
         name: "capabilities",
         help: "grammars, versions and caps in force",
-        parser: Some(capabilities),
+        form: Form::Built(capabilities),
     },
-    unported("guide", "print the packaged agent usage guide"),
+    read(&OPS[18]),
 ];
 
 const fn unported(name: &'static str, help: &'static str) -> Command {
     Command {
         name,
         help,
-        parser: None,
+        form: Form::Unported,
+    }
+}
+
+const fn read(op: &'static Op) -> Command {
+    Command {
+        name: op.name,
+        help: op.summary,
+        form: Form::Read(op),
     }
 }
 
 pub(crate) fn top() -> Parser {
     let counter = Action {
-        strings: &["--token-counter"],
-        dest: "token_counter",
-        metavar: None,
-        help: Some(TOKEN_COUNTER_HELP.to_owned()),
         kind: Kind::Value {
             convert: TEXT,
             choices: &[CHARS4, TIKTOKEN],
+            repeat: false,
         },
+        ..option(
+            &["--token-counter"],
+            "token_counter",
+            None,
+            TOKEN_COUNTER_HELP,
+        )
     };
     let commands = Action {
         strings: &[],
@@ -102,15 +103,16 @@ pub(crate) fn top() -> Parser {
         metavar: None,
         help: None,
         kind: Kind::Commands(&COMMANDS),
+        required: true,
     };
     let actions = vec![
-        help(),
+        help_action(),
         counter,
         flag(&["--no-auto-warm"], "no_auto_warm", NO_AUTO_WARM_HELP),
         commands,
     ];
     Parser {
-        prog: PROG,
+        prog: PROG.to_owned(),
         description: Some(DESCRIPTION),
         actions,
         group: None,
@@ -119,40 +121,34 @@ pub(crate) fn top() -> Parser {
 
 fn lint() -> Parser {
     let mut actions = vec![
-        help(),
-        value(
+        help_action(),
+        option(
             &["--candidates"],
             "candidates",
-            "PATH",
-            CANDIDATES_HELP.to_owned(),
+            Some("PATH"),
+            CANDIDATES_HELP,
         ),
-        value(&["--diff"], "diff", "FILE", DIFF_HELP.to_owned()),
-        value(&["--path"], "path", "REL", path_help()),
-        value(&["--since"], "since", "REV", since_help()),
-        value(&["--after"], "after", "FILE", AFTER_HELP.to_owned()),
+        option(&["--diff"], "diff", Some("FILE"), DIFF_HELP),
+        option(&["--path"], "path", Some("REL"), &path_help()),
+        option(&["--since"], "since", Some("REV"), &since_help()),
+        option(&["--after"], "after", Some("FILE"), AFTER_HELP),
     ];
     actions.push(Action {
-        kind: Kind::Value {
-            convert: check_names,
-            choices: &[],
-        },
-        ..value(&["--only"], "only", "CHECK[,CHECK...]", only_help())
+        kind: converted(check_names),
+        ..option(&["--only"], "only", Some("CHECK[,CHECK...]"), &only_help())
     });
     actions.push(Action {
-        kind: Kind::Value {
-            convert: severities,
-            choices: &[],
-        },
-        ..value(
+        kind: converted(severities),
+        ..option(
             &["--fail-on"],
             "fail_on",
-            "SEVERITY[,SEVERITY...]",
-            fail_on_help(),
+            Some("SEVERITY[,SEVERITY...]"),
+            &fail_on_help(),
         )
     });
     actions.extend(repo_flags());
     Parser {
-        prog: "agentless-mcp lint",
+        prog: format!("{PROG} lint"),
         description: Some(LINT_DESCRIPTION),
         actions,
         group: Some(Group {
@@ -163,59 +159,49 @@ fn lint() -> Parser {
 }
 
 fn capabilities() -> Parser {
-    let mut actions = vec![help()];
+    let mut actions = vec![help_action()];
     actions.extend(repo_flags());
     Parser {
-        prog: "agentless-mcp capabilities",
+        prog: format!("{PROG} capabilities"),
         description: None,
         actions,
         group: None,
     }
 }
 
-fn repo_flags() -> [Action; 3] {
-    [
-        value(&["--repo"], "repo", "PATH", REPO_HELP.to_owned()),
-        flag(&["--json"], "json", JSON_HELP),
-        flag(&["--no-cache"], "no_cache", NO_CACHE_HELP),
-    ]
-}
-
-fn help() -> Action {
-    Action {
-        strings: &["-h", "--help"],
-        dest: "help",
-        metavar: None,
-        help: Some(HELP_HELP.to_owned()),
-        kind: Kind::Help,
-    }
+// The repository options, as the read operations declare them.
+fn repo_flags() -> impl Iterator<Item = Action> {
+    [&REPO, &JSON, &NO_CACHE].into_iter().filter_map(action)
 }
 
 fn flag(strings: &'static [&'static str], dest: &'static str, help: &str) -> Action {
     Action {
-        strings,
-        dest,
-        metavar: None,
-        help: Some(help.to_owned()),
         kind: Kind::Flag,
+        ..option(strings, dest, None, help)
     }
 }
 
-fn value(
+fn option(
     strings: &'static [&'static str],
     dest: &'static str,
-    metavar: &'static str,
-    help: String,
+    metavar: Option<&'static str>,
+    help: &str,
 ) -> Action {
     Action {
         strings,
         dest,
-        metavar: Some(metavar),
-        help: Some(help),
-        kind: Kind::Value {
-            convert: TEXT,
-            choices: &[],
-        },
+        metavar,
+        help: Some(help.to_owned()),
+        kind: converted(TEXT),
+        required: false,
+    }
+}
+
+const fn converted(convert: Convert) -> Kind {
+    Kind::Value {
+        convert,
+        choices: &[],
+        repeat: false,
     }
 }
 
@@ -305,3 +291,6 @@ fn severities(arg: &Arg) -> Result<Value, String> {
         None => Ok(Value::Names(names)),
     }
 }
+
+#[cfg(test)]
+mod tests;

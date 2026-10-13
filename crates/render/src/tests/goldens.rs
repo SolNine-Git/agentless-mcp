@@ -42,6 +42,7 @@ fn the_lint_goldens_come_out_byte_for_byte() {
         note: field(fields, "note"),
         config: &config,
         warnings: Vec::new(),
+        counter: &app::Chars4,
     };
 
     assert_eq!(lint_text(&receipt, &report), golden("repo_py.lint.txt"));

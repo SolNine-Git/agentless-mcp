@@ -18,7 +18,7 @@ fn each_body_wraps_as_the_fixture_says() {
     let all: Vec<(ReceiptRow, String, usize, String)> = cases("envelope", "text");
     for (row, body, ceiling, expected) in all {
         let config = row.config();
-        let wrapped = wrap(&row.receipt(&config), &body, &chars4(ceiling));
+        let wrapped = wrap(&row.receipt(&config), &body, &chars4(ceiling), None);
         assert_eq!(wrapped, expected, "{body:?} at {ceiling}");
     }
 }

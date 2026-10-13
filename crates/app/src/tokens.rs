@@ -1,4 +1,8 @@
-//! The token counter that every budget and the output ceiling measure text with.
+//! The token counters that every budget and the output ceiling measure text with.
+
+use tiktoken_rs::CoreBPE;
+
+use crate::Error;
 
 /// Counts the tokens of a text.
 pub trait TokenCounter: Send + Sync {
@@ -16,17 +20,32 @@ impl TokenCounter for Chars4 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{Chars4, TokenCounter};
+/// The `cl100k_base` encoding: the count of the tokens it encodes a text into, with special
+/// tokens read as plain text.
+pub struct Cl100k {
+    encoding: CoreBPE,
+}
 
-    #[test]
-    fn chars4_counts_code_points_and_rounds_down() {
-        assert_eq!(Chars4.count(""), 0);
-        assert_eq!(Chars4.count("abc"), 0);
-        assert_eq!(Chars4.count("abcd"), 1);
-        // Four code points in sixteen bytes are one token, not four.
-        assert_eq!(Chars4.count("\u{1f600}\u{1f600}\u{1f600}\u{1f600}"), 1);
-        assert_eq!(Chars4.count(&"x".repeat(4001)), 1000);
+impl Cl100k {
+    /// Loads the encoding, which is part of the binary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operation failure when the encoding does not load.
+    pub fn new() -> Result<Cl100k, Error> {
+        let encoding = tiktoken_rs::cl100k_base().map_err(|error| {
+            let message = format!("--token-counter tiktoken could not load cl100k_base: {error}");
+            kernel::Error::OperationFailed(message)
+        })?;
+        Ok(Cl100k { encoding })
     }
 }
+
+impl TokenCounter for Cl100k {
+    fn count(&self, text: &str) -> usize {
+        self.encoding.encode_ordinary(text).len()
+    }
+}
+
+#[cfg(test)]
+mod tests;

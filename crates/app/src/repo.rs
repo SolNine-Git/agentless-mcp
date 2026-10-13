@@ -52,13 +52,44 @@ fn start_dir(services: &Services) -> Result<&Path, Error> {
 ///
 /// Returns a repository-resolution error when the root is not a directory or not a UTF-8 path.
 pub fn resolve(services: &Services, repo: Option<&Path>) -> Result<Repo, Error> {
-    let raw = if let Some(path) = repo {
-        expand_user(path, services.home.as_deref())
-    } else {
-        let cwd = start_dir(services)?;
-        services.git.root(cwd).unwrap_or_else(|| cwd.to_path_buf())
-    };
+    let raw = given_or(services, repo, |cwd, root| {
+        Ok(root.unwrap_or_else(|| cwd.to_path_buf()))
+    })?;
     Repo::load(services, &raw)
+}
+
+/// Resolves the repository a read command is about: `repo` when given, else the git root that
+/// encloses the start-up directory. Loads its config.
+///
+/// # Errors
+///
+/// Returns a repository-resolution error when no `repo` is given and the start-up directory is
+/// not inside a git repository, or when the root is not a directory or not a UTF-8 path.
+pub fn resolve_in_git(services: &Services, repo: Option<&Path>) -> Result<Repo, Error> {
+    let raw = given_or(services, repo, |cwd, root| {
+        root.ok_or_else(|| {
+            let message = format!(
+                "{} is not inside a git repository, so there is no root to default to; pass \
+                 --repo PATH",
+                cwd.display()
+            );
+            kernel::Error::RepoResolution(message).into()
+        })
+    })?;
+    Repo::load(services, &raw)
+}
+
+// The root `repo` names, or what `fallback` makes of the start-up directory and its git root.
+fn given_or(
+    services: &Services,
+    repo: Option<&Path>,
+    fallback: impl FnOnce(&Path, Option<PathBuf>) -> Result<PathBuf, Error>,
+) -> Result<PathBuf, Error> {
+    if let Some(path) = repo {
+        return Ok(expand_user(path, services.home.as_deref()));
+    }
+    let cwd = start_dir(services)?;
+    fallback(cwd, services.git.root(cwd))
 }
 
 fn root_directory(raw: &Path) -> Result<PathBuf, Error> {

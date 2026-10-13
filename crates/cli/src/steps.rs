@@ -3,6 +3,7 @@
 
 use std::ffi::OsString;
 use std::path::Path;
+use std::sync::Arc;
 
 use app::{EnvConfig, Services, Session};
 use render::{Receipt, one_line};
@@ -12,11 +13,8 @@ use crate::args::{self, Arg, Exit};
 use crate::commands;
 use crate::exit::{EXIT_OK, EXIT_USAGE, code_for, fail, report, write_answer};
 use crate::invocation::{Command, Invocation, RepoFlags};
-use crate::lint;
+use crate::{lint, read};
 
-const TIKTOKEN_ABSENT: &str = "--token-counter tiktoken needs the 'tokens' extra, which is not \
-    installed (No module named 'tiktoken'). Install it with: uv sync --extra tokens, or pip \
-    install 'agentless-mcp[tokens]'.";
 const DEFAULT_COLUMNS: isize = 80;
 // No line of these texts comes near this width, so a larger count changes nothing.
 const MAX_COLUMNS: isize = 1 << 24;
@@ -40,9 +38,11 @@ pub(crate) fn run(
 }
 
 fn execute(invocation: Invocation, services: &Services, streams: &mut Streams<'_>) -> u8 {
-    if invocation.tiktoken {
-        return fail(streams.err, TIKTOKEN_ABSENT, EXIT_USAGE);
-    }
+    let counted = match with_counter(services, invocation.tiktoken) {
+        Ok(counted) => counted,
+        Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
+    };
+    let services = counted.as_ref().unwrap_or(services);
     match invocation.command {
         Command::Unported(name) => {
             let message = format!(
@@ -52,7 +52,21 @@ fn execute(invocation: Invocation, services: &Services, streams: &mut Streams<'_
         }
         Command::Lint(request) => lint::run(&request, services, streams),
         Command::Capabilities(flags) => capabilities(&flags, services, streams),
+        Command::Read(call) => read::run(&call, services, streams),
     }
+}
+
+// The services of a run with `--token-counter tiktoken`: the cl100k_base counter in place of
+// chars4. `None` keeps the start-up services.
+fn with_counter(services: &Services, tiktoken: bool) -> Result<Option<Services>, app::Error> {
+    if !tiktoken {
+        return Ok(None);
+    }
+    let counter = Arc::new(app::Cl100k::new()?);
+    Ok(Some(Services {
+        counter,
+        ..services.clone()
+    }))
 }
 
 fn capabilities(flags: &RepoFlags, services: &Services, streams: &mut Streams<'_>) -> u8 {
@@ -93,7 +107,12 @@ pub(crate) fn open_with(
     let repo = flags.repo.as_deref().map(Path::new);
     let repo = app::resolve(services, repo)
         .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
-    let opening = opener(services, repo, flags.no_cache);
+    opened(streams, opener(services, repo, flags.no_cache))
+}
+
+// Reports the note and the warnings of a session's opening on stderr, then gives the session or
+// the exit code of its failure.
+pub(crate) fn opened(streams: &mut Streams<'_>, opening: app::Opening) -> Result<Session, u8> {
     let note = &opening.note;
     if !note.is_empty() {
         report(streams.err, &format!("agentless-mcp: {}\n", one_line(note)));

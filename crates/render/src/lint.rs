@@ -3,7 +3,7 @@
 use app::{Finding, LintCandidate, LintReport, PairFinding, Severity};
 
 use crate::envelope::Listing;
-use crate::textsafe::one_line;
+use text::one_line;
 
 impl Listing for LintReport {
     fn items(&self) -> usize {

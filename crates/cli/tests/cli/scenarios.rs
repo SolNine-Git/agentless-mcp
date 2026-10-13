@@ -1,5 +1,6 @@
-//! Each scenario of crates/cli/fixtures/scenarios.json: a repository built by the same steps,
-//! one command line in it, and the answer after the shared placeholders.
+//! Each scenario of the scenario fixtures: a repository built by the same steps, one command line
+//! in it, and the answer after the shared placeholders. crates/cli/fixtures/scenarios.json holds
+//! lint and capabilities; crates/cli/fixtures/read/scenarios.json holds the read subcommands.
 
 use std::ffi::OsString;
 
@@ -35,23 +36,21 @@ fn buildable(case: &Value) -> bool {
     !cfg!(target_os = "macos") || !steps.iter().any(|step| step[0] == "latin")
 }
 
-#[test]
-fn every_scenario_answers_as_the_fixture() {
-    let runs = cases("scenarios", "runs");
+// Replays every scenario of `file`, compares each answer after `seen`, and fails with each one
+// that differs.
+fn every_scenario_answers_as(file: &str, at_least: usize, seen: fn(Outcome) -> Outcome) {
+    let runs = cases(file, "runs");
     let mut failed = Vec::new();
     for case in runs.iter().filter(|case| buildable(case)) {
-        let (got, want) = (
-            with_this_cache_file(replay(case)),
-            with_this_cache_file(expected(case)),
-        );
+        let (got, want) = (seen(replay(case)), seen(expected(case)));
         if got != want {
             let name = case["name"].as_str().unwrap_or_default();
             failed.push(format!("{name}\n got {got:?}\nwant {want:?}"));
         }
     }
     assert!(
-        runs.len() >= 16,
-        "the fixture holds {} scenarios",
+        runs.len() >= at_least,
+        "{file} holds {} scenarios",
         runs.len()
     );
     assert!(
@@ -62,6 +61,11 @@ fn every_scenario_answers_as_the_fixture() {
     );
 }
 
+#[test]
+fn every_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("scenarios", 16, with_this_cache_file);
+}
+
 // The reference capabilities report names its tag cache. This build reports agentless.db in the
 // same directory (the D7 deviation).
 fn with_this_cache_file(outcome: Outcome) -> Outcome {
@@ -69,4 +73,47 @@ fn with_this_cache_file(outcome: Outcome) -> Outcome {
         out: outcome.out.replace("/<KEY>/tags.db", "/<KEY>/agentless.db"),
         ..outcome
     }
+}
+
+// The receipt's cache field names the cache file of each build, and warmup names the grammar
+// cache, so both sides show a placeholder for each.
+#[test]
+fn every_read_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("read/scenarios", 50, without_cache_field);
+}
+
+#[test]
+fn every_map_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("read/map_scenarios", 27, without_cache_field);
+}
+
+#[test]
+fn every_symbol_view_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("read_symbols/scenarios", 70, without_cache_field);
+}
+
+fn without_cache_field(outcome: Outcome) -> Outcome {
+    let lines: Vec<String> = outcome.out.split('\n').map(masked).collect();
+    Outcome {
+        out: lines.join("\n"),
+        ..outcome
+    }
+}
+
+fn masked(line: &str) -> String {
+    if line.starts_with("// repo: ")
+        && let Some((head, _)) = line.split_once("   cache: ")
+    {
+        return format!("{head}   cache: <CACHE>");
+    }
+    let field = "    \"cache\": \"";
+    if line.starts_with(field) && line.ends_with("\",") {
+        return format!("{field}<CACHE>\",");
+    }
+    if line.starts_with("pack ")
+        && let Some((release, _)) = line.split_once("  cache ")
+    {
+        return format!("{release}  cache <CACHE>");
+    }
+    line.to_owned()
 }

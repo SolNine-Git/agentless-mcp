@@ -1,10 +1,12 @@
-//! The command line of `lint` and `capabilities`: the parser, the steps, and the exit codes.
+//! The command line: the parser, the steps of `lint`, `capabilities` and the read subcommands,
+//! and the exit codes.
 
 mod args;
 mod commands;
 mod exit;
 mod invocation;
 mod lint;
+mod read;
 mod steps;
 
 use std::ffi::OsString;

@@ -100,7 +100,8 @@ impl Sandbox {
             }
             "commit" => {
                 self.git(&place, &["add", "-A"]);
-                self.git(&place, &["commit", "--quiet", "-m", "fixture"]);
+                let message = step.get(2).and_then(Value::as_str).unwrap_or("fixture");
+                self.git(&place, &["commit", "--quiet", "-m", message]);
             }
             other => panic!("no scenario step {other}"),
         }

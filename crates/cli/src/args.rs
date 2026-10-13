@@ -1,6 +1,9 @@
-//! The command-line parser: option matching, values, conflicts, and the usage and help texts.
+//! The command-line parser: option matching, positional arities, values, conflicts, and the usage
+//! and help texts.
 
+mod declared;
 mod help;
+mod nargs;
 mod parse;
 #[cfg(test)]
 mod tests;
@@ -10,6 +13,10 @@ use std::ffi::{OsStr, OsString};
 use std::ops::Range;
 use std::os::unix::ffi::OsStrExt;
 
+use app::IntArg;
+use app::ops::{Arity, Op};
+
+pub(crate) use declared::{TEXT, action, help_action};
 pub(crate) use parse::parse;
 
 // One command-line argument: its text for matching and messages, and its bytes for paths.
@@ -39,7 +46,7 @@ impl Arg {
 }
 
 pub(crate) struct Parser {
-    pub(crate) prog: &'static str,
+    pub(crate) prog: String,
     pub(crate) description: Option<&'static str>,
     pub(crate) actions: Vec<Action>,
     pub(crate) group: Option<Group>,
@@ -81,6 +88,7 @@ pub(crate) struct Action {
     pub(crate) metavar: Option<&'static str>,
     pub(crate) help: Option<String>,
     pub(crate) kind: Kind,
+    pub(crate) required: bool,
 }
 
 impl Action {
@@ -100,7 +108,9 @@ pub(crate) enum Kind {
     Value {
         convert: Convert,
         choices: &'static [&'static str],
+        repeat: bool,
     },
+    Positional(Arity),
     Commands(&'static [Command]),
 }
 
@@ -110,7 +120,14 @@ pub(crate) type Convert = fn(&Arg) -> Result<Value, String>;
 pub(crate) struct Command {
     pub(crate) name: &'static str,
     pub(crate) help: &'static str,
-    pub(crate) parser: Option<fn() -> Parser>,
+    pub(crate) form: Form,
+}
+
+// How a subcommand's parser is built: by hand, from its read operation, or not in this build.
+pub(crate) enum Form {
+    Built(fn() -> Parser),
+    Read(&'static Op),
+    Unported,
 }
 
 #[derive(Clone, Debug)]
@@ -118,9 +135,12 @@ pub(crate) enum Value {
     Flag,
     Text(Arg),
     Names(Vec<String>),
+    List(Vec<Arg>),
+    Int(IntArg),
 }
 
-// The values that one parser's run set, by destination; a repeated option keeps its last value.
+// The values that one parser's run set, by destination; a repeated option keeps its last value,
+// and an appending option keeps every value.
 #[derive(Debug, Default)]
 pub(crate) struct Namespace {
     values: Vec<(&'static str, Value)>,
@@ -132,7 +152,14 @@ impl Namespace {
         self.values.push((dest, value));
     }
 
-    fn get(&self, dest: &str) -> Option<&Value> {
+    fn append(&mut self, dest: &'static str, arg: Arg) {
+        let mut list = self.list(dest).to_vec();
+        list.push(arg);
+        self.set(dest, Value::List(list));
+    }
+
+    // The value set under `dest`, or `None` when the run set none.
+    pub(crate) fn get(&self, dest: &str) -> Option<&Value> {
         self.values
             .iter()
             .find(|(name, _)| *name == dest)
@@ -156,11 +183,23 @@ impl Namespace {
             _ => None,
         }
     }
+
+    // Every value of a list: an appending option's uses, or a positional's arguments.
+    pub(crate) fn list(&self, dest: &str) -> &[Arg] {
+        match self.get(dest) {
+            Some(Value::List(list)) => list,
+            _ => &[],
+        }
+    }
 }
 
 pub(crate) enum Chosen {
     Ported {
         name: &'static str,
+        namespace: Namespace,
+    },
+    Read {
+        op: &'static Op,
         namespace: Namespace,
     },
     Unported(&'static str),

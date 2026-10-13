@@ -8,7 +8,7 @@ use text::{CodePointString, is_printable, is_space, strip};
 
 use crate::config::{
     GateMode, GatedCheck, Granularity, KNOWN_KEYS, MAX_BOUNDARY_GLOB_CHARS, MAX_BOUNDARY_GLOBS,
-    ProjectConfig,
+    MAX_BUDGET, MAX_MAX_FILES, MIN_BUDGET, MIN_MAX_FILES, ProjectConfig,
 };
 use crate::warning::{
     ConfigWarning, GateWarning, GlobsWarning, StoplistWarning, TestCmdWarning, UnknownKeyWarning,
@@ -34,13 +34,13 @@ struct IntKey {
 // Each range holds the values that answer the key's question. It is not a limit of the code.
 const MAP_BUDGET: IntKey = IntKey {
     name: "map_budget",
-    low: 200,
-    high: 64_000,
+    low: MIN_BUDGET,
+    high: MAX_BUDGET,
 };
 const MAX_FILES: IntKey = IntKey {
     name: "max_files",
-    low: 1,
-    high: 200,
+    low: MIN_MAX_FILES,
+    high: MAX_MAX_FILES,
 };
 const COMPLEXITY_THRESHOLD: IntKey = IntKey {
     name: "complexity_threshold",

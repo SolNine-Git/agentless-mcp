@@ -33,7 +33,7 @@ pub use owners::{LineOwners, enclosing_symbol};
 pub use path::{DEFAULT_MAX_VISITED, Hop, PathPolicy, PathResult, shortest_path};
 pub use rank::{PageRank, pagerank, rank_order};
 pub use resolver::{Resolution, Resolver, Tier};
-pub use scan::{FileFacts, in_name_graph};
+pub use scan::{FileFacts, in_name_graph, joins_name_graph};
 pub use scopes::{ImportScope, Scopes};
 pub use symbols::{AmbiguousReference, Endpoint, Relation, SymbolEdge, SymbolGraph};
 

@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 
 use app::Severity;
+use app::ops::Op;
 
 use crate::args::{Arg, Chosen, Namespace, Parsed};
 use crate::commands::TIKTOKEN;
@@ -15,7 +16,14 @@ pub(crate) struct Invocation {
 pub(crate) enum Command {
     Lint(Lint),
     Capabilities(RepoFlags),
+    Read(ReadCall),
     Unported(&'static str),
+}
+
+// A read subcommand: its operation's declaration and the values its parser set.
+pub(crate) struct ReadCall {
+    pub(crate) op: &'static Op,
+    pub(crate) namespace: Namespace,
 }
 
 pub(crate) struct RepoFlags {
@@ -51,6 +59,7 @@ impl Invocation {
                 name: "capabilities",
                 namespace,
             } => Command::Capabilities(repo_flags(&namespace)),
+            Chosen::Read { op, namespace } => Command::Read(ReadCall { op, namespace }),
             Chosen::Unported(name) | Chosen::Ported { name, .. } => Command::Unported(name),
         };
         Invocation {
@@ -88,7 +97,7 @@ fn source(namespace: &Namespace) -> Source {
     Source::Candidates
 }
 
-fn repo_flags(namespace: &Namespace) -> RepoFlags {
+pub(crate) fn repo_flags(namespace: &Namespace) -> RepoFlags {
     RepoFlags {
         repo: namespace.text("repo").map(|arg| arg.raw.clone()),
         json: namespace.flag("json"),

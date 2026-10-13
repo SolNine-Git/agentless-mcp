@@ -3,6 +3,8 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use super::Form;
+use super::declared::{declared, float_text};
 use super::wrap::{collapse, wrap};
 use crate::commands;
 
@@ -44,16 +46,38 @@ fn each_text_wraps_to_the_fixture_lines_at_every_width() {
     }
 }
 
+fn float_cases(section: &str) -> Vec<(String, Option<String>)> {
+    io::testing::cases(env!("CARGO_MANIFEST_DIR"), "read/numbers", section)
+}
+
+#[test]
+fn a_float_text_reads_as_the_reference_reads_it() {
+    let cases = float_cases("floats");
+    assert!(cases.len() > 30);
+    for (text, bits) in cases {
+        let read = float_text(&text).map(|value| format!("0x{:016x}", value.to_bits()));
+        assert_eq!(read, bits, "{text:?}");
+    }
+}
+
+// Ledger deviation: the reference reads Unicode digits, and this build refuses them.
+#[test]
+fn a_unicode_digit_float_is_refused_where_the_reference_reads_it() {
+    for (text, bits) in float_cases("deviations") {
+        assert!(bits.is_some(), "{text:?}: the reference reads it");
+        assert_eq!(float_text(&text), None, "{text:?}");
+    }
+}
+
 // The wrapper reads bytes as ASCII characters, and the formatter prints help text as written.
 #[test]
 fn every_help_text_is_ascii_and_holds_no_format_mark() {
     let mut parsers = vec![commands::top()];
-    parsers.extend(
-        commands::COMMANDS
-            .iter()
-            .filter_map(|c| c.parser)
-            .map(|build| build()),
-    );
+    parsers.extend(commands::COMMANDS.iter().filter_map(|c| match c.form {
+        Form::Built(build) => Some(build()),
+        Form::Read(op) => Some(declared(op)),
+        Form::Unported => None,
+    }));
     let mut texts: Vec<String> = commands::COMMANDS
         .iter()
         .map(|c| c.help.to_owned())

@@ -13,7 +13,9 @@ workspace = true
 
 [dependencies]
 checks = { path = "../checks" }
+facts = { path = "../facts" }
 git = { path = "../git" }
+graph = { path = "../graph" }
 io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
@@ -24,7 +26,9 @@ store = { path = "../store" }
 syntax = { path = "../syntax" }
 text = { path = "../text" }
 thiserror.workspace = true
+tiktoken-rs = "=0.12.1"
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
 serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

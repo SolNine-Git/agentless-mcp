@@ -1,14 +1,16 @@
-//! Each command line of crates/cli/fixtures/parser.json: help texts at many widths, usage
-//! errors, and the refusals that come before any repository work.
+//! Each command line of the parser fixtures: help texts at many widths, usage errors, and the
+//! refusals that come before any repository work. crates/cli/fixtures/parser.json holds the
+//! top parser, lint and capabilities; crates/cli/fixtures/read/parser.json holds the read
+//! subcommands.
 
 use std::ffi::OsString;
 
 use crate::common::{Sandbox, cases, expected, words};
 
-#[test]
-fn every_parser_case_answers_as_the_fixture() {
+// Runs every case of `file` and fails with each one that differs.
+fn every_run_answers_as_the_fixture(file: &str, at_least: usize) {
     let sandbox = Sandbox::new();
-    let runs = cases("parser", "runs");
+    let runs = cases(file, "runs");
     let mut failed = Vec::new();
     for case in &runs {
         let argv: Vec<OsString> = words(&case["argv"])
@@ -24,11 +26,21 @@ fn every_parser_case_answers_as_the_fixture() {
             ));
         }
     }
-    assert!(runs.len() > 150, "the fixture holds {} cases", runs.len());
+    assert!(runs.len() > at_least, "{file} holds {} cases", runs.len());
     assert!(
         failed.is_empty(),
         "{} cases differ:\n{}",
         failed.len(),
         failed.join("\n")
     );
+}
+
+#[test]
+fn every_parser_case_answers_as_the_fixture() {
+    every_run_answers_as_the_fixture("parser", 150);
+}
+
+#[test]
+fn every_read_parser_case_answers_as_the_fixture() {
+    every_run_answers_as_the_fixture("read/parser", 100);
 }

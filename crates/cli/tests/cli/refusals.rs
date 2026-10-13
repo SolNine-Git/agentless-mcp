@@ -14,8 +14,8 @@ use cli::Streams;
 
 use crate::common::{Outcome, Sandbox};
 
-const MAP_REFUSAL: &str =
-    "agentless-mcp: this build does not run map yet. Run it with the Python agentless-mcp.\n";
+const PATCH_REFUSAL: &str =
+    "agentless-mcp: this build does not run patch yet. Run it with the Python agentless-mcp.\n";
 
 fn run(sandbox: &Sandbox, args: &[&str]) -> Outcome {
     let args: Vec<OsString> = args.iter().map(OsString::from).collect();
@@ -34,26 +34,22 @@ fn refused(err: &str) -> Outcome {
 fn a_command_this_build_does_not_run_is_refused_before_its_arguments_are_read() {
     let sandbox = Sandbox::new();
     for args in [
-        &["map"][..],
-        &["map", "--help"],
-        &["--bogus", "map", "--bogus"],
+        &["patch"][..],
+        &["patch", "--help"],
+        &["--bogus", "patch", "--bogus"],
     ] {
-        assert_eq!(run(&sandbox, args), refused(MAP_REFUSAL), "{args:?}");
+        assert_eq!(run(&sandbox, args), refused(PATCH_REFUSAL), "{args:?}");
     }
 }
 
+// The cl100k_base encoding is part of the binary, so the flag never refuses (ledger deviation).
 #[test]
-fn the_token_counter_refusal_comes_before_the_command_refusal() {
+fn the_token_counter_flag_loads_its_encoding_and_the_command_answers() {
     let got = run(
         &Sandbox::new(),
-        &["--token-counter", "tiktoken", "map", "--help"],
+        &["--token-counter", "tiktoken", "patch", "--help"],
     );
-    assert_eq!(got.code, 2);
-    assert!(
-        got.err
-            .starts_with("agentless-mcp: --token-counter tiktoken needs"),
-        "{got:?}"
-    );
+    assert_eq!(got, refused(PATCH_REFUSAL));
 }
 
 #[test]

@@ -20,6 +20,14 @@ pub const CONFIG_FILENAME: &str = ".agentless-mcp.json";
 pub const MAX_BOUNDARY_GLOBS: usize = 64;
 /// The most characters in one boundary glob.
 pub const MAX_BOUNDARY_GLOB_CHARS: usize = 256;
+/// The smallest token budget of a map or of the history bodies.
+pub const MIN_BUDGET: u32 = 200;
+/// The largest token budget of a map or of the history bodies.
+pub const MAX_BUDGET: u32 = 64_000;
+/// The fewest ranked files a map admits.
+pub const MIN_MAX_FILES: u32 = 1;
+/// The most ranked files a map admits.
+pub const MAX_MAX_FILES: u32 = 200;
 // A config file is a handful of scalars, so a larger file is not a config.
 pub(crate) const MAX_CONFIG_BYTES: u64 = 65_536;
 // In the order that the unknown-key warning lists them.

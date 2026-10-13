@@ -25,7 +25,8 @@ pub use append::{AppendError, append_line};
 pub use cache::{CacheRoot, HomeUnknown, RelativeCacheHome, cache_root};
 pub use config::{
     CONFIG_FILENAME, GateMode, GatedCheck, Granularity, MAX_BOUNDARY_GLOB_CHARS,
-    MAX_BOUNDARY_GLOBS, ProjectConfig, load_config,
+    MAX_BOUNDARY_GLOBS, MAX_BUDGET, MAX_MAX_FILES, MIN_BUDGET, MIN_MAX_FILES, ProjectConfig,
+    load_config,
 };
 pub use contain::{
     Refusal, contained_file_size, contained_path, file_size, file_stays_inside, resolve,

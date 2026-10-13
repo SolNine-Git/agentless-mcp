@@ -2,14 +2,15 @@
 
 use json::{JsonForm, to_text};
 use prompts::envelope::{
-    CEILING_TRUNCATION, JSON_CEILING_OVERSIZED_ITEM, JSON_CEILING_TRIMMED, NOTICE, RECEIPT_HEADER,
+    CEILING_TRUNCATION, JSON_CEILING_OVERSIZED_ITEM, JSON_CEILING_TRIMMED,
+    JSON_CEILING_UNTRIMMABLE, NOTICE, RECEIPT_HEADER, SERVICE_TRUNCATION,
 };
 use serde::Serialize;
 use text::splitlines;
 
-use crate::Error;
 use crate::count::Ceiling;
 use crate::receipt::{BLOCK_SHARE, Fields, Receipt, bounded_warnings, warning_line};
+use crate::{Error, Truncation};
 
 // Room for the truncation note itself, so the note cannot push the answer over the ceiling.
 const MARKER_ALLOWANCE: usize = 64;
@@ -22,8 +23,13 @@ pub(crate) trait Listing: Serialize {
 }
 
 // The header and the config warnings each get at most one share of the ceiling before the body
-// gets what is left, so no repository can spend the ceiling on the envelope.
-pub(crate) fn wrap(receipt: &Receipt<'_>, body: &str, ceiling: &Ceiling<'_>) -> String {
+// gets what is left. The service's note and the ceiling's note do not count against the body.
+pub(crate) fn wrap(
+    receipt: &Receipt<'_>,
+    body: &str,
+    ceiling: &Ceiling<'_>,
+    truncation: Option<&Truncation>,
+) -> String {
     let header = header(receipt, ceiling);
     let warnings: String = bounded_warnings(&receipt.warnings, ceiling)
         .iter()
@@ -41,6 +47,10 @@ pub(crate) fn wrap(receipt: &Receipt<'_>, body: &str, ceiling: &Ceiling<'_>) -> 
         wrapped.push('\n');
     }
     wrapped.push_str(&warnings);
+    if let Some(cut) = truncation.filter(|cut| cut.shown < cut.total) {
+        wrapped.push_str(&SERVICE_TRUNCATION.render((cut.unit, cut.shown, cut.total)));
+        wrapped.push('\n');
+    }
     if dropped > 0 {
         let total = splitlines(body, false).len();
         wrapped.push_str(&CEILING_TRUNCATION.render((dropped, total, ceiling.tokens)));
@@ -99,7 +109,7 @@ pub(crate) fn wrap_json<P: Listing>(
     ceiling: &Ceiling<'_>,
 ) -> Result<String, Error> {
     let fields = receipt.fields(ceiling);
-    let whole = document(&fields, payload, None)?;
+    let whole = document(&fields, payload, None::<Trimmed>)?;
     if ceiling.count(&whole) <= ceiling.tokens {
         return Ok(whole);
     }
@@ -131,14 +141,41 @@ fn fit_items<P: Listing>(
     Ok(low)
 }
 
+// A payload with no list to trim is written whole. Over the ceiling, it says so and how far over.
+pub(crate) fn wrap_json_whole<P: Serialize>(
+    receipt: &Receipt<'_>,
+    payload: &P,
+    ceiling: &Ceiling<'_>,
+) -> Result<String, Error> {
+    let fields = receipt.fields(ceiling);
+    let whole = document(&fields, payload, None::<Trimmed>)?;
+    let tokens = ceiling.count(&whole);
+    if tokens <= ceiling.tokens {
+        return Ok(whole);
+    }
+    let untrimmable = Untrimmable {
+        reason: JSON_CEILING_UNTRIMMABLE.render(ceiling.tokens),
+        token_ceiling: ceiling.tokens,
+        tokens,
+    };
+    document(&fields, payload, Some(untrimmable))
+}
+
 #[derive(Serialize)]
-struct Document<'a, P> {
+struct Document<'a, P, T> {
     receipt: &'a Fields<'a>,
     notice: &'static str,
     #[serde(flatten)]
     payload: &'a P,
     #[serde(skip_serializing_if = "Option::is_none")]
-    truncated: Option<Trimmed>,
+    truncated: Option<T>,
+}
+
+#[derive(Serialize)]
+struct Untrimmable {
+    reason: String,
+    token_ceiling: usize,
+    tokens: usize,
 }
 
 #[derive(Serialize)]
@@ -165,10 +202,10 @@ impl Trimmed {
     }
 }
 
-fn document<P: Serialize>(
+fn document<P: Serialize, T: Serialize>(
     receipt: &Fields<'_>,
     payload: &P,
-    truncated: Option<Trimmed>,
+    truncated: Option<T>,
 ) -> Result<String, Error> {
     let document = Document {
         receipt,

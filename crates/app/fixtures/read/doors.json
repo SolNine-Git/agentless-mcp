@@ -1,0 +1,16 @@
+{
+ "tools": [
+  ["analyze_structure", ["operation", "repo_root", "source", "target", "include_unique", "include_ambiguous", "limit", "resolution", "focus", "max_nodes", "max_edges", "group_by_communities", "no_cache"]],
+  ["capabilities", ["repo_root"]],
+  ["expand_symbols", ["stable_ids", "repo_root", "limit", "no_cache"]],
+  ["explain_symbol", ["target", "repo_root", "limit", "no_cache"]],
+  ["find_referencing_symbols", ["target", "repo_root", "limit", "shared_callers"]],
+  ["find_symbol", ["name", "repo_root", "kind", "limit", "no_cache"]],
+  ["get_symbols_overview", ["paths", "repo_root", "docstrings", "no_cache"]],
+  ["history", ["target", "repo_root", "limit", "budget"]],
+  ["list_dir", ["repo_root", "path", "depth", "max_entries"]],
+  ["read_slice", ["path", "repo_root", "lines", "context_lines", "whole_file"]],
+  ["repo_map", ["repo_root", "focus", "budget", "max_files", "granularity", "no_cache"]],
+  ["resolve_locations", ["path", "locs", "repo_root", "context_lines"]]
+ ]
+}

@@ -15,8 +15,27 @@ pub struct FileFacts {
 /// Return whether a file's symbols and spellings join the name graph: a data file's keys do not.
 #[must_use]
 pub fn in_name_graph(file: &FileFacts) -> bool {
-    !matches!(
-        file.language,
-        Language::Json | Language::Toml | Language::Yaml
-    )
+    joins_name_graph(file.language)
+}
+
+/// Return whether the symbols and spellings of a file in `language` join the name graph.
+#[must_use]
+pub fn joins_name_graph(language: Language) -> bool {
+    !matches!(language, Language::Json | Language::Toml | Language::Yaml)
+}
+
+#[cfg(test)]
+mod tests {
+    use syntax::Language;
+
+    use super::joins_name_graph;
+
+    #[test]
+    fn only_the_data_languages_stay_out_of_the_name_graph() {
+        let out: Vec<Language> = Language::ALL
+            .into_iter()
+            .filter(|&language| !joins_name_graph(language))
+            .collect();
+        assert_eq!(out, [Language::Json, Language::Toml, Language::Yaml]);
+    }
 }

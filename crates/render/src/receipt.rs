@@ -1,8 +1,10 @@
 //! The receipt: which repository, at which commit, from which cache, under which config.
 
+use std::fmt;
 use std::path::Path;
 
-use app::{Chars4, ConfigView, Session};
+use app::{Chars4, ConfigView, Repo, Session, TokenCounter};
+use git::Snapshot;
 use io::ProjectConfig;
 use prompts::envelope::{
     NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_HEADER, RECEIPT_LINE, RECEIPT_NOTE,
@@ -11,13 +13,13 @@ use prompts::envelope::{
 use serde::Serialize;
 
 use crate::count::Ceiling;
-use crate::textsafe::one_line;
+use text::one_line;
 
 // No block but the body may take more than this share of the ceiling.
 pub(crate) const BLOCK_SHARE: usize = 8;
 
-/// The repository facts that head every answer, and the config warnings that follow its body.
-#[derive(Debug)]
+/// The repository facts that head every answer, the config warnings that follow its body, and
+/// the counter that measures the answer against the output ceiling.
 pub struct Receipt<'a> {
     pub(crate) root: &'a Path,
     pub(crate) head: Option<&'a str>,
@@ -27,23 +29,42 @@ pub struct Receipt<'a> {
     pub(crate) note: &'a str,
     pub(crate) config: &'a ProjectConfig,
     pub(crate) warnings: Vec<String>,
+    pub(crate) counter: &'a dyn TokenCounter,
 }
 
 impl<'a> Receipt<'a> {
     /// Returns the receipt of the repository, git state, cache and config that `session` holds.
     #[must_use]
     pub fn of(session: &'a Session) -> Receipt<'a> {
-        let snapshot = &session.snapshot;
+        Receipt::new(&session.repo, &session.snapshot, &session.cache.receipt)
+    }
+
+    /// Returns the receipt of `repo` at the git state `snapshot`, with `cache` as its cache
+    /// field, measured with the chars4 counter.
+    #[must_use]
+    pub fn new(repo: &'a Repo, snapshot: &'a Snapshot, cache: &'a str) -> Receipt<'a> {
         Receipt {
-            root: &session.repo.root,
+            root: &repo.root,
             head: snapshot.head_sha.as_deref(),
             tree: snapshot.tree_oid.as_deref(),
             dirty: snapshot.dirty_count,
-            cache: &session.cache.receipt,
+            cache,
             note: &snapshot.note,
-            config: &session.repo.config,
-            warnings: app::config_warnings(&session.repo.config),
+            config: &repo.config,
+            warnings: app::config_warnings(&repo.config),
+            counter: &Chars4,
         }
+    }
+
+    /// Returns this receipt with `counter` as the counter of the output ceiling.
+    #[must_use]
+    pub fn counted_by(self, counter: &'a dyn TokenCounter) -> Receipt<'a> {
+        Receipt { counter, ..self }
+    }
+
+    // The ceiling of an answer under this receipt.
+    pub(crate) fn ceiling(&self) -> Ceiling<'a> {
+        Ceiling::standard(self.counter)
     }
 
     // The tool-authored lines. Each value can come from outside, so none may open a line.
@@ -88,6 +109,22 @@ impl<'a> Receipt<'a> {
             notice: NOTICE,
             config,
         }
+    }
+}
+
+// The counter has no Debug form, so Debug shows the repository facts alone.
+impl fmt::Debug for Receipt<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Receipt")
+            .field("root", &self.root)
+            .field("head", &self.head)
+            .field("tree", &self.tree)
+            .field("dirty", &self.dirty)
+            .field("cache", &self.cache)
+            .field("note", &self.note)
+            .field("config", &self.config)
+            .field("warnings", &self.warnings)
+            .finish_non_exhaustive()
     }
 }
 

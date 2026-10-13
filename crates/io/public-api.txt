@@ -624,10 +624,14 @@ impl !core::panic::unwind_safe::UnwindSafe for io::Walk
 pub const io::CONFIG_FILENAME: &str
 pub const io::MAX_BOUNDARY_GLOBS: usize
 pub const io::MAX_BOUNDARY_GLOB_CHARS: usize
+pub const io::MAX_BUDGET: u32
 pub const io::MAX_FILE_BYTES: usize
+pub const io::MAX_MAX_FILES: u32
 pub const io::MAX_WALK_BYTES: u64
 pub const io::MAX_WALK_DEPTH: usize
 pub const io::MAX_WALK_FILES: usize
+pub const io::MIN_BUDGET: u32
+pub const io::MIN_MAX_FILES: u32
 pub fn io::append_line(&std::path::Path, &[u8]) -> core::result::Result<(), io::AppendError>
 pub fn io::cache_root(impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<io::CacheRoot, io::HomeUnknown>
 pub fn io::contained_file_size(&std::path::Path, &std::path::Path) -> core::option::Option<core::io::error::Result<u64>>

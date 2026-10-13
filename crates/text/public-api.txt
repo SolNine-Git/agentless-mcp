@@ -59,6 +59,8 @@ pub fn text::is_decimal(char) -> bool
 pub fn text::is_printable(u32) -> bool
 pub fn text::is_space(char) -> bool
 pub fn text::is_word(char) -> bool
+pub fn text::lower(&str) -> alloc::string::String
+pub fn text::one_line(&str) -> alloc::borrow::Cow<'_, str>
 pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn text::splitlines(&str, bool) -> alloc::vec::Vec<&str>
 pub fn text::strip(&str) -> &str

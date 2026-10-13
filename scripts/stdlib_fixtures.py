@@ -46,6 +46,20 @@ SPLITLINES = [
 ]
 SPLIT_WHITESPACE = ["", "   ", " a  b ", "a\x1fb\u3000c", "a\u200bb", "\x85x\xa0y\t", "\u2028a\x1c"]
 STRIP = ["", "  ", " a b ", "\x1fa\x1c", "\u3000a\u2029", "\u200ba\u200b", "\xa0\x85a"]
+# Final sigma depends on the cased and case-ignorable characters around it, and those properties
+# grow with each Unicode version: U+A7CB and U+10D50 are cased in Unicode 16, unassigned in 15.1.
+SIGMA = "\u03a3"
+ALPHA = "\u0391"
+ENDED = ALPHA + SIGMA
+LOWER_STRINGS = [
+    *["", SIGMA, ENDED, ENDED + " \u0392", ENDED + ALPHA, ENDED + ".", ALPHA + "'" + SIGMA],
+    *[ENDED + "'", ENDED + "'" + ALPHA, " " + SIGMA, "1" + SIGMA, SIGMA * 2, ENDED + SIGMA],
+    *[ENDED + "\u0301", ALPHA + "\u0301" + SIGMA, ENDED + "\u0345", ENDED + "\u00ad"],
+    *[ENDED + "\u200d" + ALPHA, ENDED + "\U0001f600", ENDED + "\ua7cb", "\ua7cb" + SIGMA],
+    *[ALPHA + "\ua7cb" + SIGMA, "\U00010d50" + SIGMA, ENDED + "\U00010d50", "\ua7cb\u0264"],
+    *["Stra\u00dfe", "\u0130stanbul", "\u01c5", "\ufb03", ENDED + "\u1c89"],
+    "\U00016ea0x\U00016eb8",
+]
 STRIP_BYTES = [
     b"",
     b" \t\n\x0b\x0c\r",
@@ -523,6 +537,7 @@ def text_fixture() -> Fixture:
             [list(raw), code_points(raw.decode("utf-8", "surrogateescape"))] for raw in FSDECODE
         ],
         **integer_sections(),
+        **lower_sections(),
     }
 
 
@@ -532,6 +547,15 @@ def integer_sections() -> Fixture:
         "strip_bytes": [[list(raw), list(raw.strip())] for raw in STRIP_BYTES],
         "int_text": [[text, int_value(text)] for text in INT_TEXT],
         "int_bytes": [[list(raw), int_value(raw)] for raw in INT_BYTES],
+    }
+
+
+def lower_sections() -> Fixture:
+    # Every code point that str.lower() changes, and strings whose final sigma reads its context.
+    changed = (code for code in range(sys.maxunicode + 1) if chr(code).lower() != chr(code))
+    return {
+        "lower": [[code, code_points(chr(code).lower())] for code in changed],
+        "lower_strings": [[code_points(text), code_points(text.lower())] for text in LOWER_STRINGS],
     }
 
 

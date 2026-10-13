@@ -4,13 +4,14 @@ Development-time only. Run it from the repository root, with the grammar librari
 scratch directory, so that no run reads or writes the user's grammar cache:
 
     TREE_SITTER_LANGUAGE_PACK_CACHE_DIR=<scratch copy>/v1.14.3/libs \
+        TIKTOKEN_CACHE_DIR=<scratch copy of the cl100k_base file> \
         uv run python scripts/cli_fixtures.py
 
 With --check, the script compares its output with the committed fixtures and writes nothing.
 
 Each case runs the console script's entry point in a fresh interpreter, with HOME, the caches and
-the git config inside a temporary sandbox. A blocked import of tiktoken stands for an install
-without the 'tokens' extra.
+the git config inside a temporary sandbox. The 'tokens' extra is installed, as the Rust build always
+has the cl100k_base counter, and tiktoken reads the encoding from TIKTOKEN_CACHE_DIR.
 """
 
 import argparse
@@ -44,15 +45,6 @@ VERSION = importlib.metadata.version("agentless-mcp")
 TIMEOUT_SECONDS = 60
 
 BOOT = """
-import sys
-
-class _NoTiktoken:
-    def find_spec(self, name, path=None, target=None):
-        if name == "tiktoken" or name.startswith("tiktoken."):
-            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
-        return None
-
-sys.meta_path.insert(0, _NoTiktoken())
 from agentless_mcp.bootstrap import cli_main
 raise SystemExit(cli_main())
 """
@@ -100,7 +92,6 @@ CORPUS: list[list[str]] = [
     ["lint", "--bogus"],
     ["lint", "--since", "HEAD", "--token-counter", "chars4"],
     ["--token-counter", "bogus", "capabilities"],
-    ["--token-counter", "tiktoken", "capabilities"],
     ["--token-counter=tiktoken", "capabilities", "--repo", NOWHERE],
     ["capabilities", "--repo", NOWHERE],
     ["capabilities", "extra"],
@@ -143,7 +134,7 @@ CORPUS: list[list[str]] = [
     ["lint", "--", "--since", "HEAD"],
     ["--token-counter", "tiktoken", "lint", "--path", "a.py"],
     ["--token-counter", "tiktoken", "nope"],
-    ["--token-counter", "chars4", "--token-counter", "tiktoken", "capabilities"],
+    ["--token-counter", "chars4", "--token-counter", "tiktoken", "capabilities", "--repo", NOWHERE],
     ["--no-auto-warm", "--no-auto-warm", "capabilities", "--repo", NOWHERE],
     ["--tok=chars4", "capabilities", "--repo", NOWHERE],
     ["--token-counter"],
@@ -312,6 +303,7 @@ def environment(sandbox: Path, columns: str | None) -> dict[str, str]:
     env = {
         **hermetic_env(sandbox / "home"),
         GRAMMAR_OVERRIDE: os.environ[GRAMMAR_OVERRIDE],
+        "TIKTOKEN_CACHE_DIR": os.environ["TIKTOKEN_CACHE_DIR"],
         "AGENTLESS_MCP_NO_AUTO_WARM": "1",
         "AGENTLESS_MCP_NO_DOWNLOAD": "1",
         "LANG": "C.UTF-8",
@@ -371,7 +363,8 @@ def apply(sandbox: Path, env: dict[str, str], step: list[str]) -> None:
         run_git(target, IDENTITY, "init", "--quiet", "-b", "main", env=env)
     elif kind == "commit":
         run_git(target, IDENTITY, "add", "-A", env=env)
-        run_git(target, IDENTITY, "commit", "--quiet", "-m", "fixture", env=env)
+        message = rest[0] if rest else "fixture"
+        run_git(target, IDENTITY, "commit", "--quiet", "-m", message, env=env)
     else:
         sys.exit(f"refused: no scenario step {kind}")
 
