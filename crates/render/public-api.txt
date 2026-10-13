@@ -65,18 +65,28 @@ pub trait render::View
 pub fn render::View::rendered(&self) -> render::Rendered<'_>
 impl render::View for alloc::vec::Vec<app::views::FileView>
 pub fn alloc::vec::Vec<app::views::FileView>::rendered(&self) -> render::Rendered<'_>
+impl render::View for app::communities::CommunityReport
+pub fn app::communities::CommunityReport::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::cycles::CycleReport
 pub fn app::cycles::CycleReport::rendered(&self) -> render::Rendered<'_>
+impl render::View for app::diagram::DiagramView
+pub fn app::diagram::DiagramView::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::expand::ExpandResult
 pub fn app::expand::ExpandResult::rendered(&self) -> render::Rendered<'_>
+impl render::View for app::explain::Explanation
+pub fn app::explain::Explanation::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::find::FindResult
 pub fn app::find::FindResult::rendered(&self) -> render::Rendered<'_>
+impl render::View for app::health::HealthReport
+pub fn app::health::HealthReport::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::history::HistoryResult
 pub fn app::history::HistoryResult::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::map::MapResult
 pub fn app::map::MapResult::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::map::body::BodyMapResult
 pub fn app::map::body::BodyMapResult::rendered(&self) -> render::Rendered<'_>
+impl render::View for app::path::PathTrace
+pub fn app::path::PathTrace::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::refs::RefsResult
 pub fn app::refs::RefsResult::rendered(&self) -> render::Rendered<'_>
 impl render::View for app::tree::TreeView
@@ -87,10 +97,18 @@ impl render::View for app::views::locations::LocationView
 pub fn app::views::locations::LocationView::rendered(&self) -> render::Rendered<'_>
 pub fn render::capabilities_json(&render::Receipt<'_>, &app::capabilities::Capabilities<'_>) -> core::result::Result<alloc::string::String, render::Error>
 pub fn render::capabilities_text(&render::Receipt<'_>, &app::capabilities::Capabilities<'_>) -> alloc::string::String
+pub fn render::diagram_caveat(&app::diagram::DiagramView) -> core::option::Option<alloc::string::String>
+pub fn render::diagram_summary(&app::diagram::DiagramView) -> alloc::string::String
 pub fn render::expand_stderr_rows(&app::expand::ExpandResult) -> alloc::vec::Vec<alloc::string::String>
+pub fn render::html_document(&app::html::HtmlGraph) -> core::result::Result<alloc::string::String, render::Error>
+pub fn render::html_summary(&app::html::HtmlGraph) -> alloc::string::String
+pub fn render::index_json(&render::Receipt<'_>, &store::report::IndexReport) -> core::result::Result<alloc::string::String, render::Error>
+pub fn render::index_text(&store::report::IndexReport) -> alloc::string::String
 pub fn render::json(&render::Receipt<'_>, &impl render::View) -> core::result::Result<alloc::string::String, render::Error>
 pub fn render::lint_json(&render::Receipt<'_>, &app::lint::LintReport) -> core::result::Result<alloc::string::String, render::Error>
 pub fn render::lint_text(&render::Receipt<'_>, &app::lint::LintReport) -> alloc::string::String
+pub fn render::mermaid(&app::diagram::DiagramView) -> alloc::string::String
 pub fn render::receipt_lines(&render::Receipt<'_>, &str) -> alloc::vec::Vec<alloc::string::String>
+pub fn render::strip_fence(&str) -> alloc::string::String
 pub fn render::text(&render::Receipt<'_>, &impl render::View) -> alloc::string::String
 pub fn render::warmup_text(&app::warmup::WarmupReport) -> alloc::string::String

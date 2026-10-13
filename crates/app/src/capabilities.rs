@@ -8,6 +8,7 @@ use serde::{Serialize, Serializer};
 use store::CacheState;
 use syntax::Language;
 
+use crate::ops::limits;
 use crate::{CHECKS, Error, Session};
 
 /// The grammar cache field: the grammars are part of the binary, so no directory holds them.
@@ -48,27 +49,36 @@ pub const CAPS: [(&str, CapValue); 27] = [
     ("max_output_tokens", CapValue::Int(MAX_OUTPUT_TOKENS)),
     ("max_config_warnings", CapValue::Int(MAX_CONFIG_WARNINGS)),
     ("max_map_files", CapValue::Int(DEFAULT_MAX_FILES as u64)),
-    ("max_test_companions", CapValue::Int(5)),
-    ("test_companion_depth", CapValue::Int(2)),
-    ("default_find_limit", CapValue::Int(20)),
-    ("default_refs_limit", CapValue::Int(50)),
-    ("max_expand_symbols", CapValue::Int(10)),
-    ("default_explain_limit", CapValue::Int(20)),
-    ("default_cycle_limit", CapValue::Int(20)),
-    ("default_community_limit", CapValue::Int(20)),
-    ("default_health_limit", CapValue::Int(20)),
-    ("default_member_limit", CapValue::Int(12)),
-    ("default_community_resolution", CapValue::Float(1.0)),
-    ("default_context_lines", CapValue::Int(10)),
-    ("default_tree_depth", CapValue::Int(4)),
-    ("default_tree_entries", CapValue::Int(500)),
-    ("default_diagram_nodes", CapValue::Int(40)),
-    ("default_diagram_edges", CapValue::Int(40)),
-    ("default_html_nodes", CapValue::Int(200)),
-    ("default_html_edges", CapValue::Int(600)),
-    ("max_html_nodes", CapValue::Int(1000)),
-    ("max_html_edges", CapValue::Int(5000)),
-    ("max_path_visited", CapValue::Int(20_000)),
+    ("max_test_companions", int(limits::MAX_TEST_COMPANIONS)),
+    (
+        "test_companion_depth",
+        CapValue::Int(limits::TEST_COMPANION_DEPTH as u64),
+    ),
+    ("default_find_limit", int(limits::DEFAULT_FIND_LIMIT)),
+    ("default_refs_limit", int(limits::DEFAULT_REFS_LIMIT)),
+    ("max_expand_symbols", int(limits::DEFAULT_EXPAND_LIMIT)),
+    ("default_explain_limit", int(limits::DEFAULT_EXPLAIN_LIMIT)),
+    ("default_cycle_limit", int(limits::DEFAULT_CYCLE_LIMIT)),
+    (
+        "default_community_limit",
+        int(limits::DEFAULT_COMMUNITY_LIMIT),
+    ),
+    ("default_health_limit", int(limits::DEFAULT_HEALTH_LIMIT)),
+    ("default_member_limit", int(limits::DEFAULT_MEMBER_LIMIT)),
+    (
+        "default_community_resolution",
+        CapValue::Float(limits::DEFAULT_RESOLUTION),
+    ),
+    ("default_context_lines", int(limits::DEFAULT_CONTEXT_LINES)),
+    ("default_tree_depth", int(limits::DEFAULT_TREE_DEPTH)),
+    ("default_tree_entries", int(limits::DEFAULT_TREE_ENTRIES)),
+    ("default_diagram_nodes", int(limits::DEFAULT_DIAGRAM_NODES)),
+    ("default_diagram_edges", int(limits::DEFAULT_DIAGRAM_EDGES)),
+    ("default_html_nodes", int(limits::DEFAULT_HTML_NODES)),
+    ("default_html_edges", int(limits::DEFAULT_HTML_EDGES)),
+    ("max_html_nodes", int(limits::MAX_HTML_NODES)),
+    ("max_html_edges", int(limits::MAX_HTML_EDGES)),
+    ("max_path_visited", int(limits::DEFAULT_MAX_VISITED)),
 ];
 
 // The map default that effective_config and the max_map_files cap report.

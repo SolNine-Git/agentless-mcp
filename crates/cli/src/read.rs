@@ -3,7 +3,11 @@
 
 mod body;
 mod cycles;
+mod diagram;
+mod graph;
 mod history;
+mod html;
+mod index;
 mod map;
 mod refs;
 mod symbols;
@@ -17,7 +21,7 @@ use app::{IntArg, Services, Session};
 use render::{Receipt, View};
 
 use crate::Streams;
-use crate::args::{Arg, Namespace, Value};
+use crate::args::{Arg, Namespace, Value, float_text};
 use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, code_for, fail, write_answer};
 use crate::invocation::{ReadCall, RepoFlags, repo_flags};
 use crate::steps::{answer, opened};
@@ -27,7 +31,7 @@ type Step = fn(&ReadArgs<'_>, &Services, &mut Streams<'_>) -> u8;
 
 // The read subcommands that this build runs. Each one parses before it runs, so a subcommand
 // missing here still answers its help and its usage errors.
-const STEPS: [(&str, Step); 12] = [
+const STEPS: [(&str, Step); 19] = [
     ("map", map::map),
     ("tree", views::tree),
     ("skeleton", views::skeleton),
@@ -36,9 +40,16 @@ const STEPS: [(&str, Step); 12] = [
     ("find-symbol", symbols::find),
     ("refs", refs::refs),
     ("history", history::history),
+    ("explain", graph::explain),
+    ("path", graph::path),
     ("cycles", cycles::cycles),
+    ("communities", graph::communities),
+    ("diagram", diagram::diagram),
+    ("health", graph::health),
+    ("html", html::html),
     ("resolve-locs", views::resolve_locs),
     ("warmup", tools::warmup),
+    ("index", index::index),
     ("guide", tools::guide),
 ];
 
@@ -103,6 +114,12 @@ impl ReadArgs<'_> {
     // A switch that is true when given and unset, for the config to decide, when not.
     pub(crate) fn switch(&self, dest: &str) -> Option<bool> {
         self.flag(dest).then_some(true)
+    }
+
+    // A real-number parameter, unset unless given. The parse already checked its text.
+    pub(crate) fn float(&self, dest: &str) -> Option<f64> {
+        let text = self.text(dest)?;
+        Some(float_text(&text.text).expect("the parser accepts only a real number"))
     }
 }
 

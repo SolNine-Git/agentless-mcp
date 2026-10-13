@@ -121,6 +121,9 @@ pub struct Services {
     pub home: Option<OsString>,
     /// The cache root, or why the home directory that it needs is unknown.
     pub cache_root: Result<io::CacheRoot, io::HomeUnknown>,
+    /// The start-up `AGENTLESS_MCP_MAX_CACHE_BYTES` value, unparsed, which sets the index sweep's
+    /// ceiling.
+    pub max_cache_bytes: Option<OsString>,
     /// The time the clone index may spend.
     pub walk_budget: Duration,
     /// The wall and monotonic clocks.
@@ -139,6 +142,9 @@ impl Services {
             cwd: env.cwd.clone(),
             home: env.var("HOME").map(OsStr::to_os_string),
             cache_root: io::cache_root(|name| env.var(name).map(OsStr::to_os_string)),
+            max_cache_bytes: env
+                .var(store::MAX_CACHE_BYTES_VARIABLE)
+                .map(OsStr::to_os_string),
             walk_budget: WALK_BUDGET,
             clock: Arc::new(SystemClock),
             counter: Arc::new(Chars4),

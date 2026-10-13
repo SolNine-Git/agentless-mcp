@@ -3,13 +3,20 @@
 //! no I/O.
 
 mod capabilities;
+mod communities;
 mod count;
 mod cycles;
 mod envelope;
+mod explain;
+mod health;
 mod history;
+mod html;
+mod index;
 mod lint;
 mod map;
 mod map_body;
+mod mermaid;
+mod path;
 mod receipt;
 mod refs;
 mod skipped;
@@ -23,6 +30,9 @@ mod warmup;
 
 use app::{Capabilities, LintReport};
 
+pub use html::{html_document, html_summary};
+pub use index::{index_json, index_text};
+pub use mermaid::{diagram_caveat, diagram_summary, mermaid, strip_fence};
 pub use receipt::{Receipt, receipt_lines};
 pub use symbols::expand_stderr_rows;
 pub use text::one_line;

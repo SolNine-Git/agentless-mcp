@@ -7,13 +7,19 @@ mod budget;
 mod capabilities;
 mod cards;
 mod clock;
+mod communities;
 mod cycles;
+mod diagram;
+mod endpoints;
 mod env;
 mod error;
 mod expand;
+mod explain;
 mod find;
 mod guide;
+mod health;
 mod history;
+mod html;
 mod index;
 mod lint;
 mod map;
@@ -21,6 +27,7 @@ mod noted;
 pub mod ops;
 mod pairs;
 mod parallel;
+mod path;
 mod proposed;
 mod reading;
 mod refs;
@@ -54,15 +61,25 @@ pub use capabilities::{
 pub use cards::{RationaleNode, SymbolCard, cards_text, rationale_nodes, symbol_card};
 pub use checks::{CheckGap, Detail, Finding, Observed, PairFinding, Severity};
 pub use clock::{Clock, SystemClock};
+pub use communities::{CommunitiesRequest, CommunityReport, CommunityRow, communities};
 pub use cycles::{CycleReport, CycleRow, CyclesRequest, cycles};
+pub use diagram::{
+    ChartEdge, ChartGroup, ChartNode, DiagramRequest, DiagramView, Flowchart, diagram,
+};
 pub use env::{EnvConfig, Services, UnreadCwd, WALK_BUDGET};
 pub use error::Error;
 pub use expand::{ExpandRequest, ExpandResult, expand};
+pub use explain::{EdgeRow, ExplainRequest, Explanation, ImportRow, TierGroup, explain};
 pub use find::{FindRequest, FindResult, find};
 pub use guide::{guide_text, section_names, section_text, unknown_section};
+pub use health::{
+    DiscountedTier, HealthComplexity, HealthComplexityRow, HealthReport, HealthRequest,
+    HealthSymbol, health,
+};
 pub use history::{
     HistoryEntry, HistoryRequest, HistoryResult, ListEnd, history, history_entry_text,
 };
+pub use html::{HtmlEdge, HtmlGraph, HtmlNode, HtmlRequest, html};
 pub use index::{EvictionReport, IndexFailure, IndexReport, IndexRequest, IndexSkip, index};
 pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, lint};
 pub use map::{
@@ -70,6 +87,7 @@ pub use map::{
     map_rows_text,
 };
 pub use noted::Noted;
+pub use path::{PathHop, PathPolicy, PathRequest, PathTrace, path};
 pub use proposed::After;
 pub use reading::Reading;
 pub use refs::{

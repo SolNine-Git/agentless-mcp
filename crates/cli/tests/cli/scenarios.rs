@@ -70,9 +70,13 @@ fn every_scenario_answers_as_the_fixture() {
 // same directory (the D7 deviation).
 fn with_this_cache_file(outcome: Outcome) -> Outcome {
     Outcome {
-        out: outcome.out.replace("/<KEY>/tags.db", "/<KEY>/agentless.db"),
+        out: this_cache_file(&outcome.out),
         ..outcome
     }
+}
+
+fn this_cache_file(text: &str) -> String {
+    text.replace("/<KEY>/tags.db", "/<KEY>/agentless.db")
 }
 
 // The receipt's cache field names the cache file of each build, and warmup names the grammar
@@ -93,11 +97,30 @@ fn every_symbol_view_scenario_answers_as_the_fixture() {
 }
 
 fn without_cache_field(outcome: Outcome) -> Outcome {
-    let lines: Vec<String> = outcome.out.split('\n').map(masked).collect();
     Outcome {
-        out: lines.join("\n"),
+        out: masked_lines(&outcome.out),
         ..outcome
     }
+}
+
+// The diagram and the export put their receipt on stderr, and index names its cache file.
+#[test]
+fn every_graph_view_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("read_graph/scenarios", 74, without_cache_names);
+}
+
+fn without_cache_names(outcome: Outcome) -> Outcome {
+    let Outcome { out, err, code } = outcome;
+    Outcome {
+        out: this_cache_file(&masked_lines(&out)),
+        err: masked_lines(&err),
+        code,
+    }
+}
+
+fn masked_lines(text: &str) -> String {
+    let lines: Vec<String> = text.split('\n').map(masked).collect();
+    lines.join("\n")
 }
 
 fn masked(line: &str) -> String {

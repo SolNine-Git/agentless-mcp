@@ -16,7 +16,7 @@ use std::os::unix::ffi::OsStrExt;
 use app::IntArg;
 use app::ops::{Arity, Op};
 
-pub(crate) use declared::{TEXT, action, help_action};
+pub(crate) use declared::{TEXT, action, float_text, help_action};
 pub(crate) use parse::parse;
 
 // One command-line argument: its text for matching and messages, and its bytes for paths.

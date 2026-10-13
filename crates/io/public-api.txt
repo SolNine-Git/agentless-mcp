@@ -646,6 +646,7 @@ pub fn io::os_error_line(&core::io::error::Error) -> alloc::string::String
 pub fn io::parse_config(&[(text::code_point_string::CodePointString, json::parse::JsonValue)], core::option::Option<std::path::PathBuf>) -> io::ProjectConfig
 pub fn io::read_bounded(&std::path::Path) -> core::result::Result<alloc::vec::Vec<u8>, io::Skipped>
 pub fn io::remove_file(&std::path::Path) -> core::io::error::Result<bool>
+pub fn io::replace_file(&std::path::Path, &[u8]) -> core::io::error::Result<()>
 pub fn io::resolve(&std::path::Path) -> core::io::error::Result<std::path::PathBuf>
 pub fn io::run(&io::Spec) -> io::Outcome
 pub fn io::spawn_or_run<'scope, T, F>(&'scope std::thread::scoped::Scope<'scope, '_>, &'scope F) -> io::Started<'scope, T> where F: core::ops::function::Fn() -> T + core::marker::Sync, T: core::marker::Send + 'scope
