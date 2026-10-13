@@ -1,3 +1,4 @@
+use crate::extraction::{ImportBinding, ImportRule, RoleRule, SymbolRule};
 use crate::rules::{BindingRule, Cond, NameRule, OwnerRule, SkipRule};
 
 /// How much evidence stands behind a language's tables: tier one has the measurement tables.
@@ -61,6 +62,38 @@ pub(crate) struct Table {
     pub(crate) probe: &'static str,
     pub(crate) comments: Names,
     pub(crate) measured: Option<&'static Measured>,
+    pub(crate) extraction: &'static ExtractionTable,
+}
+
+pub(crate) struct ExtractionTable {
+    pub(crate) prefix: &'static str,
+    pub(crate) symbols: SymbolRule,
+    pub(crate) imports: ImportRule,
+    pub(crate) roles: RoleRule,
+    pub(crate) identifiers: Names,
+    pub(crate) bodies: Names,
+    pub(crate) skeleton_functions: Names,
+    pub(crate) builtins: Names,
+    pub(crate) declarations: Option<&'static DeclarationTable>,
+}
+
+pub(crate) struct DeclarationTable {
+    pub(crate) functions: Names,
+    pub(crate) classes: Names,
+    pub(crate) imports: Names,
+    pub(crate) name_field: Option<&'static str>,
+    pub(crate) import_path_field: Option<&'static str>,
+    pub(crate) import_path_kind: &'static str,
+    pub(crate) names: Names,
+    pub(crate) class_bodies: Names,
+    pub(crate) signature_from_header: bool,
+    pub(crate) receiver_field: Option<&'static str>,
+    pub(crate) import_binding: ImportBinding,
+    pub(crate) modifiers: Names,
+    pub(crate) bindings: Names,
+    pub(crate) function_values: Names,
+    pub(crate) constants: Names,
+    pub(crate) constant_keywords: Names,
 }
 
 pub(crate) struct Measured {

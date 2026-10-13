@@ -46,3 +46,28 @@ indent_blocks = []
 [clones.literals]
 "NUM" = ["number"]
 "STR" = ["ansi_c_string", "heredoc_body", "raw_string", "string", "translated_string"]
+
+[extraction]
+prefix = "sh"
+symbols = "generic"
+imports = "source"
+roles = "plain"
+identifiers = ["variable_name", "word"]
+bodies = ["compound_statement"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_definition"]
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

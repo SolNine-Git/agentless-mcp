@@ -65,3 +65,35 @@ indent_blocks = []
 "NONE" = ["null", "undefined"]
 "NUM" = ["number"]
 "STR" = ["regex", "string", "template_string"]
+
+[extraction]
+prefix = "js"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = [
+    "identifier",
+    "property_identifier",
+    "shorthand_property_identifier",
+    "shorthand_property_identifier_pattern",
+    "type_identifier",
+]
+bodies = ["statement_block"]
+skeleton_functions = ["arrow_function", "function_expression", "method_definition"]
+
+[extraction.declarations]
+functions = ["function_declaration", "generator_function_declaration", "method_definition"]
+classes = ["class_declaration"]
+imports = ["import_statement"]
+name_field = "name"
+import_path_field = "source"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "specifiers"
+modifiers = ["accessibility_modifier"]
+bindings = ["variable_declarator"]
+function_values = ["arrow_function", "function", "function_expression", "generator_function"]
+constants = []
+constant_keywords = []

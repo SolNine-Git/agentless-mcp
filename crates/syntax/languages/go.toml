@@ -41,3 +41,29 @@ indent_blocks = []
 "INT" = ["int_literal"]
 "NONE" = ["nil"]
 "STR" = ["interpreted_string_literal", "raw_string_literal", "rune_literal"]
+
+[extraction]
+prefix = "go"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["field_identifier", "identifier", "package_identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = ["func_literal"]
+
+[extraction.declarations]
+functions = ["function_declaration", "method_declaration"]
+classes = ["type_spec"]
+imports = ["import_spec"]
+name_field = "name"
+import_path_kind = "interpreted_string_literal"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+receiver_field = "receiver"
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

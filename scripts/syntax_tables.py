@@ -11,16 +11,23 @@ tests/unit/test_rust_language_tables.py runs the same comparison under pytest.
 import json
 import sys
 from collections.abc import Callable, Iterable, Mapping
+from functools import partial
 from pathlib import Path
 
 from fixture_files import write_or_check_files
 
-from agentless_mcp.core import clones, complexity, grammars, normalize
+from agentless_mcp.core import clones, complexity, extractor, grammars, normalize, skeleton
 from agentless_mcp.core.extractor import (
+    BODY_BLOCK_NODE_TYPES,
     COMMENT_NODE_TYPES,
     INDENT_BLOCK_NODE_TYPES,
+    LANGUAGE_CONFIGS,
+    SCOPE_ANALYSED_LANGUAGES,
+    LanguageConfig,
     TreeSitterExtractor,
+    identifier_node_types,
 )
+from agentless_mcp.core.symbols import LANGUAGE_PREFIXES
 
 ROOT = Path(__file__).resolve().parents[1]
 LANGUAGES = ROOT / "crates" / "syntax" / "languages"
@@ -52,6 +59,27 @@ SLOC_RULES: Mapping[Callable[..., object], str] = {
     complexity._python_sloc_lines: "python_tokens",
 }
 SKIP_RULES: Mapping[Callable[..., object], str] = {clones._is_type_checking_block: "type_checking"}
+# Each extraction handler of the Python registry, by the name of the Rust rule that ports it.
+SYMBOL_RULES: Mapping[Callable[..., object], str] = {
+    TreeSitterExtractor._extract_generic_symbols: "generic",
+    TreeSitterExtractor._extract_python_symbols: "python",
+    TreeSitterExtractor._extract_rust_symbols: "rust",
+    TreeSitterExtractor._extract_c_symbols: "c_declarators",
+    TreeSitterExtractor._extract_lua_symbols: "lua",
+    TreeSitterExtractor._extract_data_symbols: "data_keys",
+    TreeSitterExtractor._extract_hcl_symbols: "hcl",
+    TreeSitterExtractor._extract_sql_symbols: "sql",
+}
+IMPORT_RULES: Mapping[Callable[..., object], str] = {
+    TreeSitterExtractor._extract_generic_imports: "generic",
+    TreeSitterExtractor._extract_python_imports: "python",
+    TreeSitterExtractor._extract_rust_imports: "rust",
+    TreeSitterExtractor._extract_c_imports: "include",
+    TreeSitterExtractor._extract_require_imports: "require",
+    TreeSitterExtractor._extract_bash_imports: "source",
+    TreeSitterExtractor._no_imports: "none",
+}
+REGISTRY = TreeSitterExtractor()._registry
 
 
 def main() -> int:
@@ -78,6 +106,7 @@ def render(language: str) -> str:
     ]
     if language in complexity.RULES:
         lines += measured(language)
+    lines += extraction(language)
     return "\n".join(lines) + "\n"
 
 
@@ -168,6 +197,68 @@ def clone_tables(language: str) -> list[str]:
     return lines + table(
         "clones.literals", {token: array(kinds) for token, kinds in classes.items()}
     )
+
+
+def extraction(language: str) -> list[str]:
+    roles = "python" if language in SCOPE_ANALYSED_LANGUAGES else "plain"
+    lines = [
+        "",
+        "[extraction]",
+        f"prefix = {string(LANGUAGE_PREFIXES[language])}",
+        f"symbols = {string(SYMBOL_RULES[handler(REGISTRY[language].extract_symbols)])}",
+        f"imports = {string(IMPORT_RULES[handler(REGISTRY[language].extract_imports)])}",
+        f"roles = {string(roles)}",
+        f"identifiers = {array(identifier_node_types(language))}",
+        f"bodies = {array(present(language, BODY_BLOCK_NODE_TYPES))}",
+        f"skeleton_functions = {array(skeleton._EXTRA_FUNCTION_NODE_TYPES.get(language, ()))}",
+    ]
+    # The Python role pass is the one reader of the builtins.
+    if roles == "python":
+        lines.append(f"builtins = {array(extractor._PYTHON_ALWAYS_BOUND)}")
+    config = LANGUAGE_CONFIGS.get(language)
+    return lines + (declarations(config) if config is not None else [])
+
+
+def handler(bound: Callable[..., object]) -> Callable[..., object]:
+    """Return the function behind a registry entry: a bound method, or a partial of one."""
+    inner = bound.func if isinstance(bound, partial) else bound
+    return getattr(inner, "__func__", inner)
+
+
+def declarations(config: LanguageConfig) -> list[str]:
+    # Raw rows: a listed kind that the grammar lacks still changes the visibility rule.
+    lines = [
+        "",
+        "[extraction.declarations]",
+        f"functions = {array(config.function_node_types)}",
+        f"classes = {array(config.class_node_types)}",
+        f"imports = {array(config.import_node_types)}",
+    ]
+    lines += optional_string("name_field", config.name_field)
+    lines += optional_string("import_path_field", config.import_path_field)
+    if config.import_path_node_type is None:
+        message = "an import path kind of None has no Rust form"
+        raise ValueError(message)
+    lines += [
+        f"import_path_kind = {string(config.import_path_node_type)}",
+        f"names = {array(config.name_node_types)}",
+        f"class_bodies = {array(config.class_body_node_types)}",
+        f"signature_from_header = {json.dumps(config.signature_from_header)}",
+    ]
+    lines += optional_string("receiver_field", config.receiver_field)
+    return [
+        *lines,
+        f"import_binding = {string(config.import_binding.value)}",
+        f"modifiers = {array(config.modifier_node_types)}",
+        f"bindings = {array(config.binding_node_types)}",
+        f"function_values = {array(config.function_value_node_types)}",
+        f"constants = {array(config.constant_node_types)}",
+        f"constant_keywords = {array(config.constant_modifier_keywords)}",
+    ]
+
+
+def optional_string(key: str, value: str | None) -> list[str]:
+    return [] if value is None else [f"{key} = {string(value)}"]
 
 
 def table(name: str, entries: Mapping[str, str]) -> list[str]:

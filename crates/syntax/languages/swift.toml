@@ -4,3 +4,28 @@ extensions = [".swift"]
 probe = "let x = 1\n"
 probe_root = "source_file"
 comments = ["comment"]
+
+[extraction]
+prefix = "swift"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["simple_identifier", "type_identifier"]
+bodies = ["function_body"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_declaration", "init_declaration", "protocol_function_declaration"]
+classes = ["class_declaration", "protocol_declaration"]
+imports = ["import_declaration"]
+name_field = "name"
+import_path_kind = "identifier"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = true
+import_binding = "module_object"
+modifiers = ["modifiers"]
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

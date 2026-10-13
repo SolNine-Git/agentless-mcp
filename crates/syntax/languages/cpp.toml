@@ -56,3 +56,12 @@ indent_blocks = []
 "NONE" = ["null"]
 "NUM" = ["number_literal"]
 "STR" = ["char_literal", "raw_string_literal", "string_literal", "system_lib_string"]
+
+[extraction]
+prefix = "cpp"
+symbols = "c_declarators"
+imports = "include"
+roles = "plain"
+identifiers = ["field_identifier", "identifier", "namespace_identifier", "type_identifier"]
+bodies = ["compound_statement"]
+skeleton_functions = ["function_definition"]

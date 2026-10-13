@@ -1,0 +1,422 @@
+pub mod facts
+pub enum facts::RationaleKind
+pub facts::RationaleKind::Citation
+pub facts::RationaleKind::Hack
+pub facts::RationaleKind::Note
+pub facts::RationaleKind::Todo
+pub facts::RationaleKind::Why
+impl facts::RationaleKind
+pub fn facts::RationaleKind::as_str(self) -> &'static str
+impl core::clone::Clone for facts::RationaleKind
+pub fn facts::RationaleKind::clone(&self) -> Self
+impl core::cmp::Eq for facts::RationaleKind
+impl core::cmp::PartialEq for facts::RationaleKind
+pub fn facts::RationaleKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::RationaleKind
+pub fn facts::RationaleKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for facts::RationaleKind
+pub fn facts::RationaleKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for facts::RationaleKind
+impl core::marker::StructuralPartialEq for facts::RationaleKind
+impl serde_core::ser::Serialize for facts::RationaleKind
+pub fn facts::RationaleKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::RationaleKind
+pub fn facts::RationaleKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::RationaleKind
+impl core::marker::Send for facts::RationaleKind
+impl core::marker::Sync for facts::RationaleKind
+impl core::marker::Unpin for facts::RationaleKind
+impl core::marker::UnsafeUnpin for facts::RationaleKind
+impl core::panic::unwind_safe::RefUnwindSafe for facts::RationaleKind
+impl core::panic::unwind_safe::UnwindSafe for facts::RationaleKind
+pub enum facts::Role
+pub facts::Role::Attribute
+pub facts::Role::Binding
+pub facts::Role::Builtin
+pub facts::Role::Declaration
+pub facts::Role::Import
+pub facts::Role::Keyword
+pub facts::Role::Local
+pub facts::Role::ModuleAttribute
+pub facts::Role::ModuleQualifier
+pub facts::Role::Reference
+impl facts::Role
+pub fn facts::Role::as_str(self) -> &'static str
+impl core::clone::Clone for facts::Role
+pub fn facts::Role::clone(&self) -> Self
+impl core::cmp::Eq for facts::Role
+impl core::cmp::PartialEq for facts::Role
+pub fn facts::Role::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Role
+pub fn facts::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for facts::Role
+pub fn facts::Role::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for facts::Role
+impl core::marker::StructuralPartialEq for facts::Role
+impl serde_core::ser::Serialize for facts::Role
+pub fn facts::Role::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Role
+pub fn facts::Role::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Role
+impl core::marker::Send for facts::Role
+impl core::marker::Sync for facts::Role
+impl core::marker::Unpin for facts::Role
+impl core::marker::UnsafeUnpin for facts::Role
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Role
+impl core::panic::unwind_safe::UnwindSafe for facts::Role
+pub enum facts::StableIdError
+pub facts::StableIdError::Malformed
+pub facts::StableIdError::Malformed::text: alloc::string::String
+pub facts::StableIdError::RationaleHandle
+pub facts::StableIdError::RationaleHandle::text: alloc::string::String
+impl core::clone::Clone for facts::StableIdError
+pub fn facts::StableIdError::clone(&self) -> Self
+impl core::cmp::Eq for facts::StableIdError
+impl core::cmp::PartialEq for facts::StableIdError
+pub fn facts::StableIdError::eq(&self, &Self) -> bool
+impl core::error::Error for facts::StableIdError
+impl core::fmt::Debug for facts::StableIdError
+pub fn facts::StableIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for facts::StableIdError
+pub fn facts::StableIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::StableIdError
+impl core::marker::Freeze for facts::StableIdError
+impl core::marker::Send for facts::StableIdError
+impl core::marker::Sync for facts::StableIdError
+impl core::marker::Unpin for facts::StableIdError
+impl core::marker::UnsafeUnpin for facts::StableIdError
+impl core::panic::unwind_safe::RefUnwindSafe for facts::StableIdError
+impl core::panic::unwind_safe::UnwindSafe for facts::StableIdError
+pub enum facts::SymbolKind
+pub facts::SymbolKind::Class
+pub facts::SymbolKind::Constant
+pub facts::SymbolKind::Dataclass
+pub facts::SymbolKind::Decorator
+pub facts::SymbolKind::Enum
+pub facts::SymbolKind::Function
+pub facts::SymbolKind::Method
+pub facts::SymbolKind::Protocol
+pub facts::SymbolKind::TypeAlias
+impl facts::SymbolKind
+pub const facts::SymbolKind::ALL: [facts::SymbolKind; 9]
+pub fn facts::SymbolKind::as_str(self) -> &'static str
+pub fn facts::SymbolKind::from_name(&str) -> core::option::Option<facts::SymbolKind>
+impl core::clone::Clone for facts::SymbolKind
+pub fn facts::SymbolKind::clone(&self) -> Self
+impl core::cmp::Eq for facts::SymbolKind
+impl core::cmp::PartialEq for facts::SymbolKind
+pub fn facts::SymbolKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::SymbolKind
+pub fn facts::SymbolKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for facts::SymbolKind
+pub fn facts::SymbolKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for facts::SymbolKind
+impl core::marker::StructuralPartialEq for facts::SymbolKind
+impl serde_core::ser::Serialize for facts::SymbolKind
+pub fn facts::SymbolKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::SymbolKind
+pub fn facts::SymbolKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::SymbolKind
+impl core::marker::Send for facts::SymbolKind
+impl core::marker::Sync for facts::SymbolKind
+impl core::marker::Unpin for facts::SymbolKind
+impl core::marker::UnsafeUnpin for facts::SymbolKind
+impl core::panic::unwind_safe::RefUnwindSafe for facts::SymbolKind
+impl core::panic::unwind_safe::UnwindSafe for facts::SymbolKind
+pub struct facts::Facts
+pub facts::Facts::errors: alloc::vec::Vec<kernel::span::Span>
+pub facts::Facts::imports: alloc::vec::Vec<facts::Import>
+pub facts::Facts::refs: alloc::vec::Vec<facts::Ref>
+pub facts::Facts::symbols: alloc::vec::Vec<facts::Symbol>
+impl core::clone::Clone for facts::Facts
+pub fn facts::Facts::clone(&self) -> Self
+impl core::cmp::Eq for facts::Facts
+impl core::cmp::PartialEq for facts::Facts
+pub fn facts::Facts::eq(&self, &Self) -> bool
+impl core::default::Default for facts::Facts
+pub fn facts::Facts::default() -> Self
+impl core::fmt::Debug for facts::Facts
+pub fn facts::Facts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Facts
+impl serde_core::ser::Serialize for facts::Facts
+pub fn facts::Facts::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Facts
+pub fn facts::Facts::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Facts
+impl core::marker::Send for facts::Facts
+impl core::marker::Sync for facts::Facts
+impl core::marker::Unpin for facts::Facts
+impl core::marker::UnsafeUnpin for facts::Facts
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Facts
+impl core::panic::unwind_safe::UnwindSafe for facts::Facts
+pub struct facts::FileSymbols<'a>
+pub facts::FileSymbols::language: syntax::language::Language
+pub facts::FileSymbols::symbols: &'a [facts::Symbol]
+impl<'a> core::clone::Clone for facts::FileSymbols<'a>
+pub fn facts::FileSymbols<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for facts::FileSymbols<'a>
+pub fn facts::FileSymbols<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for facts::FileSymbols<'a>
+impl<'a> core::marker::Freeze for facts::FileSymbols<'a>
+impl<'a> core::marker::Send for facts::FileSymbols<'a>
+impl<'a> core::marker::Sync for facts::FileSymbols<'a>
+impl<'a> core::marker::Unpin for facts::FileSymbols<'a>
+impl<'a> core::marker::UnsafeUnpin for facts::FileSymbols<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for facts::FileSymbols<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for facts::FileSymbols<'a>
+pub struct facts::Import
+pub facts::Import::alias: alloc::string::String
+pub facts::Import::binds_all: bool
+pub facts::Import::is_relative: bool
+pub facts::Import::line: u32
+pub facts::Import::local_names: alloc::vec::Vec<alloc::string::String>
+pub facts::Import::module: alloc::string::String
+pub facts::Import::names: alloc::vec::Vec<alloc::string::String>
+pub facts::Import::relative_level: u32
+impl facts::Import
+pub fn facts::Import::bound_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &str)>
+impl core::clone::Clone for facts::Import
+pub fn facts::Import::clone(&self) -> Self
+impl core::cmp::Eq for facts::Import
+impl core::cmp::PartialEq for facts::Import
+pub fn facts::Import::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Import
+pub fn facts::Import::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Import
+impl serde_core::ser::Serialize for facts::Import
+pub fn facts::Import::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Import
+pub fn facts::Import::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Import
+impl core::marker::Send for facts::Import
+impl core::marker::Sync for facts::Import
+impl core::marker::Unpin for facts::Import
+impl core::marker::UnsafeUnpin for facts::Import
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Import
+impl core::panic::unwind_safe::UnwindSafe for facts::Import
+pub struct facts::LocResolution
+pub facts::LocResolution::intervals: alloc::vec::Vec<(u32, u32)>
+pub facts::LocResolution::spans: alloc::vec::Vec<(u32, u32)>
+pub facts::LocResolution::stable_ids: alloc::vec::Vec<facts::StableId>
+pub facts::LocResolution::unrecognized: alloc::vec::Vec<facts::UnrecognizedLoc>
+impl core::clone::Clone for facts::LocResolution
+pub fn facts::LocResolution::clone(&self) -> Self
+impl core::cmp::Eq for facts::LocResolution
+impl core::cmp::PartialEq for facts::LocResolution
+pub fn facts::LocResolution::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::LocResolution
+pub fn facts::LocResolution::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::LocResolution
+impl core::marker::Freeze for facts::LocResolution
+impl core::marker::Send for facts::LocResolution
+impl core::marker::Sync for facts::LocResolution
+impl core::marker::Unpin for facts::LocResolution
+impl core::marker::UnsafeUnpin for facts::LocResolution
+impl core::panic::unwind_safe::RefUnwindSafe for facts::LocResolution
+impl core::panic::unwind_safe::UnwindSafe for facts::LocResolution
+pub struct facts::LocTarget<'a>
+pub facts::LocTarget::file: core::option::Option<facts::FileSymbols<'a>>
+pub facts::LocTarget::path: &'a str
+pub facts::LocTarget::total_lines: u32
+impl<'a> core::clone::Clone for facts::LocTarget<'a>
+pub fn facts::LocTarget<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for facts::LocTarget<'a>
+pub fn facts::LocTarget<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for facts::LocTarget<'a>
+impl<'a> core::marker::Freeze for facts::LocTarget<'a>
+impl<'a> core::marker::Send for facts::LocTarget<'a>
+impl<'a> core::marker::Sync for facts::LocTarget<'a>
+impl<'a> core::marker::Unpin for facts::LocTarget<'a>
+impl<'a> core::marker::UnsafeUnpin for facts::LocTarget<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for facts::LocTarget<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for facts::LocTarget<'a>
+pub struct facts::OutsideFile
+pub facts::OutsideFile::requested: alloc::vec::Vec<(u32, u32)>
+pub facts::OutsideFile::total: u32
+impl core::clone::Clone for facts::OutsideFile
+pub fn facts::OutsideFile::clone(&self) -> Self
+impl core::cmp::Eq for facts::OutsideFile
+impl core::cmp::PartialEq for facts::OutsideFile
+pub fn facts::OutsideFile::eq(&self, &Self) -> bool
+impl core::error::Error for facts::OutsideFile
+impl core::fmt::Debug for facts::OutsideFile
+pub fn facts::OutsideFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for facts::OutsideFile
+pub fn facts::OutsideFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::OutsideFile
+impl core::marker::Freeze for facts::OutsideFile
+impl core::marker::Send for facts::OutsideFile
+impl core::marker::Sync for facts::OutsideFile
+impl core::marker::Unpin for facts::OutsideFile
+impl core::marker::UnsafeUnpin for facts::OutsideFile
+impl core::panic::unwind_safe::RefUnwindSafe for facts::OutsideFile
+impl core::panic::unwind_safe::UnwindSafe for facts::OutsideFile
+pub struct facts::Rationale
+pub facts::Rationale::citations: alloc::vec::Vec<alloc::string::String>
+pub facts::Rationale::duplicate_index: u32
+pub facts::Rationale::kind: facts::RationaleKind
+pub facts::Rationale::line: u32
+pub facts::Rationale::text: alloc::string::String
+impl core::clone::Clone for facts::Rationale
+pub fn facts::Rationale::clone(&self) -> Self
+impl core::cmp::Eq for facts::Rationale
+impl core::cmp::PartialEq for facts::Rationale
+pub fn facts::Rationale::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Rationale
+pub fn facts::Rationale::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Rationale
+impl serde_core::ser::Serialize for facts::Rationale
+pub fn facts::Rationale::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Rationale
+pub fn facts::Rationale::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Rationale
+impl core::marker::Send for facts::Rationale
+impl core::marker::Sync for facts::Rationale
+impl core::marker::Unpin for facts::Rationale
+impl core::marker::UnsafeUnpin for facts::Rationale
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Rationale
+impl core::panic::unwind_safe::UnwindSafe for facts::Rationale
+pub struct facts::Ref
+pub facts::Ref::line: u32
+pub facts::Ref::name: alloc::string::String
+pub facts::Ref::qualifier: alloc::string::String
+pub facts::Ref::role: facts::Role
+impl facts::Ref
+pub fn facts::Ref::is_reference(&self) -> bool
+pub fn facts::Ref::is_resolvable(&self) -> bool
+impl core::clone::Clone for facts::Ref
+pub fn facts::Ref::clone(&self) -> Self
+impl core::cmp::Eq for facts::Ref
+impl core::cmp::PartialEq for facts::Ref
+pub fn facts::Ref::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Ref
+pub fn facts::Ref::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Ref
+impl serde_core::ser::Serialize for facts::Ref
+pub fn facts::Ref::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Ref
+pub fn facts::Ref::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Ref
+impl core::marker::Send for facts::Ref
+impl core::marker::Sync for facts::Ref
+impl core::marker::Unpin for facts::Ref
+impl core::marker::UnsafeUnpin for facts::Ref
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Ref
+impl core::panic::unwind_safe::UnwindSafe for facts::Ref
+pub struct facts::SkeletonOptions
+pub facts::SkeletonOptions::docstrings: bool
+pub facts::SkeletonOptions::number_lines: bool
+impl core::clone::Clone for facts::SkeletonOptions
+pub fn facts::SkeletonOptions::clone(&self) -> Self
+impl core::cmp::Eq for facts::SkeletonOptions
+impl core::cmp::PartialEq for facts::SkeletonOptions
+pub fn facts::SkeletonOptions::eq(&self, &Self) -> bool
+impl core::default::Default for facts::SkeletonOptions
+pub fn facts::SkeletonOptions::default() -> Self
+impl core::fmt::Debug for facts::SkeletonOptions
+pub fn facts::SkeletonOptions::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for facts::SkeletonOptions
+impl core::marker::StructuralPartialEq for facts::SkeletonOptions
+impl core::marker::Freeze for facts::SkeletonOptions
+impl core::marker::Send for facts::SkeletonOptions
+impl core::marker::Sync for facts::SkeletonOptions
+impl core::marker::Unpin for facts::SkeletonOptions
+impl core::marker::UnsafeUnpin for facts::SkeletonOptions
+impl core::panic::unwind_safe::RefUnwindSafe for facts::SkeletonOptions
+impl core::panic::unwind_safe::UnwindSafe for facts::SkeletonOptions
+pub struct facts::StableId
+impl facts::StableId
+pub fn facts::StableId::new(&str, &str, &str) -> facts::StableId
+pub fn facts::StableId::of(syntax::language::Language, &str, &facts::Symbol) -> facts::StableId
+pub fn facts::StableId::path(&self) -> &str
+pub fn facts::StableId::prefix(&self) -> &str
+pub fn facts::StableId::qualname(&self) -> &str
+impl core::clone::Clone for facts::StableId
+pub fn facts::StableId::clone(&self) -> Self
+impl core::cmp::Eq for facts::StableId
+impl core::cmp::Ord for facts::StableId
+pub fn facts::StableId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for facts::StableId
+pub fn facts::StableId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for facts::StableId
+pub fn facts::StableId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for facts::StableId
+pub fn facts::StableId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for facts::StableId
+pub fn facts::StableId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for facts::StableId
+pub fn facts::StableId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for facts::StableId
+impl core::str::traits::FromStr for facts::StableId
+pub type facts::StableId::Err = facts::StableIdError
+pub fn facts::StableId::from_str(&str) -> core::result::Result<facts::StableId, facts::StableIdError>
+impl core::marker::Freeze for facts::StableId
+impl core::marker::Send for facts::StableId
+impl core::marker::Sync for facts::StableId
+impl core::marker::Unpin for facts::StableId
+impl core::marker::UnsafeUnpin for facts::StableId
+impl core::panic::unwind_safe::RefUnwindSafe for facts::StableId
+impl core::panic::unwind_safe::UnwindSafe for facts::StableId
+pub struct facts::Symbol
+pub facts::Symbol::bases: alloc::vec::Vec<alloc::string::String>
+pub facts::Symbol::duplicate_index: u32
+pub facts::Symbol::end_line: u32
+pub facts::Symbol::is_public: bool
+pub facts::Symbol::kind: facts::SymbolKind
+pub facts::Symbol::line: u32
+pub facts::Symbol::name: alloc::string::String
+pub facts::Symbol::parent: alloc::string::String
+pub facts::Symbol::rationales: alloc::vec::Vec<facts::Rationale>
+pub facts::Symbol::signature: alloc::string::String
+impl facts::Symbol
+pub fn facts::Symbol::id_qualname(&self) -> alloc::string::String
+impl facts::Symbol
+pub fn facts::Symbol::qualname(&self) -> alloc::string::String
+impl core::clone::Clone for facts::Symbol
+pub fn facts::Symbol::clone(&self) -> Self
+impl core::cmp::Eq for facts::Symbol
+impl core::cmp::PartialEq for facts::Symbol
+pub fn facts::Symbol::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::Symbol
+pub fn facts::Symbol::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::Symbol
+impl serde_core::ser::Serialize for facts::Symbol
+pub fn facts::Symbol::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for facts::Symbol
+pub fn facts::Symbol::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for facts::Symbol
+impl core::marker::Send for facts::Symbol
+impl core::marker::Sync for facts::Symbol
+impl core::marker::Unpin for facts::Symbol
+impl core::marker::UnsafeUnpin for facts::Symbol
+impl core::panic::unwind_safe::RefUnwindSafe for facts::Symbol
+impl core::panic::unwind_safe::UnwindSafe for facts::Symbol
+pub struct facts::UnrecognizedLoc
+pub facts::UnrecognizedLoc::loc: alloc::string::String
+pub facts::UnrecognizedLoc::reason: alloc::string::String
+impl core::clone::Clone for facts::UnrecognizedLoc
+pub fn facts::UnrecognizedLoc::clone(&self) -> Self
+impl core::cmp::Eq for facts::UnrecognizedLoc
+impl core::cmp::PartialEq for facts::UnrecognizedLoc
+pub fn facts::UnrecognizedLoc::eq(&self, &Self) -> bool
+impl core::fmt::Debug for facts::UnrecognizedLoc
+pub fn facts::UnrecognizedLoc::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for facts::UnrecognizedLoc
+impl core::marker::Freeze for facts::UnrecognizedLoc
+impl core::marker::Send for facts::UnrecognizedLoc
+impl core::marker::Sync for facts::UnrecognizedLoc
+impl core::marker::Unpin for facts::UnrecognizedLoc
+impl core::marker::UnsafeUnpin for facts::UnrecognizedLoc
+impl core::panic::unwind_safe::RefUnwindSafe for facts::UnrecognizedLoc
+impl core::panic::unwind_safe::UnwindSafe for facts::UnrecognizedLoc
+pub const facts::DEFAULT_CONTEXT_LINES: u32
+pub fn facts::base_name(&str) -> &str
+pub fn facts::extract(&syntax::parsed::Parsed) -> facts::Facts
+pub fn facts::line_count(&str) -> u32
+pub fn facts::line_prefix(u32) -> alloc::string::String
+pub fn facts::rationale_handle(syntax::language::Language, &str, &facts::Symbol, &facts::Rationale) -> alloc::string::String
+pub fn facts::resolve_locs(&[alloc::string::String], &facts::LocTarget<'_>, u32) -> facts::LocResolution
+pub fn facts::skeletonize(&syntax::parsed::Parsed, facts::SkeletonOptions) -> alloc::string::String
+pub fn facts::slice_lines(&str, &[(u32, u32)], &[facts::Symbol]) -> core::result::Result<alloc::string::String, facts::OutsideFile>
+pub fn facts::split_ordinal(&str) -> (&str, u32)
+pub fn facts::unparsed_mentions(&str, &[kernel::span::Span], &str) -> alloc::vec::Vec<u32>

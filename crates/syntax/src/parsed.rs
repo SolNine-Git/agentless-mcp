@@ -10,6 +10,14 @@ use crate::language::{FieldId, KindId, KindSet, Language};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(pub(crate) u32);
 
+impl NodeId {
+    /// Return the node's position in document order, 0 for the root.
+    #[must_use]
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// A position in the source: a zero-based row, and a column in bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {

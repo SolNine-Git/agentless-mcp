@@ -4,3 +4,28 @@ extensions = [".php"]
 probe = "<?php\n$x = 1;\n"
 probe_root = "program"
 comments = ["comment"]
+
+[extraction]
+prefix = "php"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["name"]
+bodies = ["compound_statement"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_definition", "method_declaration"]
+classes = ["class_declaration", "enum_declaration", "interface_declaration", "trait_declaration"]
+imports = ["namespace_use_declaration"]
+name_field = "name"
+import_path_kind = "qualified_name"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "last_segment"
+modifiers = ["visibility_modifier"]
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

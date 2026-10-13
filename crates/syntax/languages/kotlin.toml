@@ -4,3 +4,27 @@ extensions = [".kt", ".kts"]
 probe = "val x = 1\n"
 probe_root = "source_file"
 comments = ["line_comment"]
+
+[extraction]
+prefix = "kt"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["simple_identifier", "type_identifier"]
+bodies = ["function_body"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_declaration"]
+classes = ["class_declaration", "object_declaration"]
+imports = ["import_header"]
+import_path_kind = "identifier"
+names = ["simple_identifier", "type_identifier"]
+class_bodies = ["class_body"]
+signature_from_header = true
+import_binding = "last_segment"
+modifiers = ["modifiers"]
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

@@ -35,9 +35,12 @@ fn write_all(root: &Path, dir: &str, files: Files) -> Result<(), Failure> {
     Ok(())
 }
 
+// The digest covers the formatted tables, the bytes that the syntax crate compiles.
 fn fresh_syntax(root: &Path) -> Result<Files, Failure> {
     let module = syntax::module(&syntax::read(root)?).map_err(Failure::Gate)?;
-    formatted(root, vec![("languages.rs", module)])
+    let tables = formatted(root, vec![("languages.rs", module)])?;
+    let digest = formatted(root, vec![("digest.rs", syntax::digest_module(&tables))])?;
+    Ok([tables, digest].concat())
 }
 
 fn fresh(root: &Path) -> Result<Files, Failure> {

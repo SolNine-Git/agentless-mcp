@@ -59,3 +59,28 @@ indent_blocks = []
 ]
 "NONE" = ["null_literal"]
 "STR" = ["character_literal", "string_literal"]
+
+[extraction]
+prefix = "java"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = ["constructor_declaration", "method_declaration"]
+
+[extraction.declarations]
+functions = ["compact_constructor_declaration", "constructor_declaration", "method_declaration"]
+classes = ["class_declaration", "enum_declaration", "interface_declaration", "record_declaration"]
+imports = ["import_declaration"]
+name_field = "name"
+import_path_kind = "scoped_identifier"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "last_segment"
+modifiers = ["modifiers"]
+bindings = []
+function_values = []
+constants = ["field_declaration"]
+constant_keywords = ["final", "static"]

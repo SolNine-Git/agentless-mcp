@@ -42,3 +42,12 @@ indent_blocks = []
 "FLOAT" = ["float_literal"]
 "INT" = ["integer_literal"]
 "STR" = ["char_literal", "raw_string_literal", "string_literal"]
+
+[extraction]
+prefix = "rs"
+symbols = "rust"
+imports = "rust"
+roles = "plain"
+identifiers = ["field_identifier", "identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = ["function_item"]

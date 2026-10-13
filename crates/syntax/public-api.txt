@@ -1,4 +1,48 @@
 pub mod syntax
+pub enum syntax::ImportBinding
+pub syntax::ImportBinding::LastSegment
+pub syntax::ImportBinding::ModuleObject
+pub syntax::ImportBinding::Specifiers
+impl core::clone::Clone for syntax::ImportBinding
+pub fn syntax::ImportBinding::clone(&self) -> Self
+impl core::cmp::Eq for syntax::ImportBinding
+impl core::cmp::PartialEq for syntax::ImportBinding
+pub fn syntax::ImportBinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::ImportBinding
+pub fn syntax::ImportBinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::ImportBinding
+impl core::marker::StructuralPartialEq for syntax::ImportBinding
+impl core::marker::Freeze for syntax::ImportBinding
+impl core::marker::Send for syntax::ImportBinding
+impl core::marker::Sync for syntax::ImportBinding
+impl core::marker::Unpin for syntax::ImportBinding
+impl core::marker::UnsafeUnpin for syntax::ImportBinding
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::ImportBinding
+impl core::panic::unwind_safe::UnwindSafe for syntax::ImportBinding
+pub enum syntax::ImportRule
+pub syntax::ImportRule::Generic
+pub syntax::ImportRule::Include
+pub syntax::ImportRule::None
+pub syntax::ImportRule::Python
+pub syntax::ImportRule::Require
+pub syntax::ImportRule::Rust
+pub syntax::ImportRule::Source
+impl core::clone::Clone for syntax::ImportRule
+pub fn syntax::ImportRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::ImportRule
+impl core::cmp::PartialEq for syntax::ImportRule
+pub fn syntax::ImportRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::ImportRule
+pub fn syntax::ImportRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::ImportRule
+impl core::marker::StructuralPartialEq for syntax::ImportRule
+impl core::marker::Freeze for syntax::ImportRule
+impl core::marker::Send for syntax::ImportRule
+impl core::marker::Sync for syntax::ImportRule
+impl core::marker::Unpin for syntax::ImportRule
+impl core::marker::UnsafeUnpin for syntax::ImportRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::ImportRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::ImportRule
 pub enum syntax::Language
 pub syntax::Language::Bash
 pub syntax::Language::C
@@ -26,6 +70,7 @@ impl syntax::Language
 pub const syntax::Language::ALL: [syntax::Language; 22]
 pub fn syntax::Language::abi_version(self) -> usize
 pub fn syntax::Language::extensions(self) -> &'static [&'static str]
+pub fn syntax::Language::extraction(self) -> &'static syntax::Extraction
 pub fn syntax::Language::field(self, &str) -> core::option::Option<syntax::FieldId>
 pub fn syntax::Language::from_name(&str) -> core::option::Option<syntax::Language>
 pub fn syntax::Language::from_path(&str) -> core::option::Option<syntax::Language>
@@ -105,6 +150,25 @@ impl core::marker::Unpin for syntax::QueryRunError
 impl core::marker::UnsafeUnpin for syntax::QueryRunError
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::QueryRunError
 impl core::panic::unwind_safe::UnwindSafe for syntax::QueryRunError
+pub enum syntax::RoleRule
+pub syntax::RoleRule::Plain
+pub syntax::RoleRule::Python
+impl core::clone::Clone for syntax::RoleRule
+pub fn syntax::RoleRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::RoleRule
+impl core::cmp::PartialEq for syntax::RoleRule
+pub fn syntax::RoleRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::RoleRule
+pub fn syntax::RoleRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::RoleRule
+impl core::marker::StructuralPartialEq for syntax::RoleRule
+impl core::marker::Freeze for syntax::RoleRule
+impl core::marker::Send for syntax::RoleRule
+impl core::marker::Sync for syntax::RoleRule
+impl core::marker::Unpin for syntax::RoleRule
+impl core::marker::UnsafeUnpin for syntax::RoleRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::RoleRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::RoleRule
 pub enum syntax::SlocRule
 pub syntax::SlocRule::Leaves
 pub syntax::SlocRule::PythonTokens
@@ -124,6 +188,31 @@ impl core::marker::Unpin for syntax::SlocRule
 impl core::marker::UnsafeUnpin for syntax::SlocRule
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::SlocRule
 impl core::panic::unwind_safe::UnwindSafe for syntax::SlocRule
+pub enum syntax::SymbolRule
+pub syntax::SymbolRule::CDeclarators
+pub syntax::SymbolRule::DataKeys
+pub syntax::SymbolRule::Generic
+pub syntax::SymbolRule::Hcl
+pub syntax::SymbolRule::Lua
+pub syntax::SymbolRule::Python
+pub syntax::SymbolRule::Rust
+pub syntax::SymbolRule::Sql
+impl core::clone::Clone for syntax::SymbolRule
+pub fn syntax::SymbolRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::SymbolRule
+impl core::cmp::PartialEq for syntax::SymbolRule
+pub fn syntax::SymbolRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::SymbolRule
+pub fn syntax::SymbolRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::SymbolRule
+impl core::marker::StructuralPartialEq for syntax::SymbolRule
+impl core::marker::Freeze for syntax::SymbolRule
+impl core::marker::Send for syntax::SymbolRule
+impl core::marker::Sync for syntax::SymbolRule
+impl core::marker::Unpin for syntax::SymbolRule
+impl core::marker::UnsafeUnpin for syntax::SymbolRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::SymbolRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::SymbolRule
 pub enum syntax::Tier
 pub syntax::Tier::One
 pub syntax::Tier::Two
@@ -228,6 +317,50 @@ impl core::marker::Unpin for syntax::DecisionRules
 impl core::marker::UnsafeUnpin for syntax::DecisionRules
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::DecisionRules
 impl core::panic::unwind_safe::UnwindSafe for syntax::DecisionRules
+pub struct syntax::Declarations
+pub syntax::Declarations::bindings: syntax::KindSet
+pub syntax::Declarations::class_bodies: syntax::KindSet
+pub syntax::Declarations::classes: syntax::KindSet
+pub syntax::Declarations::constant_keywords: &'static [&'static str]
+pub syntax::Declarations::constants: syntax::KindSet
+pub syntax::Declarations::function_values: syntax::KindSet
+pub syntax::Declarations::functions: syntax::KindSet
+pub syntax::Declarations::import_binding: syntax::ImportBinding
+pub syntax::Declarations::import_path_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::import_path_kind: syntax::KindSet
+pub syntax::Declarations::imports: syntax::KindSet
+pub syntax::Declarations::keyword_visibility: bool
+pub syntax::Declarations::modifiers: syntax::KindSet
+pub syntax::Declarations::name_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::names: syntax::KindSet
+pub syntax::Declarations::receiver_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::signature_from_header: bool
+impl core::marker::Freeze for syntax::Declarations
+impl core::marker::Send for syntax::Declarations
+impl core::marker::Sync for syntax::Declarations
+impl core::marker::Unpin for syntax::Declarations
+impl core::marker::UnsafeUnpin for syntax::Declarations
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Declarations
+impl core::panic::unwind_safe::UnwindSafe for syntax::Declarations
+pub struct syntax::Extraction
+pub syntax::Extraction::bodies: syntax::KindSet
+pub syntax::Extraction::comments: syntax::KindSet
+pub syntax::Extraction::declarations: syntax::Declarations
+pub syntax::Extraction::identifiers: syntax::KindSet
+pub syntax::Extraction::imports: syntax::ImportRule
+pub syntax::Extraction::prefix: &'static str
+pub syntax::Extraction::roles: syntax::RoleRule
+pub syntax::Extraction::skeleton_functions: syntax::KindSet
+pub syntax::Extraction::symbols: syntax::SymbolRule
+impl syntax::Extraction
+pub fn syntax::Extraction::is_builtin(&self, &str) -> bool
+impl core::marker::Freeze for syntax::Extraction
+impl core::marker::Send for syntax::Extraction
+impl core::marker::Sync for syntax::Extraction
+impl core::marker::Unpin for syntax::Extraction
+impl core::marker::UnsafeUnpin for syntax::Extraction
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Extraction
+impl core::panic::unwind_safe::UnwindSafe for syntax::Extraction
 pub struct syntax::FieldId(_)
 impl core::clone::Clone for syntax::FieldId
 pub fn syntax::FieldId::clone(&self) -> Self
@@ -304,6 +437,8 @@ impl core::marker::UnsafeUnpin for syntax::Match
 impl core::panic::unwind_safe::RefUnwindSafe for syntax::Match
 impl core::panic::unwind_safe::UnwindSafe for syntax::Match
 pub struct syntax::NodeId(_)
+impl syntax::NodeId
+pub fn syntax::NodeId::index(self) -> usize
 impl core::clone::Clone for syntax::NodeId
 pub fn syntax::NodeId::clone(&self) -> Self
 impl core::cmp::Eq for syntax::NodeId
@@ -459,5 +594,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for syntax::UnitRules
 impl core::panic::unwind_safe::UnwindSafe for syntax::UnitRules
 pub const syntax::EXTENSIONS: [(&str, syntax::Language); 33]
 pub const syntax::PACK_VERSION: &str
+pub const syntax::TABLES_DIGEST: &str
 pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
 pub fn syntax::rust_impl_owner(&syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>

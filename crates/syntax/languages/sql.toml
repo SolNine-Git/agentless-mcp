@@ -4,3 +4,28 @@ extensions = [".sql"]
 probe = "CREATE TABLE probe (id INTEGER);\n"
 probe_root = "program"
 comments = ["comment"]
+
+[extraction]
+prefix = "sql"
+symbols = "sql"
+imports = "none"
+roles = "plain"
+identifiers = ["identifier"]
+bodies = ["block", "function_body"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = []
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

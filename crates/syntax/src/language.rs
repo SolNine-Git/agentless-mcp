@@ -1,5 +1,6 @@
 use core::num::NonZeroU16;
 
+use crate::extraction::{self, Extraction};
 use crate::generated::languages::{EXTENSIONS, TABLES};
 use crate::spec::{self, Spec};
 use crate::tables::{Table, Tier};
@@ -124,6 +125,12 @@ impl Language {
     #[must_use]
     pub fn spec(self) -> Option<&'static Spec> {
         spec::spec(self)
+    }
+
+    /// Return the extraction tables, which every language has.
+    #[must_use]
+    pub fn extraction(self) -> &'static Extraction {
+        extraction::extraction(self)
     }
 
     pub(crate) fn table(self) -> &'static Table {

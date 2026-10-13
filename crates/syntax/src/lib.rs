@@ -1,5 +1,6 @@
 //! The vendored tree-sitter grammars, a parse with a flat node table, the language tables, and queries.
 
+mod extraction;
 mod ffi;
 mod flat;
 mod kinds;
@@ -17,9 +18,12 @@ mod tables;
 mod tests;
 
 mod generated {
+    pub mod digest;
     pub mod languages;
 }
 
+pub use extraction::{Declarations, Extraction, ImportBinding, ImportRule, RoleRule, SymbolRule};
+pub use generated::digest::TABLES_DIGEST;
 pub use generated::languages::EXTENSIONS;
 pub use language::{FieldId, KindId, KindSet, Language};
 pub use parsed::{NodeId, Parsed, Point, Unparsable, parse};

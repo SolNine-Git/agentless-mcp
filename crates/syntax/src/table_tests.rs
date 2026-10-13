@@ -1,13 +1,18 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use text::testing::document;
 
 use crate::generated::languages::PROBE_ROOTS;
 use crate::tables::Measured;
-use crate::{EXTENSIONS, Language, NodeId, Parsed, Tier, parse, rust_impl_owner};
+use crate::{
+    EXTENSIONS, ImportRule, Language, NodeId, Parsed, SymbolRule, TABLES_DIGEST, Tier, parse,
+    rust_impl_owner,
+};
 
 #[derive(Deserialize)]
 struct Source {
@@ -83,6 +88,63 @@ fn every_kind_that_a_table_names_exists_in_its_grammar() {
 }
 
 #[test]
+fn every_language_has_extraction_tables_under_a_distinct_prefix() {
+    let mut prefixes: Vec<&str> = Language::ALL
+        .iter()
+        .map(|language| language.extraction().prefix)
+        .collect();
+    assert!(prefixes.iter().all(|prefix| !prefix.is_empty()));
+    prefixes.sort_unstable();
+    prefixes.dedup();
+    assert_eq!(prefixes.len(), Language::ALL.len());
+    for language in Language::ALL {
+        let table = language.table().extraction;
+        for name in [table.bodies, table.skeleton_functions].concat() {
+            assert!(
+                !language.kinds(&[name]).is_empty(),
+                "{language:?} has no kind {name}"
+            );
+        }
+        let extraction = language.extraction();
+        let generic =
+            extraction.symbols == SymbolRule::Generic || extraction.imports == ImportRule::Generic;
+        assert!(!generic || table.declarations.is_some(), "{language:?}");
+    }
+}
+
+#[test]
+fn only_python_has_builtins_and_they_are_sorted() {
+    let builtins = Language::Python.table().extraction.builtins;
+    assert_eq!(builtins.len(), 191);
+    assert!(builtins.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(Language::Python.extraction().is_builtin("len"));
+    assert!(!Language::Python.extraction().is_builtin("length"));
+    for language in Language::ALL {
+        let builtins = language.table().extraction.builtins;
+        assert_eq!(
+            builtins.is_empty(),
+            language != Language::Python,
+            "{language:?}"
+        );
+    }
+}
+
+#[test]
+fn keyword_visibility_follows_the_listed_modifier_kinds_not_the_grammar() {
+    let javascript = &Language::Javascript.extraction().declarations;
+    assert!(javascript.keyword_visibility);
+    assert!(javascript.modifiers.is_empty());
+    assert!(Language::Java.extraction().declarations.keyword_visibility);
+    assert!(!Language::Go.extraction().declarations.keyword_visibility);
+    assert!(
+        !Language::Python
+            .extraction()
+            .declarations
+            .keyword_visibility
+    );
+}
+
+#[test]
 fn each_grammar_parses_its_probe_into_the_root_that_the_python_bundle_gives() {
     for (language, root) in Language::ALL.into_iter().zip(PROBE_ROOTS) {
         let parsed = parse(language, Arc::from(language.probe_sample())).expect("it parses");
@@ -127,6 +189,17 @@ fn the_twelve_tier_one_languages_have_tables() {
             if language.spec().is_some() { 1 } else { 2 }
         );
     }
+}
+
+#[test]
+fn the_tables_digest_is_the_sha256_of_the_compiled_tables() {
+    let fresh = Sha256::digest(include_bytes!("generated/languages.rs"))
+        .iter()
+        .fold(String::new(), |mut hex, byte| {
+            write!(hex, "{byte:02x}").expect("a String takes every write");
+            hex
+        });
+    assert_eq!(TABLES_DIGEST, fresh, "run cargo xtask generate");
 }
 
 #[test]

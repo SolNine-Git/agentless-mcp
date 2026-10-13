@@ -1,0 +1,23 @@
+[package]
+name = "facts"
+description = "The symbols, imports, identifier occurrences and error spans of one parse, their stable ids, and the skeleton, slice and location views over them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { path = "../kernel" }
+serde.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }
