@@ -6,8 +6,8 @@ use std::hash::Hash;
 
 use kernel::Key;
 use metrics::Block;
+use text::matching_blocks;
 
-use crate::diff::matching_blocks;
 use crate::index::IndexedFiles;
 use crate::pair::{Measured, Sides, blocks};
 

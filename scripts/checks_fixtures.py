@@ -23,7 +23,6 @@ from typing import Any, TypeVar
 
 import pytest
 from fixture_files import write_or_check_files
-from stdlib_fixtures import BUILDERS as STDLIB_FIXTURES
 
 from agentless_mcp.core import complexity, contracts, erosion
 from agentless_mcp.core.clones import Block
@@ -33,8 +32,6 @@ from agentless_mcp.util.errors import UnmeasurableSource
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "crates" / "checks" / "fixtures"
-# stdlib_fixtures.py writes diff.json into the same directory.
-SHARED = [ROOT / "crates" / path for path in STDLIB_FIXTURES]
 UNIT_TESTS = ROOT / "tests" / "unit"
 TEST_TARGETS = (
     str(UNIT_TESTS / "test_erosion.py"),
@@ -563,7 +560,7 @@ def fixture_contents() -> dict[Path, bytes]:
 
 def main() -> int:
     """Write the fixtures, or compare them with --check, and return the exit status."""
-    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, fixture_contents, SHARED)
+    return write_or_check_files(__doc__.splitlines()[0], FIXTURES, fixture_contents)
 
 
 if __name__ == "__main__":

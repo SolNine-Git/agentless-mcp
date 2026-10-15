@@ -4,7 +4,7 @@ Development-time only. Run it from the repository root:
 
     uv run --python 3.13 --no-project python scripts/stdlib_fixtures.py
 
-The script writes fixtures for the text, json, metrics, checks, io and store crates. With --check,
+The script writes fixtures for the text, json, metrics, io and store crates. With --check,
 the script compares its output with the committed fixtures and writes nothing.
 """
 
@@ -16,10 +16,11 @@ import re
 import shlex
 import struct
 import sys
+import textwrap
 import tokenize
 import traceback
 from collections.abc import Callable
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 
 from fixture_files import Fixture, render, write_or_check_files
@@ -500,6 +501,44 @@ FSDECODE = [
     b" \xa0 ",
     b"\xc2\xa0x\xc2\x85",
 ]
+DEDENT = [
+    *["", "a", "a\n", "\n\n", "  a\n  b", "  a\n    b\n", "\ta\n\tb", "    x", "\n\n  a\n"],
+    # Mixed tabs and spaces share only their common prefix, so "  " and "\t" share no margin.
+    *["  a\n\tb", " \ta\n \tb", " \ta\n  b", "  \ta\n  \t\tb\n   c"],
+    # Whitespace-only lines become empty and set no margin, whatever their length.
+    *["  a\n   \n  b", "  a\n\t\n  b", "  a\n\n  b", "    a\n  \n    b", "   ", "  \n  "],
+    "  a\n  ",
+    # CR, VT, FF, NBSP and U+3000 are text, not margin. Trailing whitespace stays.
+    *["  a\r\n  b\r\n", "  \r\n  a", "  a\n\r\n  b", "\x0ba\n\x0bb", "\x0ca", "\xa0a\n\xa0b"],
+    *["\U00003000a\n\U00003000b", "  a  \n  b\t", "  \xe9\n  \U000065e5\U0000672c"],
+    "    def f():\n        return 1\n",
+]
+SHELL_SPLIT = [
+    *["", "   ", "a", "a b", "  a   b  ", "a\tb\nc\rd", "a\x0bb", "a\x0cb", "a\xa0b"],
+    "a\U00003000b",
+    *["'a b'", '"a b"', "a'b c'd", 'a"b"c', "''", '""', "'' ''", "a ''", '"" a', "'a'\"b\""],
+    *["'\"'", '"\'"', "it's", 'say "hi there"', "x='a b'", '--name="v w"', "'abc", '"abc'],
+    *["a\\ b", "\\'", "\\\\", "a\\", "\\", "'a\\b'", "'a\\'", '"a\\"b"', '"a\\\\b"', '"a\\nb"'],
+    *['"a\\', '"a\\"', "'\\''", "\\\n", "a\\\nb", '"a\\$b"', "\\ ", "\\a"],
+    *["\xe9 \xfc", "\U000065e5\U0000672c \U00008a9e", "a # b", "a;b", "a|b", "(a)", "a&&b"],
+    "pytest -q tests/test_x.py::TestA -k 'not slow'",
+    'python -c "print(1)"',
+]
+IDENTIFIERS = [
+    *["", "a", "_", "_a1", "a_1", "A", "__init__", "if", "None", "x" * 100],
+    *["1a", "a1", "a-b", "a b", "a.b", "a\x00", "\U0000feff", "\U0001f600"],
+    # XID_Start and XID_Continue: letters, a combining mark, digits outside ASCII.
+    *["\xe9", "\xe9t\xe9", "\U000065e5\U0000672c", "\U00000301", "e\U00000301", "\U000001c5"],
+    *["\U00002160", "\U0000ff41", "\U00000660", "a\U00000660", "\xaa", "\xb2", "a\xb2"],
+    *["\U0001d400", "\U00001885"],
+    # Other_ID_Start and Other_ID_Continue, and a mark that NFKC moves out of XID_Start.
+    *["\U00002118", "\U0000212e", "\xb7", "a\xb7", "\U0000309b", "a\U0000309b"],
+    *["a\U0000200d", "a\U000030fb"],
+    # Code points that Unicode 16 assigns and 15.1 does not.
+    *["\U00010d50", "a\U00010d50", "\U00001c89"],
+]
+# The context sizes of the grouped opcodes: none, one, and the 3 that unified_diff uses.
+GROUP_CONTEXTS = (0, 1, 3)
 
 IGNORED_TOKENS = frozenset(
     {
@@ -538,6 +577,8 @@ def text_fixture() -> Fixture:
         ],
         **integer_sections(),
         **lower_sections(),
+        **indent_and_shell_sections(),
+        **identifier_sections(),
     }
 
 
@@ -559,12 +600,36 @@ def lower_sections() -> Fixture:
     }
 
 
+def indent_and_shell_sections() -> Fixture:
+    return {
+        "dedent": [[text, textwrap.dedent(text)] for text in DEDENT],
+        "shell_split": [[text, *shell_split(text)] for text in SHELL_SPLIT],
+    }
+
+
+def identifier_sections() -> Fixture:
+    # A character starts an identifier when it is one. It continues one when "a" and it are one.
+    return {
+        "identifier_start": code_ranges(str.isidentifier),
+        "identifier_continue": code_ranges(lambda char: ("a" + char).isidentifier()),
+        "identifier": [[text, text.isidentifier()] for text in IDENTIFIERS],
+    }
+
+
 def int_value(text: str | bytes) -> str | None:
     # The decimal text of int(text), or None for a text that int() refuses.
     try:
         return str(int(text))
     except ValueError:
         return None
+
+
+def shell_split(text: str) -> tuple[list[str] | None, str | None]:
+    # The words of shlex.split(text), or the text of the ValueError it raises.
+    try:
+        return shlex.split(text), None
+    except ValueError as error:
+        return None, str(error)
 
 
 def shell_fixture() -> Fixture:
@@ -587,12 +652,58 @@ def last_traceback_line(error: BaseException) -> str:
 
 
 def difflib_fixture() -> Fixture:
+    pairs = matching_pairs() + diff_pairs()
     return {
         "matching_blocks": [
             [a, b, [list(block) for block in SequenceMatcher(None, a, b).get_matching_blocks()]]
             for a, b in matching_pairs()
         ],
+        "opcodes": [
+            [a, b, [list(code) for code in SequenceMatcher(None, a, b).get_opcodes()]]
+            for a, b in pairs
+        ],
+        "grouped_opcodes": [
+            [a, b, context, grouped_opcodes(a, b, context)]
+            for a, b in pairs
+            for context in GROUP_CONTEXTS
+        ],
+        "unified_diff": [[a, b, list(unified_diff(a, b, lineterm=""))] for a, b in pairs],
     }
+
+
+def grouped_opcodes(a: list[str], b: list[str], context: int) -> list[list[list[object]]]:
+    groups = SequenceMatcher(None, a, b).get_grouped_opcodes(context)
+    return [[list(code) for code in group] for group in groups]
+
+
+def diff_pairs() -> list[tuple[list[str], list[str]]]:
+    # The edges of the opcodes, their groups and the unified form that matching_pairs leaves out.
+    lines = [f"line {index}" for index in range(20)]
+    # A blank line in every 7 of 230 lines passes the 230 // 100 + 1 limit, so it is popular.
+    blanks = ["" if index % 7 == 0 else f"x = {index}" for index in range(230)]
+    return [
+        (["a", "b"], []),
+        ([], ["a", "b"]),
+        (lines, lines),
+        # A change at the start, at the end, and two changes 6 and 7 equal lines apart.
+        (["new", *lines[1:]], lines),
+        (lines, [*lines[:-1], "new"]),
+        (lines, [*lines[:5], "x", *lines[6:12], "y", *lines[13:]]),
+        (lines, [*lines[:5], "x", *lines[6:13], "y", *lines[14:]]),
+        # Trailing whitespace, blank and whitespace-only lines, and tabs.
+        (["a ", "b\t", "c"], ["a", "b", "c"]),
+        (["", " ", "\t", ""], ["", "", "\t", " "]),
+        (["\tx", "\t\ty", "z"], ["\tx", "        y", "z"]),
+        # The lines of a CRLF text split at LF keep each CR.
+        (["a\r", "b\r", "c\r", ""], ["a\r", "B\r", "c\r", ""]),
+        # Lines that read as diff markers, and text outside ASCII.
+        (["-a", "+b", " c", "@@ -1 +1 @@"], ["+a", "-b", " c", "@@ -1 +1 @@"]),
+        (
+            ["\xe9t\xe9", "\U000065e5\U0000672c", "\U0001f600"],
+            ["ete", "\U000065e5\U0000672c", "\U0001f600!"],
+        ),
+        (blanks, [*blanks[:100], "inserted", *blanks[100:150], *blanks[151:]]),
+    ]
 
 
 def matching_pairs() -> list[tuple[list[str], list[str]]]:
@@ -626,7 +737,7 @@ def matching_pairs() -> list[tuple[list[str], list[str]]]:
     return pairs
 
 
-def code_ranges(accept: Callable[[str], bool]) -> list[list[int]]:
+def code_ranges(accept: Callable[[str], bool]) -> list[object]:
     # Ranges keep the fixture small: the 1,114,112 code points fall in a few hundred runs.
     ranges: list[list[int]] = []
     for code in range(sys.maxunicode + 1):
@@ -636,7 +747,8 @@ def code_ranges(accept: Callable[[str], bool]) -> list[list[int]]:
             ranges[-1][1] = code
         else:
             ranges.append([code, code])
-    return ranges
+    # A fixture section is a list[object], and list[list[int]] is not one: list is invariant.
+    return [*ranges]
 
 
 def code_points(text: str) -> list[int]:
@@ -1025,7 +1137,7 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
     "json/fixtures/float.json": float_fixture,
     "metrics/fixtures/tokenize.json": sloc_fixture,
     "metrics/fixtures/sum.json": sum_fixture,
-    "checks/fixtures/diff.json": difflib_fixture,
+    "text/fixtures/diff.json": difflib_fixture,
     "io/fixtures/oserror.json": os_fixture,
     "store/fixtures/shell.json": shell_fixture,
 }
@@ -1037,5 +1149,5 @@ def fixtures() -> dict[Path, bytes]:
 
 if __name__ == "__main__":
     # Other generators own the rest of the files in these fixture directories.
-    shared = [CRATES / name / "fixtures" for name in ("checks", "io", "metrics", "store")]
+    shared = [CRATES / name / "fixtures" for name in ("io", "metrics", "store")]
     sys.exit(write_or_check_files(__doc__.splitlines()[0], CRATES, fixtures, shared))

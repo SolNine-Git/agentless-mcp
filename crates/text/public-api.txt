@@ -1,4 +1,26 @@
 pub mod text
+pub enum text::ShellWordsError
+pub text::ShellWordsError::NoClosingQuotation
+pub text::ShellWordsError::NoEscapedCharacter
+impl core::clone::Clone for text::ShellWordsError
+pub fn text::ShellWordsError::clone(&self) -> Self
+impl core::cmp::Eq for text::ShellWordsError
+impl core::cmp::PartialEq for text::ShellWordsError
+pub fn text::ShellWordsError::eq(&self, &Self) -> bool
+impl core::error::Error for text::ShellWordsError
+impl core::fmt::Debug for text::ShellWordsError
+pub fn text::ShellWordsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for text::ShellWordsError
+pub fn text::ShellWordsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for text::ShellWordsError
+impl core::marker::StructuralPartialEq for text::ShellWordsError
+impl core::marker::Freeze for text::ShellWordsError
+impl core::marker::Send for text::ShellWordsError
+impl core::marker::Sync for text::ShellWordsError
+impl core::marker::Unpin for text::ShellWordsError
+impl core::marker::UnsafeUnpin for text::ShellWordsError
+impl core::panic::unwind_safe::RefUnwindSafe for text::ShellWordsError
+impl core::panic::unwind_safe::UnwindSafe for text::ShellWordsError
 pub struct text::CodePointString
 impl text::CodePointString
 pub fn text::CodePointString::as_str(&self) -> core::option::Option<&str>
@@ -52,16 +74,21 @@ impl<'a> core::marker::Unpin for text::IntText<'a>
 impl<'a> core::marker::UnsafeUnpin for text::IntText<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for text::IntText<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for text::IntText<'a>
+pub fn text::dedent(&str) -> alloc::string::String
 pub fn text::int_bytes(&[u8]) -> core::option::Option<text::IntText<'_>>
 pub fn text::int_text(&str) -> core::option::Option<text::IntText<'_>>
 pub fn text::is_ascii_space(u8) -> bool
 pub fn text::is_decimal(char) -> bool
+pub fn text::is_identifier(&str) -> bool
 pub fn text::is_printable(u32) -> bool
 pub fn text::is_space(char) -> bool
 pub fn text::is_word(char) -> bool
 pub fn text::lower(&str) -> alloc::string::String
+pub fn text::matching_blocks(&[&str], &[&str]) -> alloc::vec::Vec<(usize, usize, usize)>
 pub fn text::one_line(&str) -> alloc::borrow::Cow<'_, str>
+pub fn text::split_shell_words(&str) -> core::result::Result<alloc::vec::Vec<alloc::string::String>, text::ShellWordsError>
 pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
 pub fn text::splitlines(&str, bool) -> alloc::vec::Vec<&str>
 pub fn text::strip(&str) -> &str
 pub fn text::strip_bytes(&[u8]) -> &[u8]
+pub fn text::unified_diff(&[&str], &[&str]) -> alloc::vec::Vec<alloc::string::String>

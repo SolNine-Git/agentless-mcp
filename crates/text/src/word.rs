@@ -14,7 +14,7 @@ pub fn is_decimal(c: char) -> bool {
 }
 
 // A code point is in the class when an odd count of bounds is at or below it.
-fn in_runs(bounds: &[u32], c: char) -> bool {
+pub(crate) fn in_runs(bounds: &[u32], c: char) -> bool {
     bounds.partition_point(|&bound| bound <= u32::from(c)) % 2 == 1
 }
 
