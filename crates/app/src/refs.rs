@@ -11,6 +11,7 @@ use graph::{Definition, NameIndex, Resolver, Scopes, Site, references_to, resolv
 use kernel::Bounded;
 
 use crate::bounds::within;
+use crate::detached::answered_over;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
@@ -156,7 +157,9 @@ pub fn refs(
     };
     let stoplist = &reading.repo.config.stoplist;
     let loaded = RepoFacts::load(services, reading);
-    loaded.map(|facts| facts.map(|facts| fan_in(&facts, stoplist, request, limit)))
+    loaded.map(|facts| {
+        facts.map(|facts| answered_over(facts, |facts| fan_in(facts, stoplist, request, limit)))
+    })
 }
 
 fn fan_in(

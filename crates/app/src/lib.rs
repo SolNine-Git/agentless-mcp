@@ -9,6 +9,7 @@ mod cards;
 mod clock;
 mod communities;
 mod cycles;
+mod detached;
 mod diagram;
 mod endpoints;
 mod env;

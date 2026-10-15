@@ -11,6 +11,7 @@ use store::{FileText, Served};
 use text::lower;
 
 use crate::bounds::within;
+use crate::detached::answered_over;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
@@ -57,28 +58,27 @@ pub fn find(
     };
     let loaded = SymbolFacts::load(services, reading);
     let mut diagnostics = loaded.diagnostics;
-    let scan = match loaded.value {
-        Ok(scan) => scan,
-        Err(error) => {
-            return Noted {
-                value: Err(error),
-                diagnostics,
-            };
-        }
-    };
-    let found = matched(&scan, request, limit);
-    if found.cards.total() > 0 {
-        return Noted {
-            value: Ok(found),
-            diagnostics,
-        };
-    }
-    let unparsed = unparsed_mentions(reading, &scan, &request.query);
-    diagnostics.extend(unparsed.diagnostics);
-    let value = unparsed
-        .value
-        .map(|unparsed| FindResult { unparsed, ..found });
+    let value = loaded.value.and_then(|scan| {
+        let answered = answered_over(scan, |scan| answer(reading, scan, request, limit));
+        diagnostics.extend(answered.diagnostics);
+        answered.value
+    });
     Noted { value, diagnostics }
+}
+
+// The matches, and on a miss each place where a file that did not parse spells the query.
+fn answer(
+    reading: &Reading<'_>,
+    scan: &SymbolFacts,
+    request: &FindRequest,
+    limit: usize,
+) -> Noted<Result<FindResult, Error>> {
+    let found = matched(scan, request, limit);
+    if found.cards.total() > 0 {
+        return Noted::new(Ok(found));
+    }
+    let unparsed = unparsed_mentions(reading, scan, &request.query);
+    unparsed.map(|value| value.map(|unparsed| FindResult { unparsed, ..found }))
 }
 
 // The result without the unparsed places, which only a miss reads.
@@ -88,29 +88,41 @@ fn matched(scan: &SymbolFacts, request: &FindRequest, limit: usize) -> FindResul
         let symbols = file.symbols.iter();
         symbols.map(move |symbol| (file, symbol))
     });
-    let mut matches: Vec<(&FileSymbols, &Symbol)> = symbols
+    let matches: Vec<(&FileSymbols, &Symbol)> = symbols
         .filter(|(_, symbol)| matches(symbol, &needle, request.kind))
         .collect();
-    matches.sort_by_cached_key(|&(file, symbol)| {
-        let (rank, lowered) = match_rank(symbol, &needle);
-        (rank, lowered, file.path.as_str())
-    });
-    let cards: Vec<SymbolCard> = matches
-        .iter()
-        .map(|(file, symbol)| symbol_card(file.language, &file.path, symbol, String::new()))
-        .collect();
+    let total = matches.len();
     let other_kinds = match request.kind {
-        Some(_) if matches.is_empty() => other_kinds(scan, &needle),
+        Some(_) if total == 0 => other_kinds(scan, &needle),
         _ => Vec::new(),
     };
     FindResult {
         query: request.query.clone(),
-        cards: Bounded::cut(cards, limit),
+        cards: Bounded::with_total(top_cards(matches, &needle, limit), total, limit),
         skipped: scan.skipped.clone(),
         kind: request.kind.map(SymbolKind::as_str),
         other_kinds,
         unparsed: Vec::new(),
     }
+}
+
+// The cards of the first `limit` matches by rank, lowered name and path. The scan index breaks
+// the last ties, as a stable sort of the scan order does, so only the kept matches need a card.
+fn top_cards(matches: Vec<(&FileSymbols, &Symbol)>, needle: &str, limit: usize) -> Vec<SymbolCard> {
+    let mut keyed: Vec<_> = (matches.into_iter().enumerate())
+        .map(|(at, (file, symbol))| {
+            let (rank, lowered) = match_rank(symbol, needle);
+            ((rank, lowered, file.path.as_str(), at), file, symbol)
+        })
+        .collect();
+    if keyed.len() > limit {
+        keyed.select_nth_unstable_by(limit, |left, right| left.0.cmp(&right.0));
+        keyed.truncate(limit);
+    }
+    keyed.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    (keyed.iter())
+        .map(|(_, file, symbol)| symbol_card(file.language, &file.path, symbol, String::new()))
+        .collect()
 }
 
 // The kinds, sorted, of the symbols that the query matches with no kind filter.
@@ -127,7 +139,34 @@ fn matches(symbol: &Symbol, needle: &str, kind: Option<SymbolKind>) -> bool {
     if kind.is_some_and(|kind| kind != symbol.kind) {
         return false;
     }
-    lower(&symbol.name).contains(needle) || lower(&symbol.qualname()).contains(needle)
+    short_ascii_holds(symbol, needle).unwrap_or_else(|| {
+        lower(&symbol.name).contains(needle) || lower(&symbol.qualname()).contains(needle)
+    })
+}
+
+// The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
+const SHORT_QUALNAME: usize = 128;
+
+// Whether the lowered qualified name holds `needle`, or `None` for a name that is not ASCII or is
+// long. ASCII lowers byte by byte and the name ends the qualified name, so one test covers both.
+fn short_ascii_holds(symbol: &Symbol, needle: &str) -> Option<bool> {
+    let (parent, name) = (symbol.parent.as_bytes(), symbol.name.as_bytes());
+    let dot: &[u8] = if parent.is_empty() { b"" } else { b"." };
+    let length = parent.len() + dot.len() + name.len();
+    if length > SHORT_QUALNAME || !parent.is_ascii() || !name.is_ascii() {
+        return None;
+    }
+    let mut buffer = [0_u8; SHORT_QUALNAME];
+    let joined = &mut buffer[..length];
+    let (head, tail) = joined.split_at_mut(parent.len());
+    let (middle, last) = tail.split_at_mut(dot.len());
+    head.copy_from_slice(parent);
+    middle.copy_from_slice(dot);
+    last.copy_from_slice(name);
+    joined.make_ascii_lowercase();
+    std::str::from_utf8(joined)
+        .ok()
+        .map(|joined| joined.contains(needle))
 }
 
 // An exact name first, then an exact qualified name, then a name that starts with the query.

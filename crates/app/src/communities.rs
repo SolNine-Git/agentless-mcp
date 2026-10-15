@@ -6,6 +6,7 @@ use io::ProjectConfig;
 use kernel::Bounded;
 
 use crate::bounds::{at_least, within, within_float};
+use crate::detached::answered_over;
 use crate::ops::limits::{DEFAULT_RESOLUTION, MAX_LIMIT, MAX_RESOLUTION};
 use crate::scan::RepoFacts;
 use crate::{Error, IntArg, Noted, Reading, Services};
@@ -80,7 +81,8 @@ pub(crate) fn over_scan<T>(
     reading: &Reading<'_>,
     answer: impl FnOnce(&RepoFacts) -> Result<T, Error>,
 ) -> Noted<Result<T, Error>> {
-    RepoFacts::load(services, reading).map(|loaded| loaded.and_then(|facts| answer(&facts)))
+    RepoFacts::load(services, reading)
+        .map(|loaded| loaded.and_then(|facts| answered_over(facts, answer)))
 }
 
 fn report(

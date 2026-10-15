@@ -3,13 +3,14 @@
 
 mod complexity;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use facts::SymbolKind;
-use graph::{Definition, SymbolGraph, Tier};
+use graph::{AmbiguousDegrees, Definition, SymbolGraph, Tier};
 use kernel::Bounded;
 
 use crate::bounds::within;
+use crate::detached::drop_detached;
 use crate::endpoints::{tier_at, with_resolved};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
@@ -108,9 +109,11 @@ pub fn health(
     let value = value.map(|facts| {
         let walk = complexity::walk(services, reading, &facts);
         diagnostics.extend(walk.diagnostics);
-        with_resolved(&facts.files, |_, graph| {
+        let answered = with_resolved(&facts.files, |_, graph| {
             report(graph, &walk.value, threshold, limit)
-        })
+        });
+        drop_detached((facts, walk.value));
+        answered
     });
     Noted { value, diagnostics }
 }
@@ -121,7 +124,8 @@ fn report(
     threshold: u32,
     limit: usize,
 ) -> HealthReport {
-    let degrees = degrees(graph);
+    let ambiguous = graph.ambiguous_degrees();
+    let degrees = degrees(graph, &ambiguous);
     let considered: Vec<(&str, &Definition<'_>)> = (graph.definitions().iter())
         .filter(|(_, definition)| in_health_scope(definition.path()))
         .map(|(id, definition)| (id.as_str(), definition))
@@ -201,15 +205,18 @@ struct Entry<'d, 'a> {
     degree: Degree,
 }
 
-fn degrees(graph: &SymbolGraph<'_>) -> BTreeMap<String, Degree> {
-    let mut degrees: BTreeMap<String, Degree> = BTreeMap::new();
+// Each node's degree, read only by lookup: the counts are sums, so no order shows.
+fn degrees<'g>(
+    graph: &'g SymbolGraph<'_>,
+    ambiguous: &'g AmbiguousDegrees,
+) -> HashMap<&'g str, Degree> {
+    let mut degrees: HashMap<&str, Degree> = HashMap::new();
     for edge in graph.edges() {
-        let source = degrees.entry(edge.source().node().to_owned()).or_default();
+        let source = degrees.entry(edge.source().node()).or_default();
         source.leaving.add(edge.tier());
-        let target = degrees.entry(edge.target().node().to_owned()).or_default();
+        let target = degrees.entry(edge.target().node()).or_default();
         target.arriving.add(edge.tier());
     }
-    let ambiguous = graph.ambiguous_degrees();
     let at = tier_at(Tier::Ambiguous);
     let sides: [(&BTreeMap<String, u64>, Side); 2] = [
         (&ambiguous.arriving, |degree| &mut degree.arriving),
@@ -217,7 +224,7 @@ fn degrees(graph: &SymbolGraph<'_>) -> BTreeMap<String, Degree> {
     ];
     for (counts, side) in sides {
         for (node, count) in counts {
-            side(degrees.entry(node.clone()).or_default()).discounted[at] += as_count(*count);
+            side(degrees.entry(node.as_str()).or_default()).discounted[at] += as_count(*count);
         }
     }
     degrees
@@ -230,7 +237,7 @@ fn as_count(count: u64) -> usize {
 // The definitions of `kinds`, by path, line and stable id: two symbols can start on one line.
 fn of_kinds<'d, 'a>(
     considered: &[(&'d str, &'d Definition<'a>)],
-    degrees: &BTreeMap<String, Degree>,
+    degrees: &HashMap<&str, Degree>,
     kinds: &[SymbolKind],
 ) -> Vec<Entry<'d, 'a>> {
     let mut entries: Vec<Entry<'d, 'a>> = (considered.iter())

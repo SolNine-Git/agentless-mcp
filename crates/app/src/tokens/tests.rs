@@ -1,6 +1,9 @@
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
-use super::{Chars4, Cl100k, TokenCounter};
+use tiktoken_rs::CoreBPE;
+
+use super::{Chars4, Cl100k, TokenCounter, loaded_once};
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -45,4 +48,31 @@ fn cl100k_counts_each_edge_text_as_the_reference_does() {
     for (text, expected) in cases {
         assert_eq!(counter.count(&text), expected, "{text:?}");
     }
+}
+
+#[test]
+fn every_cl100k_counter_reads_the_one_loaded_encoding() {
+    let first = Cl100k::new().unwrap_or_else(|error| panic!("{error}"));
+    let second = Cl100k::new().unwrap_or_else(|error| panic!("{error}"));
+    assert!(std::ptr::eq(first.encoding, second.encoding));
+}
+
+#[test]
+fn a_failed_load_is_returned_and_the_next_call_loads_again() {
+    let lock = OnceLock::new();
+
+    let failed = loaded_once(&lock, || Err::<CoreBPE, _>("no tables"));
+    let message = failed.err().map(|error| error.to_string());
+    assert_eq!(
+        message.as_deref(),
+        Some("--token-counter tiktoken could not load cl100k_base: no tables")
+    );
+    assert!(lock.get().is_none());
+
+    let loaded = loaded_once(&lock, tiktoken_rs::cl100k_base);
+    let encoding = loaded.unwrap_or_else(|error| panic!("{error}"));
+    assert!(std::ptr::eq(
+        encoding,
+        lock.get().expect("the load filled the lock")
+    ));
 }

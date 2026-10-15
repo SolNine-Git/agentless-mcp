@@ -17,6 +17,7 @@ use graph::{
 use io::{Granularity, ProjectConfig};
 
 use crate::bounds::within;
+use crate::detached::answered_over;
 use crate::ops::limits::{DEFAULT_MAX_FILES, MAX_BUDGET, MAX_MAX_FILES, MIN_BUDGET, MIN_MAX_FILES};
 use crate::scan::RepoFacts;
 use crate::scope::is_test_path;
@@ -130,7 +131,13 @@ pub fn map(
         Err(error) => return Noted::new(Err(error)),
     };
     let loaded = RepoFacts::load(services, reading);
-    loaded.map(|facts| facts.map(|facts| build(services, reading, &request.focus, &shape, &facts)))
+    loaded.map(|facts| {
+        facts.map(|facts| {
+            answered_over(facts, |facts| {
+                build(services, reading, &request.focus, &shape, facts)
+            })
+        })
+    })
 }
 
 // The request's bounds, checked before the scan, with the config's values filled in.

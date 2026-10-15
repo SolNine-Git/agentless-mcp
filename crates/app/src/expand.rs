@@ -10,7 +10,7 @@ use prompts::messages::{EXPAND_BODY_TRUNCATED, EXPAND_NO_ROOM, GROUPED_IDS};
 use crate::bounds::within;
 use crate::budget::{TRUNCATION_MARKER_TOKENS, allocate, longest_fitting};
 use crate::ops::limits::MAX_LIMIT;
-use crate::span::{Missed, SymbolSpan, resolve_symbol_span};
+use crate::span::{Missed, ParsedFiles, SymbolSpan, resolve_symbol_span_in};
 use crate::{
     Error, IntArg, Noted, Reading, Services, SymbolCard, TokenCounter, cards_text, symbol_card,
 };
@@ -99,8 +99,9 @@ pub(crate) fn expand_symbols(
     let requested = first_copies(ids);
     let mut noted = Noted::new(Vec::new());
     let mut unresolved = Vec::new();
+    let mut files = ParsedFiles::new();
     for raw in requested.iter().take(seating.limit) {
-        let one = expand_one(reading, raw);
+        let one = expand_one(reading, raw, &mut files);
         noted.diagnostics.extend(one.diagnostics);
         match one.value {
             Ok(card) => noted.value.push(card),
@@ -156,8 +157,12 @@ fn grouped_rows(over_limit: usize, repeated: usize, limit: usize) -> Vec<(String
 }
 
 // A path outside the root is one more reason, beside the ids that do not resolve.
-fn expand_one(reading: &Reading<'_>, raw: &str) -> Noted<Result<SymbolCard, String>> {
-    resolve_symbol_span(reading, raw).map(|span| {
+fn expand_one(
+    reading: &Reading<'_>,
+    raw: &str,
+    files: &mut ParsedFiles,
+) -> Noted<Result<SymbolCard, String>> {
+    resolve_symbol_span_in(reading, raw, files).map(|span| {
         span.map(|span| body_card(&span))
             .map_err(|missed| match missed {
                 Missed::Reason(reason) => reason,

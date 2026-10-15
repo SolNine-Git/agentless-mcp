@@ -11,6 +11,7 @@ use metrics::{Block, FileMetrics, MIN_INSTANCES, Unit, compensated_sum};
 use store::{FactSource, FileText, Served};
 use syntax::Language;
 
+use crate::parallel::{map_in_order, threads};
 use crate::scan::RepoFacts;
 use crate::{Noted, Reading, Services, Skipped, in_metric_scope};
 
@@ -111,16 +112,27 @@ struct Target {
 // The budget is checked before each file, so a spent budget ends the walk and never the call.
 pub(super) fn walk(services: &Services, reading: &Reading<'_>, facts: &RepoFacts) -> Noted<Walk> {
     let targets = targets(facts);
+    let (clock, budget) = (&*services.clock, services.walk_budget);
+    let started = clock.now();
+    let measured = map_in_order(&targets, threads(), |target| {
+        let within = clock.now().duration_since(started) < budget;
+        within.then(|| measure(&reading.repo.root, target, reading.facts))
+    });
+    walked(&targets, measured)
+}
+
+// The files measured before the first file that the budget turned away, in path order. A cut walk
+// keeps a prefix, as a serial walk does.
+fn walked(
+    targets: &[Target],
+    measured: Vec<Option<Served<Result<FileMetrics, Skipped>>>>,
+) -> Noted<Walk> {
     let mut walked = Noted::new(Walk {
         in_scope: targets.len(),
         ..Walk::default()
     });
-    let started = services.clock.now();
-    for target in &targets {
-        if services.clock.now().duration_since(started) >= services.walk_budget {
-            break;
-        }
-        let Served { value, warning } = measure(&reading.repo.root, target, reading.facts);
+    let kept = (targets.iter().zip(measured)).map_while(|(target, served)| Some((target, served?)));
+    for (target, Served { value, warning }) in kept {
         walked
             .diagnostics
             .extend(warning.map(|failure| failure.to_string()));
@@ -325,3 +337,6 @@ fn unit_stable_id(placed: &PlacedUnit, sites: &Sites<'_>) -> Option<String> {
 fn count_f64(count: usize) -> f64 {
     u32::try_from(count).map_or(f64::from(u32::MAX), f64::from)
 }
+
+#[cfg(test)]
+mod tests;

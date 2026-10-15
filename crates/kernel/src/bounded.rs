@@ -15,6 +15,22 @@ impl<T> Bounded<T> {
         Self { rows, total, limit }
     }
 
+    /// Keep the first `limit` of `rows`, which a caller chose from `total` rows, with that total.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `rows` holds more than `total` rows.
+    #[must_use]
+    pub fn with_total(mut rows: Vec<T>, total: usize, limit: usize) -> Self {
+        assert!(
+            rows.len() <= total,
+            "{} rows came from a total of {total}",
+            rows.len()
+        );
+        rows.truncate(limit);
+        Self { rows, total, limit }
+    }
+
     /// Return the rows the limit kept.
     #[must_use]
     pub fn rows(&self) -> &[T] {
@@ -66,5 +82,32 @@ mod tests {
         let bounded = Bounded::cut(vec![1, 2, 3], 0);
         assert!(bounded.rows().is_empty());
         assert_eq!(bounded.omitted(), 3);
+    }
+
+    #[test]
+    fn chosen_rows_keep_the_total_they_were_chosen_from() {
+        let bounded = Bounded::with_total(vec!["a", "b"], 5, 2);
+        assert_eq!(bounded.rows(), ["a", "b"]);
+        assert_eq!(
+            (bounded.total(), bounded.limit(), bounded.omitted()),
+            (5, 2, 3)
+        );
+        assert_eq!(
+            Bounded::with_total(vec![1, 2, 3], 3, 10),
+            Bounded::cut(vec![1, 2, 3], 10)
+        );
+    }
+
+    #[test]
+    fn chosen_rows_past_the_limit_are_cut() {
+        let bounded = Bounded::with_total(vec![1, 2, 3], 4, 2);
+        assert_eq!(bounded.rows(), [1, 2]);
+        assert_eq!(bounded.omitted(), 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "3 rows came from a total of 2")]
+    fn more_rows_than_the_total_is_a_caller_error() {
+        let _ = Bounded::with_total(vec![1, 2, 3], 2, 5);
     }
 }

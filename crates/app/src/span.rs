@@ -1,5 +1,6 @@
 //! One stable id resolved to its symbol and the lines that the symbol spans in the working tree.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -34,34 +35,57 @@ pub(crate) enum Missed {
 }
 
 // One file's language, text and symbols.
-struct ParsedFile {
+pub(crate) struct ParsedFile {
     language: Language,
     source: Arc<str>,
     symbols: Vec<Symbol>,
 }
+
+// One call's parsed files, by the path each id spells, with the warnings of each parse. A later
+// call reads the working tree again, so an edit between calls shows.
+pub(crate) type ParsedFiles = HashMap<String, Noted<Result<ParsedFile, Missed>>>;
 
 // The cache's row warning comes with either outcome.
 pub(crate) fn resolve_symbol_span(
     reading: &Reading<'_>,
     raw: &str,
 ) -> Noted<Result<SymbolSpan, Missed>> {
+    resolve_symbol_span_in(reading, raw, &mut ParsedFiles::new())
+}
+
+// As `resolve_symbol_span`, with a path parsed once per `files`. Each id that names the path
+// gets the parse's warnings.
+pub(crate) fn resolve_symbol_span_in(
+    reading: &Reading<'_>,
+    raw: &str,
+    files: &mut ParsedFiles,
+) -> Noted<Result<SymbolSpan, Missed>> {
     let parsed: StableId = match raw.parse() {
         Ok(parsed) => parsed,
         Err(error) => return Noted::new(Err(Missed::Reason(error.to_string()))),
     };
-    parse_file(reading, parsed.path()).map(|file| file.and_then(|file| span(&parsed, file)))
+    let path = parsed.path();
+    let file = (files.entry(path.to_owned())).or_insert_with(|| parse_file(reading, path));
+    Noted {
+        value: (file.value.as_ref())
+            .map_err(Missed::clone)
+            .and_then(|file| span(&parsed, file)),
+        diagnostics: file.diagnostics.clone(),
+    }
 }
 
-fn span(parsed: &StableId, file: ParsedFile) -> Result<SymbolSpan, Missed> {
+fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
     let (path, qualname) = (parsed.path(), parsed.qualname());
     let ParsedFile {
         language,
         source,
         symbols,
     } = file;
+    let language = *language;
     let Some(symbol) = symbols
-        .into_iter()
+        .iter()
         .find(|symbol| symbol.id_qualname() == qualname)
+        .cloned()
     else {
         return Err(Missed::Reason(format!(
             "{path} no longer defines {qualname}"
@@ -74,14 +98,14 @@ fn span(parsed: &StableId, file: ParsedFile) -> Result<SymbolSpan, Missed> {
             "no {prefix} symbol in {path}: the file is {name}. This symbol's id is {id}"
         )));
     }
-    let end_line = line_count(&source).min(symbol.end_line);
+    let end_line = line_count(source).min(symbol.end_line);
     Ok(SymbolSpan {
         start_line: symbol.line,
         end_line,
         language,
         path: path.to_owned(),
         symbol,
-        source,
+        source: Arc::clone(source),
     })
 }
 
@@ -114,3 +138,6 @@ fn parse_file(reading: &Reading<'_>, path: &str) -> Noted<Result<ParsedFile, Mis
         diagnostics: diagnostics.into_iter().collect(),
     }
 }
+
+#[cfg(test)]
+mod tests;

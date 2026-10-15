@@ -35,6 +35,7 @@ pub const fn kernel::Bounded<T>::limit(&self) -> usize
 pub fn kernel::Bounded<T>::omitted(&self) -> usize
 pub fn kernel::Bounded<T>::rows(&self) -> &[T]
 pub const fn kernel::Bounded<T>::total(&self) -> usize
+pub fn kernel::Bounded<T>::with_total(alloc::vec::Vec<T>, usize, usize) -> Self
 impl<T: core::clone::Clone> core::clone::Clone for kernel::Bounded<T>
 pub fn kernel::Bounded<T>::clone(&self) -> Self
 impl<T: core::cmp::Eq> core::cmp::Eq for kernel::Bounded<T>
