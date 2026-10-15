@@ -26,6 +26,8 @@ pub struct Symbol {
     pub signature: String,
     /// The owner that qualifies the name, or empty.
     pub parent: String,
+    /// Whether one or more decorators wrap the declaration. Only Python declarations have them.
+    pub decorated: bool,
     /// The superclass texts as the source spells them.
     pub bases: Vec<String>,
     pub is_public: bool,

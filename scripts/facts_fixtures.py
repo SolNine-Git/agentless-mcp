@@ -156,6 +156,7 @@ def symbol_row(symbol: ASTSymbol) -> dict[str, object]:
         "end_line": symbol.end_line_number,
         "signature": symbol.signature,
         "parent": symbol.parent_class,
+        "decorated": bool(symbol.decorators),
         "bases": list(symbol.bases),
         "is_public": symbol.is_public,
         "duplicate_index": symbol.duplicate_index,

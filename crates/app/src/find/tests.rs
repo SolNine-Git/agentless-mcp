@@ -14,6 +14,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
         end_line: 1,
         signature: String::new(),
         parent: parent.to_owned(),
+        decorated: false,
         bases: Vec::new(),
         is_public: true,
         rationales: Vec::new(),

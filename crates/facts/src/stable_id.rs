@@ -200,6 +200,7 @@ mod tests {
             end_line: line,
             signature: String::new(),
             parent: parent.to_owned(),
+            decorated: false,
             bases: Vec::new(),
             is_public: true,
             rationales: Vec::new(),

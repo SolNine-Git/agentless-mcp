@@ -21,6 +21,7 @@ unimplemented = "forbid"
 undocumented_unsafe_blocks = "deny"
 
 [dependencies]
+text = { path = "../text" }
 thiserror.workspace = true
 tree-sitter.workspace = true
 tree-sitter-language.workspace = true

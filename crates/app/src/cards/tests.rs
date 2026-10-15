@@ -11,6 +11,7 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind, lines: (u32, u32)) -> Symb
         end_line: lines.1,
         signature: format!("def {name}(self):"),
         parent: parent.to_owned(),
+        decorated: false,
         bases: Vec::new(),
         is_public: true,
         rationales: Vec::new(),

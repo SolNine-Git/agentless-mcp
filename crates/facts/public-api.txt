@@ -359,6 +359,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for facts::StableId
 impl core::panic::unwind_safe::UnwindSafe for facts::StableId
 pub struct facts::Symbol
 pub facts::Symbol::bases: alloc::vec::Vec<alloc::string::String>
+pub facts::Symbol::decorated: bool
 pub facts::Symbol::duplicate_index: u32
 pub facts::Symbol::end_line: u32
 pub facts::Symbol::is_public: bool

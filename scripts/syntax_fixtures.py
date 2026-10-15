@@ -1,4 +1,4 @@
-"""Write the syntax test fixtures: sources with the parse and the rule results of the Python code.
+"""Write the syntax test fixtures: sources with the parse, rule results and token streams of Python.
 
 Development-time only. Run it from the repository root, in the project environment:
 
@@ -14,11 +14,18 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from fixture_files import write_or_check_files
+from fixture_files import Fixture, write_or_check_files
+from fixture_files import render as render_sections
+from syntax_tables import present
 from tree_sitter import Node, Query, QueryCursor, Tree, TreeCursor
 
-from agentless_mcp.core import clones, complexity, grammars
-from agentless_mcp.core.extractor import TreeSitterExtractor, rust_impl_owner
+from agentless_mcp.core import clones, complexity, grammars, normalize
+from agentless_mcp.core.extractor import (
+    COMMENT_NODE_TYPES,
+    INDENT_BLOCK_NODE_TYPES,
+    TreeSitterExtractor,
+    rust_impl_owner,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "crates" / "syntax" / "fixtures"
@@ -59,6 +66,7 @@ def contents() -> dict[Path, bytes]:
         FIXTURES / "parse.json": render([case(*source) for source in sources]),
         FIXTURES / "rules.json": render([rule_case(*source) for source in measured]),
         FIXTURES / "queries.json": render([query_case(*source) for source in queried]),
+        FIXTURES / "stream.json": render_sections(streams(sources)),
     }
 
 
@@ -211,6 +219,33 @@ def query_run(query: Query, tree: Tree, index: dict[int, int]) -> dict[str, obje
     found = QueryCursor(query).captures(tree.root_node)
     captures = {name: sorted(index[node.id] for node in found[name]) for name in sorted(found)}
     return {"matches": matches, "captures": captures}
+
+
+def streams(sources: list[Input]) -> Fixture:
+    # Each language's comment kinds that its grammar knows, and its indent-block kinds.
+    tables: list[object] = [
+        [
+            language,
+            present(language, COMMENT_NODE_TYPES),
+            sorted(INDENT_BLOCK_NODE_TYPES.get(language, ())),
+        ]
+        for language in grammars.ALL_LANGUAGES
+    ]
+    return {"tables": tables, "cases": [stream_case(*source) for source in sources]}
+
+
+def stream_case(name: str, language: str, source: str) -> dict[str, object]:
+    tree = parsed(language, source)
+    nodes = [node for node, _ in preorder(tree)]
+    omit = len(nodes) // 2
+    without = normalize.node_stream(tree.root_node, language, omit=nodes[omit])
+    return {
+        "name": name,
+        "language": language,
+        "stream": normalize.node_stream(tree.root_node, language),
+        "omit": omit,
+        "without": hashlib.sha256(without.encode("utf-8")).hexdigest(),
+    }
 
 
 def render(cases: list[dict[str, object]]) -> bytes:

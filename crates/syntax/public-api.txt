@@ -608,3 +608,4 @@ pub const syntax::PACK_VERSION: &str
 pub const syntax::TABLES_DIGEST: &str
 pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
 pub fn syntax::rust_impl_owner(&syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::tokens(&syntax::Parsed, syntax::NodeId, core::option::Option<syntax::NodeId>) -> alloc::vec::Vec<alloc::borrow::Cow<'_, str>>

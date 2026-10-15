@@ -61,7 +61,7 @@ fn imports(tree: &Tree, extraction: &Extraction) -> Vec<Import> {
 }
 
 impl Symbol {
-    // A public symbol that spans `node`, with no signature, owner or bases yet.
+    // A public symbol that spans `node`, with no signature, owner, decorators or bases yet.
     fn at(tree: &Tree, node: NodeId, name: &str, kind: SymbolKind) -> Symbol {
         Symbol {
             name: name.to_owned(),
@@ -70,6 +70,7 @@ impl Symbol {
             end_line: tree.end_line(node),
             signature: String::new(),
             parent: String::new(),
+            decorated: false,
             bases: Vec::new(),
             is_public: true,
             rationales: Vec::new(),
@@ -89,6 +90,11 @@ impl Symbol {
 
     fn public(mut self, is_public: bool) -> Symbol {
         self.is_public = is_public;
+        self
+    }
+
+    fn decorated(mut self, decorated: bool) -> Symbol {
+        self.decorated = decorated;
         self
     }
 

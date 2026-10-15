@@ -19,7 +19,7 @@ pub(crate) fn units(parsed: &Parsed, spec: &Spec, kinds: &Kinds, sloc_lines: &[u
                 start_byte: parsed.start_byte(found.node),
                 end_byte: parsed.end_byte(found.node),
                 start_line,
-                body_key: stream::body_key(parsed, spec, found.node, found.name),
+                body_key: stream::body_key(parsed, found.node, found.name),
                 cc: 1 + decisions(parsed, &spec.decisions, found.node),
                 sloc: count(lines_within(sloc_lines, start_line, end_line)),
                 qualname: found.qualname,

@@ -157,6 +157,7 @@ fn function(tree: &Tree, node: NodeId, parent: &str) -> Symbol {
     Symbol::at(tree, node, name, kind)
         .signed(&format!("{prefix} {name}{parameters}{returns}"))
         .owned_by(parent)
+        .decorated(!own_decorators(tree, node).is_empty())
         .public(conventionally_public(name))
 }
 
@@ -219,6 +220,7 @@ fn class(tree: &Tree, node: NodeId, extra: &[String]) -> (Option<Symbol>, Vec<Wo
         .map_or("", |superclasses| tree.text(superclasses));
     let symbol = Symbol::at(tree, node, name, class_kind(&bases, decorators))
         .signed(&format!("class {name}{superclasses}"))
+        .decorated(!decorators.is_empty())
         .public(conventionally_public(name))
         .based_on(bases);
     let members = tree.field(node, Field::Body).map_or_else(Vec::new, |body| {

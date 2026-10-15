@@ -318,6 +318,7 @@ def symbol_value(symbol: ASTSymbol) -> Case:
         "end_line": span_end(symbol),
         "signature": symbol.signature,
         "parent": symbol.parent_class,
+        "decorated": bool(symbol.decorators),
         "bases": list(symbol.bases),
         "is_public": symbol.is_public,
         "rationales": [rationale_value(rationale) for rationale in symbol.rationales],

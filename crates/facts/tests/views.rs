@@ -80,6 +80,7 @@ fn symbol(name: &str, kind: &str, line: u32, end_line: u32) -> Symbol {
         end_line,
         signature: String::new(),
         parent: String::new(),
+        decorated: false,
         bases: Vec::new(),
         is_public: true,
         rationales: Vec::new(),
