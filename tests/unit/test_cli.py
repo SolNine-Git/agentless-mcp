@@ -11,7 +11,6 @@ import json
 import os
 import sqlite3
 import subprocess
-import sys
 from dataclasses import replace
 
 import pytest
@@ -32,8 +31,8 @@ from agentless_mcp.core import cache, grammars, guide, selfrestart
 from agentless_mcp.core.patches import MAX_EDITS
 
 
-def console_script(*arguments, cwd=None, stdin=None, timeout=120):
-    """Run the installed console script with a pinned environment."""
+def console_script(command, *arguments, cwd=None, stdin=None, timeout=120):
+    """Run the CLI that the argv prefix ``command`` starts, with a pinned environment."""
     # Snapshot at invocation time, after pytest's autouse fixtures have moved
     # XDG_CACHE_HOME into the current test's temporary directory. A module-level
     # snapshot leaked the developer cache into every subprocess and made these
@@ -45,7 +44,7 @@ def console_script(*arguments, cwd=None, stdin=None, timeout=120):
         selfrestart.ENV_NO_AUTO_RESTART: "1",
     }
     return subprocess.run(
-        [sys.executable, "-m", "agentless_mcp", *arguments],
+        [*command, *arguments],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -54,6 +53,15 @@ def console_script(*arguments, cwd=None, stdin=None, timeout=120):
         env=child_env,
         check=False,
     )
+
+
+class _ConsoleScriptCase:
+    # The run_cli helpers have no fixture access, so the fixture binds the command to the test.
+    cli_command: tuple[str, ...]
+
+    @pytest.fixture(autouse=True)
+    def bind_cli_command(self, cli_command: tuple[str, ...]) -> None:
+        self.cli_command = cli_command
 
 
 SOURCE = '''\
@@ -1507,11 +1515,11 @@ class TestTheDegradationWarningReachesEveryCaller:
         assert "not inside a git repository" in capsys.readouterr().err
 
 
-class TestSubprocess:
+class TestSubprocess(_ConsoleScriptCase):
     """End to end through the installed console script."""
 
     def run_cli(self, *arguments, cwd=None):
-        return console_script(*arguments, cwd=cwd)
+        return console_script(self.cli_command, *arguments, cwd=cwd)
 
     def test_map_prints_the_receipt_and_exits_zero(self, make_git_repo):
         root = make_git_repo({"core.py": SOURCE, "caller.py": CALLER})
@@ -1598,7 +1606,7 @@ BREAKING_PATCH = """\
 """
 
 
-class TestPatchSubprocess:
+class TestPatchSubprocess(_ConsoleScriptCase):
     """The write side over Bash: parse -> check -> apply, exit codes asserted.
 
     Run through the console script rather than in process because the split
@@ -1607,7 +1615,7 @@ class TestPatchSubprocess:
     """
 
     def run_cli(self, *arguments, cwd=None, stdin=None):
-        return console_script(*arguments, cwd=cwd, stdin=stdin)
+        return console_script(self.cli_command, *arguments, cwd=cwd, stdin=stdin)
 
     @pytest.fixture
     def git_repo(self, make_git_repo):
@@ -1930,7 +1938,7 @@ VALIDATE_CANDIDATES = {
 }
 
 
-class TestValidateAndVoteSubprocess:
+class TestValidateAndVoteSubprocess(_ConsoleScriptCase):
     """validate -> vote over Bash, on a repository with a seeded sign bug.
 
     End to end through the console script because the contract an agent uses
@@ -1940,7 +1948,7 @@ class TestValidateAndVoteSubprocess:
     """
 
     def run_cli(self, *arguments):
-        return console_script(*arguments, timeout=300)
+        return console_script(self.cli_command, *arguments, timeout=300)
 
     def validate(self, repo, candidates, output, python_cmd, *extra):
         return self.run_cli(
