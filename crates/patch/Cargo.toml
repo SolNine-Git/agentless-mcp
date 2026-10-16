@@ -1,0 +1,25 @@
+[package]
+name = "patch"
+description = "Candidate edits: SEARCH/REPLACE blocks, unified diffs, their application to file texts, the equivalence keys, the syntax delta, and the vote ranking."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { path = "../kernel" }
+serde.workspace = true
+sha2.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+
+[dev-dependencies]
+json = { path = "../json" }
+serde.workspace = true
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

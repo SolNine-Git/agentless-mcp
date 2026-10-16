@@ -402,6 +402,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "patch"
+version = "0.11.0-rc.1"
+dependencies = [
+ "json",
+ "kernel",
+ "serde",
+ "serde_json",
+ "sha2",
+ "syntax",
+ "text",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"

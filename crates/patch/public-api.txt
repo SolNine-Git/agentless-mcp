@@ -1,0 +1,400 @@
+pub mod patch
+pub enum patch::EditStatus
+pub patch::EditStatus::Ambiguous
+pub patch::EditStatus::Applied
+pub patch::EditStatus::NoAnchor
+pub patch::EditStatus::NoSuchFile
+pub patch::EditStatus::NotFound
+pub patch::EditStatus::Unreadable
+impl patch::EditStatus
+pub fn patch::EditStatus::as_str(self) -> &'static str
+impl core::clone::Clone for patch::EditStatus
+pub fn patch::EditStatus::clone(&self) -> Self
+impl core::cmp::Eq for patch::EditStatus
+impl core::cmp::PartialEq for patch::EditStatus
+pub fn patch::EditStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::EditStatus
+pub fn patch::EditStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for patch::EditStatus
+impl core::marker::StructuralPartialEq for patch::EditStatus
+impl serde_core::ser::Serialize for patch::EditStatus
+pub fn patch::EditStatus::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for patch::EditStatus
+impl core::marker::Send for patch::EditStatus
+impl core::marker::Sync for patch::EditStatus
+impl core::marker::Unpin for patch::EditStatus
+impl core::marker::UnsafeUnpin for patch::EditStatus
+impl core::panic::unwind_safe::RefUnwindSafe for patch::EditStatus
+impl core::panic::unwind_safe::UnwindSafe for patch::EditStatus
+pub enum patch::Located
+pub patch::Located::Absent
+pub patch::Located::Ambiguous
+pub patch::Located::Ambiguous::matches: usize
+pub patch::Located::Unique
+pub patch::Located::Unique::first_line: usize
+pub patch::Located::Unique::last_line: usize
+impl core::clone::Clone for patch::Located
+pub fn patch::Located::clone(&self) -> Self
+impl core::cmp::Eq for patch::Located
+impl core::cmp::PartialEq for patch::Located
+pub fn patch::Located::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Located
+pub fn patch::Located::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for patch::Located
+impl core::marker::StructuralPartialEq for patch::Located
+impl core::marker::Freeze for patch::Located
+impl core::marker::Send for patch::Located
+impl core::marker::Sync for patch::Located
+impl core::marker::Unpin for patch::Located
+impl core::marker::UnsafeUnpin for patch::Located
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Located
+impl core::panic::unwind_safe::UnwindSafe for patch::Located
+pub enum patch::Regression
+pub patch::Regression::Failed
+pub patch::Regression::NotMeasured
+pub patch::Regression::Passed
+impl core::clone::Clone for patch::Regression
+pub fn patch::Regression::clone(&self) -> Self
+impl core::cmp::Eq for patch::Regression
+impl core::cmp::PartialEq for patch::Regression
+pub fn patch::Regression::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Regression
+pub fn patch::Regression::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for patch::Regression
+impl core::marker::StructuralPartialEq for patch::Regression
+impl core::marker::Freeze for patch::Regression
+impl core::marker::Send for patch::Regression
+impl core::marker::Sync for patch::Regression
+impl core::marker::Unpin for patch::Regression
+impl core::marker::UnsafeUnpin for patch::Regression
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Regression
+impl core::panic::unwind_safe::UnwindSafe for patch::Regression
+pub enum patch::Tier
+pub patch::Tier::Applied
+pub patch::Tier::None
+pub patch::Tier::Regression
+pub patch::Tier::Reproduction
+impl patch::Tier
+pub fn patch::Tier::as_str(self) -> &'static str
+pub fn patch::Tier::detail(self) -> &'static str
+impl core::clone::Clone for patch::Tier
+pub fn patch::Tier::clone(&self) -> Self
+impl core::cmp::Eq for patch::Tier
+impl core::cmp::PartialEq for patch::Tier
+pub fn patch::Tier::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Tier
+pub fn patch::Tier::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for patch::Tier
+impl core::marker::StructuralPartialEq for patch::Tier
+impl core::marker::Freeze for patch::Tier
+impl core::marker::Send for patch::Tier
+impl core::marker::Sync for patch::Tier
+impl core::marker::Unpin for patch::Tier
+impl core::marker::UnsafeUnpin for patch::Tier
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Tier
+impl core::panic::unwind_safe::UnwindSafe for patch::Tier
+pub struct patch::ApplyResult
+pub patch::ApplyResult::new_contents: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub patch::ApplyResult::outcomes: alloc::vec::Vec<patch::EditOutcome>
+impl patch::ApplyResult
+pub fn patch::ApplyResult::failures(&self) -> impl core::iter::traits::iterator::Iterator<Item = &patch::EditOutcome>
+pub fn patch::ApplyResult::ok(&self) -> bool
+impl core::clone::Clone for patch::ApplyResult
+pub fn patch::ApplyResult::clone(&self) -> Self
+impl core::cmp::Eq for patch::ApplyResult
+impl core::cmp::PartialEq for patch::ApplyResult
+pub fn patch::ApplyResult::eq(&self, &Self) -> bool
+impl core::default::Default for patch::ApplyResult
+pub fn patch::ApplyResult::default() -> Self
+impl core::fmt::Debug for patch::ApplyResult
+pub fn patch::ApplyResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::ApplyResult
+impl serde_core::ser::Serialize for patch::ApplyResult
+pub fn patch::ApplyResult::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for patch::ApplyResult
+impl core::marker::Send for patch::ApplyResult
+impl core::marker::Sync for patch::ApplyResult
+impl core::marker::Unpin for patch::ApplyResult
+impl core::marker::UnsafeUnpin for patch::ApplyResult
+impl core::panic::unwind_safe::RefUnwindSafe for patch::ApplyResult
+impl core::panic::unwind_safe::UnwindSafe for patch::ApplyResult
+pub struct patch::BlockError
+pub patch::BlockError::index: i64
+pub patch::BlockError::path: core::option::Option<alloc::string::String>
+pub patch::BlockError::reason: alloc::string::String
+impl core::clone::Clone for patch::BlockError
+pub fn patch::BlockError::clone(&self) -> Self
+impl core::cmp::Eq for patch::BlockError
+impl core::cmp::PartialEq for patch::BlockError
+pub fn patch::BlockError::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::BlockError
+pub fn patch::BlockError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::BlockError
+impl serde_core::ser::Serialize for patch::BlockError
+pub fn patch::BlockError::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::BlockError
+impl core::marker::Send for patch::BlockError
+impl core::marker::Sync for patch::BlockError
+impl core::marker::Unpin for patch::BlockError
+impl core::marker::UnsafeUnpin for patch::BlockError
+impl core::panic::unwind_safe::RefUnwindSafe for patch::BlockError
+impl core::panic::unwind_safe::UnwindSafe for patch::BlockError
+pub struct patch::Cluster
+pub patch::Cluster::first_appearance: i64
+pub patch::Cluster::key: alloc::string::String
+pub patch::Cluster::members: alloc::vec::Vec<alloc::string::String>
+pub patch::Cluster::rank: usize
+pub patch::Cluster::regression_passed: usize
+pub patch::Cluster::representative: alloc::string::String
+pub patch::Cluster::reproduction_passed: usize
+pub patch::Cluster::size: usize
+impl core::clone::Clone for patch::Cluster
+pub fn patch::Cluster::clone(&self) -> Self
+impl core::cmp::Eq for patch::Cluster
+impl core::cmp::PartialEq for patch::Cluster
+pub fn patch::Cluster::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Cluster
+pub fn patch::Cluster::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::Cluster
+impl serde_core::ser::Serialize for patch::Cluster
+pub fn patch::Cluster::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::Cluster
+impl core::marker::Send for patch::Cluster
+impl core::marker::Sync for patch::Cluster
+impl core::marker::Unpin for patch::Cluster
+impl core::marker::UnsafeUnpin for patch::Cluster
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Cluster
+impl core::panic::unwind_safe::UnwindSafe for patch::Cluster
+pub struct patch::DiffNote
+pub patch::DiffNote::path: alloc::string::String
+pub patch::DiffNote::reason: alloc::string::String
+impl core::clone::Clone for patch::DiffNote
+pub fn patch::DiffNote::clone(&self) -> Self
+impl core::cmp::Eq for patch::DiffNote
+impl core::cmp::PartialEq for patch::DiffNote
+pub fn patch::DiffNote::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::DiffNote
+pub fn patch::DiffNote::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::DiffNote
+impl core::marker::Freeze for patch::DiffNote
+impl core::marker::Send for patch::DiffNote
+impl core::marker::Sync for patch::DiffNote
+impl core::marker::Unpin for patch::DiffNote
+impl core::marker::UnsafeUnpin for patch::DiffNote
+impl core::panic::unwind_safe::RefUnwindSafe for patch::DiffNote
+impl core::panic::unwind_safe::UnwindSafe for patch::DiffNote
+pub struct patch::DiffParse
+pub patch::DiffParse::notes: alloc::vec::Vec<patch::DiffNote>
+pub patch::DiffParse::result: patch::ParseResult
+impl core::clone::Clone for patch::DiffParse
+pub fn patch::DiffParse::clone(&self) -> Self
+impl core::cmp::Eq for patch::DiffParse
+impl core::cmp::PartialEq for patch::DiffParse
+pub fn patch::DiffParse::eq(&self, &Self) -> bool
+impl core::default::Default for patch::DiffParse
+pub fn patch::DiffParse::default() -> Self
+impl core::fmt::Debug for patch::DiffParse
+pub fn patch::DiffParse::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::DiffParse
+impl core::marker::Freeze for patch::DiffParse
+impl core::marker::Send for patch::DiffParse
+impl core::marker::Sync for patch::DiffParse
+impl core::marker::Unpin for patch::DiffParse
+impl core::marker::UnsafeUnpin for patch::DiffParse
+impl core::panic::unwind_safe::RefUnwindSafe for patch::DiffParse
+impl core::panic::unwind_safe::UnwindSafe for patch::DiffParse
+pub struct patch::Edit
+pub patch::Edit::index: i64
+pub patch::Edit::path: alloc::string::String
+pub patch::Edit::replace: alloc::string::String
+pub patch::Edit::search: alloc::string::String
+impl core::clone::Clone for patch::Edit
+pub fn patch::Edit::clone(&self) -> Self
+impl core::cmp::Eq for patch::Edit
+impl core::cmp::PartialEq for patch::Edit
+pub fn patch::Edit::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Edit
+pub fn patch::Edit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::Edit
+impl serde_core::ser::Serialize for patch::Edit
+pub fn patch::Edit::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::Edit
+impl core::marker::Send for patch::Edit
+impl core::marker::Sync for patch::Edit
+impl core::marker::Unpin for patch::Edit
+impl core::marker::UnsafeUnpin for patch::Edit
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Edit
+impl core::panic::unwind_safe::UnwindSafe for patch::Edit
+pub struct patch::EditOutcome
+pub patch::EditOutcome::edit: patch::Edit
+pub patch::EditOutcome::matches: usize
+pub patch::EditOutcome::reason: alloc::string::String
+pub patch::EditOutcome::status: patch::EditStatus
+impl patch::EditOutcome
+pub fn patch::EditOutcome::applied(&self) -> bool
+impl core::clone::Clone for patch::EditOutcome
+pub fn patch::EditOutcome::clone(&self) -> Self
+impl core::cmp::Eq for patch::EditOutcome
+impl core::cmp::PartialEq for patch::EditOutcome
+pub fn patch::EditOutcome::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::EditOutcome
+pub fn patch::EditOutcome::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::EditOutcome
+impl serde_core::ser::Serialize for patch::EditOutcome
+pub fn patch::EditOutcome::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for patch::EditOutcome
+impl core::marker::Send for patch::EditOutcome
+impl core::marker::Sync for patch::EditOutcome
+impl core::marker::Unpin for patch::EditOutcome
+impl core::marker::UnsafeUnpin for patch::EditOutcome
+impl core::panic::unwind_safe::RefUnwindSafe for patch::EditOutcome
+impl core::panic::unwind_safe::UnwindSafe for patch::EditOutcome
+pub struct patch::Elided
+pub patch::Elided::replace: alloc::string::String
+pub patch::Elided::search: alloc::string::String
+impl core::clone::Clone for patch::Elided
+pub fn patch::Elided::clone(&self) -> Self
+impl core::cmp::Eq for patch::Elided
+impl core::cmp::PartialEq for patch::Elided
+pub fn patch::Elided::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Elided
+pub fn patch::Elided::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::Elided
+impl core::marker::Freeze for patch::Elided
+impl core::marker::Send for patch::Elided
+impl core::marker::Sync for patch::Elided
+impl core::marker::Unpin for patch::Elided
+impl core::marker::UnsafeUnpin for patch::Elided
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Elided
+impl core::panic::unwind_safe::UnwindSafe for patch::Elided
+pub struct patch::Exclusion
+pub patch::Exclusion::id: alloc::string::String
+pub patch::Exclusion::reason: &'static str
+impl core::clone::Clone for patch::Exclusion
+pub fn patch::Exclusion::clone(&self) -> Self
+impl core::cmp::Eq for patch::Exclusion
+impl core::cmp::PartialEq for patch::Exclusion
+pub fn patch::Exclusion::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::Exclusion
+pub fn patch::Exclusion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::Exclusion
+impl serde_core::ser::Serialize for patch::Exclusion
+pub fn patch::Exclusion::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::Exclusion
+impl core::marker::Send for patch::Exclusion
+impl core::marker::Sync for patch::Exclusion
+impl core::marker::Unpin for patch::Exclusion
+impl core::marker::UnsafeUnpin for patch::Exclusion
+impl core::panic::unwind_safe::RefUnwindSafe for patch::Exclusion
+impl core::panic::unwind_safe::UnwindSafe for patch::Exclusion
+pub struct patch::ParseResult
+pub patch::ParseResult::edits: alloc::vec::Vec<patch::Edit>
+pub patch::ParseResult::errors: alloc::vec::Vec<patch::BlockError>
+impl patch::ParseResult
+pub fn patch::ParseResult::ok(&self) -> bool
+impl core::clone::Clone for patch::ParseResult
+pub fn patch::ParseResult::clone(&self) -> Self
+impl core::cmp::Eq for patch::ParseResult
+impl core::cmp::PartialEq for patch::ParseResult
+pub fn patch::ParseResult::eq(&self, &Self) -> bool
+impl core::default::Default for patch::ParseResult
+pub fn patch::ParseResult::default() -> Self
+impl core::fmt::Debug for patch::ParseResult
+pub fn patch::ParseResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::ParseResult
+impl serde_core::ser::Serialize for patch::ParseResult
+pub fn patch::ParseResult::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::ParseResult
+impl core::marker::Send for patch::ParseResult
+impl core::marker::Sync for patch::ParseResult
+impl core::marker::Unpin for patch::ParseResult
+impl core::marker::UnsafeUnpin for patch::ParseResult
+impl core::panic::unwind_safe::RefUnwindSafe for patch::ParseResult
+impl core::panic::unwind_safe::UnwindSafe for patch::ParseResult
+pub struct patch::SyntaxVerdict
+pub patch::SyntaxVerdict::checked: bool
+pub patch::SyntaxVerdict::detail: alloc::string::String
+pub patch::SyntaxVerdict::first_error_line: core::option::Option<u64>
+pub patch::SyntaxVerdict::language: &'static str
+pub patch::SyntaxVerdict::new_errors: usize
+pub patch::SyntaxVerdict::ok: bool
+pub patch::SyntaxVerdict::old_errors: usize
+impl core::clone::Clone for patch::SyntaxVerdict
+pub fn patch::SyntaxVerdict::clone(&self) -> Self
+impl core::cmp::Eq for patch::SyntaxVerdict
+impl core::cmp::PartialEq for patch::SyntaxVerdict
+pub fn patch::SyntaxVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::SyntaxVerdict
+pub fn patch::SyntaxVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::SyntaxVerdict
+impl serde_core::ser::Serialize for patch::SyntaxVerdict
+pub fn patch::SyntaxVerdict::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patch::SyntaxVerdict
+impl core::marker::Send for patch::SyntaxVerdict
+impl core::marker::Sync for patch::SyntaxVerdict
+impl core::marker::Unpin for patch::SyntaxVerdict
+impl core::marker::UnsafeUnpin for patch::SyntaxVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for patch::SyntaxVerdict
+impl core::panic::unwind_safe::UnwindSafe for patch::SyntaxVerdict
+pub struct patch::VoteCandidate
+pub patch::VoteCandidate::applied: bool
+pub patch::VoteCandidate::equivalence_key: core::option::Option<alloc::string::String>
+pub patch::VoteCandidate::id: alloc::string::String
+pub patch::VoteCandidate::index: i64
+pub patch::VoteCandidate::regression: patch::Regression
+pub patch::VoteCandidate::reproduction_passed: bool
+impl core::clone::Clone for patch::VoteCandidate
+pub fn patch::VoteCandidate::clone(&self) -> Self
+impl core::cmp::Eq for patch::VoteCandidate
+impl core::cmp::PartialEq for patch::VoteCandidate
+pub fn patch::VoteCandidate::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::VoteCandidate
+pub fn patch::VoteCandidate::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::VoteCandidate
+impl core::marker::Freeze for patch::VoteCandidate
+impl core::marker::Send for patch::VoteCandidate
+impl core::marker::Sync for patch::VoteCandidate
+impl core::marker::Unpin for patch::VoteCandidate
+impl core::marker::UnsafeUnpin for patch::VoteCandidate
+impl core::panic::unwind_safe::RefUnwindSafe for patch::VoteCandidate
+impl core::panic::unwind_safe::UnwindSafe for patch::VoteCandidate
+pub struct patch::VoteReport
+pub patch::VoteReport::clusters: alloc::vec::Vec<patch::Cluster>
+pub patch::VoteReport::considered: usize
+pub patch::VoteReport::excluded: alloc::vec::Vec<patch::Exclusion>
+pub patch::VoteReport::repro_valid: bool
+pub patch::VoteReport::survived: usize
+pub patch::VoteReport::tier: patch::Tier
+impl patch::VoteReport
+pub fn patch::VoteReport::winner(&self) -> core::option::Option<&str>
+impl core::clone::Clone for patch::VoteReport
+pub fn patch::VoteReport::clone(&self) -> Self
+impl core::cmp::Eq for patch::VoteReport
+impl core::cmp::PartialEq for patch::VoteReport
+pub fn patch::VoteReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patch::VoteReport
+pub fn patch::VoteReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patch::VoteReport
+impl serde_core::ser::Serialize for patch::VoteReport
+pub fn patch::VoteReport::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for patch::VoteReport
+impl core::marker::Send for patch::VoteReport
+impl core::marker::Sync for patch::VoteReport
+impl core::marker::Unpin for patch::VoteReport
+impl core::marker::UnsafeUnpin for patch::VoteReport
+impl core::panic::unwind_safe::RefUnwindSafe for patch::VoteReport
+impl core::panic::unwind_safe::UnwindSafe for patch::VoteReport
+pub const patch::MAX_EDITS: usize
+pub const patch::MAX_EDIT_BYTES: usize
+pub const patch::TEXT_ONLY_KEY_PREFIX: &str
+pub fn patch::apply_edits(&[patch::Edit], &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>) -> patch::ApplyResult
+pub fn patch::equivalence_key(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>) -> alloc::string::String
+pub fn patch::file_key(&str, &str, core::option::Option<syntax::language::Language>) -> core::result::Result<alloc::string::String, syntax::parsed::Unparsable>
+pub fn patch::locate(&str, &str) -> patch::Located
+pub fn patch::normalized_stream(&str, core::option::Option<syntax::language::Language>) -> core::result::Result<alloc::string::String, syntax::parsed::Unparsable>
+pub fn patch::orientation(&[patch::Edit], &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>) -> alloc::vec::Vec<patch::BlockError>
+pub fn patch::parse_blocks(&str) -> patch::ParseResult
+pub fn patch::parse_unified_diff(&str) -> patch::DiffParse
+pub fn patch::rank(&[patch::VoteCandidate], bool) -> patch::VoteReport
+pub fn patch::resolve_elisions(&str, &str, &str) -> core::result::Result<patch::Elided, &'static str>
+pub fn patch::syntax_delta(&str, &str, core::option::Option<syntax::language::Language>) -> core::result::Result<patch::SyntaxVerdict, syntax::parsed::Unparsable>
