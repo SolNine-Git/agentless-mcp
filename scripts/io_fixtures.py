@@ -21,7 +21,7 @@ from typing import Any
 import stdlib_fixtures
 from fixture_files import Fixture, write_or_check
 
-from agentless_mcp.core import projectconfig
+from agentless_mcp.core import projectconfig, sandbox
 from agentless_mcp.util import cachedir, fslimits
 from agentless_mcp.util.errors import RepoResolutionError, SecurityRefusal, WalkBoundExceeded
 
@@ -192,6 +192,32 @@ WALK_BOUNDS = [
     [20, 100, 15],
 ]
 WALK_ROOTS = ["root/link_dir", "root/a.txt", "root/missing", "root/sub/deep"]
+
+# The tail of a capture file: the decode cases, NUL bytes that a trim leaves, and cuts inside a
+# character.
+TAIL_BYTES = [
+    *DECODE,
+    b"\x00",
+    b"\x00\x00abc",
+    b"abc\x00def",
+    b"\x00\xff\x00",
+    "ééé".encode(),
+    "\U0001f600x".encode(),
+]
+TAIL_LIMITS = [0, 1, 2, 3, 5, 100_000]
+
+# A command that never starts: a name, a layout, the working directory, the command line.
+NOT_STARTED: list[list[Any]] = [
+    ["unbalanced quote", [], ".", 'echo "unbalanced'],
+    ["trailing backslash", [], ".", "echo \\"],
+    ["empty", [], ".", "   "],
+    ["missing program", [], ".", "./no-such-binary-9f2c --flag"],
+    ["missing bare name", [], ".", "no-such-program-9f2c"],
+    ["quoted name", [], ".", '"./it\'s missing"'],
+    ["not executable", [["file", "plain.sh", "echo hi\n"]], ".", "./plain.sh"],
+    ["a directory", [["dir", "sub"]], ".", "./sub"],
+    ["missing directory", [], "missing", "true"],
+]
 
 CONFIG_DOCUMENTS = [
     "{}",
@@ -527,6 +553,31 @@ def loaded(layout: list[Entry]) -> dict[str, object]:
         return described
 
 
+def testrun_fixture() -> Fixture:
+    return {
+        "tail": [
+            {"bytes": list(raw), "limit": limit, "tail": tail(raw, limit)}
+            for raw in TAIL_BYTES
+            for limit in TAIL_LIMITS
+        ],
+        "not_started": [not_started(*case) for case in NOT_STARTED],
+    }
+
+
+def tail(raw: bytes, limit: int) -> str:
+    with tempfile.TemporaryFile() as handle:
+        handle.write(raw)
+        return sandbox._tail(handle, limit)
+
+
+def not_started(name: str, layout: list[Entry], cwd: str, command: str) -> dict[str, object]:
+    with tree(layout) as base:
+        result = sandbox.run_command(base / cwd, command, timeout=30)
+        tails = [placed(result.stdout_tail, base), placed(result.stderr_tail, base)]
+    shown = [result.status.value, result.exit_code, *tails]
+    return {"name": name, "layout": layout, "cwd": cwd, "command": command, "result": shown}
+
+
 def cache_fixture() -> Fixture:
     return {"cache_root": [[encoded(env), *cache_root(env)] for env in CACHE]}
 
@@ -574,6 +625,7 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
     "walk": walk_fixture,
     "config": config_fixture,
     "cache": cache_fixture,
+    "testrun": testrun_fixture,
 }
 
 

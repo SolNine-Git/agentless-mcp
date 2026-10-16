@@ -2,13 +2,14 @@
 //! target, a flush to disk, then a rename over the target.
 
 use std::ffi::OsStr;
-use std::fs::{self, DirBuilder, File, OpenOptions, Permissions};
+use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const DIRECTORY_MODE: u32 = 0o700;
+use crate::files::make_dir;
+
 const FILE_MODE: u32 = 0o600;
 // A name that another writer holds is skipped, and a run of taken names is a refusal.
 const MAX_NAME_ATTEMPTS: u64 = 100;
@@ -28,7 +29,7 @@ pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
         let message = format!("{} names no file in a directory", target.display());
         return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
     };
-    private_parent(parent)?;
+    make_dir(parent)?;
     let (temporary, file) = temporary_file(parent, name)?;
     let replaced = write_synced(file, bytes)
         .and_then(|()| fs::set_permissions(&temporary, Permissions::from_mode(FILE_MODE)))
@@ -38,23 +39,6 @@ pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
         let _ = fs::remove_file(&temporary);
     }
     replaced
-}
-
-// The missing parents take the default mode and the directory itself 0700. An existing
-// directory keeps its mode.
-fn private_parent(directory: &Path) -> io::Result<()> {
-    if let Some(above) = directory
-        .parent()
-        .filter(|above| !above.as_os_str().is_empty())
-    {
-        fs::create_dir_all(above)?;
-    }
-    match DirBuilder::new().mode(DIRECTORY_MODE).create(directory) {
-        Err(error) if error.kind() != io::ErrorKind::AlreadyExists || !directory.is_dir() => {
-            Err(error)
-        }
-        _ => Ok(()),
-    }
 }
 
 // A new file named `.<name>.<n>` beside the target, created exclusively.
@@ -104,7 +88,7 @@ mod tests {
         replace_file(&target, b"<html>").unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(fs::read(&target).ok(), Some(b"<html>".to_vec()));
         assert_eq!(mode(&target), FILE_MODE);
-        assert_eq!(mode(&tree.join("cache/exports")), DIRECTORY_MODE);
+        assert_eq!(mode(&tree.join("cache/exports")), 0o700);
     }
 
     #[test]

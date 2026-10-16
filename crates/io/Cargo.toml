@@ -20,7 +20,9 @@ json = { path = "../json" }
 kernel = { path = "../kernel" }
 libc.workspace = true
 prompts = { path = "../prompts" }
+rustix.workspace = true
 serde.workspace = true
+signal-hook.workspace = true
 text = { path = "../text" }
 wait-timeout = "0.2.1"
 

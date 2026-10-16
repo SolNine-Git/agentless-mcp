@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::ExitStatus;
 use std::time::Duration;
 
-use super::{HARDENING_PREFIX, Limits, classify};
+use super::{Call, HARDENING_PREFIX, Limits, classify};
 use crate::testing::{Scratch, cases, latin};
 use crate::{Failure, Git, GitOutcome, Unfinished};
 
@@ -85,6 +85,29 @@ fn every_call_carries_the_prefix_then_the_directory_then_its_arguments() {
 }
 
 #[test]
+fn config_arguments_go_after_the_prefix_and_before_the_directory() {
+    let git = Git::new([(OsString::from("GIT_DIR"), OsString::from("/somewhere/else"))]);
+    let call = Call {
+        config: &crate::NO_REPO_CODE,
+        subcommand: "worktree",
+        rest: &[OsStr::new("prune")],
+    };
+    let spec = git.call_spec(Path::new("/repo"), &call, LIMITS);
+
+    let mut expected = os(&HARDENING_PREFIX);
+    expected.extend(os(&[
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-C",
+        "/repo",
+        "worktree",
+        "prune",
+    ]));
+    assert_eq!(spec.args, expected);
+    assert!(spec.env.iter().all(|(name, _)| name != "GIT_DIR"));
+}
+
+#[test]
 fn an_exit_of_zero_keeps_stdout_whole() {
     let outcome = classify("rev-parse", LIMITS, exited(0, b"abc\n", b"noise"));
     assert_eq!(outcome, GitOutcome::Printed(b"abc\n".to_vec()));
@@ -151,6 +174,8 @@ fn every_limits_text_spells_its_seconds() {
         ("walk IGNORE", crate::walk::IGNORE),
         ("history HISTORY", crate::history::HISTORY),
         ("history PROBE", crate::history::PROBE),
+        ("worktree CREATE", crate::worktree::CREATE),
+        ("worktree CLEANUP", crate::worktree::CLEANUP),
     ];
     for (name, limits) in every {
         let whole = limits.shown.strip_suffix(".0").unwrap_or(limits.shown);

@@ -81,6 +81,15 @@ pub enum Unfinished {
     },
 }
 
+// One git command line after the hardening prefix: `-c key=value` arguments, which go before
+// `-C`, then the subcommand and its arguments.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Call<'a> {
+    pub(crate) config: &'a [&'a str],
+    pub(crate) subcommand: &'static str,
+    pub(crate) rest: &'a [&'a OsStr],
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Limits {
     pub(crate) seconds: u64,
@@ -108,21 +117,45 @@ impl Git {
         rest: &[&OsStr],
         limits: Limits,
     ) -> GitOutcome {
-        let spec = self.spec(dir, subcommand, rest, limits);
-        classify(subcommand, limits, io::run(&spec))
+        let call = Call {
+            config: &[],
+            subcommand,
+            rest,
+        };
+        self.run_call(dir, &call, limits)
+    }
+
+    pub(crate) fn run_call(&self, dir: &Path, call: &Call<'_>, limits: Limits) -> GitOutcome {
+        classify(
+            call.subcommand,
+            limits,
+            io::run(&self.call_spec(dir, call, limits)),
+        )
     }
 
     pub(crate) fn spec(
         &self,
         dir: &Path,
-        subcommand: &str,
+        subcommand: &'static str,
         rest: &[&OsStr],
         limits: Limits,
     ) -> io::Spec {
-        let fixed = HARDENING_PREFIX.iter().map(OsString::from);
+        let call = Call {
+            config: &[],
+            subcommand,
+            rest,
+        };
+        self.call_spec(dir, &call, limits)
+    }
+
+    pub(crate) fn call_spec(&self, dir: &Path, call: &Call<'_>, limits: Limits) -> io::Spec {
+        let fixed = HARDENING_PREFIX
+            .iter()
+            .chain(call.config)
+            .map(OsString::from);
         let target = [OsString::from("-C"), dir.as_os_str().to_owned()];
-        let call = std::iter::once(OsString::from(subcommand))
-            .chain(rest.iter().map(|argument| (*argument).to_owned()));
+        let call = std::iter::once(OsString::from(call.subcommand))
+            .chain(call.rest.iter().map(|argument| (*argument).to_owned()));
         io::Spec {
             program: OsString::from("git"),
             args: fixed.chain(target).chain(call).collect(),

@@ -11,6 +11,42 @@ use crate::testing::{self, Tree};
 use crate::{Outcome, Spec, run};
 
 const MKFIFO_TIMEOUT: Duration = Duration::from_secs(10);
+// The marker that turns a run of this test binary into the child that one test starts.
+const CHILD: &str = "IO_TEST_CHILD";
+const CHILD_TIMEOUT: Duration = Duration::from_secs(60);
+
+// True in the child process that `run_child(name)` starts.
+pub(crate) fn is_child(name: &str) -> bool {
+    std::env::var_os(CHILD).is_some_and(|value| value == name)
+}
+
+// Runs the test `name` of this binary alone in a child process, with the PATH and TMPDIR of this
+// process, and returns how the child ended and its stderr.
+pub(crate) fn run_child(name: &str) -> (std::process::ExitStatus, String) {
+    let binary = std::env::current_exe().expect("the test binary has a path");
+    let kept = ["PATH", "TMPDIR"]
+        .into_iter()
+        .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)));
+    let spec = Spec {
+        program: binary.into_os_string(),
+        args: ["--exact", name, "--nocapture", "--test-threads", "1"]
+            .map(OsString::from)
+            .to_vec(),
+        cwd: PathBuf::from("/"),
+        env: kept
+            .chain([(OsString::from(CHILD), OsString::from(name))])
+            .collect(),
+        timeout: CHILD_TIMEOUT,
+        stdout_cap: 1 << 16,
+        stderr_cap: 1 << 16,
+    };
+    match run(&spec) {
+        Outcome::Exited { status, stderr, .. } => {
+            (status, String::from_utf8_lossy(&stderr).into_owned())
+        }
+        outcome => panic!("the child test {name} did not finish: {outcome:?}"),
+    }
+}
 
 pub(crate) fn fixture<T: DeserializeOwned>(file: &str, section: &str) -> T {
     testing::cases(env!("CARGO_MANIFEST_DIR"), file, section)

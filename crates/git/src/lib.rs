@@ -8,6 +8,7 @@ mod run;
 mod snapshot;
 mod toplevel;
 mod walk;
+mod worktree;
 
 #[cfg(test)]
 mod recipe;
@@ -27,5 +28,9 @@ pub use run::{Failure, Git, GitOutcome, Unfinished};
 pub use snapshot::Snapshot;
 pub use toplevel::Toplevel;
 pub use walk::{RepoFile, Walk, WalkError, WalkWarning};
+pub use worktree::{
+    CleanupNote, MAX_GIT_OUTPUT_BYTES, NO_REPO_CODE, PinError, RunGitError, WORKTREE_DIR, Worktree,
+    WorktreeError, WorktreeFailure,
+};
 
 use run::Limits;
