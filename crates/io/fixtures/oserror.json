@@ -133,14 +133,7 @@
   [130, "OSError(130, 'Owner died')"],
   [131, "OSError(131, 'State not recoverable')"],
   [132, "OSError(132, 'Operation not possible due to RF-kill')"],
-  [133, "OSError(133, 'Memory page has hardware error')"],
-  [134, "OSError(134, 'Unknown error 134')"],
-  [135, "OSError(135, 'Unknown error 135')"],
-  [136, "OSError(136, 'Unknown error 136')"],
-  [137, "OSError(137, 'Unknown error 137')"],
-  [138, "OSError(138, 'Unknown error 138')"],
-  [139, "OSError(139, 'Unknown error 139')"],
-  [140, "OSError(140, 'Unknown error 140')"]
+  [133, "OSError(133, 'Memory page has hardware error')"]
  ],
  "os_error_line": [
   [0, "OSError: [Errno 0] Success"],
@@ -276,13 +269,6 @@
   [130, "OSError: [Errno 130] Owner died"],
   [131, "OSError: [Errno 131] State not recoverable"],
   [132, "OSError: [Errno 132] Operation not possible due to RF-kill"],
-  [133, "OSError: [Errno 133] Memory page has hardware error"],
-  [134, "OSError: [Errno 134] Unknown error 134"],
-  [135, "OSError: [Errno 135] Unknown error 135"],
-  [136, "OSError: [Errno 136] Unknown error 136"],
-  [137, "OSError: [Errno 137] Unknown error 137"],
-  [138, "OSError: [Errno 138] Unknown error 138"],
-  [139, "OSError: [Errno 139] Unknown error 139"],
-  [140, "OSError: [Errno 140] Unknown error 140"]
+  [133, "OSError: [Errno 133] Memory page has hardware error"]
  ]
 }

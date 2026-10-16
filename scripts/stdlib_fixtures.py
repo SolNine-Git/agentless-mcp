@@ -640,7 +640,8 @@ def shell_fixture() -> Fixture:
 
 def os_fixture() -> Fixture:
     # The messages are the C library's, so the test that reads these runs on Linux only.
-    errors = [OSError(code, os.strerror(code)) for code in range(141)]
+    # The cases stop at 133: newer C libraries name errnos above it that older ones leave unknown.
+    errors = [OSError(code, os.strerror(code)) for code in range(134)]
     return {
         "os_error_repr": [[error.errno, repr(error)] for error in errors],
         "os_error_line": [[error.errno, last_traceback_line(error)] for error in errors],
