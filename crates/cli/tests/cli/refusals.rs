@@ -1,10 +1,10 @@
-//! The answers that only this build gives: the commands it does not run, the arguments it does
-//! not take, the closed stdout, the panic line, and a repository that every command leaves as
-//! it found it.
+//! The answers that only this build gives: the arguments and inputs it does not take, the
+//! token counter it always has, the closed stdout, the panic line, and a repository that every
+//! command but an in-place apply leaves as it found it.
 
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::ffi::OsStringExt;
 use std::panic;
 use std::path::Path;
@@ -13,9 +13,6 @@ use std::sync::{Arc, Mutex};
 use cli::Streams;
 
 use crate::common::{Outcome, Sandbox};
-
-const PATCH_REFUSAL: &str =
-    "agentless-mcp: this build does not run patch yet. Run it with the Python agentless-mcp.\n";
 
 fn run(sandbox: &Sandbox, args: &[&str]) -> Outcome {
     let args: Vec<OsString> = args.iter().map(OsString::from).collect();
@@ -30,40 +27,92 @@ fn refused(err: &str) -> Outcome {
     }
 }
 
-#[test]
-fn a_command_this_build_does_not_run_is_refused_before_its_arguments_are_read() {
-    let sandbox = Sandbox::new();
-    for args in [
-        &["patch"][..],
-        &["patch", "--help"],
-        &["--bogus", "patch", "--bogus"],
-    ] {
-        assert_eq!(run(&sandbox, args), refused(PATCH_REFUSAL), "{args:?}");
-    }
-}
-
 // The cl100k_base encoding is part of the binary, so the flag never refuses (ledger deviation).
 #[test]
 fn the_token_counter_flag_loads_its_encoding_and_the_command_answers() {
-    let got = run(
-        &Sandbox::new(),
+    let sandbox = Sandbox::new();
+    let counted = run(
+        &sandbox,
         &["--token-counter", "tiktoken", "patch", "--help"],
     );
-    assert_eq!(got, refused(PATCH_REFUSAL));
+    let plain = run(&sandbox, &["patch", "--help"]);
+    assert_eq!(counted.code, 0);
+    assert!(counted.out.starts_with("usage: agentless-mcp patch"));
+    assert_eq!(counted, plain);
 }
 
+// Ledger deviation: the reference reads stdin by the locale, as a traceback or as surrogate
+// escapes; this build refuses bytes that are not UTF-8, as it refuses such a -f file.
 #[test]
-fn a_lint_source_this_build_does_not_read_is_refused() {
+fn a_patch_on_stdin_that_is_not_utf8_is_refused() {
     let sandbox = Sandbox::new();
-    for flag in ["--candidates", "--diff"] {
-        let message = format!(
-            "agentless-mcp: this build does not run lint {flag} yet. Use --path with --after, or \
-             --since, or run the Python agentless-mcp.\n"
-        );
-        assert_eq!(
-            run(&sandbox, &["lint", flag, "x", "--only", "arity"]),
-            refused(&message)
-        );
+    let args = [OsString::from("patch"), OsString::from("parse")];
+    let mut stdin = &b"### a.py\n<<<<<<< SEARCH\n\xff\n"[..];
+    let got = sandbox.run_with_stdin(&args, sandbox.path(), None, &mut stdin);
+    let message = "agentless-mcp: cannot read stdin: not valid UTF-8: byte 24 is invalid start \
+                   byte\n";
+    assert_eq!(got, refused(message));
+}
+
+struct Unreadable;
+
+impl Read for Unreadable {
+    fn read(&mut self, _bytes: &mut [u8]) -> io::Result<usize> {
+        Err(io::Error::from_raw_os_error(5))
+    }
+}
+
+// Ledger deviation: the reference ends a failed stdin read with a traceback.
+#[test]
+fn a_stdin_that_cannot_be_read_is_refused() {
+    let sandbox = Sandbox::new();
+    let args = [OsString::from("patch"), OsString::from("parse")];
+    let got = sandbox.run_with_stdin(&args, sandbox.path(), None, &mut Unreadable);
+    let message = "agentless-mcp: cannot read stdin: Input/output error\n";
+    assert_eq!(got, refused(message));
+}
+
+// The reference keeps the bytes of stdin: a "\r\n" stays in the edit, where a -f file reads it
+// as "\n".
+#[test]
+fn a_patch_on_stdin_keeps_its_carriage_returns() {
+    let sandbox = Sandbox::new();
+    let text = "### a.py\n<<<<<<< SEARCH\nx\r\n=======\ny\r\n>>>>>>> REPLACE\n";
+    let file = sandbox.write("patch.txt", text);
+    let parse = |extra: &[OsString], stdin: &str| {
+        let mut args = vec![OsString::from("patch"), OsString::from("parse")];
+        args.extend_from_slice(extra);
+        let got = sandbox.run_with_stdin(&args, sandbox.path(), None, &mut stdin.as_bytes());
+        assert_eq!(got.code, 0, "{got:?}");
+        let document: serde_json::Value = serde_json::from_str(&got.out).expect("a JSON answer");
+        document["edits"][0]["search"].clone()
+    };
+    assert_eq!(parse(&[], text), "x\r");
+    let from_file = [OsString::from("-f"), file.into_os_string()];
+    assert_eq!(parse(&from_file, ""), "x");
+}
+
+// Ledger deviation: the reference hands a command that is not UTF-8 to the child as bytes.
+#[test]
+fn a_test_command_that_is_not_utf8_is_refused() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.path().join("repo");
+    sandbox.write("repo/app.py", "x = 1\n");
+    sandbox.git(sandbox.path(), &["init", "--quiet", "-b", "main", "repo"]);
+    sandbox.git(&root, &["add", "-A"]);
+    sandbox.git(&root, &["commit", "--quiet", "-m", "fixture"]);
+    for flag in ["--test-cmd", "--repro-cmd"] {
+        let mut args: Vec<OsString> = ["validate", "--candidates", "c", "--test-cmd", "true"]
+            .into_iter()
+            .map(OsString::from)
+            .collect();
+        args.extend([
+            OsString::from(flag),
+            OsString::from_vec(b"run\xff".to_vec()),
+        ]);
+        let got = sandbox.run(&args, &root, None);
+        let message = format!("agentless-mcp: {flag} is not valid UTF-8: run\u{fffd}\n");
+        assert_eq!(got, refused(&message), "{flag}");
     }
 }
 
@@ -167,7 +216,7 @@ fn contents(root: &Path) -> Vec<(String, Vec<u8>)> {
 }
 
 #[test]
-fn lint_and_capabilities_leave_the_repository_as_they_found_it() {
+fn every_command_but_an_in_place_apply_leaves_the_repository_as_it_found_it() {
     let sandbox = Sandbox::new();
     let root = sandbox.path().join("repo");
     sandbox.write("repo/app.py", "def f(x):\n    return x\n");
@@ -179,6 +228,10 @@ fn lint_and_capabilities_leave_the_repository_as_they_found_it() {
         "def f(x):\n    if x:\n        return 1\n    return x\n",
     );
     let after = sandbox.write("after.py", "def g():\n    return 2\n");
+    let patch = sandbox.write(
+        "patch.txt",
+        "### app.py\n<<<<<<< SEARCH\n    return x\n=======\n    return x + 1\n>>>>>>> REPLACE\n",
+    );
     let state = || {
         let status = sandbox.git(&root, &["status", "--porcelain", "--untracked-files=all"]);
         (
@@ -189,6 +242,7 @@ fn lint_and_capabilities_leave_the_repository_as_they_found_it() {
     };
     let before = state();
     let after = after.display().to_string();
+    let patch = patch.display().to_string();
     let commands = [
         vec![
             "lint",
@@ -198,7 +252,11 @@ fn lint_and_capabilities_leave_the_repository_as_they_found_it() {
             "complexity_delta,contract_drift,clone_delta",
         ],
         vec!["lint", "--path", "app.py", "--after", &after, "--json"],
+        vec!["lint", "--candidates", &patch],
         vec!["capabilities"],
+        vec!["patch", "check", "-f", &patch],
+        vec!["patch", "normalize", "-f", &patch],
+        vec!["patch", "apply", "-f", &patch],
     ];
     for args in commands {
         let args: Vec<OsString> = args.into_iter().map(OsString::from).collect();

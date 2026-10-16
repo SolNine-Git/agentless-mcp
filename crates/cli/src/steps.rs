@@ -1,11 +1,12 @@
 //! The steps of one run: the parse, the refusals that come before any repository work, the
 //! repository and its cache, the command, and the answer.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
-use app::{EnvConfig, Services, Session};
+use app::{EnvConfig, Repo, Services, Session};
 use render::{Receipt, one_line};
 
 use crate::Streams;
@@ -13,7 +14,10 @@ use crate::args::{self, Arg, Exit};
 use crate::commands;
 use crate::exit::{EXIT_OK, EXIT_USAGE, code_for, fail, report, write_answer};
 use crate::invocation::{Command, Invocation, RepoFlags};
-use crate::{lint, read};
+use crate::{lint, patches, read, validate, vote};
+
+// The receipt's cache field for a command that opens no cache.
+pub(crate) const NO_CACHE: &str = "none";
 
 const DEFAULT_COLUMNS: isize = 80;
 // No line of these texts comes near this width, so a larger count changes nothing.
@@ -23,12 +27,16 @@ pub(crate) fn run(
     args: &[OsString],
     env: &EnvConfig,
     services: &Services,
+    stdin: &mut dyn Read,
     streams: &mut Streams<'_>,
 ) -> u8 {
     let args: Vec<Arg> = args.iter().map(|arg| Arg::new(arg)).collect();
     let width = columns(env) - 2;
     match args::parse(&commands::top(), &args, width) {
-        Ok(parsed) => execute(Invocation::new(parsed), services, streams),
+        Ok(parsed) => {
+            let mut run = Run { env, stdin };
+            execute(Invocation::new(parsed), &mut run, services, streams)
+        }
         Err(Exit::Help(text)) => write_answer(streams, &text, "", EXIT_OK),
         Err(Exit::Usage(text)) => {
             report(streams.err, &text);
@@ -37,22 +45,31 @@ pub(crate) fn run(
     }
 }
 
-fn execute(invocation: Invocation, services: &Services, streams: &mut Streams<'_>) -> u8 {
+// The start-up environment of one run, and its stdin.
+struct Run<'a> {
+    env: &'a EnvConfig,
+    stdin: &'a mut dyn Read,
+}
+
+fn execute(
+    invocation: Invocation,
+    run: &mut Run<'_>,
+    services: &Services,
+    streams: &mut Streams<'_>,
+) -> u8 {
     let counted = match with_counter(services, invocation.tiktoken) {
         Ok(counted) => counted,
         Err(error) => return fail(streams.err, &error.to_string(), code_for(&error)),
     };
     let services = counted.as_ref().unwrap_or(services);
     match invocation.command {
-        Command::Unported(name) => {
-            let message = format!(
-                "this build does not run {name} yet. Run it with the Python agentless-mcp."
-            );
-            fail(streams.err, &message, EXIT_USAGE)
-        }
         Command::Lint(request) => lint::run(&request, services, streams),
         Command::Capabilities(flags) => capabilities(&flags, services, streams),
         Command::Read(call) => read::run(&call, services, streams),
+        Command::PatchParse(input) => patches::parse(&input, services, run.stdin, streams),
+        Command::PatchEdit(call) => patches::edit(&call, services, run.stdin, streams),
+        Command::Validate(call) => validate::run(&call, run.env, services, streams),
+        Command::Vote(call) => vote::run(&call, services, streams),
     }
 }
 
@@ -130,14 +147,64 @@ pub(crate) fn diagnostics(streams: &mut Streams<'_>, lines: &[String]) {
     }
 }
 
+// The diagnostics of a call that held SIGINT, then the end of the process by SIGINT when one
+// arrived while it was held.
+pub(crate) fn diagnostics_or_stop(streams: &mut Streams<'_>, lines: &[String]) {
+    diagnostics(streams, lines);
+    if io::interrupted() {
+        io::end_by_interrupt();
+    }
+}
+
+// The repository of a command that opens no cache, and its git state.
+pub(crate) struct Resolved {
+    pub(crate) repo: Repo,
+    pub(crate) snapshot: git::Snapshot,
+}
+
+impl Resolved {
+    pub(crate) fn receipt(&self) -> Receipt<'_> {
+        Receipt::new(&self.repo, &self.snapshot, NO_CACHE)
+    }
+}
+
+// Resolves the repository with `resolver` and reads its git state, with the note on what is
+// unknown on stderr.
+pub(crate) fn resolved(
+    repo: Option<&OsStr>,
+    resolver: fn(&Services, Option<&Path>) -> Result<Repo, app::Error>,
+    services: &Services,
+    streams: &mut Streams<'_>,
+) -> Result<Resolved, u8> {
+    let repo = resolver(services, repo.map(Path::new))
+        .map_err(|error| fail(streams.err, &error.to_string(), code_for(&error)))?;
+    let enclosing = services.git.root(&repo.root);
+    let snapshot = services.git.snapshot(&repo.root, enclosing.as_deref());
+    if !snapshot.note.is_empty() {
+        let note = format!("agentless-mcp: {}\n", one_line(&snapshot.note));
+        report(streams.err, &note);
+    }
+    Ok(Resolved { repo, snapshot })
+}
+
 // Writes a rendered answer; a payload that does not serialize is a defect.
 pub(crate) fn answer(
     streams: &mut Streams<'_>,
     rendered: Result<String, render::Error>,
     code: u8,
 ) -> u8 {
+    answer_with(streams, rendered, "", code)
+}
+
+// Writes a rendered answer on stdout and `notes` on stderr.
+pub(crate) fn answer_with(
+    streams: &mut Streams<'_>,
+    rendered: Result<String, render::Error>,
+    notes: &str,
+    code: u8,
+) -> u8 {
     match rendered {
-        Ok(text) => write_answer(streams, &text, "", code),
+        Ok(text) => write_answer(streams, &text, notes, code),
         Err(error) => fail(streams.err, &error.to_string(), crate::EXIT_DOMAIN),
     }
 }

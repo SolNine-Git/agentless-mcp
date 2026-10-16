@@ -1,6 +1,8 @@
 //! The declarations of the command line: the top parser, its subcommands, and the `lint` and
 //! `capabilities` parsers with their help texts. The read subcommands' parsers come from
-//! `app::ops::OPS`.
+//! `app::ops::OPS`, and the write subcommands' parsers from `write`.
+
+mod write;
 
 use app::ops::{JSON, NO_CACHE, OPS, Op, REPO};
 use app::{CHECKS, CheckInput, Severity};
@@ -49,29 +51,41 @@ pub(crate) static COMMANDS: [Command; 24] = [
     read(&OPS[13]),
     read(&OPS[14]),
     read(&OPS[15]),
-    unported("patch", "SEARCH/REPLACE patch machinery (write side)"),
-    Command {
-        name: "lint",
-        help: "deterministic hallucination checks over candidate patches (write side)",
-        form: Form::Built(lint),
-    },
-    unported("validate", "run candidate patches against the tests"),
-    unported("vote", "rank validated candidates by equivalence cluster"),
+    built(
+        "patch",
+        "SEARCH/REPLACE patch machinery (write side)",
+        write::patch,
+    ),
+    built(
+        "lint",
+        "deterministic hallucination checks over candidate patches (write side)",
+        lint,
+    ),
+    built(
+        "validate",
+        "run candidate patches against the tests",
+        write::validate,
+    ),
+    built(
+        "vote",
+        "rank validated candidates by equivalence cluster",
+        write::vote,
+    ),
     read(&OPS[16]),
     read(&OPS[17]),
-    Command {
-        name: "capabilities",
-        help: "grammars, versions and caps in force",
-        form: Form::Built(capabilities),
-    },
+    built(
+        "capabilities",
+        "grammars, versions and caps in force",
+        capabilities,
+    ),
     read(&OPS[18]),
 ];
 
-const fn unported(name: &'static str, help: &'static str) -> Command {
+const fn built(name: &'static str, help: &'static str, build: fn() -> Parser) -> Command {
     Command {
         name,
         help,
-        form: Form::Unported,
+        form: Form::Built(build),
     }
 }
 
@@ -161,8 +175,13 @@ fn lint() -> Parser {
 fn capabilities() -> Parser {
     let mut actions = vec![help_action()];
     actions.extend(repo_flags());
+    subcommand("capabilities", actions)
+}
+
+// The parser of a subcommand without a description or a group; `name` follows the program name.
+fn subcommand(name: &str, actions: Vec<Action>) -> Parser {
     Parser {
-        prog: format!("{PROG} capabilities"),
+        prog: format!("{PROG} {name}"),
         description: None,
         actions,
         group: None,

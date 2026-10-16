@@ -22,7 +22,8 @@ fn replay(case: &Value) -> Outcome {
     let cwd = sandbox
         .path()
         .join(case["cwd"].as_str().expect("a working directory"));
-    let got = sandbox.run(&argv, &cwd, None);
+    let mut stdin = case["stdin"].as_str().unwrap_or_default().as_bytes();
+    let got = sandbox.run_with_stdin(&argv, &cwd, None, &mut stdin);
     Outcome {
         out: normalised(&got.out, sandbox.path()),
         err: normalised(&got.err, sandbox.path()),
@@ -116,6 +117,44 @@ fn without_cache_names(outcome: Outcome) -> Outcome {
         err: masked_lines(&err),
         code,
     }
+}
+
+// The DURATION mask of the generator: each verdict record's run time is a placeholder.
+#[test]
+fn every_write_scenario_answers_as_the_fixture() {
+    every_scenario_answers_as("write_scenarios", 80, without_durations);
+}
+
+fn without_durations(outcome: Outcome) -> Outcome {
+    let Outcome { out, err, code } = outcome;
+    Outcome {
+        out: duration_masked(&out),
+        err: duration_masked(&err),
+        code,
+    }
+}
+
+// Each `"duration": ` followed by a number reads `"duration": <DURATION>`.
+fn duration_masked(text: &str) -> String {
+    const FIELD: &str = "\"duration\": ";
+    let mut done = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(FIELD) {
+        let (head, tail) = rest.split_at(at + FIELD.len());
+        done.push_str(head);
+        let number = tail
+            .find(|c: char| !(c.is_ascii_digit() || "-+.e".contains(c)))
+            .unwrap_or(tail.len());
+        let unsigned = tail.strip_prefix('-').unwrap_or(tail);
+        if unsigned.starts_with(|c: char| c.is_ascii_digit()) {
+            done.push_str("<DURATION>");
+            rest = &tail[number..];
+        } else {
+            rest = tail;
+        }
+    }
+    done.push_str(rest);
+    done
 }
 
 fn masked_lines(text: &str) -> String {

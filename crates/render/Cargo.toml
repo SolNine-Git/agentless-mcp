@@ -1,6 +1,6 @@
 [package]
 name = "render"
-description = "The text and JSON forms of the answers: the receipt envelope, the lint report, and the capabilities report."
+description = "The text and JSON forms of the answers: the receipt envelope, the lint and capabilities reports, the read views, and the patch, validate and vote answers."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,6 +17,7 @@ facts = { path = "../facts" }
 git = { path = "../git" }
 io = { path = "../io" }
 json = { path = "../json" }
+patch = { path = "../patch" }
 prompts = { path = "../prompts" }
 serde.workspace = true
 serde_json.workspace = true

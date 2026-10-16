@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 
 use text::CodePointString;
 
-use super::declared::declared;
 use super::help::{help_text, usage_text};
 use super::nargs::{Nargs, match_partial, strips_separator};
 use super::{Arg, Chosen, Command, Exit, Form, Kind, Namespace, Parsed, Parser, Value};
@@ -28,7 +27,7 @@ struct Known {
 pub(crate) fn parse(top: &Parser, args: &[Arg], width: isize) -> Result<Parsed, Exit> {
     let known = parse_known(top, args, width)?;
     let chosen = known.chosen.expect("the top parser requires a command");
-    if !matches!(chosen, Chosen::Unported(_)) && !known.extras.is_empty() {
+    if !known.extras.is_empty() {
         let message = format!("unrecognized arguments: {}", known.extras.join(" "));
         return Err(error(top, width, &message));
     }
@@ -404,26 +403,9 @@ impl Run<'_> {
         let Some(command) = commands.iter().find(|c| c.name == values[0].text) else {
             return Ok(());
         };
-        let built = match command.form {
-            Form::Unported => {
-                self.chosen = Some(Chosen::Unported(command.name));
-                return Ok(());
-            }
-            Form::Built(build) => build(),
-            Form::Read(op) => declared(op),
-        };
-        let known = parse_known(&built, &values[1..], self.width)?;
+        let known = parse_known(&command.parser(), &values[1..], self.width)?;
         self.sub_extras = known.extras;
-        self.chosen = Some(match command.form {
-            Form::Read(op) => Chosen::Read {
-                op,
-                namespace: known.namespace,
-            },
-            _ => Chosen::Ported {
-                name: command.name,
-                namespace: known.namespace,
-            },
-        });
+        self.chosen = Some(chosen(command, known.namespace, known.chosen));
         Ok(())
     }
 
@@ -476,6 +458,29 @@ fn positional_value(index: usize, run: &Run<'_>, values: &[Arg]) -> Option<Value
         }
         (Nargs::Arity(app::ops::Arity::Optional), []) => None,
         _ => Some(Value::List(values.to_vec())),
+    }
+}
+
+// The command that the parse of `command`'s arguments chose: a nested subcommand's choice with
+// `command`'s name first, else `command` itself with the values of its own parser.
+fn chosen(command: &'static Command, namespace: Namespace, nested: Option<Chosen>) -> Chosen {
+    match (&command.form, nested) {
+        (Form::Read(op), _) => Chosen::Read { op, namespace },
+        (
+            Form::Built(_),
+            Some(Chosen::Ported {
+                mut path,
+                namespace,
+            }),
+        ) => {
+            path.insert(0, command.name);
+            Chosen::Ported { path, namespace }
+        }
+        (Form::Built(_), Some(read @ Chosen::Read { .. })) => read,
+        (Form::Built(_), None) => Chosen::Ported {
+            path: vec![command.name],
+            namespace,
+        },
     }
 }
 

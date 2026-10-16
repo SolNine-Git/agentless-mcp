@@ -19,11 +19,15 @@ from typing import Any
 
 from fixture_files import Fixture, refuse_real_caches, write_or_check
 
+from agentless_mcp.adapters.cli.main import _check_lines
 from agentless_mcp.application import capability_service, envelope, lint_service, render
+from agentless_mcp.application.patch_service import CheckReport, FileCheck
 from agentless_mcp.application.repo_context import RepoContext
-from agentless_mcp.core import patchlint, projectconfig
+from agentless_mcp.core import patchlint, projectconfig, vote
 from agentless_mcp.core.extractor import SCOPE_ANALYSED_LANGUAGES, TreeSitterExtractor
 from agentless_mcp.core.grammars import LanguageCapability
+from agentless_mcp.core.normalize import SyntaxVerdict
+from agentless_mcp.core.patches import ApplyResult
 from agentless_mcp.util.textsafe import one_line
 from agentless_mcp.util.tokens import Chars4Counter
 
@@ -467,11 +471,81 @@ def capability_json(receipt_row: dict[str, Any], row: dict[str, Any], ceiling: i
     )
 
 
+# Each vote: [id, index, applied, measured, key, regression passed, reproduction passed] rows and
+# repro_valid. They cover every tier, the exclusions, the plurals and short and non-ASCII keys.
+VOTES: list[tuple[list[list[Any]], bool]] = [
+    ([], False),
+    ([["a", 0, False, False, None, False, False]], True),
+    ([["only", 0, True, True, "k" * 64, True, False]], False),
+    (
+        [
+            ["01-plus", 0, True, True, "a" * 64, True, True],
+            ["02-again", 1, True, True, "a" * 64, True, True],
+            ["03-other", 2, True, True, "b" * 64, True, False],
+            ["04-broken", 3, True, True, "c" * 64, False, False],
+            ["05-misses", 4, False, False, None, False, False],
+            ["06-unmeasured", 5, True, False, "d" * 64, False, False],
+            ["07-empty", 6, True, True, None, True, True],
+        ],
+        True,
+    ),
+    (
+        [
+            ["late", 9, True, True, "short", True, False],
+            ["early", 2, True, True, E_ACUTE * 20, True, False],
+            ["tied", 5, True, True, "short", True, False],
+        ],
+        False,
+    ),
+    (
+        [["x", 0, True, True, "e" * 64, False, False], ["y", 1, True, True, "f" * 64, False, True]],
+        True,
+    ),
+]
+
+# Each check: [path, verdict or None, error] rows; a verdict is [language, old errors, new errors,
+# ok, detail, checked, first error line].
+CHECKS: list[list[list[Any]]] = [
+    [],
+    [["gone.py", None, "no such file in this repository"]],
+    [["a.py", ["python", 0, 0, True, "", True, None], ""]],
+    [
+        ["b.py", ["python", 1, 3, False, "new parse errors", True, 4], ""],
+        ["n.rst", ["unknown", 0, 0, True, "no grammar: not checked", False, None], ""],
+    ],
+]
+
+
+def vote_case(rows: list[list[Any]], repro_valid: bool) -> list[object]:
+    """The vote text and summary of one candidate set."""
+    report = vote.rank([vote.VoteCandidate(*row) for row in rows], repro_valid=repro_valid)
+    return [rows, repro_valid, report.text(), report.summary_line()]
+
+
+def check_case(files: list[list[Any]]) -> list[object]:
+    """The check lines of one report, as the patch check command prints them."""
+    checks = tuple(
+        FileCheck(path, None if verdict is None else SyntaxVerdict(*verdict), error)
+        for path, verdict, error in files
+    )
+    report = CheckReport(checks, ApplyResult((), {}))
+    return [files, "\n".join(_check_lines(report)) + "\n"]
+
+
+def write_fixture() -> Fixture:
+    """The vote text and summary, and the check lines, of the write commands."""
+    return {
+        "vote": [vote_case(rows, repro_valid) for rows, repro_valid in VOTES],
+        "check": [check_case(files) for files in CHECKS],
+    }
+
+
 BUILDERS: dict[str, Callable[[], Fixture]] = {
     "textsafe": textsafe_fixture,
     "lint": lint_fixture,
     "envelope": envelope_fixture,
     "capabilities": capabilities_fixture,
+    "write": write_fixture,
 }
 
 

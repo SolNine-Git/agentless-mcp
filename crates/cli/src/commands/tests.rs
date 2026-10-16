@@ -14,7 +14,7 @@ fn each_read_operation_is_the_subcommand_of_its_name() {
                 assert_eq!(command.help, op.summary);
                 Some(op.name)
             }
-            _ => None,
+            Form::Built(_) => None,
         })
         .collect();
     let declared: Vec<&str> = OPS.iter().map(|op| op.name).collect();

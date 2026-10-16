@@ -29,8 +29,7 @@ use crate::steps::{answer, opened};
 // The step of one read subcommand.
 type Step = fn(&ReadArgs<'_>, &Services, &mut Streams<'_>) -> u8;
 
-// The read subcommands that this build runs. Each one parses before it runs, so a subcommand
-// missing here still answers its help and its usage errors.
+// The step of each read operation, by its name.
 const STEPS: [(&str, Step); 19] = [
     ("map", map::map),
     ("tree", views::tree),
@@ -54,17 +53,21 @@ const STEPS: [(&str, Step); 19] = [
 ];
 
 pub(crate) fn run(call: &ReadCall, services: &Services, streams: &mut Streams<'_>) -> u8 {
-    let name = call.op.name;
-    let Some((_, step)) = STEPS.iter().find(|(known, _)| *known == name) else {
-        let message =
-            format!("this build does not run {name} yet. Run it with the Python agentless-mcp.");
-        return fail(streams.err, &message, EXIT_USAGE);
-    };
+    let step = step_of(call.op);
     let args = ReadArgs {
         op: call.op,
         namespace: &call.namespace,
     };
     step(&args, services, streams)
+}
+
+// Every operation of OPS has a step; the unit test proves it.
+fn step_of(op: &Op) -> Step {
+    let found = STEPS.iter().find(|(name, _)| *name == op.name);
+    found.map_or_else(
+        || panic!("STEPS has no step for {}", op.name),
+        |(_, step)| *step,
+    )
 }
 
 // The values of one read subcommand's parse, with the declared default of each value it left
@@ -125,9 +128,8 @@ impl ReadArgs<'_> {
 
 // The text of a path argument, or the refusal of one that is not UTF-8 (ledger deviation).
 pub(crate) fn utf8_path(arg: &Arg, name: &str, streams: &mut Streams<'_>) -> Result<String, u8> {
-    let message = || format!("{name} is not valid UTF-8: {}", arg.text);
-    let text = arg.raw.to_str().map(str::to_owned);
-    text.ok_or_else(|| fail(streams.err, &message(), EXIT_USAGE))
+    arg.utf8(name)
+        .map_err(|refusal| fail(streams.err, &refusal, EXIT_USAGE))
 }
 
 // Resolves the repository a read subcommand is about, which is the enclosing git root unless
@@ -190,5 +192,22 @@ pub(crate) fn emit_then<V: View>(
     match rendered {
         Ok(text) => write_answer(streams, &text, &err, code),
         Err(error) => answer(streams, Err(error), EXIT_DOMAIN),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use app::ops::OPS;
+
+    use super::{STEPS, step_of};
+
+    #[test]
+    fn every_read_operation_has_one_step() {
+        for op in &OPS {
+            step_of(op);
+            let named = STEPS.iter().filter(|(name, _)| *name == op.name);
+            assert_eq!(named.count(), 1, "{}", op.name);
+        }
+        assert_eq!(STEPS.len(), OPS.len());
     }
 }

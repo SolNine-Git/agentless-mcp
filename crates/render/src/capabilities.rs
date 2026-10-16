@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use app::{Capabilities, LanguageCapability, LintCheckRow};
 
+use crate::blocks::detail_suffix;
 use crate::envelope::Listing;
 
 impl Listing for Capabilities<'_> {
@@ -134,11 +135,7 @@ fn language_entry(language: &LanguageCapability) -> String {
 }
 
 fn exception_line(language: &LanguageCapability, entry: &str) -> String {
-    let detail = if language.detail.is_empty() {
-        String::new()
-    } else {
-        format!(" -- {}", language.detail)
-    };
+    let detail = detail_suffix(&language.detail);
     format!(
         "  warmed={} probe={}: {entry}{detail}",
         language.warmed, language.probe_ok

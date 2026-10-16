@@ -17,6 +17,11 @@ const EXIT_CLOSED_STDOUT: u8 = 120;
 
 const PREFIX: &str = "agentless-mcp: ";
 
+// An answer that holds what the caller asked for exits 0, and one that does not exits 1.
+pub(crate) const fn domain_code(ok: bool) -> u8 {
+    if ok { EXIT_OK } else { EXIT_DOMAIN }
+}
+
 // A refusal of the request itself exits 2; every other error that stops a run exits 1.
 pub(crate) fn code_for(error: &app::Error) -> u8 {
     let refused = matches!(

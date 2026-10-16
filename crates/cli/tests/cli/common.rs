@@ -2,6 +2,7 @@
 //! run of the command line, and the fixture files.
 
 use std::ffi::OsString;
+use std::io::Read;
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 
@@ -51,6 +52,16 @@ impl Sandbox {
     }
 
     pub fn run(&self, args: &[OsString], cwd: &Path, columns: Option<&str>) -> Outcome {
+        self.run_with_stdin(args, cwd, columns, &mut &b""[..])
+    }
+
+    pub fn run_with_stdin(
+        &self,
+        args: &[OsString],
+        cwd: &Path,
+        columns: Option<&str>,
+        stdin: &mut dyn Read,
+    ) -> Outcome {
         let env = self.env(cwd, columns);
         let services = Services::new(&env);
         let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -58,7 +69,7 @@ impl Sandbox {
             out: &mut out,
             err: &mut err,
         };
-        let code = cli::run(args, &env, &services, &mut streams);
+        let code = cli::run(args, &env, &services, stdin, &mut streams);
         Outcome {
             out: String::from_utf8(out).expect("UTF-8 stdout"),
             err: String::from_utf8(err).expect("UTF-8 stderr"),

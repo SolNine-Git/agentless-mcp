@@ -3,9 +3,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::Form;
-use super::declared::{declared, float_text};
+use super::declared::float_text;
 use super::wrap::{collapse, wrap};
+use super::{Command, Kind, Parser};
 use crate::commands;
 
 fn wrap_cases() -> Vec<Value> {
@@ -73,15 +73,27 @@ fn a_unicode_digit_float_is_refused_where_the_reference_reads_it() {
 #[test]
 fn every_help_text_is_ascii_and_holds_no_format_mark() {
     let mut parsers = vec![commands::top()];
-    parsers.extend(commands::COMMANDS.iter().filter_map(|c| match c.form {
-        Form::Built(build) => Some(build()),
-        Form::Read(op) => Some(declared(op)),
-        Form::Unported => None,
-    }));
-    let mut texts: Vec<String> = commands::COMMANDS
-        .iter()
-        .map(|c| c.help.to_owned())
-        .collect();
+    let mut texts: Vec<String> = Vec::new();
+    let mut at = 0;
+    while let Some(parser) = parsers.get(at) {
+        let commands: Vec<&Command> = (parser.actions.iter())
+            .filter_map(|action| match action.kind {
+                Kind::Commands(commands) => Some(commands),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        texts.extend(commands.iter().map(|command| command.help.to_owned()));
+        let nested: Vec<Parser> = commands.into_iter().map(Command::parser).collect();
+        parsers.extend(nested);
+        at += 1;
+    }
+    // The top parser, one per subcommand, and the nested ones.
+    assert!(
+        parsers.len() > 1 + commands::COMMANDS.len(),
+        "{} parsers",
+        parsers.len()
+    );
     for parser in &parsers {
         texts.extend(parser.description.map(str::to_owned));
         texts.extend(

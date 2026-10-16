@@ -2,6 +2,7 @@
 
 use app::{Finding, LintCandidate, LintReport, PairFinding, Severity};
 
+use crate::blocks::blocks_or;
 use crate::envelope::Listing;
 use text::one_line;
 
@@ -18,11 +19,12 @@ impl Listing for LintReport {
 }
 
 pub(crate) fn render_lint(report: &LintReport) -> String {
-    if report.candidates.is_empty() {
-        return "no candidates to lint\n".to_owned();
-    }
-    let blocks: Vec<String> = report.candidates.iter().map(candidate_block).collect();
-    blocks.join("\n\n") + "\n"
+    blocks_or(
+        &report.candidates,
+        candidate_block,
+        "\n\n",
+        "no candidates to lint",
+    )
 }
 
 fn candidate_block(candidate: &LintCandidate) -> String {

@@ -8,6 +8,7 @@ use render::{Receipt, diagram_caveat, diagram_summary, mermaid, receipt_lines, s
 
 use super::{ReadArgs, open_reading, utf8_path};
 use crate::Streams;
+use crate::caller::{named_file, shown_path};
 use crate::exit::{EXIT_DOMAIN, EXIT_OK, EXIT_USAGE, code_for, fail, report, write_answer};
 use crate::steps::{answer, diagnostics};
 
@@ -86,15 +87,9 @@ fn check_diagram(
     streams: &mut Streams<'_>,
 ) -> u8 {
     let shown = shown_path(check);
-    let committed = match caller_file(Path::new(check), services) {
+    let committed = match named_file(Path::new(check), &shown, services) {
         Ok(text) => text,
-        Err(reason) => {
-            return fail(
-                streams.err,
-                &format!("cannot read {shown}: {reason}"),
-                EXIT_USAGE,
-            );
-        }
+        Err(refusal) => return fail(streams.err, &refusal, EXIT_USAGE),
     };
     let stripped = strip_fence(&committed);
     if stripped == rendered {
@@ -137,37 +132,6 @@ fn drift_summary(committed: &str, rendered: &str) -> Vec<String> {
         )),
     }
     lines
-}
-
-// A file the caller named is read as given: no size cap and no symlink refusal, UTF-8 only, with
-// "\r\n" and a lone "\r" read as "\n".
-fn caller_file(path: &Path, services: &Services) -> Result<String, String> {
-    let place = match &services.cwd {
-        Ok(cwd) => cwd.join(path),
-        Err(_) => path.to_path_buf(),
-    };
-    let bytes = std::fs::read(&place).map_err(|error| io::strerror(&error))?;
-    let text = io::decode_strict(bytes)
-        .map_err(|error| format!("not valid UTF-8: byte {} is {}", error.start, error.reason))?;
-    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
-}
-
-// The path as a pure path spells it: no empty or "." segment and no trailing slash, with one or
-// two leading slashes kept and three or more read as one.
-fn shown_path(text: &str) -> String {
-    let leading = text.len() - text.trim_start_matches('/').len();
-    let root = match leading {
-        0 => "",
-        2 => "//",
-        _ => "/",
-    };
-    let parts: Vec<&str> = (text.split('/'))
-        .filter(|part| !part.is_empty() && *part != ".")
-        .collect();
-    match (root, parts.as_slice()) {
-        ("", []) => ".".to_owned(),
-        _ => format!("{root}{}", parts.join("/")),
-    }
 }
 
 #[cfg(test)]

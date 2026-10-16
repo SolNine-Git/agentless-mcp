@@ -92,7 +92,7 @@ fn exclusive(actions: &[Action], dests: &[&str]) -> Option<Group> {
 // A text value, kept as given.
 pub(crate) const TEXT: Convert = |arg| Ok(Value::Text(arg.clone()));
 
-fn int_value(arg: &Arg) -> Result<Value, String> {
+pub(crate) fn int_value(arg: &Arg) -> Result<Value, String> {
     IntArg::parse(&arg.text)
         .map(Value::Int)
         .ok_or_else(|| invalid("int", arg))

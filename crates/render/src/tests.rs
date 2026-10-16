@@ -8,3 +8,4 @@ mod lint;
 mod read;
 mod rows;
 mod textsafe;
+mod write;

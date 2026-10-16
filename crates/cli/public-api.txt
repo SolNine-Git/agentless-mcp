@@ -13,5 +13,5 @@ pub const cli::EXIT_DOMAIN: u8
 pub fn cli::cwd_failure_line(&core::io::error::Error) -> alloc::string::String
 pub fn cli::internal_error_line(&std::panic::PanicHookInfo<'_>) -> alloc::string::String
 pub fn cli::refuse_hook(&mut cli::Streams<'_>) -> u8
-pub fn cli::run(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &app::env::Services, &mut cli::Streams<'_>) -> u8
+pub fn cli::run(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut cli::Streams<'_>) -> u8
 pub fn cli::write_answer(&mut cli::Streams<'_>, &str, &str, u8) -> u8

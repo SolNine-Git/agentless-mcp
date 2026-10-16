@@ -16,7 +16,7 @@ use std::os::unix::ffi::OsStrExt;
 use app::IntArg;
 use app::ops::{Arity, Op};
 
-pub(crate) use declared::{TEXT, action, float_text, help_action};
+pub(crate) use declared::{TEXT, action, float_text, help_action, int_value};
 pub(crate) use parse::parse;
 
 // One command-line argument: its text for matching and messages, and its bytes for paths.
@@ -32,6 +32,13 @@ impl Arg {
             text: raw.to_string_lossy().into_owned(),
             raw: raw.to_owned(),
         }
+    }
+
+    // The text of an argument that a command reads as text, or the refusal of one that is not
+    // UTF-8 (ledger deviation), which names the argument as `name`.
+    pub(crate) fn utf8(&self, name: &str) -> Result<String, String> {
+        let text = self.raw.to_str().map(str::to_owned);
+        text.ok_or_else(|| format!("{name} is not valid UTF-8: {}", self.text))
     }
 
     // The part after the first `=`, as the value of a `--name=value` argument.
@@ -123,11 +130,19 @@ pub(crate) struct Command {
     pub(crate) form: Form,
 }
 
-// How a subcommand's parser is built: by hand, from its read operation, or not in this build.
+impl Command {
+    pub(crate) fn parser(&self) -> Parser {
+        match self.form {
+            Form::Built(build) => build(),
+            Form::Read(op) => declared::declared(op),
+        }
+    }
+}
+
+// How a subcommand's parser is built: by hand, or from its read operation.
 pub(crate) enum Form {
     Built(fn() -> Parser),
     Read(&'static Op),
-    Unported,
 }
 
 #[derive(Clone, Debug)]
@@ -193,16 +208,17 @@ impl Namespace {
     }
 }
 
+// The command a parse chose. A hand-built command names its path from the top, as
+// ["patch", "parse"], with the values of the last parser on it.
 pub(crate) enum Chosen {
     Ported {
-        name: &'static str,
+        path: Vec<&'static str>,
         namespace: Namespace,
     },
     Read {
         op: &'static Op,
         namespace: Namespace,
     },
-    Unported(&'static str),
 }
 
 pub(crate) struct Parsed {

@@ -35,7 +35,9 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     match words.as_slice() {
         [Some("hook"), ..] => with_streams(cli::refuse_hook),
         _ => with_streams(|streams| {
-            guarded(streams, |streams| cli::run(args, env, services, streams))
+            guarded(streams, |streams| {
+                cli::run(args, env, services, &mut io::stdin().lock(), streams)
+            })
         }),
     }
 }

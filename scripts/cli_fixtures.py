@@ -68,6 +68,16 @@ HELP_ARGVS = [
     ["lint"],
     ["nope"],
     ["capabilities", "--repo"],
+    ["patch", "--help"],
+    ["patch", "parse", "--help"],
+    ["patch", "check", "--help"],
+    ["patch", "apply", "--help"],
+    ["patch", "normalize", "--help"],
+    ["validate", "--help"],
+    ["vote", "--help"],
+    ["patch"],
+    ["validate"],
+    ["vote"],
 ]
 WIDTHS = [None, "1", "10", "20", "40", "60", "79", "80", "81", "100", "120", "200", "1000"]
 ODD_COLUMNS = [
@@ -172,6 +182,54 @@ CORPUS: list[list[str]] = [
     ["lint", "--candidates", "c", "--path", "core.py", "--after", "x.py"],
     ["lint", "--since", "HEAD", "--candidates", "c"],
     ["teleport", "--repo", "r"],
+    # The write subcommands: usage errors, nested choices and the inputs a run refuses.
+    ["patch", "bogus"],
+    ["patch", "pa"],
+    ["--bogus", "patch", "--bogus"],
+    ["patch", "parse", "--bogus"],
+    ["patch", "--bogus", "parse"],
+    ["patch", "parse", "-f"],
+    ["patch", "parse", "-f", NOWHERE, "--bogus"],
+    ["patch", "parse", "-f", NOWHERE],
+    ["patch", "parse", f"-f{NOWHERE}"],
+    ["patch", "parse", f"--fi={NOWHERE}"],
+    ["patch", "parse", "-f", NOWHERE, "-f", f"{NOWHERE}/x//"],
+    ["patch", "-h", "parse"],
+    ["patch", "parse", "-h", "--bogus"],
+    ["patch", "check", "--in-place"],
+    ["patch", "check", "--no-cache"],
+    ["patch", "apply", "--in-place=1"],
+    ["patch", "apply", "--in", "--repo", NOWHERE, "-f", NOWHERE],
+    ["patch", "check", "-f", NOWHERE, "--repo", NOWHERE],
+    ["patch", "normalize", "--json", "--json", "--repo", NOWHERE],
+    ["patch", "parse", "check"],
+    ["--token-counter", "tiktoken", "patch", "parse", "-f", NOWHERE],
+    ["validate", "--candidates"],
+    ["validate", "--repo", NOWHERE],
+    ["validate", "--candidates", "c", "--timeout", "x"],
+    ["validate", "--candidates", "c", "--timeout", "1.5"],
+    ["validate", "--candidates", "c", "--jobs", ""],
+    ["validate", "--candidates", "c", "--run-timeout", "1e3"],
+    ["validate", "--candidates", "c", "--repeat-baseline"],
+    ["validate", "--candidates", "c", "--pass-env", "A=B"],
+    ["validate", "--candidates", "c", "--pass-env", "1A"],
+    ["validate", "--candidates", "c", "--pass-env", ""],
+    ["validate", "--candidates", "c", "--pass-env", "A\n"],
+    ["validate", "--candidates", "c", "--pass-env", "OK", "--pass-env", "no-dash"],
+    ["validate", "--candidates", "c", "-o"],
+    ["validate", "--cand", "c", "--x"],
+    ["validate", "--allow", "--candidates", "c"],
+    ["validate", "--candidates", "c", "--timeout", "0", "--repo", NOWHERE],
+    ["validate", "--candidates", "c", "--test-cmd", "true", "-oout", "--repo", NOWHERE],
+    ["validate", "--candidates", "c", "--json"],
+    ["vote", "--verdicts"],
+    ["vote", "--json"],
+    ["vote", "--verdicts", NOWHERE],
+    ["vote", "--verdicts", NOWHERE, "--json"],
+    ["vote", "--verdicts", "a", "--verdicts", f"{NOWHERE}/b/"],
+    ["vote", "--verdicts", NOWHERE, "--repo", "r"],
+    ["lint", "--candidates", NOWHERE, "--repo", NOWHERE],
+    ["lint", "--diff", NOWHERE, "--only", "arity", "--repo", NOWHERE],
 ]
 
 
@@ -298,6 +356,477 @@ SCENARIOS: list[dict[str, object]] = [
 ]
 
 
+def block(path: str, search: str, replace: str) -> str:
+    """One SEARCH/REPLACE block."""
+    return f"### {path}\n<<<<<<< SEARCH\n{search}\n=======\n{replace}\n>>>>>>> REPLACE\n"
+
+
+CALLER = "from core import quote\n\n\ndef run(items):\n    return [quote(item) for item in items]\n"
+PATCH = "```python\n" + block("core.py", "    return 1", "    return 2") + "```\n"
+EDITS_JSON = (
+    '{"edits": [{"index": 0, "path": "core.py", "search": "    return 1",'
+    ' "replace": "    return 3"}]}\n'
+)
+Scenario = dict[str, object]
+PATCH_REPO = [
+    ["init", "repo"],
+    ["write", "repo/core.py", SOURCE],
+    ["write", "repo/caller.py", CALLER],
+    ["write", "repo/notes.rst", "alpha\nbravo\n"],
+    ["commit", "repo"],
+]
+
+
+def patched(text: str) -> list[list[str]]:
+    """The patch repository with ``text`` in patch.txt beside it."""
+    return [*PATCH_REPO, ["write", "patch.txt", text]]
+
+
+def patch_scenario(name: str, steps: list[list[str]], argv: list[str], **extra: str) -> Scenario:
+    """A patch scenario that runs from the sandbox with --repo repo."""
+    return {"name": name, "steps": steps, "cwd": "", "argv": [*argv, "--repo", "repo"], **extra}
+
+
+CHECK = ["patch", "check", "-f", "patch.txt"]
+APPLY = ["patch", "apply", "-f", "patch.txt"]
+NORMALIZE = ["patch", "normalize", "-f", "patch.txt"]
+NOT_FOUND = block("core.py", "    return NOTHING_LIKE_THIS", "    return 2")
+PATCH_SCENARIOS: list[Scenario] = [
+    {
+        "name": "parse_file",
+        "steps": patched(PATCH),
+        "cwd": "",
+        "argv": ["patch", "parse", "-f", "patch.txt"],
+    },
+    {"name": "parse_stdin", "steps": [], "cwd": "", "argv": ["patch", "parse"], "stdin": PATCH},
+    {
+        "name": "parse_dash",
+        "steps": [],
+        "cwd": "",
+        "argv": ["patch", "parse", "-f", "-"],
+        "stdin": PATCH,
+    },
+    {
+        "name": "parse_stdin_keeps_carriage_returns",
+        "steps": [],
+        "cwd": "",
+        "argv": ["patch", "parse"],
+        "stdin": PATCH.replace("\n", "\r\n"),
+    },
+    {
+        "name": "parse_file_reads_carriage_returns_as_line_breaks",
+        "steps": patched(PATCH.replace("\n", "\r\n")),
+        "cwd": "",
+        "argv": ["patch", "parse", "-f", "patch.txt"],
+    },
+    {
+        "name": "parse_malformed",
+        "steps": [],
+        "cwd": "",
+        "argv": ["patch", "parse"],
+        "stdin": "### a.py\n<<<<<<< SEARCH\nx\n>>>>>>> REPLACE\n" + block("", "y", "z"),
+    },
+    {
+        "name": "parse_edits_json",
+        "steps": [],
+        "cwd": "",
+        "argv": ["patch", "parse"],
+        "stdin": EDITS_JSON,
+    },
+    {"name": "parse_empty", "steps": [], "cwd": "", "argv": ["patch", "parse"], "stdin": ""},
+    {"name": "parse_directory", "steps": [], "cwd": "", "argv": ["patch", "parse", "-f", "."]},
+    {"name": "parse_missing", "steps": [], "cwd": "", "argv": ["patch", "parse", "-f", "gone.txt"]},
+    {
+        "name": "check_text",
+        "steps": patched(PATCH),
+        "cwd": "repo",
+        "argv": ["patch", "check", "-f", "../patch.txt"],
+    },
+    patch_scenario("check_json", patched(PATCH), [*CHECK, "--json"]),
+    patch_scenario(
+        "check_broken", patched(block("core.py", "    return 1", "    return (")), CHECK
+    ),
+    patch_scenario("check_not_found", patched(NOT_FOUND), CHECK),
+    patch_scenario("check_not_found_json", patched(NOT_FOUND), [*CHECK, "--json"]),
+    patch_scenario(
+        "check_escape", patched(PATCH.replace("### core.py", "### ../escape.py")), CHECK
+    ),
+    patch_scenario("check_missing_file", patched(block("absent.py", "x", "y")), [*CHECK, "--json"]),
+    patch_scenario(
+        "check_no_grammar", patched(block("notes.rst", "bravo", "BRAVO")), [*CHECK, "--json"]
+    ),
+    patch_scenario(
+        "check_truncated", patched(PATCH + "### caller.py\n<<<<<<< SEARCH\nfrom core\n"), CHECK
+    ),
+    patch_scenario("check_edits_json", patched(EDITS_JSON), CHECK),
+    patch_scenario("check_stdin", PATCH_REPO, ["patch", "check"], stdin=PATCH),
+    patch_scenario("check_unreadable_patch", PATCH_REPO, ["patch", "check", "-f", "gone.txt"]),
+    {
+        "name": "check_outside_git",
+        "steps": [["write", "plain/core.py", SOURCE], ["write", "patch.txt", PATCH]],
+        "cwd": "plain",
+        "argv": ["patch", "check", "-f", "../patch.txt"],
+    },
+    patch_scenario("apply_text", patched(PATCH), APPLY),
+    patch_scenario("apply_json", patched(PATCH), [*APPLY, "--json"]),
+    patch_scenario("apply_in_place", patched(PATCH), [*APPLY, "--in-place"]),
+    patch_scenario(
+        "apply_in_place_dirty",
+        [*patched(PATCH), ["write", "repo/scratch.txt", "wip\n"]],
+        [*APPLY, "--in-place"],
+    ),
+    patch_scenario("apply_not_found", patched(NOT_FOUND), APPLY),
+    patch_scenario(
+        "apply_no_change", patched(block("core.py", "    return 1", "    return 1")), APPLY
+    ),
+    patch_scenario(
+        "apply_two_files",
+        patched(PATCH + block("caller.py", "def run(items):", "def run_all(items):")),
+        [*APPLY, "--json"],
+    ),
+    patch_scenario("normalize_text", patched(PATCH), NORMALIZE),
+    patch_scenario("normalize_json", patched(PATCH), [*NORMALIZE, "--json"]),
+    patch_scenario("normalize_not_found", patched(NOT_FOUND), [*NORMALIZE, "--json"]),
+    patch_scenario(
+        "normalize_no_grammar", patched(block("notes.rst", "bravo", "BRAVO")), NORMALIZE
+    ),
+]
+
+# The test commands of the validate scenarios: a regression check that passes until `add` goes,
+# and a reproduction check that fails until the sign is fixed.
+REGRESSION = 'grep -q "def add" app.py || { echo "add is gone" >&2; echo checked; exit 1; }\n'
+REPRODUCTION = 'grep -q "a + b" app.py\n'
+SEEDED = [
+    ["init", "repo"],
+    ["write", "repo/app.py", "def add(a, b):\n    return a - b\n"],
+    ["write", "repo/conftest.py", "collect_ignore = []\n"],
+    ["write", "repo/check_regression.sh", REGRESSION],
+    ["write", "repo/check_repro.sh", REPRODUCTION],
+    ["commit", "repo"],
+]
+
+
+def sign_fix(replace: str) -> str:
+    """A candidate that rewrites the seeded `return a - b`."""
+    return block("app.py", "    return a - b", f"    {replace}")
+
+
+CANDIDATE_FILES = {
+    "01-plus.txt": sign_fix("return a + b"),
+    "02-plus-commented.txt": sign_fix("return a  +  b  # restore the sign"),
+    "03-swapped.txt": sign_fix("return b + a"),
+    "04-times.txt": sign_fix("return a * b"),
+    "05-renames.txt": block("app.py", "def add(a, b):", "def plus(a, b):"),
+    "06-misses.txt": sign_fix("return a + b").replace("a - b", "a - c"),
+    "07-conftest.txt": block("conftest.py", "collect_ignore = []", 'collect_ignore = ["app.py"]'),
+}
+
+
+def candidates(*names: str) -> list[list[str]]:
+    """The seeded repository with the named candidate files in cands/."""
+    return [*SEEDED, *(["write", f"cands/{name}", CANDIDATE_FILES[name]] for name in names)]
+
+
+EVERY_CANDIDATE = candidates(*CANDIDATE_FILES)
+VALIDATE = [
+    "validate",
+    "--candidates",
+    "cands",
+    "--repo",
+    "repo",
+    "--test-cmd",
+    "sh check_regression.sh",
+]
+REPRO = ["--repro-cmd", "sh check_repro.sh"]
+RED = [*SEEDED[:-1], ["write", "repo/check_regression.sh", "exit 1\n"], ["commit", "repo"]]
+CONFIGURED = [
+    *SEEDED[:-1],
+    ["write", "repo/.agentless-mcp.json", '{"test_cmd": "sh check_regression.sh"}\n'],
+    ["commit", "repo"],
+    ["write", "cands/01-plus.txt", CANDIDATE_FILES["01-plus.txt"]],
+]
+FROM_CONFIG = ["validate", "--candidates", "cands", "--repo", "repo"]
+VALIDATE_SCENARIOS: list[Scenario] = [
+    {"name": "validate_stdout", "steps": EVERY_CANDIDATE, "cwd": "", "argv": [*VALIDATE, *REPRO]},
+    {
+        "name": "validate_output",
+        "steps": EVERY_CANDIDATE,
+        "cwd": "",
+        "argv": [*VALIDATE, "-o", "out.jsonl"],
+    },
+    {
+        "name": "validate_output_unwritable",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "-o", "nodir//out.jsonl"],
+    },
+    {
+        "name": "validate_red_baseline",
+        "steps": [*RED, ["write", "cands/01-plus.txt", CANDIDATE_FILES["01-plus.txt"]]],
+        "cwd": "",
+        "argv": [*VALIDATE, *REPRO],
+    },
+    {
+        "name": "validate_repro_does_not_reproduce",
+        "steps": candidates("01-plus.txt", "04-times.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--repro-cmd", "sh check_regression.sh"],
+    },
+    {
+        "name": "validate_nothing_passes",
+        "steps": candidates("05-renames.txt", "06-misses.txt"),
+        "cwd": "",
+        "argv": VALIDATE,
+    },
+    {
+        "name": "validate_jobs_two",
+        "steps": EVERY_CANDIDATE,
+        "cwd": "",
+        "argv": [*VALIDATE, *REPRO, "--jobs", "2"],
+    },
+    {
+        "name": "validate_repeat_baseline",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--repeat-baseline", "2"],
+    },
+    {
+        "name": "validate_test_config_edit_allowed",
+        "steps": candidates("07-conftest.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--allow-test-config-edits"],
+    },
+    {
+        "name": "validate_from_the_git_root",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "repo",
+        "argv": ["validate", "--candidates", "../cands", "--test-cmd", "sh check_regression.sh"],
+    },
+    {
+        "name": "validate_timeout_zero",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--timeout", "0"],
+    },
+    {
+        "name": "validate_jobs_zero",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--jobs", "-1"],
+    },
+    {
+        "name": "validate_jobs_over",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--jobs", "201"],
+    },
+    {
+        "name": "validate_repeat_zero",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--repeat-baseline", "0"],
+    },
+    {
+        "name": "validate_run_timeout_zero",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "--run-timeout", "0"],
+    },
+    {
+        "name": "validate_pass_env_over",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, *[word for _ in range(33) for word in ("--pass-env", "HOME")]],
+    },
+    {
+        "name": "validate_pass_env_repeated",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, *[word for _ in range(32) for word in ("--pass-env", "HOME")]],
+    },
+    {
+        "name": "validate_no_test_cmd",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": FROM_CONFIG,
+    },
+    {
+        "name": "validate_config_test_cmd_refused",
+        "steps": CONFIGURED,
+        "cwd": "",
+        "argv": FROM_CONFIG,
+    },
+    {
+        "name": "validate_config_test_cmd_allowed",
+        "steps": CONFIGURED,
+        "cwd": "",
+        "argv": [*FROM_CONFIG, "--allow-repo-test-cmd"],
+    },
+    {
+        "name": "validate_outside_git",
+        "steps": [["write", "plain/app.py", "x = 1\n"]],
+        "cwd": "plain",
+        "argv": ["validate", "--candidates", "c", "--test-cmd", "true"],
+    },
+    {
+        "name": "validate_not_a_commit",
+        "steps": [["write", "plain/app.py", "x = 1\n"], ["write", "cands/01.txt", sign_fix("x")]],
+        "cwd": "",
+        "argv": ["validate", "--candidates", "cands", "--repo", "plain", "--test-cmd", "true"],
+    },
+    {"name": "validate_missing_candidates", "steps": SEEDED, "cwd": "", "argv": VALIDATE},
+    {
+        "name": "validate_empty_candidates",
+        "steps": [*SEEDED, ["write", "cands/.keep", ""]],
+        "cwd": "",
+        "argv": VALIDATE,
+    },
+    {
+        "name": "validate_unsplittable_command",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE[:-1], "sh 'check_regression.sh"],
+    },
+    {
+        "name": "validate_nothing_applies",
+        "steps": candidates("06-misses.txt"),
+        "cwd": "",
+        "argv": VALIDATE,
+    },
+]
+
+# The validate scenarios whose verdicts the vote scenarios read, by the name of each document.
+VOTED = {
+    "reproduced": "validate_stdout",
+    "not_reproduced": "validate_repro_does_not_reproduce",
+    "unverified": "validate_red_baseline",
+    "nothing_applied": "validate_nothing_applies",
+}
+
+
+def verdicts_documents() -> dict[str, str]:
+    """Each VOTED document as the reference's validate wrote it, with every duration 0.0 and the
+    sandbox as /srv, so that vote reads files of the reference's own form."""
+    named = {str(scenario["name"]): scenario for scenario in VALIDATE_SCENARIOS}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        runs = pool.map(scenario_case, (named[name] for name in VOTED.values()))
+        rows = dict(zip(VOTED, runs, strict=True))
+    fixed = '"duration": 0.0'
+    return {
+        name: DURATION.sub(fixed, str(row["out"])).replace("<SANDBOX>", "/srv")
+        for name, row in rows.items()
+    }
+
+
+def vote_scenarios(documents: dict[str, str]) -> list[Scenario]:
+    """vote over each document, in both forms, and over the files it refuses."""
+    scenarios: list[Scenario] = []
+    for name, document in documents.items():
+        steps = [["write", "verdicts.jsonl", document]]
+        for form in ([], ["--json"]):
+            argv = ["vote", "--verdicts", "verdicts.jsonl", *form]
+            label = f"vote_{name}{'_json' if form else ''}"
+            scenarios.append({"name": label, "steps": steps, "cwd": "", "argv": argv})
+    refused = {
+        "vote_empty": [["write", "verdicts.jsonl", ""]],
+        "vote_malformed": [["write", "verdicts.jsonl", "{not json}\n"]],
+        "vote_no_run_record": [["write", "verdicts.jsonl", '{"record": "candidate"}\n']],
+        "vote_missing": [],
+        "vote_directory": [["write", "verdicts.jsonl/x", ""]],
+    }
+    for label, steps in refused.items():
+        argv = ["vote", "--verdicts", "verdicts.jsonl"]
+        scenarios.append({"name": label, "steps": steps, "cwd": "", "argv": argv})
+    return scenarios
+
+
+# lint's candidate and diff forms over the patch repository: a rename that leaves callers, a call
+# with an argument too many, and the same rename as a unified diff.
+DIFF = (
+    "diff --git a/core.py b/core.py\n--- a/core.py\n+++ b/core.py\n@@ -1,2 +1,2 @@\n"
+    "-def quote(sku):\n+def price(sku):\n     return 1\n"
+)
+LINTED = [
+    *PATCH_REPO,
+    ["write", "cands/01-renames.txt", block("core.py", "def quote(sku):", "def price(sku):")],
+    [
+        "write",
+        "cands/02-calls.txt",
+        block(
+            "caller.py", "    return [quote(item) for item in items]", "    return [quote(item, 2)]"
+        ),
+    ],
+    ["write", "change.diff", DIFF],
+    ["write", "notes.txt", "no patch here\n"],
+]
+CANDIDATES = ["lint", "--candidates", "cands", "--repo", "repo"]
+LINT_DIFF = ["lint", "--diff", "change.diff", "--repo", "repo"]
+LINT_SCENARIOS: list[Scenario] = [
+    {
+        "name": "lint_candidates_text",
+        "steps": LINTED,
+        "cwd": "repo",
+        "argv": ["lint", "--candidates", "../cands"],
+    },
+    {"name": "lint_candidates_json", "steps": LINTED, "cwd": "", "argv": [*CANDIDATES, "--json"]},
+    {
+        "name": "lint_candidates_one_file",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": ["lint", "--candidates", "cands/01-renames.txt", "--repo", "repo"],
+    },
+    {
+        "name": "lint_candidates_only",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": [*CANDIDATES, "--only", "arity,dangling_callers", "--json"],
+    },
+    {
+        "name": "lint_candidates_only_pairs",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": [*CANDIDATES, "--only", "complexity_delta"],
+    },
+    {
+        "name": "lint_candidates_fail_on",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": [*CANDIDATES, "--fail-on", "warning"],
+    },
+    {
+        "name": "lint_candidates_unparsed",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": ["lint", "--candidates", "notes.txt", "--repo", "repo"],
+    },
+    {
+        "name": "lint_candidates_missing",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": ["lint", "--candidates", "gone", "--repo", "repo"],
+    },
+    {"name": "lint_diff_text", "steps": LINTED, "cwd": "", "argv": LINT_DIFF},
+    {"name": "lint_diff_json", "steps": LINTED, "cwd": "", "argv": [*LINT_DIFF, "--json"]},
+    {
+        "name": "lint_diff_not_a_diff",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": ["lint", "--diff", "notes.txt", "--repo", "repo"],
+    },
+    {
+        "name": "lint_diff_missing",
+        "steps": LINTED,
+        "cwd": "",
+        "argv": ["lint", "--diff", "gone.diff", "--repo", "repo"],
+    },
+]
+
+# The DURATION mask: a verdict record's run time is the one free value of the write scenarios,
+# so each "duration" value is this placeholder. The cli test applies the same mask.
+DURATION = re.compile(r'"duration": -?[0-9][0-9.e+-]*')
+DURATION_MASK = '"duration": <DURATION>'
+
+
 def environment(sandbox: Path, columns: str | None) -> dict[str, str]:
     """The whole environment of one run: nothing of the caller's reaches it but PATH."""
     env = {
@@ -313,11 +842,23 @@ def environment(sandbox: Path, columns: str | None) -> dict[str, str]:
     return env
 
 
-def run_cli(argv: list[str], cwd: Path, env: dict[str, str]) -> dict[str, object]:
-    """Run the console script's entry point once; return its stdout, stderr and exit code."""
+def run_cli(
+    argv: list[str], cwd: Path, env: dict[str, str], stdin: str | None = None
+) -> dict[str, object]:
+    """Run the console script's entry point once; return its stdout, stderr and exit code.
+
+    ``stdin`` is the text on its stdin; ``None`` leaves it the caller's.
+    """
     command = [sys.executable, "-I", "-c", BOOT, *argv]
+    given = None if stdin is None else stdin.encode("utf-8")
     done = subprocess.run(
-        command, cwd=cwd, env=env, capture_output=True, timeout=TIMEOUT_SECONDS, check=False
+        command,
+        cwd=cwd,
+        env=env,
+        input=given,
+        capture_output=True,
+        timeout=TIMEOUT_SECONDS,
+        check=False,
     )
     return {
         "out": done.stdout.decode("utf-8"),
@@ -404,7 +945,9 @@ def scenario_case(scenario: dict[str, object]) -> dict[str, object]:
         raw_argv = scenario["argv"]
         assert isinstance(raw_argv, list)
         argv = [str(word).replace("<SANDBOX>", str(sandbox)) for word in raw_argv]
-        result = run_cli(argv, sandbox / str(scenario["cwd"]), env)
+        stdin = scenario.get("stdin")
+        assert stdin is None or isinstance(stdin, str)
+        result = run_cli(argv, sandbox / str(scenario["cwd"]), env, stdin)
         for stream in ("out", "err"):
             result[stream] = normalised(str(result[stream]), sandbox)
     return {**scenario, **result}
@@ -419,13 +962,34 @@ def scenario_fixture() -> Fixture:
 def help_texts() -> list[str]:
     """Every description and help string of the top, lint and capabilities parsers."""
     top = build_parser()
-    commands = next(a for a in top._actions if isinstance(a, argparse._SubParsersAction))
+    commands = subparsers_of(top)
     parsers = [top, commands.choices["lint"], commands.choices["capabilities"]]
     texts = [str(parser.description) for parser in parsers if parser.description]
     for parser in parsers:
         texts += [str(action.help) for action in parser._actions if action.help]
     texts += [str(choice.help) for choice in commands._choices_actions]
     return list(dict.fromkeys(texts))
+
+
+def write_help_texts() -> list[str]:
+    """Every help string of the write parsers: patch and its steps, validate and vote."""
+    commands = subparsers_of(build_parser())
+    steps = subparsers_of(commands.choices["patch"])
+    parsers = [
+        commands.choices["patch"],
+        *steps.choices.values(),
+        commands.choices["validate"],
+        commands.choices["vote"],
+    ]
+    texts = [str(action.help) for parser in parsers for action in parser._actions if action.help]
+    return texts + [str(choice.help) for choice in steps._choices_actions]
+
+
+def subparsers_of(
+    parser: argparse.ArgumentParser,
+) -> "argparse._SubParsersAction[argparse.ArgumentParser]":
+    """The subcommands action of ``parser``."""
+    return next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
 
 
 def slices(text: str, lines: list[str]) -> list[list[int]]:
@@ -452,13 +1016,37 @@ def wrap_case(text: str) -> dict[str, object]:
 
 
 def wrap_fixture() -> Fixture:
-    return {"cases": [wrap_case(text) for text in [*help_texts(), *WRAP_EXTRAS]]}
+    # The write parsers' texts come last, so the earlier cases keep their places.
+    texts = dict.fromkeys([*help_texts(), *WRAP_EXTRAS, *write_help_texts()])
+    return {"cases": [wrap_case(text) for text in texts]}
+
+
+def write_scenario_row(scenario: Scenario) -> dict[str, object]:
+    """One write scenario's answer, with the DURATION mask applied."""
+    row = scenario_case(scenario)
+    for stream in ("out", "err"):
+        row[stream] = DURATION.sub(DURATION_MASK, str(row[stream]))
+    return row
+
+
+def write_scenario_fixture() -> Fixture:
+    """patch, validate, vote and lint's patch forms end to end over sandbox repositories."""
+    scenarios = [
+        *PATCH_SCENARIOS,
+        *VALIDATE_SCENARIOS,
+        *vote_scenarios(verdicts_documents()),
+        *LINT_SCENARIOS,
+    ]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rows = list(pool.map(write_scenario_row, scenarios))
+    return {"runs": rows}
 
 
 BUILDERS: dict[str, Callable[[], Fixture]] = {
     "parser": parser_fixture,
     "scenarios": scenario_fixture,
     "wrap": wrap_fixture,
+    "write_scenarios": write_scenario_fixture,
 }
 
 
