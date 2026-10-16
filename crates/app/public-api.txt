@@ -214,6 +214,57 @@ impl core::marker::Unpin for app::ApplyMode
 impl core::marker::UnsafeUnpin for app::ApplyMode
 impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyMode
 impl core::panic::unwind_safe::UnwindSafe for app::ApplyMode
+pub enum app::ApplyStatus
+pub app::ApplyStatus::Failed
+pub app::ApplyStatus::NotEvaluated
+pub app::ApplyStatus::Ok
+impl app::ApplyStatus
+pub fn app::ApplyStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::ApplyStatus
+pub fn app::ApplyStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyStatus
+impl core::cmp::PartialEq for app::ApplyStatus
+pub fn app::ApplyStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyStatus
+pub fn app::ApplyStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::ApplyStatus
+pub fn app::ApplyStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ApplyStatus
+impl core::marker::StructuralPartialEq for app::ApplyStatus
+impl serde_core::ser::Serialize for app::ApplyStatus
+pub fn app::ApplyStatus::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::ApplyStatus
+impl core::marker::Send for app::ApplyStatus
+impl core::marker::Sync for app::ApplyStatus
+impl core::marker::Unpin for app::ApplyStatus
+impl core::marker::UnsafeUnpin for app::ApplyStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyStatus
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyStatus
+pub enum app::BaselineStatus
+pub app::BaselineStatus::Ok
+pub app::BaselineStatus::Unverified
+impl app::BaselineStatus
+pub fn app::BaselineStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::BaselineStatus
+pub fn app::BaselineStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::BaselineStatus
+impl core::cmp::PartialEq for app::BaselineStatus
+pub fn app::BaselineStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::BaselineStatus
+pub fn app::BaselineStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::BaselineStatus
+pub fn app::BaselineStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::BaselineStatus
+impl core::marker::StructuralPartialEq for app::BaselineStatus
+impl serde_core::ser::Serialize for app::BaselineStatus
+pub fn app::BaselineStatus::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::BaselineStatus
+impl core::marker::Send for app::BaselineStatus
+impl core::marker::Sync for app::BaselineStatus
+impl core::marker::Unpin for app::BaselineStatus
+impl core::marker::UnsafeUnpin for app::BaselineStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::BaselineStatus
+impl core::panic::unwind_safe::UnwindSafe for app::BaselineStatus
 pub enum app::CapValue
 pub app::CapValue::Float(f64)
 pub app::CapValue::Int(u64)
@@ -374,6 +425,34 @@ impl core::marker::Unpin for app::PairCheck
 impl core::marker::UnsafeUnpin for app::PairCheck
 impl core::panic::unwind_safe::RefUnwindSafe for app::PairCheck
 impl core::panic::unwind_safe::UnwindSafe for app::PairCheck
+pub enum app::ReproVerdict
+pub app::ReproVerdict::DoesNotReproduce
+pub app::ReproVerdict::NotEvaluated
+pub app::ReproVerdict::NotGiven
+pub app::ReproVerdict::Reproduces
+pub app::ReproVerdict::Unrunnable
+impl app::ReproVerdict
+pub fn app::ReproVerdict::as_str(self) -> &'static str
+impl core::clone::Clone for app::ReproVerdict
+pub fn app::ReproVerdict::clone(&self) -> Self
+impl core::cmp::Eq for app::ReproVerdict
+impl core::cmp::PartialEq for app::ReproVerdict
+pub fn app::ReproVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ReproVerdict
+pub fn app::ReproVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::ReproVerdict
+pub fn app::ReproVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ReproVerdict
+impl core::marker::StructuralPartialEq for app::ReproVerdict
+impl serde_core::ser::Serialize for app::ReproVerdict
+pub fn app::ReproVerdict::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::ReproVerdict
+impl core::marker::Send for app::ReproVerdict
+impl core::marker::Sync for app::ReproVerdict
+impl core::marker::Unpin for app::ReproVerdict
+impl core::marker::UnsafeUnpin for app::ReproVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::ReproVerdict
+impl core::panic::unwind_safe::UnwindSafe for app::ReproVerdict
 pub enum app::Setting
 pub app::Setting::Bool(bool)
 pub app::Setting::Int(u32)
@@ -398,6 +477,35 @@ impl core::marker::Unpin for app::Setting
 impl core::marker::UnsafeUnpin for app::Setting
 impl core::panic::unwind_safe::RefUnwindSafe for app::Setting
 impl core::panic::unwind_safe::UnwindSafe for app::Setting
+pub enum app::Verdict
+pub app::Verdict::Error
+pub app::Verdict::Failed
+pub app::Verdict::NotEvaluated
+pub app::Verdict::Passed
+pub app::Verdict::Timeout
+impl app::Verdict
+pub fn app::Verdict::as_str(self) -> &'static str
+pub fn app::Verdict::measured(self) -> bool
+impl core::clone::Clone for app::Verdict
+pub fn app::Verdict::clone(&self) -> Self
+impl core::cmp::Eq for app::Verdict
+impl core::cmp::PartialEq for app::Verdict
+pub fn app::Verdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Verdict
+pub fn app::Verdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::Verdict
+pub fn app::Verdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Verdict
+impl core::marker::StructuralPartialEq for app::Verdict
+impl serde_core::ser::Serialize for app::Verdict
+pub fn app::Verdict::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::Verdict
+impl core::marker::Send for app::Verdict
+impl core::marker::Sync for app::Verdict
+impl core::marker::Unpin for app::Verdict
+impl core::marker::UnsafeUnpin for app::Verdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::Verdict
+impl core::panic::unwind_safe::UnwindSafe for app::Verdict
 pub enum app::WarmupRow
 pub app::WarmupRow::Linked(app::LanguageCapability)
 pub app::WarmupRow::Unknown(alloc::string::String)
@@ -526,6 +634,36 @@ impl core::marker::Unpin for app::CallerRef
 impl core::marker::UnsafeUnpin for app::CallerRef
 impl core::panic::unwind_safe::RefUnwindSafe for app::CallerRef
 impl core::panic::unwind_safe::UnwindSafe for app::CallerRef
+pub struct app::CandidateVerdict
+pub app::CandidateVerdict::apply_reasons: alloc::vec::Vec<alloc::string::String>
+pub app::CandidateVerdict::apply_status: app::ApplyStatus
+pub app::CandidateVerdict::budget_truncated: bool
+pub app::CandidateVerdict::duration: f64
+pub app::CandidateVerdict::equivalence_key: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::executed_as: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::execution_group: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::id: alloc::string::String
+pub app::CandidateVerdict::index: usize
+pub app::CandidateVerdict::regression: app::Verdict
+pub app::CandidateVerdict::regression_run: core::option::Option<io::testrun::RunResult>
+pub app::CandidateVerdict::reproduction: core::option::Option<app::Verdict>
+pub app::CandidateVerdict::reproduction_run: core::option::Option<io::testrun::RunResult>
+impl app::CandidateVerdict
+pub fn app::CandidateVerdict::usable(&self) -> bool
+impl core::clone::Clone for app::CandidateVerdict
+pub fn app::CandidateVerdict::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CandidateVerdict
+pub fn app::CandidateVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CandidateVerdict
+pub fn app::CandidateVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CandidateVerdict
+impl core::marker::Freeze for app::CandidateVerdict
+impl core::marker::Send for app::CandidateVerdict
+impl core::marker::Sync for app::CandidateVerdict
+impl core::marker::Unpin for app::CandidateVerdict
+impl core::marker::UnsafeUnpin for app::CandidateVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::CandidateVerdict
+impl core::panic::unwind_safe::UnwindSafe for app::CandidateVerdict
 pub struct app::CandidatesRequest
 pub app::CandidatesRequest::candidates: alloc::vec::Vec<app::LintCandidateInput>
 pub app::CandidatesRequest::checks: app::CheckSelection
@@ -973,6 +1111,23 @@ impl core::marker::Unpin for app::EnvConfig
 impl core::marker::UnsafeUnpin for app::EnvConfig
 impl core::panic::unwind_safe::RefUnwindSafe for app::EnvConfig
 impl core::panic::unwind_safe::UnwindSafe for app::EnvConfig
+pub struct app::EnvRunner
+impl app::EnvRunner
+pub fn app::EnvRunner::new(&app::EnvConfig) -> app::EnvRunner
+impl app::TestRunner for app::EnvRunner
+pub fn app::EnvRunner::interrupted(&self) -> bool
+pub fn app::EnvRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
+impl core::clone::Clone for app::EnvRunner
+pub fn app::EnvRunner::clone(&self) -> Self
+impl core::fmt::Debug for app::EnvRunner
+pub fn app::EnvRunner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::EnvRunner
+impl core::marker::Send for app::EnvRunner
+impl core::marker::Sync for app::EnvRunner
+impl core::marker::Unpin for app::EnvRunner
+impl core::marker::UnsafeUnpin for app::EnvRunner
+impl core::panic::unwind_safe::RefUnwindSafe for app::EnvRunner
+impl core::panic::unwind_safe::UnwindSafe for app::EnvRunner
 pub struct app::ExpandRequest
 pub app::ExpandRequest::ids: alloc::vec::Vec<alloc::string::String>
 pub app::ExpandRequest::limit: app::IntArg
@@ -1631,6 +1786,27 @@ impl core::marker::Unpin for app::LintRequest
 impl core::marker::UnsafeUnpin for app::LintRequest
 impl core::panic::unwind_safe::RefUnwindSafe for app::LintRequest
 impl core::panic::unwind_safe::UnwindSafe for app::LintRequest
+pub struct app::LoadedVerdicts
+pub app::LoadedVerdicts::baseline: app::BaselineStatus
+pub app::LoadedVerdicts::candidates: alloc::vec::Vec<patch::vote::VoteCandidate>
+pub app::LoadedVerdicts::repro_cmd: core::option::Option<alloc::string::String>
+pub app::LoadedVerdicts::repro_valid: bool
+pub app::LoadedVerdicts::test_cmd: alloc::string::String
+impl core::clone::Clone for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::clone(&self) -> Self
+impl core::cmp::Eq for app::LoadedVerdicts
+impl core::cmp::PartialEq for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LoadedVerdicts
+impl core::marker::Freeze for app::LoadedVerdicts
+impl core::marker::Send for app::LoadedVerdicts
+impl core::marker::Sync for app::LoadedVerdicts
+impl core::marker::Unpin for app::LoadedVerdicts
+impl core::marker::UnsafeUnpin for app::LoadedVerdicts
+impl core::panic::unwind_safe::RefUnwindSafe for app::LoadedVerdicts
+impl core::panic::unwind_safe::UnwindSafe for app::LoadedVerdicts
 pub struct app::LocateRequest
 pub app::LocateRequest::context: app::IntArg
 pub app::LocateRequest::id: facts::stable_id::StableId
@@ -2115,6 +2291,38 @@ impl core::marker::Unpin for app::Roots
 impl core::marker::UnsafeUnpin for app::Roots
 impl core::panic::unwind_safe::RefUnwindSafe for app::Roots
 impl core::panic::unwind_safe::UnwindSafe for app::Roots
+pub struct app::RunHeader
+pub app::RunHeader::allow_test_config_edits: bool
+pub app::RunHeader::baseline: app::BaselineStatus
+pub app::RunHeader::baseline_detail: alloc::string::String
+pub app::RunHeader::baseline_failures: usize
+pub app::RunHeader::baseline_run: core::option::Option<io::testrun::RunResult>
+pub app::RunHeader::budget_truncated: bool
+pub app::RunHeader::candidates: usize
+pub app::RunHeader::jobs: usize
+pub app::RunHeader::repeat_baseline: usize
+pub app::RunHeader::repro_baseline_run: core::option::Option<io::testrun::RunResult>
+pub app::RunHeader::repro_cmd: core::option::Option<alloc::string::String>
+pub app::RunHeader::repro_verdict: app::ReproVerdict
+pub app::RunHeader::test_cmd: alloc::string::String
+pub app::RunHeader::timeout: usize
+impl app::RunHeader
+pub fn app::RunHeader::flaky_baseline(&self) -> bool
+pub fn app::RunHeader::repro_valid(&self) -> bool
+impl core::clone::Clone for app::RunHeader
+pub fn app::RunHeader::clone(&self) -> Self
+impl core::cmp::PartialEq for app::RunHeader
+pub fn app::RunHeader::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RunHeader
+pub fn app::RunHeader::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RunHeader
+impl core::marker::Freeze for app::RunHeader
+impl core::marker::Send for app::RunHeader
+impl core::marker::Sync for app::RunHeader
+impl core::marker::Unpin for app::RunHeader
+impl core::marker::UnsafeUnpin for app::RunHeader
+impl core::panic::unwind_safe::RefUnwindSafe for app::RunHeader
+impl core::panic::unwind_safe::UnwindSafe for app::RunHeader
 pub struct app::Services
 pub app::Services::cache_root: core::result::Result<io::cache::CacheRoot, io::cache::HomeUnknown>
 pub app::Services::clock: alloc::rcs::arc::Arc<dyn app::Clock>
@@ -2367,6 +2575,75 @@ impl core::marker::Unpin for app::UnreadCwd
 impl core::marker::UnsafeUnpin for app::UnreadCwd
 impl core::panic::unwind_safe::RefUnwindSafe for app::UnreadCwd
 impl core::panic::unwind_safe::UnwindSafe for app::UnreadCwd
+pub struct app::ValidateReport
+pub app::ValidateReport::deadline_expired: bool
+pub app::ValidateReport::header: app::RunHeader
+pub app::ValidateReport::verdicts: alloc::vec::Vec<app::CandidateVerdict>
+impl app::ValidateReport
+pub fn app::ValidateReport::any_passed(&self) -> bool
+pub fn app::ValidateReport::jsonl<R: serde_core::ser::Serialize + ?core::marker::Sized>(&self, &R) -> alloc::string::String
+pub fn app::ValidateReport::summary_line(&self) -> alloc::string::String
+impl app::ValidateReport
+pub fn app::ValidateReport::warnings(&self) -> alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::ValidateReport
+pub fn app::ValidateReport::clone(&self) -> Self
+impl core::cmp::PartialEq for app::ValidateReport
+pub fn app::ValidateReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ValidateReport
+pub fn app::ValidateReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ValidateReport
+impl core::marker::Freeze for app::ValidateReport
+impl core::marker::Send for app::ValidateReport
+impl core::marker::Sync for app::ValidateReport
+impl core::marker::Unpin for app::ValidateReport
+impl core::marker::UnsafeUnpin for app::ValidateReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::ValidateReport
+impl core::panic::unwind_safe::UnwindSafe for app::ValidateReport
+pub struct app::ValidateRequest
+pub app::ValidateRequest::allow_repo_test_cmd: bool
+pub app::ValidateRequest::allow_test_config_edits: bool
+pub app::ValidateRequest::candidates: std::path::PathBuf
+pub app::ValidateRequest::jobs: app::IntArg
+pub app::ValidateRequest::pass_env: alloc::vec::Vec<alloc::string::String>
+pub app::ValidateRequest::repeat_baseline: app::IntArg
+pub app::ValidateRequest::repro_cmd: core::option::Option<alloc::string::String>
+pub app::ValidateRequest::run_timeout: core::option::Option<app::IntArg>
+pub app::ValidateRequest::test_cmd: alloc::string::String
+pub app::ValidateRequest::test_cmd_from_repo: bool
+pub app::ValidateRequest::timeout: app::IntArg
+impl core::clone::Clone for app::ValidateRequest
+pub fn app::ValidateRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::ValidateRequest
+impl core::cmp::PartialEq for app::ValidateRequest
+pub fn app::ValidateRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ValidateRequest
+pub fn app::ValidateRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ValidateRequest
+impl core::marker::Freeze for app::ValidateRequest
+impl core::marker::Send for app::ValidateRequest
+impl core::marker::Sync for app::ValidateRequest
+impl core::marker::Unpin for app::ValidateRequest
+impl core::marker::UnsafeUnpin for app::ValidateRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::ValidateRequest
+impl core::panic::unwind_safe::UnwindSafe for app::ValidateRequest
+pub struct app::Vote
+pub app::Vote::report: patch::vote::VoteReport
+pub app::Vote::verdicts: app::LoadedVerdicts
+impl core::clone::Clone for app::Vote
+pub fn app::Vote::clone(&self) -> Self
+impl core::cmp::Eq for app::Vote
+impl core::cmp::PartialEq for app::Vote
+pub fn app::Vote::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Vote
+pub fn app::Vote::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Vote
+impl core::marker::Freeze for app::Vote
+impl core::marker::Send for app::Vote
+impl core::marker::Sync for app::Vote
+impl core::marker::Unpin for app::Vote
+impl core::marker::UnsafeUnpin for app::Vote
+impl core::panic::unwind_safe::RefUnwindSafe for app::Vote
+impl core::panic::unwind_safe::UnwindSafe for app::Vote
 pub struct app::WarmupReport
 pub app::WarmupReport::pack_version: &'static str
 pub app::WarmupReport::requested: bool
@@ -2409,6 +2686,9 @@ impl core::panic::unwind_safe::UnwindSafe for app::WarmupRequest
 pub const app::CAPS: [(&str, app::CapValue); 27]
 pub const app::CHECKS: [app::LintCheck; 10]
 pub const app::COVERAGE: &str
+pub const app::DEFAULT_JOBS: usize
+pub const app::DEFAULT_REPEAT_BASELINE: usize
+pub const app::DEFAULT_TIMEOUT_SECONDS: usize
 pub const app::GRAMMAR_CACHE: &str
 pub const app::MAX_CONFIG_WARNINGS: u64
 pub const app::MAX_OUTPUT_TOKENS: u64
@@ -2423,6 +2703,12 @@ pub fn app::Clock::wall(&self) -> std::time::SystemTime
 impl app::Clock for app::SystemClock
 pub fn app::SystemClock::now(&self) -> std::time::Instant
 pub fn app::SystemClock::wall(&self) -> std::time::SystemTime
+pub trait app::TestRunner: core::marker::Sync
+pub fn app::TestRunner::interrupted(&self) -> bool
+pub fn app::TestRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
+impl app::TestRunner for app::EnvRunner
+pub fn app::EnvRunner::interrupted(&self) -> bool
+pub fn app::EnvRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
 pub trait app::TokenCounter: core::marker::Send + core::marker::Sync
 pub fn app::TokenCounter::count(&self, &str) -> usize
 impl app::TokenCounter for app::Chars4
@@ -2456,6 +2742,7 @@ pub fn app::lint_candidates(&app::Services, &app::Session, &app::CandidatesReque
 pub fn app::load_edits(&str) -> core::result::Result<patch::blocks::ParseResult, app::Error>
 pub fn app::load_lint_candidates(&app::Services, &std::path::Path) -> core::result::Result<alloc::vec::Vec<app::LintCandidateInput>, app::Error>
 pub fn app::load_lint_diff(&app::Services, &std::path::Path) -> core::result::Result<app::LintCandidateInput, app::Error>
+pub fn app::load_verdicts(&str) -> core::result::Result<app::LoadedVerdicts, app::Error>
 pub fn app::locate_symbol(&app::Reading<'_>, &app::LocateRequest) -> app::Noted<core::result::Result<app::LocationView, app::Error>>
 pub fn app::locator(&str, &str, core::option::Option<&str>) -> alloc::string::String
 pub fn app::map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::MapResult, app::Error>>
@@ -2477,4 +2764,6 @@ pub fn app::symbol_card(syntax::language::Language, &str, &facts::values::Symbol
 pub fn app::tree(&app::Services, &app::Repo, &app::TreeRequest) -> app::Noted<core::result::Result<app::TreeView, app::Error>>
 pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>
 pub fn app::unknown_section(&text::code_point_string::CodePointString) -> alloc::string::String
+pub fn app::validate(&app::Services, &app::Repo, &git::snapshot::Snapshot, &app::ValidateRequest, &dyn app::TestRunner) -> app::Noted<core::result::Result<app::ValidateReport, app::Error>>
+pub fn app::vote(&str) -> core::result::Result<app::Vote, app::Error>
 pub fn app::warmup(&app::WarmupRequest) -> app::WarmupReport

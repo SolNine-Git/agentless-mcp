@@ -24,6 +24,7 @@ patch = { path = "../patch" }
 patchcheck = { path = "../patchcheck" }
 prompts = { path = "../prompts" }
 serde.workspace = true
+sha2.workspace = true
 store = { path = "../store" }
 syntax = { path = "../syntax" }
 text = { path = "../text" }

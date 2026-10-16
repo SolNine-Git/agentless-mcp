@@ -583,6 +583,7 @@ pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<grap
 pub fn graph::in_name_graph(&graph::FileFacts) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool
 pub fn graph::name_multiplier(&str, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> f64
+pub fn graph::normpath(&str) -> alloc::string::String
 pub fn graph::pagerank<'a>(&graph::FileGraph<'a>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, f64>, impl core::ops::function::Fn(&str) -> bool) -> graph::PageRank<'a>
 pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(&str) -> bool) -> alloc::vec::Vec<&'a str>
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>

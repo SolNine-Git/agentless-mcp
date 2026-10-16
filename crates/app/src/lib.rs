@@ -44,7 +44,10 @@ mod span;
 mod tags;
 mod tokens;
 mod tree;
+mod validate;
+mod verdicts;
 mod views;
+mod vote;
 mod warmup;
 
 mod generated {
@@ -118,8 +121,15 @@ pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
 pub use tags::{CacheReport, Opening, Session, Tags};
 pub use tokens::{Chars4, Cl100k, TokenCounter};
 pub use tree::{TreeRequest, TreeView, tree};
+pub use validate::{
+    ApplyStatus, BaselineStatus, CandidateVerdict, DEFAULT_JOBS, DEFAULT_REPEAT_BASELINE,
+    DEFAULT_TIMEOUT_SECONDS, EnvRunner, ReproVerdict, RunHeader, TestRunner, ValidateReport,
+    ValidateRequest, Verdict, validate,
+};
+pub use verdicts::{LoadedVerdicts, load_verdicts};
 pub use views::{
     FileView, LocateRequest, LocationView, LocsRequest, SkeletonRequest, SliceRequest,
     locate_symbol, resolve_locations, skeleton, slice,
 };
+pub use vote::{Vote, vote};
 pub use warmup::{WarmupReport, WarmupRequest, WarmupRow, warmup};

@@ -57,7 +57,9 @@ impl<'s> PosixPath<'s> {
     }
 }
 
-pub(crate) fn normpath(path: &str) -> String {
+/// Collapses `path` as POSIX normpath does: `.`, empty and `..` parts, and the leading slashes.
+#[must_use]
+pub fn normpath(path: &str) -> String {
     if path.is_empty() {
         return ".".to_owned();
     }

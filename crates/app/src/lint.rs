@@ -17,6 +17,7 @@ pub use candidates::{
     CandidatesRequest, CheckSelection, LintCandidateInput, lint_candidates, load_lint_candidates,
     load_lint_diff,
 };
+pub(crate) use candidates::{name, patch_files, stem};
 
 /// Runs the pair checks of `request` on `repo`, with the clone blocks that `tags` stores. The
 /// error is a revision that names no commit, git output that does not parse, or a check that

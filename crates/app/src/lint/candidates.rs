@@ -30,6 +30,7 @@ use manifests::read_declared_dependencies;
 use tree::{lenient_texts, pair_paths, pair_rows, scanned_paths, working_reads};
 
 pub use inputs::{load_lint_candidates, load_lint_diff};
+pub(crate) use inputs::{name, patch_files, stem};
 pub use selection::CheckSelection;
 
 /// One candidate patch: its id, its parsed edits, and the diff sections with nothing to check.
