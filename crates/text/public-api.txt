@@ -74,6 +74,7 @@ impl<'a> core::marker::Unpin for text::IntText<'a>
 impl<'a> core::marker::UnsafeUnpin for text::IntText<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for text::IntText<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for text::IntText<'a>
+pub fn text::decimal_value(char) -> core::option::Option<u8>
 pub fn text::dedent(&str) -> alloc::string::String
 pub fn text::int_bytes(&[u8]) -> core::option::Option<text::IntText<'_>>
 pub fn text::int_text(&str) -> core::option::Option<text::IntText<'_>>

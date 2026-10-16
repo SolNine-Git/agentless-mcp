@@ -1,6 +1,30 @@
 //! The one owner of "module string plus importing file becomes a repository path".
 
+use facts::Import;
+
 use crate::paths::{PathIndex, PosixPath, normalized};
+
+/// The repository paths that import statements resolve against.
+#[derive(Debug)]
+pub struct ImportTargets<'a> {
+    paths: PathIndex<'a>,
+}
+
+impl<'a> ImportTargets<'a> {
+    /// Index `paths` for import resolution.
+    #[must_use]
+    pub fn build(paths: impl IntoIterator<Item = &'a str>) -> ImportTargets<'a> {
+        ImportTargets {
+            paths: PathIndex::build(paths),
+        }
+    }
+
+    /// Return the path that `import`, written in the file at `importer`, names, or `None`.
+    #[must_use]
+    pub fn resolve(&self, importer: &str, import: &Import) -> Option<&'a str> {
+        resolve_import_target(importer, &import.module, import.relative_level, &self.paths)
+    }
+}
 
 // Ordered so that a package's entry point loses to a module of the same name.
 const MODULE_SUFFIXES: [&str; 25] = [

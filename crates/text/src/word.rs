@@ -13,6 +13,23 @@ pub fn is_decimal(c: char) -> bool {
     in_runs(&DECIMAL_BOUNDS, c)
 }
 
+/// Returns the value of the decimal digit `c`, or `None` when `c` is not a decimal digit.
+// Unicode encodes each set of decimal digits as 10 consecutive code points from 0 to 9, so a
+// digit's value is its distance from the start of its run, modulo 10.
+#[must_use]
+pub fn decimal_value(c: char) -> Option<u8> {
+    if !is_decimal(c) {
+        return None;
+    }
+    let code = u32::from(c);
+    let start = (0..code)
+        .rev()
+        .take_while(|&before| char::from_u32(before).is_some_and(is_decimal))
+        .last()
+        .unwrap_or(code);
+    u8::try_from((code - start) % 10).ok()
+}
+
 // A code point is in the class when an odd count of bounds is at or below it.
 pub(crate) fn in_runs(bounds: &[u32], c: char) -> bool {
     bounds.partition_point(|&bound| bound <= u32::from(c)) % 2 == 1
@@ -191,5 +208,17 @@ mod tests {
         check_runs(env!("CARGO_MANIFEST_DIR"), "text", "decimal", |code| {
             char::from_u32(code).is_some_and(is_decimal)
         });
+    }
+
+    #[test]
+    fn a_digit_has_its_place_in_its_run_as_its_value() {
+        let found: Vec<Option<u8>> = ['0', '7', '\u{663}', '\u{ff19}', '\u{1d7ce}', 'a', '\u{b2}']
+            .into_iter()
+            .map(decimal_value)
+            .collect();
+        assert_eq!(
+            found,
+            [Some(0), Some(7), Some(3), Some(9), Some(0), None, None]
+        );
     }
 }

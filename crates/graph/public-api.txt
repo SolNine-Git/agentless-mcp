@@ -300,6 +300,19 @@ impl<'a> core::marker::Unpin for graph::ImportScope<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::ImportScope<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportScope<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportScope<'a>
+pub struct graph::ImportTargets<'a>
+impl<'a> graph::ImportTargets<'a>
+pub fn graph::ImportTargets<'a>::build(impl core::iter::traits::collect::IntoIterator<Item = &'a str>) -> graph::ImportTargets<'a>
+pub fn graph::ImportTargets<'a>::resolve(&self, &str, &facts::values::Import) -> core::option::Option<&'a str>
+impl<'a> core::fmt::Debug for graph::ImportTargets<'a>
+pub fn graph::ImportTargets<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for graph::ImportTargets<'a>
+impl<'a> core::marker::Send for graph::ImportTargets<'a>
+impl<'a> core::marker::Sync for graph::ImportTargets<'a>
+impl<'a> core::marker::Unpin for graph::ImportTargets<'a>
+impl<'a> core::marker::UnsafeUnpin for graph::ImportTargets<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::ImportTargets<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for graph::ImportTargets<'a>
 pub struct graph::LineOwners<'a>
 impl<'a> graph::LineOwners<'a>
 pub fn graph::LineOwners<'a>::build(&'a [facts::values::Symbol]) -> graph::LineOwners<'a>

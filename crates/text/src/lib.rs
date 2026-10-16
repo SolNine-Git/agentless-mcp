@@ -28,4 +28,4 @@ pub use printable::is_printable;
 pub use shell::{ShellWordsError, split_shell_words};
 pub use textsafe::one_line;
 pub use whitespace::{is_ascii_space, is_space, split_whitespace, splitlines, strip, strip_bytes};
-pub use word::{is_decimal, is_word};
+pub use word::{decimal_value, is_decimal, is_word};

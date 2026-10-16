@@ -423,6 +423,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "patchcheck"
+version = "0.11.0-rc.1"
+dependencies = [
+ "checks",
+ "facts",
+ "graph",
+ "json",
+ "patch",
+ "serde",
+ "serde_json",
+ "sha2",
+ "syntax",
+ "text",
+ "toml",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"

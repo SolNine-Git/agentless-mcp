@@ -1,0 +1,29 @@
+[package]
+name = "patchcheck"
+description = "The seven patch checks over a candidate's changed files: undeclared_imports, shadowing, near_duplicates, dangling_references, dangling_callers, arity, and cycle_delta."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+checks = { path = "../checks" }
+facts = { path = "../facts" }
+graph = { path = "../graph" }
+patch = { path = "../patch" }
+serde.workspace = true
+sha2.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+toml.workspace = true
+
+[dev-dependencies]
+json = { path = "../json" }
+serde.workspace = true
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

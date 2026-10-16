@@ -102,23 +102,8 @@ pub(crate) fn leading(text: &str) -> Option<(Natural, &str)> {
     if end == 0 {
         return None;
     }
-    let number = Natural::from_digits(text[..end].chars().filter_map(digit_value));
+    let number = Natural::from_digits(text[..end].chars().filter_map(text::decimal_value));
     Some((number, &text[end..]))
-}
-
-// Unicode encodes each set of decimal digits as 10 consecutive code points from 0 to 9, so a
-// digit's value is its distance from the start of its run, modulo 10.
-fn digit_value(c: char) -> Option<u8> {
-    if !text::is_decimal(c) {
-        return None;
-    }
-    let code = u32::from(c);
-    let start = (0..code)
-        .rev()
-        .take_while(|&before| char::from_u32(before).is_some_and(text::is_decimal))
-        .last()
-        .unwrap_or(code);
-    u8::try_from((code - start) % 10).ok()
 }
 
 #[cfg(test)]
@@ -138,7 +123,7 @@ mod tests {
         let [table]: [Digits; 1] =
             text::testing::cases(env!("CARGO_MANIFEST_DIR"), "unidiff", "decimal_digits");
         let values: Vec<Option<u8>> = table.values.bytes().map(|byte| Some(byte - b'0')).collect();
-        let found: Vec<Option<u8>> = table.digits.chars().map(digit_value).collect();
+        let found: Vec<Option<u8>> = table.digits.chars().map(text::decimal_value).collect();
         assert_eq!(found, values);
         let every: String = (0..=0x10_ffff)
             .filter_map(char::from_u32)

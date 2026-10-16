@@ -27,6 +27,7 @@ pub use communities::{
 pub use cycles::{Cycle, import_cycles};
 pub use files::{FileGraph, Weighting};
 pub use flood::{Flood, Reached, flood_backward};
+pub use imports::ImportTargets;
 pub use lookup::{Lookup, definitions_for, references_to, resolve_definitions};
 pub use names::{Definition, NameIndex, Site, common_name_damping, name_multiplier};
 pub use owners::{LineOwners, enclosing_symbol};
