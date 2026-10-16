@@ -78,7 +78,7 @@ fn new_text(path: &str, after: &After, cwd: StartDir<'_>) -> Result<String, Gap>
 }
 
 // A relative file is below the start-up directory, so an unread directory leaves it unread.
-fn after_file(file: &Path, cwd: StartDir<'_>) -> Result<Vec<u8>, String> {
+pub(crate) fn after_file(file: &Path, cwd: StartDir<'_>) -> Result<Vec<u8>, String> {
     match cwd {
         Ok(cwd) => bounded_read(&cwd.join(file)),
         Err(_) if file.is_absolute() => bounded_read(file),

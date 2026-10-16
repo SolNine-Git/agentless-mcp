@@ -28,6 +28,7 @@ mod noted;
 pub mod ops;
 mod pairs;
 mod parallel;
+mod patches;
 mod path;
 mod proposed;
 mod reading;
@@ -82,12 +83,24 @@ pub use history::{
 };
 pub use html::{HtmlEdge, HtmlGraph, HtmlNode, HtmlRequest, html};
 pub use index::{EvictionReport, IndexFailure, IndexReport, IndexRequest, IndexSkip, index};
+pub use lint::{
+    CandidatesRequest, CheckSelection, LintCandidateInput, lint_candidates, load_lint_candidates,
+    load_lint_diff,
+};
 pub use lint::{LintCandidate, LintForm, LintReport, LintRequest, lint};
 pub use map::{
     BodyMapResult, Companion, Companions, MapEntry, MapFile, MapRequest, MapResult, body_map, map,
     map_rows_text,
 };
 pub use noted::Noted;
+pub use patch::{
+    ApplyResult, BlockError, DiffNote, Edit, EditOutcome, EditStatus, ParseResult, SyntaxVerdict,
+    parse_blocks,
+};
+pub use patches::{
+    ApplyMode, ApplyReport, CheckReport, FileCheck, NO_SUCH_FILE, NOT_UTF8, NormalizeReport,
+    apply_patch, check_patch, load_edits, normalize_patch,
+};
 pub use path::{PathHop, PathPolicy, PathRequest, PathTrace, path};
 pub use proposed::After;
 pub use reading::Reading;

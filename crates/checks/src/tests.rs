@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use metrics::{Block, Unmeasurable};
 use serde_json::{Map, Value, json};
@@ -101,7 +101,7 @@ impl Fixture {
             }
             "clone_delta" => result(
                 self.index(&case["index"])
-                    .and_then(|index| clone_delta(&refs, &index)),
+                    .and_then(|index| clone_delta(&refs, &index, &BTreeSet::new())),
             ),
             "clone_index" => match self.built(&case["index"]) {
                 Ok(built) => json!({ "outcome": index_json(&built) }),
@@ -351,4 +351,69 @@ fn a_map_that_returns_fewer_sides_than_texts_panics() {
     };
     let fewer = |texts: &[SideText<'_>]| texts.iter().skip(1).map(SideText::measure).collect();
     let _pairs = Pair::measure_all(vec![pair], fewer);
+}
+
+// A five-line function of 71 leaf tokens with a two-line loop inside it.
+fn total() -> String {
+    "def total(items, scale=1, offset=None):\n    out = 0 * scale + len(items) - (offset or 0)\n    \
+     for item in sorted(items, key=abs, reverse=True):\n        out += item * scale - 0 + \
+     max(item, 0)\n    return round(out, 2) if out else 0\n"
+        .to_owned()
+}
+
+const LOOP: &str = "for row in sorted(rows, key=len, reverse=True)[:limit]:\n    print(row, sep=', ', \
+                    end='', flush=True)\n    found += len(row) * limit - min(len(row), limit)\n";
+
+// A function whose three-line loop of 54 leaf tokens is a candidate of its own.
+fn looped(name: &str) -> String {
+    let body: String = LOOP.lines().flat_map(|line| ["    ", line, "\n"]).collect();
+    format!("def {name}(rows, limit=10):\n    found = 0\n{body}    return found\n")
+}
+
+// The clone_delta findings of `new` as a new b.py against an index of a.py holding `old`.
+fn overlap_rows(new: &str, old: &str, reported: &[(&str, u32)]) -> Vec<(String, u32)> {
+    let texts = BTreeMap::from([("a.py".to_owned(), old.to_owned())]);
+    let blocks_of = |_: &str, text: &str, language: Language| measure_blocks(language, text);
+    let index = clone_index(&texts, &BTreeMap::new(), blocks_of, || true).expect("an index");
+    let pair = TextPair {
+        path: "b.py".to_owned(),
+        old: None,
+        new: Some(new.to_owned()),
+    };
+    let pairs = Pair::measure_all(vec![pair], |texts| {
+        texts.iter().map(SideText::measure).collect()
+    });
+    let reported: BTreeSet<(String, u32)> = reported
+        .iter()
+        .map(|(path, line)| ((*path).to_owned(), *line))
+        .collect();
+    let outcome = clone_delta(&[&pairs[0]], &CloneIndex::Built(index), &reported);
+    let findings = outcome.expect("an outcome").findings;
+    findings
+        .into_iter()
+        .map(|row| (row.finding.path, row.finding.line))
+        .collect()
+}
+
+#[test]
+fn a_function_near_duplicates_reported_gives_no_clone_row() {
+    assert_eq!(overlap_rows(&total(), &total(), &[("b.py", 1)]), []);
+}
+
+#[test]
+fn a_block_nested_in_a_reported_function_gives_no_clone_row() {
+    let rows = overlap_rows(&looped("again"), &looped("scan"), &[("b.py", 1)]);
+    assert_eq!(rows, []);
+}
+
+#[test]
+fn a_loop_at_a_reported_line_is_still_a_clone_row() {
+    let rows = overlap_rows(LOOP, LOOP, &[("b.py", 1)]);
+    assert_eq!(rows, [("b.py".to_owned(), 1)]);
+}
+
+#[test]
+fn a_function_at_another_reported_line_is_still_a_clone_row() {
+    let rows = overlap_rows(&total(), &total(), &[("b.py", 7)]);
+    assert_eq!(rows, [("b.py".to_owned(), 1)]);
 }

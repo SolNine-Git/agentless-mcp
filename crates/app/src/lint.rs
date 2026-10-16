@@ -1,14 +1,22 @@
-//! The lint operation: the proposed form and the revision form, with their report.
+//! The lint operation: the proposed, revision and candidate forms, with their report.
+
+mod candidates;
 
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use checks::{CloneIndex, Observed, PairFinding};
 use serde::Serialize;
 
-use crate::pairs::{IndexOf, Judged, Lookup, built_index, run_pairs};
+use crate::pairs::{IndexOf, Judged, Lookup, Reported, built_index, run_pairs};
 use crate::proposed::{After, Proposed, proposed};
 use crate::revision::compared;
 use crate::{Error, Noted, PairSelection, Repo, Services, Tags};
+
+pub use candidates::{
+    CandidatesRequest, CheckSelection, LintCandidateInput, lint_candidates, load_lint_candidates,
+    load_lint_diff,
+};
 
 /// Runs the pair checks of `request` on `repo`, with the clone blocks that `tags` stores. The
 /// error is a revision that names no commit, git output that does not parse, or a check that
@@ -87,10 +95,10 @@ pub(crate) fn lint_with(
 ) -> Noted<Result<LintReport, Error>> {
     let warnings = RefCell::new(Vec::new());
     let BlockSource { cached, lookup } = source;
-    let mut index = |measured: &[&checks::Pair]| -> Result<CloneIndex, Error> {
+    let mut index = |measured: &[&checks::Pair]| -> Result<Rc<CloneIndex>, Error> {
         let built = built_index(services, &repo.root, lookup, measured);
         warnings.borrow_mut().extend(built.diagnostics);
-        built.value.map(CloneIndex::Built)
+        built.value.map(|files| Rc::new(CloneIndex::Built(files)))
     };
     let report = report(services, repo, cached, request, &mut index);
     Noted {
@@ -111,7 +119,7 @@ fn report(
     let (id, judged) = match &request.form {
         LintForm::Proposed { path, after } => {
             let compared = proposed(&repo.root, path, after, services.cwd.as_deref());
-            let mut no_cache = |_: &[&checks::Pair]| Ok(CloneIndex::NoTagCache);
+            let mut no_cache = |_: &[&checks::Pair]| Ok(Rc::new(CloneIndex::NoTagCache));
             let index: &mut IndexOf<'_> = if cached { index } else { &mut no_cache };
             (
                 path,
@@ -120,7 +128,8 @@ fn report(
         }
         LintForm::Revision { revision } => {
             let compared = compared(&services.git, &repo.root, revision)?;
-            let judged = run_pairs(compared.pairs, request.checks, &repo.config, index)?;
+            let none = Reported::new();
+            let judged = run_pairs(compared.pairs, request.checks, &repo.config, index, &none)?;
             (revision, with_rows(compared.rows, judged))
         }
     };
@@ -136,7 +145,7 @@ fn judge_proposed(
     index: &mut IndexOf<'_>,
 ) -> Result<Judged, Error> {
     match compared {
-        Proposed::Pair(pair) => run_pairs(vec![pair], checks, config, index),
+        Proposed::Pair(pair) => run_pairs(vec![pair], checks, config, index, &Reported::new()),
         Proposed::Rows(rows) => Ok(with_rows(rows, empty())),
         Proposed::Skipped => Ok(empty()),
     }

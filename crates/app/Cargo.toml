@@ -20,6 +20,8 @@ io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
 metrics = { path = "../metrics" }
+patch = { path = "../patch" }
+patchcheck = { path = "../patchcheck" }
 prompts = { path = "../prompts" }
 serde.workspace = true
 store = { path = "../store" }

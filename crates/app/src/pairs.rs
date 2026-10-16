@@ -1,7 +1,8 @@
 //! The pair run: the path filter of each check, one measure per pair, and the clone index.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use std::rc::Rc;
 use std::time::Instant;
 
 use checks::{
@@ -39,8 +40,12 @@ pub(crate) enum Stored {
 // The lookup of one file's stored blocks by path, text and language.
 pub(crate) type Lookup<'a> = dyn FnMut(&str, &str, Language) -> Stored + 'a;
 
-// The clone index of a run, given the measured pairs that clone_delta keeps.
-pub(crate) type IndexOf<'a> = dyn FnMut(&[&Pair]) -> Result<CloneIndex, Error> + 'a;
+// The clone index of a run, given the measured pairs that clone_delta keeps. Every candidate of
+// a run shares one index.
+pub(crate) type IndexOf<'a> = dyn FnMut(&[&Pair]) -> Result<Rc<CloneIndex>, Error> + 'a;
+
+// The path and line of each function that near_duplicates reported in the same run.
+pub(crate) type Reported = BTreeSet<(String, u32)>;
 
 // Each selected check runs on the pairs its path rule keeps, in registry order. The index is
 // built on the first clone_delta call that keeps a pair.
@@ -49,6 +54,7 @@ pub(crate) fn run_pairs(
     selection: PairSelection,
     config: &io::ProjectConfig,
     index: &mut IndexOf<'_>,
+    reported: &Reported,
 ) -> Result<Judged, Error> {
     let kept: Vec<TextPair> = pairs
         .into_iter()
@@ -64,7 +70,7 @@ pub(crate) fn run_pairs(
             .iter()
             .filter(|pair| keeps(check, pair.path()))
             .collect();
-        if let Some(outcome) = run_check(check, &kept, config, index)? {
+        if let Some(outcome) = run_check(check, &kept, config, index, reported)? {
             rows.extend(outcome.findings);
             observed = observed.merged(outcome.observed);
         }
@@ -86,6 +92,7 @@ fn run_check(
     pairs: &[&Pair],
     config: &io::ProjectConfig,
     index: &mut IndexOf<'_>,
+    reported: &Reported,
 ) -> Result<Option<Outcome>, Error> {
     let outcome = match check {
         PairCheck::ComplexityDelta => {
@@ -98,7 +105,8 @@ fn run_check(
         PairCheck::CloneDelta if pairs.is_empty() => return Ok(None),
         PairCheck::CloneDelta => {
             find_blocks(pairs);
-            checks::clone_delta(pairs, &index(pairs)?)
+            let index: Rc<CloneIndex> = index(pairs)?;
+            checks::clone_delta(pairs, &index, reported)
         }
     };
     Ok(Some(outcome?))

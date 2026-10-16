@@ -513,7 +513,7 @@ impl core::panic::unwind_safe::UnwindSafe for checks::UnitState
 pub const checks::CLONE_DELTA: &str
 pub const checks::COMPLEXITY_DELTA: &str
 pub const checks::CONTRACT_DRIFT: &str
-pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex) -> core::result::Result<checks::Outcome, checks::Error>
+pub fn checks::clone_delta(&[&checks::Pair], &checks::CloneIndex, &alloc::collections::btree::set::BTreeSet<(alloc::string::String, u32)>) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::clone_index<B, T>(&alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, B, T) -> core::result::Result<checks::IndexedFiles, checks::Error> where B: core::ops::function::FnMut(&str, &str, syntax::language::Language) -> core::result::Result<alloc::vec::Vec<metrics::Block>, checks::SideError>, T: core::ops::function::FnMut() -> bool
 pub fn checks::complexity_delta(&[&checks::Pair], u32) -> core::result::Result<checks::Outcome, checks::Error>
 pub fn checks::contract_drift(&[&checks::Pair], &[alloc::string::String]) -> core::result::Result<checks::Outcome, checks::Error>

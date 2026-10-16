@@ -1,6 +1,12 @@
 pub mod app
+pub use app::ApplyResult
+pub use app::BlockError
 pub use app::CheckGap
 pub use app::Detail
+pub use app::DiffNote
+pub use app::Edit
+pub use app::EditOutcome
+pub use app::EditStatus
 pub use app::EvictionReport
 pub use app::Finding
 pub use app::IndexFailure
@@ -8,8 +14,11 @@ pub use app::IndexReport
 pub use app::IndexSkip
 pub use app::Observed
 pub use app::PairFinding
+pub use app::ParseResult
 pub use app::PathPolicy
 pub use app::Severity
+pub use app::SyntaxVerdict
+pub use app::parse_blocks
 pub mod app::bounds
 pub fn app::bounds::at_least(&app::IntArg, usize, &str) -> core::result::Result<usize, app::Error>
 pub fn app::bounds::within(&app::IntArg, usize, usize, &str) -> core::result::Result<usize, app::Error>
@@ -186,6 +195,25 @@ impl core::marker::Unpin for app::After
 impl core::marker::UnsafeUnpin for app::After
 impl core::panic::unwind_safe::RefUnwindSafe for app::After
 impl core::panic::unwind_safe::UnwindSafe for app::After
+pub enum app::ApplyMode
+pub app::ApplyMode::InPlace
+pub app::ApplyMode::Worktree
+impl core::clone::Clone for app::ApplyMode
+pub fn app::ApplyMode::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyMode
+impl core::cmp::PartialEq for app::ApplyMode
+pub fn app::ApplyMode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyMode
+pub fn app::ApplyMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ApplyMode
+impl core::marker::StructuralPartialEq for app::ApplyMode
+impl core::marker::Freeze for app::ApplyMode
+impl core::marker::Send for app::ApplyMode
+impl core::marker::Sync for app::ApplyMode
+impl core::marker::Unpin for app::ApplyMode
+impl core::marker::UnsafeUnpin for app::ApplyMode
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyMode
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyMode
 pub enum app::CapValue
 pub app::CapValue::Float(f64)
 pub app::CapValue::Int(u64)
@@ -391,6 +419,31 @@ impl core::marker::Unpin for app::WarmupRow
 impl core::marker::UnsafeUnpin for app::WarmupRow
 impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRow
 impl core::panic::unwind_safe::UnwindSafe for app::WarmupRow
+pub struct app::ApplyReport
+pub app::ApplyReport::base: alloc::string::String
+pub app::ApplyReport::diff: alloc::string::String
+pub app::ApplyReport::in_place: bool
+pub app::ApplyReport::result: patch::apply::ApplyResult
+impl app::ApplyReport
+pub fn app::ApplyReport::ok(&self) -> bool
+pub fn app::ApplyReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::ApplyReport
+pub fn app::ApplyReport::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyReport
+impl core::cmp::PartialEq for app::ApplyReport
+pub fn app::ApplyReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyReport
+pub fn app::ApplyReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ApplyReport
+impl serde_core::ser::Serialize for app::ApplyReport
+pub fn app::ApplyReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::ApplyReport
+impl core::marker::Send for app::ApplyReport
+impl core::marker::Sync for app::ApplyReport
+impl core::marker::Unpin for app::ApplyReport
+impl core::marker::UnsafeUnpin for app::ApplyReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyReport
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyReport
 pub struct app::BodyMapResult
 pub app::BodyMapResult::bodies: app::ExpandResult
 pub app::BodyMapResult::map: app::MapResult
@@ -473,6 +526,24 @@ impl core::marker::Unpin for app::CallerRef
 impl core::marker::UnsafeUnpin for app::CallerRef
 impl core::panic::unwind_safe::RefUnwindSafe for app::CallerRef
 impl core::panic::unwind_safe::UnwindSafe for app::CallerRef
+pub struct app::CandidatesRequest
+pub app::CandidatesRequest::candidates: alloc::vec::Vec<app::LintCandidateInput>
+pub app::CandidatesRequest::checks: app::CheckSelection
+impl core::clone::Clone for app::CandidatesRequest
+pub fn app::CandidatesRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::CandidatesRequest
+impl core::cmp::PartialEq for app::CandidatesRequest
+pub fn app::CandidatesRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CandidatesRequest
+pub fn app::CandidatesRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CandidatesRequest
+impl core::marker::Freeze for app::CandidatesRequest
+impl core::marker::Send for app::CandidatesRequest
+impl core::marker::Sync for app::CandidatesRequest
+impl core::marker::Unpin for app::CandidatesRequest
+impl core::marker::UnsafeUnpin for app::CandidatesRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::CandidatesRequest
+impl core::panic::unwind_safe::UnwindSafe for app::CandidatesRequest
 pub struct app::Capabilities<'a>
 pub app::Capabilities::cache: app::CacheView
 pub app::Capabilities::cache_hint: alloc::string::String
@@ -576,6 +647,48 @@ impl core::marker::Unpin for app::ChartNode
 impl core::marker::UnsafeUnpin for app::ChartNode
 impl core::panic::unwind_safe::RefUnwindSafe for app::ChartNode
 impl core::panic::unwind_safe::UnwindSafe for app::ChartNode
+pub struct app::CheckReport
+pub app::CheckReport::files: alloc::vec::Vec<app::FileCheck>
+pub app::CheckReport::result: patch::apply::ApplyResult
+impl app::CheckReport
+pub fn app::CheckReport::ok(&self) -> bool
+pub fn app::CheckReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::CheckReport
+pub fn app::CheckReport::clone(&self) -> Self
+impl core::cmp::Eq for app::CheckReport
+impl core::cmp::PartialEq for app::CheckReport
+pub fn app::CheckReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CheckReport
+pub fn app::CheckReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CheckReport
+impl serde_core::ser::Serialize for app::CheckReport
+pub fn app::CheckReport::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::CheckReport
+impl core::marker::Send for app::CheckReport
+impl core::marker::Sync for app::CheckReport
+impl core::marker::Unpin for app::CheckReport
+impl core::marker::UnsafeUnpin for app::CheckReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::CheckReport
+impl core::panic::unwind_safe::UnwindSafe for app::CheckReport
+pub struct app::CheckSelection
+impl app::CheckSelection
+pub fn app::CheckSelection::all() -> app::CheckSelection
+pub fn app::CheckSelection::from_names(&[alloc::string::String]) -> core::result::Result<app::CheckSelection, alloc::string::String>
+impl core::clone::Clone for app::CheckSelection
+pub fn app::CheckSelection::clone(&self) -> Self
+impl core::cmp::Eq for app::CheckSelection
+impl core::cmp::PartialEq for app::CheckSelection
+pub fn app::CheckSelection::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CheckSelection
+pub fn app::CheckSelection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CheckSelection
+impl core::marker::Freeze for app::CheckSelection
+impl core::marker::Send for app::CheckSelection
+impl core::marker::Sync for app::CheckSelection
+impl core::marker::Unpin for app::CheckSelection
+impl core::marker::UnsafeUnpin for app::CheckSelection
+impl core::panic::unwind_safe::RefUnwindSafe for app::CheckSelection
+impl core::panic::unwind_safe::UnwindSafe for app::CheckSelection
 pub struct app::Cl100k
 impl app::Cl100k
 pub fn app::Cl100k::new() -> core::result::Result<app::Cl100k, app::Error>
@@ -945,6 +1058,29 @@ impl core::marker::Unpin for app::Explanation
 impl core::marker::UnsafeUnpin for app::Explanation
 impl core::panic::unwind_safe::RefUnwindSafe for app::Explanation
 impl core::panic::unwind_safe::UnwindSafe for app::Explanation
+pub struct app::FileCheck
+pub app::FileCheck::error: alloc::string::String
+pub app::FileCheck::path: alloc::string::String
+pub app::FileCheck::verdict: core::option::Option<patch::delta::SyntaxVerdict>
+impl app::FileCheck
+pub fn app::FileCheck::ok(&self) -> bool
+impl core::clone::Clone for app::FileCheck
+pub fn app::FileCheck::clone(&self) -> Self
+impl core::cmp::Eq for app::FileCheck
+impl core::cmp::PartialEq for app::FileCheck
+pub fn app::FileCheck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FileCheck
+pub fn app::FileCheck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FileCheck
+impl serde_core::ser::Serialize for app::FileCheck
+pub fn app::FileCheck::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::FileCheck
+impl core::marker::Send for app::FileCheck
+impl core::marker::Sync for app::FileCheck
+impl core::marker::Unpin for app::FileCheck
+impl core::marker::UnsafeUnpin for app::FileCheck
+impl core::panic::unwind_safe::RefUnwindSafe for app::FileCheck
+impl core::panic::unwind_safe::UnwindSafe for app::FileCheck
 pub struct app::FileView
 pub app::FileView::error: alloc::string::String
 pub app::FileView::language: alloc::string::String
@@ -1399,6 +1535,25 @@ impl core::marker::Unpin for app::LintCandidate
 impl core::marker::UnsafeUnpin for app::LintCandidate
 impl core::panic::unwind_safe::RefUnwindSafe for app::LintCandidate
 impl core::panic::unwind_safe::UnwindSafe for app::LintCandidate
+pub struct app::LintCandidateInput
+pub app::LintCandidateInput::id: alloc::string::String
+pub app::LintCandidateInput::notes: alloc::vec::Vec<patch::unidiff::DiffNote>
+pub app::LintCandidateInput::parsed: patch::blocks::ParseResult
+impl core::clone::Clone for app::LintCandidateInput
+pub fn app::LintCandidateInput::clone(&self) -> Self
+impl core::cmp::Eq for app::LintCandidateInput
+impl core::cmp::PartialEq for app::LintCandidateInput
+pub fn app::LintCandidateInput::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintCandidateInput
+pub fn app::LintCandidateInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintCandidateInput
+impl core::marker::Freeze for app::LintCandidateInput
+impl core::marker::Send for app::LintCandidateInput
+impl core::marker::Sync for app::LintCandidateInput
+impl core::marker::Unpin for app::LintCandidateInput
+impl core::marker::UnsafeUnpin for app::LintCandidateInput
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintCandidateInput
+impl core::panic::unwind_safe::UnwindSafe for app::LintCandidateInput
 pub struct app::LintCheck
 pub app::LintCheck::input: app::CheckInput
 pub app::LintCheck::name: &'static str
@@ -1627,6 +1782,30 @@ impl core::marker::Unpin for app::MapResult
 impl core::marker::UnsafeUnpin for app::MapResult
 impl core::panic::unwind_safe::RefUnwindSafe for app::MapResult
 impl core::panic::unwind_safe::UnwindSafe for app::MapResult
+pub struct app::NormalizeReport
+pub app::NormalizeReport::file_keys: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub app::NormalizeReport::key: alloc::string::String
+pub app::NormalizeReport::result: patch::apply::ApplyResult
+impl app::NormalizeReport
+pub fn app::NormalizeReport::ok(&self) -> bool
+pub fn app::NormalizeReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::NormalizeReport
+pub fn app::NormalizeReport::clone(&self) -> Self
+impl core::cmp::Eq for app::NormalizeReport
+impl core::cmp::PartialEq for app::NormalizeReport
+pub fn app::NormalizeReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::NormalizeReport
+pub fn app::NormalizeReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::NormalizeReport
+impl serde_core::ser::Serialize for app::NormalizeReport
+pub fn app::NormalizeReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::NormalizeReport
+impl core::marker::Send for app::NormalizeReport
+impl core::marker::Sync for app::NormalizeReport
+impl core::marker::Unpin for app::NormalizeReport
+impl core::marker::UnsafeUnpin for app::NormalizeReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::NormalizeReport
+impl core::panic::unwind_safe::UnwindSafe for app::NormalizeReport
 pub struct app::Noted<T>
 pub app::Noted::diagnostics: alloc::vec::Vec<alloc::string::String>
 pub app::Noted::value: T
@@ -2234,6 +2413,8 @@ pub const app::GRAMMAR_CACHE: &str
 pub const app::MAX_CONFIG_WARNINGS: u64
 pub const app::MAX_OUTPUT_TOKENS: u64
 pub const app::MODULE_LEVEL: &str
+pub const app::NOT_UTF8: &str
+pub const app::NO_SUCH_FILE: &str
 pub const app::ROW_INDENT: &str
 pub const app::WALK_BUDGET: core::time::Duration
 pub trait app::Clock: core::marker::Send + core::marker::Sync
@@ -2248,9 +2429,11 @@ impl app::TokenCounter for app::Chars4
 pub fn app::Chars4::count(&self, &str) -> usize
 impl app::TokenCounter for app::Cl100k
 pub fn app::Cl100k::count(&self, &str) -> usize
+pub fn app::apply_patch(&app::Services, &app::Repo, &git::snapshot::Snapshot, &[patch::blocks::Edit], app::ApplyMode) -> app::Noted<core::result::Result<app::ApplyReport, app::Error>>
 pub fn app::body_map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::BodyMapResult, app::Error>>
 pub fn app::capabilities(&app::Session) -> core::result::Result<app::Capabilities<'_>, app::Error>
 pub fn app::cards_text(&[app::SymbolCard]) -> alloc::string::String
+pub fn app::check_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::CheckReport, app::Error>
 pub fn app::communities(&app::Services, &app::Reading<'_>, &app::CommunitiesRequest) -> app::Noted<core::result::Result<app::CommunityReport, app::Error>>
 pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc::string::String>
 pub fn app::cycles(&app::Services, &app::Reading<'_>, &app::CyclesRequest) -> app::Noted<core::result::Result<app::CycleReport, app::Error>>
@@ -2269,10 +2452,15 @@ pub fn app::index(&app::Services, &app::Repo, &git::snapshot::Snapshot, &app::In
 pub fn app::is_fixture_path(&str) -> bool
 pub fn app::is_test_path(&str) -> bool
 pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
+pub fn app::lint_candidates(&app::Services, &app::Session, &app::CandidatesRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
+pub fn app::load_edits(&str) -> core::result::Result<patch::blocks::ParseResult, app::Error>
+pub fn app::load_lint_candidates(&app::Services, &std::path::Path) -> core::result::Result<alloc::vec::Vec<app::LintCandidateInput>, app::Error>
+pub fn app::load_lint_diff(&app::Services, &std::path::Path) -> core::result::Result<app::LintCandidateInput, app::Error>
 pub fn app::locate_symbol(&app::Reading<'_>, &app::LocateRequest) -> app::Noted<core::result::Result<app::LocationView, app::Error>>
 pub fn app::locator(&str, &str, core::option::Option<&str>) -> alloc::string::String
 pub fn app::map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::MapResult, app::Error>>
 pub fn app::map_rows_text(&[app::MapFile]) -> alloc::string::String
+pub fn app::normalize_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::NormalizeReport, app::Error>
 pub fn app::omitted_line(usize, &str, usize) -> alloc::string::String
 pub fn app::path(&app::Services, &app::Reading<'_>, &app::PathRequest) -> app::Noted<core::result::Result<app::PathTrace, app::Error>>
 pub fn app::rationale_nodes(syntax::language::Language, &str, &facts::values::Symbol) -> alloc::vec::Vec<app::RationaleNode>

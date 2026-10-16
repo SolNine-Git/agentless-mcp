@@ -39,6 +39,8 @@ dependencies = [
  "json",
  "kernel",
  "metrics",
+ "patch",
+ "patchcheck",
  "prompts",
  "serde",
  "serde_json",

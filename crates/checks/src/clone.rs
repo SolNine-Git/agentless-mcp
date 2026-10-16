@@ -1,6 +1,6 @@
 //! `clone_delta`: each block a change adds that has a Type-2 copy in the repository after it.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use prompts::messages;
 
@@ -19,12 +19,18 @@ const MAX_DUPLICATE_SITES: usize = 3;
 const MAX_NAMED_GAPS: usize = 10;
 
 /// Report each added block that is big enough to report and has a Type-2 copy, against `index`.
+/// `reported` holds the path and line of each function that `near_duplicates` reported in the
+/// same run, and such a function gives no second finding.
 ///
 /// # Errors
 ///
 /// Returns an error when two pairs name one path, or when a side fails in a way that is not a
 /// parse or tokenizer failure.
-pub fn clone_delta(pairs: &[&Pair], index: &CloneIndex) -> Result<Outcome, Error> {
+pub fn clone_delta(
+    pairs: &[&Pair],
+    index: &CloneIndex,
+    reported: &BTreeSet<(String, u32)>,
+) -> Result<Outcome, Error> {
     let files = match index {
         CloneIndex::NoTagCache => {
             return Ok(Outcome {
@@ -47,7 +53,7 @@ pub fn clone_delta(pairs: &[&Pair], index: &CloneIndex) -> Result<Outcome, Error
     let mut findings = index_rows(files, &changed);
     findings.extend(rows);
     findings.extend(
-        run.outermost(copies)
+        run.outermost(copies, reported)
             .into_iter()
             .map(|id| clone_finding(&run, id)),
     );

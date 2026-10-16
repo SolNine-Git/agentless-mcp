@@ -1,7 +1,7 @@
 //! The blocks of one `clone_delta` run, the blocks a change added, and their instances.
 
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 
 use kernel::Key;
@@ -185,8 +185,13 @@ impl<'a> Run<'a> {
         (old_left, new_left)
     }
 
-    // A copy inside a reported copy folds into it, so one pasted function is one finding.
-    pub(crate) fn outermost(&self, mut copies: Vec<usize>) -> Vec<usize> {
+    // A copy inside a reported copy, or inside a function near_duplicates already reported, folds
+    // into it, so one pasted function is one finding.
+    pub(crate) fn outermost(
+        &self,
+        mut copies: Vec<usize>,
+        reported: &BTreeSet<(String, u32)>,
+    ) -> Vec<usize> {
         copies.sort_by_key(|id| {
             let placed = self.blocks[*id];
             (
@@ -202,9 +207,17 @@ impl<'a> Run<'a> {
                 continue;
             }
             outer = Some(id);
-            kept.push(id);
+            if !self.near_duplicate(id, reported) {
+                kept.push(id);
+            }
         }
         kept
+    }
+
+    fn near_duplicate(&self, id: usize, reported: &BTreeSet<(String, u32)>) -> bool {
+        let placed = self.blocks[id];
+        let site = (placed.path.to_owned(), placed.block.start_line);
+        placed.block.function && reported.contains(&site)
     }
 
     fn within(&self, id: usize, outer: usize) -> bool {

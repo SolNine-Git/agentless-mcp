@@ -31,7 +31,7 @@ impl Repo {
 }
 
 // An absolute path stands alone. A relative one needs the start-up directory.
-fn below_cwd(services: &Services, path: &Path) -> Result<PathBuf, Error> {
+pub(crate) fn below_cwd(services: &Services, path: &Path) -> Result<PathBuf, Error> {
     if path.is_absolute() {
         return Ok(path.to_path_buf());
     }
@@ -112,7 +112,7 @@ pub(crate) fn root_text(root: &Path) -> Result<&str, Error> {
 }
 
 // A leading "~" or "~/" becomes the home directory. "~user" stays as it is.
-fn expand_user(path: &Path, home: Option<&OsStr>) -> PathBuf {
+pub(crate) fn expand_user(path: &Path, home: Option<&OsStr>) -> PathBuf {
     let bytes = path.as_os_str().as_bytes();
     let rest = match bytes.strip_prefix(b"~") {
         Some(rest) if rest.is_empty() || rest.starts_with(b"/") => rest,
