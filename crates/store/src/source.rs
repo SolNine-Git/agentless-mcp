@@ -87,7 +87,8 @@ impl FactSource {
             let [metrics] = db.cells::<1>(schema::METRICS, id)?;
             stored_metrics(&metrics)
         };
-        let Served { value, warning } = self.served(file, "metric", read, measured);
+        let measure = |parsed: &Parsed| measured(parsed, &file.path);
+        let Served { value, warning } = self.served(file, "metric", read, measure);
         let value = value.unwrap_or_else(|unparsable| Err(Unmeasured::of(&unparsable)));
         Served { value, warning }
     }
@@ -108,7 +109,7 @@ impl FactSource {
                 measured,
             )))
         };
-        let derive = |parsed: &Parsed| (facts::extract(parsed), measured(parsed));
+        let derive = |parsed: &Parsed| (facts::extract(parsed), measured(parsed, &file.path));
         self.served(file, "fact", read, derive)
     }
 

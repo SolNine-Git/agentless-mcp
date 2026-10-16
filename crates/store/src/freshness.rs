@@ -1,6 +1,8 @@
 //! Whether a stored index serves the repository now: the admission of its meta row, and the
 //! comparison of its generation with the repository's.
 
+use std::cmp::Ordering;
+
 use crate::{FACTS_SCHEMA_VERSION, Refusal};
 
 /// The meta row of an index: its schema version, its repository, and its generation.
@@ -32,13 +34,26 @@ pub fn freshness(meta: Option<&IndexMeta>, repo_root: &str, generation: &str) ->
     let Some(meta) = meta else {
         return Freshness::Refused(Refusal::NoIndex);
     };
-    if let Some(refusal) = rejection(meta, FACTS_SCHEMA_VERSION, repo_root) {
+    let refused = facts_schema_rejection(meta.schema)
+        .or_else(|| rejection(meta, FACTS_SCHEMA_VERSION, repo_root));
+    if let Some(refusal) = refused {
         return Freshness::Refused(refusal);
     }
     if meta.generation == generation {
         Freshness::Current
     } else {
         Freshness::Stale
+    }
+}
+
+// The schema rule of agentless.db alone: a newer layout belongs to the newer build that wrote it,
+// so it is kept. tags.db keeps its own rule, which discards a newer layout too.
+pub(crate) fn facts_schema_rejection(found: i64) -> Option<Refusal> {
+    let expected = FACTS_SCHEMA_VERSION;
+    match found.cmp(&i64::from(expected)) {
+        Ordering::Less => Some(Refusal::Schema { found, expected }),
+        Ordering::Equal => None,
+        Ordering::Greater => Some(Refusal::NewerSchema { found, expected }),
     }
 }
 

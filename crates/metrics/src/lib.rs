@@ -12,7 +12,10 @@ mod units;
 pub use sum::compensated_sum;
 pub use tokenize::{TokenizeError, TokenizeErrorKind};
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use kernel::Key;
+use prompts::{Count, Template, Text, messages};
 use serde::{Deserialize, Serialize};
 use syntax::{Language, NodeId, Parsed, Point, Spec};
 
@@ -59,6 +62,14 @@ pub struct Unit {
     pub sloc: u32,
 }
 
+impl Unit {
+    /// Returns the unit's mass: cc times the square root of its SLOC.
+    #[must_use]
+    pub fn mass(&self) -> f64 {
+        f64::from(self.cc) * f64::from(self.sloc).sqrt()
+    }
+}
+
 /// One function or control block that clone detection compares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
@@ -93,6 +104,42 @@ pub enum Unmeasurable {
     #[error("{0}")]
     Tokenizer(TokenizeError),
 }
+
+impl Unmeasurable {
+    /// Returns the caller-facing reason for the file at `path` in the texts of `reasons`, or
+    /// `None` for a language with no rules.
+    #[must_use]
+    pub fn reason(&self, path: &str, reasons: &Reasons) -> Option<String> {
+        match self {
+            Unmeasurable::DoesNotParse { line } => {
+                Some(reasons.does_not_parse.render((path, *line as usize)))
+            }
+            Unmeasurable::Tokenizer(rejected) => {
+                Some(reasons.tokenizer.render((path, &rejected.to_string())))
+            }
+            Unmeasurable::Unsupported { .. } => None,
+        }
+    }
+}
+
+/// The texts of one check that say why a file has no measurement: a syntax error, or a source
+/// that the tokenizer rejects.
+pub struct Reasons {
+    does_not_parse: &'static Template<(Text, Count)>,
+    tokenizer: &'static Template<(Text, Text)>,
+}
+
+/// The reasons of the complexity measurement, which health and the complexity checks give.
+pub const COMPLEXITY_REASONS: Reasons = Reasons {
+    does_not_parse: &messages::COMPLEXITY_DOES_NOT_PARSE,
+    tokenizer: &messages::COMPLEXITY_TOKENIZER_REJECTS,
+};
+
+/// The reasons of the clone index.
+pub const CLONE_REASONS: Reasons = Reasons {
+    does_not_parse: &messages::CLONE_DOES_NOT_PARSE,
+    tokenizer: &messages::CLONE_TOKENIZER_REJECTS,
+};
 
 /// Measures the units, clone blocks, and SLOC lines of one parsed file.
 ///
@@ -189,14 +236,61 @@ pub fn place<'a>(path: &'a str, block: &Block) -> (&'a str, u32, u32) {
     (path, block.start_line, block.end_line)
 }
 
+/// Returns the share of all mass that the units with a cc above `threshold` hold, 0.0 when
+/// there is no mass.
+#[must_use]
+pub fn erosion<'u>(units: impl IntoIterator<Item = &'u Unit>, threshold: u32) -> f64 {
+    let (mut masses, mut over) = (Vec::new(), Vec::new());
+    for unit in units {
+        masses.push(unit.mass());
+        if unit.cc > threshold {
+            over.push(unit.mass());
+        }
+    }
+    let total = compensated_sum(&masses);
+    if total == 0.0 {
+        return 0.0;
+    }
+    compensated_sum(&over) / total
+}
+
+/// Returns, for each of `files`, its sorted SLOC lines inside any block whose Type-2 key at
+/// least [`MIN_INSTANCES`] blocks of all `files` share.
+#[must_use]
+pub fn clone_lines(files: &[&FileMetrics]) -> Vec<Vec<u32>> {
+    let mut instances: BTreeMap<Key, usize> = BTreeMap::new();
+    for block in files.iter().flat_map(|file| &file.blocks) {
+        *instances.entry(block.key).or_default() += 1;
+    }
+    let grouped = |block: &&Block| {
+        instances
+            .get(&block.key)
+            .is_some_and(|n| *n >= MIN_INSTANCES)
+    };
+    let lines_of = |file: &&FileMetrics| -> Vec<u32> {
+        let blocks = file.blocks.iter().filter(grouped);
+        let inside =
+            blocks.flat_map(|block| span_lines(&file.sloc_lines, block.start_line, block.end_line));
+        let lines: BTreeSet<u32> = inside.copied().collect();
+        lines.into_iter().collect()
+    };
+    files.iter().map(lines_of).collect()
+}
+
 fn line(point: Point) -> u32 {
     point.row + 1
 }
 
 // The count of sorted `lines` from `start` to `end`, both inclusive.
 fn lines_within(lines: &[u32], start: u32, end: u32) -> usize {
+    span_lines(lines, start, end).len()
+}
+
+// The sorted `lines` from `start` to `end`, both inclusive.
+fn span_lines(lines: &[u32], start: u32, end: u32) -> &[u32] {
+    let first = lines.partition_point(|&line| line < start);
     let after = lines.partition_point(|&line| line <= end);
-    after.saturating_sub(lines.partition_point(|&line| line < start))
+    &lines[first..after.max(first)]
 }
 
 #[cfg(test)]

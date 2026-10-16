@@ -70,7 +70,7 @@ fn site_row(site: &Site<'_>, symbol: Option<&Symbol>) -> RefSite {
 // A binding tier in a language with no scope analysis cannot tell a shadowing local from a
 // caller, so the group says the locals were not checked.
 fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>, prefix: &'static str) -> RefGroup {
-    let binding = matches!(tier, Tier::SameFile | Tier::Imported);
+    let binding = tier.binds();
     RefGroup {
         path: file.path.clone(),
         sites,

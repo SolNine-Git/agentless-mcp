@@ -1,10 +1,11 @@
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use super::cases::{ROOT, writer};
 use super::indexed::{Cache, GENERATION, PYTHON, indexed, observed};
 use crate::{
-    FACTS_SCHEMA_VERSION, NewMeta, SqlClass, SqlError, WriteError, Writer, analysis, analyze,
-    encode, plan, settle,
+    FACTS_SCHEMA_VERSION, NewMeta, Refusal, SqlClass, SqlError, WriteError, Writer, analysis,
+    analyze, encode, plan, settle,
 };
 
 #[test]
@@ -156,4 +157,69 @@ fn a_database_of_another_schema_is_migrated_and_starts_empty() {
         .query_row("SELECT schema FROM meta", (), |row| row.get(0))
         .expect("the meta row reads");
     assert_eq!(schema, i64::from(FACTS_SCHEMA_VERSION));
+}
+
+fn pragma(database: &Path, name: &str) -> i64 {
+    writer(database)
+        .query_row(&format!("PRAGMA {name}"), (), |row| row.get(0))
+        .expect("the pragma reads")
+}
+
+// The dropped tables free their pages inside the file, and the migration gives them back.
+#[test]
+fn a_migration_returns_the_freed_pages() {
+    let cache = Cache::new();
+    let texts: Vec<(String, String)> = (0..60)
+        .map(|file| {
+            let units: Vec<String> = (0..20)
+                .map(|unit| format!("def f{unit}(x):\n    return x + {file}\n\n\n"))
+                .collect();
+            (format!("m{file}.py"), units.concat())
+        })
+        .collect();
+    let files: Vec<(&str, &str)> = (texts.iter())
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    indexed(&cache.database, observed(&files), false);
+    let before = pragma(&cache.database, "page_count");
+    writer(&cache.database)
+        .execute("UPDATE meta SET schema = 0", ())
+        .expect("the damage applies");
+
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+
+    assert_eq!(pragma(&cache.database, "freelist_count"), 0);
+    let after = pragma(&cache.database, "page_count");
+    assert!(after < before, "{after} pages after {before}");
+}
+
+// A newer layout belongs to the newer build that wrote it: the writer changes nothing.
+#[test]
+fn a_database_of_a_newer_schema_is_refused_by_the_writer_and_kept() {
+    let cache = Cache::new();
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+    writer(&cache.database)
+        .execute("UPDATE meta SET schema = 2", ())
+        .expect("the damage applies");
+
+    let (opened, warnings) = Writer::open(&cache.database);
+
+    assert!(warnings.is_empty());
+    let refused = opened.expect_err("a newer schema is refused");
+    let newer = Refusal::NewerSchema {
+        found: 2,
+        expected: 1,
+    };
+    assert!(
+        matches!(&refused, WriteError::Refused(found) if *found == newer),
+        "{refused:?}"
+    );
+    let kept: (i64, i64) = writer(&cache.database)
+        .query_row(
+            "SELECT (SELECT schema FROM meta), (SELECT COUNT(*) FROM files)",
+            (),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("the rows read");
+    assert_eq!(kept, (2, 1));
 }

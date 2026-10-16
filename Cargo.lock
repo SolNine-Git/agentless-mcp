@@ -408,6 +408,7 @@ name = "metrics"
 version = "0.11.0-rc.1"
 dependencies = [
  "kernel",
+ "prompts",
  "serde",
  "serde_json",
  "sha2",

@@ -7,12 +7,15 @@ use io::{LockError, LockGuard};
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior, params};
 
 use crate::discard::{FACTS_LOCK_NAME, remove_database};
-use crate::open::{BUSY_TIMEOUT, connect_with, fetch, has_meta};
+use crate::freshness::facts_schema_rejection;
+use crate::open::{BUSY_TIMEOUT, connect_with, fetch};
 use crate::plan::{Entry, NewRow};
-use crate::reader::row_counts;
+use crate::reader::{row_counts, stored_schema};
 use crate::value::Cell;
 use crate::warnings::{Failed, unreclaimed};
-use crate::{FACTS_SCHEMA_VERSION, Previous, RowCounts, Settled, SqlError, analysis, schema};
+use crate::{
+    FACTS_SCHEMA_VERSION, Previous, Refusal, RowCounts, Settled, SqlError, analysis, schema,
+};
 
 /// The writer of one repository's agentless.db. It holds agentless.lock until it drops.
 #[derive(Debug)]
@@ -35,6 +38,8 @@ pub enum WriteError {
     Io(std::io::Error),
     /// The database could not be opened or read.
     Sql(SqlError),
+    /// The database belongs to a newer build. Nothing was changed.
+    Refused(Refusal),
 }
 
 impl From<SqlError> for WriteError {
@@ -56,9 +61,9 @@ pub struct NewMeta<'a> {
 
 impl Writer {
     /// Creates the database directory owner-only, takes agentless.lock without waiting, and
-    /// opens `database`. A database whose tables do not read is removed and created again, and
-    /// one of another layout is migrated. Returns the writer or why there is none, and the
-    /// warnings that came before it.
+    /// opens `database`. A database whose tables do not read is removed and created again, one
+    /// of an older layout is migrated, and one of a newer layout is refused. Returns the writer
+    /// or why there is none, and the warnings that came before it.
     pub fn open(database: &Path) -> (Result<Writer, WriteError>, Vec<String>) {
         let directory = database.parent().unwrap_or(Path::new(""));
         let mut warnings: Vec<String> = match io::create_private_dir(directory) {
@@ -123,6 +128,7 @@ fn locked(database: &Path) -> Result<LockGuard, WriteError> {
 // tables do not read is removed under the lock and created again.
 fn opened(database: &Path, lock: LockGuard) -> Result<(Writer, Option<String>), WriteError> {
     let connection = connect_rw(database)?;
+    refuse_newer(&connection)?;
     let ready = ensure_schema(&connection);
     let (connection, reclaim) = if let Ok(reclaim) = ready {
         (connection, reclaim)
@@ -136,6 +142,16 @@ fn opened(database: &Path, lock: LockGuard) -> Result<(Writer, Option<String>), 
         _lock: lock,
     };
     Ok((writer, reclaim))
+}
+
+// A newer layout belongs to the newer build that wrote it, so no migration goes down. A schema
+// that does not read is left to ensure_schema, whose failure builds the database again.
+fn refuse_newer(connection: &Connection) -> Result<(), WriteError> {
+    let found = stored_schema(connection).ok().flatten();
+    match found.and_then(facts_schema_rejection) {
+        Some(refusal @ Refusal::NewerSchema { .. }) => Err(WriteError::Refused(refusal)),
+        _ => Ok(()),
+    }
 }
 
 fn rebuilt(
@@ -177,18 +193,6 @@ fn ensure_schema(connection: &Connection) -> Result<Option<String>, SqlError> {
     batch(&transaction, schema::CREATE)?;
     transaction.commit().map_err(SqlError::from_sqlite)?;
     Ok(stale.then(|| reclaim(connection)).flatten())
-}
-
-fn stored_schema(connection: &Connection) -> Result<Option<i64>, SqlError> {
-    if !has_meta(connection)? {
-        return Ok(None);
-    }
-    let found = fetch::<1>(connection, schema::SCHEMA, (), 1)?;
-    found
-        .into_iter()
-        .next()
-        .map(|[schema]| schema.int())
-        .transpose()
 }
 
 // A dropped table frees pages inside the file. VACUUM returns them, and needs room for a copy.

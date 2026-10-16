@@ -4,8 +4,10 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use io::testing::Tree;
 
+use super::cases::ROOT;
+use super::indexed::{PYTHON, indexed, observed};
 use crate::sweep::{cache_entries, evicted};
-use crate::{CacheEntry, EvictionReport, enforce_cache_limit, evict_plan};
+use crate::{CacheEntry, EvictionReport, enforce_cache_limit, evict_plan, facts_database_path};
 
 const NOW: f64 = 1_800_000_000.0;
 const DAY: f64 = 86_400.0;
@@ -167,6 +169,24 @@ fn the_sweep_deletes_the_cold_databases_and_their_sidecars_and_keeps_each_lock()
     assert_eq!((report, warnings), (freed, Vec::new()));
     assert!(!cold.exists());
     assert_eq!(listing(&root.path().join("old")), ["agentless.lock"]);
+    assert!(keep.exists());
+}
+
+// The sweep weighs the file that an index run writes, so a cold database of another repository
+// goes and the database of this run stays.
+#[test]
+fn an_index_run_evicts_a_cold_database_of_another_repository() {
+    let root = Root::new();
+    let other = facts_database_path(root.path(), "/elsewhere/repo");
+    let keep = facts_database_path(root.path(), ROOT);
+    indexed(&other, observed(&[("a.py", PYTHON)]), false);
+    aged(&other, NOW - 1000.0 * DAY);
+    indexed(&keep, observed(&[("a.py", PYTHON)]), false);
+
+    let (report, warnings) = enforce_cache_limit(root.path(), &keep, Some(1), NOW);
+
+    assert_eq!((report.databases, warnings), (1, Vec::<String>::new()));
+    assert!(!other.exists());
     assert!(keep.exists());
 }
 

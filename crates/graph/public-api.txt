@@ -35,6 +35,7 @@ pub graph::Tier::Unique
 impl graph::Tier
 pub const graph::Tier::ORDER: [graph::Tier; 4]
 pub fn graph::Tier::as_str(self) -> &'static str
+pub fn graph::Tier::binds(self) -> bool
 pub fn graph::Tier::label(self) -> &'static str
 impl core::clone::Clone for graph::Tier
 pub fn graph::Tier::clone(&self) -> Self

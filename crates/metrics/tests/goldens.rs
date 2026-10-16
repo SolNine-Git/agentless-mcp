@@ -1,11 +1,14 @@
 //! The Python complexity goldens: units, cc, SLOC, erosion, clone groups, and clone lines.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kernel::Key;
-use metrics::{DEFAULT_THRESHOLD, FileMetrics, MIN_INSTANCES, Unit, Unmeasurable, measure};
+use metrics::{
+    DEFAULT_THRESHOLD, FileMetrics, MIN_INSTANCES, Unit, Unmeasurable, clone_lines, erosion,
+    measure,
+};
 use serde::Deserialize;
 use syntax::{Language, parse};
 
@@ -65,7 +68,7 @@ fn the_measured_goldens_match() {
         );
         let clones = golden.clones.unwrap_or_else(|| panic!("{stem}: no clones"));
         assert_eq!(clone_groups(&measured), clones.groups, "{stem}");
-        assert_eq!(clone_lines(&measured), clones.sloc_lines, "{stem}");
+        assert_eq!(clone_lines(&[&measured]), [clones.sloc_lines], "{stem}");
     }
     assert!(checked > 0);
 }
@@ -151,22 +154,6 @@ fn golden_rows(units: &[GoldenUnit]) -> Vec<(String, u32, u32, u32)> {
     rows
 }
 
-// The share of mass that units with cc above `threshold` hold. A unit's mass is cc times the
-// square root of its SLOC.
-fn erosion(units: &[Unit], threshold: u32) -> f64 {
-    let mass = |unit: &Unit| f64::from(unit.cc) * f64::from(unit.sloc).sqrt();
-    let total = metrics::compensated_sum(&units.iter().map(mass).collect::<Vec<_>>());
-    if total <= 0.0 {
-        return 0.0;
-    }
-    let high: Vec<f64> = units
-        .iter()
-        .filter(|unit| unit.cc > threshold)
-        .map(mass)
-        .collect();
-    metrics::compensated_sum(&high) / total
-}
-
 fn groups(measured: &FileMetrics) -> Vec<Vec<[u32; 2]>> {
     let mut by_key: BTreeMap<Key, Vec<[u32; 2]>> = BTreeMap::new();
     for block in &measured.blocks {
@@ -188,19 +175,4 @@ fn clone_groups(measured: &FileMetrics) -> Vec<Vec<[u32; 2]>> {
     }
     found.sort();
     found
-}
-
-fn clone_lines(measured: &FileMetrics) -> Vec<u32> {
-    let spans: Vec<[u32; 2]> = groups(measured).into_iter().flatten().collect();
-    let lines: BTreeSet<u32> = measured
-        .sloc_lines
-        .iter()
-        .copied()
-        .filter(|line| {
-            spans
-                .iter()
-                .any(|[start, end]| (start..=end).contains(&line))
-        })
-        .collect();
-    lines.into_iter().collect()
 }

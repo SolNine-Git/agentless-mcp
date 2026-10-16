@@ -27,6 +27,8 @@ pub metrics::Unmeasurable::DoesNotParse::line: u32
 pub metrics::Unmeasurable::Tokenizer(metrics::TokenizeError)
 pub metrics::Unmeasurable::Unsupported
 pub metrics::Unmeasurable::Unsupported::language: syntax::language::Language
+impl metrics::Unmeasurable
+pub fn metrics::Unmeasurable::reason(&self, &str, &metrics::Reasons) -> core::option::Option<alloc::string::String>
 impl core::clone::Clone for metrics::Unmeasurable
 pub fn metrics::Unmeasurable::clone(&self) -> Self
 impl core::cmp::Eq for metrics::Unmeasurable
@@ -108,6 +110,14 @@ impl core::marker::Unpin for metrics::Measurable
 impl core::marker::UnsafeUnpin for metrics::Measurable
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::Measurable
 impl core::panic::unwind_safe::UnwindSafe for metrics::Measurable
+pub struct metrics::Reasons
+impl core::marker::Freeze for metrics::Reasons
+impl core::marker::Send for metrics::Reasons
+impl core::marker::Sync for metrics::Reasons
+impl core::marker::Unpin for metrics::Reasons
+impl core::marker::UnsafeUnpin for metrics::Reasons
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Reasons
+impl core::panic::unwind_safe::UnwindSafe for metrics::Reasons
 pub struct metrics::TokenizeError
 pub metrics::TokenizeError::kind: metrics::TokenizeErrorKind
 pub metrics::TokenizeError::message: alloc::string::String
@@ -137,6 +147,8 @@ pub metrics::Unit::qualname: alloc::string::String
 pub metrics::Unit::sloc: u32
 pub metrics::Unit::start_byte: u32
 pub metrics::Unit::start_line: u32
+impl metrics::Unit
+pub fn metrics::Unit::mass(&self) -> f64
 impl core::clone::Clone for metrics::Unit
 pub fn metrics::Unit::clone(&self) -> Self
 impl core::cmp::Eq for metrics::Unit
@@ -156,10 +168,14 @@ impl core::marker::Unpin for metrics::Unit
 impl core::marker::UnsafeUnpin for metrics::Unit
 impl core::panic::unwind_safe::RefUnwindSafe for metrics::Unit
 impl core::panic::unwind_safe::UnwindSafe for metrics::Unit
+pub const metrics::CLONE_REASONS: metrics::Reasons
+pub const metrics::COMPLEXITY_REASONS: metrics::Reasons
 pub const metrics::DEFAULT_THRESHOLD: u32
 pub const metrics::MIN_INSTANCES: usize
 pub const metrics::MIN_SLOC: usize
+pub fn metrics::clone_lines(&[&metrics::FileMetrics]) -> alloc::vec::Vec<alloc::vec::Vec<u32>>
 pub fn metrics::compensated_sum(&[f64]) -> f64
+pub fn metrics::erosion<'u>(impl core::iter::traits::collect::IntoIterator<Item = &'u metrics::Unit>, u32) -> f64
 pub fn metrics::measure(&syntax::parsed::Parsed) -> core::result::Result<metrics::FileMetrics, metrics::Unmeasurable>
 pub fn metrics::place<'a>(&'a str, &metrics::Block) -> (&'a str, u32, u32)
 pub fn metrics::stamp(syntax::language::Language) -> core::option::Option<&'static str>

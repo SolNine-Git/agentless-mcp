@@ -47,16 +47,17 @@ pub struct TagsDb {
     generation: String,
 }
 
-/// The row count of each table that the capabilities report reads.
+/// The file, symbol, import and reference counts of a cache: what capabilities and the index
+/// report print.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RowCounts {
     /// The indexed files.
     pub files: u64,
-    /// The symbol rows.
+    /// The symbols.
     pub tags: u64,
-    /// The import rows.
+    /// The imports.
     pub imports: u64,
-    /// The reference rows.
+    /// The references.
     pub refs: u64,
 }
 

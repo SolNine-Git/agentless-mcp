@@ -223,6 +223,7 @@ fn refused(place: &Place, error: WriteError) -> Error {
         }
         WriteError::Io(error) => unbuilt(place, &io::strerror(&error)),
         WriteError::Sql(error) => unbuilt(place, &error),
+        WriteError::Refused(refusal) => unbuilt(place, &refusal),
     }
 }
 

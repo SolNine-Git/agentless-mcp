@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use crate::freshness::rejection;
-use crate::open::{BUSY_TIMEOUT, connect, fetch, found, read_meta};
+use crate::freshness::{facts_schema_rejection, rejection};
+use crate::open::{BUSY_TIMEOUT, connect, fetch, found, has_meta, read_meta};
 use crate::value::Cell;
 use crate::{
     FACTS_SCHEMA_VERSION, FileText, Refusal, RowCounts, Source, SqlClass, SqlError, analysis,
@@ -51,6 +51,11 @@ impl FactsDb {
         connection
             .execute("BEGIN", ())
             .map_err(SqlError::from_sqlite)?;
+        // The schema is read alone first: another layout may not hold the other meta columns.
+        let found = stored_schema(&connection)?.ok_or(Refusal::NoIndex)?;
+        if let Some(refusal) = facts_schema_rejection(found) {
+            return Err(refusal);
+        }
         let (meta, stored) = read_meta(&connection, schema::META)?.ok_or(Refusal::NoIndex)?;
         if let Some(refusal) = rejection(&meta, FACTS_SCHEMA_VERSION, repo_root) {
             return Err(refusal);
@@ -116,6 +121,19 @@ impl FactsDb {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+// The schema version of the meta row, or None with no meta table or no meta row.
+pub(crate) fn stored_schema(connection: &Connection) -> Result<Option<i64>, SqlError> {
+    if !has_meta(connection)? {
+        return Ok(None);
+    }
+    let found = fetch::<1>(connection, schema::SCHEMA, (), 1)?;
+    found
+        .into_iter()
+        .next()
+        .map(|[schema]| schema.int())
+        .transpose()
 }
 
 pub(crate) fn row_counts(connection: &Connection) -> Result<RowCounts, SqlError> {

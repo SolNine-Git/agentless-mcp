@@ -114,6 +114,10 @@ impl Sandbox {
                 let message = step.get(2).and_then(Value::as_str).unwrap_or("fixture");
                 self.git(&place, &["commit", "--quiet", "-m", message]);
             }
+            "index" => {
+                let ran = self.run(&[OsString::from("index")], &place, None);
+                assert_eq!(ran.code, 0, "the index step in {}: {}", word(1), ran.err);
+            }
             other => panic!("no scenario step {other}"),
         }
     }

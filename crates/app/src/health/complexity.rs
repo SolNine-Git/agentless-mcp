@@ -1,13 +1,13 @@
 //! The complexity walk of health: each tier-1 source file outside test and fixture paths,
 //! measured in path order until the time budget runs out, and the figures read off the walk.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use facts::SymbolKind;
 use graph::Definition;
-use kernel::{Bounded, Key};
-use metrics::{Block, FileMetrics, MIN_INSTANCES, Unit, compensated_sum};
+use kernel::Bounded;
+use metrics::{FileMetrics, Unit};
 use store::{FactSource, FileText, Served};
 use syntax::Language;
 
@@ -98,7 +98,7 @@ pub(super) struct PlacedUnit {
 
 impl PlacedUnit {
     fn mass(&self) -> f64 {
-        mass(&self.unit)
+        self.unit.mass()
     }
 }
 
@@ -206,63 +206,19 @@ fn measure(
 }
 
 pub(super) fn summary(walk: &Walk, threshold: u32, limit: usize) -> HealthComplexity {
-    let masses: Vec<f64> = walk.units.iter().map(PlacedUnit::mass).collect();
-    let over: Vec<f64> = (walk.units.iter())
-        .filter(|placed| placed.unit.cc > threshold)
-        .map(PlacedUnit::mass)
-        .collect();
+    let units = walk.units.iter().map(|placed| &placed.unit);
+    let files: Vec<&FileMetrics> = walk.files.iter().map(|(_, file)| file).collect();
     HealthComplexity {
         threshold,
         files: walk.in_scope,
         walked: walk.walked,
         units: walk.units.len(),
-        over_threshold: over.len(),
-        erosion: erosion(&masses, &over),
-        sloc: walk
-            .files
-            .iter()
-            .map(|(_, file)| file.sloc_lines.len())
-            .sum(),
-        clone_lines: clone_lines(&walk.files),
+        over_threshold: units.clone().filter(|unit| unit.cc > threshold).count(),
+        erosion: metrics::erosion(units, threshold),
+        sloc: files.iter().map(|file| file.sloc_lines.len()).sum(),
+        clone_lines: metrics::clone_lines(&files).iter().map(Vec::len).sum(),
         not_measured: Bounded::cut(walk.not_measured.clone(), limit),
     }
-}
-
-fn mass(unit: &Unit) -> f64 {
-    f64::from(unit.cc) * f64::from(unit.sloc).sqrt()
-}
-
-// The share of all mass that the units above the threshold hold, 0.0 when there is no mass.
-fn erosion(masses: &[f64], over: &[f64]) -> f64 {
-    let total = compensated_sum(masses);
-    if total == 0.0 {
-        return 0.0;
-    }
-    compensated_sum(over) / total
-}
-
-// Each file's source lines inside any block whose Type-2 key at least two blocks share.
-fn clone_lines(files: &[(String, FileMetrics)]) -> usize {
-    let mut instances: BTreeMap<Key, usize> = BTreeMap::new();
-    for (_, file) in files {
-        for block in &file.blocks {
-            *instances.entry(block.key).or_default() += 1;
-        }
-    }
-    let grouped = |block: &&Block| instances.get(&block.key).copied().unwrap_or(0) >= MIN_INSTANCES;
-    let lines_of = |file: &FileMetrics| -> usize {
-        let blocks = file.blocks.iter().filter(grouped);
-        let inside = blocks.flat_map(|block| lines_within(&file.sloc_lines, block));
-        inside.copied().collect::<BTreeSet<u32>>().len()
-    };
-    files.iter().map(|(_, file)| lines_of(file)).sum()
-}
-
-// The sorted `lines` that fall inside the block's line span.
-fn lines_within<'l>(lines: &'l [u32], block: &Block) -> &'l [u32] {
-    let start = lines.partition_point(|line| *line < block.start_line);
-    let end = lines.partition_point(|line| *line <= block.end_line);
-    &lines[start..end.max(start)]
 }
 
 pub(super) fn hotspots(
@@ -279,11 +235,10 @@ pub(super) fn hotspots(
             .then_with(|| a.qualname.cmp(&b.qualname))
     });
     let sites = callable_sites(definitions);
-    let rows = ranked
-        .iter()
+    let rows = (ranked.iter().take(limit))
         .map(|placed| hotspot_row(placed, &sites))
         .collect();
-    Bounded::cut(rows, limit)
+    Bounded::with_total(rows, units.len(), limit)
 }
 
 // A symbol carries no start byte, so a unit finds its symbol by start line and name.
@@ -334,6 +289,8 @@ fn unit_stable_id(placed: &PlacedUnit, sites: &Sites<'_>) -> Option<String> {
     }
 }
 
+// f64::from takes a u32 without loss. A share needs no exact count past u32::MAX lines, so a
+// larger count saturates and the report still answers.
 fn count_f64(count: usize) -> f64 {
     u32::try_from(count).map_or(f64::from(u32::MAX), f64::from)
 }

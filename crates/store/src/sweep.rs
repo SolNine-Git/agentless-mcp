@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use io::LockError;
 use text::{CodePointString, IntText, int_text, is_space};
 
-use crate::EvictionReport;
-use crate::discard::{FACTS_LOCK_NAME, remove_database, with_suffix};
+use crate::discard::{FACTS_LOCK_NAME, SUFFIXES, remove_database, with_suffix};
 use crate::warnings::Failed;
+use crate::{EvictionReport, FACTS_DATABASE_NAME};
 
 /// The ceiling when the environment sets none: 5 GiB.
 pub const DEFAULT_MAX_CACHE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
@@ -21,9 +21,6 @@ pub const PROTECTED_SECONDS: f64 = 86_400.0;
 /// The environment variable that sets the ceiling.
 pub const MAX_CACHE_BYTES_VARIABLE: &str = "AGENTLESS_MCP_MAX_CACHE_BYTES";
 
-const FACTS_DATABASE_NAME: &str = "agentless.db";
-// The sidecars that the sweep weighs, in the order it weighs them.
-const WEIGHED: [&str; 3] = ["", "-wal", "-shm"];
 const MAX_DIGITS: usize = 4300;
 
 /// One cached database, as the sweep weighs it.
@@ -184,11 +181,12 @@ fn entry(database: &Path) -> (Option<CacheEntry>, Vec<String>) {
     (Some(found), warnings)
 }
 
-// What deleting `database` and its sidecars would reclaim. A missing sidecar weighs nothing.
+// What deleting `database` and its sidecars would reclaim, the primary first. A missing sidecar
+// weighs nothing.
 fn entry_bytes(database: &Path) -> (u64, Vec<String>) {
     let mut total = 0;
     let mut warnings = Vec::new();
-    for suffix in WEIGHED {
+    for suffix in SUFFIXES.into_iter().rev() {
         match std::fs::metadata(with_suffix(database, suffix)) {
             Ok(found) => total += found.len(),
             Err(error) if missing(&error) => {}

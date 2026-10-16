@@ -906,6 +906,10 @@ def apply(sandbox: Path, env: dict[str, str], step: list[str]) -> None:
         run_git(target, IDENTITY, "add", "-A", env=env)
         message = rest[0] if rest else "fixture"
         run_git(target, IDENTITY, "commit", "--quiet", "-m", message, env=env)
+    elif kind == "index":
+        done = run_cli(["index"], target, env)
+        if done["code"] != 0:
+            sys.exit(f"refused: the index step in {place} exited {done['code']}: {done['err']}")
     else:
         sys.exit(f"refused: no scenario step {kind}")
 

@@ -131,6 +131,13 @@ pub enum Refusal {
         /// The schema version that this build reads for that database.
         expected: u16,
     },
+    /// An agentless.db has a newer schema version, from a newer build. It stays in place.
+    NewerSchema {
+        /// The schema version that the database records.
+        found: i64,
+        /// The schema version that this build reads for that database.
+        expected: u16,
+    },
     /// The database was built for another repository.
     OtherRepository {
         /// The repository root that the database records.
@@ -142,7 +149,7 @@ impl Refusal {
     /// Returns true when the caller discards the refused database.
     #[must_use]
     pub fn discards(&self) -> bool {
-        !matches!(self, Self::Unreadable(_))
+        !matches!(self, Self::Unreadable(_) | Self::NewerSchema { .. })
     }
 }
 
@@ -166,6 +173,11 @@ impl fmt::Display for Refusal {
                 let values = (found.to_string(), usize::from(*expected));
                 f.write_str(&CACHE_DISCARDED_OLD_SCHEMA.render((&values.0, values.1)))
             }
+            Self::NewerSchema { found, expected } => write!(
+                f,
+                "cache kept: schema {found} is newer than {expected}, built by a newer \
+                 agentless-mcp"
+            ),
             Self::OtherRepository { repo_root } => {
                 f.write_str(&CACHE_DISCARDED_OTHER_REPO.render(repo_root))
             }

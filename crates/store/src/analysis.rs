@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 
 use facts::Facts;
 use kernel::Key;
-use metrics::FileMetrics;
+use metrics::{COMPLEXITY_REASONS, FileMetrics};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use syntax::{Language, Parsed, Unparsable};
@@ -14,8 +14,8 @@ use syntax::{Language, Parsed, Unparsable};
 /// The table layout of agentless.db. A database of another layout is discarded.
 pub const FACTS_SCHEMA_VERSION: u16 = 1;
 /// The version of the extraction rules written as code and of the blob layout. Bump it on any
-/// change to what `facts::extract` or a blob encoder gives for one text.
-pub const FACTS_VERSION: u32 = 2;
+/// change to what `facts::extract`, the stored reason, or a blob encoder gives for one text.
+pub const FACTS_VERSION: u32 = 3;
 
 /// One file as the caller read it: its path below the root, its language, and its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,7 +50,7 @@ impl FileText {
 /// Why a file has no metrics, as a stored or computed reason text.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unmeasured {
-    /// The reason, such as "the source does not parse at line 3".
+    /// The caller-facing reason, which names the file, such as "a.py does not parse: ...".
     pub reason: String,
 }
 
@@ -90,18 +90,19 @@ pub(crate) type Parse = dyn Fn(Language, Arc<str>) -> Result<Parsed, Unparsable>
 /// Returns the [`Unparsable`] of a text that the grammar does not parse.
 pub fn analyze(file: &FileText, measure: bool) -> Result<Analysis, Unparsable> {
     let parsed = syntax::parse(file.language, Arc::clone(&file.text))?;
-    Ok(analyzed(&parsed, measure))
+    Ok(Analysis {
+        facts: facts::extract(&parsed),
+        metrics: measure.then(|| measured(&parsed, &file.path)),
+    })
 }
 
-pub(crate) fn analyzed(parsed: &Parsed, measure: bool) -> Analysis {
-    Analysis {
-        facts: facts::extract(parsed),
-        metrics: measure.then(|| measured(parsed)),
-    }
-}
-
-pub(crate) fn measured(parsed: &Parsed) -> Measured {
-    metrics::measure(parsed).map_err(|error| Unmeasured::of(&error))
+// The reason is worded when the row is made, so a stored row and a parse give the same text. A
+// language with no rules keeps the metrics error text.
+pub(crate) fn measured(parsed: &Parsed, path: &str) -> Measured {
+    metrics::measure(parsed).map_err(|error| match error.reason(path, &COMPLEXITY_REASONS) {
+        Some(reason) => Unmeasured { reason },
+        None => Unmeasured::of(&error),
+    })
 }
 
 /// Returns the digest of every rule that turns one text into its stored row. A row made under

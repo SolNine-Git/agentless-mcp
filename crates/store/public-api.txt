@@ -97,6 +97,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for store::Read
 impl core::panic::unwind_safe::UnwindSafe for store::Read
 pub enum store::Refusal
 pub store::Refusal::Corrupt(store::SqlError)
+pub store::Refusal::NewerSchema
+pub store::Refusal::NewerSchema::expected: u16
+pub store::Refusal::NewerSchema::found: i64
 pub store::Refusal::NoIndex
 pub store::Refusal::OtherRepository
 pub store::Refusal::OtherRepository::repo_root: alloc::string::String
@@ -169,6 +172,7 @@ pub enum store::WriteError
 pub store::WriteError::Io(core::io::error::Error)
 pub store::WriteError::Locked
 pub store::WriteError::Locked::directory: std::path::PathBuf
+pub store::WriteError::Refused(store::Refusal)
 pub store::WriteError::Sql(store::SqlError)
 impl core::convert::From<store::SqlError> for store::WriteError
 pub fn store::WriteError::from(store::SqlError) -> Self

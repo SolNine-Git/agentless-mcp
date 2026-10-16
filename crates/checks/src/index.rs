@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use metrics::Block;
+use metrics::{Block, CLONE_REASONS};
 use prompts::messages;
 use syntax::Language;
 
 use crate::error::{Error, SideError};
-use crate::pair::{CLONE_REASONS, pair_language, side_reason};
+use crate::pair::{pair_language, side_reason};
 
 /// The clone index of one run: the indexed repository, or none because the run has no tag cache.
 #[derive(Clone, Debug, PartialEq, Eq)]

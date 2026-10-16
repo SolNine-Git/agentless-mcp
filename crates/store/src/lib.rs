@@ -54,11 +54,11 @@ use std::path::{Path, PathBuf};
 use kernel::Key;
 use sha2::{Digest, Sha256};
 
-/// The schema version that this build reads. A database with another version is discarded.
+/// The tags.db schema version that this build reads. A tags.db with another version is discarded.
 pub const SCHEMA_VERSION: u16 = 17;
 
 const DATABASE_NAME: &str = "tags.db";
-const FACTS_DATABASE_NAME: &str = "agentless.db";
+pub(crate) const FACTS_DATABASE_NAME: &str = "agentless.db";
 const KEY_LENGTH: usize = 16;
 
 /// Returns `<cache_root>/<key>/tags.db`, where the key is the first 16 hexadecimal digits of the

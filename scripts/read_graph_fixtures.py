@@ -136,6 +136,23 @@ REFS = [
     ["commit", "repo"],
 ]
 NO_FILES = [["init", "repo"], ["write", "repo/README.md", "# repo\n"], ["commit", "repo"]]
+# Files the complexity walk cannot measure: a syntax error in four languages, then a dedent and a
+# backslash at the end of the file, which the grammar accepts and the tokenizer rejects.
+BROKEN_FILES = {
+    "ok.py": "def fine():\n    return 1\n",
+    "broken.py": "def g(:\n    pass\n",
+    "broken.js": "function f( {\n  return 1;\n",
+    "broken.rs": "fn f( {\n    1\n",
+    "broken.go": "package p\n\nfunc f( {\n",
+    "dedent.py": "def f():\n        x = 1\n    y = 2\n",
+    "backslash_eof.py": "def f():\n    return 1 \\\n",
+}
+BROKEN = [
+    ["init", "repo"],
+    *[["write", f"repo/{name}", text] for name, text in BROKEN_FILES.items()],
+    ["commit", "repo"],
+]
+INDEXED_BROKEN = [*BROKEN, ["index", "repo"]]
 
 
 def committed(text: str) -> list[list[str]]:
@@ -240,6 +257,10 @@ HEALTH_SCENARIOS = [
     scenario("health_cut_json", TESTS, ["health", "--limit", "1", "--json"]),
     scenario("health_limit_refused", NESTED, ["health", "--limit", "501"]),
     scenario("health_empty", NO_FILES, ["health"]),
+    scenario("health_unmeasured", BROKEN, ["health"]),
+    scenario("health_unmeasured_json", BROKEN, ["health", "--json"]),
+    scenario("health_unmeasured_indexed", INDEXED_BROKEN, ["health"]),
+    scenario("health_unmeasured_indexed_json", INDEXED_BROKEN, ["health", "--json"]),
 ]
 INDEX_SCENARIOS = [
     scenario("index_text", NESTED, ["index"]),

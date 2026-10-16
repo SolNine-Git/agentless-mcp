@@ -212,8 +212,8 @@ fn each_unusable_database_is_refused_with_its_note() {
             "cache discarded: no index has been built",
         ),
         (
-            "UPDATE meta SET schema = 2",
-            "cache discarded: schema 2 predates 1, rerun agentless-mcp index",
+            "UPDATE meta SET schema = 0",
+            "cache discarded: schema 0 predates 1, rerun agentless-mcp index",
         ),
         (
             "UPDATE meta SET repo_root = '/elsewhere/repo'",
@@ -232,6 +232,62 @@ fn each_unusable_database_is_refused_with_its_note() {
         assert_eq!(refused.to_string(), note, "{damage}");
         assert!(refused.discards(), "{damage}");
     }
+}
+
+// A newer build may write a meta table with other columns, so the schema is read before them.
+#[test]
+fn a_database_of_a_newer_schema_is_refused_and_kept() {
+    let newer = "cache kept: schema 2 is newer than 1, built by a newer agentless-mcp";
+    let older = "cache discarded: schema 0 predates 1, rerun agentless-mcp index";
+    let cases = [
+        ("UPDATE meta SET schema = 2", newer, false),
+        (
+            "UPDATE meta SET schema = 2; ALTER TABLE meta DROP COLUMN analysis",
+            newer,
+            false,
+        ),
+        (
+            "UPDATE meta SET schema = 0; ALTER TABLE meta DROP COLUMN analysis",
+            older,
+            true,
+        ),
+    ];
+    for (damage, note, discards) in cases {
+        let cache = Cache::new();
+        built(&cache);
+        writer(&cache.database)
+            .execute_batch(damage)
+            .expect("the damage applies");
+
+        let refused = refusal(&cache.database);
+
+        assert_eq!(refused.to_string(), note, "{damage}");
+        assert_eq!(refused.discards(), discards, "{damage}");
+    }
+}
+
+// The snapshot holds the rows that the open saw: a later run that frees b.js's row id for c.py
+// changes neither what the source serves nor what it counts.
+#[test]
+fn an_open_source_does_not_see_a_later_index_run() {
+    let cache = Cache::new();
+    built(&cache);
+    let old = file("b.js", SCRIPT);
+    let (source, calls) = counting(Some(usable(&cache.database)));
+    let before = source.database().map(FactsDb::row_counts);
+
+    indexed(
+        &cache.database,
+        observed(&[("a.py", PYTHON), ("c.py", "def other():\n    pass\n")]),
+        false,
+    );
+
+    let served = source.symbols(&old);
+    let after = source.database().map(FactsDb::row_counts);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let parsed = analyze(&old, false).expect("the file parses");
+    assert_eq!(served.value, Ok(parsed.facts.symbols));
+    assert_eq!(after, before);
 }
 
 #[test]
@@ -326,6 +382,7 @@ fn freshness_refuses_in_the_reference_order_then_compares_the_generation() {
     };
     let found = [
         freshness(None, ROOT, GENERATION),
+        freshness(Some(&meta(0, "/elsewhere")), ROOT, GENERATION),
         freshness(Some(&meta(2, "/elsewhere")), ROOT, GENERATION),
         freshness(Some(&meta(1, "/elsewhere")), ROOT, GENERATION),
         freshness(Some(&meta(1, ROOT)), ROOT, GENERATION),
@@ -334,6 +391,10 @@ fn freshness_refuses_in_the_reference_order_then_compares_the_generation() {
     let expected = [
         Freshness::Refused(Refusal::NoIndex),
         Freshness::Refused(Refusal::Schema {
+            found: 0,
+            expected: 1,
+        }),
+        Freshness::Refused(Refusal::NewerSchema {
             found: 2,
             expected: 1,
         }),

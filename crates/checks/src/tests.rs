@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use metrics::{Block, Unmeasurable};
+use metrics::{Block, COMPLEXITY_REASONS, Unmeasurable};
 use serde_json::{Map, Value, json};
 use syntax::{Language, Unparsable};
 use text::testing::document;
 
 use crate::finding::{Finding, PairFinding, Severity, sorted};
 use crate::globs::in_boundary;
-use crate::pair::{COMPLEXITY_REASONS, side_reason};
+use crate::pair::side_reason;
 use crate::{
     CloneIndex, Error, IndexedFiles, Observed, Outcome, Pair, SideError, SideText, TextPair,
     UnitState, clone_delta, clone_index, complexity_delta, contract_drift, measure_blocks,

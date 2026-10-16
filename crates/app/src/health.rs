@@ -188,7 +188,7 @@ impl End {
     // Same-file and resolved-via-import edges are bindings and count; a weaker match is kept
     // apart by tier.
     fn add(&mut self, tier: Tier) {
-        if matches!(tier, Tier::SameFile | Tier::Imported) {
+        if tier.binds() {
             self.counted += 1;
         } else {
             self.discounted[tier_at(tier)] += 1;
@@ -230,6 +230,8 @@ fn degrees<'g>(
     degrees
 }
 
+// usize holds every u64 on a 64-bit target. On a narrower target a larger count saturates and
+// the report still answers.
 fn as_count(count: u64) -> usize {
     usize::try_from(count).unwrap_or(usize::MAX)
 }

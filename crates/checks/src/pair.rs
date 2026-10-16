@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
-use metrics::{Block, Measurable, Unit, Unmeasurable};
-use prompts::{Count, Template, Text, messages};
+use metrics::{Block, CLONE_REASONS, COMPLEXITY_REASONS, Measurable, Reasons, Unit};
+use prompts::{Template, Text, messages};
 use syntax::{Language, Parsed};
 
 use crate::error::{Error, SideError};
@@ -209,21 +209,6 @@ pub(crate) fn blocks(side: Option<&Measured>) -> &[Block] {
     side.map_or(&[], Measured::blocks)
 }
 
-pub(crate) struct Reasons {
-    does_not_parse: &'static Template<(Text, Count)>,
-    tokenizer: &'static Template<(Text, Text)>,
-}
-
-pub(crate) const COMPLEXITY_REASONS: Reasons = Reasons {
-    does_not_parse: &messages::COMPLEXITY_DOES_NOT_PARSE,
-    tokenizer: &messages::COMPLEXITY_TOKENIZER_REJECTS,
-};
-
-pub(crate) const CLONE_REASONS: Reasons = Reasons {
-    does_not_parse: &messages::CLONE_DOES_NOT_PARSE,
-    tokenizer: &messages::CLONE_TOKENIZER_REJECTS,
-};
-
 pub(crate) struct Gaps {
     check: &'static str,
     reasons: &'static Reasons,
@@ -259,19 +244,15 @@ pub(crate) fn side_reason(
     error: &SideError,
     reasons: &Reasons,
 ) -> Result<String, Error> {
-    match error {
-        SideError::Unmeasurable(Unmeasurable::DoesNotParse { line }) => {
-            Ok(reasons.does_not_parse.render((path, *line as usize)))
-        }
-        SideError::Unmeasurable(Unmeasurable::Tokenizer(rejected)) => {
-            Ok(reasons.tokenizer.render((path, &rejected.to_string())))
-        }
-        SideError::Recorded(reason) => Ok(reason.clone()),
-        SideError::Unmeasurable(_) | SideError::Unparsable(_) => Err(Error::Side {
-            path: path.to_owned(),
-            source: error.clone(),
-        }),
-    }
+    let worded = match error {
+        SideError::Unmeasurable(unmeasurable) => unmeasurable.reason(path, reasons),
+        SideError::Recorded(reason) => Some(reason.clone()),
+        SideError::Unparsable(_) => None,
+    };
+    worded.ok_or_else(|| Error::Side {
+        path: path.to_owned(),
+        source: error.clone(),
+    })
 }
 
 pub(crate) enum Read<T> {

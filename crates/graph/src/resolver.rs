@@ -48,6 +48,12 @@ impl Tier {
     pub fn label(self) -> &'static str {
         TIER_LABELS[self as usize]
     }
+
+    /// Return true for a binding tier, same-file or resolved-via-import, whose edges count.
+    #[must_use]
+    pub fn binds(self) -> bool {
+        matches!(self, Tier::SameFile | Tier::Imported)
+    }
 }
 
 /// The tier one name resolved at, and every candidate at that tier.
