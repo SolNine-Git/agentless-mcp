@@ -1403,6 +1403,10 @@ EXTENSION: tuple[tuple[str, str], ...] = (
     ("extension/unicode.py", UNICODE_PY),
     ("extension/unicode.rs", UNICODE_RS),
     ("extension/unicode.js", UNICODE_JS),
+    # Two symbols share a qualified name and the later line comes out first: the ordinals
+    # follow the lines.
+    ("extension/out_of_line.cpp", "struct A { void f(); };\nvoid A::f() {}\n"),
+    ("extension/redefined.toml", "b = 1\n[b]\n"),
     # Sources that do not parse, for the error spans and the unparsed mentions.
     ("extension/broken.py", "def f(:\n    total = 1\n    return total total\n"),
     ("extension/broken.js", "function (\n  total += Total;\n}}\n"),

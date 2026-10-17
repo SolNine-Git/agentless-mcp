@@ -7,7 +7,7 @@ use super::tree::{Field, Tree};
 use super::{conventionally_public, declares_async};
 use crate::pattern::upper_case_line;
 use crate::spelling::{base_name, truncate};
-use crate::values::{Symbol, SymbolKind};
+use crate::values::{Symbol, SymbolKind, qualified};
 
 const DECLARATIONS: [&str; 6] = [
     "function_definition",
@@ -100,6 +100,7 @@ fn step(tree: &Tree, work: Work) -> (Option<Symbol>, Vec<Work>) {
         Work::Nested { node, parent } => (None, nested(tree, node, &parent)),
         Work::NestedFunction { node, parent } => {
             let symbol = function(tree, node, &parent).of_kind(SymbolKind::Function);
+            // Not `qualified`: this chain keeps the dot after an empty parent.
             let chain = format!("{parent}.{}", symbol.name);
             (
                 Some(symbol),
@@ -327,12 +328,4 @@ fn type_alias(tree: &Tree, node: NodeId) -> Option<Symbol> {
             .signed(&truncate(tree.text(node), MAX_TYPE_ALIAS_CHARS))
             .public(conventionally_public(name)),
     )
-}
-
-fn qualified(parent: &str, name: &str) -> String {
-    if parent.is_empty() {
-        name.to_owned()
-    } else {
-        format!("{parent}.{name}")
-    }
 }

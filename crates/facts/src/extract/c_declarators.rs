@@ -4,7 +4,7 @@
 use syntax::NodeId;
 
 use super::tree::{Field, Tree};
-use crate::values::{Symbol, SymbolKind};
+use crate::values::{Symbol, SymbolKind, qualified};
 
 const TAGGED: [&str; 3] = ["struct_specifier", "class_specifier", "enum_specifier"];
 // What ends the descent: a tagged type owns what is inside it, and a member's own declarator is
@@ -134,13 +134,5 @@ fn qualified_name<'a>(tree: &Tree<'a>, node: NodeId) -> Site<'a> {
     Site {
         owner: scopes.join("."),
         name: tree.text(current),
-    }
-}
-
-fn qualified(owner: &str, name: &str) -> String {
-    if owner.is_empty() {
-        name.to_owned()
-    } else {
-        format!("{owner}.{name}")
     }
 }

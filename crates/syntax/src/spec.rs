@@ -4,7 +4,7 @@ use crate::rules::{BindingRule, Cond, NameRule, OwnerRule, SkipRule};
 use crate::tables::{
     CloneTable, DecisionTable, LiteralClass, Measured, Names, SlocRule, UnitTable,
 };
-use crate::{FieldId, KindId, KindSet, Language, NodeId, Parsed};
+use crate::{FieldCursor, FieldId, KindId, KindSet, Language, NodeId, Parsed};
 
 /// The measurement tables of one tier-1 language, with kind names resolved against its grammar.
 pub struct Spec {
@@ -95,20 +95,20 @@ impl UnitRules {
 
     /// Return the node that names a unit or a scope.
     #[must_use]
-    pub fn name_of(&self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
-        self.name.name(parsed, node)
+    pub fn name_of(&self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
+        self.name.name(fields, node)
     }
 
     /// Return the name node of the binding that holds an anonymous callable.
     #[must_use]
-    pub fn binding_of(&self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
-        self.binding?.name(parsed, node)
+    pub fn binding_of(&self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
+        self.binding?.name(fields, node)
     }
 
     /// Return the node that names the type that owns a method.
     #[must_use]
-    pub fn owner_of(&self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
-        self.owner?.owner(parsed, node)
+    pub fn owner_of(&self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
+        self.owner?.owner(fields, node)
     }
 }
 
@@ -138,13 +138,13 @@ impl DecisionRules {
 
     /// Return whether the node passes its kind's test, or None when its kind has no test.
     #[must_use]
-    pub fn condition(&self, parsed: &Parsed, node: NodeId) -> Option<bool> {
-        let kind = parsed.kind(node);
+    pub fn condition(&self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<bool> {
+        let kind = fields.parsed().kind(node);
         let (_, cond) = self
             .conditional
             .iter()
             .find(|(kinds, _)| kinds.contains(kind))?;
-        Some(cond.holds(parsed, node))
+        Some(cond.holds(fields, node))
     }
 
     /// Return the operator spellings that add a decision for a node of `kind`.

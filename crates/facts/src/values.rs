@@ -148,11 +148,15 @@ impl Symbol {
     /// Return `parent.name` for a symbol with an owner, else the name.
     #[must_use]
     pub fn qualname(&self) -> String {
-        if self.parent.is_empty() {
-            self.name.clone()
-        } else {
-            format!("{}.{}", self.parent, self.name)
-        }
+        qualified(&self.parent, &self.name)
+    }
+}
+
+pub(crate) fn qualified(owner: &str, name: &str) -> String {
+    if owner.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{owner}.{name}")
     }
 }
 

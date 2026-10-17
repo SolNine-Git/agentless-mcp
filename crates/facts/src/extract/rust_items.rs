@@ -1,7 +1,7 @@
 //! The Rust items: functions, structs, enums, traits, the methods of impl blocks, constants and
 //! type aliases, in modules at any depth.
 
-use syntax::{NodeId, rust_impl_owner};
+use syntax::NodeId;
 
 use super::declares_async;
 use super::tree::{Field, Tree};
@@ -87,7 +87,7 @@ fn adt(tree: &Tree, node: NodeId) -> Option<Symbol> {
 
 // The functions of an impl block's body, owned by the type the block implements.
 fn methods(tree: &Tree, node: NodeId) -> Vec<Symbol> {
-    let owner = rust_impl_owner(tree.parsed, node).map_or("", |owner| tree.text(owner));
+    let owner = tree.impl_owner(node).map_or("", |owner| tree.text(owner));
     let Some(body) = tree.field(node, Field::Body) else {
         return Vec::new();
     };

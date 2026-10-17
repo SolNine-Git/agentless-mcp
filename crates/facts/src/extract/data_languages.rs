@@ -6,7 +6,7 @@ use std::rc::Rc;
 use syntax::{Language, NodeId};
 
 use super::tree::{Field, Tree};
-use crate::values::{Symbol, SymbolKind};
+use crate::values::{Symbol, SymbolKind, qualified};
 
 const PAIRS: [&str; 2] = ["pair", "block_mapping_pair"];
 const TOML_TABLES: [&str; 2] = ["table", "table_array_element"];
@@ -73,11 +73,10 @@ fn pairs(tree: &Tree, language: Language) -> Vec<Symbol> {
 }
 
 fn nested_owner(owner: &str, key: &str) -> Rc<str> {
-    match (owner.is_empty(), key.is_empty()) {
-        (_, true) => Rc::from(owner),
-        (true, false) => Rc::from(key),
-        (false, false) => Rc::from(format!("{owner}.{key}")),
+    if key.is_empty() {
+        return Rc::from(owner);
     }
+    Rc::from(qualified(owner, key))
 }
 
 // A pair whose value is a container holding pairs is a class; any other pair is a constant.

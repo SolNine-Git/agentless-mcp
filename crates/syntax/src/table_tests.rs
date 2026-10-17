@@ -10,7 +10,7 @@ use text::testing::document;
 use crate::generated::languages::PROBE_ROOTS;
 use crate::tables::Measured;
 use crate::{
-    EXTENSIONS, ImportRule, Language, NodeId, Parsed, SymbolRule, TABLES_DIGEST, Tier, parse,
+    EXTENSIONS, FieldCursor, ImportRule, Language, NodeId, SymbolRule, TABLES_DIGEST, Tier, parse,
     rust_impl_owner,
 };
 
@@ -252,22 +252,24 @@ fn every_rule_returns_what_the_reference_rule_returns() {
     for case in &cases {
         let language = Language::from_name(&case.language).expect("a known language");
         let parsed = parse(language, Arc::from(sources[&case.name].as_str())).expect("it parses");
+        let mut fields = FieldCursor::new(&parsed);
         for (node, rule, expected) in &case.results {
-            let found = rule_result(&parsed, NodeId(*node), rule);
+            let found = rule_result(&mut fields, NodeId(*node), rule);
             assert_eq!(&found, expected, "{} node {node}: {rule}", case.name);
         }
     }
 }
 
-fn rule_result(parsed: &Parsed, node: NodeId, rule: &str) -> Value {
+fn rule_result(fields: &mut FieldCursor<'_>, node: NodeId, rule: &str) -> Value {
+    let parsed = fields.parsed();
     let spec = parsed.language().spec().expect("a tier-1 language");
     let index = |found: Option<NodeId>| Value::from(found.map_or(-1, |found| i64::from(found.0)));
     match rule {
-        "name_of" => index(spec.units.name_of(parsed, node)),
-        "binding_of" => index(spec.units.binding_of(parsed, node)),
-        "owner_of" => index(spec.units.owner_of(parsed, node)),
-        "rust_impl_owner" => index(rust_impl_owner(parsed, node)),
-        "condition" => Value::from(spec.decisions.condition(parsed, node).expect("a test")),
+        "name_of" => index(spec.units.name_of(fields, node)),
+        "binding_of" => index(spec.units.binding_of(fields, node)),
+        "owner_of" => index(spec.units.owner_of(fields, node)),
+        "rust_impl_owner" => index(rust_impl_owner(fields, node)),
+        "condition" => Value::from(spec.decisions.condition(fields, node).expect("a test")),
         "skips" => Value::from(spec.clones.skips(parsed, node)),
         other => panic!("the fixture names an unknown rule {other}"),
     }

@@ -144,7 +144,7 @@ impl Walk<'_, '_> {
     fn name(&self, node: NodeId) -> Option<&str> {
         let tree = self.tree;
         let field = self.declarations.name_field;
-        let named = field.and_then(|field| tree.parsed.child_by_field(node, field));
+        let named = field.and_then(|field| tree.child_by_field(node, field));
         let text = match named {
             Some(named) => tree.text(named),
             None => tree
@@ -160,7 +160,7 @@ impl Walk<'_, '_> {
         let receiver = self
             .declarations
             .receiver_field
-            .and_then(|field| tree.parsed.child_by_field(node, field));
+            .and_then(|field| tree.child_by_field(node, field));
         receiver
             .and_then(|receiver| {
                 tree.preorder(receiver)

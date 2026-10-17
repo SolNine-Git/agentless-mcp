@@ -39,7 +39,7 @@ fn import(tree: &Tree, declarations: &Declarations, node: NodeId) -> Option<Impo
 // the children of the first child that holds one.
 fn import_path(tree: &Tree, declarations: &Declarations, node: NodeId) -> String {
     let field = declarations.import_path_field;
-    if let Some(path) = field.and_then(|field| tree.parsed.child_by_field(node, field)) {
+    if let Some(path) = field.and_then(|field| tree.child_by_field(node, field)) {
         return strip_quotes(tree.text(path)).to_owned();
     }
     let kind = &declarations.import_path_kind;

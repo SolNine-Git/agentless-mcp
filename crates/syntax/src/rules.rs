@@ -1,4 +1,4 @@
-use crate::{NodeId, Parsed};
+use crate::{FieldCursor, NodeId, Parsed};
 
 const C_NAMES: [&str; 1] = ["identifier"];
 const CPP_NAMES: [&str; 7] = [
@@ -75,42 +75,45 @@ pub(crate) enum Cond {
 /// Return the node that names the type a Rust `impl` block implements: its first named type, else
 /// its first primitive type.
 #[must_use]
-pub fn rust_impl_owner(parsed: &Parsed, impl_item: NodeId) -> Option<NodeId> {
-    let implemented = field_child(parsed, impl_item, "type")?;
+pub fn rust_impl_owner(fields: &mut FieldCursor<'_>, impl_item: NodeId) -> Option<NodeId> {
+    let parsed = fields.parsed();
+    let implemented = field_child(fields, impl_item, "type")?;
     RUST_OWNER_KINDS
         .iter()
         .find_map(|kind| parsed.first_of_kind(implemented, &parsed.language().kinds(&[kind])))
 }
 
 impl NameRule {
-    pub(crate) fn name(self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
+    pub(crate) fn name(self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
+        let parsed = fields.parsed();
         let definition = parsed.kind_name(node) == "function_definition";
         match self {
-            NameRule::CDeclarator if definition => declarator_name(parsed, node, &C_NAMES),
-            NameRule::CppDeclarator if definition => declarator_name(parsed, node, &CPP_NAMES),
+            NameRule::CDeclarator if definition => declarator_name(fields, node, &C_NAMES),
+            NameRule::CppDeclarator if definition => declarator_name(fields, node, &CPP_NAMES),
             NameRule::RustImpl if parsed.kind_name(node) == "impl_item" => {
-                rust_impl_owner(parsed, node)
+                rust_impl_owner(fields, node)
             }
-            _ => field_child(parsed, node, "name"),
+            _ => field_child(fields, node, "name"),
         }
     }
 }
 
 impl BindingRule {
-    pub(crate) fn name(self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
+    pub(crate) fn name(self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
         match self {
-            BindingRule::Javascript => ecmascript_binding(parsed, node, &JAVASCRIPT_BINDINGS),
-            BindingRule::Typescript => ecmascript_binding(parsed, node, &TYPESCRIPT_BINDINGS),
-            BindingRule::Lua => lua_binding(parsed, node),
+            BindingRule::Javascript => ecmascript_binding(fields, node, &JAVASCRIPT_BINDINGS),
+            BindingRule::Typescript => ecmascript_binding(fields, node, &TYPESCRIPT_BINDINGS),
+            BindingRule::Lua => lua_binding(fields.parsed(), node),
         }
     }
 }
 
 impl OwnerRule {
-    pub(crate) fn owner(self, parsed: &Parsed, node: NodeId) -> Option<NodeId> {
+    pub(crate) fn owner(self, fields: &mut FieldCursor<'_>, node: NodeId) -> Option<NodeId> {
+        let parsed = fields.parsed();
         match self {
             OwnerRule::GoReceiver => {
-                let receiver = field_child(parsed, node, "receiver")?;
+                let receiver = field_child(fields, node, "receiver")?;
                 parsed.first_of_kind(receiver, &parsed.language().kinds(&["type_identifier"]))
             }
         }
@@ -118,42 +121,50 @@ impl OwnerRule {
 }
 
 impl SkipRule {
+    // The clone walk visits the last sibling first, and a FieldCursor reaches each sibling from
+    // the first one, so this rule reads the field from the root.
     pub(crate) fn skips(self, parsed: &Parsed, node: NodeId) -> bool {
         match self {
-            SkipRule::TypeChecking => field_child(parsed, node, "condition")
+            SkipRule::TypeChecking => parsed
+                .language()
+                .field("condition")
+                .and_then(|condition| parsed.child_by_field(node, condition))
                 .is_some_and(|condition| TYPE_CHECKING.contains(&parsed.text(condition))),
         }
     }
 }
 
 impl Cond {
-    pub(crate) fn holds(self, parsed: &Parsed, node: NodeId) -> bool {
+    pub(crate) fn holds(self, fields: &mut FieldCursor<'_>, node: NodeId) -> bool {
+        let parsed = fields.parsed();
         match self {
             Cond::HasNamedChild => parsed.named_child_count(node) > 0,
             Cond::NotDefaultCase => !parsed
                 .children(node)
                 .any(|child| !parsed.is_named(child) && parsed.kind_name(child) == "default"),
-            Cond::CountedRustArm => field_child(parsed, node, "pattern")
+            Cond::CountedRustArm => field_child(fields, node, "pattern")
                 .is_none_or(|pattern| !only_wildcard(parsed, pattern)),
-            Cond::HasCondition => field_child(parsed, node, "condition").is_some(),
-            Cond::CountedRubyArm => counted_ruby_arm(parsed, node),
+            Cond::HasCondition => field_child(fields, node, "condition").is_some(),
+            Cond::CountedRubyArm => counted_ruby_arm(fields, node),
             Cond::CountedCaseItem => !only_star(parsed, node),
         }
     }
 }
 
-fn field_child(parsed: &Parsed, node: NodeId, name: &str) -> Option<NodeId> {
-    parsed.child_by_field(node, parsed.language().field(name)?)
+fn field_child(fields: &mut FieldCursor<'_>, node: NodeId, name: &str) -> Option<NodeId> {
+    let field = fields.parsed().language().field(name)?;
+    fields.child_by_field(node, field)
 }
 
-fn declarator_name(parsed: &Parsed, node: NodeId, names: &[&str]) -> Option<NodeId> {
-    let mut current = field_child(parsed, node, "declarator");
+fn declarator_name(fields: &mut FieldCursor<'_>, node: NodeId, names: &[&str]) -> Option<NodeId> {
+    let parsed = fields.parsed();
+    let mut current = field_child(fields, node, "declarator");
     while let Some(found) = current {
         let kind = parsed.kind_name(found);
         if names.contains(&kind) {
             return Some(found);
         }
-        current = field_child(parsed, found, "declarator").or_else(|| {
+        current = field_child(fields, found, "declarator").or_else(|| {
             DECLARATOR_WRAPPERS
                 .contains(&kind)
                 .then(|| parsed.named_children(found).next())
@@ -163,14 +174,19 @@ fn declarator_name(parsed: &Parsed, node: NodeId, names: &[&str]) -> Option<Node
     None
 }
 
-fn ecmascript_binding(parsed: &Parsed, node: NodeId, bindings: &[(&str, &str)]) -> Option<NodeId> {
+fn ecmascript_binding(
+    fields: &mut FieldCursor<'_>,
+    node: NodeId,
+    bindings: &[(&str, &str)],
+) -> Option<NodeId> {
+    let parsed = fields.parsed();
     let parent = parsed.parent(node)?;
     let kind = parsed.kind_name(parent);
     let (_, field) = bindings.iter().find(|(binding, _)| *binding == kind)?;
-    if field_child(parsed, parent, "value") != Some(node) {
+    if field_child(fields, parent, "value") != Some(node) {
         return None;
     }
-    let name = field_child(parsed, parent, field)?;
+    let name = field_child(fields, parent, field)?;
     ECMASCRIPT_BINDING_NAMES
         .contains(&parsed.kind_name(name))
         .then_some(name)
@@ -207,11 +223,12 @@ fn only_wildcard(parsed: &Parsed, pattern: NodeId) -> bool {
     first.is_some_and(|child| parsed.kind_name(child) == "_") && children.next().is_none()
 }
 
-fn counted_ruby_arm(parsed: &Parsed, node: NodeId) -> bool {
-    if field_child(parsed, node, "guard").is_some() {
+fn counted_ruby_arm(fields: &mut FieldCursor<'_>, node: NodeId) -> bool {
+    let parsed = fields.parsed();
+    if field_child(fields, node, "guard").is_some() {
         return true;
     }
-    field_child(parsed, node, "pattern").is_none_or(|pattern| {
+    field_child(fields, node, "pattern").is_none_or(|pattern| {
         !(parsed.kind_name(pattern) == "identifier" && parsed.text(pattern) == "_")
     })
 }

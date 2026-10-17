@@ -306,7 +306,7 @@ impl core::panic::unwind_safe::UnwindSafe for syntax::CloneRules
 pub struct syntax::DecisionRules
 pub syntax::DecisionRules::points: syntax::KindSet
 impl syntax::DecisionRules
-pub fn syntax::DecisionRules::condition(&self, &syntax::Parsed, syntax::NodeId) -> core::option::Option<bool>
+pub fn syntax::DecisionRules::condition(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<bool>
 pub fn syntax::DecisionRules::operator_field(&self) -> core::option::Option<syntax::FieldId>
 pub fn syntax::DecisionRules::operator_spellings(&self, syntax::KindId) -> core::option::Option<&'static [&'static str]>
 pub fn syntax::DecisionRules::token_operators(&self, syntax::KindId) -> core::option::Option<&syntax::KindSet>
@@ -365,6 +365,7 @@ pub struct syntax::FieldCursor<'p>
 impl<'p> syntax::FieldCursor<'p>
 pub fn syntax::FieldCursor<'p>::child_by_field(&mut self, syntax::NodeId, syntax::FieldId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::FieldCursor<'p>::new(&'p syntax::Parsed) -> syntax::FieldCursor<'p>
+pub fn syntax::FieldCursor<'p>::parsed(&self) -> &'p syntax::Parsed
 impl<'p> core::marker::Freeze for syntax::FieldCursor<'p>
 impl<'p> core::marker::Send for syntax::FieldCursor<'p>
 impl<'p> core::marker::Sync for syntax::FieldCursor<'p>
@@ -592,10 +593,10 @@ pub syntax::UnitRules::bound: syntax::KindSet
 pub syntax::UnitRules::scopes: syntax::KindSet
 pub syntax::UnitRules::units: syntax::KindSet
 impl syntax::UnitRules
-pub fn syntax::UnitRules::binding_of(&self, &syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::UnitRules::binding_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::UnitRules::descends_into(&self, syntax::KindId) -> bool
-pub fn syntax::UnitRules::name_of(&self, &syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>
-pub fn syntax::UnitRules::owner_of(&self, &syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::UnitRules::name_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::UnitRules::owner_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 impl core::marker::Freeze for syntax::UnitRules
 impl core::marker::Send for syntax::UnitRules
 impl core::marker::Sync for syntax::UnitRules
@@ -607,5 +608,5 @@ pub const syntax::EXTENSIONS: [(&str, syntax::Language); 33]
 pub const syntax::PACK_VERSION: &str
 pub const syntax::TABLES_DIGEST: &str
 pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
-pub fn syntax::rust_impl_owner(&syntax::Parsed, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::rust_impl_owner(&mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
 pub fn syntax::tokens(&syntax::Parsed, syntax::NodeId, core::option::Option<syntax::NodeId>) -> alloc::vec::Vec<alloc::borrow::Cow<'_, str>>

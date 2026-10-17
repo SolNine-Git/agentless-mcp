@@ -1,4 +1,6 @@
-use syntax::{FieldId, KindSet, NodeId, Parsed};
+use std::cell::RefCell;
+
+use syntax::{FieldCursor, FieldId, KindSet, NodeId, Parsed};
 
 use crate::slices::line_prefix;
 use crate::spelling::{rstrip, truncate};
@@ -35,6 +37,8 @@ struct Skeleton<'a> {
     extra_functions: &'a KindSet,
     bodies: &'a KindSet,
     body: Option<FieldId>,
+    // The plan visits nodes in document order, so one cursor reads every body field cheaply.
+    fields: RefCell<FieldCursor<'a>>,
 }
 
 // Which lines to drop and which to replace, by 1-based line. An elided body owns its lines, and
@@ -55,6 +59,7 @@ impl<'a> Skeleton<'a> {
             extra_functions: &extraction.skeleton_functions,
             bodies: &extraction.bodies,
             body: parsed.language().field("body"),
+            fields: RefCell::new(FieldCursor::new(parsed)),
         }
     }
 
@@ -63,6 +68,8 @@ impl<'a> Skeleton<'a> {
         if self.functions.contains(kind) || self.extra_functions.contains(kind) {
             self.plan_function(plan, node, keep_docstring);
         } else if self.parsed.kind_name(node).contains("comment") {
+            // The kind name decides, not the language's comment kinds: kinds that table leaves
+            // out, such as `multiline_comment` and `html_comment`, go too.
             self.plan_comment(plan, node);
         } else if self.is_leading_docstring(node) {
             self.plan_docstring(plan, node, keep_docstring);
@@ -157,7 +164,7 @@ impl<'a> Skeleton<'a> {
     fn body_of(&self, node: NodeId) -> Option<NodeId> {
         let field = self
             .body
-            .and_then(|body| self.parsed.child_by_field(node, body));
+            .and_then(|body| self.fields.borrow_mut().child_by_field(node, body));
         if let Some(body) = field {
             return self.bodies.contains(self.parsed.kind(body)).then_some(body);
         }

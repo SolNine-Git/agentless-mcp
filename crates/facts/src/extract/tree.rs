@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use kernel::Span;
-use syntax::{FieldCursor, FieldId, KindSet, Language, NodeId, Parsed};
+use syntax::{FieldCursor, FieldId, KindSet, Language, NodeId, Parsed, rust_impl_owner};
 
 // The fields that the walkers read by name.
 #[derive(Clone, Copy)]
@@ -89,8 +89,16 @@ impl<'a> Tree<'a> {
     }
 
     pub(super) fn field(&self, node: NodeId, field: Field) -> Option<NodeId> {
-        let field = self.field_id(field)?;
+        self.child_by_field(node, self.field_id(field)?)
+    }
+
+    // The extraction tables hold field ids, not `Field` names.
+    pub(super) fn child_by_field(&self, node: NodeId, field: FieldId) -> Option<NodeId> {
         self.cursor.borrow_mut().child_by_field(node, field)
+    }
+
+    pub(super) fn impl_owner(&self, impl_item: NodeId) -> Option<NodeId> {
+        rust_impl_owner(&mut self.cursor.borrow_mut(), impl_item)
     }
 
     pub(super) fn field_id(&self, field: Field) -> Option<FieldId> {

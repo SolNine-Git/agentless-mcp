@@ -222,7 +222,8 @@ impl Parsed {
         core::num::NonZeroU16::new(self.flat.record(node.0).field).map(FieldId)
     }
 
-    /// Return what tree-sitter's child-by-field lookup returns, which can be a grandchild.
+    /// Return what tree-sitter's child-by-field lookup returns, which can be a grandchild. Each
+    /// call descends from the root at O(depth) cost, so a walk reads fields through `FieldCursor`.
     #[must_use]
     pub fn child_by_field(&self, node: NodeId, field: FieldId) -> Option<NodeId> {
         let mut cursor = self.tree.walk();

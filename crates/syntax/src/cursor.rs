@@ -26,6 +26,12 @@ impl<'p> FieldCursor<'p> {
         }
     }
 
+    /// Return the parse that the cursor walks.
+    #[must_use]
+    pub fn parsed(&self) -> &'p Parsed {
+        self.parsed
+    }
+
     /// Return what tree-sitter's child-by-field lookup returns, which can be a grandchild.
     pub fn child_by_field(&mut self, node: NodeId, field: FieldId) -> Option<NodeId> {
         self.goto(node.0);

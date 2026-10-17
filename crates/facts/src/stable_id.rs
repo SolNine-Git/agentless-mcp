@@ -124,6 +124,8 @@ pub fn split_ordinal(qualname: &str) -> (&str, u32) {
         return (qualname, 0);
     };
     let tail = &qualname[hash + 1..];
+    // The end of the name may sit before one final line feed, so `f#12\n` still carries the
+    // ordinal 12.
     let digits = tail.strip_suffix('\n').unwrap_or(tail);
     let ordinal = (1..=ORDINAL_MAX_DIGITS)
         .contains(&digits.len())
