@@ -6,20 +6,9 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 use text::CodePointString;
 
-const TAIL_CHARS: usize = 300;
+pub(crate) use io::codec_text;
 
-// The decode-error text: one byte, or the span of a longer bad sequence.
-pub(crate) fn codec_text(bytes: &[u8], error: io::NotUtf8) -> String {
-    let io::NotUtf8 { start, end, reason } = error;
-    if end == start + 1 {
-        let byte = bytes[start];
-        return format!(
-            "'utf-8' codec can't decode byte 0x{byte:02x} in position {start}: {reason}"
-        );
-    }
-    let last = end - 1;
-    format!("'utf-8' codec can't decode bytes in position {start}-{last}: {reason}")
-}
+const TAIL_CHARS: usize = 300;
 
 // The last line with text, stripped and cut to its last 300 characters.
 pub(crate) fn last_line(text: &str) -> String {

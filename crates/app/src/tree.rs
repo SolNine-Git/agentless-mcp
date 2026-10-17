@@ -1,6 +1,7 @@
 //! The directory tree view: the files that the repository walk lists, as an indented tree.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use git::RepoFile;
 use text::one_line;
@@ -38,15 +39,28 @@ pub fn tree(
     repo: &Repo,
     request: &TreeRequest,
 ) -> Noted<Result<TreeView, Error>> {
+    subtree(services, repo, None, request)
+}
+
+/// Renders the walk of the directory that `path` names inside `repo`, or of the root for `None`,
+/// as a tree. The walk's warnings come with either outcome.
+#[must_use]
+pub fn subtree(
+    services: &Services,
+    repo: &Repo,
+    path: Option<&str>,
+    request: &TreeRequest,
+) -> Noted<Result<TreeView, Error>> {
     let checked = within(&request.depth, 1, MAX_TREE_DEPTH, "depth").and_then(|depth| {
         within(&request.max_entries, 1, MAX_TREE_ENTRIES, "max_entries")
             .map(|entries| (depth, entries))
     });
-    let (depth, max_entries) = match checked {
-        Ok(bounds) => bounds,
+    let selected = checked.and_then(|bounds| Ok((bounds, selected_directory(&repo.root, path)?)));
+    let ((depth, max_entries), selected) = match selected {
+        Ok(found) => found,
         Err(error) => return Noted::new(Err(error)),
     };
-    let walk = services.git.walk(&repo.root);
+    let walk = services.git.walk(&selected);
     let diagnostics = walk.warnings.iter().map(ToString::to_string).collect();
     let value = walk
         .files
@@ -58,6 +72,20 @@ pub fn tree(
             max_entries,
         });
     Noted { value, diagnostics }
+}
+
+// The root for `None`, else the directory that `path` names inside the root.
+fn selected_directory(root: &Path, path: Option<&str>) -> Result<PathBuf, Error> {
+    let Some(path) = path else {
+        return Ok(root.to_path_buf());
+    };
+    let selected = io::contained_path(root, Path::new(path)).map_err(kernel::Error::from)?;
+    if selected.is_dir() {
+        return Ok(selected);
+    }
+    let relative = selected.strip_prefix(root).unwrap_or(&selected);
+    let message = format!("not a directory in this repository: {}", relative.display());
+    Err(kernel::Error::RepoResolution(message).into())
 }
 
 // A directory: each name maps to its subdirectory, or to `None` for a file.

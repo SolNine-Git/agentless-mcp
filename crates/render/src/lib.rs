@@ -1,6 +1,6 @@
 //! The text and JSON forms of the answers: the receipt envelope, the lint report, the
-//! capabilities report, the read views, and the patch, validate and vote answers. Every function
-//! returns the bytes to print and does no I/O.
+//! capabilities report, the read views and their tool forms, and the patch, validate and vote
+//! answers. Every function returns the bytes to print and does no I/O.
 
 mod blocks;
 mod capabilities;
@@ -25,6 +25,7 @@ mod skipped;
 mod symbols;
 #[cfg(test)]
 mod tests;
+mod tool;
 mod tree;
 mod view;
 mod views;
@@ -44,6 +45,7 @@ pub use patches::{block_line, check_text, note_text, parse_errors, patch_receipt
 pub use receipt::{Receipt, receipt_lines};
 pub use symbols::expand_stderr_rows;
 pub use text::one_line;
+pub use tool::{ToolForm, tool_text};
 pub use view::{Rendered, Truncation, View, json, text};
 pub use vote::{vote_summary, vote_text};
 pub use warmup::warmup_text;

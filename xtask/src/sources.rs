@@ -16,7 +16,7 @@ const GATE_DATA: [&str; 4] = [
 ];
 // Data directories that build scripts, the generator and tests read, each named in review. A file
 // that no rule allows fails, so a new tool's config file fails by default.
-const DATA_DIRS: [&str; 19] = [
+const DATA_DIRS: [&str; 20] = [
     "crates/app/fixtures",
     "crates/checks/fixtures",
     "crates/cli/fixtures",
@@ -26,6 +26,7 @@ const DATA_DIRS: [&str; 19] = [
     "crates/hook/fixtures",
     "crates/io/fixtures",
     "crates/json/fixtures",
+    "crates/mcp/fixtures",
     "crates/metrics/fixtures",
     "crates/patch/fixtures",
     "crates/patchcheck/fixtures",

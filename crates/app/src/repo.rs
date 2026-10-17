@@ -111,8 +111,10 @@ pub(crate) fn root_text(root: &Path) -> Result<&str, Error> {
     })
 }
 
-// A leading "~" or "~/" becomes the home directory. "~user" stays as it is.
-pub(crate) fn expand_user(path: &Path, home: Option<&OsStr>) -> PathBuf {
+/// Returns `path` with a leading `~` or `~/` replaced by `home`, or by the process's home
+/// directory when `home` is `None`. A `~user` path stays as it is.
+#[must_use]
+pub fn expand_user(path: &Path, home: Option<&OsStr>) -> PathBuf {
     let bytes = path.as_os_str().as_bytes();
     let rest = match bytes.strip_prefix(b"~") {
         Some(rest) if rest.is_empty() || rest.starts_with(b"/") => rest,

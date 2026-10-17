@@ -17,6 +17,22 @@ impl core::marker::Unpin for render::Error
 impl core::marker::UnsafeUnpin for render::Error
 impl !core::panic::unwind_safe::RefUnwindSafe for render::Error
 impl !core::panic::unwind_safe::UnwindSafe for render::Error
+pub enum render::ToolForm<'a>
+pub render::ToolForm::Expand(&'a app::expand::ExpandResult)
+pub render::ToolForm::Overview(&'a [app::views::FileView])
+pub render::ToolForm::Slice(&'a app::views::FileView)
+impl<'a> core::clone::Clone for render::ToolForm<'a>
+pub fn render::ToolForm<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for render::ToolForm<'a>
+pub fn render::ToolForm<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for render::ToolForm<'a>
+impl<'a> core::marker::Freeze for render::ToolForm<'a>
+impl<'a> core::marker::Send for render::ToolForm<'a>
+impl<'a> core::marker::Sync for render::ToolForm<'a>
+impl<'a> core::marker::Unpin for render::ToolForm<'a>
+impl<'a> core::marker::UnsafeUnpin for render::ToolForm<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for render::ToolForm<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for render::ToolForm<'a>
 pub struct render::Receipt<'a>
 impl<'a> render::Receipt<'a>
 pub fn render::Receipt<'a>::counted_by(self, &'a dyn app::tokens::TokenCounter) -> render::Receipt<'a>
@@ -117,6 +133,7 @@ pub fn render::patch_receipt(&render::Receipt<'_>, &str, &patch::apply::ApplyRes
 pub fn render::receipt_lines(&render::Receipt<'_>, &str) -> alloc::vec::Vec<alloc::string::String>
 pub fn render::strip_fence(&str) -> alloc::string::String
 pub fn render::text(&render::Receipt<'_>, &impl render::View) -> alloc::string::String
+pub fn render::tool_text(&render::Receipt<'_>, render::ToolForm<'_>) -> alloc::string::String
 pub fn render::validate_jsonl(&render::Receipt<'_>, &app::validate::records::ValidateReport) -> alloc::string::String
 pub fn render::vote_summary(&patch::vote::VoteReport) -> alloc::string::String
 pub fn render::vote_text(&patch::vote::VoteReport) -> alloc::string::String

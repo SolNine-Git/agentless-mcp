@@ -1,5 +1,6 @@
 //! The operations layer: the read and write operations, the lint pair forms, capabilities, the
-//! repository context they read, the clock and token counter ports, and the agent guide.
+//! repository context they read, the clock and token counter ports, the MCP tool surface table,
+//! and the agent guide.
 
 mod args;
 pub mod bounds;
@@ -116,14 +117,14 @@ pub use refs::{
 pub use registry::{
     CHECKS, CheckInput, FormKind, LintCheck, PairCheck, PairSelection, unknown_check_refusal,
 };
-pub use repo::{Repo, resolve, resolve_in_git};
+pub use repo::{Repo, expand_user, resolve, resolve_in_git};
 pub use rows::COVERAGE;
 pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, omitted_line, stable_ids_line};
 pub use scan::Skipped;
 pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
 pub use tags::{CacheReport, Opening, Session, Tags};
 pub use tokens::{Chars4, Cl100k, TokenCounter};
-pub use tree::{TreeRequest, TreeView, tree};
+pub use tree::{TreeRequest, TreeView, subtree, tree};
 pub use validate::{
     ApplyStatus, BaselineStatus, CandidateVerdict, DEFAULT_JOBS, DEFAULT_REPEAT_BASELINE,
     DEFAULT_TIMEOUT_SECONDS, EnvRunner, ReproVerdict, RunHeader, TestRunner, ValidateReport,

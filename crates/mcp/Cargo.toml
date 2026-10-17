@@ -1,0 +1,31 @@
+[package]
+name = "mcp"
+description = "The MCP server: the v2 tool list, the argument validation, the call dispatch, and the repository allowlist."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app = { path = "../app" }
+facts = { path = "../facts" }
+io = { path = "../io" }
+json = { path = "../json" }
+kernel = { path = "../kernel" }
+prompts = { path = "../prompts" }
+render = { path = "../render" }
+rmcp.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+text = { path = "../text" }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
+text = { path = "../text", features = ["test-support"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }

@@ -127,6 +127,21 @@ impl fmt::Display for NotUtf8 {
 
 impl std::error::Error for NotUtf8 {}
 
+/// Returns the reference decoder's text for `error` in `bytes`: one bad byte, or the span of a
+/// longer bad sequence.
+#[must_use]
+pub fn codec_text(bytes: &[u8], error: NotUtf8) -> String {
+    let NotUtf8 { start, end, reason } = error;
+    if end == start + 1 {
+        let byte = bytes[start];
+        return format!(
+            "'utf-8' codec can't decode byte 0x{byte:02x} in position {start}: {reason}"
+        );
+    }
+    let last = end - 1;
+    format!("'utf-8' codec can't decode bytes in position {start}-{last}: {reason}")
+}
+
 /// Decodes `bytes` as UTF-8 text.
 ///
 /// # Errors

@@ -49,8 +49,8 @@ pub use lock::{LockError, LockGuard, try_lock};
 pub use oserror::{os_error_class_text, os_error_line, os_error_text, strerror};
 pub use random::random_bytes;
 pub use read::{
-    MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, decode_strict, decode_text, read_bounded,
-    stat_present,
+    MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, codec_text, decode_strict, decode_text,
+    read_bounded, stat_present,
 };
 pub use replace::replace_file;
 pub use runner::{NotRun, Outcome, Spec, run};

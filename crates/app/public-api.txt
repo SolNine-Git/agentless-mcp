@@ -2861,6 +2861,7 @@ pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc
 pub fn app::cycles(&app::Services, &app::Reading<'_>, &app::CyclesRequest) -> app::Noted<core::result::Result<app::CycleReport, app::Error>>
 pub fn app::diagram(&app::Services, &app::Reading<'_>, &app::DiagramRequest) -> app::Noted<core::result::Result<app::DiagramView, app::Error>>
 pub fn app::expand(&app::Services, &app::Reading<'_>, &app::ExpandRequest) -> app::Noted<core::result::Result<app::ExpandResult, app::Error>>
+pub fn app::expand_user(&std::path::Path, core::option::Option<&std::ffi::os_str::OsStr>) -> std::path::PathBuf
 pub fn app::explain(&app::Services, &app::Reading<'_>, &app::ExplainRequest) -> app::Noted<core::result::Result<app::Explanation, app::Error>>
 pub fn app::file_site(&str, u32) -> alloc::string::String
 pub fn app::find(&app::Services, &app::Reading<'_>, &app::FindRequest) -> app::Noted<core::result::Result<app::FindResult, app::Error>>
@@ -2896,6 +2897,7 @@ pub fn app::section_text(&str) -> core::option::Option<&'static str>
 pub fn app::skeleton(&app::Reading<'_>, &app::SkeletonRequest) -> alloc::vec::Vec<app::FileView>
 pub fn app::slice(&app::Reading<'_>, &app::SliceRequest) -> app::Noted<core::result::Result<app::FileView, app::Error>>
 pub fn app::stable_ids_line(&str, &str) -> alloc::string::String
+pub fn app::subtree(&app::Services, &app::Repo, core::option::Option<&str>, &app::TreeRequest) -> app::Noted<core::result::Result<app::TreeView, app::Error>>
 pub fn app::symbol_card(syntax::language::Language, &str, &facts::values::Symbol, alloc::string::String) -> app::SymbolCard
 pub fn app::tree(&app::Services, &app::Repo, &app::TreeRequest) -> app::Noted<core::result::Result<app::TreeView, app::Error>>
 pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>

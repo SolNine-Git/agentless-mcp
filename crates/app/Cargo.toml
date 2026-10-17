@@ -1,6 +1,6 @@
 [package]
 name = "app"
-description = "The operations layer: the read and write operations, the lint pair forms, capabilities, the repository context, the start-up configuration with the clock and token counter ports, and the agent guide."
+description = "The operations layer: the read and write operations, the lint pair forms, capabilities, the repository context, the start-up configuration with the clock and token counter ports, the MCP tool surface table, and the agent guide."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

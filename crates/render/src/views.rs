@@ -48,17 +48,22 @@ impl View for LocationView {
 }
 
 // One file's header, the pattern of its stable ids, then its skeleton.
-fn overview_block(view: &FileView) -> String {
+pub(crate) fn overview_block(view: &FileView) -> String {
+    let header = overview_header(view);
+    let prefix = Language::from_name(&view.language).map_or("", |known| known.extraction().prefix);
+    let pattern = StableId::new(prefix, &view.path, QUALIFIED_NAME).to_string();
+    let ids = OVERVIEW_STABLE_IDS.render(&one_line(&pattern));
+    format!("{header}\n{ROW_INDENT}{ids}\n{}", view.text)
+}
+
+// A file's header: its path, then its language, or "unknown" when no grammar reads the file.
+pub(crate) fn overview_header(view: &FileView) -> String {
     let language = if view.language.is_empty() {
         UNKNOWN_LANGUAGE.to_owned()
     } else {
         one_line(&view.language).into_owned()
     };
-    let header = format!("{}  ({language})", one_line(&view.path));
-    let prefix = Language::from_name(&view.language).map_or("", |known| known.extraction().prefix);
-    let pattern = StableId::new(prefix, &view.path, QUALIFIED_NAME).to_string();
-    let ids = OVERVIEW_STABLE_IDS.render(&one_line(&pattern));
-    format!("{header}\n{ROW_INDENT}{ids}\n{}", view.text)
+    format!("{}  ({language})", one_line(&view.path))
 }
 
 // The ids, the intervals and the misses, then the numbered lines.
