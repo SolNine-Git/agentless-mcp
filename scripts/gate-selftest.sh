@@ -1275,7 +1275,15 @@ fails "24a test = false" "crates/kernel: target kernel sets test = false" cargo 
 violate
 mkdir -p crates/kernel/tests
 printf '#[test]\nfn t() {}\n' >crates/kernel/tests/t.rs
-printf '\n[features]\nx = []\n\n[[test]]\nname = "t"\npath = "tests/t.rs"\nrequired-features = ["x"]\n' \
+# Feature x goes into kernel's own [features] table when it has one: a second [features] header
+# fails the manifest parse before the rule runs.
+if grep -q '^\[features\]$' crates/kernel/Cargo.toml; then
+    sed -i.bak 's/^\[features\]$/&\
+x = []/' crates/kernel/Cargo.toml && rm crates/kernel/Cargo.toml.bak
+else
+    printf '\n[features]\nx = []\n' >>crates/kernel/Cargo.toml
+fi
+printf '\n[[test]]\nname = "t"\npath = "tests/t.rs"\nrequired-features = ["x"]\n' \
     >>crates/kernel/Cargo.toml
 fails "24b required-features" "crates/kernel: target t has required-features" cargo xtask lint-tables
 violate
