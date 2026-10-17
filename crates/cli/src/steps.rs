@@ -217,7 +217,7 @@ pub(crate) fn answer_with(
 
 // The terminal width that the help and usage texts wrap to: COLUMNS when it holds a positive
 // integer, else 80.
-fn columns(env: &EnvConfig) -> isize {
+pub(crate) fn columns(env: &EnvConfig) -> isize {
     let text = env.var("COLUMNS").and_then(|value| value.to_str());
     let count = text.and_then(integer).filter(|&count| count > 0);
     count.map_or(DEFAULT_COLUMNS, |count| count.min(MAX_COLUMNS))

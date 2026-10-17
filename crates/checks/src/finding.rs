@@ -4,6 +4,8 @@ use kernel::Key;
 use serde::{Serialize, Serializer};
 use syntax::Language;
 
+use crate::schema::keyed;
+
 /// How much attention a finding asks for; `NotChecked` says that a check did not run, and why.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,8 +116,7 @@ pub enum Detail {
 }
 
 /// How `complexity_delta` paired a new unit with an old one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Match {
     /// The body is the same, with the unit's own name left out.
     Body,
@@ -127,13 +128,34 @@ pub enum Match {
     New,
 }
 
+impl Match {
+    /// Every pairing, in the order that the match pass counts list them.
+    pub const ALL: [Match; 4] = [Self::Body, Self::Name, Self::Collision, Self::New];
+
+    /// Return the pairing's JSON name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Body => "body",
+            Self::Name => "name",
+            Self::Collision => "collision",
+            Self::New => "new",
+        }
+    }
+}
+
+impl Serialize for Match {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
 /// The numbers behind one unit's finding, with no old side for a new unit.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitDelta {
     /// The unit's qualified name in the new text.
     pub unit: String,
     /// How the unit was paired.
-    #[serde(rename = "match")]
     pub via: Match,
     /// The old complexity.
     pub cc_old: Option<u32>,
@@ -148,7 +170,7 @@ pub struct UnitDelta {
 }
 
 /// One contract hit's identity: the rule, the unit that holds it, and its normalized text.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DriftKey {
     /// The rule id.
     pub rule: String,
@@ -203,7 +225,7 @@ impl Serialize for CheckGap {
 }
 
 /// A `clone_delta` finding's block: its span, its Type-2 key, and its other instances.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CloneCopy {
     /// The Type-2 key.
     pub key: Key,
@@ -218,7 +240,7 @@ pub struct CloneCopy {
 }
 
 /// One other instance of a copied block, in the repository after the change.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CloneSite {
     /// The repo-relative path.
     pub path: String,
@@ -226,6 +248,27 @@ pub struct CloneSite {
     pub line: u32,
     /// The last line.
     pub end_line: u32,
+}
+
+keyed! {
+    UnitDelta {
+        UNIT: unit,
+        MATCH: via,
+        CC_OLD: cc_old,
+        CC_NEW: cc_new,
+        SLOC_OLD: sloc_old,
+        SLOC_NEW: sloc_new,
+        THRESHOLD: threshold,
+    }
+    DriftKey { RULE: rule, UNIT: unit, CAPTURE: capture }
+    CloneCopy {
+        KEY: key,
+        LINE: line,
+        END_LINE: end_line,
+        SITES: sites,
+        SITES_TOTAL: sites_total,
+    }
+    CloneSite { PATH: path, LINE: line, END_LINE: end_line }
 }
 
 pub(crate) const UNMEASURABLE_SOURCE: &str = "UnmeasurableSource";

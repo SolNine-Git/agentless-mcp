@@ -40,6 +40,7 @@ pub use contain::{
 };
 pub use files::{
     create_owner_dir, create_private_dir, remove_file, remove_tree, touch, write_file,
+    write_new_file,
 };
 pub use filesize::catch_file_size_signal;
 pub use interrupt::{SigintHold, WatchError, end_by_interrupt, hold_sigint, interrupted};

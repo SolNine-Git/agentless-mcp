@@ -903,3 +903,4 @@ pub fn io::try_lock(&std::path::Path) -> core::result::Result<io::LockGuard, io:
 pub fn io::walk(&std::path::Path) -> io::Walk
 pub fn io::write_all<P: core::convert::AsRef<str>, B: core::convert::AsRef<[u8]>>(&std::path::Path, &[(P, B)]) -> core::result::Result<alloc::vec::Vec<io::Leftover>, io::WriteFailure>
 pub fn io::write_file(&std::path::Path, &[u8]) -> core::io::error::Result<()>
+pub fn io::write_new_file(&std::path::Path, &[u8]) -> core::io::error::Result<()>

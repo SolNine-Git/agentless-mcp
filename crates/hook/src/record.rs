@@ -1,19 +1,55 @@
-//! The one JSON line the gate appends per call, in the field order the report script reads.
+//! The one JSON line the gate appends per call, in the field order the report reads.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use checks::{Detail, Observed, PairFinding, Severity};
 use io::GateMode;
-use serde::Serialize;
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 
 use crate::edit::Eol;
 use crate::modes::Modes;
 
-const LOG_VERSION: u8 = 1;
+pub(crate) const LOG_VERSION: u8 = 1;
 const NANOS_PER_SECOND: u128 = 1_000_000_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+// The key of each field of a record and of a logged finding. Logs from earlier builds use the
+// same keys, and the report reads every log by them.
+pub(crate) mod key {
+    pub(crate) const V: &str = "v";
+    pub(crate) const TS: &str = "ts";
+    pub(crate) const LATENCY_MS: &str = "latency_ms";
+    pub(crate) const SESSION_ID: &str = "session_id";
+    pub(crate) const TRANSCRIPT_PATH: &str = "transcript_path";
+    pub(crate) const TOOL_USE_ID: &str = "tool_use_id";
+    pub(crate) const TOOL_NAME: &str = "tool_name";
+    pub(crate) const PATH: &str = "path";
+    pub(crate) const ROOT: &str = "root";
+    pub(crate) const REL: &str = "rel";
+    pub(crate) const BINARY: &str = "binary";
+    pub(crate) const MODES: &str = "modes";
+    pub(crate) const CHECKS: &str = "checks";
+    pub(crate) const DROPPED: &str = "dropped";
+    pub(crate) const OFF_BY_CONFIG: &str = "off_by_config";
+    pub(crate) const CONFIG_WARNINGS: &str = "config_warnings";
+    pub(crate) const OLD_SHA256: &str = "old_sha256";
+    pub(crate) const NEW_SHA256: &str = "new_sha256";
+    pub(crate) const EOL: &str = "eol";
+    pub(crate) const OUTCOME: &str = "outcome";
+    pub(crate) const REASON: &str = "reason";
+    pub(crate) const GAPS: &str = "gaps";
+    pub(crate) const FINDINGS: &str = "findings";
+    pub(crate) const OBSERVED: &str = "observed";
+    pub(crate) const CHECK: &str = "check";
+    pub(crate) const SEVERITY: &str = "severity";
+    pub(crate) const MODE: &str = "mode";
+    pub(crate) const LINE: &str = "line";
+    pub(crate) const MESSAGE: &str = "message";
+    pub(crate) const EVIDENCE: &str = "evidence";
+    pub(crate) const DETAIL: &str = "detail";
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     Clean,
     Advisory,
@@ -22,7 +58,88 @@ pub(crate) enum Outcome {
     Skipped,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+impl Outcome {
+    // Every outcome, in the order the report counts them.
+    pub(crate) const ALL: [Outcome; 5] = [
+        Self::Clean,
+        Self::Advisory,
+        Self::Blocked,
+        Self::Degraded,
+        Self::Skipped,
+    ];
+
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Clean => "clean",
+            Self::Advisory => "advisory",
+            Self::Blocked => "blocked",
+            Self::Degraded => "degraded",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+impl Serialize for Outcome {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
+    }
+}
+
+// Serializes each named struct as one JSON object: each field under its key const, in order.
+macro_rules! keyed {
+    ($($name:ident { $($key:ident: $field:ident),+ $(,)? })+) => {$(
+        impl Serialize for $name {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let fields = [$(stringify!($field)),+].len();
+                let mut row = serializer.serialize_struct(stringify!($name), fields)?;
+                $(row.serialize_field(key::$key, &self.$field)?;)+
+                row.end()
+            }
+        }
+    )+};
+}
+
+keyed! {
+    Record {
+        V: v,
+        TS: ts,
+        LATENCY_MS: latency_ms,
+        SESSION_ID: session_id,
+        TRANSCRIPT_PATH: transcript_path,
+        TOOL_USE_ID: tool_use_id,
+        TOOL_NAME: tool_name,
+        PATH: path,
+        ROOT: root,
+        REL: rel,
+        BINARY: binary,
+        MODES: modes,
+        CHECKS: checks,
+        DROPPED: dropped,
+        OFF_BY_CONFIG: off_by_config,
+        CONFIG_WARNINGS: config_warnings,
+        OLD_SHA256: old_sha256,
+        NEW_SHA256: new_sha256,
+        EOL: eol,
+        OUTCOME: outcome,
+        REASON: reason,
+        GAPS: gaps,
+        FINDINGS: findings,
+        OBSERVED: observed,
+    }
+    Gap { CHECK: check, MESSAGE: message }
+    Logged {
+        CHECK: check,
+        SEVERITY: severity,
+        MODE: mode,
+        PATH: path,
+        LINE: line,
+        MESSAGE: message,
+        EVIDENCE: evidence,
+        DETAIL: detail,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Record {
     pub(crate) v: u8,
     pub(crate) ts: f64,
@@ -51,13 +168,13 @@ pub(crate) struct Record {
     pub(crate) observed: Option<Observed>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Gap {
     pub(crate) check: &'static str,
     pub(crate) message: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Logged {
     check: &'static str,
     severity: Severity,

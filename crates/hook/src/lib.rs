@@ -9,6 +9,7 @@ mod halt;
 mod modes;
 mod payload;
 mod record;
+mod report;
 mod signals;
 mod text;
 mod verdict;
@@ -23,6 +24,8 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 use app::{EnvConfig, Services};
+
+pub use crate::report::gate_report;
 
 use crate::call::{Call, Clock, SystemClock};
 use crate::gate::Ports;

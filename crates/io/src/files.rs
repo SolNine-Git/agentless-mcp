@@ -76,6 +76,24 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     close_checked(file)
 }
 
+/// Creates the file `path` with mode 0666 less the umask and writes `bytes` to it. It never opens
+/// an existing file or a symlink at `path`. The file is flushed to disk, and the close is checked.
+///
+/// # Errors
+///
+/// Returns `AlreadyExists` when something is at `path`, else the error of the creation, of a write,
+/// of the flush, or of the close. A failed write leaves the bytes written before it.
+pub fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(PLAIN_FILE_MODE)
+        .open(path)?;
+    file.write_all(bytes)?;
+    sync_written(&file)?;
+    close_checked(file)
+}
+
 // A deferred write error (NFS, a disk quota) shows only in the flush or in the close, so a writer
 // flushes, then checks the close. A device or a pipe has nothing to flush.
 pub(crate) fn sync_written(file: &File) -> io::Result<()> {
@@ -148,6 +166,43 @@ mod tests {
         assert!(remove_file(&path).expect("the remove succeeds"));
         assert!(!path.exists());
         assert!(!remove_file(&path).expect("a missing file is no error"));
+    }
+
+    #[test]
+    fn write_new_file_never_opens_what_is_already_there() {
+        let tree = tree();
+        let old = tree.write_file("old", "kept").expect("the file is written");
+        let link = tree
+            .symlink("dangling", "gone")
+            .expect("the symlink is made");
+        for path in [&old, &link] {
+            let refused = write_new_file(path, b"new").expect_err("the path is taken");
+            assert_eq!(
+                refused.kind(),
+                ErrorKind::AlreadyExists,
+                "{}",
+                path.display()
+            );
+        }
+        assert_eq!(fs::read(&old).expect("the file is read"), b"kept");
+        assert!(
+            !tree.join("gone").exists(),
+            "the symlink target stays absent"
+        );
+    }
+
+    #[test]
+    fn write_new_file_writes_the_bytes_with_the_plain_mode() {
+        let tree = tree();
+        let path = tree.join("new.csv");
+        write_new_file(&path, b"a,b\r\n").expect("the file is created");
+        assert_eq!(fs::read(&path).expect("the file is read"), b"a,b\r\n");
+        let mode = fs::metadata(&path)
+            .expect("the file exists")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0, "no execute bit");
+        assert_eq!(mode & 0o600, 0o600, "the owner reads and writes");
     }
 
     #[test]

@@ -5,6 +5,7 @@ mod args;
 mod caller;
 mod commands;
 mod exit;
+mod gate_report;
 mod invocation;
 mod lint;
 mod patches;
@@ -17,6 +18,7 @@ use std::ffi::OsString;
 use std::io::{Read, Write};
 
 pub use exit::{EXIT_DOMAIN, cwd_failure_line, internal_error_line, refuse_hook, write_answer};
+pub use gate_report::{GateReportArgs, gate_report_args};
 
 /// The two output streams of one run: the answer on `out`, and notes and failures on `err`.
 pub struct Streams<'a> {

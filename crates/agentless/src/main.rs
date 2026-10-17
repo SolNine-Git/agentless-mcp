@@ -30,6 +30,11 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     if words.as_slice() == [Some("hook"), Some("erosion")] {
         return erosion(env, services);
     }
+    if words.first() == Some(&Some("gate-report")) {
+        return with_streams(|streams| {
+            guarded(streams, |streams| gate_report(&args[1..], env, streams))
+        });
+    }
     if let Err(unread) = env.cwd() {
         let line = cli::cwd_failure_line(&unread.error());
         return with_streams(|streams| cli::write_answer(streams, "", &line, cli::EXIT_DOMAIN));
@@ -46,6 +51,22 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
 
 fn erosion(env: &EnvConfig, services: &Services) -> u8 {
     answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
+}
+
+// The report opens its paths as given, so like the hook it needs no start-up directory.
+fn gate_report(args: &[OsString], env: &EnvConfig, streams: &mut Streams<'_>) -> u8 {
+    match cli::gate_report_args(args, env, streams) {
+        Ok(request) => {
+            let output = hook::gate_report(
+                &request.log,
+                request.sample_out.as_deref(),
+                request.labels.as_deref(),
+                &request.seed,
+            );
+            cli::write_answer(streams, &output.stdout, &output.stderr, output.code)
+        }
+        Err(code) => code,
+    }
 }
 
 // The hook catches its own panics and reports them, so the panic hook only keeps their lines.

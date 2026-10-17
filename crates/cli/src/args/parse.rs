@@ -27,14 +27,26 @@ struct Known {
 pub(crate) fn parse(top: &Parser, args: &[Arg], width: isize) -> Result<Parsed, Exit> {
     let known = parse_known(top, args, width)?;
     let chosen = known.chosen.expect("the top parser requires a command");
-    if !known.extras.is_empty() {
-        let message = format!("unrecognized arguments: {}", known.extras.join(" "));
-        return Err(error(top, width, &message));
-    }
+    no_extras(top, &known.extras, width)?;
     Ok(Parsed {
         top: known.namespace,
         chosen,
     })
+}
+
+// The values of a parser that has no commands.
+pub(crate) fn parse_alone(parser: &Parser, args: &[Arg], width: isize) -> Result<Namespace, Exit> {
+    let known = parse_known(parser, args, width)?;
+    no_extras(parser, &known.extras, width)?;
+    Ok(known.namespace)
+}
+
+fn no_extras(parser: &Parser, extras: &[String], width: isize) -> Result<(), Exit> {
+    if extras.is_empty() {
+        return Ok(());
+    }
+    let message = format!("unrecognized arguments: {}", extras.join(" "));
+    Err(error(parser, width, &message))
 }
 
 fn parse_known(parser: &Parser, args: &[Arg], width: isize) -> Result<Known, Exit> {

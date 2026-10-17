@@ -1,4 +1,26 @@
 pub mod checks
+pub mod checks::schema
+pub const checks::schema::CAPTURE: &str
+pub const checks::schema::CC: &str
+pub const checks::schema::CC_NEW: &str
+pub const checks::schema::CC_OLD: &str
+pub const checks::schema::CLONE_INSTANCES: &str
+pub const checks::schema::CONTRACT_KEYS: &str
+pub const checks::schema::END_LINE: &str
+pub const checks::schema::KEY: &str
+pub const checks::schema::LINE: &str
+pub const checks::schema::MATCH: &str
+pub const checks::schema::PATH: &str
+pub const checks::schema::RULE: &str
+pub const checks::schema::SITES: &str
+pub const checks::schema::SITES_TOTAL: &str
+pub const checks::schema::SLOC: &str
+pub const checks::schema::SLOC_NEW: &str
+pub const checks::schema::SLOC_OLD: &str
+pub const checks::schema::THRESHOLD: &str
+pub const checks::schema::UNIT: &str
+pub const checks::schema::UNITS_CHANGED: &str
+pub const checks::schema::UNITS_OVER_THRESHOLD: &str
 pub enum checks::CheckGap
 pub checks::CheckGap::NoBoundaryGlobs
 pub checks::CheckGap::NoRulesForLanguage(syntax::language::Language)
@@ -89,6 +111,9 @@ pub checks::Match::Body
 pub checks::Match::Collision
 pub checks::Match::Name
 pub checks::Match::New
+impl checks::Match
+pub const checks::Match::ALL: [checks::Match; 4]
+pub const fn checks::Match::as_str(self) -> &'static str
 impl core::clone::Clone for checks::Match
 pub fn checks::Match::clone(&self) -> Self
 impl core::cmp::Eq for checks::Match
@@ -99,7 +124,7 @@ pub fn checks::Match::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Re
 impl core::marker::Copy for checks::Match
 impl core::marker::StructuralPartialEq for checks::Match
 impl serde_core::ser::Serialize for checks::Match
-pub fn checks::Match::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::Match::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::Match
 impl core::marker::Send for checks::Match
 impl core::marker::Sync for checks::Match
@@ -169,7 +194,7 @@ impl core::fmt::Debug for checks::CloneCopy
 pub fn checks::CloneCopy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::CloneCopy
 impl serde_core::ser::Serialize for checks::CloneCopy
-pub fn checks::CloneCopy::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::CloneCopy::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::CloneCopy
 impl core::marker::Send for checks::CloneCopy
 impl core::marker::Sync for checks::CloneCopy
@@ -190,7 +215,7 @@ impl core::fmt::Debug for checks::CloneSite
 pub fn checks::CloneSite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::CloneSite
 impl serde_core::ser::Serialize for checks::CloneSite
-pub fn checks::CloneSite::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::CloneSite::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::CloneSite
 impl core::marker::Send for checks::CloneSite
 impl core::marker::Sync for checks::CloneSite
@@ -212,7 +237,7 @@ impl core::fmt::Debug for checks::CloneState
 pub fn checks::CloneState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::CloneState
 impl serde_core::ser::Serialize for checks::CloneState
-pub fn checks::CloneState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::CloneState::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::CloneState
 impl core::marker::Send for checks::CloneState
 impl core::marker::Sync for checks::CloneState
@@ -233,7 +258,7 @@ impl core::fmt::Debug for checks::DriftKey
 pub fn checks::DriftKey::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::DriftKey
 impl serde_core::ser::Serialize for checks::DriftKey
-pub fn checks::DriftKey::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::DriftKey::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::DriftKey
 impl core::marker::Send for checks::DriftKey
 impl core::marker::Sync for checks::DriftKey
@@ -281,7 +306,7 @@ impl core::fmt::Debug for checks::HitState
 pub fn checks::HitState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::HitState
 impl serde_core::ser::Serialize for checks::HitState
-pub fn checks::HitState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::HitState::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::HitState
 impl core::marker::Send for checks::HitState
 impl core::marker::Sync for checks::HitState
@@ -328,7 +353,7 @@ impl core::fmt::Debug for checks::Observed
 pub fn checks::Observed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::Observed
 impl serde_core::ser::Serialize for checks::Observed
-pub fn checks::Observed::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::Observed::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::Observed
 impl core::marker::Send for checks::Observed
 impl core::marker::Sync for checks::Observed
@@ -454,7 +479,7 @@ impl core::fmt::Debug for checks::UnitChange
 pub fn checks::UnitChange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::UnitChange
 impl serde_core::ser::Serialize for checks::UnitChange
-pub fn checks::UnitChange::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::UnitChange::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::UnitChange
 impl core::marker::Send for checks::UnitChange
 impl core::marker::Sync for checks::UnitChange
@@ -479,7 +504,7 @@ impl core::fmt::Debug for checks::UnitDelta
 pub fn checks::UnitDelta::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::UnitDelta
 impl serde_core::ser::Serialize for checks::UnitDelta
-pub fn checks::UnitDelta::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::UnitDelta::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::UnitDelta
 impl core::marker::Send for checks::UnitDelta
 impl core::marker::Sync for checks::UnitDelta
@@ -502,7 +527,7 @@ impl core::fmt::Debug for checks::UnitState
 pub fn checks::UnitState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for checks::UnitState
 impl serde_core::ser::Serialize for checks::UnitState
-pub fn checks::UnitState::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn checks::UnitState::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl core::marker::Freeze for checks::UnitState
 impl core::marker::Send for checks::UnitState
 impl core::marker::Sync for checks::UnitState

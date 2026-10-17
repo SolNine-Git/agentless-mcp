@@ -17,7 +17,7 @@ use app::IntArg;
 use app::ops::{Arity, Op};
 
 pub(crate) use declared::{TEXT, action, float_text, help_action, int_value};
-pub(crate) use parse::parse;
+pub(crate) use parse::{parse, parse_alone};
 
 // One command-line argument: its text for matching and messages, and its bytes for paths.
 #[derive(Clone, Debug)]

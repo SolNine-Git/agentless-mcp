@@ -12,6 +12,7 @@ mod matching;
 mod observed;
 mod pair;
 mod rules;
+pub mod schema;
 #[cfg(test)]
 mod tests;
 
