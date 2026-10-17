@@ -2,6 +2,7 @@
 //! crates/syntax/src/generated/ from the language files, and crates/app/src/generated/ from the
 //! agent guide.
 
+mod descriptions;
 mod guide;
 mod literal;
 mod placeholders;
@@ -18,6 +19,8 @@ use crate::{Failure, process, repo};
 const ENVELOPE: &str = "src/agentless_mcp/prompts/envelope.json";
 const MESSAGES: &str = "src/agentless_mcp/prompts/messages.json";
 const RULES: &str = "src/agentless_mcp/prompts/contract_rules.json";
+const TOOLS: &str = "src/agentless_mcp/prompts/tool_descriptions.json";
+const PARAMETERS: &str = "src/agentless_mcp/prompts/parameter_descriptions.json";
 const OUTPUT: &str = "crates/prompts/src/generated";
 
 type Files = Vec<(&'static str, String)>;
@@ -54,9 +57,45 @@ fn fresh_syntax(root: &Path) -> Result<Files, Failure> {
 
 fn fresh(root: &Path) -> Result<Files, Failure> {
     let read = |file: &str| repo::read(&root.join(file));
-    let sources =
-        sources(&read(ENVELOPE)?, &read(MESSAGES)?, &read(RULES)?).map_err(Failure::Gate)?;
-    formatted(root, sources)
+    let templates = sources(&read(ENVELOPE)?, &read(MESSAGES)?, &read(RULES)?);
+    let descriptions = description_sources(&read(TOOLS)?, &read(PARAMETERS)?);
+    formatted(
+        root,
+        joined(templates, descriptions).map_err(Failure::Gate)?,
+    )
+}
+
+fn description_sources(tools: &str, parameters: &str) -> Result<Files, Vec<String>> {
+    let tools = descriptions::parse(TOOLS, tools).map(|tools| {
+        let doc = |key: &str| format!("The description of the `{key}` tool.");
+        vec![(
+            "tool_descriptions.rs",
+            descriptions::module("The tool descriptions.", doc, &tools),
+        )]
+    });
+    let parameters = descriptions::parse(PARAMETERS, parameters).map(|parameters| {
+        let doc = |key: &str| format!("The parameter description keyed `{key}`.");
+        vec![(
+            "parameter_descriptions.rs",
+            descriptions::module("The parameter descriptions.", doc, &parameters),
+        )]
+    });
+    joined(tools, parameters)
+}
+
+// The files of both, or the problems of both.
+fn joined(
+    first: Result<Files, Vec<String>>,
+    second: Result<Files, Vec<String>>,
+) -> Result<Files, Vec<String>> {
+    match (first, second) {
+        (Ok(first), Ok(second)) => Ok([first, second].concat()),
+        (first, second) => Err([first.err(), second.err()]
+            .into_iter()
+            .flatten()
+            .flatten()
+            .collect()),
+    }
 }
 
 fn sources(envelope: &str, messages: &str, rules: &str) -> Result<Files, Vec<String>> {
@@ -141,8 +180,8 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        ENVELOPE, Files, MESSAGES, OUTPUT, RULES, fresh, fresh_guide, fresh_syntax, guide, rules,
-        sources, syntax, templates,
+        ENVELOPE, Files, MESSAGES, OUTPUT, PARAMETERS, RULES, TOOLS, description_sources,
+        descriptions, fresh, fresh_guide, fresh_syntax, guide, rules, sources, syntax, templates,
     };
     use crate::repo;
 
@@ -191,6 +230,24 @@ mod tests {
         assert_eq!(entries["rules"].as_array().map(Vec::len), Some(22));
         assert_eq!(rules::parse(RULES, &text).unwrap().len(), 30);
         assert!(sources(&read(ENVELOPE), &read(MESSAGES), &text).is_ok());
+        let tools = descriptions::parse(TOOLS, &read(TOOLS)).unwrap();
+        let parameters = descriptions::parse(PARAMETERS, &read(PARAMETERS)).unwrap();
+        assert_eq!((tools.len(), parameters.len()), (15, 47));
+    }
+
+    #[test]
+    fn the_problems_of_both_description_files_come_together() {
+        let problems = description_sources("[]", "{\"a\": 1}").unwrap_err();
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        for file in [TOOLS, PARAMETERS] {
+            assert!(
+                problems.iter().any(|problem| problem.starts_with(file)),
+                "{file}: {problems:?}"
+            );
+        }
+        let files = description_sources("{\"a\": \"x\"}", "{\"b\": \"y\"}").unwrap();
+        let names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["tool_descriptions.rs", "parameter_descriptions.rs"]);
     }
 
     #[test]

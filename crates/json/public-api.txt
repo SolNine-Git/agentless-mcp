@@ -108,3 +108,4 @@ pub fn json::general(f64) -> alloc::string::String
 pub fn json::parse(&str) -> core::result::Result<json::JsonValue, json::JsonError>
 pub fn json::round_half_even(f64, u32) -> f64
 pub fn json::to_text<T: serde_core::ser::Serialize + ?core::marker::Sized>(&T, json::JsonForm) -> core::result::Result<alloc::string::String, serde_json::error::Error>
+pub fn json::value_text(&json::JsonValue) -> alloc::string::String

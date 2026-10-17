@@ -10,7 +10,9 @@ use super::placeholders::{self, Kind, PLACEHOLDERS};
 // The prompts crate implements its Signature trait for one kind and for tuples of 2 to 6 kinds.
 const MOST_VALUES: usize = 6;
 const LINE: usize = 100;
-const WRITTEN_BY: &str = "//! `cargo xtask generate` writes this file from the prompt JSON files.";
+/// The second line of each module that the prompt JSON files make.
+pub const WRITTEN_BY: &str =
+    "//! `cargo xtask generate` writes this file from the prompt JSON files.";
 
 /// One template: its key, its text, its value names and kinds in value order, and its parts.
 #[derive(Debug)]
@@ -35,6 +37,16 @@ enum Segment<'t> {
 
 /// Parses one template file, sorted by key, or returns each problem with the file and the key.
 pub fn parse(file: &str, text: &str) -> Result<Vec<Template>, Vec<String>> {
+    keyed(file, text, template)
+}
+
+/// Reads one JSON object and makes an item of each entry in key order, or returns each problem
+/// with the file and the key.
+pub fn keyed<T>(
+    file: &str,
+    text: &str,
+    item: impl Fn(&str, &Value) -> Result<T, String>,
+) -> Result<Vec<T>, Vec<String>> {
     let document: Value = serde_json::from_str(text)
         .map_err(|error| vec![format!("{file}: the file is not valid JSON: {error}")])?;
     let Value::Object(entries) = document else {
@@ -42,29 +54,34 @@ pub fn parse(file: &str, text: &str) -> Result<Vec<Template>, Vec<String>> {
     };
     let mut keys: Vec<&String> = entries.keys().collect();
     keys.sort();
-    let mut templates = Vec::new();
+    let mut items = Vec::new();
     let mut problems = Vec::new();
     for key in keys {
-        match template(key, &entries[key]) {
-            Ok(template) => templates.push(template),
+        match item(key, &entries[key]) {
+            Ok(made) => items.push(made),
             Err(problem) => problems.push(format!("{file}: key {key:?}: {problem}")),
         }
     }
     if problems.is_empty() {
-        Ok(templates)
+        Ok(items)
     } else {
         Err(problems)
     }
 }
 
-fn template(key: &str, value: &Value) -> Result<Template, String> {
+/// Returns the non-empty text of an entry, or the problem that refuses it.
+pub fn entry_text<'v>(key: &str, value: &'v Value) -> Result<&'v str, String> {
     if !is_name(key) {
         return Err("the key is not a lowercase identifier".to_owned());
     }
-    let text = value
+    value
         .as_str()
         .filter(|text| !text.trim().is_empty())
-        .ok_or("the value must be a non-empty string")?;
+        .ok_or_else(|| "the value must be a non-empty string".to_owned())
+}
+
+fn template(key: &str, value: &Value) -> Result<Template, String> {
+    let text = entry_text(key, value)?;
     let segments = segments(text)?;
     let values = value_order(&segments)?;
     let pieces = segments
@@ -175,10 +192,11 @@ fn imports(templates: &[Template]) -> String {
 fn item(template: &Template) -> String {
     let name = template.key.to_uppercase();
     if template.values.is_empty() {
-        let head = format!("pub const {name}: &str = ");
-        // The first line also holds the opening quote and a closing `";` or `\`.
-        let text = literal_within(&template.text, LINE.saturating_sub(head.len() + 3));
-        return format!("/// A text that takes no values.\n{head}{text};\n");
+        return text_const(
+            "A text that takes no values.",
+            &template.key,
+            &template.text,
+        );
     }
     let (takes, signature) = signature(&template.values);
     let pieces: Vec<String> = template.pieces.iter().map(piece_source).collect();
@@ -187,6 +205,14 @@ fn item(template: &Template) -> String {
          pub const {name}: Template<{signature}> = Template::new(&[{}]);\n",
         pieces.join(", ")
     )
+}
+
+/// Returns the declaration of one `&str` const named after `key`, with `doc` as its doc line.
+pub fn text_const(doc: &str, key: &str, text: &str) -> String {
+    let head = format!("pub const {}: &str = ", key.to_uppercase());
+    // The first line also holds the opening quote and a closing `";` or `\`.
+    let text = literal_within(text, LINE.saturating_sub(head.len() + 3));
+    format!("/// {doc}\n{head}{text};\n")
 }
 
 fn signature(values: &[(&str, Kind)]) -> (String, String) {

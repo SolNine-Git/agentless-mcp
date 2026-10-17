@@ -1,4 +1,4 @@
-//! Caller-facing message templates as typed data, and the contract rules.
+//! Caller-facing message templates and tool descriptions as typed data, and the contract rules.
 
 mod rule;
 mod template;
@@ -10,10 +10,12 @@ mod generated {
     pub mod catalog;
     pub mod envelope;
     pub mod messages;
+    pub mod parameter_descriptions;
     pub mod rules;
+    pub mod tool_descriptions;
 }
 
-pub use generated::{envelope, messages};
+pub use generated::{envelope, messages, parameter_descriptions, tool_descriptions};
 pub use rule::{ContractRule, Severity};
 pub use template::{Count, Kind, Signature, Template, Text};
 

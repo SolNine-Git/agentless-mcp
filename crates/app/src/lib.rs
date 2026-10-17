@@ -42,6 +42,7 @@ mod rowtext;
 mod scan;
 mod scope;
 mod span;
+pub mod surface;
 mod symbol_graph;
 mod tags;
 mod tokens;

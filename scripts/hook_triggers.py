@@ -46,12 +46,14 @@ SOURCES = ["crates/kernel/src/lib.rs", "xtask/src/main.rs"]
 # Each hook's inputs beyond CARGO. tool_config refuses a control or non-ASCII character in any path,
 # and the Kelvin sign folds to an ASCII letter under ignore case. The policy hook runs on xtask.
 INPUTS = dict.fromkeys(STAGES, SOURCES) | {
-    # The xtask freshness test reads the three prompt files that `cargo xtask generate` reads.
+    # The xtask freshness test reads the five prompt files that `cargo xtask generate` reads.
     "cargo-test": [
         *SOURCES,
         "src/agentless_mcp/prompts/envelope.json",
         "src/agentless_mcp/prompts/messages.json",
         "src/agentless_mcp/prompts/contract_rules.json",
+        "src/agentless_mcp/prompts/tool_descriptions.json",
+        "src/agentless_mcp/prompts/parameter_descriptions.json",
     ],
     "cargo-gates": [
         *SOURCES,

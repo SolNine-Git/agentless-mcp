@@ -1,11 +1,12 @@
-"""Write the json crate's format fixtures: the float text of `:.Nf` and `:g`, and the packed form.
+"""Write the json crate's format fixtures: float text, the packed form, and json.dumps of values.
 
 Development-time only. Run it from the repository root:
 
     .venv/bin/python scripts/json_format_fixtures.py
 
-A float is stored as "0x" and the 16 hex digits of its bits. With --check, the script compares its
-output with the committed fixtures and writes nothing.
+A float is stored as "0x" and the 16 hex digits of its bits. The value_text section holds JSON
+documents with the default json.dumps text of what json.loads reads from them. With --check, the
+script compares its output with the committed fixtures and writes nothing.
 """
 
 import json
@@ -103,12 +104,40 @@ DOCUMENTS: list[Any] = [
 ]
 
 
+# json.loads refuses one level more, and an integer of more digits.
+DEEPEST = 9998
+LONGEST_INT = 4300
+VALUE_DOCUMENTS = [
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "[NaN, Infinity, -Infinity, -0.0, 0.0, 1e400, -1e400, 1E2, 1.0, 5e-324, 1e16, 1e-05]",
+    "[-0, 0, -1, 12345678901234567890123]",
+    "9" * LONGEST_INT,
+    "-" + "1" * LONGEST_INT,
+    '"\\ud800"',
+    '"\\udfff x \\udc00\\ud800"',
+    '"\\ud83d\\ude00"',
+    '{"\\ud800": "\\udbff"}',
+    '"\\u0000\\u001f\\u007f\\u0080\\u00ff\\u2028\\uffff"',
+    '"\\b\\f\\n\\r\\t\\"\\\\\\/"',
+    '{"a": 1, "b": 2, "a": 3}',
+    ' \t\n{ "a" : [ 1 , { } , [ ] ] , "b" :null }\r\n',
+    '{"ts": 1760712345.6789012, "session_id": "s", "tool": {"x": [1, "y"]}, "pattern": null}',
+    '{"version": 2, "reason": "orient.map", "tool": "mcp__agentless__orient"}',
+    "[" * DEEPEST + "]" * DEEPEST,
+    '{"a": ' * DEEPEST + "1" + "}" * DEEPEST,
+]
+
+
 def format_fixture() -> Fixture:
     every = values()
+    documents = [json.dumps(document) for document in DOCUMENTS] + VALUE_DOCUMENTS
     return {
         "fixed": [[bits(x), places, format(x, f".{places}f")] for x in every for places in PLACES],
         "general": [[bits(x), format(x, "g")] for x in every],
         "packed": [[json.dumps(document), packed(document)] for document in DOCUMENTS],
+        "value_text": [[document, json.dumps(json.loads(document))] for document in documents],
     }
 
 

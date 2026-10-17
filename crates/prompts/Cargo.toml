@@ -1,6 +1,6 @@
 [package]
 name = "prompts"
-description = "Caller-facing message templates as typed data, and the contract rules."
+description = "Caller-facing message templates and tool descriptions as typed data, and the contract rules."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

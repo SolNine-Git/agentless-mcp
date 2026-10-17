@@ -129,6 +129,70 @@ pub const prompts::messages::SLICE_RANGE_NOT_A_RANGE: prompts::Template<(prompts
 pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
 pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
 pub const prompts::messages::UNKNOWN_OPERATION: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
+pub mod prompts::parameter_descriptions
+pub const prompts::parameter_descriptions::COMMUNITY_RESOLUTION: &str
+pub const prompts::parameter_descriptions::CONTEXT_LINES: &str
+pub const prompts::parameter_descriptions::DIAGRAM_FOCUS: &str
+pub const prompts::parameter_descriptions::DIAGRAM_MAX_EDGES: &str
+pub const prompts::parameter_descriptions::DIAGRAM_MAX_NODES: &str
+pub const prompts::parameter_descriptions::DOCSTRINGS: &str
+pub const prompts::parameter_descriptions::EXPAND_LIMIT: &str
+pub const prompts::parameter_descriptions::EXPLAIN_LIMIT: &str
+pub const prompts::parameter_descriptions::EXPLAIN_TARGET: &str
+pub const prompts::parameter_descriptions::FILE_PATH: &str
+pub const prompts::parameter_descriptions::FIND_LIMIT: &str
+pub const prompts::parameter_descriptions::FIND_NAME: &str
+pub const prompts::parameter_descriptions::GROUP_BY_COMMUNITIES: &str
+pub const prompts::parameter_descriptions::HISTORY_BUDGET: &str
+pub const prompts::parameter_descriptions::HISTORY_LIMIT: &str
+pub const prompts::parameter_descriptions::HISTORY_TARGET: &str
+pub const prompts::parameter_descriptions::INCLUDE_AMBIGUOUS: &str
+pub const prompts::parameter_descriptions::INCLUDE_UNIQUE: &str
+pub const prompts::parameter_descriptions::LOCATIONS: &str
+pub const prompts::parameter_descriptions::MAP_BUDGET: &str
+pub const prompts::parameter_descriptions::MAP_FOCUS: &str
+pub const prompts::parameter_descriptions::MAP_GRANULARITY: &str
+pub const prompts::parameter_descriptions::MAP_MAX_FILES: &str
+pub const prompts::parameter_descriptions::NO_CACHE: &str
+pub const prompts::parameter_descriptions::ORIENT_FOCUS: &str
+pub const prompts::parameter_descriptions::ORIENT_LIMIT: &str
+pub const prompts::parameter_descriptions::ORIENT_OPERATION: &str
+pub const prompts::parameter_descriptions::OVERVIEW_PATHS: &str
+pub const prompts::parameter_descriptions::PATH_SOURCE: &str
+pub const prompts::parameter_descriptions::PATH_TARGET: &str
+pub const prompts::parameter_descriptions::READ_OPERATION: &str
+pub const prompts::parameter_descriptions::READ_PATH: &str
+pub const prompts::parameter_descriptions::REFERENCE_LIMIT: &str
+pub const prompts::parameter_descriptions::REFERENCE_TARGET: &str
+pub const prompts::parameter_descriptions::REPO_ROOT: &str
+pub const prompts::parameter_descriptions::SHARED_CALLERS: &str
+pub const prompts::parameter_descriptions::SLICE_LINES: &str
+pub const prompts::parameter_descriptions::STABLE_IDS: &str
+pub const prompts::parameter_descriptions::STRUCTURE_LIMIT: &str
+pub const prompts::parameter_descriptions::STRUCTURE_OPERATION: &str
+pub const prompts::parameter_descriptions::SYMBOLS_LIMIT: &str
+pub const prompts::parameter_descriptions::SYMBOLS_OPERATION: &str
+pub const prompts::parameter_descriptions::SYMBOL_KIND: &str
+pub const prompts::parameter_descriptions::TREE_DEPTH: &str
+pub const prompts::parameter_descriptions::TREE_MAX_ENTRIES: &str
+pub const prompts::parameter_descriptions::TREE_PATH: &str
+pub const prompts::parameter_descriptions::WHOLE_FILE: &str
+pub mod prompts::tool_descriptions
+pub const prompts::tool_descriptions::ANALYZE_STRUCTURE: &str
+pub const prompts::tool_descriptions::CAPABILITIES: &str
+pub const prompts::tool_descriptions::EXPAND_SYMBOLS: &str
+pub const prompts::tool_descriptions::EXPLAIN_SYMBOL: &str
+pub const prompts::tool_descriptions::FIND_REFERENCING_SYMBOLS: &str
+pub const prompts::tool_descriptions::FIND_SYMBOL: &str
+pub const prompts::tool_descriptions::GET_SYMBOLS_OVERVIEW: &str
+pub const prompts::tool_descriptions::HISTORY: &str
+pub const prompts::tool_descriptions::LIST_DIR: &str
+pub const prompts::tool_descriptions::ORIENT: &str
+pub const prompts::tool_descriptions::READ: &str
+pub const prompts::tool_descriptions::READ_SLICE: &str
+pub const prompts::tool_descriptions::REPO_MAP: &str
+pub const prompts::tool_descriptions::RESOLVE_LOCATIONS: &str
+pub const prompts::tool_descriptions::SYMBOLS: &str
 pub enum prompts::Severity
 pub prompts::Severity::Advisory
 pub prompts::Severity::Warning

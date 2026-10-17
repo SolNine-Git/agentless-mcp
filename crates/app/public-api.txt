@@ -196,6 +196,141 @@ pub static app::ops::SLICE: app::ops::Op
 pub static app::ops::TREE: app::ops::Op
 pub static app::ops::WARMUP: app::ops::Op
 pub fn app::ops::op(&str) -> core::option::Option<&'static app::ops::Op>
+pub mod app::surface
+pub enum app::surface::Calls
+pub app::surface::Calls::Operations(&'static [app::surface::Operation])
+pub app::surface::Calls::Single
+pub app::surface::Calls::Single::localizes: bool
+impl core::fmt::Debug for app::surface::Calls
+pub fn app::surface::Calls::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Calls
+impl core::marker::Send for app::surface::Calls
+impl core::marker::Sync for app::surface::Calls
+impl core::marker::Unpin for app::surface::Calls
+impl core::marker::UnsafeUnpin for app::surface::Calls
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Calls
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Calls
+pub enum app::surface::Effect
+pub app::surface::Effect::ReadOnly
+impl core::clone::Clone for app::surface::Effect
+pub fn app::surface::Effect::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::Effect
+impl core::cmp::PartialEq for app::surface::Effect
+pub fn app::surface::Effect::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Effect
+pub fn app::surface::Effect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Effect
+impl core::marker::StructuralPartialEq for app::surface::Effect
+impl core::marker::Freeze for app::surface::Effect
+impl core::marker::Send for app::surface::Effect
+impl core::marker::Sync for app::surface::Effect
+impl core::marker::Unpin for app::surface::Effect
+impl core::marker::UnsafeUnpin for app::surface::Effect
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Effect
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Effect
+pub enum app::surface::Presence
+pub app::surface::Presence::DefaultFalse
+pub app::surface::Presence::Nullable
+pub app::surface::Presence::Required
+impl core::clone::Clone for app::surface::Presence
+pub fn app::surface::Presence::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::Presence
+impl core::cmp::PartialEq for app::surface::Presence
+pub fn app::surface::Presence::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Presence
+pub fn app::surface::Presence::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Presence
+impl core::marker::StructuralPartialEq for app::surface::Presence
+impl core::marker::Freeze for app::surface::Presence
+impl core::marker::Send for app::surface::Presence
+impl core::marker::Sync for app::surface::Presence
+impl core::marker::Unpin for app::surface::Presence
+impl core::marker::UnsafeUnpin for app::surface::Presence
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Presence
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Presence
+pub enum app::surface::Shape
+pub app::surface::Shape::AnyOf(&'static [app::surface::Shape])
+pub app::surface::Shape::Array
+pub app::surface::Shape::Array::items: &'static app::surface::Shape
+pub app::surface::Shape::Array::max_items: core::option::Option<usize>
+pub app::surface::Shape::Array::min_items: core::option::Option<usize>
+pub app::surface::Shape::Bool
+pub app::surface::Shape::Enum
+pub app::surface::Shape::Enum::description: &'static str
+pub app::surface::Shape::Enum::names: &'static [&'static str]
+pub app::surface::Shape::Int
+pub app::surface::Shape::Int::maximum: core::option::Option<usize>
+pub app::surface::Shape::Int::minimum: usize
+pub app::surface::Shape::Literal(&'static [&'static str])
+pub app::surface::Shape::Number
+pub app::surface::Shape::Number::exclusive_minimum: usize
+pub app::surface::Shape::Number::maximum: f64
+pub app::surface::Shape::Text
+impl core::clone::Clone for app::surface::Shape
+pub fn app::surface::Shape::clone(&self) -> Self
+impl core::cmp::PartialEq for app::surface::Shape
+pub fn app::surface::Shape::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Shape
+pub fn app::surface::Shape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Shape
+impl core::marker::StructuralPartialEq for app::surface::Shape
+impl core::marker::Freeze for app::surface::Shape
+impl core::marker::Send for app::surface::Shape
+impl core::marker::Sync for app::surface::Shape
+impl core::marker::Unpin for app::surface::Shape
+impl core::marker::UnsafeUnpin for app::surface::Shape
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Shape
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Shape
+pub struct app::surface::Operation
+pub app::surface::Operation::accepted: &'static [&'static str]
+pub app::surface::Operation::localizes: bool
+pub app::surface::Operation::name: &'static str
+pub app::surface::Operation::required: &'static [&'static str]
+impl core::fmt::Debug for app::surface::Operation
+pub fn app::surface::Operation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Operation
+impl core::marker::Send for app::surface::Operation
+impl core::marker::Sync for app::surface::Operation
+impl core::marker::Unpin for app::surface::Operation
+impl core::marker::UnsafeUnpin for app::surface::Operation
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Operation
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Operation
+pub struct app::surface::Param
+pub app::surface::Param::description: &'static str
+pub app::surface::Param::name: &'static str
+pub app::surface::Param::presence: app::surface::Presence
+pub app::surface::Param::shape: app::surface::Shape
+impl core::fmt::Debug for app::surface::Param
+pub fn app::surface::Param::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Param
+impl core::marker::Send for app::surface::Param
+impl core::marker::Sync for app::surface::Param
+impl core::marker::Unpin for app::surface::Param
+impl core::marker::UnsafeUnpin for app::surface::Param
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Param
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Param
+pub struct app::surface::Tool
+pub app::surface::Tool::always_load: bool
+pub app::surface::Tool::calls: app::surface::Calls
+pub app::surface::Tool::description: &'static str
+pub app::surface::Tool::effect: app::surface::Effect
+pub app::surface::Tool::name: &'static str
+pub app::surface::Tool::params: &'static [app::surface::Param]
+pub app::surface::Tool::title: &'static str
+impl app::surface::Tool
+pub fn app::surface::Tool::localizes(&self, core::option::Option<&str>) -> bool
+pub fn app::surface::Tool::operation(&self, &str) -> core::option::Option<&'static app::surface::Operation>
+impl core::fmt::Debug for app::surface::Tool
+pub fn app::surface::Tool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Tool
+impl core::marker::Send for app::surface::Tool
+impl core::marker::Sync for app::surface::Tool
+impl core::marker::Unpin for app::surface::Tool
+impl core::marker::UnsafeUnpin for app::surface::Tool
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
+pub static app::surface::TOOLS: [&app::surface::Tool; 6]
+pub fn app::surface::tool_entry(&app::surface::Tool) -> json::parse::JsonValue
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)

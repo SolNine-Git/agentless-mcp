@@ -4,7 +4,12 @@ use serde::Serialize;
 use serde::ser::{SerializeMap, Serializer};
 use serde_json::Value;
 use serde_json::ser::Formatter;
+use std::fmt::Write as _;
 use std::io;
+
+use text::CodePointString;
+
+use crate::JsonValue;
 
 /// The line layout of serialized JSON text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +44,115 @@ pub fn to_text<T: Serialize + ?Sized>(
         value.serialize(&mut serializer)?;
     }
     Ok(String::from_utf8(buffer).expect("the formatter writes only ASCII"))
+}
+
+/// Returns `value` as one line of ASCII JSON text with `, ` and `: ` separators, and each `Int` as
+/// held, which a value from [`crate::parse`] limits to 4300 digits.
+#[must_use]
+pub fn value_text(value: &JsonValue) -> String {
+    let mut text = String::new();
+    // A work stack, not recursion: a parsed value can nest 9998 levels deep.
+    let mut pending = vec![Step::Value(value)];
+    while let Some(step) = pending.pop() {
+        match step {
+            Step::Text(raw) => text.push_str(raw),
+            Step::Key(key) => push_string(&mut text, key),
+            Step::Value(value) => push_value(&mut text, value, &mut pending),
+        }
+    }
+    text
+}
+
+// One piece of output still to write. A container pushes its pieces last first.
+enum Step<'a> {
+    Text(&'static str),
+    Key(&'a CodePointString),
+    Value(&'a JsonValue),
+}
+
+fn push_value<'a>(text: &mut String, value: &'a JsonValue, pending: &mut Vec<Step<'a>>) {
+    match value {
+        JsonValue::Null => text.push_str("null"),
+        JsonValue::Bool(true) => text.push_str("true"),
+        JsonValue::Bool(false) => text.push_str("false"),
+        JsonValue::Int(digits) => text.push_str(digits),
+        JsonValue::Float(x) => text.push_str(&float_value(*x)),
+        JsonValue::Str(string) => push_string(text, string),
+        JsonValue::Array(items) => {
+            text.push('[');
+            push_items(pending, "]", items.iter().map(|item| [Step::Value(item)]));
+        }
+        JsonValue::Object(pairs) => {
+            text.push('{');
+            let entries = pairs
+                .iter()
+                .map(|(key, item)| [Step::Key(key), Step::Text(": "), Step::Value(item)]);
+            push_items(pending, "}", entries);
+        }
+    }
+}
+
+// Pushes the closer, then the items last first with ", " between them.
+fn push_items<'a, const N: usize>(
+    pending: &mut Vec<Step<'a>>,
+    closer: &'static str,
+    items: impl DoubleEndedIterator<Item = [Step<'a>; N]> + ExactSizeIterator,
+) {
+    pending.push(Step::Text(closer));
+    for (index, steps) in items.enumerate().rev() {
+        pending.extend(steps.into_iter().rev());
+        if index > 0 {
+            pending.push(Step::Text(", "));
+        }
+    }
+}
+
+fn float_value(x: f64) -> String {
+    if x.is_nan() {
+        "NaN".to_owned()
+    } else if x.is_infinite() {
+        if x > 0.0 { "Infinity" } else { "-Infinity" }.to_owned()
+    } else {
+        crate::float_text(x)
+    }
+}
+
+fn push_string(text: &mut String, string: &CodePointString) {
+    text.push('"');
+    for code in string.code_points() {
+        push_code_point(text, code);
+    }
+    text.push('"');
+}
+
+fn push_code_point(text: &mut String, code: u32) {
+    if let Some(escape) = short_escape(code) {
+        text.push_str(escape);
+    } else if let Some(printable) = char::from_u32(code).filter(|c| (' '..='~').contains(c)) {
+        text.push(printable);
+    } else if let Some(above) = code.checked_sub(0x1_0000) {
+        push_unit(text, 0xD800 | (above >> 10));
+        push_unit(text, 0xDC00 | (above & 0x3FF));
+    } else {
+        push_unit(text, code);
+    }
+}
+
+fn short_escape(code: u32) -> Option<&'static str> {
+    match code {
+        0x22 => Some("\\\""),
+        0x5C => Some("\\\\"),
+        0x08 => Some("\\b"),
+        0x0C => Some("\\f"),
+        0x0A => Some("\\n"),
+        0x0D => Some("\\r"),
+        0x09 => Some("\\t"),
+        _ => None,
+    }
+}
+
+fn push_unit(text: &mut String, unit: u32) {
+    write!(text, "\\u{unit:04x}").expect("writing to a String cannot fail");
 }
 
 // A value whose objects serialize with their keys in code point order. It sorts each object
@@ -227,6 +341,17 @@ mod tests {
                         .map(|(key, value)| (text(key), Ordered(value))),
                 ),
             }
+        }
+    }
+
+    #[test]
+    fn value_text_matches_the_reference_cases() {
+        let all: Vec<(String, String)> =
+            cases(env!("CARGO_MANIFEST_DIR"), "format/format", "value_text");
+        assert!(!all.is_empty());
+        for (document, expected) in all {
+            let value = crate::parse(&document).expect("the fixture document is JSON");
+            assert!(value_text(&value) == expected, "{document:.200}");
         }
     }
 

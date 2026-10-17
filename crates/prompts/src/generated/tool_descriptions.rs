@@ -1,0 +1,260 @@
+//! The tool descriptions.
+//! `cargo xtask generate` writes this file from the prompt JSON files.
+
+/// The description of the `analyze_structure` tool.
+pub const ANALYZE_STRUCTURE: &str = "Five whole-repository structure questions behind one \
+        operation argument: how are these two symbols connected (path), \
+        where are the import knots (cycles), which files belong \
+        together (communities), what does the module graph look like \
+        (diagram), what is unreferenced, central or complex (health). \
+        operation='path' takes source and target (a stable id, a \
+        qualified name or a file path) and returns the fewest-hop chain \
+        of resolved relationships between them, each hop carrying its \
+        relation, evidence tier and file:line -- ask it when the \
+        question is how a change here could reach a failure there; only \
+        same-file and resolved-via-import edges participate by default. \
+        Repository-wide unique-name edges require include_unique and \
+        name-only-ambiguous edges require include_ambiguous, so the \
+        default path never rests on name-only binding evidence. \
+        operation='cycles' takes nothing and returns every module-level \
+        import cycle as a file -> file -> file chain that closes -- ask \
+        it when an import error, a partially initialized module or a \
+        layering question needs the knots named. \
+        operation='communities' takes an optional resolution (lower \
+        groups more coarsely) and returns which files belong together, \
+        each group labelled by the directory prefix most of its members \
+        share; modularity below 0.3 is marked as a weak partition to \
+        use only as a hint -- ask it to orient in an unfamiliar \
+        repository before reading any file. operation='diagram' takes \
+        optional focus, max_nodes and group_by_communities and returns \
+        a mermaid flowchart of the module graph, PageRank-bounded with \
+        an explicit elision marker; solid arrows are declared imports, \
+        dashed arrows are discounted name references, drawn only while \
+        the diagram stays legible and counted in a comment when left \
+        out -- ask for it only when a human will look at it, because \
+        the facts you should reason over are in the text views. \
+        operation='health' takes an optional limit and returns three \
+        readings of one degree count -- orphan candidates (a function \
+        no counted edge reaches or leaves), unused exports (a public \
+        function no counted edge reaches) and hubs (the highest total \
+        degree first); only same-file and resolved-via-import edges are \
+        counted, and a unique-name or name-only-ambiguous match is \
+        named on the row rather than counted, so an orphan row states \
+        the evidence it was not built on. The health answer also \
+        carries a complexity summary (functions measured, functions \
+        above the complexity threshold, which is 10 by default, \
+        erosion, the share of mass held by those functions, and clone \
+        share, the share of source lines inside a block that has a copy \
+        once names and literals are ignored) and hotspots, the \
+        functions with the most mass (cc times the square root of \
+        sloc), each with its stable id or marked metric-only. \
+        Complexity counts decision points and lines. It does not judge \
+        design. No path, no cycles and an unknown endpoint are all \
+        ordinary answers with a message rather than errors; an unknown \
+        operation is rejected by the published enum.";
+
+/// The description of the `capabilities` tool.
+pub const CAPABILITIES: &str = "Why is this answer incomplete? Report the server version, loaded \
+        grammars and their warm state, cache generation, the configured \
+        and client-advertised roots, and the caps in force. An absent \
+        tag cache is reported with the index command that builds it. \
+        Call it when a language seems unsupported, a generation \
+        mismatch persists, or the wrong root was selected.";
+
+/// The description of the `expand_symbols` tool.
+pub const EXPAND_SYMBOLS: &str = "You have located the symbols; now read their bodies. The \
+        escalation step after a skeleton view: returns the \
+        line-numbered body of each named symbol. stable_ids come from \
+        repo_map, get_symbols_overview, find_symbol, or \
+        resolve_locations output (form: \
+        py:src/app/svc.py::Invoice.total). Every requested id comes \
+        back: when the batch exceeds the output budget the longest \
+        bodies are cut to their leading lines, each marked with how \
+        many lines it shows out of how many, and a summary line names \
+        how many were shortened. To read a long body whole, expand that \
+        id on its own.";
+
+/// The description of the `explain_symbol` tool.
+pub const EXPLAIN_SYMBOL: &str = "What is this symbol and how is it wired in? Start here when you \
+        have one suspect symbol and have not seen it before. One call \
+        returns its definition site and signature, rationale comments \
+        linked to it, what it references (fan-out) and what references \
+        it (fan-in), each grouped by evidence tier, plus the import \
+        relationships of the file it lives in. Prefer it over \
+        find_symbol followed by find_referencing_symbols: the same \
+        answer in one round trip instead of two or three. Rows resolved \
+        only by name list every candidate rather than picking one; \
+        target is a stable id or a qualified name.";
+
+/// The description of the `find_referencing_symbols` tool.
+pub const FIND_REFERENCING_SYMBOLS: &str = "Who calls this symbol, and what breaks if it changes? \
+        Fan-in for blast radius and error-path review: the symbols that \
+        reference a target, grouped by file and evidence tier. Each \
+        occurrence is tiered on its own binding: same-file, \
+        resolved-via-import, unique, or name-only-ambiguous, and a \
+        parameter or local of the same name is name-only. Read the top \
+        two tiers as callers and the bottom two as candidates; a group \
+        marked 'locals not checked' comes from a language with no scope \
+        analysis. 'unique' means only that the repository defines the \
+        name once, not that the two files are connected. Call it when \
+        the answer depends on who the callers are, not as a routine \
+        confirmation. It is the most expensive tool here, and fan-in \
+        across a large repository can take minutes.";
+
+/// The description of the `find_symbol` tool.
+pub const FIND_SYMBOL: &str = "Does this symbol exist, and where is it defined? Find symbols by \
+        substring or qualified name, optionally filtered by kind. Each \
+        hit carries file:line and a stable id usable with \
+        expand_symbols.";
+
+/// The description of the `get_symbols_overview` tool.
+pub const GET_SYMBOLS_OVERVIEW: &str = "What does this file declare? Render the named files as \
+        signatures with bodies elided -- the cheap first look, instead \
+        of reading the file. Each file's block opens with a stable ids: \
+        line naming the id pattern for that file (nested symbols \
+        qualify as Class.method), so an id for expand_symbols reads \
+        straight off the overview. Escalate to expand_symbols for the \
+        few symbols you need rather than re-reading whole files.";
+
+/// The description of the `history` tool.
+pub const HISTORY: &str = "Why does this code exist? Return the commits that changed one symbol's \
+        lines at HEAD, newest first, with full message bodies. Failure \
+        is a refusal, never an empty answer. Call it to learn why, \
+        after another tool tells you where. It does not unlock the \
+        structural-first gate and is not loaded eagerly.";
+
+/// The description of the `list_dir` tool.
+pub const LIST_DIR: &str = "What exists in this repository? List the files as a tree, honouring \
+        gitignore. Pass an optional repository-relative path to render \
+        only that directory's subtree without hiding other tracked \
+        paths by policy. For orientation when you need paths rather \
+        than symbols; depth and max_entries are capped.";
+
+/// The description of the `orient` tool.
+pub const ORIENT: &str = "Where does this code live, how is this repository shaped, how are two \
+        things connected? Start here. operation='map' (the structural \
+        entry point) takes focus, budget, limit and granularity: a \
+        token-budgeted skeleton of the highest-ranked files. It ranks \
+        and does not enumerate: limit defaults to 10 files, however \
+        large the repository. budget is counted with the server's \
+        chars/4 estimator: on this id-dense output a real BPE count \
+        runs 10-35% higher. Use grep for a known literal or file, and \
+        the map when the location is unknown or the change surface \
+        spans files. The map ranks symbols, so a file matched only by a \
+        string -- fixtures, config, resources -- does not appear. NOTE, \
+        WHY, HACK and TODO comments and ADR/RFC citations appear as \
+        rationale nodes below their symbol. operation='communities' \
+        (cheap) takes resolution and limit: which files belong \
+        together. Call it first in an unread repository, then map the \
+        group that matters. operation='cycles' (cheap) takes limit: \
+        every module-level import cycle. operation='diagram' takes \
+        focus, max_nodes, max_edges, group_by_communities and \
+        resolution: the module graph as a mermaid flowchart, for a \
+        human to read. operation='path' requires source and target and \
+        takes include_unique and include_ambiguous: the fewest-hop \
+        chain of resolved relationships between two endpoints. \
+        operation='health' takes limit: orphan candidates, unused \
+        exports and hubs, counted on same-file and resolved-via-import \
+        edges alone, plus erosion, clone share and complexity hotspots. \
+        Use it for dead code, architectural anchors and where \
+        complexity sits, not to find a bug. It does not judge design. \
+        Escalation chain: orient locates, symbols gives declarations \
+        and bodies, read gives exact lines.";
+
+/// The description of the `read` tool.
+pub const READ: &str = "You need file contents rather than symbols: exact lines from one file, or \
+        the directory tree. operation='slice' requires path and takes \
+        lines, context_lines and whole_file: numbered lines for the \
+        requested ranges, with enclosing-scope headers. Prefer symbols \
+        operation 'expand' when a symbol boundary fits. operation='dir' \
+        (cheap) takes path, depth and max_entries: the repository's \
+        files as a gitignore-honouring tree.";
+
+/// The description of the `read_slice` tool.
+pub const READ_SLICE: &str = "You need exact lines and no symbol boundary fits: return numbered \
+        lines for explicit 1-based inclusive [start, end] ranges in one \
+        file, with enclosing-scope headers. The MCP call requires \
+        non-empty lines unless whole_file=true is explicitly set. A \
+        range starting beyond the file is reported with the file's true \
+        line count, never answered with substitute content; a range \
+        running past the end keeps its clamped tail. Line-level is the \
+        last resort; prefer expand_symbols when a symbol boundary fits.";
+
+/// The description of the `repo_map` tool.
+pub const REPO_MAP: &str = "Where does this bug or feature live? The structural entry point: pass \
+        focus to seed the ranking toward the ask, and a token-budgeted \
+        skeleton of the most relevant files comes back. It is a top-N \
+        view rather than an enumeration: max_files defaults to 10, so \
+        ten files come back however large the repository is, and an \
+        auto-sized budget lands in a 2000-8000 token band, counted by \
+        the server's own chars/4 estimator and not by your model's \
+        tokenizer -- on this tool's id-dense output a real BPE count \
+        runs 10-35% higher, the band tests/unit/test_token_counter.py \
+        pins, so read budget as a reproducible knob rather than a \
+        promise about your bill. To orient in a repository you have not \
+        read yet, call analyze_structure(operation='communities') first \
+        for the file groups, then map into the group that matters. \
+        Routing rule: use grep when the literal string or file is \
+        already known; use this map when the target location is unknown \
+        or the change surface spans files. NOTE, WHY, HACK and TODO \
+        comments plus ADR/RFC citations appear below their enclosing \
+        symbol as linked rationale nodes. It ranks symbols, so it will \
+        not surface a file that matches your issue only as a string -- \
+        test fixtures, config and resource files, and modules reached \
+        by a setting name rather than a call edge. Pair it with a text \
+        search over the issue's distinctive literals rather than \
+        treating either pass as complete. A focus entry is a file path, \
+        a path suffix, a bare module stem ('envelope' for envelope.py), \
+        a qualified symbol name, or a bare function, method or class \
+        name matched exactly against the extracted symbols; each entry \
+        carries one vote split across the files it matched. A traceback \
+        frame, a blob URL, an absolute path, or a path:line spelling \
+        seeds the file it names -- paste it as it appears in the task. \
+        Entries that match nothing are listed in unresolved_seeds and \
+        noted above the map -- if you see them, the ranking is not \
+        focused the way you asked. budget is in tokens (auto-sized by \
+        default); granularity is 'function' (default), 'file', or \
+        'body' -- 'body' returns the ranked file rows plus budgeted \
+        bodies in one answer, shortened when necessary, replacing a map \
+        followed by an expand -- a symbol the focus named is expanded \
+        first, and the top-scored symbols fill the remaining seats. \
+        Omitted arguments fall back to the repository's \
+        .agentless-mcp.json, then to the built-in defaults named above. \
+        A ranked file's header may carry churn -- '4c/90d, last 3d' is \
+        commits in the last 90 days and days since the newest -- when \
+        git answers for the tree; it is evidence to weigh, and it never \
+        moves the ranking. At granularity 'function' each file's block \
+        opens with a stable ids: line naming that file's id pattern, \
+        and every symbol row below carries the qualified name alone; \
+        join the two to build an id expand accepts. A file with no row \
+        under it prints no pattern, and granularity 'file' prints none \
+        at all. A position is an @line suffix, never an N| gutter -- \
+        the gutter means verbatim file content and a map row is a \
+        normalized signature.";
+
+/// The description of the `resolve_locations` tool.
+pub const RESOLVE_LOCATIONS: &str = "Which lines hold this class, function, or location? Turn \
+        location strings (class:Invoice, function:Invoice.total, \
+        line:42) into merged line intervals and stable ids for one \
+        file. Unrecognized locations are reported individually, never \
+        dropped silently.";
+
+/// The description of the `symbols` tool.
+pub const SYMBOLS: &str = "You have a name, a file, or a stable id. Get its declaration, body, or \
+        wiring. operation='find' (cheap) requires name and takes kind \
+        and limit: symbols by substring or qualified name, each hit \
+        carrying file:line and a stable id. operation='overview' \
+        (cheap) requires paths and takes docstrings: the named files as \
+        signatures with bodies elided. Read it instead of the file. \
+        operation='expand' requires stable_ids and takes limit: the \
+        line-numbered body of each named symbol. Expand a long id \
+        alone, because an over-budget batch is shortened. \
+        operation='explain' requires target and takes limit: definition \
+        site, signature, rationale comments, fan-out and fan-in by \
+        evidence tier, and the file's imports. Start here with one \
+        suspect symbol. It replaces a find followed by a reference \
+        listing. operation='locate' (cheap) requires path and locations \
+        and takes context_lines: resolve class:, function: and line: \
+        strings to stable ids and merged intervals for one file. For \
+        who-calls-this and blast radius, use find_referencing_symbols. \
+        It is the expensive one.";
