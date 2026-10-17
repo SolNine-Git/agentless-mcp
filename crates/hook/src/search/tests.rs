@@ -234,64 +234,89 @@ fn reference_clock() -> PinnedClock {
     PinnedClock::at(UNIX_EPOCH + Duration::from_nanos(pinned[0]))
 }
 
-// Each step's code, stderr, log and markers equal the reference's. A case that needs file modes
-// to refuse is skipped for root, which they do not refuse.
-fn every_case_matches(section: &str) {
+// A setup path, as the latin-1 text of its bytes, that is not UTF-8. A macOS file system refuses
+// such a name (EILSEQ), so a case that creates one cannot run there.
+fn needs_a_non_utf8_name(case: &Case) -> bool {
+    let not_utf8 = |relative: &str| std::str::from_utf8(&latin(relative)).is_err();
+    case.setup
+        .iter()
+        .any(|op| op[1].as_str().is_some_and(not_utf8))
+}
+
+// Each step's code, stderr, log and markers equal the reference's. The section holds
+// `non_utf8_cases` cases that need a name that is not UTF-8, and macOS skips exactly those.
+fn every_case_matches(section: &str, non_utf8_cases: usize) {
     let all: Vec<Case> = cases(MANIFEST_DIR, &format!("gate/{section}"), "cases");
+    let needing = all
+        .iter()
+        .filter(|case| needs_a_non_utf8_name(case))
+        .count();
+    assert_eq!(
+        needing, non_utf8_cases,
+        "{section}: cases with a non-UTF-8 name"
+    );
     let clock = reference_clock();
     for case in &all {
-        let sandbox = Sandbox::new();
-        if case.needs_modes && !sandbox.tree.modes_bind() {
+        if cfg!(target_os = "macos") && needs_a_non_utf8_name(case) {
             continue;
         }
-        for op in &case.setup {
-            sandbox.apply(op);
-        }
-        let seen: Vec<Seen> = case
-            .steps
-            .iter()
-            .map(|step| sandbox.run(step, &clock))
-            .collect();
-        sandbox.restore(&case.setup);
-        for (index, (step, seen)) in case.steps.iter().zip(&seen).enumerate() {
-            assert_eq!(
-                *seen,
-                step.expected(),
-                "{section}: {}, step {index}",
-                case.name
-            );
-        }
+        case_matches(section, case, &clock);
+    }
+}
+
+// A case that needs file modes to refuse is skipped for root, which they do not refuse.
+fn case_matches(section: &str, case: &Case, clock: &PinnedClock) {
+    let sandbox = Sandbox::new();
+    if case.needs_modes && !sandbox.tree.modes_bind() {
+        return;
+    }
+    for op in &case.setup {
+        sandbox.apply(op);
+    }
+    let seen: Vec<Seen> = case
+        .steps
+        .iter()
+        .map(|step| sandbox.run(step, clock))
+        .collect();
+    sandbox.restore(&case.setup);
+    for (index, (step, seen)) in case.steps.iter().zip(&seen).enumerate() {
+        assert_eq!(
+            *seen,
+            step.expected(),
+            "{section}: {}, step {index}",
+            case.name
+        );
     }
 }
 
 #[test]
 fn the_reference_test_cases_match() {
-    every_case_matches("tests");
+    every_case_matches("tests", 0);
 }
 
 #[test]
 fn the_shell_and_path_shapes_match() {
-    every_case_matches("shapes");
+    every_case_matches("shapes", 10);
 }
 
 #[test]
 fn the_log_lines_and_markers_match() {
-    every_case_matches("records");
+    every_case_matches("records", 0);
 }
 
 #[test]
 fn every_suppressed_failure_allows_as_the_reference_does() {
-    every_case_matches("failures");
+    every_case_matches("failures", 0);
 }
 
 #[test]
 fn the_mark_cases_match() {
-    every_case_matches("mark");
+    every_case_matches("mark", 0);
 }
 
 #[test]
 fn a_marker_that_the_reference_wrote_unlocks_the_gate() {
-    every_case_matches("cross");
+    every_case_matches("cross", 0);
 }
 
 // A step that these tests type: their outcomes deviate from the reference's on purpose.
