@@ -5,7 +5,9 @@ use std::ffi::OsString;
 use std::mem;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
+
+use kernel::Clock;
 
 use crate::Output;
 use crate::record::{self, Outcome, Record};
@@ -16,23 +18,6 @@ const DEADLINE: Duration = Duration::from_secs(10);
 // Held back from the time of every step, so the log record is still written.
 const LOG_RESERVE: Duration = Duration::from_millis(500);
 const TERMINATED: &str = "terminated";
-
-pub(crate) trait Clock: Send + Sync {
-    fn now(&self) -> Instant;
-    fn wall(&self) -> SystemTime;
-}
-
-pub(crate) struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> Instant {
-        Instant::now()
-    }
-
-    fn wall(&self) -> SystemTime {
-        SystemTime::now()
-    }
-}
 
 pub(crate) enum Phase {
     Running(Box<Record>),

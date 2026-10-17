@@ -1,5 +1,4 @@
-//! The agentless-mcp binary: one read of the environment, then the erosion hook or the command
-//! line.
+//! The agentless-mcp binary: one read of the environment, then a hook or the command line.
 
 use std::ffi::OsString;
 use std::io;
@@ -24,11 +23,14 @@ fn main() -> ExitCode {
     ExitCode::from(dispatch(&args, &env, &services))
 }
 
-// The hook needs no start-up directory, so only the other command lines stop on an unread one.
+// The hooks need no start-up directory, so only the other command lines stop on an unread one.
 fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
     let words: Vec<Option<&str>> = args.iter().map(|arg| arg.to_str()).collect();
-    if words.as_slice() == [Some("hook"), Some("erosion")] {
-        return erosion(env, services);
+    match words.as_slice() {
+        [Some("hook"), Some("erosion")] => return erosion(env, services),
+        [Some("hook"), Some("gate-check")] => return searched(env),
+        [Some("hook"), Some("gate-mark")] => return marked(env),
+        _ => {}
     }
     if words.first() == Some(&Some("gate-report")) {
         return with_streams(|streams| {
@@ -51,6 +53,18 @@ fn dispatch(args: &[OsString], env: &EnvConfig, services: &Services) -> u8 {
 
 fn erosion(env: &EnvConfig, services: &Services) -> u8 {
     answered(|| hook::erosion(env, services, &mut io::stdin().lock()))
+}
+
+// The search gate writes its deny message itself, because a failed write changes the exit code.
+fn searched(env: &EnvConfig) -> u8 {
+    keep_panic_lines();
+    hook::gate_check(env, &mut io::stdin().lock(), &mut io::stderr().lock())
+}
+
+fn marked(env: &EnvConfig) -> u8 {
+    keep_panic_lines();
+    hook::gate_mark(env, &mut io::stdin().lock());
+    0
 }
 
 // The report opens its paths as given, so like the hook it needs no start-up directory.

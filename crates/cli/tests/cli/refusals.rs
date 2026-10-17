@@ -154,7 +154,7 @@ fn a_closed_stdout_exits_120_with_two_lines_after_the_rest_of_stderr() {
 }
 
 #[test]
-fn a_hook_command_line_other_than_erosion_is_refused() {
+fn a_hook_command_line_that_names_no_hook_is_refused() {
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let mut streams = Streams {
         out: &mut out,
@@ -163,7 +163,8 @@ fn a_hook_command_line_other_than_erosion_is_refused() {
     assert_eq!(cli::refuse_hook(&mut streams), 2);
     assert!(out.is_empty());
     let err = String::from_utf8(err).expect("UTF-8");
-    assert_eq!(err, "agentless-mcp: hook takes one argument: erosion\n");
+    let refusal = "agentless-mcp: hook takes one argument: erosion, gate-check or gate-mark\n";
+    assert_eq!(err, refusal);
 }
 
 #[test]

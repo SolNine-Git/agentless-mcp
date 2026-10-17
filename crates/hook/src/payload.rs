@@ -14,7 +14,7 @@ const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
 const WRITE: &str = "Write";
 const EDIT: &str = "Edit";
 
-type Fields = [(CodePointString, JsonValue)];
+pub(crate) type Fields = [(CodePointString, JsonValue)];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EditInput {
@@ -135,7 +135,7 @@ fn path<'a>(value: &'a CodePointString, place: &str) -> Result<&'a Path, Halt> {
         .ok_or_else(|| Halt::malformed(format!("{place} holds a lone surrogate")))
 }
 
-fn get<'a>(fields: &'a Fields, key: &str) -> Option<&'a JsonValue> {
+pub(crate) fn get<'a>(fields: &'a Fields, key: &str) -> Option<&'a JsonValue> {
     let key = CodePointString::from(key);
     fields
         .iter()

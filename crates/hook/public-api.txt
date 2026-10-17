@@ -21,4 +21,6 @@ impl core::marker::UnsafeUnpin for hook::Output
 impl core::panic::unwind_safe::RefUnwindSafe for hook::Output
 impl core::panic::unwind_safe::UnwindSafe for hook::Output
 pub fn hook::erosion(&app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read) -> hook::Output
+pub fn hook::gate_check(&app::env::EnvConfig, &mut dyn alloc::io::read::Read, &mut dyn core::io::write::Write) -> u8
+pub fn hook::gate_mark(&app::env::EnvConfig, &mut dyn alloc::io::read::Read)
 pub fn hook::gate_report(&str, core::option::Option<&str>, core::option::Option<&str>, &str) -> hook::Output

@@ -1,6 +1,6 @@
 [package]
 name = "hook"
-description = "The erosion gate that Claude Code runs before each Write and Edit: the payload, the proposed text, the in-process lint, the decision, and the log record."
+description = "The hooks that Claude Code runs around tool calls: the erosion gate before each Write and Edit, with its in-process lint, decision and log record, and the search gate that holds broad text search until a localizing agentless call."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,4 +25,5 @@ text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
 serde_json.workspace = true

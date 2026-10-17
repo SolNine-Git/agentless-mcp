@@ -1,8 +1,8 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use app::Services;
+use kernel::Clock;
 
-use crate::call::Clock;
 use crate::testing::Sandbox;
 use crate::{Output, erosion_with, watched};
 

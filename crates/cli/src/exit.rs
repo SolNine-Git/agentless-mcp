@@ -73,9 +73,13 @@ fn flush_failure(error: &io::Error) -> String {
     )
 }
 
-/// Writes the refusal of a `hook` command line other than `hook erosion`, and returns 2.
+/// Writes the refusal of a `hook` command line that names none of the three hooks, and returns 2.
 pub fn refuse_hook(streams: &mut Streams<'_>) -> u8 {
-    fail(streams.err, "hook takes one argument: erosion", EXIT_USAGE)
+    fail(
+        streams.err,
+        "hook takes one argument: erosion, gate-check or gate-mark",
+        EXIT_USAGE,
+    )
 }
 
 /// Returns the one stderr line that reports a panic.

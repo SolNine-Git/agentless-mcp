@@ -114,6 +114,7 @@ pub fn text::matching_blocks(&[&str], &[&str]) -> alloc::vec::Vec<(usize, usize,
 pub fn text::one_line(&str) -> alloc::borrow::Cow<'_, str>
 pub fn text::posix_anchor(&[u8]) -> &'static str
 pub fn text::posix_name(&str) -> &str
+pub fn text::split_shell_code_points(&text::CodePointString) -> core::result::Result<alloc::vec::Vec<text::CodePointString>, text::ShellWordsError>
 pub fn text::split_shell_words(&str) -> core::result::Result<alloc::vec::Vec<alloc::string::String>, text::ShellWordsError>
 pub fn text::split_suffix(&str) -> (&str, &str)
 pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>

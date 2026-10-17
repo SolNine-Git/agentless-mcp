@@ -5,8 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use app::EnvConfig;
 use io::testing::{Identity, Tree};
-
-use crate::call::Clock;
+use kernel::Clock;
 
 // The wall time every test clock reports, and the generator writes into each expected record.
 pub(crate) const WALL_SECONDS: u64 = 1_760_000_000;

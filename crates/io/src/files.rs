@@ -1,5 +1,5 @@
 //! Single-file changes: write a file, remove a file or a tree, mark a file as used now, and create
-//! an owner-only directory.
+//! a directory with the default mode or an owner-only one.
 
 use std::fs::{self, DirBuilder, File, FileTimes, OpenOptions, Permissions};
 use std::io::{self, ErrorKind, Write};
@@ -12,6 +12,16 @@ use crate::native::close_checked;
 const PRIVATE_MODE: u32 = 0o700;
 // The mode a new file asks for; the umask removes bits from it.
 const PLAIN_FILE_MODE: u32 = 0o666;
+
+/// Creates `directory` and its missing parents with the default mode, 0777 less the umask. A
+/// directory that exists already is kept as it is.
+///
+/// # Errors
+///
+/// Returns the error of a creation that failed, or of a path that exists and is not a directory.
+pub fn create_dirs(directory: &Path) -> io::Result<()> {
+    fs::create_dir_all(directory)
+}
 
 /// Creates `directory` with mode 0700 and its missing parents with the default mode, then sets
 /// mode 0700 on its parent and on itself. It returns each mode change that failed, where

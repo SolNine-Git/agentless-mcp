@@ -1,5 +1,7 @@
-//! The erosion gate that Claude Code runs before each Write and Edit: it lints the proposed text
-//! in process, decides whether to block, advise or allow, and appends one log record.
+//! The hooks that Claude Code runs around tool calls. The erosion gate lints the proposed text of
+//! each Write and Edit, decides whether to block, advise or allow, and appends one log record.
+//! The search gate holds broad text search until a localizing agentless call, and records that
+//! call.
 
 mod call;
 mod destination;
@@ -10,6 +12,7 @@ mod modes;
 mod payload;
 mod record;
 mod report;
+mod search;
 mod signals;
 mod text;
 mod verdict;
@@ -24,10 +27,12 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
 use app::{EnvConfig, Services};
+use kernel::{Clock, SystemClock};
 
 pub use crate::report::gate_report;
+pub use crate::search::{gate_check, gate_mark};
 
-use crate::call::{Call, Clock, SystemClock};
+use crate::call::Call;
 use crate::gate::Ports;
 use crate::signals::Watch;
 use crate::text::panic_text;
