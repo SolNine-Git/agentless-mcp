@@ -1,12 +1,16 @@
 //! The SIGINT watch: while a hold is active, SIGINT is recorded and the process goes on, so a test
-//! run can kill its process group and a repository write can finish. With no hold active, SIGINT
-//! ends the process at once, as it does without the watch.
+//! run can kill its process group, a repository write can finish and a worktree is released. With
+//! no hold active, SIGINT ends the process at once by its default action, even when the process
+//! started with SIGINT ignored: the first hold replaces an inherited ignore.
 
+use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use signal_hook::consts::SIGINT;
+
+use crate::os_error_line;
 
 struct Watch {
     // Set by the first SIGINT after the registration, and never cleared: the process is ending.
@@ -18,28 +22,45 @@ struct Watch {
 
 static WATCH: Mutex<Option<Arc<Watch>>> = Mutex::new(None);
 
-// One active hold. The drop releases it.
-pub(crate) struct Hold {
+/// One active hold on SIGINT: while a hold lives, SIGINT is recorded and the process goes on. The
+/// drop releases it.
+pub struct SigintHold {
     watch: Arc<Watch>,
 }
 
-// Registers the watch on first use, then counts one more active hold.
-pub(crate) fn hold() -> io::Result<Hold> {
-    let watch = watch()?;
+/// The SIGINT watch could not be registered. It displays as the error text.
+#[derive(Debug)]
+pub struct WatchError(pub io::Error);
+
+/// Registers the SIGINT watch on first use, then returns one more active hold.
+///
+/// # Errors
+///
+/// Returns the [`WatchError`] of the registration.
+pub fn hold_sigint() -> Result<SigintHold, WatchError> {
+    let watch = watch().map_err(WatchError)?;
     let mut holds = watch.holds.lock().unwrap_or_else(PoisonError::into_inner);
     *holds += 1;
     watch.idle.store(false, Ordering::SeqCst);
     drop(holds);
-    Ok(Hold { watch })
+    Ok(SigintHold { watch })
 }
 
-impl Hold {
+impl SigintHold {
     pub(crate) fn interrupted(&self) -> bool {
         self.watch.interrupted.load(Ordering::SeqCst)
     }
 }
 
-impl Drop for Hold {
+impl fmt::Display for WatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SIGINT cannot be watched: {}", os_error_line(&self.0))
+    }
+}
+
+impl std::error::Error for WatchError {}
+
+impl Drop for SigintHold {
     fn drop(&mut self) {
         let mut holds = self
             .watch

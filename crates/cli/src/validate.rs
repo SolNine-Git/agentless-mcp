@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use app::{EnvConfig, EnvRunner, IntArg, Repo, Services, ValidateReport, ValidateRequest};
-use render::receipt_lines;
+use render::{note_text, receipt_lines};
 
 use crate::Streams;
 use crate::caller::{below_cwd, shown_path};
@@ -37,7 +37,7 @@ pub(crate) fn run(
     }
     let runner = EnvRunner::new(env);
     let noted = app::validate(services, &found.repo, &found.snapshot, &request, &runner);
-    diagnostics_or_stop(streams, &noted.diagnostics);
+    diagnostics_or_stop(streams, &noted);
     match noted.value {
         Ok(verdicts) => delivered(call, &found, &verdicts, services, streams),
         Err(error) => fail(streams.err, &error.to_string(), code_for(&error)),
@@ -144,13 +144,14 @@ fn delivered(
             fail(streams.err, &message, EXIT_USAGE);
             return write_answer(streams, &out, "", EXIT_USAGE);
         }
-        notes = format!("agentless-mcp: verdicts written to {shown}\n");
+        notes = note_text(&format!("agentless-mcp: verdicts written to {shown}"));
         out = String::new();
     }
-    let mut lines = receipt_lines(&receipt, &verdicts.summary_line());
-    let warnings = verdicts.warnings().into_iter();
-    lines.extend(warnings.map(|warning| format!("agentless-mcp: {warning}")));
-    notes.push_str(&(lines.join("\n") + "\n"));
+    let receipt = receipt_lines(&receipt, &verdicts.summary_line()).join("\n");
+    notes.push_str(&note_text(&receipt));
+    for warning in verdicts.warnings() {
+        notes.push_str(&note_text(&format!("agentless-mcp: {warning}")));
+    }
     write_answer(streams, &out, &notes, domain_code(verdicts.any_passed()))
 }
 

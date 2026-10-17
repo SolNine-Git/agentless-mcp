@@ -11,41 +11,14 @@ use crate::testing::{self, Tree};
 use crate::{Outcome, Spec, run};
 
 const MKFIFO_TIMEOUT: Duration = Duration::from_secs(10);
-// The marker that turns a run of this test binary into the child that one test starts.
-const CHILD: &str = "IO_TEST_CHILD";
 const CHILD_TIMEOUT: Duration = Duration::from_secs(60);
 
-// True in the child process that `run_child(name)` starts.
-pub(crate) fn is_child(name: &str) -> bool {
-    std::env::var_os(CHILD).is_some_and(|value| value == name)
-}
+pub(crate) use crate::testing::is_child;
 
-// Runs the test `name` of this binary alone in a child process, with the PATH and TMPDIR of this
-// process, and returns how the child ended and its stderr.
+// Runs the test `name` of this binary alone in a child process, and returns how the child ended
+// and its stderr.
 pub(crate) fn run_child(name: &str) -> (std::process::ExitStatus, String) {
-    let binary = std::env::current_exe().expect("the test binary has a path");
-    let kept = ["PATH", "TMPDIR"]
-        .into_iter()
-        .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)));
-    let spec = Spec {
-        program: binary.into_os_string(),
-        args: ["--exact", name, "--nocapture", "--test-threads", "1"]
-            .map(OsString::from)
-            .to_vec(),
-        cwd: PathBuf::from("/"),
-        env: kept
-            .chain([(OsString::from(CHILD), OsString::from(name))])
-            .collect(),
-        timeout: CHILD_TIMEOUT,
-        stdout_cap: 1 << 16,
-        stderr_cap: 1 << 16,
-    };
-    match run(&spec) {
-        Outcome::Exited { status, stderr, .. } => {
-            (status, String::from_utf8_lossy(&stderr).into_owned())
-        }
-        outcome => panic!("the child test {name} did not finish: {outcome:?}"),
-    }
+    testing::run_child(name, CHILD_TIMEOUT)
 }
 
 pub(crate) fn fixture<T: DeserializeOwned>(file: &str, section: &str) -> T {
@@ -87,6 +60,9 @@ fn make(tree: &Tree, entry: &Value) -> std::io::Result<()> {
     match text(0) {
         "dir" => tree.create_dir(path).map(drop),
         "file" => tree.write_file(path, text(2)).map(drop),
+        "executable" => tree
+            .write_file(path, text(2))
+            .and_then(|_| tree.set_mode(path, 0o755)),
         "bytes" => tree.write_file(path, bytes(&entry[2])).map(drop),
         "padded" => tree.write_file(path, padded(text(2), &entry[3])).map(drop),
         "link" => tree.symlink(path, tree.unplaced(text(2))).map(drop),

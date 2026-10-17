@@ -4,7 +4,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::run::exit_code;
+use io::exit_code;
+
 use crate::{Git, Limits};
 
 // A root path is far shorter than the cap. The caller's timeout replaces `seconds`.

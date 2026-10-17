@@ -19,6 +19,7 @@ path = "src/main.rs"
 app = { path = "../app" }
 cli = { path = "../cli" }
 hook = { path = "../hook" }
+io = { path = "../io" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }

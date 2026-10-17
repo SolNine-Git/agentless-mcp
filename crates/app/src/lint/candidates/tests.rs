@@ -187,6 +187,82 @@ fn each_manifest_case_declares_the_reference_dependencies() {
     }
 }
 
+// A candidate set whose one edit names secret/x.py, with secret made unsearchable.
+fn unsearchable(sandbox: &Sandbox) -> Option<(Services, Repo)> {
+    let root = sandbox.repo("repo", &[("secret/x.py", "def f():\n    return 1\n")]);
+    let edit = r#"{"edits": [{"path": "secret/x.py", "search": "1", "replace": "2"}]}"#;
+    sandbox.put("cands/a.json", edit);
+    if !sandbox.modes_bind() {
+        return None;
+    }
+    let services = sandbox.services(sandbox.path());
+    let repo = Repo::load(&services, &root).expect("the repository loads");
+    sandbox.chmod("repo/secret", 0o000);
+    Some((services, repo))
+}
+
+#[test]
+fn a_target_whose_stat_fails_is_unreadable_not_absent() {
+    let sandbox = Sandbox::new();
+    let services = sandbox.services(sandbox.path());
+    let long = sandbox.path().join("n".repeat(300));
+    let error = load_lint_candidates(&services, &long).expect_err("the stat fails");
+    let expected = format!(
+        "cannot read <SANDBOX>/{}: File name too long",
+        "n".repeat(300)
+    );
+    assert_eq!(
+        refused(error, &sandbox),
+        Expected::Error(("InputUnreadable".into(), expected))
+    );
+}
+
+#[test]
+fn an_edited_file_whose_stat_fails_is_a_read_that_failed() {
+    let sandbox = Sandbox::new();
+    let Some((services, repo)) = unsearchable(&sandbox) else {
+        return;
+    };
+    let reads = super::tree::working_reads(&repo.root, &["secret/x.py"]);
+    let candidates = load_lint_candidates(&services, &sandbox.path().join("cands"));
+    let request = CandidatesRequest {
+        candidates: candidates.expect("the candidate loads"),
+        checks: CheckSelection::all(),
+    };
+    let mut miss = |_: &str, _: &str, _| Stored::Miss;
+    let linted = linted(&services, &repo, &request, &mut miss);
+    sandbox.chmod("repo/secret", 0o755);
+    let unread = Some(Err("unreadable: Permission denied".to_owned()));
+    assert_eq!(reads.get("secret/x.py"), Some(&unread));
+    let report = compact(&linted.value.expect("a report"));
+    let row = "\"message\": \"not checked: the text of secret/x.py before the change was not read \
+               (unreadable: Permission denied), so no pair check compared this file.\"";
+    assert!(report.contains(row), "{report}");
+    assert!(!report.contains("no such file"), "{report}");
+}
+
+#[test]
+fn a_manifest_whose_stat_fails_is_a_warning_not_an_absent_manifest() {
+    let sandbox = Sandbox::new();
+    sandbox.put("hidden/pyproject.toml", "[project]\ndependencies = []\n");
+    sandbox.mkdir("repo");
+    let link = [
+        "symlink",
+        "repo/pyproject.toml",
+        "<SANDBOX>/hidden/pyproject.toml",
+    ];
+    sandbox.apply(&link.map(Value::from));
+    if !sandbox.modes_bind() {
+        return;
+    }
+    sandbox.chmod("hidden", 0o000);
+    let declared = read_declared_dependencies(&sandbox.path().join("repo"));
+    sandbox.chmod("hidden", 0o755);
+    let warning = "pyproject.toml not read: unreadable: Permission denied";
+    assert_eq!(declared.warnings, [warning]);
+    assert!(declared.sources.is_empty());
+}
+
 #[test]
 fn each_input_name_gives_the_reference_stem() {
     let cases: Vec<(String, String)> = io::testing::cases(MANIFEST_DIR, "write/lint", "stems");

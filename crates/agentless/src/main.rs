@@ -13,6 +13,8 @@ use cli::Streams;
 static PANIC_LINE: OnceLock<String> = OnceLock::new();
 
 fn main() -> ExitCode {
+    // Before any thread starts: a write past the file size limit is then an error, not a death.
+    ::io::catch_file_size_signal();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let env = match std::env::current_dir() {
         Ok(cwd) => EnvConfig::new(std::env::vars_os(), cwd),

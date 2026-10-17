@@ -23,6 +23,14 @@ pub fn random_bytes(buffer: &mut [u8]) -> io::Result<()> {
     File::open(SOURCE)?.read_exact(buffer)
 }
 
+// The name prefix `.<name>.` of a hidden sibling of the file `name`.
+pub(crate) fn sibling_prefix(name: &OsStr) -> OsString {
+    let mut prefix = OsString::from(".");
+    prefix.push(name);
+    prefix.push(".");
+    prefix
+}
+
 // Creates `<prefix><8 random characters><suffix>` in `directory` with mode 0600, exclusively, so
 // an existing file or symlink at the name is never opened.
 pub(crate) fn create_named(

@@ -9,11 +9,11 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    ApplyMode, INTERRUPTED, Target, applied_at, apply_patch, canonical, check_patch, load_edits,
-    normalize_patch,
+    ApplyMode, ApplyReport, INTERRUPTED, Target, applied_at, apply_patch, canonical, check_patch,
+    load_edits, normalize_patch,
 };
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases};
-use crate::{Error, Noted, Repo};
+use crate::{Error, Noted, Repo, Services};
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -313,6 +313,90 @@ fn a_patch_that_did_not_apply_is_not_stopped_by_an_interrupt() {
     let report = applied.value.expect("a report");
     assert!(!report.ok());
     assert_eq!(report.diff, "");
+}
+
+// A worktree apply of one passing edit to app.py, with `services` as the test sets them.
+fn worktree_apply(sandbox: &Sandbox, services: &Services) -> Noted<Result<ApplyReport, Error>> {
+    let root = sandbox.path().join("repo");
+    let repo = Repo::load(services, &root).expect("the repository loads");
+    let snapshot = services
+        .git
+        .snapshot(&root, services.git.root(&root).as_deref());
+    let edits = edits_of("### app.py\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n");
+    apply_patch(services, &repo, &snapshot, &edits, ApplyMode::Worktree)
+}
+
+#[test]
+fn a_worktree_apply_warns_of_an_ignored_cache_home_first() {
+    let sandbox = Sandbox::new();
+    sandbox.repo("repo", &[("app.py", "x = 1\n")]);
+    let mut services = sandbox.services(sandbox.path());
+    let ignored = io::RelativeCacheHome(std::ffi::OsString::from("relcache"));
+    let warning = ignored.to_string();
+    if let Ok(cache) = services.cache_root.as_mut() {
+        cache.ignored = Some(ignored);
+    }
+    let applied = worktree_apply(&sandbox, &services);
+    assert!(applied.value.is_ok(), "{:?}", applied.value);
+    assert_eq!(applied.diagnostics, [warning]);
+}
+
+#[test]
+fn a_worktree_apply_with_no_cache_home_is_refused_before_any_worktree() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("app.py", "x = 1\n")]);
+    let mut services = sandbox.services(sandbox.path());
+    services.cache_root = Err(io::HomeUnknown);
+    let applied = worktree_apply(&sandbox, &services);
+    let Err(Error::Kind(kernel::Error::OperationFailed(message))) = applied.value else {
+        panic!("an operation failure: {:?}", applied.value);
+    };
+    assert_eq!(message, "Could not determine home directory.");
+    assert!(applied.diagnostics.is_empty());
+    let listed = String::from_utf8(sandbox.git(&root, &["worktree", "list"])).expect("UTF-8");
+    assert_eq!(listed.lines().count(), 1, "{listed}");
+}
+
+// The edit's path, its status, and its reason, for each edit of an apply in the working tree.
+fn outcomes_of(root: &Path, git: &git::Git, edits: &[Edit]) -> Vec<(String, String)> {
+    let applied = applied_at(git, &Target::working_tree(root), edits, || false);
+    let report = applied.value.expect("a report");
+    let outcomes = report.result.outcomes.iter();
+    outcomes
+        .map(|outcome| (format!("{:?}", outcome.status), outcome.reason.clone()))
+        .collect()
+}
+
+#[test]
+fn a_stat_that_fails_is_an_unreadable_file_not_a_missing_one() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repo("repo", &[("secret/x.py", "x = 1\n")]);
+    let services = sandbox.services(sandbox.path());
+    let repo = Repo::load(&services, &root).expect("the repository loads");
+    let long = "n".repeat(300);
+    let edits = edits_of(&format!(
+        "### {long}.py\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n"
+    ));
+    let checked = check_patch(&repo, &edits).expect("the check reports");
+    assert_eq!(checked.files[0].error, "unreadable: File name too long");
+    let expected = (
+        "Unreadable".to_owned(),
+        format!("{long}.py: unreadable: File name too long"),
+    );
+    assert_eq!(outcomes_of(&root, &services.git, &edits), [expected]);
+    if !sandbox.modes_bind() {
+        return;
+    }
+    let edits =
+        edits_of("### secret/x.py\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n");
+    sandbox.chmod("repo/secret", 0o000);
+    let checked = check_patch(&repo, &edits);
+    let outcomes = outcomes_of(&root, &services.git, &edits);
+    sandbox.chmod("repo/secret", 0o755);
+    let checked = checked.expect("the check reports");
+    assert_eq!(checked.files[0].error, "unreadable: Permission denied");
+    let reason = "secret/x.py: unreadable: Permission denied".to_owned();
+    assert_eq!(outcomes, [("Unreadable".to_owned(), reason)]);
 }
 
 #[test]

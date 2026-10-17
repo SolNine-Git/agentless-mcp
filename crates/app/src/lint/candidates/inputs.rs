@@ -1,7 +1,7 @@
 //! The candidate inputs: one patch file or a directory of them, and one unified diff.
 
 use std::ffi::OsStr;
-use std::fs;
+use std::fs::{self, Metadata};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
@@ -31,7 +31,8 @@ pub fn load_lint_candidates(
     let expanded = expand_user(target, services.home.as_deref());
     let resolved = io::resolve(&below_cwd(services, &expanded)?)
         .map_err(|error| unreadable(io::strerror(&error)))?;
-    if resolved.is_dir() {
+    let found = io::stat_present(&resolved).map_err(|error| cannot_read(&resolved, &error))?;
+    if found.as_ref().is_some_and(Metadata::is_dir) {
         let files = patch_files(&resolved)?;
         if files.is_empty() {
             let message = format!(
@@ -42,7 +43,7 @@ pub fn load_lint_candidates(
         }
         return files.iter().map(PathBuf::as_path).map(candidate).collect();
     }
-    if !resolved.is_file() {
+    if !found.as_ref().is_some_and(Metadata::is_file) {
         let message = format!(
             "{} is neither a patch file nor a directory of them",
             resolved.display()
@@ -89,24 +90,24 @@ fn text_of(read: Result<Vec<u8>, String>, path: &Path, what: &str) -> Result<Str
 }
 
 // Every file of `directory`, symlinks to files included, in the code point order of the names.
+// An entry that cannot be stat'ed refuses the directory: it could be a candidate.
 pub(crate) fn patch_files(directory: &Path) -> Result<Vec<PathBuf>, Error> {
-    let listing_error = |error: std::io::Error| {
-        let message = format!(
-            "cannot read {}: {}",
-            directory.display(),
-            io::strerror(&error)
-        );
-        unreadable(message)
-    };
+    let listing_error = |error: std::io::Error| cannot_read(directory, &error);
     let mut files = Vec::new();
     for entry in fs::read_dir(directory).map_err(listing_error)? {
         let path = entry.map_err(listing_error)?.path();
-        if path.is_file() {
+        let found = io::stat_present(&path).map_err(|error| cannot_read(&path, &error))?;
+        if found.as_ref().is_some_and(Metadata::is_file) {
             files.push(path);
         }
     }
     files.sort_by_cached_key(|path| code_points(path.file_name().unwrap_or_default()));
     Ok(files)
+}
+
+pub(crate) fn cannot_read(path: &Path, error: &std::io::Error) -> Error {
+    let message = format!("cannot read {}: {}", path.display(), io::strerror(error));
+    unreadable(message)
 }
 
 fn code_points(name: &OsStr) -> CodePointString {

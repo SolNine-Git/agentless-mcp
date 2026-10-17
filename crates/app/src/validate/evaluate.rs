@@ -14,7 +14,7 @@ use super::built::{applied_but_unmeasured, apply_failed, deadline_expired, reaso
 use super::candidates::Candidate;
 use super::plan::{Plan, execution_groups, share_execution};
 use super::records::{ApplyStatus, CandidateVerdict, Verdict};
-use super::{Run, and_then, is_stopped, map_ok, stopped, worktree_repo};
+use super::{Run, is_stopped, stopped, worktree_repo};
 use crate::parallel;
 use crate::patches::{ApplyMode, apply_patch};
 use crate::{Error, Noted};
@@ -66,9 +66,8 @@ impl Run<'_> {
         candidates: &[Candidate],
         repro_valid: bool,
     ) -> Noted<Result<(Vec<CandidateVerdict>, bool), Error>> {
-        and_then(self.plan_candidates(candidates), |(plans, immediate)| {
-            self.executed(&plans, immediate, repro_valid)
-        })
+        self.plan_candidates(candidates)
+            .then_ok(|(plans, immediate)| self.executed(&plans, immediate, repro_valid))
     }
 
     fn executed(
@@ -88,9 +87,7 @@ impl Run<'_> {
         let evaluated = parallel::map_in_order(&representatives, threads, |plan| {
             self.evaluate(plan, repro_valid)
         });
-        map_ok(gathered(evaluated), |evaluations| {
-            shared(plans, &groups, &evaluations, immediate)
-        })
+        gathered(evaluated).map_ok(|evaluations| shared(plans, &groups, &evaluations, immediate))
     }
 
     fn evaluate(&self, plan: &Plan<'_>, repro_valid: bool) -> Noted<Result<Evaluation, Halt>> {
@@ -141,7 +138,7 @@ impl Run<'_> {
             &plan.edits,
             ApplyMode::InPlace,
         );
-        and_then(applied, |report| {
+        applied.then_ok(|report| {
             if !report.ok() {
                 let reasons = reasons(&report.result);
                 let verdict = apply_failed(plan.candidate, reasons, self.elapsed(started));
@@ -171,10 +168,10 @@ impl Run<'_> {
             }));
         };
         let regression = self.run_command(cwd, &self.request.test_cmd, &bound);
-        and_then(regression, |regression| {
+        regression.then_ok(|regression| {
             let truncated = budget::truncated(&bound, &regression);
             let reproduced = self.reproduction(cwd, &regression, repro_valid);
-            map_ok(reproduced, |reproduced| {
+            reproduced.map_ok(|reproduced| {
                 let duration = self.elapsed(started);
                 measured_verdict(plan, regression, reproduced, truncated, duration)
             })
@@ -198,12 +195,13 @@ impl Run<'_> {
         let Some(bound) = self.bound() else {
             return Noted::new(Ok(Reproduced::not_evaluated(true)));
         };
-        map_ok(self.run_command(cwd, command, &bound), |run| Reproduced {
-            verdict: Some(Verdict::of(run.status)),
-            truncated: budget::truncated(&bound, &run),
-            run: Some(run),
-            abandoned: false,
-        })
+        self.run_command(cwd, command, &bound)
+            .map_ok(|run| Reproduced {
+                verdict: Some(Verdict::of(run.status)),
+                truncated: budget::truncated(&bound, &run),
+                run: Some(run),
+                abandoned: false,
+            })
     }
 }
 
@@ -261,6 +259,7 @@ fn gathered(
     Noted { value, diagnostics }
 }
 
+// A SIGINT wins over any failure; otherwise the first failure in representative order stays.
 fn kept(first: Option<Error>, found: Error) -> Error {
     match first {
         Some(first) if is_stopped(&first) || !is_stopped(&found) => first,
@@ -286,4 +285,34 @@ fn shared(
     verdicts.sort_by_key(|verdict| verdict.index);
     let abandoned = evaluations.iter().any(|evaluation| evaluation.abandoned);
     (verdicts, abandoned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed(text: &str) -> Noted<Result<Evaluation, Halt>> {
+        let error = kernel::Error::OperationFailed(text.to_owned());
+        Noted::new(Err(Halt::Failed(error.into())))
+    }
+
+    fn interrupted() -> Noted<Result<Evaluation, Halt>> {
+        Noted::new(Err(Halt::Failed(stopped())))
+    }
+
+    // The error text that the representatives' answers, in representative order, give.
+    fn answer(evaluated: Vec<Noted<Result<Evaluation, Halt>>>) -> String {
+        match gathered(evaluated).value {
+            Err(error) => error.to_string(),
+            Ok(evaluations) => panic!("no failure among {evaluations:?}"),
+        }
+    }
+
+    #[test]
+    fn a_sigint_wins_over_any_failure_and_otherwise_the_first_failure_stays() {
+        let stop = stopped().to_string();
+        assert_eq!(answer(vec![failed("capture"), interrupted()]), stop);
+        assert_eq!(answer(vec![interrupted(), failed("capture")]), stop);
+        assert_eq!(answer(vec![failed("first"), failed("second")]), "first");
+    }
 }

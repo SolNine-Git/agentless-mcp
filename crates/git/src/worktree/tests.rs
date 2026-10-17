@@ -3,6 +3,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 
 use super::*;
 use crate::testing::{Scratch, path_before};
@@ -531,6 +532,39 @@ fn a_killed_creation_leaves_no_locked_record_and_no_scratch() {
     assert_eq!(scratch_entries(&scratch), Vec::<PathBuf>::new());
 }
 
+const SIGINT_CHILD: &str = "worktree::tests::child_gets_sigint_during_worktree_add";
+
+#[test]
+fn a_sigint_during_the_add_is_held_until_the_release_is_done() {
+    let (status, stderr) = io::testing::run_child(SIGINT_CHILD, Duration::from_secs(60));
+    assert_eq!(status.code(), Some(0), "{status:?} {stderr}");
+    assert!(stderr.contains("released after the SIGINT"), "{stderr}");
+}
+
+// The child of the test above: a slow git sends SIGINT to this process during `worktree add`.
+#[test]
+fn child_gets_sigint_during_worktree_add() {
+    if !io::testing::is_child(SIGINT_CHILD) {
+        return;
+    }
+    let scratch = Scratch::new();
+    let root = repo(&scratch);
+    let body = format!(
+        "#!/bin/sh\ncase \" $* \" in\n*\" worktree add \"*) kill -INT \"$PPID\"; sleep 0.2;;\n\
+         esac\nexec \"{real}\" \"$@\"\n",
+        real = real_git().display()
+    );
+    let git = faked(&scratch, &body);
+    let commit = head(&scratch, &root);
+    let made = git.worktree(&root, &commit, &cache(&scratch));
+    let tree = made.unwrap_or_else(|failure| panic!("{}", failure.error));
+    assert!(io::interrupted(), "the SIGINT was not recorded");
+    assert_eq!(tree.release(), []);
+    assert_eq!(entries(&root.join(".git/worktrees")), Vec::<PathBuf>::new());
+    assert_eq!(scratch_entries(&scratch), Vec::<PathBuf>::new());
+    eprintln!("released after the SIGINT");
+}
+
 // A git that refuses the named worktree subcommand and succeeds at every other call.
 fn refusing_git(scratch: &Scratch, refused: &str) -> Git {
     let body = format!(
@@ -603,19 +637,22 @@ fn a_directory_that_no_rung_removes_is_named_for_an_operator() {
     }
     let path = fixture_tree(&scratch, "locked/wt-fixture");
     let git = refusing_git(&scratch, "remove");
-    scratch.set_mode("locked", 0o555);
-    let notes = release(&git, &scratch.root, &path);
-    scratch.set_mode("locked", 0o755);
-    assert!(path.exists());
-    let error = refusal(&scratch);
-    let expected = [
-        CleanupNote::RemoveFailed {
-            path: path.clone(),
-            error,
-        },
-        CleanupNote::Leftover { path },
-    ];
-    assert_eq!(notes, expected);
+    // 0o000 also refuses the existence check: a directory that cannot be seen is not proven gone.
+    for mode in [0o555, 0o000] {
+        scratch.set_mode("locked", mode);
+        let notes = release(&git, &scratch.root, &path);
+        scratch.set_mode("locked", 0o755);
+        assert!(path.exists());
+        let error = refusal(&scratch);
+        let expected = [
+            CleanupNote::RemoveFailed {
+                path: path.clone(),
+                error,
+            },
+            CleanupNote::Leftover { path: path.clone() },
+        ];
+        assert_eq!(notes, expected, "mode {mode:o}");
+    }
 }
 
 #[test]
@@ -631,4 +668,7 @@ fn an_os_error_and_a_root_outside_its_top_have_their_texts() {
         top: PathBuf::from("/c"),
     };
     assert_eq!(outside.to_string(), "'/a/b' is not in the subpath of '/c'");
+    let watch = WorktreeError::Watch(io::WatchError(std::io::Error::from_raw_os_error(22)));
+    let expected = "SIGINT cannot be watched: OSError: [Errno 22] Invalid argument";
+    assert_eq!(watch.to_string(), expected);
 }

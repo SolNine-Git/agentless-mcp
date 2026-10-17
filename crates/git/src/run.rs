@@ -3,7 +3,6 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::Duration;
@@ -237,7 +236,7 @@ fn exited(
     stdout: Vec<u8>,
     stderr: &[u8],
 ) -> GitOutcome {
-    let code = exit_code(status);
+    let code = io::exit_code(status);
     if code == 0 {
         return GitOutcome::Printed(stdout);
     }
@@ -247,14 +246,6 @@ fn exited(
         code,
         detail,
     })
-}
-
-// A signal shows as its negative number. After a wait, a status is either an exit or a signal.
-pub(crate) fn exit_code(status: ExitStatus) -> i32 {
-    status
-        .code()
-        .or_else(|| status.signal().map(|signal| -signal))
-        .unwrap_or_else(|| status.into_raw())
 }
 
 fn first_line(stderr: &[u8]) -> String {

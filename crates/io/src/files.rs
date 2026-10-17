@@ -2,7 +2,7 @@
 //! an owner-only directory.
 
 use std::fs::{self, DirBuilder, File, FileTimes, OpenOptions, Permissions};
-use std::io::{self, Write};
+use std::io::{self, ErrorKind, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -12,7 +12,8 @@ const PRIVATE_MODE: u32 = 0o700;
 const PLAIN_FILE_MODE: u32 = 0o666;
 
 /// Creates `directory` with mode 0700 and its missing parents with the default mode, then sets
-/// mode 0700 on its parent and on itself. It returns each mode change that failed.
+/// mode 0700 on its parent and on itself. It returns each mode change that failed, where
+/// [`create_owner_dir`] fails on it.
 ///
 /// # Errors
 ///
@@ -29,7 +30,7 @@ pub fn create_private_dir(directory: &Path) -> io::Result<Vec<(PathBuf, io::Erro
 }
 
 /// Creates `directory` with mode 0700 and its missing parents with the default mode, then sets
-/// mode 0700 on `directory` alone.
+/// mode 0700 on `directory` alone. Unlike [`create_private_dir`], it leaves the parent's mode.
 ///
 /// # Errors
 ///
@@ -55,11 +56,12 @@ pub(crate) fn make_dir(directory: &Path) -> io::Result<()> {
 }
 
 /// Writes `bytes` to the file `path`: a new file gets mode 0666 less the umask, and an existing
-/// file is truncated first. There is no temporary file and no flush to disk.
+/// file is truncated first. There is no temporary file. A regular file is flushed to disk, so a
+/// write error that its close would report is returned.
 ///
 /// # Errors
 ///
-/// Returns the error of the open or of a write.
+/// Returns the error of the open, of a write, or of the flush.
 pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -67,7 +69,33 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .truncate(true)
         .mode(PLAIN_FILE_MODE)
         .open(path)?;
-    file.write_all(bytes)
+    file.write_all(bytes)?;
+    sync_written(&file)
+}
+
+// A deferred write error (NFS, a disk quota) shows only in the flush or in the close, and the drop
+// of a File discards the close's error. A device or a pipe has nothing to flush.
+pub(crate) fn sync_written(file: &File) -> io::Result<()> {
+    if !file.metadata()?.is_file() {
+        return Ok(());
+    }
+    flushed(file.sync_data())
+}
+
+// A file system that cannot flush answers Unsupported or InvalidInput (EINVAL): its data stays as
+// the writes left it.
+pub(crate) fn flushed(synced: io::Result<()>) -> io::Result<()> {
+    match synced {
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::Unsupported | ErrorKind::InvalidInput
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 /// Removes the directory `path` and everything in it.
@@ -272,6 +300,22 @@ mod tests {
         assert_eq!(crate::strerror(&refused), "Is a directory");
         let missing = write_file(&tree.join("missing/out"), b"x").expect_err("no parent");
         assert_eq!(crate::strerror(&missing), "No such file or directory");
+    }
+
+    #[test]
+    fn a_device_takes_a_plain_write_with_no_flush() {
+        write_file(Path::new("/dev/null"), b"verdicts\n").expect("/dev/null takes the write");
+    }
+
+    #[test]
+    fn only_a_file_system_with_no_flush_counts_as_flushed() {
+        for code in [libc::EINVAL, libc::EOPNOTSUPP, libc::ENOSYS] {
+            let refused = Err(io::Error::from_raw_os_error(code));
+            assert!(flushed(refused).is_ok(), "errno {code}");
+        }
+        let deferred = Err(io::Error::from_raw_os_error(libc::EDQUOT));
+        let error = flushed(deferred).expect_err("a deferred write error surfaces");
+        assert_eq!(crate::strerror(&error), "Disk quota exceeded");
     }
 
     #[test]

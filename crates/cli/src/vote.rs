@@ -31,11 +31,13 @@ pub(crate) fn run(call: &Vote, services: &Services, streams: &mut Streams<'_>) -
     } else {
         Ok(render::vote_text(&vote.report))
     };
-    let mut notes = format!(
-        "# agentless-mcp vote over {source}\n# test-cmd: {}\n# {}\n",
-        vote.verdicts.test_cmd,
-        render::vote_summary(&vote.report)
-    );
+    let mut notes = [
+        format!("# agentless-mcp vote over {source}"),
+        format!("# test-cmd: {}", vote.verdicts.test_cmd),
+        format!("# {}", render::vote_summary(&vote.report)),
+    ]
+    .map(|line| render::note_text(&line))
+    .concat();
     let verified = vote.verdicts.baseline == BaselineStatus::Ok;
     if !verified {
         notes.push_str(UNVERIFIED);

@@ -6,6 +6,7 @@
 mod edits;
 mod reports;
 mod sources;
+mod worktree;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -16,12 +17,16 @@ use syntax::Language;
 use crate::{Error, Noted, Repo, Services};
 use sources::{read_sources, with_read_reasons};
 
+pub(crate) use worktree::{Scratch, every_ignored};
+
 pub use edits::load_edits;
 pub use reports::{ApplyReport, CheckReport, FileCheck, NormalizeReport};
 pub use sources::{NO_SUCH_FILE, NOT_UTF8};
 
 const INTERRUPTED: &str =
     "patch apply was interrupted by SIGINT after its write; no diff was taken";
+// A worktree apply never writes the working tree, and its worktree is released.
+const INTERRUPTED_IN_WORKTREE: &str = "patch apply was interrupted by SIGINT; no diff was taken";
 
 /// Where apply writes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,10 +50,10 @@ pub fn check_patch(repo: &Repo, edits: &[Edit]) -> Result<CheckReport, Error> {
     let mut files: Vec<FileCheck> = sources
         .unreadable
         .iter()
-        .map(|(path, reason)| FileCheck {
+        .map(|(path, unread)| FileCheck {
             path: path.clone(),
             verdict: None,
-            error: reason.clone(),
+            error: unread.reason.clone(),
         })
         .collect();
     let mut changed = changes(&sources.contents, &result);
@@ -189,7 +194,7 @@ fn require_clean(dirty_count: Option<usize>) -> Result<(), Error> {
     Err(kernel::Error::OperationFailed(message).into())
 }
 
-// The cleanup notes of the worktree follow the warnings of the apply in it.
+// The apply in a scratch worktree at the commit that the receipt names.
 fn in_worktree(
     services: &Services,
     repo: &Repo,
@@ -201,34 +206,25 @@ fn in_worktree(
         Ok(commit) => commit,
         Err(error) => return Noted::new(Err(kernel::Error::from(error).into())),
     };
-    let cache_root = match &services.cache_root {
-        Ok(cache_root) => cache_root,
-        Err(home) => {
-            let error = kernel::Error::OperationFailed(home.to_string());
-            return Noted::new(Err(error.into()));
-        }
+    let scratch = Scratch {
+        services,
+        root: &repo.root,
+        commit: &commit,
+        interrupted: &io::interrupted,
+        stopped: || stopped(INTERRUPTED_IN_WORKTREE),
     };
-    let mut diagnostics: Vec<String> = cache_root.ignored.iter().map(ToString::to_string).collect();
-    let tree = match services.git.worktree(&repo.root, &commit, &cache_root.path) {
-        Ok(tree) => tree,
-        Err(failure) => {
-            diagnostics.extend(failure.cleanup.iter().map(ToString::to_string));
-            let value = Err(kernel::Error::from(failure.error).into());
-            return Noted { value, diagnostics };
-        }
-    };
-    let target = Target {
-        dir: tree.inside(),
-        in_place: false,
-        base: format!("HEAD ({})", head.unwrap_or("unknown")),
-    };
-    let applied = applied_at(&services.git, &target, edits, io::interrupted);
-    diagnostics.extend(applied.diagnostics);
-    diagnostics.extend(tree.release().iter().map(ToString::to_string));
-    Noted {
-        value: applied.value,
-        diagnostics,
-    }
+    scratch.run(every_ignored, |tree| {
+        let target = Target {
+            dir: tree.inside(),
+            in_place: false,
+            base: format!("HEAD ({})", head.unwrap_or("unknown")),
+        };
+        applied_at(&services.git, &target, edits, io::interrupted)
+    })
+}
+
+fn stopped(text: &str) -> Error {
+    kernel::Error::CallStopped(text.to_owned()).into()
 }
 
 // The directory an apply writes, and how the report names it.
@@ -273,7 +269,7 @@ fn applied_at(
             return Noted { value, diagnostics };
         }
         if interrupted() {
-            let value = Err(kernel::Error::CallStopped(INTERRUPTED.to_owned()).into());
+            let value = Err(stopped(INTERRUPTED));
             return Noted { value, diagnostics };
         }
     }

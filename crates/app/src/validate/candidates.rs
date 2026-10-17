@@ -26,7 +26,11 @@ pub(crate) fn load_candidates(
     let expanded = expand_user(directory, services.home.as_deref());
     let resolved = io::resolve(&below_cwd(services, &expanded)?)
         .map_err(|error| unreadable(io::strerror(&error)))?;
-    if !resolved.is_dir() {
+    let found = io::stat_present(&resolved).map_err(|error| {
+        let reason = io::strerror(&error);
+        unreadable(format!("cannot read {}: {reason}", resolved.display()))
+    })?;
+    if !found.is_some_and(|metadata| metadata.is_dir()) {
         let shown = resolved.display();
         return Err(unreadable(format!(
             "--candidates must name a directory; {shown} is not one"
@@ -90,9 +94,7 @@ fn read_candidate(path: &Path) -> Result<String, Error> {
         io::Skipped::TooLarge { size } => too_large(&shown, size),
         io::Skipped::Unreadable(error) => cannot_read(&error),
     })?;
-    let text = io::decode_strict(bytes)
-        .map_err(|_| unreadable(format!("candidate {shown} is not UTF-8 text")))?;
-    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
+    io::decode_text(bytes).map_err(|_| unreadable(format!("candidate {shown} is not UTF-8 text")))
 }
 
 fn too_large(shown: &str, size: u64) -> Error {

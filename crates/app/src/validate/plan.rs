@@ -121,8 +121,8 @@ fn candidate_edits(text: &str, allow_test_config_edits: bool) -> Result<Vec<Edit
     Ok(parsed.edits)
 }
 
-// The given paths that name what the test command runs, sorted and once each. Each path is
-// judged as the applier writes it, so `./.github/x` and `src/../.github/x` both land in .github/.
+// The given paths that name what the test command runs, sorted and once each. The normalisation
+// is lexical: `./.github/x` and `src/../.github/x` land in .github/, but a symlink route does not.
 pub(crate) fn test_config_paths<'p>(paths: impl Iterator<Item = &'p str>) -> Vec<&'p str> {
     let named: BTreeSet<&str> = paths.filter(|path| names_test_config(path)).collect();
     named.into_iter().collect()

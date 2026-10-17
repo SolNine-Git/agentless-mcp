@@ -13,8 +13,7 @@ pub(crate) fn named_file(path: &Path, shown: &str, services: &Services) -> Resul
     let refused = |reason: String| format!("cannot read {shown}: {reason}");
     let bytes =
         std::fs::read(below_cwd(path, services)).map_err(|error| refused(io::strerror(&error)))?;
-    let text = io::decode_strict(bytes).map_err(|error| refused(not_utf8(&error)))?;
-    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
+    io::decode_text(bytes).map_err(|error| refused(not_utf8(&error)))
 }
 
 // The bytes on stdin as text, kept as given, or the refusal "cannot read stdin: {reason}".

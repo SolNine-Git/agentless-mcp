@@ -1,7 +1,7 @@
 //! File reads with a size cap, and strict UTF-8 decoding.
 
 use std::fmt;
-use std::fs::File;
+use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
 use std::path::Path;
 use std::str::Utf8Error;
@@ -51,6 +51,28 @@ pub fn read_bounded(path: &Path) -> Result<Vec<u8>, Skipped> {
     }
     let size = sizes.0.max(sizes.1).max(byte_count(&data));
     Err(Skipped::TooLarge { size })
+}
+
+/// Returns the metadata of `path` after symlinks, or `None` when nothing is there: a missing name,
+/// a parent that is not a directory, a symlink loop, or a bad descriptor.
+///
+/// # Errors
+///
+/// Returns every other error of the stat, so a file that cannot be seen never reads as a missing
+/// one.
+pub fn stat_present(path: &Path) -> io::Result<Option<Metadata>> {
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if is_absent(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn is_absent(error: &io::Error) -> bool {
+    let absent = [libc::ENOENT, libc::ENOTDIR, libc::ELOOP, libc::EBADF];
+    error
+        .raw_os_error()
+        .is_some_and(|code| absent.contains(&code))
 }
 
 // Both stats run on every read: one must come before the read and one after it.
@@ -114,6 +136,16 @@ pub fn decode_strict(bytes: Vec<u8>) -> Result<String, NotUtf8> {
     String::from_utf8(bytes).map_err(|error| not_utf8(error.as_bytes(), error.utf8_error()))
 }
 
+/// Decodes `bytes` as UTF-8 text, with each "\r\n" and each lone "\r" read as "\n".
+///
+/// # Errors
+///
+/// Returns [`NotUtf8`] for the first sequence that is not UTF-8.
+pub fn decode_text(bytes: Vec<u8>) -> Result<String, NotUtf8> {
+    let text = decode_strict(bytes)?;
+    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
 fn not_utf8(bytes: &[u8], error: Utf8Error) -> NotUtf8 {
     let start = error.valid_up_to();
     let reason = match (error.error_len(), bytes[start]) {
@@ -130,8 +162,58 @@ fn not_utf8(bytes: &[u8], error: Utf8Error) -> NotUtf8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::{build, fixture};
+    use crate::fixtures::{build, fixture, tree};
     use serde_json::Value;
+
+    // What a stat shows: "file", "dir", "absent", or the unreadable reason.
+    fn stat_shown(path: &Path) -> String {
+        match stat_present(path) {
+            Ok(Some(metadata)) if metadata.is_dir() => "dir".to_owned(),
+            Ok(Some(_)) => "file".to_owned(),
+            Ok(None) => "absent".to_owned(),
+            Err(error) => Skipped::Unreadable(error).to_string(),
+        }
+    }
+
+    #[test]
+    fn only_a_missing_name_a_file_parent_and_a_loop_read_as_absent() {
+        let tree = tree();
+        let file = tree
+            .write_file("plain.py", "x = 1\n")
+            .expect("the file is written");
+        tree.symlink("loop", tree.join("loop"))
+            .expect("the loop is made");
+        assert_eq!(stat_shown(&file), "file");
+        assert_eq!(stat_shown(tree.path()), "dir");
+        assert_eq!(stat_shown(&tree.join("gone.py")), "absent");
+        assert_eq!(stat_shown(&file.join("under.py")), "absent");
+        assert_eq!(stat_shown(&tree.join("loop")), "absent");
+        let long = tree.join("n".repeat(300));
+        assert_eq!(stat_shown(&long), "unreadable: File name too long");
+    }
+
+    #[test]
+    fn a_file_below_an_unsearchable_directory_is_unreadable_not_absent() {
+        let tree = tree();
+        tree.create_dir("secret").expect("the directory is created");
+        tree.write_file("secret/x.py", "x = 1\n")
+            .expect("the file is written");
+        if !tree.modes_bind() {
+            return;
+        }
+        tree.chmod("secret", 0o000);
+        let shown = stat_shown(&tree.join("secret/x.py"));
+        tree.chmod("secret", 0o755);
+        assert_eq!(shown, "unreadable: Permission denied");
+    }
+
+    #[test]
+    fn a_text_decode_reads_each_carriage_return_as_a_line_break() {
+        let text = decode_text(b"one\r\ntwo\rthree\n\r\n".to_vec()).expect("UTF-8 text");
+        assert_eq!(text, "one\ntwo\nthree\n\n");
+        let error = decode_text(b"ok\r\n\xff".to_vec()).expect_err("not UTF-8");
+        assert_eq!(error.start, 4);
+    }
 
     #[test]
     fn decode_cases() {

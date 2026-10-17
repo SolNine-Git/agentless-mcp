@@ -72,12 +72,31 @@ pub fn os_error_line(error: &io::Error) -> String {
 /// surrogate escape, and an error without an errno gives its message alone.
 #[must_use]
 pub fn os_error_text(error: &io::Error, path: &Path) -> String {
+    if error.raw_os_error().is_none() {
+        return strerror(error);
+    }
+    format!("{}: {}", os_error_str(error), quoted(path))
+}
+
+// The text of an OS error that names no file, for example `[Errno 9] Bad file descriptor`. An
+// error without an errno gives its message alone.
+pub(crate) fn os_error_str(error: &io::Error) -> String {
     let message = strerror(error);
-    let Some(code) = error.raw_os_error() else {
-        return message;
-    };
-    let quoted = CodePointString::from_utf8_escaped(path.as_os_str().as_bytes()).quoted();
-    format!("[Errno {code}] {message}: {quoted}")
+    match error.raw_os_error() {
+        Some(code) => format!("[Errno {code}] {message}"),
+        None => message,
+    }
+}
+
+// The class line of `error` and the file it names, for example
+// `PermissionError: [Errno 13] Permission denied: '/tmp'`.
+pub(crate) fn os_error_line_naming(error: &io::Error, path: &Path) -> String {
+    format!("{}: {}", os_error_line(error), quoted(path))
+}
+
+// A byte of `path` that is not UTF-8 is quoted as a surrogate escape.
+fn quoted(path: &Path) -> String {
+    CodePointString::from_utf8_escaped(path.as_os_str().as_bytes()).quoted()
 }
 
 fn class(code: i32) -> &'static str {

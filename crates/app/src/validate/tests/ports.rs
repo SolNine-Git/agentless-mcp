@@ -143,6 +143,21 @@ fn an_interrupt_seen_after_a_run_starts_no_further_representative() {
     assert!(worktrees_left(&services).is_empty());
 }
 
+#[test]
+fn an_interrupt_seen_before_a_worktree_stops_the_call_with_no_worktree_and_no_run() {
+    let (sandbox, root) = setup(&[("01-plus.txt", "a + b")]);
+    let (services, _clock) = pinned(&sandbox);
+    let mut runner = Answering::new(Box::new(|_: usize, _: Option<&str>| Ok(passed(Vec::new()))));
+    runner.interrupt_after = 0;
+
+    let (found, diagnostics) = validated(&services, &root, &request(&sandbox, 1), &runner);
+
+    assert_eq!(stopped_message(&found), Some(INTERRUPTED), "{found}");
+    assert_eq!(runner.ran(), 0);
+    assert_eq!(diagnostics, Vec::<String>::new());
+    assert!(worktrees_left(&services).is_empty());
+}
+
 fn no_space() -> std::io::Error {
     std::io::Error::from_raw_os_error(28)
 }

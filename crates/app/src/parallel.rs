@@ -20,6 +20,16 @@ pub(crate) fn map_in_order<T: Sync, R: Send>(
     threads: usize,
     f: impl Fn(&T) -> R + Sync,
 ) -> Vec<R> {
+    map_with(items, threads, f, io::helper_builder)
+}
+
+// `builder` makes each helper thread: a test passes one that the OS refuses.
+fn map_with<T: Sync, R: Send>(
+    items: &[T],
+    threads: usize,
+    f: impl Fn(&T) -> R + Sync,
+    builder: fn() -> thread::Builder,
+) -> Vec<R> {
     let workers = threads.clamp(1, items.len().max(1));
     if workers == 1 {
         return items.iter().map(f).collect();
@@ -28,7 +38,7 @@ pub(crate) fn map_in_order<T: Sync, R: Send>(
     let work = || claimed(items, &next, &f);
     let mut indexed: Vec<(usize, R)> = thread::scope(|scope| {
         let helpers: Vec<_> = (1..workers)
-            .map(|_| io::spawn_or_run(scope, &work))
+            .map(|_| io::spawn_or_run_with(builder(), scope, &work))
             .collect();
         let mut done = work();
         for helper in helpers {

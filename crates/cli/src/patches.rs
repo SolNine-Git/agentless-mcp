@@ -77,7 +77,8 @@ pub(crate) fn edit(
     }
 }
 
-// The diagnostics come with either outcome; a SIGINT that the write held ends the run after them.
+// The diagnostics come with either outcome; a SIGINT that the call held ends the run after them
+// and the call's error.
 fn applied(
     prepared: &Prepared,
     mode: ApplyMode,
@@ -92,7 +93,7 @@ fn applied(
         &prepared.edits,
         mode,
     );
-    diagnostics_or_stop(streams, &noted.diagnostics);
+    diagnostics_or_stop(streams, &noted);
     answered(prepared, noted.value, streams)
 }
 

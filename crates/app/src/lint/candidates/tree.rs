@@ -9,12 +9,13 @@ use prompts::messages::{PAIR_EDITS_UNAPPLIED, PAIR_OLD_UNREAD};
 use syntax::Language;
 
 use crate::pairs::{IndexOf, Judged, Reported, run_pairs};
-use crate::rows::{Gap, bounded_read, coverage, side_text};
+use crate::proposed::working_read;
+use crate::rows::{Gap, coverage, side_text};
 use crate::{Error, PairSelection};
 
 // One working-tree read: `None` for a file that the change creates, which is not a file that
 // could not be read.
-pub(super) type Read = Option<Result<Vec<u8>, String>>;
+pub(super) type WorkingRead = Option<Result<Vec<u8>, String>>;
 
 // The shared clone index of the run, and the functions near_duplicates reported.
 pub(super) struct Run<'a, 'i> {
@@ -34,19 +35,15 @@ pub(super) fn pair_paths(edits: &[Edit]) -> Vec<&str> {
     edited_paths(edits).into_iter().filter(paired).collect()
 }
 
-pub(super) fn working_reads(root: &Path, paths: &[&str]) -> BTreeMap<String, Read> {
+pub(super) fn working_reads(root: &Path, paths: &[&str]) -> BTreeMap<String, WorkingRead> {
     paths
         .iter()
-        .map(|path| {
-            let target = root.join(path);
-            let read = target.exists().then(|| bounded_read(&target));
-            ((*path).to_owned(), read)
-        })
+        .map(|path| ((*path).to_owned(), working_read(&root.join(path))))
         .collect()
 }
 
 // The texts of the reads that read, decoded with U+FFFD.
-pub(super) fn lenient_texts(reads: &BTreeMap<String, Read>) -> BTreeMap<String, String> {
+pub(super) fn lenient_texts(reads: &BTreeMap<String, WorkingRead>) -> BTreeMap<String, String> {
     reads
         .iter()
         .filter_map(|(path, read)| {
@@ -60,7 +57,7 @@ pub(super) fn lenient_texts(reads: &BTreeMap<String, Read>) -> BTreeMap<String, 
 // holds every such file, and each read moves into its pair.
 pub(super) fn pair_rows(
     edits: &[Edit],
-    reads: &mut BTreeMap<String, Read>,
+    reads: &mut BTreeMap<String, WorkingRead>,
     selection: PairSelection,
     config: &io::ProjectConfig,
     Run { index, reported }: Run<'_, '_>,
@@ -102,7 +99,7 @@ fn by_path(edits: &[Edit]) -> Vec<(&str, Vec<Edit>)> {
     grouped
 }
 
-fn candidate_pair(path: &str, read: Read, edits: &[Edit]) -> Result<TextPair, Gap> {
+fn candidate_pair(path: &str, read: WorkingRead, edits: &[Edit]) -> Result<TextPair, Gap> {
     let old = match read {
         Some(read) => Some(side_text(&PAIR_OLD_UNREAD, path, read)?),
         None => None,

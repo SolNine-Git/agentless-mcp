@@ -114,6 +114,31 @@ fn each_candidate_layout_loads_as_the_reference_loads_it() {
 }
 
 #[test]
+fn a_candidates_directory_or_entry_whose_stat_fails_is_unreadable_not_absent() {
+    let sandbox = Sandbox::new();
+    let services = sandbox.services(sandbox.path());
+    sandbox.put("hidden/c/a.txt", "x");
+    sandbox.put("hidden/b.txt", "x");
+    sandbox.mkdir("cands");
+    let link = ["symlink", "cands/b.txt", "<SANDBOX>/hidden/b.txt"];
+    sandbox.apply(&link.map(Value::from));
+    if !sandbox.modes_bind() {
+        return;
+    }
+    sandbox.chmod("hidden", 0o000);
+    let directory = load_candidates(&services, &sandbox.path().join("hidden/c"));
+    let entry = load_candidates(&services, &sandbox.path().join("cands"));
+    sandbox.chmod("hidden", 0o755);
+    let refused = |found: Result<_, Error>| shown(&sandbox, &refusal(found.expect_err("refused")));
+    let expected = |path: &str| {
+        let text = format!("cannot read <SANDBOX>/{path}: Permission denied");
+        json!({"error": ["InputUnreadable", text]})
+    };
+    assert_eq!(refused(directory), expected("hidden/c"));
+    assert_eq!(refused(entry), expected("cands/b.txt"));
+}
+
+#[test]
 fn each_execution_key_hashes_to_the_reference_fingerprint() {
     let cases: Vec<(Vec<(String, String)>, String)> =
         io::testing::cases(MANIFEST_DIR, "validate/inputs", "fingerprints");

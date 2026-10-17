@@ -74,13 +74,15 @@ pub enum PinError {
 }
 
 /// A scratch worktree. The drop releases it when [`Worktree::release`] was not called, and its
-/// cleanup notes are lost then.
+/// cleanup notes are lost then. SIGINT is held from before the creation until after the release.
 pub struct Worktree {
     git: Git,
     top: PathBuf,
     path: PathBuf,
     inside: PathBuf,
     released: bool,
+    // Fields drop after `drop` runs, so a release in the drop runs while the hold lives.
+    _sigint: io::SigintHold,
 }
 
 /// One problem of a release. It displays as its log line.
@@ -159,6 +161,8 @@ pub enum WorktreeError {
         /// The error of the operation.
         error: std::io::Error,
     },
+    /// The SIGINT watch could not be registered.
+    Watch(io::WatchError),
 }
 
 // Where a new worktree goes.
@@ -218,18 +222,19 @@ impl Git {
         commit: &str,
         cache_root: &Path,
     ) -> Result<Worktree, WorktreeFailure> {
-        let place = self
-            .place(root, cache_root)
-            .map_err(|error| WorktreeFailure {
-                error,
-                cleanup: Vec::new(),
-            })?;
+        let refused = |error| WorktreeFailure {
+            error,
+            cleanup: Vec::new(),
+        };
+        let sigint = io::hold_sigint().map_err(|error| refused(WorktreeError::Watch(error)))?;
+        let place = self.place(root, cache_root).map_err(refused)?;
         let mut tree = Worktree {
             git: self.clone(),
             top: place.top.clone(),
             path: place.path.clone(),
             inside: place.path.clone(),
             released: false,
+            _sigint: sigint,
         };
         let added = self.add(&place, commit);
         match added.and_then(|()| inside(&place, commit)) {
@@ -338,7 +343,8 @@ fn inside(place: &Place, commit: &str) -> Result<PathBuf, WorktreeError> {
     } else {
         place.path.join(relative)
     };
-    if inside.is_dir() {
+    let found = io::stat_present(&inside).map_err(|error| os_error(&inside, error))?;
+    if found.is_some_and(|metadata| metadata.is_dir()) {
         return Ok(inside);
     }
     Err(WorktreeError::NotInCommit {
@@ -413,7 +419,8 @@ pub(crate) fn release(git: &Git, top: &Path, path: &Path) -> Vec<CleanupNote> {
         let root = top.to_path_buf();
         notes.push(CleanupNote::PruneFailed { root, error });
     }
-    if path.exists() {
+    // Only a directory that is proven gone is no leftover.
+    if !matches!(io::stat_present(path), Ok(None)) {
         let path = path.to_path_buf();
         notes.push(CleanupNote::Leftover { path });
     }
@@ -519,6 +526,7 @@ impl fmt::Display for WorktreeError {
                 quoted(top)
             ),
             Self::Add(error) => error.fmt(f),
+            Self::Watch(error) => error.fmt(f),
             Self::Os { path, error } => write!(f, "{}: {}", io::os_error_line(error), quoted(path)),
         }
     }
@@ -554,9 +562,10 @@ impl From<WorktreeError> for kernel::Error {
             WorktreeError::NotRepository { .. }
             | WorktreeError::ScratchInside { .. }
             | WorktreeError::NotInCommit { .. } => Self::RepoResolution(message),
-            WorktreeError::OutsideTop { .. } | WorktreeError::Add(_) | WorktreeError::Os { .. } => {
-                Self::OperationFailed(message)
-            }
+            WorktreeError::OutsideTop { .. }
+            | WorktreeError::Add(_)
+            | WorktreeError::Os { .. }
+            | WorktreeError::Watch(_) => Self::OperationFailed(message),
         }
     }
 }

@@ -2,16 +2,38 @@
 
 use std::fmt;
 use std::fs::{File, OpenOptions, TryLockError};
-use std::io;
-use std::path::Path;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
+use crate::oserror::os_error_str;
 use crate::strerror;
 
-/// An exclusive lock on a file. The drop closes the file, and the close releases the lock.
+/// An exclusive lock on a file. The drop releases the lock, then closes the file.
 #[derive(Debug)]
 pub struct LockGuard {
-    // Held only so that the lock lives as long as the guard.
-    _file: File,
+    file: File,
+    // The path as the lock file was opened, which the warning of a failed release names.
+    path: PathBuf,
+}
+
+impl Drop for LockGuard {
+    // A child that another thread forks keeps a copy of the descriptor until its exec, so only the
+    // unlock releases the lock at once. After a failed unlock, the close still releases it.
+    fn drop(&mut self) {
+        if let Err(error) = self.file.unlock() {
+            let line = release_failed(&self.path, &error);
+            // Stderr is the last channel: a failed write there has nowhere to go.
+            let _unwritten = io::stderr().write_all(line.as_bytes());
+        }
+    }
+}
+
+fn release_failed(path: &Path, error: &io::Error) -> String {
+    let shown = path.display();
+    format!(
+        "releasing the lock on {shown} failed: {}\n",
+        os_error_str(error)
+    )
 }
 
 /// Why [`try_lock`] holds no lock. It displays as the reason.
@@ -51,7 +73,10 @@ pub fn try_lock(path: &Path) -> Result<LockGuard, LockError> {
         .open(path)
         .map_err(LockError::Open)?;
     match file.try_lock() {
-        Ok(()) => Ok(LockGuard { _file: file }),
+        Ok(()) => Ok(LockGuard {
+            file,
+            path: path.to_path_buf(),
+        }),
         Err(TryLockError::WouldBlock) => Err(LockError::Held),
         Err(TryLockError::Error(error)) => Err(LockError::Refused(error)),
     }
@@ -70,6 +95,35 @@ mod tests {
         assert!(matches!(try_lock(&path), Err(LockError::Held)));
         drop(first);
         assert!(try_lock(&path).is_ok(), "the drop releases the lock");
+    }
+
+    // The child stands in for a process that another thread forked before its exec.
+    #[test]
+    fn the_drop_releases_the_lock_while_a_child_holds_a_copy_of_the_descriptor() {
+        let tree = tree();
+        let path = tree.join("write.lock");
+        let guard = try_lock(&path).expect("the lock is taken");
+        let copy = guard.file.try_clone().expect("the descriptor is copied");
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(copy)
+            .spawn()
+            .expect("sleep starts");
+        drop(guard);
+        let relocked = try_lock(&path);
+        child.kill().expect("the child is killed");
+        child.wait().expect("the child is reaped");
+        assert!(relocked.is_ok(), "the lock stays held: {relocked:?}");
+    }
+
+    #[test]
+    fn a_failed_release_names_the_lock_file_and_the_os_error() {
+        let error = io::Error::from_raw_os_error(9);
+        assert_eq!(
+            release_failed(Path::new("/cache/agentless.lock"), &error),
+            "releasing the lock on /cache/agentless.lock failed: [Errno 9] Bad file descriptor\n"
+        );
     }
 
     #[test]

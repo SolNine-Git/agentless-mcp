@@ -8,8 +8,10 @@ use json::JsonForm;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
-const RECORD_RUN: &str = "run";
-const RECORD_CANDIDATE: &str = "candidate";
+// The key and the kinds of the record field of each verdicts line: the writer and the reader.
+pub(crate) const RECORD_KEY: &str = "record";
+pub(crate) const RECORD_RUN: &str = "run";
+pub(crate) const RECORD_CANDIDATE: &str = "candidate";
 
 /// Whether the unpatched repository could answer at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -389,7 +391,7 @@ impl<R: Serialize + ?Sized> Serialize for RunRecord<'_, R> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let header = self.header;
         let mut form = serializer.serialize_struct("RunRecord", 18)?;
-        form.serialize_field("record", RECORD_RUN)?;
+        form.serialize_field(RECORD_KEY, RECORD_RUN)?;
         form.serialize_field("receipt", self.receipt)?;
         form.serialize_field("test_cmd", &header.test_cmd)?;
         form.serialize_field("repro_cmd", &header.repro_cmd)?;

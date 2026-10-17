@@ -25,15 +25,16 @@ use std::time::Instant;
 use git::Worktree;
 use io::{RunResult, TestCommand, TestRun, TestRunError};
 
+use crate::patches::{Scratch, every_ignored};
 use crate::{Error, IntArg, Noted, Repo, Services};
 use budget::{Bound, Limits};
 use built::{deadline_expired, not_evaluated};
 use candidates::{Candidate, load_candidates};
 
-pub(crate) use records::Member;
 pub use records::{
     ApplyStatus, BaselineStatus, CandidateVerdict, ReproVerdict, RunHeader, ValidateReport, Verdict,
 };
+pub(crate) use records::{Member, RECORD_CANDIDATE, RECORD_KEY, RECORD_RUN};
 pub use runner::{EnvRunner, TestRunner};
 
 /// The bound of one command, in seconds, when the caller names none.
@@ -175,34 +176,35 @@ struct Run<'a> {
 
 impl Run<'_> {
     fn report(&self, candidates: &[Candidate]) -> Noted<Result<ValidateReport, Error>> {
-        and_then(self.baseline(candidates.len()), |(header, expired)| {
-            if expired {
-                let budget = self.budget();
-                let verdicts = candidates
-                    .iter()
-                    .map(|candidate| deadline_expired(candidate, &budget));
-                let report = ValidateReport {
+        self.baseline(candidates.len())
+            .then_ok(|(header, expired)| {
+                if expired {
+                    let budget = self.budget();
+                    let verdicts = candidates
+                        .iter()
+                        .map(|candidate| deadline_expired(candidate, &budget));
+                    let report = ValidateReport {
+                        header,
+                        verdicts: verdicts.collect(),
+                        deadline_expired: true,
+                    };
+                    return Noted::new(Ok(report));
+                }
+                if header.baseline == BaselineStatus::Unverified {
+                    let report = ValidateReport {
+                        header,
+                        verdicts: candidates.iter().map(not_evaluated).collect(),
+                        deadline_expired: false,
+                    };
+                    return Noted::new(Ok(report));
+                }
+                let evaluated = self.evaluate_all(candidates, header.repro_valid());
+                evaluated.map_ok(|(verdicts, deadline_expired)| ValidateReport {
                     header,
-                    verdicts: verdicts.collect(),
-                    deadline_expired: true,
-                };
-                return Noted::new(Ok(report));
-            }
-            if header.baseline == BaselineStatus::Unverified {
-                let report = ValidateReport {
-                    header,
-                    verdicts: candidates.iter().map(not_evaluated).collect(),
-                    deadline_expired: false,
-                };
-                return Noted::new(Ok(report));
-            }
-            let evaluated = self.evaluate_all(candidates, header.repro_valid());
-            map_ok(evaluated, |(verdicts, deadline_expired)| ValidateReport {
-                header,
-                verdicts,
-                deadline_expired,
+                    verdicts,
+                    deadline_expired,
+                })
             })
-        })
     }
 
     fn now(&self) -> Instant {
@@ -230,42 +232,28 @@ impl Run<'_> {
             .map_or_else(|| "None".to_owned(), |budget| budget.to_string())
     }
 
-    // A worktree at the run's commit for `work`, released after it. The ignored cache-home
-    // warning comes once, before the first worktree.
+    // A worktree at the run's commit for `work`, released after it.
     fn in_worktree<T>(
         &self,
         work: impl FnOnce(&Worktree) -> Noted<Result<T, Error>>,
     ) -> Noted<Result<T, Error>> {
-        let cache = match &self.services.cache_root {
-            Ok(cache) => cache,
-            Err(home) => {
-                let error = kernel::Error::OperationFailed(home.to_string());
-                return Noted::new(Err(error.into()));
-            }
+        let interrupted = || self.runner.interrupted();
+        let scratch = Scratch {
+            services: self.services,
+            root: self.root,
+            commit: &self.commit,
+            interrupted: &interrupted,
+            stopped,
         };
-        let mut diagnostics = Vec::new();
-        if !self.warned.swap(true, Ordering::SeqCst) {
-            diagnostics.extend(cache.ignored.iter().map(ToString::to_string));
+        scratch.run(|cache| self.ignored_once(cache), work)
+    }
+
+    // The ignored cache-home warning comes once, before the first worktree of the run.
+    fn ignored_once(&self, cache: &io::CacheRoot) -> Vec<String> {
+        if self.warned.swap(true, Ordering::SeqCst) {
+            return Vec::new();
         }
-        let tree = match self
-            .services
-            .git
-            .worktree(self.root, &self.commit, &cache.path)
-        {
-            Ok(tree) => tree,
-            Err(failure) => {
-                diagnostics.extend(failure.cleanup.iter().map(ToString::to_string));
-                let value = Err(kernel::Error::from(failure.error).into());
-                return Noted { value, diagnostics };
-            }
-        };
-        let worked = work(&tree);
-        diagnostics.extend(worked.diagnostics);
-        diagnostics.extend(tree.release().iter().map(ToString::to_string));
-        Noted {
-            value: worked.value,
-            diagnostics,
-        }
+        every_ignored(cache)
     }
 
     // One command in `cwd` under `bound`. A SIGINT during the run, or seen after it, stops the
@@ -310,7 +298,7 @@ fn unfinished(error: TestRunError) -> (Result<RunResult, Error>, Vec<io::GroupNo
         TestRunError::Capture { notes, .. } | TestRunError::Wait { notes, .. } => {
             (Err(failed()), notes)
         }
-        TestRunError::Watch(_) => (Err(failed()), Vec::new()),
+        TestRunError::Watch(_) | TestRunError::NoCaptureDir(_) => (Err(failed()), Vec::new()),
     }
 }
 
@@ -329,36 +317,6 @@ fn stopped() -> Error {
 
 fn is_stopped(error: &Error) -> bool {
     matches!(error, Error::Kind(kernel::Error::CallStopped(_)))
-}
-
-// Maps the value of `noted` when it has one, and keeps its diagnostics.
-fn map_ok<T, U>(noted: Noted<Result<T, Error>>, f: impl FnOnce(T) -> U) -> Noted<Result<U, Error>> {
-    noted.map(|value| value.map(f))
-}
-
-// Runs `next` on the value of `first` when it has one; the diagnostics of both, in order.
-fn and_then<T, U>(
-    first: Noted<Result<T, Error>>,
-    next: impl FnOnce(T) -> Noted<Result<U, Error>>,
-) -> Noted<Result<U, Error>> {
-    let Noted {
-        value,
-        mut diagnostics,
-    } = first;
-    match value {
-        Ok(value) => {
-            let second = next(value);
-            diagnostics.extend(second.diagnostics);
-            Noted {
-                value: second.value,
-                diagnostics,
-            }
-        }
-        Err(error) => Noted {
-            value: Err(error),
-            diagnostics,
-        },
-    }
 }
 
 #[cfg(test)]

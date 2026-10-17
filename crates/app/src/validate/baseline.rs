@@ -5,7 +5,7 @@ use io::{RunResult, RunStatus};
 
 use super::budget::{self, Limits};
 use super::records::{BaselineStatus, ReproVerdict, RunHeader};
-use super::{Run, ValidateRequest, and_then, map_ok};
+use super::{Run, ValidateRequest};
 use crate::{Error, Noted};
 
 const NOT_STARTED: &str = "the aggregate run budget expired before the baseline command started";
@@ -34,7 +34,7 @@ enum Repeats {
 impl Run<'_> {
     // The run header, and whether the budget abandoned work the baseline was asked for.
     pub(super) fn baseline(&self, count: usize) -> Noted<Result<(RunHeader, bool), Error>> {
-        and_then(self.baseline_runs(), |repeats| match repeats {
+        self.baseline_runs().then_ok(|repeats| match repeats {
             Repeats::Expired(runs) => {
                 let outcome = expired_baseline(&runs, self.limits.repeats, &self.budget());
                 Noted::new(Ok((self.header(count, outcome, None), true)))
@@ -104,7 +104,7 @@ impl Run<'_> {
             return Noted::new(Ok((self.header(count, expired, None), true)));
         };
         let ran = self.in_worktree(|tree| self.run_command(tree.inside(), command, &bound));
-        map_ok(ran, |run| {
+        ran.map_ok(|run| {
             let budget_truncated = outcome.budget_truncated || budget::truncated(&bound, &run);
             let outcome = Outcome {
                 budget_truncated,

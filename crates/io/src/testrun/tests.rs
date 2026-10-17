@@ -138,6 +138,101 @@ fn the_environment_holds_each_present_name_once() {
     assert_eq!(TEST_ENV_ALLOWLIST, ["PATH", "HOME", "LANG", "TMPDIR"]);
 }
 
+// The child's environment is in name order, not in the order the names were given.
+#[test]
+fn the_child_sees_its_variables_in_name_order() {
+    let tree = tree();
+    let path = std::env::var_os("PATH").expect("the tests find env through PATH");
+    let vars: BTreeMap<&str, OsString> = [
+        ("PATH", path),
+        ("ZZZ", OsString::from("1")),
+        ("AAA", OsString::from("2")),
+    ]
+    .into();
+    let env = |name: &str| vars.get(name).cloned();
+    let pass = ["ZZZ".to_owned(), "AAA".to_owned()];
+    let listed = TestCommand {
+        pass_env: &pass,
+        ..command(&tree, "env", LONG)
+    };
+    let result = ran(&listed, &env, BOUNDS);
+    let names: Vec<&str> = result
+        .stdout_tail
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+        .collect();
+    assert_eq!(names, ["AAA", "PATH", "ZZZ"]);
+}
+
+// The spawn's own error names an empty program: no PATH entry is tried.
+#[test]
+fn an_empty_program_is_a_start_failure_with_the_spawn_error() {
+    let tree = tree();
+    let result = run(&tree, "\"\"");
+    assert_eq!(
+        (result.status, result.stderr_tail.as_str()),
+        (
+            RunStatus::Error,
+            "could not start '': No such file or directory"
+        )
+    );
+}
+
+#[test]
+fn the_captures_try_tmpdir_then_tmp() {
+    let dirs = |value: Option<&str>| capture_dirs(&|_: &str| value.map(OsString::from));
+    let tmp = || PathBuf::from("/tmp");
+    assert_eq!(dirs(None), [tmp()]);
+    assert_eq!(dirs(Some("")), [tmp()]);
+    assert_eq!(dirs(Some("/tmp")), [tmp()]);
+    assert_eq!(dirs(Some("/scratch")), [PathBuf::from("/scratch"), tmp()]);
+}
+
+#[test]
+fn an_unusable_tmpdir_puts_the_captures_in_tmp() {
+    let tree = tree();
+    let file = tree.write_file("plain", "x").expect("the file is written");
+    let read_only = tree
+        .create_dir("read-only")
+        .expect("the directory is created");
+    tree.chmod("read-only", 0o555);
+    let mut unusable = vec![tree.join("missing"), file];
+    if tree.modes_bind() {
+        unusable.push(read_only);
+    }
+    for tmpdir in unusable {
+        let path = std::env::var_os("PATH").expect("the tests find sh through PATH");
+        let env = |name: &str| match name {
+            "PATH" => Some(path.clone()),
+            "TMPDIR" => Some(tmpdir.clone().into_os_string()),
+            _ => None,
+        };
+        let result = ran(&command(&tree, "echo ok", LONG), &env, BOUNDS);
+        assert_eq!(result.status, RunStatus::Passed, "{}", tmpdir.display());
+        assert_eq!(result.stdout_tail, "ok\n", "{}", tmpdir.display());
+    }
+    tree.chmod("read-only", 0o755);
+}
+
+#[test]
+fn no_capture_directory_names_each_directory_and_its_error() {
+    let tree = tree();
+    let file = tree.write_file("plain", "x").expect("the file is written");
+    let missing = tree.join("missing");
+    let refused = Captures::create_in(&[missing.clone(), file.clone()]).err();
+    let refused = refused.expect("neither directory takes the files");
+    let shown = TestRunError::NoCaptureDir(refused).to_string();
+    assert_eq!(
+        shown,
+        format!(
+            "a capture file of the test run failed: FileNotFoundError: [Errno 2] No such file or \
+             directory: '{}'; NotADirectoryError: [Errno 20] Not a directory: '{}'",
+            missing.display(),
+            file.display()
+        )
+    );
+}
+
 #[test]
 fn the_bounds_are_the_documented_values() {
     assert_eq!(
@@ -268,6 +363,55 @@ fn child_interrupts_a_hanging_run() {
     eprintln!("the group is gone");
 }
 
+// As an unwind does: the run is dropped while its group still runs.
+#[test]
+fn a_run_dropped_before_its_wait_ends_still_kills_the_group() {
+    let tree = tree();
+    tree.write_file("hang.sh", HANG)
+        .expect("the script is written");
+    let marker = tree.join("pgid.txt");
+    let args = ["hang.sh".to_owned(), marker.display().to_string()];
+    let line = format!("sh hang.sh {}", marker.display());
+    let test = command(&tree, &line, LONG);
+    let captures = Captures::create(tree.path()).expect("the captures are created");
+    let spawned = spawn(&test, "sh", &args, &env_for(&tree), &captures);
+    let child = spawned.expect("the captures pass").expect("sh starts");
+    let running = Running {
+        child,
+        captures,
+        hold: hold_sigint().expect("the watch registers"),
+        started: Instant::now(),
+        bounds: QUICK,
+        ended: false,
+    };
+    let stop = Instant::now() + LONG;
+    while recorded(&marker).is_none() && Instant::now() < stop {
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop(running);
+    let (_, child) = recorded(&marker).expect("hang.sh recorded its group and its child");
+    assert!(
+        process_is_gone(child),
+        "child process {child} outlived the run"
+    );
+}
+
+#[test]
+fn the_wait_for_a_running_child_lasts_its_whole_bound() {
+    let mut child = Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("sleep starts");
+    let within = Duration::from_millis(50);
+    let started = Instant::now();
+    let gone = reaped(&mut child, within);
+    let waited = started.elapsed();
+    child.kill().expect("the child is killed");
+    child.wait().expect("the child is reaped");
+    assert!(!gone, "the running child counted as reaped");
+    assert!(waited >= within, "the wait ended early: {waited:?}");
+}
+
 #[test]
 fn ending_an_already_reaped_group_gives_no_note() {
     let mut child = Command::new("true").spawn().expect("true starts");
@@ -294,6 +438,33 @@ fn each_kill_problem_has_its_line() {
         "could not signal process group 42: Invalid argument"
     );
     assert_eq!(kill_notes(42, Err(Errno::SRCH), Err(Errno::SRCH), true), []);
+}
+
+#[test]
+fn each_run_error_has_its_text() {
+    let errno = |code: i32| io::Error::from_raw_os_error(code);
+    let errors = [
+        TestRunError::Interrupted { notes: Vec::new() },
+        TestRunError::Capture {
+            error: errno(28),
+            notes: Vec::new(),
+        },
+        TestRunError::Wait {
+            error: errno(10),
+            notes: Vec::new(),
+        },
+        TestRunError::Watch(crate::WatchError(errno(22))),
+    ];
+    let shown: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        shown,
+        [
+            "the test run was interrupted by SIGINT",
+            "a capture file of the test run failed: OSError: [Errno 28] No space left on device",
+            "the wait for the test command failed: ChildProcessError: [Errno 10] No child processes",
+            "SIGINT cannot be watched: OSError: [Errno 22] Invalid argument",
+        ]
+    );
 }
 
 #[test]

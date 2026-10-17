@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
-use app::{EnvConfig, Repo, Services, Session};
+use app::{EnvConfig, Noted, Repo, Services, Session};
 use render::{Receipt, one_line};
 
 use crate::Streams;
@@ -147,11 +147,17 @@ pub(crate) fn diagnostics(streams: &mut Streams<'_>, lines: &[String]) {
     }
 }
 
-// The diagnostics of a call that held SIGINT, then the end of the process by SIGINT when one
-// arrived while it was held.
-pub(crate) fn diagnostics_or_stop(streams: &mut Streams<'_>, lines: &[String]) {
-    diagnostics(streams, lines);
+// The diagnostics of a call that held SIGINT. When a SIGINT arrived while it was held, the call's
+// error follows them, and then the process ends by SIGINT.
+pub(crate) fn diagnostics_or_stop<T>(
+    streams: &mut Streams<'_>,
+    noted: &Noted<Result<T, app::Error>>,
+) {
+    diagnostics(streams, &noted.diagnostics);
     if io::interrupted() {
+        if let Err(error) = &noted.value {
+            fail(streams.err, &error.to_string(), code_for(error));
+        }
         io::end_by_interrupt();
     }
 }
@@ -217,10 +223,10 @@ fn columns(env: &EnvConfig) -> isize {
     count.map_or(DEFAULT_COLUMNS, |count| count.min(MAX_COLUMNS))
 }
 
-// A decimal integer by the text crate's integer rule. A value past isize saturates, and
-// MAX_COLUMNS caps it.
+// A decimal integer by the text crate's integer rule, of at most 4300 digits. A value past
+// isize saturates, and MAX_COLUMNS caps it.
 fn integer(text: &str) -> Option<isize> {
-    let found = text::int_text(text)?;
+    let found = text::convertible_int(text)?;
     let value = found.digits().fold(0isize, |value, digit| {
         value.saturating_mul(10).saturating_add(isize::from(digit))
     });

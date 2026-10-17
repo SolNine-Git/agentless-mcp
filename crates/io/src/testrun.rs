@@ -22,9 +22,9 @@ use serde::Serialize;
 use text::{CodePointString, split_shell_words};
 use wait_timeout::ChildExt;
 
-use crate::interrupt::{self, Hold};
+use crate::oserror::os_error_line_naming;
 use crate::random::create_named;
-use crate::{os_error_line, remove_file, strerror};
+use crate::{SigintHold, WatchError, hold_sigint, os_error_line, remove_file, strerror};
 
 /// The default cap on the bytes kept from each stream.
 pub const DEFAULT_MAX_CAPTURE: usize = 100_000;
@@ -47,7 +47,7 @@ const CAPTURE_PREFIX: &str = "tmp";
 pub struct TestCommand<'a> {
     /// The working directory of the command.
     pub cwd: &'a Path,
-    /// The command line, split into words as a POSIX shell splits them.
+    /// The command line, split into an argv by `text::split_shell_words`. No shell runs it.
     pub command: &'a str,
     /// The time from the spawn until the runner kills the process group.
     pub timeout: Duration,
@@ -126,7 +126,9 @@ pub enum TestRunError {
         /// The lines of the group kill.
         notes: Vec<GroupNote>,
     },
-    /// A capture file could not be created, trimmed or read.
+    /// No directory took the capture files: each directory tried, with its error. Nothing ran.
+    NoCaptureDir(Vec<(PathBuf, io::Error)>),
+    /// A capture file could not be handed to the command, trimmed or read.
     Capture {
         /// The error of the file operation.
         error: io::Error,
@@ -141,7 +143,7 @@ pub enum TestRunError {
         notes: Vec<GroupNote>,
     },
     /// The SIGINT watch could not be registered. Nothing ran.
-    Watch(io::Error),
+    Watch(WatchError),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -186,10 +188,10 @@ pub(crate) fn run_bounded(
     let Some((program, args)) = words.split_first() else {
         return Ok(not_started("command is empty".to_owned(), Duration::ZERO));
     };
-    let hold = interrupt::hold().map_err(TestRunError::Watch)?;
+    let hold = hold_sigint().map_err(TestRunError::Watch)?;
     let started = Instant::now();
-    let captures = Captures::create(&capture_dir(env)).map_err(unkilled)?;
-    let spawned = spawn(command, program, args, env, &captures).map_err(unkilled)?;
+    let captures = Captures::create_in(&capture_dirs(env)).map_err(TestRunError::NoCaptureDir)?;
+    let spawned = spawn(command, program, args, env, &captures).map_err(capture_failed)?;
     match spawned {
         Ok(child) => {
             let running = Running {
@@ -197,8 +199,10 @@ pub(crate) fn run_bounded(
                 captures,
                 hold,
                 started,
+                bounds,
+                ended: false,
             };
-            running.finish(command, bounds)
+            running.finish(command)
         }
         Err(error) => {
             let quoted = CodePointString::from(program.as_str()).quoted();
@@ -208,7 +212,7 @@ pub(crate) fn run_bounded(
     }
 }
 
-fn unkilled(error: io::Error) -> TestRunError {
+fn capture_failed(error: io::Error) -> TestRunError {
     TestRunError::Capture {
         error,
         notes: Vec::new(),
@@ -240,6 +244,18 @@ struct Captures {
 }
 
 impl Captures {
+    // The files go to the first directory that takes both; else each directory gives its error.
+    fn create_in(directories: &[PathBuf]) -> Result<Self, Vec<(PathBuf, io::Error)>> {
+        let mut refused = Vec::new();
+        for directory in directories {
+            match Self::create(directory) {
+                Ok(captures) => return Ok(captures),
+                Err(error) => refused.push((directory.clone(), error)),
+            }
+        }
+        Err(refused)
+    }
+
     fn create(directory: &Path) -> io::Result<Self> {
         Ok(Self {
             stdout: unlinked(directory)?,
@@ -254,10 +270,15 @@ fn unlinked(directory: &Path) -> io::Result<File> {
     Ok(file)
 }
 
-fn capture_dir(env: &impl Fn(&str) -> Option<OsString>) -> PathBuf {
-    env("TMPDIR")
-        .filter(|value| !value.is_empty())
-        .map_or_else(|| PathBuf::from(TEMPORARY_DIR), PathBuf::from)
+// TMPDIR when it is set and not empty, then /tmp: an unusable TMPDIR falls back to /tmp.
+fn capture_dirs(env: &impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
+    let fallback = PathBuf::from(TEMPORARY_DIR);
+    let named = env("TMPDIR").filter(|value| !value.is_empty());
+    let mut directories: Vec<PathBuf> = named.map(PathBuf::from).into_iter().collect();
+    if !directories.contains(&fallback) {
+        directories.push(fallback);
+    }
+    directories
 }
 
 // The outer error is a capture file that could not be handed to the child; the inner one is the
@@ -306,8 +327,11 @@ fn environment(
 struct Running {
     child: Child,
     captures: Captures,
-    hold: Hold,
+    hold: SigintHold,
     started: Instant,
+    bounds: Bounds,
+    // True once the child is reaped or its group was killed.
+    ended: bool,
 }
 
 enum Waited {
@@ -319,17 +343,14 @@ enum Waited {
 }
 
 impl Running {
-    fn finish(
-        mut self,
-        command: &TestCommand<'_>,
-        bounds: Bounds,
-    ) -> Result<TestRun, TestRunError> {
-        let waited = self.wait(command, bounds);
+    fn finish(mut self, command: &TestCommand<'_>) -> Result<TestRun, TestRunError> {
+        let waited = self.wait(command);
         // Every way out of the wait but an exit leaves the child unreaped, so the group is killed.
         let notes = match waited {
             Waited::Exited(_) => Vec::new(),
-            _ => end_group(&mut self.child, bounds),
+            _ => end_group(&mut self.child, self.bounds),
         };
+        self.ended = true;
         let exit = match waited {
             Waited::Exited(status) => Some(status),
             Waited::TimedOut => None,
@@ -344,7 +365,7 @@ impl Running {
         }
     }
 
-    fn wait(&mut self, command: &TestCommand<'_>, bounds: Bounds) -> Waited {
+    fn wait(&mut self, command: &TestCommand<'_>) -> Waited {
         let ceiling = u64::try_from(command.max_capture.max(1))
             .unwrap_or(u64::MAX)
             .saturating_mul(CAPTURE_SLACK);
@@ -360,7 +381,7 @@ impl Running {
             if self.hold.interrupted() {
                 return Waited::Interrupted;
             }
-            match self.child.wait_timeout(bounds.poll.min(remaining)) {
+            match self.child.wait_timeout(self.bounds.poll.min(remaining)) {
                 Ok(Some(status)) => return Waited::Exited(status),
                 Ok(None) => {}
                 Err(error) => return Waited::Wait(error),
@@ -409,8 +430,19 @@ impl Running {
     }
 }
 
-// A signal shows as its negative number. After a wait, a status is either an exit or a signal.
-fn exit_code(status: ExitStatus) -> i32 {
+impl Drop for Running {
+    // A panic between the spawn and the end of the wait still kills the group. The unwind has no
+    // caller to give the kill's notes to.
+    fn drop(&mut self) {
+        if !self.ended {
+            let _notes = end_group(&mut self.child, self.bounds);
+        }
+    }
+}
+
+/// Returns the exit status of a reaped child, or the negative number of the signal that ended it.
+#[must_use]
+pub fn exit_code(status: ExitStatus) -> i32 {
     status
         .code()
         .or_else(|| status.signal().map(|signal| -signal))
@@ -439,8 +471,19 @@ fn end_group(child: &mut Child, bounds: Bounds) -> Vec<GroupNote> {
 }
 
 // A failed wait means the child is gone from this process's view, so it counts as reaped.
+// wait_timeout rounds its poll down to whole milliseconds, so the loop waits out the remainder.
 fn reaped(child: &mut Child, within: Duration) -> bool {
-    !matches!(child.wait_timeout(within), Ok(None))
+    let deadline = Instant::now().checked_add(within);
+    loop {
+        let remaining = deadline.map_or(Duration::MAX, |at| {
+            at.saturating_duration_since(Instant::now())
+        });
+        match child.wait_timeout(remaining) {
+            Ok(None) if !remaining.is_zero() => {}
+            Ok(None) => return false,
+            Ok(Some(_)) | Err(_) => return true,
+        }
+    }
 }
 
 fn signal_group(group: u32, signal: Signal) -> Result<(), Errno> {
@@ -543,6 +586,17 @@ impl fmt::Display for TestRunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Interrupted { .. } => f.write_str("the test run was interrupted by SIGINT"),
+            Self::NoCaptureDir(refused) => {
+                let shown: Vec<String> = refused
+                    .iter()
+                    .map(|(directory, error)| os_error_line_naming(error, directory))
+                    .collect();
+                write!(
+                    f,
+                    "a capture file of the test run failed: {}",
+                    shown.join("; ")
+                )
+            }
             Self::Capture { error, .. } => {
                 write!(
                     f,
@@ -557,7 +611,7 @@ impl fmt::Display for TestRunError {
                     os_error_line(error)
                 )
             }
-            Self::Watch(error) => write!(f, "SIGINT cannot be watched: {}", os_error_line(error)),
+            Self::Watch(error) => error.fmt(f),
         }
     }
 }

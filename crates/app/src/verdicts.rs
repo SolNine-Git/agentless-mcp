@@ -11,11 +11,9 @@ use patch::VoteCandidate;
 use text::CodePointString;
 
 use crate::Error;
-use crate::validate::{ApplyStatus, BaselineStatus, Member, Verdict};
-
-const RECORD_KEY: &str = "record";
-const RECORD_RUN: &str = "run";
-const RECORD_CANDIDATE: &str = "candidate";
+use crate::validate::{
+    ApplyStatus, BaselineStatus, Member, RECORD_CANDIDATE, RECORD_KEY, RECORD_RUN, Verdict,
+};
 
 type Pairs = [(CodePointString, JsonValue)];
 

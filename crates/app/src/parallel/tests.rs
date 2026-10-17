@@ -2,7 +2,23 @@ use std::panic;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-use super::{map_in_order, threads};
+use super::{map_in_order, map_with, threads};
+
+// No address space holds a stack this large, so the OS refuses every helper thread.
+fn refused() -> thread::Builder {
+    thread::Builder::new().stack_size(1 << 60)
+}
+
+#[test]
+fn refused_helpers_leave_every_item_to_the_caller_in_input_order() {
+    let items: Vec<u32> = (0..32).collect();
+    let caller = thread::current().id();
+
+    let found = map_with(&items, 8, |item| (*item, thread::current().id()), refused);
+
+    let expected: Vec<_> = items.iter().map(|item| (*item, caller)).collect();
+    assert_eq!(found, expected);
+}
 
 #[test]
 fn the_pool_size_is_from_one_to_eight() {

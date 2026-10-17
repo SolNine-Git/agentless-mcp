@@ -13,8 +13,9 @@ use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use crate::random::create_named;
-use crate::{Refusal, contained_path, interrupt, remove_file, strerror};
+use crate::files::sync_written;
+use crate::random::{create_named, sibling_prefix};
+use crate::{Refusal, WatchError, contained_path, hold_sigint, remove_file, strerror};
 
 /// The suffix of a staged file until every file of the patch is staged.
 pub const STAGING_SUFFIX: &str = ".agentless-mcp-staged";
@@ -90,8 +91,18 @@ pub fn write_all<P: AsRef<str>, B: AsRef<[u8]>>(
     base: &Path,
     contents: &[(P, B)],
 ) -> Result<Vec<Leftover>, WriteFailure> {
-    let _hold = interrupt::hold().map_err(|error| failure(watch_error(&error), Vec::new()))?;
-    write_with(&Disk, base, contents)
+    write_held(&Disk, base, contents)
+}
+
+// A SIGINT during the write waits until every file is written or every original is restored.
+pub(crate) fn write_held<P: AsRef<str>, B: AsRef<[u8]>>(
+    steps: &impl Steps,
+    base: &Path,
+    contents: &[(P, B)],
+) -> Result<Vec<Leftover>, WriteFailure> {
+    let _hold =
+        hold_sigint().map_err(|WatchError(error)| failure(watch_error(&error), Vec::new()))?;
+    write_with(steps, base, contents)
 }
 
 fn watch_error(error: &io::Error) -> WriteError {
@@ -114,8 +125,12 @@ pub(crate) trait Steps {
 pub(crate) struct Disk;
 
 impl Steps for Disk {
+    // The flush makes a write error that only the close would report a stage failure.
     fn stage(&self, target: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
-        stage_file(target, bytes, write_bytes)
+        stage_file(target, bytes, |file, bytes, name| {
+            write_bytes(file, bytes, name)?;
+            sync_written(file)
+        })
     }
 
     fn reserve(&self, target: &Path) -> io::Result<PathBuf> {
@@ -292,9 +307,7 @@ fn failure(error: WriteError, leftovers: Vec<Leftover>) -> WriteFailure {
 // The directory of `target` and the name prefix `.<name>.` of its siblings.
 fn sibling_parts(target: &Path) -> (&Path, OsString) {
     let directory = target.parent().unwrap_or(Path::new("/"));
-    let mut prefix = OsString::from(".");
-    prefix.push(target.file_name().unwrap_or(OsStr::new("")));
-    prefix.push(".");
+    let prefix = sibling_prefix(target.file_name().unwrap_or(OsStr::new("")));
     (directory, prefix)
 }
 

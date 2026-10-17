@@ -225,6 +225,7 @@
   {"name": "missing bare name", "layout": [], "cwd": ".", "command": "no-such-program-9f2c", "result": ["error", null, "", "could not start 'no-such-program-9f2c': No such file or directory"]},
   {"name": "quoted name", "layout": [], "cwd": ".", "command": "\"./it's missing\"", "result": ["error", null, "", "could not start \"./it's missing\": No such file or directory"]},
   {"name": "not executable", "layout": [["file", "plain.sh", "echo hi\n"]], "cwd": ".", "command": "./plain.sh", "result": ["error", null, "", "could not start './plain.sh': Permission denied"]},
+  {"name": "no shebang", "layout": [["executable", "plain.sh", "echo hi\n"]], "cwd": ".", "command": "./plain.sh", "result": ["error", null, "", "could not start './plain.sh': Exec format error"]},
   {"name": "a directory", "layout": [["dir", "sub"]], "cwd": ".", "command": "./sub", "result": ["error", null, "", "could not start './sub': Permission denied"]},
   {"name": "missing directory", "layout": [], "cwd": "missing", "command": "true", "result": ["error", null, "", "could not start 'true': No such file or directory"]}
  ]

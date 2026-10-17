@@ -299,6 +299,7 @@ pub git::WorktreeError::OutsideTop::top: std::path::PathBuf
 pub git::WorktreeError::ScratchInside
 pub git::WorktreeError::ScratchInside::scratch: std::path::PathBuf
 pub git::WorktreeError::ScratchInside::top: std::path::PathBuf
+pub git::WorktreeError::Watch(io::interrupt::WatchError)
 impl core::convert::From<git::WorktreeError> for kernel::error::Error
 pub fn kernel::error::Error::from(git::WorktreeError) -> Self
 impl core::error::Error for git::WorktreeError

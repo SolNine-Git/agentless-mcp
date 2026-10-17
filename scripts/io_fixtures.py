@@ -215,6 +215,7 @@ NOT_STARTED: list[list[Any]] = [
     ["missing bare name", [], ".", "no-such-program-9f2c"],
     ["quoted name", [], ".", '"./it\'s missing"'],
     ["not executable", [["file", "plain.sh", "echo hi\n"]], ".", "./plain.sh"],
+    ["no shebang", [["executable", "plain.sh", "echo hi\n"]], ".", "./plain.sh"],
     ["a directory", [["dir", "sub"]], ".", "./sub"],
     ["missing directory", [], "missing", "true"],
 ]
@@ -427,6 +428,9 @@ def make(base: Path, entry: Entry) -> None:
         path.symlink_to(rest[0].replace("{base}", str(base)))
     elif kind == "mode":
         refused_mode(path, rest[0])
+    elif kind == "executable":
+        path.write_bytes(content("file", rest))
+        path.chmod(0o755)
     else:
         path.write_bytes(content(kind, rest))
 

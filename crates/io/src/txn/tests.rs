@@ -6,6 +6,7 @@ use std::os::unix::process::ExitStatusExt;
 use signal_hook::consts::SIGINT;
 
 use super::*;
+use crate::files::flushed;
 use crate::fixtures::{is_child, run_child, tree};
 use crate::testing::Tree;
 
@@ -52,6 +53,8 @@ const NEW_PAIR: [(&str, &str); 2] = [("app.py", "new app\n"), ("util.py", "new u
 #[derive(Default)]
 struct Faulty {
     stage_fails: Option<(&'static str, &'static str)>,
+    // The errno of every flush of a staged file, after its bytes are written.
+    flush_fails_with: Option<i32>,
     reserve_fails_at: Option<usize>,
     staged_move_fails_at: Option<usize>,
     restore_fails: bool,
@@ -76,7 +79,13 @@ impl Steps for Faulty {
             Some((name, message)) if target.file_name() == Some(OsStr::new(name)) => {
                 Err(refusal(message))
             }
-            _ => Disk.stage(target, bytes),
+            _ => match self.flush_fails_with {
+                Some(code) => stage_file(target, bytes, |file, bytes, name| {
+                    write_bytes(file, bytes, name)?;
+                    flushed(Err(io::Error::from_raw_os_error(code)))
+                }),
+                None => Disk.stage(target, bytes),
+            },
         }
     }
 
@@ -218,6 +227,41 @@ fn a_stage_failure_names_the_path_and_changes_nothing() {
     assert_eq!(
         (read(&tree, "app.py"), read(&tree, "util.py")),
         (APP.into(), UTIL.into())
+    );
+    assert_eq!(names(&tree), ["app.py", "util.py"]);
+}
+
+#[test]
+fn a_flush_that_reports_a_deferred_error_is_a_stage_failure_and_changes_nothing() {
+    let tree = repo();
+    let steps = Faulty {
+        flush_fails_with: Some(libc::EDQUOT),
+        ..Faulty::default()
+    };
+    let failure = failed(&steps, &tree, &NEW_PAIR);
+    assert_eq!(
+        failure.error.to_string(),
+        "patch not applied: cannot write app.py: Disk quota exceeded; nothing was changed"
+    );
+    assert!(failure.leftovers.is_empty());
+    assert_eq!(
+        (read(&tree, "app.py"), read(&tree, "util.py")),
+        (APP.into(), UTIL.into())
+    );
+    assert_eq!(names(&tree), ["app.py", "util.py"]);
+}
+
+#[test]
+fn a_file_system_with_no_flush_still_takes_the_write() {
+    let tree = repo();
+    let steps = Faulty {
+        flush_fails_with: Some(libc::EINVAL),
+        ..Faulty::default()
+    };
+    write_with(&steps, tree.path(), &NEW_PAIR).expect("the write succeeds");
+    assert_eq!(
+        (read(&tree, "app.py"), read(&tree, "util.py")),
+        ("new app\n".into(), "new util\n".into())
     );
     assert_eq!(names(&tree), ["app.py", "util.py"]);
 }
@@ -476,6 +520,15 @@ fn a_path_outside_the_base_is_refused_and_the_staged_files_are_removed() {
 }
 
 #[test]
+fn a_watch_that_cannot_register_changes_nothing() {
+    let error = watch_error(&io::Error::from_raw_os_error(22));
+    assert_eq!(
+        error.to_string(),
+        "patch not applied: cannot hold SIGINT: Invalid argument; nothing was changed"
+    );
+}
+
+#[test]
 fn a_read_only_directory_is_a_stage_failure_with_the_os_message() {
     let tree = repo();
     if !tree.modes_bind() {
@@ -516,12 +569,9 @@ fn child_raises_sigint_during_the_moves() {
         interrupt_on_first_move: true,
         ..Faulty::default()
     };
-    let hold = interrupt::hold().expect("the watch registers");
-    let written = write_with(&steps, tree.path(), &NEW_PAIR);
-    assert!(hold.interrupted(), "the SIGINT was not recorded");
-    drop(hold);
+    let written = write_held(&steps, tree.path(), &NEW_PAIR);
     assert!(written.is_ok(), "{:?}", written.err());
-    assert!(interrupt::interrupted());
+    assert!(crate::interrupted(), "the SIGINT was not recorded");
     assert_eq!(
         (read(&tree, "app.py"), read(&tree, "util.py")),
         ("new app\n".into(), "new util\n".into())
@@ -541,7 +591,7 @@ fn child_raises_sigint_with_no_hold() {
     if !is_child("txn::tests::child_raises_sigint_with_no_hold") {
         return;
     }
-    drop(interrupt::hold().expect("the watch registers"));
+    drop(hold_sigint().expect("the watch registers"));
     signal_hook::low_level::raise(SIGINT).expect("SIGINT is raised");
     eprintln!("the process outlived SIGINT");
 }

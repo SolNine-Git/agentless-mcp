@@ -390,6 +390,10 @@ CHECK = ["patch", "check", "-f", "patch.txt"]
 APPLY = ["patch", "apply", "-f", "patch.txt"]
 NORMALIZE = ["patch", "normalize", "-f", "patch.txt"]
 NOT_FOUND = block("core.py", "    return NOTHING_LIKE_THIS", "    return 2")
+# A stderr note that already ends in a line break gets no second one.
+LINE_BREAK_PATH = (
+    '{"edits": [{"path": "gone\\n", "search": "    return 1", "replace": "    return 2"}]}\n'
+)
 PATCH_SCENARIOS: list[Scenario] = [
     {
         "name": "parse_file",
@@ -488,6 +492,10 @@ PATCH_SCENARIOS: list[Scenario] = [
     patch_scenario("normalize_not_found", patched(NOT_FOUND), [*NORMALIZE, "--json"]),
     patch_scenario(
         "normalize_no_grammar", patched(block("notes.rst", "bravo", "BRAVO")), NORMALIZE
+    ),
+    patch_scenario("check_path_ending_in_a_line_break", patched(LINE_BREAK_PATH), CHECK),
+    patch_scenario(
+        "check_path_ending_in_a_line_break_json", patched(LINE_BREAK_PATH), [*CHECK, "--json"]
     ),
 ]
 
@@ -692,6 +700,12 @@ VALIDATE_SCENARIOS: list[Scenario] = [
         "cwd": "",
         "argv": VALIDATE,
     },
+    {
+        "name": "validate_output_name_ending_in_a_line_break",
+        "steps": candidates("01-plus.txt"),
+        "cwd": "",
+        "argv": [*VALIDATE, "-o", "out.jsonl\n"],
+    },
 ]
 
 # The validate scenarios whose verdicts the vote scenarios read, by the name of each document.
@@ -736,7 +750,25 @@ def vote_scenarios(documents: dict[str, str]) -> list[Scenario]:
     for label, steps in refused.items():
         argv = ["vote", "--verdicts", "verdicts.jsonl"]
         scenarios.append({"name": label, "steps": steps, "cwd": "", "argv": argv})
+    for label, (old, new) in LINE_BREAK_VOTES.items():
+        document = documents["reproduced"]
+        if old not in document:
+            message = f"{label}: the reproduced document lacks {old}"
+            raise ValueError(message)
+        steps = [["write", "verdicts.jsonl", document.replace(old, new)]]
+        argv = ["vote", "--verdicts", "verdicts.jsonl"]
+        scenarios.append({"name": label, "steps": steps, "cwd": "", "argv": argv})
     return scenarios
+
+
+# The reproduced document with a test command, and then a winner id, that ends in a line break.
+LINE_BREAK_VOTES = {
+    "vote_test_cmd_ending_in_a_line_break": (
+        '"test_cmd": "sh check_regression.sh"',
+        '"test_cmd": "sh check_regression.sh\\n"',
+    ),
+    "vote_winner_id_ending_in_a_line_break": ('"01-plus"', '"01-plus\\n"'),
+}
 
 
 # lint's candidate and diff forms over the patch repository: a rename that leaves callers, a call

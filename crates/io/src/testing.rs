@@ -1,11 +1,12 @@
 //! A temporary directory tree for tests, removed when it drops, a hermetic test environment, a
-//! setup git runner with a pinned identity, and the fixture readers.
+//! setup git runner with a pinned identity, the fixture readers, and the child-process test runner.
 
 use std::ffi::OsString;
 use std::fs::{self, Permissions};
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -15,6 +16,8 @@ use crate::{Outcome, Spec, run};
 
 static TREES: AtomicUsize = AtomicUsize::new(0);
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+// The marker that turns a run of a test binary into the child that one of its tests starts.
+const CHILD: &str = "AGENTLESS_TEST_CHILD";
 
 /// A new directory under the temporary directory. The drop removes it and everything in it.
 #[derive(Debug)]
@@ -268,6 +271,46 @@ pub fn run_git(
 pub fn latin(text: &str) -> Vec<u8> {
     let bytes: Result<Vec<u8>, _> = text.chars().map(u8::try_from).collect();
     bytes.unwrap_or_else(|error| panic!("{text:?} holds a character above U+00FF: {error}"))
+}
+
+/// Returns true in the child process that [`run_child`] started for the test `name`.
+#[must_use]
+pub fn is_child(name: &str) -> bool {
+    std::env::var_os(CHILD).is_some_and(|value| value == name)
+}
+
+/// Runs the test `name` of the current test binary alone in a child process, in `/`, with the
+/// PATH and TMPDIR of this process and `RUST_BACKTRACE=1`, and returns how the child ended and
+/// its stderr.
+///
+/// # Panics
+///
+/// Panics when the child does not end within `timeout`.
+#[must_use]
+pub fn run_child(name: &str, timeout: Duration) -> (ExitStatus, String) {
+    let binary = std::env::current_exe().expect("the test binary has a path");
+    let kept = ["PATH", "TMPDIR"]
+        .into_iter()
+        .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)));
+    let marked = [(CHILD, name), ("RUST_BACKTRACE", "1")]
+        .map(|(key, value)| (OsString::from(key), OsString::from(value)));
+    let spec = Spec {
+        program: binary.into_os_string(),
+        args: ["--exact", name, "--nocapture", "--test-threads", "1"]
+            .map(OsString::from)
+            .to_vec(),
+        cwd: PathBuf::from("/"),
+        env: kept.chain(marked).collect(),
+        timeout,
+        stdout_cap: 1 << 16,
+        stderr_cap: 1 << 16,
+    };
+    match run(&spec) {
+        Outcome::Exited { status, stderr, .. } => {
+            (status, String::from_utf8_lossy(&stderr).into_owned())
+        }
+        outcome => panic!("the child test {name} did not end within {timeout:?}: {outcome:?}"),
+    }
 }
 
 #[cfg(test)]

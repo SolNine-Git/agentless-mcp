@@ -1,13 +1,12 @@
-use std::ffi::OsString;
 use std::panic;
 use std::process;
 use std::thread;
 use std::time::Duration;
 
+use io::testing::is_child;
+
 use super::{answered, guarded, with_streams};
 
-// The marker that turns a run of this test binary into the child that one test starts.
-const CHILD: &str = "AGENTLESS_TEST_CHILD";
 const DEADLINE: Duration = Duration::from_secs(5);
 
 struct Ran {
@@ -15,37 +14,13 @@ struct Ran {
     err: String,
 }
 
-// Runs the test `name` of this binary as a child process with RUST_BACKTRACE=1, under the deadline.
+// Runs the test `name` of this binary as a child process under the deadline.
 fn child(name: &str) -> Ran {
-    let binary = std::env::current_exe().expect("the test binary");
-    let cwd = binary
-        .parent()
-        .expect("the test binary's directory")
-        .to_path_buf();
-    let spec = io::Spec {
-        program: binary.into_os_string(),
-        args: ["--exact", name, "--nocapture"]
-            .map(OsString::from)
-            .to_vec(),
-        cwd,
-        env: [(CHILD, name), ("RUST_BACKTRACE", "1")]
-            .map(|(key, value)| (OsString::from(key), OsString::from(value)))
-            .to_vec(),
-        timeout: DEADLINE,
-        stdout_cap: 1 << 16,
-        stderr_cap: 1 << 16,
-    };
-    match io::run(&spec) {
-        io::Outcome::Exited { status, stderr, .. } => Ran {
-            code: status.code(),
-            err: String::from_utf8(stderr).expect("UTF-8 stderr"),
-        },
-        outcome => panic!("the child did not finish within {DEADLINE:?}: {outcome:?}"),
+    let (status, err) = io::testing::run_child(name, DEADLINE);
+    Ran {
+        code: status.code(),
+        err,
     }
-}
-
-fn is_child(name: &str) -> bool {
-    std::env::var_os(CHILD).is_some_and(|value| value == name)
 }
 
 #[test]

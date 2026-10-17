@@ -27,22 +27,33 @@ fn check_line(check: &FileCheck) -> String {
     )
 }
 
-/// Returns the stderr text of a patch command: the receipt lines with `summary`, then one line
+/// Returns the stderr text of a patch command: the receipt lines with `summary`, then one note
 /// per edit that did not apply.
 #[must_use]
 pub fn patch_receipt(receipt: &Receipt<'_>, summary: &str, result: &ApplyResult) -> String {
-    let mut lines = receipt_lines(receipt, summary);
-    lines.extend(result.failures().map(|outcome| {
+    let mut notes = note_text(&receipt_lines(receipt, summary).join("\n"));
+    for outcome in result.failures() {
         let edit = &outcome.edit;
-        format!(
+        notes.push_str(&note_text(&format!(
             "  {}: {} block {}: {}",
             outcome.status.as_str(),
             edit.path,
             edit.index,
             outcome.reason
-        )
-    }));
-    lines.join("\n") + "\n"
+        )));
+    }
+    notes
+}
+
+/// Returns `text` as one stderr note: a line break ends it, and one is added only when it has
+/// none.
+#[must_use]
+pub fn note_text(text: &str) -> String {
+    if text.ends_with('\n') {
+        text.to_owned()
+    } else {
+        format!("{text}\n")
+    }
 }
 
 /// Returns the line that names one block that did not parse, and why.

@@ -386,10 +386,11 @@ pub io::TestRunError::Capture::error: core::io::error::Error
 pub io::TestRunError::Capture::notes: alloc::vec::Vec<io::GroupNote>
 pub io::TestRunError::Interrupted
 pub io::TestRunError::Interrupted::notes: alloc::vec::Vec<io::GroupNote>
+pub io::TestRunError::NoCaptureDir(alloc::vec::Vec<(std::path::PathBuf, core::io::error::Error)>)
 pub io::TestRunError::Wait
 pub io::TestRunError::Wait::error: core::io::error::Error
 pub io::TestRunError::Wait::notes: alloc::vec::Vec<io::GroupNote>
-pub io::TestRunError::Watch(core::io::error::Error)
+pub io::TestRunError::Watch(io::WatchError)
 impl core::error::Error for io::TestRunError
 impl core::fmt::Debug for io::TestRunError
 pub fn io::TestRunError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -626,6 +627,8 @@ impl core::panic::unwind_safe::UnwindSafe for io::Leftover
 pub struct io::LockGuard
 impl core::fmt::Debug for io::LockGuard
 pub fn io::LockGuard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::ops::drop::Drop for io::LockGuard
+pub fn io::LockGuard::drop(&mut self)
 impl core::marker::Freeze for io::LockGuard
 impl core::marker::Send for io::LockGuard
 impl core::marker::Sync for io::LockGuard
@@ -730,6 +733,16 @@ impl core::marker::Unpin for io::RunResult
 impl core::marker::UnsafeUnpin for io::RunResult
 impl core::panic::unwind_safe::RefUnwindSafe for io::RunResult
 impl core::panic::unwind_safe::UnwindSafe for io::RunResult
+pub struct io::SigintHold
+impl core::ops::drop::Drop for io::SigintHold
+pub fn io::SigintHold::drop(&mut self)
+impl core::marker::Freeze for io::SigintHold
+impl core::marker::Send for io::SigintHold
+impl core::marker::Sync for io::SigintHold
+impl core::marker::Unpin for io::SigintHold
+impl core::marker::UnsafeUnpin for io::SigintHold
+impl core::panic::unwind_safe::RefUnwindSafe for io::SigintHold
+impl core::panic::unwind_safe::UnwindSafe for io::SigintHold
 pub struct io::Spec
 pub io::Spec::args: alloc::vec::Vec<std::ffi::os_str::OsString>
 pub io::Spec::cwd: std::path::PathBuf
@@ -808,6 +821,19 @@ impl core::marker::Unpin for io::Walk
 impl core::marker::UnsafeUnpin for io::Walk
 impl !core::panic::unwind_safe::RefUnwindSafe for io::Walk
 impl !core::panic::unwind_safe::UnwindSafe for io::Walk
+pub struct io::WatchError(pub core::io::error::Error)
+impl core::error::Error for io::WatchError
+impl core::fmt::Debug for io::WatchError
+pub fn io::WatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for io::WatchError
+pub fn io::WatchError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for io::WatchError
+impl core::marker::Send for io::WatchError
+impl core::marker::Sync for io::WatchError
+impl core::marker::Unpin for io::WatchError
+impl core::marker::UnsafeUnpin for io::WatchError
+impl !core::panic::unwind_safe::RefUnwindSafe for io::WatchError
+impl !core::panic::unwind_safe::UnwindSafe for io::WatchError
 pub struct io::WriteFailure
 pub io::WriteFailure::error: io::WriteError
 pub io::WriteFailure::leftovers: alloc::vec::Vec<io::Leftover>
@@ -841,14 +867,19 @@ pub const io::TERM_GRACE: core::time::Duration
 pub const io::TEST_ENV_ALLOWLIST: [&str; 4]
 pub fn io::append_line(&std::path::Path, &[u8]) -> core::result::Result<(), io::AppendError>
 pub fn io::cache_root(impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<io::CacheRoot, io::HomeUnknown>
+pub fn io::catch_file_size_signal()
 pub fn io::contained_file_size(&std::path::Path, &std::path::Path) -> core::option::Option<core::io::error::Result<u64>>
 pub fn io::contained_path(&std::path::Path, &std::path::Path) -> core::result::Result<std::path::PathBuf, io::Refusal>
 pub fn io::create_owner_dir(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::create_private_dir(&std::path::Path) -> core::io::error::Result<alloc::vec::Vec<(std::path::PathBuf, core::io::error::Error)>>
 pub fn io::decode_strict(alloc::vec::Vec<u8>) -> core::result::Result<alloc::string::String, io::NotUtf8>
+pub fn io::decode_text(alloc::vec::Vec<u8>) -> core::result::Result<alloc::string::String, io::NotUtf8>
 pub fn io::end_by_interrupt() -> never
+pub fn io::exit_code(std::process::ExitStatus) -> i32
 pub fn io::file_size(&std::path::Path) -> core::io::error::Result<u64>
 pub fn io::file_stays_inside(&std::path::Path, &std::path::Path) -> bool
+pub fn io::helper_builder() -> std::thread::builder::Builder
+pub fn io::hold_sigint() -> core::result::Result<io::SigintHold, io::WatchError>
 pub fn io::interrupted() -> bool
 pub fn io::load_config(&std::path::Path) -> io::ProjectConfig
 pub fn io::os_error_class_text(&core::io::error::Error) -> alloc::string::String
@@ -864,6 +895,8 @@ pub fn io::resolve(&std::path::Path) -> core::io::error::Result<std::path::PathB
 pub fn io::run(&io::Spec) -> io::Outcome
 pub fn io::run_test(&io::TestCommand<'_>, impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<io::TestRun, io::TestRunError>
 pub fn io::spawn_or_run<'scope, T, F>(&'scope std::thread::scoped::Scope<'scope, '_>, &'scope F) -> io::Started<'scope, T> where F: core::ops::function::Fn() -> T + core::marker::Sync, T: core::marker::Send + 'scope
+pub fn io::spawn_or_run_with<'scope, T, F>(std::thread::builder::Builder, &'scope std::thread::scoped::Scope<'scope, '_>, &'scope F) -> io::Started<'scope, T> where F: core::ops::function::Fn() -> T + core::marker::Sync, T: core::marker::Send + 'scope
+pub fn io::stat_present(&std::path::Path) -> core::io::error::Result<core::option::Option<std::fs::Metadata>>
 pub fn io::strerror(&core::io::error::Error) -> alloc::string::String
 pub fn io::touch(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::try_lock(&std::path::Path) -> core::result::Result<io::LockGuard, io::LockError>

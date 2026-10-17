@@ -1,20 +1,15 @@
 //! Atomic replacement of one file: an owner-only parent, a private temporary file beside the
 //! target, a flush to disk, then a rename over the target.
 
-use std::ffi::OsStr;
-use std::fs::{self, File, OpenOptions, Permissions};
+use std::fs::{self, File, Permissions};
 use std::io::{self, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use crate::files::make_dir;
+use crate::random::{create_named, sibling_prefix};
 
 const FILE_MODE: u32 = 0o600;
-// A name that another writer holds is skipped, and a run of taken names is a refusal.
-const MAX_NAME_ATTEMPTS: u64 = 100;
-
-static NEXT_NAME: AtomicU64 = AtomicU64::new(0);
 
 /// Replaces the file `target` with `bytes` in one rename: the parent is created with mode 0700
 /// when missing, the new file has mode 0600, and a rename never follows a symlink at `target`.
@@ -30,7 +25,7 @@ pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
     };
     make_dir(parent)?;
-    let (temporary, file) = temporary_file(parent, name)?;
+    let (temporary, file) = create_named(parent, &sibling_prefix(name), "")?;
     let replaced = write_synced(file, bytes)
         .and_then(|()| fs::set_permissions(&temporary, Permissions::from_mode(FILE_MODE)))
         .and_then(|()| fs::rename(&temporary, target));
@@ -39,30 +34,6 @@ pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
         let _ = fs::remove_file(&temporary);
     }
     replaced
-}
-
-// A new file named `.<name>.<n>` beside the target, created exclusively.
-fn temporary_file(directory: &Path, name: &OsStr) -> io::Result<(PathBuf, File)> {
-    let process = std::process::id();
-    let mut last = None;
-    for _ in 0..MAX_NAME_ATTEMPTS {
-        let serial = NEXT_NAME.fetch_add(1, Ordering::Relaxed);
-        let mut leaf = OsStr::new(".").to_os_string();
-        leaf.push(name);
-        leaf.push(format!(".{process:x}{serial:x}"));
-        let path = directory.join(leaf);
-        let created = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(FILE_MODE)
-            .open(&path);
-        match created {
-            Ok(file) => return Ok((path, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => last = Some(error),
-            Err(error) => return Err(error),
-        }
-    }
-    Err(last.unwrap_or_else(|| io::Error::from(io::ErrorKind::AlreadyExists)))
 }
 
 fn write_synced(mut file: File, bytes: &[u8]) -> io::Result<()> {

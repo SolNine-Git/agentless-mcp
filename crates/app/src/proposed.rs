@@ -39,14 +39,12 @@ pub(crate) fn proposed(root: &Path, path: &str, after: &After, cwd: StartDir<'_>
     if checks::pair_language(&relative).is_none() {
         return Proposed::Skipped;
     }
-    // A missing file is one the change creates, which differs from one that could not be read.
-    let old = if target.exists() {
-        match side_text(&PAIR_OLD_UNREAD, &relative, bounded_read(&target)) {
+    let old = match working_read(&target) {
+        Some(read) => match side_text(&PAIR_OLD_UNREAD, &relative, read) {
             Ok(text) => Some(text),
             Err(row) => return Proposed::Rows(vec![*row]),
-        }
-    } else {
-        None
+        },
+        None => None,
     };
     match new_text(&relative, after, cwd) {
         Ok(new) => Proposed::Pair(TextPair {
@@ -55,6 +53,16 @@ pub(crate) fn proposed(root: &Path, path: &str, after: &After, cwd: StartDir<'_>
             new: Some(new),
         }),
         Err(row) => Proposed::Rows(vec![*row]),
+    }
+}
+
+// The bounded read of a file that is there, and `None` for one that is not: a file the change
+// creates. A stat that fails is a read that failed, never a missing file.
+pub(crate) fn working_read(target: &Path) -> Option<Result<Vec<u8>, String>> {
+    match io::stat_present(target) {
+        Ok(None) => None,
+        Ok(Some(_)) => Some(bounded_read(target)),
+        Err(error) => Some(Err(io::Skipped::Unreadable(error).to_string())),
     }
 }
 
@@ -83,5 +91,34 @@ pub(crate) fn after_file(file: &Path, cwd: StartDir<'_>) -> Result<Vec<u8>, Stri
         Ok(cwd) => bounded_read(&cwd.join(file)),
         Err(_) if file.is_absolute() => bounded_read(file),
         Err(unread) => Err(io::Skipped::Unreadable(unread.error()).to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::Sandbox;
+
+    #[test]
+    fn an_old_text_whose_stat_fails_is_unread_not_a_file_the_change_creates() {
+        let sandbox = Sandbox::new();
+        let root = sandbox.repo("repo", &[("secret/x.py", "def f():\n    return 1\n")]);
+        if !sandbox.modes_bind() {
+            return;
+        }
+        let after = After::Text("def f():\n    return 2\n".to_owned());
+        sandbox.chmod("repo/secret", 0o000);
+        let found = proposed(&root, "secret/x.py", &after, Ok(&root));
+        sandbox.chmod("repo/secret", 0o755);
+        let Proposed::Rows(rows) = found else {
+            panic!("the old text was not refused");
+        };
+        let shown: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|row| (row.finding.message.as_str(), row.finding.evidence.as_str()))
+            .collect();
+        let message = "not checked: the text of secret/x.py before the change was not read \
+                       (unreadable: Permission denied), so no pair check compared this file.";
+        assert_eq!(shown, [(message, "unreadable: Permission denied")]);
     }
 }

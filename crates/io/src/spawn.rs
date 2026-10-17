@@ -23,7 +23,21 @@ where
     F: Fn() -> T + Sync,
     T: Send + 'scope,
 {
-    started(named(), scope, work)
+    started(helper_builder(), scope, work)
+}
+
+/// Starts `work` as [`spawn_or_run`] does, on a thread that `builder` makes. A test passes a
+/// builder that the OS refuses, to reach the fallback.
+pub fn spawn_or_run_with<'scope, T, F>(
+    builder: Builder,
+    scope: &'scope Scope<'scope, '_>,
+    work: &'scope F,
+) -> Started<'scope, T>
+where
+    F: Fn() -> T + Sync,
+    T: Send + 'scope,
+{
+    started(builder, scope, work)
 }
 
 impl<T> Started<'_, T> {
@@ -39,8 +53,9 @@ impl<T> Started<'_, T> {
     }
 }
 
-// A helper takes the caller's thread name, so a panic message names the thread it named before.
-fn named() -> Builder {
+/// Returns the builder of a helper thread: it takes the caller's thread name, so a panic message
+/// names the thread it named before.
+pub fn helper_builder() -> Builder {
     let builder = Builder::new();
     match thread::current().name() {
         Some(name) => builder.name(name.to_owned()),

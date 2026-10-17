@@ -458,6 +458,12 @@ CANDIDATES = [
     lint_case("empty_directory", [*LINTED, ["mkdir", "cands"]]),
     lint_case("unknown_check", [*LINTED, *patches(GOOD)], checks=["complexity"]),
     lint_case("no_check", [*LINTED, *patches(GOOD)], checks=[]),
+    # A coverage row is kept for any selection: one patch check and a file with no grammar.
+    lint_case(
+        "one_patch_check_keeps_the_coverage_rows",
+        [*LINTED, *patches(GOOD + "\n" + block("notes.rst", "", "alpha\n"))],
+        checks=["arity"],
+    ),
     lint_case(
         "copies_out_of_scope",
         [
