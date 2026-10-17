@@ -30,13 +30,12 @@ from fixture_files import (
     Fixture,
     Identity,
     hermetic_env,
-    refuse_real_caches,
+    refuse_unready_environment,
     run_git,
     write_or_check,
 )
 
 from agentless_mcp.adapters.cli.main import build_parser
-from agentless_mcp.core import grammars
 
 FIXTURES = Path(__file__).resolve().parents[1] / "crates" / "cli" / "fixtures"
 GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
@@ -1055,11 +1054,5 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
 
 
 if __name__ == "__main__":
-    refuse_real_caches()
-    if not os.environ.get(GRAMMAR_OVERRIDE):
-        sys.exit(f"refused: set {GRAMMAR_OVERRIDE} to a scratch copy of the grammar libraries")
-    # The Rust build links every grammar, so a cold grammar here would pin a different answer.
-    cold = set(grammars.ALL_LANGUAGES) - grammars.warmed_languages()
-    if cold:
-        sys.exit(f"refused: {GRAMMAR_OVERRIDE} holds no library for {', '.join(sorted(cold))}")
+    refuse_unready_environment()
     raise SystemExit(write_or_check((__doc__ or "").splitlines()[0], FIXTURES, BUILDERS))

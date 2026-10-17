@@ -17,6 +17,7 @@ facts = { path = "../facts" }
 git = { path = "../git" }
 io = { path = "../io" }
 json = { path = "../json" }
+kernel = { path = "../kernel" }
 patch = { path = "../patch" }
 prompts = { path = "../prompts" }
 serde.workspace = true

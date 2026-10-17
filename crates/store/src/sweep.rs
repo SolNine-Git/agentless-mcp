@@ -8,7 +8,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use io::LockError;
-use text::{CodePointString, IntText, int_text, is_space};
+use text::{CodePointString, IntText, convertible_int, is_space};
 
 use crate::discard::{FACTS_LOCK_NAME, SUFFIXES, remove_database, with_suffix};
 use crate::warnings::Failed;
@@ -20,8 +20,6 @@ pub const DEFAULT_MAX_CACHE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 pub const PROTECTED_SECONDS: f64 = 86_400.0;
 /// The environment variable that sets the ceiling.
 pub const MAX_CACHE_BYTES_VARIABLE: &str = "AGENTLESS_MCP_MAX_CACHE_BYTES";
-
-const MAX_DIGITS: usize = 4300;
 
 /// One cached database, as the sweep weighs it.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,7 +40,11 @@ pub fn max_cache_bytes(value: Option<&OsStr>) -> (Option<u64>, Option<String>) {
     if stripped.code_points().next().is_none() {
         return (Some(DEFAULT_MAX_CACHE_BYTES), None);
     }
-    match stripped.as_str().and_then(int_text).and_then(ceiling) {
+    match stripped
+        .as_str()
+        .and_then(convertible_int)
+        .and_then(ceiling)
+    {
         Some(0) => (None, None),
         Some(limit) => (Some(limit), None),
         None => (Some(DEFAULT_MAX_CACHE_BYTES), Some(ignored(&stripped))),
@@ -71,14 +73,9 @@ fn stripped(bytes: &[u8]) -> CodePointString {
     kept
 }
 
-// A negative value is refused, and so is a text that Python's int() refuses for its length.
 fn ceiling(found: IntText<'_>) -> Option<u64> {
-    let digits: Vec<u8> = found.digits().collect();
-    if digits.len() > MAX_DIGITS {
-        return None;
-    }
-    let value = digits.iter().fold(0_u64, |value, digit| {
-        value.saturating_mul(10).saturating_add(u64::from(*digit))
+    let value = found.digits().fold(0_u64, |value, digit| {
+        value.saturating_mul(10).saturating_add(u64::from(digit))
     });
     (!found.negative || value == 0).then_some(value)
 }
@@ -231,7 +228,7 @@ fn missing(error: &std::io::Error) -> bool {
     error.raw_os_error() == Some(libc::ENOENT)
 }
 
-// The modification time as CPython's st_mtime computes it: seconds + nanoseconds * 1e-9.
+// The modification time in seconds: the whole seconds plus nanoseconds * 1e-9, as one f64 sum.
 fn modified(found: &std::fs::Metadata) -> f64 {
     exact(found.mtime()) + exact(found.mtime_nsec()) * 1e-9
 }

@@ -1,27 +1,7 @@
-//! The resolved symbol graph that explain, path and health read, and the resolution of a name
-//! the caller typed to the definitions it matches, best match first.
+//! The resolution of a name the caller typed to the definitions it matches, best match first,
+//! and the endpoint that explain and path start from.
 
-use graph::{
-    Definition, FileFacts, NameIndex, Resolver, Scopes, SymbolGraph, Tier, definitions_for,
-};
-
-// The position of `tier` in the strongest-first tier order.
-pub(crate) fn tier_at(tier: Tier) -> usize {
-    let at = Tier::ORDER.iter().position(|known| *known == tier);
-    at.expect("every tier is in the tier order")
-}
-
-// Builds the name index and the resolved symbol graph of one scan, and gives both to `answer`.
-pub(crate) fn with_resolved<T>(
-    files: &[FileFacts],
-    answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> T,
-) -> T {
-    let index = NameIndex::build(files);
-    let scopes = Scopes::build(files);
-    let resolver = Resolver::new(&index, &scopes);
-    let graph = SymbolGraph::build(&resolver);
-    answer(&index, &graph)
-}
+use graph::{Definition, NameIndex, SymbolGraph, definitions_for};
 
 // A definition whose qualified name is the text the caller typed outranks one that only ends
 // with it; inside a band, the path and the line decide.

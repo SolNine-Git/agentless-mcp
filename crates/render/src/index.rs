@@ -2,6 +2,7 @@
 //! rows, and the whole report as a JSON document under its receipt.
 
 use app::IndexReport;
+use text::one_line;
 
 use crate::envelope::wrap_json_whole;
 use crate::{Error, Receipt};
@@ -9,8 +10,7 @@ use crate::{Error, Receipt};
 // Each kind of row stops here and counts the rest, so a large failure stays one screen.
 const FAILURE_LINES: usize = 10;
 
-/// Returns the summary line of `report`, its first error rows and its first warning rows, each
-/// cut with a count of the rest.
+/// Returns the summary line of `report` and its first ten error and warning rows.
 #[must_use]
 pub fn index_text(report: &IndexReport) -> String {
     let errors = report.failures.iter();
@@ -23,7 +23,8 @@ pub fn index_text(report: &IndexReport) -> String {
     lines.join("\n") + "\n"
 }
 
-// The first rows of one kind, then a count of the rows past the cut.
+// The first rows of one kind, then a count of the rows past the cut. A file name is repository
+// text, so a line break in it is escaped and cannot open a line of its own.
 fn rows<'r>(
     kind: &str,
     noun: &str,
@@ -32,7 +33,7 @@ fn rows<'r>(
     let total = entries.len();
     let shown = entries.take(FAILURE_LINES);
     let mut lines: Vec<String> = shown
-        .map(|(path, reason)| format!("  {kind}: {path}: {reason}"))
+        .map(|(path, reason)| format!("  {kind}: {}: {}", one_line(path), one_line(reason)))
         .collect();
     if total > FAILURE_LINES {
         let more = total - FAILURE_LINES;

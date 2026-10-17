@@ -1,9 +1,10 @@
-//! The lowercase form of a text, from the Unicode 15.1 case mappings.
+//! The lowercase form of a text: the Unicode 15.1 case mappings, and the final-sigma rule.
 
 use std::ops::RangeInclusive;
 
 /// Returns `text` lowercased by the Unicode 15.1 case mappings, with a capital sigma that ends a
-/// word written as a final sigma.
+/// word written as a final sigma. Beside a character other than the kept capitals, the final-sigma
+/// rule reads the cased and case-ignorable properties of the standard library's Unicode version.
 #[must_use]
 pub fn lower(text: &str) -> String {
     let mut lowered = String::with_capacity(text.len());

@@ -5,10 +5,12 @@ usage: surface_cmp.py BASE_DIR NEW_DIR [--diffs FILE] [--examples N] [--seed N]
 The comparison refuses, with exit status 1 and before it reads an answer, two dumps that read
 different target lists, two builds that listed different find-symbol frames, and a dump that
 has no answer for a target. An answer changed when its exit code, its stdout or its stderr
-differ once the receipt lines are removed. The report gives the changed answers per surface,
-the refs tier transitions keyed by (path, line), the loss count, the truncated answers, and a
-seeded sample of the changed refs lines with their source text. --diffs receives a unified
-diff of every changed answer.
+differ once the receipt's cache field is masked: the cache state is the one receipt value that
+two builds over one checkout may differ in. A pair that timed out in both builds is not
+compared, and the report names it. The report gives the changed answers per surface, the
+timeouts, the refs tier transitions keyed by (path, line), the loss count, the count of
+truncated answers, and a seeded sample of the changed refs lines with their source text.
+--diffs receives a unified diff of every changed answer.
 """
 
 import argparse
@@ -33,6 +35,10 @@ TIER_ORDER = ("same_file", "imported", "unique", "ambiguous")
 ABSENT = "absent"
 RECEIPT_HEADER = "// agentless-mcp receipt"
 RECEIPT_PREFIX = "// "
+RECEIPT_REPO = "// repo: "
+TEXT_CACHE = "   cache: "
+JSON_CACHE = '    "cache": '
+CACHE_MASK = "<CACHE>"
 JSON_OPEN = "{"
 JSON_RECEIPT_OPEN = '  "receipt": {'
 JSON_RECEIPT_CLOSE = "  },"
@@ -113,13 +119,26 @@ def strip_receipt(stream: str) -> str:
     return stream
 
 
+def mask_cache(stream: str) -> str:
+    """Return ``stream`` with the receipt's cache field masked, in the text or the JSON form."""
+    return "\n".join(_masked(line) for line in stream.split("\n"))
+
+
+def _masked(line: str) -> str:
+    if line.startswith(RECEIPT_REPO) and TEXT_CACHE in line:
+        return line.split(TEXT_CACHE, 1)[0] + TEXT_CACHE + CACHE_MASK
+    if line.startswith(JSON_CACHE):
+        return JSON_CACHE + CACHE_MASK + ("," if line.endswith(",") else "")
+    return line
+
+
 def answer_changed(base: Answer, new: Answer) -> bool:
-    """Return True when the exit code, stdout or stderr differ once the receipts are removed."""
+    """Return True when the exit code, stdout or stderr differ once the cache field is masked."""
     return base.code != new.code or _visible(base) != _visible(new)
 
 
 def _visible(answer: Answer) -> tuple[str, str]:
-    return strip_receipt(answer.stdout), strip_receipt(answer.stderr)
+    return mask_cache(answer.stdout), mask_cache(answer.stderr)
 
 
 def refs_sites(stdout: str) -> dict[Site, str] | None:
@@ -292,6 +311,8 @@ class Tally:
     changed: Counter[str] = field(default_factory=Counter)
     stderr_changed: Counter[str] = field(default_factory=Counter)
     exit_changes: list[str] = field(default_factory=list)
+    timeouts: Counter[str] = field(default_factory=Counter)
+    not_compared: list[str] = field(default_factory=list)
     losses: list[str] = field(default_factory=list)
     truncated: Counter[str] = field(default_factory=Counter)
     unparsable: Counter[str] = field(default_factory=Counter)
@@ -301,10 +322,16 @@ class Tally:
 
 
 def compare_answer(tally: Tally, instance: str, key: str, base: Answer, new: Answer) -> None:
-    """Add one answer pair to ``tally``: changes, losses, truncation and refs tier moves."""
+    """Add one answer pair to ``tally``: timeouts, changes, losses, truncation and tier moves."""
     surface = key.split(":", 1)[0]
     where = f"{instance} {key}"
     tally.calls[surface] += 1
+    tally.timeouts["base"] += base.code is None
+    tally.timeouts["new"] += new.code is None
+    # Two timeouts hold no answer, so equal empty streams prove nothing about either build.
+    if base.code is None and new.code is None:
+        tally.not_compared.append(where)
+        return
     tally.truncated["base"] += is_truncated(base.stdout)
     tally.truncated["new"] += is_truncated(new.stdout)
     if base.code != new.code:
@@ -316,7 +343,7 @@ def compare_answer(tally: Tally, instance: str, key: str, base: Answer, new: Ans
         tally.losses.append(f"{where}: {surface} size {sizes[0]} -> {sizes[1]}")
     if surface == "refs":
         _compare_refs(tally, instance, key, base, new)
-    if strip_receipt(base.stderr) != strip_receipt(new.stderr):
+    if mask_cache(base.stderr) != mask_cache(new.stderr):
         tally.stderr_changed[surface] += 1
     if answer_changed(base, new):
         tally.changed[surface] += 1
@@ -340,7 +367,7 @@ def _compare_refs(tally: Tally, instance: str, key: str, base: Answer, new: Answ
 
 
 def render_diff(where: str, base: Answer, new: Answer, labels: tuple[str, str]) -> str:
-    """Return a header line and the unified diff of each stream, receipts removed."""
+    """Return a header line and the unified diff of each stream, the cache field masked."""
     parts = [f"===== {where}  exit {_code(base.code)} -> {_code(new.code)}"]
     streams = zip(("stdout", "stderr"), _visible(base), _visible(new), strict=True)
     for stream, before, after in streams:
@@ -358,7 +385,7 @@ def render_diff(where: str, base: Answer, new: Answer, labels: tuple[str, str]) 
 
 
 def report_lines(tally: Tally) -> Iterator[str]:
-    """Yield the report's counts: per surface, exit codes, losses, truncation and tier moves."""
+    """Yield the counts: per surface, exit codes, timeouts, losses, truncation and tier moves."""
     yield f"base: {tally.labels[0]}"
     yield f"new:  {tally.labels[1]}"
     yield "surface   calls  changed  stderr changed"
@@ -367,6 +394,9 @@ def report_lines(tally: Tally) -> Iterator[str]:
         yield f"{surface:<9} {counts[0]:>5}  {counts[1]:>7}  {counts[2]:>14}"
     yield f"exit-code changes: {len(tally.exit_changes)}"
     yield from (f"  {line}" for line in tally.exit_changes)
+    yield f"timeouts: base {tally.timeouts['base']}, new {tally.timeouts['new']}"
+    yield f"not compared, a timeout in both builds: {len(tally.not_compared)}"
+    yield from (f"  {line}" for line in tally.not_compared)
     yield f"loss count: {len(tally.losses)}"
     yield from (f"  {line}" for line in tally.losses)
     yield f"truncated answers: base {tally.truncated['base']}, new {tally.truncated['new']}"

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use graph::{Definition, NameIndex, Site};
-use text::{is_decimal, is_space, strip};
+use text::{PosixPath, is_decimal, is_posix_part, is_space, split_suffix, strip};
 
 use crate::scope::is_test_path;
 
@@ -23,7 +23,7 @@ pub(crate) fn focus_resolution<'a>(
     known: &Known<'_>,
     index: &NameIndex<'a>,
 ) -> (Vec<String>, Vec<Definition<'a>>) {
-    let paths = path_matches(&pure_posix(entry), known);
+    let paths = path_matches(&PosixPath::parse(entry).render(), known);
     if !paths.is_empty() {
         return (paths, Vec::new());
     }
@@ -104,28 +104,8 @@ fn matches_stem(path: &str, entry: &str) -> bool {
 
 fn without_suffix(path: &str) -> &str {
     let start = path.rfind('/').map_or(0, |at| at + 1);
-    let name = &path[start..];
-    match name.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < name.len() => &path[..start + dot],
-        _ => path,
-    }
-}
-
-fn pure_posix(text: &str) -> String {
-    let root = if text.starts_with("//") && !text.starts_with("///") {
-        "//"
-    } else if text.starts_with('/') {
-        "/"
-    } else {
-        ""
-    };
-    let parts: Vec<&str> = (text.split('/'))
-        .filter(|part| !part.is_empty() && *part != ".")
-        .collect();
-    if root.is_empty() && parts.is_empty() {
-        return ".".to_owned();
-    }
-    format!("{root}{}", parts.join("/"))
+    let (stem, _) = split_suffix(&path[start..]);
+    &path[..start + stem.len()]
 }
 
 // A dotted entry is evidence only where a file spells every part of it.
@@ -179,10 +159,10 @@ fn normalized_spellings(entry: &str) -> Vec<String> {
     let core = strip(&without_location(&core)).replace('\\', "/");
     let mut candidates = Vec::new();
     if !core.is_empty() && core != entry {
-        candidates.push(pure_posix(&core));
+        candidates.push(PosixPath::parse(&core).render());
     }
     let parts: Vec<&str> = (core.split('/'))
-        .filter(|part| !part.is_empty() && *part != ".")
+        .filter(|part| is_posix_part(part.as_bytes()))
         .collect();
     let parts = &parts[parts.len().saturating_sub(MAX_TAIL_COMPONENTS)..];
     candidates.extend((1..parts.len()).map(|start| parts[start..].join("/")));

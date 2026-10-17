@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use crate::freshness::{facts_schema_rejection, rejection};
+use crate::freshness::{analysis_rejection, facts_schema_rejection, rejection};
 use crate::open::{BUSY_TIMEOUT, connect, fetch, found, has_meta, read_meta};
 use crate::value::Cell;
 use crate::{
-    FACTS_SCHEMA_VERSION, FileText, Refusal, RowCounts, Source, SqlClass, SqlError, analysis,
+    FACTS_SCHEMA_VERSION, FileText, IndexMeta, Refusal, RowCounts, Source, SqlClass, SqlError,
     schema,
 };
 
@@ -22,8 +22,6 @@ pub struct FactsDb {
     connection: Mutex<Connection>,
     database: PathBuf,
     generation: String,
-    // True when the rows were made under this build's analysis digest.
-    current: bool,
 }
 
 /// Opens agentless.db at `database` for the repository `repo_root`, unless `no_cache` asks to
@@ -57,14 +55,20 @@ impl FactsDb {
             return Err(refusal);
         }
         let (meta, stored) = read_meta(&connection, schema::META)?.ok_or(Refusal::NoIndex)?;
-        if let Some(refusal) = rejection(&meta, FACTS_SCHEMA_VERSION, repo_root) {
+        let analysis = match stored {
+            Cell::Blob(bytes) => Some(bytes),
+            _ => None,
+        };
+        let meta = IndexMeta { analysis, ..meta };
+        let refused =
+            rejection(&meta, FACTS_SCHEMA_VERSION, repo_root).or_else(|| analysis_rejection(&meta));
+        if let Some(refusal) = refused {
             return Err(refusal);
         }
         Ok(Self {
             connection: Mutex::new(connection),
             database: database.to_path_buf(),
             generation: meta.generation,
-            current: stored == Cell::Blob(analysis().bytes().to_vec()),
         })
     }
 
@@ -88,12 +92,9 @@ impl FactsDb {
         &self.database
     }
 
-    // The id of the row that describes `file` now: made under this analysis, for this language,
-    // from exactly this text.
+    // The id of the row that describes `file` now: for this language, from exactly this text. The
+    // open admitted only rows of this analysis.
     pub(crate) fn fresh_id(&self, file: &FileText) -> Result<Option<i64>, SqlError> {
-        if !self.current {
-            return Ok(None);
-        }
         let found = fetch::<3>(&self.connection(), schema::LOOKUP, [&file.path], 1)?;
         let Some([id, language, digest]) = found.into_iter().next() else {
             return Ok(None);

@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use facts::{StableId, Symbol};
 use graph::{Definition, FileFacts, NameIndex, common_name_damping, name_multiplier};
 
-use super::{Listing, MapEntry, MapFile, Ranked, count, map_rows_text};
+use super::{Listing, MapEntry, MapFile, Shortlist, count, map_rows_text};
+use crate::budget::longest_fitting;
 use crate::{TokenCounter, rationale_nodes};
 
 // The focus-named symbols that the packing moves to the front, at most.
@@ -39,13 +40,13 @@ struct Candidate<'a> {
 struct Packing<'p, 'a> {
     eligible: Vec<Candidate<'a>>,
     totals: BTreeMap<&'a str, usize>,
-    ranked: &'p Ranked<'p, 'a>,
+    ranked: &'p Shortlist<'p, 'a>,
 }
 
 // Only the files the focus reaches compete for the budget; every ranked file is still listed.
 pub(super) fn symbol_listing(
     counter: &dyn TokenCounter,
-    ranked: &Ranked<'_, '_>,
+    ranked: &Shortlist<'_, '_>,
     symbols: &Symbols<'_, '_>,
     budget: Option<usize>,
 ) -> Listing {
@@ -77,7 +78,7 @@ pub(super) fn symbol_listing(
 }
 
 // A file's rank spread across its symbols by inbound name references, damped as the edges are.
-fn score_symbols<'a>(ranked: &Ranked<'_, 'a>, symbols: &Symbols<'_, '_>) -> Vec<Candidate<'a>> {
+fn score_symbols<'a>(ranked: &Shortlist<'_, 'a>, symbols: &Symbols<'_, '_>) -> Vec<Candidate<'a>> {
     let mut candidates = Vec::new();
     for &path in ranked.chosen {
         let file = ranked.file(path);
@@ -201,14 +202,6 @@ fn auto_budget(counter: &dyn TokenCounter, packing: &Packing<'_, '_>) -> usize {
 
 // The largest prefix of the eligible symbols whose render, file rows included, fits `budget`.
 fn pack(counter: &dyn TokenCounter, packing: &Packing<'_, '_>, budget: usize) -> usize {
-    let (mut low, mut high) = (0, packing.eligible.len());
-    while low < high {
-        let middle = low + (high - low).div_ceil(2);
-        if counter.count(&map_rows_text(&group(middle, packing))) <= budget {
-            low = middle;
-        } else {
-            high = middle - 1;
-        }
-    }
-    low
+    let fits = |kept: usize| counter.count(&map_rows_text(&group(kept, packing))) <= budget;
+    longest_fitting(0, packing.eligible.len(), fits)
 }

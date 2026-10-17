@@ -11,13 +11,12 @@ mod text;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ::text::strip;
-use graph::{
-    Definition, FileFacts, FileGraph, NameIndex, PageRank, Scopes, Weighting, pagerank, rank_order,
-};
+use graph::{Definition, FileFacts, NameIndex, PageRank, Scopes, pagerank, rank_order};
 use io::{Granularity, ProjectConfig};
 
 use crate::bounds::within;
 use crate::detached::answered_over;
+use crate::file_graph::file_graph;
 use crate::ops::limits::{DEFAULT_MAX_FILES, MAX_BUDGET, MAX_MAX_FILES, MIN_BUDGET, MIN_MAX_FILES};
 use crate::scan::RepoFacts;
 use crate::scope::is_test_path;
@@ -168,13 +167,13 @@ impl Shape {
 }
 
 // The ranking's chosen files, best first, with their facts and ranks.
-struct Ranked<'r, 'a> {
+struct Shortlist<'r, 'a> {
     chosen: &'r [&'a str],
     ranking: &'r PageRank<'a>,
     by_path: &'r BTreeMap<&'a str, &'a FileFacts>,
 }
 
-impl<'a> Ranked<'_, 'a> {
+impl<'a> Shortlist<'_, 'a> {
     // Every chosen file came off this scan's ranking, so a missing one is a defect.
     fn rank(&self, path: &str) -> f64 {
         (self.ranking.rank(path)).expect("a chosen file is a ranked file")
@@ -206,11 +205,7 @@ fn build(
 ) -> MapResult {
     let config = &reading.repo.config;
     let index = NameIndex::build(&facts.files);
-    let weighting = Weighting {
-        relation_weights: config.relation_weights.unwrap_or(false),
-        stoplist: &config.stoplist,
-    };
-    let graph = FileGraph::build(&index, &Scopes::build(&facts.files), &weighting);
+    let graph = file_graph(&index, &Scopes::build(&facts.files), config);
     let known: Known<'_> = facts.files.iter().map(|file| file.path.as_str()).collect();
     let seeding = seed_weights(focus, &known, &index);
     // Tests stay pure sources of rank: the companions are their channel into a map.
@@ -223,7 +218,7 @@ fn build(
     let seeded = seeding.weights.keys().map(String::as_str);
     let targets: BTreeSet<&str> = seeded.chain(chosen.iter().copied()).collect();
     let companions = companions::companions_for(&graph, &by_path, &index, &targets);
-    let ranked = Ranked {
+    let ranked = Shortlist {
         chosen: &chosen,
         ranking: &ranking,
         by_path: &by_path,
@@ -258,7 +253,7 @@ fn build(
 }
 
 // No symbol competes in a map of files, so the counts are 0; each row keeps its file's count.
-fn file_listing(ranked: &Ranked<'_, '_>) -> Listing {
+fn file_listing(ranked: &Shortlist<'_, '_>) -> Listing {
     let files = (ranked.chosen.iter())
         .map(|&path| MapFile {
             path: path.to_owned(),
@@ -320,7 +315,7 @@ fn seed_weights<'a>(focus: &[String], known: &Known<'_>, index: &NameIndex<'a>) 
 fn count(items: usize) -> f64 {
     u32::try_from(items)
         .map(f64::from)
-        .expect("a scan holds fewer than 2^32 files")
+        .expect("a scan holds fewer than 2^32 files or sites")
 }
 
 #[cfg(test)]

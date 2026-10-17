@@ -29,7 +29,7 @@ fn refused(err: &str) -> Outcome {
 
 // The cl100k_base encoding is part of the binary, so the flag never refuses (ledger deviation).
 #[test]
-fn the_token_counter_flag_loads_its_encoding_and_the_command_answers() {
+fn a_tiktoken_run_answers_as_a_plain_run() {
     let sandbox = Sandbox::new();
     let counted = run(
         &sandbox,

@@ -4,8 +4,8 @@ use std::path::Path;
 
 use crate::SqlError;
 
-// An operation on a file that failed. Its warning ends with the repr of the OS error, as the
-// reference build's `%r` shows it.
+// An operation on a file that failed. Its warning ends with the OS error's class, number and
+// text, such as PermissionError(13, 'Permission denied').
 pub(crate) enum Failed<'a> {
     Restricting(&'a Path),
     Listing(&'a Path),

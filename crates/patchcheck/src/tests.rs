@@ -11,9 +11,9 @@ use patch::Edit;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use syntax::{Language, Unparsable};
+use text::{posix_name, split_suffix};
 
 use crate::dangling::near_misses;
-use crate::fragment::{path_name, suffix};
 use crate::lexer::{
     literal_end, parameter_shape, positional_arguments, signature_names, structure,
 };
@@ -255,8 +255,8 @@ struct SuffixCase {
 fn a_suffix_and_its_language_are_the_references() {
     let all: Vec<SuffixCase> = cases("suffix");
     for case in &all {
-        let name = path_name(&case.path);
-        assert_eq!(suffix(name), case.suffix, "{:?}", case.path);
+        let name = posix_name(&case.path);
+        assert_eq!(split_suffix(name).1, case.suffix, "{:?}", case.path);
         let language = Language::from_path(name).map(|language| language.name().to_owned());
         assert_eq!(language, case.language, "{:?}", case.path);
     }

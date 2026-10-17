@@ -5,6 +5,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use app::Services;
+use text::PosixPath;
 
 // The text of the file at `path`, or the refusal "cannot read {shown}: {reason}". The file is read
 // as given: no size cap and no symlink refusal, UTF-8 only, with "\r\n" and a lone "\r" as "\n".
@@ -34,22 +35,9 @@ pub(crate) fn below_cwd(path: &Path, services: &Services) -> PathBuf {
     }
 }
 
-// The path as a pure path spells it: no empty or "." segment and no trailing slash, with one or
-// two leading slashes kept and three or more read as one.
+// The path as a pure path spells it, which is how the messages name a caller's file.
 pub(crate) fn shown_path(text: &str) -> String {
-    let leading = text.len() - text.trim_start_matches('/').len();
-    let root = match leading {
-        0 => "",
-        2 => "//",
-        _ => "/",
-    };
-    let parts: Vec<&str> = (text.split('/'))
-        .filter(|part| !part.is_empty() && *part != ".")
-        .collect();
-    match (root, parts.as_slice()) {
-        ("", []) => ".".to_owned(),
-        _ => format!("{root}{}", parts.join("/")),
-    }
+    PosixPath::parse(text).render()
 }
 
 fn not_utf8(error: &io::NotUtf8) -> String {

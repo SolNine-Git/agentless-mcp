@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use facts::{SkeletonOptions, Symbol, line_count, skeletonize, slice_lines};
-use prompts::messages::SLICE_RANGE_BEYOND_FILE;
+use prompts::messages::{SLICE_RANGE_BEYOND_FILE, SLICE_RANGE_NOT_A_RANGE};
 use store::{FileText, Served};
 use syntax::Language;
 
@@ -111,9 +111,9 @@ fn failed(path: &str, language: Option<Language>, error: String) -> FileView {
     }
 }
 
-/// Renders the lines of `request` with the headers of the scopes around them. A range past the
-/// end of the file gets a line that says so. The warning of an unreadable cache row comes with
-/// either outcome.
+/// Renders the lines of `request` with the headers of the scopes around them. A range that starts
+/// past the end of the file, or that is no range, gets a line that says so. The warning of an
+/// unreadable cache row comes with either outcome.
 #[must_use]
 pub fn slice(reading: &Reading<'_>, request: &SliceRequest) -> Noted<Result<FileView, Error>> {
     let context = match within(&request.context, 0, MAX_CONTEXT_LINES, "context") {
@@ -152,11 +152,12 @@ impl Sliced<'_> {
     // The satisfiable ranges widen by the context and render; each other range gets a report.
     fn view(&self, ranges: &[(usize, usize)], context: usize) -> Result<FileView, Error> {
         let total = usize::try_from(line_count(self.text)).unwrap_or(usize::MAX);
-        let (fits, beyond): (Vec<_>, Vec<_>) =
-            ranges.iter().partition(|&&(start, _)| start <= total);
-        let reports: Vec<String> = beyond
+        let (fits, unfit): (Vec<_>, Vec<_>) = ranges
             .iter()
-            .map(|&&(start, end)| SLICE_RANGE_BEYOND_FILE.render((self.path, start, end, total)))
+            .partition(|&&(start, end)| satisfiable(start, end, total));
+        let reports: Vec<String> = unfit
+            .iter()
+            .map(|&&(start, end)| unsatisfiable(self.path, start, end, total))
             .collect();
         let mut view = failed(self.path, self.language, String::new());
         if !ranges.is_empty() && fits.is_empty() {
@@ -171,6 +172,21 @@ impl Sliced<'_> {
             .map_err(|outside| kernel::Error::OperationFailed(outside.to_string()))?;
         view.text = [reports, vec![rendered]].concat().join("\n") + "\n";
         Ok(view)
+    }
+}
+
+// A range names lines the file can answer with, even in part, when it starts at line 1 or later,
+// ends at or after its start, and starts inside the file.
+fn satisfiable(start: usize, end: usize, total: usize) -> bool {
+    1 <= start && start <= end.min(total)
+}
+
+// Why a range cannot be answered: it starts past the end, or it is no range at all.
+fn unsatisfiable(path: &str, start: usize, end: usize, total: usize) -> String {
+    if start > total {
+        SLICE_RANGE_BEYOND_FILE.render((path, start, end, total))
+    } else {
+        SLICE_RANGE_NOT_A_RANGE.render((path, start, end))
     }
 }
 

@@ -4,7 +4,7 @@ use super::python_scopes::{self, Roles};
 use super::tree::Tree;
 use crate::values::{Ref, Role};
 
-const QUOTES: [char; 2] = ['"', '\''];
+const KEY_QUOTES: [char; 2] = ['"', '\''];
 
 // Every identifier occurrence in document order, with its role where the language has a role
 // analysis and `reference` where it has none.
@@ -42,7 +42,7 @@ fn identifier_name<'a>(tree: &Tree<'a>, node: NodeId, wanted: &KindSet) -> &'a s
         return "";
     }
     let text = tree.text(node);
-    QUOTES
+    KEY_QUOTES
         .iter()
         .find(|quote| text.len() >= 2 && text.starts_with(**quote) && text.ends_with(**quote))
         .map_or(text, |_| &text[1..text.len() - 1])

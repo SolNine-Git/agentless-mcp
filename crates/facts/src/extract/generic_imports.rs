@@ -105,6 +105,7 @@ fn last_segment(tree: &Tree, node: NodeId, path: &str) -> (Vec<String>, Vec<Stri
     if !selected.is_empty() {
         return (selected.clone(), selected);
     }
+    // PHP separates namespace segments with `\`.
     let dotted = path.replace('\\', ".");
     let member = dotted.rsplit('.').next().unwrap_or_default();
     if member.is_empty() {

@@ -1,7 +1,6 @@
 //! The text forms the gate's reasons share: decode and OS errors, paths, and digests.
 
 use std::any::Any;
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -20,19 +19,6 @@ pub(crate) fn codec_text(bytes: &[u8], error: io::NotUtf8) -> String {
     }
     let last = end - 1;
     format!("'utf-8' codec can't decode bytes in position {start}-{last}: {reason}")
-}
-
-// An OS error that names a file: "[Errno N] message: 'path'".
-pub(crate) fn os_error_text(error: &std::io::Error, path: &Path) -> String {
-    let message = io::strerror(error);
-    match error.raw_os_error() {
-        Some(code) => format!("[Errno {code}] {message}: {}", repr(path)),
-        None => message,
-    }
-}
-
-pub(crate) fn repr(path: &Path) -> String {
-    CodePointString::from_utf8_escaped(path.as_os_str().as_bytes()).quoted()
 }
 
 // The last line with text, stripped and cut to its last 300 characters.

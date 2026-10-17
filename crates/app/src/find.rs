@@ -16,6 +16,9 @@ use crate::ops::limits::MAX_LIMIT;
 use crate::scan::{FileSymbols, SymbolFacts};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped, SymbolCard, symbol_card};
 
+// The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
+const SHORT_QUALNAME: usize = 128;
+
 /// A find-symbol request: the name or part of a name, the kind filter, and the most cards.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FindRequest {
@@ -143,9 +146,6 @@ fn matches(symbol: &Symbol, needle: &str, kind: Option<SymbolKind>) -> bool {
         lower(&symbol.name).contains(needle) || lower(&symbol.qualname()).contains(needle)
     })
 }
-
-// The longest qualified name, in bytes, that `short_ascii_holds` lowers on the stack.
-const SHORT_QUALNAME: usize = 128;
 
 // Whether the lowered qualified name holds `needle`, or `None` for a name that is not ASCII or is
 // long. ASCII lowers byte by byte and the name ends the qualified name, so one test covers both.

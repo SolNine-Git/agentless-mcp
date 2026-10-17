@@ -11,6 +11,10 @@ use crate::{Git, GitOutcome, Limits};
 
 /// The stdout cap of the change listings; a listing cut short would hide a changed file.
 pub const MAX_LISTING_BYTES: usize = 8_000_000;
+/// The stdout cap of [`Git::verify`], which prints one object name.
+pub const MAX_COMMIT_OUTPUT_BYTES: usize = 4_096;
+/// The stdout cap of [`Git::blob`]: the per-file cap.
+pub const MAX_BLOB_OUTPUT_BYTES: usize = io::MAX_FILE_BYTES;
 /// The leading bytes that [`looks_binary`] searches for a NUL byte: git's own binary rule.
 pub const BINARY_PROBE_BYTES: usize = 8_000;
 const UNTRACKED: char = '?';
@@ -28,12 +32,12 @@ pub(crate) const LISTING: Limits = Limits {
 pub(crate) const COMMIT: Limits = Limits {
     seconds: 5,
     shown: "5.0",
-    cap: 4_096,
+    cap: MAX_COMMIT_OUTPUT_BYTES,
 };
 pub(crate) const BLOB: Limits = Limits {
     seconds: 5,
     shown: "5.0",
-    cap: io::MAX_FILE_BYTES,
+    cap: MAX_BLOB_OUTPUT_BYTES,
 };
 
 const TWO_PATH_STATUSES: [char; 2] = ['R', 'C'];

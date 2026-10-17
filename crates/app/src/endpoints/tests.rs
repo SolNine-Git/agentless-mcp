@@ -1,6 +1,7 @@
+use super::endpoint;
 use super::scanned::{LINKED, Scanned};
-use super::{endpoint, with_resolved};
 use crate::scan::RepoFacts;
+use crate::symbol_graph::with_resolved;
 
 // The node, label and message each endpoint text resolves to over `files`.
 fn resolved(files: &[(&str, &str)], texts: &[&str]) -> Vec<(String, String, String)> {

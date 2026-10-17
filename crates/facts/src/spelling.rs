@@ -3,7 +3,7 @@ use text::is_space;
 const ELLIPSIS: &str = "...";
 // A signature is an index row on one line, not a rendering of the declaration.
 const SIGNATURE_MAX_CHARS: usize = 80;
-const QUOTES: [&str; 5] = ["\"\"\"", "'''", "\"", "'", "`"];
+const STRING_QUOTES: [&str; 5] = ["\"\"\"", "'''", "\"", "'", "`"];
 
 /// Return the name that a base-class expression looks up: `Generic[T]` is `Generic`, `enum.Enum`
 /// is `Enum`, and a keyword argument such as `metaclass=ABCMeta` is empty.
@@ -50,7 +50,7 @@ pub(crate) fn normalise_signature(signature: &str) -> String {
 // Strip the whitespace, then one pair of matching quotes of the first kind that wraps the text.
 pub(crate) fn strip_quotes(text: &str) -> &str {
     let text = text::strip(text);
-    QUOTES
+    STRING_QUOTES
         .iter()
         .find(|quote| {
             text.chars().count() >= 2 * quote.len()

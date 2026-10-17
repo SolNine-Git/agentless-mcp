@@ -58,8 +58,10 @@ fn each_scenario_run_gives_the_reference_report() {
         text::testing::cases(MANIFEST_DIR, "index/scenarios", "scenarios");
     for scenario in &scenarios {
         let sandbox = Sandbox::new();
-        if !sandbox.modes_bind() {
-            return;
+        // Only a scenario that changes a mode needs the mode to bind, which it does not for root.
+        let changes_modes = (scenario.steps.iter()).any(|step| step[0].as_str() == Some("chmod"));
+        if changes_modes && !sandbox.modes_bind() {
+            continue;
         }
         let services = services(&sandbox);
         let mut expected = scenario.runs.iter();

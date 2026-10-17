@@ -175,7 +175,26 @@ impl core::panic::unwind_safe::UnwindSafe for app::ops::Param
 pub const app::ops::JSON: app::ops::Param
 pub const app::ops::NO_CACHE: app::ops::Param
 pub const app::ops::REPO: app::ops::Param
-pub static app::ops::OPS: [app::ops::Op; 19]
+pub static app::ops::COMMUNITIES: app::ops::Op
+pub static app::ops::CYCLES: app::ops::Op
+pub static app::ops::DIAGRAM: app::ops::Op
+pub static app::ops::EXPAND: app::ops::Op
+pub static app::ops::EXPLAIN: app::ops::Op
+pub static app::ops::FIND_SYMBOL: app::ops::Op
+pub static app::ops::GUIDE: app::ops::Op
+pub static app::ops::HEALTH: app::ops::Op
+pub static app::ops::HISTORY: app::ops::Op
+pub static app::ops::HTML: app::ops::Op
+pub static app::ops::INDEX: app::ops::Op
+pub static app::ops::MAP: app::ops::Op
+pub static app::ops::OPS: [&app::ops::Op; 19]
+pub static app::ops::PATH: app::ops::Op
+pub static app::ops::REFS: app::ops::Op
+pub static app::ops::RESOLVE_LOCS: app::ops::Op
+pub static app::ops::SKELETON: app::ops::Op
+pub static app::ops::SLICE: app::ops::Op
+pub static app::ops::TREE: app::ops::Op
+pub static app::ops::WARMUP: app::ops::Op
 pub fn app::ops::op(&str) -> core::option::Option<&'static app::ops::Op>
 pub enum app::After
 pub app::After::File(std::path::PathBuf)

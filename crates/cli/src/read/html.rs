@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use app::{HtmlGraph, HtmlRequest, Reading, Services, Session};
 use render::{Receipt, html_document, html_summary, receipt_lines};
-use text::CodePointString;
 
 use super::{ReadArgs, open_reading};
 use crate::Streams;
@@ -86,18 +85,9 @@ fn written(document: &str, name: &str, session: &Session) -> Result<PathBuf, Str
         Ok(()) => Ok(target),
         Err(error) => Err(format!(
             "cannot write HTML export: {}",
-            write_failure(&error, &target)
+            io::os_error_text(&error, &target)
         )),
     }
-}
-
-// The errno, its message and the export target, as the reference's OS error names a file.
-fn write_failure(error: &std::io::Error, target: &Path) -> String {
-    let Some(code) = error.raw_os_error() else {
-        return error.to_string();
-    };
-    let quoted = CodePointString::from(target.to_string_lossy().as_ref()).quoted();
-    format!("[Errno {code}] {}: {quoted}", io::strerror(error))
 }
 
 #[cfg(test)]

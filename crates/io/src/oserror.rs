@@ -1,6 +1,9 @@
-//! The text forms of an OS error: its message, and its class name with its errno and message.
+//! The text forms of an OS error: its message, its class name with its errno and message, and the
+//! form that names a file.
 
 use std::io;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 
 use text::CodePointString;
 
@@ -64,6 +67,19 @@ pub fn os_error_line(error: &io::Error) -> String {
     }
 }
 
+/// Returns the text of an OS error that names the file `path`, for example
+/// `[Errno 13] Permission denied: '/c/g.html'`. A byte of `path` that is not UTF-8 is quoted as a
+/// surrogate escape, and an error without an errno gives its message alone.
+#[must_use]
+pub fn os_error_text(error: &io::Error, path: &Path) -> String {
+    let message = strerror(error);
+    let Some(code) = error.raw_os_error() else {
+        return message;
+    };
+    let quoted = CodePointString::from_utf8_escaped(path.as_os_str().as_bytes()).quoted();
+    format!("[Errno {code}] {message}: {quoted}")
+}
+
 fn class(code: i32) -> &'static str {
     CLASSES
         .iter()
@@ -95,6 +111,18 @@ mod tests {
     #[test]
     fn os_error_line_cases() {
         check_errno_cases("os_error_line", os_error_line);
+    }
+
+    #[test]
+    fn an_error_that_names_a_file_quotes_it_with_surrogate_escapes() {
+        let denied = io::Error::from_raw_os_error(libc::EACCES);
+        let target = Path::new(std::ffi::OsStr::from_bytes(b"/c/x\xffy.html"));
+        assert_eq!(
+            os_error_text(&denied, target),
+            r"[Errno 13] Permission denied: '/c/x\udcffy.html'"
+        );
+        let plain = io::Error::other("no errno");
+        assert_eq!(os_error_text(&plain, target), "no errno");
     }
 
     #[test]

@@ -1,12 +1,13 @@
 //! The fewest-hop chain of resolved relationships between two symbols or files.
 
-use graph::{Hop, PathResult, Relation, shortest_path};
+use graph::{Hop, PathResult, shortest_path};
 
 pub use graph::PathPolicy;
 
 use crate::bounds::at_least;
-use crate::communities::over_scan;
-use crate::endpoints::{Located, endpoint, with_resolved};
+use crate::endpoints::{Located, endpoint};
+use crate::scan::over_scan;
+use crate::symbol_graph::{verbs, with_resolved};
 use crate::{Error, IntArg, Noted, Reading, Services};
 
 /// A path request: the two endpoints, the weak tiers the search may walk, and its node bound.
@@ -94,15 +95,6 @@ pub fn path(
             trace(policy, start, finish, &found)
         }))
     })
-}
-
-// The relation as a step with the edge reads it, and as a step against the edge reads it.
-pub(crate) fn verbs(relation: Relation) -> (&'static str, &'static str) {
-    match relation {
-        Relation::References => ("references", "referenced by"),
-        Relation::Imports => ("imports", "imported by"),
-        Relation::Inherits => ("inherits", "inherited by"),
-    }
 }
 
 fn trace(policy: PathPolicy, start: Located, finish: Located, found: &PathResult<'_>) -> PathTrace {

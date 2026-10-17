@@ -2,6 +2,9 @@
 
 use crate::{is_ascii_space, is_space, strip_bytes};
 
+// The most digits, leading zeros included, that an integer conversion of a text accepts.
+const MAX_CONVERTIBLE_DIGITS: usize = 4300;
+
 /// A decimal integer text without the whitespace around it: a sign, and ASCII digits with single
 /// underscores between them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,6 +30,13 @@ impl<'a> IntText<'a> {
 #[must_use]
 pub fn int_text(text: &str) -> Option<IntText<'_>> {
     signed(text.trim_matches(is_int_space).as_bytes())
+}
+
+/// Reads `text` as [`int_text`] does, and refuses a text of more than 4300 digits, leading zeros
+/// included: the most that an integer conversion of a text accepts.
+#[must_use]
+pub fn convertible_int(text: &str) -> Option<IntText<'_>> {
+    int_text(text).filter(|found| found.digits().count() <= MAX_CONVERTIBLE_DIGITS)
 }
 
 /// Reads `bytes` as a decimal integer, with only [`is_ascii_space`] bytes around it.

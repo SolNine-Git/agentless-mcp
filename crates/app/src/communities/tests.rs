@@ -1,5 +1,6 @@
-use super::{CommunitiesRequest, CommunityReport, communities, resolution_setting};
+use super::{CommunitiesRequest, CommunityReport, communities};
 use crate::endpoints::scanned::{LINKED, Scanned};
+use crate::file_graph::resolution_setting;
 use crate::{Error, IntArg};
 
 fn int(text: &str) -> IntArg {

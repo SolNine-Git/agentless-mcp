@@ -28,7 +28,7 @@ pub trait View {
 pub struct Rendered<'a> {
     body: String,
     truncation: Option<Truncation>,
-    payload: Box<dyn Document + 'a>,
+    document: Box<dyn Document + 'a>,
 }
 
 // The envelope function that writes one payload's JSON document: `envelope::wrap_json` for a
@@ -44,11 +44,11 @@ impl<'a> Rendered<'a> {
         truncation: Option<Truncation>,
         write: Writer<P>,
     ) -> Rendered<'a> {
-        let payload = WithTruncation::new(payload, truncation);
+        let content = WithTruncation::new(payload, truncation);
         Rendered {
             body,
             truncation,
-            payload: Box::new(Payload { payload, write }),
+            document: Box::new(JsonDocument { content, write }),
         }
     }
 }
@@ -72,7 +72,7 @@ pub fn text(receipt: &Receipt<'_>, view: &impl View) -> String {
 ///
 /// Returns the serializer's error for a value it cannot write.
 pub fn json(receipt: &Receipt<'_>, view: &impl View) -> Result<String, Error> {
-    view.rendered().payload.write(receipt)
+    view.rendered().document.write(receipt)
 }
 
 // The JSON form of one payload under a receipt.
@@ -80,14 +80,15 @@ trait Document {
     fn write(&self, receipt: &Receipt<'_>) -> Result<String, Error>;
 }
 
-struct Payload<P> {
-    payload: WithTruncation<P>,
+// The payload with its cut, and the envelope function that writes it.
+struct JsonDocument<P> {
+    content: WithTruncation<P>,
     write: Writer<P>,
 }
 
-impl<P> Document for Payload<P> {
+impl<P> Document for JsonDocument<P> {
     fn write(&self, receipt: &Receipt<'_>) -> Result<String, Error> {
-        (self.write)(receipt, &self.payload, &receipt.ceiling())
+        (self.write)(receipt, &self.content, &receipt.ceiling())
     }
 }
 

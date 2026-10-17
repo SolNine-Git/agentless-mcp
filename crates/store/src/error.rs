@@ -143,13 +143,18 @@ pub enum Refusal {
         /// The repository root that the database records.
         repo_root: String,
     },
+    /// An agentless.db holds rows of another analysis, from another build. It stays in place.
+    OtherAnalysis,
 }
 
 impl Refusal {
     /// Returns true when the caller discards the refused database.
     #[must_use]
     pub fn discards(&self) -> bool {
-        !matches!(self, Self::Unreadable(_) | Self::NewerSchema { .. })
+        !matches!(
+            self,
+            Self::Unreadable(_) | Self::NewerSchema { .. } | Self::OtherAnalysis
+        )
     }
 }
 
@@ -181,6 +186,9 @@ impl fmt::Display for Refusal {
             Self::OtherRepository { repo_root } => {
                 f.write_str(&CACHE_DISCARDED_OTHER_REPO.render(repo_root))
             }
+            Self::OtherAnalysis => f.write_str(
+                "cache kept: rows of another agentless-mcp build, rerun agentless-mcp index",
+            ),
         }
     }
 }

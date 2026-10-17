@@ -219,8 +219,6 @@ def distinct_json_cases(payload: dict[str, Any], key: str | None) -> list[object
     return [[*case, wrap_json(DISTINCT, *case)] for case in cases]
 
 
-# The service note, the untrimmable answer and the "truncation" key land with their first caller in
-# the render crate, so the sections that need them stand apart from the ones tested now.
 def envelope_fixture() -> Fixture:
     return {
         "nested": nested_cases(),

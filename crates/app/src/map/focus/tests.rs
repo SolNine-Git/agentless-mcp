@@ -1,9 +1,7 @@
 use graph::NameIndex;
 use text::testing::{bits, cases};
 
-use super::{
-    Known, focus_resolution, matches_stem, normalized_spellings, path_matches, pure_posix,
-};
+use super::{Known, focus_resolution, matches_stem, normalized_spellings, path_matches};
 use crate::map::seed_weights;
 use crate::map::tests::fixture_facts;
 
@@ -117,16 +115,6 @@ fn backslashes_walk_as_separators_and_the_entry_itself_never_returns() {
     assert_eq!(spellings(windows), expected);
     assert_eq!(spellings("/abs/./x//y.py"), ["x/y.py", "y.py"]);
     assert!(spellings("quote").is_empty());
-}
-
-#[test]
-fn a_pure_path_keeps_a_double_slash_root_and_never_empties() {
-    let texts = ["a//b/./c", "", "./", "/", "//", "///a", "//a/b/", "a/../b"];
-    let posix: Vec<String> = texts.iter().map(|text| pure_posix(text)).collect();
-    assert_eq!(
-        posix,
-        ["a/b/c", ".", ".", "/", "//", "/a", "//a/b", "a/../b"]
-    );
 }
 
 #[test]

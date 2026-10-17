@@ -34,7 +34,6 @@ pub(crate) enum Missed {
     Refused(io::Refusal),
 }
 
-// One file's language, text and symbols.
 pub(crate) struct ParsedFile {
     language: Language,
     source: Arc<str>,

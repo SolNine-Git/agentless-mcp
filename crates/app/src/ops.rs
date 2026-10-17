@@ -4,7 +4,10 @@
 pub mod limits;
 mod table;
 
-pub use table::{JSON, NO_CACHE, OPS, REPO};
+pub use table::{
+    COMMUNITIES, CYCLES, DIAGRAM, EXPAND, EXPLAIN, FIND_SYMBOL, GUIDE, HEALTH, HISTORY, HTML,
+    INDEX, JSON, MAP, NO_CACHE, OPS, PATH, REFS, REPO, RESOLVE_LOCS, SKELETON, SLICE, TREE, WARMUP,
+};
 
 /// One read operation.
 #[derive(Debug)]
@@ -105,7 +108,7 @@ pub enum Value {
 /// Returns the read operation with the subcommand name `name`.
 #[must_use]
 pub fn op(name: &str) -> Option<&'static Op> {
-    OPS.iter().find(|op| op.name == name)
+    OPS.iter().copied().find(|op| op.name == name)
 }
 
 #[cfg(test)]

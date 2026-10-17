@@ -16,9 +16,13 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentless_mcp.core import grammars
+
 PYTHON = (3, 13)
 GIT_SECONDS = 60
 GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
+# tiktoken reads the cl100k_base file from here, so that no generator reads the network.
+TIKTOKEN_CACHE = "TIKTOKEN_CACHE_DIR"
 NO_GIT_CONFIG = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
 
 Fixture = dict[str, list[object]]
@@ -83,7 +87,9 @@ def write_or_check_files(
             print(line, file=sys.stderr)
         return 1 if lines else 0
     directory.mkdir(parents=True, exist_ok=True)
+    # A generator can also write to the fixtures of another crate.
     for path, text in contents.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text)
         print(f"wrote {path}")
     return 0
@@ -167,3 +173,16 @@ def refuse_real_caches(environ: Mapping[str, str] = os.environ) -> None:
     for name, place in places.items():
         if place and Path(place).resolve().is_relative_to(real):
             sys.exit(f"refused: {name} puts a cache in {real}. Set it to a scratch directory.")
+
+
+def refuse_unready_environment(environ: Mapping[str, str] = os.environ) -> None:
+    """Exit with a refusal unless the caches are scratch copies and every grammar is warm."""
+    refuse_real_caches(environ)
+    if not environ.get(GRAMMAR_OVERRIDE):
+        sys.exit(f"refused: set {GRAMMAR_OVERRIDE} to a scratch copy of the grammar libraries")
+    if not environ.get(TIKTOKEN_CACHE):
+        sys.exit(f"refused: set {TIKTOKEN_CACHE} to a scratch copy of the cl100k_base file")
+    # The Rust build links every grammar, so a cold grammar here would pin a different answer.
+    cold = set(grammars.ALL_LANGUAGES) - grammars.warmed_languages()
+    if cold:
+        sys.exit(f"refused: {GRAMMAR_OVERRIDE} holds no library for {', '.join(sorted(cold))}")

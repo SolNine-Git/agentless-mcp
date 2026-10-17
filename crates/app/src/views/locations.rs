@@ -48,7 +48,7 @@ pub fn resolve_locations(
     request: &LocsRequest,
 ) -> Noted<Result<LocationView, Error>> {
     let opened = opened(reading, &request.path, &request.context);
-    opened.map(|located| located.and_then(|located| located.view(&request.locs)))
+    opened.map(|found| found.and_then(|file| file.view(&request.locs)))
 }
 
 /// Resolves the symbol that the id of `request` names, trying each location form its qualified
@@ -59,11 +59,11 @@ pub fn locate_symbol(
     request: &LocateRequest,
 ) -> Noted<Result<LocationView, Error>> {
     let opened = opened(reading, request.id.path(), &request.context);
-    opened.map(|located| located.and_then(|located| located.symbol(request.id.qualname())))
+    opened.map(|found| found.and_then(|file| file.symbol(request.id.qualname())))
 }
 
 // One readable file, its symbols, and the context lines of every interval.
-struct Located {
+struct OpenedFile {
     path: String,
     language: Option<Language>,
     text: String,
@@ -71,7 +71,7 @@ struct Located {
     context: u32,
 }
 
-fn opened(reading: &Reading<'_>, path: &str, context: &IntArg) -> Noted<Result<Located, Error>> {
+fn opened(reading: &Reading<'_>, path: &str, context: &IntArg) -> Noted<Result<OpenedFile, Error>> {
     let context = match within(context, 0, MAX_CONTEXT_LINES, "context") {
         Ok(context) => u32::try_from(context).unwrap_or(u32::MAX),
         Err(error) => return Noted::new(Err(error)),
@@ -85,7 +85,7 @@ fn opened(reading: &Reading<'_>, path: &str, context: &IntArg) -> Noted<Result<L
         Err(reason) => return Noted::new(Err(kernel::Error::RepoResolution(reason).into())),
     };
     symbols(reading, &loaded.path, loaded.language, &text).map(|symbols| {
-        Ok(Located {
+        Ok(OpenedFile {
             path: loaded.path,
             language: loaded.language,
             text: text.to_string(),
@@ -95,7 +95,7 @@ fn opened(reading: &Reading<'_>, path: &str, context: &IntArg) -> Noted<Result<L
     })
 }
 
-impl Located {
+impl OpenedFile {
     fn view(&self, locs: &[String]) -> Result<LocationView, Error> {
         let target = LocTarget {
             path: &self.path,

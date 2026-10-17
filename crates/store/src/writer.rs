@@ -173,6 +173,8 @@ fn connect_rw(database: &Path) -> Result<Connection, SqlError> {
     connection
         .query_row("PRAGMA journal_mode=WAL", (), |_| Ok(()))
         .map_err(SqlError::from_sqlite)?;
+    // In WAL mode NORMAL can lose the last run to a power loss but keeps the file whole, and the
+    // next index run builds the lost rows again from the files.
     connection
         .execute_batch("PRAGMA synchronous=NORMAL")
         .map_err(SqlError::from_sqlite)?;

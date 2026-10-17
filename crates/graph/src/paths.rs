@@ -1,61 +1,11 @@
-//! POSIX path rules for import resolution: normalisation, parents, stems, and the module-tail
-//! index over the repository's files.
+//! POSIX path rules for import resolution: normalisation, stems, and the module-tail index over
+//! the repository's files.
 
 use std::collections::BTreeMap;
 
+use text::{PosixPath, is_posix_part, posix_anchor};
+
 const PACKAGE_ENTRY_STEMS: [&str; 2] = ["__init__", "index"];
-
-// The anchor is "", "/" or "//"; empty and "." components are dropped, as PurePosixPath does.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PosixPath<'s> {
-    anchor: &'static str,
-    parts: Vec<&'s str>,
-}
-
-impl<'s> PosixPath<'s> {
-    pub(crate) fn parse(text: &'s str) -> PosixPath<'s> {
-        let anchor = match leading_slashes(text) {
-            2 => "//",
-            1 => "/",
-            _ => "",
-        };
-        let parts = text
-            .split('/')
-            .filter(|part| !part.is_empty() && *part != ".")
-            .collect();
-        PosixPath { anchor, parts }
-    }
-
-    // The anchor, or the empty path ".", is its own parent.
-    pub(crate) fn parent(&self) -> PosixPath<'s> {
-        let kept = self.parts.len().saturating_sub(1);
-        PosixPath {
-            anchor: self.anchor,
-            parts: self.parts[..kept].to_vec(),
-        }
-    }
-
-    // The anchor counts as one part.
-    pub(crate) fn part_count(&self) -> usize {
-        self.parts.len() + usize::from(!self.anchor.is_empty())
-    }
-
-    // An absolute tail replaces the path.
-    pub(crate) fn join(&self, tail: &str) -> String {
-        if tail.starts_with('/') {
-            return tail.to_owned();
-        }
-        format!("{}/{tail}", self.render())
-    }
-
-    pub(crate) fn render(&self) -> String {
-        let joined = self.parts.join("/");
-        if self.anchor.is_empty() && joined.is_empty() {
-            return ".".to_owned();
-        }
-        format!("{}{joined}", self.anchor)
-    }
-}
 
 /// Collapses `path` as POSIX normpath does: `.`, empty and `..` parts, and the leading slashes.
 #[must_use]
@@ -63,33 +13,24 @@ pub fn normpath(path: &str) -> String {
     if path.is_empty() {
         return ".".to_owned();
     }
-    let slashes = leading_slashes(path);
+    let anchor = posix_anchor(path.as_bytes());
     let mut kept: Vec<&str> = Vec::new();
     for part in path.split('/') {
-        if part.is_empty() || part == "." {
+        if !is_posix_part(part.as_bytes()) {
             continue;
         }
         let climbs = part == "..";
-        if !climbs || (slashes == 0 && kept.is_empty()) || kept.last() == Some(&"..") {
+        if !climbs || (anchor.is_empty() && kept.is_empty()) || kept.last() == Some(&"..") {
             kept.push(part);
         } else {
             kept.pop();
         }
     }
-    let joined = format!("{}{}", "/".repeat(slashes), kept.join("/"));
+    let joined = format!("{anchor}{}", kept.join("/"));
     if joined.is_empty() {
         ".".to_owned()
     } else {
         joined
-    }
-}
-
-// POSIX keeps exactly two leading slashes and folds three or more into one.
-fn leading_slashes(path: &str) -> usize {
-    if path.starts_with("//") && !path.starts_with("///") {
-        2
-    } else {
-        usize::from(path.starts_with('/'))
     }
 }
 
@@ -104,19 +45,7 @@ pub(crate) fn normalized(path: &str) -> String {
 }
 
 pub(crate) fn stem(path: &str) -> String {
-    let mut parsed = PosixPath::parse(path);
-    if let Some(last) = parsed.parts.last_mut() {
-        *last = without_suffix(last);
-    }
-    parsed.render()
-}
-
-// A suffix starts at the last dot, which must be neither the first nor the last character.
-fn without_suffix(name: &str) -> &str {
-    match name.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < name.len() => &name[..dot],
-        _ => name,
-    }
+    PosixPath::parse(path).without_suffix().render()
 }
 
 // A package entry point also answers to the stem of its directory.

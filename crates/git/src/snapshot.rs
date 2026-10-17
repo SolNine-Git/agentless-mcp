@@ -14,8 +14,9 @@ pub(crate) const RECEIPT: Limits = Limits {
     cap: 8_000_000,
 };
 
+/// The hex digits of a short object id: HEAD and the tree in the receipt, and each history row.
 // The tree id is the cache generation key, so it keeps the length the existing caches use.
-const SHORT_ID: &str = "--short=8";
+pub const SHORT_SHA_LENGTH: usize = 8;
 
 /// HEAD and tree as 8-character ids, the count of dirty paths, and a note on what is unknown.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,8 +60,9 @@ impl Git {
 
     // The three calls only read the repository, so they run at the same time.
     fn state(&self, root: &Path) -> [Read; 3] {
-        let head = || self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD"]);
-        let tree = || self.receipt(root, "rev-parse", &[SHORT_ID, "HEAD^{tree}"]);
+        let short = format!("--short={SHORT_SHA_LENGTH}");
+        let head = || self.receipt(root, "rev-parse", &[&short, "HEAD"]);
+        let tree = || self.receipt(root, "rev-parse", &[&short, "HEAD^{tree}"]);
         thread::scope(|scope| {
             let head = io::spawn_or_run(scope, &head);
             let tree = io::spawn_or_run(scope, &tree);

@@ -1,8 +1,9 @@
 //! The one owner of "module string plus importing file becomes a repository path".
 
 use facts::Import;
+use text::PosixPath;
 
-use crate::paths::{PathIndex, PosixPath, normalized};
+use crate::paths::{PathIndex, normalized};
 
 /// The repository paths that import statements resolve against.
 #[derive(Debug)]
@@ -122,8 +123,8 @@ fn candidate_bases(module: &str, relative_level: u32, directory: &PosixPath<'_>)
     if module.starts_with('.') {
         return vec![normalized(&directory.join(module))];
     }
-    // Every other module takes the file-name branch: the suffix test it ports also matches the
-    // empty suffix, so the dotted form is never tried.
+    // A module without a leading dot is tried as a path beside the importer and as written; this
+    // step never reads it as a dotted name.
     vec![normalized(&directory.join(module)), module.to_owned()]
 }
 

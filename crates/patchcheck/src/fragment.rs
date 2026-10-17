@@ -8,6 +8,7 @@ use checks::Finding;
 use facts::{Facts, Import, Ref, Symbol};
 use patch::{Edit, Located};
 use syntax::{Language, Unparsable};
+use text::{posix_name, split_suffix};
 
 use crate::lexer::{CallSite, call_sites};
 use crate::repo::RepoFacts;
@@ -78,7 +79,7 @@ pub(crate) fn fragments<'e>(
     let mut unsupported: BTreeMap<&str, usize> = BTreeMap::new();
     let mut notes = Vec::new();
     for edit in edits {
-        let name = path_name(&edit.path);
+        let name = posix_name(&edit.path);
         let Some(language) = Language::from_path(name) else {
             *unsupported.entry(suffix_label(name)).or_default() += 1;
             continue;
@@ -107,23 +108,8 @@ pub(crate) fn fragments<'e>(
     (fragments, notes)
 }
 
-// The final component of a POSIX path, with empty and `.` components dropped.
-pub(crate) fn path_name(path: &str) -> &str {
-    path.rsplit('/')
-        .find(|part| !part.is_empty() && *part != ".")
-        .unwrap_or_default()
-}
-
-// The last suffix of a final component: a dot that is neither its first nor its last character.
-pub(crate) fn suffix(name: &str) -> &str {
-    match name.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < name.len() => &name[dot..],
-        _ => "",
-    }
-}
-
 fn suffix_label(name: &str) -> &str {
-    match suffix(name) {
+    match split_suffix(name).1 {
         "" => NO_EXTENSION,
         found => found,
     }

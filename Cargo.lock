@@ -518,6 +518,7 @@ dependencies = [
  "git",
  "io",
  "json",
+ "kernel",
  "patch",
  "prompts",
  "serde",

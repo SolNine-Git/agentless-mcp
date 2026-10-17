@@ -10,7 +10,7 @@ use crate::scopes::{ImportScope, Scopes};
 const IMPORT_EDGE_WEIGHT: f64 = 3.0;
 const RELATION_IMPORT_WEIGHT: f64 = 2.0;
 const RELATION_INHERITANCE_WEIGHT: f64 = 3.0;
-// The shipped reference weight and the relation table's entry agree today.
+// A reference edge weighs 1.0 with or without relation weights.
 const REFERENCE_WEIGHT: f64 = 1.0;
 const UNIQUE_MATCH_MULTIPLIER: f64 = 0.25;
 const AMBIGUOUS_MATCH_MULTIPLIER: f64 = 0.05;
@@ -138,7 +138,7 @@ impl<'a> FileGraph<'a> {
         edges
     }
 
-    // The first add of a pair starts from 0.0, as the accumulation it ports does.
+    // A pair's weight starts from 0.0, so a first weight of -0.0 is stored as 0.0.
     fn add(&mut self, source: &str, target: &'a str, weight: f64) {
         let source = self.nodes[self
             .position(source)

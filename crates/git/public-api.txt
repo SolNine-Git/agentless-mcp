@@ -592,10 +592,13 @@ impl !core::panic::unwind_safe::UnwindSafe for git::WorktreeFailure
 pub const git::BINARY_PROBE_BYTES: usize
 pub const git::CHURN_WINDOW_DAYS: u32
 pub const git::COMPARED_STATUSES: [char; 7]
+pub const git::MAX_BLOB_OUTPUT_BYTES: usize
+pub const git::MAX_COMMIT_OUTPUT_BYTES: usize
 pub const git::MAX_GIT_OUTPUT_BYTES: usize
 pub const git::MAX_HISTORY_OUTPUT_BYTES: usize
 pub const git::MAX_LISTING_BYTES: usize
 pub const git::NO_REPO_CODE: [&str; 2]
+pub const git::SHORT_SHA_LENGTH: usize
 pub const git::WORKTREE_DIR: &str
 pub fn git::looks_binary(&[u8]) -> bool
 pub fn git::parse_changes(&[u8]) -> core::result::Result<alloc::vec::Vec<git::Change>, git::Malformed>

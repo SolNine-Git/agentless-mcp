@@ -9,6 +9,7 @@ use graph::FileFacts;
 use store::{FileText, Served};
 use syntax::{Language, Unparsable};
 
+use crate::detached::answered_over;
 use crate::parallel::{map_in_order, threads};
 use crate::{Error, Noted, Reading, Services};
 
@@ -35,7 +36,6 @@ pub(crate) struct SymbolFacts {
     pub(crate) skipped: Vec<Skipped>,
 }
 
-// One file's symbols.
 #[derive(Debug)]
 pub(crate) struct FileSymbols {
     pub(crate) path: String,
@@ -61,6 +61,17 @@ impl RepoFacts {
             scan(root, files, threads(), &facts_of)
         })
     }
+}
+
+// Scans the repository once and gives the scan to `answer`. The scan's warnings come with
+// either outcome.
+pub(crate) fn over_scan<T>(
+    services: &Services,
+    reading: &Reading<'_>,
+    answer: impl FnOnce(&RepoFacts) -> Result<T, Error>,
+) -> Noted<Result<T, Error>> {
+    RepoFacts::load(services, reading)
+        .map(|loaded| loaded.and_then(|facts| answered_over(facts, answer)))
 }
 
 impl SymbolFacts {

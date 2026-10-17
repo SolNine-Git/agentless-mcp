@@ -28,6 +28,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import cli_fixtures
@@ -35,13 +36,15 @@ import tiktoken
 from fixture_files import (
     GRAMMAR_OVERRIDE,
     Fixture,
-    refuse_real_caches,
+    refuse_unready_environment,
     render,
     write_or_check_files,
 )
 
 from agentless_mcp.adapters.mcp import server
 from agentless_mcp.application import map_service
+from agentless_mcp.application.repo_context import RepoContext
+from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core import refs, treewalk
 from agentless_mcp.core.extractor import TreeSitterExtractor
 from agentless_mcp.core.symbols import symbol_stable_id
@@ -159,14 +162,42 @@ def tree_case(paths: list[str], depth: int, max_entries: int) -> list[object]:
     return [listed, depth, max_entries, rendered]
 
 
+SLICE_PATH = "lines.txt"
+SLICE_TEXT = "".join(f"line {number}\n" for number in range(1, 101))
+# A transposed range, a range from line 0, a bad range beside a good one, ranges past the end,
+# and a good range.
+SLICE_REQUESTS = [[(60, 30)], [(0, 5)], [(60, 30), (1, 2)], [(150, 160), (99, 120)], [(3, 5)]]
+SLICE_CONTEXTS = [0, 20]
+
+
+def slice_cases() -> list[object]:
+    """The slice view's text of each request over a 100-line file in no language."""
+    with TemporaryDirectory() as scratch:
+        root = Path(scratch).resolve()
+        (root / SLICE_PATH).write_text(SLICE_TEXT, encoding="utf-8")
+        ctx = RepoContext(root=root, head_sha=None, tree_oid=None, dirty_count=None)
+        views = ViewService(TreeSitterExtractor())
+        return [
+            [
+                ranges,
+                context,
+                views.read_slice(ctx, SLICE_PATH, intervals=ranges, context=context).text,
+            ]
+            for ranges in SLICE_REQUESTS
+            for context in SLICE_CONTEXTS
+        ]
+
+
 def views_fixture() -> Fixture:
-    """The tree view's text over synthetic listings."""
+    """The tree view's text over synthetic listings, and the slice view's text over one file."""
     return {
         "tree": [
             tree_case(paths, depth, entries)
             for paths in TREE_LISTINGS
             for depth, entries in TREE_BOUNDS
         ],
+        "slice_file": [[SLICE_PATH, SLICE_TEXT]],
+        "slice": slice_cases(),
     }
 
 
@@ -696,8 +727,7 @@ def build() -> dict[Path, bytes]:
 
 
 def main() -> int:
-    refuse_real_caches()
-    CLI.mkdir(parents=True, exist_ok=True)
+    refuse_unready_environment()
     return write_or_check_files(__doc__.splitlines()[0], APP, build)
 
 

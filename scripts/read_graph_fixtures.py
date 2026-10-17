@@ -19,7 +19,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fixture_files import Fixture, refuse_real_caches, render, write_or_check_files
+from fixture_files import Fixture, refuse_unready_environment, render, write_or_check_files
 from read_fixtures import copied, scenario, scenario_row
 
 from agentless_mcp.application import render as views
@@ -296,9 +296,7 @@ def build() -> dict[Path, bytes]:
 
 
 def main() -> int:
-    refuse_real_caches()
-    for directory in (RENDER, CLI):
-        directory.mkdir(parents=True, exist_ok=True)
+    refuse_unready_environment()
     return write_or_check_files(__doc__.splitlines()[0], APP, build)
 
 

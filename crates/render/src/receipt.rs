@@ -39,8 +39,7 @@ impl<'a> Receipt<'a> {
         Receipt::new(&session.repo, &session.snapshot, &session.cache.receipt)
     }
 
-    /// Returns the receipt of `repo` at the git state `snapshot`, with `cache` as its cache
-    /// field, measured with the chars4 counter.
+    /// Returns the receipt of `repo` at `snapshot`, with `cache` as its cache field.
     #[must_use]
     pub fn new(repo: &'a Repo, snapshot: &'a Snapshot, cache: &'a str) -> Receipt<'a> {
         Receipt {
@@ -141,8 +140,7 @@ pub(crate) struct Fields<'a> {
     config: Option<ConfigView<'a>>,
 }
 
-/// Returns the receipt lines that a command writes to stderr: the tool lines, the summary line,
-/// then the config warnings, bounded at the standard ceiling with the chars4 counter.
+/// Returns the stderr receipt lines: the tool lines, the summary, then the config warnings.
 #[must_use]
 pub fn receipt_lines(receipt: &Receipt<'_>, summary: &str) -> Vec<String> {
     let ceiling = Ceiling::standard(&Chars4);

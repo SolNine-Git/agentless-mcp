@@ -131,8 +131,7 @@ impl Listing for FindJson<'_> {
     }
 }
 
-/// Returns one stderr row for each id of `result` that did not resolve, and a count of the misses
-/// that the answer does not name.
+/// Returns one stderr row per unresolved id of `result`, then the count of unnamed misses.
 #[must_use]
 pub fn expand_stderr_rows(result: &ExpandResult) -> Vec<String> {
     let mut rows: Vec<String> = result

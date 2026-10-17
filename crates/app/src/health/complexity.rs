@@ -1,5 +1,6 @@
 //! The complexity walk of health: each tier-1 source file outside test and fixture paths,
-//! measured in path order until the time budget runs out, and the figures read off the walk.
+//! measured on a pool until the time budget runs out and kept as the longest path-order prefix
+//! the budget allowed, and the figures read off the walk.
 
 use std::collections::BTreeMap;
 use std::path::Path;

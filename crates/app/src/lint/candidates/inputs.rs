@@ -5,7 +5,7 @@ use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
-use text::CodePointString;
+use text::{CodePointString, split_suffix};
 
 use super::LintCandidateInput;
 use crate::patches::load_edits;
@@ -122,13 +122,9 @@ pub(crate) fn name(path: &Path) -> String {
     }
 }
 
-// The name without its last suffix. A dot that starts or ends the name starts no suffix.
+// The name without its last suffix.
 pub(crate) fn stem(path: &Path) -> String {
-    let name = name(path);
-    match name.rfind('.') {
-        Some(dot) if dot > 0 && dot + 1 < name.len() => name[..dot].to_owned(),
-        _ => name,
-    }
+    split_suffix(&name(path)).0.to_owned()
 }
 
 fn unreadable(message: String) -> Error {

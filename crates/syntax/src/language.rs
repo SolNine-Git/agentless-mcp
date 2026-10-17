@@ -93,10 +93,10 @@ impl Language {
     #[must_use]
     pub fn from_path(path: &str) -> Option<Language> {
         let name = std::path::Path::new(path).file_name()?.to_str()?;
-        let dot = name
-            .rfind('.')
-            .filter(|dot| *dot > 0 && *dot + 1 < name.len())?;
-        let suffix = &name[dot..];
+        let (_, suffix) = text::split_suffix(name);
+        if suffix.is_empty() {
+            return None;
+        }
         let found = EXTENSIONS
             .binary_search_by(|(known, _)| (*known).cmp(suffix))
             .ok()?;

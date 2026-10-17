@@ -15,8 +15,6 @@ const CLASS_KINDS: [SymbolKind; 4] = [
     SymbolKind::Protocol,
 ];
 const UNKNOWN_FORM: &str = "unknown location form: expected class:, function:, line: or variable:";
-// int() refuses a decimal text of more digits than this.
-const MAX_INT_DIGITS: usize = 4300;
 
 /// The one file that a set of locations resolves against.
 #[derive(Clone, Copy, Debug)]
@@ -126,7 +124,8 @@ struct Resolver<'t, 'a> {
 }
 
 impl Resolver<'_, '_> {
-    // `line:` and `variable:` come before the dotted-name rule, so `line: 7 in A.b` is a line.
+    // `line:` and `variable:` come before the dotted-name rule, so `line: 7 in A.b` is a line; a
+    // dotted `class: A.b` falls through to the function rule and names a method.
     fn resolve(&self, loc: &str, current_class: &str) -> Hit {
         let rest = text::strip(loc.split_once(':').map_or("", |(_, rest)| rest));
         if loc.starts_with("class:") && !loc.contains('.') {
@@ -335,7 +334,8 @@ impl Resolver<'_, '_> {
     }
 }
 
-// A decimal integer as int() reads it: its value printed in full, and whether it is above zero.
+// A decimal integer as a line location reads it: its value printed in full, and whether it is
+// above zero.
 struct LineNumber {
     text: String,
     positive: bool,
@@ -343,14 +343,11 @@ struct LineNumber {
 
 impl LineNumber {
     fn read(head: &str) -> Option<LineNumber> {
-        let found = text::int_text(head)?;
+        let found = text::convertible_int(head)?;
         let digits: String = found
             .digits()
             .map(|digit| char::from(b'0' + digit))
             .collect();
-        if digits.len() > MAX_INT_DIGITS {
-            return None;
-        }
         let digits = digits.trim_start_matches('0');
         let text = match (digits.is_empty(), found.negative) {
             (true, _) => "0".to_owned(),

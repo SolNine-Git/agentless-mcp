@@ -5,7 +5,7 @@ use std::fmt;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
 
-use text::{CodePointString, is_space};
+use text::{CodePointString, is_posix_part, is_space, posix_anchor};
 
 const APPLICATION_DIR: &str = "agentless-mcp";
 
@@ -90,18 +90,11 @@ fn home_cache(env: &impl Fn(&str) -> Option<OsString>) -> Result<PathBuf, HomeUn
 
 // The path text with repeated slashes and `.` parts removed; exactly two leading slashes stay.
 fn normalized(bytes: &[u8]) -> PathBuf {
-    let root: &[u8] = if bytes.starts_with(b"//") && !bytes.starts_with(b"///") {
-        b"//"
-    } else if bytes.starts_with(b"/") {
-        b"/"
-    } else {
-        b""
-    };
     let parts: Vec<&[u8]> = bytes
         .split(|&byte| byte == b'/')
-        .filter(|part| !part.is_empty() && *part != b".")
+        .filter(|part| is_posix_part(part))
         .collect();
-    let mut text = root.to_vec();
+    let mut text = posix_anchor(bytes).as_bytes().to_vec();
     text.extend(parts.join(&b'/'));
     PathBuf::from(OsString::from_vec(text))
 }

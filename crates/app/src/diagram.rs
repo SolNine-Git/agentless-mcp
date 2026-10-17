@@ -2,24 +2,18 @@
 //! neighbourhood and community subgraphs, declared imports apart from name references, and
 //! labels reduced to an allowlist so that repository text stays inert.
 
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
-use graph::{
-    CommunityPartition, FileFacts, FileGraph, NameIndex, PageRank, Scopes, detect_communities,
-    pagerank,
-};
-use io::ProjectConfig;
+use graph::{CommunityPartition, FileGraph, detect_communities};
 use text::strip;
 
 use crate::bounds::within;
-use crate::communities::{file_graph, over_scan, resolution_setting};
+use crate::file_graph::{Ranked, resolution_setting, select};
 use crate::map::{Known, focus_resolution};
 use crate::ops::limits::{MAX_DIAGRAM_EDGES, MAX_DIAGRAM_NODES};
-use crate::{Error, IntArg, Noted, Reading, Services, is_test_path};
+use crate::scan::over_scan;
+use crate::{Error, IntArg, Noted, Reading, Services};
 
-// Two hops is what "what touches this" means: what it calls, and what those call.
-const FOCUS_DISTANCE: usize = 2;
 const LABEL_MAX_CHARS: usize = 60;
 const REPLACEMENT: char = '_';
 const UNNAMED_LABEL: &str = "unnamed";
@@ -140,31 +134,6 @@ pub fn diagram(
     })
 }
 
-// One call's file graph, its ranking and the file pairs a declared import connects.
-pub(crate) struct Ranked<'a> {
-    index: NameIndex<'a>,
-    pub(crate) graph: FileGraph<'a>,
-    pub(crate) ranking: PageRank<'a>,
-    pub(crate) imports: BTreeSet<(&'a str, &'a str)>,
-}
-
-impl<'a> Ranked<'a> {
-    // Tests stay pure sources of rank, as they do in the map.
-    pub(crate) fn build(files: &'a [FileFacts], config: &ProjectConfig) -> Ranked<'a> {
-        let index = NameIndex::build(files);
-        let scopes = Scopes::build(files);
-        let graph = file_graph(&index, &scopes, config);
-        let ranking = pagerank(&graph, &BTreeMap::new(), is_test_path);
-        Ranked {
-            imports: scopes.import_pairs(),
-            index,
-            graph,
-            ranking,
-        }
-    }
-}
-
-// The bounds of one flowchart and its focus module.
 struct Bounds {
     max_nodes: usize,
     max_edges: usize,
@@ -231,80 +200,6 @@ fn drawn(
         edges_over_bound: over_bound,
         rank_converged: ranked.ranking.converged(),
     }
-}
-
-// The modules a flowchart draws, in path order, and how many candidates the bound chose from.
-pub(crate) struct Selection<'a> {
-    pub(crate) selected: Vec<&'a str>,
-    pub(crate) candidates: usize,
-}
-
-// The highest-ranked candidates, the focus module always among them.
-pub(crate) fn select<'a>(
-    graph: &FileGraph<'a>,
-    ranking: &PageRank<'a>,
-    max_nodes: usize,
-    focus: Option<&str>,
-) -> Selection<'a> {
-    let candidates = match focus {
-        Some(seed) => neighbourhood(graph, seed),
-        None => graph.nodes().iter().copied().collect(),
-    };
-    let rank = |node: &str| ranking.rank(node).unwrap_or(0.0);
-    let mut ordered: Vec<&'a str> = candidates.iter().copied().collect();
-    ordered
-        .sort_by(|left, right| descending(rank(left), rank(right)).then_with(|| left.cmp(right)));
-    if let Some(at) = focus.and_then(|seed| ordered.iter().position(|node| *node == seed)) {
-        let seed = ordered.remove(at);
-        ordered.insert(0, seed);
-    }
-    ordered.truncate(max_nodes);
-    ordered.sort_unstable();
-    Selection {
-        selected: ordered,
-        candidates: candidates.len(),
-    }
-}
-
-// Ranks are finite; -0.0 and 0.0 compare equal, as the reference's tuple comparison has them.
-fn descending(left: f64, right: f64) -> Ordering {
-    right.partial_cmp(&left).unwrap_or(Ordering::Equal)
-}
-
-// The modules within two undirected hops of `seed`: what is near a module includes what imports
-// it as much as what it imports.
-fn neighbourhood<'a>(graph: &FileGraph<'a>, centre: &str) -> BTreeSet<&'a str> {
-    let mut adjacent: Adjacent<'a> = BTreeMap::new();
-    for (source, target, _) in graph.edges() {
-        adjacent.entry(source).or_default().insert(target);
-        adjacent.entry(target).or_default().insert(source);
-    }
-    let start: Vec<&'a str> = (graph.nodes().iter().copied())
-        .filter(|node| *node == centre)
-        .collect();
-    let mut reached: BTreeSet<&'a str> = start.iter().copied().collect();
-    let mut frontier = start;
-    for _ in 0..FOCUS_DISTANCE {
-        frontier = one_hop(&adjacent, &frontier, &mut reached);
-    }
-    reached
-}
-
-type Adjacent<'a> = BTreeMap<&'a str, BTreeSet<&'a str>>;
-
-// The neighbours of `frontier` not reached before, which this hop reaches.
-fn one_hop<'a>(
-    adjacent: &Adjacent<'a>,
-    frontier: &[&'a str],
-    reached: &mut BTreeSet<&'a str>,
-) -> Vec<&'a str> {
-    let neighbours = frontier
-        .iter()
-        .flat_map(|node| adjacent.get(node).into_iter().flatten());
-    neighbours
-        .copied()
-        .filter(|neighbour| reached.insert(neighbour))
-        .collect()
 }
 
 // The subgraphs of the communities that hold a drawn module, then the modules in none.

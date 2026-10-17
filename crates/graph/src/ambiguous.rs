@@ -154,7 +154,7 @@ fn tally<'n>(nodes: impl Iterator<Item = &'n str>) -> BTreeMap<&'n str, u64> {
     counts
 }
 
-// A zero count is no entry, as a Counter's unary plus leaves it.
+// A zero count adds no entry, so a node with no ambiguous edge stays absent.
 fn add(counts: &mut BTreeMap<String, u64>, node: &str, count: u64) {
     if count > 0 {
         *counts.entry(node.to_owned()).or_insert(0) += count;

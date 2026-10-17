@@ -16,6 +16,16 @@ TEXT_RECEIPT = (
 TARGETS = json.dumps(
     [{"instance_id": "i-1", "root": "/r", "seeds": [], "name_seeds": [], "sampled": []}]
 )
+# The two body notes that open an answer below its receipt, in the forms the builds print.
+SKIPPED_WARNING = (
+    "// warning: 1 files were skipped and are absent from this answer: x.bin. A symbol in a "
+    "skipped file reads as missing here even though it may exist in the repository."
+)
+SEEDS_NOTE = (
+    "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer "
+    "non-test files of this repository, so the ranking below is not focused on them: {seeds}. "
+    "Check the spelling, or seed with a file path from the tree."
+)
 
 
 @pytest.fixture
@@ -75,6 +85,37 @@ def test_answers_that_differ_only_in_the_receipt_are_unchanged(cmp: ModuleType) 
     assert not cmp.answer_changed(base, new)
 
 
+def test_a_body_note_below_the_receipt_is_part_of_the_answer(cmp: ModuleType) -> None:
+    rows = "a.py  (rank 0.5)\n"
+    seeds = [text_answer(f"{SEEDS_NOTE.format(seeds=seed)}\n{rows}") for seed in ("zz", "yy")]
+    assert cmp.answer_changed(cmp.Answer(0, seeds[0], ""), cmp.Answer(0, seeds[1], ""))
+    skipped = cmp.Answer(0, text_answer(f"{SKIPPED_WARNING}\n\n1 import cycle\n"), "")
+    whole = cmp.Answer(0, text_answer("1 import cycle\n"), "")
+    assert cmp.answer_changed(skipped, whole)
+
+
+def test_the_cache_field_is_masked_in_both_receipt_forms(cmp: ModuleType) -> None:
+    text = text_answer("body\n", cache="g:1 fresh")
+    assert "// repo: /r   head: abc   dirty: 0 files   cache: <CACHE>" in cmp.mask_cache(text)
+    masked = cmp.mask_cache(refs_answer([], cache="g:1 fresh"))
+    assert masked == cmp.mask_cache(refs_answer([], cache="none"))
+    assert '    "cache": <CACHE>' in masked.split("\n")
+
+
+def test_a_pair_that_timed_out_in_both_builds_is_counted_and_not_compared(
+    cmp: ModuleType,
+) -> None:
+    tally = cmp.Tally(("base", "new"))
+    cmp.compare_answer(tally, "i-1", "map:a", cmp.Answer(None, "", ""), cmp.Answer(None, "", ""))
+    cmp.compare_answer(tally, "i-1", "map:b", cmp.Answer(0, "x\n", ""), cmp.Answer(None, "", ""))
+    assert tally.not_compared == ["i-1 map:a"]
+    assert tally.timeouts == {"base": 1, "new": 2}
+    report = list(cmp.report_lines(tally))
+    assert "timeouts: base 1, new 2" in report
+    assert "not compared, a timeout in both builds: 1" in report
+    assert "  i-1 map:a" in report
+
+
 def test_a_different_exit_code_or_stderr_is_a_change(cmp: ModuleType) -> None:
     base = cmp.Answer(0, "body\n", "")
     assert cmp.answer_changed(base, cmp.Answer(1, "body\n", ""))
@@ -127,7 +168,7 @@ def test_the_map_size_counts_the_file_rows_only(cmp: ModuleType) -> None:
     [
         ("no import cycles\n", (0,)),
         ("1 import cycle\n    1. (2 files) a.py -> b.py -> a.py\n", (1,)),
-        ("skipped: x.bin\n\n\n3 import cycles\n", (3,)),
+        (f"{SKIPPED_WARNING}\n\n3 import cycles\n", (3,)),
         ("agentless-mcp: no repository\n", None),
     ],
 )

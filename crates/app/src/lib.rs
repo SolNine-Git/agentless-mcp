@@ -1,5 +1,5 @@
-//! The operations layer: the lint pair forms, capabilities, the repository context they read, the
-//! clock and token counter ports, and the agent guide.
+//! The operations layer: the read and write operations, the lint pair forms, capabilities, the
+//! repository context they read, the clock and token counter ports, and the agent guide.
 
 mod args;
 pub mod bounds;
@@ -16,6 +16,7 @@ mod env;
 mod error;
 mod expand;
 mod explain;
+mod file_graph;
 mod find;
 mod guide;
 mod health;
@@ -41,6 +42,7 @@ mod rowtext;
 mod scan;
 mod scope;
 mod span;
+mod symbol_graph;
 mod tags;
 mod tokens;
 mod tree;

@@ -13,7 +13,7 @@ const TOML_TABLES: [&str; 2] = ["table", "table_array_element"];
 const OWNERS: [&str; 4] = ["pair", "block_mapping_pair", "table", "table_array_element"];
 const KEYS: [&str; 3] = ["bare_key", "quoted_key", "dotted_key"];
 const CONTAINERS: [&str; 4] = ["object", "array", "block_node", "flow_node"];
-const QUOTES: [char; 2] = ['"', '\''];
+const KEY_QUOTES: [char; 2] = ['"', '\''];
 
 // TOML tables first, then every pair under the keys of the pairs and tables around it.
 pub(super) fn keys(tree: &Tree) -> Vec<Symbol> {
@@ -114,7 +114,7 @@ fn clean_name(text: &str, language: Language) -> &str {
     let cleaned = text::strip(text);
     let quoted = matches!(language, Language::Json | Language::Hcl | Language::Toml)
         && cleaned.len() >= 2
-        && QUOTES
+        && KEY_QUOTES
             .iter()
             .any(|quote| cleaned.starts_with(*quote) && cleaned.ends_with(*quote));
     if quoted {

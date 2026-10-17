@@ -7,9 +7,9 @@ use std::collections::BTreeSet;
 use graph::{CommunityPartition, detect_communities};
 
 use crate::bounds::within;
-use crate::communities::{over_scan, resolution_setting};
-use crate::diagram::{Ranked, select};
+use crate::file_graph::{Ranked, resolution_setting, select};
 use crate::ops::limits::{MAX_HTML_EDGES, MAX_HTML_NODES};
+use crate::scan::over_scan;
 use crate::{Error, IntArg, Noted, Reading, Services};
 
 /// An HTML export request: the node and edge bounds, and the resolution of the communities.

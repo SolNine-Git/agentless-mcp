@@ -1,5 +1,5 @@
-//! One home for each default and bound of the read operations. The operations check these, and
-//! the command-line declarations print them.
+//! One home for each default and bound of the read operations. The operations check these. The
+//! help texts in table.rs spell the same values, and a test holds them equal.
 
 /// The most rows that one listing parameter may ask for.
 pub const MAX_LIMIT: usize = 500;

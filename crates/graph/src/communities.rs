@@ -118,6 +118,7 @@ struct Cells {
 }
 
 impl Cells {
+    // A pair's weight starts from 0.0, so a first weight of -0.0 is stored as 0.0.
     fn add(&mut self, other: usize, weight: f64) {
         if let Some(&held) = self.at.get(&other) {
             self.order[held].1 += weight;
@@ -197,6 +198,8 @@ fn partition<'a>(
         if weighted.two_m > 0.0 {
             // Both scores share one loop, so at resolution 1.0 they are the same float.
             let fraction = internal / weighted.two_m;
+            // pow(x, 2.0) at run time: the compiler would fold it to x * x, which can differ in
+            // the last bit.
             let share = (outgoing / weighted.two_m).powf(std::hint::black_box(2.0));
             modularity += fraction - resolution * share;
             standard += fraction - share;

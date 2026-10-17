@@ -9,7 +9,7 @@ use std::time::Duration;
 use git::{Git, Toplevel};
 
 use crate::halt::Halt;
-use crate::text::{codec_text, grouped, last_line, os_error_text, shown};
+use crate::text::{codec_text, grouped, last_line, shown};
 
 // A path with a NUL byte names no file. The reason names lstat, the first call that refuses it.
 const EMBEDDED_NUL: &str = "ValueError: lstat: embedded null character in path";
@@ -126,7 +126,7 @@ pub(crate) fn old_text(resolved: &Path) -> Result<Option<String>, Halt> {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            let shown = os_error_text(&error, resolved);
+            let shown = io::os_error_text(&error, resolved);
             return Err(Halt::degraded(format!("cannot stat the target: {shown}")));
         }
     };
@@ -139,7 +139,7 @@ pub(crate) fn old_text(resolved: &Path) -> Result<Option<String>, Halt> {
             Halt::degraded(format!("the old text is over {cap} bytes"))
         }
         io::Skipped::Unreadable(error) => {
-            let shown = os_error_text(&error, resolved);
+            let shown = io::os_error_text(&error, resolved);
             Halt::degraded(format!("cannot read the old text: {shown}"))
         }
     })?;

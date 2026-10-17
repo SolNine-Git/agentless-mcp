@@ -42,7 +42,7 @@ pub use files::{
 pub use interrupt::{end_by_interrupt, interrupted};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
-pub use oserror::{os_error_class_text, os_error_line, strerror};
+pub use oserror::{os_error_class_text, os_error_line, os_error_text, strerror};
 pub use random::random_bytes;
 pub use read::{MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, decode_strict, read_bounded};
 pub use replace::replace_file;

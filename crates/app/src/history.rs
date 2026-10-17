@@ -24,12 +24,10 @@ use crate::{Error, IntArg, Noted, ROW_INDENT, Reading, Services, TokenCounter};
 const HISTORY_MAX_SEATS: usize = 120;
 // A measured worst-case row is 32 tokens; the rest is room for the span header and the markers.
 const HISTORY_TOKENS_PER_SEAT: usize = 40;
-// A git subcommand that `git_text` runs, and the stdout cap it runs under.
+// A git subcommand, and the cap that git ran it under, as `git_text` names them in a refusal.
 type Call = (&'static str, usize);
-const REV_PARSE: Call = ("rev-parse", 4_096);
-const CAT_FILE: Call = ("cat-file", io::MAX_FILE_BYTES);
-// The digits of the abbreviated sha that every row cites.
-const SHORT_SHA_LENGTH: usize = 8;
+const REV_PARSE: Call = ("rev-parse", git::MAX_COMMIT_OUTPUT_BYTES);
+const CAT_FILE: Call = ("cat-file", git::MAX_BLOB_OUTPUT_BYTES);
 const BODY_INDENT: &str = "    ";
 
 /// A history request: the stable id, the most commits, and the token budget of the bodies.
@@ -62,7 +60,7 @@ impl HistoryEntry {
     /// Returns the abbreviated sha that every row and marker cites this commit by.
     #[must_use]
     pub fn short_sha(&self) -> &str {
-        self.sha.get(..SHORT_SHA_LENGTH).unwrap_or(&self.sha)
+        self.sha.get(..git::SHORT_SHA_LENGTH).unwrap_or(&self.sha)
     }
 
     /// Returns how many body lines survived the budget.

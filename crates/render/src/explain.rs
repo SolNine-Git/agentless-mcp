@@ -4,6 +4,7 @@
 use app::{
     EdgeRow, Explanation, ImportRow, TierGroup, cards_text, file_site, locator, omitted_line,
 };
+use kernel::Bounded;
 use prompts::messages::EXPLAIN_TIE;
 use serde::Serialize;
 use text::one_line;
@@ -186,7 +187,6 @@ struct ImportJson<'a> {
 
 impl<'a> ExplainJson<'a> {
     fn of(explanation: &'a Explanation) -> Self {
-        let (declared, importers) = (&explanation.imports_out, &explanation.imports_in);
         ExplainJson {
             target: &explanation.target,
             symbol: explanation.card.as_ref().map(CardJson::of),
@@ -195,16 +195,8 @@ impl<'a> ExplainJson<'a> {
             fan_out: explanation.fan_out.iter().map(GroupJson::of).collect(),
             fan_in: explanation.fan_in.iter().map(GroupJson::of).collect(),
             imports: ImportsJson {
-                declared: ImportListingJson::of(
-                    declared.rows(),
-                    declared.total(),
-                    declared.limit(),
-                ),
-                importers: ImportListingJson::of(
-                    importers.rows(),
-                    importers.total(),
-                    importers.limit(),
-                ),
+                declared: ImportListingJson::of(&explanation.imports_out),
+                importers: ImportListingJson::of(&explanation.imports_in),
             },
             rationales: explanation
                 .rationales
@@ -235,19 +227,18 @@ impl<'a> GroupJson<'a> {
 }
 
 impl<'a> ImportListingJson<'a> {
-    fn of(rows: &'a [ImportRow], total: usize, limit: usize) -> Self {
-        let rows = rows.iter().map(|row| ImportJson {
+    fn of(listing: &'a Bounded<ImportRow>) -> Self {
+        let rows = listing.rows().iter().map(|row| ImportJson {
             path: &row.path,
             line: row.line,
             module: &row.module,
             other: &row.other,
         });
-        let rows: Vec<ImportJson<'a>> = rows.collect();
         ImportListingJson {
-            total,
-            limit,
-            omitted: total.saturating_sub(rows.len()),
-            rows,
+            total: listing.total(),
+            limit: listing.limit(),
+            omitted: listing.omitted(),
+            rows: rows.collect(),
         }
     }
 }

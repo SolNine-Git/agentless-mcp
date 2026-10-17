@@ -18,8 +18,6 @@ pub const OUTPUT: &str = "crates/app/src/generated";
 /// The generated module's file name.
 pub const FILE: &str = "guide.rs";
 
-const WRITTEN_BY: &str =
-    "//! `cargo xtask generate` writes this file from src/agentless_mcp/docs/agent-guide.md.";
 const SECTION_LEVELS: [usize; 2] = [2, 3];
 const MAX_INDENT: usize = 3;
 const MAX_LEVEL: usize = 6;
@@ -70,7 +68,8 @@ pub fn module(text: &str) -> Result<String, Vec<String>> {
     let sections = sections(text)?;
     let mut out = format!(
         "//! The agent guide, and each section's name with the byte range of its text.\n\
-         {WRITTEN_BY}\n\npub(crate) const GUIDE: &str = {};\n\n\
+         //! `cargo xtask generate` writes this file from {SOURCE}.\n\n\
+         pub(crate) const GUIDE: &str = {};\n\n\
          pub(crate) const SECTIONS: [(&str, usize, usize); {}] = [\n",
         literal(text),
         sections.len()
@@ -84,8 +83,8 @@ pub fn module(text: &str) -> Result<String, Vec<String>> {
     Ok(out)
 }
 
-// str.splitlines also ends a line at these, so a guide that holds one would not be byte ranges of
-// newline-separated lines. Outside them, char::is_whitespace equals the reference \s.
+// Unicode line splitting also ends a line at these, so a guide's lines would not be its newline
+// ranges. Outside them, char::is_whitespace is the whitespace a heading allows.
 fn breaks_the_line_model(c: char) -> bool {
     (c.is_control() && c != '\n' && c != '\t') || matches!(c, '\u{2028}' | '\u{2029}')
 }

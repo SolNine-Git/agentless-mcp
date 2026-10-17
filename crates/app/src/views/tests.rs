@@ -1,6 +1,29 @@
-use super::{load, widen};
-use crate::Error;
-use crate::testing::Sandbox;
+use super::{SliceRequest, load, slice, widen};
+use crate::endpoints::scanned::Scanned;
+use crate::testing::{MANIFEST_DIR, Sandbox};
+use crate::{Error, IntArg};
+
+// The requested ranges, the context, and the reference view text.
+type SliceCase = (Vec<(usize, usize)>, usize, String);
+
+#[test]
+fn each_slice_request_reports_or_renders_as_the_reference_does() {
+    let files: Vec<(String, String)> = io::testing::cases(MANIFEST_DIR, "read/views", "slice_file");
+    let (path, text) = &files[0];
+    let scanned = Scanned::new(&[(path.as_str(), text.as_str())]);
+    let all: Vec<SliceCase> = io::testing::cases(MANIFEST_DIR, "read/views", "slice");
+    assert!(!all.is_empty());
+    for (ranges, context, expected) in all {
+        let request = SliceRequest {
+            path: path.clone(),
+            ranges: ranges.clone(),
+            context: IntArg::from_usize(context),
+        };
+        let view = slice(&scanned.reading(), &request).value;
+        let view = view.unwrap_or_else(|error| panic!("{ranges:?}: {error}"));
+        assert_eq!(view.text, expected, "{ranges:?} at context {context}");
+    }
+}
 
 #[test]
 fn a_range_widens_by_the_context_within_the_file() {

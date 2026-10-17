@@ -3,9 +3,10 @@
 
 use std::cmp::Ordering;
 
-use crate::{FACTS_SCHEMA_VERSION, Refusal};
+use crate::{FACTS_SCHEMA_VERSION, Refusal, analysis};
 
-/// The meta row of an index: its schema version, its repository, and its generation.
+/// The meta row of an index: its schema version, its repository, its generation, and the
+/// analysis its rows were made under.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexMeta {
     /// The schema version that the database records.
@@ -14,6 +15,8 @@ pub struct IndexMeta {
     pub repo_root: String,
     /// The generation that the index was built at.
     pub generation: String,
+    /// The analysis digest of the rows, or `None` for a tags.db, whose meta row has none.
+    pub analysis: Option<Vec<u8>>,
 }
 
 /// What an agentless.db index means for the repository now.
@@ -28,14 +31,16 @@ pub enum Freshness {
 }
 
 /// Returns whether the agentless.db meta row `meta` serves `repo_root` at `generation`. No meta
-/// row, another schema version and another repository are refused, in that order.
+/// row, another schema version, another repository and another analysis are refused, in that
+/// order.
 #[must_use]
 pub fn freshness(meta: Option<&IndexMeta>, repo_root: &str, generation: &str) -> Freshness {
     let Some(meta) = meta else {
         return Freshness::Refused(Refusal::NoIndex);
     };
     let refused = facts_schema_rejection(meta.schema)
-        .or_else(|| rejection(meta, FACTS_SCHEMA_VERSION, repo_root));
+        .or_else(|| rejection(meta, FACTS_SCHEMA_VERSION, repo_root))
+        .or_else(|| analysis_rejection(meta));
     if let Some(refusal) = refused {
         return Freshness::Refused(refusal);
     }
@@ -55,6 +60,14 @@ pub(crate) fn facts_schema_rejection(found: i64) -> Option<Refusal> {
         Ordering::Equal => None,
         Ordering::Greater => Some(Refusal::NewerSchema { found, expected }),
     }
+}
+
+// Rows of another analysis are never served, so an index of one is not current. The next index
+// run rewrites every row.
+pub(crate) fn analysis_rejection(meta: &IndexMeta) -> Option<Refusal> {
+    let current = analysis();
+    let made_here = meta.analysis.as_deref() == Some(current.bytes().as_slice());
+    (!made_here).then_some(Refusal::OtherAnalysis)
 }
 
 // The schema test comes first: a database of another schema may not even name its repository.

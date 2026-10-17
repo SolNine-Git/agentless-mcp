@@ -114,7 +114,7 @@ impl ReadArgs<'_> {
         self.namespace.flag(dest)
     }
 
-    // A switch that is true when given and unset, for the config to decide, when not.
+    // Some(true) when the flag is given, else None, so the config decides.
     pub(crate) fn switch(&self, dest: &str) -> Option<bool> {
         self.flag(dest).then_some(true)
     }
@@ -126,7 +126,8 @@ impl ReadArgs<'_> {
     }
 }
 
-// The text of a path argument, or the refusal of one that is not UTF-8 (ledger deviation).
+// The text of a path argument, or the refusal of one that is not UTF-8: the read operations take
+// repository paths as text.
 pub(crate) fn utf8_path(arg: &Arg, name: &str, streams: &mut Streams<'_>) -> Result<String, u8> {
     arg.utf8(name)
         .map_err(|refusal| fail(streams.err, &refusal, EXIT_USAGE))

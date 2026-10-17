@@ -219,10 +219,12 @@ pub(crate) fn read_meta(
     else {
         return Ok(None);
     };
+    // The caller knows whether the cell after the generation is an analysis digest.
     let meta = IndexMeta {
         schema: schema.int()?,
         repo_root: repo_root.text(),
         generation: generation.text(),
+        analysis: None,
     };
     Ok(Some((meta, more)))
 }

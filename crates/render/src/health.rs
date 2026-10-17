@@ -6,6 +6,7 @@ use app::{
     omitted_line,
 };
 use json::fixed;
+use kernel::Bounded;
 use serde::Serialize;
 use text::one_line;
 
@@ -82,17 +83,15 @@ fn health_text(report: &HealthReport) -> String {
         (&report.unused_exports, &UNUSED),
         (&report.hubs, &HUBS),
     ] {
-        let cut = Cut::of(section.total(), section.rows().len(), section.limit());
-        lines.extend(section_lines(section.rows(), &cut, wording));
+        lines.extend(section_lines(section.rows(), &Cut::of(section), wording));
     }
     lines.extend(complexity_lines(&report.complexity));
     let hotspots = &report.hotspots;
-    let cut = Cut::of(hotspots.total(), hotspots.rows().len(), hotspots.limit());
-    lines.extend(hotspot_lines(hotspots.rows(), &cut));
+    lines.extend(hotspot_lines(hotspots.rows(), &Cut::of(hotspots)));
     lines.join("\n") + "\n"
 }
 
-// A listing's count before the cut, the rows it kept, and the limit that cut it.
+// A listing's count before the cut, the rows it left out, and the limit that cut it.
 struct Cut {
     total: usize,
     omitted: usize,
@@ -100,11 +99,11 @@ struct Cut {
 }
 
 impl Cut {
-    fn of(total: usize, shown: usize, limit: usize) -> Cut {
+    fn of<R>(listing: &Bounded<R>) -> Cut {
         Cut {
-            total,
-            omitted: total.saturating_sub(shown),
-            limit,
+            total: listing.total(),
+            omitted: listing.omitted(),
+            limit: listing.limit(),
         }
     }
 
@@ -187,8 +186,7 @@ fn complexity_lines(summary: &HealthComplexity) -> Vec<String> {
         ));
     }
     let listing = &summary.not_measured;
-    let cut = Cut::of(listing.total(), listing.rows().len(), listing.limit());
-    lines.extend(unmeasured_lines(listing.rows(), &cut));
+    lines.extend(unmeasured_lines(listing.rows(), &Cut::of(listing)));
     lines
 }
 
@@ -267,12 +265,12 @@ struct ListingJson<T> {
 }
 
 impl<T> ListingJson<T> {
-    fn of<'r, R: 'r>(rows: &'r [R], total: usize, limit: usize, row: impl Fn(&'r R) -> T) -> Self {
+    fn of<'r, R: 'r>(listing: &'r Bounded<R>, row: impl Fn(&'r R) -> T) -> Self {
         ListingJson {
-            total,
-            limit,
-            omitted: total.saturating_sub(rows.len()),
-            rows: rows.iter().map(row).collect(),
+            total: listing.total(),
+            limit: listing.limit(),
+            omitted: listing.omitted(),
+            rows: listing.rows().iter().map(row).collect(),
         }
     }
 }
@@ -332,31 +330,14 @@ struct HotspotJson<'a> {
 
 impl<'a> HealthJson<'a> {
     fn of(report: &'a HealthReport) -> Self {
-        let symbols = |section: &'a [HealthSymbol], total, limit| {
-            ListingJson::of(section, total, limit, symbol_json)
-        };
-        let hotspots = &report.hotspots;
         HealthJson {
             symbols: report.symbols,
             excluded: report.excluded,
-            orphans: symbols(
-                report.orphans.rows(),
-                report.orphans.total(),
-                report.orphans.limit(),
-            ),
-            unused_exports: symbols(
-                report.unused_exports.rows(),
-                report.unused_exports.total(),
-                report.unused_exports.limit(),
-            ),
-            hubs: symbols(report.hubs.rows(), report.hubs.total(), report.hubs.limit()),
+            orphans: ListingJson::of(&report.orphans, symbol_json),
+            unused_exports: ListingJson::of(&report.unused_exports, symbol_json),
+            hubs: ListingJson::of(&report.hubs, symbol_json),
             complexity: complexity_json(&report.complexity),
-            hotspots: ListingJson::of(
-                hotspots.rows(),
-                hotspots.total(),
-                hotspots.limit(),
-                hotspot_json,
-            ),
+            hotspots: ListingJson::of(&report.hotspots, hotspot_json),
         }
     }
 }
@@ -380,7 +361,6 @@ fn symbol_json(row: &HealthSymbol) -> SymbolJson<'_> {
 }
 
 fn complexity_json(summary: &HealthComplexity) -> ComplexityJson<'_> {
-    let listing = &summary.not_measured;
     ComplexityJson {
         threshold: summary.threshold,
         files: summary.files,
@@ -393,12 +373,7 @@ fn complexity_json(summary: &HealthComplexity) -> ComplexityJson<'_> {
         sloc: summary.sloc,
         clone_lines: summary.clone_lines,
         clone_share: summary.clone_share(),
-        not_measured: ListingJson::of(
-            listing.rows(),
-            listing.total(),
-            listing.limit(),
-            unmeasured_json,
-        ),
+        not_measured: ListingJson::of(&summary.not_measured, unmeasured_json),
     }
 }
 

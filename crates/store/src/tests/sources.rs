@@ -10,7 +10,7 @@ use super::indexed::{Cache, GENERATION, PYTHON, file, indexed, observed};
 use crate::reader::open_facts_within;
 use crate::{
     Discarded, FactSource, FactsDb, Freshness, IndexMeta, Refusal, Source, SqlClass, SqlError,
-    analyze, discard_facts, freshness, open_facts,
+    analysis, analyze, discard_facts, freshness, open_facts,
 };
 
 const SCRIPT: &str = "export function add(a, b) {\n  return a + b;\n}\n";
@@ -156,9 +156,8 @@ fn a_bad_blob_gives_the_warning_and_a_parse_and_spares_the_symbols() {
 }
 
 #[test]
-fn a_row_of_another_analysis_or_language_is_a_miss() {
+fn a_row_of_another_language_or_text_is_a_miss() {
     for damage in [
-        "UPDATE meta SET analysis = x'00'",
         "UPDATE files SET language = 'go' WHERE path = 'a.py'",
         "UPDATE files SET digest = x'00' WHERE path = 'a.py'",
     ] {
@@ -264,6 +263,32 @@ fn a_database_of_a_newer_schema_is_refused_and_kept() {
         assert_eq!(refused.to_string(), note, "{damage}");
         assert_eq!(refused.discards(), discards, "{damage}");
     }
+}
+
+// Another build's rows serve nothing, so the receipt must not call them fresh. The database stays,
+// and the next index run rewrites every row.
+#[test]
+fn an_index_of_another_analysis_is_refused_kept_and_rebuilt_by_the_next_run() {
+    let cache = Cache::new();
+    built(&cache);
+    writer(&cache.database)
+        .execute("UPDATE meta SET analysis = x'00'", ())
+        .expect("the damage applies");
+
+    let refused = refusal(&cache.database);
+
+    assert_eq!(refused, Refusal::OtherAnalysis);
+    assert_eq!(
+        refused.to_string(),
+        "cache kept: rows of another agentless-mcp build, rerun agentless-mcp index"
+    );
+    assert!(!refused.discards());
+    let report = indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+    assert_eq!((report.indexed, report.reused), (1, 0));
+    let (source, calls) = counting(Some(usable(&cache.database)));
+    let served = source.symbols(&file("a.py", PYTHON));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(served.warning.is_none() && served.value.is_ok());
 }
 
 // The snapshot holds the rows that the open saw: a later run that frees b.js's row id for c.py
@@ -379,12 +404,25 @@ fn freshness_refuses_in_the_reference_order_then_compares_the_generation() {
         schema,
         repo_root: root.to_owned(),
         generation: GENERATION.to_owned(),
+        analysis: Some(analysis().bytes().to_vec()),
+    };
+    let other = IndexMeta {
+        analysis: Some(vec![0]),
+        ..meta(1, ROOT)
     };
     let found = [
         freshness(None, ROOT, GENERATION),
         freshness(Some(&meta(0, "/elsewhere")), ROOT, GENERATION),
         freshness(Some(&meta(2, "/elsewhere")), ROOT, GENERATION),
-        freshness(Some(&meta(1, "/elsewhere")), ROOT, GENERATION),
+        freshness(
+            Some(&IndexMeta {
+                analysis: None,
+                ..meta(1, "/elsewhere")
+            }),
+            ROOT,
+            GENERATION,
+        ),
+        freshness(Some(&other), ROOT, GENERATION),
         freshness(Some(&meta(1, ROOT)), ROOT, GENERATION),
         freshness(Some(&meta(1, ROOT)), ROOT, "fedcba98"),
     ];
@@ -401,6 +439,7 @@ fn freshness_refuses_in_the_reference_order_then_compares_the_generation() {
         Freshness::Refused(Refusal::OtherRepository {
             repo_root: "/elsewhere".to_owned(),
         }),
+        Freshness::Refused(Refusal::OtherAnalysis),
         Freshness::Current,
         Freshness::Stale,
     ];

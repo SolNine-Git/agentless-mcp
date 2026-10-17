@@ -48,8 +48,11 @@ from agentless_mcp.core.symbols import symbol_stable_id
 
 DEFAULT_RECORDS = Path("results") / "fix-base.jsonl"
 DEFAULT_WORKERS = 4
+# Well above the slowest call of either build, so a timeout marks a hang, not a large checkout.
 DEFAULT_TIMEOUT_SECONDS = 60.0
 KILL_GRACE_SECONDS = 10.0
+# The sample sizes of the earlier surface diffs: another value gives a new targets.json that no
+# older dump compares with.
 SEEDS_PER_INSTANCE = 2
 SAMPLED_SYMBOLS = 3
 SAMPLED_KINDS = ("class", "function", "method")

@@ -11,9 +11,9 @@ use kernel::Bounded;
 
 use crate::bounds::within;
 use crate::detached::drop_detached;
-use crate::endpoints::{tier_at, with_resolved};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
+use crate::symbol_graph::{tier_at, with_resolved};
 use crate::{Error, IntArg, Noted, Reading, Services, is_fixture_path, is_test_path};
 
 pub use complexity::{HealthComplexity, HealthComplexityRow};
@@ -181,7 +181,7 @@ impl Degree {
 #[derive(Clone, Copy, Default)]
 struct End {
     counted: usize,
-    discounted: [usize; 4],
+    discounted: [usize; Tier::ORDER.len()],
 }
 
 impl End {

@@ -4,7 +4,7 @@
 
 mod write;
 
-use app::ops::{JSON, NO_CACHE, OPS, Op, REPO};
+use app::ops::{self, JSON, NO_CACHE, Op, REPO};
 use app::{CHECKS, CheckInput, Severity};
 use prompts::messages::LINT_UNKNOWN_SEVERITY;
 
@@ -33,24 +33,24 @@ const DIFF_HELP: &str = "a unified diff to check instead (git diff, or a format-
     BASE, not a tree with the diff already applied";
 const AFTER_HELP: &str = "the file that holds the proposed whole new text of --path";
 
-// The subcommands in the reference order. A read subcommand names its entry of OPS.
+// The subcommands in the order of the top-level help. A read subcommand names its operation.
 pub(crate) static COMMANDS: [Command; 24] = [
-    read(&OPS[0]),
-    read(&OPS[1]),
-    read(&OPS[2]),
-    read(&OPS[3]),
-    read(&OPS[4]),
-    read(&OPS[5]),
-    read(&OPS[6]),
-    read(&OPS[7]),
-    read(&OPS[8]),
-    read(&OPS[9]),
-    read(&OPS[10]),
-    read(&OPS[11]),
-    read(&OPS[12]),
-    read(&OPS[13]),
-    read(&OPS[14]),
-    read(&OPS[15]),
+    read(&ops::MAP),
+    read(&ops::TREE),
+    read(&ops::SKELETON),
+    read(&ops::EXPAND),
+    read(&ops::SLICE),
+    read(&ops::FIND_SYMBOL),
+    read(&ops::REFS),
+    read(&ops::HISTORY),
+    read(&ops::EXPLAIN),
+    read(&ops::PATH),
+    read(&ops::CYCLES),
+    read(&ops::COMMUNITIES),
+    read(&ops::DIAGRAM),
+    read(&ops::HEALTH),
+    read(&ops::HTML),
+    read(&ops::RESOLVE_LOCS),
     built(
         "patch",
         "SEARCH/REPLACE patch machinery (write side)",
@@ -71,14 +71,14 @@ pub(crate) static COMMANDS: [Command; 24] = [
         "rank validated candidates by equivalence cluster",
         write::vote,
     ),
-    read(&OPS[16]),
-    read(&OPS[17]),
+    read(&ops::WARMUP),
+    read(&ops::INDEX),
     built(
         "capabilities",
         "grammars, versions and caps in force",
         capabilities,
     ),
-    read(&OPS[18]),
+    read(&ops::GUIDE),
 ];
 
 const fn built(name: &'static str, help: &'static str, build: fn() -> Parser) -> Command {

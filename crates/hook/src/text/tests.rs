@@ -31,7 +31,7 @@ fn an_os_error_with_a_file_matches_the_reference_cases() {
     for (errno, path, expected) in all {
         let error = std::io::Error::from_raw_os_error(errno);
         assert_eq!(
-            super::os_error_text(&error, std::path::Path::new(&path)),
+            io::os_error_text(&error, std::path::Path::new(&path)),
             expected,
             "errno {errno}"
         );

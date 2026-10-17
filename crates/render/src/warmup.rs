@@ -37,7 +37,7 @@ fn row_line(row: &WarmupRow) -> String {
     line.trim_end().to_owned()
 }
 
-// The spelling of a truth value in the reference's rows.
+// A row spells a truth value True or False.
 fn truth(value: bool) -> &'static str {
     if value { "True" } else { "False" }
 }

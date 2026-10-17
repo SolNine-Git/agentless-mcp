@@ -4,9 +4,8 @@ use graph::{Scopes, SymbolGraph, import_cycles};
 use kernel::Bounded;
 
 use crate::bounds::within;
-use crate::detached::answered_over;
 use crate::ops::limits::MAX_LIMIT;
-use crate::scan::RepoFacts;
+use crate::scan::{RepoFacts, over_scan};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A cycles request: how many cycles to list.
@@ -50,8 +49,7 @@ pub fn cycles(
         Ok(limit) => limit,
         Err(error) => return Noted::new(Err(error)),
     };
-    RepoFacts::load(services, reading)
-        .map(|loaded| loaded.map(|facts| answered_over(facts, |facts| report(facts, limit))))
+    over_scan(services, reading, |facts| Ok(report(facts, limit)))
 }
 
 fn report(facts: &RepoFacts, limit: usize) -> CycleReport {

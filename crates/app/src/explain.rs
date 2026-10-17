@@ -5,10 +5,10 @@ use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier, definitions_fo
 use kernel::Bounded;
 
 use crate::bounds::within;
-use crate::communities::over_scan;
-use crate::endpoints::{best_band, rank_candidates, tier_at, with_resolved};
+use crate::endpoints::{best_band, rank_candidates};
 use crate::ops::limits::MAX_LIMIT;
-use crate::path::verbs;
+use crate::scan::over_scan;
+use crate::symbol_graph::{tier_at, verbs, with_resolved};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, SymbolCard, rationale_nodes,
     symbol_card,
@@ -221,6 +221,7 @@ fn ambiguous_group<'a>(
         tier: Tier::Ambiguous.as_str(),
         tier_label: Tier::Ambiguous.label(),
         rows,
+        // usize holds every u64 on a 64-bit target; on a narrower one the count saturates.
         total: usize::try_from(total).unwrap_or(usize::MAX),
     })
 }

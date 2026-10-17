@@ -16,8 +16,8 @@ mod recipe;
 mod testing;
 
 pub use changes::{
-    BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_LISTING_BYTES, Malformed, Side,
-    looks_binary, parse_changes, parse_commit, parse_untracked,
+    BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_BLOB_OUTPUT_BYTES, MAX_COMMIT_OUTPUT_BYTES,
+    MAX_LISTING_BYTES, Malformed, Side, looks_binary, parse_changes, parse_commit, parse_untracked,
 };
 pub use churn::{CHURN_WINDOW_DAYS, Churn};
 pub use history::{
@@ -25,7 +25,7 @@ pub use history::{
     SpanQuery,
 };
 pub use run::{Failure, Git, GitOutcome, Unfinished};
-pub use snapshot::Snapshot;
+pub use snapshot::{SHORT_SHA_LENGTH, Snapshot};
 pub use toplevel::Toplevel;
 pub use walk::{RepoFile, Walk, WalkError, WalkWarning};
 pub use worktree::{
