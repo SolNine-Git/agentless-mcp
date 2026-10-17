@@ -10,12 +10,12 @@ use patch::Edit;
 use syntax::Unparsable;
 
 use crate::fragment::{Fragment, extract};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_CYCLE_DELTA, Parse, gap};
 
 pub(crate) fn check(
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     parse: &Parse,
 ) -> Result<Vec<Finding>, Unparsable> {
     let edited: BTreeSet<&str> = fragments.iter().map(Fragment::path).collect();
@@ -57,7 +57,7 @@ pub(crate) fn check(
 // The texts of the edited files, or the gap that names the first edited file without one.
 fn edited_texts(
     edited: &BTreeSet<&str>,
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
 ) -> Result<BTreeMap<String, String>, Finding> {
     let missing: Vec<&str> = edited
         .iter()
@@ -89,7 +89,7 @@ fn cycles_of(files: &[FileFacts]) -> Vec<Cycle<'_>> {
 // Each scanned file with only its import table, read again from the patched text for an edited
 // file: the import graph reads nothing else.
 fn patched_files(
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     contents: &[(String, String)],
     parse: &Parse,
 ) -> Result<Vec<FileFacts>, Unparsable> {

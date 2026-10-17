@@ -47,7 +47,8 @@
   {"text": "t = 07:32\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Expected newline or end of document after a statement (at line 1, column 6)"], "parsed": false, "requires_python": ""}},
   {"text": "\ufeff[project]\nname = \"x\"\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Invalid statement (at line 1, column 1)"], "parsed": false, "requires_python": ""}},
   {"text": "\ufeff\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Invalid statement (at line 1, column 1)"], "parsed": false, "requires_python": ""}},
-  {"text": "x = 1979-01-01T00:00:60\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Expected newline or end of document after a statement (at line 1, column 15)"], "parsed": false, "requires_python": ""}}
+  {"text": "x = 1979-01-01T00:00:60\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Expected newline or end of document after a statement (at line 1, column 15)"], "parsed": false, "requires_python": ""}},
+  {"text": "x = 0000-01-01\n", "expect": {"packages": [], "warnings": ["pyproject.toml did not parse: TOMLDecodeError: Invalid date or datetime (at line 1, column 5)"], "parsed": false, "requires_python": ""}}
  ],
  "parse_pyproject_python_only": [
   {"text": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n", "expect": {"packages": [], "warnings": [], "parsed": true, "requires_python": ""}},

@@ -10,6 +10,7 @@ index, pair_language and in_boundary. A pytest plugin records the inputs of each
 then runs each call again with the unpatched functions, and it keeps a call only when that result
 equals the recorded one, so a call that a test patched stays out. seeded.json holds edits of the
 characterization fixtures of every tier-1 language and the outcome of each check for each edit.
+clone_delta also runs on each edit with sets of reported lines at or next to the unit starts.
 """
 
 import hashlib
@@ -309,15 +310,13 @@ def run_check(kind: str, inputs: dict[str, Any]) -> PairOutcome:
         return COMPLEXITY_DELTA(pairs, inputs["threshold"])
     if kind == "contract_drift":
         return CONTRACT_DRIFT(pairs, inputs["globs"])
-    return CLONE_DELTA(pairs, inputs["index"].build(), frozenset())
+    return CLONE_DELTA(pairs, inputs["index"].build(), frozenset(inputs["reported"]))
 
 
 def dropped_reason(call: Call) -> str | None:
     """Return why ``call`` cannot be a Rust case, or None when it can."""
     if call.kind == "clone_index" and not call.inputs["reader"]:
         return "a custom block reader"
-    if call.kind == "clone_delta" and call.inputs["reported"]:
-        return "a non-empty reported set"
     if call.kind == "clone_delta" and call.inputs["index"] is None:
         return "an index from blocks or a custom reader"
     if rerun(call) != call.result:
@@ -339,6 +338,7 @@ def case_json(call: Call, texts: Texts) -> Json:
         case["globs"] = list(inputs["globs"])
     if call.kind == "clone_delta":
         case["index"] = inputs["index"].as_json(texts)
+        case["reported"] = sorted([path, line] for path, line in inputs["reported"])
     case["expect"] = rerun(call)
     return case
 
@@ -440,14 +440,51 @@ def directory_runs(directory: Path) -> list[tuple[str, list[TextPair], IndexSpec
 
 
 def check_calls(name: str, pairs: list[TextPair], index: IndexSpec) -> list[Call]:
-    """Return one call of each check on ``pairs``, and one complexity call per threshold."""
+    """Return the calls of each check on ``pairs``, with the thresholds and the reported sets."""
     calls = [
         Call("complexity_delta", name, {"pairs": pairs, "threshold": threshold})
         for threshold in SEEDED_THRESHOLDS
     ]
     calls.append(Call("contract_drift", name, {"pairs": pairs, "globs": SEEDED_GLOBS}))
     calls.append(Call("clone_delta", name, {"pairs": pairs, "index": index, "reported": set()}))
+    calls.extend(reported_calls(name, pairs, index))
     return calls
+
+
+def reported_calls(name: str, pairs: list[TextPair], index: IndexSpec) -> list[Call]:
+    """Return clone_delta calls on ``pairs`` that report lines at or next to the unit starts."""
+    starts = sorted(unit_starts(pairs))
+    if not starts:
+        return []
+    variants = {
+        "all": set(starts),
+        "first": {starts[0]},
+        "off_by_one": {(path, line + 1) for path, line in starts},
+        "every_other": set(starts[::2]),
+    }
+    return [
+        Call(
+            "clone_delta",
+            f"{name}:reported_{label}",
+            {"pairs": pairs, "index": index, "reported": lines},
+        )
+        for label, lines in variants.items()
+    ]
+
+
+def unit_starts(pairs: Iterable[TextPair]) -> set[tuple[str, int]]:
+    """Return the path and first line of each unit on each new side that can be measured."""
+    found: set[tuple[str, int]] = set()
+    for pair in pairs:
+        language = PAIR_LANGUAGE(pair.path)
+        if pair.new is None or language is None:
+            continue
+        try:
+            units = complexity.measure(pair.new, pair.path, language)
+        except UnmeasurableSource:
+            continue
+        found.update((pair.path, unit.start_line) for unit in units)
+    return found
 
 
 def edits(path: str, text: str, language: str) -> list[tuple[str, list[TextPair]]]:

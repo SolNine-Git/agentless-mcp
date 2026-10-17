@@ -1,5 +1,10 @@
 //! The lint check registry, the pair-check selection, and the refusals of a selection.
 
+use checks::{CLONE_DELTA, COMPLEXITY_DELTA, CONTRACT_DRIFT};
+use patchcheck::{
+    CHECK_ARITY, CHECK_CYCLE_DELTA, CHECK_DANGLING_CALLERS, CHECK_DANGLING_REFERENCES,
+    CHECK_NEAR_DUPLICATES, CHECK_SHADOWING, CHECK_UNDECLARED_IMPORTS,
+};
 use prompts::messages::{
     LINT_NO_CHECKS, LINT_PATH_TAKES_PAIR_CHECKS, LINT_SINCE_TAKES_PAIR_CHECKS, LINT_UNKNOWN_CHECK,
 };
@@ -38,13 +43,13 @@ const fn check(name: &'static str, input: CheckInput) -> LintCheck {
 
 /// Every lint check in registry order, which is also the order the checks run in.
 pub const CHECKS: [LintCheck; 10] = [
-    check("undeclared_imports", CheckInput::Patch),
-    check("shadowing", CheckInput::Patch),
-    check("near_duplicates", CheckInput::Patch),
-    check("dangling_references", CheckInput::Patch),
-    check("dangling_callers", CheckInput::Patch),
-    check("arity", CheckInput::Patch),
-    check("cycle_delta", CheckInput::Patch),
+    check(CHECK_UNDECLARED_IMPORTS, CheckInput::Patch),
+    check(CHECK_SHADOWING, CheckInput::Patch),
+    check(CHECK_NEAR_DUPLICATES, CheckInput::Patch),
+    check(CHECK_DANGLING_REFERENCES, CheckInput::Patch),
+    check(CHECK_DANGLING_CALLERS, CheckInput::Patch),
+    check(CHECK_ARITY, CheckInput::Patch),
+    check(CHECK_CYCLE_DELTA, CheckInput::Patch),
     check(PairCheck::ComplexityDelta.name(), CheckInput::Pairs),
     check(PairCheck::ContractDrift.name(), CheckInput::Pairs),
     check(PairCheck::CloneDelta.name(), CheckInput::PairsClones),
@@ -69,9 +74,9 @@ impl PairCheck {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::ComplexityDelta => "complexity_delta",
-            Self::ContractDrift => "contract_drift",
-            Self::CloneDelta => "clone_delta",
+            Self::ComplexityDelta => COMPLEXITY_DELTA,
+            Self::ContractDrift => CONTRACT_DRIFT,
+            Self::CloneDelta => CLONE_DELTA,
         }
     }
 

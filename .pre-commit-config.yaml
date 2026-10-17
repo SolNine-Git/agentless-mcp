@@ -173,11 +173,12 @@ repos:
         pass_filenames: false
         stages: [pre-push]
       # nextest reads .config/nextest.toml, and insta reads .config/insta.yaml, insta.yaml or .insta.yaml.
+      # Tests read the characterization fixtures and goldens.
       - id: cargo-test
         name: cargo tests and snapshots (pre-push)
         entry: cargo insta test --check --workspace --test-runner nextest
         language: system
-        files: (?i:^(crates|xtask)/|^\.config/|^src/agentless_mcp/prompts/(envelope|messages|contract_rules)\.json$|^src/agentless_mcp/docs/agent-guide\.md$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?insta\.yaml)$|(^|/)\.cargo/)
+        files: (?i:^(crates|xtask)/|^\.config/|^tests/characterization/|^src/agentless_mcp/prompts/(envelope|messages|contract_rules)\.json$|^src/agentless_mcp/docs/agent-guide\.md$|(^|/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|\.?insta\.yaml)$|(^|/)\.cargo/)
         pass_filenames: false
         stages: [pre-push]
       - id: cargo-public-api

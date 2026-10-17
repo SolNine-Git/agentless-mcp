@@ -1,3 +1,4 @@
+mod blobs;
 mod cases;
 mod discards;
 mod indexed;

@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use syntax::{Language, Unparsable};
 
 use crate::fragment::Fragment;
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_NEAR_DUPLICATES, MAX_DUPLICATE_SITES, gap, more, quoted};
 
 // Below this many normalized tokens, equal bodies are a coincidence, not a duplicate.
@@ -29,7 +29,7 @@ pub(crate) type Bodies<'a> = BTreeMap<Key, Vec<Site<'a>>>;
 
 pub(crate) fn check(
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
 ) -> Result<Vec<Finding>, Unparsable> {
     let mut findings: Vec<Finding> = unread_gap(facts).into_iter().collect();
     let index = facts.bodies()?;
@@ -53,7 +53,7 @@ pub(crate) fn check(
     Ok(findings)
 }
 
-fn unread_gap(facts: &RepoFacts<'_>) -> Option<Finding> {
+fn unread_gap(facts: &PatchBaseline<'_>) -> Option<Finding> {
     let unread: BTreeSet<&str> = facts
         .files()
         .map(|file| file.path.as_str())
@@ -115,7 +115,7 @@ fn duplicate_finding(fragment: &Fragment<'_>, symbol: &Symbol, sites: &[&Site<'_
     }
 }
 
-pub(crate) fn existing_bodies<'a>(facts: &RepoFacts<'a>) -> Result<Bodies<'a>, Unparsable> {
+pub(crate) fn existing_bodies<'a>(facts: &PatchBaseline<'a>) -> Result<Bodies<'a>, Unparsable> {
     let mut index: Bodies<'a> = BTreeMap::new();
     for file in facts.files() {
         let Some(text) = facts.text(&file.path) else {

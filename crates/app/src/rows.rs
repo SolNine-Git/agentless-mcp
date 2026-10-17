@@ -4,7 +4,7 @@ use checks::{Finding, PairFinding, Severity};
 use prompts::{Template, Text};
 
 /// The check name of a coverage row.
-pub const COVERAGE: &str = "coverage";
+pub const COVERAGE: &str = patchcheck::CHECK_COVERAGE;
 
 // One not-checked row with no line. An empty path is the repository.
 pub(crate) fn coverage(message: String, path: &str, evidence: String) -> PairFinding {

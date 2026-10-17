@@ -30,7 +30,7 @@ pub use manifest::{
     DeclaredDependencies, ManifestParse, PYPROJECT_NAME, REQUIREMENTS_GLOB,
     parse_pyproject_dependencies, parse_requirements,
 };
-pub use repo::RepoFacts;
+pub use repo::PatchBaseline;
 
 /// The check that reports packages the patch imports and nothing declares.
 pub const CHECK_UNDECLARED_IMPORTS: &str = "undeclared_imports";
@@ -56,7 +56,7 @@ const MAX_DUPLICATE_SITES: usize = 3;
 /// Every finding of one patch in (check, path, line, message, evidence) order, and the warnings
 /// of the repository read that the findings depend on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct LintReport {
+pub struct PatchLint {
     pub findings: Vec<Finding>,
     pub warnings: Vec<String>,
 }
@@ -65,11 +65,11 @@ type Parse = dyn Fn(Language, Arc<str>) -> Result<Parsed, Unparsable>;
 
 /// Run the seven checks over one patch's edits against the pre-patch repository.
 #[must_use]
-pub fn lint_patch(edits: &[Edit], facts: &RepoFacts<'_>) -> LintReport {
+pub fn lint_patch(edits: &[Edit], facts: &PatchBaseline<'_>) -> PatchLint {
     lint_with(edits, facts, &syntax::parse)
 }
 
-fn lint_with(edits: &[Edit], facts: &RepoFacts<'_>, parse: &Parse) -> LintReport {
+fn lint_with(edits: &[Edit], facts: &PatchBaseline<'_>, parse: &Parse) -> PatchLint {
     let (fragments, mut findings) = fragments(edits, facts, parse);
     let names = PatchNames::of(&fragments);
     findings.extend(interpreter_gaps(&fragments, facts));
@@ -87,7 +87,7 @@ fn lint_with(edits: &[Edit], facts: &RepoFacts<'_>, parse: &Parse) -> LintReport
         cycles::check(&fragments, facts, parse),
     ));
     findings.sort_by(order);
-    LintReport {
+    PatchLint {
         findings,
         warnings: facts.dependencies().warnings.clone(),
     }
@@ -147,7 +147,7 @@ fn gap(check: &'static str, path: &str, message: String, evidence: String) -> Fi
 
 // The tables describe Python 3.13, which the repository's declared floor may not be: the
 // disagreement is stated once, for both checks that read them.
-fn interpreter_gaps(fragments: &[Fragment<'_>], facts: &RepoFacts<'_>) -> Option<Finding> {
+fn interpreter_gaps(fragments: &[Fragment<'_>], facts: &PatchBaseline<'_>) -> Option<Finding> {
     if !fragments
         .iter()
         .any(|fragment| fragment.language == Language::Python)

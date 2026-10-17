@@ -2046,6 +2046,11 @@ class TestValidateAndVoteSubprocess(_ConsoleScriptCase):
         )
 
         assert result.returncode == EXIT_DOMAIN
+        lines = (tmp_path / "verdicts.jsonl").read_text(encoding="utf-8").splitlines()
+        records = [json.loads(line) for line in lines[1:]]
+        assert [(record["id"], record["regression"]) for record in records] == [
+            ("04-times", "failed")
+        ]
 
     def test_the_verdicts_go_to_stdout_without_an_output_flag(
         self, seeded_bug_repo, candidates_dir, python_cmd

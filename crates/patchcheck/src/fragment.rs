@@ -11,7 +11,7 @@ use syntax::{Language, Unparsable};
 use text::{posix_name, split_suffix};
 
 use crate::lexer::{CallSite, call_sites};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_COVERAGE, Parse, exception_class, gap};
 
 const NO_EXTENSION: &str = "(no extension)";
@@ -72,7 +72,7 @@ impl Fragment<'_> {
 // sides do not parse, becomes a coverage gap.
 pub(crate) fn fragments<'e>(
     edits: &'e [Edit],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     parse: &Parse,
 ) -> (Vec<Fragment<'e>>, Vec<Finding>) {
     let mut fragments = Vec::new();
@@ -118,7 +118,7 @@ fn suffix_label(name: &str) -> &str {
 fn fragment<'e>(
     edit: &'e Edit,
     language: Language,
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     parse: &Parse,
 ) -> Result<Fragment<'e>, Unparsable> {
     let text = facts.text(&edit.path).unwrap_or_default();
@@ -223,7 +223,7 @@ impl<'f> PatchNames<'f> {
 pub(crate) fn unscanned_gaps(
     check: &'static str,
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
 ) -> Vec<Finding> {
     let missing: BTreeSet<&str> = fragments
         .iter()

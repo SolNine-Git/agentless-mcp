@@ -11,10 +11,10 @@ use syntax::Language;
 use crate::fragment::{Fragment, language_gaps, unscanned_gaps};
 use crate::interpreter::always_bound;
 use crate::lexer::{CallSite, Shape, parameter_shape, positional_arguments, structure};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_ARITY, quoted};
 
-pub(crate) fn check(fragments: &[Fragment<'_>], facts: &RepoFacts<'_>) -> Vec<Finding> {
+pub(crate) fn check(fragments: &[Fragment<'_>], facts: &PatchBaseline<'_>) -> Vec<Finding> {
     let mut findings = language_gaps(CHECK_ARITY, fragments, "signature grammar");
     findings.extend(unscanned_gaps(CHECK_ARITY, fragments, facts));
     let python = fragments
@@ -42,7 +42,7 @@ fn arity_finding(
     fragment: &Fragment<'_>,
     site: &CallSite,
     depths: &[i64],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
 ) -> Option<Finding> {
     let given = positional_arguments(&fragment.replace_chars, depths, site.offset)?.len();
     let definition = plain_function(&site.name, fragment.path(), facts)?;
@@ -54,7 +54,7 @@ fn arity_finding(
 }
 
 // The one undecorated function that `name` resolves to at the same-file or imported tier.
-fn plain_function<'a>(name: &str, path: &str, facts: &RepoFacts<'a>) -> Option<Definition<'a>> {
+fn plain_function<'a>(name: &str, path: &str, facts: &PatchBaseline<'a>) -> Option<Definition<'a>> {
     let resolution = facts.resolver().resolve(name, path)?;
     if !matches!(resolution.tier, Tier::SameFile | Tier::Imported) {
         return None;

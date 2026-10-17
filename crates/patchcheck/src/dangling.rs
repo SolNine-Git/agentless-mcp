@@ -9,7 +9,7 @@ use syntax::Language;
 use crate::fragment::{Fragment, PatchNames, language_gaps};
 use crate::interpreter::always_bound;
 use crate::lexer::signature_names;
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_DANGLING_REFERENCES, quoted};
 
 // Two edits cover a transposition, a doubled letter and a dropped one.
@@ -28,7 +28,7 @@ struct Usage<'f> {
 
 pub(crate) fn check(
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     names: &PatchNames<'_>,
 ) -> Vec<Finding> {
     let mut findings = language_gaps(
@@ -119,7 +119,7 @@ fn top_module(module: &str) -> &str {
 }
 
 // Every symbol name of every scanned file, sorted and once each.
-fn defined_names<'a>(facts: &RepoFacts<'a>) -> Vec<&'a str> {
+fn defined_names<'a>(facts: &PatchBaseline<'a>) -> Vec<&'a str> {
     let names: BTreeSet<&str> = facts
         .files()
         .flat_map(|file| file.facts.symbols.iter())

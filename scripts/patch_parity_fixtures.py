@@ -815,7 +815,7 @@ PYPROJECTS = (
 )
 
 # The recorded deviations: documents that only the toml crate reads (TOML 1.1, a byte order mark,
-# a 60th second), and documents that only tomllib reads (deep nesting, wide numbers).
+# a 60th second, year 0000), and documents that only tomllib reads (deep nesting, wide numbers).
 PYPROJECTS_RUST_ONLY = (
     "x = {a = 1,}\n",
     "x = {\n  a = 1\n}\n",
@@ -825,6 +825,7 @@ PYPROJECTS_RUST_ONLY = (
     '\ufeff[project]\nname = "x"\n',
     "\ufeff\n",
     "x = 1979-01-01T00:00:60\n",
+    "x = 0000-01-01\n",
 )
 PYPROJECTS_PYTHON_ONLY = (
     "a = " + "[" * 81 + "1" + "]" * 81 + "\n",

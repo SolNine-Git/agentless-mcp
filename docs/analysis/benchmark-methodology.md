@@ -256,7 +256,8 @@ and a regression hides by construction. Then report:
 - one falsifiable prediction, written down before the output is read
 
 Then read a random sample of the changed lines in the source. Compare
-answers without the receipt lines, which carry cache state, and note which
+answers with the receipt's cache field masked, because the cache state is the
+one receipt value that two builds over one checkout may differ in. Note which
 answers carry `truncated`: an answer over the token ceiling drops whole
 groups, in both builds.
 

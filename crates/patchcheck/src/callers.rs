@@ -6,14 +6,14 @@ use checks::{Finding, Severity};
 use graph::FileFacts;
 
 use crate::fragment::{Fragment, PatchNames, unscanned_gaps};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_DANGLING_CALLERS, more, quoted};
 
 const MAX_CALLER_SITES: usize = 5;
 
 pub(crate) fn check(
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     names: &PatchNames<'_>,
 ) -> Vec<Finding> {
     let mut findings = unscanned_gaps(CHECK_DANGLING_CALLERS, fragments, facts);

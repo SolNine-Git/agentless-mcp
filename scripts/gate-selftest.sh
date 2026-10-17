@@ -494,7 +494,8 @@ fails "8o a clean filter that hides a committed edit" "lint failed the change si
 rm .git/info/attributes
 git config --unset filter.hide.clean
 
-# 9. A file write outside the io crate, and a macro-built allow of a lint at forbid.
+# 9. A file write outside the io crate, a macro-built allow of a lint at forbid, and an SQLite open
+# outside the store crate.
 violate
 printf '\n/// Write a file.\npub fn save() {\n    let _ = std::fs::write("x", "y");\n}\n' >>crates/kernel/src/lib.rs
 fails "9 clippy disallowed_methods" "disallowed" cargo clippy -p kernel -- -D warnings
@@ -525,6 +526,13 @@ mod tests {
 R
 fails "9b allow of a forbidden lint" "allow(clippy::dbg_macro) incompatible with previous forbid" \
     cargo clippy -p kernel --all-targets -- -D warnings
+violate
+printf '\n[dependencies.rusqlite]\nversion = "=0.40.2"\ndefault-features = false\nfeatures = ["bundled", "cache"]\n' \
+    >>crates/kernel/Cargo.toml
+printf '\n/// Open a database.\npub fn open() {\n    let _ = rusqlite::Connection::open_with_flags("x", rusqlite::OpenFlags::default());\n}\n' \
+    >>crates/kernel/src/lib.rs
+fails "9c an SQLite open outside the store crate" 'use of a disallowed method `rusqlite::Connection::open_with_flags`' \
+    cargo clippy -p kernel -- -D warnings
 
 # 10. unsafe outside syntax's ffi.rs, and a syntax lint table that drifts. Then
 # a macro in ffi.rs, a nested crate with no lint table, and a hidden file. Then
@@ -1027,7 +1035,7 @@ printf '[package]\nname = "evil"\nversion.workspace = true\nedition.workspace = 
 printf '//! Io.\n\npub use evil::write;\n' >crates/io/src/lib.rs
 printf '//! Evil.\n\n/// Write a file.\npub fn write() {\n    let _ = std::fs::write("x", "y");\n}\n' \
     >crates/io/evil/src/lib.rs
-grep -v 'std::fs' clippy.toml >crates/io/clippy.toml
+grep -v 'file writes go through the io crate' clippy.toml >crates/io/clippy.toml
 fails "21c a package nested under crates/io" "crates/io/evil: clippy reads crates/io/clippy.toml for this package" \
     cargo xtask lint-tables
 violate

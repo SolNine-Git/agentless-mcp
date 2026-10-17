@@ -6,7 +6,7 @@ use std::sync::Arc;
 use graph::{FileFacts, NameIndex, Resolver, Scopes};
 use json::{JsonForm, to_text};
 use patch::Edit;
-use patchcheck::{DeclaredDependencies, RepoFacts, lint_patch};
+use patchcheck::{DeclaredDependencies, PatchBaseline, lint_patch};
 use serde::Deserialize;
 use syntax::Language;
 
@@ -76,7 +76,7 @@ fn reports(case: &LintCase, runs: usize) -> Vec<String> {
         warnings: case.dependencies.warnings.clone(),
         requires_python: case.dependencies.requires_python.clone(),
     };
-    let facts = RepoFacts::new(&resolver, &texts, dependencies);
+    let facts = PatchBaseline::new(&resolver, &texts, dependencies);
     let edits: Vec<Edit> = case
         .edits
         .iter()

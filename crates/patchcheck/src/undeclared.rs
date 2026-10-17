@@ -11,10 +11,10 @@ use syntax::Language;
 use crate::fragment::{Fragment, language_gaps};
 use crate::interpreter::is_stdlib_module;
 use crate::manifest::{DeclaredDependencies, normalize_distribution};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_UNDECLARED_IMPORTS, MAX_DUPLICATE_SITES, gap, more, quoted};
 
-pub(crate) fn check(fragments: &[Fragment<'_>], facts: &RepoFacts<'_>) -> Vec<Finding> {
+pub(crate) fn check(fragments: &[Fragment<'_>], facts: &PatchBaseline<'_>) -> Vec<Finding> {
     let mut findings = language_gaps(
         CHECK_UNDECLARED_IMPORTS,
         fragments,
@@ -41,7 +41,7 @@ pub(crate) fn check(fragments: &[Fragment<'_>], facts: &RepoFacts<'_>) -> Vec<Fi
 }
 
 // One finding per file and package that nothing makes available.
-fn accusations(checkable: &[&Fragment<'_>], facts: &RepoFacts<'_>) -> Vec<Finding> {
+fn accusations(checkable: &[&Fragment<'_>], facts: &PatchBaseline<'_>) -> Vec<Finding> {
     let available = available_packages(facts);
     let targets = ImportTargets::build(facts.files().map(|file| file.path.as_str()));
     let mut seen = BTreeSet::new();
@@ -80,7 +80,7 @@ fn top_level_package(import: &Import) -> &str {
 
 // The declared distributions, and every top-level package a repository file already imports:
 // that the repository runs is the evidence that it installs. No installed distribution is read.
-fn available_packages(facts: &RepoFacts<'_>) -> BTreeSet<String> {
+fn available_packages(facts: &PatchBaseline<'_>) -> BTreeSet<String> {
     let imported = facts
         .files()
         .flat_map(|file| file.facts.imports.iter())

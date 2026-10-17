@@ -19,11 +19,11 @@ use std::rc::Rc;
 use checks::{CloneIndex, Pair, PairFinding, Severity};
 use graph::{FileFacts, NameIndex, Resolver, Scopes};
 use patch::{DiffNote, Edit, ParseResult};
-use patchcheck::{CHECK_NEAR_DUPLICATES, RepoFacts};
+use patchcheck::{CHECK_NEAR_DUPLICATES, PatchBaseline};
 
 use super::{BlockSource, LintReport, candidate, empty, with_rows};
 use crate::pairs::{IndexOf, Judged, Reported, built_index};
-use crate::scan::RepoFacts as Scan;
+use crate::scan::RepoFacts;
 use crate::{Error, Noted, Reading, Services, Session};
 use admission::{checkable, oriented, unread_row};
 use manifests::read_declared_dependencies;
@@ -99,7 +99,7 @@ pub(crate) fn candidates_with(
         index: &mut index,
     };
     let report = if request.checks.patch_checks() {
-        let scan = Scan::load(services, reading);
+        let scan = RepoFacts::load(services, reading);
         warnings.borrow_mut().extend(scan.diagnostics);
         scan.value
             .and_then(|scan| with_repo(&mut judge, &scan, &request.candidates))
@@ -116,14 +116,14 @@ pub(crate) fn candidates_with(
 // it, the text of each scanned file, and the declared dependencies.
 fn with_repo(
     judge: &mut Judge<'_, '_>,
-    scan: &Scan,
+    scan: &RepoFacts,
     candidates: &[LintCandidateInput],
 ) -> Result<LintReport, Error> {
     let names = NameIndex::build(&scan.files);
     let scopes = Scopes::build(&scan.files);
     let resolver = Resolver::new(&names, &scopes);
     let texts = scanned_texts(judge.root, &scan.files);
-    let facts = RepoFacts::new(&resolver, &texts, read_declared_dependencies(judge.root));
+    let facts = PatchBaseline::new(&resolver, &texts, read_declared_dependencies(judge.root));
     judged_all(candidates, |candidate| {
         judge.with_patches(candidate, &facts, &texts)
     })
@@ -167,7 +167,7 @@ impl Judge<'_, '_> {
     fn with_patches(
         &mut self,
         candidate: &LintCandidateInput,
-        facts: &RepoFacts<'_>,
+        facts: &PatchBaseline<'_>,
         texts: &BTreeMap<String, String>,
     ) -> Result<Judged, Error> {
         let admitted = oriented(checkable(candidate, self.root), texts);

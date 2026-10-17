@@ -23,26 +23,6 @@ impl core::marker::Unpin for patchcheck::DeclaredDependencies
 impl core::marker::UnsafeUnpin for patchcheck::DeclaredDependencies
 impl core::panic::unwind_safe::RefUnwindSafe for patchcheck::DeclaredDependencies
 impl core::panic::unwind_safe::UnwindSafe for patchcheck::DeclaredDependencies
-pub struct patchcheck::LintReport
-pub patchcheck::LintReport::findings: alloc::vec::Vec<checks::finding::Finding>
-pub patchcheck::LintReport::warnings: alloc::vec::Vec<alloc::string::String>
-impl core::clone::Clone for patchcheck::LintReport
-pub fn patchcheck::LintReport::clone(&self) -> Self
-impl core::cmp::Eq for patchcheck::LintReport
-impl core::cmp::PartialEq for patchcheck::LintReport
-pub fn patchcheck::LintReport::eq(&self, &Self) -> bool
-impl core::fmt::Debug for patchcheck::LintReport
-pub fn patchcheck::LintReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for patchcheck::LintReport
-impl serde_core::ser::Serialize for patchcheck::LintReport
-pub fn patchcheck::LintReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl core::marker::Freeze for patchcheck::LintReport
-impl core::marker::Send for patchcheck::LintReport
-impl core::marker::Sync for patchcheck::LintReport
-impl core::marker::Unpin for patchcheck::LintReport
-impl core::marker::UnsafeUnpin for patchcheck::LintReport
-impl core::panic::unwind_safe::RefUnwindSafe for patchcheck::LintReport
-impl core::panic::unwind_safe::UnwindSafe for patchcheck::LintReport
 pub struct patchcheck::ManifestParse
 pub patchcheck::ManifestParse::packages: alloc::collections::btree::set::BTreeSet<alloc::string::String>
 pub patchcheck::ManifestParse::parsed: bool
@@ -65,16 +45,36 @@ impl core::marker::Unpin for patchcheck::ManifestParse
 impl core::marker::UnsafeUnpin for patchcheck::ManifestParse
 impl core::panic::unwind_safe::RefUnwindSafe for patchcheck::ManifestParse
 impl core::panic::unwind_safe::UnwindSafe for patchcheck::ManifestParse
-pub struct patchcheck::RepoFacts<'a>
-impl<'a> patchcheck::RepoFacts<'a>
-pub fn patchcheck::RepoFacts<'a>::new(&'a graph::resolver::Resolver<'a>, &'a alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, patchcheck::DeclaredDependencies) -> patchcheck::RepoFacts<'a>
-impl<'a> !core::marker::Freeze for patchcheck::RepoFacts<'a>
-impl<'a> core::marker::Send for patchcheck::RepoFacts<'a>
-impl<'a> core::marker::Sync for patchcheck::RepoFacts<'a>
-impl<'a> core::marker::Unpin for patchcheck::RepoFacts<'a>
-impl<'a> core::marker::UnsafeUnpin for patchcheck::RepoFacts<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for patchcheck::RepoFacts<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for patchcheck::RepoFacts<'a>
+pub struct patchcheck::PatchBaseline<'a>
+impl<'a> patchcheck::PatchBaseline<'a>
+pub fn patchcheck::PatchBaseline<'a>::new(&'a graph::resolver::Resolver<'a>, &'a alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>, patchcheck::DeclaredDependencies) -> patchcheck::PatchBaseline<'a>
+impl<'a> !core::marker::Freeze for patchcheck::PatchBaseline<'a>
+impl<'a> core::marker::Send for patchcheck::PatchBaseline<'a>
+impl<'a> core::marker::Sync for patchcheck::PatchBaseline<'a>
+impl<'a> core::marker::Unpin for patchcheck::PatchBaseline<'a>
+impl<'a> core::marker::UnsafeUnpin for patchcheck::PatchBaseline<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for patchcheck::PatchBaseline<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for patchcheck::PatchBaseline<'a>
+pub struct patchcheck::PatchLint
+pub patchcheck::PatchLint::findings: alloc::vec::Vec<checks::finding::Finding>
+pub patchcheck::PatchLint::warnings: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for patchcheck::PatchLint
+pub fn patchcheck::PatchLint::clone(&self) -> Self
+impl core::cmp::Eq for patchcheck::PatchLint
+impl core::cmp::PartialEq for patchcheck::PatchLint
+pub fn patchcheck::PatchLint::eq(&self, &Self) -> bool
+impl core::fmt::Debug for patchcheck::PatchLint
+pub fn patchcheck::PatchLint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for patchcheck::PatchLint
+impl serde_core::ser::Serialize for patchcheck::PatchLint
+pub fn patchcheck::PatchLint::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for patchcheck::PatchLint
+impl core::marker::Send for patchcheck::PatchLint
+impl core::marker::Sync for patchcheck::PatchLint
+impl core::marker::Unpin for patchcheck::PatchLint
+impl core::marker::UnsafeUnpin for patchcheck::PatchLint
+impl core::panic::unwind_safe::RefUnwindSafe for patchcheck::PatchLint
+impl core::panic::unwind_safe::UnwindSafe for patchcheck::PatchLint
 pub const patchcheck::CHECK_ARITY: &str
 pub const patchcheck::CHECK_COVERAGE: &str
 pub const patchcheck::CHECK_CYCLE_DELTA: &str
@@ -85,6 +85,6 @@ pub const patchcheck::CHECK_SHADOWING: &str
 pub const patchcheck::CHECK_UNDECLARED_IMPORTS: &str
 pub const patchcheck::PYPROJECT_NAME: &str
 pub const patchcheck::REQUIREMENTS_GLOB: &str
-pub fn patchcheck::lint_patch(&[patch::blocks::Edit], &patchcheck::RepoFacts<'_>) -> patchcheck::LintReport
+pub fn patchcheck::lint_patch(&[patch::blocks::Edit], &patchcheck::PatchBaseline<'_>) -> patchcheck::PatchLint
 pub fn patchcheck::parse_pyproject_dependencies(&str) -> patchcheck::ManifestParse
 pub fn patchcheck::parse_requirements(&str) -> alloc::collections::btree::set::BTreeSet<alloc::string::String>

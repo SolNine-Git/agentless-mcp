@@ -34,11 +34,13 @@ const ROOT_FILES: [&str; 6] = [
 const ROOT_CLIPPY: &str = "clippy.toml";
 const CARGO_CONFIG: &str = ".cargo/config.toml";
 const XTASK_ALIAS: &str = "run --quiet --package xtask --";
-// The directories that may own a clippy.toml, and the disallowed-methods prefix each one drops.
+const FILE_WRITES: &str = "file writes go through the io crate";
+const SQLITE_OPENS: &str = "SQLite opens go through the store crate";
+// The directories that may own a clippy.toml, and the disallowed-methods reason each one drops.
 const CLIPPY_EXEMPT: [(&str, &str); 3] = [
-    ("crates/io", "std::fs::"),
-    ("crates/store", "rusqlite::"),
-    ("xtask", "std::fs::"),
+    ("crates/io", FILE_WRITES),
+    ("crates/store", SQLITE_OPENS),
+    ("xtask", FILE_WRITES),
 ];
 // clippy reads the first of these that it finds, from the package directory upward.
 pub(crate) const CLIPPY_NAMES: [&str; 2] = [".clippy.toml", ROOT_CLIPPY];
@@ -223,19 +225,18 @@ fn cargo_config_problem(found: Option<&Table>) -> Option<String> {
     })
 }
 
-fn clippy_problem(file: &str, found: &Table, root_clippy: &Table, prefix: &str) -> Option<String> {
-    (*found != without_methods(root_clippy, prefix)).then(|| {
-        format!("{file} must equal the root clippy.toml without the {prefix} disallowed methods")
+fn clippy_problem(file: &str, found: &Table, root_clippy: &Table, reason: &str) -> Option<String> {
+    (*found != without_methods(root_clippy, reason)).then(|| {
+        format!(
+            "{file} must equal the root clippy.toml without the disallowed methods whose reason is \"{reason}\""
+        )
     })
 }
 
-fn without_methods(root_clippy: &Table, prefix: &str) -> Table {
+fn without_methods(root_clippy: &Table, reason: &str) -> Table {
     let mut table = root_clippy.clone();
     if let Some(Value::Array(methods)) = table.get_mut("disallowed-methods") {
-        methods.retain(|method| {
-            let path = method.get("path").and_then(Value::as_str);
-            path.is_none_or(|path| !path.starts_with(prefix))
-        });
+        methods.retain(|method| method.get("reason").and_then(Value::as_str) != Some(reason));
     }
     table
 }
@@ -245,8 +246,8 @@ mod tests {
     use toml::Table;
 
     use super::{
-        cargo_config_problem, clippy_problem, control_problems, ignored_names, non_ascii_problems,
-        scope_problem, stray_problem, without_methods,
+        FILE_WRITES, SQLITE_OPENS, cargo_config_problem, clippy_problem, control_problems,
+        ignored_names, non_ascii_problems, scope_problem, stray_problem, without_methods,
     };
 
     fn strays(paths: &[&str]) -> Vec<String> {
@@ -409,20 +410,31 @@ mod tests {
     }
 
     #[test]
-    fn an_exempt_directory_drops_only_its_own_prefix() {
-        let root: Table = "disallowed-methods = [{ path = \"std::fs::write\" }, { path = \"rusqlite::Connection::open\" }]"
+    fn an_exempt_directory_drops_only_the_methods_of_its_own_reason() {
+        let write = |path: &str| format!("{{ path = \"{path}\", reason = \"{FILE_WRITES}\" }}");
+        let open =
+            format!("{{ path = \"rusqlite::Connection::open\", reason = \"{SQLITE_OPENS}\" }}");
+        let other = "{ path = \"std::fs::copy\", reason = \"another rule\" }";
+        let methods = [
+            write("std::fs::write"),
+            write("std::os::unix::fs::symlink"),
+            open.clone(),
+        ];
+        let root: Table = format!("disallowed-methods = [{}, {other}]", methods.join(", "))
             .parse()
             .unwrap();
-        let expected: Table = "disallowed-methods = [{ path = \"rusqlite::Connection::open\" }]"
+        let expected: Table = format!("disallowed-methods = [{open}, {other}]")
             .parse()
             .unwrap();
-        assert_eq!(without_methods(&root, "std::fs::"), expected);
+        assert_eq!(without_methods(&root, FILE_WRITES), expected);
         assert_eq!(
-            clippy_problem("xtask/clippy.toml", &expected, &root, "std::fs::"),
+            clippy_problem("xtask/clippy.toml", &expected, &root, FILE_WRITES),
             None
         );
-        assert!(
-            clippy_problem("crates/store/clippy.toml", &expected, &root, "rusqlite::").is_some()
+        assert_eq!(
+            clippy_problem("crates/store/clippy.toml", &expected, &root, SQLITE_OPENS).unwrap(),
+            "crates/store/clippy.toml must equal the root clippy.toml without the disallowed \
+             methods whose reason is \"SQLite opens go through the store crate\""
         );
     }
 }

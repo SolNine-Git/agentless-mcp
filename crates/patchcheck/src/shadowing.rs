@@ -7,12 +7,12 @@ use facts::Symbol;
 use graph::FileFacts;
 
 use crate::fragment::{Fragment, PatchNames, unscanned_gaps};
-use crate::repo::RepoFacts;
+use crate::repo::PatchBaseline;
 use crate::{CHECK_SHADOWING, quoted};
 
 pub(crate) fn check(
     fragments: &[Fragment<'_>],
-    facts: &RepoFacts<'_>,
+    facts: &PatchBaseline<'_>,
     names: &PatchNames<'_>,
 ) -> Vec<Finding> {
     let mut findings = unscanned_gaps(CHECK_SHADOWING, fragments, facts);

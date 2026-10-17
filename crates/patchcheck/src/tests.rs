@@ -19,8 +19,8 @@ use crate::lexer::{
 };
 use crate::manifest::{normalize_distribution, python_floor, requirement_name};
 use crate::{
-    CHECK_COVERAGE, CHECK_CYCLE_DELTA, DeclaredDependencies, LintReport, ManifestParse, Parse,
-    RepoFacts, gap, lint_with, parse_pyproject_dependencies, parse_requirements,
+    CHECK_COVERAGE, CHECK_CYCLE_DELTA, DeclaredDependencies, ManifestParse, Parse, PatchBaseline,
+    PatchLint, gap, lint_with, parse_pyproject_dependencies, parse_requirements,
 };
 
 const DID_NOT_PARSE: &str = "pyproject.toml did not parse: ";
@@ -113,7 +113,7 @@ fn a_document_only_the_toml_crate_reads_parses() {
         let found = parse_pyproject_dependencies(&case.text);
         assert!(found.parsed, "{:?}: {:?}", case.text, found.warnings);
     }
-    assert_eq!(all.len(), 8);
+    assert_eq!(all.len(), 9);
 }
 
 #[test]
@@ -276,13 +276,13 @@ fn scanned(path: &str, text: &str) -> FileFacts {
 }
 
 // The report of one edit to app.py when `parse` stands in for the parser.
-fn report_with(parse: &Parse) -> LintReport {
+fn report_with(parse: &Parse) -> PatchLint {
     let files = vec![scanned("app.py", APP)];
     let index = NameIndex::build(&files);
     let scopes = Scopes::build(&files);
     let resolver = Resolver::new(&index, &scopes);
     let texts = BTreeMap::from([("app.py".to_owned(), APP.to_owned())]);
-    let facts = RepoFacts::new(&resolver, &texts, DeclaredDependencies::default());
+    let facts = PatchBaseline::new(&resolver, &texts, DeclaredDependencies::default());
     let edit = Edit {
         index: 0,
         path: "app.py".to_owned(),
