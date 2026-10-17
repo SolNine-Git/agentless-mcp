@@ -218,6 +218,7 @@ NOT_STARTED: list[list[Any]] = [
     ["no shebang", [["executable", "plain.sh", "echo hi\n"]], ".", "./plain.sh"],
     ["a directory", [["dir", "sub"]], ".", "./sub"],
     ["missing directory", [], "missing", "true"],
+    ["empty program name", [], ".", '""'],
 ]
 
 CONFIG_DOCUMENTS = [

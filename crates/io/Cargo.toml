@@ -8,8 +8,17 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+unexpected_cfgs = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+allow_attributes = "forbid"
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+undocumented_unsafe_blocks = "deny"
 
 [features]
 # io::testing::Tree and io::testing::cases, for the tests of other crates.

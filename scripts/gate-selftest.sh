@@ -536,8 +536,8 @@ fails "9c an SQLite open outside the store crate" 'use of a disallowed method `r
 
 # 10. unsafe outside syntax's ffi.rs, and a syntax lint table that drifts. Then
 # a macro in ffi.rs, a nested crate with no lint table, and a hidden file. Then
-# global_asm!, which needs no unsafe token, and a target or a package that leaves the
-# workspace edition or rust-version.
+# global_asm!, which needs no unsafe token, unsafe in an io file other than native.rs,
+# and a target or a package that leaves the workspace edition or rust-version.
 syntax_crate() {
     mkdir -p crates/syntax/src
     cat >crates/syntax/Cargo.toml <<'EOF'
@@ -569,7 +569,7 @@ passes "xtask lint-tables with a syntax crate" cargo xtask lint-tables
 violate
 syntax_crate
 printf 'pub fn f() {\n    unsafe {}\n}\n' >crates/syntax/src/lib.rs
-fails "10a unsafe outside ffi.rs" "ffi.rs only" cargo xtask lint-tables
+fails "10a unsafe outside ffi.rs" "native.rs only" cargo xtask lint-tables
 violate
 syntax_crate
 sed -i.bak '/allow_attributes/d' crates/syntax/Cargo.toml && rm crates/syntax/Cargo.toml.bak
@@ -578,7 +578,7 @@ violate
 syntax_crate
 printf 'fn main() {\n    let x = 1;\n    // SAFETY: a test.\n    let _ = unsafe { std::ptr::read(&raw const x) };\n}\n' \
     >crates/syntax/build.rs
-fails "10c unsafe in syntax's build.rs" "ffi.rs only" cargo xtask lint-tables
+fails "10c unsafe in syntax's build.rs" "native.rs only" cargo xtask lint-tables
 violate
 syntax_crate
 mkdir -p crates/syntax/src/sub
@@ -586,7 +586,7 @@ printf 'pub mod sub;\n' >crates/syntax/src/lib.rs
 printf 'pub mod ffi;\n' >crates/syntax/src/sub.rs
 printf '/// Read.\n#[must_use]\npub fn f() -> u8 {\n    let x = 1;\n    // SAFETY: a test.\n    unsafe { std::ptr::read(&raw const x) }\n}\n' \
     >crates/syntax/src/sub/ffi.rs
-fails "10d unsafe in a nested ffi.rs" "ffi.rs only" cargo xtask lint-tables
+fails "10d unsafe in a nested ffi.rs" "native.rs only" cargo xtask lint-tables
 violate
 syntax_crate
 printf 'macro_rules! raw {\n    ($x:expr) => {\n        // SAFETY: a test.\n        unsafe { std::ptr::read(&raw const $x) }\n    };\n}\n' \
@@ -610,6 +610,13 @@ violate
 printf 'core::arch::global_asm!("");\n' >crates/kernel/src/probe.rs
 fails "10h global_asm! outside ffi.rs" "crates/kernel/src/probe.rs:1: \`global_asm\` is unsafe code" \
     cargo xtask lint-tables
+violate
+# The unsafe block is the 7th of the appended lines.
+line=$(($(wc -l <crates/io/src/read.rs) + 7))
+printf '\n/// Read.\n#[must_use]\npub fn peek() -> u8 {\n    let x = 1;\n    // SAFETY: a test.\n    unsafe { std::ptr::read(&raw const x) }\n}\n' \
+    >>crates/io/src/read.rs
+fails "10k unsafe in an io file other than native.rs" \
+    "crates/io/src/read.rs:$line: \`unsafe\` is unsafe code" cargo xtask lint-tables
 violate
 printf '\n[lib]\nedition = "2021"\n' >>crates/kernel/Cargo.toml
 fails "10i a lib target on an older edition" \

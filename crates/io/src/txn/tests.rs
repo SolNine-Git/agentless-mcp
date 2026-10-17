@@ -239,9 +239,11 @@ fn a_flush_that_reports_a_deferred_error_is_a_stage_failure_and_changes_nothing(
         ..Faulty::default()
     };
     let failure = failed(&steps, &tree, &NEW_PAIR);
+    // The C library names the errno: macOS says "Disc quota exceeded".
+    let quota = strerror(&io::Error::from_raw_os_error(libc::EDQUOT));
     assert_eq!(
         failure.error.to_string(),
-        "patch not applied: cannot write app.py: Disk quota exceeded; nothing was changed"
+        format!("patch not applied: cannot write app.py: {quota}; nothing was changed")
     );
     assert!(failure.leftovers.is_empty());
     assert_eq!(

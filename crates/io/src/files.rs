@@ -7,6 +7,8 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::native::close_checked;
+
 const PRIVATE_MODE: u32 = 0o700;
 // The mode a new file asks for; the umask removes bits from it.
 const PLAIN_FILE_MODE: u32 = 0o666;
@@ -56,12 +58,12 @@ pub(crate) fn make_dir(directory: &Path) -> io::Result<()> {
 }
 
 /// Writes `bytes` to the file `path`: a new file gets mode 0666 less the umask, and an existing
-/// file is truncated first. There is no temporary file. A regular file is flushed to disk, so a
-/// write error that its close would report is returned.
+/// file is truncated first. There is no temporary file. A regular file is flushed to disk, and the
+/// close is checked, so a deferred write error is returned.
 ///
 /// # Errors
 ///
-/// Returns the error of the open, of a write, or of the flush.
+/// Returns the error of the open, of a write, of the flush, or of the close.
 pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -70,11 +72,12 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
         .mode(PLAIN_FILE_MODE)
         .open(path)?;
     file.write_all(bytes)?;
-    sync_written(&file)
+    sync_written(&file)?;
+    close_checked(file)
 }
 
-// A deferred write error (NFS, a disk quota) shows only in the flush or in the close, and the drop
-// of a File discards the close's error. A device or a pipe has nothing to flush.
+// A deferred write error (NFS, a disk quota) shows only in the flush or in the close, so a writer
+// flushes, then checks the close. A device or a pipe has nothing to flush.
 pub(crate) fn sync_written(file: &File) -> io::Result<()> {
     if !file.metadata()?.is_file() {
         return Ok(());
@@ -313,9 +316,10 @@ mod tests {
             let refused = Err(io::Error::from_raw_os_error(code));
             assert!(flushed(refused).is_ok(), "errno {code}");
         }
-        let deferred = Err(io::Error::from_raw_os_error(libc::EDQUOT));
-        let error = flushed(deferred).expect_err("a deferred write error surfaces");
-        assert_eq!(crate::strerror(&error), "Disk quota exceeded");
+        let quota = || io::Error::from_raw_os_error(libc::EDQUOT);
+        let error = flushed(Err(quota())).expect_err("a deferred write error surfaces");
+        // The C library names the errno: macOS says "Disc quota exceeded".
+        assert_eq!(crate::strerror(&error), crate::strerror(&quota()));
     }
 
     #[test]

@@ -1,5 +1,6 @@
-//! One caller-supplied test command under a hard time bound, in its own process group, with the
-//! tail of its output.
+//! One caller-supplied test command under a hard time bound, in a new session that is its own
+//! process group, with no controlling terminal and no inherited descriptor above 2, and the tail of
+//! its output.
 //!
 //! The command is split into an argv and never run by a shell. stdout and stderr go to two
 //! unlinked temporary files, not to pipes, so a chatty command never blocks on a full pipe, and
@@ -11,7 +12,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
@@ -22,6 +23,7 @@ use serde::Serialize;
 use text::{CodePointString, split_shell_words};
 use wait_timeout::ChildExt;
 
+use crate::native::{Exec, start_in_new_session};
 use crate::oserror::os_error_line_naming;
 use crate::random::create_named;
 use crate::{SigintHold, WatchError, hold_sigint, os_error_line, remove_file, strerror};
@@ -292,16 +294,21 @@ fn spawn(
 ) -> io::Result<io::Result<Child>> {
     let stdout = captures.stdout.try_clone()?;
     let stderr = captures.stderr.try_clone()?;
-    Ok(Command::new(program)
+    let variables = environment(command.pass_env, env);
+    let mut child = Command::new(program);
+    child
         .args(args)
         .current_dir(command.cwd)
         .env_clear()
-        .envs(environment(command.pass_env, env))
+        .envs(variables.iter().map(|(name, value)| (name, value)))
         .stdin(Stdio::null())
         .stdout(stdout)
-        .stderr(stderr)
-        .process_group(0)
-        .spawn())
+        .stderr(stderr);
+    // A word with a NUL byte prepares no exec, and std refuses the spawn before it forks.
+    if let Some(exec) = Exec::prepare(program, args, &variables) {
+        start_in_new_session(&mut child, exec);
+    }
+    Ok(child.spawn())
 }
 
 // Each allowed name and each passed name once, with its value, when `env` has it.

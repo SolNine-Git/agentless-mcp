@@ -288,17 +288,34 @@ pub fn is_child(name: &str) -> bool {
 /// Panics when the child does not end within `timeout`.
 #[must_use]
 pub fn run_child(name: &str, timeout: Duration) -> (ExitStatus, String) {
+    run_child_through(name, timeout, &[])
+}
+
+/// Runs the test `name` as [`run_child`] does, started through `wrapper`: the wrapper's words
+/// come first, then the test binary and its arguments.
+///
+/// # Panics
+///
+/// Panics when the child does not end within `timeout`.
+#[must_use]
+pub fn run_child_through(
+    name: &str,
+    timeout: Duration,
+    wrapper: &[OsString],
+) -> (ExitStatus, String) {
     let binary = std::env::current_exe().expect("the test binary has a path");
     let kept = ["PATH", "TMPDIR"]
         .into_iter()
         .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)));
     let marked = [(CHILD, name), ("RUST_BACKTRACE", "1")]
         .map(|(key, value)| (OsString::from(key), OsString::from(value)));
+    let mut words = wrapper.to_vec();
+    words.push(binary.into_os_string());
+    words.extend(["--exact", name, "--nocapture", "--test-threads", "1"].map(OsString::from));
+    let program = words.remove(0);
     let spec = Spec {
-        program: binary.into_os_string(),
-        args: ["--exact", name, "--nocapture", "--test-threads", "1"]
-            .map(OsString::from)
-            .to_vec(),
+        program,
+        args: words,
         cwd: PathBuf::from("/"),
         env: kept.chain(marked).collect(),
         timeout,

@@ -10,6 +10,7 @@ mod filesize;
 mod interrupt;
 mod keys;
 mod lock;
+mod native;
 mod oserror;
 mod random;
 mod read;

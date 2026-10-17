@@ -7,8 +7,12 @@ use crate::workspace::{BUILD_SCRIPT, Package, Target};
 use crate::{Failure, repo, tool_config, verdict, workspace};
 
 const SYNTAX: &str = "syntax";
-const SYNTAX_FFI: &str = "crates/syntax/src/ffi.rs";
-// The one crate that may write unsafe code adds these, and drops `unsafe_code`.
+// The crates that may write unsafe code, each with the one file that holds all of it.
+const UNSAFE_FILES: [(&str, &str); 2] = [
+    (SYNTAX, "crates/syntax/src/ffi.rs"),
+    ("io", "crates/io/src/native.rs"),
+];
+// Each crate that may write unsafe code adds these, and drops `unsafe_code`: the syntax form.
 const SYNTAX_ADDS: [(&str, &str); 2] = [
     ("rust", "unsafe_op_in_unsafe_fn"),
     ("clippy", "undocumented_unsafe_blocks"),
@@ -29,7 +33,7 @@ struct Inherited {
     rust_version: String,
 }
 
-/// Fail when a lint table or tool config drifts from the root, a manifest overrides a dependency or turns tests off, a target leaves the workspace edition or rust-version, a build script is not listed, or unsafe code leaves the syntax FFI file.
+/// Fail when a lint table or tool config drifts from the root, a manifest overrides a dependency or turns tests off, a target leaves the workspace edition or rust-version, a build script is not listed, or unsafe code leaves the files that may hold it.
 pub fn check(root: &Path) -> Result<(), Failure> {
     let manifest: Table = repo::toml(&root.join("Cargo.toml"))?;
     let lints = workspace_lints(&manifest)?;
@@ -198,8 +202,10 @@ fn workspace_lints(manifest: &Table) -> Result<Table, Failure> {
 
 fn lint_table_problem(manifest: &Table, name: &str, lints: &Table) -> Option<String> {
     let found = manifest.get("lints");
-    let syntax = name == format!("crates/{SYNTAX}");
-    let expected = if syntax {
+    let unsafe_crate = UNSAFE_FILES
+        .iter()
+        .any(|(crate_name, _)| name == format!("crates/{crate_name}"));
+    let expected = if unsafe_crate {
         Value::Table(syntax_lints(lints))
     } else {
         Value::Table(Table::from_iter([(
@@ -208,7 +214,7 @@ fn lint_table_problem(manifest: &Table, name: &str, lints: &Table) -> Option<Str
         )]))
     };
     (found != Some(&expected)).then(|| {
-        if syntax {
+        if unsafe_crate {
             format!("{name}/Cargo.toml: [lints] must be the workspace table without unsafe_code, plus the two unsafe lints at deny")
         } else {
             format!("{name}/Cargo.toml: [lints] must be `workspace = true` and nothing else")
@@ -232,7 +238,7 @@ fn syntax_lints(lints: &Table) -> Table {
     table
 }
 
-/// Return the lints that the syntax package raises above the workspace levels, as rustc names them.
+/// Return the lints that the crates with the syntax form raise above the workspace levels, as rustc names them.
 ///
 /// # Panics
 /// Panics when `SYNTAX_ADDS` names a lint table that `lint_prefix` does not know.
@@ -258,13 +264,14 @@ pub fn lint_prefix(table: &str) -> Option<&'static str> {
 }
 
 fn unsafe_problems(files: &[Source]) -> Vec<String> {
+    let homes: Vec<&str> = UNSAFE_FILES.iter().map(|(_, file)| *file).collect();
     let mut problems = Vec::new();
     for source in files {
-        if source.file == SYNTAX_FFI {
+        if homes.contains(&source.file.as_str()) {
             problems.extend(source.scan.macro_definitions.iter().map(|definition| {
                 format!(
-                    "{SYNTAX_FFI}:{}: macro_rules! is refused here: a macro would carry unsafe out of the file. Write each unsafe item out in full",
-                    definition.line
+                    "{}:{}: macro_rules! is refused here: a macro would carry unsafe out of the file. Write each unsafe item out in full",
+                    source.file, definition.line
                 )
             }));
         } else {
@@ -276,8 +283,11 @@ fn unsafe_problems(files: &[Source]) -> Vec<String> {
                     .filter(|word| UNSAFE_WORDS.contains(&word.name.as_str()))
                     .map(|word| {
                         format!(
-                            "{}:{}: `{}` is unsafe code, and unsafe code belongs in {SYNTAX_FFI} only. Move it into that file",
-                            source.file, word.line, word.name
+                            "{}:{}: `{}` is unsafe code, and unsafe code belongs in {} only. Move it into the file of its crate",
+                            source.file,
+                            word.line,
+                            word.name,
+                            homes.join(" or ")
                         )
                     }),
             );
@@ -293,8 +303,9 @@ mod tests {
     use toml::Table;
 
     use super::{
-        Inherited, build_script_problem, inherited, lint_prefix, manifest_problems,
-        override_problems, syntax_lints, syntax_raised, target_problems, unsafe_problems,
+        Inherited, build_script_problem, inherited, lint_prefix, lint_table_problem,
+        manifest_problems, override_problems, syntax_lints, syntax_raised, target_problems,
+        unsafe_problems,
     };
     use crate::Failure;
     use crate::sources::Source;
@@ -485,27 +496,40 @@ mod tests {
         assert_eq!(syntax_lints(&lints), expected);
     }
 
+    const HOMES: &str = "crates/syntax/src/ffi.rs or crates/io/src/native.rs";
+
+    fn outside(file: &str, line: u32, word: &str) -> String {
+        format!(
+            "{file}:{line}: `{word}` is unsafe code, and unsafe code belongs in {HOMES} only. Move it into the file of its crate"
+        )
+    }
+
     #[test]
-    fn unsafe_outside_the_ffi_file_is_a_problem_with_its_line() {
+    fn unsafe_outside_the_two_unsafe_files_is_a_problem_with_its_line() {
         let text = "fn f() {\n    unsafe {}\n}\n";
         let files = [
             source("crates/syntax/build.rs", text),
             source("crates/syntax/tests/t.rs", text),
             source("crates/syntax/src/sub/ffi.rs", text),
             source("crates/syntax/src/ffi.rs", text),
+            source("crates/io/src/native.rs", text),
+            source("crates/io/src/lib.rs", text),
+            source("crates/io/src/sub/native.rs", text),
         ];
         assert_eq!(
             unsafe_problems(&files),
             [
-                "crates/syntax/build.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
-                "crates/syntax/tests/t.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
-                "crates/syntax/src/sub/ffi.rs:2: `unsafe` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file",
+                outside("crates/syntax/build.rs", 2, "unsafe"),
+                outside("crates/syntax/tests/t.rs", 2, "unsafe"),
+                outside("crates/syntax/src/sub/ffi.rs", 2, "unsafe"),
+                outside("crates/io/src/lib.rs", 2, "unsafe"),
+                outside("crates/io/src/sub/native.rs", 2, "unsafe"),
             ]
         );
     }
 
     #[test]
-    fn global_asm_outside_the_ffi_file_is_a_problem() {
+    fn global_asm_outside_the_unsafe_files_is_a_problem() {
         let text = "core::arch::global_asm!(\"\");\n";
         let files = [
             source("crates/syntax/src/lib.rs", text),
@@ -513,10 +537,26 @@ mod tests {
         ];
         assert_eq!(
             unsafe_problems(&files),
-            [
-                "crates/syntax/src/lib.rs:1: `global_asm` is unsafe code, and unsafe code belongs in crates/syntax/src/ffi.rs only. Move it into that file"
-            ]
+            [outside("crates/syntax/src/lib.rs", 1, "global_asm")]
         );
+    }
+
+    #[test]
+    fn the_io_table_must_be_the_syntax_form() {
+        let lints: Table = "rust = { unsafe_code = \"forbid\" }".parse().unwrap();
+        let workspace: Table = "[lints]\nworkspace = true\n".parse().unwrap();
+        let syntax_form: Table = "[lints.rust]\nunsafe_op_in_unsafe_fn = \"deny\"\n\
+                                  [lints.clippy]\nundocumented_unsafe_blocks = \"deny\"\n"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            lint_table_problem(&workspace, "crates/io", &lints).as_deref(),
+            Some(
+                "crates/io/Cargo.toml: [lints] must be the workspace table without unsafe_code, plus the two unsafe lints at deny"
+            )
+        );
+        assert_eq!(lint_table_problem(&syntax_form, "crates/io", &lints), None);
+        assert!(lint_table_problem(&syntax_form, "crates/kernel", &lints).is_some());
     }
 
     #[test]

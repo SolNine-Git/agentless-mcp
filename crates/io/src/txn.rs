@@ -14,6 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::files::sync_written;
+use crate::native::close_checked;
 use crate::random::{create_named, sibling_prefix};
 use crate::{Refusal, WatchError, contained_path, hold_sigint, remove_file, strerror};
 
@@ -125,7 +126,7 @@ pub(crate) trait Steps {
 pub(crate) struct Disk;
 
 impl Steps for Disk {
-    // The flush makes a write error that only the close would report a stage failure.
+    // The flush makes a deferred write error a stage failure; stage_file checks the close too.
     fn stage(&self, target: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
         stage_file(target, bytes, |file, bytes, name| {
             write_bytes(file, bytes, name)?;
@@ -324,8 +325,9 @@ pub(crate) fn stage_file(
         .map(|metadata| Permissions::from_mode(metadata.permissions().mode() & 0o7777))
         .and_then(|mode| file.set_permissions(mode))
         .and_then(|()| write(&mut file, bytes, name));
-    drop(file);
-    match written {
+    // The close is checked too: a deferred write error can come only at the close.
+    let closed = close_checked(file);
+    match written.and(closed) {
         Ok(()) => Ok(staging),
         Err(error) => {
             // The write's error is the one returned; a failed removal leaves a hidden sibling.

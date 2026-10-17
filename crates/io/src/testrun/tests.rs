@@ -7,7 +7,7 @@ use signal_hook::consts::SIGINT;
 
 use super::*;
 use crate::fixtures::{fixture, is_child, run_child, tree};
-use crate::testing::Tree;
+use crate::testing::{self as io_testing, Tree};
 
 const LONG: Duration = Duration::from_secs(30);
 const QUICK: Bounds = Bounds {
@@ -138,9 +138,9 @@ fn the_environment_holds_each_present_name_once() {
     assert_eq!(TEST_ENV_ALLOWLIST, ["PATH", "HOME", "LANG", "TMPDIR"]);
 }
 
-// The child's environment is in name order, not in the order the names were given.
+// The child's environment keeps the allow-list order, then the order the names were passed.
 #[test]
-fn the_child_sees_its_variables_in_name_order() {
+fn the_child_sees_its_variables_in_the_order_given() {
     let tree = tree();
     let path = std::env::var_os("PATH").expect("the tests find env through PATH");
     let vars: BTreeMap<&str, OsString> = [
@@ -161,21 +161,7 @@ fn the_child_sees_its_variables_in_name_order() {
         .lines()
         .filter_map(|line| line.split_once('=').map(|(name, _)| name))
         .collect();
-    assert_eq!(names, ["AAA", "PATH", "ZZZ"]);
-}
-
-// The spawn's own error names an empty program: no PATH entry is tried.
-#[test]
-fn an_empty_program_is_a_start_failure_with_the_spawn_error() {
-    let tree = tree();
-    let result = run(&tree, "\"\"");
-    assert_eq!(
-        (result.status, result.stderr_tail.as_str()),
-        (
-            RunStatus::Error,
-            "could not start '': No such file or directory"
-        )
-    );
+    assert_eq!(names, ["PATH", "ZZZ", "AAA"]);
 }
 
 #[test]
@@ -394,6 +380,53 @@ fn a_run_dropped_before_its_wait_ends_still_kills_the_group() {
         process_is_gone(child),
         "child process {child} outlived the run"
     );
+}
+
+const SESSION_CHILD: &str = "testrun::tests::child_starts_commands_in_new_sessions";
+
+// The shell opens descriptor 7 with no close-on-exec flag, as a launching harness can pass one
+// down, and the child test inherits it.
+#[test]
+fn a_test_command_leads_a_new_session_and_inherits_no_descriptor_above_2() {
+    let wrapper = ["sh", "-c", "exec 7</dev/null && exec \"$@\"", "sh"].map(OsString::from);
+    let (status, stderr) = io_testing::run_child_through(SESSION_CHILD, LONG, &wrapper);
+    assert_eq!(status.code(), Some(0), "{status:?} {stderr}");
+    assert!(
+        stderr.contains("a new session, descriptor 7 closed"),
+        "{stderr}"
+    );
+}
+
+// The child of the test above.
+#[test]
+fn child_starts_commands_in_new_sessions() {
+    if !is_child(SESSION_CHILD) {
+        return;
+    }
+    assert!(
+        Path::new("/dev/fd/7").exists(),
+        "the test holds descriptor 7"
+    );
+    let tree = tree();
+    let probe = "sh -c '[ -e /dev/fd/7 ] && echo inherited || echo closed'";
+    let result = ran(&command(&tree, probe, LONG), &env_for(&tree), BOUNDS);
+    assert_eq!(result.stdout_tail, "closed\n");
+    let test = command(&tree, "sleep 30", LONG);
+    let captures = Captures::create(tree.path()).expect("the captures are created");
+    let spawned = spawn(
+        &test,
+        "sleep",
+        &["30".to_owned()],
+        &env_for(&tree),
+        &captures,
+    );
+    let mut child = spawned.expect("the captures pass").expect("sleep starts");
+    let pid = i32::try_from(child.id()).ok().and_then(Pid::from_raw);
+    let session = rustix::process::getsid(pid);
+    child.kill().expect("the child is killed");
+    child.wait().expect("the child is reaped");
+    assert_eq!(session.ok(), pid, "the child leads its own session");
+    eprintln!("a new session, descriptor 7 closed");
 }
 
 #[test]
