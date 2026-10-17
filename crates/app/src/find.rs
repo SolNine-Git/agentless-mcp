@@ -6,7 +6,7 @@ use std::path::Path;
 
 use facts::{Symbol, SymbolKind};
 use graph::joins_name_graph;
-use kernel::Bounded;
+use kernel::{Bounded, checkpoint};
 use store::{FileText, Served};
 use text::lower;
 
@@ -193,13 +193,7 @@ fn unparsed_mentions(
 ) -> Noted<Result<Vec<(String, u32)>, Error>> {
     let needle = lower(query);
     let mut found = Noted::new(Vec::new());
-    if needle.is_empty() {
-        return found.map(Ok);
-    }
     for file in &scan.files {
-        if !joins_name_graph(file.language) {
-            continue;
-        }
         let mentions = match mentions_in(reading, file, &needle, query) {
             Ok(mentions) => mentions,
             Err(error) => return found.map(|_| Err(error)),
@@ -214,13 +208,18 @@ fn unparsed_mentions(
     found.map(Ok)
 }
 
-// The lines of one file where the query is spelled inside a region that did not parse.
+// The lines of one file where the query is spelled inside a region that did not parse. The
+// call's deadline is checked first, for every scanned file, as the scan checks it.
 fn mentions_in(
     reading: &Reading<'_>,
     file: &FileSymbols,
     needle: &str,
     query: &str,
 ) -> Result<Noted<Vec<u32>>, Error> {
+    checkpoint(reading.deadline)?;
+    if needle.is_empty() || !joins_name_graph(file.language) {
+        return Ok(Noted::new(Vec::new()));
+    }
     let absolute = io::contained_path(&reading.repo.root, Path::new(&file.path))
         .map_err(|refusal| kernel::Error::SecurityRefusal(refusal.to_string()))?;
     let Ok(bytes) = io::read_bounded(&absolute) else {
@@ -230,7 +229,7 @@ fn mentions_in(
     if !lower(&text.text).contains(needle) {
         return Ok(Noted::new(Vec::new()));
     }
-    let Served { value, warning } = reading.facts.facts(&text);
+    let Served { value, warning } = reading.facts.facts(&text, reading.deadline);
     let lines = value.map_or_else(
         |_| Vec::new(),
         |facts| facts::unparsed_mentions(&text.text, &facts.errors, query),

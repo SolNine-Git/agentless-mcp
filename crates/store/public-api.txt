@@ -309,12 +309,12 @@ impl core::panic::unwind_safe::UnwindSafe for store::Extract
 pub struct store::FactSource
 impl store::FactSource
 pub fn store::FactSource::database(&self) -> core::option::Option<&store::FactsDb>
-pub fn store::FactSource::facts(&self, &store::FileText) -> store::Served<core::result::Result<facts::values::Facts, syntax::parsed::Unparsable>>
+pub fn store::FactSource::facts(&self, &store::FileText, core::option::Option<&kernel::deadline::Deadline>) -> store::Served<core::result::Result<facts::values::Facts, syntax::parsed::Unparsable>>
 pub fn store::FactSource::facts_and_metrics(&self, &store::FileText) -> store::Served<core::result::Result<(facts::values::Facts, store::Measured), syntax::parsed::Unparsable>>
 pub fn store::FactSource::metrics(&self, &store::FileText) -> store::Served<store::Measured>
 pub fn store::FactSource::parsing() -> store::FactSource
 pub fn store::FactSource::reading(store::FactsDb) -> store::FactSource
-pub fn store::FactSource::symbols(&self, &store::FileText) -> store::Served<core::result::Result<alloc::vec::Vec<facts::values::Symbol>, syntax::parsed::Unparsable>>
+pub fn store::FactSource::symbols(&self, &store::FileText, core::option::Option<&kernel::deadline::Deadline>) -> store::Served<core::result::Result<alloc::vec::Vec<facts::values::Symbol>, syntax::parsed::Unparsable>>
 impl core::fmt::Debug for store::FactSource
 pub fn store::FactSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for store::FactSource

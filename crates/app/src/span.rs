@@ -123,7 +123,7 @@ fn parse_file(reading: &Reading<'_>, path: &str) -> Noted<Result<ParsedFile, Mis
         return Noted::new(Err(Missed::Reason(reason)));
     };
     let file = FileText::decode(path.to_owned(), language, &bytes);
-    let Served { value, warning } = reading.facts.symbols(&file);
+    let Served { value, warning } = reading.facts.symbols(&file, reading.deadline);
     let value = value
         .map(|symbols| ParsedFile {
             language,

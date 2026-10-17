@@ -283,7 +283,9 @@ impl Walk<'_> {
             .blob(self.root(), commit.as_str(), &span.path);
         let bytes = git_text(blob, span, CAT_FILE)?;
         let file = FileText::decode(span.path.clone(), span.language, &bytes);
-        let symbols = FactSource::parsing().symbols(&file).value;
+        let symbols = FactSource::parsing()
+            .symbols(&file, self.reading.deadline)
+            .value;
         let symbols =
             symbols.map_err(|unparsable| failed(format!("{}: {unparsable}", span.path)))?;
         let wanted = span.symbol.id_qualname();

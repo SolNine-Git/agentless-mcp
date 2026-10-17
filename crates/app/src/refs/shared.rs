@@ -8,6 +8,7 @@ use facts::{StableId, Symbol};
 use graph::{
     Definition, FileFacts, NameIndex, Site, common_name_damping, enclosing_symbol, name_multiplier,
 };
+use kernel::{Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
 
 use super::{CallerRef, SharedCaller};
@@ -32,14 +33,15 @@ pub(super) fn shared_callers(
     target_ids: &BTreeSet<String>,
     index: &NameIndex<'_>,
     stoplist: &BTreeSet<String>,
-) -> Vec<SharedCaller> {
-    let shared = adjacency(&callers(sites), target_ids, index);
+    deadline: Option<&Deadline>,
+) -> Result<Vec<SharedCaller>, Stopped> {
+    let shared = adjacency(&callers(sites), target_ids, index, deadline)?;
     let mut rows: Vec<SharedCaller> = (shared.into_iter())
         .filter(|(_, entry)| entry.callers.len() > 1)
         .map(|(candidate, entry)| scored_row(candidate, &entry, index, stoplist))
         .collect();
     rows.sort_by(ranked);
-    rows
+    Ok(rows)
 }
 
 // The symbols that hold the target's sites, by stable id.
@@ -61,15 +63,17 @@ fn callers<'a>(sites: &[Site<'a>]) -> BTreeMap<String, Caller<'a>> {
 }
 
 // Each candidate that a caller's body references, in first-seen order. A parameter spells its
-// own binding, so only references count.
+// own binding, so only references count. `deadline` is checked before each caller.
 fn adjacency<'a>(
     callers: &BTreeMap<String, Caller<'a>>,
     target_ids: &BTreeSet<String>,
     index: &NameIndex<'a>,
-) -> Vec<(String, Adjacency<'a>)> {
+    deadline: Option<&Deadline>,
+) -> Result<Vec<(String, Adjacency<'a>)>, Stopped> {
     let mut shared: Vec<(String, Adjacency<'a>)> = Vec::new();
     let mut seen: HashMap<String, usize> = HashMap::new();
     for (caller_id, caller) in callers {
+        checkpoint(deadline)?;
         let names = referenced_names(*caller);
         for definition in names.iter().flat_map(|name| index.definitions(name)) {
             let candidate = definition.stable_id().to_string();
@@ -87,7 +91,7 @@ fn adjacency<'a>(
             shared[at].1.callers.push((*caller, names.len()));
         }
     }
-    shared
+    Ok(shared)
 }
 
 // The distinct names that the caller's body references.

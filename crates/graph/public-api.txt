@@ -229,7 +229,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for graph::FileFacts
 impl core::panic::unwind_safe::UnwindSafe for graph::FileFacts
 pub struct graph::FileGraph<'a>
 impl<'a> graph::FileGraph<'a>
-pub fn graph::FileGraph<'a>::build(&graph::NameIndex<'a>, &graph::Scopes<'a>, &graph::Weighting<'_>) -> graph::FileGraph<'a>
+pub fn graph::FileGraph<'a>::build(&graph::NameIndex<'a>, &graph::Scopes<'a>, &graph::Weighting<'_>, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::FileGraph<'a>, kernel::deadline::Stopped>
 pub fn graph::FileGraph<'a>::edge_count(&self) -> usize
 pub fn graph::FileGraph<'a>::edges(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&'a str, &'a str, f64)> + '_
 pub fn graph::FileGraph<'a>::nodes(&self) -> &[&'a str]
@@ -379,6 +379,21 @@ impl<'a> core::marker::Unpin for graph::PageRank<'a>
 impl<'a> core::marker::UnsafeUnpin for graph::PageRank<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for graph::PageRank<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for graph::PageRank<'a>
+pub struct graph::PathBounds<'d>
+pub graph::PathBounds::deadline: core::option::Option<&'d kernel::deadline::Deadline>
+pub graph::PathBounds::max_visited: usize
+impl<'d> core::clone::Clone for graph::PathBounds<'d>
+pub fn graph::PathBounds<'d>::clone(&self) -> Self
+impl<'d> core::fmt::Debug for graph::PathBounds<'d>
+pub fn graph::PathBounds<'d>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'d> core::marker::Copy for graph::PathBounds<'d>
+impl<'d> core::marker::Freeze for graph::PathBounds<'d>
+impl<'d> core::marker::Send for graph::PathBounds<'d>
+impl<'d> core::marker::Sync for graph::PathBounds<'d>
+impl<'d> core::marker::Unpin for graph::PathBounds<'d>
+impl<'d> core::marker::UnsafeUnpin for graph::PathBounds<'d>
+impl<'d> !core::panic::unwind_safe::RefUnwindSafe for graph::PathBounds<'d>
+impl<'d> !core::panic::unwind_safe::UnwindSafe for graph::PathBounds<'d>
 pub struct graph::PathPolicy
 pub graph::PathPolicy::include_ambiguous: bool
 pub graph::PathPolicy::include_unique: bool
@@ -531,7 +546,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for graph::SymbolEdge<'a>
 pub struct graph::SymbolGraph<'a>
 impl<'a> graph::SymbolGraph<'a>
 pub fn graph::SymbolGraph<'a>::ambiguous(&self) -> &[graph::AmbiguousReference<'a>]
-pub fn graph::SymbolGraph<'a>::build(&graph::Resolver<'a>) -> graph::SymbolGraph<'a>
+pub fn graph::SymbolGraph<'a>::build(&graph::Resolver<'a>, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::SymbolGraph<'a>, kernel::deadline::Stopped>
 pub fn graph::SymbolGraph<'a>::definitions(&self) -> &alloc::collections::btree::map::BTreeMap<alloc::string::String, graph::Definition<'a>>
 pub fn graph::SymbolGraph<'a>::edges(&self) -> &[graph::SymbolEdge<'a>]
 pub fn graph::SymbolGraph<'a>::files(&self) -> &[&'a str]
@@ -577,7 +592,7 @@ pub const graph::ROOT_LABEL: &str
 pub fn graph::common_name_damping(u32) -> f64
 pub fn graph::community_label(&[&str]) -> alloc::string::String
 pub fn graph::definitions_for<'a>(&graph::NameIndex<'a>, &str) -> alloc::vec::Vec<graph::Definition<'a>>
-pub fn graph::detect_communities<'a>(&graph::FileGraph<'a>, f64) -> graph::CommunityPartition<'a>
+pub fn graph::detect_communities<'a>(&graph::FileGraph<'a>, f64, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::CommunityPartition<'a>, kernel::deadline::Stopped>
 pub fn graph::enclosing_symbol(&[facts::values::Symbol], u32) -> core::option::Option<&facts::values::Symbol>
 pub fn graph::flood_backward<'a, 's>(&graph::FileGraph<'a>, impl core::iter::traits::collect::IntoIterator<Item = &'s str>, u32) -> graph::Flood<'a>
 pub fn graph::import_cycles<'a>(&graph::SymbolGraph<'a>) -> alloc::vec::Vec<graph::Cycle<'a>>
@@ -585,8 +600,8 @@ pub fn graph::in_name_graph(&graph::FileFacts) -> bool
 pub fn graph::joins_name_graph(syntax::language::Language) -> bool
 pub fn graph::name_multiplier(&str, &alloc::collections::btree::set::BTreeSet<alloc::string::String>) -> f64
 pub fn graph::normpath(&str) -> alloc::string::String
-pub fn graph::pagerank<'a>(&graph::FileGraph<'a>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, f64>, impl core::ops::function::Fn(&str) -> bool) -> graph::PageRank<'a>
+pub fn graph::pagerank<'a>(&graph::FileGraph<'a>, &alloc::collections::btree::map::BTreeMap<alloc::string::String, f64>, impl core::ops::function::Fn(&str) -> bool, core::option::Option<&kernel::deadline::Deadline>) -> core::result::Result<graph::PageRank<'a>, kernel::deadline::Stopped>
 pub fn graph::rank_order<'a>(&graph::PageRank<'a>, impl core::ops::function::Fn(&str) -> bool) -> alloc::vec::Vec<&'a str>
 pub fn graph::references_to<'a>(&graph::NameIndex<'a>, &graph::Definition<'a>) -> alloc::vec::Vec<graph::Site<'a>>
 pub fn graph::resolve_definitions<'a>(&graph::NameIndex<'a>, &str) -> graph::Lookup<'a>
-pub fn graph::shortest_path<'a>(&graph::SymbolGraph<'a>, &str, &str, graph::PathPolicy, usize) -> graph::PathResult<'a>
+pub fn graph::shortest_path<'a>(&graph::SymbolGraph<'a>, &str, &str, graph::PathPolicy, graph::PathBounds<'_>) -> core::result::Result<graph::PathResult<'a>, kernel::deadline::Stopped>

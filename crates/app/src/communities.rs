@@ -2,7 +2,6 @@
 //! community first, cut at the caller's limits.
 
 use graph::{NameIndex, Scopes, detect_communities};
-use io::ProjectConfig;
 use kernel::Bounded;
 
 use crate::bounds::{at_least, within};
@@ -69,21 +68,21 @@ pub fn communities(
     };
     over_scan(services, reading, |facts| {
         let resolution = resolution_setting(request.resolution)?;
-        let config = &reading.repo.config;
-        Ok(report(facts, config, resolution, limit, members))
+        report(facts, reading, resolution, limit, members)
     })
 }
 
 fn report(
     facts: &RepoFacts,
-    config: &ProjectConfig,
+    reading: &Reading<'_>,
     resolution: f64,
     limit: usize,
     members: usize,
-) -> CommunityReport {
+) -> Result<CommunityReport, Error> {
+    let (config, deadline) = (&reading.repo.config, reading.deadline);
     let index = NameIndex::build(&facts.files);
-    let graph = file_graph(&index, &Scopes::build(&facts.files), config);
-    let partition = detect_communities(&graph, resolution);
+    let graph = file_graph(&index, &Scopes::build(&facts.files), config, deadline)?;
+    let partition = detect_communities(&graph, resolution, deadline)?;
     let rows = (partition.communities.into_iter())
         .map(|community| CommunityRow {
             label: community.label,
@@ -95,14 +94,14 @@ fn report(
             total_weight: community.total_weight,
         })
         .collect();
-    CommunityReport {
+    Ok(CommunityReport {
         communities: Bounded::cut(rows, limit),
         modularity: partition.modularity,
         standard_modularity: partition.standard_modularity,
         resolution: partition.resolution,
         files: graph.nodes().len(),
         converged: partition.converged,
-    }
+    })
 }
 
 #[cfg(test)]

@@ -32,7 +32,9 @@ fn graphs<'a>(
                 stoplist,
                 relation_weights: *relation_weights,
             };
-            (name.as_str(), FileGraph::build(index, scopes, &weighting))
+            let graph =
+                FileGraph::build(index, scopes, &weighting, None).expect("no deadline stops it");
+            (name.as_str(), graph)
         })
         .collect()
 }
@@ -86,7 +88,8 @@ fn ranks_match_the_reference() {
                 .iter()
                 .map(|(path, share)| (path.clone(), float(share)))
                 .collect();
-            let rank = pagerank(graph, &seeds, |path| case.pure_sources.contains(path));
+            let pure_source = |path: &str| case.pure_sources.contains(path);
+            let rank = pagerank(graph, &seeds, pure_source, None).expect("no deadline stops it");
             let ranks: Vec<(String, String)> = rank
                 .ranks()
                 .map(|(path, value)| (path.to_owned(), bits(value)))
@@ -155,7 +158,9 @@ struct CommunityCase {
 fn communities_match_the_reference() {
     with_graphs(|corpus, graphs| {
         for case in corpus.cases::<CommunityCase>("communities") {
-            let partition = detect_communities(&graphs["default"], float(&case.resolution));
+            let resolution = float(&case.resolution);
+            let partition = detect_communities(&graphs["default"], resolution, None)
+                .expect("no deadline stops it");
             let found: Vec<Value> = partition
                 .communities
                 .iter()

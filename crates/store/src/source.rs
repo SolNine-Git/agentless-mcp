@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use facts::{Facts, Symbol};
+use kernel::{Deadline, recaching};
 use syntax::{Parsed, Unparsable};
 
 use crate::analysis::{Parse, measured};
@@ -58,26 +59,37 @@ impl FactSource {
         self.db.as_ref()
     }
 
-    /// Returns the symbols of `file`, or the refusal of a text that does not parse.
+    /// Returns the symbols of `file`, or the refusal of a text that does not parse. A parse
+    /// credits its time to `deadline`, up to the grace.
     #[must_use]
-    pub fn symbols(&self, file: &FileText) -> Served<Result<Vec<Symbol>, Unparsable>> {
+    pub fn symbols(
+        &self,
+        file: &FileText,
+        deadline: Option<&Deadline>,
+    ) -> Served<Result<Vec<Symbol>, Unparsable>> {
         let read = |db: &FactsDb, id| {
             let [symbols] = db.cells::<1>(schema::SYMBOLS, id)?;
             decode_symbols(blob(&symbols)?).map(Some)
         };
-        self.served(file, "symbol", read, |parsed| {
-            facts::extract(parsed).symbols
-        })
+        let derive = |parsed: &Parsed| facts::extract(parsed).symbols;
+        let parse = || recaching(deadline, || self.parsed(file, derive));
+        self.served(file, "symbol", read, parse)
     }
 
-    /// Returns the facts of `file`, or the refusal of a text that does not parse.
+    /// Returns the facts of `file`, or the refusal of a text that does not parse. A parse
+    /// credits its time to `deadline`, up to the grace.
     #[must_use]
-    pub fn facts(&self, file: &FileText) -> Served<Result<Facts, Unparsable>> {
+    pub fn facts(
+        &self,
+        file: &FileText,
+        deadline: Option<&Deadline>,
+    ) -> Served<Result<Facts, Unparsable>> {
         let read = |db: &FactsDb, id| {
             let [symbols, rest] = db.cells::<2>(schema::FACTS, id)?;
             decode_facts(blob(&symbols)?, blob(&rest)?).map(Some)
         };
-        self.served(file, "fact", read, facts::extract)
+        let parse = || recaching(deadline, || self.parsed(file, facts::extract));
+        self.served(file, "fact", read, parse)
     }
 
     /// Returns the metrics of `file`. A text that does not parse has the refusal as its reason.
@@ -88,7 +100,8 @@ impl FactSource {
             stored_metrics(&metrics)
         };
         let measure = |parsed: &Parsed| measured(parsed, &file.path);
-        let Served { value, warning } = self.served(file, "metric", read, measure);
+        let parse = || self.parsed(file, measure);
+        let Served { value, warning } = self.served(file, "metric", read, parse);
         let value = value.unwrap_or_else(|unparsable| Err(Unmeasured::of(&unparsable)));
         Served { value, warning }
     }
@@ -110,25 +123,32 @@ impl FactSource {
             )))
         };
         let derive = |parsed: &Parsed| (facts::extract(parsed), measured(parsed, &file.path));
-        self.served(file, "fact", read, derive)
+        self.served(file, "fact", read, || self.parsed(file, derive))
     }
 
-    // The one cache-or-parse path: a stored value when the row reads, else one parse.
+    // The one cache-or-parse path: a stored value when the row reads, else `parse`.
     fn served<T>(
         &self,
         file: &FileText,
         kind: &'static str,
         read: impl FnOnce(&FactsDb, i64) -> Result<Option<T>, SqlError>,
-        derive: impl FnOnce(&Parsed) -> T,
+        parse: impl FnOnce() -> Result<T, Unparsable>,
     ) -> Served<Result<T, Unparsable>> {
         let (stored, warning) = self.stored(file, kind, read);
         let value = match stored {
             Some(value) => Ok(value),
-            None => {
-                (self.parse)(file.language, Arc::clone(&file.text)).map(|parsed| derive(&parsed))
-            }
+            None => parse(),
         };
         Served { value, warning }
+    }
+
+    // One parse of `file`, and what `derive` takes from it.
+    fn parsed<T>(
+        &self,
+        file: &FileText,
+        derive: impl FnOnce(&Parsed) -> T,
+    ) -> Result<T, Unparsable> {
+        (self.parse)(file.language, Arc::clone(&file.text)).map(|parsed| derive(&parsed))
     }
 
     fn stored<T>(

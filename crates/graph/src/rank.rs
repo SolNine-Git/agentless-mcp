@@ -3,6 +3,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
+use kernel::{Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
 
 use crate::files::FileGraph;
@@ -52,21 +53,26 @@ impl<'a> PageRank<'a> {
 }
 
 /// Rank `graph`'s files, teleporting to `seeds` (path to share) or uniformly when no seed names
-/// a file; an edge out of a pure source carries no weight back into it.
-#[must_use]
+/// a file; an edge out of a pure source carries no weight back into it. `deadline` is checked
+/// before each iteration.
+///
+/// # Errors
+///
+/// Returns the [`Stopped`] of the first check that stops the call.
 pub fn pagerank<'a>(
     graph: &FileGraph<'a>,
     seeds: &BTreeMap<String, f64>,
     is_pure_source: impl Fn(&str) -> bool,
-) -> PageRank<'a> {
+    deadline: Option<&Deadline>,
+) -> Result<PageRank<'a>, Stopped> {
     let nodes = graph.nodes().to_vec();
     if nodes.is_empty() {
-        return PageRank {
+        return Ok(PageRank {
             nodes,
             ranks: Vec::new(),
             support: Vec::new(),
             converged: true,
-        };
+        });
     }
     let teleport = personalization(&nodes, seeds);
     let adjacency = walk_adjacency(graph, &is_pure_source);
@@ -75,13 +81,13 @@ pub fn pagerank<'a>(
         .iter()
         .map(|cells| compensated_sum(&weights(cells)))
         .collect();
-    let (ranks, converged) = iterate(&adjacency, &totals, &teleport);
-    PageRank {
+    let (ranks, converged) = iterate(&adjacency, &totals, &teleport, deadline)?;
+    Ok(PageRank {
         nodes,
         ranks,
         support,
         converged,
-    }
+    })
 }
 
 /// Return the ranked paths, highest rank first, ties in path order, with the seeds leading in
@@ -160,9 +166,15 @@ fn reachable(adjacency: &[Cells], teleport: &[f64]) -> Vec<bool> {
     seen
 }
 
-fn iterate(adjacency: &[Cells], totals: &[f64], teleport: &[f64]) -> (Vec<f64>, bool) {
+fn iterate(
+    adjacency: &[Cells],
+    totals: &[f64],
+    teleport: &[f64],
+    deadline: Option<&Deadline>,
+) -> Result<(Vec<f64>, bool), Stopped> {
     let mut rank = vec![1.0 / count(teleport.len()); teleport.len()];
     for _ in 0..MAX_ITERATIONS {
+        checkpoint(deadline)?;
         let updated = step(adjacency, totals, teleport, &rank);
         let moved: Vec<f64> = updated
             .iter()
@@ -171,10 +183,10 @@ fn iterate(adjacency: &[Cells], totals: &[f64], teleport: &[f64]) -> (Vec<f64>, 
             .collect();
         rank = updated;
         if compensated_sum(&moved) < EPSILON {
-            return (rank, true);
+            return Ok((rank, true));
         }
     }
-    (rank, false)
+    Ok((rank, false))
 }
 
 // One power-iteration pass; a file with no outgoing weight hands its mass to the teleport vector.

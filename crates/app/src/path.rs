@@ -1,6 +1,6 @@
 //! The fewest-hop chain of resolved relationships between two symbols or files.
 
-use graph::{Hop, PathResult, shortest_path};
+use graph::{Hop, PathBounds, PathResult, shortest_path};
 
 pub use graph::PathPolicy;
 
@@ -83,17 +83,21 @@ pub fn path(
         Ok(bound) => bound,
         Err(error) => return Noted::new(Err(error)),
     };
+    let bounds = PathBounds {
+        max_visited,
+        deadline: reading.deadline,
+    };
     over_scan(services, reading, |facts| {
-        Ok(with_resolved(&facts.files, |index, graph| {
+        with_resolved(&facts.files, reading.deadline, |index, graph| {
             let start = endpoint(index, graph, &request.source);
             let finish = endpoint(index, graph, &request.target);
             if !start.message.is_empty() || !finish.message.is_empty() {
-                return unresolved(request, start, finish);
+                return Ok(unresolved(request, start, finish));
             }
             let policy = request.policy;
-            let found = shortest_path(graph, &start.node, &finish.node, policy, max_visited);
-            trace(policy, start, finish, &found)
-        }))
+            let found = shortest_path(graph, &start.node, &finish.node, policy, bounds)?;
+            Ok(trace(policy, start, finish, &found))
+        })
     })
 }
 

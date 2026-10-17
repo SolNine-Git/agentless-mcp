@@ -31,7 +31,7 @@ pub use imports::ImportTargets;
 pub use lookup::{Lookup, definitions_for, references_to, resolve_definitions};
 pub use names::{Definition, NameIndex, Site, common_name_damping, name_multiplier};
 pub use owners::{LineOwners, enclosing_symbol};
-pub use path::{DEFAULT_MAX_VISITED, Hop, PathPolicy, PathResult, shortest_path};
+pub use path::{DEFAULT_MAX_VISITED, Hop, PathBounds, PathPolicy, PathResult, shortest_path};
 pub use paths::normpath;
 pub use rank::{PageRank, pagerank, rank_order};
 pub use resolver::{Resolution, Resolver, Tier};

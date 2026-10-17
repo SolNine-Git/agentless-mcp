@@ -28,6 +28,28 @@ impl core::marker::Unpin for kernel::Error
 impl core::marker::UnsafeUnpin for kernel::Error
 impl core::panic::unwind_safe::RefUnwindSafe for kernel::Error
 impl core::panic::unwind_safe::UnwindSafe for kernel::Error
+pub enum kernel::Stopped
+pub kernel::Stopped::Cancelled
+pub kernel::Stopped::Spent
+pub kernel::Stopped::Spent::credited: f64
+pub kernel::Stopped::Spent::elapsed: f64
+pub kernel::Stopped::Spent::grace: f64
+pub kernel::Stopped::Spent::limit: f64
+impl core::clone::Clone for kernel::Stopped
+pub fn kernel::Stopped::clone(&self) -> Self
+impl core::cmp::PartialEq for kernel::Stopped
+pub fn kernel::Stopped::eq(&self, &Self) -> bool
+impl core::fmt::Debug for kernel::Stopped
+pub fn kernel::Stopped::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for kernel::Stopped
+impl core::marker::StructuralPartialEq for kernel::Stopped
+impl core::marker::Freeze for kernel::Stopped
+impl core::marker::Send for kernel::Stopped
+impl core::marker::Sync for kernel::Stopped
+impl core::marker::Unpin for kernel::Stopped
+impl core::marker::UnsafeUnpin for kernel::Stopped
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::Stopped
+impl core::panic::unwind_safe::UnwindSafe for kernel::Stopped
 pub struct kernel::Bounded<T>
 impl<T> kernel::Bounded<T>
 pub fn kernel::Bounded<T>::cut(alloc::vec::Vec<T>, usize) -> Self
@@ -51,6 +73,23 @@ impl<T> core::marker::Unpin for kernel::Bounded<T> where alloc::vec::Vec<T>: cor
 impl<T> core::marker::UnsafeUnpin for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::UnsafeUnpin
 impl<T> core::panic::unwind_safe::RefUnwindSafe for kernel::Bounded<T> where alloc::vec::Vec<T>: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for kernel::Bounded<T> where alloc::vec::Vec<T>: core::panic::unwind_safe::UnwindSafe
+pub struct kernel::Deadline
+impl kernel::Deadline
+pub fn kernel::Deadline::cancel(&self)
+pub fn kernel::Deadline::check(&self) -> core::result::Result<(), kernel::Stopped>
+pub fn kernel::Deadline::credit(&self, f64)
+pub fn kernel::Deadline::credited(&self) -> f64
+pub fn kernel::Deadline::new(f64, f64, alloc::rcs::arc::Arc<dyn kernel::Clock>) -> kernel::Deadline
+pub fn kernel::Deadline::remaining(&self) -> f64
+impl core::fmt::Debug for kernel::Deadline
+pub fn kernel::Deadline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for kernel::Deadline
+impl core::marker::Send for kernel::Deadline
+impl core::marker::Sync for kernel::Deadline
+impl core::marker::Unpin for kernel::Deadline
+impl core::marker::UnsafeUnpin for kernel::Deadline
+impl !core::panic::unwind_safe::RefUnwindSafe for kernel::Deadline
+impl !core::panic::unwind_safe::UnwindSafe for kernel::Deadline
 pub struct kernel::FileId(_)
 impl kernel::FileId
 pub const fn kernel::FileId::get(self) -> u32
@@ -259,3 +298,30 @@ impl core::marker::Unpin for kernel::Span
 impl core::marker::UnsafeUnpin for kernel::Span
 impl core::panic::unwind_safe::RefUnwindSafe for kernel::Span
 impl core::panic::unwind_safe::UnwindSafe for kernel::Span
+pub struct kernel::SystemClock
+impl core::clone::Clone for kernel::SystemClock
+pub fn kernel::SystemClock::clone(&self) -> Self
+impl core::default::Default for kernel::SystemClock
+pub fn kernel::SystemClock::default() -> Self
+impl core::fmt::Debug for kernel::SystemClock
+pub fn kernel::SystemClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for kernel::SystemClock
+impl kernel::Clock for kernel::SystemClock
+pub fn kernel::SystemClock::now(&self) -> std::time::Instant
+pub fn kernel::SystemClock::wall(&self) -> std::time::SystemTime
+impl core::marker::Freeze for kernel::SystemClock
+impl core::marker::Send for kernel::SystemClock
+impl core::marker::Sync for kernel::SystemClock
+impl core::marker::Unpin for kernel::SystemClock
+impl core::marker::UnsafeUnpin for kernel::SystemClock
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::SystemClock
+impl core::panic::unwind_safe::UnwindSafe for kernel::SystemClock
+pub trait kernel::Clock: core::marker::Send + core::marker::Sync
+pub fn kernel::Clock::now(&self) -> std::time::Instant
+pub fn kernel::Clock::wall(&self) -> std::time::SystemTime
+impl kernel::Clock for kernel::SystemClock
+pub fn kernel::SystemClock::now(&self) -> std::time::Instant
+pub fn kernel::SystemClock::wall(&self) -> std::time::SystemTime
+pub fn kernel::checkpoint(core::option::Option<&kernel::Deadline>) -> core::result::Result<(), kernel::Stopped>
+pub fn kernel::recaching<T>(core::option::Option<&kernel::Deadline>, impl core::ops::function::FnOnce() -> T) -> T
+pub fn kernel::walk_budget(core::time::Duration, core::option::Option<f64>) -> core::time::Duration

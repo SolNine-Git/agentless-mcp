@@ -2,6 +2,7 @@ pub mod app
 pub use app::ApplyResult
 pub use app::BlockError
 pub use app::CheckGap
+pub use app::Clock
 pub use app::Detail
 pub use app::DiffNote
 pub use app::Edit
@@ -18,6 +19,7 @@ pub use app::ParseResult
 pub use app::PathPolicy
 pub use app::Severity
 pub use app::SyntaxVerdict
+pub use app::SystemClock
 pub use app::parse_blocks
 pub mod app::bounds
 pub fn app::bounds::at_least(&app::IntArg, usize, &str) -> core::result::Result<usize, app::Error>
@@ -469,6 +471,8 @@ pub app::Error::Kind(kernel::error::Error)
 pub app::Error::Store(store::error::SqlError)
 impl core::convert::From<checks::error::Error> for app::Error
 pub fn app::Error::from(checks::error::Error) -> Self
+impl core::convert::From<kernel::deadline::Stopped> for app::Error
+pub fn app::Error::from(kernel::deadline::Stopped) -> app::Error
 impl core::convert::From<kernel::error::Error> for app::Error
 pub fn app::Error::from(kernel::error::Error) -> Self
 impl core::convert::From<store::error::SqlError> for app::Error
@@ -2285,11 +2289,13 @@ impl core::marker::UnsafeUnpin for app::RationaleNode
 impl core::panic::unwind_safe::RefUnwindSafe for app::RationaleNode
 impl core::panic::unwind_safe::UnwindSafe for app::RationaleNode
 pub struct app::Reading<'a>
+pub app::Reading::deadline: core::option::Option<&'a kernel::deadline::Deadline>
 pub app::Reading::facts: &'a store::source::FactSource
 pub app::Reading::repo: &'a app::Repo
 pub app::Reading::snapshot: &'a git::snapshot::Snapshot
 impl<'a> app::Reading<'a>
 pub fn app::Reading<'a>::of(&'a app::Session) -> app::Reading<'a>
+pub fn app::Reading<'a>::with_deadline(self, &'a kernel::deadline::Deadline) -> app::Reading<'a>
 impl<'a> core::clone::Clone for app::Reading<'a>
 pub fn app::Reading<'a>::clone(&self) -> Self
 impl<'a> core::fmt::Debug for app::Reading<'a>
@@ -2479,7 +2485,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for app::RunHeader
 impl core::panic::unwind_safe::UnwindSafe for app::RunHeader
 pub struct app::Services
 pub app::Services::cache_root: core::result::Result<io::cache::CacheRoot, io::cache::HomeUnknown>
-pub app::Services::clock: alloc::rcs::arc::Arc<dyn app::Clock>
+pub app::Services::clock: alloc::rcs::arc::Arc<dyn kernel::clock::Clock>
 pub app::Services::counter: alloc::rcs::arc::Arc<dyn app::TokenCounter>
 pub app::Services::cwd: core::result::Result<std::path::PathBuf, app::UnreadCwd>
 pub app::Services::git: git::run::Git
@@ -2621,24 +2627,6 @@ impl core::marker::Unpin for app::SymbolCard
 impl core::marker::UnsafeUnpin for app::SymbolCard
 impl core::panic::unwind_safe::RefUnwindSafe for app::SymbolCard
 impl core::panic::unwind_safe::UnwindSafe for app::SymbolCard
-pub struct app::SystemClock
-impl app::Clock for app::SystemClock
-pub fn app::SystemClock::now(&self) -> std::time::Instant
-pub fn app::SystemClock::wall(&self) -> std::time::SystemTime
-impl core::clone::Clone for app::SystemClock
-pub fn app::SystemClock::clone(&self) -> Self
-impl core::default::Default for app::SystemClock
-pub fn app::SystemClock::default() -> Self
-impl core::fmt::Debug for app::SystemClock
-pub fn app::SystemClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for app::SystemClock
-impl core::marker::Freeze for app::SystemClock
-impl core::marker::Send for app::SystemClock
-impl core::marker::Sync for app::SystemClock
-impl core::marker::Unpin for app::SystemClock
-impl core::marker::UnsafeUnpin for app::SystemClock
-impl core::panic::unwind_safe::RefUnwindSafe for app::SystemClock
-impl core::panic::unwind_safe::UnwindSafe for app::SystemClock
 pub struct app::Tags
 impl app::Tags
 pub fn app::Tags::open(&app::Services, &app::Repo) -> app::Noted<core::result::Result<app::Tags, app::Error>>
@@ -2851,12 +2839,6 @@ pub const app::NOT_UTF8: &str
 pub const app::NO_SUCH_FILE: &str
 pub const app::ROW_INDENT: &str
 pub const app::WALK_BUDGET: core::time::Duration
-pub trait app::Clock: core::marker::Send + core::marker::Sync
-pub fn app::Clock::now(&self) -> std::time::Instant
-pub fn app::Clock::wall(&self) -> std::time::SystemTime
-impl app::Clock for app::SystemClock
-pub fn app::SystemClock::now(&self) -> std::time::Instant
-pub fn app::SystemClock::wall(&self) -> std::time::SystemTime
 pub trait app::TestRunner: core::marker::Sync
 pub fn app::TestRunner::interrupted(&self) -> bool
 pub fn app::TestRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>

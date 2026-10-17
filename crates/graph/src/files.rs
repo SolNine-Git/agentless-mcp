@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use kernel::{Deadline, Stopped, checkpoint};
+
 use crate::names::{NameIndex, common_name_damping, name_multiplier};
 use crate::scan::{FileFacts, in_name_graph};
 use crate::scopes::{ImportScope, Scopes};
@@ -34,17 +36,21 @@ pub struct FileGraph<'a> {
 
 impl<'a> FileGraph<'a> {
     /// Build the file graph of one scan: name references, then imports, then (with relation
-    /// weights) base classes, file by file.
+    /// weights) base classes, file by file. `deadline` is checked before each file.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Stopped`] of the first check that stops the call.
     ///
     /// # Panics
     ///
     /// Panics when `index` and `scopes` were built from different file slices.
-    #[must_use]
     pub fn build(
         index: &NameIndex<'a>,
         scopes: &Scopes<'a>,
         weighting: &Weighting<'_>,
-    ) -> FileGraph<'a> {
+        deadline: Option<&Deadline>,
+    ) -> Result<FileGraph<'a>, Stopped> {
         assert!(
             std::ptr::eq(index.files(), scopes.files()),
             "the name index and the import scopes come from different scans"
@@ -58,11 +64,12 @@ impl<'a> FileGraph<'a> {
             pairs: HashMap::new(),
         };
         for (position, file) in files.iter().enumerate() {
+            checkpoint(deadline)?;
             for (target, weight) in graph.file_edges(file, index, scopes.at(position), weighting) {
                 graph.add(&file.path, target, weight);
             }
         }
-        graph
+        Ok(graph)
     }
 
     /// Return the scanned paths, in path order.

@@ -56,6 +56,7 @@ impl Pinned {
             repo: &self.repo,
             snapshot: &self.snapshot,
             facts: &self.source,
+            deadline: None,
         }
     }
 

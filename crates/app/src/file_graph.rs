@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use graph::{FileFacts, FileGraph, NameIndex, PageRank, Scopes, Weighting, pagerank};
 use io::ProjectConfig;
+use kernel::{Deadline, Stopped};
 
 use crate::bounds::within_float;
 use crate::ops::limits::{DEFAULT_RESOLUTION, MAX_RESOLUTION};
@@ -19,12 +20,13 @@ pub(crate) fn file_graph<'a>(
     index: &NameIndex<'a>,
     scopes: &Scopes<'a>,
     config: &ProjectConfig,
-) -> FileGraph<'a> {
+    deadline: Option<&Deadline>,
+) -> Result<FileGraph<'a>, Stopped> {
     let weighting = Weighting {
         relation_weights: config.relation_weights.unwrap_or(false),
         stoplist: &config.stoplist,
     };
-    FileGraph::build(index, scopes, &weighting)
+    FileGraph::build(index, scopes, &weighting, deadline)
 }
 
 // NaN makes every gain comparison false and a negative resolution reports a modularity above 1,
@@ -53,17 +55,21 @@ pub(crate) struct Ranked<'a> {
 
 impl<'a> Ranked<'a> {
     // Tests stay pure sources of rank, as they do in the map.
-    pub(crate) fn build(files: &'a [FileFacts], config: &ProjectConfig) -> Ranked<'a> {
+    pub(crate) fn build(
+        files: &'a [FileFacts],
+        config: &ProjectConfig,
+        deadline: Option<&Deadline>,
+    ) -> Result<Ranked<'a>, Stopped> {
         let index = NameIndex::build(files);
         let scopes = Scopes::build(files);
-        let graph = file_graph(&index, &scopes, config);
-        let ranking = pagerank(&graph, &BTreeMap::new(), is_test_path);
-        Ranked {
+        let graph = file_graph(&index, &scopes, config, deadline)?;
+        let ranking = pagerank(&graph, &BTreeMap::new(), is_test_path, deadline)?;
+        Ok(Ranked {
             imports: scopes.import_pairs(),
             index,
             graph,
             ranking,
-        }
+        })
     }
 }
 

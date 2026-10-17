@@ -6,6 +6,8 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use kernel::{Deadline, Stopped, checkpoint};
+
 use crate::names::Definition;
 use crate::owners::LineOwners;
 use crate::resolver::{Resolution, Resolver, Tier};
@@ -229,18 +231,25 @@ pub struct SymbolGraph<'a> {
 
 impl<'a> SymbolGraph<'a> {
     /// Resolve every reference, import and base class of the resolver's scan into edges.
-    #[must_use]
-    pub fn build(resolver: &Resolver<'a>) -> SymbolGraph<'a> {
+    /// `deadline` is checked before each reference and base-class link.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Stopped`] of the first check that stops the call.
+    pub fn build(
+        resolver: &Resolver<'a>,
+        deadline: Option<&Deadline>,
+    ) -> Result<SymbolGraph<'a>, Stopped> {
         let scopes = resolver.scopes();
         let nodes = Nodes::build(scopes.files(), true);
         let mut parts = Parts::new(&nodes);
         for (position, file) in scopes.files().iter().enumerate() {
             parts.import_edges(scopes, position);
             if in_name_graph(file) {
-                parts.symbol_links(resolver, position);
+                parts.symbol_links(resolver, position, deadline)?;
             }
         }
-        parts.finish(scopes)
+        Ok(parts.finish(scopes))
     }
 
     /// Build the module-level import edges alone, resolving no reference.
@@ -428,7 +437,12 @@ impl<'n, 'a> Parts<'n, 'a> {
     }
 
     // Reference links first, then base-class links, as the candidate order depends on it.
-    fn symbol_links(&mut self, resolver: &Resolver<'a>, position: usize) {
+    fn symbol_links(
+        &mut self,
+        resolver: &Resolver<'a>,
+        position: usize,
+        deadline: Option<&Deadline>,
+    ) -> Result<(), Stopped> {
         let nodes = self.nodes;
         let file = &nodes.files[position];
         for (symbol, _) in file.facts.symbols.iter().enumerate() {
@@ -438,6 +452,7 @@ impl<'n, 'a> Parts<'n, 'a> {
         }
         let owners = LineOwners::build(&file.facts.symbols);
         for (reference, resolution) in resolver.resolved_sites(file, None) {
+            checkpoint(deadline)?;
             let source = match owners.owner_position(reference.line) {
                 Some(owner) => nodes.symbol(position, owner),
                 None => nodes.file(position, reference.line),
@@ -445,6 +460,7 @@ impl<'n, 'a> Parts<'n, 'a> {
             self.link(source, &reference.name, &resolution, Relation::References);
         }
         for (symbol, name, resolution) in inheritance(resolver, file) {
+            checkpoint(deadline)?;
             self.link(
                 nodes.symbol(position, symbol),
                 name,
@@ -452,6 +468,7 @@ impl<'n, 'a> Parts<'n, 'a> {
                 Relation::Inherits,
             );
         }
+        Ok(())
     }
 
     fn link(

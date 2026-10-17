@@ -2,16 +2,20 @@
 //! order of its evidence tiers, and the verbs of its relations.
 
 use graph::{FileFacts, NameIndex, Relation, Resolver, Scopes, SymbolGraph, Tier};
+use kernel::Deadline;
+
+use crate::Error;
 
 // Builds the name index and the resolved symbol graph of one scan, and gives both to `answer`.
 pub(crate) fn with_resolved<T>(
     files: &[FileFacts],
-    answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> T,
-) -> T {
+    deadline: Option<&Deadline>,
+    answer: impl FnOnce(&NameIndex<'_>, &SymbolGraph<'_>) -> Result<T, Error>,
+) -> Result<T, Error> {
     let index = NameIndex::build(files);
     let scopes = Scopes::build(files);
     let resolver = Resolver::new(&index, &scopes);
-    let graph = SymbolGraph::build(&resolver);
+    let graph = SymbolGraph::build(&resolver, deadline)?;
     answer(&index, &graph)
 }
 

@@ -115,6 +115,7 @@ fn linted(
         repo,
         snapshot: &snapshot,
         facts: &facts,
+        deadline: None,
     };
     let source = BlockSource {
         cached: false,

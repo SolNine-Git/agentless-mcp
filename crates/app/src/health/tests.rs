@@ -1,10 +1,13 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use super::{HealthReport, HealthRequest, health};
+use kernel::{Deadline, Stopped};
+
+use super::{HealthReport, HealthRequest, complexity, health};
 use crate::IntArg;
-use crate::clock::PinnedClock;
+use crate::clock::{PinnedClock, assert_spent, spent};
 use crate::endpoints::scanned::{LINKED, Scanned};
+use crate::scan::RepoFacts;
 
 fn checked(scanned: &Scanned) -> HealthReport {
     let request = HealthRequest {
@@ -62,4 +65,61 @@ fn a_spent_budget_ends_the_walk_before_the_first_file() {
     assert_eq!((summary.files, summary.walked, summary.units), (4, 0, 0));
     assert!(summary.stopped_by_budget());
     assert!(summary.erosion.abs() < f64::EPSILON);
+}
+
+fn loaded(scanned: &Scanned) -> RepoFacts {
+    let loaded = RepoFacts::load(&scanned.services, &scanned.reading());
+    loaded.value.unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[test]
+fn a_spent_deadline_stops_the_health_call() {
+    let scanned = Scanned::new(&LINKED);
+    let deadline = spent();
+    let request = HealthRequest {
+        limit: IntArg::from_usize(20),
+    };
+
+    let outcome = health(
+        &scanned.services,
+        &scanned.reading().with_deadline(&deadline),
+        &request,
+    );
+
+    assert_spent(&outcome.value.expect_err("the deadline stops the call"));
+}
+
+// The walk budget is half the remaining time, so a spent call measures no file and the walk
+// does not stop it.
+#[test]
+fn a_spent_deadline_leaves_the_complexity_walk_no_budget() {
+    let scanned = Scanned::new(&LINKED);
+    let facts = loaded(&scanned);
+    let deadline = spent();
+    let reading = scanned.reading().with_deadline(&deadline);
+
+    let walk = complexity::walk(&scanned.services, &reading, &facts);
+
+    let walk = walk
+        .value
+        .expect("a walk with no budget is cut, not stopped");
+    let summary = complexity::summary(&walk, 10, 20);
+    assert_eq!((summary.files, summary.walked), (4, 0));
+}
+
+#[test]
+fn a_cancelled_call_stops_the_complexity_walk() {
+    let scanned = Scanned::new(&LINKED);
+    let facts = loaded(&scanned);
+    let deadline = Deadline::new(60.0, 0.0, Arc::new(PinnedClock::at(SystemTime::UNIX_EPOCH)));
+    deadline.cancel();
+    let reading = scanned.reading().with_deadline(&deadline);
+
+    let walk = complexity::walk(&scanned.services, &reading, &facts);
+
+    assert!(
+        matches!(walk.value, Err(Stopped::Cancelled)),
+        "{:?}",
+        walk.value
+    );
 }

@@ -135,7 +135,7 @@ fn a_read_after_the_run_serves_what_a_parse_gives() {
     for path in ["a.py", "b.js"] {
         let file = text_of(&root, path);
         let parsed = store::analyze(&file, true).expect("the file parses");
-        let facts = session.facts.facts(&file);
+        let facts = session.facts.facts(&file, None);
         let metrics = session.facts.metrics(&file);
         assert!(facts.warning.is_none() && metrics.warning.is_none());
         assert_eq!(facts.value.as_ref(), Ok(&parsed.facts), "{path}");
@@ -336,7 +336,7 @@ fn served(services: &Services, root: &Path) -> Vec<String> {
         .iter()
         .map(|path| {
             let file = text_of(root, path);
-            let facts = session.facts.facts(&file);
+            let facts = session.facts.facts(&file, None);
             let metrics = session.facts.metrics(&file);
             format!("{path} {:?} {:?}", facts.value, metrics.value)
         })

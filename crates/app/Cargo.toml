@@ -33,5 +33,6 @@ tiktoken-rs = "=0.12.1"
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
 serde_json.workspace = true
 text = { path = "../text", features = ["test-support"] }

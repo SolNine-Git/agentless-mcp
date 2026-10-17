@@ -2,10 +2,13 @@ use std::panic::{self, AssertUnwindSafe};
 
 use facts::Facts;
 use git::{RepoFile, Snapshot};
+use kernel::Stopped;
 use store::{FactSource, FileText, Served};
 use syntax::Unparsable;
 
 use super::{RepoFacts, line_count, scan};
+use crate::clock::{assert_spent, spent};
+use crate::endpoints::scanned::Scanned;
 use crate::testing::Sandbox;
 use crate::{Reading, Repo};
 
@@ -20,7 +23,7 @@ fn listed(paths: &[&str]) -> Vec<RepoFile> {
 }
 
 fn parsed(text: &FileText) -> Served<Result<Facts, Unparsable>> {
-    FactSource::parsing().facts(text)
+    FactSource::parsing().facts(text, None)
 }
 
 // Each file's path, line count and symbol count, and each skipped path with its reason.
@@ -49,8 +52,8 @@ fn only_files_in_a_language_are_scanned_and_the_config_is_not() {
         "sub/.agentless-mcp.json",
     ]);
     let files = [files, listed(&["big.py"])].concat();
-    let scanned = scan(sandbox.path(), files, 4, &parsed);
-    let (files, skipped) = summary(&scanned.value);
+    let scanned = scan(sandbox.path(), files, 4, &parsed, None);
+    let (files, skipped) = summary(scanned.value.as_ref().expect("no deadline stops it"));
     assert_eq!(
         files,
         [
@@ -90,7 +93,7 @@ fn a_panic_in_one_file_reaches_the_caller_with_its_payload() {
         parsed(text)
     };
     let caught = panic::catch_unwind(AssertUnwindSafe(|| {
-        scan(sandbox.path(), files, 4, &panicking)
+        scan(sandbox.path(), files, 4, &panicking, None)
     }));
     let payload = caught.expect_err("the panic reaches the caller");
     let message = payload
@@ -105,8 +108,9 @@ fn a_panic_in_one_file_reaches_the_caller_with_its_payload() {
 fn a_scan_without_helpers_equals_the_scan_with_them() {
     let sandbox = Sandbox::new();
     let files = many(&sandbox, 40);
-    let alone = scan(sandbox.path(), files.clone(), 1, &parsed);
-    let helped = scan(sandbox.path(), files, 8, &parsed);
+    let unstopped = |scanned: Result<RepoFacts, Stopped>| scanned.expect("no deadline stops it");
+    let alone = scan(sandbox.path(), files.clone(), 1, &parsed, None).map(unstopped);
+    let helped = scan(sandbox.path(), files, 8, &parsed, None).map(unstopped);
     assert_eq!(alone.value.files, helped.value.files);
     assert_eq!(alone.value.skipped, helped.value.skipped);
     assert_eq!(alone.value.files.len(), 40);
@@ -132,6 +136,7 @@ fn the_scan_of_a_repository_walks_it_and_reads_through_the_source() {
         repo: &repo,
         snapshot: &snapshot,
         facts: &source,
+        deadline: None,
     };
     let loaded = RepoFacts::load(&services, &reading);
     assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
@@ -143,4 +148,35 @@ fn the_scan_of_a_repository_walks_it_and_reads_through_the_source() {
     );
     assert!(skipped.is_empty());
     assert_eq!(facts.files[1].facts.imports.len(), 1);
+}
+
+#[test]
+fn the_scan_stops_under_a_spent_deadline() {
+    let scanned = Scanned::new(&[("a.py", "def f():\n    return 1\n")]);
+    let deadline = spent();
+    let reading = scanned.reading().with_deadline(&deadline);
+
+    let loaded = RepoFacts::load(&scanned.services, &reading);
+
+    let error = loaded.value.expect_err("the deadline stops the scan");
+    assert_spent(&error);
+}
+
+// A file in no language is never read, and its check is in the serial filter.
+#[test]
+fn a_walk_with_no_file_in_a_language_still_stops_under_a_spent_deadline() {
+    let sandbox = Sandbox::new();
+    sandbox.put("notes.txt", "text\n");
+    let deadline = spent();
+
+    let scanned = scan(
+        sandbox.path(),
+        listed(&["notes.txt"]),
+        4,
+        &parsed,
+        Some(&deadline),
+    );
+
+    let stopped = scanned.value.map(|facts| facts.files.len());
+    assert!(matches!(stopped, Err(Stopped::Spent { .. })), "{stopped:?}");
 }

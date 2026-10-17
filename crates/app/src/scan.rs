@@ -6,6 +6,7 @@ use std::path::Path;
 use facts::{Facts, Symbol};
 use git::RepoFile;
 use graph::FileFacts;
+use kernel::{Deadline, Stopped, checkpoint};
 use store::{FileText, Served};
 use syntax::{Language, Unparsable};
 
@@ -56,9 +57,9 @@ impl RepoFacts {
         reading: &Reading<'_>,
     ) -> Noted<Result<RepoFacts, Error>> {
         let root = &reading.repo.root;
-        let facts_of = |text: &FileText| reading.facts.facts(text);
+        let facts_of = |text: &FileText| reading.facts.facts(text, reading.deadline);
         walked(services, root, |files| {
-            scan(root, files, threads(), &facts_of)
+            scan(root, files, threads(), &facts_of, reading.deadline)
         })
     }
 }
@@ -82,7 +83,7 @@ impl SymbolFacts {
     ) -> Noted<Result<SymbolFacts, Error>> {
         let root = &reading.repo.root;
         let symbols_of = |text: &FileText| {
-            let Served { value, warning } = reading.facts.symbols(text);
+            let Served { value, warning } = reading.facts.symbols(text, reading.deadline);
             let value = value.map(|symbols| FileSymbols {
                 path: text.path.clone(),
                 language: text.language,
@@ -91,17 +92,18 @@ impl SymbolFacts {
             Served { value, warning }
         };
         walked(services, root, |files| {
-            let scanned = scan_values(root, files, threads(), &symbols_of);
-            scanned.map(|(files, skipped)| SymbolFacts { files, skipped })
+            let scanned = scan_values(root, files, threads(), &symbols_of, reading.deadline);
+            scanned.map(|scanned| scanned.map(|(files, skipped)| SymbolFacts { files, skipped }))
         })
     }
 }
 
-// Walks the repository and scans the files it lists. A walk refusal is the outcome's error.
+// Walks the repository and scans the files it lists. A walk refusal or a stop of the call is the
+// outcome's error.
 fn walked<T>(
     services: &Services,
     root: &Path,
-    scan: impl FnOnce(Vec<RepoFile>) -> Noted<T>,
+    scan: impl FnOnce(Vec<RepoFile>) -> Noted<Result<T, Stopped>>,
 ) -> Noted<Result<T, Error>> {
     let walk = services.git.walk(root);
     let mut diagnostics: Vec<String> = walk.warnings.iter().map(ToString::to_string).collect();
@@ -118,7 +120,7 @@ fn walked<T>(
     let scanned = scan(files);
     diagnostics.extend(scanned.diagnostics);
     Noted {
-        value: Ok(scanned.value),
+        value: scanned.value.map_err(Error::from),
         diagnostics,
     }
 }
@@ -129,7 +131,8 @@ fn scan(
     files: Vec<RepoFile>,
     threads: usize,
     facts_of: &FactsOf<'_>,
-) -> Noted<RepoFacts> {
+    deadline: Option<&Deadline>,
+) -> Noted<Result<RepoFacts, Stopped>> {
     let file_facts = |text: &FileText| {
         let Served { value, warning } = facts_of(text);
         let value = value.map(|facts| FileFacts {
@@ -140,23 +143,58 @@ fn scan(
         });
         Served { value, warning }
     };
-    let scanned = scan_values(root, files, threads, &file_facts);
-    scanned.map(|(files, skipped)| RepoFacts { files, skipped })
+    let scanned = scan_values(root, files, threads, &file_facts, deadline);
+    scanned.map(|scanned| scanned.map(|(files, skipped)| RepoFacts { files, skipped }))
 }
 
-// Each file's value in walk order, and the files passed over.
+type Scanned<T> = Result<Served<Result<T, Skipped>>, Stopped>;
+
+// Each file's value in walk order and the files passed over, or the stop of the call.
+type Values<T> = Noted<Result<(Vec<T>, Vec<Skipped>), Stopped>>;
+
+// Each walked file gets one check of `deadline`: in the serial filter when it is not read, and on
+// a scan thread when it is.
 fn scan_values<T: Send>(
     root: &Path,
     files: Vec<RepoFile>,
     threads: usize,
     value_of: &ValueOf<'_, T>,
-) -> Noted<(Vec<T>, Vec<Skipped>)> {
-    let wanted: Vec<(RepoFile, Language)> = files.into_iter().filter_map(in_language).collect();
-    let scanned = map_in_order(&wanted, threads, |(file, language)| {
-        scan_one(root, file, *language, value_of)
+    deadline: Option<&Deadline>,
+) -> Values<T> {
+    let wanted = match in_languages(files, deadline) {
+        Ok(wanted) => wanted,
+        Err(stopped) => return Noted::new(Err(stopped)),
+    };
+    let scanned: Vec<Scanned<T>> = map_in_order(&wanted, threads, |(file, language)| {
+        checkpoint(deadline)?;
+        Ok(scan_one(root, file, *language, value_of))
     });
+    collected(scanned)
+}
+
+// The files the scan reads. A file it passes over gets its check here.
+fn in_languages(
+    files: Vec<RepoFile>,
+    deadline: Option<&Deadline>,
+) -> Result<Vec<(RepoFile, Language)>, Stopped> {
+    let mut wanted = Vec::new();
+    for file in files {
+        match in_language(file) {
+            Some(kept) => wanted.push(kept),
+            None => checkpoint(deadline)?,
+        }
+    }
+    Ok(wanted)
+}
+
+// The values in walk order, up to the first file that the deadline stopped.
+fn collected<T>(scanned: Vec<Scanned<T>>) -> Values<T> {
     let mut values = Noted::new((Vec::new(), Vec::new()));
-    for Served { value, warning } in scanned {
+    for served in scanned {
+        let Served { value, warning } = match served {
+            Ok(served) => served,
+            Err(stopped) => return values.map(|_| Err(stopped)),
+        };
         values
             .diagnostics
             .extend(warning.map(|failure| failure.to_string()));
@@ -165,7 +203,7 @@ fn scan_values<T: Send>(
             Err(skipped) => values.value.1.push(skipped),
         }
     }
-    values
+    values.map(Ok)
 }
 
 // The project config file is never scanned, and a path whose suffix names no language is not

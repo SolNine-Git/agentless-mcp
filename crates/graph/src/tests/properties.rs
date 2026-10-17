@@ -10,7 +10,7 @@ use crate::files::{FileGraph, Weighting};
 use crate::flood::flood_backward;
 use crate::names::NameIndex;
 use crate::owners::{LineOwners, enclosing_symbol};
-use crate::path::{DEFAULT_MAX_VISITED, PathPolicy, shortest_path};
+use crate::path::{DEFAULT_MAX_VISITED, PathBounds, PathPolicy, shortest_path};
 use crate::rank::{pagerank, rank_order};
 use crate::resolver::Resolver;
 use crate::scopes::Scopes;
@@ -86,9 +86,8 @@ fn ranks_sum_to_one() {
         let seeds = random_seeds(&mut random, &nodes);
         let pure: BTreeSet<&String> = nodes.iter().filter(|_| random.chance(10)).collect();
         for seeding in [BTreeMap::new(), seeds] {
-            let rank = pagerank(&graph, &seeding, |path| {
-                pure.iter().any(|held| *held == path)
-            });
+            let pure_source = |path: &str| pure.iter().any(|held| *held == path);
+            let rank = pagerank(&graph, &seeding, pure_source, None).expect("no deadline stops it");
             let total: f64 = rank.ranks().map(|(_, value)| value).sum();
             assert!(
                 (total - 1.0).abs() < 1e-9,
@@ -106,7 +105,8 @@ fn a_partition_covers_every_node_exactly_once() {
         let nodes = names(1 + random.next(40));
         let graph = random_graph(&mut random, &nodes);
         for resolution in [0.25, 1.0, 4.0] {
-            let partition = detect_communities(&graph, resolution);
+            let partition =
+                detect_communities(&graph, resolution, None).expect("no deadline stops it");
             let mut members: Vec<&str> = partition
                 .communities
                 .iter()
@@ -129,7 +129,7 @@ fn outputs(corpus: &Corpus) -> Vec<String> {
         stoplist: &stoplist,
         relation_weights: true,
     };
-    let graph = FileGraph::build(&index, &scopes, &weighting);
+    let graph = FileGraph::build(&index, &scopes, &weighting, None).expect("no deadline stops it");
     let edges: Vec<Value> = graph
         .edges()
         .map(|(source, target, weight)| json!([source, target, bits(weight)]))
@@ -140,29 +140,47 @@ fn outputs(corpus: &Corpus) -> Vec<String> {
         .take(2)
         .map(|path| ((*path).to_owned(), 0.5))
         .collect();
-    let rank = pagerank(&graph, &seeds, |path| path.contains("test"));
+    let rank =
+        pagerank(&graph, &seeds, |path| path.contains("test"), None).expect("no deadline stops it");
     let ranks: Vec<Value> = rank
         .ranks()
         .map(|(path, value)| json!([path, bits(value)]))
         .collect();
     let order = rank_order(&rank, |path| seeds.contains_key(path));
     let flood = flood_backward(&graph, graph.nodes().iter().copied(), 2);
-    let partition = detect_communities(&graph, 1.0);
+    let partition = detect_communities(&graph, 1.0, None).expect("no deadline stops it");
     let resolver = Resolver::new(&index, &scopes);
-    let symbols = SymbolGraph::build(&resolver);
+    let symbols = SymbolGraph::build(&resolver, None).expect("no deadline stops it");
     let symbol_edges: Vec<Value> = symbols.edges().iter().map(edge).collect();
     let ambiguous: Vec<Value> = symbols.ambiguous().iter().map(reference).collect();
     let cycles = import_cycles(&SymbolGraph::imports(&scopes));
+    let paths = paths(&symbols);
+    vec![
+        json!(edges).to_string(),
+        json!(ranks).to_string(),
+        format!("{order:?} {:?} {:?}", flood, partition),
+        json!([symbol_edges, ambiguous, paths]).to_string(),
+        format!("{cycles:?}"),
+    ]
+}
+
+// The path from each file to the file at the mirrored position, over every tier.
+fn paths(symbols: &SymbolGraph<'_>) -> Vec<Value> {
     let policy = PathPolicy {
         include_unique: true,
         include_ambiguous: true,
     };
-    let paths: Vec<Value> = symbols
+    let bounds = PathBounds {
+        max_visited: DEFAULT_MAX_VISITED,
+        deadline: None,
+    };
+    symbols
         .files()
         .iter()
         .zip(symbols.files().iter().rev())
         .map(|(source, target)| {
-            let found = shortest_path(&symbols, source, target, policy, DEFAULT_MAX_VISITED);
+            let found = shortest_path(symbols, source, target, policy, bounds)
+                .expect("no deadline stops it");
             json!([
                 found
                     .hops
@@ -172,14 +190,7 @@ fn outputs(corpus: &Corpus) -> Vec<String> {
                 found.visited
             ])
         })
-        .collect();
-    vec![
-        json!(edges).to_string(),
-        json!(ranks).to_string(),
-        format!("{order:?} {:?} {:?}", flood, partition),
-        json!([symbol_edges, ambiguous, paths]).to_string(),
-        format!("{cycles:?}"),
-    ]
+        .collect()
 }
 
 #[test]

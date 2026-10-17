@@ -8,13 +8,14 @@ fn resolved(files: &[(&str, &str)], texts: &[&str]) -> Vec<(String, String, Stri
     let scanned = Scanned::new(files);
     let loaded = RepoFacts::load(&scanned.services, &scanned.reading());
     let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
-    with_resolved(&facts.files, |index, graph| {
+    let resolved = with_resolved(&facts.files, None, |index, graph| {
         let at = |text: &&str| {
             let found = endpoint(index, graph, text);
             (found.node, found.label, found.message)
         };
-        texts.iter().map(at).collect()
-    })
+        Ok(texts.iter().map(at).collect())
+    });
+    resolved.unwrap_or_else(|error| panic!("{error}"))
 }
 
 fn row(node: &str, label: &str, message: &str) -> (String, String, String) {

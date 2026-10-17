@@ -1,10 +1,17 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use git::Snapshot;
+use graph::{FileFacts, NameIndex, Scopes};
 use io::{Granularity, ProjectConfig};
+use kernel::Stopped;
 use store::FactSource;
 
+use super::companions::companions_for;
 use super::{MapRequest, MapResult, Shape, map};
+use crate::clock::spent;
+use crate::endpoints::scanned::{Scanned, TESTED};
+use crate::file_graph::file_graph;
 use crate::scan::RepoFacts;
 use crate::testing::Sandbox;
 use crate::{Error, IntArg, Reading, Repo, Services};
@@ -59,6 +66,7 @@ fn reading_at<T>(
         repo: &repo,
         snapshot: &snapshot,
         facts: &source,
+        deadline: None,
     };
     read(&services, &reading)
 }
@@ -166,4 +174,24 @@ fn a_file_map_counts_no_symbol_and_churn_needs_a_head() {
             .iter()
             .all(|file| file.commits_window.is_some())
     );
+}
+
+#[test]
+fn the_test_companion_pass_stops_under_a_spent_deadline() {
+    let scanned = Scanned::new(&TESTED);
+    let reading = scanned.reading();
+    let loaded = RepoFacts::load(&scanned.services, &reading);
+    let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
+    let index = NameIndex::build(&facts.files);
+    let scopes = Scopes::build(&facts.files);
+    let graph = file_graph(&index, &scopes, &reading.repo.config, None);
+    let graph = graph.expect("no deadline stops it");
+    let by_path: BTreeMap<&str, &FileFacts> = (facts.files.iter())
+        .map(|file| (file.path.as_str(), file))
+        .collect();
+    let targets = BTreeSet::from(["core.py"]);
+
+    let found = companions_for(&graph, &by_path, &index, &targets, Some(&spent()));
+
+    assert!(matches!(found, Err(Stopped::Spent { .. })), "{found:?}");
 }

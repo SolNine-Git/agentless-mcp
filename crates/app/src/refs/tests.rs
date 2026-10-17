@@ -1,8 +1,15 @@
+use std::collections::BTreeSet;
+
 use facts::{Facts, Ref, Role};
-use graph::{FileFacts, Site};
+use graph::{FileFacts, NameIndex, Site, definitions_for, references_to};
+use kernel::Stopped;
 use syntax::Language;
 
+use super::shared::shared_callers;
 use super::{dedupe, names_by_path, round_robin};
+use crate::clock::spent;
+use crate::endpoints::scanned::{Scanned, TESTED};
+use crate::scan::RepoFacts;
 
 fn file(path: &str, lines: &[u32]) -> FileFacts {
     let refs = lines.iter().map(|&line| Ref {
@@ -68,4 +75,29 @@ fn the_limit_takes_one_site_per_file_in_turn() {
     let expected = expected.map(|(path, line)| (path.to_owned(), line));
     assert_eq!(places(&kept), expected);
     assert_eq!(round_robin(&unique, 100).len(), 6);
+}
+
+#[test]
+fn the_shared_caller_ranking_stops_under_a_spent_deadline() {
+    let scanned = Scanned::new(&TESTED);
+    let loaded = RepoFacts::load(&scanned.services, &scanned.reading());
+    let facts = loaded.value.unwrap_or_else(|error| panic!("{error}"));
+    let index = NameIndex::build(&facts.files);
+    let definitions = definitions_for(&index, "helper");
+    let sites: Vec<Site<'_>> = (definitions.iter())
+        .flat_map(|definition| references_to(&index, definition))
+        .collect();
+    let target_ids: BTreeSet<String> = (definitions.iter())
+        .map(|definition| definition.stable_id().to_string())
+        .collect();
+
+    let ranked = shared_callers(
+        &sites,
+        &target_ids,
+        &index,
+        &BTreeSet::new(),
+        Some(&spent()),
+    );
+
+    assert!(matches!(ranked, Err(Stopped::Spent { .. })), "{ranked:?}");
 }

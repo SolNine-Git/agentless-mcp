@@ -1,8 +1,10 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
+use kernel::Deadline;
+use kernel::testing::PinnedClock;
 use rusqlite::params;
 
 use super::cases::{ROOT, writer};
@@ -49,8 +51,8 @@ fn a_row_that_describes_the_text_is_served_without_a_parse() {
     let text = file("a.py", PYTHON);
     let parsed = analyze(&text, true).expect("the file parses");
 
-    let facts = source.facts(&text);
-    let symbols = source.symbols(&text);
+    let facts = source.facts(&text, None);
+    let symbols = source.symbols(&text, None);
     let metrics = source.metrics(&text);
     let both = source.facts_and_metrics(&text);
 
@@ -86,7 +88,7 @@ fn a_miss_parses_once_for_each_read() {
     let measured = parsed.metrics.clone().expect("measured");
     assert_eq!(both.value, Ok((parsed.facts.clone(), measured)));
 
-    let facts = source.facts(&edited);
+    let facts = source.facts(&edited, None);
     let metrics = source.metrics(&edited);
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     assert_eq!(facts.value, Ok(parsed.facts));
@@ -98,7 +100,7 @@ fn without_a_database_every_read_parses() {
     let (source, calls) = counting(None);
     let text = file("b.js", SCRIPT);
 
-    let facts = source.facts(&text);
+    let facts = source.facts(&text, None);
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     let parsed = analyze(&text, false).expect("the file parses");
@@ -116,7 +118,7 @@ fn an_unmeasured_row_serves_facts_and_parses_for_metrics() {
     let (source, calls) = counting(Some(usable(&cache.database)));
     let text = file("tests/a.py", PYTHON);
 
-    let facts = source.facts(&text);
+    let facts = source.facts(&text, None);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let metrics = source.metrics(&text);
     let both = source.facts_and_metrics(&text);
@@ -137,8 +139,8 @@ fn a_bad_blob_gives_the_warning_and_a_parse_and_spares_the_symbols() {
     let (source, calls) = counting(Some(usable(&cache.database)));
     let text = file("a.py", PYTHON);
 
-    let facts = source.facts(&text);
-    let symbols = source.symbols(&text);
+    let facts = source.facts(&text, None);
+    let symbols = source.symbols(&text, None);
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(
@@ -168,7 +170,7 @@ fn a_row_of_another_language_or_text_is_a_miss() {
             .expect("the damage applies");
         let (source, calls) = counting(Some(usable(&cache.database)));
 
-        let served = source.symbols(&file("a.py", PYTHON));
+        let served = source.symbols(&file("a.py", PYTHON), None);
 
         assert_eq!(calls.load(Ordering::SeqCst), 1, "{damage}");
         assert!(served.warning.is_none() && served.value.is_ok(), "{damage}");
@@ -286,7 +288,7 @@ fn an_index_of_another_analysis_is_refused_kept_and_rebuilt_by_the_next_run() {
     let report = indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
     assert_eq!((report.indexed, report.reused), (1, 0));
     let (source, calls) = counting(Some(usable(&cache.database)));
-    let served = source.symbols(&file("a.py", PYTHON));
+    let served = source.symbols(&file("a.py", PYTHON), None);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(served.warning.is_none() && served.value.is_ok());
 }
@@ -307,7 +309,7 @@ fn an_open_source_does_not_see_a_later_index_run() {
         false,
     );
 
-    let served = source.symbols(&old);
+    let served = source.symbols(&old, None);
     let after = source.database().map(FactsDb::row_counts);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let parsed = analyze(&old, false).expect("the file parses");
@@ -444,6 +446,62 @@ fn freshness_refuses_in_the_reference_order_then_compares_the_generation() {
         Freshness::Stale,
     ];
     assert_eq!(found, expected);
+}
+
+// A source over `db` whose parse moves `clock` on by `seconds`.
+fn timed(db: Option<FactsDb>, clock: &Arc<PinnedClock>, seconds: u64) -> FactSource {
+    let clock = Arc::clone(clock);
+    let parse = move |language, text| {
+        clock.advance(Duration::from_secs(seconds));
+        syntax::parse(language, text)
+    };
+    FactSource::with(db, Arc::new(parse))
+}
+
+fn deadline(grace: f64) -> (Deadline, Arc<PinnedClock>) {
+    let clock = Arc::new(PinnedClock::at(UNIX_EPOCH));
+    (Deadline::new(30.0, grace, clock.clone()), clock)
+}
+
+// The metrics read is not credited: the health walk that reads it has its own budget.
+#[test]
+fn a_facts_or_symbols_parse_credits_its_time_and_a_metrics_parse_does_not() {
+    let (call, clock) = deadline(60.0);
+    let source = timed(None, &clock, 5);
+    let text = file("a.py", PYTHON);
+
+    let facts = source.facts(&text, Some(&call));
+    let symbols = source.symbols(&text, Some(&call));
+    let metrics = source.metrics(&text);
+
+    assert!(facts.value.is_ok() && symbols.value.is_ok() && metrics.value.is_ok());
+    assert_eq!(call.credited().to_bits(), 10.0_f64.to_bits());
+}
+
+#[test]
+fn a_served_row_credits_nothing() {
+    let cache = Cache::new();
+    built(&cache);
+    let (call, clock) = deadline(60.0);
+    let source = timed(Some(usable(&cache.database)), &clock, 5);
+
+    let facts = source.facts(&file("a.py", PYTHON), Some(&call));
+
+    assert!(facts.value.is_ok());
+    assert_eq!(call.credited().to_bits(), 0.0_f64.to_bits());
+}
+
+#[test]
+fn the_parse_credit_stops_at_the_grace() {
+    let (call, clock) = deadline(7.0);
+    let source = timed(None, &clock, 5);
+    let text = file("a.py", PYTHON);
+
+    for _ in 0..2 {
+        assert!(source.facts(&text, Some(&call)).value.is_ok());
+    }
+
+    assert_eq!(call.credited().to_bits(), 7.0_f64.to_bits());
 }
 
 #[test]

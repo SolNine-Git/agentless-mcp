@@ -116,15 +116,16 @@ pub fn diagram(
     };
     let config = &reading.repo.config;
     over_scan(services, reading, |facts| {
-        let ranked = Ranked::build(&facts.files, config);
+        let ranked = Ranked::build(&facts.files, config, reading.deadline)?;
         let focus = match diagram_focus(request.focus.as_deref(), &ranked) {
             Ok(focus) => focus,
             Err(message) => return Ok(empty(request, message)),
         };
         // Checked whether or not the caller groups, so a mistyped knob is always heard.
         let resolution = resolution_setting(request.resolution)?;
-        let partition =
-            (request.group_by_communities).then(|| detect_communities(&ranked.graph, resolution));
+        let partition = (request.group_by_communities)
+            .then(|| detect_communities(&ranked.graph, resolution, reading.deadline))
+            .transpose()?;
         let bounds = Bounds {
             max_nodes,
             max_edges,

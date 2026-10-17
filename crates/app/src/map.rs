@@ -131,7 +131,7 @@ pub fn map(
     };
     let loaded = RepoFacts::load(services, reading);
     loaded.map(|facts| {
-        facts.map(|facts| {
+        facts.and_then(|facts| {
             answered_over(facts, |facts| {
                 build(services, reading, &request.focus, &shape, facts)
             })
@@ -202,14 +202,14 @@ fn build(
     focus: &[String],
     shape: &Shape,
     facts: &RepoFacts,
-) -> MapResult {
-    let config = &reading.repo.config;
+) -> Result<MapResult, Error> {
+    let (config, deadline) = (&reading.repo.config, reading.deadline);
     let index = NameIndex::build(&facts.files);
-    let graph = file_graph(&index, &Scopes::build(&facts.files), config);
+    let graph = file_graph(&index, &Scopes::build(&facts.files), config, deadline)?;
     let known: Known<'_> = facts.files.iter().map(|file| file.path.as_str()).collect();
     let seeding = seed_weights(focus, &known, &index);
     // Tests stay pure sources of rank: the companions are their channel into a map.
-    let ranking = pagerank(&graph, &seeding.weights, is_test_path);
+    let ranking = pagerank(&graph, &seeding.weights, is_test_path, deadline)?;
     let mut chosen = rank_order(&ranking, |path| seeding.weights.contains_key(path));
     chosen.truncate(shape.max_files);
     let by_path: BTreeMap<&str, &FileFacts> = (facts.files.iter())
@@ -217,7 +217,7 @@ fn build(
         .collect();
     let seeded = seeding.weights.keys().map(String::as_str);
     let targets: BTreeSet<&str> = seeded.chain(chosen.iter().copied()).collect();
-    let companions = companions::companions_for(&graph, &by_path, &index, &targets);
+    let companions = companions::companions_for(&graph, &by_path, &index, &targets, deadline)?;
     let ranked = Shortlist {
         chosen: &chosen,
         ranking: &ranking,
@@ -235,7 +235,7 @@ fn build(
         }
     };
     let files = churn::with_churn(services, reading, listing.files);
-    MapResult {
+    Ok(MapResult {
         rendered: services.counter.count(&map_rows_text(&files)),
         files,
         budget: listing.budget,
@@ -249,7 +249,7 @@ fn build(
         expand_order: listing.expand_order,
         focus_order: listing.focus_order,
         companions,
-    }
+    })
 }
 
 // No symbol competes in a map of files, so the counts are 0; each row keeps its file's count.

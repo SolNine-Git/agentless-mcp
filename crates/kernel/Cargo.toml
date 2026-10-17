@@ -1,6 +1,6 @@
 [package]
 name = "kernel"
-description = "Value types every agentless crate shares: errors, limits, bounded rows, digests, spans, and ids."
+description = "Value types every agentless crate shares: errors, limits, bounded rows, digests, spans, and ids, and the clock port and the call deadline."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,10 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# kernel::testing, the pinned clock for the tests of other crates.
+test-support = []
 
 [dependencies]
 serde.workspace = true

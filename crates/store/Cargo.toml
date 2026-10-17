@@ -28,4 +28,5 @@ text = { path = "../text" }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
 text = { path = "../text", features = ["test-support"] }

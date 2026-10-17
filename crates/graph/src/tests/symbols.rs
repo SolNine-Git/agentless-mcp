@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use super::corpus::{Corpus, edge, endpoint, ids, reference};
 use crate::cycles::import_cycles;
 use crate::names::NameIndex;
-use crate::path::{PathPolicy, shortest_path};
+use crate::path::{PathBounds, PathPolicy, shortest_path};
 use crate::resolver::Resolver;
 use crate::scan::FileFacts;
 use crate::scopes::{ImportScope, Scopes};
@@ -114,7 +114,7 @@ fn graph_value(graph: &SymbolGraph<'_>) -> Value {
 #[test]
 fn the_symbol_graph_matches_the_reference() {
     with_resolver(|corpus, _, resolver| {
-        let graph = SymbolGraph::build(resolver);
+        let graph = SymbolGraph::build(resolver, None).expect("no deadline stops it");
         let edges: Vec<Value> = graph.edges().iter().map(edge).collect();
         assert_eq!(
             edges,
@@ -182,7 +182,7 @@ struct AdjacencyCase {
 #[test]
 fn adjacency_matches_the_reference() {
     with_resolver(|corpus, _, resolver| {
-        let graph = SymbolGraph::build(resolver);
+        let graph = SymbolGraph::build(resolver, None).expect("no deadline stops it");
         let position = |found: &crate::symbols::SymbolEdge<'_>| {
             graph
                 .edges()
@@ -237,7 +237,7 @@ type PathCase = (String, String, bool, bool, usize, bool, usize, bool, Value);
 #[test]
 fn paths_match_the_reference() {
     with_resolver(|corpus, _, resolver| {
-        let graph = SymbolGraph::build(resolver);
+        let graph = SymbolGraph::build(resolver, None).expect("no deadline stops it");
         for (source, target, unique, ambiguous, bound, found, visited, exhausted, hops) in
             corpus.cases::<PathCase>("paths")
         {
@@ -245,7 +245,12 @@ fn paths_match_the_reference() {
                 include_unique: unique,
                 include_ambiguous: ambiguous,
             };
-            let result = shortest_path(&graph, &source, &target, policy, bound);
+            let bounds = PathBounds {
+                max_visited: bound,
+                deadline: None,
+            };
+            let result = shortest_path(&graph, &source, &target, policy, bounds)
+                .expect("no deadline stops it");
             let walked: Vec<Value> = result
                 .hops
                 .iter()

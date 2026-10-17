@@ -7,7 +7,7 @@ use std::path::Path;
 
 use facts::SymbolKind;
 use graph::Definition;
-use kernel::Bounded;
+use kernel::{Bounded, Deadline, Stopped, checkpoint, walk_budget};
 use metrics::{FileMetrics, Unit};
 use store::{FactSource, FileText, Served};
 use syntax::Language;
@@ -110,36 +110,49 @@ struct Target {
     skipped: Option<String>,
 }
 
+type Measuring = Result<Option<Served<Result<FileMetrics, Skipped>>>, Stopped>;
+
 // The budget is checked before each file, so a spent budget ends the walk and never the call.
-pub(super) fn walk(services: &Services, reading: &Reading<'_>, facts: &RepoFacts) -> Noted<Walk> {
+// The call's deadline is checked after it.
+pub(super) fn walk(
+    services: &Services,
+    reading: &Reading<'_>,
+    facts: &RepoFacts,
+) -> Noted<Result<Walk, Stopped>> {
     let targets = targets(facts);
-    let (clock, budget) = (&*services.clock, services.walk_budget);
+    let remaining = reading.deadline.map(Deadline::remaining);
+    let clock = &*services.clock;
+    let budget = walk_budget(services.walk_budget, remaining);
     let started = clock.now();
-    let measured = map_in_order(&targets, threads(), |target| {
-        let within = clock.now().duration_since(started) < budget;
-        within.then(|| measure(&reading.repo.root, target, reading.facts))
+    let measured: Vec<Measuring> = map_in_order(&targets, threads(), |target| {
+        if clock.now().duration_since(started) >= budget {
+            return Ok(None);
+        }
+        checkpoint(reading.deadline)?;
+        Ok(Some(measure(&reading.repo.root, target, reading.facts)))
     });
     walked(&targets, measured)
 }
 
 // The files measured before the first file that the budget turned away, in path order. A cut walk
-// keeps a prefix, as a serial walk does.
-fn walked(
-    targets: &[Target],
-    measured: Vec<Option<Served<Result<FileMetrics, Skipped>>>>,
-) -> Noted<Walk> {
+// keeps a prefix, as a serial walk does, and a stop before the cut stops the walk.
+fn walked(targets: &[Target], measured: Vec<Measuring>) -> Noted<Result<Walk, Stopped>> {
     let mut walked = Noted::new(Walk {
         in_scope: targets.len(),
         ..Walk::default()
     });
-    let kept = (targets.iter().zip(measured)).map_while(|(target, served)| Some((target, served?)));
-    for (target, Served { value, warning }) in kept {
+    for (target, measuring) in targets.iter().zip(measured) {
+        let Served { value, warning } = match measuring {
+            Ok(Some(served)) => served,
+            Ok(None) => break,
+            Err(stopped) => return walked.map(|_| Err(stopped)),
+        };
         walked
             .diagnostics
             .extend(warning.map(|failure| failure.to_string()));
         record(&mut walked.value, &target.path, value);
     }
-    walked
+    walked.map(Ok)
 }
 
 fn record(walk: &mut Walk, path: &str, measured: Result<FileMetrics, Skipped>) {

@@ -2,8 +2,10 @@ use facts::{Symbol, SymbolKind};
 use syntax::Language;
 use text::lower;
 
-use super::{match_rank, matches, short_ascii_holds, top_cards};
-use crate::scan::FileSymbols;
+use super::{match_rank, matches, short_ascii_holds, top_cards, unparsed_mentions};
+use crate::clock::{assert_spent, spent};
+use crate::endpoints::scanned::{Scanned, TESTED};
+use crate::scan::{FileSymbols, SymbolFacts};
 use crate::symbol_card;
 
 fn symbol(name: &str, parent: &str, kind: SymbolKind) -> Symbol {
@@ -149,5 +151,21 @@ fn the_kept_cards_are_the_first_of_the_stable_sort_at_every_limit() {
             expected,
             "limit {limit}"
         );
+    }
+}
+
+// The check comes before the query test, so an empty query stops too.
+#[test]
+fn the_unparsed_mention_pass_stops_under_a_spent_deadline() {
+    let scanned = Scanned::new(&TESTED);
+    let loaded = SymbolFacts::load(&scanned.services, &scanned.reading());
+    let scan = loaded.value.unwrap_or_else(|error| panic!("{error}"));
+    let deadline = spent();
+    let reading = scanned.reading().with_deadline(&deadline);
+    for query in ["helper", ""] {
+        let found = unparsed_mentions(&reading, &scan, query);
+
+        let error = found.value.expect_err("the deadline stops the pass");
+        assert_spent(&error);
     }
 }

@@ -3,6 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use kernel::{Deadline, Stopped, checkpoint};
+
 use crate::resolver::Tier;
 use crate::symbols::{Endpoint, Relation, SymbolEdge, SymbolGraph};
 
@@ -54,26 +56,37 @@ pub struct PathResult<'a> {
     pub exhausted: bool,
 }
 
+/// How far one path search may go: the most nodes it expands, and the call's deadline, which it
+/// checks before each node.
+#[derive(Clone, Copy, Debug)]
+pub struct PathBounds<'d> {
+    pub max_visited: usize,
+    pub deadline: Option<&'d Deadline>,
+}
+
 /// Find the fewest-hop path from `source` to `target`, breadth first, each node's hops in
-/// sort-key order; `max_visited` bounds the nodes expanded.
-#[must_use]
+/// sort-key order, within `bounds`.
+///
+/// # Errors
+///
+/// Returns the [`Stopped`] of the first check that stops the call.
 pub fn shortest_path<'a>(
     graph: &SymbolGraph<'a>,
     source: &str,
     target: &str,
     policy: PathPolicy,
-    max_visited: usize,
-) -> PathResult<'a> {
+    bounds: PathBounds<'_>,
+) -> Result<PathResult<'a>, Stopped> {
     if source == target {
-        return PathResult {
+        return Ok(PathResult {
             hops: Vec::new(),
             found: true,
             visited: 1,
             exhausted: false,
-        };
+        });
     }
     let mut search = Search::new(graph, policy, source);
-    search.run(target, max_visited)
+    search.run(target, bounds)
 }
 
 type Previous<'a> = BTreeMap<Arc<str>, (Arc<str>, Hop<'a>)>;
@@ -111,33 +124,39 @@ impl<'g, 'a> Search<'g, 'a> {
         }
     }
 
-    fn run(&mut self, target: &str, max_visited: usize) -> PathResult<'a> {
+    fn run(&mut self, target: &str, bounds: PathBounds<'_>) -> Result<PathResult<'a>, Stopped> {
         let mut frontier = vec![Arc::clone(&self.source)];
         while !frontier.is_empty() {
-            match self.level(&frontier, target, max_visited) {
+            match self.level(&frontier, target, bounds)? {
                 Level::Found => {
                     let hops = unwind(&self.previous, &self.source, target);
-                    return self.result(hops, true, false);
+                    return Ok(self.result(hops, true, false));
                 }
-                Level::Exhausted => return self.result(Vec::new(), false, true),
+                Level::Exhausted => return Ok(self.result(Vec::new(), false, true)),
                 Level::Next(following) => frontier = following,
             }
         }
-        self.result(Vec::new(), false, false)
+        Ok(self.result(Vec::new(), false, false))
     }
 
-    fn level(&mut self, frontier: &[Arc<str>], target: &str, max_visited: usize) -> Level {
+    fn level(
+        &mut self,
+        frontier: &[Arc<str>],
+        target: &str,
+        bounds: PathBounds<'_>,
+    ) -> Result<Level, Stopped> {
         let mut following = Vec::new();
         for node in frontier {
+            checkpoint(bounds.deadline)?;
             self.visited += 1;
-            if self.visited > max_visited {
-                return Level::Exhausted;
+            if self.visited > bounds.max_visited {
+                return Ok(Level::Exhausted);
             }
             if self.expand(node, target, &mut following) {
-                return Level::Found;
+                return Ok(Level::Found);
             }
         }
-        Level::Next(following)
+        Ok(Level::Next(following))
     }
 
     // Marks each new neighbour seen; returns true when `target` is reached.

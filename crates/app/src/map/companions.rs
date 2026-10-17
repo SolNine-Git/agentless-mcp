@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use facts::Symbol;
 use graph::{FileFacts, FileGraph, LineOwners, NameIndex, Reached, flood_backward};
-use kernel::Bounded;
+use kernel::{Bounded, Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
 
 use crate::ops::limits::{MAX_TEST_COMPANIONS, TEST_COMPANION_DEPTH};
@@ -39,35 +39,26 @@ pub struct Companion {
 }
 
 // One row per test file; ordered by depth, the targets covered, the weight, then the path.
+// `deadline` is checked before each reached file, a test file or not.
 pub(super) fn companions_for(
     graph: &FileGraph<'_>,
     by_path: &BTreeMap<&str, &FileFacts>,
     index: &NameIndex<'_>,
     targets: &BTreeSet<&str>,
-) -> Companions {
+    deadline: Option<&Deadline>,
+) -> Result<Companions, Stopped> {
     let reach = flood_backward(graph, targets.iter().copied(), TEST_COMPANION_DEPTH);
     let nearer = nearer_by_depth(targets, &reach.reached);
-    let tests = reach.reached.iter().filter(|row| is_test_path(row.path));
-    let mut rows: Vec<Companion> = tests
-        .filter_map(|row| {
-            let closer = &nearer[&row.depth];
+    let mut rows: Vec<Companion> = Vec::new();
+    for row in &reach.reached {
+        checkpoint(deadline)?;
+        if is_test_path(row.path) {
             let file = by_path
                 .get(row.path)
                 .expect("a reached file is a scanned file");
-            let (covers, (start, end)) = reference(file, index, closer)?;
-            let weights: Vec<f64> = (closer.iter())
-                .map(|other| graph.weight(row.path, other).unwrap_or(0.0))
-                .collect();
-            Some(Companion {
-                path: row.path.to_owned(),
-                start,
-                end,
-                covers,
-                depth: row.depth,
-                weight: compensated_sum(&weights),
-            })
-        })
-        .collect();
+            rows.extend(companion(graph, file, index, row, &nearer[&row.depth]));
+        }
+    }
     let covered = |row: &Companion| {
         let named = row
             .covers
@@ -82,10 +73,32 @@ pub(super) fn companions_for(
             .then(weight)
             .then_with(|| a.path.cmp(&b.path))
     });
-    Companions {
+    Ok(Companions {
         rows: Bounded::cut(rows, MAX_TEST_COMPANIONS),
         exhausted: reach.exhausted,
-    }
+    })
+}
+
+// The row of one reached test file, when it references a file that it came through.
+fn companion(
+    graph: &FileGraph<'_>,
+    file: &FileFacts,
+    index: &NameIndex<'_>,
+    row: &Reached<'_>,
+    closer: &BTreeSet<&str>,
+) -> Option<Companion> {
+    let (covers, (start, end)) = reference(file, index, closer)?;
+    let weights: Vec<f64> = (closer.iter())
+        .map(|other| graph.weight(row.path, other).unwrap_or(0.0))
+        .collect();
+    Some(Companion {
+        path: row.path.to_owned(),
+        start,
+        end,
+        covers,
+        depth: row.depth,
+        weight: compensated_sum(&weights),
+    })
 }
 
 // What a file at each depth could have come through: the targets and every shallower file.

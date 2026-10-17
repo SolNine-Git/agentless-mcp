@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use kernel::{Deadline, Stopped, checkpoint};
 use metrics::compensated_sum;
 
 use crate::files::FileGraph;
@@ -70,23 +71,38 @@ struct Weighted {
 }
 
 /// Partition `graph`'s files into communities at `resolution`, largest first, ties by members.
-#[must_use]
-pub fn detect_communities<'a>(graph: &FileGraph<'a>, resolution: f64) -> CommunityPartition<'a> {
+/// `deadline` is checked before each pass.
+///
+/// # Errors
+///
+/// Returns the [`Stopped`] of the first check that stops the call.
+pub fn detect_communities<'a>(
+    graph: &FileGraph<'a>,
+    resolution: f64,
+    deadline: Option<&Deadline>,
+) -> Result<CommunityPartition<'a>, Stopped> {
     let nodes = graph.nodes();
     let weighted = symmetrise(graph);
     let mut membership: Vec<usize> = (0..nodes.len()).collect();
     if weighted.two_m <= 0.0 {
-        return partition(nodes, &membership, &weighted, resolution, true);
+        return Ok(partition(nodes, &membership, &weighted, resolution, true));
     }
     let mut total = weighted.degree.clone();
     let mut converged = false;
     for _ in 0..MAX_PASSES {
+        checkpoint(deadline)?;
         if one_pass(&weighted, &mut total, &mut membership, resolution) == 0 {
             converged = true;
             break;
         }
     }
-    partition(nodes, &membership, &weighted, resolution, converged)
+    Ok(partition(
+        nodes,
+        &membership,
+        &weighted,
+        resolution,
+        converged,
+    ))
 }
 
 fn symmetrise(graph: &FileGraph<'_>) -> Weighted {

@@ -251,7 +251,7 @@ fn symbols(
         language,
         text: Arc::clone(text),
     };
-    let Served { value, warning } = reading.facts.symbols(&file);
+    let Served { value, warning } = reading.facts.symbols(&file, reading.deadline);
     Noted {
         value: value.unwrap_or_default(),
         diagnostics: warning.iter().map(ToString::to_string).collect(),

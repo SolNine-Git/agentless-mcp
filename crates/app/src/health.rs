@@ -106,14 +106,17 @@ pub fn health(
     let threshold = config
         .complexity_threshold
         .unwrap_or(metrics::DEFAULT_THRESHOLD);
-    let value = value.map(|facts| {
-        let walk = complexity::walk(services, reading, &facts);
-        diagnostics.extend(walk.diagnostics);
-        let answered = with_resolved(&facts.files, |_, graph| {
-            report(graph, &walk.value, threshold, limit)
+    // The walk comes after the resolve, so its budget is half of what the resolve left.
+    let value = value.and_then(|facts| {
+        let resolved = with_resolved(&facts.files, reading.deadline, |_, graph| {
+            let walk = complexity::walk(services, reading, &facts);
+            diagnostics.extend(walk.diagnostics);
+            let walk = walk.value?;
+            Ok((report(graph, &walk, threshold, limit), walk))
         });
-        drop_detached((facts, walk.value));
-        answered
+        let (answered, walk) = resolved?;
+        drop_detached((facts, walk));
+        Ok(answered)
     });
     Noted { value, diagnostics }
 }

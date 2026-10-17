@@ -40,6 +40,7 @@ impl Scanned {
             repo: &self.repo,
             snapshot: &self.snapshot,
             facts: &self.source,
+            deadline: None,
         }
     }
 }
@@ -60,5 +61,18 @@ pub(crate) const LINKED: [(&str, &str); 4] = [
     (
         "pkg/main.py",
         "from pkg.report import render\n\n\ndef main():\n    return render(3)\n",
+    ),
+];
+
+// A helper, a module that calls it, and the helper's test.
+pub(crate) const TESTED: [(&str, &str); 3] = [
+    ("core.py", "def helper(value):\n    return value\n"),
+    (
+        "user.py",
+        "from core import helper\n\n\ndef use(value):\n    return helper(value)\n",
+    ),
+    (
+        "tests/test_core.py",
+        "from core import helper\n\n\ndef test_helper():\n    helper(1)\n",
     ),
 ];

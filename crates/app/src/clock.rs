@@ -1,77 +1,35 @@
 //! The time port: the wall clock for ages shown to the reader, and the monotonic clock for budgets.
 
-use std::time::{Instant, SystemTime};
-
-/// The two clocks an operation reads.
-pub trait Clock: Send + Sync {
-    /// Returns the wall time.
-    fn wall(&self) -> SystemTime;
-    /// Returns the monotonic time.
-    fn now(&self) -> Instant;
-}
-
-/// The operating system's clocks.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn wall(&self) -> SystemTime {
-        SystemTime::now()
-    }
-
-    fn now(&self) -> Instant {
-        Instant::now()
-    }
-}
+pub use kernel::{Clock, SystemClock};
 
 #[cfg(test)]
-pub(crate) use pinned::PinnedClock;
+pub(crate) use kernel::testing::PinnedClock;
 
+// A deadline whose allowance ran out a minute ago, on a clock that no longer moves.
 #[cfg(test)]
-mod pinned {
-    use std::sync::Mutex;
-    use std::time::{Duration, Instant, SystemTime};
+pub(crate) fn spent() -> kernel::Deadline {
+    use std::sync::Arc;
+    use std::time::{Duration, UNIX_EPOCH};
 
-    use super::Clock;
+    let clock = Arc::new(PinnedClock::at(UNIX_EPOCH));
+    let deadline = kernel::Deadline::new(1.0, 0.0, clock.clone());
+    clock.advance(Duration::from_secs(61));
+    deadline
+}
 
-    // A wall time fixed at construction, and a monotonic time that moves only when a test says.
-    pub(crate) struct PinnedClock {
-        wall: SystemTime,
-        base: Instant,
-        elapsed: Mutex<Duration>,
-    }
-
-    impl PinnedClock {
-        pub(crate) fn at(wall: SystemTime) -> Self {
-            Self {
-                wall,
-                base: Instant::now(),
-                elapsed: Mutex::new(Duration::ZERO),
-            }
-        }
-
-        pub(crate) fn advance(&self, by: Duration) {
-            let mut elapsed = self
-                .elapsed
-                .lock()
-                .expect("no test panics while it holds the lock");
-            *elapsed += by;
-        }
-    }
-
-    impl Clock for PinnedClock {
-        fn wall(&self) -> SystemTime {
-            self.wall
-        }
-
-        fn now(&self) -> Instant {
-            let elapsed = self
-                .elapsed
-                .lock()
-                .expect("no test panics while it holds the lock");
-            self.base + *elapsed
-        }
-    }
+// Panics unless `error` is the stop that a `spent()` deadline gives.
+#[cfg(test)]
+pub(crate) fn assert_spent(error: &crate::Error) {
+    let stopped = kernel::Stopped::Spent {
+        elapsed: 61.0,
+        limit: 1.0,
+        grace: 0.0,
+        credited: 0.0,
+    };
+    let crate::Error::Kind(kernel::Error::CallStopped(message)) = error else {
+        panic!("not a stopped call: {error:?}");
+    };
+    assert_eq!(*message, crate::Error::from(stopped).to_string());
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use facts::Role;
 use graph::{Definition, NameIndex, Resolver, Scopes, Site, references_to, resolve_definitions};
-use kernel::Bounded;
+use kernel::{Bounded, Deadline};
 
 use crate::bounds::within;
 use crate::detached::answered_over;
@@ -157,8 +157,13 @@ pub fn refs(
     };
     let stoplist = &reading.repo.config.stoplist;
     let loaded = RepoFacts::load(services, reading);
+    let deadline = reading.deadline;
     loaded.map(|facts| {
-        facts.map(|facts| answered_over(facts, |facts| fan_in(facts, stoplist, request, limit)))
+        facts.and_then(|facts| {
+            answered_over(facts, |facts| {
+                fan_in(facts, stoplist, request, limit, deadline)
+            })
+        })
     })
 }
 
@@ -167,7 +172,8 @@ fn fan_in(
     stoplist: &BTreeSet<String>,
     request: &RefsRequest,
     limit: usize,
-) -> RefsResult {
+    deadline: Option<&Deadline>,
+) -> Result<RefsResult, Error> {
     let index = NameIndex::build(&facts.files);
     let scopes = Scopes::build(&facts.files);
     let resolver = Resolver::new(&index, &scopes);
@@ -186,11 +192,11 @@ fn fan_in(
         files: sites.iter().map(Site::path).collect::<BTreeSet<_>>().len(),
     };
     let ranked = if request.shared_callers {
-        shared::shared_callers(&sites, &target_ids, &index, stoplist)
+        shared::shared_callers(&sites, &target_ids, &index, stoplist, deadline)?
     } else {
         Vec::new()
     };
-    RefsResult {
+    Ok(RefsResult {
         target: request.target.clone(),
         groups,
         shared: Bounded::cut(ranked, limit),
@@ -198,7 +204,7 @@ fn fan_in(
         target_resolved: lookup.scoped,
         skipped: facts.skipped.clone(),
         scanned: Some(facts.files.len()),
-    }
+    })
 }
 
 // Every spelling of each definition outside its own span, then the alias spellings.

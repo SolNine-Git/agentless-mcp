@@ -80,8 +80,8 @@ fn warm_equals_cold(services: &Services, root: &Path, case: &str) {
         let language = Language::from_path(&path).expect("a known language");
         let file = FileText::decode(path.clone(), language, &bytes);
         let cold = store::analyze(&file, true);
-        let symbols = session.facts.symbols(&file);
-        let facts = session.facts.facts(&file);
+        let symbols = session.facts.symbols(&file, None);
+        let facts = session.facts.facts(&file, None);
         let metrics = session.facts.metrics(&file);
         let warnings = [&symbols.warning, &facts.warning, &metrics.warning];
         assert!(

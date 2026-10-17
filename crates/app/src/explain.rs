@@ -104,9 +104,9 @@ pub fn explain(
     };
     let target = request.target.as_str();
     over_scan(services, reading, |facts| {
-        Ok(with_resolved(&facts.files, |index, graph| {
-            explanation(index, graph, target, limit)
-        }))
+        with_resolved(&facts.files, reading.deadline, |index, graph| {
+            Ok(explanation(index, graph, target, limit))
+        })
     })
 }
 

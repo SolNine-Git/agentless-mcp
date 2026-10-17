@@ -21,6 +21,7 @@ fn report(limit: &str, files: &[(&str, &str)]) -> Result<super::CycleReport, Err
         repo: &repo,
         snapshot: &snapshot,
         facts: &source,
+        deadline: None,
     };
     let request = CyclesRequest {
         limit: IntArg::parse(limit).unwrap_or_else(|| panic!("{limit:?}")),

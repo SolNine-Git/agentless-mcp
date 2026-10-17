@@ -273,6 +273,7 @@ name = "graph"
 version = "0.11.0-rc.1"
 dependencies = [
  "facts",
+ "kernel",
  "metrics",
  "serde",
  "serde_json",
