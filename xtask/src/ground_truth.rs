@@ -35,12 +35,27 @@ fn problems(root: &Path) -> Result<Vec<String>, Failure> {
     let configured = lints::configured(root)?;
     let levels = lints::levels(&table, &configured)
         .map_err(|error| Failure::Broken(format!("{MANIFEST}: {error}")))?;
-    let mut problems = lints::cfg_problems(&levels, &configured);
-    let run = clippy(root, &packages, &forced(&levels))?;
-    if run.errors.is_empty() {
-        problems.extend(built_problems(root, &packages, &run, &table.groups)?);
-    } else {
-        problems.extend(run.errors);
+    let problems = lints::cfg_problems(&levels, &configured);
+    let built = clippy(root, &packages, &forced(&levels)).and_then(|run| {
+        if run.errors.is_empty() {
+            built_problems(root, &packages, &run, &table.groups)
+        } else {
+            Ok(run.errors)
+        }
+    });
+    merged(problems, built)
+}
+
+// A check that stops with a failure adds the failure's text, so the gate still reports what the
+// checks before it found.
+fn merged(
+    mut problems: Vec<String>,
+    found: Result<Vec<String>, Failure>,
+) -> Result<Vec<String>, Failure> {
+    match found {
+        Ok(more) | Err(Failure::Gate(more)) => problems.extend(more),
+        Err(Failure::Broken(message)) => problems.push(message),
+        Err(Failure::Usage) => return Err(Failure::Usage),
     }
     Ok(problems)
 }
@@ -77,7 +92,8 @@ fn built_problems(
         problems.extend(dep_info::problems(root, target, paths, &allowed));
     }
     let entries = suppressions::entries(root)?;
-    problems.extend(ignored::problems(&ignored::tests(root)?, &entries));
+    let counted = ignored::tests(root).map(|tests| ignored::problems(&tests, &entries));
+    let mut problems = merged(problems, counted)?;
     let ledger = Ledger {
         entries: &entries,
         groups,
@@ -171,7 +187,8 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
 
-    use super::{forced, lints, unbuilt};
+    use super::{forced, lints, merged, unbuilt};
+    use crate::Failure;
     use crate::workspace::{Package, Target};
 
     #[test]
@@ -219,5 +236,30 @@ mod tests {
             BTreeSet::new(),
         )]);
         assert_eq!(unbuilt(&packages, &built), ["/r/crates/kernel/tests/t.rs"]);
+    }
+
+    #[test]
+    fn a_check_that_fails_keeps_the_problems_found_before_it() {
+        let stopped = "cargo nextest list did not finish within its deadline of 250s";
+        let found = merged(
+            vec!["Cargo.toml: unexpected_cfgs has a check-cfg list".to_owned()],
+            Err(Failure::Broken(stopped.to_owned())),
+        );
+        assert_eq!(
+            found.ok(),
+            Some(vec![
+                "Cargo.toml: unexpected_cfgs has a check-cfg list".to_owned(),
+                stopped.to_owned()
+            ])
+        );
+    }
+
+    #[test]
+    fn a_check_that_runs_adds_its_problems_after_the_others() {
+        let found = merged(vec!["first".to_owned()], Ok(vec!["second".to_owned()]));
+        assert_eq!(
+            found.ok(),
+            Some(vec!["first".to_owned(), "second".to_owned()])
+        );
     }
 }

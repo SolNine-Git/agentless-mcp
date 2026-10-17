@@ -3,7 +3,7 @@
 # Copies the tree into a scratch git repository with no remote, checks that the
 # base passes every gate, then applies one violation at a time and checks that
 # the matching gate fails with the matching message. It needs network access:
-# cargo deny checks advisories and yanked crates, violations 11 to 13 and 25f
+# cargo deny checks advisories and yanked crates, violations 11 to 13
 # add crates that cargo fetches, and the hook trigger check installs the dev
 # group that uv.lock holds.
 set -euo pipefail
@@ -19,6 +19,8 @@ mkdir "$work"
 export CARGO_TARGET_DIR="$root/target/selftest"
 # Seconds for each gate command, so that a stalled fetch or build fails its row and does not hang the job.
 step_deadline=120
+# Seconds for a row that builds and runs the workspace test binaries: 1.5 x its slowest cold CI run.
+build_deadline=420
 timed_out=124
 failures=0
 bases=0
@@ -60,19 +62,29 @@ triggers=(env UV_PROJECT_ENVIRONMENT="$scratch/venv" uv run --frozen --only-grou
 # hides no manifest under the roots.
 machete=(cargo machete --no-ignore crates xtask)
 
+# limit COMMAND...: the deadline in seconds of the row that runs COMMAND.
+limit() {
+    case "$1 ${2-} ${3-}" in
+    "cargo insta test" | "cargo xtask ground-truth") echo "$build_deadline" ;;
+    *) echo "$step_deadline" ;;
+    esac
+}
+
+# deadline SECONDS COMMAND...
 deadline() {
-    perl "$here/deadline.pl" "$step_deadline" "$@" </dev/null
+    perl "$here/deadline.pl" "$@" </dev/null
 }
 
 passes() {
-    local name=$1 status=0
+    local name=$1 status=0 seconds
     shift
+    seconds=$(limit "$@")
     bases=$((bases + 1))
-    deadline "$@" >/dev/null 2>&1 || status=$?
+    deadline "$seconds" "$@" >/dev/null 2>&1 || status=$?
     if ((status == 0)); then
         echo "ok   base passes: $name"
     elif ((status == timed_out)); then
-        echo "FAIL base fails: $name: it ran past its $step_deadline s deadline"
+        echo "FAIL base fails: $name: it ran past its $seconds s deadline"
         failures=$((failures + 1))
     else
         echo "FAIL base fails: $name"
@@ -82,15 +94,16 @@ passes() {
 
 # fails NAME TEXT COMMAND...: the gate must exit non-zero and print TEXT, a fixed string.
 fails() {
-    local name=$1 text=$2 output status=0
+    local name=$1 text=$2 output status=0 seconds
     shift 2
+    seconds=$(limit "$@")
     checks=$((checks + 1))
-    output=$(deadline "$@" 2>&1) || status=$?
+    output=$(deadline "$seconds" "$@" 2>&1) || status=$?
     if ((status == 0)); then
         echo "FAIL $name: the gate passed"
         failures=$((failures + 1))
     elif ((status == timed_out)); then
-        echo "FAIL $name: the gate ran past its $step_deadline s deadline"
+        echo "FAIL $name: the gate ran past its $seconds s deadline"
         failures=$((failures + 1))
     elif grep -qF -- "$text" <<<"$output"; then
         echo "ok   $name"
@@ -1303,8 +1316,7 @@ sed -i.bak 's/^unexpected_cfgs = "forbid"$/unexpected_cfgs = { level = "forbid",
 printf '\n#[cfg(hidden)]\npub fn probe() {}\n' >>crates/kernel/src/limit.rs
 fails "25e a check-cfg list" "Cargo.toml: unexpected_cfgs has a check-cfg list" cargo xtask ground-truth
 violate
-printf '\n[dependencies.anyhow]\nversion = "1"\n' >>crates/kernel/Cargo.toml
-sed -i.bak 's/^direct = \[/direct = ["anyhow", /' crates/dependencies.toml && rm crates/dependencies.toml.bak
+sed -i.bak '/^    "anyhow",$/d' crates/dependencies.toml && rm crates/dependencies.toml.bak
 fails "25f an unlisted build-time package" \
     "anyhow is a third-party package with a proc-macro or build-script target in the resolved graph, and crates/dependencies.toml does not list it in \`build-time\`" \
     cargo xtask ground-truth

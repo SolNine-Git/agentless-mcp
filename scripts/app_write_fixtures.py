@@ -74,7 +74,8 @@ CHAINED = block("app.py", "    return left + right\n", "    return MARKER\n") + 
 )
 MISSING = block("nowhere.py", "    return left + right\n", "    return 0\n")
 ESCAPE = block("../outside.py", "secret\n", "leaked\n")
-ABSOLUTE = block("/etc/passwd", "root\n", "pwned\n")
+# Nothing below / on this path exists, so no symlink on any platform changes the resolved path.
+ABSOLUTE = block("/agentless-absent/passwd", "root\n", "pwned\n")
 HALF = ROUND + block("util.py", "NOT PRESENT ANYWHERE\n", 'VERSION = "2"\n')
 EMPTY_SEARCH = edits_json({"path": "app.py", "search": "", "replace": "X"})
 NOTES = block("notes.txt", "one  two\n", "one two three\n")
@@ -612,9 +613,10 @@ MANIFESTS = [
             ["write", "repo/requirements-dev.txt", "-r requirements.txt\ngamma\n"],
             ["mkdir", "repo/requirements-dir.txt"],
             ["write", "repo/requirementstxt", "never\n"],
-            ["write", "repo/Requirements.txt", "never\n"],
         ],
     ),
+    # Alone in its case, because a case-insensitive file system holds one of the two spellings.
+    lint_case("requirements_capital_letter", [["write", "repo/Requirements.txt", "never\n"]]),
     lint_case(
         "requirements_over_the_cap",
         [["repeat", "repo/requirements.txt", "alpha\n", 200_000]],

@@ -8,8 +8,8 @@ use serde::Deserialize;
 use crate::suppressions::Entry;
 use crate::{Failure, process};
 
-// A hang guard, far above a cold build of the test binaries that the list needs.
-const LIST: Duration = Duration::from_secs(60);
+// A hang guard: 1.5 x the slowest cold build of the test binaries that CI measured (macOS).
+const LIST: Duration = Duration::from_secs(250);
 const IGNORE: &str = "ignore";
 const LISTED: &str = "listed";
 
