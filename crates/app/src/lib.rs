@@ -122,7 +122,7 @@ pub use rows::COVERAGE;
 pub use rowtext::{MODULE_LEVEL, ROW_INDENT, file_site, locator, omitted_line, stable_ids_line};
 pub use scan::Skipped;
 pub use scope::{in_metric_scope, is_fixture_path, is_test_path};
-pub use tags::{CacheReport, Opening, Session, Tags};
+pub use tags::{CacheReport, Opening, Session, Tags, repo_generation};
 pub use tokens::{Chars4, Cl100k, TokenCounter};
 pub use tree::{TreeRequest, TreeView, subtree, tree};
 pub use validate::{

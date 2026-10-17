@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 
 use facts::Facts;
 use kernel::Key;
-use metrics::{COMPLEXITY_REASONS, FileMetrics};
+use metrics::{CLONE_REASONS, COMPLEXITY_REASONS, FileMetrics};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use syntax::{Language, Parsed, Unparsable};
@@ -15,7 +15,7 @@ use syntax::{Language, Parsed, Unparsable};
 pub const FACTS_SCHEMA_VERSION: u16 = 1;
 /// The version of the extraction rules written as code and of the blob layout. Bump it on any
 /// change to what `facts::extract`, the stored reason, or a blob encoder gives for one text.
-pub const FACTS_VERSION: u32 = 3;
+pub const FACTS_VERSION: u32 = 4;
 
 /// One file as the caller read it: its path below the root, its language, and its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,8 +43,13 @@ impl FileText {
     /// Returns the sha256 of the text's UTF-8 bytes, which keys the stored row.
     #[must_use]
     pub fn digest(&self) -> Key {
-        Key::new(Sha256::digest(self.text.as_bytes()).into())
+        text_digest(&self.text)
     }
+}
+
+// The sha256 of the UTF-8 bytes of `text`: the key of a stored row.
+pub(crate) fn text_digest(text: &str) -> Key {
+    Key::new(Sha256::digest(text.as_bytes()).into())
 }
 
 /// Why a file has no metrics, as a stored or computed reason text.
@@ -52,6 +57,8 @@ impl FileText {
 pub struct Unmeasured {
     /// The caller-facing reason, which names the file, such as "a.py does not parse: ...".
     pub reason: String,
+    /// The reason in the words of the clone index, or `None` when the clone index has none.
+    pub blocks_reason: Option<String>,
 }
 
 impl fmt::Display for Unmeasured {
@@ -64,6 +71,7 @@ impl Unmeasured {
     pub(crate) fn of(error: &impl fmt::Display) -> Unmeasured {
         Unmeasured {
             reason: error.to_string(),
+            blocks_reason: None,
         }
     }
 }
@@ -96,12 +104,14 @@ pub fn analyze(file: &FileText, measure: bool) -> Result<Analysis, Unparsable> {
     })
 }
 
-// The reason is worded when the row is made, so a stored row and a parse give the same text. A
-// language with no rules keeps the metrics error text.
+// The reasons are worded when the row is made, so a stored row and a parse give the same texts. A
+// language with no rules keeps the metrics error text, and the clone index has no reason for it.
 pub(crate) fn measured(parsed: &Parsed, path: &str) -> Measured {
-    metrics::measure(parsed).map_err(|error| match error.reason(path, &COMPLEXITY_REASONS) {
-        Some(reason) => Unmeasured { reason },
-        None => Unmeasured::of(&error),
+    metrics::measure(parsed).map_err(|error| Unmeasured {
+        reason: error
+            .reason(path, &COMPLEXITY_REASONS)
+            .unwrap_or_else(|| error.to_string()),
+        blocks_reason: error.reason(path, &CLONE_REASONS),
     })
 }
 

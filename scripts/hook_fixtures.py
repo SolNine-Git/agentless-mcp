@@ -819,6 +819,122 @@ def pipe_scenarios() -> list[Scenario]:
     ]
 
 
+# The cache states. Each build fills its own cache with its own index: the reference a tags.db,
+# the Rust build an agentless.db. "stale" commits a file after the index, so the tree moves on.
+INDEX_FILE_ERRORS = 1
+STALE_FILE = "STALE.md"
+CACHE_GARBAGE = b"this file is not a SQLite database\n" * 128
+# A function over the 40-token floor of a clone finding, by suffix: the head, the lines of one
+# branch, and the tail, with NAME and K for the name and the branch number.
+C_BRANCH = ["  if (x > K) { return K; }"]
+C_TAIL = ["  return 0;", "}"]
+TS_HEAD = "function NAME(x: number): number {"
+CLONE_FORMS: dict[str, tuple[str, list[str], list[str]]] = {
+    "py": ("def NAME(x):", ["    if x > K:", "        return K"], ["    return 0"]),
+    "js": ("function NAME(x) {", C_BRANCH, C_TAIL),
+    "ts": (TS_HEAD, C_BRANCH, C_TAIL),
+    "tsx": (TS_HEAD, C_BRANCH, C_TAIL),
+    "go": (
+        "package main\n\nfunc NAME(x int) int {",
+        ["\tif x > K {", "\t\treturn K", "\t}"],
+        ["\treturn 0", "}"],
+    ),
+    "rs": (
+        "fn NAME(x: i32) -> i32 {",
+        ["    if x > K {", "        return K;", "    }"],
+        ["    0", "}"],
+    ),
+    "java": (
+        "class NAME {\n  int NAME(int x) {",
+        ["    if (x > K) { return K; }"],
+        ["    return 0;", "  }", "}"],
+    ),
+    "c": ("int NAME(int x) {", C_BRANCH, C_TAIL),
+    "cpp": ("int NAME(int x) {", C_BRANCH, C_TAIL),
+    "rb": ("def NAME(x)", ["  if x > K", "    return K", "  end"], ["  0", "end"]),
+    "lua": (
+        "function NAME(x)",
+        ["  if x > K then", "    return K", "  end"],
+        ["  return 0", "end"],
+    ),
+    "sh": ("NAME() {", ['  if [ "$1" -gt K ]; then', "    echo K", "  fi"], ["}"]),
+}
+CLONE_BRANCHES = 6
+SOURCE_NAMES = {"java": "B.java"}
+BROKEN_PY = "def broken(:\n    return 1\n"
+TOKENIZE_REJECTS = (
+    REPO / "tests" / "characterization" / "fixtures" / "complexity_py" / "tokenize_rejects.py"
+)
+
+
+def _clone(suffix: str, name: str) -> str:
+    head, branch, tail = CLONE_FORMS[suffix]
+    lines = [head.replace("NAME", name)]
+    for number in range(CLONE_BRANCHES):
+        lines += [line.replace("K", str(number)) for line in branch]
+    return "\n".join([*lines, *tail]) + "\n"
+
+
+def _states(scenario: Scenario) -> list[Scenario]:
+    name, steps, payload, gate, log_form, outcome = scenario
+    fresh: list[list[object]] = [*steps, ["index"]]
+    stale: list[list[object]] = [*fresh, ["stale"]]
+    return [
+        (f"{name}_fresh", fresh, payload, gate, log_form, outcome),
+        (f"{name}_stale", stale, payload, gate, log_form, outcome),
+    ]
+
+
+def store_scenarios() -> list[Scenario]:
+    """Return the cases that read the stored rows: a clone in each tier-1 language, a changed
+    source, the stored reasons of a file that does not measure, no rows, and a garbage cache."""
+    scenarios: list[Scenario] = []
+    for suffix in CLONE_FORMS:
+        source = f"src/{SOURCE_NAMES.get(suffix, f'b.{suffix}')}"
+        target = f"<ROOT>/src/{FILE_NAMES.get(suffix, f'a.{suffix}')}"
+        steps: list[list[object]] = [*_repo((source, _clone(suffix, "kept"))), ["index"]]
+        payload = json.dumps(_write(target, _clone(suffix, "added")))
+        scenarios.append((f"clone_{suffix}", steps, payload, None, "log", "advisory"))
+    changed: list[list[object]] = [
+        *_repo(("src/b.py", _clone("py", "kept"))),
+        ["index"],
+        ["write", "repo/src/b.py", _clone("py", "moved")],
+        ["commit"],
+    ]
+    copy = json.dumps(_write("<ROOT>/src/a.py", _clone("py", "added")))
+    tokenizer = TOKENIZE_REJECTS.read_text(encoding="utf-8")
+    plain = json.dumps(_write("<ROOT>/src/a.py", "x = 2\n"))
+    return [
+        *scenarios,
+        ("clone_source_changed", changed, copy, None, "log", "advisory"),
+        (
+            "stored_does_not_parse",
+            [*_repo(("broken.py", BROKEN_PY)), ["index"]],
+            plain,
+            None,
+            "log",
+            "any",
+        ),
+        (
+            "stored_tokenizer_rejects",
+            [*_repo(("rejects.py", tokenizer)), ["index"]],
+            plain,
+            None,
+            "log",
+            "any",
+        ),
+        ("no_rows", [*_repo(), ["index"]], plain, None, "log", "clean"),
+        ("garbage_cache", [*_repo(), ["index"], ["cache_garbage"]], plain, None, "log", "clean"),
+    ]
+
+
+def states_fixture() -> Fixture:
+    """Return every end-to-end scenario on a fresh and a stale cache, then the stored-row cases."""
+    scenarios = [*language_scenarios(), *pipe_scenarios()]
+    states = [state for scenario in scenarios for state in _states(scenario)]
+    return {"states": [scenario_case(scenario) for scenario in [*states, *store_scenarios()]]}
+
+
 def _git(root: Path, args: list[str], env: dict[str, str]) -> None:
     run_git(root, IDENTITY, *args, env=env)
 
@@ -853,6 +969,32 @@ def _apply(sandbox: Path, step: list[object], env: dict[str, str]) -> None:
         (sandbox / str(step[1])).symlink_to(str(step[2]).replace("<SANDBOX>", str(sandbox)))
     elif kind == "chmod":
         (sandbox / str(step[1])).chmod(int(str(step[2])))
+    else:
+        _store_step(sandbox, step, env)
+
+
+def _store_step(sandbox: Path, step: list[object], env: dict[str, str]) -> None:
+    root = sandbox / "repo"
+    kind = step[0]
+    if kind == "index":
+        done = subprocess.run(
+            [str(LINT_BINARY), "index", "--repo", str(root)],
+            env=env,
+            cwd=sandbox,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        if done.returncode not in (0, INDEX_FILE_ERRORS):
+            message = f"refused: the index step exited {done.returncode}: {done.stderr!r}"
+            raise SystemExit(message)
+    elif kind == "stale":
+        (root / STALE_FILE).write_text("stale\n", encoding="utf-8")
+        _git(root, ["add", STALE_FILE], env)
+        _git(root, ["commit", "--quiet", "-m", "fixture"], env)
+    elif kind == "cache_garbage":
+        (database,) = (sandbox / "home" / ".cache" / "agentless-mcp").glob("*/tags.db")
+        database.write_bytes(CACHE_GARBAGE)
     else:
         message = f"refused: no scenario step {kind}"
         raise SystemExit(message)
@@ -969,6 +1111,7 @@ BUILDERS: dict[str, Callable[[], Fixture]] = {
     "target": target_fixture,
     "classify": classify_fixture,
     "scenarios": scenarios_fixture,
+    "states": states_fixture,
 }
 
 

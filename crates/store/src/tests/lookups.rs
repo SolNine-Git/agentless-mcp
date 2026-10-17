@@ -3,49 +3,93 @@ use std::path::Path;
 use serde_json::{Value, json};
 use syntax::Language;
 
-use super::cases::{BUSY, ROOT, Scratch, cases, source_text, usable};
-use crate::Lookup;
-use crate::open::open;
+use super::cases::{ROOT, cases, fixture_store, source_text, writer};
+use super::indexed::{Cache, PYTHON, indexed, observed};
+use crate::{FactsDb, Lookup, Source, open_facts};
 
 #[test]
-fn each_lookup_gives_the_reference_blocks_reason_miss_or_warning() {
+fn each_lookup_gives_the_reference_blocks_reason_or_miss() {
+    let (cache, store) = fixture_store();
     for case in cases().lookups {
-        let scratch = Scratch::new();
-        scratch.damage(&case.damage, &case.path);
-        let found = usable(open(&scratch.database, ROOT, BUSY), &case.name);
         let language = Language::from_name(&case.language).expect("a language name");
         let text = source_text(&case.path, &case.edit);
-        let lookup = found.blocks_for(&case.path, &text, language);
-        let outcome = shown(&lookup, &scratch.database);
+        let lookup = store.blocks_for(&case.path, &text, language);
+        let outcome = shown(&lookup, &cache.database);
         assert_eq!(outcome, case.outcome, "{}", case.name);
     }
 }
 
 #[test]
-fn a_key_or_a_line_that_a_block_cannot_hold_refuses_the_rows() {
+fn a_null_metrics_column_or_an_error_with_no_clone_reason_is_a_miss() {
+    let damages = [
+        "UPDATE files SET metrics = NULL WHERE path = 'a.py'",
+        "UPDATE files SET metrics = CAST('{\"Err\":{\"reason\":\"r\",\"blocks_reason\":null}}' \
+         AS BLOB) WHERE path = 'a.py'",
+    ];
+    for damage in damages {
+        assert_eq!(damaged_lookup(damage), json!(["miss"]), "{damage}");
+    }
+}
+
+#[test]
+fn a_metrics_cell_that_does_not_read_gives_the_warning() {
     let damages = [
         (
-            "UPDATE blocks SET type2_key = 'zz' WHERE file_id = :file_id",
-            "ValueError(\"type2_key 'zz' is not 64 lowercase hexadecimal characters\")",
+            "UPDATE files SET metrics = x'7b' WHERE path = 'a.py'",
+            "JSONDecodeError('EOF while parsing an object at line 1 column 1')",
         ),
         (
-            "UPDATE blocks SET end_line = -1 WHERE file_id = :file_id",
-            "ValueError('end_line -1 is not between 0 and 4294967295')",
+            "UPDATE files SET metrics = 'text' WHERE path = 'a.py'",
+            "TypeError(\"a stored blob holds 'text'\")",
         ),
     ];
-    let path = "complexity_py/clones.py";
-    for (statement, cause) in damages {
-        let scratch = Scratch::new();
-        scratch.damage(&[json!("sql"), json!([statement])], path);
-        let found = usable(open(&scratch.database, ROOT, BUSY), statement);
-        let lookup = found.blocks_for(path, &source_text(path, "none"), Language::Python);
+    for (damage, cause) in damages {
         let warning = format!(
-            "tag cache {{db}}: block rows for {path} are unreadable ({cause}); parsing the file \
+            "tag cache {{db}}: block rows for a.py are unreadable ({cause}); parsing the file \
              instead"
         );
-        let outcome = shown(&lookup, &scratch.database);
-        assert_eq!(outcome, json!(["unreadable", warning]));
+        assert_eq!(damaged_lookup(damage), json!(["unreadable", warning]));
     }
+}
+
+// The snapshot holds the rows that the open saw: a later run that rewrites a.py's row changes
+// nothing that the open lookup gives.
+#[test]
+fn a_lookup_reads_the_snapshot_of_its_open() {
+    let cache = Cache::new();
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+    let store = usable(&cache.database);
+    let before = store.blocks_for("a.py", PYTHON, Language::Python);
+
+    let edited = format!("{PYTHON}\n\ndef other(y):\n    return y\n");
+    indexed(&cache.database, observed(&[("a.py", &edited)]), false);
+
+    let after = store.blocks_for("a.py", PYTHON, Language::Python);
+    assert!(matches!(before, Lookup::Hit(_)), "{before:?}");
+    assert_eq!(after, before);
+    let fresh = usable(&cache.database);
+    assert_eq!(
+        fresh.blocks_for("a.py", PYTHON, Language::Python),
+        Lookup::Miss
+    );
+}
+
+fn usable(database: &Path) -> FactsDb {
+    match open_facts(database, ROOT, false) {
+        Source::Usable(db) => db,
+        other => panic!("the database is not usable: {other:?}"),
+    }
+}
+
+// The lookup of a.py in a store that holds it, after `damage`, in the fixture form.
+fn damaged_lookup(damage: &str) -> Value {
+    let cache = Cache::new();
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
+    writer(&cache.database)
+        .execute(damage, ())
+        .unwrap_or_else(|error| panic!("{damage}: {error}"));
+    let lookup = usable(&cache.database).blocks_for("a.py", PYTHON, Language::Python);
+    shown(&lookup, &cache.database)
 }
 
 // The lookup in the form that the fixtures record, with the database path written {db}.

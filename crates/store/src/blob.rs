@@ -4,6 +4,7 @@ use facts::{Facts, Import, Ref, Symbol};
 use kernel::Span;
 use serde::{Deserialize, Serialize};
 
+use crate::value::Cell;
 use crate::{Analysis, Measured, SqlClass, SqlError};
 
 /// One analysis as its row stores it: the counts, and the blobs or the first encode error.
@@ -95,6 +96,24 @@ pub(crate) fn decode_facts(symbols: &[u8], rest: &[u8]) -> Result<Facts, SqlErro
 
 pub(crate) fn decode_metrics(bytes: &[u8]) -> Result<Measured, SqlError> {
     decoded(bytes)
+}
+
+// A NULL metrics column is a file that was not measured: the caller parses it.
+pub(crate) fn stored_metrics(cell: &Cell) -> Result<Option<Measured>, SqlError> {
+    match cell {
+        Cell::Null => Ok(None),
+        other => decode_metrics(blob(other)?).map(Some),
+    }
+}
+
+pub(crate) fn blob(cell: &Cell) -> Result<&[u8], SqlError> {
+    match cell {
+        Cell::Blob(bytes) => Ok(bytes),
+        other => {
+            let message = format!("a stored blob holds {}", other.repr());
+            Err(SqlError::new(SqlClass::Type, message))
+        }
+    }
 }
 
 // The values hold no map with a key that is not text, so the encoder has no failure to give; a

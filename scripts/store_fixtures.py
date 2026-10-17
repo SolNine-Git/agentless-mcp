@@ -1,14 +1,14 @@
-"""Write the store crate's test fixtures: a tags.db that the Python indexer built, and read cases.
+"""Write the store crate's test fixtures: the read cases of the Python cache reader.
 
 Development-time only. Run it from the repository root, in the project environment:
 
     uv run python scripts/store_fixtures.py
 
 The script indexes a git copy of tests/characterization/fixtures/complexity_* with the project's own
-agentless-mcp. The index runs with a temporary HOME and cache directory and a temporary copy of the
-grammar libraries, so no user cache changes. Each read case records the answer of the Python cache
-reader on a copy of that database, after the damage that the case names. With --check, the script
-compares its output with the committed fixtures and writes nothing.
+agentless-mcp into a temporary tags.db. The index runs with a temporary HOME and cache directory and
+a temporary copy of the grammar libraries, so no user cache changes. Each lookup case records the
+answer of the Python cache reader on that database. With --check, the script compares its output
+with the committed fixtures and writes nothing.
 """
 
 import logging
@@ -19,7 +19,7 @@ import struct
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -29,7 +29,7 @@ from unittest import mock
 
 import stdlib_fixtures
 import tree_sitter_language_pack as pack
-from fixture_files import Fixture, Identity, git_env, matches, run_git, write_or_check
+from fixture_files import Fixture, Identity, git_env, run_git, write_or_check
 
 from agentless_mcp.core import cache
 from agentless_mcp.core.extractor import TreeSitterExtractor
@@ -39,7 +39,6 @@ from agentless_mcp.util import cachedir, filelock, platforms
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "crates" / "store" / "fixtures"
-DATABASE = FIXTURES / "tags.db"
 SOURCES = REPO / "tests" / "characterization" / "fixtures"
 AGENTLESS = Path(sys.executable).with_name("agentless-mcp")
 ROOT = "/agentless-store-fixture/repo"
@@ -50,63 +49,10 @@ IDENTITY = Identity("fixture", "fixture@invalid", "2026-01-01T00:00:00Z")
 # The stdlib generator writes files into this crate's fixture directory too.
 SHARED = [stdlib_fixtures.CRATES / path for path in stdlib_fixtures.BUILDERS]
 
-# A damage: a kind and its arguments. The Rust tests apply the same damage to their own copy.
-Damage = list[Any]
-NONE: Damage = ["none"]
-GARBAGE = "this file is not a SQLite database\n" * 128
-
-OPENS: list[tuple[str, Damage, str | None]] = [
-    ("fresh", NONE, None),
-    ("stale", NONE, STALE),
-    ("bypassed", ["bypass"], None),
-    ("missing", ["missing"], None),
-    ("schema_15", ["sql", ["UPDATE meta SET schema_version = 15"]], None),
-    ("schema_16", ["sql", ["UPDATE meta SET schema_version = 16"]], None),
-    ("schema_18", ["sql", ["UPDATE meta SET schema_version = 18"]], None),
-    ("other_repository", ["sql", ["UPDATE meta SET repo_root = '/elsewhere/repo'"]], None),
-    ("no_meta_row", ["sql", ["DELETE FROM meta"]], None),
-    ("no_meta_table", ["sql", ["DROP TABLE meta"]], None),
-    ("garbage", ["bytes", GARBAGE], None),
-    ("truncated", ["truncate", 8192], None),
-    ("empty", ["truncate", 0], None),
-    ("directory", ["directory"], None),
-    ("locked", ["locked"], None),
-]
-
-DAMAGED_FILE = "complexity_py/clones.py"
+EDITED_FILE = "complexity_py/clones.py"
 ABSENT_FILE = "complexity_py/absent.py"
-# A text edit of the damaged file: "append" adds a newline, "empty" reads an unindexed path.
+# A text edit: "append" adds a newline to the edited file, "empty" reads an unindexed path.
 LOOKUP_EDITS = [("digest", "append"), ("absent_path", "empty")]
-# Each statement binds :file_id, the id of the damaged file.
-LOOKUP_SQL = {
-    "grammar": "UPDATE files SET grammar_version = '1.14.2' WHERE id = :file_id",
-    "stamp": "UPDATE file_metrics SET stamp = '1/py2.7' WHERE file_id = :file_id",
-    "language": "UPDATE file_metrics SET language = 'ruby' WHERE file_id = :file_id",
-    "no_metrics_row": "DELETE FROM file_metrics WHERE file_id = :file_id",
-    "blocks_reason": "UPDATE file_metrics SET blocks_reason = 'stored' WHERE file_id = :file_id",
-    "count": "UPDATE file_metrics SET block_count = block_count + 1 WHERE file_id = :file_id",
-    "no_block_rows": "DELETE FROM blocks WHERE file_id = :file_id",
-    "unit_count_text": "UPDATE file_metrics SET unit_count = 'many' WHERE file_id = :file_id",
-    "sloc_truncated": "UPDATE file_metrics SET sloc_lines = '[1, 2' WHERE file_id = :file_id",
-    "sloc_float": "UPDATE file_metrics SET sloc_lines = '[1.5]' WHERE file_id = :file_id",
-    "sloc_null": "UPDATE file_metrics SET sloc_lines = NULL WHERE file_id = :file_id",
-    "sloc_integer": "UPDATE file_metrics SET sloc_lines = 7 WHERE file_id = :file_id",
-    "sloc_long": (
-        "UPDATE file_metrics SET sloc_lines = json_quote(hex(zeroblob(50))) "
-        "WHERE file_id = :file_id"
-    ),
-    "start_line_text": "UPDATE blocks SET start_line = 'abc' WHERE file_id = :file_id",
-    "start_line_underscore": "UPDATE blocks SET start_line = '1_0' WHERE file_id = :file_id",
-    "start_line_real": "UPDATE blocks SET start_line = 2.5 WHERE file_id = :file_id",
-    "function_text": "UPDATE blocks SET is_function = 'no' WHERE file_id = :file_id",
-    "key_not_utf8": (
-        "UPDATE blocks SET type2_key = CAST(X'41C328' AS TEXT) WHERE file_id = :file_id"
-    ),
-    "key_not_utf8_with_nul": (
-        "UPDATE blocks SET type2_key = CAST(X'41C30042' AS TEXT) WHERE file_id = :file_id"
-    ),
-    "start_line_separator": "UPDATE blocks SET start_line = '\x1c5' WHERE file_id = :file_id",
-}
 
 RECEIPT_ROOTS = [
     ROOT,
@@ -168,57 +114,6 @@ VALUES: list[object] = [
     b"\x0b5",
 ]
 
-SLOC_VALUES: list[object] = [
-    "[]",
-    "[1, 2]",
-    "[1, 2",
-    "[1.5]",
-    "[true]",
-    "null",
-    '{"a": 1}',
-    None,
-    7,
-    2.5,
-    b"[1]",
-    '"' + "x" * 100 + '"',
-    " [1] ",
-    "[-0]",
-    "[1e2]",
-    "[99999999999999999999]",
-    "[NaN]",
-    "",
-    "[\t1,\n2\r]",
-    "\r\n[ 1 , -2 ]\t",
-    "[ ]",
-    "[\n]",
-    "[\x0b1]",
-    "[\xa01]",
-    "[1]\x0c",
-    "[-0, 0]",
-    "[-]",
-    "[+1]",
-    "[01]",
-    "[-01]",
-    "[1.0]",
-    "[1e5]",
-    "[1E5]",
-    "﻿[1]",
-    "[﻿1]",
-    "[1,]",
-    "[1, ]",
-    "[,1]",
-    "[1 2]",
-    "[1]]",
-    "[\n1\n2]",
-    "[[1]]",
-    "[1, [2]]",
-    "[" + "9" * 4300 + "]",
-    "[-" + "9" * 4300 + "]",
-    "[" + "9" * 4301 + "]",
-    "[1, -" + "8" * 4301 + "]",
-    "[" + ", ".join(["123"] * 2000) + "]",
-]
-
 DISCARDS = ["plain", "sidecars", "locked", "read_only", "unlink_refused"]
 # The setups whose failure comes from a directory mode: the lock open, then the unlink.
 MODE_SETUPS = ("read_only", "unlink_refused")
@@ -233,40 +128,20 @@ class Reader:
 
 
 def main() -> int:
-    built: dict[str, bytes] = {}
-    builders: dict[str, Callable[[], Fixture]] = {"cases": partial(cases_fixture, built)}
-    code = write_or_check(__doc__.splitlines()[0], FIXTURES, builders, SHARED)
-    if "database" not in built:
-        return code
-    return max(code, database_result(built["database"], check="--check" in sys.argv[1:]))
+    return write_or_check(__doc__.splitlines()[0], FIXTURES, {"cases": cases_fixture}, SHARED)
 
 
-def database_result(content: bytes, *, check: bool) -> int:
-    if not check:
-        DATABASE.write_bytes(content)
-        print(f"wrote {DATABASE}")
-        return 0
-    if matches(DATABASE, content):
-        return 0
-    print(f"stale: {DATABASE}", file=sys.stderr)
-    return 1
-
-
-def cases_fixture(built: dict[str, bytes]) -> Fixture:
+def cases_fixture() -> Fixture:
     with tempfile.TemporaryDirectory(prefix="store-fixtures-") as name:
         work = Path(name)
         database = build_database(work)
-        built["database"] = database.read_bytes()
         reader = Reader(work, database, generation_of(database), TreeSitterExtractor())
         return {
-            "fixture": [[reader.generation, row_counts(database)]],
-            "opens": [open_case(reader, *case) for case in OPENS],
             "lookups": lookup_cases(reader),
             "receipts": receipt_cases(reader.generation),
             "keys": [key_case(root) for root in KEY_ROOTS],
             "nogit": [nogit_case(work, entries) for entries in MANIFESTS],
             "values": [value_case(value) for value in VALUES],
-            "sloc": [sloc_case(value) for value in SLOC_VALUES],
             "discards": [discard_case(reader, setup) for setup in DISCARDS],
         }
 
@@ -313,8 +188,6 @@ def normalized(indexed: Path, out: Path) -> Path:
     with closing(sqlite3.connect(indexed, isolation_level=None)) as connection:
         connection.execute("UPDATE meta SET repo_root = ?, created_at = ?", (ROOT, CREATED_AT))
         connection.execute("VACUUM INTO ?", (str(out),))
-    with closing(sqlite3.connect(out, isolation_level=None)) as connection:
-        connection.execute("PRAGMA journal_mode=WAL")
     return out
 
 
@@ -327,119 +200,31 @@ def generation_of(database: Path) -> str:
     return meta.generation
 
 
-def row_counts(database: Path) -> list[int]:
-    with closing(sqlite3.connect(database)) as connection:
-        counts = cache._row_counts(connection)
-    return [counts.files, counts.tags, counts.imports, counts.refs]
-
-
-@contextmanager
-def damaged(reader: Reader, damage: Damage, path: str = "") -> Iterator[Path]:
-    directory = Path(tempfile.mkdtemp(dir=reader.work))
-    copy = directory / "tags.db"
-    shutil.copyfile(reader.database, copy)
-    apply_damage(reader, copy, damage, path)
-    try:
-        yield copy
-    finally:
-        shutil.rmtree(directory)
-
-
-def apply_damage(reader: Reader, copy: Path, damage: Damage, path: str) -> None:
-    kind = damage[0]
-    if kind == "sql":
-        with closing(sqlite3.connect(copy, isolation_level=None)) as connection:
-            for statement in damage[1]:
-                connection.execute(statement, bound(connection, statement, path))
-    elif kind == "bytes":
-        copy.write_bytes(damage[1].encode("latin-1"))
-    elif kind == "truncate":
-        copy.write_bytes(reader.database.read_bytes()[: damage[1]])
-    elif kind == "directory":
-        copy.unlink()
-        copy.mkdir()
-    elif kind == "missing":
-        copy.unlink()
-
-
-def bound(connection: sqlite3.Connection, statement: str, path: str) -> dict[str, object]:
-    if ":file_id" not in statement:
-        return {}
-    (file_id,) = connection.execute("SELECT id FROM files WHERE path = ?", (path,)).fetchone()
-    return {"file_id": file_id}
-
-
-@contextmanager
-def exclusive_writer(copy: Path, *, held: bool) -> Iterator[None]:
-    if not held:
-        yield
-        return
-    with closing(sqlite3.connect(copy, isolation_level=None)) as connection:
-        connection.execute("PRAGMA locking_mode=EXCLUSIVE")
-        connection.execute("BEGIN EXCLUSIVE")
-        connection.execute("UPDATE meta SET created_at = created_at WHERE id = 1")
-        connection.execute("COMMIT")
-        yield
-
-
-def open_case(
-    reader: Reader, name: str, damage: Damage, repo_generation: str | None
-) -> list[object]:
-    locked = damage[0] == "locked"
-    tree_oid = repo_generation or reader.generation
-    with (
-        damaged(reader, damage) as copy,
-        exclusive_writer(copy, held=locked),
-        mock.patch.object(cache, "cache_path", return_value=copy),
-        mock.patch.object(
-            cache, "SQLITE_TIMEOUT_SECONDS", 0.0 if locked else cache.SQLITE_TIMEOUT_SECONDS
-        ),
-    ):
-        source = cache.open_source(
-            Path(ROOT), reader.extractor, tree_oid=tree_oid, no_cache=damage[0] == "bypass"
-        )
-        status = source.status()
-        source.close()
-        exists = copy.exists()
-    return [name, damage, tree_oid, kind_of(source, status), status.receipt, status.note, exists]
-
-
-def kind_of(source: cache.FileSource, status: cache.CacheStatus) -> str:
-    if source.cached:
-        return "usable"
-    if not status.enabled:
-        return "bypassed"
-    return "refused" if status.note else "absent"
-
-
 def lookup_cases(reader: Reader) -> list[object]:
     with closing(sqlite3.connect(reader.database)) as connection:
         paths = sorted(cache._load_entries(connection))
-    plain = [lookup_case(reader, path, path, "none", NONE) for path in paths]
+    plain = [lookup_case(reader, path, path, "none") for path in paths]
     edited = [
-        lookup_case(reader, name, ABSENT_FILE if edit == "empty" else DAMAGED_FILE, edit, NONE)
+        lookup_case(reader, name, ABSENT_FILE if edit == "empty" else EDITED_FILE, edit)
         for name, edit in LOOKUP_EDITS
     ]
-    damaged_cases = [
-        lookup_case(reader, name, DAMAGED_FILE, "none", ["sql", [statement]])
-        for name, statement in LOOKUP_SQL.items()
-    ]
-    return [*plain, *edited, *damaged_cases]
+    return [*plain, *edited]
 
 
-def lookup_case(reader: Reader, name: str, path: str, edit: str, damage: Damage) -> list[object]:
+def lookup_case(reader: Reader, name: str, path: str, edit: str) -> list[object]:
     language = TreeSitterExtractor.SUPPORTED_EXTENSIONS[PurePosixPath(path).suffix]
     text = source_text(path, edit)
-    with damaged(reader, damage, path) as copy:
-        source = cache._open_indexed(copy, Path(ROOT), reader.extractor, tree_oid=reader.generation)
-        if not isinstance(source, cache.CachedSource):
-            message = f"{name}: the damaged database was refused: {source.receipt}"
-            raise SystemExit(message)
-        try:
-            outcome = lookup(source, path, text, language, copy)
-        finally:
-            source.close()
-    return [name, path, language, edit, damage, outcome]
+    source = cache._open_indexed(
+        reader.database, Path(ROOT), reader.extractor, tree_oid=reader.generation
+    )
+    if not isinstance(source, cache.CachedSource):
+        message = f"{name}: the database was refused: {source.receipt}"
+        raise SystemExit(message)
+    try:
+        outcome = lookup(source, path, text, language, reader.database)
+    finally:
+        source.close()
+    return [name, path, language, edit, outcome]
 
 
 def source_text(path: str, edit: str) -> str:
@@ -450,14 +235,14 @@ def source_text(path: str, edit: str) -> str:
 
 
 def lookup(
-    source: cache.CachedSource, path: str, text: str, language: str, copy: Path
+    source: cache.CachedSource, path: str, text: str, language: str, database: Path
 ) -> list[object]:
     warnings: list[str] = []
     read = partial(source._block_rows, language=language)
     with captured(warnings):
         rows = source._rows_or_none(read, source._fresh_file_id(text, path), path, "block")
     if rows is None:
-        return ["unreadable", warnings[0].replace(str(copy), "{db}")] if warnings else ["miss"]
+        return ["unreadable", warnings[0].replace(str(database), "{db}")] if warnings else ["miss"]
     if isinstance(rows, Unmeasured):
         return ["unmeasured", rows.reason]
     blocks = [
@@ -558,14 +343,6 @@ def value_case(value: Any) -> list[object]:
     except (ValueError, TypeError) as error:
         converted = ["error", repr(error)]
     return [cell(value), converted, str(value), bool(value), repr(value)]
-
-
-def sloc_case(value: object) -> list[object]:
-    try:
-        cache._sloc_from_row(value)
-    except (ValueError, TypeError) as error:
-        return [cell(value), repr(error)]
-    return [cell(value), None]
 
 
 @contextmanager

@@ -15,7 +15,7 @@ pub struct IndexMeta {
     pub repo_root: String,
     /// The generation that the index was built at.
     pub generation: String,
-    /// The analysis digest of the rows, or `None` for a tags.db, whose meta row has none.
+    /// The analysis digest of the rows, or `None` when the meta row holds no blob there.
     pub analysis: Option<Vec<u8>>,
 }
 
@@ -51,8 +51,7 @@ pub fn freshness(meta: Option<&IndexMeta>, repo_root: &str, generation: &str) ->
     }
 }
 
-// The schema rule of agentless.db alone: a newer layout belongs to the newer build that wrote it,
-// so it is kept. tags.db keeps its own rule, which discards a newer layout too.
+// A newer layout belongs to the newer build that wrote it, so it is kept.
 pub(crate) fn facts_schema_rejection(found: i64) -> Option<Refusal> {
     let expected = FACTS_SCHEMA_VERSION;
     match found.cmp(&i64::from(expected)) {

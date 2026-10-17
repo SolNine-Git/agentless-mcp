@@ -8,9 +8,8 @@ use kernel::{Deadline, recaching};
 use syntax::{Parsed, Unparsable};
 
 use crate::analysis::{Parse, measured};
-use crate::blob::{decode_facts, decode_metrics, decode_symbols};
-use crate::value::Cell;
-use crate::{FactsDb, FileText, Measured, RowFailure, SqlClass, SqlError, Unmeasured, schema};
+use crate::blob::{blob, decode_facts, decode_symbols, stored_metrics};
+use crate::{FactsDb, FileText, Measured, RowFailure, SqlError, Unmeasured, schema};
 
 /// A value, and the warning of a stored row that could not be read and that a parse replaced.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -174,24 +173,6 @@ impl FactSource {
                 };
                 (None, Some(failure))
             }
-        }
-    }
-}
-
-// A NULL metrics column is a file that was not measured: the caller parses it.
-fn stored_metrics(cell: &Cell) -> Result<Option<Measured>, SqlError> {
-    match cell {
-        Cell::Null => Ok(None),
-        other => decode_metrics(blob(other)?).map(Some),
-    }
-}
-
-fn blob(cell: &Cell) -> Result<&[u8], SqlError> {
-    match cell {
-        Cell::Blob(bytes) => Ok(bytes),
-        other => {
-            let message = format!("a stored blob holds {}", other.repr());
-            Err(SqlError::new(SqlClass::Type, message))
         }
     }
 }

@@ -129,20 +129,20 @@ impl core::marker::Unpin for store::Refusal
 impl core::marker::UnsafeUnpin for store::Refusal
 impl core::panic::unwind_safe::RefUnwindSafe for store::Refusal
 impl core::panic::unwind_safe::UnwindSafe for store::Refusal
-pub enum store::Source<D>
+pub enum store::Source
 pub store::Source::Absent
 pub store::Source::Bypassed
 pub store::Source::Refused(store::Refusal)
-pub store::Source::Usable(D)
-impl<D: core::fmt::Debug> core::fmt::Debug for store::Source<D>
-pub fn store::Source<D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<D> core::marker::Freeze for store::Source<D> where D: core::marker::Freeze
-impl<D> core::marker::Send for store::Source<D> where D: core::marker::Send
-impl<D> core::marker::Sync for store::Source<D> where D: core::marker::Sync
-impl<D> core::marker::Unpin for store::Source<D> where D: core::marker::Unpin
-impl<D> core::marker::UnsafeUnpin for store::Source<D> where D: core::marker::UnsafeUnpin
-impl<D> core::panic::unwind_safe::RefUnwindSafe for store::Source<D> where D: core::panic::unwind_safe::RefUnwindSafe
-impl<D> core::panic::unwind_safe::UnwindSafe for store::Source<D> where D: core::panic::unwind_safe::UnwindSafe
+pub store::Source::Usable(store::FactsDb)
+impl core::fmt::Debug for store::Source
+pub fn store::Source::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for store::Source
+impl core::marker::Send for store::Source
+impl core::marker::Sync for store::Source
+impl core::marker::Unpin for store::Source
+impl core::marker::UnsafeUnpin for store::Source
+impl core::panic::unwind_safe::RefUnwindSafe for store::Source
+impl core::panic::unwind_safe::UnwindSafe for store::Source
 pub enum store::SqlClass
 pub store::SqlClass::Data
 pub store::SqlClass::Database
@@ -325,6 +325,8 @@ impl core::marker::UnsafeUnpin for store::FactSource
 impl !core::panic::unwind_safe::RefUnwindSafe for store::FactSource
 impl !core::panic::unwind_safe::UnwindSafe for store::FactSource
 pub struct store::FactsDb
+impl store::FactsDb
+pub fn store::FactsDb::blocks_for(&self, &str, &str, syntax::language::Language) -> store::Lookup
 impl store::FactsDb
 pub fn store::FactsDb::generation(&self) -> &str
 pub fn store::FactsDb::row_counts(&self) -> core::result::Result<store::RowCounts, store::SqlError>
@@ -653,22 +655,8 @@ impl core::marker::Unpin for store::SqlError
 impl core::marker::UnsafeUnpin for store::SqlError
 impl core::panic::unwind_safe::RefUnwindSafe for store::SqlError
 impl core::panic::unwind_safe::UnwindSafe for store::SqlError
-pub struct store::TagsDb
-impl store::TagsDb
-pub fn store::TagsDb::blocks_for(&self, &str, &str, syntax::language::Language) -> store::Lookup
-impl store::TagsDb
-pub fn store::TagsDb::generation(&self) -> &str
-pub fn store::TagsDb::row_counts(&self) -> core::result::Result<store::RowCounts, store::SqlError>
-impl core::fmt::Debug for store::TagsDb
-pub fn store::TagsDb::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl !core::marker::Freeze for store::TagsDb
-impl core::marker::Send for store::TagsDb
-impl !core::marker::Sync for store::TagsDb
-impl core::marker::Unpin for store::TagsDb
-impl core::marker::UnsafeUnpin for store::TagsDb
-impl !core::panic::unwind_safe::RefUnwindSafe for store::TagsDb
-impl !core::panic::unwind_safe::UnwindSafe for store::TagsDb
 pub struct store::Unmeasured
+pub store::Unmeasured::blocks_reason: core::option::Option<alloc::string::String>
 pub store::Unmeasured::reason: alloc::string::String
 impl core::clone::Clone for store::Unmeasured
 pub fn store::Unmeasured::clone(&self) -> Self
@@ -710,11 +698,8 @@ pub const store::FACTS_SCHEMA_VERSION: u16
 pub const store::FACTS_VERSION: u32
 pub const store::MAX_CACHE_BYTES_VARIABLE: &str
 pub const store::PROTECTED_SECONDS: f64
-pub const store::SCHEMA_VERSION: u16
 pub fn store::analysis() -> kernel::key::Key
 pub fn store::analyze(&store::FileText, bool) -> core::result::Result<store::Analysis, syntax::parsed::Unparsable>
-pub fn store::database_path(&std::path::Path, &str) -> std::path::PathBuf
-pub fn store::discard(&std::path::Path) -> store::Discarded
 pub fn store::discard_facts(&std::path::Path) -> store::Discarded
 pub fn store::encode(&store::Analysis) -> store::Encoded
 pub fn store::enforce_cache_limit(&std::path::Path, &std::path::Path, core::option::Option<u64>, f64) -> (store::EvictionReport, alloc::vec::Vec<alloc::string::String>)
@@ -723,8 +708,7 @@ pub fn store::facts_database_path(&std::path::Path, &str) -> std::path::PathBuf
 pub fn store::freshness(core::option::Option<&store::IndexMeta>, &str, &str) -> store::Freshness
 pub fn store::max_cache_bytes(core::option::Option<&std::ffi::os_str::OsStr>) -> (core::option::Option<u64>, core::option::Option<alloc::string::String>)
 pub fn store::nogit_generation(&[store::ManifestEntry]) -> alloc::string::String
-pub fn store::open_facts(&std::path::Path, &str, bool) -> store::Source<store::FactsDb>
-pub fn store::open_source(&std::path::Path, &str, bool) -> store::Source
+pub fn store::open_facts(&std::path::Path, &str, bool) -> store::Source
 pub fn store::plan(&store::Previous, alloc::vec::Vec<store::Observed>, kernel::key::Key, bool) -> store::Plan
 pub fn store::settle(store::Plan, alloc::vec::Vec<core::result::Result<store::Encoded, syntax::parsed::Unparsable>>) -> store::Settled
 pub fn store::shell_quote(&str) -> alloc::string::String

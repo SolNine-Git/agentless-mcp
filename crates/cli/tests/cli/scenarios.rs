@@ -64,7 +64,7 @@ fn every_scenario_answers_as(file: &str, at_least: usize, seen: fn(Outcome) -> O
 
 #[test]
 fn every_scenario_answers_as_the_fixture() {
-    every_scenario_answers_as("scenarios", 16, with_this_cache_file);
+    every_scenario_answers_as("scenarios", 21, with_this_cache_file);
 }
 
 // The reference capabilities report names its tag cache. This build reports agentless.db in the
@@ -122,7 +122,7 @@ fn without_cache_names(outcome: Outcome) -> Outcome {
 // The DURATION mask of the generator: each verdict record's run time is a placeholder.
 #[test]
 fn every_write_scenario_answers_as_the_fixture() {
-    every_scenario_answers_as("write_scenarios", 80, without_durations);
+    every_scenario_answers_as("write_scenarios", 81, without_durations);
 }
 
 fn without_durations(outcome: Outcome) -> Outcome {

@@ -1,86 +1,23 @@
-use std::path::Path;
-use std::time::Duration;
+use super::cases::ROOT;
+use super::indexed::{Cache, PYTHON, indexed, observed};
+use crate::{Refusal, Source, SqlClass, SqlError, open_facts};
 
-use super::cases::{BUSY, OpenCase, ROOT, Scratch, cases, exclusive_writer, usable};
-use crate::open::open;
-use crate::{
-    CacheState, CacheStatus, Discarded, Refusal, Source, SqlClass, SqlError, discard, open_source,
-};
-
-#[test]
-fn each_open_gives_the_reference_receipt_and_leaves_the_reference_files() {
-    for case in cases().opens {
-        let scratch = Scratch::new();
-        scratch.damage(&case.damage, "");
-        let (kind, state) = opened(&case, &scratch.database);
-        let status = CacheStatus {
-            path: scratch.database.clone(),
-            state,
-        };
-        let found = (kind, status.receipt(), status.note());
-        let expected = (case.kind.as_str(), case.receipt, case.note);
-        assert_eq!(found, expected, "{}", case.name);
-        assert_eq!(scratch.database.exists(), case.exists, "{}", case.name);
-    }
-}
-
-// The app's sequence: open, discard a refused database that the refusal discards, then report.
-fn opened(case: &OpenCase, database: &Path) -> (&'static str, CacheState) {
-    let kind = case.damage[0].as_str().expect("a damage kind");
-    let holder = (kind == "locked").then(|| exclusive_writer(database));
-    let busy = holder.as_ref().map_or(BUSY, |_| Duration::ZERO);
-    let source = if kind == "bypass" {
-        open_source(database, ROOT, true)
-    } else {
-        open(database, ROOT, busy)
-    };
-    drop(holder);
-    match source {
-        Source::Bypassed => ("bypassed", CacheState::Bypassed),
-        Source::Absent => ("absent", CacheState::Absent { note: None }),
-        Source::Refused(refusal) => {
-            if refusal.discards() {
-                let discarded = discard(database);
-                assert!(matches!(discarded, Discarded::Removed), "{}", case.name);
-            }
-            let note = Some(refusal);
-            ("refused", CacheState::Absent { note })
-        }
-        Source::Usable(found) => {
-            let state = CacheState::Indexed {
-                generation: found.generation().to_owned(),
-                repo_generation: case.repo_generation.clone(),
-                repo_root: ROOT.to_owned(),
-            };
-            ("usable", state)
-        }
-    }
-}
-
-#[test]
-fn the_fixture_opens_at_its_generation_with_its_row_counts() {
-    let cases = cases();
-    let (generation, counts) = &cases.fixture[0];
-    let scratch = Scratch::new();
-    let found = usable(open(&scratch.database, ROOT, BUSY), "fixture");
-    assert_eq!(found.generation(), generation);
-    let rows = found.row_counts().expect("the fixture counts its rows");
-    assert_eq!([rows.files, rows.tags, rows.imports, rows.refs], *counts);
-}
+const DATABASE: &str = "cache/key/agentless.db";
 
 #[test]
 fn an_unreadable_file_names_the_failed_open_without_its_path() {
-    let scratch = Scratch::new();
+    let cache = Cache::new();
+    indexed(&cache.database, observed(&[("a.py", PYTHON)]), false);
     // Where modes do not bind, as for root, the open reads the file.
-    let binds = scratch.tree.modes_bind();
-    scratch
+    let binds = cache.tree.modes_bind();
+    cache
         .tree
-        .set_mode("tags.db", 0o000)
+        .set_mode(DATABASE, 0o000)
         .expect("the mode is set");
-    let source = open(&scratch.database, ROOT, BUSY);
-    scratch
+    let source = open_facts(&cache.database, ROOT, false);
+    cache
         .tree
-        .set_mode("tags.db", 0o600)
+        .set_mode(DATABASE, 0o600)
         .expect("the mode is set back");
     if !binds {
         assert!(matches!(source, Source::Usable(_)), "{source:?}");
@@ -96,13 +33,13 @@ fn an_unreadable_file_names_the_failed_open_without_its_path() {
 
 #[test]
 fn a_stat_failure_other_than_a_missing_file_is_unreadable() {
-    let scratch = Scratch::new();
+    let cache = Cache::new();
     // Where modes do not bind, as for root, the stat finds no database.
-    let binds = scratch.tree.modes_bind();
-    let tree = &scratch.tree;
+    let binds = cache.tree.modes_bind();
+    let tree = &cache.tree;
     tree.create_dir("closed").expect("a directory");
     tree.set_mode("closed", 0o000).expect("the mode is set");
-    let source = open(&tree.join("closed/tags.db"), ROOT, BUSY);
+    let source = open_facts(&tree.join("closed/agentless.db"), ROOT, false);
     tree.set_mode("closed", 0o700)
         .expect("the mode is set back");
     if !binds {

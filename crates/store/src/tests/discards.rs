@@ -1,9 +1,32 @@
-use super::cases::{Scratch, cases};
-use crate::{Discarded, discard};
+use std::path::PathBuf;
+
+use io::testing::Tree;
+
+use super::cases::cases;
+use crate::{Discarded, discard_facts};
 
 // The setups whose failure comes from a directory mode: the lock open, then the unlink.
 const MODE_SETUPS: [&str; 2] = ["read_only", "unlink_refused"];
+const DATABASE: &str = "agentless.db";
+const LOCK: &str = "agentless.lock";
 
+// A database file, whose bytes the discard never reads, in its own temporary directory.
+struct Scratch {
+    tree: Tree,
+    database: PathBuf,
+}
+
+impl Scratch {
+    fn new() -> Self {
+        let tree = Tree::new().expect("the temporary directory takes a tree");
+        let database = tree
+            .write_file(DATABASE, "not read by the discard")
+            .expect("the database file is written");
+        Self { tree, database }
+    }
+}
+
+// The reference discards its tags.db under write.lock; agentless.db has agentless.lock (P2 D6).
 #[test]
 fn each_discard_gives_the_reference_warning_and_leaves_the_reference_files() {
     for (setup, warnings, remaining) in cases().discards {
@@ -12,6 +35,7 @@ fn each_discard_gives_the_reference_warning_and_leaves_the_reference_files() {
         let refusable = !MODE_SETUPS.contains(&setup.as_str()) || scratch.tree.modes_bind();
         let discarded = discarded(&scratch, &setup);
         if refusable {
+            let remaining: Vec<String> = remaining.iter().map(|name| this_name(name)).collect();
             check_reference(&scratch, &setup, &discarded, (&warnings, &remaining));
         } else {
             assert!(
@@ -19,6 +43,14 @@ fn each_discard_gives_the_reference_warning_and_leaves_the_reference_files() {
                 "{setup}: {discarded:?}"
             );
         }
+    }
+}
+
+fn this_name(name: &str) -> String {
+    match name {
+        "tags.db" => DATABASE.to_owned(),
+        "write.lock" => LOCK.to_owned(),
+        other => other.to_owned(),
     }
 }
 
@@ -51,18 +83,20 @@ fn check_reference(
 fn discarded(scratch: &Scratch, setup: &str) -> Discarded {
     let tree = &scratch.tree;
     if setup == "sidecars" {
-        tree.write_file("tags.db-wal", "").expect("a sidecar");
-        tree.write_file("tags.db-shm", "").expect("a sidecar");
+        tree.write_file(format!("{DATABASE}-wal"), "")
+            .expect("a sidecar");
+        tree.write_file(format!("{DATABASE}-shm"), "")
+            .expect("a sidecar");
     }
     if setup == "unlink_refused" {
-        tree.write_file("write.lock", "").expect("a lock file");
+        tree.write_file(LOCK, "").expect("a lock file");
     }
     let lock = (setup == "locked")
-        .then(|| io::try_lock(&tree.join("write.lock")).expect("the test takes the lock"));
+        .then(|| io::try_lock(&tree.join(LOCK)).expect("the test takes the lock"));
     if MODE_SETUPS.contains(&setup) {
         tree.set_mode(".", 0o555).expect("the mode is set");
     }
-    let discarded = discard(&scratch.database);
+    let discarded = discard_facts(&scratch.database);
     tree.set_mode(".", 0o700).expect("the mode is set back");
     drop(lock);
     discarded

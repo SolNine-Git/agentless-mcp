@@ -25,6 +25,7 @@ type Scenario = (
 );
 
 const BINARY: &str = "<BINARY>";
+const GARBAGE: &str = "this file is not a SQLite database\n";
 
 fn word(step: &[Value], index: usize) -> &str {
     step[index]
@@ -58,8 +59,49 @@ fn apply(sandbox: &Sandbox, step: &[Value]) {
                 u32::try_from(mode).expect("a mode that fits"),
             );
         }
+        other => store_step(sandbox, other),
+    }
+}
+
+// The cache steps: this build's index, a commit that leaves the index stale, and bytes that are no
+// database in place of the index.
+fn store_step(sandbox: &Sandbox, kind: &str) {
+    match kind {
+        "index" => indexed(sandbox),
+        "stale" => {
+            sandbox.put("repo/STALE.md", "stale\n");
+            sandbox.git(&["add", "STALE.md"]);
+            sandbox.git(&["commit", "--quiet", "-m", "fixture"]);
+        }
+        "cache_garbage" => drop(sandbox.put(&stored_database(sandbox), GARBAGE.repeat(128))),
         other => panic!("no scenario step {other}"),
     }
+}
+
+fn indexed(sandbox: &Sandbox) {
+    let services = Services::new(&sandbox.env(&[]));
+    let root = sandbox.root();
+    let repo = app::Repo::load(&services, &root).expect("the repository loads");
+    let snapshot = services
+        .git
+        .snapshot(&root, services.git.root(&root).as_deref());
+    let report = app::index(&services, &repo, &snapshot, &app::IndexRequest::default()).value;
+    report.unwrap_or_else(|error| panic!("the index step: {error}"));
+}
+
+// The path below the sandbox of the one database under its cache root.
+fn stored_database(sandbox: &Sandbox) -> String {
+    let cache = "home/.cache/agentless-mcp";
+    let keys = std::fs::read_dir(sandbox.path().join(cache)).expect("the cache root is read");
+    let found: Vec<String> = keys
+        .map(|key| key.expect("a key directory").file_name())
+        .map(|key| format!("{cache}/{}/agentless.db", key.to_string_lossy()))
+        .filter(|database| sandbox.path().join(database).is_file())
+        .collect();
+    let [database] = found.as_slice() else {
+        panic!("one database under the cache root: {found:?}");
+    };
+    database.clone()
 }
 
 fn log_path(sandbox: &Sandbox, form: &str) -> PathBuf {
@@ -107,8 +149,19 @@ fn logged(path: &Path) -> Option<String> {
 
 #[test]
 fn each_scenario_gives_the_reference_reply_and_record() {
-    let all: Vec<Scenario> = cases(MANIFEST_DIR, "scenarios", "scenarios");
-    assert!(all.len() > 30, "{} scenarios", all.len());
+    each_case_gives_the_reference_reply_and_record("scenarios", 30);
+}
+
+// Every scenario again on a fresh and on a stale cache, then the cases of the stored rows.
+#[test]
+fn each_cache_state_gives_the_reference_reply_and_record() {
+    each_case_gives_the_reference_reply_and_record("states", 150);
+}
+
+// Replays each case of the fixture section `name` and compares its reply and record.
+fn each_case_gives_the_reference_reply_and_record(name: &str, more_than: usize) {
+    let all: Vec<Scenario> = cases(MANIFEST_DIR, name, name);
+    assert!(all.len() > more_than, "{} {name}", all.len());
     for (name, steps, payload, gate, log_form, expected) in all {
         let sandbox = Sandbox::new();
         for step in &steps {

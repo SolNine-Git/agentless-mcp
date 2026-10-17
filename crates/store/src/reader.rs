@@ -5,15 +5,29 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use kernel::Key;
 use rusqlite::Connection;
+use syntax::Language;
 
 use crate::freshness::{analysis_rejection, facts_schema_rejection, rejection};
-use crate::open::{BUSY_TIMEOUT, connect, fetch, found, has_meta, read_meta};
+use crate::open::{BUSY_TIMEOUT, connect, fetch, has_meta, read_meta};
 use crate::value::Cell;
 use crate::{
-    FACTS_SCHEMA_VERSION, FileText, IndexMeta, Refusal, RowCounts, Source, SqlClass, SqlError,
-    schema,
+    FACTS_SCHEMA_VERSION, FileText, IndexMeta, Refusal, RowCounts, SqlClass, SqlError, schema,
 };
+
+/// What the open of a repository's agentless.db found.
+#[derive(Debug)]
+pub enum Source {
+    /// The caller asked to parse every file itself.
+    Bypassed,
+    /// No database exists at the path.
+    Absent,
+    /// A database exists and is not used.
+    Refused(Refusal),
+    /// A database that this build reads, with one read snapshot held open.
+    Usable(FactsDb),
+}
 
 /// An open agentless.db that passed the admission checks, with one read snapshot. The drop ends
 /// the snapshot. One mutex serializes its reads, so threads can share it.
@@ -27,19 +41,44 @@ pub struct FactsDb {
 /// Opens agentless.db at `database` for the repository `repo_root`, unless `no_cache` asks to
 /// parse every file instead. The database is opened read-only, and a refused one is not changed.
 #[must_use]
-pub fn open_facts(database: &Path, repo_root: &str, no_cache: bool) -> Source<FactsDb> {
+pub fn open_facts(database: &Path, repo_root: &str, no_cache: bool) -> Source {
     if no_cache {
         return Source::Bypassed;
     }
     open_facts_within(database, repo_root, BUSY_TIMEOUT)
 }
 
-pub(crate) fn open_facts_within(
-    database: &Path,
-    repo_root: &str,
-    busy: Duration,
-) -> Source<FactsDb> {
+pub(crate) fn open_facts_within(database: &Path, repo_root: &str, busy: Duration) -> Source {
     found(database, || FactsDb::open(database, repo_root, busy))
+}
+
+// The checks before the database opens: a missing file is absent, and a path that cannot be read
+// or is a directory is refused and left in place.
+fn found(database: &Path, open: impl FnOnce() -> Result<FactsDb, Refusal>) -> Source {
+    match std::fs::metadata(database) {
+        Err(error) if absent(&error) => Source::Absent,
+        Err(error) => Source::Refused(Refusal::Unreadable(SqlError::new(
+            SqlClass::Operational,
+            io::strerror(&error),
+        ))),
+        // SQLite reports a directory as an I/O error, and the note names the failed open instead.
+        Ok(found) if found.is_dir() => Source::Refused(Refusal::Unreadable(SqlError::new(
+            SqlClass::Operational,
+            "unable to open database file",
+        ))),
+        Ok(_) => match open() {
+            Ok(opened) => Source::Usable(opened),
+            Err(refusal) => Source::Refused(refusal),
+        },
+    }
+}
+
+// A missing file, a missing directory, a symlink loop or a bad descriptor means no database.
+fn absent(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(libc::ENOENT | libc::ENOTDIR | libc::EBADF | libc::ELOOP)
+    )
 }
 
 impl FactsDb {
@@ -92,15 +131,24 @@ impl FactsDb {
         &self.database
     }
 
-    // The id of the row that describes `file` now: for this language, from exactly this text. The
-    // open admitted only rows of this analysis.
     pub(crate) fn fresh_id(&self, file: &FileText) -> Result<Option<i64>, SqlError> {
-        let found = fetch::<3>(&self.connection(), schema::LOOKUP, [&file.path], 1)?;
-        let Some([id, language, digest]) = found.into_iter().next() else {
+        self.fresh_row(&file.path, file.language, &file.digest())
+    }
+
+    // The id of the row that describes `path` now: for this language, from the text with this
+    // digest. The open admitted only rows of this analysis.
+    pub(crate) fn fresh_row(
+        &self,
+        path: &str,
+        language: Language,
+        digest: &Key,
+    ) -> Result<Option<i64>, SqlError> {
+        let found = fetch::<3>(&self.connection(), schema::LOOKUP, [path], 1)?;
+        let Some([id, stored, stored_digest]) = found.into_iter().next() else {
             return Ok(None);
         };
-        let fresh = language.equals(Some(file.language.name()))
-            && digest == Cell::Blob(file.digest().bytes().to_vec());
+        let fresh = stored.equals(Some(language.name()))
+            && stored_digest == Cell::Blob(digest.bytes().to_vec());
         if !fresh {
             return Ok(None);
         }

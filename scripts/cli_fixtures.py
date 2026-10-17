@@ -269,6 +269,30 @@ WALK_REFUSED = [
 ]
 ROOT = "<SANDBOX>/repo"
 SINCE = ["lint", "--since", "HEAD"]
+# Lint on an indexed cache: each build fills its own cache with its own index command. The hook
+# form runs every pair check, as the erosion hook asks.
+PAIR_CHECKS = ["lint", "--only", "complexity_delta,contract_drift,clone_delta"]
+JSON_AT_ROOT = ["--json", "--repo", ROOT]
+INDEXED = [*HOOK_FORM[:3], ["index", "repo"], HOOK_FORM[3]]
+STALE_INDEX = [*INDEXED, ["write", "repo/notes.md", "x\n"], ["commit", "repo"]]
+COPIED = [
+    ["init", "repo"],
+    ["write", "repo/lib.py", branchy("total", 8)],
+    ["commit", "repo"],
+    ["index", "repo"],
+    ["write", "after.py", branchy("again", 8)],
+]
+UNPARSED = [
+    *HOOK_FORM[:2],
+    ["write", "repo/broken.py", "def broken(:\n    return 1\n"],
+    *INDEXED[2:],
+]
+REVIEWED_INDEXED = [
+    *REVIEWED[:4],
+    ["index", "repo"],
+    REVIEWED[4],
+    ["write", "repo/copy.py", branchy("again", 11)],
+]
 
 SCENARIOS: list[dict[str, object]] = [
     {"name": "since_json", "steps": REVIEWED, "cwd": "repo", "argv": [*SINCE, "--json"]},
@@ -349,6 +373,36 @@ SCENARIOS: list[dict[str, object]] = [
     {
         "name": "since_walk_refused_after_a_warning",
         "steps": WALK_REFUSED,
+        "cwd": "repo",
+        "argv": [*SINCE, "--only", "clone_delta", "--json"],
+    },
+    {
+        "name": "hook_form_indexed_json",
+        "steps": INDEXED,
+        "cwd": "",
+        "argv": [*PAIR_CHECKS, "--path", "core.py", "--after", "<SANDBOX>/after.py", *JSON_AT_ROOT],
+    },
+    {
+        "name": "hook_form_stale_text",
+        "steps": STALE_INDEX,
+        "cwd": "repo",
+        "argv": [*PAIR_CHECKS, "--path", "core.py", "--after", "../after.py"],
+    },
+    {
+        "name": "hook_form_clone_indexed",
+        "steps": COPIED,
+        "cwd": "repo",
+        "argv": [*PAIR_CHECKS, "--path", "copy.py", "--after", "../after.py", "--json"],
+    },
+    {
+        "name": "hook_form_unparsed_indexed",
+        "steps": UNPARSED,
+        "cwd": "repo",
+        "argv": [*PAIR_CHECKS, "--path", "core.py", "--after", "../after.py", "--json"],
+    },
+    {
+        "name": "since_clone_delta_indexed",
+        "steps": REVIEWED_INDEXED,
         "cwd": "repo",
         "argv": [*SINCE, "--only", "clone_delta", "--json"],
     },
@@ -849,6 +903,12 @@ LINT_SCENARIOS: list[Scenario] = [
         "steps": LINTED,
         "cwd": "",
         "argv": ["lint", "--diff", "gone.diff", "--repo", "repo"],
+    },
+    {
+        "name": "lint_candidates_indexed",
+        "steps": [*PATCH_REPO, ["index", "repo"], *LINTED[len(PATCH_REPO) :]],
+        "cwd": "",
+        "argv": [*CANDIDATES, "--json"],
     },
 ]
 

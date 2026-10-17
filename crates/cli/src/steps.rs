@@ -104,8 +104,8 @@ fn capabilities(flags: &RepoFlags, services: &Services, streams: &mut Streams<'_
     answer(streams, rendered, EXIT_OK)
 }
 
-// Resolves the repository, reports its note, and opens its tag cache, with each diagnostic on
-// stderr.
+// Resolves the repository, reports its note, and opens its agentless.db for lint, with each
+// diagnostic on stderr.
 pub(crate) fn open(
     flags: &RepoFlags,
     services: &Services,
@@ -114,7 +114,7 @@ pub(crate) fn open(
     open_with(flags, services, streams, Session::open)
 }
 
-// As `open`, with the cache that `opener` opens: the tag cache or agentless.db.
+// As `open`, with the session that `opener` opens: for lint or for the read operations.
 pub(crate) fn open_with(
     flags: &RepoFlags,
     services: &Services,

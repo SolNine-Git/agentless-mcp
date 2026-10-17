@@ -1,6 +1,6 @@
 [package]
 name = "store"
-description = "The caches: the read side of the tag cache, and agentless.db with its one parse per file, its read source, its index writer, and the ceiling sweep."
+description = "The cache, agentless.db: its one parse per file, its read source and stored clone blocks, its index writer, and the ceiling sweep."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

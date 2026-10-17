@@ -1,6 +1,6 @@
 //! A fetched column value, and the conversions that the cache reader applies to it.
 
-use json::{JsonErrorKind, JsonValue, float_text, parse};
+use json::float_text;
 use rusqlite::Row;
 use rusqlite::types::ValueRef;
 use text::{CodePointString, IntText, int_bytes, int_text};
@@ -9,10 +9,6 @@ use crate::{SqlClass, SqlError};
 
 // The longest repr that the message of a refused integer text keeps.
 const INT_REPR_CHARS: usize = 200;
-// The longest repr that the message of a refused sloc_lines value keeps.
-const SLOC_REPR_CHARS: usize = 80;
-// The most digits of an integer that the sloc_lines scanner decides on its own.
-const MAX_PLAIN_DIGITS: usize = 4300;
 const NOT_A_NUMBER: &str =
     "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'";
 const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
@@ -63,10 +59,6 @@ impl Cell {
         }
     }
 
-    pub(crate) fn optional_text(&self) -> Option<String> {
-        (*self != Self::Null).then(|| self.text())
-    }
-
     // The truth value: NULL, zero and an empty text or blob are false.
     pub(crate) fn truthy(&self) -> bool {
         match self {
@@ -96,81 +88,6 @@ impl Cell {
             _ => false,
         }
     }
-}
-
-// The stored value must be the JSON text of a list of integers. The values are not used.
-pub(crate) fn check_sloc(raw: &Cell) -> Result<(), SqlError> {
-    if let Cell::Text(text) = raw
-        && plain_int_list(text.as_bytes())
-    {
-        return Ok(());
-    }
-    parsed_sloc(raw)
-}
-
-// The full parse decides each value that the scanner refuses, and gives the error.
-pub(crate) fn parsed_sloc(raw: &Cell) -> Result<(), SqlError> {
-    let parsed = match raw {
-        Cell::Text(text) => Some(parse(text).map_err(|error| {
-            // An integer past the digit limit is a value error of the integer conversion.
-            let class = match error.kind {
-                JsonErrorKind::IntTooLong { .. } => SqlClass::Value,
-                _ => SqlClass::JsonDecode,
-            };
-            SqlError::new(class, error.to_string())
-        })?),
-        _ => None,
-    };
-    if let Some(JsonValue::Array(items)) = &parsed
-        && items.iter().all(|item| matches!(item, JsonValue::Int(_)))
-    {
-        return Ok(());
-    }
-    let shown: String = raw.repr().chars().take(SLOC_REPR_CHARS).collect();
-    let message = format!("sloc_lines is not a JSON list of integers: {shown}");
-    Err(SqlError::new(SqlClass::Type, message))
-}
-
-// Accepts `[`, integers with no fraction and no exponent separated by commas, and `]`, with JSON
-// whitespace around each token: a list that the full parse reads as integers alone.
-pub(crate) fn plain_int_list(bytes: &[u8]) -> bool {
-    let mut at = blank_end(bytes, 0);
-    if bytes.get(at) != Some(&b'[') {
-        return false;
-    }
-    at = blank_end(bytes, at + 1);
-    if bytes.get(at) == Some(&b']') {
-        return blank_end(bytes, at + 1) == bytes.len();
-    }
-    loop {
-        let Some(end) = int_end(bytes, at) else {
-            return false;
-        };
-        at = blank_end(bytes, end);
-        match bytes.get(at) {
-            Some(b',') => at = blank_end(bytes, at + 1),
-            Some(b']') => return blank_end(bytes, at + 1) == bytes.len(),
-            _ => return false,
-        }
-    }
-}
-
-fn blank_end(bytes: &[u8], from: usize) -> usize {
-    let blank = |byte: &&u8| matches!(byte, b' ' | b'\t' | b'\n' | b'\r');
-    from + bytes[from..].iter().take_while(blank).count()
-}
-
-// The end of an integer `-?(0|[1-9][0-9]*)` at `at`. An integer of more than MAX_PLAIN_DIGITS
-// digits gets None, so the full parse, which owns the rule for long integer text, decides it.
-fn int_end(bytes: &[u8], at: usize) -> Option<usize> {
-    let start = at + usize::from(bytes.get(at) == Some(&b'-'));
-    let digits = bytes[start..]
-        .iter()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    let leading_zero = digits > 1 && bytes[start] == b'0';
-    let plain = (1..=MAX_PLAIN_DIGITS).contains(&digits) && !leading_zero;
-    plain.then_some(start + digits)
 }
 
 fn decoded(row: &Row<'_>, index: usize, bytes: &[u8]) -> Result<String, SqlError> {

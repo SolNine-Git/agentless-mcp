@@ -3,18 +3,34 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde::Deserialize;
-use store::{CacheState, TagsDb};
+use store::CacheState;
+use syntax::Language;
 
-use super::{Located, Opened, Session, Tags, assembled, outside, settled};
+use super::{Located, Opened, Session, Tags, assembled, for_lint, outside, settled};
+use crate::pairs::Stored;
 use crate::testing::{MANIFEST_DIR, Sandbox, buildable_cases, set_mtime};
-use crate::{EnvConfig, Noted, Repo, Services};
+use crate::{EnvConfig, IndexRequest, Noted, Repo, Services};
 
-// The repository root and the generation that the store crate's fixture database records.
-const FIXTURE_ROOT: &str = "/agentless-store-fixture/repo";
-const FIXTURE_GENERATION: &str = "348a75f0";
+// The repository root and the generation that the foreign database records.
+const FOREIGN_ROOT: &str = "/agentless-store-fixture/repo";
+const FOREIGN_GENERATION: &str = "348a75f0";
 
-fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/fixtures/tags.db")
+// An agentless.db with no rows that the store wrote for another repository, closed, so that a copy
+// of its one file is whole.
+fn foreign_store(sandbox: &Sandbox) -> PathBuf {
+    let built = sandbox.path().join("built/agentless.db");
+    let (writer, warnings) = store::Writer::open(&built);
+    assert_eq!(warnings, Vec::<String>::new());
+    let writer = writer.expect("the writer opens");
+    let plan = store::plan(writer.previous(), Vec::new(), store::analysis(), false);
+    let settled = store::settle(plan, Vec::new());
+    let meta = store::NewMeta {
+        repo_root: FOREIGN_ROOT,
+        generation: FOREIGN_GENERATION,
+        created: 0,
+    };
+    writer.write(&settled, meta).expect("the write succeeds");
+    built
 }
 
 fn modified(path: &Path) -> SystemTime {
@@ -22,9 +38,9 @@ fn modified(path: &Path) -> SystemTime {
     meta.modified().expect("a modification time")
 }
 
-// A copy of the fixture database with a modification time far in the past, so a stamp shows.
+// A copy of the foreign database with a modification time far in the past, so a stamp shows.
 fn aged_copy(sandbox: &Sandbox, relative: &str) -> (PathBuf, SystemTime) {
-    let database = sandbox.copy(&fixture(), relative);
+    let database = sandbox.copy(&foreign_store(sandbox), relative);
     set_mtime(&database, "2000-01-01T00:00:00Z");
     let before = modified(&database);
     (database, before)
@@ -33,19 +49,19 @@ fn aged_copy(sandbox: &Sandbox, relative: &str) -> (PathBuf, SystemTime) {
 #[test]
 fn a_usable_database_gets_its_generation_then_the_stamp() {
     let sandbox = Sandbox::new();
-    let (database, before) = aged_copy(&sandbox, "cache/tags.db");
+    let (database, before) = aged_copy(&sandbox, "cache/agentless.db");
     let services = sandbox.services(sandbox.path());
-    let source = store::open_source(&database, FIXTURE_ROOT, false);
+    let source = store::open_facts(&database, FOREIGN_ROOT, false);
 
-    let tree = Some(FIXTURE_GENERATION);
+    let tree = Some(FOREIGN_GENERATION);
     let settled = settled(&services, sandbox.path(), tree, source, &database);
     let (state, db) = settled.value.expect("a generation");
 
     assert!(db.is_some());
     assert!(modified(&database) > before);
     let expected = CacheState::Indexed {
-        generation: FIXTURE_GENERATION.to_owned(),
-        repo_generation: FIXTURE_GENERATION.to_owned(),
+        generation: FOREIGN_GENERATION.to_owned(),
+        repo_generation: FOREIGN_GENERATION.to_owned(),
         repo_root: sandbox.path().display().to_string(),
     };
     assert_eq!(state, expected);
@@ -54,9 +70,9 @@ fn a_usable_database_gets_its_generation_then_the_stamp() {
 #[test]
 fn a_bypassed_database_gets_no_stamp() {
     let sandbox = Sandbox::new();
-    let (database, before) = aged_copy(&sandbox, "cache/tags.db");
+    let (database, before) = aged_copy(&sandbox, "cache/agentless.db");
     let services = sandbox.services(sandbox.path());
-    let source = store::open_source(&database, FIXTURE_ROOT, true);
+    let source = store::open_facts(&database, FOREIGN_ROOT, true);
 
     let settled = settled(&services, sandbox.path(), None, source, &database);
     let (state, db) = settled.value.expect("no generation");
@@ -69,10 +85,10 @@ fn a_bypassed_database_gets_no_stamp() {
 #[test]
 fn a_usable_database_outside_git_reads_the_generation_of_the_walked_files() {
     let sandbox = Sandbox::new();
-    let (database, _) = aged_copy(&sandbox, "cache/tags.db");
+    let (database, _) = aged_copy(&sandbox, "cache/agentless.db");
     sandbox.put("tree/a.py", "x = 1\n");
     let services = sandbox.services(sandbox.path());
-    let source = store::open_source(&database, FIXTURE_ROOT, false);
+    let source = store::open_facts(&database, FOREIGN_ROOT, false);
     let root = sandbox.path().join("tree");
 
     let settled = settled(&services, &root, None, source, &database);
@@ -133,10 +149,10 @@ fn each_generation_walk_gives_the_reference_warnings_and_outcome() {
         let services = services_for(&sandbox, case.cache_home.as_deref());
         let root = sandbox.path().join("repo");
         let repo = Repo::load(&services, &root).expect("the repository loads");
-        let located = Located::new::<TagsDb>(&services, &root).expect("a cache root");
-        let database = sandbox.copy(&fixture(), "cache/tags.db");
+        let located = Located::new(&services, &root).expect("a cache root");
+        let database = sandbox.copy(&foreign_store(&sandbox), "cache/agentless.db");
         let opened = Opened {
-            source: store::open_source(&database, FIXTURE_ROOT, false),
+            source: store::open_facts(&database, FOREIGN_ROOT, false),
             database,
             diagnostics: located.diagnostics,
         };
@@ -144,7 +160,7 @@ fn each_generation_walk_gives_the_reference_warnings_and_outcome() {
             .git
             .snapshot(&root, services.git.root(&root).as_deref());
 
-        let noted = assembled(&services, repo, snapshot, opened.counted());
+        let noted = assembled(&services, repo, snapshot, opened.counted(), for_lint);
 
         let place = sandbox.path().display().to_string();
         let shown = |text: String| text.replace(&place, "<SANDBOX>");
@@ -171,14 +187,22 @@ fn opened(services: &Services, root: &Path, no_cache: bool) -> Noted<Session> {
     session.map(|session| session.expect("a session"))
 }
 
-// Copies the fixture database, which another repository built, to the database path of `root`.
-fn foreign_database(sandbox: &Sandbox, services: &Services, root: &Path) -> PathBuf {
+// The database path of `root` below the sandbox.
+fn database_of(sandbox: &Sandbox, services: &Services, root: &Path) -> (PathBuf, String) {
     let cache_root = services.cache_root.as_ref().expect("a cache root");
-    let database = store::database_path(&cache_root.path, root.to_str().expect("a UTF-8 path"));
+    let root = root.to_str().expect("a UTF-8 path");
+    let database = store::facts_database_path(&cache_root.path, root);
     let relative = database
         .strip_prefix(sandbox.path())
         .expect("a sandbox path");
-    sandbox.copy(&fixture(), relative.to_str().expect("a UTF-8 path"))
+    let relative = relative.to_str().expect("a UTF-8 path").to_owned();
+    (database, relative)
+}
+
+// Copies the foreign database, which another repository built, to the database path of `root`.
+fn foreign_database(sandbox: &Sandbox, services: &Services, root: &Path) -> PathBuf {
+    let (_, relative) = database_of(sandbox, services, root);
+    sandbox.copy(&foreign_store(sandbox), &relative)
 }
 
 #[test]
@@ -190,14 +214,14 @@ fn a_database_built_for_another_repository_is_discarded_and_named_in_the_receipt
 
     let session = opened(&services, &root, false);
 
-    let receipt = format!("none (cache discarded: it was built for {FIXTURE_ROOT})");
+    let receipt = format!("none (cache discarded: it was built for {FOREIGN_ROOT})");
     assert_eq!(session.value.cache.receipt, receipt);
     assert!(!database.exists(), "the refused database is discarded");
     assert!(!session.value.tags.cached());
     assert_eq!(session.diagnostics, Vec::<String>::new());
 }
 
-// The read-only open of the WAL fixture creates tags.db-shm and tags.db-wal, and with
+// The read-only open of a WAL database creates agentless.db-shm and agentless.db-wal, and with
 // showUntrackedFiles=all a status that ran after the open would count them too.
 #[test]
 fn a_database_inside_the_worktree_opens_after_the_status_that_counts_it() {
@@ -232,7 +256,7 @@ fn a_database_outside_the_worktree_opens_while_the_snapshot_runs() {
     assert!(outside(&database, top.as_deref()));
     assert_eq!(expected.dirty_count, Some(1));
     assert_eq!(session.value.snapshot, expected);
-    let receipt = format!("none (cache discarded: it was built for {FIXTURE_ROOT})");
+    let receipt = format!("none (cache discarded: it was built for {FOREIGN_ROOT})");
     assert_eq!(session.value.cache.receipt, receipt);
 }
 
@@ -240,10 +264,16 @@ fn a_database_outside_the_worktree_opens_while_the_snapshot_runs() {
 fn only_a_database_below_the_top_level_is_inside_the_worktree() {
     let top = Path::new("/work/repo");
 
-    assert!(!outside(Path::new("/work/repo/.cache/tags.db"), Some(top)));
-    assert!(outside(Path::new("/work/repo-cache/tags.db"), Some(top)));
-    assert!(outside(Path::new("/home/u/.cache/tags.db"), Some(top)));
-    assert!(!outside(Path::new("/home/u/.cache/tags.db"), None));
+    assert!(!outside(
+        Path::new("/work/repo/.cache/agentless.db"),
+        Some(top)
+    ));
+    assert!(outside(
+        Path::new("/work/repo-cache/agentless.db"),
+        Some(top)
+    ));
+    assert!(outside(Path::new("/home/u/.cache/agentless.db"), Some(top)));
+    assert!(!outside(Path::new("/home/u/.cache/agentless.db"), None));
 }
 
 #[test]
@@ -303,12 +333,7 @@ fn without_a_database_the_receipt_says_none_and_the_counts_are_zero() {
 
 // A file that is no database at the database path of `root`, and its path below the sandbox.
 fn corrupt_database(sandbox: &Sandbox, services: &Services, root: &Path) -> (PathBuf, String) {
-    let cache_root = services.cache_root.as_ref().expect("a cache root");
-    let database = store::database_path(&cache_root.path, root.to_str().expect("a UTF-8 path"));
-    let relative = database
-        .strip_prefix(sandbox.path())
-        .expect("a sandbox path");
-    let relative = relative.to_str().expect("a UTF-8 path").to_owned();
+    let (database, relative) = database_of(sandbox, services, root);
     sandbox.put(&relative, "not a database");
     (database, relative)
 }
@@ -370,4 +395,63 @@ fn an_unknown_home_fails_at_the_cache_open() {
         .expect_err("no cache root");
 
     assert_eq!(refused.to_string(), "Could not determine home directory.");
+}
+
+const SOURCE: &str =
+    "def total(items):\n    out = 0\n    for item in items:\n        out += item\n    return out\n";
+
+// The repository of `files`, indexed into its agentless.db by the index operation.
+fn indexed(sandbox: &Sandbox, files: &[(&str, &str)]) -> (Services, Repo) {
+    let root = sandbox.repo("repo", files);
+    let services = sandbox.services(sandbox.path());
+    let repo = Repo::load(&services, &root).expect("the repository loads");
+    let snapshot = services
+        .git
+        .snapshot(&root, services.git.root(&root).as_deref());
+    let report = crate::index(&services, &repo, &snapshot, &IndexRequest::default()).value;
+    report.expect("the index runs");
+    (services, repo)
+}
+
+#[test]
+fn a_lint_session_reads_the_blocks_and_a_read_session_reads_the_facts() {
+    let sandbox = Sandbox::new();
+    let (services, repo) = indexed(&sandbox, &[("app.py", SOURCE)]);
+
+    let lint = Session::open(&services, repo.clone(), false).session.value;
+    let reads = Session::open_facts(&services, repo, false).session.value;
+
+    let lint = lint.expect("a lint session");
+    assert!(lint.tags.cached() && lint.facts.database().is_none());
+    let reads = reads.expect("a read session");
+    assert!(!reads.tags.cached() && reads.facts.database().is_some());
+}
+
+#[test]
+fn the_hook_form_serves_the_stored_blocks_of_a_text_the_index_read() {
+    let sandbox = Sandbox::new();
+    let (services, repo) = indexed(&sandbox, &[("app.py", SOURCE)]);
+
+    let tags = Tags::open(&services, &repo).value.expect("a cache root");
+
+    let measured = checks::measure_blocks(Language::Python, SOURCE).expect("the source measures");
+    let stored = tags.stored("app.py", SOURCE, Language::Python);
+    assert!(matches!(&stored, Stored::Hit(blocks) if *blocks == measured));
+    let edited = format!("{SOURCE}\n");
+    let stored = tags.stored("app.py", &edited, Language::Python);
+    assert!(matches!(stored, Stored::Miss));
+}
+
+// A usable database with no rows backs the clone index, as the reference's does.
+#[test]
+fn a_store_with_no_rows_is_cached() {
+    let sandbox = Sandbox::new();
+    let (services, repo) = indexed(&sandbox, &[("README.md", "# x\n")]);
+
+    let tags = Tags::open(&services, &repo).value.expect("a cache root");
+
+    assert!(tags.cached());
+    let session = Session::open(&services, repo, false).session.value;
+    let counts = session.expect("a session").cache.counts.expect("counts");
+    assert_eq!(counts.files, 0);
 }

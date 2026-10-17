@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use io::{LockError, os_error_class_text};
 
-const LOCK_NAME: &str = "write.lock";
 pub(crate) const FACTS_LOCK_NAME: &str = "agentless.lock";
 // The sidecars go first and the primary last: a sidecar that stays keeps the primary visible to
 // the next sweep.
@@ -41,28 +40,17 @@ impl fmt::Display for DiscardFailure {
     }
 }
 
-/// Removes the tag cache at `database` and its `-wal` and `-shm` sidecars, while it holds the
-/// index write lock in the same directory.
-#[must_use]
-pub fn discard(database: &Path) -> Discarded {
-    discard_under(database, LOCK_NAME)
-}
-
-/// Removes agentless.db at `database` and its sidecars, while it holds agentless.lock in the same
-/// directory.
+/// Removes agentless.db at `database` and its `-wal` and `-shm` sidecars, while it holds
+/// agentless.lock in the same directory.
 #[must_use]
 pub fn discard_facts(database: &Path) -> Discarded {
-    discard_under(database, FACTS_LOCK_NAME)
-}
-
-fn discard_under(database: &Path, lock_name: &str) -> Discarded {
     let failed = |cause| {
         Discarded::Failed(DiscardFailure {
             database: database.to_path_buf(),
             cause,
         })
     };
-    let lock = match io::try_lock(&database.with_file_name(lock_name)) {
+    let lock = match io::try_lock(&database.with_file_name(FACTS_LOCK_NAME)) {
         Ok(lock) => lock,
         Err(LockError::Held | LockError::Refused(_)) => return Discarded::LeftInPlace,
         Err(LockError::Open(cause)) => return failed(cause),

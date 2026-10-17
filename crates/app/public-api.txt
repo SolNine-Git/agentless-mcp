@@ -2168,7 +2168,7 @@ impl core::fmt::Debug for app::Opening
 pub fn app::Opening::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Opening
 impl core::marker::Send for app::Opening
-impl !core::marker::Sync for app::Opening
+impl core::marker::Sync for app::Opening
 impl core::marker::Unpin for app::Opening
 impl core::marker::UnsafeUnpin for app::Opening
 impl !core::panic::unwind_safe::RefUnwindSafe for app::Opening
@@ -2516,7 +2516,7 @@ impl core::fmt::Debug for app::Session
 pub fn app::Session::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Session
 impl core::marker::Send for app::Session
-impl !core::marker::Sync for app::Session
+impl core::marker::Sync for app::Session
 impl core::marker::Unpin for app::Session
 impl core::marker::UnsafeUnpin for app::Session
 impl !core::panic::unwind_safe::RefUnwindSafe for app::Session
@@ -2634,11 +2634,11 @@ impl core::fmt::Debug for app::Tags
 pub fn app::Tags::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl !core::marker::Freeze for app::Tags
 impl core::marker::Send for app::Tags
-impl !core::marker::Sync for app::Tags
+impl core::marker::Sync for app::Tags
 impl core::marker::Unpin for app::Tags
 impl core::marker::UnsafeUnpin for app::Tags
-impl !core::panic::unwind_safe::RefUnwindSafe for app::Tags
-impl !core::panic::unwind_safe::UnwindSafe for app::Tags
+impl core::panic::unwind_safe::RefUnwindSafe for app::Tags
+impl core::panic::unwind_safe::UnwindSafe for app::Tags
 pub struct app::TierGroup
 pub app::TierGroup::rows: alloc::vec::Vec<app::EdgeRow>
 pub app::TierGroup::tier: &'static str
@@ -2889,6 +2889,7 @@ pub fn app::omitted_line(usize, &str, usize) -> alloc::string::String
 pub fn app::path(&app::Services, &app::Reading<'_>, &app::PathRequest) -> app::Noted<core::result::Result<app::PathTrace, app::Error>>
 pub fn app::rationale_nodes(syntax::language::Language, &str, &facts::values::Symbol) -> alloc::vec::Vec<app::RationaleNode>
 pub fn app::refs(&app::Services, &app::Reading<'_>, &app::RefsRequest) -> app::Noted<core::result::Result<app::RefsResult, app::Error>>
+pub fn app::repo_generation(&app::Services, &std::path::Path, core::option::Option<&str>) -> app::Noted<core::result::Result<alloc::string::String, app::Error>>
 pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
 pub fn app::resolve_in_git(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
 pub fn app::resolve_locations(&app::Reading<'_>, &app::LocsRequest) -> app::Noted<core::result::Result<app::LocationView, app::Error>>
