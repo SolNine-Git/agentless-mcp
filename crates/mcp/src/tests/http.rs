@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::future::Ready;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
 use http_body_util::Full;
@@ -15,6 +16,11 @@ use crate::Server;
 use crate::http::{connection, routed, service};
 
 const READ_LIMIT: Duration = Duration::from_secs(20);
+const BOUND: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+const HOST_REFUSED: (&str, &str) = (
+    "HTTP/1.1 403 Forbidden",
+    "Forbidden: Host header is not allowed",
+);
 const INITIALIZE: &str = concat!(
     r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","#,
     r#""capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#,
@@ -63,6 +69,25 @@ fn post(path: &str, host: &str, body: &str) -> String {
     )
 }
 
+fn with_origin(request: &str, origin: &str) -> String {
+    request.replacen("\r\n", &format!("\r\nOrigin: {origin}\r\n"), 1)
+}
+
+// The status line and the body of an answer that carries no event stream.
+fn status_and_body(answer: &str) -> (&str, &str) {
+    let (head, body) = answer.split_once("\r\n\r\n").expect("a head and a body");
+    (head.lines().next().unwrap_or_default(), body)
+}
+
+fn assert_initialized(answer: &str, case: &str) {
+    assert!(
+        answer.starts_with("HTTP/1.1 200 OK\r\n"),
+        "{case}: {answer}"
+    );
+    let result = &message(answer)["result"];
+    assert_eq!(result["protocolVersion"], "2025-06-18", "{case}");
+}
+
 // The JSON-RPC message of the one SSE event of an answer.
 fn message(answer: &str) -> Json {
     let data = answer
@@ -85,26 +110,112 @@ fn http_capabilities() -> Json {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn both_mcp_paths_answer_initialize_whatever_the_host() {
+async fn both_mcp_paths_answer_initialize_on_a_loopback_host() {
     let (_sandbox, server) = server();
-    let (mcp, _sessions) = service(&server);
+    let (mcp, _sessions) = service(&server, BOUND);
     for (path, host) in [
         ("/mcp", "127.0.0.1:8766"),
+        ("/mcp/", "localhost:8766"),
+        ("/mcp", "[::1]:8766"),
         ("/mcp/", "localhost"),
-        ("/mcp", "evil.example"),
+        ("/mcp", "LOCALHOST:8766"),
+        ("/mcp", "127.0.0.1:9999"),
     ] {
         let answer = exchange(routed(mcp.clone()), &post(path, host, INITIALIZE)).await;
-        assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+        assert_initialized(&answer, host);
         let result = &message(&answer)["result"];
         assert_eq!(result["capabilities"], http_capabilities(), "{path} {host}");
-        assert_eq!(result["protocolVersion"], "2025-06-18");
+    }
+}
+
+// The DNS-rebinding guard (deviation): the reference serves any Host.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_host_that_is_not_an_allowed_name_is_refused() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    for host in [
+        "evil.example",
+        "evil.example:8766",
+        "localhost.evil.example:8766",
+        "127.0.0.2:8766",
+    ] {
+        let answer = exchange(routed(mcp.clone()), &post("/mcp", host, INITIALIZE)).await;
+        assert_eq!(status_and_body(&answer), HOST_REFUSED, "{host}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_bind_literal_is_an_allowed_host() {
+    let (_sandbox, server) = server();
+    let mapped = IpAddr::V6(Ipv4Addr::LOCALHOST.to_ipv6_mapped());
+    for (bound, host) in [
+        (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), "127.0.0.2:8766"),
+        (mapped, "[::ffff:127.0.0.1]:8766"),
+    ] {
+        let (mcp, _sessions) = service(&server, bound);
+        let answer = exchange(routed(mcp), &post("/mcp", host, INITIALIZE)).await;
+        assert_initialized(&answer, host);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_malformed_host_keeps_its_bad_request_answer() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let answer = exchange(routed(mcp), &post("/mcp", "bad host!", INITIALIZE)).await;
+    let refused = (
+        "HTTP/1.1 400 Bad Request",
+        "Bad Request: Invalid Host header",
+    );
+    assert_eq!(status_and_body(&answer), refused, "{answer}");
+    assert!(
+        answer.contains("content-type: text/plain; charset=utf-8\r\n"),
+        "{answer}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_loopback_origin_or_no_origin_is_served() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let plain = post("/mcp", "127.0.0.1:8766", INITIALIZE);
+    let answer = exchange(routed(mcp.clone()), &plain).await;
+    assert_initialized(&answer, "no Origin");
+    for origin in [
+        "http://127.0.0.1:8766",
+        "https://localhost",
+        "http://localhost:3000",
+        "http://[::1]:8766",
+    ] {
+        let answer = exchange(routed(mcp.clone()), &with_origin(&plain, origin)).await;
+        assert_initialized(&answer, origin);
+    }
+}
+
+// The DNS-rebinding guard (deviation): the reference serves any Origin.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_origin_that_is_not_loopback_is_refused() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let plain = post("/mcp", "127.0.0.1:8766", INITIALIZE);
+    let not_allowed = "Forbidden: Origin header is not allowed";
+    for (origin, body) in [
+        ("http://evil.example", not_allowed),
+        ("http://localhost.evil.example:8766", not_allowed),
+        ("ftp://localhost:8766", not_allowed),
+        ("null", not_allowed),
+        ("evil.example", "Forbidden: Invalid Origin header"),
+    ] {
+        let answer = exchange(routed(mcp.clone()), &with_origin(&plain, origin)).await;
+        let refused = ("HTTP/1.1 403 Forbidden", body);
+        assert_eq!(status_and_body(&answer), refused, "{origin}");
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn another_path_is_not_found_as_the_reference_answers() {
     let (_sandbox, server) = server();
-    let (mcp, _sessions) = service(&server);
+    let (mcp, _sessions) = service(&server, BOUND);
     for path in ["/", "/other", "/mcpx", "/mcp/x"] {
         let request =
             format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
@@ -127,7 +238,7 @@ fn panicked(_request: Request<Incoming>) -> Ready<Result<Response<Full<Bytes>>, 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_panic_in_one_connection_leaves_the_next_served() {
     let (_sandbox, server) = server();
-    let (mcp, _sessions) = service(&server);
+    let (mcp, _sessions) = service(&server, BOUND);
     let panicking = service_fn(panicked);
     let request = "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
     assert_eq!(exchange(panicking, request).await, "");

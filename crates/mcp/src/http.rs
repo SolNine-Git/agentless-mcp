@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::future::{Future, pending, poll_fn};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -39,6 +39,17 @@ pub(crate) type Answer = Response<AnswerBody>;
 const PATHS: [&str; 2] = ["/mcp", "/mcp/"];
 const NOT_FOUND: &str = "Not Found";
 const PLAIN_TEXT: &str = "text/plain; charset=utf-8";
+// rmcp matches a Host entry that has no port against every port, so a loopback name passes with
+// any port.
+const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "[::1]"];
+const LOOPBACK_ORIGINS: [&str; 6] = [
+    "http://localhost:*",
+    "https://localhost:*",
+    "http://127.0.0.1:*",
+    "https://127.0.0.1:*",
+    "http://[::1]:*",
+    "https://[::1]:*",
+];
 
 // Why the server stopped accepting: the number of the signal that stopped it, or a due restart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,7 +115,7 @@ pub(crate) async fn serve(
         over_http: true,
         ..server
     };
-    let (mcp, sessions) = service(&server);
+    let (mcp, sessions) = service(&server, address.ip());
     let graceful = GracefulShutdown::new();
     let stop = accepted(
         &listener,
@@ -128,11 +139,13 @@ pub(crate) async fn serve(
     }
 }
 
-// The rmcp service over clones of `server`, with no Host check (the reference has none) and no
-// SSE keep-alive or priming event (the reference sends neither), and the cancel of its sessions.
-pub(crate) fn service(server: &Server) -> (Mcp, impl FnOnce()) {
+// The rmcp service over clones of `server`, and the cancel of its sessions. It refuses a Host
+// or Origin that is not loopback, and sends no SSE keep-alive or priming event (as the reference).
+pub(crate) fn service(server: &Server, bound: IpAddr) -> (Mcp, impl FnOnce()) {
+    let hosts = LOOPBACK_HOSTS.map(String::from).into_iter();
     let config = StreamableHttpServerConfig::default()
-        .disable_allowed_hosts()
+        .with_allowed_hosts(hosts.chain([bind_literal(bound)]))
+        .with_allowed_origins(LOOPBACK_ORIGINS)
         .with_sse_keep_alive(None)
         .with_sse_retry(None);
     let sessions = config.cancellation_token.clone();
@@ -143,6 +156,14 @@ pub(crate) fn service(server: &Server) -> (Mcp, impl FnOnce()) {
         config,
     );
     (mcp, move || sessions.cancel())
+}
+
+// The bound address as a Host names it: an IPv6 literal in brackets.
+fn bind_literal(bound: IpAddr) -> String {
+    match bound {
+        IpAddr::V4(ip) => ip.to_string(),
+        IpAddr::V6(ip) => format!("[{ip}]"),
+    }
 }
 
 // Accepts connections until the stop finishes, and returns why it stopped. A failed accept is
