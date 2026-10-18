@@ -1,0 +1,36 @@
+# The wheel of the Rust binaries. It lives here while the root pyproject.toml builds the Python
+# reference. Run maturin in this directory and never with -m: -m selects the root pyproject.toml.
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[project]
+name = "agentless-mcp"
+dynamic = ["version"]
+description = "Model-free tree-sitter repo-map, localization and patch-validation machinery for agents"
+readme = "../README.md"
+authors = [
+    { name = "Dallas", email = "dmarlow@tuta.io" }
+]
+license = "MIT"
+license-files = ["notices/**/*"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Rust",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Repository = "https://github.com/SolNine-Git/agentless-mcp"
+
+# The binary holds the server and the tiktoken counter. The empty extras keep the install commands of
+# the Python releases, such as agentless-mcp[mcp,tokens], free of a missing-extra warning.
+[project.optional-dependencies]
+mcp = []
+tokens = []
+
+[tool.maturin]
+manifest-path = "../crates/agentless/Cargo.toml"
+bindings = "bin"

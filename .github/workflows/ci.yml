@@ -335,13 +335,7 @@ jobs:
       # The committed graph fixtures come from Linux. Another platform rewrites them with the reference.
       - name: Graph fixtures from the reference on this platform
         if: runner.os != 'Linux'
-        run: |
-          reference="$RUNNER_TEMP/reference"
-          mkdir -p "$reference/home" "$reference/cache"
-          UV_PROJECT_ENVIRONMENT="$reference/venv" uv sync --frozen --no-dev
-          HOME="$reference/home" XDG_CACHE_HOME="$reference/cache" PYTHONDONTWRITEBYTECODE=1 \
-            "$reference/venv/bin/python" scripts/graph_fixtures.py
-          git diff --stat -- crates/graph/fixtures
+        run: scripts/platform_graph_fixtures.sh "$RUNNER_TEMP/reference"
 
       - name: Test
         run: cargo insta test --check --workspace --test-runner nextest
