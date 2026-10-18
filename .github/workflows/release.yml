@@ -64,8 +64,13 @@ jobs:
 
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
-          tool: cargo-nextest@0.9.148,cargo-insta@1.49.0
+          tool: cargo-nextest@0.9.148
           fallback: none
+
+      # install-action holds no cargo-insta 1.49.0 binary for aarch64 Linux. A build with the crate's own
+      # lock gives every target the same pinned cargo-insta.
+      - name: cargo-insta
+        run: cargo install --locked cargo-insta@1.49.0
 
       - name: Install uv
         if: runner.os != 'Linux'
