@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::net::IpAddr;
 use std::path::Path;
 
 use io::testing::Tree;
@@ -65,13 +66,23 @@ fn env_for(run: &Value, root: &str) -> EnvConfig {
     EnvConfig::new(vars, Path::new(root).join("work"))
 }
 
-// The values of a parse in the fixture's form: a host that a name chose reads <LOOPBACK> once it
-// is checked to be loopback.
-fn parsed(args: &ServerArgs<RootsFile>, given: &[OsString], root: &str) -> Value {
+// A --host value that is not an IP literal goes to the platform resolver, and resolvers differ:
+// glibc reads 0127.0.0.1 as 87.0.0.1, and macOS reads it as a loopback address.
+fn resolves_a_name(run: &Value) -> bool {
+    let argv: Vec<&str> = run["argv"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(text)
+        .collect();
+    argv.windows(2)
+        .any(|pair| pair[0] == "--host" && pair[1].parse::<IpAddr>().is_err())
+}
+
+// The values of a parse in the fixture's form: a host that the resolver chose reads <LOOPBACK>
+// once it is checked to be loopback.
+fn parsed(args: &ServerArgs<RootsFile>, named: bool, root: &str) -> Value {
     let shown = |path: &Path| path.display().to_string().replace(root, SANDBOX);
-    let named = given
-        .iter()
-        .any(|arg| arg == "localhost" || arg == "LOCALHOST" || arg == "127.1");
     let (transport, host, port) = match args.transport {
         ServerTransport::Stdio => ("stdio", Value::Null, Value::Null),
         ServerTransport::Http { host, port } => {
@@ -106,7 +117,15 @@ fn each_server_command_line_parses_as_the_reference_says() {
     let layout: Vec<Value> = io::testing::cases(manifest, "server_args/parser", "layout");
     let runs: Vec<Value> = io::testing::cases(manifest, "server_args/parser", "runs");
     assert!(runs.len() > 100, "{} runs", runs.len());
+    let resolved = runs.iter().filter(|run| resolves_a_name(run)).count();
+    // 127.1, 0127.0.0.1, the empty name, localhost and LOCALHOST.
+    assert_eq!(resolved, 5, "runs whose --host the resolver reads");
     for run in runs {
+        let named = resolves_a_name(&run);
+        // The reference ran on glibc, and the macOS resolver reads some of these names differently.
+        if cfg!(target_os = "macos") && named {
+            continue;
+        }
         let (_tree, root) = sandbox(&layout);
         let argv: Vec<OsString> = run["argv"]
             .as_array()
@@ -125,7 +144,7 @@ fn each_server_command_line_parses_as_the_reference_says() {
             RootsFile::read(raw, &services).map_err(|error| error.to_string())
         });
         let (code, values) = match &outcome {
-            Ok(server) => (0, parsed(server, &argv, &root)),
+            Ok(server) => (0, parsed(server, named, &root)),
             Err(code) => (*code, Value::Null),
         };
         let shown = |bytes: &[u8]| String::from_utf8_lossy(bytes).replace(&root, SANDBOX);

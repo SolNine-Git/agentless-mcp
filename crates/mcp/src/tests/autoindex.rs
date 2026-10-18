@@ -43,8 +43,13 @@ struct Refused;
 
 impl Offload for Refused {
     fn start(&self, _job: Job) -> std::io::Result<()> {
-        Err(std::io::Error::from_raw_os_error(11))
+        Err(refused_spawn())
     }
+}
+
+// The error of a thread that the system refuses to start, as a spawn reports it.
+fn refused_spawn() -> std::io::Error {
+    std::io::Error::from_raw_os_error(libc::EAGAIN)
 }
 
 // The index of the tests: each run reports its start, waits for a release, then ends with the
@@ -267,8 +272,11 @@ fn a_refused_refresh_thread_fails_the_call_once() {
     let dir = json!({"operation": "dir"});
     let first = server.answer("read", dir.as_object().cloned());
     assert_eq!((first.text.as_str(), first.is_error), (UNPLANNED, true));
-    let detail = "unhandled error in an agentless-mcp tool call: read: the background index thread \
-                  did not start: Resource temporarily unavailable (os error 11)";
+    let detail = format!(
+        "unhandled error in an agentless-mcp tool call: read: the background index thread did \
+         not start: {}",
+        refused_spawn()
+    );
     assert_eq!(log.lines(), [detail]);
     let second = server.answer("read", dir.as_object().cloned());
     assert!(!second.is_error, "{}", second.text);

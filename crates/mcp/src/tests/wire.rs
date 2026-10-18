@@ -354,7 +354,7 @@ struct Refusing;
 
 impl Offload for Refusing {
     fn start(&self, _job: Job) -> std::io::Result<()> {
-        Err(std::io::Error::from_raw_os_error(11))
+        Err(std::io::Error::from_raw_os_error(libc::EAGAIN))
     }
 }
 
