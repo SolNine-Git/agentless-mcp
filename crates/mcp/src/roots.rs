@@ -22,7 +22,9 @@ const BOM: &[u8] = b"\xef\xbb\xbf";
 
 /// A `--roots-from` file: one repository path per line, read again when it changes.
 pub struct RootsFile {
+    // As the command line gave it, for every text; `opened` is where the reads go.
     path: PathBuf,
+    opened: PathBuf,
     anchor: Anchor,
     state: Mutex<Listed>,
 }
@@ -90,27 +92,32 @@ impl Anchor {
 }
 
 impl RootsFile {
-    /// Reads the roots file at `path`. A line resolves against the home and the start-up
-    /// directory of `services`.
+    /// Reads the roots file that the command line names as `raw`. A relative file path, and each
+    /// line, resolve against the start-up directory of `services`; a line's `~` against its home.
     ///
     /// # Errors
     ///
     /// Returns [`RootsFileError`] when the file cannot be read or is not UTF-8 text.
-    pub fn read(path: &Path, services: &Services) -> Result<RootsFile, RootsFileError> {
-        let raw = path.to_string_lossy().into_owned();
+    pub fn read(raw: &str, services: &Services) -> Result<RootsFile, RootsFileError> {
         let anchor = Anchor::of(services);
-        let read = listed(path, &anchor).map_err(|error| match error {
+        let path = PathBuf::from(raw);
+        let opened = match &anchor.cwd {
+            Some(cwd) if path.is_relative() => cwd.join(&path),
+            _ => path.clone(),
+        };
+        let read = listed(&opened, &path, &anchor).map_err(|error| match error {
             ReadError::Os(error) | ReadError::Line(error) => RootsFileError::Unreadable {
-                raw: raw.clone(),
+                raw: raw.to_owned(),
                 error,
             },
             ReadError::Decode(error) => RootsFileError::NotUtf8 {
-                raw: raw.clone(),
+                raw: raw.to_owned(),
                 error,
             },
         })?;
         Ok(RootsFile {
-            path: path.to_path_buf(),
+            path,
+            opened,
             anchor,
             state: Mutex::new(read),
         })
@@ -128,11 +135,11 @@ impl RootsFile {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let key = stat_key(&self.path).map_err(|error| self.unreadable(&error))?;
+        let key = stat_key(&self.opened).map_err(|error| self.unreadable(&error))?;
         if key == state.key {
             return Ok(state.roots.clone());
         }
-        let read = listed(&self.path, &self.anchor).map_err(|error| match error {
+        let read = listed(&self.opened, &self.path, &self.anchor).map_err(|error| match error {
             ReadError::Os(error) | ReadError::Decode(error) => self.refusal(&error),
             ReadError::Line(error) => Failure::Unplanned(error),
         })?;
@@ -160,11 +167,11 @@ fn stat_key(path: &Path) -> OsResult<(i128, u64)> {
 }
 
 // The stat comes before the read, so a write between the two costs one more read, never a stale
-// list.
-fn listed(path: &Path, anchor: &Anchor) -> Result<Listed, ReadError> {
-    let os = |error: OsError| ReadError::Os(io::os_error_text(&error, path));
-    let key = stat_key(path).map_err(os)?;
-    let bytes = fs::read(path).map_err(os)?;
+// list. An error names the file as the command line gave it.
+fn listed(opened: &Path, given: &Path, anchor: &Anchor) -> Result<Listed, ReadError> {
+    let os = |error: OsError| ReadError::Os(io::os_error_text(&error, given));
+    let key = stat_key(opened).map_err(os)?;
+    let bytes = fs::read(opened).map_err(os)?;
     let body = bytes.strip_prefix(BOM).unwrap_or(&bytes);
     let text = io::decode_text(body.to_vec())
         .map_err(|error| ReadError::Decode(io::codec_text(body, error)))?;

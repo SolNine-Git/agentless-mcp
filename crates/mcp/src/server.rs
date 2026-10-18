@@ -1,7 +1,7 @@
 //! The server: its configuration, the ports that the transports fill, and the state that every
 //! call of one server shares.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use app::{Services, Session};
@@ -31,7 +31,14 @@ pub struct ServerConfig {
 /// The background index: armed after a call opens its repository, before the operation runs.
 pub trait Arming: Send + Sync {
     /// Starts the refresh of `session`'s cache when it needs one.
-    fn arm(&self, session: &Session);
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason when the operating system refuses the refresh's thread.
+    fn arm(&self, session: &Session) -> Result<(), String>;
+
+    /// Returns true while a refresh of the cache at `database` runs.
+    fn refreshing(&self, database: &Path) -> bool;
 }
 
 /// The server log: a warning of an operation, or the detail of a failure the server did not plan
@@ -54,15 +61,17 @@ pub struct Ports {
 pub struct Server {
     pub(crate) inner: Arc<Inner>,
     pub(crate) gate: Arc<Semaphore>,
+    pub(crate) permits: usize,
     pub(crate) offload: Arc<dyn Offload>,
     pub(crate) tools: Arc<Vec<rmcp::model::Tool>>,
+    pub(crate) over_http: bool,
 }
 
 impl Server {
     /// Returns the server that `config` describes, on `services` and `ports`.
     #[must_use]
     pub fn new(config: ServerConfig, services: Arc<Services>, ports: Ports) -> Server {
-        Server::with_offload(config, services, ports, Arc::new(Threads))
+        Server::with_offload(config, services, ports, Arc::new(Threads("mcp-call")))
     }
 
     // The server whose calls start their work through `offload`.
@@ -83,8 +92,10 @@ impl Server {
         Server {
             inner: Arc::new(inner),
             gate: Arc::new(Semaphore::new(config.max_concurrency)),
+            permits: config.max_concurrency,
             offload,
             tools: Arc::new(listed_tools()),
+            over_http: false,
         }
     }
 }

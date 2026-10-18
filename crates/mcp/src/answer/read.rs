@@ -44,7 +44,7 @@ fn slice(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure
     let outcome = app::slice(&context.reading, &request);
     context.logged(&outcome.diagnostics);
     let view = outcome.value?;
-    Ok(tool_text(&context.receipt, ToolForm::Slice(&view)))
+    Ok(context.rendered(|receipt| tool_text(receipt, ToolForm::Slice(&view))))
 }
 
 // A slice is bounded by its line ranges or asks for the whole file, never both or neither.

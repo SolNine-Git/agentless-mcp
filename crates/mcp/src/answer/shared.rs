@@ -2,7 +2,7 @@
 //! `capabilities`.
 
 use app::ops::limits::{DEFAULT_HISTORY_BUDGET, DEFAULT_HISTORY_LIMIT, DEFAULT_REFS_LIMIT};
-use app::{HistoryRequest, RefsRequest, Roots, Session};
+use app::{HistoryRequest, RefsRequest, Roots};
 
 use super::Context;
 use crate::arguments::Arguments;
@@ -28,9 +28,11 @@ pub(super) fn history(context: &Context<'_>, arguments: &Arguments) -> Result<St
     context.viewed(app::history(services, &context.reading, &request))
 }
 
-// The report names this server's roots; it never asks the client for its own.
-pub(super) fn capabilities(context: &Context<'_>, session: &Session) -> Result<String, Failure> {
-    let mut report = app::capabilities(session)?;
+// The report names this server's roots; it never asks the client for its own. Its cache receipt
+// reads as of now, as the answer's receipt does.
+pub(super) fn capabilities(context: &Context<'_>) -> Result<String, Failure> {
+    let mut report = app::capabilities(context.session)?;
+    report.cache.receipt = context.cache_field();
     report.roots = Roots {
         configured: Some(
             context
@@ -41,5 +43,5 @@ pub(super) fn capabilities(context: &Context<'_>, session: &Session) -> Result<S
         ),
         client: Vec::new(),
     };
-    Ok(render::capabilities_text(&context.receipt, &report))
+    Ok(context.rendered(|receipt| render::capabilities_text(receipt, &report)))
 }

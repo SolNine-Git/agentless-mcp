@@ -16,8 +16,8 @@ use std::os::unix::ffi::OsStrExt;
 use app::IntArg;
 use app::ops::{Arity, Op};
 
-pub(crate) use declared::{TEXT, action, float_text, help_action, int_value};
-pub(crate) use parse::{parse, parse_alone};
+pub(crate) use declared::{TEXT, action, float_text, float_value, help_action, int_value};
+pub(crate) use parse::{error, parse, parse_alone, parse_alone_checked};
 
 // One command-line argument: its text for matching and messages, and its bytes for paths.
 #[derive(Clone, Debug)]
@@ -119,10 +119,16 @@ pub(crate) enum Kind {
     },
     Positional(Arity),
     Commands(&'static [Command]),
+    // Prints its text, as the help action prints the help, and ends the parse.
+    Version(&'static str),
 }
 
 // Turns an option's text into its value, or gives the message of an argument error.
 pub(crate) type Convert = fn(&Arg) -> Result<Value, String>;
+
+// A further conversion of a converted value, by the destination of its action. A parse runs it at
+// the action's place in the command line, so its refusal is an argument error in order.
+pub(crate) type Check<'c> = dyn FnMut(&'static str, Value) -> Result<Value, String> + 'c;
 
 pub(crate) struct Command {
     pub(crate) name: &'static str,

@@ -99,7 +99,7 @@ pub(crate) fn int_value(arg: &Arg) -> Result<Value, String> {
 }
 
 // A real number is checked here and kept as its text; the step reads it with `float_text`.
-fn float_value(arg: &Arg) -> Result<Value, String> {
+pub(crate) fn float_value(arg: &Arg) -> Result<Value, String> {
     match float_text(&arg.text) {
         Some(_) => Ok(Value::Text(arg.clone())),
         None => Err(invalid("float", arg)),

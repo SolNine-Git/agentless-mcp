@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use text::CodePointString;
 
-use super::help::{help_text, usage_text};
+use super::help::{help_text, usage_text, version_text};
 use super::nargs::{Nargs, match_partial, strips_separator};
-use super::{Arg, Chosen, Command, Exit, Form, Kind, Namespace, Parsed, Parser, Value};
+use super::{Arg, Check, Chosen, Command, Exit, Form, Kind, Namespace, Parsed, Parser, Value};
 
 // One reading of an option argument: the action it names (`None` for an unknown option), the
 // option string, whether `=` gave the value, and the value written in the same argument.
@@ -25,7 +25,7 @@ struct Known {
 }
 
 pub(crate) fn parse(top: &Parser, args: &[Arg], width: isize) -> Result<Parsed, Exit> {
-    let known = parse_known(top, args, width)?;
+    let known = parse_known(top, args, width, &mut |_, value| Ok(value))?;
     let chosen = known.chosen.expect("the top parser requires a command");
     no_extras(top, &known.extras, width)?;
     Ok(Parsed {
@@ -36,7 +36,17 @@ pub(crate) fn parse(top: &Parser, args: &[Arg], width: isize) -> Result<Parsed, 
 
 // The values of a parser that has no commands.
 pub(crate) fn parse_alone(parser: &Parser, args: &[Arg], width: isize) -> Result<Namespace, Exit> {
-    let known = parse_known(parser, args, width)?;
+    parse_alone_checked(parser, args, width, &mut |_, value| Ok(value))
+}
+
+// The values of a parser that has no commands, each value option's value through `check` too.
+pub(crate) fn parse_alone_checked(
+    parser: &Parser,
+    args: &[Arg],
+    width: isize,
+    check: &mut Check<'_>,
+) -> Result<Namespace, Exit> {
+    let known = parse_known(parser, args, width, check)?;
     no_extras(parser, &known.extras, width)?;
     Ok(known.namespace)
 }
@@ -49,7 +59,12 @@ fn no_extras(parser: &Parser, extras: &[String], width: isize) -> Result<(), Exi
     Err(error(parser, width, &message))
 }
 
-fn parse_known(parser: &Parser, args: &[Arg], width: isize) -> Result<Known, Exit> {
+fn parse_known(
+    parser: &Parser,
+    args: &[Arg],
+    width: isize,
+    check: &mut Check<'_>,
+) -> Result<Known, Exit> {
     let (pattern, options) = classify(parser, args);
     let positionals = (0..parser.actions.len())
         .filter(|&index| parser.actions[index].strings.is_empty())
@@ -67,6 +82,7 @@ fn parse_known(parser: &Parser, args: &[Arg], width: isize) -> Result<Known, Exi
         extras: Vec::new(),
         sub_extras: Vec::new(),
         chosen: None,
+        check,
     };
     run.consume_all()?;
     run.check_required()?;
@@ -199,6 +215,7 @@ struct Run<'p> {
     extras: Vec<String>,
     sub_extras: Vec<String>,
     chosen: Option<Chosen>,
+    check: &'p mut Check<'p>,
 }
 
 impl Run<'_> {
@@ -365,7 +382,7 @@ impl Run<'_> {
             }
         }
         match (&action.kind, value) {
-            (Kind::Help, _) => Err(Exit::Help(help_text(self.parser, self.width))),
+            (kind @ (Kind::Help | Kind::Version(_)), _) => Err(Exit::Help(self.printed(kind))),
             (Kind::Commands(commands), _) => self.choose(commands, values),
             (Kind::Value { repeat: true, .. }, Some(Value::Text(arg))) => {
                 self.namespace.append(action.dest, arg);
@@ -379,16 +396,25 @@ impl Run<'_> {
         }
     }
 
-    // The value of the action at `index`: its conversion, then its choices. An optional
-    // positional that took no argument has none.
-    fn convert(&self, index: usize, values: &[Arg]) -> Result<Option<Value>, Exit> {
-        let (value, choices) = match &self.parser.actions[index].kind {
-            Kind::Help | Kind::Flag => return Ok(Some(Value::Flag)),
+    // The text that a help or a version action prints.
+    fn printed(&self, kind: &Kind) -> String {
+        match kind {
+            Kind::Version(version) => version_text(version, self.width),
+            _ => help_text(self.parser, self.width),
+        }
+    }
+
+    // The value of the action at `index`: its conversion and the parse's check, then its
+    // choices. An optional positional that took no argument has none.
+    fn convert(&mut self, index: usize, values: &[Arg]) -> Result<Option<Value>, Exit> {
+        let action = &self.parser.actions[index];
+        let (value, choices) = match &action.kind {
+            Kind::Help | Kind::Flag | Kind::Version(_) => return Ok(Some(Value::Flag)),
             Kind::Positional(_) => return Ok(positional_value(index, self, values)),
             Kind::Value {
                 convert, choices, ..
             } => {
-                let converted = convert(&values[0]);
+                let converted = convert(&values[0]).and_then(|v| (self.check)(action.dest, v));
                 (
                     converted.map_err(|m| self.action_error(index, &m))?,
                     choices.to_vec(),
@@ -415,7 +441,7 @@ impl Run<'_> {
         let Some(command) = commands.iter().find(|c| c.name == values[0].text) else {
             return Ok(());
         };
-        let known = parse_known(&command.parser(), &values[1..], self.width)?;
+        let known = parse_known(&command.parser(), &values[1..], self.width, self.check)?;
         self.sub_extras = known.extras;
         self.chosen = Some(chosen(command, known.namespace, known.chosen));
         Ok(())
@@ -498,7 +524,8 @@ fn chosen(command: &'static Command, namespace: Namespace, nested: Option<Chosen
 
 type Taken = (Vec<(usize, Vec<Arg>)>, usize);
 
-fn error(parser: &Parser, width: isize, message: &str) -> Exit {
+// The usage error of `parser`: its usage, then the message after the program name.
+pub(crate) fn error(parser: &Parser, width: isize, message: &str) -> Exit {
     let usage = usage_text(parser, width);
     Exit::Usage(format!("{usage}{}: error: {message}\n", parser.prog))
 }

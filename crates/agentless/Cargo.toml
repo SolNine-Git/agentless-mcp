@@ -1,6 +1,6 @@
 [package]
 name = "agentless"
-description = "The agentless-mcp binary: it reads the environment once and sends the command line to the command line crate or to the erosion hook."
+description = "The agentless-mcp binary and the agentless-mcp-server door: it reads the environment once and sends the command line to the MCP server, to a hook, to the gate report, or to the command line crate."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,11 +15,19 @@ workspace = true
 name = "agentless-mcp"
 path = "src/main.rs"
 
+[[bin]]
+name = "agentless-mcp-server"
+path = "src/door.rs"
+
 [dependencies]
 app = { path = "../app" }
 cli = { path = "../cli" }
 hook = { path = "../hook" }
 io = { path = "../io" }
+mcp = { path = "../mcp" }
+signal-hook.workspace = true
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }
+json = { path = "../json" }
+serde_json.workspace = true

@@ -1,4 +1,22 @@
 pub mod mcp
+pub enum mcp::Ended
+pub mcp::Ended::Closed
+pub mcp::Ended::Failed(alloc::string::String)
+pub mcp::Ended::Relaunch
+pub mcp::Ended::Signalled(i32)
+impl core::cmp::Eq for mcp::Ended
+impl core::cmp::PartialEq for mcp::Ended
+pub fn mcp::Ended::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Ended
+pub fn mcp::Ended::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for mcp::Ended
+impl core::marker::Freeze for mcp::Ended
+impl core::marker::Send for mcp::Ended
+impl core::marker::Sync for mcp::Ended
+impl core::marker::Unpin for mcp::Ended
+impl core::marker::UnsafeUnpin for mcp::Ended
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Ended
+impl core::panic::unwind_safe::UnwindSafe for mcp::Ended
 pub enum mcp::RootsFileError
 pub mcp::RootsFileError::NotUtf8
 pub mcp::RootsFileError::NotUtf8::error: alloc::string::String
@@ -18,6 +36,25 @@ impl core::marker::Unpin for mcp::RootsFileError
 impl core::marker::UnsafeUnpin for mcp::RootsFileError
 impl core::panic::unwind_safe::RefUnwindSafe for mcp::RootsFileError
 impl core::panic::unwind_safe::UnwindSafe for mcp::RootsFileError
+pub enum mcp::Transport
+pub mcp::Transport::Http(core::net::socket_addr::SocketAddr)
+pub mcp::Transport::Stdio
+impl core::clone::Clone for mcp::Transport
+pub fn mcp::Transport::clone(&self) -> Self
+impl core::cmp::Eq for mcp::Transport
+impl core::cmp::PartialEq for mcp::Transport
+pub fn mcp::Transport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Transport
+pub fn mcp::Transport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for mcp::Transport
+impl core::marker::StructuralPartialEq for mcp::Transport
+impl core::marker::Freeze for mcp::Transport
+impl core::marker::Send for mcp::Transport
+impl core::marker::Sync for mcp::Transport
+impl core::marker::Unpin for mcp::Transport
+impl core::marker::UnsafeUnpin for mcp::Transport
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Transport
+impl core::panic::unwind_safe::UnwindSafe for mcp::Transport
 pub struct mcp::Ports
 pub mcp::Ports::arming: alloc::rcs::arc::Arc<dyn mcp::Arming>
 pub mcp::Ports::log: alloc::rcs::arc::Arc<dyn mcp::Log>
@@ -28,10 +65,31 @@ impl core::marker::Unpin for mcp::Ports
 impl core::marker::UnsafeUnpin for mcp::Ports
 impl !core::panic::unwind_safe::RefUnwindSafe for mcp::Ports
 impl !core::panic::unwind_safe::UnwindSafe for mcp::Ports
+pub struct mcp::Relaunch
+pub mcp::Relaunch::args: alloc::vec::Vec<std::ffi::os_str::OsString>
+pub mcp::Relaunch::argv0: std::ffi::os_str::OsString
+pub mcp::Relaunch::program: std::path::PathBuf
+impl mcp::Relaunch
+pub fn mcp::Relaunch::exec(&self) -> alloc::string::String
+impl core::clone::Clone for mcp::Relaunch
+pub fn mcp::Relaunch::clone(&self) -> Self
+impl core::cmp::Eq for mcp::Relaunch
+impl core::cmp::PartialEq for mcp::Relaunch
+pub fn mcp::Relaunch::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Relaunch
+pub fn mcp::Relaunch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for mcp::Relaunch
+impl core::marker::Freeze for mcp::Relaunch
+impl core::marker::Send for mcp::Relaunch
+impl core::marker::Sync for mcp::Relaunch
+impl core::marker::Unpin for mcp::Relaunch
+impl core::marker::UnsafeUnpin for mcp::Relaunch
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Relaunch
+impl core::panic::unwind_safe::UnwindSafe for mcp::Relaunch
 pub struct mcp::RootsFile
 impl mcp::RootsFile
 pub fn mcp::RootsFile::path(&self) -> &std::path::Path
-pub fn mcp::RootsFile::read(&std::path::Path, &app::env::Services) -> core::result::Result<mcp::RootsFile, mcp::RootsFileError>
+pub fn mcp::RootsFile::read(&str, &app::env::Services) -> core::result::Result<mcp::RootsFile, mcp::RootsFileError>
 impl !core::marker::Freeze for mcp::RootsFile
 impl core::marker::Send for mcp::RootsFile
 impl core::marker::Sync for mcp::RootsFile
@@ -76,7 +134,22 @@ impl core::marker::Unpin for mcp::ServerConfig
 impl core::marker::UnsafeUnpin for mcp::ServerConfig
 impl core::panic::unwind_safe::RefUnwindSafe for mcp::ServerConfig
 impl core::panic::unwind_safe::UnwindSafe for mcp::ServerConfig
+pub struct mcp::Start
+pub mcp::Start::config: mcp::ServerConfig
+pub mcp::Start::no_auto_index: bool
+pub mcp::Start::no_auto_restart: bool
+pub mcp::Start::relaunch: core::option::Option<mcp::Relaunch>
+pub mcp::Start::transport: mcp::Transport
+impl core::marker::Freeze for mcp::Start
+impl core::marker::Send for mcp::Start
+impl core::marker::Sync for mcp::Start
+impl core::marker::Unpin for mcp::Start
+impl core::marker::UnsafeUnpin for mcp::Start
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Start
+impl core::panic::unwind_safe::UnwindSafe for mcp::Start
 pub trait mcp::Arming: core::marker::Send + core::marker::Sync
-pub fn mcp::Arming::arm(&self, &app::tags::Session)
+pub fn mcp::Arming::arm(&self, &app::tags::Session) -> core::result::Result<(), alloc::string::String>
+pub fn mcp::Arming::refreshing(&self, &std::path::Path) -> bool
 pub trait mcp::Log: core::marker::Send + core::marker::Sync
 pub fn mcp::Log::line(&self, &str)
+pub fn mcp::serve(mcp::Start, &app::env::EnvConfig, alloc::rcs::arc::Arc<app::env::Services>) -> mcp::Ended

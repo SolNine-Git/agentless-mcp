@@ -1,4 +1,7 @@
-//! The agentless-mcp binary: one read of the environment, then a hook or the command line.
+//! The agentless-mcp binary: one read of the environment, then the server door, a hook or the
+//! command line.
+
+mod server;
 
 use std::ffi::OsString;
 use std::io;
@@ -14,12 +17,17 @@ static PANIC_LINE: OnceLock<String> = OnceLock::new();
 fn main() -> ExitCode {
     // Before any thread starts: a write past the file size limit is then an error, not a death.
     ::io::catch_file_size_signal();
-    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    let mut command_line = std::env::args_os();
+    let program = command_line.next().unwrap_or_default();
+    let args: Vec<OsString> = command_line.collect();
     let env = match std::env::current_dir() {
         Ok(cwd) => EnvConfig::new(std::env::vars_os(), cwd),
         Err(error) => EnvConfig::with_unread_cwd(std::env::vars_os(), &error),
     };
     let services = Services::new(&env);
+    if server::invoked(&program) {
+        return ExitCode::from(server::run(program, &args, &env, services));
+    }
     ExitCode::from(dispatch(&args, &env, &services))
 }
 

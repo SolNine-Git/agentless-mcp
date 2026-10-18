@@ -1,6 +1,6 @@
 [package]
 name = "mcp"
-description = "The MCP server: the v2 tool list, the argument validation, the call dispatch, and the repository allowlist."
+description = "The MCP server: the v2 tool list, argument validation, the call dispatch, the repository allowlist, the stdio and HTTP transports, the background index, and the restart on upgrade."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,15 +14,20 @@ workspace = true
 [dependencies]
 app = { path = "../app" }
 facts = { path = "../facts" }
+git = { path = "../git" }
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 io = { path = "../io" }
 json = { path = "../json" }
 kernel = { path = "../kernel" }
 prompts = { path = "../prompts" }
 render = { path = "../render" }
-rmcp.workspace = true
+rmcp = { workspace = true, features = ["transport-io", "transport-streamable-http-server"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
+store = { path = "../store" }
 text = { path = "../text" }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["io-std", "net", "rt", "signal", "sync", "time"] }
 
 [dev-dependencies]
 io = { path = "../io", features = ["test-support"] }

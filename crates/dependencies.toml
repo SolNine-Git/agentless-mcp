@@ -5,6 +5,9 @@
 # every kind and target. `cargo xtask layers` checks it.
 direct = [
     "cc",
+    "http-body-util",
+    "hyper",
+    "hyper-util",
     "libc",
     "proc-macro2",
     "rmcp",
@@ -29,8 +32,10 @@ direct = [
 # `cargo xtask ground-truth` checks it after its clippy build, and names each package that the list lacks.
 build-time = [
     "anyhow",
+    "async-trait",
     "futures-macro",
     "getrandom",
+    "httparse",
     "iana-time-zone-haiku",
     "libc",
     "libsqlite3-sys",

@@ -56,7 +56,7 @@ fn overview(context: &Context<'_>, arguments: &Arguments) -> String {
         numbered: false,
     };
     let views = app::skeleton(&context.reading, &request);
-    tool_text(&context.receipt, ToolForm::Overview(&views))
+    context.rendered(|receipt| tool_text(receipt, ToolForm::Overview(&views)))
 }
 
 // The ids that missed follow the bodies, on the one channel a tool answer has.
@@ -68,5 +68,5 @@ fn expand(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failur
     let outcome = app::expand(&context.inner.services, &context.reading, &request);
     context.logged(&outcome.diagnostics);
     let result = outcome.value?;
-    Ok(tool_text(&context.receipt, ToolForm::Expand(&result)))
+    Ok(context.rendered(|receipt| tool_text(receipt, ToolForm::Expand(&result))))
 }

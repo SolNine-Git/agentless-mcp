@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -18,8 +19,13 @@ struct Advancing {
 }
 
 impl Arming for Advancing {
-    fn arm(&self, _session: &Session) {
+    fn arm(&self, _session: &Session) -> Result<(), String> {
         self.clock.advance(self.by);
+        Ok(())
+    }
+
+    fn refreshing(&self, _database: &Path) -> bool {
+        false
     }
 }
 

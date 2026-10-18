@@ -116,12 +116,12 @@ async fn tools_list_is_the_reference_surface() {
     assert_eq!(line, want.to_string());
 }
 
-// The capabilities and the server name are the reference's; the version is this build's, and the
-// protocol version echoes each one the reference knows, else falls back to the newest.
+// The reference's capabilities less logging (D2) and server name; this build's version; each
+// protocol version the reference knows echoes, and any other falls back to the newest.
 #[tokio::test(flavor = "multi_thread")]
 async fn initialize_answers_with_the_reference_capabilities() {
     let (_, sandbox) = probe();
-    let capabilities = json!({"experimental": {}, "logging": {}, "prompts": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}, "tools": {"listChanged": true}, "extensions": {"io.modelcontextprotocol/ui": {}}});
+    let capabilities = json!({"experimental": {}, "prompts": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}, "tools": {"listChanged": true}, "extensions": {"io.modelcontextprotocol/ui": {}}});
     for (asked, answered) in [
         ("2024-11-05", "2024-11-05"),
         ("2025-03-26", "2025-03-26"),
@@ -185,7 +185,7 @@ async fn the_protocol_answers_are_the_reference_answers() {
 }
 
 // The recorded deviations D2 and D3: rmcp answers these methods before any handler runs, or the
-// handler would have to name a deprecated rmcp type (logging/setLevel).
+// handler would name a deprecated rmcp type (logging/setLevel, which initialize leaves out).
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deviating_protocol_answers_are_the_recorded_ones() {
     let (_, sandbox) = probe();
@@ -247,7 +247,7 @@ struct Held {
 }
 
 impl Arming for Held {
-    fn arm(&self, _session: &Session) {
+    fn arm(&self, _session: &Session) -> Result<(), String> {
         self.started
             .lock()
             .expect("a sender")
@@ -255,6 +255,11 @@ impl Arming for Held {
             .expect("a test that waits");
         let release = self.release.lock().expect("a receiver");
         release.recv_timeout(READ_LIMIT).expect("a release");
+        Ok(())
+    }
+
+    fn refreshing(&self, _database: &Path) -> bool {
+        false
     }
 }
 
@@ -336,8 +341,12 @@ async fn a_cancelled_call_frees_its_permit_at_its_next_checkpoint() {
 struct Panicking;
 
 impl Arming for Panicking {
-    fn arm(&self, _session: &Session) {
+    fn arm(&self, _session: &Session) -> Result<(), String> {
         panic!("an injected panic on the call's thread");
+    }
+
+    fn refreshing(&self, _database: &Path) -> bool {
+        false
     }
 }
 

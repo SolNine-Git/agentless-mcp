@@ -1,17 +1,23 @@
+mod autoindex;
 mod calls;
 mod deadline;
+mod drain;
+mod http;
+mod restart;
 mod roots;
+mod serve;
 mod wire;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use app::{EnvConfig, Services, Session};
+use app::{EnvConfig, Services};
 use io::testing::{Identity, Tree, hermetic_env, run_git};
 
+use crate::autoindex::Disarmed;
 use crate::dispatch::{answered, deadline, prepared};
-use crate::{Arming, Log, Ports, RootsFile, Server, ServerConfig};
+use crate::{Log, Ports, RootsFile, Server, ServerConfig};
 
 const IDENTITY: Identity = Identity {
     name: "cli tests",
@@ -128,7 +134,10 @@ impl Sandbox {
         let resolved = |place: &str| io::resolve(&self.root.join(place)).expect("a root");
         let roots_files = files
             .iter()
-            .map(|file| RootsFile::read(&self.root.join(file), &services).expect("a roots file"))
+            .map(|file| {
+                let raw = self.root.join(file).display().to_string();
+                RootsFile::read(&raw, &services).expect("a roots file")
+            })
             .collect();
         let config = ServerConfig {
             roots: roots.iter().map(|root| resolved(root)).collect(),
@@ -181,12 +190,6 @@ fn keyed(text: &str) -> String {
     done
 }
 
-struct NoArming;
-
-impl Arming for NoArming {
-    fn arm(&self, _session: &Session) {}
-}
-
 // The log lines of a test server, kept for the assertions.
 #[derive(Default)]
 pub(crate) struct Kept {
@@ -210,7 +213,7 @@ impl Log for Kept {
 
 pub(crate) fn quiet_ports() -> Ports {
     Ports {
-        arming: Arc::new(NoArming),
+        arming: Arc::new(Disarmed),
         log: Arc::new(Kept::default()),
     }
 }

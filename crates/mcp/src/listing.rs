@@ -25,17 +25,17 @@ pub(crate) fn listed_tools() -> Vec<Tool> {
         .collect()
 }
 
-// The capabilities that the reference server advertises, with no client roots asked for.
-pub(crate) fn initialized() -> InitializeResult {
+// The reference's capabilities less logging, whose answer would name a deprecated rmcp type (D2).
+// Over HTTP the reference says that its prompt and resource lists can change.
+pub(crate) fn initialized(over_http: bool) -> InitializeResult {
     let mut capabilities = ServerCapabilities::default();
     capabilities.experimental = Some(BTreeMap::new());
-    capabilities.logging = Some(JsonObject::new());
     let mut prompts = PromptsCapability::default();
-    prompts.list_changed = Some(false);
+    prompts.list_changed = Some(over_http);
     capabilities.prompts = Some(prompts);
     let mut resources = ResourcesCapability::default();
     resources.subscribe = Some(false);
-    resources.list_changed = Some(false);
+    resources.list_changed = Some(over_http);
     capabilities.resources = Some(resources);
     let mut tools = ToolsCapability::default();
     tools.list_changed = Some(true);

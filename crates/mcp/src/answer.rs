@@ -16,11 +16,11 @@ use crate::dispatch::{Call, Inner};
 use crate::failure::Failure;
 use crate::roots::{Anchor, Selection, selected};
 
-// What an operation reads: the services, the session, the receipt and the logged warnings.
+// What an operation reads: the services, the session, its reading and the allowed roots.
 pub(crate) struct Context<'a> {
     pub(crate) inner: &'a Inner,
     pub(crate) reading: Reading<'a>,
-    pub(crate) receipt: Receipt<'a>,
+    pub(crate) session: &'a Session,
     pub(crate) allowed: &'a [PathBuf],
 }
 
@@ -32,12 +32,32 @@ impl Context<'_> {
     ) -> Result<String, Failure> {
         self.logged(&outcome.diagnostics);
         let view = outcome.value?;
-        Ok(render::text(&self.receipt, &view))
+        Ok(self.rendered(|receipt| render::text(receipt, &view)))
     }
 
     pub(crate) fn logged(&self, diagnostics: &[String]) {
         for line in diagnostics {
             self.inner.ports.log.line(line);
+        }
+    }
+
+    // The text that `render` makes under the receipt, whose cache field reads as of now.
+    pub(crate) fn rendered(&self, render: impl FnOnce(&Receipt<'_>) -> String) -> String {
+        let cache = self.cache_field();
+        let session = self.session;
+        let receipt = Receipt::new(&session.repo, &session.snapshot, &cache)
+            .counted_by(&*self.inner.services.counter);
+        render(&receipt)
+    }
+
+    // While a background refresh of the database runs, the cache field names it in place of the
+    // remediation, so it is read when the answer renders.
+    pub(crate) fn cache_field(&self) -> String {
+        let report = &self.session.cache;
+        let refreshing = self.inner.ports.arming.refreshing(&report.status.path);
+        match report.counts {
+            Ok(_) => report.status.receipt_while(refreshing),
+            Err(_) => report.receipt.clone(),
         }
     }
 }
@@ -50,16 +70,15 @@ pub(crate) fn answer(
 ) -> Result<String, Failure> {
     let allowed = inner.allowlist.current()?;
     let session = opened(inner, call, &allowed)?;
-    let services = &*inner.services;
     let reading = Reading::of(&session);
     let context = Context {
         inner,
         reading: deadline.map_or(reading, |deadline| reading.with_deadline(deadline)),
-        receipt: Receipt::of(&session).counted_by(&*services.counter),
+        session: &session,
         allowed: &allowed,
     };
     match call.tool.name {
-        "capabilities" => shared::capabilities(&context, &session),
+        "capabilities" => shared::capabilities(&context),
         "find_referencing_symbols" => shared::refs(&context, &call.arguments),
         "history" => shared::history(&context, &call.arguments),
         "orient" => orient::answer(&context, call),
@@ -72,7 +91,7 @@ pub(crate) fn answer(
 }
 
 // The session of the selected repository, armed for the background index unless the call bypasses
-// the cache.
+// the cache. A refresh thread that the system refuses fails the call, as the reference's does.
 fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Failure> {
     let services = &*inner.services;
     let hint = inner.allowlist.hint();
@@ -91,7 +110,11 @@ fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Fa
     }
     let session = opening.session.value?;
     if !no_cache {
-        inner.ports.arming.arm(&session);
+        inner
+            .ports
+            .arming
+            .arm(&session)
+            .map_err(Failure::Unplanned)?;
     }
     Ok(session)
 }

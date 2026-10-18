@@ -10,6 +10,7 @@ mod invocation;
 mod lint;
 mod patches;
 mod read;
+mod server_args;
 mod steps;
 mod validate;
 mod vote;
@@ -19,6 +20,7 @@ use std::io::{Read, Write};
 
 pub use exit::{EXIT_DOMAIN, cwd_failure_line, internal_error_line, refuse_hook, write_answer};
 pub use gate_report::{GateReportArgs, gate_report_args};
+pub use server_args::{ServerArgs, ServerTransport, server_args};
 
 /// The two output streams of one run: the answer on `out`, and notes and failures on `err`.
 pub struct Streams<'a> {

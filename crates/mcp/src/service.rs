@@ -51,7 +51,7 @@ impl ServerHandler for Server {
     }
 
     fn get_info(&self) -> InitializeResult {
-        initialized()
+        initialized(self.over_http)
     }
 
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
@@ -191,7 +191,7 @@ impl Server {
 }
 
 // The output of `work` when it finishes first, or `None` when `cancelled` finishes first.
-async fn first<T>(
+pub(crate) async fn first<T>(
     work: impl Future<Output = T>,
     mut cancelled: Pin<&mut impl Future<Output = ()>>,
 ) -> Option<T> {

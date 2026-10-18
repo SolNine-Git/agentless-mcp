@@ -18,9 +18,7 @@ pub(crate) fn help_text(parser: &Parser, width: isize) -> String {
     let layout = Layout::new(parser, width);
     let mut text = format!("{PREFIX}{}\n\n", usage_body(parser, width));
     if let Some(description) = parser.description {
-        let description = collapse(description);
-        let lines = wrap(&description, to_width(width.max(11)));
-        text.push_str(&lines.join("\n"));
+        text.push_str(&filled(description, width));
         text.push_str("\n\n");
     }
     for (title, indices) in [
@@ -39,6 +37,16 @@ pub(crate) fn help_text(parser: &Parser, width: isize) -> String {
         text.push('\n');
     }
     tidy(&text)
+}
+
+// The output of a version action: its text, filled to the width as a description is.
+pub(crate) fn version_text(version: &str, width: isize) -> String {
+    format!("{}\n", filled(version, width))
+}
+
+// A free text with its whitespace runs collapsed, filled to the width, at least 11 columns.
+fn filled(text: &str, width: isize) -> String {
+    wrap(&collapse(text), to_width(width.max(11))).join("\n")
 }
 
 // Runs of three or more line breaks become one blank line, and the text ends with one break.
@@ -187,7 +195,7 @@ fn mark_group(parts: &mut [String], span: Range<usize>, required: bool) {
 
 fn usage_part(action: &Action) -> String {
     match action.kind {
-        Kind::Help | Kind::Flag => action.strings[0].to_owned(),
+        Kind::Help | Kind::Flag | Kind::Version(_) => action.strings[0].to_owned(),
         Kind::Value { .. } => format!("{} {}", action.strings[0], metavar(action)),
         Kind::Positional(arity) => positional_part(arity, &metavar(action)),
         Kind::Commands(_) => format!("{} ...", metavar(action)),
@@ -206,7 +214,7 @@ fn positional_part(arity: Arity, metavar: &str) -> String {
 
 fn invocation(action: &Action) -> String {
     match action.kind {
-        Kind::Help | Kind::Flag => action.strings.join(", "),
+        Kind::Help | Kind::Flag | Kind::Version(_) => action.strings.join(", "),
         Kind::Value { .. } => format!("{} {}", action.strings.join(", "), metavar(action)),
         Kind::Positional(_) | Kind::Commands(_) => metavar(action),
     }
@@ -219,7 +227,7 @@ fn metavar(action: &Action) -> String {
     let choices: Vec<&str> = match action.kind {
         Kind::Value { choices, .. } => choices.to_vec(),
         Kind::Commands(commands) => commands.iter().map(|command| command.name).collect(),
-        Kind::Help | Kind::Flag | Kind::Positional(_) => Vec::new(),
+        Kind::Help | Kind::Flag | Kind::Version(_) | Kind::Positional(_) => Vec::new(),
     };
     if choices.is_empty() {
         action.dest.to_uppercase()
