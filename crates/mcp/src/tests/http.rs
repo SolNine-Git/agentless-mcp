@@ -1,6 +1,9 @@
 use std::convert::Infallible;
-use std::future::Ready;
+use std::future::{Ready, pending, poll_fn};
 use std::net::{IpAddr, Ipv4Addr};
+use std::pin::{Pin, pin};
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use http_body_util::Full;
@@ -9,11 +12,11 @@ use hyper::service::{HttpService, service_fn};
 use hyper::{Request, Response};
 use hyper_util::server::graceful::GracefulShutdown;
 use serde_json::{Value as Json, json};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, DuplexStream, ReadBuf};
 
-use super::Sandbox;
-use crate::Server;
-use crate::http::{connection, routed, service};
+use super::{Kept, Sandbox};
+use crate::http::{Stop, accepted, connection, routed, service, wound_down};
+use crate::{Ended, Server};
 
 const READ_LIMIT: Duration = Duration::from_secs(20);
 const BOUND: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
@@ -25,6 +28,9 @@ const INITIALIZE: &str = concat!(
     r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","#,
     r#""capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#,
 );
+const TOOLS_LIST: &str = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
+const HOST: &str = "127.0.0.1:8766";
+const KEEP_ALIVE: &str = ":\n\n";
 
 fn server() -> (Sandbox, Server) {
     let sandbox = Sandbox::new();
@@ -95,6 +101,47 @@ fn message(answer: &str) -> Json {
         .find_map(|line| line.strip_prefix("data: "))
         .unwrap_or_else(|| panic!("no event data: {answer}"));
     serde_json::from_str(data).expect("a JSON message")
+}
+
+// The session that an initialize answer opened.
+fn session_of(answer: &str) -> String {
+    let id = answer
+        .lines()
+        .find_map(|line| line.strip_prefix("mcp-session-id: "))
+        .unwrap_or_else(|| panic!("no session id: {answer}"));
+    id.to_owned()
+}
+
+fn in_session(request: &str, session: &str) -> String {
+    let headers = format!("\r\nmcp-session-id: {session}\r\nmcp-protocol-version: 2025-06-18\r\n");
+    request.replacen("\r\n", &headers, 1)
+}
+
+// A session opened by initialize on its own connection.
+async fn opened(mcp: &crate::http::Mcp) -> String {
+    let answer = exchange(routed(mcp.clone()), &post("/mcp", HOST, INITIALIZE)).await;
+    assert_initialized(&answer, "initialize");
+    session_of(&answer)
+}
+
+// The bytes the server has written so far, read after its tasks have run, with no wait.
+async fn written(client: &mut DuplexStream) -> String {
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 4096];
+    loop {
+        let mut read = ReadBuf::new(&mut buffer);
+        let polled =
+            poll_fn(|context| Poll::Ready(Pin::new(&mut *client).poll_read(context, &mut read)))
+                .await;
+        if !matches!(polled, Poll::Ready(Ok(()))) || read.filled().is_empty() {
+            break;
+        }
+        bytes.extend_from_slice(read.filled());
+    }
+    String::from_utf8(bytes).expect("a UTF-8 stream")
 }
 
 // Over HTTP the reference says that its prompt and resource lists can change; logging is left out
@@ -244,4 +291,129 @@ async fn a_panic_in_one_connection_leaves_the_next_served() {
     assert_eq!(exchange(panicking, request).await, "");
     let answer = exchange(routed(mcp), &post("/mcp", "127.0.0.1", INITIALIZE)).await;
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+}
+
+// The answer of a request in a session is one event: no priming event comes before it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tools_list_answer_after_initialize_has_one_data_line() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let session = opened(&mcp).await;
+    let request = in_session(&post("/mcp", HOST, TOOLS_LIST), &session);
+    let answer = exchange(routed(mcp), &request).await;
+    let data: Vec<&str> = answer
+        .lines()
+        .filter(|line| line.starts_with("data:"))
+        .collect();
+    assert_eq!(data.len(), 1, "{answer}");
+    let message = message(&answer);
+    assert_eq!(message["id"], 2, "{answer}");
+    assert!(message["result"]["tools"].is_array(), "{answer}");
+}
+
+// A session has no idle timeout: after five idle minutes it still answers.
+#[tokio::test(start_paused = true)]
+async fn an_idle_session_still_answers_after_five_minutes() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let session = opened(&mcp).await;
+    let before = tokio::time::Instant::now();
+    tokio::time::sleep(Duration::from_secs(301)).await;
+    assert!(before.elapsed() >= Duration::from_secs(301));
+    let request = in_session(&post("/mcp", HOST, TOOLS_LIST), &session);
+    let answer = exchange(routed(mcp), &request).await;
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert_eq!(message(&answer)["id"], 2, "{answer}");
+}
+
+// An open stream with no event gets one keep-alive comment at 15 s, and none at 14 s.
+#[tokio::test(start_paused = true)]
+async fn an_open_stream_gets_a_keep_alive_comment_at_15_seconds() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let session = opened(&mcp).await;
+    let get = format!("GET /mcp HTTP/1.1\r\nHost: {HOST}\r\nAccept: text/event-stream\r\n\r\n");
+    let (mut client, socket) = tokio::io::duplex(1 << 20);
+    let graceful = GracefulShutdown::new();
+    connection(socket, routed(mcp), &graceful);
+    let request = in_session(&get, &session);
+    client
+        .write_all(request.as_bytes())
+        .await
+        .expect("a sent request");
+    let head = written(&mut client).await;
+    assert!(head.starts_with("HTTP/1.1 200 OK\r\n"), "{head}");
+    assert!(
+        head.contains("content-type: text/event-stream\r\n"),
+        "{head}"
+    );
+    assert!(!head.contains(KEEP_ALIVE), "{head}");
+    tokio::time::advance(Duration::from_secs(14)).await;
+    let early = written(&mut client).await;
+    assert_eq!(early, "");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    let due = written(&mut client).await;
+    assert_eq!(due.matches(KEEP_ALIVE).count(), 1, "{due:?}");
+}
+
+// Failure injection: an accept that fails at once each time, as at the descriptor limit, is tried
+// once a second, with one log line for each failure.
+#[tokio::test(start_paused = true)]
+async fn a_failed_accept_waits_a_second_before_the_next() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let log = Kept::default();
+    let mut attempts = 0;
+    let accept = |_: &mut Context<'_>| -> Poll<std::io::Result<DuplexStream>> {
+        attempts += 1;
+        if attempts > 100 {
+            return Poll::Pending;
+        }
+        Poll::Ready(Err(std::io::Error::from_raw_os_error(libc::EMFILE)))
+    };
+    let stop = async {
+        tokio::time::sleep(Duration::from_millis(2_500)).await;
+        Stop::Restart
+    };
+    let graceful = GracefulShutdown::new();
+    assert_eq!(
+        accepted(accept, &mcp, &graceful, stop, &log).await,
+        Stop::Restart
+    );
+    assert_eq!(attempts, 3);
+    let lines = log.lines();
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    let failed = "agentless-mcp-server: accept failed: OSError: [Errno 24] Too many open files";
+    assert_eq!(lines[0], failed, "{lines:?}");
+}
+
+// An operator signal during the drain of a due restart ends the serve by that signal: no relaunch.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_signal_during_a_restart_drain_ends_by_that_signal() {
+    let (_sandbox, server) = server();
+    let (_mcp, sessions) = service(&server, BOUND);
+    let held = Arc::clone(&server.gate)
+        .acquire_owned()
+        .await
+        .expect("a permit");
+    let signal = async {
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+        libc::SIGTERM
+    };
+    let graceful = GracefulShutdown::new();
+    let ended = wound_down(Stop::Restart, &server, graceful, sessions, pin!(signal)).await;
+    assert_eq!(ended, Ended::Signalled(libc::SIGTERM));
+    drop(held);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_with_no_signal_relaunches_after_the_drain() {
+    let (_sandbox, server) = server();
+    let (_mcp, sessions) = service(&server, BOUND);
+    let graceful = GracefulShutdown::new();
+    let signal = pin!(pending::<i32>());
+    let ended = wound_down(Stop::Restart, &server, graceful, sessions, signal).await;
+    assert_eq!(ended, Ended::Relaunch);
 }

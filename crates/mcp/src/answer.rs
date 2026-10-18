@@ -14,7 +14,7 @@ use render::{Receipt, View};
 
 use crate::dispatch::{Call, Inner};
 use crate::failure::Failure;
-use crate::roots::{Anchor, Selection, selected};
+use crate::roots::{Anchor, Selection, not_allowed, selected};
 
 // What an operation reads: the services, the session, its reading and the allowed roots.
 pub(crate) struct Context<'a> {
@@ -103,6 +103,10 @@ fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Fa
         hint: hint.as_deref(),
     })?;
     let repo = app::Repo::load(services, &root)?;
+    // The load resolves the root again, so a symlink swapped in after the check is refused here.
+    if repo.root != root {
+        return Err(Failure::Refused(not_allowed(allowed)));
+    }
     let no_cache = call.arguments.flag("no_cache");
     let opening = Session::open_facts(services, repo, no_cache);
     for line in &opening.session.diagnostics {

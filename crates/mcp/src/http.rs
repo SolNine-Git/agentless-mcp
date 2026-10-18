@@ -5,7 +5,7 @@ use std::convert::Infallible;
 use std::fmt::Display;
 use std::future::{Future, pending, poll_fn};
 use std::net::{IpAddr, SocketAddr};
-use std::pin::pin;
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -17,7 +17,7 @@ use hyper::header::{CONTENT_TYPE, HeaderValue};
 use hyper::server::conn::http1;
 use hyper::service::{HttpService, service_fn};
 use hyper::{Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::graceful::GracefulShutdown;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
@@ -50,6 +50,15 @@ const LOOPBACK_ORIGINS: [&str; 6] = [
     "http://[::1]:*",
     "https://[::1]:*",
 ];
+// A stream with no event for this long gets a keep-alive comment.
+const SSE_KEEP_ALIVE: Duration = Duration::from_secs(15);
+// After a failed accept, the next accept waits this long, so a descriptor limit cannot spin the
+// loop.
+const ACCEPT_PAUSE: Duration = Duration::from_secs(1);
+// After the drain, the connections get this long to write the answers that the calls made.
+const CLOSE_CAP: Duration = Duration::from_secs(1);
+// The drain's bound when the call limit and its grace make no finite duration.
+const DRAIN_CAP: Duration = Duration::from_secs(90);
 
 // Why the server stopped accepting: the number of the signal that stopped it, or a due restart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,8 +126,10 @@ pub(crate) async fn serve(
     };
     let (mcp, sessions) = service(&server, address.ip());
     let graceful = GracefulShutdown::new();
+    let accept =
+        |context: &mut Context<'_>| listener.poll_accept(context).map_ok(|(stream, _)| stream);
     let stop = accepted(
-        &listener,
+        accept,
         &mcp,
         &graceful,
         stopped(monitor.as_ref(), &mut signals),
@@ -126,35 +137,57 @@ pub(crate) async fn serve(
     )
     .await;
     drop(listener);
-    let bound = Duration::try_from_secs_f64(server.inner.call_limit + server.inner.recache_grace);
-    let mut expired = pin!(expiry(bound.ok(), &mut signals));
-    let calls_ended = drained(&server.gate, server.permits, expired.as_mut()).await;
-    sessions();
-    if calls_ended {
-        first(graceful.shutdown(), expired.as_mut()).await;
+    let signal = pin!(poll_fn(|context| signals.poll_next(context)));
+    wound_down(stop, &server, graceful, sessions, signal).await
+}
+
+// The drain of the calls, the graceful close that lets each answer reach its stream, then the
+// cancel of the sessions. A signal in the drain or the close ends the serve by that signal.
+pub(crate) async fn wound_down(
+    stop: Stop,
+    server: &Server,
+    graceful: GracefulShutdown,
+    sessions: impl FnOnce(),
+    mut signal: Pin<&mut impl Future<Output = i32>>,
+) -> Ended {
+    let limit = server.inner.call_limit + server.inner.recache_grace;
+    let bound = Duration::try_from_secs_f64(limit).unwrap_or(DRAIN_CAP);
+    let mut calls_ended = false;
+    let drain = async {
+        calls_ended = drained(&server.gate, server.permits, tokio::time::sleep(bound)).await;
+    };
+    let mut cut = first(signal.as_mut(), pin!(drain)).await;
+    if cut.is_none() && calls_ended {
+        cut = first(signal.as_mut(), pin!(closed(graceful))).await;
     }
-    match stop {
-        Stop::Signal(number) => Ended::Signalled(number),
-        Stop::Restart => Ended::Relaunch,
+    sessions();
+    match (cut, stop) {
+        (Some(number), _) | (None, Stop::Signal(number)) => Ended::Signalled(number),
+        (None, Stop::Restart) => Ended::Relaunch,
     }
 }
 
-// The rmcp service over clones of `server`, and the cancel of its sessions. It refuses a Host
-// or Origin that is not loopback, and sends no SSE keep-alive or priming event (as the reference).
+// The graceful close of every connection, or the cap, whichever comes first.
+async fn closed(graceful: GracefulShutdown) {
+    first(graceful.shutdown(), pin!(tokio::time::sleep(CLOSE_CAP))).await;
+}
+
+// The rmcp service over clones of `server`, and the cancel of its sessions. It refuses a Host or
+// Origin that is not loopback, sends no priming event, and sends `:` after 15 s with no event.
 pub(crate) fn service(server: &Server, bound: IpAddr) -> (Mcp, impl FnOnce()) {
     let hosts = LOOPBACK_HOSTS.map(String::from).into_iter();
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(hosts.chain([bind_literal(bound)]))
         .with_allowed_origins(LOOPBACK_ORIGINS)
-        .with_sse_keep_alive(None)
+        .with_sse_keep_alive(Some(SSE_KEEP_ALIVE))
         .with_sse_retry(None);
     let sessions = config.cancellation_token.clone();
     let server = server.clone();
-    let mcp = StreamableHttpService::new(
-        move || Ok(server.clone()),
-        Arc::new(LocalSessionManager::default()),
-        config,
-    );
+    let mut manager = LocalSessionManager::default();
+    // A session lives until its DELETE or the stop.
+    manager.session_config.keep_alive = None;
+    manager.session_config.sse_retry = None;
+    let mcp = StreamableHttpService::new(move || Ok(server.clone()), Arc::new(manager), config);
     (mcp, move || sessions.cancel())
 }
 
@@ -167,30 +200,39 @@ fn bind_literal(bound: IpAddr) -> String {
 }
 
 // Accepts connections until the stop finishes, and returns why it stopped. A failed accept is
-// logged, and the loop goes on.
-async fn accepted(
-    listener: &TcpListener,
+// logged, and the next accept waits a second.
+pub(crate) async fn accepted<IO>(
+    mut accept: impl FnMut(&mut Context<'_>) -> Poll<std::io::Result<IO>>,
     mcp: &Mcp,
     graceful: &GracefulShutdown,
     stop: impl Future<Output = Stop>,
     log: &dyn Log,
-) -> Stop {
+) -> Stop
+where
+    IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let mut stop = pin!(stop);
     loop {
         let next = poll_fn(|context| {
             if let Poll::Ready(stop) = stop.as_mut().poll(context) {
                 return Poll::Ready(Err(stop));
             }
-            listener.poll_accept(context).map(Ok)
+            accept(context).map(Ok)
         })
         .await;
         match next {
             Err(stop) => return stop,
-            Ok(Ok((stream, _))) => connection(stream, routed(mcp.clone()), graceful),
-            Ok(Err(error)) => log.line(&format!(
-                "agentless-mcp-server: accept failed: {}",
-                io::os_error_line(&error)
-            )),
+            Ok(Ok(stream)) => connection(stream, routed(mcp.clone()), graceful),
+            Ok(Err(error)) => {
+                log.line(&format!(
+                    "agentless-mcp-server: accept failed: {}",
+                    io::os_error_line(&error)
+                ));
+                let pause = pin!(tokio::time::sleep(ACCEPT_PAUSE));
+                if let Some(stop) = first(stop.as_mut(), pause).await {
+                    return stop;
+                }
+            }
         }
     }
 }
@@ -219,19 +261,8 @@ async fn restart_due(monitor: Option<&Monitor>) {
     }
 }
 
-// The bound of the drain, or a second signal, whichever comes first. No bound waits for the signal.
-async fn expiry(bound: Option<Duration>, signals: &mut Signals) {
-    let timer = async {
-        match bound {
-            Some(bound) => tokio::time::sleep(bound).await,
-            None => pending().await,
-        }
-    };
-    let second = poll_fn(|context| signals.poll_next(context).map(drop));
-    first(timer, pin!(second)).await;
-}
-
-// One connection on its own task, watched for the graceful end. A panic in it ends that task only.
+// One connection on its own task, watched for the graceful end, with hyper's header-read timeout.
+// A panic in it ends that task only.
 pub(crate) fn connection<IO, S>(io: IO, service: S, graceful: &GracefulShutdown)
 where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -242,7 +273,9 @@ where
     <S::ResBody as Body>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    let served = http1::Builder::new().serve_connection(TokioIo::new(io), service);
+    let served = http1::Builder::new()
+        .timer(TokioTimer::new())
+        .serve_connection(TokioIo::new(io), service);
     let watched = graceful.watch(served);
     tokio::spawn(async move { drop(watched.await) });
 }

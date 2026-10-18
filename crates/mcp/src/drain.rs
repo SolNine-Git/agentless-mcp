@@ -1,5 +1,5 @@
 //! The drain before a stop: every permit of the gate back, so each call that arrived before the
-//! stop has written its answer.
+//! stop has made its answer. The graceful close after the drain writes the answer to its stream.
 
 use std::pin::pin;
 

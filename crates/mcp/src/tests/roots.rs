@@ -41,6 +41,39 @@ fn a_launch_directory_in_no_root_or_in_two_selects_nothing() {
     }
 }
 
+// A root swapped for a symlink after start-up resolves outside the allowlist, so a call with no
+// repo_root gets the reference's refusal of a root that is not allowed (QC2 for the launch rule).
+#[test]
+fn a_root_swapped_for_a_symlink_is_refused() {
+    for (name, roots, launch, named) in [
+        (
+            "probe",
+            &["repo"][..],
+            "repo",
+            json!({"operation": "cycles", "repo_root": "/tmp"}),
+        ),
+        (
+            "several_roots",
+            &["one", "two"][..],
+            "two/b",
+            json!({"operation": "map", "repo_root": "<SANDBOX>/elsewhere"}),
+        ),
+    ] {
+        let run = run_named(name);
+        let sandbox = built(&run);
+        sandbox.step(&["write", "elsewhere/x.txt", "x\n"]);
+        let server = sandbox.server(roots, &[], Some(launch));
+        let call = json!({"operation": "map"});
+        assert!(!answered(&sandbox, &server, "orient", &call).1, "{name}");
+        let swapped = roots[roots.len() - 1];
+        io::remove_tree(&sandbox.root.join(swapped)).expect("a removed root");
+        let target = sandbox.root.join("elsewhere");
+        sandbox.tree.symlink(swapped, target).expect("a symlink");
+        let want = (reference(&run, "orient", &named), true);
+        assert_eq!(answered(&sandbox, &server, "orient", &call), want, "{name}");
+    }
+}
+
 // One root needs no launch directory, and the launch directory never widens the allowlist.
 #[test]
 fn one_root_is_selected_wherever_the_server_starts() {

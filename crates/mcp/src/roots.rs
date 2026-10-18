@@ -251,8 +251,8 @@ pub(crate) struct Selection<'a> {
     pub(crate) hint: Option<&'a str>,
 }
 
-// The root a call reads: the one it names, which must be allowed, or the only root, or the one
-// root that holds the launch directory.
+// The root a call reads, resolved now: the one it names, or the only root, or the one root that
+// holds the launch directory. The resolved root must be one of the allowed roots.
 pub(crate) fn selected(selection: &Selection<'_>) -> Result<PathBuf, Failure> {
     let refused = |message: String| Failure::Refused(hinted(message, selection.hint));
     if selection.allowed.is_empty() {
@@ -263,19 +263,32 @@ pub(crate) fn selected(selection: &Selection<'_>) -> Result<PathBuf, Failure> {
         .filter(|root| !text::strip(root).is_empty());
     let Some(requested) = requested else {
         let listing = joined(selection.allowed, shown_path);
-        return sole_root(selection.allowed, selection.launch)
-            .ok_or_else(|| refused(SERVER_ROOT_REQUIRED.render(&listing)));
+        let root = sole_root(selection.allowed, selection.launch)
+            .ok_or_else(|| refused(SERVER_ROOT_REQUIRED.render(&listing)))?;
+        let resolved = io::resolve(&root).map_err(|error| Failure::Unplanned(error.to_string()))?;
+        // The reference refuses its only root with no hint, and a root that a call names with it.
+        let hint = selection.hint.filter(|_| selection.allowed.len() > 1);
+        return authorised(resolved, selection.allowed)
+            .map_err(|message| Failure::Refused(hinted(message, hint)));
     };
     let resolved = resolved(requested, selection.anchor).map_err(Failure::Unplanned)?;
-    if selection.allowed.contains(&resolved) {
+    authorised(resolved, selection.allowed).map_err(refused)
+}
+
+// `resolved` when it is one of `allowed`, else the refusal that lists them.
+fn authorised(resolved: PathBuf, allowed: &[PathBuf]) -> Result<PathBuf, String> {
+    if allowed.contains(&resolved) {
         return Ok(resolved);
     }
-    let mut sorted = selection.allowed.to_vec();
+    Err(not_allowed(allowed))
+}
+
+// The refusal of a root that is not allowed: the allowed roots in the reference's path order.
+pub(crate) fn not_allowed(allowed: &[PathBuf]) -> String {
+    let mut sorted = allowed.to_vec();
     sorted.sort_by_key(|root| components(root));
     sorted.dedup();
-    Err(refused(
-        REPO_REFUSED_NOT_ALLOWED.render(&joined(&sorted, shown_path)),
-    ))
+    REPO_REFUSED_NOT_ALLOWED.render(&joined(&sorted, shown_path))
 }
 
 // The only root, or the one root that holds the launch directory.

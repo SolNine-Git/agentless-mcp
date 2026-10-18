@@ -34,4 +34,4 @@ io = { path = "../io", features = ["test-support"] }
 kernel = { path = "../kernel", features = ["test-support"] }
 libc.workspace = true
 text = { path = "../text", features = ["test-support"] }
-tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util", "time"] }
