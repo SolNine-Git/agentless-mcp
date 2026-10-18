@@ -25,6 +25,9 @@ timed_out=124
 failures=0
 bases=0
 checks=0
+# The output of the last gate command, and how many of its last lines a failed check prints.
+gate_output=$scratch/gate-output.log
+shown_lines=40
 # Characters for file names that the gates refuse: the long s in UTF-8, and two control characters.
 long_s=$(printf '\305\277')
 start_of_heading=$'\001'
@@ -75,42 +78,50 @@ deadline() {
     perl "$here/deadline.pl" "$@" </dev/null
 }
 
+# shown NAME: print the end of the last gate command's output, under the name of its check.
+shown() {
+    echo "     the last $shown_lines lines of the output of \"$1\":"
+    tail -n "$shown_lines" "$gate_output" | sed 's/^/     | /'
+}
+
 passes() {
     local name=$1 status=0 seconds
     shift
     seconds=$(limit "$@")
     bases=$((bases + 1))
-    deadline "$seconds" "$@" >/dev/null 2>&1 || status=$?
+    deadline "$seconds" "$@" >"$gate_output" 2>&1 || status=$?
     if ((status == 0)); then
         echo "ok   base passes: $name"
-    elif ((status == timed_out)); then
+        return
+    fi
+    if ((status == timed_out)); then
         echo "FAIL base fails: $name: it ran past its $seconds s deadline"
-        failures=$((failures + 1))
     else
         echo "FAIL base fails: $name"
-        failures=$((failures + 1))
     fi
+    failures=$((failures + 1))
+    shown "$name"
 }
 
 # fails NAME TEXT COMMAND...: the gate must exit non-zero and print TEXT, a fixed string.
 fails() {
-    local name=$1 text=$2 output status=0 seconds
+    local name=$1 text=$2 status=0 seconds
     shift 2
     seconds=$(limit "$@")
     checks=$((checks + 1))
-    output=$(deadline "$seconds" "$@" 2>&1) || status=$?
+    deadline "$seconds" "$@" >"$gate_output" 2>&1 || status=$?
     if ((status == 0)); then
         echo "FAIL $name: the gate passed"
-        failures=$((failures + 1))
     elif ((status == timed_out)); then
         echo "FAIL $name: the gate ran past its $seconds s deadline"
-        failures=$((failures + 1))
-    elif grep -qF -- "$text" <<<"$output"; then
+    elif grep -qF -- "$text" "$gate_output"; then
         echo "ok   $name"
+        return
     else
         echo "FAIL $name: the gate failed without \"$text\""
-        failures=$((failures + 1))
     fi
+    failures=$((failures + 1))
+    shown "$name"
 }
 
 violate() {

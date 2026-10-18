@@ -149,19 +149,71 @@ fn logged(path: &Path) -> Option<String> {
 
 #[test]
 fn each_scenario_gives_the_reference_reply_and_record() {
-    each_case_gives_the_reference_reply_and_record("scenarios", 30);
+    replay(cases_of("scenarios", 30));
 }
 
-// Every scenario again on a fresh and on a stale cache, then the cases of the stored rows.
+// The cache states: every scenario again on a fresh and on a stale cache, then the cases of the
+// stored rows. Each test replays one shard, so that it ends well inside the slow-test timeout.
+const STATE_SHARDS: usize = 8;
+
 #[test]
-fn each_cache_state_gives_the_reference_reply_and_record() {
-    each_case_gives_the_reference_reply_and_record("states", 150);
+fn each_cache_state_of_shard_0_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(0);
 }
 
-// Replays each case of the fixture section `name` and compares its reply and record.
-fn each_case_gives_the_reference_reply_and_record(name: &str, more_than: usize) {
+#[test]
+fn each_cache_state_of_shard_1_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(1);
+}
+
+#[test]
+fn each_cache_state_of_shard_2_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(2);
+}
+
+#[test]
+fn each_cache_state_of_shard_3_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(3);
+}
+
+#[test]
+fn each_cache_state_of_shard_4_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(4);
+}
+
+#[test]
+fn each_cache_state_of_shard_5_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(5);
+}
+
+#[test]
+fn each_cache_state_of_shard_6_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(6);
+}
+
+#[test]
+fn each_cache_state_of_shard_7_gives_the_reference_reply_and_record() {
+    each_cache_state_of_shard(7);
+}
+
+fn each_cache_state_of_shard(shard: usize) {
+    assert!(shard < STATE_SHARDS, "shard {shard} of {STATE_SHARDS}");
+    replay(
+        cases_of("states", 150)
+            .into_iter()
+            .skip(shard)
+            .step_by(STATE_SHARDS),
+    );
+}
+
+fn cases_of(name: &str, more_than: usize) -> Vec<Scenario> {
     let all: Vec<Scenario> = cases(MANIFEST_DIR, name, name);
     assert!(all.len() > more_than, "{} {name}", all.len());
+    all
+}
+
+// Replays each case and compares its reply and record.
+fn replay(all: impl IntoIterator<Item = Scenario>) {
     for (name, steps, payload, gate, log_form, expected) in all {
         let sandbox = Sandbox::new();
         for step in &steps {

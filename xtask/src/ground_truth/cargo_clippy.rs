@@ -1,14 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::Duration;
 
 use serde::Deserialize;
 
 use crate::workspace::BUILD_SCRIPT;
 use crate::{Failure, process};
 
-// A hang guard: far above a cold run, on a slower runner with a cold registry too.
-const CLIPPY: Duration = Duration::from_secs(60);
 const DEAD_CODE: &str = "dead_code";
 
 /// Whether a run compiles each target with the test harness.
@@ -111,7 +108,7 @@ pub fn clippy(
         .arg("--")
         .args(forced.iter().map(|lint| format!("--force-warn={lint}")))
         .current_dir(root);
-    process::run(&mut command, CLIPPY)
+    process::run(&mut command, process::BUILD)
 }
 
 /// Read one run's JSON messages for the packages in `manifests`. A failed run with no compile error is broken.
