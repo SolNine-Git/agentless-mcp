@@ -22,7 +22,8 @@ const BOM: &[u8] = b"\xef\xbb\xbf";
 
 /// A `--roots-from` file: one repository path per line, read again when it changes.
 pub struct RootsFile {
-    // As the command line gave it, for every text; `opened` is where the reads go.
+    // The path in normal form, which every OS error and call refusal shows, and that path below
+    // the start-up directory, where every read goes.
     path: PathBuf,
     opened: PathBuf,
     anchor: Anchor,
@@ -100,7 +101,7 @@ impl RootsFile {
     /// Returns [`RootsFileError`] when the file cannot be read or is not UTF-8 text.
     pub fn read(raw: &str, services: &Services) -> Result<RootsFile, RootsFileError> {
         let anchor = Anchor::of(services);
-        let path = PathBuf::from(raw);
+        let path = PathBuf::from(PosixPath::parse(raw).render());
         let opened = match &anchor.cwd {
             Some(cwd) if path.is_relative() => cwd.join(&path),
             _ => path.clone(),
@@ -123,7 +124,7 @@ impl RootsFile {
         })
     }
 
-    /// Returns the path as the command line gave it.
+    /// Returns the path in normal form: no `.` part, no doubled slash and no trailing slash.
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
@@ -148,7 +149,7 @@ impl RootsFile {
     }
 
     fn shown(&self) -> String {
-        PosixPath::parse(&self.path.to_string_lossy()).render()
+        self.path.to_string_lossy().into_owned()
     }
 
     fn unreadable(&self, error: &OsError) -> Failure {
@@ -167,9 +168,9 @@ fn stat_key(path: &Path) -> OsResult<(i128, u64)> {
 }
 
 // The stat comes before the read, so a write between the two costs one more read, never a stale
-// list. An error names the file as the command line gave it.
-fn listed(opened: &Path, given: &Path, anchor: &Anchor) -> Result<Listed, ReadError> {
-    let os = |error: OsError| ReadError::Os(io::os_error_text(&error, given));
+// list. An OS error names the file by `path`, its normal form.
+fn listed(opened: &Path, path: &Path, anchor: &Anchor) -> Result<Listed, ReadError> {
+    let os = |error: OsError| ReadError::Os(io::os_error_text(&error, path));
     let key = stat_key(opened).map_err(os)?;
     let bytes = fs::read(opened).map_err(os)?;
     let body = bytes.strip_prefix(BOM).unwrap_or(&bytes);
@@ -258,33 +259,43 @@ pub(crate) fn selected(selection: &Selection<'_>) -> Result<PathBuf, Failure> {
     if selection.allowed.is_empty() {
         return Err(refused(SERVER_NO_ROOTS.to_owned()));
     }
-    let requested = selection
-        .requested
-        .filter(|root| !text::strip(root).is_empty());
-    let Some(requested) = requested else {
+    let Some(requested) = named(selection) else {
         let listing = joined(selection.allowed, shown_path);
         let root = sole_root(selection.allowed, selection.launch)
             .ok_or_else(|| refused(SERVER_ROOT_REQUIRED.render(&listing)))?;
         let resolved = io::resolve(&root).map_err(|error| Failure::Unplanned(error.to_string()))?;
-        // The reference refuses its only root with no hint, and a root that a call names with it.
-        let hint = selection.hint.filter(|_| selection.allowed.len() > 1);
-        return authorised(resolved, selection.allowed)
-            .map_err(|message| Failure::Refused(hinted(message, hint)));
+        return authorised(resolved, selection);
     };
     let resolved = resolved(requested, selection.anchor).map_err(Failure::Unplanned)?;
-    authorised(resolved, selection.allowed).map_err(refused)
+    authorised(resolved, selection)
 }
 
-// `resolved` when it is one of `allowed`, else the refusal that lists them.
-fn authorised(resolved: PathBuf, allowed: &[PathBuf]) -> Result<PathBuf, String> {
-    if allowed.contains(&resolved) {
+// The root that the call names, unless it names none or only whitespace.
+fn named<'a>(selection: &Selection<'a>) -> Option<&'a str> {
+    selection
+        .requested
+        .filter(|root| !text::strip(root).is_empty())
+}
+
+// `resolved` when it is one of the allowed roots, else the refusal of a root that is not allowed.
+fn authorised(resolved: PathBuf, selection: &Selection<'_>) -> Result<PathBuf, Failure> {
+    if selection.allowed.contains(&resolved) {
         return Ok(resolved);
     }
-    Err(not_allowed(allowed))
+    Err(unauthorised(selection))
+}
+
+// The refusal of a selected root that is not allowed. The reference refuses its only root with no
+// hint, and a root that a call names with it.
+pub(crate) fn unauthorised(selection: &Selection<'_>) -> Failure {
+    let hint = selection
+        .hint
+        .filter(|_| named(selection).is_some() || selection.allowed.len() > 1);
+    Failure::Refused(hinted(not_allowed(selection.allowed), hint))
 }
 
 // The refusal of a root that is not allowed: the allowed roots in the reference's path order.
-pub(crate) fn not_allowed(allowed: &[PathBuf]) -> String {
+fn not_allowed(allowed: &[PathBuf]) -> String {
     let mut sorted = allowed.to_vec();
     sorted.sort_by_key(|root| components(root));
     sorted.dedup();

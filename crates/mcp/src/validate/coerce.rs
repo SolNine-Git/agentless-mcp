@@ -224,14 +224,19 @@ fn number<'a>(input: &'a Json, loc: &str, exclusive_minimum: usize, maximum: f64
     Ok(Value::Float(value))
 }
 
-// Whitespace around, and single underscores anywhere but at either end, which the parse drops.
+// The trimmed text, else the untrimmed text without its single inner underscores, so whitespace
+// beside an underscore fails.
 fn text_float(text: &str) -> Option<f64> {
-    let trimmed = text.trim();
-    let misplaced = trimmed.starts_with('_') || trimmed.ends_with('_') || trimmed.contains("__");
-    if misplaced {
-        return None;
-    }
-    trimmed.replace('_', "").parse().ok()
+    text.trim()
+        .parse()
+        .ok()
+        .or_else(|| without_underscores(text)?.parse().ok())
+}
+
+// The text with its underscores dropped, or None when one is at either end or two touch.
+fn without_underscores(text: &str) -> Option<String> {
+    let misplaced = text.starts_with('_') || text.ends_with('_') || text.contains("__");
+    (!misplaced).then(|| text.replace('_', ""))
 }
 
 fn choice<'a>(

@@ -47,7 +47,7 @@ pub use filesize::catch_file_size_signal;
 pub use interrupt::{SigintHold, WatchError, end_by_interrupt, hold_sigint, interrupted};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
-pub use oserror::{os_error_class_text, os_error_line, os_error_text, strerror};
+pub use oserror::{os_error_class_text, os_error_line, os_error_str, os_error_text, strerror};
 pub use owner::is_private_directory;
 pub use random::random_bytes;
 pub use read::{

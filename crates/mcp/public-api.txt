@@ -4,6 +4,7 @@ pub mcp::Ended::Closed
 pub mcp::Ended::Failed(alloc::string::String)
 pub mcp::Ended::Relaunch
 pub mcp::Ended::Signalled(i32)
+pub mcp::Ended::Unwritable(alloc::string::String)
 impl core::cmp::Eq for mcp::Ended
 impl core::cmp::PartialEq for mcp::Ended
 pub fn mcp::Ended::eq(&self, &Self) -> bool

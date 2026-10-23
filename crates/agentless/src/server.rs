@@ -36,6 +36,10 @@ pub(crate) fn run(program: OsString, args: &[OsString], env: &EnvConfig, service
         Ok(Ended::Closed) => 0,
         Ok(Ended::Signalled(signal)) => ended_by(signal),
         Ok(Ended::Failed(line)) => failed(&line),
+        Ok(Ended::Unwritable(line)) => {
+            failed(&line);
+            cli::EXIT_CLOSED_STDOUT
+        }
         Ok(Ended::Relaunch) => relaunch.map_or(0, |relaunch| relaunched(&relaunch)),
         Err(_panic) => cli::EXIT_DOMAIN,
     }

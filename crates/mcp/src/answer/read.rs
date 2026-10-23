@@ -79,14 +79,20 @@ fn line_range(pair: &Value) -> Result<(usize, usize), Failure> {
             "{SLICE} range {pair:?} is no pair"
         )));
     };
-    let (first, last) = (line(start), line(end));
-    if last < first {
+    if !ordered(start, end) {
         return Err(Failure::Refused(format!(
             "{SLICE} range [{start}, {end}] is not a line range: each one is [start, end], \
              1-based and inclusive, with end at or after start."
         )));
     }
-    Ok((first, last))
+    Ok((line(start), line(end)))
+}
+
+// Whether `end` is at or after `start` by their exact values, which may lie past usize. Both are
+// at least 1, so the longer decimal text is the larger number.
+fn ordered(start: &IntArg, end: &IntArg) -> bool {
+    let (start, end) = (start.to_string(), end.to_string());
+    (start.len(), &start) <= (end.len(), &end)
 }
 
 fn line(number: &IntArg) -> usize {

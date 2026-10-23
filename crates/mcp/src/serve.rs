@@ -50,6 +50,8 @@ pub enum Ended {
     Signalled(i32),
     /// It could not start or go on; the text says why.
     Failed(String),
+    /// A write to the client failed, so the session ended; the text says why.
+    Unwritable(String),
     /// The installed binary changed, so the door runs [`Start::relaunch`] in this process.
     Relaunch,
 }

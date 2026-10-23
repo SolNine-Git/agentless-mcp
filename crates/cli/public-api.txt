@@ -68,6 +68,7 @@ impl<'a> core::marker::Unpin for cli::Streams<'a>
 impl<'a> core::marker::UnsafeUnpin for cli::Streams<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for cli::Streams<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for cli::Streams<'a>
+pub const cli::EXIT_CLOSED_STDOUT: u8
 pub const cli::EXIT_DOMAIN: u8
 pub fn cli::cwd_failure_line(&core::io::error::Error) -> alloc::string::String
 pub fn cli::gate_report_args(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &mut cli::Streams<'_>) -> core::result::Result<cli::GateReportArgs, u8>

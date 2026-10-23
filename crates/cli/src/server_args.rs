@@ -23,9 +23,9 @@ const ROOT_HELP: &str = "a repository this server may serve; must exist at start
 const ROOTS_FROM_HELP: &str = "a file of repository paths, one per line, added to --root; blank \
      lines and #-comment lines are skipped and relative paths resolve against the working \
      directory, as --root does; repeatable";
-const CLIENT_ROOTS_HELP: &str = "let the connected client's advertised MCP roots authorise \
-     repositories, not merely select among --root directories. This hands the client the \
-     operator's decision about what is servable";
+// The flag is accepted and has no effect; the reference's help described the effect it had there.
+const CLIENT_ROOTS_HELP: &str = "accepted for compatibility and has no effect: only --root and \
+     --roots-from name the repositories this server may serve";
 const NO_AUTO_WARM_HELP: &str = "do not warm cold grammars in the background at startup; \
      grammars then warm only through agentless-mcp warmup (AGENTLESS_MCP_NO_AUTO_WARM in the \
      environment does the same)";
@@ -277,14 +277,9 @@ fn root_dir(arg: &Arg, env: &EnvConfig) -> Result<PathBuf, String> {
     let absolute = if expanded.is_absolute() {
         expanded
     } else {
-        let cwd = env.cwd().map_err(|unread| {
-            let error = unread.error();
-            format!(
-                "--root {raw}: [Errno {}] {}",
-                errno(&error),
-                io::strerror(&error)
-            )
-        })?;
+        let cwd = env
+            .cwd()
+            .map_err(|unread| format!("--root {raw}: {}", io::os_error_str(&unread.error())))?;
         cwd.join(expanded)
     };
     let resolved = io::resolve(&absolute)
@@ -294,10 +289,6 @@ fn root_dir(arg: &Arg, env: &EnvConfig) -> Result<PathBuf, String> {
         return Err(format!("--root {raw} is not a directory: {shown}"));
     }
     Ok(resolved)
-}
-
-fn errno(error: &std::io::Error) -> i32 {
-    error.raw_os_error().unwrap_or_default()
 }
 
 // The reference's checks in their order, then the refusal of the removed surfaces (DV3).

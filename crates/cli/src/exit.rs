@@ -13,7 +13,8 @@ pub(crate) const EXIT_OK: u8 = 0;
 pub const EXIT_DOMAIN: u8 = 1;
 pub(crate) const EXIT_USAGE: u8 = 2;
 pub(crate) const EXIT_GATE: u8 = 3;
-const EXIT_CLOSED_STDOUT: u8 = 120;
+/// The exit code of a run whose output its reader did not take.
+pub const EXIT_CLOSED_STDOUT: u8 = 120;
 
 const PREFIX: &str = "agentless-mcp: ";
 

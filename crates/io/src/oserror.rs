@@ -60,11 +60,8 @@ pub fn os_error_class_text(error: &io::Error) -> String {
 /// `OSError: <message>`.
 #[must_use]
 pub fn os_error_line(error: &io::Error) -> String {
-    let message = strerror(error);
-    match error.raw_os_error() {
-        Some(code) => format!("{}: [Errno {code}] {message}", class(code)),
-        None => format!("OSError: {message}"),
-    }
+    let class = error.raw_os_error().map_or("OSError", class);
+    format!("{class}: {}", os_error_str(error))
 }
 
 /// Returns the text of an OS error that names the file `path`, for example
@@ -78,9 +75,10 @@ pub fn os_error_text(error: &io::Error, path: &Path) -> String {
     format!("{}: {}", os_error_str(error), quoted(path))
 }
 
-// The text of an OS error that names no file, for example `[Errno 9] Bad file descriptor`. An
-// error without an errno gives its message alone.
-pub(crate) fn os_error_str(error: &io::Error) -> String {
+/// Returns the text of an OS error that names no file, for example `[Errno 9] Bad file
+/// descriptor`. An error without an errno gives its message alone.
+#[must_use]
+pub fn os_error_str(error: &io::Error) -> String {
     let message = strerror(error);
     match error.raw_os_error() {
         Some(code) => format!("[Errno {code}] {message}"),

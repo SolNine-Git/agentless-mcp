@@ -18,7 +18,10 @@ mod vote;
 use std::ffi::OsString;
 use std::io::{Read, Write};
 
-pub use exit::{EXIT_DOMAIN, cwd_failure_line, internal_error_line, refuse_hook, write_answer};
+pub use exit::{
+    EXIT_CLOSED_STDOUT, EXIT_DOMAIN, cwd_failure_line, internal_error_line, refuse_hook,
+    write_answer,
+};
 pub use gate_report::{GateReportArgs, gate_report_args};
 pub use server_args::{ServerArgs, ServerTransport, server_args};
 

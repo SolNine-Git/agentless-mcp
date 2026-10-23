@@ -1,6 +1,19 @@
+use prompts::messages::REPO_REFUSED_NOT_ALLOWED;
 use serde_json::json;
 
-use super::calls::{answered, built, reference, run_named};
+use super::calls::{answered, built, masked, reference, run_named};
+use crate::RootsFile;
+use crate::dispatch::failed;
+use crate::failure::Failure;
+use crate::roots::{Allowlist, Anchor, Selection, unauthorised};
+
+// The reference's refusal at a call after `./roots.txt` goes, or turns into a directory.
+const RELATIVE_GONE: &str = "roots file roots.txt cannot be read: [Errno 2] No such file or \
+     directory: 'roots.txt'. Refusing rather than serving the stale copy; restore the file, or \
+     restart the server without --roots-from.";
+const RELATIVE_DIRECTORY: &str = "roots file roots.txt cannot be read: [Errno 21] Is a directory: \
+     'roots.txt'. Refusing rather than serving the stale copy; restore the file, or restart the \
+     server without --roots-from.";
 
 // Deviation QC2: with several roots and no repo_root, a stdio server answers from the one root
 // that holds its launch directory, as the reference answers a call that names that root.
@@ -84,4 +97,57 @@ fn one_root_is_selected_wherever_the_server_starts() {
     let call = json!({"operation": "map"});
     let want = (reference(&run, "orient", &call), false);
     assert_eq!(answered(&sandbox, &server, "orient", &call), want);
+}
+
+// A roots file given as `./roots.txt` is named by its normalised path when a call finds it gone
+// (the stat fails) or turned into a directory (the read fails).
+#[test]
+fn a_relative_roots_file_is_refused_by_its_normalised_path() {
+    let run = run_named("roots_file");
+    let sandbox = built(&run);
+    let services = sandbox.services();
+    let file = RootsFile::read("./roots.txt", &services).expect("a roots file");
+    let allowlist = Allowlist::new(Vec::new(), vec![file]);
+    sandbox.step(&["remove", "roots.txt"]);
+    let refused = allowlist.current().expect_err("a refusal");
+    assert_eq!(refused, Failure::Refused(RELATIVE_GONE.to_owned()));
+    sandbox.step(&["write", "roots.txt/x", "x\n"]);
+    let refused = allowlist.current().expect_err("a refusal");
+    assert_eq!(refused, Failure::Refused(RELATIVE_DIRECTORY.to_owned()));
+}
+
+// A root swapped after its check gets the reference's not-allowed refusal with its selection's
+// hint: the roots-file hint for a root that the call names, none for the only root.
+#[test]
+fn a_swapped_root_is_refused_with_the_hint_of_its_selection() {
+    let run = run_named("roots_file");
+    let sandbox = built(&run);
+    let server = sandbox.server(&["one"], &["roots.txt"], None);
+    let inner = &*server.inner;
+    let anchor = Anchor::of(&inner.services);
+    let hint = inner.allowlist.hint();
+    let allowed = inner.allowlist.current().expect("the roots");
+    let requested = sandbox.placed("<SANDBOX>/one/inner");
+    let named = Selection {
+        allowed: &allowed,
+        requested: Some(&requested),
+        launch: None,
+        anchor: &anchor,
+        hint: hint.as_deref(),
+    };
+    let refused = failed(inner, "orient", unauthorised(&named)).text;
+    let call = json!({"operation": "map", "repo_root": "<SANDBOX>/one/inner"});
+    let want = reference(&run, "orient", &call);
+    assert_eq!(masked(&sandbox.normalised(&refused)), want);
+    sandbox.step(&["roots", "roots.txt", "<SANDBOX>/one"]);
+    let only = inner.allowlist.current().expect("the roots");
+    assert_eq!(only.len(), 1, "{only:?}");
+    let sole = Selection {
+        allowed: &only,
+        requested: None,
+        ..named
+    };
+    let listing = only[0].display().to_string();
+    let want = Failure::Refused(REPO_REFUSED_NOT_ALLOWED.render(&listing));
+    assert_eq!(unauthorised(&sole), want);
 }

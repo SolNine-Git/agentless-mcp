@@ -14,9 +14,9 @@ use hyper_util::server::graceful::GracefulShutdown;
 use serde_json::{Value as Json, json};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, DuplexStream, ReadBuf};
 
-use super::{Kept, Sandbox};
+use super::{Kept, Sandbox, quiet_ports};
 use crate::http::{Stop, accepted, connection, routed, service, wound_down};
-use crate::{Ended, Server};
+use crate::{Ended, Server, ServerConfig};
 
 const READ_LIMIT: Duration = Duration::from_secs(20);
 const BOUND: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
@@ -416,4 +416,37 @@ async fn a_restart_with_no_signal_relaunches_after_the_drain() {
     let signal = pin!(pending::<i32>());
     let ended = wound_down(Stop::Restart, &server, graceful, sessions, signal).await;
     assert_eq!(ended, Ended::Relaunch);
+}
+
+// A finite but huge call limit gets no cap: its drain bound does not panic, and a signal during
+// that drain ends the serve by that signal at once.
+#[tokio::test(start_paused = true)]
+async fn a_signal_ends_a_drain_with_a_huge_bound_at_once() {
+    let sandbox = Sandbox::new();
+    let config = ServerConfig {
+        roots: Vec::new(),
+        roots_files: Vec::new(),
+        launch_dir: None,
+        max_concurrency: 8,
+        call_limit: 1e15,
+        recache_grace: 60.0,
+    };
+    let server = Server::new(config, sandbox.services(), quiet_ports());
+    let (_mcp, sessions) = service(&server, BOUND);
+    let held = Arc::clone(&server.gate)
+        .acquire_owned()
+        .await
+        .expect("a permit");
+    let started = tokio::time::Instant::now();
+    let signal = async {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        libc::SIGTERM
+    };
+    let graceful = GracefulShutdown::new();
+    let ended = wound_down(Stop::Restart, &server, graceful, sessions, pin!(signal)).await;
+    assert_eq!(ended, Ended::Signalled(libc::SIGTERM));
+    let waited = started.elapsed();
+    assert!(waited >= Duration::from_secs(5), "{waited:?}");
+    assert!(waited < Duration::from_secs(6), "{waited:?}");
+    drop(held);
 }

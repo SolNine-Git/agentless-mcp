@@ -888,6 +888,7 @@ pub fn io::is_private_directory(&std::path::Path) -> core::io::error::Result<boo
 pub fn io::load_config(&std::path::Path) -> io::ProjectConfig
 pub fn io::os_error_class_text(&core::io::error::Error) -> alloc::string::String
 pub fn io::os_error_line(&core::io::error::Error) -> alloc::string::String
+pub fn io::os_error_str(&core::io::error::Error) -> alloc::string::String
 pub fn io::os_error_text(&core::io::error::Error, &std::path::Path) -> alloc::string::String
 pub fn io::parse_config(&[(text::code_point_string::CodePointString, json::parse::JsonValue)], core::option::Option<std::path::PathBuf>) -> io::ProjectConfig
 pub fn io::random_bytes(&mut [u8]) -> core::io::error::Result<()>

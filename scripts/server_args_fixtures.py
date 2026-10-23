@@ -61,6 +61,14 @@ DV2_HELP = {
         "only one. v1 and both were removed in 0.11.0 and are refused at startup"
     ),
 }
+# QC4: the flag is accepted and has no effect, so its help says that.
+QC4_HELP = {
+    "--allow-client-roots": (
+        "accepted for compatibility and has no effect: only --root and --roots-from name the "
+        "repositories this server may serve"
+    ),
+}
+HELP = DV2_HELP | QC4_HELP
 # DV3: the surfaces that 0.11.0 removed are refused after the reference's own checks.
 DV3_TEXT = (
     "--surface {surface} is no longer served: 0.11.0 removed the v1 tools. Drop --surface, or "
@@ -154,12 +162,12 @@ literal_root.__name__ = "root_dir"
 
 
 def patched_argparse(types: Types) -> ModuleType:
-    """Return argparse for the reference module, its parser with DV2 and a deviation's types."""
+    """Return argparse for the reference module, its parser with DV2, QC4 and a run's types."""
 
     class Patched(argparse.ArgumentParser):
         def add_argument(self, *args: Any, **kwargs: Any) -> argparse.Action:
-            if args and args[0] in DV2_HELP:
-                kwargs["help"] = DV2_HELP[args[0]]
+            if args and args[0] in HELP:
+                kwargs["help"] = HELP[args[0]]
             if kwargs.get("type") in types:
                 kwargs["type"] = types[kwargs["type"]]
             return super().add_argument(*args, **kwargs)
@@ -184,7 +192,7 @@ def checked_surface(original: Callable[..., None]) -> Callable[..., None]:
 
 @contextlib.contextmanager
 def rust_rules(types: Types) -> Iterator[None]:
-    """Patch the reference parser with the Rust version, DV2, DV3 and the run's deviation types."""
+    """Patch the reference parser with the Rust version, DV2, DV3, QC4 and the run's types."""
     last_check = checked_surface(cliargs._check_call_limits)
     with (
         mock.patch.object(cliargs, "argparse", patched_argparse(types)),
@@ -351,10 +359,13 @@ def root_runs() -> list[Json]:
         ["--root", repo_a, "--root", repo_b, "--root", repo_a],
         [f"--root={repo_a}"],
         ["--roots-from", roots_ok],
+        ["--roots-from", f"{roots_ok}/"],
         ["--roots-from", f"{PLACEHOLDER}/roots-bom.txt", "--roots-from", roots_ok],
         ["--roots-from", f"{PLACEHOLDER}/roots-bad.bin"],
         ["--roots-from", f"{PLACEHOLDER}/roots-dir"],
         ["--roots-from", f"{PLACEHOLDER}/missing.txt"],
+        ["--roots-from", "./missing.txt"],
+        ["--roots-from", ""],
         ["--roots-from", "roots-rel.txt"],
         ["--root", missing, "--port", "x"],
         ["--port", "x", "--root", missing],

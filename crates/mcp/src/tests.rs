@@ -6,6 +6,7 @@ mod http;
 mod restart;
 mod roots;
 mod serve;
+mod stdio;
 mod wire;
 
 use std::ffi::OsString;
