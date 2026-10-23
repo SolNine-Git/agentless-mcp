@@ -13,9 +13,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, TypeGuard
+from types import FrameType
+from typing import Any, NoReturn, TypeGuard
 
 import tomllib
 
@@ -48,6 +49,8 @@ class CheckFailedError(Exception):
 
 def main(argv: list[str] | None = None) -> int:
     """Run one check against the commands in --bin-dir; exit 0 when it passes, 1 when it fails."""
+    for number in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, leave)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("check", choices=["smoke", "e2e"])
     parser.add_argument("--bin-dir", type=Path, required=True)
@@ -65,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     print(f"check_wheel {args.check}: passed")
     return 0
+
+
+# The signal ends the check through SystemExit, so each session's finally stops its server.
+def leave(number: int, _frame: FrameType | None) -> NoReturn:
+    raise SystemExit(128 + number)
 
 
 def isolated_env(scratch: Path) -> dict[str, str]:
@@ -199,9 +207,10 @@ def stdio_session(server: Path, repo: Path, env: dict[str, str], log: Path) -> l
             tools = conversation(StdioClient(process).send)
             stop_stdio(process)
         except CheckFailedError as failure:
-            process.kill()
             msg = f"stdio: {failure}; server stderr: {log.read_text(errors='replace')}"
             raise CheckFailedError(msg) from failure
+        finally:
+            kill_if_running(process)
     return tools
 
 
@@ -216,6 +225,12 @@ def stop_stdio(process: subprocess.Popen[bytes]) -> None:
     if code != 0:
         msg = f"the server exited {code} at the end of input"
         raise CheckFailedError(msg)
+
+
+def kill_if_running(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.kill()
+        process.wait(timeout=STOP_SECONDS)
 
 
 class StdioClient:
@@ -273,9 +288,10 @@ def http_session(server: Path, repo: Path, env: dict[str, str], log: Path) -> li
             tools = conversation(HttpClient(port).send)
             stop_http(process)
         except CheckFailedError as failure:
-            process.kill()
             msg = f"HTTP: {failure}; server output: {log.read_text(errors='replace')}"
             raise CheckFailedError(msg) from failure
+        finally:
+            kill_if_running(process)
     return tools
 
 
@@ -327,8 +343,8 @@ class HttpClient:
             connection.request("POST", "/mcp", encode(method, params, ident), self.headers())
             response = connection.getresponse()
             self.session = response.getheader("mcp-session-id", self.session)
-            return self.answer(response, ident)
-        except OSError as error:
+            return self.answer(response, ident, connection.sock)
+        except (OSError, http.client.HTTPException) as error:
             msg = f"{method}: {error}"
             raise CheckFailedError(msg) from error
         finally:
@@ -345,7 +361,7 @@ class HttpClient:
         return headers
 
     def answer(
-        self, response: http.client.HTTPResponse, ident: int | None
+        self, response: http.client.HTTPResponse, ident: int | None, sock: socket.socket
     ) -> dict[str, Any] | None:
         if ident is None:
             if response.status != HTTP_ACCEPTED:
@@ -356,7 +372,7 @@ class HttpClient:
             msg = f"status {response.status}: {response.read()!r}"
             raise CheckFailedError(msg)
         if response.getheader("Content-Type", "").startswith("text/event-stream"):
-            return event_answer(response, ident)
+            return event_answer(response, ident, sock)
         answer = decode(response.read())
         if not is_answer(answer, ident):
             msg = f"the body {answer!r} does not answer request {ident}"
@@ -365,10 +381,11 @@ class HttpClient:
 
 
 # A blank line ends each server-sent event. An event with no data (a priming event) answers nothing.
-def event_answer(response: http.client.HTTPResponse, ident: int) -> dict[str, Any]:
+def event_answer(
+    response: http.client.HTTPResponse, ident: int, sock: socket.socket
+) -> dict[str, Any]:
     data: list[bytes] = []
-    while line := response.readline():
-        line = line.rstrip(b"\r\n")
+    for line in event_lines(response, sock, ident):
         if line.startswith(b"data:"):
             data.append(line[len(b"data:") :].removeprefix(b" "))
         elif not line:
@@ -378,6 +395,33 @@ def event_answer(response: http.client.HTTPResponse, ident: int) -> dict[str, An
                 return answer
     msg = f"the event stream ended without the answer to request {ident}"
     raise CheckFailedError(msg)
+
+
+# One deadline bounds the whole stream, so keep-alive comments cannot extend the read.
+def event_lines(
+    response: http.client.HTTPResponse, sock: socket.socket, ident: int
+) -> Iterator[bytes]:
+    deadline = time.monotonic() + STEP_SECONDS
+    seen: list[bytes] = []
+    while (remaining := deadline - time.monotonic()) > 0:
+        sock.settimeout(remaining)
+        try:
+            line = response.readline()
+        except TimeoutError as expired:
+            raise past_deadline(ident, seen) from expired
+        if not line:
+            return
+        seen.append(line)
+        yield line.rstrip(b"\r\n")
+    raise past_deadline(ident, seen)
+
+
+def past_deadline(ident: int, seen: list[bytes]) -> CheckFailedError:
+    msg = (
+        f"no answer to request {ident} within {STEP_SECONDS} s;"
+        f" the stream sent {b''.join(seen)!r} before the deadline"
+    )
+    return CheckFailedError(msg)
 
 
 def decode(raw: bytes) -> Any:

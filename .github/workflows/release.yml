@@ -1,7 +1,8 @@
 name: Release
 
-# Every push runs the release checks and builds every artifact. Only a v* tag uploads to PyPI, and only
-# after every job below passes.
+# Every push runs the release checks and builds every artifact. Only a v* tag uploads to PyPI,
+# and only after every job below passes. The publish job runs in the GitHub environment pypi,
+# which accepts a deployment from a v* tag only and waits for a required reviewer.
 on:
   push:
 
@@ -122,7 +123,7 @@ jobs:
 
   wheels:
     name: ${{ matrix.target }} / wheel
-    needs: [checks, notices]
+    needs: notices
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -308,7 +309,7 @@ jobs:
   # Trusted publishing: PyPI accepts the OIDC token of this workflow file in the environment pypi.
   publish:
     name: upload to PyPI
-    needs: [installed, sdist, end-to-end]
+    needs: [checks, installed, sdist, end-to-end]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
