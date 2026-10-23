@@ -434,3 +434,32 @@ fn a_sample_file_under_a_missing_directory_is_one_traceback_line() {
         (1, expected, String::new())
     );
 }
+
+#[test]
+fn a_transcript_path_with_a_nul_byte_stops_with_the_value_error_line() {
+    let sandbox = Sandbox::new();
+    let mut record = crate::record::Record::blank(1_791_600_000.0);
+    record.identify(crate::record::Identity {
+        session_id: Some("s1".to_owned()),
+        transcript_path: Some(format!("{}/t\0x.jsonl", sandbox.path().display())),
+        tool_use_id: Some("toolu_1".to_owned()),
+        tool_name: Some("Edit".to_owned()),
+    });
+    record.settle(crate::record::Settled {
+        outcome: crate::record::Outcome::Clean,
+        reason: None,
+        gaps: Vec::new(),
+        off_by_config: Vec::new(),
+        findings: Vec::new(),
+        observed: None,
+    });
+    let line =
+        json::to_text(&record, json::JsonForm::Compact).unwrap_or_else(|error| panic!("{error}"));
+    let log = sandbox.put("gate.jsonl", format!("{line}\n"));
+    let output = gate_report(&log.display().to_string(), None, None, "0");
+    let expected = format!("{PREFIX}ValueError: embedded null byte\n");
+    assert_eq!(
+        (output.code, output.stderr, output.stdout),
+        (1, expected, String::new())
+    );
+}

@@ -1,6 +1,7 @@
 //! How a refusal shows an input: the Python repr of the JSON value, cut to its first 25 and last 24
 //! bytes past 50, and the name of its Python type.
 
+use json::JsonValue;
 use serde_json::Value as Json;
 use text::CodePointString;
 
@@ -10,7 +11,7 @@ const TAIL_BYTES: usize = 24;
 
 // The repr of `input`, cut at character boundaries when it runs past 50 bytes.
 pub(super) fn shown(input: &Json) -> String {
-    let text = repr(input);
+    let text = json::repr_text(&parsed(input));
     if text.len() <= SHOWN_BYTES {
         return text;
     }
@@ -31,35 +32,27 @@ pub(super) fn type_name(input: &Json) -> &'static str {
     }
 }
 
-pub(super) fn repr(input: &Json) -> String {
+// The input as a parsed value: an f64 number is a float, and any other number keeps its digits.
+// serde_json reads at most 128 levels, so the recursion stays shallow.
+fn parsed(input: &Json) -> JsonValue {
     match input {
-        Json::Null => "None".to_owned(),
-        Json::Bool(true) => "True".to_owned(),
-        Json::Bool(false) => "False".to_owned(),
-        Json::Number(number) => number_repr(number),
-        Json::String(text) => quoted(text),
-        Json::Array(items) => {
-            let items: Vec<String> = items.iter().map(repr).collect();
-            format!("[{}]", items.join(", "))
+        Json::Null => JsonValue::Null,
+        Json::Bool(value) => JsonValue::Bool(*value),
+        Json::Number(number) if number.is_f64() => {
+            JsonValue::Float(number.as_f64().unwrap_or(f64::NAN))
         }
-        Json::Object(entries) => {
-            let entries: Vec<String> = entries
+        Json::Number(number) => JsonValue::Int(number.to_string()),
+        Json::String(text) => JsonValue::Str(text.as_str().into()),
+        Json::Array(items) => JsonValue::Array(items.iter().map(parsed).collect()),
+        Json::Object(entries) => JsonValue::Object(
+            entries
                 .iter()
-                .map(|(key, value)| format!("{}: {}", quoted(key), repr(value)))
-                .collect();
-            format!("{{{}}}", entries.join(", "))
-        }
+                .map(|(key, value)| (key.as_str().into(), parsed(value)))
+                .collect(),
+        ),
     }
 }
 
 pub(super) fn quoted(text: &str) -> String {
     CodePointString::from(text).quoted()
-}
-
-// An integer as its digits, and any other number as the shortest float text.
-fn number_repr(number: &serde_json::Number) -> String {
-    if number.is_f64() {
-        return json::float_text(number.as_f64().unwrap_or(f64::NAN));
-    }
-    number.to_string()
 }

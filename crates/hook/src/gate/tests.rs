@@ -152,48 +152,39 @@ fn each_scenario_gives_the_reference_reply_and_record() {
     replay(cases_of("scenarios", 30));
 }
 
+// Writes one test for each listed shard, and the list that STATE_SHARDS counts.
+macro_rules! state_shard_tests {
+    ($($test:ident: $shard:literal),+ $(,)?) => {
+        const SHARD_TESTS: &[usize] = &[$($shard),+];
+        $(
+            #[test]
+            fn $test() {
+                each_cache_state_of_shard($shard);
+            }
+        )+
+    };
+}
+
 // The cache states: every scenario again on a fresh and on a stale cache, then the cases of the
 // stored rows. Each test replays one shard, so that it ends well inside the slow-test timeout.
-const STATE_SHARDS: usize = 8;
-
-#[test]
-fn each_cache_state_of_shard_0_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(0);
+state_shard_tests! {
+    each_cache_state_of_shard_0_gives_the_reference_reply_and_record: 0,
+    each_cache_state_of_shard_1_gives_the_reference_reply_and_record: 1,
+    each_cache_state_of_shard_2_gives_the_reference_reply_and_record: 2,
+    each_cache_state_of_shard_3_gives_the_reference_reply_and_record: 3,
+    each_cache_state_of_shard_4_gives_the_reference_reply_and_record: 4,
+    each_cache_state_of_shard_5_gives_the_reference_reply_and_record: 5,
+    each_cache_state_of_shard_6_gives_the_reference_reply_and_record: 6,
+    each_cache_state_of_shard_7_gives_the_reference_reply_and_record: 7,
 }
 
-#[test]
-fn each_cache_state_of_shard_1_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(1);
-}
+const STATE_SHARDS: usize = SHARD_TESTS.len();
 
+// A repeated or a missing shard number leaves the cases of one shard unreplayed.
 #[test]
-fn each_cache_state_of_shard_2_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(2);
-}
-
-#[test]
-fn each_cache_state_of_shard_3_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(3);
-}
-
-#[test]
-fn each_cache_state_of_shard_4_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(4);
-}
-
-#[test]
-fn each_cache_state_of_shard_5_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(5);
-}
-
-#[test]
-fn each_cache_state_of_shard_6_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(6);
-}
-
-#[test]
-fn each_cache_state_of_shard_7_gives_the_reference_reply_and_record() {
-    each_cache_state_of_shard(7);
+fn the_shard_tests_replay_each_shard_once() {
+    let expected: Vec<usize> = (0..STATE_SHARDS).collect();
+    assert_eq!(SHARD_TESTS, expected.as_slice());
 }
 
 fn each_cache_state_of_shard(shard: usize) {

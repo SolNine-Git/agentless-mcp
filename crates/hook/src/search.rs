@@ -13,11 +13,11 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use app::EnvConfig;
-use json::{JsonErrorKind, JsonValue};
+use json::{JsonErrorKind, JsonValue, get};
 use kernel::Clock;
 use text::CodePointString;
 
-use crate::payload::{Fields, get};
+use crate::payload::Fields;
 
 pub use check::gate_check;
 pub use mark::gate_mark;

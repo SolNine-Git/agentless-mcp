@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use crate::files::make_dir;
+use crate::files::create_missing_owner_dir;
 use crate::random::{create_named, sibling_prefix};
 
 const FILE_MODE: u32 = 0o600;
@@ -17,18 +17,16 @@ const FILE_MODE: u32 = 0o600;
 ///
 /// # Errors
 ///
-/// Returns the error of the step that failed: the parent, the temporary file, the write, the
-/// flush, the mode, or the rename.
+/// Returns the error of the step that failed: the parent, the temporary file, the mode, the
+/// write, the flush, or the rename.
 pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
     let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
         let message = format!("{} names no file in a directory", target.display());
         return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
     };
-    make_dir(parent)?;
+    create_missing_owner_dir(parent)?;
     let (temporary, file) = create_named(parent, &sibling_prefix(name), "")?;
-    let replaced = write_synced(file, bytes)
-        .and_then(|()| fs::set_permissions(&temporary, Permissions::from_mode(FILE_MODE)))
-        .and_then(|()| fs::rename(&temporary, target));
+    let replaced = write_private(file, bytes).and_then(|()| fs::rename(&temporary, target));
     // The failed step's error is the one returned; a failed cleanup leaves a hidden file.
     if replaced.is_err() {
         let _ = fs::remove_file(&temporary);
@@ -36,7 +34,9 @@ pub fn replace_file(target: &Path, bytes: &[u8]) -> io::Result<()> {
     replaced
 }
 
-fn write_synced(mut file: File, bytes: &[u8]) -> io::Result<()> {
+// The mode goes on the open file: a path that another user swapped in is never followed.
+fn write_private(mut file: File, bytes: &[u8]) -> io::Result<()> {
+    file.set_permissions(Permissions::from_mode(FILE_MODE))?;
     file.write_all(bytes)?;
     file.flush()?;
     file.sync_all()

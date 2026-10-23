@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use json::JsonValue;
+use json::{JsonValue, get};
 use text::{CodePointString, is_printable, is_space, strip};
 
 use crate::config::{
@@ -73,13 +73,6 @@ pub fn parse_config(document: &Document, path: Option<PathBuf>) -> ProjectConfig
     ProjectConfig { warnings, ..config }
 }
 
-fn lookup<'a>(document: &'a Document, key: &str) -> Option<&'a JsonValue> {
-    document
-        .iter()
-        .find(|(name, _)| name.as_str() == Some(key))
-        .map(|(_, value)| value)
-}
-
 // A string with a lone surrogate has no text form, so it counts as no string.
 fn text_of(value: &JsonValue) -> Option<&str> {
     match value {
@@ -93,7 +86,7 @@ fn bounded_int(
     key: &IntKey,
     warnings: &mut Vec<ConfigWarning>,
 ) -> Option<u32> {
-    let value = lookup(document, key.name)?;
+    let value = get(document, key.name)?;
     let JsonValue::Int(digits) = value else {
         warnings.push(ConfigWarning::Value(ValueWarning::NotInteger {
             key: key.name,
@@ -116,7 +109,7 @@ fn bounded_int(
 }
 
 fn granularity(document: &Document, warnings: &mut Vec<ConfigWarning>) -> Option<Granularity> {
-    let value = lookup(document, "granularity")?;
+    let value = get(document, "granularity")?;
     let text = text_of(value);
     let found = Granularity::ALL
         .into_iter()
@@ -133,7 +126,7 @@ fn boolean(
     key: &'static str,
     warnings: &mut Vec<ConfigWarning>,
 ) -> Option<bool> {
-    let value = lookup(document, key)?;
+    let value = get(document, key)?;
     if let JsonValue::Bool(flag) = value {
         return Some(*flag);
     }
@@ -142,7 +135,7 @@ fn boolean(
 }
 
 fn stoplist(document: &Document, warnings: &mut Vec<ConfigWarning>) -> BTreeSet<String> {
-    let Some(value) = lookup(document, "stoplist") else {
+    let Some(value) = get(document, "stoplist") else {
         return BTreeSet::new();
     };
     let JsonValue::Array(entries) = value else {
@@ -179,7 +172,7 @@ fn bare_name(entry: &JsonValue) -> Option<&str> {
 }
 
 fn test_cmd(document: &Document, warnings: &mut Vec<ConfigWarning>) -> Option<String> {
-    let value = lookup(document, "test_cmd")?;
+    let value = get(document, "test_cmd")?;
     let checked = match text_of(value) {
         Some(command) if !strip(command).is_empty() => single_line(command),
         _ => Err(TestCmdWarning::Empty),
@@ -207,14 +200,14 @@ fn erosion_gate(
     document: &Document,
     warnings: &mut Vec<ConfigWarning>,
 ) -> Option<BTreeMap<GatedCheck, GateMode>> {
-    let value = lookup(document, "erosion_gate")?;
+    let value = get(document, "erosion_gate")?;
     let JsonValue::Object(entries) = value else {
         warnings.push(ConfigWarning::ErosionGate(GateWarning::NotObject));
         return None;
     };
     let mut modes = BTreeMap::new();
     for check in GatedCheck::ALL {
-        let Some(mode) = lookup(entries, check.name()) else {
+        let Some(mode) = get(entries, check.name()) else {
             continue;
         };
         let text = text_of(mode);
@@ -242,7 +235,7 @@ fn is_gated(key: &CodePointString) -> bool {
 }
 
 fn boundary_globs(document: &Document, warnings: &mut Vec<ConfigWarning>) -> Vec<String> {
-    let Some(value) = lookup(document, "boundary_globs") else {
+    let Some(value) = get(document, "boundary_globs") else {
         return Vec::new();
     };
     let JsonValue::Array(entries) = value else {

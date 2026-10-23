@@ -253,6 +253,7 @@ pub(crate) fn when(ts: f64) -> Result<String, String> {
     let days = seconds.div_euclid(SECONDS_PER_DAY);
     let of_day = seconds.rem_euclid(SECONDS_PER_DAY);
     let (year, month, day) = civil(days);
+    // gmtime holds the year less 1900 in a C int, so a year outside that range is EOVERFLOW.
     if !(i64::from(i32::MIN) + 1900..=i64::from(i32::MAX) + 1900).contains(&year) {
         return Err("OSError: [Errno 75] Value too large for defined data type".to_owned());
     }

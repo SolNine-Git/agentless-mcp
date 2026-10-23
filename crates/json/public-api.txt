@@ -105,7 +105,9 @@ impl core::panic::unwind_safe::UnwindSafe for json::JsonError
 pub fn json::fixed(f64, usize) -> alloc::string::String
 pub fn json::float_text(f64) -> alloc::string::String
 pub fn json::general(f64) -> alloc::string::String
+pub fn json::get<'v>(&'v [(text::code_point_string::CodePointString, json::JsonValue)], &str) -> core::option::Option<&'v json::JsonValue>
 pub fn json::parse(&str) -> core::result::Result<json::JsonValue, json::JsonError>
+pub fn json::repr_text(&json::JsonValue) -> alloc::string::String
 pub fn json::round_half_even(f64, u32) -> f64
 pub fn json::to_text<T: serde_core::ser::Serialize + ?core::marker::Sized>(&T, json::JsonForm) -> core::result::Result<alloc::string::String, serde_json::error::Error>
 pub fn json::value_text(&json::JsonValue) -> alloc::string::String

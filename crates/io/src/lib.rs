@@ -40,15 +40,15 @@ pub use contain::{
     Refusal, contained_file_size, contained_path, file_size, file_stays_inside, resolve,
 };
 pub use files::{
-    create_dirs, create_owner_dir, create_private_dir, remove_file, remove_tree, touch, write_file,
-    write_new_file,
+    create_dirs, create_missing_owner_dir, create_owner_dir, create_private_dir, remove_file,
+    remove_tree, touch, write_file, write_new_file,
 };
 pub use filesize::catch_file_size_signal;
 pub use interrupt::{SigintHold, WatchError, end_by_interrupt, hold_sigint, interrupted};
 pub use keys::parse_config;
 pub use lock::{LockError, LockGuard, try_lock};
 pub use oserror::{os_error_class_text, os_error_line, os_error_text, strerror};
-pub use owner::is_own_directory;
+pub use owner::is_private_directory;
 pub use random::random_bytes;
 pub use read::{
     MAX_FILE_BYTES, NotUtf8, Skipped, Utf8Reason, codec_text, decode_strict, decode_text,

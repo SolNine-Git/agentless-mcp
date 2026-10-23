@@ -19,6 +19,7 @@ const PLACEHOLDER: &str = "<SANDBOX>";
 const PID_MASK: &str = "<PID>";
 const MARKERS: &str = "markers";
 const PRIVATE_MODE: u32 = 0o700;
+const CASE_DIR_MODE: u32 = 0o755;
 
 // One reference case: setup operations, then hook runs in order in one directory.
 #[derive(Debug, Deserialize)]
@@ -125,7 +126,7 @@ impl Sandbox {
         let text = |at: usize| op[at].as_str().expect("a text operand");
         let relative = self.at(text(1));
         let done = match text(0) {
-            "dir" => self.tree.create_dir(&relative).map(drop),
+            "dir" => self.directory(&relative),
             "file" | "marker" => self.file(&relative, &latin(text(2))),
             "link" => self.tree.symlink(&relative, text(2)).map(drop),
             "mode" => {
@@ -139,13 +140,27 @@ impl Sandbox {
     }
 
     fn file(&self, relative: &Path, bytes: &[u8]) -> IoResult<()> {
-        if let Some(parent) = relative
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-        {
-            self.tree.create_dir(parent)?;
+        if let Some(parent) = relative.parent() {
+            self.directory(parent)?;
         }
         self.tree.write_file(relative, bytes).map(drop)
+    }
+
+    // Each level that a case creates gets mode 0755, so the marker directory's trust rule sees
+    // the same mode under any umask.
+    fn directory(&self, relative: &Path) -> IoResult<()> {
+        let mut levels: Vec<&Path> = relative
+            .ancestors()
+            .filter(|level| !level.as_os_str().is_empty())
+            .collect();
+        levels.reverse();
+        for level in levels {
+            if !self.tree.join(level).exists() {
+                self.tree.create_dir(level)?;
+                self.tree.set_mode(level, CASE_DIR_MODE)?;
+            }
+        }
+        Ok(())
     }
 
     // Every mode a case set goes back to the owner's, so the tree can be removed.
@@ -319,6 +334,12 @@ fn a_marker_that_the_reference_wrote_unlocks_the_gate() {
     every_case_matches("cross", 0);
 }
 
+// A marker crosses between the two builds only through this one directory.
+#[test]
+fn the_marker_directory_is_the_one_that_both_builds_share() {
+    assert_eq!(super::marker::MARKER_DIR, "/tmp/agentless_gate");
+}
+
 // A step that these tests type: their outcomes deviate from the reference's on purpose.
 fn step(hook: &str, payload: &str) -> Step {
     Step {
@@ -385,6 +406,60 @@ fn a_symlinked_marker_directory_is_storage_unavailable() {
     );
 }
 
+// A marker directory that its group or other users can write is refused as one with another
+// owner: it gives no marker and takes no probe and no marker.
+#[test]
+fn a_marker_directory_that_others_can_write_is_storage_unavailable() {
+    for mode in [0o775, 0o777] {
+        let sandbox = Sandbox::new();
+        let planted = format!("{MARKERS}/{}", marker_name());
+        sandbox.apply(&[
+            Value::from("file"),
+            Value::from(planted.as_str()),
+            Value::from("{}"),
+        ]);
+        sandbox.tree.set_mode(MARKERS, mode).expect("a shared mode");
+        let clock = reference_clock();
+
+        let checked = sandbox.run(&step("check", GLOB), &clock);
+        let after_mark = sandbox.run(&step("mark", ORIENT), &clock);
+
+        assert_eq!(checked.code, 0, "{mode:o}");
+        let log = checked.log_text.expect("a log line");
+        assert!(
+            log.ends_with(&format!("{UNAVAILABLE}\n")),
+            "{mode:o}: {log}"
+        );
+        assert_eq!(
+            after_mark.log_text,
+            Some(log),
+            "{mode:o}: the mark writes no line"
+        );
+        assert_eq!(read(&sandbox, &planted), Some(b"{}".to_vec()), "{mode:o}");
+        let entries = after_mark.markers.map(|entries| entries.len());
+        assert_eq!(entries, Some(1), "{mode:o}: no probe and no new marker");
+    }
+}
+
+// The gate creates the marker directory owner-only, so it never creates one that it then refuses.
+#[test]
+fn a_missing_marker_directory_is_created_owner_only() {
+    for hook in ["check", "mark"] {
+        let sandbox = Sandbox::new();
+        let payload = if hook == "check" { GLOB } else { ORIENT };
+
+        sandbox.run(&step(hook, payload), &reference_clock());
+
+        let metadata = std::fs::symlink_metadata(sandbox.tree.join(MARKERS)).expect("a directory");
+        assert!(metadata.is_dir(), "{hook}");
+        assert_eq!(
+            metadata.permissions().mode() & 0o7777,
+            PRIVATE_MODE,
+            "{hook}"
+        );
+    }
+}
+
 // The probe is a new file: a symlink at its name, to a file or to nothing, is never followed.
 #[test]
 fn a_symlink_at_the_probe_name_is_not_followed() {
@@ -392,8 +467,7 @@ fn a_symlink_at_the_probe_name_is_not_followed() {
     for target in ["victim", "created"] {
         let sandbox = Sandbox::new();
         sandbox
-            .tree
-            .create_dir(MARKERS)
+            .directory(Path::new(MARKERS))
             .expect("a marker directory");
         sandbox
             .tree
@@ -439,8 +513,7 @@ fn a_symlink_at_the_marker_name_is_replaced_not_followed() {
     let sandbox = Sandbox::new();
     let planted = format!("{MARKERS}/{}", marker_name());
     sandbox
-        .tree
-        .create_dir(MARKERS)
+        .directory(Path::new(MARKERS))
         .expect("a marker directory");
     sandbox
         .tree

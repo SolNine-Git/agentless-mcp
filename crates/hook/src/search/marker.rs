@@ -20,10 +20,10 @@ fn path(gate: &Gate<'_>, session: &CodePointString) -> Result<PathBuf, Suppresse
     Ok(gate.markers.join(name))
 }
 
-// Another local user can own the shared directory and plant symlinks in it, so markers are read
-// and written only in a real directory that this user owns.
+// Another local user can own or write the shared directory and plant symlinks in it, so markers
+// are read and written only in a real directory that this user owns and nobody else can write.
 fn trusted(gate: &Gate<'_>) -> bool {
-    matches!(io::is_own_directory(&gate.markers), Ok(true))
+    matches!(io::is_private_directory(&gate.markers), Ok(true))
 }
 
 pub(crate) fn exists(gate: &Gate<'_>, session: &CodePointString) -> Result<bool, Suppressed> {
@@ -38,7 +38,7 @@ pub(crate) fn exists(gate: &Gate<'_>, session: &CodePointString) -> Result<bool,
 // file: an entry already at its name, a symlink included, fails it.
 pub(crate) fn storage_ready(gate: &Gate<'_>) -> bool {
     let probe = gate.markers.join(format!("{PROBE_PREFIX}{}", gate.pid));
-    io::create_dirs(&gate.markers).is_ok()
+    io::create_missing_owner_dir(&gate.markers).is_ok()
         && trusted(gate)
         && io::write_new_file(&probe, b"").is_ok()
         && matches!(io::remove_file(&probe), Ok(true))
@@ -52,7 +52,7 @@ pub(crate) fn write(
     reason: &str,
     tool: &JsonValue,
 ) -> Result<(), Suppressed> {
-    io::create_dirs(&gate.markers).map_err(|_| Suppressed)?;
+    io::create_missing_owner_dir(&gate.markers).map_err(|_| Suppressed)?;
     let path = path(gate, session)?;
     if !trusted(gate) {
         return Err(Suppressed);

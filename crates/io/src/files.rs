@@ -31,7 +31,7 @@ pub fn create_dirs(directory: &Path) -> io::Result<()> {
 ///
 /// Returns the error of a creation that failed, or of a path that exists and is not a directory.
 pub fn create_private_dir(directory: &Path) -> io::Result<Vec<(PathBuf, io::Error)>> {
-    make_dir(directory)?;
+    create_missing_owner_dir(directory)?;
     let levels = directory.parent().into_iter().chain([directory]);
     Ok(levels
         .filter_map(|path| {
@@ -49,16 +49,21 @@ pub fn create_private_dir(directory: &Path) -> io::Result<Vec<(PathBuf, io::Erro
 /// Returns the error of a creation or of the mode change, or of a path that exists and is not a
 /// directory.
 pub fn create_owner_dir(directory: &Path) -> io::Result<()> {
-    make_dir(directory)?;
+    create_missing_owner_dir(directory)?;
     fs::set_permissions(directory, Permissions::from_mode(PRIVATE_MODE))
 }
 
-// The missing parents take the default mode. A new `directory` gets 0700 at its creation, so it
-// is never briefly at the umask's mode, and an existing one keeps its mode.
-pub(crate) fn make_dir(directory: &Path) -> io::Result<()> {
+/// Creates a missing `directory` with mode 0700 and its missing parents with the default mode.
+///
+/// # Errors
+///
+/// Returns the error of a creation that failed, or of a path that exists and is not a directory.
+pub fn create_missing_owner_dir(directory: &Path) -> io::Result<()> {
     if let Some(parent) = directory.parent() {
         fs::create_dir_all(parent)?;
     }
+    // A new directory gets 0700 at its creation, so it is never briefly at the umask's mode, and
+    // an existing one keeps its mode.
     match DirBuilder::new().mode(PRIVATE_MODE).create(directory) {
         Err(error) if error.kind() != io::ErrorKind::AlreadyExists || !directory.is_dir() => {
             Err(error)

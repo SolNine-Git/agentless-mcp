@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use json::JsonValue;
+use json::{JsonValue, get};
 use patch::VoteCandidate;
 use text::CodePointString;
 
@@ -133,13 +133,13 @@ fn candidate_record(record: &Pairs, position: usize) -> Result<VoteCandidate, St
 // The apply status and the two verdicts are read through their enums: a spelling this build
 // does not know is a document it cannot rank, never a candidate that quietly falls a rung.
 fn vote_candidate(record: &Pairs, position: usize) -> Result<VoteCandidate, String> {
-    let Some(JsonValue::Object(apply)) = field(record, "apply") else {
+    let Some(JsonValue::Object(apply)) = get(record, "apply") else {
         let line = position + 1;
         return Err(format!(
             "line {line}: candidate record has no 'apply' object"
         ));
     };
-    let key = match field(record, "equivalence_key") {
+    let key = match get(record, "equivalence_key") {
         None | Some(JsonValue::Null) => None,
         Some(JsonValue::Str(key)) => Some(owned(key, "equivalence_key", position)?),
         Some(_) => {
@@ -175,17 +175,12 @@ fn record(line: &str, position: usize) -> Result<Vec<(CodePointString, JsonValue
     }
 }
 
-fn field<'a>(record: &'a Pairs, name: &str) -> Option<&'a JsonValue> {
-    let found = record.iter().find(|(key, _)| key.as_str() == Some(name));
-    found.map(|(_, value)| value)
-}
-
 fn string<'a>(
     record: &'a Pairs,
     name: &str,
     position: usize,
 ) -> Result<&'a CodePointString, String> {
-    match field(record, name) {
+    match get(record, name) {
         Some(JsonValue::Str(value)) => Ok(value),
         _ => Err(missing("a string", name, position)),
     }
@@ -199,7 +194,7 @@ fn owned(value: &CodePointString, name: &str, position: usize) -> Result<String,
 }
 
 fn optional_string(record: &Pairs, name: &str, position: usize) -> Result<Option<String>, String> {
-    match field(record, name) {
+    match get(record, name) {
         Some(JsonValue::Null) => Ok(None),
         Some(JsonValue::Str(value)) => owned(value, name, position).map(Some),
         _ => Err(refused(name, position, "must be a string or null")),
@@ -207,7 +202,7 @@ fn optional_string(record: &Pairs, name: &str, position: usize) -> Result<Option
 }
 
 fn boolean(record: &Pairs, name: &str, position: usize) -> Result<bool, String> {
-    match field(record, name) {
+    match get(record, name) {
         Some(JsonValue::Bool(value)) => Ok(*value),
         _ => Err(missing("a boolean", name, position)),
     }
@@ -215,7 +210,7 @@ fn boolean(record: &Pairs, name: &str, position: usize) -> Result<bool, String> 
 
 // A bool is no integer, and an index must fit in 64 bits.
 fn integer(record: &Pairs, name: &str, position: usize) -> Result<i64, String> {
-    match field(record, name) {
+    match get(record, name) {
         Some(JsonValue::Int(digits)) => digits
             .parse()
             .map_err(|_| refused(name, position, "is outside the 64-bit integer range")),
@@ -246,7 +241,7 @@ fn optional_member<M: Member>(
     name: &str,
     position: usize,
 ) -> Result<Option<M>, String> {
-    if let Some(JsonValue::Null) = field(record, name) {
+    if let Some(JsonValue::Null) = get(record, name) {
         return Ok(None);
     }
     member(record, name, position).map(Some)

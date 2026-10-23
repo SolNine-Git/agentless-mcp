@@ -872,6 +872,7 @@ pub fn io::codec_text(&[u8], io::NotUtf8) -> alloc::string::String
 pub fn io::contained_file_size(&std::path::Path, &std::path::Path) -> core::option::Option<core::io::error::Result<u64>>
 pub fn io::contained_path(&std::path::Path, &std::path::Path) -> core::result::Result<std::path::PathBuf, io::Refusal>
 pub fn io::create_dirs(&std::path::Path) -> core::io::error::Result<()>
+pub fn io::create_missing_owner_dir(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::create_owner_dir(&std::path::Path) -> core::io::error::Result<()>
 pub fn io::create_private_dir(&std::path::Path) -> core::io::error::Result<alloc::vec::Vec<(std::path::PathBuf, core::io::error::Error)>>
 pub fn io::decode_strict(alloc::vec::Vec<u8>) -> core::result::Result<alloc::string::String, io::NotUtf8>
@@ -883,7 +884,7 @@ pub fn io::file_stays_inside(&std::path::Path, &std::path::Path) -> bool
 pub fn io::helper_builder() -> std::thread::builder::Builder
 pub fn io::hold_sigint() -> core::result::Result<io::SigintHold, io::WatchError>
 pub fn io::interrupted() -> bool
-pub fn io::is_own_directory(&std::path::Path) -> core::io::error::Result<bool>
+pub fn io::is_private_directory(&std::path::Path) -> core::io::error::Result<bool>
 pub fn io::load_config(&std::path::Path) -> io::ProjectConfig
 pub fn io::os_error_class_text(&core::io::error::Error) -> alloc::string::String
 pub fn io::os_error_line(&core::io::error::Error) -> alloc::string::String

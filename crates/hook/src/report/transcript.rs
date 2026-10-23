@@ -6,9 +6,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use ::text::{CodePointString, PosixPath};
-use json::JsonValue;
+use json::{JsonValue, get, repr_text};
 
-use crate::report::field::{self, Pairs, entry, py_repr};
+use crate::report::field::{self, Pairs};
 use crate::report::log::Record;
 
 // The transcript keys of Claude Code, not of the gate log.
@@ -59,6 +59,10 @@ fn read(path: &CodePointString) -> Result<Transcript, String> {
             "UnicodeEncodeError: the transcript path {shown} is not UTF-8"
         ));
     };
+    // The OS takes a path as a C string: a NUL in it stops the report with one ValueError line.
+    if text.contains('\0') {
+        return Err("ValueError: embedded null byte".to_owned());
+    }
     let pure = PosixPath::parse(text).render();
     match fs::read(&pure) {
         Ok(bytes) => results(&String::from_utf8_lossy(&bytes), &pure),
@@ -101,9 +105,9 @@ fn results(text: &str, pure: &str) -> Result<Transcript, String> {
 fn tool_results(document: &JsonValue) -> Vec<&Pairs> {
     let content = field::seen(document)
         .dict
-        .and_then(|pairs| entry(pairs, MESSAGE))
+        .and_then(|pairs| get(pairs, MESSAGE))
         .and_then(|message| field::seen(message).dict)
-        .and_then(|message| entry(message, CONTENT))
+        .and_then(|message| get(message, CONTENT))
         .and_then(|content| field::seen(content).list);
     let Some(items) = content else {
         return Vec::new();
@@ -112,7 +116,7 @@ fn tool_results(document: &JsonValue) -> Vec<&Pairs> {
         .iter()
         .filter_map(|item| field::seen(item).dict)
         .filter(|item| {
-            let kind = entry(item, TYPE).and_then(|kind| field::seen(kind).text);
+            let kind = get(item, TYPE).and_then(|kind| field::seen(kind).text);
             kind.is_some_and(|kind| kind.as_str() == Some(TOOL_RESULT))
         })
         .collect()
@@ -121,11 +125,11 @@ fn tool_results(document: &JsonValue) -> Vec<&Pairs> {
 // Claude Code writes no is_error key on a call that succeeded.
 fn status(item: &Pairs, at: &str) -> Result<(CodePointString, Status), String> {
     let tool_use_id = field::text(item, TOOL_USE_ID, at)?;
-    match entry(item, IS_ERROR) {
+    match get(item, IS_ERROR) {
         None | Some(JsonValue::Bool(false)) => Ok((tool_use_id, Status::Applied)),
         Some(JsonValue::Bool(true)) => Ok((tool_use_id, Status::Rejected)),
         Some(other) => {
-            let shown = py_repr(other);
+            let shown = repr_text(other);
             Err(format!("{at}: tool_result.is_error is {shown}, not a bool"))
         }
     }

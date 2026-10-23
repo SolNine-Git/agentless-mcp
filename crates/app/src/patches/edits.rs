@@ -1,6 +1,6 @@
 //! The edits loader: an edits.json document or SEARCH/REPLACE blocks, within the request bounds.
 
-use json::JsonValue;
+use json::{JsonValue, get};
 use patch::{Edit, MAX_EDIT_BYTES, MAX_EDITS, ParseResult};
 use text::CodePointString;
 
@@ -32,7 +32,7 @@ fn from_json(text: &str) -> Result<ParseResult, String> {
     let document =
         json::parse(text).map_err(|error| format!("edits document is not valid JSON: {error}"))?;
     let entries = match &document {
-        JsonValue::Object(pairs) => field(pairs, EDITS_KEY),
+        JsonValue::Object(pairs) => get(pairs, EDITS_KEY),
         _ => None,
     };
     let Some(entries) = entries else {
@@ -52,11 +52,6 @@ fn from_json(text: &str) -> Result<ParseResult, String> {
         edits,
         errors: Vec::new(),
     })
-}
-
-fn field<'a>(pairs: &'a [(CodePointString, JsonValue)], name: &str) -> Option<&'a JsonValue> {
-    let found = pairs.iter().find(|(key, _)| key.as_str() == Some(name));
-    found.map(|(_, value)| value)
 }
 
 // The three text fields first, in order, then the index. An entry without an index takes its
@@ -83,7 +78,7 @@ fn text_field(
     name: &str,
     position: usize,
 ) -> Result<String, String> {
-    let Some(JsonValue::Str(value)) = field(pairs, name) else {
+    let Some(JsonValue::Str(value)) = get(pairs, name) else {
         return Err(format!("edit {position} is missing a string '{name}'"));
     };
     let text = value.as_str();
@@ -93,7 +88,7 @@ fn text_field(
 
 // A bool is no integer, and an index must fit in 64 bits.
 fn index_field(pairs: &[(CodePointString, JsonValue)], position: usize) -> Result<i64, String> {
-    match field(pairs, INDEX_KEY) {
+    match get(pairs, INDEX_KEY) {
         None => i64::try_from(position).map_err(|_| out_of_range(position)),
         Some(JsonValue::Int(digits)) => digits.parse().map_err(|_| out_of_range(position)),
         Some(_) => Err(format!("edit {position} has a non-integer '{INDEX_KEY}'")),

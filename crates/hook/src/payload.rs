@@ -3,7 +3,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use json::{JsonErrorKind, JsonValue};
+use json::{JsonErrorKind, JsonValue, get};
 use text::CodePointString;
 
 use crate::halt::Halt;
@@ -133,14 +133,6 @@ fn path<'a>(value: &'a CodePointString, place: &str) -> Result<&'a Path, Halt> {
         .as_str()
         .map(Path::new)
         .ok_or_else(|| Halt::malformed(format!("{place} holds a lone surrogate")))
-}
-
-pub(crate) fn get<'a>(fields: &'a Fields, key: &str) -> Option<&'a JsonValue> {
-    let key = CodePointString::from(key);
-    fields
-        .iter()
-        .find(|(name, _)| *name == key)
-        .map(|(_, value)| value)
 }
 
 fn field<'a>(fields: &'a Fields, key: &str, place: &str) -> Result<&'a JsonValue, Halt> {

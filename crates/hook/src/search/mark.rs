@@ -7,7 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use app::EnvConfig;
 use app::surface::{Calls, TOOLS};
-use json::JsonValue;
+use json::{JsonValue, get};
 use kernel::SystemClock;
 use text::CodePointString;
 
@@ -15,7 +15,7 @@ use super::log::{self, Entry, key};
 use super::{
     Gate, Parsed, Suppressed, as_text, marker, object_field, parsed, text_field, unhashable,
 };
-use crate::payload::{Fields, get};
+use crate::payload::Fields;
 
 // The prefix that Claude Code puts on the tools of the server it names "agentless".
 const TOOL_PREFIX: &str = "mcp__agentless__";

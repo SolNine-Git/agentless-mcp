@@ -1,4 +1,5 @@
-//! JSON text in three fixed forms: ASCII-only output and shortest float digits.
+//! JSON text in three fixed forms: ASCII-only output and shortest float digits. A parsed value
+//! written back as JSON text or as Python literal text.
 
 use serde::Serialize;
 use serde::ser::{SerializeMap, Serializer};
@@ -50,14 +51,66 @@ pub fn to_text<T: Serialize + ?Sized>(
 /// held, which a value from [`crate::parse`] limits to 4300 digits.
 #[must_use]
 pub fn value_text(value: &JsonValue) -> String {
+    written::<JsonText>(value)
+}
+
+/// Returns `value` as one line of Python literal text: `None`, `True`, `False`, quoted strings,
+/// the shortest float digits, and `, ` and `: ` separators.
+#[must_use]
+pub fn repr_text(value: &JsonValue) -> String {
+    written::<Repr>(value)
+}
+
+// The spellings that differ between two notations of a value. Both write containers alike.
+trait Notation {
+    const NULL: &'static str;
+    const TRUE: &'static str;
+    const FALSE: &'static str;
+    fn float(x: f64) -> String;
+    fn string(text: &mut String, string: &CodePointString);
+}
+
+struct JsonText;
+
+impl Notation for JsonText {
+    const NULL: &'static str = "null";
+    const TRUE: &'static str = "true";
+    const FALSE: &'static str = "false";
+
+    fn float(x: f64) -> String {
+        float_value(x)
+    }
+
+    fn string(text: &mut String, string: &CodePointString) {
+        push_string(text, string);
+    }
+}
+
+struct Repr;
+
+impl Notation for Repr {
+    const NULL: &'static str = "None";
+    const TRUE: &'static str = "True";
+    const FALSE: &'static str = "False";
+
+    fn float(x: f64) -> String {
+        crate::float_text(x)
+    }
+
+    fn string(text: &mut String, string: &CodePointString) {
+        text.push_str(&string.quoted());
+    }
+}
+
+fn written<S: Notation>(value: &JsonValue) -> String {
     let mut text = String::new();
     // A work stack, not recursion: a parsed value can nest 9998 levels deep.
     let mut pending = vec![Step::Value(value)];
     while let Some(step) = pending.pop() {
         match step {
             Step::Text(raw) => text.push_str(raw),
-            Step::Key(key) => push_string(&mut text, key),
-            Step::Value(value) => push_value(&mut text, value, &mut pending),
+            Step::Key(key) => S::string(&mut text, key),
+            Step::Value(value) => push_value::<S>(&mut text, value, &mut pending),
         }
     }
     text
@@ -70,14 +123,18 @@ enum Step<'a> {
     Value(&'a JsonValue),
 }
 
-fn push_value<'a>(text: &mut String, value: &'a JsonValue, pending: &mut Vec<Step<'a>>) {
+fn push_value<'a, S: Notation>(
+    text: &mut String,
+    value: &'a JsonValue,
+    pending: &mut Vec<Step<'a>>,
+) {
     match value {
-        JsonValue::Null => text.push_str("null"),
-        JsonValue::Bool(true) => text.push_str("true"),
-        JsonValue::Bool(false) => text.push_str("false"),
+        JsonValue::Null => text.push_str(S::NULL),
+        JsonValue::Bool(true) => text.push_str(S::TRUE),
+        JsonValue::Bool(false) => text.push_str(S::FALSE),
         JsonValue::Int(digits) => text.push_str(digits),
-        JsonValue::Float(x) => text.push_str(&float_value(*x)),
-        JsonValue::Str(string) => push_string(text, string),
+        JsonValue::Float(x) => text.push_str(&S::float(*x)),
+        JsonValue::Str(string) => S::string(text, string),
         JsonValue::Array(items) => {
             text.push('[');
             push_items(pending, "]", items.iter().map(|item| [Step::Value(item)]));
@@ -353,6 +410,32 @@ mod tests {
             let value = crate::parse(&document).expect("the fixture document is JSON");
             assert!(value_text(&value) == expected, "{document:.200}");
         }
+    }
+
+    // Each kind, a repeated key, the non-finite floats and a lone surrogate, against the
+    // reference's repr of the same document.
+    #[test]
+    fn repr_text_writes_python_literals() {
+        let document = concat!(
+            r#"{"a": null, "b": [true, false, 0], "c": 1.5, "d": -0.0, "#,
+            r#""e": 12345678901234567890123, "f": "it's \"q\" é\n", "g": {}, "h": [[]], "#,
+            r#""i": NaN, "j": -Infinity, "k": 1e400, "l": "\ud800", "m": 1e-7, "a": 2}"#,
+        );
+        let expected = concat!(
+            "{'a': 2, 'b': [True, False, 0], 'c': 1.5, 'd': -0.0, ",
+            "'e': 12345678901234567890123, 'f': 'it\\'s \"q\" \u{e9}\\n', 'g': {}, 'h': [[]], ",
+            "'i': nan, 'j': -inf, 'k': inf, 'l': '\\ud800', 'm': 1e-07}",
+        );
+        let value = crate::parse(document).expect("a JSON document");
+        assert_eq!(repr_text(&value), expected);
+    }
+
+    #[test]
+    fn repr_text_writes_a_value_nested_9998_deep() {
+        let depth = 9998;
+        let nested = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let value = crate::parse(&nested).expect("a value at the depth limit");
+        assert_eq!(repr_text(&value), nested);
     }
 
     #[test]

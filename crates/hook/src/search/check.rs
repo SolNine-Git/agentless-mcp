@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::panic::{self, AssertUnwindSafe};
 
 use app::EnvConfig;
-use json::JsonValue;
+use json::{JsonValue, get};
 use kernel::SystemClock;
 use text::CodePointString;
 
@@ -14,7 +14,7 @@ use super::stat::{self, Base};
 use super::{
     Gate, Parsed, Suppressed, as_text, marker, object_field, parsed, shell, text_field, unhashable,
 };
-use crate::payload::{Fields, get};
+use crate::payload::Fields;
 
 const ALLOW: u8 = 0;
 const DENY: u8 = 2;

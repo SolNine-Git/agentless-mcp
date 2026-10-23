@@ -333,7 +333,7 @@ fn rows<T>(
     at: &str,
     parse: fn(&Pairs, &str) -> Result<T, String>,
 ) -> Result<Option<Vec<T>>, String> {
-    if field::entry(value, key).is_none() {
+    if json::get(value, key).is_none() {
         return Ok(None);
     }
     let mut parsed = Vec::new();

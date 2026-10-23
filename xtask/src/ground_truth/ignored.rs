@@ -1,15 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 
 use serde::Deserialize;
 
 use crate::suppressions::Entry;
 use crate::{Failure, process};
 
-// A hang guard: 1.5 x the slowest cold build of the test binaries that CI measured (macOS).
-const LIST: Duration = Duration::from_secs(250);
 const IGNORE: &str = "ignore";
 const LISTED: &str = "listed";
 
@@ -37,7 +34,7 @@ pub fn tests(root: &Path) -> Result<Vec<String>, Failure> {
     command
         .args(["nextest", "list", "--workspace", "--message-format", "json"])
         .current_dir(root);
-    let output = process::stdout(&mut command, LIST)?;
+    let output = process::stdout(&mut command, process::BUILD)?;
     parse(&output).map_err(|error| Failure::Broken(format!("cargo nextest list: {error}")))
 }
 

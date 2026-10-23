@@ -1,5 +1,4 @@
-//! The typed read of one field of a log object, the integer of any size that a field holds, and
-//! the reference's display form of a JSON value.
+//! The typed read of one field of a log object, and the integer of any size that a field holds.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -26,14 +25,6 @@ impl Kind {
 
 pub(crate) type Pairs = [(CodePointString, JsonValue)];
 
-// The value of `key` in `object`, or `None` when the object has no such key.
-pub(crate) fn entry<'v>(object: &'v Pairs, key: &str) -> Option<&'v JsonValue> {
-    object
-        .iter()
-        .find(|(name, _)| name.as_str() == Some(key))
-        .map(|(_, value)| value)
-}
-
 // The value of `key` in `object` as `read` takes it. A missing key, or a value that `read` does not
 // take, is refused with the names of `kinds`.
 pub(crate) fn typed<'v, T>(
@@ -43,7 +34,7 @@ pub(crate) fn typed<'v, T>(
     at: &str,
     read: impl Fn(&'v JsonValue) -> Option<T>,
 ) -> Result<T, String> {
-    let Some(value) = entry(object, key) else {
+    let Some(value) = json::get(object, key) else {
         return Err(format!("{at}: {key} is missing"));
     };
     read(value).ok_or_else(|| {
@@ -178,60 +169,5 @@ impl PartialOrd for Int {
 impl fmt::Display for Int {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
-    }
-}
-
-enum Piece<'v> {
-    Value(&'v JsonValue),
-    Key(&'v CodePointString),
-    Text(&'static str),
-}
-
-// The reference's display form of a parsed JSON value: None, True, quoted strings, float repr.
-pub(crate) fn py_repr(value: &JsonValue) -> String {
-    let mut out = String::new();
-    let mut pending = vec![Piece::Value(value)];
-    while let Some(piece) = pending.pop() {
-        match piece {
-            Piece::Text(text) => out.push_str(text),
-            Piece::Key(key) => out.push_str(&key.quoted()),
-            Piece::Value(value) => open(value, &mut out, &mut pending),
-        }
-    }
-    out
-}
-
-fn open<'v>(value: &'v JsonValue, out: &mut String, pending: &mut Vec<Piece<'v>>) {
-    match value {
-        JsonValue::Null => out.push_str("None"),
-        JsonValue::Bool(true) => out.push_str("True"),
-        JsonValue::Bool(false) => out.push_str("False"),
-        JsonValue::Int(digits) => out.push_str(digits),
-        JsonValue::Float(x) => out.push_str(&json::float_text(*x)),
-        JsonValue::Str(text) => out.push_str(&text.quoted()),
-        JsonValue::Array(items) => {
-            out.push('[');
-            pending.push(Piece::Text("]"));
-            let items = items.iter().map(|item| vec![Piece::Value(item)]);
-            push_items(pending, items.collect());
-        }
-        JsonValue::Object(pairs) => {
-            out.push('{');
-            pending.push(Piece::Text("}"));
-            let pairs = pairs
-                .iter()
-                .map(|(key, item)| vec![Piece::Key(key), Piece::Text(": "), Piece::Value(item)]);
-            push_items(pending, pairs.collect());
-        }
-    }
-}
-
-// Queues the items to be written in order, with ", " between them.
-fn push_items<'v>(pending: &mut Vec<Piece<'v>>, items: Vec<Vec<Piece<'v>>>) {
-    for (index, item) in items.into_iter().enumerate().rev() {
-        pending.extend(item.into_iter().rev());
-        if index > 0 {
-            pending.push(Piece::Text(", "));
-        }
     }
 }

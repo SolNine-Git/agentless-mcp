@@ -48,6 +48,15 @@ fn take_children(value: &mut JsonValue, pending: &mut Vec<JsonValue>) {
     }
 }
 
+/// Returns the value of `key` in the object members `pairs`, or `None` when no member has it.
+#[must_use]
+pub fn get<'v>(pairs: &'v [(CodePointString, JsonValue)], key: &str) -> Option<&'v JsonValue> {
+    pairs
+        .iter()
+        .find(|(name, _)| name.as_str() == Some(key))
+        .map(|(_, value)| value)
+}
+
 /// Why [`parse`] refused a text. It displays as its message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JsonErrorKind {
@@ -659,6 +668,19 @@ mod tests {
             let refused = parse(&nested(limit + 1)).map(drop);
             assert_eq!(refused.map_err(|error| error.kind), Err(kind));
         }
+    }
+
+    // A key with a lone surrogate equals no str key, so `get` never finds it.
+    #[test]
+    fn get_finds_a_member_by_its_key() {
+        let document = parse(r#"{"a": 1, "\ud800": 2, "b": "x"}"#);
+        let Ok(JsonValue::Object(pairs)) = &document else {
+            panic!("an object: {document:?}");
+        };
+        assert_eq!(get(pairs, "a"), Some(&JsonValue::Int("1".to_owned())));
+        assert_eq!(get(pairs, "b"), Some(&JsonValue::Str("x".into())));
+        assert_eq!(get(pairs, "c"), None);
+        assert_eq!(get(pairs, "\u{fffd}"), None);
     }
 
     #[test]
