@@ -1,0 +1,6 @@
+# CI's trusted gate binary, pinned by hash. Move the pin on purpose, not with each release.
+agentless-mcp==0.11.0rc1 \
+    --hash=sha256:0da8c11dc4cafabb2933d0edf040973e31a420175350c5cfb031c9c5b6754b81 \
+    --hash=sha256:48ebba84642adfeda8ad1868bccfd09f3be8f6ece97af5441dc8f84db061a8a1 \
+    --hash=sha256:58770e7e744b36468696e86ad264369d530564ec60eb3cdd0e27e3f9b25f40ca \
+    --hash=sha256:da970f5afc29481724831b6bca4080a54f459aa78d61bd8d2a3387a64b66bd76

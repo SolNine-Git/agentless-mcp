@@ -241,8 +241,6 @@ jobs:
           test "$status" -eq 2
           grep -q "the 'mcp' extra, which is not installed" <<<"$output"
 
-  # P0d of docs/plans/2026-10-10_rust-port-p0-groundwork.md. The gate binary is never the build
-  # under test: a locked checkout of GATE_REV, the P0a merge, until 0.10.1 is released.
   rust:
     name: ${{ matrix.os }} / Rust
     runs-on: ${{ matrix.os }}
@@ -251,9 +249,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    env:
-      GATE_REPO: https://github.com/SolNine-Git/agentless-mcp
-      GATE_REV: 9bb51ac855c237efcd554a197fa18cbbffbbd3f4
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -301,19 +296,16 @@ jobs:
           version: 0.9.28
           python-version: "3.13"
 
-      # Outside the workspace, like the gate binary below. The pack writes beside the libs directory too.
-      - name: Grammar cache location
-        run: echo "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR=$RUNNER_TEMP/grammars/libs" >> "$GITHUB_ENV"
-
-      # Outside the workspace: lint --since reads every file there that git does not ignore.
+      # The gate is never the build under test: it is the wheel that .github/gate/requirements.txt
+      # pins. Outside the workspace: lint --since reads every file there that git does not ignore.
       - name: Gate binary
         run: |
           gate="$RUNNER_TEMP/agentless-mcp-gate"
-          git clone --quiet --no-checkout "$GATE_REPO" "$gate"
-          git -C "$gate" checkout --quiet --detach "$GATE_REV"
-          uv sync --frozen --no-dev --project "$gate"
-          echo "GATE_BIN=$gate/.venv/bin/agentless-mcp" >> "$GITHUB_ENV"
-          "$gate/.venv/bin/agentless-mcp" warmup
+          uv venv "$gate"
+          uv pip install --python "$gate/bin/python" --require-hashes --only-binary :all: \
+            --requirement .github/gate/requirements.txt
+          echo "GATE_BIN=$gate/bin/agentless-mcp" >> "$GITHUB_ENV"
+          "$gate/bin/agentless-mcp" warmup
 
       # On a push to main the merge base is HEAD, so policy and erosion judge the pushed range. A new
       # branch (zero SHA) and a v* tag keep the merge base: each main commit's push run judged it.
