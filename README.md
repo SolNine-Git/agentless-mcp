@@ -8,37 +8,47 @@ MCP server.
 ## Install
 
 ```sh
-uv tool install "agentless-mcp[mcp]"
+uv tool install "agentless-mcp==0.11.0rc1"
 ```
 
-That installs two console scripts. `agentless-mcp` is the CLI, for a human or
+0.11.0rc1 is a pre-release, the first Rust build. Until 0.11.0, a plain
+`uv tool install agentless-mcp` or `uvx agentless-mcp` installs the Python
+build 0.9.1, so name the version to get this one.
+
+That installs two native commands. `agentless-mcp` is the CLI, for a human or
 for an agent driving it over a shell. `agentless-mcp-server` is the MCP
 server, which an MCP client launches for you rather than something you run in
-a terminal. The server needs the `mcp` extra, which is why the install above
-leads with it; install without the extra when you want the CLI alone:
+a terminal. The wheel holds no Python package. The `mcp` and `tokens` extras
+are empty, and they stay so that an install command of an earlier release,
+such as `uv tool install "agentless-mcp[mcp]"`, still works.
+
+The wheels cover Linux x86_64 and aarch64 with glibc 2.34 or later, and macOS
+arm64 and x86_64. On another platform the install builds the sdist, which
+needs a Rust toolchain and a C compiler.
+
+In a local checkout, the root `pyproject.toml` still builds the Python
+reference. Build the Rust wheel from `packaging/` instead, then install the
+wheel file:
 
 ```sh
-uv tool install agentless-mcp
+bash packaging/notices.sh
+(cd packaging && maturin build --release --locked --out ../dist)
+uv tool install --force --reinstall dist/agentless_mcp-*.whl
 ```
 
-Without the extra, `agentless-mcp-server --help` and `--version` still
-answer, and any real invocation exits with the install command for the
-extra.
-
-Installing from a local checkout takes the same command with the path to the
-checkout in place of the package name. Add `--reinstall --refresh` whenever
-you rebuild: `uv tool install --force` reuses a cached wheel while the version
-string is unchanged, so a changed tree does not reach the installed tool.
+`notices.sh` needs cargo-about and GNU tar with zstd. Add `--reinstall`
+whenever you rebuild: `uv tool install --force` can keep the installed build
+while the version string is unchanged.
 
 The `history` view needs git 2.25 or newer, the first release whose `git log
 -L` documents `--no-patch` as suppressing the patch. On an older git the patch
 text reaches the log parser, which refuses the answer rather than misread it.
 Every other view works without git.
 
-Both entry points warm cold grammars in the background at startup (one
-digest-verified bundle fetch at most; `--no-auto-warm` or
-`AGENTLESS_MCP_NO_AUTO_WARM` opts out, `AGENTLESS_MCP_NO_DOWNLOAD` forbids
-all fetching). To warm explicitly and fail loudly instead:
+The 22 grammars are linked into `agentless-mcp`, so nothing is downloaded.
+`agentless-mcp-server` is a small launcher that runs `agentless-mcp`. `--no-auto-warm`, `AGENTLESS_MCP_NO_AUTO_WARM` and
+`AGENTLESS_MCP_NO_DOWNLOAD` are accepted and have no effect. To list the
+linked grammars and probe each one:
 
 ```sh
 agentless-mcp warmup
@@ -187,34 +197,33 @@ than the ceiling exceeds it instead of thrashing. Set
 cache forever. An evicted repository loses no answers, only the speed: the
 next call parses on demand and the one after that re-indexes.
 
+The sweep counts and releases only the `agentless.db` files that this
+release writes. It does not count or delete the `tags.db` files of the
+Python releases, and this release does not read them. Delete them by hand.
+
 ## MCP server
 
 The server exposes read-only repository tools. It talks over stdio by
 default, which is what a client that launches the server as a child expects.
-For a single-user machine, register it once and let the client's advertised
-workspace authorize repositories: whatever repository you open a session in
-is served on the first tool call, with nothing to enable per repo.
+The server serves only the repositories that its `--root` flags and
+`--roots-from` files name. Register it once with every repository you work
+in:
 
 ```sh
-claude mcp add --scope user agentless -- agentless-mcp-server --allow-client-roots
+claude mcp add --scope user agentless -- \
+  agentless-mcp-server --root /path/to/repo --root /path/to/other
 ```
 
-For a locked-down server, omit `--allow-client-roots` and pass an explicit
-allowlist instead; then only the listed repositories are servable, and a
-client-advertised root can only select among them, never add one:
-
-```sh
-agentless-mcp-server --root /path/to/repo --root /path/to/other
-```
+The server does not read the client's workspace roots. `--allow-client-roots`
+is accepted and has no effect, so a server started with no roots refuses
+every call.
 
 Over HTTP the server also watches its own install: when the package is
 upgraded or reinstalled, it finishes in-flight requests and replaces itself
 with the new code (`--no-auto-restart` or `AGENTLESS_MCP_NO_AUTO_RESTART`
 opts out). A long-running process otherwise serves the code it loaded at
 startup forever -- reconnecting clients refreshes the connection, never the
-process. On Windows the server exits cleanly instead and a supervisor's
-`Restart=` completes the loop; `docs/deploy/mcp-agentless.service` is a
-ready example unit.
+process. `docs/deploy/mcp-agentless.service` is a ready example unit.
 
 `--roots-from FILE` reads that same list from a file, one path per line.
 The file is re-read whenever it changes on disk, so appending a line enrolls
@@ -235,8 +244,8 @@ claude mcp add --scope user agentless -- \
 
 ### Serving over HTTP
 
-A client that cannot spawn a child process gets the same tools over FastMCP's
-streamable-http transport, from one long-lived server that several clients
+A client that cannot spawn a child process gets the same tools over the MCP
+streamable HTTP transport, from one long-lived server that several clients
 share. The endpoint is `http://HOST:PORT/mcp`:
 
 ```sh
@@ -251,17 +260,21 @@ routable address that is unauthenticated read access to every enrolled
 repository, so a non-loopback `--host` is refused before the socket opens.
 Put an authenticating proxy in front if you need it off-host.
 
+The server also refuses a request that a web page could send through DNS
+rebinding. A request whose `Host` header is not `localhost`, `127.0.0.1`,
+`[::1]` or the bound address gets `403 Forbidden`. So does a request whose
+`Origin` header is present and names another host. A client that connects
+by one of those names, with any port, is served.
+
 `--host` and `--port` apply to the HTTP transport only; passing either under
 stdio is refused rather than ignored, because there is no socket to bind.
 
 Several clients sharing one server also share its worker threads, so
 `--max-concurrency N` bounds how many tool calls run at once; it accepts 1 to
 64 and defaults to 8. Every admitted call may hold a tag-cache connection and
-a git child, and the ungated ceiling is whatever the interpreter's default
-thread pool sized itself to -- 32 on a large host, 5 on a small one. Raise it
-for a server with many clients, lower it to keep the machine's git and disk
-load predictable. It applies to stdio too, where the default is already the
-right answer for a single client.
+a git child. Raise it for a server with many clients, lower it to keep the
+machine's git and disk load predictable. It applies to stdio too, where the
+default is already the right answer for a single client.
 
 `--call-limit SECONDS` bounds how long one tool call may work, and defaults to
 30. Time a call spends parsing files the tag cache does not hold is added on
@@ -269,14 +282,18 @@ top, up to `--recache-grace SECONDS` (default 60), so a call that rebuilds a
 cold cache is not stopped for that. A call past its limit stops at its next
 checkpoint and returns a refusal that names both bounds. A call the client
 cancels stops the same way, so its worker thread does not run on after the
-client has gone. Measured calls take 0.4 to 4 s on repositories of up to
-1,822 files. The CLI has no limit.
+client has gone. On a clone of mcp-local (467 files) with a fresh tag cache,
+a steady-state `orient` `map` call over stdio takes 55 ms and a
+`find_referencing_symbols` call takes 47 ms (medians of 60 calls), well
+inside the 30 s default. The CLI has no limit.
 
-Every tool takes `repo_root` first. It may be omitted only when the server
-holds one repository, or when the client advertises a root that selects
-exactly one; otherwise the refusal lists the roots to choose from. Under
-stdio, a client that advertises several workspace folders gets the one the
-server was launched in.
+Every tool takes `repo_root` first. It may be omitted when the server holds
+one repository. Under stdio it may also be omitted when the server's launch
+directory is inside exactly one of its roots, and the call then gets that
+root. A client that launches the server in the project directory therefore
+needs no `repo_root`. Otherwise the refusal lists the roots to choose from.
+Over HTTP the launch directory is the service's own, so a server with
+several roots always needs `repo_root`.
 
 The MCP tools are six intent-shaped surfaces; three of them fold their
 questions behind an `operation` parameter:
@@ -305,13 +322,10 @@ A wrong `operation` is answered with the valid list, and a parameter foreign
 to the selected operation is refused with a message naming what that
 operation accepts and requires.
 
-This v2 surface is the default. For the transition, `--surface v1` publishes
-the previous twelve per-question tools (`repo_map`, `expand_symbols`, and the
-rest) and `--surface both` publishes the union. Both are deprecated, and 0.11.0
-removes them.
-`find_referencing_symbols`, `capabilities` and `history` stand alone on both
-surfaces, so the union is fifteen names rather than eighteen. The mapping
-between the surfaces is in
+This v2 surface is the only one. 0.11.0 removed the twelve per-question v1
+tools (`repo_map`, `expand_symbols`, and the rest): `--surface v1` and
+`--surface both` stop the server at start-up with exit 2, and `--surface v2`
+is accepted. The mapping from each v1 tool to its v2 call is in
 `agentless-mcp guide --section the-two-surfaces`.
 
 ### What the server runs
@@ -370,11 +384,7 @@ it runs unattended. Claude Code matches these rules literally: a wildcard
 such as `mcp__agentless__*` matches nothing.
 
 The prefix carries the server name you registered. These entries assume the
-`claude mcp add ... agentless ...` line at the top of this section. Under
-`--surface v1` or `--surface both`, add the per-question tool names as
-well: `repo_map`, `list_dir`, `get_symbols_overview`, `expand_symbols`,
-`read_slice`, `find_symbol`, `explain_symbol`, `analyze_structure`, and
-`resolve_locations`.
+`claude mcp add ... agentless ...` line at the top of this section.
 
 ### Eager tool schemas
 
@@ -400,9 +410,9 @@ made a localizing Agentless call.
 `symbols(locate)`, `history`, and the shape listings `orient(communities|cycles|diagram|health)`
 do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
 naming a file and a line range is the localization. A directory listing is how
-you look for a file, not evidence that you found one. The equivalent v1 tools unlock servers running the temporary
-compatibility surface. `Grep` scoped to one existing file remains available
-before unlock because the caller has already localized that search. The mark
+you look for a file, not evidence that you found one. `Grep` scoped to one
+existing file remains available before unlock because the caller has already
+localized that search. The mark
 hook reads the call and not its result, so an Agentless call that errored
 still unlocks.
 The constraint is an order, not a ban: once the gate opens, broad search keeps
@@ -483,8 +493,17 @@ Install the gate by copying the two scripts and adding one hooks block.
 }
 ```
 
+The binary runs the same gate with no python3. To use it, set the
+`PreToolUse` command to `agentless-mcp hook gate-check` and the `PostToolUse`
+command to `agentless-mcp hook gate-mark`, with the absolute path of the
+installed `agentless-mcp` when it is not on the `PATH` that Claude Code
+gives its hooks. The commands take the same payloads as the scripts, make
+the same decisions, and share the marker with them.
+
 Verify the scripts outside a session first. Feed each one a fake hook payload
-on stdin and read the exit code:
+on stdin and read the exit code. For the built-in commands, put
+`agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark` in place
+of the two `python3` commands:
 
 ```sh
 rm -rf /tmp/agentless_gate
@@ -518,6 +537,13 @@ line per decision and confirm the gate fired. Remove the gate by deleting
 the two hook blocks from `settings.json`, the copied scripts, and
 `/tmp/agentless_gate`; nothing else on disk changes.
 
+The built-in commands trust `/tmp/agentless_gate` only when it is a
+directory, not a symlink, that the user owns and that no group or other user
+can write. Otherwise they count no marker, and the check allows every call.
+They create the directory with mode `0700`. Under `umask 0002` the scripts
+create it with mode `0775`, so after the scripts have run, the built-in
+check allows broad search until the directory is removed.
+
 #### Codex CLI
 
 The two scripts are unchanged between clients. Codex uses the same
@@ -533,7 +559,7 @@ Three things differ, and all three are configuration.
    ```toml
    [mcp_servers.agentless]
    command = "/ABSOLUTE/PATH/TO/agentless-mcp-server"
-   args = ["--allow-client-roots", "--root", "/ABSOLUTE/PATH/TO/repo"]
+   args = ["--root", "/ABSOLUTE/PATH/TO/repo"]
    ```
 
    Pass every repository you work in as a `--root`. A server given one root is
@@ -586,9 +612,12 @@ default or a swallowed error in a module that `boundary_globs` names.
 that the change adds while the repository already has a copy of it, with
 names and literals ignored. The hook imports the standard library only.
 
-The Rust build runs the same gate in its own process as
-`agentless-mcp hook erosion`, but that hook is not yet the installed default,
-so the install steps below use the Python script.
+The binary runs the same gate in its own process as
+`agentless-mcp hook erosion`, with no python3. The install steps below use
+the Python script, which `contrib/hooks/settings-example.json` names. To use
+the built-in hook, set the command to `agentless-mcp hook erosion`, with the
+absolute path of the installed `agentless-mcp` when it is not on the `PATH`
+that Claude Code gives its hooks.
 
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 
@@ -634,9 +663,10 @@ mcp-local file the hook takes 0.24 s with a fresh cache, against 0.21 s and
 `/usr/bin/time`). On diffusers@65ab105 without a cache, the hook-form lint of
 all three checks takes 0.14 s for a source file (one run). `lint --since` and
 candidate runs build the index when there is no cache, and they stop it after
-10 s. The binary must have the same cache schema as the MCP server that keeps
-the cache fresh, because two builds with different schemas delete each other's
-database.
+10 s. The hook reads the cache that a server or an `agentless-mcp index` of
+the same release writes. Beside a Python-build server, a 0.11.0 hook gets
+the `no_tag_cache` row until a 0.11.0 server or `agentless-mcp index` fills
+the cache.
 
 Install the gate in Claude Code:
 
@@ -698,6 +728,9 @@ python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --samp
 # Write correct or wrong in the label column of each row, then:
 python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --labels labels.csv
 ```
+
+`agentless-mcp gate-report` takes the same arguments and gives the same
+report, with no python3.
 
 The report puts each finding in one class:
 

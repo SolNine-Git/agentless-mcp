@@ -1,9 +1,35 @@
 # Changelog
 
-## Unreleased
+## 0.11.0rc1 -- unreleased
+
+The implementation moves from Python to Rust. 0.11.0rc1 is a pre-release on
+PyPI: `uv tool install agentless-mcp` and `uvx agentless-mcp` skip it and stay
+on 0.9.1, and `agentless-mcp==0.11.0rc1` selects it. The 0.10.0 tag never
+reached PyPI, so the changes of the 0.10.0 section below reach PyPI with this
+release. The Rust build answers as the Python tree at 8930bd6 does, apart
+from the deviations under Changed and Removed. On the release candidate
+93fa5ed, `tools/list` is byte-identical to the Python build's (15,120 bytes,
+live over stdio and HTTP), 0 of 1,206 read-surface answers changed (`cycles`,
+`explain`, `map` and `refs`), 0 of 150 Loc-Bench rankings changed, and 10 of
+66 stdio probe answers differ, each of them a deviation that this entry
+lists. The black-box harness, 42 subprocess tests, passes on both builds with
+an empty diff.
 
 ### Added
 
+- **The hooks are in the binary.** `agentless-mcp hook gate-check` and
+  `agentless-mcp hook gate-mark` do the work of
+  `contrib/hooks/agentless_gate_check.py` and `agentless_gate_mark.py`, and
+  `agentless-mcp hook erosion` does the work of
+  `contrib/hooks/agentless_erosion_gate.py`, with no Python. The gate
+  commands use the same marker path and format as the scripts, so a session
+  can move between the two forms. The scripts still work with this release,
+  because they import the standard library only.
+- **`agentless-mcp gate-report` replaces
+  `contrib/hooks/erosion_gate_report.py`.** It reads the same log and writes
+  and scores the same CSV, so a trial that started under Python continues. A
+  log that the Python hook wrote gives byte-identical output from both
+  reports. Its usage and error lines name `agentless-mcp gate-report`.
 - **`lint --fail-on SEVERITY[,SEVERITY...]` makes a finding fail the
   command.** The severities are `warning`, `advisory`, and `not_checked`. A
   finding with a listed severity exits 3, after the report is printed. Exit 1
@@ -17,21 +43,136 @@
 
 ### Changed
 
+- **The implementation is Rust.** The wheel holds two native commands,
+  `agentless-mcp` and `agentless-mcp-server`, and no Python package, so
+  `python -m agentless_mcp` and `import agentless_mcp` fail. The wheels cover
+  Linux x86_64 and aarch64 with glibc 2.34 or later, and macOS arm64 and
+  x86_64. On another platform the install builds the sdist, which needs a
+  Rust toolchain and a C compiler. The `mcp` and `tokens` extras are empty,
+  and they stay so that `agentless-mcp[mcp,tokens]` installs with no warning.
+  The binary holds the server and the tiktoken counter.
+- **The grammars are linked into the binary.** Nothing is downloaded.
+  `--no-auto-warm`, `AGENTLESS_MCP_NO_AUTO_WARM`, `AGENTLESS_MCP_NO_DOWNLOAD`
+  and `warmup --no-download` have no effect, and `warmup` lists the linked
+  grammars. `capabilities` reports the grammar cache as `(linked into the
+  binary)` and the version as `0.11.0-rc.1`.
+- **The tag cache is a new file.** Each repository's directory under
+  `$XDG_CACHE_HOME/agentless-mcp/` now holds `agentless.db` and
+  `agentless.lock`. The Rust build does not read a `tags.db` that an earlier
+  release wrote, and the 5 GiB sweep does not count or delete it. Delete
+  those files by hand. The MCP server indexes each repository again on its
+  first call, and the CLI reads no cache until `agentless-mcp index` runs.
+  The reads do not use an `agentless.db` that another build wrote. They note
+  `cache kept: rows of another agentless-mcp build, rerun agentless-mcp
+  index`, and the next `index` rewrites the rows.
+- **A Rust hook beside a Python server has no tag cache.** The erosion hook
+  reads `agentless.db`, which only a 0.11.0 server or a 0.11.0
+  `agentless-mcp index` writes. Until one of them fills it, `clone_delta`
+  gives its `no_tag_cache` row. This is derived from the code, not measured.
+- **Latency.** Each figure is the median and p95 (nearest rank) of 60 runs,
+  two sessions of 30 after warm-up, with the builds taking turns, on a clone
+  of mcp-local at `f17af96` (467 indexed files, 183 Python files under
+  `src/`). The Python build is 8930bd6 under Python 3.13.11, and the Rust
+  build is b158b3f. The hook figures time one whole hook process for a Write
+  of `src/readers/document_readers.py` with a 4-line function appended, with
+  `scripts/hook_latency.py`, and each build reads the cache that its own
+  `index` wrote. The `map` and `refs` figures time steady-state tool calls on
+  one stdio server per build, from the request write to the answer, after
+  that build's own `index`: `orient` `map` with the focus
+  `src/readers/document_readers.py`, and `find_referencing_symbols` on
+  `DocumentContent`. The two builds gave byte-identical answers to both
+  calls.
+
+  | Measurement | Python 8930bd6, median / p95 | Rust b158b3f, median / p95 |
+  |---|---|---|
+  | Erosion hook, no tag cache | 300.4 / 311.7 ms | 14.5 / 15.6 ms |
+  | Erosion hook, fresh tag cache | 382.4 / 390.3 ms | 25.4 / 27.0 ms |
+  | Erosion hook, cache stale for 19 of 183 files | 464.0 / 472.6 ms | 53.1 / 56.0 ms |
+  | Hook process with the gate off | 32.6 / 35.4 ms | 1.8 / 2.1 ms |
+  | `orient` `map` over stdio | 715.6 / 835.9 ms | 55.0 / 59.1 ms |
+  | `find_referencing_symbols` over stdio | 669.5 / 790.3 ms | 47.0 / 51.4 ms |
+
+- **Root selection reads no client roots.** The server never sends
+  `roots/list`. Under stdio, a call with no `repo_root` on a server with
+  several roots gets the one root that holds the server's launch directory.
+  When no root holds it, or two nested roots both hold it, the call gets the
+  refusal that lists the roots. Over HTTP the launch directory is the
+  service's own, so such a call always gets that refusal. `capabilities`
+  always reports `client roots: none advertised`.
+- **The HTTP transport runs on rmcp.** These answers change:
+  - A request whose `Host` is not a loopback name, or whose `Origin` header
+    is present and is not a loopback origin, gets `403 Forbidden` with
+    `Forbidden: Host header is not allowed` or `Forbidden: Origin header is
+    not allowed`. The loopback names are `localhost`, `127.0.0.1`, `[::1]`
+    and the bound address of `--host`, with any port. The Python build
+    served these requests. The check guards against DNS rebinding.
+  - The keep-alive comment on an event stream is `:`, sent 15 s after the
+    last event. The Python build sent `: ping - <time>` every 15 s.
+  - On SIGTERM or SIGINT, a call that ends inside the drain bound
+    (`--call-limit` plus `--recache-grace`) gets its answer. The Python build
+    cancelled the call at once and sent no answer. A stop with an open
+    stream waits up to 1 s more.
+  - A connection whose request head is not complete after 30 s is closed.
+    The Python build kept it open. An idle keep-alive connection is closed
+    30 s after its last response, where the Python build closed it after
+    5 s.
+  - `/mcp/` is served directly, where the Python build answered `307`. A
+    malformed `Host` gets `400`, a `GET` with no session gets `400 Bad
+    Request: Session ID is required`, and a body over 4 MiB gets `413`.
+  - The server writes no banner and no update check. Over HTTP it writes one
+    line at start, `agentless-mcp-server: serving MCP at
+    http://127.0.0.1:<port>/mcp`.
+  - The restart on upgrade watches the device, inode, and modification time
+    of the installed binary. SIGINT ends the server with no traceback.
+- **Some protocol answers come from rmcp.** `initialize` no longer
+  advertises `logging`, and `logging/setLevel` answers `-32601`.
+  `server/discover`, `subscriptions/listen` and the `tasks/*` methods get
+  rmcp's error texts. A first message that is not `initialize` or `ping`
+  gets rmcp's `-32602` text, and the server then answers `initialize` as
+  before. A `ping` before `initialize` gets `{}` in both builds. A cancelled
+  request gets no answer.
+- **A failed write to stdout while the input is open ends a stdio
+  session.** The server writes one line, `agentless-mcp-server: cannot write
+  to standard output: BrokenPipeError: [Errno 32] Broken pipe`, and exits
+  120. The Python build wrote a traceback and exited 120 or 1. In both
+  builds the exit comes when the next input line or the end of the input
+  arrives. A write that fails after the input ended, as when a client closes
+  both pipes, ends the session normally with exit 0.
+- **The search gate trusts only a private marker directory.** The built-in
+  gate commands use `/tmp/agentless_gate` only when it is a directory, not a
+  symlink, that the user owns and that no group or other user can write.
+  Otherwise they count no marker, and the check allows every call. They
+  create the directory with mode `0700`, write each marker as a mode `0600`
+  file through a rename, and create the write probe exclusively. Under
+  `umask 0002` the Python scripts create the directory with mode `0775`, so
+  the built-in check then allows broad search until that directory is
+  removed. The gate log and the erosion log are created with mode `0600`.
+- **`agentless-mcp hook erosion` runs lint in its own process.** It ignores
+  `AGENTLESS_EROSION_BIN`. In its log records, `binary` is the running
+  executable, and `config_warnings` holds lint's warning texts.
+- **`lint` reads `pyproject.toml` as TOML 1.1.** Some documents parse in one
+  build only. The Rust build reads the TOML 1.1 forms, a leading byte-order
+  mark, a leap second, and the year 0000. It does not parse 81 or more
+  nesting levels, an integer outside 64 bits, or `1e400`. The
+  undeclared-import check maps no import name through installed
+  distributions. The Python build read that map from its own environment,
+  and the binary has no such environment.
+- **A failure prints one line.** An uncaught failure prints `agentless-mcp:
+  internal error: ...` and exits 1, with no traceback. Malformed input gets
+  a different error text in several places. A path argument that is not
+  UTF-8 and a number with non-ASCII digits are refused, and `~user` stays
+  unexpanded. JSON nested past the depth limit, an integer of more than
+  4,300 digits, a lone surrogate, an unreadable start-up directory, and a
+  port in use each get one line. The commit messages on the port branch name
+  each deviation with its text, and
+  `docs/analysis/2026-10-10_rust-port-design-records.md` lists the deviations
+  of the per-write path.
 - **A Rust `impl` names its owner by the type's first name, in symbols and in
   complexity units alike.** A method in `impl<T> Foo<T>` was `Foo<T>.bar` in
   the symbol map and `Foo.bar` as a complexity unit. Both now say `Foo.bar`,
   so the stable ids of methods in generic impls change. An `impl` on a
   primitive type (`impl Trait for i32`) gives its complexity units the owner
   `i32`, where they had none.
-- **Every tag cache rebuilds once.** The fixes below change rows the cache
-  stores without changing their shape, so the schema goes from 16 to 17 and
-  the metrics stamp from 1 to 2. A version 15 or 16 database is rebuilt, and a
-  reader discards it.
-- **Outside an install, `capabilities` reports the version `0+unknown`**, the
-  value the MCP handshake already reported. The two surfaces had separate
-  lookups with different fallbacks. One function in `util/version.py` owns
-  both.
-
 - **The erosion checks share one path-scope rule.** Fixture paths are outside
   every check, and `complexity_delta` now skips them too. Test paths are
   outside `health`, `clone_delta`, and `contract_drift`, and `contract_drift`
@@ -41,15 +182,24 @@
   no longer warns on `tests/characterization/fixtures/complexity_py/branches.py`
   and `tokenize_rejects.py`. No golden changed.
 
-### Deprecated
+### Removed
 
-- **`--surface v1` and `--surface both`.** The server writes a warning on
-  stderr at start-up for either, and 0.11.0 removes the v1 tools. The mapping
-  from each v1 tool to its v2 call is in
-  `agentless-mcp guide --section the-two-surfaces`.
+- **The v1 surface, with `--surface v1` and `--surface both`.** The server
+  refuses either value at start-up with exit 2, in a message that names the
+  fix: drop `--surface`, or pass `--surface v2`. The mapping from each v1 tool
+  to its v2 call is in `agentless-mcp guide --section the-two-surfaces`. No
+  release on PyPI warned first: the deprecation warning came after the 0.10.0
+  tag, and 0.10.0 never reached PyPI.
+- **Client roots.** `--allow-client-roots` is accepted and has no effect. A
+  server with no `--root` and no `--roots-from` serves nothing: each call
+  gets `no repositories are served: ...`, where the Python build served the
+  client's root. Pass the repositories with `--root` or `--roots-from`.
 
 ### Fixed
 
+- **The HTML export's search handler is valid JavaScript.** It joined its
+  matches with a raw line break inside a JavaScript string, which is a syntax
+  error. The export now writes the `\n` escape there.
 - **A docstring with a string prefix loses its quotes.** `r"""Doc."""` read
   as `"""Doc.""` in skeletons and cards. The prefix is now dropped before the
   quotes are, for `r`, `u`, `b`, `f`, and the two-letter forms.
@@ -61,12 +211,6 @@
   missing from the symbol map, and a record's methods named the enclosing
   class as their owner. They now name the record, as a nested class's methods
   name that class.
-- **The MCP server arms the background index off the event loop.** The arming
-  walks the repository's file stats and opens SQLite with a 5 s busy timeout,
-  and it ran on the loop that serves every client. A test pins the worker
-  thread.
-- **A cache open that fails its generation walk closes its connection.** The
-  read transaction stayed open when the walk hit its bound.
 - **A file that cannot be stat'ed drops out of both walks, with a warning.**
   The bounded walk returned it with size 0, and the git-listed walk dropped it
   without a word. Both now skip it and name it in the log.
