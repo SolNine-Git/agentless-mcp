@@ -9,8 +9,8 @@ figure from it.
 It replaces [`archive/evidence.md`](archive/evidence.md), which reported a run
 whose every agentless figure was invalid. Why that happened, and what the
 procedure now does about it, is the "Integrity incidents" section. That section
-is not history for its own sake. Both incidents produced numbers that looked
-ordinary, and each one is the reason for a check that now runs before scoring.
+is not history for its own sake. Each incident produced numbers that looked
+ordinary, and each one is the reason for a rule or a check in the procedure.
 
 ## The instrument
 
@@ -58,9 +58,9 @@ that turned out to be the second.
 
 ## Integrity incidents
 
-Three runs produced complete, plausible, and entirely invalid results. Each is
-described with the signature that identifies it, because the signature is what
-a future run checks itself against.
+Four incidents produced complete, plausible, and entirely invalid results. Each
+is described with the signature that identifies it, because the signature is
+what a future run checks itself against.
 
 **1. The blind server, 2026-08-19 to 2026-08-24.** The harness unpacks each
 instance's snapshot repository into a gitignored directory inside the bench work
@@ -105,7 +105,36 @@ comparison are pinned with `git worktree` to explicit commits, always. The
 control arm was pinned and the treatment arm was not, which is how a
 comparison acquired a moving side without anyone choosing it.
 
-**4. Operational rules.** Each one below was learned by losing a run to it.
+**4. The operator's configuration in every session, found 2026-10-24.** The
+harness runs each instance as a child `claude -p` session. Until 2026-10-24
+that session loaded the operator's user configuration: the global agentless
+gate hook on Grep, Glob and Bash, `~/.claude/CLAUDE.md`, the output style, and,
+in the baseline, the user-level MCP servers, among them a user-scope agentless
+server. So the native-only baseline was not native-only. In the 2026-09-27
+baseline, 50 of 60 sessions called agentless tools. In the 2026-10-24 pilot
+baseline, all 60 sessions connected to the user agentless server and to two
+documentation servers, 47 sessions made 83 agentless calls (all refused), and
+the global gate denied a Grep, Glob or Bash call in 39 sessions. The hooked
+arms ran two gates, the harness's and the operator's. `--allowed-tools`
+restricts nothing under `bypassPermissions`, so every arm could call Bash,
+the forced arm included (50 calls in the pilot). The extra context also rode
+on every turn, so the baseline's token figures are inflated as well: 218,300
+context tokens per instance in the pilot, against 26,052 in the isolated
+300-instance run. The baseline comparisons of those two runs are therefore
+invalid. The August runs were not measured and are not known to be clean, so
+their baseline comparisons in the Results section are unverified. A harness
+review found the incident in the CLI's own MCP logs
+under `results/<arm>/.xdg-cache/claude-cli-nodejs/` and in the global gate
+log joined on session id, not in the scores. *Rule:* every child session runs
+with `--setting-sources project,local`, with `--tools` set to the arm's list,
+with `--strict-mcp-config` and only the arm's own server (none for the
+baseline), and with `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, because
+`--setting-sources` alone still loads `~/.claude/CLAUDE.md`. *Signature of a
+contaminated run:* a baseline that has CLI MCP logs at all or envelopes with
+`permission_denials`, or a stream transcript whose `system`/`init` event
+lists a tool, an MCP server or an output style other than the arm's.
+
+**5. Operational rules.** Each one below was learned by losing a run to it.
 
 - Archive the result directories before any re-run. `--resume` silently
   no-ops over an existing row instead of replacing it.
@@ -116,6 +145,10 @@ comparison acquired a moving side without anyone choosing it.
 - Never edit an arm's fingerprinted treatment files while that arm is running.
 - A parse-failure row, meaning an instance with empty regions, is purged
   per-instance and resumed. It is not a CLI error and it is not a score.
+- A session that ends with `is_error` is an instance error, not a score of
+  zero. An account usage limit fails every running session this way ("You've
+  hit your session limit"). `--resume` after the reset runs exactly those
+  instances again.
 
 Semantic regressions can survive every integrity check above. The
 [`declaration-role regression record`](declaration-role-regression.md)
@@ -403,6 +436,11 @@ lost about 0.35 of coverage each time against a control at 0.906 recall,
 which reads as a turn spent on why during a where task; three callers cannot
 resolve it, and it is the hypothesis a future run should split on.
 
+**Invalid (incident 4).** The comparison below ran against a baseline whose
+sessions called agentless tools in 50 of 60 instances. It is kept as the
+record of what was claimed, not as a result. The 300-instance run after it
+replaces it.
+
 **The current build against the grep-only baseline, measured 2026-09-27.**
 Every comparison above this one dates from 0.6.1 on 2026-08-24, before the
 0.6.3 ranking fix, so the project held no current end-to-end number. This run
@@ -460,6 +498,51 @@ of the 60 recorded `server_argv_sha256` values was reproduced from the pinned
 worktree path, which is incident 3 closed by hash rather than by assertion.
 Result tags `n082_baseline` and `n082_treatment`, proof logs under
 `mcp_proof_082/`.
+
+**The Rust build against the native baseline, isolated sessions, measured
+2026-10-24.** This is the first run under the rules of incident 4. It uses
+300 instances (`bench300.jsonl`), the 60 pilot instances and 240 more, all
+git-initialised. Three arms: `claude_code` (Read, Grep, Glob, no MCP server),
+`claude_code_agentless_hooked` and `claude_code_agentless_forced` (Read and
+the six agentless tools), the server from `contrib/bench-server` at 206f832
+(PyPI 0.11.0rc1). Model `claude-sonnet-5-5`, top 10, 900 s timeout, the
+three arms concurrent, 300 of 300 scored in each. An account usage limit
+failed 277 instances, which `--resume` ran again with no failure. Health:
+in all 900 sessions the output style is `default`, the tools and MCP servers
+are exactly the arm's, the global gate log has no row, and every proof log
+has a `tools/list`. Paired, n=300:
+
+| metric | baseline | hooked | forced | hooked - baseline | forced - baseline |
+| --- | --- | --- | --- | --- | --- |
+| `weighted_core_coverage` | 0.1233 | 0.1297 | 0.1151 | +0.0064 (-0.0043 to +0.0169) | -0.0082 (-0.0191 to +0.0026) |
+| `hit_file_rate` | 0.4974 | 0.4788 | 0.4599 | -0.0186 (-0.0362 to -0.0014) | -0.0375 (-0.0554 to -0.0198) |
+| `noise_region_rate` | 0.0450 | 0.0277 | 0.0291 | -0.0173 (-0.0289 to -0.0065) | -0.0158 (-0.0288 to -0.0035) |
+| precision | 0.8059 | 0.8175 | 0.8368 | +0.0116 (-0.0110 to +0.0345) | +0.0310 (+0.0048 to +0.0574) |
+| recall | 0.1366 | 0.1417 | 0.1396 | +0.0051 (-0.0033 to +0.0130) | +0.0030 (-0.0079 to +0.0143) |
+| context tokens | 26,052 | 71,844 | 59,419 | +176% (+43,122 to +48,570) | +128% (+29,658 to +37,483) |
+| turns | 4.67 | 5.87 | 6.25 | +1.20 (+1.0 to +1.4) | +1.58 (+1.3 to +1.9) |
+
+**What it says.** With the current Sonnet the agentless tools do not raise
+coverage: WCC, recall and F1 cross zero in both arms. Both arms are more
+precise and name fewer gold files (2.20 and 2.00 files per instance against
+2.38). The lost files are in languages the server parses (91 of the 96 that
+forced lost), so the loss is answer width, not language support. Forced is
+below hooked on WCC (-0.0146, -0.0249 to -0.0048), so withholding native
+search costs coverage. The context cost is mostly fixed: the first turn of a
+session carries 5,518 context tokens in the baseline and 11,010 in the hooked
+arm (medians), so the agentless surface adds about 5,500 tokens to every
+turn. Without the 4 instances above the 200 MB walk bound (n=296), every
+interval above keeps its sign and its significance.
+
+**One input shape fails a third of the `read` calls.** The stream
+transcripts record each tool call. The agent sends `lines` as one flat pair,
+`[18, 45]`, where the schema takes a list of pairs, `[[18, 45]]`, and the
+server refuses it: 232 of 705 `read` calls in the forced arm (167 of 300
+sessions), 110 of 322 in the hooked arm (81 sessions). After the refusal the
+next `read` call repeated the same error 63 times in forced and 29 times in
+hooked. Result labels `claude_code_bench300`,
+`claude_code_agentless_hooked_bench300` and
+`claude_code_agentless_forced_bench300`.
 
 
 **0.9.1 against 0.9.0, measured 2026-10-09.** Every step of the release
