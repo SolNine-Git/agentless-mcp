@@ -49,11 +49,11 @@ INPUTS = dict.fromkeys(STAGES, SOURCES) | {
     # The xtask freshness test reads the five prompt files that `cargo xtask generate` reads.
     "cargo-test": [
         *SOURCES,
-        "src/agentless_mcp/prompts/envelope.json",
-        "src/agentless_mcp/prompts/messages.json",
-        "src/agentless_mcp/prompts/contract_rules.json",
-        "src/agentless_mcp/prompts/tool_descriptions.json",
-        "src/agentless_mcp/prompts/parameter_descriptions.json",
+        "crates/prompts/data/envelope.json",
+        "crates/prompts/data/messages.json",
+        "crates/prompts/data/contract_rules.json",
+        "crates/prompts/data/tool_descriptions.json",
+        "crates/prompts/data/parameter_descriptions.json",
     ],
     "cargo-gates": [
         *SOURCES,

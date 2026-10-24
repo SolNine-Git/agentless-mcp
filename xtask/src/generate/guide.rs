@@ -12,7 +12,7 @@ use std::ops::Range;
 use super::literal::literal;
 
 /// The guide file, from the repository root.
-pub const SOURCE: &str = "src/agentless_mcp/docs/agent-guide.md";
+pub const SOURCE: &str = "crates/app/data/agent-guide.md";
 /// The directory of the generated module, from the repository root.
 pub const OUTPUT: &str = "crates/app/src/generated";
 /// The generated module's file name.

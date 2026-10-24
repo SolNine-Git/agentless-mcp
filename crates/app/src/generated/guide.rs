@@ -1,5 +1,5 @@
 //! The agent guide, and each section's name with the byte range of its text.
-//! `cargo xtask generate` writes this file from src/agentless_mcp/docs/agent-guide.md.
+//! `cargo xtask generate` writes this file from crates/app/data/agent-guide.md.
 
 pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis document describes \
         the read surface, written for the agent that will\ncall it. It \

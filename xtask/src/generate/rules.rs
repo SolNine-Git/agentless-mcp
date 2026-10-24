@@ -170,7 +170,7 @@ fn record(rule: &Rule) -> String {
 mod tests {
     use super::{module, parse};
 
-    const FILE: &str = "src/agentless_mcp/prompts/contract_rules.json";
+    const FILE: &str = "crates/prompts/data/contract_rules.json";
 
     fn rule(fields: &str) -> String {
         format!("{{\"rules\": [{{{fields}}}]}}")
