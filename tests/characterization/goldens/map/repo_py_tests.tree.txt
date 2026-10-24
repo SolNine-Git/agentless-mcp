@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 audit.py
 billing.py
 catalog.py

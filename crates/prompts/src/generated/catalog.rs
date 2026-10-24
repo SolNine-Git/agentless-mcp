@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 128] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 129] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -44,21 +44,27 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 128] = [
     ),
     (
         "envelope",
+        "receipt_fields",
+        &["head", "dirty", "cache"],
+        envelope::RECEIPT_FIELDS.pieces(),
+    ),
+    (
+        "envelope",
         "receipt_header",
         &[],
         &[Piece::Text(envelope::RECEIPT_HEADER)],
     ),
     (
         "envelope",
-        "receipt_line",
-        &["root", "head", "dirty", "cache"],
-        envelope::RECEIPT_LINE.pieces(),
-    ),
-    (
-        "envelope",
         "receipt_note",
         &["note"],
         envelope::RECEIPT_NOTE.pieces(),
+    ),
+    (
+        "envelope",
+        "receipt_repo",
+        &["root"],
+        envelope::RECEIPT_REPO.pieces(),
     ),
     (
         "envelope",

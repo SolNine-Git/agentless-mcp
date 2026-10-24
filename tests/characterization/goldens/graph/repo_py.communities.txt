@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 1 community over 3 files (modularity 0.000 at resolution 1)
   note: weak partition; use these communities as a hint, not a boundary
     1. repository root  (3 files)

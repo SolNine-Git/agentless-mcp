@@ -41,12 +41,14 @@ impl Context<'_> {
         }
     }
 
-    // The text that `render` makes under the receipt, whose cache field reads as of now.
+    // The text that `render` makes under the receipt, whose cache field reads as of now. The
+    // allowlist holds each root once, so its length is the count of selectable roots.
     pub(crate) fn rendered(&self, render: impl FnOnce(&Receipt<'_>) -> String) -> String {
         let cache = self.cache_field();
         let session = self.session;
         let receipt = Receipt::new(&session.repo, &session.snapshot, &cache)
-            .counted_by(&*self.inner.services.counter);
+            .counted_by(&*self.inner.services.counter)
+            .among(self.allowed.len());
         render(&receipt)
     }
 

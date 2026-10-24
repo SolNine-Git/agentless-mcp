@@ -35,6 +35,7 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for render::ToolForm<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for render::ToolForm<'a>
 pub struct render::Receipt<'a>
 impl<'a> render::Receipt<'a>
+pub fn render::Receipt<'a>::among(self, usize) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::counted_by(self, &'a dyn app::tokens::TokenCounter) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::new(&'a app::repo::Repo, &'a git::snapshot::Snapshot, &'a str) -> render::Receipt<'a>
 pub fn render::Receipt<'a>::of(&'a app::tags::Session) -> render::Receipt<'a>

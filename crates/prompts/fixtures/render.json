@@ -42,24 +42,29 @@
       },
       "text": "// config warning: map_budget is not an integer"
     },
-    "receipt_header": {
-      "arguments": {},
-      "text": "// agentless-mcp receipt (repository data below)"
-    },
-    "receipt_line": {
+    "receipt_fields": {
       "arguments": {
         "cache": "none",
         "dirty": "3",
-        "head": "1a2b3c4d",
-        "root": "/srv/app"
+        "head": "1a2b3c4d"
       },
-      "text": "// repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none"
+      "text": "   head: 1a2b3c4d   dirty: 3 files   cache: none"
+    },
+    "receipt_header": {
+      "arguments": {},
+      "text": "// agentless-mcp receipt (repository data below)"
     },
     "receipt_note": {
       "arguments": {
         "note": "git status timed out"
       },
       "text": "// note: git status timed out"
+    },
+    "receipt_repo": {
+      "arguments": {
+        "root": "/srv/app"
+      },
+      "text": "   repo: /srv/app"
     },
     "receipt_summary": {
       "arguments": {

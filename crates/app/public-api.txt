@@ -2309,7 +2309,6 @@ impl<'a> core::marker::UnsafeUnpin for app::Reading<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for app::Reading<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for app::Reading<'a>
 pub struct app::RefGroup
-pub app::RefGroup::id_prefix: &'static str
 pub app::RefGroup::path: alloc::string::String
 pub app::RefGroup::scope_checked: bool
 pub app::RefGroup::sites: alloc::vec::Vec<app::RefSite>
@@ -2357,7 +2356,6 @@ impl core::panic::unwind_safe::UnwindSafe for app::RefListing
 pub struct app::RefSite
 pub app::RefSite::enclosing: alloc::string::String
 pub app::RefSite::line: u32
-pub app::RefSite::name: alloc::string::String
 pub app::RefSite::stable_id: core::option::Option<alloc::string::String>
 impl core::clone::Clone for app::RefSite
 pub fn app::RefSite::clone(&self) -> Self

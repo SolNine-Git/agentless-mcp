@@ -7,9 +7,10 @@ pub const prompts::envelope::JSON_CEILING_UNTRIMMABLE: prompts::Template<prompts
 pub const prompts::envelope::NOTICE: &str
 pub const prompts::envelope::RECEIPT_CONFIG: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_CONFIG_WARNING: prompts::Template<prompts::Text>
+pub const prompts::envelope::RECEIPT_FIELDS: prompts::Template<(prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::envelope::RECEIPT_HEADER: &str
-pub const prompts::envelope::RECEIPT_LINE: prompts::Template<(prompts::Text, prompts::Text, prompts::Text, prompts::Text)>
 pub const prompts::envelope::RECEIPT_NOTE: prompts::Template<prompts::Text>
+pub const prompts::envelope::RECEIPT_REPO: prompts::Template<prompts::Text>
 pub const prompts::envelope::RECEIPT_SUMMARY: prompts::Template<prompts::Text>
 pub const prompts::envelope::SERVICE_TRUNCATION: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub mod prompts::messages

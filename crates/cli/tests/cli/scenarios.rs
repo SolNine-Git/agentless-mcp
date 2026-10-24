@@ -4,6 +4,7 @@
 
 use std::ffi::OsString;
 
+use prompts::envelope::RECEIPT_HEADER;
 use serde_json::Value;
 
 use crate::common::{Outcome, Sandbox, cases, expected, normalised, words};
@@ -163,7 +164,7 @@ fn masked_lines(text: &str) -> String {
 }
 
 fn masked(line: &str) -> String {
-    if line.starts_with("// repo: ")
+    if line.starts_with(RECEIPT_HEADER)
         && let Some((head, _)) = line.split_once("   cache: ")
     {
         return format!("{head}   cache: <CACHE>");

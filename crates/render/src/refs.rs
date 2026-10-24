@@ -3,7 +3,7 @@
 
 use app::{
     ROW_INDENT, RefGroup, RefListing, RefSite, RefsResult, SharedCaller, file_site, locator,
-    omitted_line, stable_ids_line,
+    omitted_line,
 };
 use facts::split_ordinal;
 use json::{fixed, round_half_even};
@@ -93,10 +93,6 @@ fn absence_line(target: &str, complete_over: Option<usize>) -> String {
 
 fn group_block(group: &RefGroup) -> String {
     let mut lines = vec![group_header(group)];
-    let pattern = stable_ids_line(group.id_prefix, &group.path);
-    if !pattern.is_empty() {
-        lines.push(pattern);
-    }
     lines.extend(group.sites.iter().map(site_row));
     lines.join("\n")
 }
@@ -116,18 +112,13 @@ fn group_header(group: &RefGroup) -> String {
     format!("{path}  ({sites} {}{labelled})", references(sites))
 }
 
-// The id's qualified name, which the header's pattern turns back into the whole id.
+// The whole id, so a reader copies it to expand with no pattern to join.
 fn site_row(site: &RefSite) -> String {
     let Some(stable_id) = &site.stable_id else {
         return format!("{ROW_INDENT}{} @{}", one_line(&site.enclosing), site.line);
     };
-    let name = if site.name.is_empty() {
-        stable_id
-    } else {
-        &site.name
-    };
     let line = site.line.to_string();
-    format!("{ROW_INDENT}{}", locator(name, "", Some(&line)))
+    format!("{ROW_INDENT}{}", locator(stable_id, "", Some(&line)))
 }
 
 // The sites are cut before they are grouped, so a file can drop out whole.

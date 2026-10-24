@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 reports.py  (rank 0.4865)
   stable ids: py:reports.py::<QualifiedName>
   REPORT_WIDTH = 72  [REPORT_WIDTH] @8

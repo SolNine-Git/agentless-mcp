@@ -1,4 +1,3 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 1 import cycle
     1. (2 files) billing/invoice.py -> billing/ledger.py -> billing/invoice.py

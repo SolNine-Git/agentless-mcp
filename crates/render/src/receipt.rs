@@ -7,8 +7,8 @@ use app::{Chars4, ConfigView, Repo, Session, TokenCounter};
 use git::Snapshot;
 use io::ProjectConfig;
 use prompts::envelope::{
-    NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_HEADER, RECEIPT_LINE, RECEIPT_NOTE,
-    RECEIPT_SUMMARY,
+    NOTICE, RECEIPT_CONFIG, RECEIPT_CONFIG_WARNING, RECEIPT_FIELDS, RECEIPT_HEADER, RECEIPT_NOTE,
+    RECEIPT_REPO, RECEIPT_SUMMARY,
 };
 use serde::Serialize;
 
@@ -30,6 +30,7 @@ pub struct Receipt<'a> {
     pub(crate) config: &'a ProjectConfig,
     pub(crate) warnings: Vec<String>,
     pub(crate) counter: &'a dyn TokenCounter,
+    pub(crate) names_repo: bool,
 }
 
 impl<'a> Receipt<'a> {
@@ -52,6 +53,7 @@ impl<'a> Receipt<'a> {
             config: &repo.config,
             warnings: app::config_warnings(&repo.config),
             counter: &Chars4,
+            names_repo: true,
         }
     }
 
@@ -61,26 +63,38 @@ impl<'a> Receipt<'a> {
         Receipt { counter, ..self }
     }
 
+    /// Returns this receipt for an answer from one of `selectable` roots: the text names the
+    /// repository only when more than one root is selectable.
+    #[must_use]
+    pub fn among(self, selectable: usize) -> Receipt<'a> {
+        Receipt {
+            names_repo: selectable > 1,
+            ..self
+        }
+    }
+
     // The ceiling of an answer under this receipt.
     pub(crate) fn ceiling(&self) -> Ceiling<'a> {
         Ceiling::standard(self.counter)
     }
 
-    // The tool-authored lines. Each value can come from outside, so none may open a line.
+    // The tool-authored lines. Each value can come from outside, so none may open a line. The
+    // marker opens the first line, so a reader that matches the marker's prefix still finds it.
     pub(crate) fn tool_lines(&self) -> Vec<String> {
-        let root = self.root.display().to_string();
+        let repo = if self.names_repo {
+            RECEIPT_REPO.render(&one_line(&self.root.display().to_string()))
+        } else {
+            String::new()
+        };
         let dirty = self
             .dirty
             .map_or_else(|| "unknown".to_owned(), |count| count.to_string());
-        let mut lines = vec![
-            RECEIPT_HEADER.to_owned(),
-            RECEIPT_LINE.render((
-                &one_line(&root),
-                &one_line(self.head.unwrap_or("nogit")),
-                &dirty,
-                &one_line(self.cache),
-            )),
-        ];
+        let fields = RECEIPT_FIELDS.render((
+            &one_line(self.head.unwrap_or("nogit")),
+            &dirty,
+            &one_line(self.cache),
+        ));
+        let mut lines = vec![format!("{RECEIPT_HEADER}{repo}{fields}")];
         if !self.note.is_empty() {
             lines.push(RECEIPT_NOTE.render(&one_line(self.note)));
         }
@@ -123,6 +137,7 @@ impl fmt::Debug for Receipt<'_> {
             .field("note", &self.note)
             .field("config", &self.config)
             .field("warnings", &self.warnings)
+            .field("names_repo", &self.names_repo)
             .finish_non_exhaustive()
     }
 }

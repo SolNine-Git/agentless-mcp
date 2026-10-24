@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 01-renames: 1 warning, 1 not_checked
   [warning] dangling_callers  pricing.py:78
       the patch removes or renames 'format_money', which 3 reference(s) in files this patch does not touch still name

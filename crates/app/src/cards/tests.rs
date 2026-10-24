@@ -20,14 +20,28 @@ fn symbol(name: &str, parent: &str, kind: SymbolKind, lines: (u32, u32)) -> Symb
 }
 
 #[test]
-fn a_card_names_its_span_kind_owner_and_signature() {
+fn a_card_names_its_span_kind_and_signature_and_its_id_spells_the_owner() {
     let method = symbol("total", "Invoice", SymbolKind::Method, (3, 9));
     let card = symbol_card(Language::Python, "svc.py", &method, String::new());
     assert_eq!(card.stable_id, "py:svc.py::Invoice.total");
     assert_eq!((card.body_shown, card.body_total), (0, 0));
     assert_eq!(
         cards_text(&[card]),
-        "[py:svc.py::Invoice.total] @3-9\n  method in class Invoice (python)\n  def total(self):\n"
+        "[py:svc.py::Invoice.total] @3-9\n  method\n  def total(self):\n"
+    );
+}
+
+#[test]
+fn a_dotted_name_or_an_ordinal_keeps_the_owner_readable() {
+    let dotted = symbol("a.b", "cfg", SymbolKind::Constant, (1, 1));
+    let mut second = symbol("write", "Logger", SymbolKind::Method, (5, 6));
+    second.duplicate_index = 1;
+    let cards = [dotted, second]
+        .map(|symbol| symbol_card(Language::Python, "a.py", &symbol, String::new()));
+    assert_eq!(
+        cards_text(&cards),
+        "[py:a.py::cfg.a.b] @1\n  constant in cfg\n  def a.b(self):\n\n\
+         [py:a.py::Logger.write#2] @5-6\n  method\n  def write(self):\n"
     );
 }
 
@@ -41,8 +55,8 @@ fn a_body_replaces_the_signature_and_counts_its_lines() {
     let second = symbol_card(Language::Python, "a.py", &nested, String::new());
     assert_eq!(
         cards_text(&[card, second]),
-        "[py:a.py::run] @4\n  function (python)\n  4| def run(self):\n  5|     pass\n\n\
-         [py:a.py::outer.inner] @2-3\n  function in outer (python)\n  def inner(self):\n"
+        "[py:a.py::run] @4\n  function\n  4| def run(self):\n  5|     pass\n\n\
+         [py:a.py::outer.inner] @2-3\n  function\n  def inner(self):\n"
     );
 }
 
@@ -54,7 +68,7 @@ fn no_card_reads_as_no_match_and_a_row_cannot_break_its_line() {
     let card = symbol_card(Language::Python, "a\nb.py", &forged, String::new());
     assert_eq!(
         cards_text(&[card]),
-        "[py:a\\nb.py::f] @1\n  function (python)\n  def f():\\n... 7 more matches not listed\n"
+        "[py:a\\nb.py::f] @1\n  function\n  def f():\\n... 7 more matches not listed\n"
     );
 }
 

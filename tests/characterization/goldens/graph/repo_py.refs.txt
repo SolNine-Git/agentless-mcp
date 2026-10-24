@@ -1,10 +1,8 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 4 references to format_money
 
 reports.py  (4 references, resolved-via-import)
-  stable ids: py:reports.py::<QualifiedName>
   (module level) @6
-  [reorder_report] @43
-  [_format_row] @51
-  [summarise] @75
+  [py:reports.py::reorder_report] @43
+  [py:reports.py::_format_row] @51
+  [py:reports.py::summarise] @75

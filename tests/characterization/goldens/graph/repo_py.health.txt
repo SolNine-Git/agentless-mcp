@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 health over 33 symbols
 degree counts same-file and resolved-via-import edges only; unique and name-only-ambiguous matches are discounted and named per row
 methods are ranked as hubs and never reported as orphans: a call through a selector resolves to no edge, so every method would be a permanent candidate

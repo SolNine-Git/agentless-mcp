@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 1 hop from ts:reports.ts::reorderReport to ts:pricing.ts::formatMoney
   start  reorderReport    ts:reports.ts::reorderReport
     1. -> references (resolved-via-import)    formatMoney    [ts:pricing.ts::formatMoney] @94

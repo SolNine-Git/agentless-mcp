@@ -62,6 +62,25 @@
   `operation` a plain string. The tools/list answer of the debug
   `agentless-mcp-server` goes from 15,242 to 10,266 bytes, and the cl100k
   count of its six tool entries from 3,406 to 2,270.
+- **Text answers are shorter: a one-line receipt, a shorter card, and whole ids
+  in the fan-in.** The receipt is one line that starts with the same
+  `// agentless-mcp receipt (repository data below)` marker, so a client that
+  matches the marker still finds it. The fields follow on that line. An MCP
+  answer names the repository only when the server has more than one root,
+  and a CLI answer always names it. The JSON `receipt` object does not change.
+  A symbol card no longer prints `(language)` or `in class X` on its second
+  line: the id prefix names the language, and the qualified name names the
+  owner. A card names the owner only when the symbol's own name holds a dot.
+  A `find_referencing_symbols` row prints the whole stable id, and the
+  `stable ids:` pattern line of each group goes. `RefGroup.id_prefix` and
+  `RefSite.name` leave the public API. A batch that the body budget shortens
+  can show one more body line, because the card head is shorter. Measured by
+  replaying 200 calls from the bench300 transcripts (a sample stratified by
+  tool and operation, one cold run per build, one server per root): 738,575
+  bytes before and 701,316 bytes after (-5.0%). `symbols find` is -21.1%,
+  `find_referencing_symbols` -22.3%, `read dir` -22.7%, `orient map` -1.7% and
+  `read slice` -2.8%. Each of the 200 new answers equals the old answer after
+  these three changes, byte for byte.
 
 ## 0.11.0rc1 -- 2026-10-23
 

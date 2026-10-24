@@ -1,7 +1,7 @@
 //! The card that every view shows for one symbol, the rationale nodes linked to a symbol, and the
 //! cards' text form, which the body budget measures.
 
-use facts::{StableId, Symbol, rationale_handle};
+use facts::{StableId, Symbol, rationale_handle, split_ordinal};
 use syntax::Language;
 use text::one_line;
 
@@ -105,28 +105,18 @@ pub fn cards_text(cards: &[SymbolCard]) -> String {
     blocks.join("\n\n") + "\n"
 }
 
-// A method's owner is its class. A nested function's owner can be a function, so it reads "in".
+// The id's prefix names the language, so the second line names the kind and an owner the id
+// cannot spell.
 fn card_text(card: &SymbolCard) -> String {
-    let holder = if card.kind == "method" {
-        "in class"
-    } else {
-        "in"
-    };
-    let owner = if card.parent_class.is_empty() {
-        String::new()
-    } else {
-        format!(" {holder} {}", one_line(&card.parent_class))
-    };
     let span = if card.start_line == card.end_line {
         card.start_line.to_string()
     } else {
         format!("{}-{}", card.start_line, card.end_line)
     };
     let kind = one_line(card.kind);
-    let language = one_line(card.language);
     let mut lines = vec![
         locator(&card.stable_id, "", Some(&span)),
-        format!("{ROW_INDENT}{kind}{owner} ({language})"),
+        format!("{ROW_INDENT}{kind}{}", owner_clause(card)),
     ];
     if card.body.is_empty() {
         lines.push(format!("{ROW_INDENT}{}", one_line(&card.signature)));
@@ -135,6 +125,31 @@ fn card_text(card: &SymbolCard) -> String {
         lines.extend(body.map(|line| format!("{ROW_INDENT}{}", one_line(line))));
     }
     lines.join("\n")
+}
+
+// A method's owner is its class. A nested function's owner can be a function, so it reads "in".
+fn owner_clause(card: &SymbolCard) -> String {
+    if card.parent_class.is_empty() || spells_owner(card) {
+        return String::new();
+    }
+    let holder = if card.kind == "method" {
+        "in class"
+    } else {
+        "in"
+    };
+    format!(" {holder} {}", one_line(&card.parent_class))
+}
+
+// A reader splits the qualified name at its last dot, which finds the owner unless the symbol's
+// own name holds a dot.
+fn spells_owner(card: &SymbolCard) -> bool {
+    let Ok(id) = card.stable_id.parse::<StableId>() else {
+        return false;
+    };
+    let (base, _) = split_ordinal(id.qualname());
+    base.strip_prefix(card.parent_class.as_str())
+        .and_then(|rest| rest.strip_prefix('.'))
+        .is_some_and(|name| !name.contains('.'))
 }
 
 #[cfg(test)]

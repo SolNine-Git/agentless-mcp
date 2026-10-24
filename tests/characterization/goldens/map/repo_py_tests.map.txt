@@ -1,5 +1,4 @@
-// agentless-mcp receipt (repository data below)
-// repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
+// agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
 pricing.py  (rank 0.1696)
   stable ids: py:pricing.py::<QualifiedName>
   BASE_MARKUP = Decimal("1.35")  [BASE_MARKUP] @6

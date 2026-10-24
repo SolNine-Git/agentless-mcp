@@ -22,16 +22,10 @@ pub(super) fn group_sites<'a>(
 ) -> Vec<RefGroup> {
     let mut grouped: Grouped<'a> = BTreeMap::new();
     let mut tiers: HashMap<&'a str, BTreeMap<u32, Tier>> = HashMap::new();
-    let mut prefixes: HashMap<&'a str, &'static str> = HashMap::new();
     let no_names = BTreeSet::new();
     for site in sites {
         let (path, line) = (site.path(), site.reference.line);
         let symbol = enclosing_symbol(&site.file.facts.symbols, line);
-        if symbol.is_some() {
-            prefixes
-                .entry(path)
-                .or_insert(site.file.language.extraction().prefix);
-        }
         let file_names = names.get(path).unwrap_or(&no_names);
         let line_tiers = (tiers.entry(path))
             .or_insert_with(|| self::line_tiers(site.file, file_names, resolver, target_ids));
@@ -42,10 +36,7 @@ pub(super) fn group_sites<'a>(
         group.1.push(site_row(site, symbol));
     }
     (grouped.into_iter())
-        .map(|((path, tier), (file, rows))| {
-            let prefix = prefixes.get(path).copied().unwrap_or_default();
-            file_group(file, tier, rows, prefix)
-        })
+        .map(|((_, tier), (file, rows))| file_group(file, tier, rows))
         .collect()
 }
 
@@ -56,27 +47,24 @@ fn site_row(site: &Site<'_>, symbol: Option<&Symbol>) -> RefSite {
             line,
             enclosing: symbol.qualname(),
             stable_id: Some(StableId::of(site.file.language, site.path(), symbol).to_string()),
-            name: symbol.id_qualname(),
         },
         None => RefSite {
             line,
             enclosing: MODULE_LEVEL.to_owned(),
             stable_id: None,
-            name: String::new(),
         },
     }
 }
 
 // A binding tier in a language with no scope analysis cannot tell a shadowing local from a
 // caller, so the group says the locals were not checked.
-fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>, prefix: &'static str) -> RefGroup {
+fn file_group(file: &FileFacts, tier: Tier, sites: Vec<RefSite>) -> RefGroup {
     let binding = tier.binds();
     RefGroup {
         path: file.path.clone(),
         sites,
         tier: tier.as_str(),
         tier_label: tier.label(),
-        id_prefix: prefix,
         scope_checked: !binding || scope_analysed(file.language),
     }
 }

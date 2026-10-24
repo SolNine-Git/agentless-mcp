@@ -91,8 +91,6 @@ pub struct RefGroup {
     pub tier: &'static str,
     /// The tier's phrase, such as `resolved-via-import`.
     pub tier_label: &'static str,
-    /// The language prefix of the file's stable ids, or empty when no site names a symbol.
-    pub id_prefix: &'static str,
     /// False for a binding tier in a language with no scope analysis, where a local that
     /// shadows the name cannot be told from a caller.
     pub scope_checked: bool,
@@ -107,8 +105,6 @@ pub struct RefSite {
     pub enclosing: String,
     /// The stable id of the holding symbol, if any.
     pub stable_id: Option<String>,
-    /// The qualified name the stable id spells, with its ordinal, or empty.
-    pub name: String,
 }
 
 /// A symbol that the target's callers also reference.

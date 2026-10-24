@@ -99,7 +99,7 @@ fn the_fixture_and_the_catalog_hold_the_same_templates() {
         .iter()
         .map(|(file, key, _, _)| (*file, *key))
         .collect();
-    assert_eq!(cataloged.len(), 128);
+    assert_eq!(cataloged.len(), 129);
     assert_eq!(fixed, cataloged);
 }
 
@@ -119,14 +119,19 @@ fn a_typed_render_puts_each_value_in_its_place() {
     let case = Case::of(&fixture, "messages", "slice_range_not_a_range");
     let values = (case.text("path"), case.count("start"), case.count("end"));
     assert_eq!(messages::SLICE_RANGE_NOT_A_RANGE.render(values), case.text);
-    let case = Case::of(&fixture, "envelope", "receipt_line");
+    let case = Case::of(&fixture, "messages", "slice_range_beyond_file");
     let values = (
-        case.text("root"),
-        case.text("head"),
-        case.text("dirty"),
-        case.text("cache"),
+        case.text("path"),
+        case.count("start"),
+        case.count("end"),
+        case.count("total"),
     );
-    assert_eq!(envelope::RECEIPT_LINE.render(values), case.text);
+    assert_eq!(messages::SLICE_RANGE_BEYOND_FILE.render(values), case.text);
+    let case = Case::of(&fixture, "envelope", "receipt_fields");
+    let values = (case.text("head"), case.text("dirty"), case.text("cache"));
+    assert_eq!(envelope::RECEIPT_FIELDS.render(values), case.text);
+    let case = Case::of(&fixture, "envelope", "receipt_repo");
+    assert_eq!(envelope::RECEIPT_REPO.render(case.text("root")), case.text);
 }
 
 #[test]

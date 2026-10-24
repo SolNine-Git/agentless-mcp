@@ -35,7 +35,8 @@ TIER_ORDER = ("same_file", "imported", "unique", "ambiguous")
 ABSENT = "absent"
 RECEIPT_HEADER = "// agentless-mcp receipt"
 RECEIPT_PREFIX = "// "
-RECEIPT_REPO = "// repo: "
+# The line that carries the cache field: the second line of a two-line receipt, or the one line.
+RECEIPT_LINES = ("// repo: ", RECEIPT_HEADER)
 TEXT_CACHE = "   cache: "
 JSON_CACHE = '    "cache": '
 CACHE_MASK = "<CACHE>"
@@ -125,7 +126,7 @@ def mask_cache(stream: str) -> str:
 
 
 def _masked(line: str) -> str:
-    if line.startswith(RECEIPT_REPO) and TEXT_CACHE in line:
+    if line.startswith(RECEIPT_LINES) and TEXT_CACHE in line:
         return line.split(TEXT_CACHE, 1)[0] + TEXT_CACHE + CACHE_MASK
     if line.startswith(JSON_CACHE):
         return JSON_CACHE + CACHE_MASK + ("," if line.endswith(",") else "")
