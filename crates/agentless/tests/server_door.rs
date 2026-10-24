@@ -2,8 +2,8 @@
 //! parses the server's command line and serves one stdio session.
 
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -123,6 +123,26 @@ fn ended(child: &mut Child) -> Option<i32> {
     panic!("the server did not end after its input closed");
 }
 
+// Waits for the server's exit until the deadline and sends a ping at each poll: after a failed
+// write, the server and the reference end only when their blocked input read returns.
+fn ended_while_pinged(child: &mut Child, stdin: &mut ChildStdin) -> Option<i32> {
+    let start = Instant::now();
+    let mut id = 2;
+    while start.elapsed() < DEADLINE {
+        if let Some(status) = child.try_wait().expect("a waitable child") {
+            return status.code();
+        }
+        id += 1;
+        let ping = json!({"jsonrpc": "2.0", "id": id, "method": "ping"});
+        if let Err(error) = stdin.write_all(format!("{ping}\n").as_bytes()) {
+            assert_eq!(error.kind(), ErrorKind::BrokenPipe, "{error}");
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    drop(child.kill());
+    panic!("the server did not end with its output closed");
+}
+
 // One stdio session through the thin binary: initialize, the tool list, one call, then the end of
 // input ends the server with 0.
 #[test]
@@ -171,4 +191,53 @@ fn the_door_serves_one_stdio_session() {
     assert_eq!(called["result"]["isError"], false, "{called}");
     drop(stdin);
     assert_eq!(ended(&mut child), Some(0));
+}
+
+// The client closes its end of the server's output after the initialize answer and keeps the input
+// open: the next answer's write fails, and the door exits 120 with one stderr line.
+#[test]
+fn a_closed_output_ends_the_door_with_120_and_one_line() {
+    let tree = sandbox();
+    let mut child = Command::new(DOOR)
+        .args(["--root", "repo"])
+        .current_dir(tree.path())
+        .env_clear()
+        .envs(env(&tree))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("a started server");
+    let stdout = child.stdout.take().expect("a stdout pipe");
+    let (sender, first) = mpsc::channel();
+    // The reader drops the pipe before it hands over the line.
+    thread::spawn(move || {
+        let mut line = String::new();
+        let read = BufReader::new(stdout).read_line(&mut line);
+        drop(sender.send(read.map(|_| line)));
+    });
+    let mut stdin = child.stdin.take().expect("a stdin pipe");
+    let hello = json!({
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "door", "version": "0"},
+    });
+    let initialize = request(1, "initialize", &hello);
+    stdin
+        .write_all(initialize.as_bytes())
+        .expect("a written request");
+    let answer = first.recv_timeout(DEADLINE).expect("an answer");
+    assert!(answer.expect("a read line").contains(r#""id":1"#));
+    let notice = json!({"jsonrpc": "2.0", "method": "notifications/initialized"});
+    stdin
+        .write_all(format!("{notice}\n").as_bytes())
+        .expect("a written notice");
+    assert_eq!(ended_while_pinged(&mut child, &mut stdin), Some(120));
+    let mut err = String::new();
+    let mut stderr = child.stderr.take().expect("a stderr pipe");
+    stderr.read_to_string(&mut err).expect("the stderr text");
+    let line = "agentless-mcp-server: cannot write to standard output: BrokenPipeError: [Errno 32] \
+                Broken pipe\n";
+    assert_eq!(err, line);
+    drop(stdin);
 }

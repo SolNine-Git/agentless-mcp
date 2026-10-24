@@ -2,7 +2,7 @@ use std::convert::Infallible;
 use std::future::{Ready, pending, poll_fn};
 use std::net::{IpAddr, Ipv4Addr};
 use std::pin::{Pin, pin};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -16,6 +16,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, DuplexStream, ReadBuf};
 
 use super::{Kept, Sandbox, quiet_ports};
 use crate::http::{Stop, accepted, connection, routed, service, wound_down};
+use crate::offload::{Job, Offload};
 use crate::{Ended, Server, ServerConfig};
 
 const READ_LIMIT: Duration = Duration::from_secs(20);
@@ -29,6 +30,10 @@ const INITIALIZE: &str = concat!(
     r#""capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#,
 );
 const TOOLS_LIST: &str = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
+const READ_DIR: &str = concat!(
+    r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","#,
+    r#""params":{"name":"read","arguments":{"operation":"dir"}}}"#,
+);
 const HOST: &str = "127.0.0.1:8766";
 const KEEP_ALIVE: &str = ":\n\n";
 
@@ -142,6 +147,20 @@ async fn written(client: &mut DuplexStream) -> String {
         bytes.extend_from_slice(read.filled());
     }
     String::from_utf8(bytes).expect("a UTF-8 stream")
+}
+
+// Whether the server has closed the connection with nothing written, read after its tasks have
+// run, with no wait.
+async fn closed_unanswered(client: &mut DuplexStream) -> bool {
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+    let mut buffer = [0; 64];
+    let mut read = ReadBuf::new(&mut buffer);
+    let polled =
+        poll_fn(|context| Poll::Ready(Pin::new(&mut *client).poll_read(context, &mut read))).await;
+    assert!(read.filled().is_empty(), "{:?}", read.filled());
+    matches!(polled, Poll::Ready(Ok(())))
 }
 
 // Over HTTP the reference says that its prompt and resource lists can change; logging is left out
@@ -449,4 +468,123 @@ async fn a_signal_ends_a_drain_with_a_huge_bound_at_once() {
     assert!(waited >= Duration::from_secs(5), "{waited:?}");
     assert!(waited < Duration::from_secs(6), "{waited:?}");
     drop(held);
+}
+
+// A drain bound that is not finite, as `--call-limit inf` gives, is capped at 90 s: a call that
+// never ends does not hold the stop longer.
+#[tokio::test(start_paused = true)]
+async fn a_bound_that_is_not_finite_drains_for_at_most_90_seconds() {
+    let sandbox = Sandbox::new();
+    let config = ServerConfig {
+        roots: Vec::new(),
+        roots_files: Vec::new(),
+        launch_dir: None,
+        max_concurrency: 8,
+        call_limit: f64::INFINITY,
+        recache_grace: 60.0,
+    };
+    let server = Server::new(config, sandbox.services(), quiet_ports());
+    let (_mcp, sessions) = service(&server, BOUND);
+    let held = Arc::clone(&server.gate)
+        .acquire_owned()
+        .await
+        .expect("a permit");
+    let started = tokio::time::Instant::now();
+    let graceful = GracefulShutdown::new();
+    let signal = pin!(pending::<i32>());
+    let stop = Stop::Signal(libc::SIGTERM);
+    let draining = wound_down(stop, &server, graceful, sessions, signal);
+    let ended = tokio::time::timeout(Duration::from_secs(100), draining).await;
+    assert_eq!(ended, Ok(Ended::Signalled(libc::SIGTERM)));
+    let waited = started.elapsed();
+    assert!(waited >= Duration::from_secs(90), "{waited:?}");
+    assert!(waited < Duration::from_secs(91), "{waited:?}");
+    drop(held);
+}
+
+// The job of a call, kept for the test to run: the call holds its permit until then.
+#[derive(Default)]
+struct Parked(Mutex<Option<Job>>);
+
+impl Parked {
+    fn job(&self) -> Option<Job> {
+        self.0.lock().expect("an unpoisoned job").take()
+    }
+}
+
+impl Offload for Parked {
+    fn start(&self, job: Job) -> std::io::Result<()> {
+        *self.0.lock().expect("an unpoisoned job") = Some(job);
+        Ok(())
+    }
+}
+
+// DV21: a call in flight when the stop begins gets its answer on its stream before the sessions
+// are cancelled. The test ends the call between two polls of the stop, before the answer moves.
+#[tokio::test]
+async fn a_call_in_flight_at_the_stop_gets_its_answer_before_the_cancel() {
+    let (_sandbox, server) = server();
+    let parked = Arc::new(Parked::default());
+    let server = Server {
+        offload: Arc::clone(&parked) as Arc<dyn Offload>,
+        ..server
+    };
+    let (mcp, sessions) = service(&server, BOUND);
+    let session = opened(&mcp).await;
+    let (mut client, socket) = tokio::io::duplex(1 << 20);
+    let graceful = GracefulShutdown::new();
+    connection(socket, routed(mcp), &graceful);
+    let request = in_session(&post("/mcp", HOST, READ_DIR), &session);
+    client
+        .write_all(request.as_bytes())
+        .await
+        .expect("a sent request");
+    let answer_head = written(&mut client).await;
+    assert!(
+        answer_head.starts_with("HTTP/1.1 200 OK\r\n"),
+        "{answer_head}"
+    );
+    assert!(!answer_head.contains("data:"), "{answer_head}");
+    let mut job = Some(parked.job().expect("a call in flight"));
+    let signal = pin!(pending::<i32>());
+    let stop = Stop::Signal(libc::SIGTERM);
+    let mut stopping = pin!(wound_down(stop, &server, graceful, sessions, signal));
+    let ended = poll_fn(|context| {
+        let polled = stopping.as_mut().poll(context);
+        match job.take() {
+            Some(job) if polled.is_pending() => {
+                job();
+                stopping.as_mut().poll(context)
+            }
+            _ => polled,
+        }
+    })
+    .await;
+    assert_eq!(ended, Ended::Signalled(libc::SIGTERM));
+    let mut rest = Vec::new();
+    let read = tokio::time::timeout(READ_LIMIT, client.read_to_end(&mut rest)).await;
+    drop(read.expect("the end of the stream before the limit"));
+    let answer = String::from_utf8(rest).expect("a UTF-8 stream");
+    assert_eq!(message(&answer)["id"], 2, "{answer}");
+}
+
+// DV22: hyper's header-read timeout closes a connection whose request head is not complete at 30 s,
+// with no answer.
+#[tokio::test(start_paused = true)]
+async fn a_partial_request_head_is_closed_at_30_seconds() {
+    let (_sandbox, server) = server();
+    let (mcp, _sessions) = service(&server, BOUND);
+    let (mut client, socket) = tokio::io::duplex(1 << 16);
+    let graceful = GracefulShutdown::new();
+    connection(socket, routed(mcp), &graceful);
+    let partial = format!("POST /mcp HTTP/1.1\r\nHost: {HOST}\r\n");
+    client
+        .write_all(partial.as_bytes())
+        .await
+        .expect("a sent head");
+    assert!(!closed_unanswered(&mut client).await);
+    tokio::time::advance(Duration::from_secs(29)).await;
+    assert!(!closed_unanswered(&mut client).await);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert!(closed_unanswered(&mut client).await);
 }

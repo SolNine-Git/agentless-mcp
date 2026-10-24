@@ -1,7 +1,8 @@
 //! The stdio transport: one session on standard input and output, which ends with its input or at
-//! the first write that fails.
+//! the first write that fails while its input is open.
 
 use std::pin::pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use rmcp::ServiceExt;
@@ -14,7 +15,7 @@ use crate::serve::Ended;
 use crate::service::first;
 
 // A client that closes before it initializes ends the server as one that closes later does. A
-// failed write ends it as a client that stops reading, whatever else ended the session.
+// write that fails while the input is open makes the session unwritable, whatever ended it.
 pub(crate) async fn serve<T, A>(server: Server, transport: T) -> Ended
 where
     T: IntoTransport<RoleServer, std::io::Error, A>,
@@ -35,18 +36,28 @@ where
     broken.over(ended)
 }
 
-// The first failed write of a session, and the wake-up of the read that waits for it.
+// The first write of a session that failed while its input was open, the wake-up of the read that
+// waits for it, and the end of the input.
 #[derive(Default)]
 struct Broken {
     error: OnceLock<String>,
     written: Notify,
+    input_ended: AtomicBool,
 }
 
 impl Broken {
+    // A write that fails after the input ended is the client's teardown: the session ends closed.
     fn record(&self, error: &std::io::Error) {
+        if self.input_ended.load(Ordering::Acquire) {
+            return;
+        }
         if self.error.set(io::os_error_line(error)).is_ok() {
             self.written.notify_one();
         }
+    }
+
+    fn end_input(&self) {
+        self.input_ended.store(true, Ordering::Release);
     }
 
     fn is_broken(&self) -> bool {
@@ -97,13 +108,18 @@ where
         }
     }
 
-    // After a failed write the input ends, even with lines still buffered.
+    // After a failed write the input ends, even with lines still buffered. The end of the input
+    // itself is recorded.
     async fn receive(&mut self) -> Option<RxJsonRpcMessage<RoleServer>> {
         if self.broken.is_broken() {
             return None;
         }
         let failed = pin!(self.broken.failed());
-        first(self.inner.receive(), failed).await.flatten()
+        let received = first(self.inner.receive(), failed).await;
+        if matches!(received, Some(None)) {
+            self.broken.end_input();
+        }
+        received.flatten()
     }
 
     fn close(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value as Json, json};
@@ -13,6 +14,13 @@ const BROKEN: &str = "agentless-mcp-server: cannot write to standard output: OSE
 async fn sent(input: &mut DuplexStream, message: &Json) {
     let line = format!("{message}\n");
     input.write_all(line.as_bytes()).await.expect("a sent line");
+}
+
+// The session's tasks run as far as they can, with no wait.
+async fn settled() {
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
 }
 
 // Failure injection: the client reads the initialize answer, then closes its end of the output
@@ -56,6 +64,59 @@ async fn a_failed_write_to_the_output_ends_the_session() {
         .expect("a serve task");
     assert_eq!(ended, Ended::Unwritable(BROKEN.to_owned()));
     drop(input);
+}
+
+// The client's teardown: a call waits at the gate when the client closes its output, then its
+// input. The answer's write fails after the input ended, so the session ends closed.
+#[tokio::test]
+async fn a_write_that_fails_after_the_input_ends_leaves_the_session_closed() {
+    let sandbox = Sandbox::new();
+    sandbox.step(&["write", "repo/a.txt", "a\n"]);
+    let server = sandbox.server(&["repo"], &[], None);
+    let permits = u32::try_from(server.permits).expect("a permit count");
+    let held = Arc::clone(&server.gate)
+        .acquire_many_owned(permits)
+        .await
+        .expect("every permit");
+    let (mut input, server_input) = tokio::io::duplex(1 << 16);
+    let (output, server_output) = tokio::io::duplex(1 << 16);
+    let serving = tokio::spawn(serve(server, (server_input, server_output)));
+    let params = json!({"protocolVersion": "2025-06-18", "capabilities": {},
+        "clientInfo": {"name": "probe", "version": "0"}});
+    sent(
+        &mut input,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": params}),
+    )
+    .await;
+    let mut lines = BufReader::new(output).lines();
+    let read = tokio::time::timeout(LIMIT, lines.next_line()).await;
+    let answer = read
+        .expect("an answer")
+        .expect("a line")
+        .expect("an open output");
+    assert!(answer.contains(r#""id":1"#), "{answer}");
+    sent(
+        &mut input,
+        &json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+    )
+    .await;
+    let call = json!({"name": "read", "arguments": {"operation": "dir"}});
+    sent(
+        &mut input,
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": call}),
+    )
+    .await;
+    settled().await;
+    drop(lines);
+    drop(input);
+    // One thread runs the test, so the session reads the end of its input before the call runs.
+    settled().await;
+    drop(held);
+    let ended = tokio::time::timeout(LIMIT, serving).await;
+    let ended = ended
+        .expect("an end before the limit")
+        .expect("a serve task");
+    assert_eq!(ended, Ended::Closed);
 }
 
 // The control: with its output open, the session answers and ends only with its input.
