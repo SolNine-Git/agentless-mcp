@@ -21,6 +21,24 @@
   `AGENTS.md` lists every gate. The prompt data moved to
   `crates/prompts/data/`, and the agent guide moved to
   `crates/app/data/agent-guide.md`.
+- **The agent guide no longer states what the Rust build made false.** The
+  section that `agentless-mcp guide --section the-two-surfaces` prints says
+  that 0.11.0 removed `--surface v1` and `--surface both`. The gate paragraph
+  no longer says that the v1 tools unlock a compatibility surface. The token
+  table keeps its rows and says that they were measured when the repository
+  held the Python build, so a new run does not reproduce them. Over the
+  committed `.txt` goldens the ratio now reads 0.969 to 1.415, derived from
+  the recorded counts in `crates/app/fixtures/read/tokens.json`. The band
+  paragraph names `crates/app/src/tokens/tests.rs` and the `orient`
+  description only. `tools/list` does not change: the one description edit is
+  in the v1 `repo_map` text, which no tool serves.
+- **Rust tests pin the published token band again.** Three tests in
+  `crates/app/src/tokens/tests.rs` replace the band checks of the deleted
+  `tests/unit/test_token_counter.py`. They hold the ratio of the recorded
+  cl100k count to the chars/4 estimate to 1.10-1.35 on each map golden. They
+  check that the `orient` and `repo_map` descriptions publish that band as
+  "10-35% higher". They check that the ratio over the `.txt` goldens runs
+  below 1.0 on one golden and above 1.15 on another.
 
 ## 0.11.0rc1 -- 2026-10-23
 

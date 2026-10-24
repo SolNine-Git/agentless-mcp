@@ -131,15 +131,15 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         operation with one message that names what that \
         operation\naccepts and requires. It never returns a schema \
         validation dump.\n\n**Previous surface.** These six are the v2 \
-        surface, the default. A server\nstarted with `--surface v1` \
-        publishes the original twelve per-question tools\nfor \
-        un-migrated operators. A server started with `--surface both` \
-        publishes\nthe union, which is fifteen names rather than \
-        eighteen because\n`find_referencing_symbols`, `capabilities` \
-        and `history` stand alone on both\nsurfaces. Both are \
-        deprecated: the server warns on stderr at start-up, and\n0.11.0 \
-        removes them. This is the mapping for readers who migrate:\n\n| \
-        v1 tool (behind `--surface v1`) | v2 call |\n|---|---|\n| \
+        surface, the only one. Before\n0.11.0, a server started with \
+        `--surface v1` published the original twelve\nper-question \
+        tools for un-migrated operators. A server started \
+        with\n`--surface both` published the union, which was fifteen \
+        names rather than\neighteen because `find_referencing_symbols`, \
+        `capabilities` and `history`\nstood alone on both surfaces. \
+        0.11.0 removed both: the server refuses either\nvalue at \
+        start-up. This is the mapping for readers who migrate:\n\n| v1 \
+        tool (behind `--surface v1`) | v2 call |\n|---|---|\n| \
         `repo_map` | `orient` operation `map` |\n| `list_dir` | `read` \
         operation `dir` |\n| `get_symbols_overview` | `symbols` \
         operation `overview` |\n| `expand_symbols` | `symbols` \
@@ -232,25 +232,24 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `read(slice)` or\n`find_referencing_symbols` has localized the \
         session.\nExact-file Grep remains available, while diagnostics, \
         `read(dir)`, `history`\nand the shape listings do not unlock \
-        broad discovery. The equivalent v1 tools also unlock the \
-        temporary\ncompatibility surface. Name the\ntools and the order \
-        in a dispatch prompt as well. A worker told only to\nnavigate \
-        the repository defaults to Grep.\n\nCalls on one connection may \
-        overlap. Every tool answers on a worker thread\nrather than on \
-        the event loop, so a cold map or a 30-second `history` does \
-        not\nhold up the answers to the calls beside it.\n\n### `map` \
-        (`orient` operation `map`) -- where does this \
-        live\n\n```\nagentless-mcp map --focus src/billing/invoice.py \
-        --focus quote --max-files 10\n```\n\nRows look like \
-        this:\n\n```\nsrc/billing/invoice.py  (rank 0.4865)\n  stable \
-        ids: py:src/billing/invoice.py::<QualifiedName>\n  class \
-        Invoice  [Invoice] @16\n      def total(self) -> Money  \
-        [Invoice.total] @21\n  def quote(sku)  [quote] @47\n... 9 more \
-        symbols in this file not listed\n```\n\nThe file header spells \
-        the path, so the rows below it do not. Each file's\nblock opens \
-        with a `stable ids:` line naming the id pattern for that \
-        file,\nand every bracket below carries the qualified name \
-        alone. Join the two to\nbuild an id `expand` accepts: \
+        broad discovery. Name the\ntools and the order in a dispatch \
+        prompt as well. A worker told only to\nnavigate the repository \
+        defaults to Grep.\n\nCalls on one connection may overlap. Every \
+        tool answers on a worker thread\nrather than on the event loop, \
+        so a cold map or a 30-second `history` does not\nhold up the \
+        answers to the calls beside it.\n\n### `map` (`orient` \
+        operation `map`) -- where does this live\n\n```\nagentless-mcp \
+        map --focus src/billing/invoice.py --focus quote --max-files \
+        10\n```\n\nRows look like this:\n\n```\nsrc/billing/invoice.py  \
+        (rank 0.4865)\n  stable ids: \
+        py:src/billing/invoice.py::<QualifiedName>\n  class Invoice  \
+        [Invoice] @16\n      def total(self) -> Money  [Invoice.total] \
+        @21\n  def quote(sku)  [quote] @47\n... 9 more symbols in this \
+        file not listed\n```\n\nThe file header spells the path, so the \
+        rows below it do not. Each file's\nblock opens with a `stable \
+        ids:` line naming the id pattern for that file,\nand every \
+        bracket below carries the qualified name alone. Join the two \
+        to\nbuild an id `expand` accepts: \
         `py:src/billing/invoice.py::Invoice.total`.\n\n`@21` is where \
         the symbol is defined. A position is always an `@line` \
         or\n`@start-end` suffix. The `N| ` gutter means a different \
@@ -320,25 +319,24 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         personalized_pagerank --limit 20` | 506 | 566 | 10.6% |\n| \
         `skeleton src/agentless_mcp/core/slices.py` | 358 | 369 | 3.0% \
         |\n\nEach row counts the whole response, receipt included, on \
-        this repository with\n`--no-cache`. The receipt carries a \
-        `dirty:` count and a head sha, so your own\nrun of the same \
-        command lands within a few tokens rather than on the \
-        number\nhere. What is stable is the shape: the id-dense views \
-        drift furthest, and an\noverview body, being ordinary source, \
-        barely drifts at all.\n\nAcross the committed goldens the ratio \
-        runs 0.979 to 1.264: `lint` output is\nthe one view where \
-        chars/4 *over*counts. So an 8k budget buys somewhere near\n9k \
-        real tokens on a map and roughly 8k on a lint report, and \
-        neither number\ngeneralizes to the \
-        other.\n\n`tests/unit/test_token_counter.py` pins the map \
+        this repository with\n`--no-cache`, at a commit that still held \
+        the Python build. Your own run of the\nsame command does not \
+        reproduce the numbers\nhere. What is stable is the shape: the \
+        id-dense views drift furthest, and an\noverview body, being \
+        ordinary source, barely drifts at all.\n\nAcross the committed \
+        `.txt` goldens the ratio runs 0.969 to 1.415: `lint`\noutput is \
+        the one view there where chars/4 *over*counts. So an 8k budget \
+        buys\nsomewhere near 9k real tokens on a map and roughly 8k on \
+        a lint report, and\nneither number generalizes to the \
+        other.\n\n`crates/app/src/tokens/tests.rs` pins the map \
         goldens' ratio to 1.10-1.35 and\npins that the spread still \
         runs in both directions, so a rendering change that\nmoves \
         either fails there rather than rotting this table. That \
-        1.10-1.35 is the\nband the `map` and `orient` tool descriptions \
-        publish, as \"10-35% higher\",\nbecause a number an agent reads \
-        out of a tool description has to be one a test\nholds. The rows \
-        above are the measurement inside it, and they are what to \
-        size\na real context window against.\n\nThe unit is chosen for \
+        1.10-1.35 is the\nband the `orient` tool description publishes, \
+        as \"10-35% higher\",\nbecause a number an agent reads out of a \
+        tool description has to be one a test\nholds. The rows above \
+        are the measurement inside it, and they are what to size\na \
+        real context window against.\n\nThe unit is chosen for \
         reproducibility: it is what the token regression pins\nmeasure, \
         and installing an extra must not silently move them. Treat the \
         band\nas a stable knob, not as a bill.\n\nOutput is one block \
@@ -1575,31 +1573,31 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-canonical-recipe", 484, 3203),
     ("the-funnel-and-where-it-stops", 3205, 4038),
     ("stable-ids", 4040, 5358),
-    ("the-two-surfaces", 5360, 10385),
-    ("per-tool-usage", 10387, 86331),
-    ("claude-code-specifics", 12111, 13815),
-    ("map", 13817, 22149),
-    ("tree", 22151, 22472),
-    ("skeleton", 22474, 23587),
-    ("expand", 23589, 25441),
-    ("slice", 25443, 26280),
-    ("find-symbol", 26282, 26621),
-    ("refs", 26623, 30734),
-    ("history", 30736, 33569),
-    ("explain", 33571, 35153),
-    ("path", 35155, 37729),
-    ("cycles", 37731, 38842),
-    ("communities", 38844, 41089),
-    ("diagram", 41091, 43862),
-    ("health", 43864, 50100),
-    ("html", 50102, 51053),
-    ("resolve-locs", 51055, 51854),
-    ("capabilities", 51856, 52666),
-    ("index", 52668, 55337),
-    ("lint", 55339, 75347),
-    ("validate-vote", 75349, 84730),
-    ("warmup", 84732, 86331),
-    ("project-defaults-agentless-mcp-json", 86333, 90286),
-    ("token-counting", 90288, 90702),
-    ("exit-codes", 90704, 91162),
+    ("the-two-surfaces", 5360, 10382),
+    ("per-tool-usage", 10384, 86226),
+    ("claude-code-specifics", 12108, 13739),
+    ("map", 13741, 22044),
+    ("tree", 22046, 22367),
+    ("skeleton", 22369, 23482),
+    ("expand", 23484, 25336),
+    ("slice", 25338, 26175),
+    ("find-symbol", 26177, 26516),
+    ("refs", 26518, 30629),
+    ("history", 30631, 33464),
+    ("explain", 33466, 35048),
+    ("path", 35050, 37624),
+    ("cycles", 37626, 38737),
+    ("communities", 38739, 40984),
+    ("diagram", 40986, 43757),
+    ("health", 43759, 49995),
+    ("html", 49997, 50948),
+    ("resolve-locs", 50950, 51749),
+    ("capabilities", 51751, 52561),
+    ("index", 52563, 55232),
+    ("lint", 55234, 75242),
+    ("validate-vote", 75244, 84625),
+    ("warmup", 84627, 86226),
+    ("project-defaults-agentless-mcp-json", 86228, 90181),
+    ("token-counting", 90183, 90597),
+    ("exit-codes", 90599, 91057),
 ];

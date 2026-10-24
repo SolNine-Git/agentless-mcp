@@ -151,13 +151,13 @@ wrong value with the valid list. The server refuses a parameter foreign to
 the selected operation with one message that names what that operation
 accepts and requires. It never returns a schema validation dump.
 
-**Previous surface.** These six are the v2 surface, the default. A server
-started with `--surface v1` publishes the original twelve per-question tools
-for un-migrated operators. A server started with `--surface both` publishes
-the union, which is fifteen names rather than eighteen because
-`find_referencing_symbols`, `capabilities` and `history` stand alone on both
-surfaces. Both are deprecated: the server warns on stderr at start-up, and
-0.11.0 removes them. This is the mapping for readers who migrate:
+**Previous surface.** These six are the v2 surface, the only one. Before
+0.11.0, a server started with `--surface v1` published the original twelve
+per-question tools for un-migrated operators. A server started with
+`--surface both` published the union, which was fifteen names rather than
+eighteen because `find_referencing_symbols`, `capabilities` and `history`
+stood alone on both surfaces. 0.11.0 removed both: the server refuses either
+value at start-up. This is the mapping for readers who migrate:
 
 | v1 tool (behind `--surface v1`) | v2 call |
 |---|---|
@@ -249,8 +249,7 @@ tree-searching Bash commands until `orient(map|path)`,
 `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session.
 Exact-file Grep remains available, while diagnostics, `read(dir)`, `history`
-and the shape listings do not unlock broad discovery. The equivalent v1 tools also unlock the temporary
-compatibility surface. Name the
+and the shape listings do not unlock broad discovery. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
 
@@ -360,20 +359,20 @@ row naming the command that produced it:
 | `skeleton src/agentless_mcp/core/slices.py` | 358 | 369 | 3.0% |
 
 Each row counts the whole response, receipt included, on this repository with
-`--no-cache`. The receipt carries a `dirty:` count and a head sha, so your own
-run of the same command lands within a few tokens rather than on the number
+`--no-cache`, at a commit that still held the Python build. Your own run of the
+same command does not reproduce the numbers
 here. What is stable is the shape: the id-dense views drift furthest, and an
 overview body, being ordinary source, barely drifts at all.
 
-Across the committed goldens the ratio runs 0.979 to 1.264: `lint` output is
-the one view where chars/4 *over*counts. So an 8k budget buys somewhere near
-9k real tokens on a map and roughly 8k on a lint report, and neither number
-generalizes to the other.
+Across the committed `.txt` goldens the ratio runs 0.969 to 1.415: `lint`
+output is the one view there where chars/4 *over*counts. So an 8k budget buys
+somewhere near 9k real tokens on a map and roughly 8k on a lint report, and
+neither number generalizes to the other.
 
-`tests/unit/test_token_counter.py` pins the map goldens' ratio to 1.10-1.35 and
+`crates/app/src/tokens/tests.rs` pins the map goldens' ratio to 1.10-1.35 and
 pins that the spread still runs in both directions, so a rendering change that
 moves either fails there rather than rotting this table. That 1.10-1.35 is the
-band the `map` and `orient` tool descriptions publish, as "10-35% higher",
+band the `orient` tool description publishes, as "10-35% higher",
 because a number an agent reads out of a tool description has to be one a test
 holds. The rows above are the measurement inside it, and they are what to size
 a real context window against.
