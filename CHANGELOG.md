@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.11.0rc1 -- unreleased
+## 0.11.0rc1 -- 2026-10-23
 
 The implementation moves from Python to Rust. 0.11.0rc1 is a pre-release on
 PyPI: `uv tool install agentless-mcp` and `uvx agentless-mcp` skip it and stay
