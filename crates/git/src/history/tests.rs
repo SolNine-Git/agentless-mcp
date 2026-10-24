@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs;
 use std::num::NonZeroUsize;
 
@@ -22,6 +23,10 @@ const RECORD: &str = concat!(
 );
 const RECORD_BYTES: usize = 80;
 const SOME_ID: &str = "0123456789abcdef0123456789abcdef01234567";
+// The reference's line for a directory outside every repository. Git names the mount point
+// instead when its search stops at a file-system boundary, as on a tmpfs temporary directory.
+const REFERENCE_DISCOVERY_LINE: &str =
+    "fatal: not a git repository (or any of the parent directories): .git";
 
 fn id(text: &str) -> CommitId {
     CommitId::parse(text).unwrap_or_else(|| panic!("{text:?} is not a full id"))
@@ -83,6 +88,38 @@ fn answered(repos: &Repos, result: Result<bool, String>) -> Value {
         Ok(flag) => json!(flag),
         Err(note) => json!({"unknown": repos.unrooted(&note)}),
     }
+}
+
+// The first line git prints in `dir`, which no repository encloses, with the code's own command
+// prefix and environment. Each directory below `dir` on its file system prints the same line.
+fn discovery_line(git: &Git, dir: &std::path::Path) -> String {
+    let spec = git.spec(dir, "rev-parse", &[OsStr::new("--git-dir")], PROBE);
+    let outcome = io::run(&spec);
+    let io::Outcome::Exited { status, stderr, .. } = &outcome else {
+        panic!("git rev-parse in {}: {outcome:?}", dir.display());
+    };
+    let text = String::from_utf8_lossy(stderr);
+    let refused = |line: &&str| line.contains("not a git repository");
+    match text.lines().next().filter(refused) {
+        Some(line) if io::exit_code(*status) == 128 => line.to_owned(),
+        _ => panic!("a repository encloses {}: {status}: {text}", dir.display()),
+    }
+}
+
+// `expected` with the reference's discovery line replaced by `line` in each text field. Every
+// other byte stays as the reference recorded it.
+fn discovered(expected: Value, line: &str) -> Value {
+    let Value::Object(fields) = expected else {
+        return expected;
+    };
+    let replaced = |value: Value| match value {
+        Value::String(text) => Value::String(text.replace(REFERENCE_DISCOVERY_LINE, line)),
+        other => other,
+    };
+    let fields = fields
+        .into_iter()
+        .map(|(key, value)| (key, replaced(value)));
+    Value::Object(fields.collect())
 }
 
 fn query<'a>(
@@ -180,12 +217,14 @@ fn each_span_log_over_real_repositories_matches_the_reference() {
     type Case = (String, String, u32, u32, usize, String, Value);
     let repos = Repos::build();
     let git = repos.scratch.git();
+    let line = discovery_line(&git, &repos.scratch.root);
     let all: Vec<Case> = cases(FIXTURE, "log_span");
     assert!(!all.is_empty());
     for (repo, path, start, end, count, revision, expected) in all {
         let revision = id(&revision);
         let span = query(&path, (start, end), count, &revision);
         let got = logged(&repos, git.log_span(&repos.path(&repo), &span));
+        let expected = discovered(expected, &line);
         assert_eq!(got, expected, "{repo} {path}:{start}-{end} at {revision}");
     }
 }
@@ -207,10 +246,12 @@ fn each_diff_answer_over_real_repositories_matches_the_reference() {
 fn each_shallow_answer_over_real_repositories_matches_the_reference() {
     let repos = Repos::build();
     let git = repos.scratch.git();
+    let line = discovery_line(&git, &repos.scratch.root);
     let all: Vec<(String, Value)> = cases(FIXTURE, "shallow");
     assert!(!all.is_empty());
     for (repo, expected) in all {
         let got = answered(&repos, git.is_shallow(&repos.path(&repo)));
+        let expected = discovered(expected, &line);
         assert_eq!(got, expected, "{repo}");
     }
 }
