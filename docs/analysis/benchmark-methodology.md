@@ -200,20 +200,26 @@ instruments cannot see is acceptable when a test proves it and the
 instruments show no degradation. Run the four steps below in order, and
 report each step's result in the release's commit messages.
 
-**1. The suites.** Run `uv run pre-commit run --all-files` (ruff, mypy,
-codespell, the import-linter contract, deptry) and the full `pytest` suite.
-Regenerate a golden deliberately: predict the diff first, then read the
-regenerated golden in the diff. A golden diff that was predicted is evidence;
-one that was not is a defect to explain.
+**1. The suites.** Run the commands that [AGENTS.md](../../AGENTS.md)
+lists: the cargo gates of CI's rust job, and `uv run pre-commit run
+--all-files` (the file hooks, ruff, codespell and the commit-stage cargo
+hooks). Change a golden deliberately: predict the diff first, then read the
+changed golden in the diff. A golden diff that was predicted is evidence. One
+that was not is a defect to explain.
 
 **2. The retrieval tier, as a byte-diff.** Freeze the build under test. Use
-a detached worktree, or copy the tree without `.git` and `.venv`
-(`rsync -a --exclude .git --exclude .venv`) and run
-`uv sync --all-extras --frozen` in the copy. Never point the harness at the
-shared working tree (incident 3). Then, with `LOC_BENCH_FORWARD_RAW_PATHS`
-unset:
+a detached worktree, or copy the tree without `.git`, `.venv` and `target`
+(`rsync -a --exclude .git --exclude .venv --exclude /target`). Build the
+binary in the frozen tree with `cargo build --release --locked -p agentless`.
+Never point the harness at the shared working tree (incident 3). Then, with
+`LOC_BENCH_FORWARD_RAW_PATHS` unset:
 
-    uv run loc-bench run --agentless <frozen copy> --name <arm>
+    uv run loc-bench run --agentless <frozen copy> \
+        --agentless-bin <frozen copy>/target/release/agentless-mcp --name <arm>
+
+`--agentless-bin` runs that binary in place of
+`uv run --project <frozen copy> agentless-mcp`. That form needs a project
+that installs `agentless-mcp`, and the root `pyproject.toml` installs none.
 
 Compare `ranked_files` per instance against the stored arm for the base
 commit. The records carry no agentless commit, so prove which arm is the
@@ -236,10 +242,14 @@ checkouts in `loc-bench-harness/repos/`, on the same queries:
 - `refs --json` and `explain` on the record's seed names
 - `refs --json` on a few symbols sampled from the scan
 
-The tool is `scripts/surface_dump.py`, which runs under the base build's
-interpreter, and `scripts/surface_cmp.py`. Their docstrings give the
-commands and the scratch environment. `surface_dump.py targets` samples the
-targets once from the base build's full scan, because the one listing that
+The tools are `surface_dump.py` and `scripts/surface_cmp.py`. The repository
+no longer holds `surface_dump.py`, because its `targets` mode imports the
+Python build. Until a Rust `targets` exists, run it from a copy of the tag
+`v0.11.0rc1`, under that copy's interpreter. Its `dump` mode takes each
+build's argv prefix, which for a Rust build is the path of its binary. The
+docstrings give the commands and the scratch environment.
+`surface_dump.py targets` samples the targets once from one full scan, made
+by the Python build of that copy, because the one listing that
 both command lines print, `find-symbol`, stops at 500 rows and at the token
 ceiling (it cut 134 of 150 instances at 8930bd6). Each `surface_dump.py
 dump` records the `find-symbol` listing of its own build, and
@@ -482,15 +492,20 @@ it.
 1. Rebuild the server under test and confirm the client sees it. A repository
    fix is not live until the `uv tool install` is rebuilt.
 2. Pin every arm to a commit with `git worktree add --detach <dir> <sha>`, or
-   with a frozen copy of the tree (see the release gate, step 2), and point
-   the arm at it with `AGENTLESS_PROJECT`. Never point an arm at the live
+   with a frozen copy of the tree (see the release gate, step 2). Point the
+   arm at that tree's server project with
+   `AGENTLESS_PROJECT=<dir>/contrib/bench-server`. The pin in
+   `contrib/bench-server/pyproject.toml` names the release that the
+   agentless arms run, and its `uv.lock` pins that release's files by hash.
+   To benchmark another release, change the pin and its `uv.lock` in a
+   commit, and pin the arm to that commit. Never point an arm at the live
    checkout: another session editing it mid-run splits the arm across two
    builds, as incident 3 records.
-3. Give each worktree the server extra -- `uv sync --project <dir> --extra mcp`
-   -- because a fresh worktree's `.venv` has none, and a CLI smoke test passes
-   without it.
+3. The server project needs no extra. The `mcp` and `tokens` extras are
+   empty, and the binary holds the server.
 4. Run the preflight against each worktree:
-   `python3 probe_mcp_server.py repos/<instance_id> <worktree>`. It must
+   `python3 probe_mcp_server.py repos/<instance_id> <dir>/contrib/bench-server`.
+   It must
    print the tool count that build publishes: `5` up to 0.7.3, `6` from
    0.8.0. The run scripts, for example `run_061_agentless.sh`, refuse to
    start otherwise. Confirm separately that an `orient(map)` call against an
@@ -515,7 +530,7 @@ it.
 
 ## The archived analysis record
 
-Four earlier documents are kept, unedited, under
+Five earlier documents are kept, unedited, under
 [`archive/`](archive/). Each carries a banner naming its successor. They are
 history, not live guidance.
 
@@ -525,8 +540,9 @@ history, not live guidance.
   deleted file.
 - [`archive/functional-assessment.md`](archive/functional-assessment.md)
   assessed the 0.3.0-era revision. Its M1 finding, that `--timeout` is a
-  termination deadline rather than a hard wall-clock bound, is still cited from
-  `core/sandbox.py`, which is why the file is archived rather than deleted.
+  termination deadline rather than a hard wall-clock bound, was cited from the
+  Python build's `core/sandbox.py`, which is why the file was archived rather
+  than deleted.
 - [`archive/audit-postmortem.md`](archive/audit-postmortem.md) explains why a
   nine-phase audit found defects that review had not. Its central rule is the
   one the guardrails above implement: **reproduce, do not read**, and a stated
@@ -537,7 +553,7 @@ history, not live guidance.
   is the 0.3.1 effectiveness and design review. Its three headline findings were
   fixed on the day it was written, and the tool surface it describes is the
   retired v1 surface.
-
-`docs/supply-chain-audit.md` is deliberately not in that list. It is the current
-trust rationale for the exact grammar-pack pin, it is cited from
-`pyproject.toml`, and it describes behaviour the code still has.
+- [`archive/supply-chain-audit.md`](archive/supply-chain-audit.md) is the
+  2026-08-18 audit of the grammar pack's download at first use, which the
+  Python build relied on. The Rust build links the vendored grammar sources
+  and downloads nothing, so the audit no longer describes the code.

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- **The Python build leaves the repository.** The tag `v0.11.0rc1` holds its
+  last copy. `src/agentless_mcp/`, `tests/unit/`, the Python modules of
+  `tests/characterization/`, the hook scripts in `contrib/hooks/`, and the
+  fixture generators, `syntax_tables.py`, `fixture_files.py` and
+  `surface_dump.py` in `scripts/` are deleted. The fixtures and goldens stay
+  as data that the Rust tests read. `contrib/hooks/settings-example.json`
+  calls the `agentless-mcp hook` commands.
+
+### Changed
+
+- **The development commands are cargo's.** `uv sync` installs only the dev
+  group (pre-commit, ruff and codespell), and mypy, import-linter, deptry and
+  pytest no longer run. The tests run with
+  `cargo insta test --check --workspace --test-runner nextest`, and
+  `AGENTS.md` lists every gate. The prompt data moved to
+  `crates/prompts/data/`, and the agent guide moved to
+  `crates/app/data/agent-guide.md`.
+
 ## 0.11.0rc1 -- 2026-10-23
 
 The implementation moves from Python to Rust. 0.11.0rc1 is a pre-release on

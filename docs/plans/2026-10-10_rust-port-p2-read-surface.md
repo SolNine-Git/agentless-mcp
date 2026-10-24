@@ -1,6 +1,6 @@
 # Rust Port, Phase 2: The Read Surface
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P1 released | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 7,300, plus about 2,400 lines of language data and queries
+**Date**: 2026-10-10 | **Status**: done on `feat/rust-port`, merged in PR #62 (`021548f`) and released as 0.11.0rc1 | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P1 released | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 7,300, plus about 2,400 lines of language data and queries
 
 ## Goal
 

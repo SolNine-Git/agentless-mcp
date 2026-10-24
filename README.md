@@ -26,9 +26,8 @@ The wheels cover Linux x86_64 and aarch64 with glibc 2.34 or later, and macOS
 arm64 and x86_64. On another platform the install builds the sdist, which
 needs a Rust toolchain and a C compiler.
 
-In a local checkout, the root `pyproject.toml` still builds the Python
-reference. Build the Rust wheel from `packaging/` instead, then install the
-wheel file:
+In a local checkout, the root `pyproject.toml` builds no package. Build the
+wheel from `packaging/`, then install the wheel file:
 
 ```sh
 bash packaging/notices.sh
@@ -401,10 +400,11 @@ when an agent asks.
 
 ### Structural-first gate (recommended hooks)
 
-Prose asks for the structural pass. A hook enforces it. Two scripts in
-`contrib/hooks/` deny repository-wide or directory-wide `Grep`, every `Glob`,
-and any `Bash` command that parses as a tree search, until the session has
-made a localizing Agentless call.
+Prose asks for the structural pass. A hook enforces it. Two hook commands,
+`agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark`, deny
+repository-wide or directory-wide `Grep`, every `Glob`, and any `Bash`
+command that parses as a tree search, until the session has made a
+localizing Agentless call.
 `orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
 `find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
 `symbols(locate)`, `history`, and the shape listings `orient(communities|cycles|diagram|health)`
@@ -448,21 +448,18 @@ its guardrails, and the schema-policy arms are in
 
 #### Claude Code
 
-Install the gate by copying the two scripts and adding one hooks block.
+Install the gate by adding one hooks block to the Claude Code settings.
 
-1. Copy `contrib/hooks/agentless_gate_check.py` and
-   `contrib/hooks/agentless_gate_mark.py` to a stable path, for example
-   `~/.claude/hooks/`.
-2. Merge the block in `contrib/hooks/settings-example.json` into
+1. Merge the block in `contrib/hooks/settings-example.json` into
    `~/.claude/settings.json` for every project, or into the repository's
    `.claude/settings.json` for one. JSON allows no comments, so the file
    carries placeholder paths and this section carries the explanation.
-3. Replace each `/ABSOLUTE/PATH/TO/...` placeholder with the absolute path of
-   the copied script. A relative path does not resolve.
-4. Keep the `/usr/bin/env python3` prefix. Claude Code runs the `command`
-   string as a shell command, not as an argv list, so the interpreter has to
-   be named.
-5. Start a new session. Claude Code reads `settings.json` at session start.
+2. Replace each `/ABSOLUTE/PATH/TO/agentless-mcp` placeholder with the
+   absolute path of the installed `agentless-mcp`. For a uv tool install,
+   `uv tool dir --bin` prints the directory that holds it. A bare
+   `agentless-mcp` works only when it is on the `PATH` that Claude Code gives
+   its hooks.
+3. Start a new session. Claude Code reads `settings.json` at session start.
 
 ```json
 {
@@ -473,7 +470,7 @@ Install the gate by copying the two scripts and adding one hooks block.
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_check.py"
+            "command": "/home/you/.local/bin/agentless-mcp hook gate-check"
           }
         ]
       }
@@ -484,7 +481,7 @@ Install the gate by copying the two scripts and adding one hooks block.
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_gate_mark.py"
+            "command": "/home/you/.local/bin/agentless-mcp hook gate-mark"
           }
         ]
       }
@@ -493,32 +490,23 @@ Install the gate by copying the two scripts and adding one hooks block.
 }
 ```
 
-The binary runs the same gate with no python3. To use it, set the
-`PreToolUse` command to `agentless-mcp hook gate-check` and the `PostToolUse`
-command to `agentless-mcp hook gate-mark`, with the absolute path of the
-installed `agentless-mcp` when it is not on the `PATH` that Claude Code
-gives its hooks. The commands take the same payloads as the scripts, make
-the same decisions, and share the marker with them.
-
-Verify the scripts outside a session first. Feed each one a fake hook payload
-on stdin and read the exit code. For the built-in commands, put
-`agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark` in place
-of the two `python3` commands:
+Verify the hooks outside a session first. Feed each one a fake hook payload
+on stdin and read the exit code:
 
 ```sh
 rm -rf /tmp/agentless_gate
 
 # No structural call yet: exit 2, and the denial text goes to stderr.
 echo '{"session_id":"probe","tool_name":"Grep","tool_input":{"pattern":"needle"}}' \
-  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+  | agentless-mcp hook gate-check; echo "exit=$?"
 
 # One localizing structural call marks the session.
 echo '{"session_id":"probe","tool_name":"mcp__agentless__orient","tool_input":{"operation":"map"}}' \
-  | python3 ~/.claude/hooks/agentless_gate_mark.py
+  | agentless-mcp hook gate-mark
 
 # Now the same Grep is allowed: exit 0, no output.
 echo '{"session_id":"probe","tool_name":"Grep","tool_input":{"pattern":"needle"}}' \
-  | python3 ~/.claude/hooks/agentless_gate_check.py; echo "exit=$?"
+  | agentless-mcp hook gate-check; echo "exit=$?"
 
 rm -rf /tmp/agentless_gate
 ```
@@ -534,19 +522,19 @@ unwritable `/tmp`, or any internal error exits 0 and allows the call: the
 failure mode to expect is a `Grep` that runs early, never a session that
 cannot search. Set `AGENTLESS_GATE_LOG` to a file path to append one JSONL
 line per decision and confirm the gate fired. Remove the gate by deleting
-the two hook blocks from `settings.json`, the copied scripts, and
-`/tmp/agentless_gate`; nothing else on disk changes.
+the two hook blocks from `settings.json` and the directory
+`/tmp/agentless_gate`. Nothing else on disk changes.
 
-The built-in commands trust `/tmp/agentless_gate` only when it is a
-directory, not a symlink, that the user owns and that no group or other user
-can write. Otherwise they count no marker, and the check allows every call.
-They create the directory with mode `0700`. Under `umask 0002` the scripts
-create it with mode `0775`, so after the scripts have run, the built-in
-check allows broad search until the directory is removed.
+The hooks trust `/tmp/agentless_gate` only when it is a directory, not a
+symlink, that the user owns and that no group or other user can write.
+Otherwise they count no marker, and the check allows every call. They create
+the directory with mode `0700`. The Python hook scripts of earlier releases
+create it with mode `0775` under `umask 0002`. After those scripts have run,
+the check allows broad search until the directory is removed.
 
 #### Codex CLI
 
-The two scripts are unchanged between clients. Codex uses the same
+The two hook commands are unchanged between clients. Codex uses the same
 `PreToolUse` and `PostToolUse` events, the same `session_id`, `tool_name` and
 `tool_input` payload fields, and the same exit-2-blocks-with-stderr contract.
 Three things differ, and all three are configuration.
@@ -577,12 +565,12 @@ Three things differ, and all three are configuration.
        "PreToolUse": [
          { "matcher": "Grep|Glob|Bash|exec_command",
            "hooks": [{ "type": "command",
-                       "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/agentless_gate_check.py" }] }
+                       "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-check" }] }
        ],
        "PostToolUse": [
          { "matcher": "mcp__agentless__.*",
            "hooks": [{ "type": "command",
-                       "command": "/usr/bin/env python3 /ABSOLUTE/PATH/TO/agentless_gate_mark.py" }] }
+                       "command": "/ABSOLUTE/PATH/TO/agentless-mcp hook gate-mark" }] }
        ]
      }
    }
@@ -600,24 +588,17 @@ the gate, which measured indistinguishable from eager on every metric.
 
 ### Erosion gate (per-edit hook)
 
-`contrib/hooks/agentless_erosion_gate.py` checks each Claude Code `Write` and
-`Edit` call before the call lands. It computes the whole text the call would
-leave on disk, runs `agentless-mcp lint --path REL --after FILE`, and reports
-what the change makes worse. The checks are `complexity_delta`,
-`contract_drift`, and `clone_delta`. `complexity_delta` reports a function above
-the complexity threshold that gets more complex, a function that crosses the
-threshold, and a new function above it. `contract_drift` reports a silent
+`agentless-mcp hook erosion` checks each Claude Code `Write` and `Edit` call
+before the call lands. It computes the whole text the call would leave on
+disk, runs lint on that text in its own process, and reports what the change
+makes worse. The checks are `complexity_delta`, `contract_drift`, and
+`clone_delta`. `complexity_delta` reports a function above the complexity
+threshold that gets more complex, a function that crosses the threshold, and
+a new function above it. `contract_drift` reports a silent
 default or a swallowed error in a module that `boundary_globs` names.
 `clone_delta` reports a block of 3 or more source lines and 40 or more tokens
 that the change adds while the repository already has a copy of it, with
-names and literals ignored. The hook imports the standard library only.
-
-The binary runs the same gate in its own process as
-`agentless-mcp hook erosion`, with no python3. The install steps below use
-the Python script, which `contrib/hooks/settings-example.json` names. To use
-the built-in hook, set the command to `agentless-mcp hook erosion`, with the
-absolute path of the installed `agentless-mcp` when it is not on the `PATH`
-that Claude Code gives its hooks.
+names and literals ignored.
 
 **Modes.** Each check has one mode: `off`, `advisory`, or `block`.
 
@@ -640,16 +621,11 @@ wins over every repository key.
 
 | Variable | Effect |
 |---|---|
-| `AGENTLESS_EROSION_GATE` | `off` turns the gate off everywhere. `advisory` or `block` sets the default mode. Both hooks read it. |
-| `AGENTLESS_EROSION_BIN` | The Python script only: the `agentless-mcp` binary that it runs. Without it, the script runs `agentless-mcp` from `PATH`. The Rust hook, `agentless-mcp hook erosion`, runs lint in its own process and ignores this variable. |
-| `AGENTLESS_EROSION_LOG` | A file path. The hook appends one JSON line per call to this file. In a record from the Rust hook, `binary` is the path of the running `agentless-mcp`. |
+| `AGENTLESS_EROSION_GATE` | `off` turns the gate off everywhere. `advisory` or `block` sets the default mode. |
+| `AGENTLESS_EROSION_LOG` | A file path. The hook appends one JSON line per call to this file. In each record, `binary` is the path of the running `agentless-mcp`. |
 
-The binary must have the hook form (`lint --path`). With a release that does
-not have it, the log records every call as `degraded` with the reason
-`agentless-mcp lacks the hook form`. When lint refuses a check, the hook reads
-the binary's check list from `capabilities --json` and runs lint once more with
-the requested pair checks that the list names. When the binary is missing, the
-hook skips the call.
+The hook runs lint in its own process and ignores `AGENTLESS_EROSION_BIN`,
+which only the Python hook script of earlier releases read.
 
 In the hook form, `clone_delta` reads the clone blocks of every source file
 outside test and fixture paths from the tag cache (`agentless-mcp index`, or
@@ -657,29 +633,28 @@ the MCP server's background index). It parses only the edited file and the
 files that changed or were added since the index. Without a tag cache, the
 check is off for that call: lint gives one `not_checked` row with the reason
 `no_tag_cache`, and the hook logs `clone_delta` under `off_by_config`, not as
-a gap. An edit of a test or fixture file gets no `clone_delta` row. On one
-mcp-local file the hook takes 0.24 s with a fresh cache, against 0.21 s and
-0.20 s for the two other checks alone (median of 5 interleaved runs,
-`/usr/bin/time`). On diffusers@65ab105 without a cache, the hook-form lint of
-all three checks takes 0.14 s for a source file (one run). `lint --since` and
-candidate runs build the index when there is no cache, and they stop it after
-10 s. The hook reads the cache that a server or an `agentless-mcp index` of
-the same release writes. Beside a Python-build server, a 0.11.0 hook gets
-the `no_tag_cache` row until a 0.11.0 server or `agentless-mcp index` fills
-the cache.
+a gap. An edit of a test or fixture file gets no `clone_delta` row. For a
+Write that appends a 4-line function to `src/readers/document_readers.py` in
+a clone of mcp-local at `f17af96`, the whole hook process takes 25.4 ms with
+a fresh cache and 14.5 ms with no cache. These are medians of 60 runs (p95
+27.0 ms and 15.6 ms) of `scripts/hook_latency.py` on b158b3f.
+`lint --since` and candidate runs build the index when there is no cache, and
+they stop it after 10 s. The hook reads the cache that a server or an
+`agentless-mcp index` of the same release writes. Beside a Python-build
+server, a 0.11.0 hook gets the `no_tag_cache` row until a 0.11.0 server or
+`agentless-mcp index` fills the cache.
 
 Install the gate in Claude Code:
 
-1. Copy `contrib/hooks/agentless_erosion_gate.py` to a stable path, for
-   example `~/.claude/hooks/`.
-2. Merge the `Write|Edit` entry from `contrib/hooks/settings-example.json`
+1. Merge the `Write|Edit` entry from `contrib/hooks/settings-example.json`
    into the `PreToolUse` list in `~/.claude/settings.json`. Replace the
-   placeholder with the absolute path of the copied script.
-3. Keep `"timeout": 15`. The hook stops its own work after 10 s, so the 15 s
+   placeholder with the absolute path of the installed `agentless-mcp`, as
+   for the search gate above.
+2. Keep `"timeout": 15`. The hook stops its own work after 10 s, so the 15 s
    timeout is a second limit. A hook that times out does not block the call.
-4. Set the variables in the `env` block of `settings.json`, for example
+3. Set the variables in the `env` block of `settings.json`, for example
    `"env": {"AGENTLESS_EROSION_LOG": "/home/you/.claude/erosion-gate.jsonl"}`.
-5. Start a new session.
+4. Start a new session.
 
 ```json
 {
@@ -687,21 +662,19 @@ Install the gate in Claude Code:
   "hooks": [
     {
       "type": "command",
-      "command": "/usr/bin/env python3 /home/you/.claude/hooks/agentless_erosion_gate.py",
+      "command": "/home/you/.local/bin/agentless-mcp hook erosion",
       "timeout": 15
     }
   ]
 }
 ```
 
-Check the script outside a session first. With a binary that has the hook
-form, a Write of a small new Python file in a repository gives exit 0, no
-output, and a `clean` record:
+Check the hook outside a session first. A Write of a small new Python file in
+a repository gives exit 0, no output, and a `clean` record:
 
 ```sh
 printf '%s\n' '{"session_id":"probe","transcript_path":"/tmp/probe.jsonl","tool_use_id":"toolu_probe","tool_name":"Write","tool_input":{"file_path":"/path/to/repo/probe.py","content":"x = 1\n"}}' \
-  | AGENTLESS_EROSION_BIN=/path/to/agentless-mcp AGENTLESS_EROSION_LOG=/tmp/erosion-probe.jsonl \
-    python3 ~/.claude/hooks/agentless_erosion_gate.py
+  | AGENTLESS_EROSION_LOG=/tmp/erosion-probe.jsonl agentless-mcp hook erosion
 echo "exit=$?"
 tail -1 /tmp/erosion-probe.jsonl
 ```
@@ -719,18 +692,15 @@ its numbers, the state that lint observed in the proposed text, and the
 latency. The outcomes are `clean`, `advisory`, `blocked`, `degraded`, and
 `skipped`.
 
-**The report.** `contrib/hooks/erosion_gate_report.py` reads the log and the
-transcript of each record after the sessions end:
+**The report.** `agentless-mcp gate-report` reads the log and the transcript
+of each record after the sessions end:
 
 ```sh
-python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl
-python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --sample-out labels.csv
+agentless-mcp gate-report ~/.claude/erosion-gate.jsonl
+agentless-mcp gate-report ~/.claude/erosion-gate.jsonl --sample-out labels.csv
 # Write correct or wrong in the label column of each row, then:
-python3 contrib/hooks/erosion_gate_report.py ~/.claude/erosion-gate.jsonl --labels labels.csv
+agentless-mcp gate-report ~/.claude/erosion-gate.jsonl --labels labels.csv
 ```
-
-`agentless-mcp gate-report` takes the same arguments and gives the same
-report, with no python3.
 
 The report puts each finding in one class:
 

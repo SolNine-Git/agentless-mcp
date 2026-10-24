@@ -1,3 +1,8 @@
+> Archived 2026-10-24. The Rust build links the vendored grammar sources and
+> downloads nothing.
+> [`docs/analysis/2026-10-10_rust-port-grammar-pin.md`](../2026-10-10_rust-port-grammar-pin.md)
+> records the pin.
+
 # Supply-chain audit: tree-sitter-language-pack
 
 Phase 0 go/no-go note. Date: 2026-08-18. Verdict: **GO** for direct use of

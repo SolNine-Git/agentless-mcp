@@ -1,6 +1,6 @@
 # Specification: Erosion, Clone, and Contract-Drift Checks
 
-**Date**: 2026-10-09 | **Status**: revision 2, after two adversarial reviews (Codex gpt-6.1-sol and Gemini gemini-3.8-flash, both FAIL on revision 1); nothing built | **Research input**: `mcp-local/docs/research/2026-10-09_slopcodebench-code-erosion.md`
+**Date**: 2026-10-09 | **Status**: revision 2, after two adversarial reviews (Codex gpt-6.1-sol and Gemini gemini-3.8-flash, both FAIL on revision 1). Built in 0.10.0: `lint` reports `complexity_delta`, `contract_drift` and `clone_delta`, and the per-edit erosion gate hook runs them | **Research input**: `mcp-local/docs/research/2026-10-09_slopcodebench-code-erosion.md`
 
 ## Problem Statement
 

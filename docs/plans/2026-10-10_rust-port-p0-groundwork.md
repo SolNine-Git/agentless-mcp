@@ -1,6 +1,6 @@
 # Rust Port, Phase 0: Groundwork
 
-**Date**: 2026-10-10 | **Status**: P0a merged (PR #60, `9bb51ac`); P0b (`0037919`) and P0d committed on `feat/rust-port`; P0c next | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
+**Date**: 2026-10-10 | **Status**: P0a merged in PR #60 (`9bb51ac`). P0b (`0037919`) and P0d (closed at `8930bd6`) merged in PR #62 (`021548f`). P0c was dropped: no 0.10.1 release, and the parity base is the Python tree at `8930bd6` | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: nothing | **Est. Rust lines**: about 600
 
 ## Goal
 

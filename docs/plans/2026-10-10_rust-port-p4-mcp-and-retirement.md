@@ -1,6 +1,6 @@
 # Rust Port, Phase 4: The MCP Door and Retirement
 
-**Date**: 2026-10-10 | **Status**: items 1-4 built and verified; release candidate `93fa5ed` for 0.11.0rc1; items 5 and 6 next | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-port`, then `chore/retire-python` | **Est. Rust lines**: about 800, plus the gate report
+**Date**: 2026-10-10 | **Status**: items 1-4 built and verified. Item 5: 0.11.0rc1 released from the release candidate `93fa5ed`, merged in PR #62 (`021548f`, tag `v0.11.0rc1`). Item 6 runs on `chore/complete-rust-migration` | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-port`, then `chore/complete-rust-migration` | **Est. Rust lines**: about 800, plus the gate report
 
 ## Goal
 
