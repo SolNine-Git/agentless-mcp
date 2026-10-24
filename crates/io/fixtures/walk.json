@@ -1,0 +1,39 @@
+{
+ "layout": [
+  ["dir", "root"],
+  ["file", "root/b.txt", "bb"],
+  ["file", "root/a.txt", "a"],
+  ["file", "root/Z.txt", "zz"],
+  ["file", "root/.h", ""],
+  ["dir", "root/sub"],
+  ["file", "root/sub/c.txt", "ccc"],
+  ["dir", "root/sub/deep"],
+  ["file", "root/sub/deep/d.txt", "dddd"],
+  ["dir", "root/sub/z"],
+  ["file", "root/sub/z/x.txt", "x"],
+  ["dir", "root/e"],
+  ["link", "root/link_dir", "sub"],
+  ["link", "root/link_file", "a.txt"],
+  ["link", "root/sub/link_up", "../b.txt"],
+  ["link", "root/link_out", "../outside/secret"],
+  ["link", "root/dangling", "nowhere"],
+  ["fifo", "root/fifo"],
+  ["dir", "outside"],
+  ["file", "outside/secret", "s"]
+ ],
+ "bounds": [
+  [[20, 20000, 200000000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
+  [[2, 100, 1000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
+  [[1, 100, 1000], ["refused", "walk refused: directory depth 2 exceeds the limit of 1 under {base}/root; point the call at a subdirectory instead"]],
+  [[20, 9, 1000], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
+  [[20, 8, 1000], ["refused", "walk refused: more than 8 files under {base}/root; point the call at a subdirectory or raise the file bound"]],
+  [[20, 100, 16], ["files", ["{base}/root/.h", "{base}/root/Z.txt", "{base}/root/a.txt", "{base}/root/b.txt", "{base}/root/link_file", "{base}/root/sub/c.txt", "{base}/root/sub/link_up", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
+  [[20, 100, 15], ["refused", "walk refused: more than 15 bytes under {base}/root; point the call at a subdirectory or raise the byte bound"]]
+ ],
+ "roots": [
+  ["root/link_dir", ["files", ["{base}/root/sub/c.txt", "{base}/root/sub/deep/d.txt", "{base}/root/sub/z/x.txt"]]],
+  ["root/a.txt", ["refused", "not a directory: {base}/root/a.txt"]],
+  ["root/missing", ["refused", "not a directory: {base}/root/missing"]],
+  ["root/sub/deep", ["files", ["{base}/root/sub/deep/d.txt"]]]
+ ]
+}

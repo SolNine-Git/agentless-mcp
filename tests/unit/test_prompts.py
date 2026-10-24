@@ -71,6 +71,7 @@ ENVELOPE_ARGUMENTS = {
 }
 
 MESSAGE_ARGUMENTS = {
+    "surface_v1_deprecated": {"surface": "v1"},
     "server_no_roots": {},
     "server_root_required": {"roots": "/srv/app, /srv/other"},
     "unknown_operation": {
@@ -93,7 +94,7 @@ MESSAGE_ARGUMENTS = {
         "required": "source, target",
     },
     "path_needs_endpoints": {"tool": "orient"},
-    "map_limit_out_of_range": {"limit": "500", "minimum": "1", "maximum": "200"},
+    "map_limit_out_of_range": {"limit": 500, "minimum": 1, "maximum": 200},
     "repo_refused_no_roots": {},
     "repo_refused_not_allowed": {"roots": "/srv/app, /srv/other"},
     "roots_file_hint": {"file": "/srv/agentless-roots.txt"},
@@ -113,6 +114,7 @@ MESSAGE_ARGUMENTS = {
     "map_file_unreached": {"count": 9},
     "refs_target_unresolved": {"target": "py:src/app/svc.py::Invoice.total", "name": "total"},
     "explain_tie": {"count": 2, "target": "shared"},
+    "communities_not_converged": {},
     "stable_ids_pattern": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "overview_stable_ids": {"pattern": "py:src/app/svc.py::<QualifiedName>"},
     "slice_range_beyond_file": {"start": 9000, "end": 9050, "path": "src/app/svc.py", "total": 242},

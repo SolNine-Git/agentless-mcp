@@ -1,0 +1,2908 @@
+pub mod app
+pub use app::ApplyResult
+pub use app::BlockError
+pub use app::CheckGap
+pub use app::Clock
+pub use app::Detail
+pub use app::DiffNote
+pub use app::Edit
+pub use app::EditOutcome
+pub use app::EditStatus
+pub use app::EvictionReport
+pub use app::Finding
+pub use app::IndexFailure
+pub use app::IndexReport
+pub use app::IndexSkip
+pub use app::Observed
+pub use app::PairFinding
+pub use app::ParseResult
+pub use app::PathPolicy
+pub use app::Severity
+pub use app::SyntaxVerdict
+pub use app::SystemClock
+pub use app::parse_blocks
+pub mod app::bounds
+pub fn app::bounds::at_least(&app::IntArg, usize, &str) -> core::result::Result<usize, app::Error>
+pub fn app::bounds::within(&app::IntArg, usize, usize, &str) -> core::result::Result<usize, app::Error>
+pub fn app::bounds::within_float(f64, f64, f64, &str) -> core::result::Result<f64, app::Error>
+pub mod app::ops
+pub mod app::ops::limits
+pub const app::ops::limits::DEFAULT_COMMUNITY_LIMIT: usize
+pub const app::ops::limits::DEFAULT_CONTEXT_LINES: usize
+pub const app::ops::limits::DEFAULT_CYCLE_LIMIT: usize
+pub const app::ops::limits::DEFAULT_DIAGRAM_EDGES: usize
+pub const app::ops::limits::DEFAULT_DIAGRAM_NODES: usize
+pub const app::ops::limits::DEFAULT_EXPAND_LIMIT: usize
+pub const app::ops::limits::DEFAULT_EXPLAIN_LIMIT: usize
+pub const app::ops::limits::DEFAULT_FIND_LIMIT: usize
+pub const app::ops::limits::DEFAULT_HEALTH_LIMIT: usize
+pub const app::ops::limits::DEFAULT_HISTORY_BUDGET: usize
+pub const app::ops::limits::DEFAULT_HISTORY_LIMIT: usize
+pub const app::ops::limits::DEFAULT_HTML_EDGES: usize
+pub const app::ops::limits::DEFAULT_HTML_NODES: usize
+pub const app::ops::limits::DEFAULT_MAX_FILES: usize
+pub const app::ops::limits::DEFAULT_MAX_VISITED: usize
+pub const app::ops::limits::DEFAULT_MEMBER_LIMIT: usize
+pub const app::ops::limits::DEFAULT_REFS_LIMIT: usize
+pub const app::ops::limits::DEFAULT_RESOLUTION: f64
+pub const app::ops::limits::DEFAULT_TREE_DEPTH: usize
+pub const app::ops::limits::DEFAULT_TREE_ENTRIES: usize
+pub const app::ops::limits::MAX_BUDGET: usize
+pub const app::ops::limits::MAX_CONTEXT_LINES: usize
+pub const app::ops::limits::MAX_DIAGRAM_EDGES: usize
+pub const app::ops::limits::MAX_DIAGRAM_NODES: usize
+pub const app::ops::limits::MAX_HTML_EDGES: usize
+pub const app::ops::limits::MAX_HTML_NODES: usize
+pub const app::ops::limits::MAX_LIMIT: usize
+pub const app::ops::limits::MAX_MAX_FILES: usize
+pub const app::ops::limits::MAX_RESOLUTION: f64
+pub const app::ops::limits::MAX_TEST_COMPANIONS: usize
+pub const app::ops::limits::MAX_TREE_DEPTH: usize
+pub const app::ops::limits::MAX_TREE_ENTRIES: usize
+pub const app::ops::limits::MIN_BUDGET: usize
+pub const app::ops::limits::MIN_MAX_FILES: usize
+pub const app::ops::limits::TEST_COMPANION_DEPTH: u32
+pub enum app::ops::Arity
+pub app::ops::Arity::Any
+pub app::ops::Arity::One
+pub app::ops::Arity::OneOrMore
+pub app::ops::Arity::Optional
+impl core::clone::Clone for app::ops::Arity
+pub fn app::ops::Arity::clone(&self) -> Self
+impl core::cmp::Eq for app::ops::Arity
+impl core::cmp::PartialEq for app::ops::Arity
+pub fn app::ops::Arity::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ops::Arity
+pub fn app::ops::Arity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ops::Arity
+impl core::marker::StructuralPartialEq for app::ops::Arity
+impl core::marker::Freeze for app::ops::Arity
+impl core::marker::Send for app::ops::Arity
+impl core::marker::Sync for app::ops::Arity
+impl core::marker::Unpin for app::ops::Arity
+impl core::marker::UnsafeUnpin for app::ops::Arity
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Arity
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Arity
+pub enum app::ops::Cli
+pub app::ops::Cli::Option
+pub app::ops::Cli::Option::flags: &'static [&'static str]
+pub app::ops::Cli::Option::metavar: core::option::Option<&'static str>
+pub app::ops::Cli::Option::repeat: bool
+pub app::ops::Cli::Option::required: bool
+pub app::ops::Cli::Positional
+pub app::ops::Cli::Positional::arity: app::ops::Arity
+pub app::ops::Cli::Positional::metavar: &'static str
+impl core::fmt::Debug for app::ops::Cli
+pub fn app::ops::Cli::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::ops::Cli
+impl core::marker::Send for app::ops::Cli
+impl core::marker::Sync for app::ops::Cli
+impl core::marker::Unpin for app::ops::Cli
+impl core::marker::UnsafeUnpin for app::ops::Cli
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Cli
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Cli
+pub enum app::ops::Door
+pub app::ops::Door::CliOnly
+pub app::ops::Door::Named(&'static str)
+pub app::ops::Door::Same
+impl core::clone::Clone for app::ops::Door
+pub fn app::ops::Door::clone(&self) -> Self
+impl core::cmp::Eq for app::ops::Door
+impl core::cmp::PartialEq for app::ops::Door
+pub fn app::ops::Door::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ops::Door
+pub fn app::ops::Door::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ops::Door
+impl core::marker::StructuralPartialEq for app::ops::Door
+impl core::marker::Freeze for app::ops::Door
+impl core::marker::Send for app::ops::Door
+impl core::marker::Sync for app::ops::Door
+impl core::marker::Unpin for app::ops::Door
+impl core::marker::UnsafeUnpin for app::ops::Door
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Door
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Door
+pub enum app::ops::Value
+pub app::ops::Value::Choice(&'static [&'static str])
+pub app::ops::Value::Flag
+pub app::ops::Value::FlagOrUnset
+pub app::ops::Value::Float
+pub app::ops::Value::Int(usize)
+pub app::ops::Value::IntOrUnset
+pub app::ops::Value::Text
+impl core::clone::Clone for app::ops::Value
+pub fn app::ops::Value::clone(&self) -> Self
+impl core::cmp::PartialEq for app::ops::Value
+pub fn app::ops::Value::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ops::Value
+pub fn app::ops::Value::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ops::Value
+impl core::marker::StructuralPartialEq for app::ops::Value
+impl core::marker::Freeze for app::ops::Value
+impl core::marker::Send for app::ops::Value
+impl core::marker::Sync for app::ops::Value
+impl core::marker::Unpin for app::ops::Value
+impl core::marker::UnsafeUnpin for app::ops::Value
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Value
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Value
+pub struct app::ops::Op
+pub app::ops::Op::exclusive: &'static [&'static str]
+pub app::ops::Op::name: &'static str
+pub app::ops::Op::params: &'static [app::ops::Param]
+pub app::ops::Op::summary: &'static str
+pub app::ops::Op::tool: core::option::Option<&'static str>
+impl core::fmt::Debug for app::ops::Op
+pub fn app::ops::Op::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::ops::Op
+impl core::marker::Send for app::ops::Op
+impl core::marker::Sync for app::ops::Op
+impl core::marker::Unpin for app::ops::Op
+impl core::marker::UnsafeUnpin for app::ops::Op
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Op
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Op
+pub struct app::ops::Param
+pub app::ops::Param::cli: core::option::Option<app::ops::Cli>
+pub app::ops::Param::dest: &'static str
+pub app::ops::Param::door: app::ops::Door
+pub app::ops::Param::help: core::option::Option<&'static str>
+pub app::ops::Param::value: app::ops::Value
+impl core::fmt::Debug for app::ops::Param
+pub fn app::ops::Param::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::ops::Param
+impl core::marker::Send for app::ops::Param
+impl core::marker::Sync for app::ops::Param
+impl core::marker::Unpin for app::ops::Param
+impl core::marker::UnsafeUnpin for app::ops::Param
+impl core::panic::unwind_safe::RefUnwindSafe for app::ops::Param
+impl core::panic::unwind_safe::UnwindSafe for app::ops::Param
+pub const app::ops::JSON: app::ops::Param
+pub const app::ops::NO_CACHE: app::ops::Param
+pub const app::ops::REPO: app::ops::Param
+pub static app::ops::COMMUNITIES: app::ops::Op
+pub static app::ops::CYCLES: app::ops::Op
+pub static app::ops::DIAGRAM: app::ops::Op
+pub static app::ops::EXPAND: app::ops::Op
+pub static app::ops::EXPLAIN: app::ops::Op
+pub static app::ops::FIND_SYMBOL: app::ops::Op
+pub static app::ops::GUIDE: app::ops::Op
+pub static app::ops::HEALTH: app::ops::Op
+pub static app::ops::HISTORY: app::ops::Op
+pub static app::ops::HTML: app::ops::Op
+pub static app::ops::INDEX: app::ops::Op
+pub static app::ops::MAP: app::ops::Op
+pub static app::ops::OPS: [&app::ops::Op; 19]
+pub static app::ops::PATH: app::ops::Op
+pub static app::ops::REFS: app::ops::Op
+pub static app::ops::RESOLVE_LOCS: app::ops::Op
+pub static app::ops::SKELETON: app::ops::Op
+pub static app::ops::SLICE: app::ops::Op
+pub static app::ops::TREE: app::ops::Op
+pub static app::ops::WARMUP: app::ops::Op
+pub fn app::ops::op(&str) -> core::option::Option<&'static app::ops::Op>
+pub mod app::surface
+pub enum app::surface::Calls
+pub app::surface::Calls::Operations(&'static [app::surface::Operation])
+pub app::surface::Calls::Single
+pub app::surface::Calls::Single::localizes: bool
+impl core::fmt::Debug for app::surface::Calls
+pub fn app::surface::Calls::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Calls
+impl core::marker::Send for app::surface::Calls
+impl core::marker::Sync for app::surface::Calls
+impl core::marker::Unpin for app::surface::Calls
+impl core::marker::UnsafeUnpin for app::surface::Calls
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Calls
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Calls
+pub enum app::surface::Effect
+pub app::surface::Effect::ReadOnly
+impl core::clone::Clone for app::surface::Effect
+pub fn app::surface::Effect::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::Effect
+impl core::cmp::PartialEq for app::surface::Effect
+pub fn app::surface::Effect::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Effect
+pub fn app::surface::Effect::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Effect
+impl core::marker::StructuralPartialEq for app::surface::Effect
+impl core::marker::Freeze for app::surface::Effect
+impl core::marker::Send for app::surface::Effect
+impl core::marker::Sync for app::surface::Effect
+impl core::marker::Unpin for app::surface::Effect
+impl core::marker::UnsafeUnpin for app::surface::Effect
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Effect
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Effect
+pub enum app::surface::Presence
+pub app::surface::Presence::DefaultFalse
+pub app::surface::Presence::Nullable
+pub app::surface::Presence::Required
+impl core::clone::Clone for app::surface::Presence
+pub fn app::surface::Presence::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::Presence
+impl core::cmp::PartialEq for app::surface::Presence
+pub fn app::surface::Presence::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Presence
+pub fn app::surface::Presence::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Presence
+impl core::marker::StructuralPartialEq for app::surface::Presence
+impl core::marker::Freeze for app::surface::Presence
+impl core::marker::Send for app::surface::Presence
+impl core::marker::Sync for app::surface::Presence
+impl core::marker::Unpin for app::surface::Presence
+impl core::marker::UnsafeUnpin for app::surface::Presence
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Presence
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Presence
+pub enum app::surface::Shape
+pub app::surface::Shape::AnyOf(&'static [app::surface::Shape])
+pub app::surface::Shape::Array
+pub app::surface::Shape::Array::items: &'static app::surface::Shape
+pub app::surface::Shape::Array::max_items: core::option::Option<usize>
+pub app::surface::Shape::Array::min_items: core::option::Option<usize>
+pub app::surface::Shape::Bool
+pub app::surface::Shape::Enum
+pub app::surface::Shape::Enum::description: &'static str
+pub app::surface::Shape::Enum::names: &'static [&'static str]
+pub app::surface::Shape::Int
+pub app::surface::Shape::Int::maximum: core::option::Option<usize>
+pub app::surface::Shape::Int::minimum: usize
+pub app::surface::Shape::Literal(&'static [&'static str])
+pub app::surface::Shape::Number
+pub app::surface::Shape::Number::exclusive_minimum: usize
+pub app::surface::Shape::Number::maximum: f64
+pub app::surface::Shape::Text
+impl core::clone::Clone for app::surface::Shape
+pub fn app::surface::Shape::clone(&self) -> Self
+impl core::cmp::PartialEq for app::surface::Shape
+pub fn app::surface::Shape::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::Shape
+pub fn app::surface::Shape::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::Shape
+impl core::marker::StructuralPartialEq for app::surface::Shape
+impl core::marker::Freeze for app::surface::Shape
+impl core::marker::Send for app::surface::Shape
+impl core::marker::Sync for app::surface::Shape
+impl core::marker::Unpin for app::surface::Shape
+impl core::marker::UnsafeUnpin for app::surface::Shape
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Shape
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Shape
+pub struct app::surface::Operation
+pub app::surface::Operation::accepted: &'static [&'static str]
+pub app::surface::Operation::localizes: bool
+pub app::surface::Operation::name: &'static str
+pub app::surface::Operation::required: &'static [&'static str]
+impl core::fmt::Debug for app::surface::Operation
+pub fn app::surface::Operation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Operation
+impl core::marker::Send for app::surface::Operation
+impl core::marker::Sync for app::surface::Operation
+impl core::marker::Unpin for app::surface::Operation
+impl core::marker::UnsafeUnpin for app::surface::Operation
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Operation
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Operation
+pub struct app::surface::Param
+pub app::surface::Param::description: &'static str
+pub app::surface::Param::name: &'static str
+pub app::surface::Param::presence: app::surface::Presence
+pub app::surface::Param::shape: app::surface::Shape
+impl core::fmt::Debug for app::surface::Param
+pub fn app::surface::Param::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Param
+impl core::marker::Send for app::surface::Param
+impl core::marker::Sync for app::surface::Param
+impl core::marker::Unpin for app::surface::Param
+impl core::marker::UnsafeUnpin for app::surface::Param
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Param
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Param
+pub struct app::surface::Tool
+pub app::surface::Tool::always_load: bool
+pub app::surface::Tool::calls: app::surface::Calls
+pub app::surface::Tool::description: &'static str
+pub app::surface::Tool::effect: app::surface::Effect
+pub app::surface::Tool::name: &'static str
+pub app::surface::Tool::params: &'static [app::surface::Param]
+pub app::surface::Tool::title: &'static str
+impl app::surface::Tool
+pub fn app::surface::Tool::localizes(&self, core::option::Option<&str>) -> bool
+pub fn app::surface::Tool::operation(&self, &str) -> core::option::Option<&'static app::surface::Operation>
+impl core::fmt::Debug for app::surface::Tool
+pub fn app::surface::Tool::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::surface::Tool
+impl core::marker::Send for app::surface::Tool
+impl core::marker::Sync for app::surface::Tool
+impl core::marker::Unpin for app::surface::Tool
+impl core::marker::UnsafeUnpin for app::surface::Tool
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
+impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
+pub static app::surface::TOOLS: [&app::surface::Tool; 6]
+pub fn app::surface::tool_entry(&app::surface::Tool) -> json::parse::JsonValue
+pub enum app::After
+pub app::After::File(std::path::PathBuf)
+pub app::After::Text(alloc::string::String)
+impl core::clone::Clone for app::After
+pub fn app::After::clone(&self) -> Self
+impl core::cmp::Eq for app::After
+impl core::cmp::PartialEq for app::After
+pub fn app::After::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::After
+pub fn app::After::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::After
+impl core::marker::Freeze for app::After
+impl core::marker::Send for app::After
+impl core::marker::Sync for app::After
+impl core::marker::Unpin for app::After
+impl core::marker::UnsafeUnpin for app::After
+impl core::panic::unwind_safe::RefUnwindSafe for app::After
+impl core::panic::unwind_safe::UnwindSafe for app::After
+pub enum app::ApplyMode
+pub app::ApplyMode::InPlace
+pub app::ApplyMode::Worktree
+impl core::clone::Clone for app::ApplyMode
+pub fn app::ApplyMode::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyMode
+impl core::cmp::PartialEq for app::ApplyMode
+pub fn app::ApplyMode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyMode
+pub fn app::ApplyMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ApplyMode
+impl core::marker::StructuralPartialEq for app::ApplyMode
+impl core::marker::Freeze for app::ApplyMode
+impl core::marker::Send for app::ApplyMode
+impl core::marker::Sync for app::ApplyMode
+impl core::marker::Unpin for app::ApplyMode
+impl core::marker::UnsafeUnpin for app::ApplyMode
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyMode
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyMode
+pub enum app::ApplyStatus
+pub app::ApplyStatus::Failed
+pub app::ApplyStatus::NotEvaluated
+pub app::ApplyStatus::Ok
+impl app::ApplyStatus
+pub fn app::ApplyStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::ApplyStatus
+pub fn app::ApplyStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyStatus
+impl core::cmp::PartialEq for app::ApplyStatus
+pub fn app::ApplyStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyStatus
+pub fn app::ApplyStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::ApplyStatus
+pub fn app::ApplyStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ApplyStatus
+impl core::marker::StructuralPartialEq for app::ApplyStatus
+impl serde_core::ser::Serialize for app::ApplyStatus
+pub fn app::ApplyStatus::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::ApplyStatus
+impl core::marker::Send for app::ApplyStatus
+impl core::marker::Sync for app::ApplyStatus
+impl core::marker::Unpin for app::ApplyStatus
+impl core::marker::UnsafeUnpin for app::ApplyStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyStatus
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyStatus
+pub enum app::BaselineStatus
+pub app::BaselineStatus::Ok
+pub app::BaselineStatus::Unverified
+impl app::BaselineStatus
+pub fn app::BaselineStatus::as_str(self) -> &'static str
+impl core::clone::Clone for app::BaselineStatus
+pub fn app::BaselineStatus::clone(&self) -> Self
+impl core::cmp::Eq for app::BaselineStatus
+impl core::cmp::PartialEq for app::BaselineStatus
+pub fn app::BaselineStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::BaselineStatus
+pub fn app::BaselineStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::BaselineStatus
+pub fn app::BaselineStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::BaselineStatus
+impl core::marker::StructuralPartialEq for app::BaselineStatus
+impl serde_core::ser::Serialize for app::BaselineStatus
+pub fn app::BaselineStatus::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::BaselineStatus
+impl core::marker::Send for app::BaselineStatus
+impl core::marker::Sync for app::BaselineStatus
+impl core::marker::Unpin for app::BaselineStatus
+impl core::marker::UnsafeUnpin for app::BaselineStatus
+impl core::panic::unwind_safe::RefUnwindSafe for app::BaselineStatus
+impl core::panic::unwind_safe::UnwindSafe for app::BaselineStatus
+pub enum app::CapValue
+pub app::CapValue::Float(f64)
+pub app::CapValue::Int(u64)
+impl core::clone::Clone for app::CapValue
+pub fn app::CapValue::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CapValue
+pub fn app::CapValue::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CapValue
+pub fn app::CapValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::CapValue
+pub fn app::CapValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::CapValue
+impl core::marker::StructuralPartialEq for app::CapValue
+impl serde_core::ser::Serialize for app::CapValue
+pub fn app::CapValue::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::CapValue
+impl core::marker::Send for app::CapValue
+impl core::marker::Sync for app::CapValue
+impl core::marker::Unpin for app::CapValue
+impl core::marker::UnsafeUnpin for app::CapValue
+impl core::panic::unwind_safe::RefUnwindSafe for app::CapValue
+impl core::panic::unwind_safe::UnwindSafe for app::CapValue
+pub enum app::CheckInput
+pub app::CheckInput::Pairs
+pub app::CheckInput::PairsClones
+pub app::CheckInput::Patch
+impl app::CheckInput
+pub fn app::CheckInput::as_str(self) -> &'static str
+impl core::clone::Clone for app::CheckInput
+pub fn app::CheckInput::clone(&self) -> Self
+impl core::cmp::Eq for app::CheckInput
+impl core::cmp::PartialEq for app::CheckInput
+pub fn app::CheckInput::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CheckInput
+pub fn app::CheckInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::CheckInput
+impl core::marker::StructuralPartialEq for app::CheckInput
+impl core::marker::Freeze for app::CheckInput
+impl core::marker::Send for app::CheckInput
+impl core::marker::Sync for app::CheckInput
+impl core::marker::Unpin for app::CheckInput
+impl core::marker::UnsafeUnpin for app::CheckInput
+impl core::panic::unwind_safe::RefUnwindSafe for app::CheckInput
+impl core::panic::unwind_safe::UnwindSafe for app::CheckInput
+pub enum app::Error
+pub app::Error::Check(checks::error::Error)
+pub app::Error::Kind(kernel::error::Error)
+pub app::Error::Store(store::error::SqlError)
+impl core::convert::From<checks::error::Error> for app::Error
+pub fn app::Error::from(checks::error::Error) -> Self
+impl core::convert::From<kernel::deadline::Stopped> for app::Error
+pub fn app::Error::from(kernel::deadline::Stopped) -> app::Error
+impl core::convert::From<kernel::error::Error> for app::Error
+pub fn app::Error::from(kernel::error::Error) -> Self
+impl core::convert::From<store::error::SqlError> for app::Error
+pub fn app::Error::from(store::error::SqlError) -> Self
+impl core::error::Error for app::Error
+pub fn app::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for app::Error
+pub fn app::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::Error
+pub fn app::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::Error
+impl core::marker::Send for app::Error
+impl core::marker::Sync for app::Error
+impl core::marker::Unpin for app::Error
+impl core::marker::UnsafeUnpin for app::Error
+impl core::panic::unwind_safe::RefUnwindSafe for app::Error
+impl core::panic::unwind_safe::UnwindSafe for app::Error
+pub enum app::FormKind
+pub app::FormKind::Path
+pub app::FormKind::Since
+impl core::clone::Clone for app::FormKind
+pub fn app::FormKind::clone(&self) -> Self
+impl core::cmp::Eq for app::FormKind
+impl core::cmp::PartialEq for app::FormKind
+pub fn app::FormKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FormKind
+pub fn app::FormKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::FormKind
+impl core::marker::StructuralPartialEq for app::FormKind
+impl core::marker::Freeze for app::FormKind
+impl core::marker::Send for app::FormKind
+impl core::marker::Sync for app::FormKind
+impl core::marker::Unpin for app::FormKind
+impl core::marker::UnsafeUnpin for app::FormKind
+impl core::panic::unwind_safe::RefUnwindSafe for app::FormKind
+impl core::panic::unwind_safe::UnwindSafe for app::FormKind
+pub enum app::LintForm
+pub app::LintForm::Proposed
+pub app::LintForm::Proposed::after: app::After
+pub app::LintForm::Proposed::path: alloc::string::String
+pub app::LintForm::Revision
+pub app::LintForm::Revision::revision: alloc::string::String
+impl core::clone::Clone for app::LintForm
+pub fn app::LintForm::clone(&self) -> Self
+impl core::cmp::Eq for app::LintForm
+impl core::cmp::PartialEq for app::LintForm
+pub fn app::LintForm::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintForm
+pub fn app::LintForm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintForm
+impl core::marker::Freeze for app::LintForm
+impl core::marker::Send for app::LintForm
+impl core::marker::Sync for app::LintForm
+impl core::marker::Unpin for app::LintForm
+impl core::marker::UnsafeUnpin for app::LintForm
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintForm
+impl core::panic::unwind_safe::UnwindSafe for app::LintForm
+pub enum app::ListEnd
+pub app::ListEnd::AtLimit
+pub app::ListEnd::AtSeats
+pub app::ListEnd::Whole
+impl app::ListEnd
+pub fn app::ListEnd::more_commits(self) -> bool
+pub fn app::ListEnd::seats_capped(self) -> bool
+impl core::clone::Clone for app::ListEnd
+pub fn app::ListEnd::clone(&self) -> Self
+impl core::cmp::Eq for app::ListEnd
+impl core::cmp::PartialEq for app::ListEnd
+pub fn app::ListEnd::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ListEnd
+pub fn app::ListEnd::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ListEnd
+impl core::marker::StructuralPartialEq for app::ListEnd
+impl core::marker::Freeze for app::ListEnd
+impl core::marker::Send for app::ListEnd
+impl core::marker::Sync for app::ListEnd
+impl core::marker::Unpin for app::ListEnd
+impl core::marker::UnsafeUnpin for app::ListEnd
+impl core::panic::unwind_safe::RefUnwindSafe for app::ListEnd
+impl core::panic::unwind_safe::UnwindSafe for app::ListEnd
+pub enum app::PairCheck
+pub app::PairCheck::CloneDelta
+pub app::PairCheck::ComplexityDelta
+pub app::PairCheck::ContractDrift
+impl app::PairCheck
+pub const app::PairCheck::ALL: [app::PairCheck; 3]
+pub fn app::PairCheck::from_name(&str) -> core::option::Option<app::PairCheck>
+pub const fn app::PairCheck::name(self) -> &'static str
+impl core::clone::Clone for app::PairCheck
+pub fn app::PairCheck::clone(&self) -> Self
+impl core::cmp::Eq for app::PairCheck
+impl core::cmp::Ord for app::PairCheck
+pub fn app::PairCheck::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for app::PairCheck
+pub fn app::PairCheck::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for app::PairCheck
+pub fn app::PairCheck::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for app::PairCheck
+pub fn app::PairCheck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for app::PairCheck
+pub fn app::PairCheck::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for app::PairCheck
+impl core::marker::StructuralPartialEq for app::PairCheck
+impl core::marker::Freeze for app::PairCheck
+impl core::marker::Send for app::PairCheck
+impl core::marker::Sync for app::PairCheck
+impl core::marker::Unpin for app::PairCheck
+impl core::marker::UnsafeUnpin for app::PairCheck
+impl core::panic::unwind_safe::RefUnwindSafe for app::PairCheck
+impl core::panic::unwind_safe::UnwindSafe for app::PairCheck
+pub enum app::ReproVerdict
+pub app::ReproVerdict::DoesNotReproduce
+pub app::ReproVerdict::NotEvaluated
+pub app::ReproVerdict::NotGiven
+pub app::ReproVerdict::Reproduces
+pub app::ReproVerdict::Unrunnable
+impl app::ReproVerdict
+pub fn app::ReproVerdict::as_str(self) -> &'static str
+impl core::clone::Clone for app::ReproVerdict
+pub fn app::ReproVerdict::clone(&self) -> Self
+impl core::cmp::Eq for app::ReproVerdict
+impl core::cmp::PartialEq for app::ReproVerdict
+pub fn app::ReproVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ReproVerdict
+pub fn app::ReproVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::ReproVerdict
+pub fn app::ReproVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::ReproVerdict
+impl core::marker::StructuralPartialEq for app::ReproVerdict
+impl serde_core::ser::Serialize for app::ReproVerdict
+pub fn app::ReproVerdict::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::ReproVerdict
+impl core::marker::Send for app::ReproVerdict
+impl core::marker::Sync for app::ReproVerdict
+impl core::marker::Unpin for app::ReproVerdict
+impl core::marker::UnsafeUnpin for app::ReproVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::ReproVerdict
+impl core::panic::unwind_safe::UnwindSafe for app::ReproVerdict
+pub enum app::Setting
+pub app::Setting::Bool(bool)
+pub app::Setting::Int(u32)
+pub app::Setting::List(alloc::vec::Vec<alloc::string::String>)
+pub app::Setting::Text(alloc::string::String)
+impl core::clone::Clone for app::Setting
+pub fn app::Setting::clone(&self) -> Self
+impl core::cmp::Eq for app::Setting
+impl core::cmp::PartialEq for app::Setting
+pub fn app::Setting::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Setting
+pub fn app::Setting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::Setting
+pub fn app::Setting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Setting
+impl serde_core::ser::Serialize for app::Setting
+pub fn app::Setting::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::Setting
+impl core::marker::Send for app::Setting
+impl core::marker::Sync for app::Setting
+impl core::marker::Unpin for app::Setting
+impl core::marker::UnsafeUnpin for app::Setting
+impl core::panic::unwind_safe::RefUnwindSafe for app::Setting
+impl core::panic::unwind_safe::UnwindSafe for app::Setting
+pub enum app::Verdict
+pub app::Verdict::Error
+pub app::Verdict::Failed
+pub app::Verdict::NotEvaluated
+pub app::Verdict::Passed
+pub app::Verdict::Timeout
+impl app::Verdict
+pub fn app::Verdict::as_str(self) -> &'static str
+pub fn app::Verdict::measured(self) -> bool
+impl core::clone::Clone for app::Verdict
+pub fn app::Verdict::clone(&self) -> Self
+impl core::cmp::Eq for app::Verdict
+impl core::cmp::PartialEq for app::Verdict
+pub fn app::Verdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Verdict
+pub fn app::Verdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::Verdict
+pub fn app::Verdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Verdict
+impl core::marker::StructuralPartialEq for app::Verdict
+impl serde_core::ser::Serialize for app::Verdict
+pub fn app::Verdict::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::Verdict
+impl core::marker::Send for app::Verdict
+impl core::marker::Sync for app::Verdict
+impl core::marker::Unpin for app::Verdict
+impl core::marker::UnsafeUnpin for app::Verdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::Verdict
+impl core::panic::unwind_safe::UnwindSafe for app::Verdict
+pub enum app::WarmupRow
+pub app::WarmupRow::Linked(app::LanguageCapability)
+pub app::WarmupRow::Unknown(alloc::string::String)
+impl app::WarmupRow
+pub fn app::WarmupRow::tier(&self) -> u8
+pub fn app::WarmupRow::usable(&self) -> bool
+impl core::clone::Clone for app::WarmupRow
+pub fn app::WarmupRow::clone(&self) -> Self
+impl core::cmp::Eq for app::WarmupRow
+impl core::cmp::PartialEq for app::WarmupRow
+pub fn app::WarmupRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::WarmupRow
+pub fn app::WarmupRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::WarmupRow
+impl core::marker::Freeze for app::WarmupRow
+impl core::marker::Send for app::WarmupRow
+impl core::marker::Sync for app::WarmupRow
+impl core::marker::Unpin for app::WarmupRow
+impl core::marker::UnsafeUnpin for app::WarmupRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRow
+impl core::panic::unwind_safe::UnwindSafe for app::WarmupRow
+pub struct app::ApplyReport
+pub app::ApplyReport::base: alloc::string::String
+pub app::ApplyReport::diff: alloc::string::String
+pub app::ApplyReport::in_place: bool
+pub app::ApplyReport::result: patch::apply::ApplyResult
+impl app::ApplyReport
+pub fn app::ApplyReport::ok(&self) -> bool
+pub fn app::ApplyReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::ApplyReport
+pub fn app::ApplyReport::clone(&self) -> Self
+impl core::cmp::Eq for app::ApplyReport
+impl core::cmp::PartialEq for app::ApplyReport
+pub fn app::ApplyReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ApplyReport
+pub fn app::ApplyReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ApplyReport
+impl serde_core::ser::Serialize for app::ApplyReport
+pub fn app::ApplyReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::ApplyReport
+impl core::marker::Send for app::ApplyReport
+impl core::marker::Sync for app::ApplyReport
+impl core::marker::Unpin for app::ApplyReport
+impl core::marker::UnsafeUnpin for app::ApplyReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::ApplyReport
+impl core::panic::unwind_safe::UnwindSafe for app::ApplyReport
+pub struct app::BodyMapResult
+pub app::BodyMapResult::bodies: app::ExpandResult
+pub app::BodyMapResult::map: app::MapResult
+impl core::clone::Clone for app::BodyMapResult
+pub fn app::BodyMapResult::clone(&self) -> Self
+impl core::cmp::PartialEq for app::BodyMapResult
+pub fn app::BodyMapResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::BodyMapResult
+pub fn app::BodyMapResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::BodyMapResult
+impl core::marker::Freeze for app::BodyMapResult
+impl core::marker::Send for app::BodyMapResult
+impl core::marker::Sync for app::BodyMapResult
+impl core::marker::Unpin for app::BodyMapResult
+impl core::marker::UnsafeUnpin for app::BodyMapResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::BodyMapResult
+impl core::panic::unwind_safe::UnwindSafe for app::BodyMapResult
+pub struct app::CacheReport
+pub app::CacheReport::counts: core::result::Result<store::open::RowCounts, store::error::SqlError>
+pub app::CacheReport::receipt: alloc::string::String
+pub app::CacheReport::status: store::status::CacheStatus
+impl core::clone::Clone for app::CacheReport
+pub fn app::CacheReport::clone(&self) -> Self
+impl core::cmp::Eq for app::CacheReport
+impl core::cmp::PartialEq for app::CacheReport
+pub fn app::CacheReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CacheReport
+pub fn app::CacheReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CacheReport
+impl core::marker::Freeze for app::CacheReport
+impl core::marker::Send for app::CacheReport
+impl core::marker::Sync for app::CacheReport
+impl core::marker::Unpin for app::CacheReport
+impl core::marker::UnsafeUnpin for app::CacheReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::CacheReport
+impl core::panic::unwind_safe::UnwindSafe for app::CacheReport
+pub struct app::CacheView
+pub app::CacheView::enabled: bool
+pub app::CacheView::files: u64
+pub app::CacheView::generation: core::option::Option<alloc::string::String>
+pub app::CacheView::generation_matches: bool
+pub app::CacheView::note: alloc::string::String
+pub app::CacheView::path: alloc::string::String
+pub app::CacheView::receipt: alloc::string::String
+pub app::CacheView::repo_generation: core::option::Option<alloc::string::String>
+pub app::CacheView::tags: u64
+impl core::clone::Clone for app::CacheView
+pub fn app::CacheView::clone(&self) -> Self
+impl core::cmp::Eq for app::CacheView
+impl core::cmp::PartialEq for app::CacheView
+pub fn app::CacheView::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CacheView
+pub fn app::CacheView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CacheView
+impl serde_core::ser::Serialize for app::CacheView
+pub fn app::CacheView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::CacheView
+impl core::marker::Send for app::CacheView
+impl core::marker::Sync for app::CacheView
+impl core::marker::Unpin for app::CacheView
+impl core::marker::UnsafeUnpin for app::CacheView
+impl core::panic::unwind_safe::RefUnwindSafe for app::CacheView
+impl core::panic::unwind_safe::UnwindSafe for app::CacheView
+pub struct app::CallerRef
+pub app::CallerRef::line: u32
+pub app::CallerRef::path: alloc::string::String
+pub app::CallerRef::qualname: alloc::string::String
+impl core::clone::Clone for app::CallerRef
+pub fn app::CallerRef::clone(&self) -> Self
+impl core::cmp::Eq for app::CallerRef
+impl core::cmp::PartialEq for app::CallerRef
+pub fn app::CallerRef::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CallerRef
+pub fn app::CallerRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CallerRef
+impl core::marker::Freeze for app::CallerRef
+impl core::marker::Send for app::CallerRef
+impl core::marker::Sync for app::CallerRef
+impl core::marker::Unpin for app::CallerRef
+impl core::marker::UnsafeUnpin for app::CallerRef
+impl core::panic::unwind_safe::RefUnwindSafe for app::CallerRef
+impl core::panic::unwind_safe::UnwindSafe for app::CallerRef
+pub struct app::CandidateVerdict
+pub app::CandidateVerdict::apply_reasons: alloc::vec::Vec<alloc::string::String>
+pub app::CandidateVerdict::apply_status: app::ApplyStatus
+pub app::CandidateVerdict::budget_truncated: bool
+pub app::CandidateVerdict::duration: f64
+pub app::CandidateVerdict::equivalence_key: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::executed_as: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::execution_group: core::option::Option<alloc::string::String>
+pub app::CandidateVerdict::id: alloc::string::String
+pub app::CandidateVerdict::index: usize
+pub app::CandidateVerdict::regression: app::Verdict
+pub app::CandidateVerdict::regression_run: core::option::Option<io::testrun::RunResult>
+pub app::CandidateVerdict::reproduction: core::option::Option<app::Verdict>
+pub app::CandidateVerdict::reproduction_run: core::option::Option<io::testrun::RunResult>
+impl app::CandidateVerdict
+pub fn app::CandidateVerdict::usable(&self) -> bool
+impl core::clone::Clone for app::CandidateVerdict
+pub fn app::CandidateVerdict::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CandidateVerdict
+pub fn app::CandidateVerdict::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CandidateVerdict
+pub fn app::CandidateVerdict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CandidateVerdict
+impl core::marker::Freeze for app::CandidateVerdict
+impl core::marker::Send for app::CandidateVerdict
+impl core::marker::Sync for app::CandidateVerdict
+impl core::marker::Unpin for app::CandidateVerdict
+impl core::marker::UnsafeUnpin for app::CandidateVerdict
+impl core::panic::unwind_safe::RefUnwindSafe for app::CandidateVerdict
+impl core::panic::unwind_safe::UnwindSafe for app::CandidateVerdict
+pub struct app::CandidatesRequest
+pub app::CandidatesRequest::candidates: alloc::vec::Vec<app::LintCandidateInput>
+pub app::CandidatesRequest::checks: app::CheckSelection
+impl core::clone::Clone for app::CandidatesRequest
+pub fn app::CandidatesRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::CandidatesRequest
+impl core::cmp::PartialEq for app::CandidatesRequest
+pub fn app::CandidatesRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CandidatesRequest
+pub fn app::CandidatesRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CandidatesRequest
+impl core::marker::Freeze for app::CandidatesRequest
+impl core::marker::Send for app::CandidatesRequest
+impl core::marker::Sync for app::CandidatesRequest
+impl core::marker::Unpin for app::CandidatesRequest
+impl core::marker::UnsafeUnpin for app::CandidatesRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::CandidatesRequest
+impl core::panic::unwind_safe::UnwindSafe for app::CandidatesRequest
+pub struct app::Capabilities<'a>
+pub app::Capabilities::cache: app::CacheView
+pub app::Capabilities::cache_hint: alloc::string::String
+pub app::Capabilities::caps: &'static [(&'static str, app::CapValue)]
+pub app::Capabilities::config: app::ConfigView<'a>
+pub app::Capabilities::effective_config: alloc::vec::Vec<(&'static str, app::Setting)>
+pub app::Capabilities::extensions: &'static [(&'static str, syntax::language::Language)]
+pub app::Capabilities::grammar_cache: &'static str
+pub app::Capabilities::languages: alloc::vec::Vec<app::LanguageCapability>
+pub app::Capabilities::lint_checks: alloc::vec::Vec<app::LintCheckRow>
+pub app::Capabilities::pack_version: &'static str
+pub app::Capabilities::roots: app::Roots
+pub app::Capabilities::scope_analysed_languages: [&'static str; 1]
+pub app::Capabilities::version: &'static str
+impl<'a> core::clone::Clone for app::Capabilities<'a>
+pub fn app::Capabilities<'a>::clone(&self) -> Self
+impl<'a> core::cmp::PartialEq for app::Capabilities<'a>
+pub fn app::Capabilities<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for app::Capabilities<'a>
+pub fn app::Capabilities<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for app::Capabilities<'a>
+impl<'a> serde_core::ser::Serialize for app::Capabilities<'a>
+pub fn app::Capabilities<'a>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'a> core::marker::Freeze for app::Capabilities<'a>
+impl<'a> core::marker::Send for app::Capabilities<'a>
+impl<'a> core::marker::Sync for app::Capabilities<'a>
+impl<'a> core::marker::Unpin for app::Capabilities<'a>
+impl<'a> core::marker::UnsafeUnpin for app::Capabilities<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::Capabilities<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for app::Capabilities<'a>
+pub struct app::Chars4
+impl app::TokenCounter for app::Chars4
+pub fn app::Chars4::count(&self, &str) -> usize
+impl core::clone::Clone for app::Chars4
+pub fn app::Chars4::clone(&self) -> Self
+impl core::default::Default for app::Chars4
+pub fn app::Chars4::default() -> Self
+impl core::fmt::Debug for app::Chars4
+pub fn app::Chars4::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::Chars4
+impl core::marker::Freeze for app::Chars4
+impl core::marker::Send for app::Chars4
+impl core::marker::Sync for app::Chars4
+impl core::marker::Unpin for app::Chars4
+impl core::marker::UnsafeUnpin for app::Chars4
+impl core::panic::unwind_safe::RefUnwindSafe for app::Chars4
+impl core::panic::unwind_safe::UnwindSafe for app::Chars4
+pub struct app::ChartEdge
+pub app::ChartEdge::from: alloc::string::String
+pub app::ChartEdge::solid: bool
+pub app::ChartEdge::to: alloc::string::String
+impl core::clone::Clone for app::ChartEdge
+pub fn app::ChartEdge::clone(&self) -> Self
+impl core::cmp::Eq for app::ChartEdge
+impl core::cmp::PartialEq for app::ChartEdge
+pub fn app::ChartEdge::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ChartEdge
+pub fn app::ChartEdge::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ChartEdge
+impl core::marker::Freeze for app::ChartEdge
+impl core::marker::Send for app::ChartEdge
+impl core::marker::Sync for app::ChartEdge
+impl core::marker::Unpin for app::ChartEdge
+impl core::marker::UnsafeUnpin for app::ChartEdge
+impl core::panic::unwind_safe::RefUnwindSafe for app::ChartEdge
+impl core::panic::unwind_safe::UnwindSafe for app::ChartEdge
+pub struct app::ChartGroup
+pub app::ChartGroup::id: alloc::string::String
+pub app::ChartGroup::members: alloc::vec::Vec<app::ChartNode>
+pub app::ChartGroup::title: alloc::string::String
+impl core::clone::Clone for app::ChartGroup
+pub fn app::ChartGroup::clone(&self) -> Self
+impl core::cmp::Eq for app::ChartGroup
+impl core::cmp::PartialEq for app::ChartGroup
+pub fn app::ChartGroup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ChartGroup
+pub fn app::ChartGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ChartGroup
+impl core::marker::Freeze for app::ChartGroup
+impl core::marker::Send for app::ChartGroup
+impl core::marker::Sync for app::ChartGroup
+impl core::marker::Unpin for app::ChartGroup
+impl core::marker::UnsafeUnpin for app::ChartGroup
+impl core::panic::unwind_safe::RefUnwindSafe for app::ChartGroup
+impl core::panic::unwind_safe::UnwindSafe for app::ChartGroup
+pub struct app::ChartNode
+pub app::ChartNode::id: alloc::string::String
+pub app::ChartNode::label: alloc::string::String
+impl core::clone::Clone for app::ChartNode
+pub fn app::ChartNode::clone(&self) -> Self
+impl core::cmp::Eq for app::ChartNode
+impl core::cmp::PartialEq for app::ChartNode
+pub fn app::ChartNode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ChartNode
+pub fn app::ChartNode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ChartNode
+impl core::marker::Freeze for app::ChartNode
+impl core::marker::Send for app::ChartNode
+impl core::marker::Sync for app::ChartNode
+impl core::marker::Unpin for app::ChartNode
+impl core::marker::UnsafeUnpin for app::ChartNode
+impl core::panic::unwind_safe::RefUnwindSafe for app::ChartNode
+impl core::panic::unwind_safe::UnwindSafe for app::ChartNode
+pub struct app::CheckReport
+pub app::CheckReport::files: alloc::vec::Vec<app::FileCheck>
+pub app::CheckReport::result: patch::apply::ApplyResult
+impl app::CheckReport
+pub fn app::CheckReport::ok(&self) -> bool
+pub fn app::CheckReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::CheckReport
+pub fn app::CheckReport::clone(&self) -> Self
+impl core::cmp::Eq for app::CheckReport
+impl core::cmp::PartialEq for app::CheckReport
+pub fn app::CheckReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CheckReport
+pub fn app::CheckReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CheckReport
+impl serde_core::ser::Serialize for app::CheckReport
+pub fn app::CheckReport::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::CheckReport
+impl core::marker::Send for app::CheckReport
+impl core::marker::Sync for app::CheckReport
+impl core::marker::Unpin for app::CheckReport
+impl core::marker::UnsafeUnpin for app::CheckReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::CheckReport
+impl core::panic::unwind_safe::UnwindSafe for app::CheckReport
+pub struct app::CheckSelection
+impl app::CheckSelection
+pub fn app::CheckSelection::all() -> app::CheckSelection
+pub fn app::CheckSelection::from_names(&[alloc::string::String]) -> core::result::Result<app::CheckSelection, alloc::string::String>
+impl core::clone::Clone for app::CheckSelection
+pub fn app::CheckSelection::clone(&self) -> Self
+impl core::cmp::Eq for app::CheckSelection
+impl core::cmp::PartialEq for app::CheckSelection
+pub fn app::CheckSelection::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CheckSelection
+pub fn app::CheckSelection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CheckSelection
+impl core::marker::Freeze for app::CheckSelection
+impl core::marker::Send for app::CheckSelection
+impl core::marker::Sync for app::CheckSelection
+impl core::marker::Unpin for app::CheckSelection
+impl core::marker::UnsafeUnpin for app::CheckSelection
+impl core::panic::unwind_safe::RefUnwindSafe for app::CheckSelection
+impl core::panic::unwind_safe::UnwindSafe for app::CheckSelection
+pub struct app::Cl100k
+impl app::Cl100k
+pub fn app::Cl100k::new() -> core::result::Result<app::Cl100k, app::Error>
+impl app::TokenCounter for app::Cl100k
+pub fn app::Cl100k::count(&self, &str) -> usize
+impl core::marker::Freeze for app::Cl100k
+impl core::marker::Send for app::Cl100k
+impl core::marker::Sync for app::Cl100k
+impl core::marker::Unpin for app::Cl100k
+impl core::marker::UnsafeUnpin for app::Cl100k
+impl core::panic::unwind_safe::RefUnwindSafe for app::Cl100k
+impl core::panic::unwind_safe::UnwindSafe for app::Cl100k
+pub struct app::CommunitiesRequest
+pub app::CommunitiesRequest::limit: app::IntArg
+pub app::CommunitiesRequest::members: app::IntArg
+pub app::CommunitiesRequest::resolution: core::option::Option<f64>
+impl core::clone::Clone for app::CommunitiesRequest
+pub fn app::CommunitiesRequest::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CommunitiesRequest
+pub fn app::CommunitiesRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CommunitiesRequest
+pub fn app::CommunitiesRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CommunitiesRequest
+impl core::marker::Freeze for app::CommunitiesRequest
+impl core::marker::Send for app::CommunitiesRequest
+impl core::marker::Sync for app::CommunitiesRequest
+impl core::marker::Unpin for app::CommunitiesRequest
+impl core::marker::UnsafeUnpin for app::CommunitiesRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::CommunitiesRequest
+impl core::panic::unwind_safe::UnwindSafe for app::CommunitiesRequest
+pub struct app::CommunityReport
+pub app::CommunityReport::communities: kernel::bounded::Bounded<app::CommunityRow>
+pub app::CommunityReport::converged: bool
+pub app::CommunityReport::files: usize
+pub app::CommunityReport::modularity: f64
+pub app::CommunityReport::resolution: f64
+pub app::CommunityReport::standard_modularity: f64
+impl core::clone::Clone for app::CommunityReport
+pub fn app::CommunityReport::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CommunityReport
+pub fn app::CommunityReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CommunityReport
+pub fn app::CommunityReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CommunityReport
+impl core::marker::Freeze for app::CommunityReport
+impl core::marker::Send for app::CommunityReport
+impl core::marker::Sync for app::CommunityReport
+impl core::marker::Unpin for app::CommunityReport
+impl core::marker::UnsafeUnpin for app::CommunityReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::CommunityReport
+impl core::panic::unwind_safe::UnwindSafe for app::CommunityReport
+pub struct app::CommunityRow
+pub app::CommunityRow::internal_weight: f64
+pub app::CommunityRow::label: alloc::string::String
+pub app::CommunityRow::members: kernel::bounded::Bounded<alloc::string::String>
+pub app::CommunityRow::total_weight: f64
+impl core::clone::Clone for app::CommunityRow
+pub fn app::CommunityRow::clone(&self) -> Self
+impl core::cmp::PartialEq for app::CommunityRow
+pub fn app::CommunityRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CommunityRow
+pub fn app::CommunityRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CommunityRow
+impl core::marker::Freeze for app::CommunityRow
+impl core::marker::Send for app::CommunityRow
+impl core::marker::Sync for app::CommunityRow
+impl core::marker::Unpin for app::CommunityRow
+impl core::marker::UnsafeUnpin for app::CommunityRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::CommunityRow
+impl core::panic::unwind_safe::UnwindSafe for app::CommunityRow
+pub struct app::Companion
+pub app::Companion::covers: alloc::vec::Vec<alloc::string::String>
+pub app::Companion::depth: u32
+pub app::Companion::end: u32
+pub app::Companion::path: alloc::string::String
+pub app::Companion::start: u32
+pub app::Companion::weight: f64
+impl core::clone::Clone for app::Companion
+pub fn app::Companion::clone(&self) -> Self
+impl core::cmp::PartialEq for app::Companion
+pub fn app::Companion::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Companion
+pub fn app::Companion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Companion
+impl core::marker::Freeze for app::Companion
+impl core::marker::Send for app::Companion
+impl core::marker::Sync for app::Companion
+impl core::marker::Unpin for app::Companion
+impl core::marker::UnsafeUnpin for app::Companion
+impl core::panic::unwind_safe::RefUnwindSafe for app::Companion
+impl core::panic::unwind_safe::UnwindSafe for app::Companion
+pub struct app::Companions
+pub app::Companions::exhausted: bool
+pub app::Companions::rows: kernel::bounded::Bounded<app::Companion>
+impl core::clone::Clone for app::Companions
+pub fn app::Companions::clone(&self) -> Self
+impl core::cmp::PartialEq for app::Companions
+pub fn app::Companions::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Companions
+pub fn app::Companions::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Companions
+impl core::marker::Freeze for app::Companions
+impl core::marker::Send for app::Companions
+impl core::marker::Sync for app::Companions
+impl core::marker::Unpin for app::Companions
+impl core::marker::UnsafeUnpin for app::Companions
+impl core::panic::unwind_safe::RefUnwindSafe for app::Companions
+impl core::panic::unwind_safe::UnwindSafe for app::Companions
+pub struct app::ConfigView<'a>
+pub app::ConfigView::config: &'a io::config::ProjectConfig
+pub app::ConfigView::warnings: alloc::vec::Vec<alloc::string::String>
+impl<'a> core::clone::Clone for app::ConfigView<'a>
+pub fn app::ConfigView<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for app::ConfigView<'a>
+impl<'a> core::cmp::PartialEq for app::ConfigView<'a>
+pub fn app::ConfigView<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for app::ConfigView<'a>
+pub fn app::ConfigView<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for app::ConfigView<'a>
+impl<'a> serde_core::ser::Serialize for app::ConfigView<'a>
+pub fn app::ConfigView<'a>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'a> core::marker::Freeze for app::ConfigView<'a>
+impl<'a> core::marker::Send for app::ConfigView<'a>
+impl<'a> core::marker::Sync for app::ConfigView<'a>
+impl<'a> core::marker::Unpin for app::ConfigView<'a>
+impl<'a> core::marker::UnsafeUnpin for app::ConfigView<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for app::ConfigView<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for app::ConfigView<'a>
+pub struct app::CycleReport
+pub app::CycleReport::cycles: kernel::bounded::Bounded<app::CycleRow>
+pub app::CycleReport::skipped: alloc::vec::Vec<app::Skipped>
+pub app::CycleReport::unresolved_imports: u32
+pub app::CycleReport::unresolved_internal_imports: u32
+impl core::clone::Clone for app::CycleReport
+pub fn app::CycleReport::clone(&self) -> Self
+impl core::cmp::Eq for app::CycleReport
+impl core::cmp::PartialEq for app::CycleReport
+pub fn app::CycleReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CycleReport
+pub fn app::CycleReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CycleReport
+impl core::marker::Freeze for app::CycleReport
+impl core::marker::Send for app::CycleReport
+impl core::marker::Sync for app::CycleReport
+impl core::marker::Unpin for app::CycleReport
+impl core::marker::UnsafeUnpin for app::CycleReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::CycleReport
+impl core::panic::unwind_safe::UnwindSafe for app::CycleReport
+pub struct app::CycleRow
+pub app::CycleRow::files: alloc::vec::Vec<alloc::string::String>
+pub app::CycleRow::members: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::CycleRow
+pub fn app::CycleRow::clone(&self) -> Self
+impl core::cmp::Eq for app::CycleRow
+impl core::cmp::PartialEq for app::CycleRow
+pub fn app::CycleRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CycleRow
+pub fn app::CycleRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CycleRow
+impl core::marker::Freeze for app::CycleRow
+impl core::marker::Send for app::CycleRow
+impl core::marker::Sync for app::CycleRow
+impl core::marker::Unpin for app::CycleRow
+impl core::marker::UnsafeUnpin for app::CycleRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::CycleRow
+impl core::panic::unwind_safe::UnwindSafe for app::CycleRow
+pub struct app::CyclesRequest
+pub app::CyclesRequest::limit: app::IntArg
+impl core::clone::Clone for app::CyclesRequest
+pub fn app::CyclesRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::CyclesRequest
+impl core::cmp::PartialEq for app::CyclesRequest
+pub fn app::CyclesRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::CyclesRequest
+pub fn app::CyclesRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::CyclesRequest
+impl core::marker::Freeze for app::CyclesRequest
+impl core::marker::Send for app::CyclesRequest
+impl core::marker::Sync for app::CyclesRequest
+impl core::marker::Unpin for app::CyclesRequest
+impl core::marker::UnsafeUnpin for app::CyclesRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::CyclesRequest
+impl core::panic::unwind_safe::UnwindSafe for app::CyclesRequest
+pub struct app::DiagramRequest
+pub app::DiagramRequest::focus: core::option::Option<alloc::string::String>
+pub app::DiagramRequest::group_by_communities: bool
+pub app::DiagramRequest::max_edges: app::IntArg
+pub app::DiagramRequest::max_nodes: app::IntArg
+pub app::DiagramRequest::resolution: core::option::Option<f64>
+impl core::clone::Clone for app::DiagramRequest
+pub fn app::DiagramRequest::clone(&self) -> Self
+impl core::cmp::PartialEq for app::DiagramRequest
+pub fn app::DiagramRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::DiagramRequest
+pub fn app::DiagramRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DiagramRequest
+impl core::marker::Freeze for app::DiagramRequest
+impl core::marker::Send for app::DiagramRequest
+impl core::marker::Sync for app::DiagramRequest
+impl core::marker::Unpin for app::DiagramRequest
+impl core::marker::UnsafeUnpin for app::DiagramRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::DiagramRequest
+impl core::panic::unwind_safe::UnwindSafe for app::DiagramRequest
+pub struct app::DiagramView
+pub app::DiagramView::chart: core::option::Option<app::Flowchart>
+pub app::DiagramView::edges_over_bound: usize
+pub app::DiagramView::elided: usize
+pub app::DiagramView::focus: alloc::string::String
+pub app::DiagramView::grouped: bool
+pub app::DiagramView::message: alloc::string::String
+pub app::DiagramView::nodes: usize
+pub app::DiagramView::rank_converged: bool
+impl core::clone::Clone for app::DiagramView
+pub fn app::DiagramView::clone(&self) -> Self
+impl core::cmp::Eq for app::DiagramView
+impl core::cmp::PartialEq for app::DiagramView
+pub fn app::DiagramView::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::DiagramView
+pub fn app::DiagramView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DiagramView
+impl core::marker::Freeze for app::DiagramView
+impl core::marker::Send for app::DiagramView
+impl core::marker::Sync for app::DiagramView
+impl core::marker::Unpin for app::DiagramView
+impl core::marker::UnsafeUnpin for app::DiagramView
+impl core::panic::unwind_safe::RefUnwindSafe for app::DiagramView
+impl core::panic::unwind_safe::UnwindSafe for app::DiagramView
+pub struct app::DiscountedTier
+pub app::DiscountedTier::count: usize
+pub app::DiscountedTier::tier: &'static str
+impl core::clone::Clone for app::DiscountedTier
+pub fn app::DiscountedTier::clone(&self) -> Self
+impl core::cmp::Eq for app::DiscountedTier
+impl core::cmp::PartialEq for app::DiscountedTier
+pub fn app::DiscountedTier::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::DiscountedTier
+pub fn app::DiscountedTier::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::DiscountedTier
+impl core::marker::Freeze for app::DiscountedTier
+impl core::marker::Send for app::DiscountedTier
+impl core::marker::Sync for app::DiscountedTier
+impl core::marker::Unpin for app::DiscountedTier
+impl core::marker::UnsafeUnpin for app::DiscountedTier
+impl core::panic::unwind_safe::RefUnwindSafe for app::DiscountedTier
+impl core::panic::unwind_safe::UnwindSafe for app::DiscountedTier
+pub struct app::EdgeRow
+pub app::EdgeRow::label: alloc::string::String
+pub app::EdgeRow::line: u32
+pub app::EdgeRow::node: alloc::string::String
+pub app::EdgeRow::path: alloc::string::String
+pub app::EdgeRow::relation: &'static str
+impl core::clone::Clone for app::EdgeRow
+pub fn app::EdgeRow::clone(&self) -> Self
+impl core::cmp::Eq for app::EdgeRow
+impl core::cmp::PartialEq for app::EdgeRow
+pub fn app::EdgeRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::EdgeRow
+pub fn app::EdgeRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::EdgeRow
+impl core::marker::Freeze for app::EdgeRow
+impl core::marker::Send for app::EdgeRow
+impl core::marker::Sync for app::EdgeRow
+impl core::marker::Unpin for app::EdgeRow
+impl core::marker::UnsafeUnpin for app::EdgeRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::EdgeRow
+impl core::panic::unwind_safe::UnwindSafe for app::EdgeRow
+pub struct app::EnvConfig
+impl app::EnvConfig
+pub fn app::EnvConfig::cwd(&self) -> core::result::Result<&std::path::Path, &app::UnreadCwd>
+pub fn app::EnvConfig::new(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>, std::path::PathBuf) -> Self
+pub fn app::EnvConfig::var(&self, &str) -> core::option::Option<&std::ffi::os_str::OsStr>
+pub fn app::EnvConfig::vars(&self) -> &[(std::ffi::os_str::OsString, std::ffi::os_str::OsString)]
+pub fn app::EnvConfig::with_unread_cwd(impl core::iter::traits::collect::IntoIterator<Item = (std::ffi::os_str::OsString, std::ffi::os_str::OsString)>, &core::io::error::Error) -> Self
+impl core::clone::Clone for app::EnvConfig
+pub fn app::EnvConfig::clone(&self) -> Self
+impl core::fmt::Debug for app::EnvConfig
+pub fn app::EnvConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::EnvConfig
+impl core::marker::Send for app::EnvConfig
+impl core::marker::Sync for app::EnvConfig
+impl core::marker::Unpin for app::EnvConfig
+impl core::marker::UnsafeUnpin for app::EnvConfig
+impl core::panic::unwind_safe::RefUnwindSafe for app::EnvConfig
+impl core::panic::unwind_safe::UnwindSafe for app::EnvConfig
+pub struct app::EnvRunner
+impl app::EnvRunner
+pub fn app::EnvRunner::new(&app::EnvConfig) -> app::EnvRunner
+impl app::TestRunner for app::EnvRunner
+pub fn app::EnvRunner::interrupted(&self) -> bool
+pub fn app::EnvRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
+impl core::clone::Clone for app::EnvRunner
+pub fn app::EnvRunner::clone(&self) -> Self
+impl core::fmt::Debug for app::EnvRunner
+pub fn app::EnvRunner::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::EnvRunner
+impl core::marker::Send for app::EnvRunner
+impl core::marker::Sync for app::EnvRunner
+impl core::marker::Unpin for app::EnvRunner
+impl core::marker::UnsafeUnpin for app::EnvRunner
+impl core::panic::unwind_safe::RefUnwindSafe for app::EnvRunner
+impl core::panic::unwind_safe::UnwindSafe for app::EnvRunner
+pub struct app::ExpandRequest
+pub app::ExpandRequest::ids: alloc::vec::Vec<alloc::string::String>
+pub app::ExpandRequest::limit: app::IntArg
+impl core::clone::Clone for app::ExpandRequest
+pub fn app::ExpandRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::ExpandRequest
+impl core::cmp::PartialEq for app::ExpandRequest
+pub fn app::ExpandRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ExpandRequest
+pub fn app::ExpandRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ExpandRequest
+impl core::marker::Freeze for app::ExpandRequest
+impl core::marker::Send for app::ExpandRequest
+impl core::marker::Sync for app::ExpandRequest
+impl core::marker::Unpin for app::ExpandRequest
+impl core::marker::UnsafeUnpin for app::ExpandRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::ExpandRequest
+impl core::panic::unwind_safe::UnwindSafe for app::ExpandRequest
+pub struct app::ExpandResult
+pub app::ExpandResult::budget: usize
+pub app::ExpandResult::cards: alloc::vec::Vec<app::SymbolCard>
+pub app::ExpandResult::unresolved: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub app::ExpandResult::unresolved_omitted: usize
+impl app::ExpandResult
+pub fn app::ExpandResult::shortened(&self) -> usize
+pub fn app::ExpandResult::unresolved_total(&self) -> usize
+impl core::clone::Clone for app::ExpandResult
+pub fn app::ExpandResult::clone(&self) -> Self
+impl core::cmp::Eq for app::ExpandResult
+impl core::cmp::PartialEq for app::ExpandResult
+pub fn app::ExpandResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ExpandResult
+pub fn app::ExpandResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ExpandResult
+impl core::marker::Freeze for app::ExpandResult
+impl core::marker::Send for app::ExpandResult
+impl core::marker::Sync for app::ExpandResult
+impl core::marker::Unpin for app::ExpandResult
+impl core::marker::UnsafeUnpin for app::ExpandResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::ExpandResult
+impl core::panic::unwind_safe::UnwindSafe for app::ExpandResult
+pub struct app::ExplainRequest
+pub app::ExplainRequest::limit: app::IntArg
+pub app::ExplainRequest::target: alloc::string::String
+impl core::clone::Clone for app::ExplainRequest
+pub fn app::ExplainRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::ExplainRequest
+impl core::cmp::PartialEq for app::ExplainRequest
+pub fn app::ExplainRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ExplainRequest
+pub fn app::ExplainRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ExplainRequest
+impl core::marker::Freeze for app::ExplainRequest
+impl core::marker::Send for app::ExplainRequest
+impl core::marker::Sync for app::ExplainRequest
+impl core::marker::Unpin for app::ExplainRequest
+impl core::marker::UnsafeUnpin for app::ExplainRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::ExplainRequest
+impl core::panic::unwind_safe::UnwindSafe for app::ExplainRequest
+pub struct app::Explanation
+pub app::Explanation::alternatives: alloc::vec::Vec<alloc::string::String>
+pub app::Explanation::card: core::option::Option<app::SymbolCard>
+pub app::Explanation::fan_in: alloc::vec::Vec<app::TierGroup>
+pub app::Explanation::fan_out: alloc::vec::Vec<app::TierGroup>
+pub app::Explanation::imports_in: kernel::bounded::Bounded<app::ImportRow>
+pub app::Explanation::imports_out: kernel::bounded::Bounded<app::ImportRow>
+pub app::Explanation::message: alloc::string::String
+pub app::Explanation::rationales: alloc::vec::Vec<app::RationaleNode>
+pub app::Explanation::target: alloc::string::String
+pub app::Explanation::tied: usize
+impl core::clone::Clone for app::Explanation
+pub fn app::Explanation::clone(&self) -> Self
+impl core::cmp::Eq for app::Explanation
+impl core::cmp::PartialEq for app::Explanation
+pub fn app::Explanation::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Explanation
+pub fn app::Explanation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Explanation
+impl core::marker::Freeze for app::Explanation
+impl core::marker::Send for app::Explanation
+impl core::marker::Sync for app::Explanation
+impl core::marker::Unpin for app::Explanation
+impl core::marker::UnsafeUnpin for app::Explanation
+impl core::panic::unwind_safe::RefUnwindSafe for app::Explanation
+impl core::panic::unwind_safe::UnwindSafe for app::Explanation
+pub struct app::FileCheck
+pub app::FileCheck::error: alloc::string::String
+pub app::FileCheck::path: alloc::string::String
+pub app::FileCheck::verdict: core::option::Option<patch::delta::SyntaxVerdict>
+impl app::FileCheck
+pub fn app::FileCheck::ok(&self) -> bool
+impl core::clone::Clone for app::FileCheck
+pub fn app::FileCheck::clone(&self) -> Self
+impl core::cmp::Eq for app::FileCheck
+impl core::cmp::PartialEq for app::FileCheck
+pub fn app::FileCheck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FileCheck
+pub fn app::FileCheck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FileCheck
+impl serde_core::ser::Serialize for app::FileCheck
+pub fn app::FileCheck::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for app::FileCheck
+impl core::marker::Send for app::FileCheck
+impl core::marker::Sync for app::FileCheck
+impl core::marker::Unpin for app::FileCheck
+impl core::marker::UnsafeUnpin for app::FileCheck
+impl core::panic::unwind_safe::RefUnwindSafe for app::FileCheck
+impl core::panic::unwind_safe::UnwindSafe for app::FileCheck
+pub struct app::FileView
+pub app::FileView::error: alloc::string::String
+pub app::FileView::language: alloc::string::String
+pub app::FileView::path: alloc::string::String
+pub app::FileView::refused: bool
+pub app::FileView::text: alloc::string::String
+impl core::clone::Clone for app::FileView
+pub fn app::FileView::clone(&self) -> Self
+impl core::cmp::Eq for app::FileView
+impl core::cmp::PartialEq for app::FileView
+pub fn app::FileView::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FileView
+pub fn app::FileView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FileView
+impl core::marker::Freeze for app::FileView
+impl core::marker::Send for app::FileView
+impl core::marker::Sync for app::FileView
+impl core::marker::Unpin for app::FileView
+impl core::marker::UnsafeUnpin for app::FileView
+impl core::panic::unwind_safe::RefUnwindSafe for app::FileView
+impl core::panic::unwind_safe::UnwindSafe for app::FileView
+pub struct app::FindRequest
+pub app::FindRequest::kind: core::option::Option<facts::values::SymbolKind>
+pub app::FindRequest::limit: app::IntArg
+pub app::FindRequest::query: alloc::string::String
+impl core::clone::Clone for app::FindRequest
+pub fn app::FindRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::FindRequest
+impl core::cmp::PartialEq for app::FindRequest
+pub fn app::FindRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FindRequest
+pub fn app::FindRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FindRequest
+impl core::marker::Freeze for app::FindRequest
+impl core::marker::Send for app::FindRequest
+impl core::marker::Sync for app::FindRequest
+impl core::marker::Unpin for app::FindRequest
+impl core::marker::UnsafeUnpin for app::FindRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::FindRequest
+impl core::panic::unwind_safe::UnwindSafe for app::FindRequest
+pub struct app::FindResult
+pub app::FindResult::cards: kernel::bounded::Bounded<app::SymbolCard>
+pub app::FindResult::kind: core::option::Option<&'static str>
+pub app::FindResult::other_kinds: alloc::vec::Vec<&'static str>
+pub app::FindResult::query: alloc::string::String
+pub app::FindResult::skipped: alloc::vec::Vec<app::Skipped>
+pub app::FindResult::unparsed: alloc::vec::Vec<(alloc::string::String, u32)>
+impl core::clone::Clone for app::FindResult
+pub fn app::FindResult::clone(&self) -> Self
+impl core::cmp::Eq for app::FindResult
+impl core::cmp::PartialEq for app::FindResult
+pub fn app::FindResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::FindResult
+pub fn app::FindResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::FindResult
+impl core::marker::Freeze for app::FindResult
+impl core::marker::Send for app::FindResult
+impl core::marker::Sync for app::FindResult
+impl core::marker::Unpin for app::FindResult
+impl core::marker::UnsafeUnpin for app::FindResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::FindResult
+impl core::panic::unwind_safe::UnwindSafe for app::FindResult
+pub struct app::Flowchart
+pub app::Flowchart::edge_bound: usize
+pub app::Flowchart::edges: alloc::vec::Vec<app::ChartEdge>
+pub app::Flowchart::groups: alloc::vec::Vec<app::ChartGroup>
+pub app::Flowchart::nodes: alloc::vec::Vec<app::ChartNode>
+impl core::clone::Clone for app::Flowchart
+pub fn app::Flowchart::clone(&self) -> Self
+impl core::cmp::Eq for app::Flowchart
+impl core::cmp::PartialEq for app::Flowchart
+pub fn app::Flowchart::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Flowchart
+pub fn app::Flowchart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Flowchart
+impl core::marker::Freeze for app::Flowchart
+impl core::marker::Send for app::Flowchart
+impl core::marker::Sync for app::Flowchart
+impl core::marker::Unpin for app::Flowchart
+impl core::marker::UnsafeUnpin for app::Flowchart
+impl core::panic::unwind_safe::RefUnwindSafe for app::Flowchart
+impl core::panic::unwind_safe::UnwindSafe for app::Flowchart
+pub struct app::HealthComplexity
+pub app::HealthComplexity::clone_lines: usize
+pub app::HealthComplexity::erosion: f64
+pub app::HealthComplexity::files: usize
+pub app::HealthComplexity::not_measured: kernel::bounded::Bounded<app::Skipped>
+pub app::HealthComplexity::over_threshold: usize
+pub app::HealthComplexity::sloc: usize
+pub app::HealthComplexity::threshold: u32
+pub app::HealthComplexity::units: usize
+pub app::HealthComplexity::walked: usize
+impl app::HealthComplexity
+pub fn app::HealthComplexity::clone_share(&self) -> f64
+pub fn app::HealthComplexity::measured(&self) -> usize
+pub fn app::HealthComplexity::stopped_by_budget(&self) -> bool
+impl core::clone::Clone for app::HealthComplexity
+pub fn app::HealthComplexity::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HealthComplexity
+pub fn app::HealthComplexity::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HealthComplexity
+pub fn app::HealthComplexity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HealthComplexity
+impl core::marker::Freeze for app::HealthComplexity
+impl core::marker::Send for app::HealthComplexity
+impl core::marker::Sync for app::HealthComplexity
+impl core::marker::Unpin for app::HealthComplexity
+impl core::marker::UnsafeUnpin for app::HealthComplexity
+impl core::panic::unwind_safe::RefUnwindSafe for app::HealthComplexity
+impl core::panic::unwind_safe::UnwindSafe for app::HealthComplexity
+pub struct app::HealthComplexityRow
+pub app::HealthComplexityRow::cc: u32
+pub app::HealthComplexityRow::label: alloc::string::String
+pub app::HealthComplexityRow::line: u32
+pub app::HealthComplexityRow::mass: f64
+pub app::HealthComplexityRow::path: alloc::string::String
+pub app::HealthComplexityRow::sloc: u32
+pub app::HealthComplexityRow::stable_id: core::option::Option<alloc::string::String>
+impl core::clone::Clone for app::HealthComplexityRow
+pub fn app::HealthComplexityRow::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HealthComplexityRow
+pub fn app::HealthComplexityRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HealthComplexityRow
+pub fn app::HealthComplexityRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HealthComplexityRow
+impl core::marker::Freeze for app::HealthComplexityRow
+impl core::marker::Send for app::HealthComplexityRow
+impl core::marker::Sync for app::HealthComplexityRow
+impl core::marker::Unpin for app::HealthComplexityRow
+impl core::marker::UnsafeUnpin for app::HealthComplexityRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::HealthComplexityRow
+impl core::panic::unwind_safe::UnwindSafe for app::HealthComplexityRow
+pub struct app::HealthReport
+pub app::HealthReport::complexity: app::HealthComplexity
+pub app::HealthReport::excluded: usize
+pub app::HealthReport::hotspots: kernel::bounded::Bounded<app::HealthComplexityRow>
+pub app::HealthReport::hubs: kernel::bounded::Bounded<app::HealthSymbol>
+pub app::HealthReport::orphans: kernel::bounded::Bounded<app::HealthSymbol>
+pub app::HealthReport::symbols: usize
+pub app::HealthReport::unused_exports: kernel::bounded::Bounded<app::HealthSymbol>
+impl core::clone::Clone for app::HealthReport
+pub fn app::HealthReport::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HealthReport
+pub fn app::HealthReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HealthReport
+pub fn app::HealthReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HealthReport
+impl core::marker::Freeze for app::HealthReport
+impl core::marker::Send for app::HealthReport
+impl core::marker::Sync for app::HealthReport
+impl core::marker::Unpin for app::HealthReport
+impl core::marker::UnsafeUnpin for app::HealthReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::HealthReport
+impl core::panic::unwind_safe::UnwindSafe for app::HealthReport
+pub struct app::HealthRequest
+pub app::HealthRequest::limit: app::IntArg
+impl core::clone::Clone for app::HealthRequest
+pub fn app::HealthRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::HealthRequest
+impl core::cmp::PartialEq for app::HealthRequest
+pub fn app::HealthRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HealthRequest
+pub fn app::HealthRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HealthRequest
+impl core::marker::Freeze for app::HealthRequest
+impl core::marker::Send for app::HealthRequest
+impl core::marker::Sync for app::HealthRequest
+impl core::marker::Unpin for app::HealthRequest
+impl core::marker::UnsafeUnpin for app::HealthRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::HealthRequest
+impl core::panic::unwind_safe::UnwindSafe for app::HealthRequest
+pub struct app::HealthSymbol
+pub app::HealthSymbol::discounted: alloc::vec::Vec<app::DiscountedTier>
+pub app::HealthSymbol::in_degree: usize
+pub app::HealthSymbol::kind: &'static str
+pub app::HealthSymbol::label: alloc::string::String
+pub app::HealthSymbol::line: u32
+pub app::HealthSymbol::out_degree: usize
+pub app::HealthSymbol::path: alloc::string::String
+pub app::HealthSymbol::stable_id: alloc::string::String
+impl core::clone::Clone for app::HealthSymbol
+pub fn app::HealthSymbol::clone(&self) -> Self
+impl core::cmp::Eq for app::HealthSymbol
+impl core::cmp::PartialEq for app::HealthSymbol
+pub fn app::HealthSymbol::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HealthSymbol
+pub fn app::HealthSymbol::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HealthSymbol
+impl core::marker::Freeze for app::HealthSymbol
+impl core::marker::Send for app::HealthSymbol
+impl core::marker::Sync for app::HealthSymbol
+impl core::marker::Unpin for app::HealthSymbol
+impl core::marker::UnsafeUnpin for app::HealthSymbol
+impl core::panic::unwind_safe::RefUnwindSafe for app::HealthSymbol
+impl core::panic::unwind_safe::UnwindSafe for app::HealthSymbol
+pub struct app::HistoryEntry
+pub app::HistoryEntry::authored: alloc::string::String
+pub app::HistoryEntry::body_lines: alloc::vec::Vec<alloc::string::String>
+pub app::HistoryEntry::body_total: usize
+pub app::HistoryEntry::sha: alloc::string::String
+pub app::HistoryEntry::subject: alloc::string::String
+impl app::HistoryEntry
+pub fn app::HistoryEntry::body_shown(&self) -> usize
+pub fn app::HistoryEntry::short_sha(&self) -> &str
+impl core::clone::Clone for app::HistoryEntry
+pub fn app::HistoryEntry::clone(&self) -> Self
+impl core::cmp::Eq for app::HistoryEntry
+impl core::cmp::PartialEq for app::HistoryEntry
+pub fn app::HistoryEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HistoryEntry
+pub fn app::HistoryEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HistoryEntry
+impl core::marker::Freeze for app::HistoryEntry
+impl core::marker::Send for app::HistoryEntry
+impl core::marker::Sync for app::HistoryEntry
+impl core::marker::Unpin for app::HistoryEntry
+impl core::marker::UnsafeUnpin for app::HistoryEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::HistoryEntry
+impl core::panic::unwind_safe::UnwindSafe for app::HistoryEntry
+pub struct app::HistoryRequest
+pub app::HistoryRequest::budget: app::IntArg
+pub app::HistoryRequest::limit: app::IntArg
+pub app::HistoryRequest::target: alloc::string::String
+impl core::clone::Clone for app::HistoryRequest
+pub fn app::HistoryRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::HistoryRequest
+impl core::cmp::PartialEq for app::HistoryRequest
+pub fn app::HistoryRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HistoryRequest
+pub fn app::HistoryRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HistoryRequest
+impl core::marker::Freeze for app::HistoryRequest
+impl core::marker::Send for app::HistoryRequest
+impl core::marker::Sync for app::HistoryRequest
+impl core::marker::Unpin for app::HistoryRequest
+impl core::marker::UnsafeUnpin for app::HistoryRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::HistoryRequest
+impl core::panic::unwind_safe::UnwindSafe for app::HistoryRequest
+pub struct app::HistoryResult
+pub app::HistoryResult::committed_end_line: u32
+pub app::HistoryResult::committed_start_line: u32
+pub app::HistoryResult::dirty: core::option::Option<bool>
+pub app::HistoryResult::dirty_note: alloc::string::String
+pub app::HistoryResult::end_line: u32
+pub app::HistoryResult::entries: alloc::vec::Vec<app::HistoryEntry>
+pub app::HistoryResult::list_end: app::ListEnd
+pub app::HistoryResult::output_capped: bool
+pub app::HistoryResult::path: alloc::string::String
+pub app::HistoryResult::shallow: core::option::Option<bool>
+pub app::HistoryResult::shallow_note: alloc::string::String
+pub app::HistoryResult::signature_changed: bool
+pub app::HistoryResult::start_line: u32
+pub app::HistoryResult::target: alloc::string::String
+impl core::clone::Clone for app::HistoryResult
+pub fn app::HistoryResult::clone(&self) -> Self
+impl core::cmp::Eq for app::HistoryResult
+impl core::cmp::PartialEq for app::HistoryResult
+pub fn app::HistoryResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HistoryResult
+pub fn app::HistoryResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HistoryResult
+impl core::marker::Freeze for app::HistoryResult
+impl core::marker::Send for app::HistoryResult
+impl core::marker::Sync for app::HistoryResult
+impl core::marker::Unpin for app::HistoryResult
+impl core::marker::UnsafeUnpin for app::HistoryResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::HistoryResult
+impl core::panic::unwind_safe::UnwindSafe for app::HistoryResult
+pub struct app::HtmlEdge
+pub app::HtmlEdge::import: bool
+pub app::HtmlEdge::source: alloc::string::String
+pub app::HtmlEdge::target: alloc::string::String
+pub app::HtmlEdge::weight: f64
+impl core::clone::Clone for app::HtmlEdge
+pub fn app::HtmlEdge::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HtmlEdge
+pub fn app::HtmlEdge::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HtmlEdge
+pub fn app::HtmlEdge::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HtmlEdge
+impl core::marker::Freeze for app::HtmlEdge
+impl core::marker::Send for app::HtmlEdge
+impl core::marker::Sync for app::HtmlEdge
+impl core::marker::Unpin for app::HtmlEdge
+impl core::marker::UnsafeUnpin for app::HtmlEdge
+impl core::panic::unwind_safe::RefUnwindSafe for app::HtmlEdge
+impl core::panic::unwind_safe::UnwindSafe for app::HtmlEdge
+pub struct app::HtmlGraph
+pub app::HtmlGraph::communities: alloc::vec::Vec<(usize, alloc::string::String)>
+pub app::HtmlGraph::edge_bound: usize
+pub app::HtmlGraph::edges: alloc::vec::Vec<app::HtmlEdge>
+pub app::HtmlGraph::edges_over_bound: usize
+pub app::HtmlGraph::edges_without_both_nodes: usize
+pub app::HtmlGraph::elided_nodes: usize
+pub app::HtmlGraph::node_bound: usize
+pub app::HtmlGraph::nodes: alloc::vec::Vec<app::HtmlNode>
+impl core::clone::Clone for app::HtmlGraph
+pub fn app::HtmlGraph::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HtmlGraph
+pub fn app::HtmlGraph::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HtmlGraph
+pub fn app::HtmlGraph::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HtmlGraph
+impl core::marker::Freeze for app::HtmlGraph
+impl core::marker::Send for app::HtmlGraph
+impl core::marker::Sync for app::HtmlGraph
+impl core::marker::Unpin for app::HtmlGraph
+impl core::marker::UnsafeUnpin for app::HtmlGraph
+impl core::panic::unwind_safe::RefUnwindSafe for app::HtmlGraph
+impl core::panic::unwind_safe::UnwindSafe for app::HtmlGraph
+pub struct app::HtmlNode
+pub app::HtmlNode::community: usize
+pub app::HtmlNode::id: alloc::string::String
+pub app::HtmlNode::path: alloc::string::String
+impl core::clone::Clone for app::HtmlNode
+pub fn app::HtmlNode::clone(&self) -> Self
+impl core::cmp::Eq for app::HtmlNode
+impl core::cmp::PartialEq for app::HtmlNode
+pub fn app::HtmlNode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HtmlNode
+pub fn app::HtmlNode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HtmlNode
+impl core::marker::Freeze for app::HtmlNode
+impl core::marker::Send for app::HtmlNode
+impl core::marker::Sync for app::HtmlNode
+impl core::marker::Unpin for app::HtmlNode
+impl core::marker::UnsafeUnpin for app::HtmlNode
+impl core::panic::unwind_safe::RefUnwindSafe for app::HtmlNode
+impl core::panic::unwind_safe::UnwindSafe for app::HtmlNode
+pub struct app::HtmlRequest
+pub app::HtmlRequest::max_edges: app::IntArg
+pub app::HtmlRequest::max_nodes: app::IntArg
+pub app::HtmlRequest::resolution: core::option::Option<f64>
+impl core::clone::Clone for app::HtmlRequest
+pub fn app::HtmlRequest::clone(&self) -> Self
+impl core::cmp::PartialEq for app::HtmlRequest
+pub fn app::HtmlRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::HtmlRequest
+pub fn app::HtmlRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::HtmlRequest
+impl core::marker::Freeze for app::HtmlRequest
+impl core::marker::Send for app::HtmlRequest
+impl core::marker::Sync for app::HtmlRequest
+impl core::marker::Unpin for app::HtmlRequest
+impl core::marker::UnsafeUnpin for app::HtmlRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::HtmlRequest
+impl core::panic::unwind_safe::UnwindSafe for app::HtmlRequest
+pub struct app::ImportRow
+pub app::ImportRow::line: u32
+pub app::ImportRow::module: alloc::string::String
+pub app::ImportRow::other: alloc::string::String
+pub app::ImportRow::path: alloc::string::String
+impl core::clone::Clone for app::ImportRow
+pub fn app::ImportRow::clone(&self) -> Self
+impl core::cmp::Eq for app::ImportRow
+impl core::cmp::PartialEq for app::ImportRow
+pub fn app::ImportRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ImportRow
+pub fn app::ImportRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ImportRow
+impl core::marker::Freeze for app::ImportRow
+impl core::marker::Send for app::ImportRow
+impl core::marker::Sync for app::ImportRow
+impl core::marker::Unpin for app::ImportRow
+impl core::marker::UnsafeUnpin for app::ImportRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::ImportRow
+impl core::panic::unwind_safe::UnwindSafe for app::ImportRow
+pub struct app::IndexRequest
+pub app::IndexRequest::force: bool
+pub app::IndexRequest::max_cache_bytes: core::option::Option<std::ffi::os_str::OsString>
+impl core::clone::Clone for app::IndexRequest
+pub fn app::IndexRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::IndexRequest
+impl core::cmp::PartialEq for app::IndexRequest
+pub fn app::IndexRequest::eq(&self, &Self) -> bool
+impl core::default::Default for app::IndexRequest
+pub fn app::IndexRequest::default() -> Self
+impl core::fmt::Debug for app::IndexRequest
+pub fn app::IndexRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::IndexRequest
+impl core::marker::Freeze for app::IndexRequest
+impl core::marker::Send for app::IndexRequest
+impl core::marker::Sync for app::IndexRequest
+impl core::marker::Unpin for app::IndexRequest
+impl core::marker::UnsafeUnpin for app::IndexRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::IndexRequest
+impl core::panic::unwind_safe::UnwindSafe for app::IndexRequest
+pub struct app::IntArg
+impl app::IntArg
+pub fn app::IntArg::from_usize(usize) -> app::IntArg
+pub fn app::IntArg::parse(&str) -> core::option::Option<app::IntArg>
+pub fn app::IntArg::value(&self) -> core::option::Option<usize>
+impl core::clone::Clone for app::IntArg
+pub fn app::IntArg::clone(&self) -> Self
+impl core::cmp::Eq for app::IntArg
+impl core::cmp::PartialEq for app::IntArg
+pub fn app::IntArg::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::IntArg
+pub fn app::IntArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::IntArg
+pub fn app::IntArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::IntArg
+impl core::marker::Freeze for app::IntArg
+impl core::marker::Send for app::IntArg
+impl core::marker::Sync for app::IntArg
+impl core::marker::Unpin for app::IntArg
+impl core::marker::UnsafeUnpin for app::IntArg
+impl core::panic::unwind_safe::RefUnwindSafe for app::IntArg
+impl core::panic::unwind_safe::UnwindSafe for app::IntArg
+pub struct app::LanguageCapability
+pub app::LanguageCapability::abi: core::option::Option<usize>
+pub app::LanguageCapability::detail: alloc::string::String
+pub app::LanguageCapability::name: &'static str
+pub app::LanguageCapability::probe_ok: bool
+pub app::LanguageCapability::tier: u8
+pub app::LanguageCapability::warmed: bool
+impl core::clone::Clone for app::LanguageCapability
+pub fn app::LanguageCapability::clone(&self) -> Self
+impl core::cmp::Eq for app::LanguageCapability
+impl core::cmp::PartialEq for app::LanguageCapability
+pub fn app::LanguageCapability::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LanguageCapability
+pub fn app::LanguageCapability::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LanguageCapability
+impl serde_core::ser::Serialize for app::LanguageCapability
+pub fn app::LanguageCapability::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::LanguageCapability
+impl core::marker::Send for app::LanguageCapability
+impl core::marker::Sync for app::LanguageCapability
+impl core::marker::Unpin for app::LanguageCapability
+impl core::marker::UnsafeUnpin for app::LanguageCapability
+impl core::panic::unwind_safe::RefUnwindSafe for app::LanguageCapability
+impl core::panic::unwind_safe::UnwindSafe for app::LanguageCapability
+pub struct app::LintCandidate
+pub app::LintCandidate::findings: alloc::vec::Vec<checks::finding::PairFinding>
+pub app::LintCandidate::id: alloc::string::String
+pub app::LintCandidate::observed: core::option::Option<checks::observed::Observed>
+impl core::clone::Clone for app::LintCandidate
+pub fn app::LintCandidate::clone(&self) -> Self
+impl core::cmp::Eq for app::LintCandidate
+impl core::cmp::PartialEq for app::LintCandidate
+pub fn app::LintCandidate::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintCandidate
+pub fn app::LintCandidate::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintCandidate
+impl serde_core::ser::Serialize for app::LintCandidate
+pub fn app::LintCandidate::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::LintCandidate
+impl core::marker::Send for app::LintCandidate
+impl core::marker::Sync for app::LintCandidate
+impl core::marker::Unpin for app::LintCandidate
+impl core::marker::UnsafeUnpin for app::LintCandidate
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintCandidate
+impl core::panic::unwind_safe::UnwindSafe for app::LintCandidate
+pub struct app::LintCandidateInput
+pub app::LintCandidateInput::id: alloc::string::String
+pub app::LintCandidateInput::notes: alloc::vec::Vec<patch::unidiff::DiffNote>
+pub app::LintCandidateInput::parsed: patch::blocks::ParseResult
+impl core::clone::Clone for app::LintCandidateInput
+pub fn app::LintCandidateInput::clone(&self) -> Self
+impl core::cmp::Eq for app::LintCandidateInput
+impl core::cmp::PartialEq for app::LintCandidateInput
+pub fn app::LintCandidateInput::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintCandidateInput
+pub fn app::LintCandidateInput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintCandidateInput
+impl core::marker::Freeze for app::LintCandidateInput
+impl core::marker::Send for app::LintCandidateInput
+impl core::marker::Sync for app::LintCandidateInput
+impl core::marker::Unpin for app::LintCandidateInput
+impl core::marker::UnsafeUnpin for app::LintCandidateInput
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintCandidateInput
+impl core::panic::unwind_safe::UnwindSafe for app::LintCandidateInput
+pub struct app::LintCheck
+pub app::LintCheck::input: app::CheckInput
+pub app::LintCheck::name: &'static str
+impl core::clone::Clone for app::LintCheck
+pub fn app::LintCheck::clone(&self) -> Self
+impl core::cmp::Eq for app::LintCheck
+impl core::cmp::PartialEq for app::LintCheck
+pub fn app::LintCheck::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintCheck
+pub fn app::LintCheck::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::LintCheck
+impl core::marker::StructuralPartialEq for app::LintCheck
+impl core::marker::Freeze for app::LintCheck
+impl core::marker::Send for app::LintCheck
+impl core::marker::Sync for app::LintCheck
+impl core::marker::Unpin for app::LintCheck
+impl core::marker::UnsafeUnpin for app::LintCheck
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintCheck
+impl core::panic::unwind_safe::UnwindSafe for app::LintCheck
+pub struct app::LintCheckRow
+pub app::LintCheckRow::input: &'static str
+pub app::LintCheckRow::name: &'static str
+impl core::clone::Clone for app::LintCheckRow
+pub fn app::LintCheckRow::clone(&self) -> Self
+impl core::cmp::Eq for app::LintCheckRow
+impl core::cmp::PartialEq for app::LintCheckRow
+pub fn app::LintCheckRow::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintCheckRow
+pub fn app::LintCheckRow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::LintCheckRow
+impl core::marker::StructuralPartialEq for app::LintCheckRow
+impl serde_core::ser::Serialize for app::LintCheckRow
+pub fn app::LintCheckRow::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::LintCheckRow
+impl core::marker::Send for app::LintCheckRow
+impl core::marker::Sync for app::LintCheckRow
+impl core::marker::Unpin for app::LintCheckRow
+impl core::marker::UnsafeUnpin for app::LintCheckRow
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintCheckRow
+impl core::panic::unwind_safe::UnwindSafe for app::LintCheckRow
+pub struct app::LintReport
+pub app::LintReport::candidates: alloc::vec::Vec<app::LintCandidate>
+impl core::clone::Clone for app::LintReport
+pub fn app::LintReport::clone(&self) -> Self
+impl core::cmp::Eq for app::LintReport
+impl core::cmp::PartialEq for app::LintReport
+pub fn app::LintReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintReport
+pub fn app::LintReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintReport
+impl serde_core::ser::Serialize for app::LintReport
+pub fn app::LintReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::LintReport
+impl core::marker::Send for app::LintReport
+impl core::marker::Sync for app::LintReport
+impl core::marker::Unpin for app::LintReport
+impl core::marker::UnsafeUnpin for app::LintReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintReport
+impl core::panic::unwind_safe::UnwindSafe for app::LintReport
+pub struct app::LintRequest
+pub app::LintRequest::checks: app::PairSelection
+pub app::LintRequest::form: app::LintForm
+impl core::clone::Clone for app::LintRequest
+pub fn app::LintRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::LintRequest
+impl core::cmp::PartialEq for app::LintRequest
+pub fn app::LintRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LintRequest
+pub fn app::LintRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LintRequest
+impl core::marker::Freeze for app::LintRequest
+impl core::marker::Send for app::LintRequest
+impl core::marker::Sync for app::LintRequest
+impl core::marker::Unpin for app::LintRequest
+impl core::marker::UnsafeUnpin for app::LintRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::LintRequest
+impl core::panic::unwind_safe::UnwindSafe for app::LintRequest
+pub struct app::LoadedVerdicts
+pub app::LoadedVerdicts::baseline: app::BaselineStatus
+pub app::LoadedVerdicts::candidates: alloc::vec::Vec<patch::vote::VoteCandidate>
+pub app::LoadedVerdicts::repro_cmd: core::option::Option<alloc::string::String>
+pub app::LoadedVerdicts::repro_valid: bool
+pub app::LoadedVerdicts::test_cmd: alloc::string::String
+impl core::clone::Clone for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::clone(&self) -> Self
+impl core::cmp::Eq for app::LoadedVerdicts
+impl core::cmp::PartialEq for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LoadedVerdicts
+pub fn app::LoadedVerdicts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LoadedVerdicts
+impl core::marker::Freeze for app::LoadedVerdicts
+impl core::marker::Send for app::LoadedVerdicts
+impl core::marker::Sync for app::LoadedVerdicts
+impl core::marker::Unpin for app::LoadedVerdicts
+impl core::marker::UnsafeUnpin for app::LoadedVerdicts
+impl core::panic::unwind_safe::RefUnwindSafe for app::LoadedVerdicts
+impl core::panic::unwind_safe::UnwindSafe for app::LoadedVerdicts
+pub struct app::LocateRequest
+pub app::LocateRequest::context: app::IntArg
+pub app::LocateRequest::id: facts::stable_id::StableId
+impl core::clone::Clone for app::LocateRequest
+pub fn app::LocateRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::LocateRequest
+impl core::cmp::PartialEq for app::LocateRequest
+pub fn app::LocateRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LocateRequest
+pub fn app::LocateRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LocateRequest
+impl core::marker::Freeze for app::LocateRequest
+impl core::marker::Send for app::LocateRequest
+impl core::marker::Sync for app::LocateRequest
+impl core::marker::Unpin for app::LocateRequest
+impl core::marker::UnsafeUnpin for app::LocateRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::LocateRequest
+impl core::panic::unwind_safe::UnwindSafe for app::LocateRequest
+pub struct app::LocationView
+pub app::LocationView::path: alloc::string::String
+pub app::LocationView::resolution: facts::locs::LocResolution
+pub app::LocationView::text: alloc::string::String
+impl core::clone::Clone for app::LocationView
+pub fn app::LocationView::clone(&self) -> Self
+impl core::cmp::Eq for app::LocationView
+impl core::cmp::PartialEq for app::LocationView
+pub fn app::LocationView::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LocationView
+pub fn app::LocationView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LocationView
+impl core::marker::Freeze for app::LocationView
+impl core::marker::Send for app::LocationView
+impl core::marker::Sync for app::LocationView
+impl core::marker::Unpin for app::LocationView
+impl core::marker::UnsafeUnpin for app::LocationView
+impl core::panic::unwind_safe::RefUnwindSafe for app::LocationView
+impl core::panic::unwind_safe::UnwindSafe for app::LocationView
+pub struct app::LocsRequest
+pub app::LocsRequest::context: app::IntArg
+pub app::LocsRequest::locs: alloc::vec::Vec<alloc::string::String>
+pub app::LocsRequest::path: alloc::string::String
+impl core::clone::Clone for app::LocsRequest
+pub fn app::LocsRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::LocsRequest
+impl core::cmp::PartialEq for app::LocsRequest
+pub fn app::LocsRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::LocsRequest
+pub fn app::LocsRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::LocsRequest
+impl core::marker::Freeze for app::LocsRequest
+impl core::marker::Send for app::LocsRequest
+impl core::marker::Sync for app::LocsRequest
+impl core::marker::Unpin for app::LocsRequest
+impl core::marker::UnsafeUnpin for app::LocsRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::LocsRequest
+impl core::panic::unwind_safe::UnwindSafe for app::LocsRequest
+pub struct app::MapEntry
+pub app::MapEntry::depth: usize
+pub app::MapEntry::line: u32
+pub app::MapEntry::name: alloc::string::String
+pub app::MapEntry::rationales: alloc::vec::Vec<app::RationaleNode>
+pub app::MapEntry::signature: alloc::string::String
+pub app::MapEntry::stable_id: alloc::string::String
+impl core::clone::Clone for app::MapEntry
+pub fn app::MapEntry::clone(&self) -> Self
+impl core::cmp::Eq for app::MapEntry
+impl core::cmp::PartialEq for app::MapEntry
+pub fn app::MapEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::MapEntry
+pub fn app::MapEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::MapEntry
+impl core::marker::Freeze for app::MapEntry
+impl core::marker::Send for app::MapEntry
+impl core::marker::Sync for app::MapEntry
+impl core::marker::Unpin for app::MapEntry
+impl core::marker::UnsafeUnpin for app::MapEntry
+impl core::panic::unwind_safe::RefUnwindSafe for app::MapEntry
+impl core::panic::unwind_safe::UnwindSafe for app::MapEntry
+pub struct app::MapFile
+pub app::MapFile::commits_window: core::option::Option<usize>
+pub app::MapFile::entries: alloc::vec::Vec<app::MapEntry>
+pub app::MapFile::id_prefix: &'static str
+pub app::MapFile::last_commit_days: core::option::Option<i64>
+pub app::MapFile::path: alloc::string::String
+pub app::MapFile::rank: f64
+pub app::MapFile::reached: bool
+pub app::MapFile::total: usize
+impl app::MapFile
+pub fn app::MapFile::omitted(&self) -> usize
+impl core::clone::Clone for app::MapFile
+pub fn app::MapFile::clone(&self) -> Self
+impl core::cmp::PartialEq for app::MapFile
+pub fn app::MapFile::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::MapFile
+pub fn app::MapFile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::MapFile
+impl core::marker::Freeze for app::MapFile
+impl core::marker::Send for app::MapFile
+impl core::marker::Sync for app::MapFile
+impl core::marker::Unpin for app::MapFile
+impl core::marker::UnsafeUnpin for app::MapFile
+impl core::panic::unwind_safe::RefUnwindSafe for app::MapFile
+impl core::panic::unwind_safe::UnwindSafe for app::MapFile
+pub struct app::MapRequest
+pub app::MapRequest::budget: core::option::Option<app::IntArg>
+pub app::MapRequest::focus: alloc::vec::Vec<alloc::string::String>
+pub app::MapRequest::granularity: core::option::Option<io::config::Granularity>
+pub app::MapRequest::max_files: core::option::Option<app::IntArg>
+impl core::clone::Clone for app::MapRequest
+pub fn app::MapRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::MapRequest
+impl core::cmp::PartialEq for app::MapRequest
+pub fn app::MapRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::MapRequest
+pub fn app::MapRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::MapRequest
+impl core::marker::Freeze for app::MapRequest
+impl core::marker::Send for app::MapRequest
+impl core::marker::Sync for app::MapRequest
+impl core::marker::Unpin for app::MapRequest
+impl core::marker::UnsafeUnpin for app::MapRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::MapRequest
+impl core::panic::unwind_safe::UnwindSafe for app::MapRequest
+pub struct app::MapResult
+pub app::MapResult::budget: usize
+pub app::MapResult::candidates: usize
+pub app::MapResult::companions: app::Companions
+pub app::MapResult::expand_order: alloc::vec::Vec<alloc::string::String>
+pub app::MapResult::files: alloc::vec::Vec<app::MapFile>
+pub app::MapResult::focus_order: alloc::vec::Vec<alloc::string::String>
+pub app::MapResult::included: usize
+pub app::MapResult::rank_converged: bool
+pub app::MapResult::ranked: usize
+pub app::MapResult::rendered: usize
+pub app::MapResult::seeds: alloc::vec::Vec<alloc::string::String>
+pub app::MapResult::skipped: alloc::vec::Vec<app::Skipped>
+pub app::MapResult::unresolved_seeds: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::MapResult
+pub fn app::MapResult::clone(&self) -> Self
+impl core::cmp::PartialEq for app::MapResult
+pub fn app::MapResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::MapResult
+pub fn app::MapResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::MapResult
+impl core::marker::Freeze for app::MapResult
+impl core::marker::Send for app::MapResult
+impl core::marker::Sync for app::MapResult
+impl core::marker::Unpin for app::MapResult
+impl core::marker::UnsafeUnpin for app::MapResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::MapResult
+impl core::panic::unwind_safe::UnwindSafe for app::MapResult
+pub struct app::NormalizeReport
+pub app::NormalizeReport::file_keys: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::string::String>
+pub app::NormalizeReport::key: alloc::string::String
+pub app::NormalizeReport::result: patch::apply::ApplyResult
+impl app::NormalizeReport
+pub fn app::NormalizeReport::ok(&self) -> bool
+pub fn app::NormalizeReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for app::NormalizeReport
+pub fn app::NormalizeReport::clone(&self) -> Self
+impl core::cmp::Eq for app::NormalizeReport
+impl core::cmp::PartialEq for app::NormalizeReport
+pub fn app::NormalizeReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::NormalizeReport
+pub fn app::NormalizeReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::NormalizeReport
+impl serde_core::ser::Serialize for app::NormalizeReport
+pub fn app::NormalizeReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::NormalizeReport
+impl core::marker::Send for app::NormalizeReport
+impl core::marker::Sync for app::NormalizeReport
+impl core::marker::Unpin for app::NormalizeReport
+impl core::marker::UnsafeUnpin for app::NormalizeReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::NormalizeReport
+impl core::panic::unwind_safe::UnwindSafe for app::NormalizeReport
+pub struct app::Noted<T>
+pub app::Noted::diagnostics: alloc::vec::Vec<alloc::string::String>
+pub app::Noted::value: T
+impl<T> app::Noted<T>
+pub fn app::Noted<T>::map<U>(self, impl core::ops::function::FnOnce(T) -> U) -> app::Noted<U>
+pub fn app::Noted<T>::new(T) -> Self
+impl<T: core::clone::Clone> core::clone::Clone for app::Noted<T>
+pub fn app::Noted<T>::clone(&self) -> Self
+impl<T: core::cmp::Eq> core::cmp::Eq for app::Noted<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for app::Noted<T>
+pub fn app::Noted<T>::eq(&self, &Self) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for app::Noted<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for app::Noted<T>
+pub fn app::Noted<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for app::Noted<T> where T: core::marker::Freeze
+impl<T> core::marker::Send for app::Noted<T> where T: core::marker::Send
+impl<T> core::marker::Sync for app::Noted<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for app::Noted<T> where T: core::marker::Unpin
+impl<T> core::marker::UnsafeUnpin for app::Noted<T> where T: core::marker::UnsafeUnpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for app::Noted<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for app::Noted<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct app::Opening
+pub app::Opening::note: alloc::string::String
+pub app::Opening::session: app::Noted<core::result::Result<app::Session, app::Error>>
+impl core::fmt::Debug for app::Opening
+pub fn app::Opening::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for app::Opening
+impl core::marker::Send for app::Opening
+impl core::marker::Sync for app::Opening
+impl core::marker::Unpin for app::Opening
+impl core::marker::UnsafeUnpin for app::Opening
+impl !core::panic::unwind_safe::RefUnwindSafe for app::Opening
+impl !core::panic::unwind_safe::UnwindSafe for app::Opening
+pub struct app::PairSelection
+impl app::PairSelection
+pub fn app::PairSelection::checks(self) -> impl core::iter::traits::iterator::Iterator<Item = app::PairCheck>
+pub fn app::PairSelection::edited_files() -> app::PairSelection
+pub fn app::PairSelection::from_names(&[alloc::string::String], app::FormKind) -> core::result::Result<app::PairSelection, alloc::string::String>
+pub fn app::PairSelection::of(&[app::PairCheck]) -> core::result::Result<app::PairSelection, alloc::string::String>
+impl core::clone::Clone for app::PairSelection
+pub fn app::PairSelection::clone(&self) -> Self
+impl core::cmp::Eq for app::PairSelection
+impl core::cmp::PartialEq for app::PairSelection
+pub fn app::PairSelection::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::PairSelection
+pub fn app::PairSelection::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::PairSelection
+impl core::marker::StructuralPartialEq for app::PairSelection
+impl core::marker::Freeze for app::PairSelection
+impl core::marker::Send for app::PairSelection
+impl core::marker::Sync for app::PairSelection
+impl core::marker::Unpin for app::PairSelection
+impl core::marker::UnsafeUnpin for app::PairSelection
+impl core::panic::unwind_safe::RefUnwindSafe for app::PairSelection
+impl core::panic::unwind_safe::UnwindSafe for app::PairSelection
+pub struct app::PathHop
+pub app::PathHop::arrow: &'static str
+pub app::PathHop::label: alloc::string::String
+pub app::PathHop::line: u32
+pub app::PathHop::node: alloc::string::String
+pub app::PathHop::path: alloc::string::String
+pub app::PathHop::tier: &'static str
+pub app::PathHop::tier_label: &'static str
+pub app::PathHop::verb: &'static str
+impl core::clone::Clone for app::PathHop
+pub fn app::PathHop::clone(&self) -> Self
+impl core::cmp::Eq for app::PathHop
+impl core::cmp::PartialEq for app::PathHop
+pub fn app::PathHop::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::PathHop
+pub fn app::PathHop::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::PathHop
+impl core::marker::Freeze for app::PathHop
+impl core::marker::Send for app::PathHop
+impl core::marker::Sync for app::PathHop
+impl core::marker::Unpin for app::PathHop
+impl core::marker::UnsafeUnpin for app::PathHop
+impl core::panic::unwind_safe::RefUnwindSafe for app::PathHop
+impl core::panic::unwind_safe::UnwindSafe for app::PathHop
+pub struct app::PathRequest
+pub app::PathRequest::max_visited: app::IntArg
+pub app::PathRequest::policy: graph::path::PathPolicy
+pub app::PathRequest::source: alloc::string::String
+pub app::PathRequest::target: alloc::string::String
+impl core::clone::Clone for app::PathRequest
+pub fn app::PathRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::PathRequest
+impl core::cmp::PartialEq for app::PathRequest
+pub fn app::PathRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::PathRequest
+pub fn app::PathRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::PathRequest
+impl core::marker::Freeze for app::PathRequest
+impl core::marker::Send for app::PathRequest
+impl core::marker::Sync for app::PathRequest
+impl core::marker::Unpin for app::PathRequest
+impl core::marker::UnsafeUnpin for app::PathRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::PathRequest
+impl core::panic::unwind_safe::UnwindSafe for app::PathRequest
+pub struct app::PathTrace
+pub app::PathTrace::endpoints_resolved: bool
+pub app::PathTrace::exhausted: bool
+pub app::PathTrace::found: bool
+pub app::PathTrace::hops: alloc::vec::Vec<app::PathHop>
+pub app::PathTrace::message: alloc::string::String
+pub app::PathTrace::policy: graph::path::PathPolicy
+pub app::PathTrace::source: alloc::string::String
+pub app::PathTrace::source_label: alloc::string::String
+pub app::PathTrace::target: alloc::string::String
+pub app::PathTrace::target_label: alloc::string::String
+pub app::PathTrace::visited: usize
+impl core::clone::Clone for app::PathTrace
+pub fn app::PathTrace::clone(&self) -> Self
+impl core::cmp::Eq for app::PathTrace
+impl core::cmp::PartialEq for app::PathTrace
+pub fn app::PathTrace::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::PathTrace
+pub fn app::PathTrace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::PathTrace
+impl core::marker::Freeze for app::PathTrace
+impl core::marker::Send for app::PathTrace
+impl core::marker::Sync for app::PathTrace
+impl core::marker::Unpin for app::PathTrace
+impl core::marker::UnsafeUnpin for app::PathTrace
+impl core::panic::unwind_safe::RefUnwindSafe for app::PathTrace
+impl core::panic::unwind_safe::UnwindSafe for app::PathTrace
+pub struct app::RationaleNode
+pub app::RationaleNode::citations: alloc::vec::Vec<alloc::string::String>
+pub app::RationaleNode::kind: &'static str
+pub app::RationaleNode::line: u32
+pub app::RationaleNode::parent_id: alloc::string::String
+pub app::RationaleNode::stable_id: alloc::string::String
+pub app::RationaleNode::text: alloc::string::String
+impl core::clone::Clone for app::RationaleNode
+pub fn app::RationaleNode::clone(&self) -> Self
+impl core::cmp::Eq for app::RationaleNode
+impl core::cmp::PartialEq for app::RationaleNode
+pub fn app::RationaleNode::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RationaleNode
+pub fn app::RationaleNode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RationaleNode
+impl core::marker::Freeze for app::RationaleNode
+impl core::marker::Send for app::RationaleNode
+impl core::marker::Sync for app::RationaleNode
+impl core::marker::Unpin for app::RationaleNode
+impl core::marker::UnsafeUnpin for app::RationaleNode
+impl core::panic::unwind_safe::RefUnwindSafe for app::RationaleNode
+impl core::panic::unwind_safe::UnwindSafe for app::RationaleNode
+pub struct app::Reading<'a>
+pub app::Reading::deadline: core::option::Option<&'a kernel::deadline::Deadline>
+pub app::Reading::facts: &'a store::source::FactSource
+pub app::Reading::repo: &'a app::Repo
+pub app::Reading::snapshot: &'a git::snapshot::Snapshot
+impl<'a> app::Reading<'a>
+pub fn app::Reading<'a>::of(&'a app::Session) -> app::Reading<'a>
+pub fn app::Reading<'a>::with_deadline(self, &'a kernel::deadline::Deadline) -> app::Reading<'a>
+impl<'a> core::clone::Clone for app::Reading<'a>
+pub fn app::Reading<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for app::Reading<'a>
+pub fn app::Reading<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for app::Reading<'a>
+impl<'a> core::marker::Freeze for app::Reading<'a>
+impl<'a> core::marker::Send for app::Reading<'a>
+impl<'a> core::marker::Sync for app::Reading<'a>
+impl<'a> core::marker::Unpin for app::Reading<'a>
+impl<'a> core::marker::UnsafeUnpin for app::Reading<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for app::Reading<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for app::Reading<'a>
+pub struct app::RefGroup
+pub app::RefGroup::id_prefix: &'static str
+pub app::RefGroup::path: alloc::string::String
+pub app::RefGroup::scope_checked: bool
+pub app::RefGroup::sites: alloc::vec::Vec<app::RefSite>
+pub app::RefGroup::tier: &'static str
+pub app::RefGroup::tier_label: &'static str
+impl core::clone::Clone for app::RefGroup
+pub fn app::RefGroup::clone(&self) -> Self
+impl core::cmp::Eq for app::RefGroup
+impl core::cmp::PartialEq for app::RefGroup
+pub fn app::RefGroup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RefGroup
+pub fn app::RefGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RefGroup
+impl core::marker::Freeze for app::RefGroup
+impl core::marker::Send for app::RefGroup
+impl core::marker::Sync for app::RefGroup
+impl core::marker::Unpin for app::RefGroup
+impl core::marker::UnsafeUnpin for app::RefGroup
+impl core::panic::unwind_safe::RefUnwindSafe for app::RefGroup
+impl core::panic::unwind_safe::UnwindSafe for app::RefGroup
+pub struct app::RefListing
+pub app::RefListing::files: usize
+pub app::RefListing::limit: usize
+pub app::RefListing::rows: alloc::vec::Vec<app::RefGroup>
+pub app::RefListing::total: usize
+impl app::RefListing
+pub fn app::RefListing::files_omitted(&self) -> usize
+pub fn app::RefListing::omitted(&self) -> usize
+pub fn app::RefListing::shown(&self) -> usize
+impl core::clone::Clone for app::RefListing
+pub fn app::RefListing::clone(&self) -> Self
+impl core::cmp::Eq for app::RefListing
+impl core::cmp::PartialEq for app::RefListing
+pub fn app::RefListing::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RefListing
+pub fn app::RefListing::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RefListing
+impl core::marker::Freeze for app::RefListing
+impl core::marker::Send for app::RefListing
+impl core::marker::Sync for app::RefListing
+impl core::marker::Unpin for app::RefListing
+impl core::marker::UnsafeUnpin for app::RefListing
+impl core::panic::unwind_safe::RefUnwindSafe for app::RefListing
+impl core::panic::unwind_safe::UnwindSafe for app::RefListing
+pub struct app::RefSite
+pub app::RefSite::enclosing: alloc::string::String
+pub app::RefSite::line: u32
+pub app::RefSite::name: alloc::string::String
+pub app::RefSite::stable_id: core::option::Option<alloc::string::String>
+impl core::clone::Clone for app::RefSite
+pub fn app::RefSite::clone(&self) -> Self
+impl core::cmp::Eq for app::RefSite
+impl core::cmp::PartialEq for app::RefSite
+pub fn app::RefSite::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RefSite
+pub fn app::RefSite::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RefSite
+impl core::marker::Freeze for app::RefSite
+impl core::marker::Send for app::RefSite
+impl core::marker::Sync for app::RefSite
+impl core::marker::Unpin for app::RefSite
+impl core::marker::UnsafeUnpin for app::RefSite
+impl core::panic::unwind_safe::RefUnwindSafe for app::RefSite
+impl core::panic::unwind_safe::UnwindSafe for app::RefSite
+pub struct app::RefsRequest
+pub app::RefsRequest::limit: app::IntArg
+pub app::RefsRequest::shared_callers: bool
+pub app::RefsRequest::target: alloc::string::String
+impl core::clone::Clone for app::RefsRequest
+pub fn app::RefsRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::RefsRequest
+impl core::cmp::PartialEq for app::RefsRequest
+pub fn app::RefsRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RefsRequest
+pub fn app::RefsRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RefsRequest
+impl core::marker::Freeze for app::RefsRequest
+impl core::marker::Send for app::RefsRequest
+impl core::marker::Sync for app::RefsRequest
+impl core::marker::Unpin for app::RefsRequest
+impl core::marker::UnsafeUnpin for app::RefsRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::RefsRequest
+impl core::panic::unwind_safe::UnwindSafe for app::RefsRequest
+pub struct app::RefsResult
+pub app::RefsResult::groups: app::RefListing
+pub app::RefsResult::scanned: core::option::Option<usize>
+pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>
+pub app::RefsResult::shared_callers: bool
+pub app::RefsResult::skipped: alloc::vec::Vec<app::Skipped>
+pub app::RefsResult::target: alloc::string::String
+pub app::RefsResult::target_resolved: bool
+impl core::clone::Clone for app::RefsResult
+pub fn app::RefsResult::clone(&self) -> Self
+impl core::cmp::PartialEq for app::RefsResult
+pub fn app::RefsResult::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RefsResult
+pub fn app::RefsResult::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RefsResult
+impl core::marker::Freeze for app::RefsResult
+impl core::marker::Send for app::RefsResult
+impl core::marker::Sync for app::RefsResult
+impl core::marker::Unpin for app::RefsResult
+impl core::marker::UnsafeUnpin for app::RefsResult
+impl core::panic::unwind_safe::RefUnwindSafe for app::RefsResult
+impl core::panic::unwind_safe::UnwindSafe for app::RefsResult
+pub struct app::Repo
+pub app::Repo::config: io::config::ProjectConfig
+pub app::Repo::root: std::path::PathBuf
+impl app::Repo
+pub fn app::Repo::load(&app::Services, &std::path::Path) -> core::result::Result<app::Repo, app::Error>
+impl core::clone::Clone for app::Repo
+pub fn app::Repo::clone(&self) -> Self
+impl core::fmt::Debug for app::Repo
+pub fn app::Repo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for app::Repo
+impl core::marker::Send for app::Repo
+impl core::marker::Sync for app::Repo
+impl core::marker::Unpin for app::Repo
+impl core::marker::UnsafeUnpin for app::Repo
+impl core::panic::unwind_safe::RefUnwindSafe for app::Repo
+impl core::panic::unwind_safe::UnwindSafe for app::Repo
+pub struct app::Roots
+pub app::Roots::client: alloc::vec::Vec<alloc::string::String>
+pub app::Roots::configured: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+impl core::clone::Clone for app::Roots
+pub fn app::Roots::clone(&self) -> Self
+impl core::cmp::Eq for app::Roots
+impl core::cmp::PartialEq for app::Roots
+pub fn app::Roots::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Roots
+pub fn app::Roots::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Roots
+impl serde_core::ser::Serialize for app::Roots
+pub fn app::Roots::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for app::Roots
+impl core::marker::Send for app::Roots
+impl core::marker::Sync for app::Roots
+impl core::marker::Unpin for app::Roots
+impl core::marker::UnsafeUnpin for app::Roots
+impl core::panic::unwind_safe::RefUnwindSafe for app::Roots
+impl core::panic::unwind_safe::UnwindSafe for app::Roots
+pub struct app::RunHeader
+pub app::RunHeader::allow_test_config_edits: bool
+pub app::RunHeader::baseline: app::BaselineStatus
+pub app::RunHeader::baseline_detail: alloc::string::String
+pub app::RunHeader::baseline_failures: usize
+pub app::RunHeader::baseline_run: core::option::Option<io::testrun::RunResult>
+pub app::RunHeader::budget_truncated: bool
+pub app::RunHeader::candidates: usize
+pub app::RunHeader::jobs: usize
+pub app::RunHeader::repeat_baseline: usize
+pub app::RunHeader::repro_baseline_run: core::option::Option<io::testrun::RunResult>
+pub app::RunHeader::repro_cmd: core::option::Option<alloc::string::String>
+pub app::RunHeader::repro_verdict: app::ReproVerdict
+pub app::RunHeader::test_cmd: alloc::string::String
+pub app::RunHeader::timeout: usize
+impl app::RunHeader
+pub fn app::RunHeader::flaky_baseline(&self) -> bool
+pub fn app::RunHeader::repro_valid(&self) -> bool
+impl core::clone::Clone for app::RunHeader
+pub fn app::RunHeader::clone(&self) -> Self
+impl core::cmp::PartialEq for app::RunHeader
+pub fn app::RunHeader::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::RunHeader
+pub fn app::RunHeader::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::RunHeader
+impl core::marker::Freeze for app::RunHeader
+impl core::marker::Send for app::RunHeader
+impl core::marker::Sync for app::RunHeader
+impl core::marker::Unpin for app::RunHeader
+impl core::marker::UnsafeUnpin for app::RunHeader
+impl core::panic::unwind_safe::RefUnwindSafe for app::RunHeader
+impl core::panic::unwind_safe::UnwindSafe for app::RunHeader
+pub struct app::Services
+pub app::Services::cache_root: core::result::Result<io::cache::CacheRoot, io::cache::HomeUnknown>
+pub app::Services::clock: alloc::rcs::arc::Arc<dyn kernel::clock::Clock>
+pub app::Services::counter: alloc::rcs::arc::Arc<dyn app::TokenCounter>
+pub app::Services::cwd: core::result::Result<std::path::PathBuf, app::UnreadCwd>
+pub app::Services::git: git::run::Git
+pub app::Services::home: core::option::Option<std::ffi::os_str::OsString>
+pub app::Services::max_cache_bytes: core::option::Option<std::ffi::os_str::OsString>
+pub app::Services::walk_budget: core::time::Duration
+impl app::Services
+pub fn app::Services::new(&app::EnvConfig) -> Self
+impl core::clone::Clone for app::Services
+pub fn app::Services::clone(&self) -> Self
+impl core::marker::Freeze for app::Services
+impl core::marker::Send for app::Services
+impl core::marker::Sync for app::Services
+impl core::marker::Unpin for app::Services
+impl core::marker::UnsafeUnpin for app::Services
+impl !core::panic::unwind_safe::RefUnwindSafe for app::Services
+impl !core::panic::unwind_safe::UnwindSafe for app::Services
+pub struct app::Session
+pub app::Session::cache: app::CacheReport
+pub app::Session::facts: store::source::FactSource
+pub app::Session::repo: app::Repo
+pub app::Session::snapshot: git::snapshot::Snapshot
+pub app::Session::tags: app::Tags
+impl app::Session
+pub fn app::Session::open(&app::Services, app::Repo, bool) -> app::Opening
+pub fn app::Session::open_facts(&app::Services, app::Repo, bool) -> app::Opening
+impl core::fmt::Debug for app::Session
+pub fn app::Session::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for app::Session
+impl core::marker::Send for app::Session
+impl core::marker::Sync for app::Session
+impl core::marker::Unpin for app::Session
+impl core::marker::UnsafeUnpin for app::Session
+impl !core::panic::unwind_safe::RefUnwindSafe for app::Session
+impl !core::panic::unwind_safe::UnwindSafe for app::Session
+pub struct app::SharedCaller
+pub app::SharedCaller::callers: alloc::vec::Vec<app::CallerRef>
+pub app::SharedCaller::in_tests: bool
+pub app::SharedCaller::line: u32
+pub app::SharedCaller::overlap: usize
+pub app::SharedCaller::path: alloc::string::String
+pub app::SharedCaller::score: f64
+pub app::SharedCaller::shared_files: usize
+pub app::SharedCaller::stable_id: alloc::string::String
+impl core::clone::Clone for app::SharedCaller
+pub fn app::SharedCaller::clone(&self) -> Self
+impl core::cmp::PartialEq for app::SharedCaller
+pub fn app::SharedCaller::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::SharedCaller
+pub fn app::SharedCaller::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::SharedCaller
+impl core::marker::Freeze for app::SharedCaller
+impl core::marker::Send for app::SharedCaller
+impl core::marker::Sync for app::SharedCaller
+impl core::marker::Unpin for app::SharedCaller
+impl core::marker::UnsafeUnpin for app::SharedCaller
+impl core::panic::unwind_safe::RefUnwindSafe for app::SharedCaller
+impl core::panic::unwind_safe::UnwindSafe for app::SharedCaller
+pub struct app::SkeletonRequest
+pub app::SkeletonRequest::docstrings: core::option::Option<bool>
+pub app::SkeletonRequest::numbered: bool
+pub app::SkeletonRequest::paths: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::SkeletonRequest
+pub fn app::SkeletonRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::SkeletonRequest
+impl core::cmp::PartialEq for app::SkeletonRequest
+pub fn app::SkeletonRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::SkeletonRequest
+pub fn app::SkeletonRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::SkeletonRequest
+impl core::marker::Freeze for app::SkeletonRequest
+impl core::marker::Send for app::SkeletonRequest
+impl core::marker::Sync for app::SkeletonRequest
+impl core::marker::Unpin for app::SkeletonRequest
+impl core::marker::UnsafeUnpin for app::SkeletonRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::SkeletonRequest
+impl core::panic::unwind_safe::UnwindSafe for app::SkeletonRequest
+pub struct app::Skipped
+pub app::Skipped::path: alloc::string::String
+pub app::Skipped::reason: alloc::string::String
+impl core::clone::Clone for app::Skipped
+pub fn app::Skipped::clone(&self) -> Self
+impl core::cmp::Eq for app::Skipped
+impl core::cmp::PartialEq for app::Skipped
+pub fn app::Skipped::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Skipped
+pub fn app::Skipped::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Skipped
+impl core::marker::Freeze for app::Skipped
+impl core::marker::Send for app::Skipped
+impl core::marker::Sync for app::Skipped
+impl core::marker::Unpin for app::Skipped
+impl core::marker::UnsafeUnpin for app::Skipped
+impl core::panic::unwind_safe::RefUnwindSafe for app::Skipped
+impl core::panic::unwind_safe::UnwindSafe for app::Skipped
+pub struct app::SliceRequest
+pub app::SliceRequest::context: app::IntArg
+pub app::SliceRequest::path: alloc::string::String
+pub app::SliceRequest::ranges: alloc::vec::Vec<(usize, usize)>
+impl core::clone::Clone for app::SliceRequest
+pub fn app::SliceRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::SliceRequest
+impl core::cmp::PartialEq for app::SliceRequest
+pub fn app::SliceRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::SliceRequest
+pub fn app::SliceRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::SliceRequest
+impl core::marker::Freeze for app::SliceRequest
+impl core::marker::Send for app::SliceRequest
+impl core::marker::Sync for app::SliceRequest
+impl core::marker::Unpin for app::SliceRequest
+impl core::marker::UnsafeUnpin for app::SliceRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::SliceRequest
+impl core::panic::unwind_safe::UnwindSafe for app::SliceRequest
+pub struct app::SymbolCard
+pub app::SymbolCard::body: alloc::string::String
+pub app::SymbolCard::body_shown: usize
+pub app::SymbolCard::body_total: usize
+pub app::SymbolCard::end_line: u32
+pub app::SymbolCard::kind: &'static str
+pub app::SymbolCard::language: &'static str
+pub app::SymbolCard::parent_class: alloc::string::String
+pub app::SymbolCard::path: alloc::string::String
+pub app::SymbolCard::signature: alloc::string::String
+pub app::SymbolCard::stable_id: alloc::string::String
+pub app::SymbolCard::start_line: u32
+impl core::clone::Clone for app::SymbolCard
+pub fn app::SymbolCard::clone(&self) -> Self
+impl core::cmp::Eq for app::SymbolCard
+impl core::cmp::PartialEq for app::SymbolCard
+pub fn app::SymbolCard::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::SymbolCard
+pub fn app::SymbolCard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::SymbolCard
+impl core::marker::Freeze for app::SymbolCard
+impl core::marker::Send for app::SymbolCard
+impl core::marker::Sync for app::SymbolCard
+impl core::marker::Unpin for app::SymbolCard
+impl core::marker::UnsafeUnpin for app::SymbolCard
+impl core::panic::unwind_safe::RefUnwindSafe for app::SymbolCard
+impl core::panic::unwind_safe::UnwindSafe for app::SymbolCard
+pub struct app::Tags
+impl app::Tags
+pub fn app::Tags::open(&app::Services, &app::Repo) -> app::Noted<core::result::Result<app::Tags, app::Error>>
+impl core::fmt::Debug for app::Tags
+pub fn app::Tags::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for app::Tags
+impl core::marker::Send for app::Tags
+impl core::marker::Sync for app::Tags
+impl core::marker::Unpin for app::Tags
+impl core::marker::UnsafeUnpin for app::Tags
+impl core::panic::unwind_safe::RefUnwindSafe for app::Tags
+impl core::panic::unwind_safe::UnwindSafe for app::Tags
+pub struct app::TierGroup
+pub app::TierGroup::rows: alloc::vec::Vec<app::EdgeRow>
+pub app::TierGroup::tier: &'static str
+pub app::TierGroup::tier_label: &'static str
+pub app::TierGroup::total: usize
+impl core::clone::Clone for app::TierGroup
+pub fn app::TierGroup::clone(&self) -> Self
+impl core::cmp::Eq for app::TierGroup
+impl core::cmp::PartialEq for app::TierGroup
+pub fn app::TierGroup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::TierGroup
+pub fn app::TierGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::TierGroup
+impl core::marker::Freeze for app::TierGroup
+impl core::marker::Send for app::TierGroup
+impl core::marker::Sync for app::TierGroup
+impl core::marker::Unpin for app::TierGroup
+impl core::marker::UnsafeUnpin for app::TierGroup
+impl core::panic::unwind_safe::RefUnwindSafe for app::TierGroup
+impl core::panic::unwind_safe::UnwindSafe for app::TierGroup
+pub struct app::TreeRequest
+pub app::TreeRequest::depth: app::IntArg
+pub app::TreeRequest::max_entries: app::IntArg
+impl core::clone::Clone for app::TreeRequest
+pub fn app::TreeRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::TreeRequest
+impl core::cmp::PartialEq for app::TreeRequest
+pub fn app::TreeRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::TreeRequest
+pub fn app::TreeRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::TreeRequest
+impl core::marker::Freeze for app::TreeRequest
+impl core::marker::Send for app::TreeRequest
+impl core::marker::Sync for app::TreeRequest
+impl core::marker::Unpin for app::TreeRequest
+impl core::marker::UnsafeUnpin for app::TreeRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::TreeRequest
+impl core::panic::unwind_safe::UnwindSafe for app::TreeRequest
+pub struct app::TreeView
+pub app::TreeView::depth: usize
+pub app::TreeView::file_count: usize
+pub app::TreeView::max_entries: usize
+pub app::TreeView::text: alloc::string::String
+impl core::clone::Clone for app::TreeView
+pub fn app::TreeView::clone(&self) -> Self
+impl core::cmp::Eq for app::TreeView
+impl core::cmp::PartialEq for app::TreeView
+pub fn app::TreeView::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::TreeView
+pub fn app::TreeView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::TreeView
+impl core::marker::Freeze for app::TreeView
+impl core::marker::Send for app::TreeView
+impl core::marker::Sync for app::TreeView
+impl core::marker::Unpin for app::TreeView
+impl core::marker::UnsafeUnpin for app::TreeView
+impl core::panic::unwind_safe::RefUnwindSafe for app::TreeView
+impl core::panic::unwind_safe::UnwindSafe for app::TreeView
+pub struct app::UnreadCwd
+impl app::UnreadCwd
+pub fn app::UnreadCwd::error(&self) -> core::io::error::Error
+impl core::clone::Clone for app::UnreadCwd
+pub fn app::UnreadCwd::clone(&self) -> Self
+impl core::cmp::Eq for app::UnreadCwd
+impl core::cmp::PartialEq for app::UnreadCwd
+pub fn app::UnreadCwd::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::UnreadCwd
+pub fn app::UnreadCwd::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for app::UnreadCwd
+pub fn app::UnreadCwd::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::UnreadCwd
+impl core::marker::Freeze for app::UnreadCwd
+impl core::marker::Send for app::UnreadCwd
+impl core::marker::Sync for app::UnreadCwd
+impl core::marker::Unpin for app::UnreadCwd
+impl core::marker::UnsafeUnpin for app::UnreadCwd
+impl core::panic::unwind_safe::RefUnwindSafe for app::UnreadCwd
+impl core::panic::unwind_safe::UnwindSafe for app::UnreadCwd
+pub struct app::ValidateReport
+pub app::ValidateReport::deadline_expired: bool
+pub app::ValidateReport::header: app::RunHeader
+pub app::ValidateReport::verdicts: alloc::vec::Vec<app::CandidateVerdict>
+impl app::ValidateReport
+pub fn app::ValidateReport::any_passed(&self) -> bool
+pub fn app::ValidateReport::jsonl<R: serde_core::ser::Serialize + ?core::marker::Sized>(&self, &R) -> alloc::string::String
+pub fn app::ValidateReport::summary_line(&self) -> alloc::string::String
+impl app::ValidateReport
+pub fn app::ValidateReport::warnings(&self) -> alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::ValidateReport
+pub fn app::ValidateReport::clone(&self) -> Self
+impl core::cmp::PartialEq for app::ValidateReport
+pub fn app::ValidateReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ValidateReport
+pub fn app::ValidateReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ValidateReport
+impl core::marker::Freeze for app::ValidateReport
+impl core::marker::Send for app::ValidateReport
+impl core::marker::Sync for app::ValidateReport
+impl core::marker::Unpin for app::ValidateReport
+impl core::marker::UnsafeUnpin for app::ValidateReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::ValidateReport
+impl core::panic::unwind_safe::UnwindSafe for app::ValidateReport
+pub struct app::ValidateRequest
+pub app::ValidateRequest::allow_repo_test_cmd: bool
+pub app::ValidateRequest::allow_test_config_edits: bool
+pub app::ValidateRequest::candidates: std::path::PathBuf
+pub app::ValidateRequest::jobs: app::IntArg
+pub app::ValidateRequest::pass_env: alloc::vec::Vec<alloc::string::String>
+pub app::ValidateRequest::repeat_baseline: app::IntArg
+pub app::ValidateRequest::repro_cmd: core::option::Option<alloc::string::String>
+pub app::ValidateRequest::run_timeout: core::option::Option<app::IntArg>
+pub app::ValidateRequest::test_cmd: alloc::string::String
+pub app::ValidateRequest::test_cmd_from_repo: bool
+pub app::ValidateRequest::timeout: app::IntArg
+impl core::clone::Clone for app::ValidateRequest
+pub fn app::ValidateRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::ValidateRequest
+impl core::cmp::PartialEq for app::ValidateRequest
+pub fn app::ValidateRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::ValidateRequest
+pub fn app::ValidateRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::ValidateRequest
+impl core::marker::Freeze for app::ValidateRequest
+impl core::marker::Send for app::ValidateRequest
+impl core::marker::Sync for app::ValidateRequest
+impl core::marker::Unpin for app::ValidateRequest
+impl core::marker::UnsafeUnpin for app::ValidateRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::ValidateRequest
+impl core::panic::unwind_safe::UnwindSafe for app::ValidateRequest
+pub struct app::Vote
+pub app::Vote::report: patch::vote::VoteReport
+pub app::Vote::verdicts: app::LoadedVerdicts
+impl core::clone::Clone for app::Vote
+pub fn app::Vote::clone(&self) -> Self
+impl core::cmp::Eq for app::Vote
+impl core::cmp::PartialEq for app::Vote
+pub fn app::Vote::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::Vote
+pub fn app::Vote::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::Vote
+impl core::marker::Freeze for app::Vote
+impl core::marker::Send for app::Vote
+impl core::marker::Sync for app::Vote
+impl core::marker::Unpin for app::Vote
+impl core::marker::UnsafeUnpin for app::Vote
+impl core::panic::unwind_safe::RefUnwindSafe for app::Vote
+impl core::panic::unwind_safe::UnwindSafe for app::Vote
+pub struct app::WarmupReport
+pub app::WarmupReport::pack_version: &'static str
+pub app::WarmupReport::requested: bool
+pub app::WarmupReport::rows: alloc::vec::Vec<app::WarmupRow>
+impl app::WarmupReport
+pub fn app::WarmupReport::degraded(&self) -> impl core::iter::traits::iterator::Iterator<Item = &app::WarmupRow>
+pub fn app::WarmupReport::fatal(&self) -> usize
+impl core::clone::Clone for app::WarmupReport
+pub fn app::WarmupReport::clone(&self) -> Self
+impl core::cmp::Eq for app::WarmupReport
+impl core::cmp::PartialEq for app::WarmupReport
+pub fn app::WarmupReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::WarmupReport
+pub fn app::WarmupReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::WarmupReport
+impl core::marker::Freeze for app::WarmupReport
+impl core::marker::Send for app::WarmupReport
+impl core::marker::Sync for app::WarmupReport
+impl core::marker::Unpin for app::WarmupReport
+impl core::marker::UnsafeUnpin for app::WarmupReport
+impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupReport
+impl core::panic::unwind_safe::UnwindSafe for app::WarmupReport
+pub struct app::WarmupRequest
+pub app::WarmupRequest::languages: alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for app::WarmupRequest
+pub fn app::WarmupRequest::clone(&self) -> Self
+impl core::cmp::Eq for app::WarmupRequest
+impl core::cmp::PartialEq for app::WarmupRequest
+pub fn app::WarmupRequest::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::WarmupRequest
+pub fn app::WarmupRequest::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for app::WarmupRequest
+impl core::marker::Freeze for app::WarmupRequest
+impl core::marker::Send for app::WarmupRequest
+impl core::marker::Sync for app::WarmupRequest
+impl core::marker::Unpin for app::WarmupRequest
+impl core::marker::UnsafeUnpin for app::WarmupRequest
+impl core::panic::unwind_safe::RefUnwindSafe for app::WarmupRequest
+impl core::panic::unwind_safe::UnwindSafe for app::WarmupRequest
+pub const app::CAPS: [(&str, app::CapValue); 27]
+pub const app::CHECKS: [app::LintCheck; 10]
+pub const app::COVERAGE: &str
+pub const app::DEFAULT_JOBS: usize
+pub const app::DEFAULT_REPEAT_BASELINE: usize
+pub const app::DEFAULT_TIMEOUT_SECONDS: usize
+pub const app::GRAMMAR_CACHE: &str
+pub const app::MAX_CONFIG_WARNINGS: u64
+pub const app::MAX_OUTPUT_TOKENS: u64
+pub const app::MODULE_LEVEL: &str
+pub const app::NOT_UTF8: &str
+pub const app::NO_SUCH_FILE: &str
+pub const app::ROW_INDENT: &str
+pub const app::WALK_BUDGET: core::time::Duration
+pub trait app::TestRunner: core::marker::Sync
+pub fn app::TestRunner::interrupted(&self) -> bool
+pub fn app::TestRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
+impl app::TestRunner for app::EnvRunner
+pub fn app::EnvRunner::interrupted(&self) -> bool
+pub fn app::EnvRunner::run(&self, &io::testrun::TestCommand<'_>) -> core::result::Result<io::testrun::TestRun, io::testrun::TestRunError>
+pub trait app::TokenCounter: core::marker::Send + core::marker::Sync
+pub fn app::TokenCounter::count(&self, &str) -> usize
+impl app::TokenCounter for app::Chars4
+pub fn app::Chars4::count(&self, &str) -> usize
+impl app::TokenCounter for app::Cl100k
+pub fn app::Cl100k::count(&self, &str) -> usize
+pub fn app::apply_patch(&app::Services, &app::Repo, &git::snapshot::Snapshot, &[patch::blocks::Edit], app::ApplyMode) -> app::Noted<core::result::Result<app::ApplyReport, app::Error>>
+pub fn app::body_map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::BodyMapResult, app::Error>>
+pub fn app::capabilities(&app::Session) -> core::result::Result<app::Capabilities<'_>, app::Error>
+pub fn app::cards_text(&[app::SymbolCard]) -> alloc::string::String
+pub fn app::check_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::CheckReport, app::Error>
+pub fn app::communities(&app::Services, &app::Reading<'_>, &app::CommunitiesRequest) -> app::Noted<core::result::Result<app::CommunityReport, app::Error>>
+pub fn app::config_warnings(&io::config::ProjectConfig) -> alloc::vec::Vec<alloc::string::String>
+pub fn app::cycles(&app::Services, &app::Reading<'_>, &app::CyclesRequest) -> app::Noted<core::result::Result<app::CycleReport, app::Error>>
+pub fn app::diagram(&app::Services, &app::Reading<'_>, &app::DiagramRequest) -> app::Noted<core::result::Result<app::DiagramView, app::Error>>
+pub fn app::expand(&app::Services, &app::Reading<'_>, &app::ExpandRequest) -> app::Noted<core::result::Result<app::ExpandResult, app::Error>>
+pub fn app::expand_user(&std::path::Path, core::option::Option<&std::ffi::os_str::OsStr>) -> std::path::PathBuf
+pub fn app::explain(&app::Services, &app::Reading<'_>, &app::ExplainRequest) -> app::Noted<core::result::Result<app::Explanation, app::Error>>
+pub fn app::file_site(&str, u32) -> alloc::string::String
+pub fn app::find(&app::Services, &app::Reading<'_>, &app::FindRequest) -> app::Noted<core::result::Result<app::FindResult, app::Error>>
+pub fn app::guide_text() -> &'static str
+pub fn app::health(&app::Services, &app::Reading<'_>, &app::HealthRequest) -> app::Noted<core::result::Result<app::HealthReport, app::Error>>
+pub fn app::history(&app::Services, &app::Reading<'_>, &app::HistoryRequest) -> app::Noted<core::result::Result<app::HistoryResult, app::Error>>
+pub fn app::history_entry_text(&app::HistoryEntry) -> alloc::string::String
+pub fn app::html(&app::Services, &app::Reading<'_>, &app::HtmlRequest) -> app::Noted<core::result::Result<app::HtmlGraph, app::Error>>
+pub fn app::in_metric_scope(&str) -> bool
+pub fn app::index(&app::Services, &app::Repo, &git::snapshot::Snapshot, &app::IndexRequest) -> app::Noted<core::result::Result<store::report::IndexReport, app::Error>>
+pub fn app::is_fixture_path(&str) -> bool
+pub fn app::is_test_path(&str) -> bool
+pub fn app::lint(&app::Services, &app::Repo, &app::Tags, &app::LintRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
+pub fn app::lint_candidates(&app::Services, &app::Session, &app::CandidatesRequest) -> app::Noted<core::result::Result<app::LintReport, app::Error>>
+pub fn app::load_edits(&str) -> core::result::Result<patch::blocks::ParseResult, app::Error>
+pub fn app::load_lint_candidates(&app::Services, &std::path::Path) -> core::result::Result<alloc::vec::Vec<app::LintCandidateInput>, app::Error>
+pub fn app::load_lint_diff(&app::Services, &std::path::Path) -> core::result::Result<app::LintCandidateInput, app::Error>
+pub fn app::load_verdicts(&str) -> core::result::Result<app::LoadedVerdicts, app::Error>
+pub fn app::locate_symbol(&app::Reading<'_>, &app::LocateRequest) -> app::Noted<core::result::Result<app::LocationView, app::Error>>
+pub fn app::locator(&str, &str, core::option::Option<&str>) -> alloc::string::String
+pub fn app::map(&app::Services, &app::Reading<'_>, &app::MapRequest) -> app::Noted<core::result::Result<app::MapResult, app::Error>>
+pub fn app::map_rows_text(&[app::MapFile]) -> alloc::string::String
+pub fn app::normalize_patch(&app::Repo, &[patch::blocks::Edit]) -> core::result::Result<app::NormalizeReport, app::Error>
+pub fn app::omitted_line(usize, &str, usize) -> alloc::string::String
+pub fn app::path(&app::Services, &app::Reading<'_>, &app::PathRequest) -> app::Noted<core::result::Result<app::PathTrace, app::Error>>
+pub fn app::rationale_nodes(syntax::language::Language, &str, &facts::values::Symbol) -> alloc::vec::Vec<app::RationaleNode>
+pub fn app::refs(&app::Services, &app::Reading<'_>, &app::RefsRequest) -> app::Noted<core::result::Result<app::RefsResult, app::Error>>
+pub fn app::repo_generation(&app::Services, &std::path::Path, core::option::Option<&str>) -> app::Noted<core::result::Result<alloc::string::String, app::Error>>
+pub fn app::resolve(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
+pub fn app::resolve_in_git(&app::Services, core::option::Option<&std::path::Path>) -> core::result::Result<app::Repo, app::Error>
+pub fn app::resolve_locations(&app::Reading<'_>, &app::LocsRequest) -> app::Noted<core::result::Result<app::LocationView, app::Error>>
+pub fn app::section_names() -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
+pub fn app::section_text(&str) -> core::option::Option<&'static str>
+pub fn app::skeleton(&app::Reading<'_>, &app::SkeletonRequest) -> alloc::vec::Vec<app::FileView>
+pub fn app::slice(&app::Reading<'_>, &app::SliceRequest) -> app::Noted<core::result::Result<app::FileView, app::Error>>
+pub fn app::stable_ids_line(&str, &str) -> alloc::string::String
+pub fn app::subtree(&app::Services, &app::Repo, core::option::Option<&str>, &app::TreeRequest) -> app::Noted<core::result::Result<app::TreeView, app::Error>>
+pub fn app::symbol_card(syntax::language::Language, &str, &facts::values::Symbol, alloc::string::String) -> app::SymbolCard
+pub fn app::tree(&app::Services, &app::Repo, &app::TreeRequest) -> app::Noted<core::result::Result<app::TreeView, app::Error>>
+pub fn app::unknown_check_refusal(&[alloc::string::String]) -> core::option::Option<alloc::string::String>
+pub fn app::unknown_section(&text::code_point_string::CodePointString) -> alloc::string::String
+pub fn app::validate(&app::Services, &app::Repo, &git::snapshot::Snapshot, &app::ValidateRequest, &dyn app::TestRunner) -> app::Noted<core::result::Result<app::ValidateReport, app::Error>>
+pub fn app::vote(&str) -> core::result::Result<app::Vote, app::Error>
+pub fn app::warmup(&app::WarmupRequest) -> app::WarmupReport

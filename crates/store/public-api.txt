@@ -1,0 +1,715 @@
+pub mod store
+pub enum store::CacheState
+pub store::CacheState::Absent
+pub store::CacheState::Absent::note: core::option::Option<store::Refusal>
+pub store::CacheState::Bypassed
+pub store::CacheState::Indexed
+pub store::CacheState::Indexed::generation: alloc::string::String
+pub store::CacheState::Indexed::repo_generation: alloc::string::String
+pub store::CacheState::Indexed::repo_root: alloc::string::String
+impl core::clone::Clone for store::CacheState
+pub fn store::CacheState::clone(&self) -> Self
+impl core::cmp::Eq for store::CacheState
+impl core::cmp::PartialEq for store::CacheState
+pub fn store::CacheState::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::CacheState
+pub fn store::CacheState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::CacheState
+impl core::marker::Freeze for store::CacheState
+impl core::marker::Send for store::CacheState
+impl core::marker::Sync for store::CacheState
+impl core::marker::Unpin for store::CacheState
+impl core::marker::UnsafeUnpin for store::CacheState
+impl core::panic::unwind_safe::RefUnwindSafe for store::CacheState
+impl core::panic::unwind_safe::UnwindSafe for store::CacheState
+pub enum store::Discarded
+pub store::Discarded::Failed(store::DiscardFailure)
+pub store::Discarded::LeftInPlace
+pub store::Discarded::Removed
+impl core::fmt::Debug for store::Discarded
+pub fn store::Discarded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::Discarded
+impl core::marker::Send for store::Discarded
+impl core::marker::Sync for store::Discarded
+impl core::marker::Unpin for store::Discarded
+impl core::marker::UnsafeUnpin for store::Discarded
+impl !core::panic::unwind_safe::RefUnwindSafe for store::Discarded
+impl !core::panic::unwind_safe::UnwindSafe for store::Discarded
+pub enum store::Freshness
+pub store::Freshness::Current
+pub store::Freshness::Refused(store::Refusal)
+pub store::Freshness::Stale
+impl core::clone::Clone for store::Freshness
+pub fn store::Freshness::clone(&self) -> Self
+impl core::cmp::Eq for store::Freshness
+impl core::cmp::PartialEq for store::Freshness
+pub fn store::Freshness::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Freshness
+pub fn store::Freshness::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Freshness
+impl core::marker::Freeze for store::Freshness
+impl core::marker::Send for store::Freshness
+impl core::marker::Sync for store::Freshness
+impl core::marker::Unpin for store::Freshness
+impl core::marker::UnsafeUnpin for store::Freshness
+impl core::panic::unwind_safe::RefUnwindSafe for store::Freshness
+impl core::panic::unwind_safe::UnwindSafe for store::Freshness
+pub enum store::Lookup
+pub store::Lookup::Hit(alloc::vec::Vec<metrics::Block>)
+pub store::Lookup::Miss
+pub store::Lookup::Unmeasured(alloc::string::String)
+pub store::Lookup::Unreadable(store::RowFailure)
+impl core::clone::Clone for store::Lookup
+pub fn store::Lookup::clone(&self) -> Self
+impl core::cmp::Eq for store::Lookup
+impl core::cmp::PartialEq for store::Lookup
+pub fn store::Lookup::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Lookup
+pub fn store::Lookup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Lookup
+impl core::marker::Freeze for store::Lookup
+impl core::marker::Send for store::Lookup
+impl core::marker::Sync for store::Lookup
+impl core::marker::Unpin for store::Lookup
+impl core::marker::UnsafeUnpin for store::Lookup
+impl core::panic::unwind_safe::RefUnwindSafe for store::Lookup
+impl core::panic::unwind_safe::UnwindSafe for store::Lookup
+pub enum store::Read
+pub store::Read::Oversize
+pub store::Read::Oversize::size: u64
+pub store::Read::Text(store::FileText)
+pub store::Read::Unreadable
+pub store::Read::Unreadable::reason: alloc::string::String
+impl core::clone::Clone for store::Read
+pub fn store::Read::clone(&self) -> Self
+impl core::cmp::Eq for store::Read
+impl core::cmp::PartialEq for store::Read
+pub fn store::Read::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Read
+pub fn store::Read::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Read
+impl core::marker::Freeze for store::Read
+impl core::marker::Send for store::Read
+impl core::marker::Sync for store::Read
+impl core::marker::Unpin for store::Read
+impl core::marker::UnsafeUnpin for store::Read
+impl core::panic::unwind_safe::RefUnwindSafe for store::Read
+impl core::panic::unwind_safe::UnwindSafe for store::Read
+pub enum store::Refusal
+pub store::Refusal::Corrupt(store::SqlError)
+pub store::Refusal::NewerSchema
+pub store::Refusal::NewerSchema::expected: u16
+pub store::Refusal::NewerSchema::found: i64
+pub store::Refusal::NoIndex
+pub store::Refusal::OtherAnalysis
+pub store::Refusal::OtherRepository
+pub store::Refusal::OtherRepository::repo_root: alloc::string::String
+pub store::Refusal::Schema
+pub store::Refusal::Schema::expected: u16
+pub store::Refusal::Schema::found: i64
+pub store::Refusal::Unreadable(store::SqlError)
+impl store::Refusal
+pub fn store::Refusal::discards(&self) -> bool
+impl core::clone::Clone for store::Refusal
+pub fn store::Refusal::clone(&self) -> Self
+impl core::cmp::Eq for store::Refusal
+impl core::cmp::PartialEq for store::Refusal
+pub fn store::Refusal::eq(&self, &Self) -> bool
+impl core::convert::From<store::SqlError> for store::Refusal
+pub fn store::Refusal::from(store::SqlError) -> Self
+impl core::fmt::Debug for store::Refusal
+pub fn store::Refusal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for store::Refusal
+pub fn store::Refusal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Refusal
+impl core::marker::Freeze for store::Refusal
+impl core::marker::Send for store::Refusal
+impl core::marker::Sync for store::Refusal
+impl core::marker::Unpin for store::Refusal
+impl core::marker::UnsafeUnpin for store::Refusal
+impl core::panic::unwind_safe::RefUnwindSafe for store::Refusal
+impl core::panic::unwind_safe::UnwindSafe for store::Refusal
+pub enum store::Source
+pub store::Source::Absent
+pub store::Source::Bypassed
+pub store::Source::Refused(store::Refusal)
+pub store::Source::Usable(store::FactsDb)
+impl core::fmt::Debug for store::Source
+pub fn store::Source::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for store::Source
+impl core::marker::Send for store::Source
+impl core::marker::Sync for store::Source
+impl core::marker::Unpin for store::Source
+impl core::marker::UnsafeUnpin for store::Source
+impl core::panic::unwind_safe::RefUnwindSafe for store::Source
+impl core::panic::unwind_safe::UnwindSafe for store::Source
+pub enum store::SqlClass
+pub store::SqlClass::Data
+pub store::SqlClass::Database
+pub store::SqlClass::Integrity
+pub store::SqlClass::Interface
+pub store::SqlClass::Internal
+pub store::SqlClass::JsonDecode
+pub store::SqlClass::Operational
+pub store::SqlClass::Type
+pub store::SqlClass::Value
+impl core::clone::Clone for store::SqlClass
+pub fn store::SqlClass::clone(&self) -> Self
+impl core::cmp::Eq for store::SqlClass
+impl core::cmp::PartialEq for store::SqlClass
+pub fn store::SqlClass::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::SqlClass
+pub fn store::SqlClass::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for store::SqlClass
+impl core::marker::StructuralPartialEq for store::SqlClass
+impl core::marker::Freeze for store::SqlClass
+impl core::marker::Send for store::SqlClass
+impl core::marker::Sync for store::SqlClass
+impl core::marker::Unpin for store::SqlClass
+impl core::marker::UnsafeUnpin for store::SqlClass
+impl core::panic::unwind_safe::RefUnwindSafe for store::SqlClass
+impl core::panic::unwind_safe::UnwindSafe for store::SqlClass
+pub enum store::WriteError
+pub store::WriteError::Io(core::io::error::Error)
+pub store::WriteError::Locked
+pub store::WriteError::Locked::directory: std::path::PathBuf
+pub store::WriteError::Refused(store::Refusal)
+pub store::WriteError::Sql(store::SqlError)
+impl core::convert::From<store::SqlError> for store::WriteError
+pub fn store::WriteError::from(store::SqlError) -> Self
+impl core::fmt::Debug for store::WriteError
+pub fn store::WriteError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::WriteError
+impl core::marker::Send for store::WriteError
+impl core::marker::Sync for store::WriteError
+impl core::marker::Unpin for store::WriteError
+impl core::marker::UnsafeUnpin for store::WriteError
+impl !core::panic::unwind_safe::RefUnwindSafe for store::WriteError
+impl !core::panic::unwind_safe::UnwindSafe for store::WriteError
+pub struct store::Analysis
+pub store::Analysis::facts: facts::values::Facts
+pub store::Analysis::metrics: core::option::Option<store::Measured>
+impl core::clone::Clone for store::Analysis
+pub fn store::Analysis::clone(&self) -> Self
+impl core::cmp::Eq for store::Analysis
+impl core::cmp::PartialEq for store::Analysis
+pub fn store::Analysis::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Analysis
+pub fn store::Analysis::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Analysis
+impl core::marker::Freeze for store::Analysis
+impl core::marker::Send for store::Analysis
+impl core::marker::Sync for store::Analysis
+impl core::marker::Unpin for store::Analysis
+impl core::marker::UnsafeUnpin for store::Analysis
+impl core::panic::unwind_safe::RefUnwindSafe for store::Analysis
+impl core::panic::unwind_safe::UnwindSafe for store::Analysis
+pub struct store::CacheEntry
+pub store::CacheEntry::database: std::path::PathBuf
+pub store::CacheEntry::size: u64
+pub store::CacheEntry::used_at: f64
+impl core::clone::Clone for store::CacheEntry
+pub fn store::CacheEntry::clone(&self) -> Self
+impl core::cmp::PartialEq for store::CacheEntry
+pub fn store::CacheEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::CacheEntry
+pub fn store::CacheEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::CacheEntry
+impl core::marker::Freeze for store::CacheEntry
+impl core::marker::Send for store::CacheEntry
+impl core::marker::Sync for store::CacheEntry
+impl core::marker::Unpin for store::CacheEntry
+impl core::marker::UnsafeUnpin for store::CacheEntry
+impl core::panic::unwind_safe::RefUnwindSafe for store::CacheEntry
+impl core::panic::unwind_safe::UnwindSafe for store::CacheEntry
+pub struct store::CacheStatus
+pub store::CacheStatus::path: std::path::PathBuf
+pub store::CacheStatus::state: store::CacheState
+impl store::CacheStatus
+pub fn store::CacheStatus::generation_matches(&self) -> bool
+pub fn store::CacheStatus::note(&self) -> alloc::string::String
+pub fn store::CacheStatus::receipt(&self) -> alloc::string::String
+pub fn store::CacheStatus::receipt_while(&self, bool) -> alloc::string::String
+impl core::clone::Clone for store::CacheStatus
+pub fn store::CacheStatus::clone(&self) -> Self
+impl core::cmp::Eq for store::CacheStatus
+impl core::cmp::PartialEq for store::CacheStatus
+pub fn store::CacheStatus::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::CacheStatus
+pub fn store::CacheStatus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::CacheStatus
+impl core::marker::Freeze for store::CacheStatus
+impl core::marker::Send for store::CacheStatus
+impl core::marker::Sync for store::CacheStatus
+impl core::marker::Unpin for store::CacheStatus
+impl core::marker::UnsafeUnpin for store::CacheStatus
+impl core::panic::unwind_safe::RefUnwindSafe for store::CacheStatus
+impl core::panic::unwind_safe::UnwindSafe for store::CacheStatus
+pub struct store::DiscardFailure
+impl core::fmt::Debug for store::DiscardFailure
+pub fn store::DiscardFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for store::DiscardFailure
+pub fn store::DiscardFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::DiscardFailure
+impl core::marker::Send for store::DiscardFailure
+impl core::marker::Sync for store::DiscardFailure
+impl core::marker::Unpin for store::DiscardFailure
+impl core::marker::UnsafeUnpin for store::DiscardFailure
+impl !core::panic::unwind_safe::RefUnwindSafe for store::DiscardFailure
+impl !core::panic::unwind_safe::UnwindSafe for store::DiscardFailure
+pub struct store::Encoded
+impl core::fmt::Debug for store::Encoded
+pub fn store::Encoded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::Encoded
+impl core::marker::Send for store::Encoded
+impl core::marker::Sync for store::Encoded
+impl core::marker::Unpin for store::Encoded
+impl core::marker::UnsafeUnpin for store::Encoded
+impl core::panic::unwind_safe::RefUnwindSafe for store::Encoded
+impl core::panic::unwind_safe::UnwindSafe for store::Encoded
+pub struct store::EvictionReport
+pub store::EvictionReport::databases: u64
+pub store::EvictionReport::size: u64
+impl core::clone::Clone for store::EvictionReport
+pub fn store::EvictionReport::clone(&self) -> Self
+impl core::cmp::Eq for store::EvictionReport
+impl core::cmp::PartialEq for store::EvictionReport
+pub fn store::EvictionReport::eq(&self, &Self) -> bool
+impl core::default::Default for store::EvictionReport
+pub fn store::EvictionReport::default() -> Self
+impl core::fmt::Debug for store::EvictionReport
+pub fn store::EvictionReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for store::EvictionReport
+impl core::marker::StructuralPartialEq for store::EvictionReport
+impl core::marker::Freeze for store::EvictionReport
+impl core::marker::Send for store::EvictionReport
+impl core::marker::Sync for store::EvictionReport
+impl core::marker::Unpin for store::EvictionReport
+impl core::marker::UnsafeUnpin for store::EvictionReport
+impl core::panic::unwind_safe::RefUnwindSafe for store::EvictionReport
+impl core::panic::unwind_safe::UnwindSafe for store::EvictionReport
+pub struct store::Extract
+pub store::Extract::file: store::FileText
+pub store::Extract::measure: bool
+impl core::clone::Clone for store::Extract
+pub fn store::Extract::clone(&self) -> Self
+impl core::cmp::Eq for store::Extract
+impl core::cmp::PartialEq for store::Extract
+pub fn store::Extract::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Extract
+pub fn store::Extract::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Extract
+impl core::marker::Freeze for store::Extract
+impl core::marker::Send for store::Extract
+impl core::marker::Sync for store::Extract
+impl core::marker::Unpin for store::Extract
+impl core::marker::UnsafeUnpin for store::Extract
+impl core::panic::unwind_safe::RefUnwindSafe for store::Extract
+impl core::panic::unwind_safe::UnwindSafe for store::Extract
+pub struct store::FactSource
+impl store::FactSource
+pub fn store::FactSource::database(&self) -> core::option::Option<&store::FactsDb>
+pub fn store::FactSource::facts(&self, &store::FileText, core::option::Option<&kernel::deadline::Deadline>) -> store::Served<core::result::Result<facts::values::Facts, syntax::parsed::Unparsable>>
+pub fn store::FactSource::facts_and_metrics(&self, &store::FileText) -> store::Served<core::result::Result<(facts::values::Facts, store::Measured), syntax::parsed::Unparsable>>
+pub fn store::FactSource::metrics(&self, &store::FileText) -> store::Served<store::Measured>
+pub fn store::FactSource::parsing() -> store::FactSource
+pub fn store::FactSource::reading(store::FactsDb) -> store::FactSource
+pub fn store::FactSource::symbols(&self, &store::FileText, core::option::Option<&kernel::deadline::Deadline>) -> store::Served<core::result::Result<alloc::vec::Vec<facts::values::Symbol>, syntax::parsed::Unparsable>>
+impl core::fmt::Debug for store::FactSource
+pub fn store::FactSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for store::FactSource
+impl core::marker::Send for store::FactSource
+impl core::marker::Sync for store::FactSource
+impl core::marker::Unpin for store::FactSource
+impl core::marker::UnsafeUnpin for store::FactSource
+impl !core::panic::unwind_safe::RefUnwindSafe for store::FactSource
+impl !core::panic::unwind_safe::UnwindSafe for store::FactSource
+pub struct store::FactsDb
+impl store::FactsDb
+pub fn store::FactsDb::blocks_for(&self, &str, &str, syntax::language::Language) -> store::Lookup
+impl store::FactsDb
+pub fn store::FactsDb::generation(&self) -> &str
+pub fn store::FactsDb::row_counts(&self) -> core::result::Result<store::RowCounts, store::SqlError>
+impl core::fmt::Debug for store::FactsDb
+pub fn store::FactsDb::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for store::FactsDb
+impl core::marker::Send for store::FactsDb
+impl core::marker::Sync for store::FactsDb
+impl core::marker::Unpin for store::FactsDb
+impl core::marker::UnsafeUnpin for store::FactsDb
+impl core::panic::unwind_safe::RefUnwindSafe for store::FactsDb
+impl core::panic::unwind_safe::UnwindSafe for store::FactsDb
+pub struct store::FileStamp
+pub store::FileStamp::mtime_ns: i128
+pub store::FileStamp::size: u64
+impl core::clone::Clone for store::FileStamp
+pub fn store::FileStamp::clone(&self) -> Self
+impl core::cmp::Eq for store::FileStamp
+impl core::cmp::PartialEq for store::FileStamp
+pub fn store::FileStamp::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::FileStamp
+pub fn store::FileStamp::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for store::FileStamp
+impl core::marker::StructuralPartialEq for store::FileStamp
+impl core::marker::Freeze for store::FileStamp
+impl core::marker::Send for store::FileStamp
+impl core::marker::Sync for store::FileStamp
+impl core::marker::Unpin for store::FileStamp
+impl core::marker::UnsafeUnpin for store::FileStamp
+impl core::panic::unwind_safe::RefUnwindSafe for store::FileStamp
+impl core::panic::unwind_safe::UnwindSafe for store::FileStamp
+pub struct store::FileText
+pub store::FileText::language: syntax::language::Language
+pub store::FileText::path: alloc::string::String
+pub store::FileText::text: alloc::rcs::arc::Arc<str>
+impl store::FileText
+pub fn store::FileText::decode(alloc::string::String, syntax::language::Language, &[u8]) -> store::FileText
+pub fn store::FileText::digest(&self) -> kernel::key::Key
+impl core::clone::Clone for store::FileText
+pub fn store::FileText::clone(&self) -> Self
+impl core::cmp::Eq for store::FileText
+impl core::cmp::PartialEq for store::FileText
+pub fn store::FileText::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::FileText
+pub fn store::FileText::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::FileText
+impl core::marker::Freeze for store::FileText
+impl core::marker::Send for store::FileText
+impl core::marker::Sync for store::FileText
+impl core::marker::Unpin for store::FileText
+impl core::marker::UnsafeUnpin for store::FileText
+impl core::panic::unwind_safe::RefUnwindSafe for store::FileText
+impl core::panic::unwind_safe::UnwindSafe for store::FileText
+pub struct store::IndexFailure
+pub store::IndexFailure::path: alloc::string::String
+pub store::IndexFailure::reason: alloc::string::String
+impl core::clone::Clone for store::IndexFailure
+pub fn store::IndexFailure::clone(&self) -> Self
+impl core::cmp::Eq for store::IndexFailure
+impl core::cmp::PartialEq for store::IndexFailure
+pub fn store::IndexFailure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::IndexFailure
+pub fn store::IndexFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::IndexFailure
+impl serde_core::ser::Serialize for store::IndexFailure
+pub fn store::IndexFailure::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for store::IndexFailure
+impl core::marker::Send for store::IndexFailure
+impl core::marker::Sync for store::IndexFailure
+impl core::marker::Unpin for store::IndexFailure
+impl core::marker::UnsafeUnpin for store::IndexFailure
+impl core::panic::unwind_safe::RefUnwindSafe for store::IndexFailure
+impl core::panic::unwind_safe::UnwindSafe for store::IndexFailure
+pub struct store::IndexMeta
+pub store::IndexMeta::analysis: core::option::Option<alloc::vec::Vec<u8>>
+pub store::IndexMeta::generation: alloc::string::String
+pub store::IndexMeta::repo_root: alloc::string::String
+pub store::IndexMeta::schema: i64
+impl core::clone::Clone for store::IndexMeta
+pub fn store::IndexMeta::clone(&self) -> Self
+impl core::cmp::Eq for store::IndexMeta
+impl core::cmp::PartialEq for store::IndexMeta
+pub fn store::IndexMeta::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::IndexMeta
+pub fn store::IndexMeta::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::IndexMeta
+impl core::marker::Freeze for store::IndexMeta
+impl core::marker::Send for store::IndexMeta
+impl core::marker::Sync for store::IndexMeta
+impl core::marker::Unpin for store::IndexMeta
+impl core::marker::UnsafeUnpin for store::IndexMeta
+impl core::panic::unwind_safe::RefUnwindSafe for store::IndexMeta
+impl core::panic::unwind_safe::UnwindSafe for store::IndexMeta
+pub struct store::IndexReport
+pub store::IndexReport::database: std::path::PathBuf
+pub store::IndexReport::evicted: store::EvictionReport
+pub store::IndexReport::failures: alloc::vec::Vec<store::IndexFailure>
+pub store::IndexReport::files: u64
+pub store::IndexReport::generation: alloc::string::String
+pub store::IndexReport::imports: u64
+pub store::IndexReport::indexed: usize
+pub store::IndexReport::pruned: usize
+pub store::IndexReport::refs: u64
+pub store::IndexReport::reused: usize
+pub store::IndexReport::skipped_files: alloc::vec::Vec<store::IndexSkip>
+pub store::IndexReport::tags: u64
+impl store::IndexReport
+pub fn store::IndexReport::errors(&self) -> usize
+pub fn store::IndexReport::skipped(&self) -> usize
+pub fn store::IndexReport::summary_line(&self) -> alloc::string::String
+impl core::clone::Clone for store::IndexReport
+pub fn store::IndexReport::clone(&self) -> Self
+impl core::cmp::Eq for store::IndexReport
+impl core::cmp::PartialEq for store::IndexReport
+pub fn store::IndexReport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::IndexReport
+pub fn store::IndexReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::IndexReport
+impl serde_core::ser::Serialize for store::IndexReport
+pub fn store::IndexReport::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl core::marker::Freeze for store::IndexReport
+impl core::marker::Send for store::IndexReport
+impl core::marker::Sync for store::IndexReport
+impl core::marker::Unpin for store::IndexReport
+impl core::marker::UnsafeUnpin for store::IndexReport
+impl core::panic::unwind_safe::RefUnwindSafe for store::IndexReport
+impl core::panic::unwind_safe::UnwindSafe for store::IndexReport
+pub struct store::IndexSkip
+pub store::IndexSkip::path: alloc::string::String
+pub store::IndexSkip::reason: alloc::string::String
+impl core::clone::Clone for store::IndexSkip
+pub fn store::IndexSkip::clone(&self) -> Self
+impl core::cmp::Eq for store::IndexSkip
+impl core::cmp::PartialEq for store::IndexSkip
+pub fn store::IndexSkip::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::IndexSkip
+pub fn store::IndexSkip::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::IndexSkip
+impl serde_core::ser::Serialize for store::IndexSkip
+pub fn store::IndexSkip::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl core::marker::Freeze for store::IndexSkip
+impl core::marker::Send for store::IndexSkip
+impl core::marker::Sync for store::IndexSkip
+impl core::marker::Unpin for store::IndexSkip
+impl core::marker::UnsafeUnpin for store::IndexSkip
+impl core::panic::unwind_safe::RefUnwindSafe for store::IndexSkip
+impl core::panic::unwind_safe::UnwindSafe for store::IndexSkip
+pub struct store::ManifestEntry
+pub store::ManifestEntry::path: alloc::string::String
+pub store::ManifestEntry::stamp: core::option::Option<store::FileStamp>
+impl core::clone::Clone for store::ManifestEntry
+pub fn store::ManifestEntry::clone(&self) -> Self
+impl core::cmp::Eq for store::ManifestEntry
+impl core::cmp::PartialEq for store::ManifestEntry
+pub fn store::ManifestEntry::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::ManifestEntry
+pub fn store::ManifestEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::ManifestEntry
+impl core::marker::Freeze for store::ManifestEntry
+impl core::marker::Send for store::ManifestEntry
+impl core::marker::Sync for store::ManifestEntry
+impl core::marker::Unpin for store::ManifestEntry
+impl core::marker::UnsafeUnpin for store::ManifestEntry
+impl core::panic::unwind_safe::RefUnwindSafe for store::ManifestEntry
+impl core::panic::unwind_safe::UnwindSafe for store::ManifestEntry
+pub struct store::NewMeta<'a>
+pub store::NewMeta::created: i64
+pub store::NewMeta::generation: &'a str
+pub store::NewMeta::repo_root: &'a str
+impl<'a> core::clone::Clone for store::NewMeta<'a>
+pub fn store::NewMeta<'a>::clone(&self) -> Self
+impl<'a> core::fmt::Debug for store::NewMeta<'a>
+pub fn store::NewMeta<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for store::NewMeta<'a>
+impl<'a> core::marker::Freeze for store::NewMeta<'a>
+impl<'a> core::marker::Send for store::NewMeta<'a>
+impl<'a> core::marker::Sync for store::NewMeta<'a>
+impl<'a> core::marker::Unpin for store::NewMeta<'a>
+impl<'a> core::marker::UnsafeUnpin for store::NewMeta<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for store::NewMeta<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for store::NewMeta<'a>
+pub struct store::Observed
+pub store::Observed::language: syntax::language::Language
+pub store::Observed::measure: bool
+pub store::Observed::path: alloc::string::String
+pub store::Observed::read: store::Read
+impl core::clone::Clone for store::Observed
+pub fn store::Observed::clone(&self) -> Self
+impl core::cmp::Eq for store::Observed
+impl core::cmp::PartialEq for store::Observed
+pub fn store::Observed::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Observed
+pub fn store::Observed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Observed
+impl core::marker::Freeze for store::Observed
+impl core::marker::Send for store::Observed
+impl core::marker::Sync for store::Observed
+impl core::marker::Unpin for store::Observed
+impl core::marker::UnsafeUnpin for store::Observed
+impl core::panic::unwind_safe::RefUnwindSafe for store::Observed
+impl core::panic::unwind_safe::UnwindSafe for store::Observed
+pub struct store::Plan
+pub store::Plan::extract: alloc::vec::Vec<store::Extract>
+impl core::default::Default for store::Plan
+pub fn store::Plan::default() -> Self
+impl core::fmt::Debug for store::Plan
+pub fn store::Plan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::Plan
+impl core::marker::Send for store::Plan
+impl core::marker::Sync for store::Plan
+impl core::marker::Unpin for store::Plan
+impl core::marker::UnsafeUnpin for store::Plan
+impl core::panic::unwind_safe::RefUnwindSafe for store::Plan
+impl core::panic::unwind_safe::UnwindSafe for store::Plan
+pub struct store::Previous
+impl core::clone::Clone for store::Previous
+pub fn store::Previous::clone(&self) -> Self
+impl core::cmp::Eq for store::Previous
+impl core::cmp::PartialEq for store::Previous
+pub fn store::Previous::eq(&self, &Self) -> bool
+impl core::default::Default for store::Previous
+pub fn store::Previous::default() -> Self
+impl core::fmt::Debug for store::Previous
+pub fn store::Previous::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Previous
+impl core::marker::Freeze for store::Previous
+impl core::marker::Send for store::Previous
+impl core::marker::Sync for store::Previous
+impl core::marker::Unpin for store::Previous
+impl core::marker::UnsafeUnpin for store::Previous
+impl core::panic::unwind_safe::RefUnwindSafe for store::Previous
+impl core::panic::unwind_safe::UnwindSafe for store::Previous
+pub struct store::RowCounts
+pub store::RowCounts::files: u64
+pub store::RowCounts::imports: u64
+pub store::RowCounts::refs: u64
+pub store::RowCounts::tags: u64
+impl core::clone::Clone for store::RowCounts
+pub fn store::RowCounts::clone(&self) -> Self
+impl core::cmp::Eq for store::RowCounts
+impl core::cmp::PartialEq for store::RowCounts
+pub fn store::RowCounts::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::RowCounts
+pub fn store::RowCounts::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for store::RowCounts
+impl core::marker::StructuralPartialEq for store::RowCounts
+impl core::marker::Freeze for store::RowCounts
+impl core::marker::Send for store::RowCounts
+impl core::marker::Sync for store::RowCounts
+impl core::marker::Unpin for store::RowCounts
+impl core::marker::UnsafeUnpin for store::RowCounts
+impl core::panic::unwind_safe::RefUnwindSafe for store::RowCounts
+impl core::panic::unwind_safe::UnwindSafe for store::RowCounts
+pub struct store::RowFailure
+impl core::clone::Clone for store::RowFailure
+pub fn store::RowFailure::clone(&self) -> Self
+impl core::cmp::Eq for store::RowFailure
+impl core::cmp::PartialEq for store::RowFailure
+pub fn store::RowFailure::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::RowFailure
+pub fn store::RowFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for store::RowFailure
+pub fn store::RowFailure::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::RowFailure
+impl core::marker::Freeze for store::RowFailure
+impl core::marker::Send for store::RowFailure
+impl core::marker::Sync for store::RowFailure
+impl core::marker::Unpin for store::RowFailure
+impl core::marker::UnsafeUnpin for store::RowFailure
+impl core::panic::unwind_safe::RefUnwindSafe for store::RowFailure
+impl core::panic::unwind_safe::UnwindSafe for store::RowFailure
+pub struct store::Served<T>
+pub store::Served::value: T
+pub store::Served::warning: core::option::Option<store::RowFailure>
+impl<T: core::clone::Clone> core::clone::Clone for store::Served<T>
+pub fn store::Served<T>::clone(&self) -> Self
+impl<T: core::cmp::Eq> core::cmp::Eq for store::Served<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for store::Served<T>
+pub fn store::Served<T>::eq(&self, &Self) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for store::Served<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for store::Served<T>
+pub fn store::Served<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for store::Served<T> where T: core::marker::Freeze
+impl<T> core::marker::Send for store::Served<T> where T: core::marker::Send
+impl<T> core::marker::Sync for store::Served<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for store::Served<T> where T: core::marker::Unpin
+impl<T> core::marker::UnsafeUnpin for store::Served<T> where T: core::marker::UnsafeUnpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for store::Served<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for store::Served<T> where T: core::panic::unwind_safe::UnwindSafe
+pub struct store::Settled
+impl store::Settled
+pub fn store::Settled::report(self, std::path::PathBuf, alloc::string::String, store::RowCounts, store::EvictionReport) -> store::IndexReport
+impl core::fmt::Debug for store::Settled
+pub fn store::Settled::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for store::Settled
+impl core::marker::Send for store::Settled
+impl core::marker::Sync for store::Settled
+impl core::marker::Unpin for store::Settled
+impl core::marker::UnsafeUnpin for store::Settled
+impl core::panic::unwind_safe::RefUnwindSafe for store::Settled
+impl core::panic::unwind_safe::UnwindSafe for store::Settled
+pub struct store::SqlError
+pub store::SqlError::class: store::SqlClass
+pub store::SqlError::message: alloc::string::String
+impl store::SqlError
+pub fn store::SqlError::repr(&self) -> alloc::string::String
+impl core::clone::Clone for store::SqlError
+pub fn store::SqlError::clone(&self) -> Self
+impl core::cmp::Eq for store::SqlError
+impl core::cmp::PartialEq for store::SqlError
+pub fn store::SqlError::eq(&self, &Self) -> bool
+impl core::convert::From<store::SqlError> for store::Refusal
+pub fn store::Refusal::from(store::SqlError) -> Self
+impl core::convert::From<store::SqlError> for store::WriteError
+pub fn store::WriteError::from(store::SqlError) -> Self
+impl core::error::Error for store::SqlError
+impl core::fmt::Debug for store::SqlError
+pub fn store::SqlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for store::SqlError
+pub fn store::SqlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::SqlError
+impl core::marker::Freeze for store::SqlError
+impl core::marker::Send for store::SqlError
+impl core::marker::Sync for store::SqlError
+impl core::marker::Unpin for store::SqlError
+impl core::marker::UnsafeUnpin for store::SqlError
+impl core::panic::unwind_safe::RefUnwindSafe for store::SqlError
+impl core::panic::unwind_safe::UnwindSafe for store::SqlError
+pub struct store::Unmeasured
+pub store::Unmeasured::blocks_reason: core::option::Option<alloc::string::String>
+pub store::Unmeasured::reason: alloc::string::String
+impl core::clone::Clone for store::Unmeasured
+pub fn store::Unmeasured::clone(&self) -> Self
+impl core::cmp::Eq for store::Unmeasured
+impl core::cmp::PartialEq for store::Unmeasured
+pub fn store::Unmeasured::eq(&self, &Self) -> bool
+impl core::fmt::Debug for store::Unmeasured
+pub fn store::Unmeasured::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for store::Unmeasured
+pub fn store::Unmeasured::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for store::Unmeasured
+impl serde_core::ser::Serialize for store::Unmeasured
+pub fn store::Unmeasured::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for store::Unmeasured
+pub fn store::Unmeasured::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for store::Unmeasured
+impl core::marker::Send for store::Unmeasured
+impl core::marker::Sync for store::Unmeasured
+impl core::marker::Unpin for store::Unmeasured
+impl core::marker::UnsafeUnpin for store::Unmeasured
+impl core::panic::unwind_safe::RefUnwindSafe for store::Unmeasured
+impl core::panic::unwind_safe::UnwindSafe for store::Unmeasured
+pub struct store::Writer
+impl store::Writer
+pub fn store::Writer::open(&std::path::Path) -> (core::result::Result<store::Writer, store::WriteError>, alloc::vec::Vec<alloc::string::String>)
+pub fn store::Writer::previous(&self) -> &store::Previous
+pub fn store::Writer::write(self, &store::Settled, store::NewMeta<'_>) -> core::result::Result<store::RowCounts, store::SqlError>
+impl core::fmt::Debug for store::Writer
+pub fn store::Writer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for store::Writer
+impl core::marker::Send for store::Writer
+impl !core::marker::Sync for store::Writer
+impl core::marker::Unpin for store::Writer
+impl core::marker::UnsafeUnpin for store::Writer
+impl !core::panic::unwind_safe::RefUnwindSafe for store::Writer
+impl !core::panic::unwind_safe::UnwindSafe for store::Writer
+pub const store::DEFAULT_MAX_CACHE_BYTES: u64
+pub const store::FACTS_SCHEMA_VERSION: u16
+pub const store::FACTS_VERSION: u32
+pub const store::MAX_CACHE_BYTES_VARIABLE: &str
+pub const store::PROTECTED_SECONDS: f64
+pub fn store::analysis() -> kernel::key::Key
+pub fn store::analyze(&store::FileText, bool) -> core::result::Result<store::Analysis, syntax::parsed::Unparsable>
+pub fn store::discard_facts(&std::path::Path) -> store::Discarded
+pub fn store::encode(&store::Analysis) -> store::Encoded
+pub fn store::enforce_cache_limit(&std::path::Path, &std::path::Path, core::option::Option<u64>, f64) -> (store::EvictionReport, alloc::vec::Vec<alloc::string::String>)
+pub fn store::evict_plan(&[store::CacheEntry], u64, &std::path::Path, f64) -> alloc::vec::Vec<store::CacheEntry>
+pub fn store::facts_database_path(&std::path::Path, &str) -> std::path::PathBuf
+pub fn store::freshness(core::option::Option<&store::IndexMeta>, &str, &str) -> store::Freshness
+pub fn store::max_cache_bytes(core::option::Option<&std::ffi::os_str::OsStr>) -> (core::option::Option<u64>, core::option::Option<alloc::string::String>)
+pub fn store::nogit_generation(&[store::ManifestEntry]) -> alloc::string::String
+pub fn store::open_facts(&std::path::Path, &str, bool) -> store::Source
+pub fn store::plan(&store::Previous, alloc::vec::Vec<store::Observed>, kernel::key::Key, bool) -> store::Plan
+pub fn store::settle(store::Plan, alloc::vec::Vec<core::result::Result<store::Encoded, syntax::parsed::Unparsable>>) -> store::Settled
+pub fn store::shell_quote(&str) -> alloc::string::String
+pub type store::Measured = core::result::Result<metrics::FileMetrics, store::Unmeasured>

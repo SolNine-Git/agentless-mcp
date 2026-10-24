@@ -1,0 +1,73 @@
+name = "bash"
+tier = 1
+extensions = [".bash", ".sh"]
+probe = "x=1\n"
+probe_root = "program"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_definition"]
+scopes = []
+bound = []
+name = "field"
+
+[decisions]
+points = [
+    "c_style_for_statement",
+    "elif_clause",
+    "for_statement",
+    "if_statement",
+    "ternary_expression",
+    "while_statement",
+]
+
+[decisions.conditional]
+"case_item" = "counted_case_item"
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "-a", "-o", "||"]
+
+[decisions.token_operators]
+"list" = ["&&", "||"]
+
+[clones]
+functions = ["function_definition"]
+blocks = [
+    "c_style_for_statement",
+    "case_statement",
+    "for_statement",
+    "if_statement",
+    "while_statement",
+]
+identifiers = ["variable_name", "word"]
+indent_blocks = []
+
+[clones.literals]
+"NUM" = ["number"]
+"STR" = ["ansi_c_string", "heredoc_body", "raw_string", "string", "translated_string"]
+
+[extraction]
+prefix = "sh"
+symbols = "generic"
+imports = "source"
+roles = "plain"
+identifiers = ["variable_name", "word"]
+bodies = ["compound_statement"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_definition"]
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

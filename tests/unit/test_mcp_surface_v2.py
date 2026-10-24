@@ -48,6 +48,7 @@ from agentless_mcp.application.symbol_service import SymbolService
 from agentless_mcp.application.validate_service import ValidateService
 from agentless_mcp.application.view_service import ViewService
 from agentless_mcp.core.extractor import TreeSitterExtractor
+from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import AgentlessError
 from agentless_mcp.util.tokens import Chars4Counter
 
@@ -615,6 +616,24 @@ class TestSurfaceFlag:
 
         assert server_module.serve(["--root", str(tmp_path)], services) == 0
         assert built["surface"] == SURFACE_V2
+
+    @pytest.mark.parametrize("surface", SURFACES)
+    def test_serve_warns_when_the_surface_publishes_v1(
+        self, services, tmp_path, monkeypatch, capsys, surface
+    ):
+        warned = {SURFACE_V1: True, SURFACE_BOTH: True, SURFACE_V2: False}[surface]
+
+        class StubTransport:
+            def run(self, **kwargs):
+                _ = kwargs
+
+        monkeypatch.setattr(server_module, "build_server", lambda *a, **k: StubTransport())
+        monkeypatch.setattr(server_module.grammars, "start_auto_warm", lambda *a, **k: None)
+
+        server_module.serve(["--root", str(tmp_path), "--surface", surface], services)
+
+        warning = MESSAGES.surface_v1_deprecated.format(surface=surface)
+        assert (warning in capsys.readouterr().err) is warned
 
     def test_serve_passes_the_parsed_limits(self, services, tmp_path, monkeypatch):
         built = {}

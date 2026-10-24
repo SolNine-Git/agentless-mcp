@@ -13,8 +13,14 @@ from typing import Final
 from tree_sitter import Node, Query, QueryCursor
 
 from agentless_mcp.core import grammars
-from agentless_mcp.core.extractor import COMMENT_NODE_TYPES, error_nodes
-from agentless_mcp.core.normalize import PYTHON_STATEMENT_PARENTS, node_stream, string_prefix
+from agentless_mcp.core.extractor import (
+    COMMENT_NODE_TYPES,
+    error_nodes,
+    first_of_type,
+    rust_impl_owner,
+    string_prefix,
+)
+from agentless_mcp.core.normalize import PYTHON_STATEMENT_PARENTS, node_stream
 from agentless_mcp.prompts import MESSAGES
 from agentless_mcp.util.errors import UnmeasurableSource
 
@@ -243,16 +249,6 @@ def _name_text(node: Node) -> str:
     return text.replace("::", ".")
 
 
-def _first_of_type(node: Node, wanted: str) -> Node | None:
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if current.type == wanted:
-            return current
-        stack.extend(reversed(current.children))
-    return None
-
-
 def _decisions(unit: Node, rules: DecisionRules) -> int:
     count = 0
     stack = [unit]
@@ -402,14 +398,13 @@ def _cpp_name(node: Node) -> Node | None:
 
 def _go_receiver_type(node: Node) -> Node | None:
     receiver = node.child_by_field_name("receiver")
-    return None if receiver is None else _first_of_type(receiver, "type_identifier")
+    return None if receiver is None else first_of_type(receiver, "type_identifier")
 
 
 def _rust_name(node: Node) -> Node | None:
     if node.type != "impl_item":
         return node.child_by_field_name("name")
-    implemented = node.child_by_field_name("type")
-    return None if implemented is None else _first_of_type(implemented, "type_identifier")
+    return rust_impl_owner(node)
 
 
 _JAVASCRIPT_BINDINGS = MappingProxyType(

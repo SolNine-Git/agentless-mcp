@@ -1,0 +1,78 @@
+{
+ "codec": [
+  ["\u00ff{}", "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"],
+  ["{\"x\": \"\u00e2\u0082\"}", "'utf-8' codec can't decode bytes in position 7-8: invalid continuation byte"],
+  ["\u00f0\u0090(", "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte"],
+  ["ab\u00e2\u0082", "'utf-8' codec can't decode bytes in position 2-3: unexpected end of data"],
+  ["ab\u00e2", "'utf-8' codec can't decode byte 0xe2 in position 2: unexpected end of data"],
+  ["\u00c0\u00af", "'utf-8' codec can't decode byte 0xc0 in position 0: invalid start byte"],
+  ["\u00ed\u00a0\u0080", "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte"],
+  ["\u00f4\u0090\u0080\u0080", "'utf-8' codec can't decode byte 0xf4 in position 0: invalid continuation byte"],
+  ["a\u0080", "'utf-8' codec can't decode byte 0x80 in position 1: invalid start byte"],
+  ["\u00e0\u0080\u0080", "'utf-8' codec can't decode byte 0xe0 in position 0: invalid continuation byte"],
+  ["\u00f0\u009f\u0098", "'utf-8' codec can't decode bytes in position 0-2: unexpected end of data"]
+ ],
+ "os_error": [
+  [2, "/r/a.py", "[Errno 2] No such file or directory: '/r/a.py'"],
+  [2, "/r/\u00fc.py", "[Errno 2] No such file or directory: '/r/\u00fc.py'"],
+  [2, "/r/it's.py", "[Errno 2] No such file or directory: \"/r/it's.py\""],
+  [5, "/r/a.py", "[Errno 5] Input/output error: '/r/a.py'"],
+  [5, "/r/\u00fc.py", "[Errno 5] Input/output error: '/r/\u00fc.py'"],
+  [5, "/r/it's.py", "[Errno 5] Input/output error: \"/r/it's.py\""],
+  [13, "/r/a.py", "[Errno 13] Permission denied: '/r/a.py'"],
+  [13, "/r/\u00fc.py", "[Errno 13] Permission denied: '/r/\u00fc.py'"],
+  [13, "/r/it's.py", "[Errno 13] Permission denied: \"/r/it's.py\""],
+  [20, "/r/a.py", "[Errno 20] Not a directory: '/r/a.py'"],
+  [20, "/r/\u00fc.py", "[Errno 20] Not a directory: '/r/\u00fc.py'"],
+  [20, "/r/it's.py", "[Errno 20] Not a directory: \"/r/it's.py\""],
+  [21, "/r/a.py", "[Errno 21] Is a directory: '/r/a.py'"],
+  [21, "/r/\u00fc.py", "[Errno 21] Is a directory: '/r/\u00fc.py'"],
+  [21, "/r/it's.py", "[Errno 21] Is a directory: \"/r/it's.py\""],
+  [40, "/r/a.py", "[Errno 40] Too many levels of symbolic links: '/r/a.py'"],
+  [40, "/r/\u00fc.py", "[Errno 40] Too many levels of symbolic links: '/r/\u00fc.py'"],
+  [40, "/r/it's.py", "[Errno 40] Too many levels of symbolic links: \"/r/it's.py\""]
+ ],
+ "os_error_line": [
+  [2, "FileNotFoundError: [Errno 2] No such file or directory"],
+  [5, "OSError: [Errno 5] Input/output error"],
+  [13, "PermissionError: [Errno 13] Permission denied"],
+  [20, "NotADirectoryError: [Errno 20] Not a directory"],
+  [21, "IsADirectoryError: [Errno 21] Is a directory"],
+  [40, "OSError: [Errno 40] Too many levels of symbolic links"],
+  [11, "BlockingIOError: [Errno 11] Resource temporarily unavailable"],
+  [32, "BrokenPipeError: [Errno 32] Broken pipe"],
+  [110, "TimeoutError: [Errno 110] Connection timed out"]
+ ],
+ "last_line": [
+  ["", "(no output)"],
+  ["\n\n", "(no output)"],
+  ["a\nb\n", "b"],
+  ["  x  \n\n", "x"],
+  ["fatal: not a git repository\n", "fatal: not a git repository"],
+  ["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],
+  ["a\r\nb", "b"],
+  ["\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9", "\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9"],
+  ["one\n   \ntwo  \n", "two"]
+ ],
+ "grouped": [
+  [0, "0"],
+  [7, "7"],
+  [999, "999"],
+  [1000, "1,000"],
+  [1000000, "1,000,000"],
+  [1234567, "1,234,567"]
+ ],
+ "seconds": [
+  ["1760000000000000000", "1760000000.0"],
+  ["1760000000123456789", "1760000000.1234567"],
+  ["1", "1e-09"],
+  ["999999999", "0.999999999"],
+  ["1000000000", "1.0"],
+  ["1712345678900000000", "1712345678.9"]
+ ],
+ "sha256": [
+  ["", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
+  ["x = 1\n", "9e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f4"],
+  ["\u00e9\r\n", "64da669b12bbeda0ca8f2840891bd8834e5b8206f24c7703e20ac1d472612b0e"]
+ ]
+}

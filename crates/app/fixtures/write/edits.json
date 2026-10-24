@@ -1,0 +1,40 @@
+{
+ "texts": [
+  ["### app.py\n<<<<<<< SEARCH\n    return left + right\n=======\n    return round(left + right, 2)\n>>>>>>> REPLACE\n\n### util.py\n<<<<<<< SEARCH\nVERSION = \"1\"\n=======\nVERSION = \"2\"\n>>>>>>> REPLACE\n", {"parsed": "{\"edits\": [{\"index\": 0, \"path\": \"app.py\", \"search\": \"    return left + right\", \"replace\": \"    return round(left + right, 2)\"}, {\"index\": 1, \"path\": \"util.py\", \"search\": \"VERSION = \\\"1\\\"\", \"replace\": \"VERSION = \\\"2\\\"\"}], \"errors\": []}"}],
+  ["  \n{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}]}", {"parsed": "{\"edits\": [{\"index\": 0, \"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}], \"errors\": []}"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": 7}]}", {"parsed": "{\"edits\": [{\"index\": 7, \"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}], \"errors\": []}"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": -5}]}", {"parsed": "{\"edits\": [{\"index\": -5, \"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}], \"errors\": []}"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}, {\"path\": \"b.py\", \"search\": \"1\", \"replace\": \"2\", \"index\": 0}]}", {"parsed": "{\"edits\": [{\"index\": 0, \"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\"}, {\"index\": 0, \"path\": \"b.py\", \"search\": \"1\", \"replace\": \"2\"}], \"errors\": []}"}],
+  ["{\"edits\": []}", {"parsed": "{\"edits\": [], \"errors\": []}"}],
+  ["{\"edits\": [], \"edits\": [{\"path\": \"b.py\", \"search\": \"x\", \"replace\": \"y\"}]}", {"parsed": "{\"edits\": [{\"index\": 0, \"path\": \"b.py\", \"search\": \"x\", \"replace\": \"y\"}], \"errors\": []}"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"path\": \"c.py\", \"search\": \"x\", \"replace\": \"y\"}]}", {"parsed": "{\"edits\": [{\"index\": 0, \"path\": \"c.py\", \"search\": \"x\", \"replace\": \"y\"}], \"errors\": []}"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"replace\": \"x\"}]}", {"error": "edit 0 is missing a string 'search'"}],
+  ["{\"edits\": [{\"search\": \"x\", \"replace\": \"y\"}]}", {"error": "edit 0 is missing a string 'path'"}],
+  ["{\"edits\": [{\"path\": 1, \"search\": \"x\", \"replace\": \"y\"}]}", {"error": "edit 0 is missing a string 'path'"}],
+  ["{\"blocks\": []}", {"error": "edits document must be a JSON object with an 'edits' list"}],
+  ["{}", {"error": "edits document must be a JSON object with an 'edits' list"}],
+  ["{\"edits\": [", {"error": "edits document is not valid JSON: Expecting value: line 1 column 12 (char 11)"}],
+  ["{\"edits\": [1, ]}", {"error": "edits document is not valid JSON: Illegal trailing comma before end of array: line 1 column 13 (char 12)"}],
+  ["{\"edits\": {\"path\": \"a.py\"}}", {"error": "'edits' must be a list of edit objects"}],
+  ["{\"edits\": [\"### a.py\"]}", {"error": "edit 0 is not a JSON object"}],
+  ["{\"edits\": [null]}", {"error": "edit 0 is not a JSON object"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": \"1\"}]}", {"error": "edit 0 has a non-integer 'index'"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": 1.5}]}", {"error": "edit 0 has a non-integer 'index'"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": null}]}", {"error": "edit 0 has a non-integer 'index'"}],
+  ["{\"edits\": [{\"path\": \"a.py\", \"search\": \"x\", \"replace\": \"y\", \"index\": 1e3}]}", {"error": "edit 0 has a non-integer 'index'"}],
+  ["{\"edits\": [{\"path\": \"a\\u00e9.py\", \"search\": \"x\\n\", \"replace\": \"y\\n\"}]} trailing", {"error": "edits document is not valid JSON: Extra data: line 1 column 72 (char 71)"}],
+  ["[1]", {"parsed": "{\"edits\": [], \"errors\": [{\"index\": 0, \"path\": null, \"reason\": \"no SEARCH/REPLACE blocks found: expected <<<<<<< SEARCH, ======= and >>>>>>> REPLACE markers\"}]}"}],
+  ["\ufeff{\"edits\": []}", {"parsed": "{\"edits\": [], \"errors\": [{\"index\": 0, \"path\": null, \"reason\": \"no SEARCH/REPLACE blocks found: expected <<<<<<< SEARCH, ======= and >>>>>>> REPLACE markers\"}]}"}],
+  ["\u000b{\"edits\": []}", {"error": "edits document is not valid JSON: Expecting value: line 1 column 1 (char 0)"}],
+  ["no blocks at all", {"parsed": "{\"edits\": [], \"errors\": [{\"index\": 0, \"path\": null, \"reason\": \"no SEARCH/REPLACE blocks found: expected <<<<<<< SEARCH, ======= and >>>>>>> REPLACE markers\"}]}"}],
+  ["", {"parsed": "{\"edits\": [], \"errors\": [{\"index\": 0, \"path\": null, \"reason\": \"no SEARCH/REPLACE blocks found: expected <<<<<<< SEARCH, ======= and >>>>>>> REPLACE markers\"}]}"}]
+ ],
+ "recipes": [
+  ["blocks", 501, 1, {"error": "the request carries 501 edits, more than the 500 this tool applies at once"}],
+  ["json", 501, 1, {"error": "the request carries 501 edits, more than the 500 this tool applies at once"}],
+  ["blocks", 100, 11000, {"error": "the request carries 4399800 bytes of search and replace text, more than the 2000000 this tool applies at once"}],
+  ["json", 100, 11000, {"error": "the request carries 4399800 bytes of search and replace text, more than the 2000000 this tool applies at once"}],
+  ["json", 500, 1000, {"edits": 500}],
+  ["blocks", 500, 1, {"edits": 500}]
+ ]
+}

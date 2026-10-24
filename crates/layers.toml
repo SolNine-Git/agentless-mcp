@@ -1,0 +1,21 @@
+# Each crate's layer, from 0 (no dependencies) to 8 (the binary). A crate depends only on lower layers.
+agentless = 8
+cli = 7
+mcp = 7
+hook = 7
+render = 6
+app = 5
+patchcheck = 4
+checks = 3
+graph = 3
+store = 3
+git = 3
+facts = 2
+metrics = 2
+patch = 2
+io = 2
+syntax = 1
+prompts = 1
+json = 1
+kernel = 0
+text = 0

@@ -1084,6 +1084,7 @@ class CommunityReport(_Bounded):
     standard_modularity: float
     resolution: float
     files: int
+    converged: bool
 
     @property
     def shown(self) -> int:
@@ -1117,6 +1118,7 @@ class CommunityReport(_Bounded):
             "weak_partition": self.weak_partition,
             "resolution": self.resolution,
             "files": self.files,
+            "converged": self.converged,
             "communities": [community.as_dict() for community in self.communities],
         }
 
@@ -1509,24 +1511,13 @@ def render_communities(report: CommunityReport) -> str:
 
     groups = "community" if report.total == 1 else "communities"
     scaled = _no_negative_zero(round(report.modularity, 3))
-    standard = _no_negative_zero(round(report.standard_modularity, 3))
     lines = [
         (
             f"{report.total} {groups} over {report.files} files "
             f"(modularity {scaled:.3f} at resolution {report.resolution:g})"
-        )
+        ),
+        *_partition_notes(report, scaled),
     ]
-    # Named only when the knob moved it. At resolution 1.0 the two scores are
-    # the same float, and printing it twice would be noise; away from 1.0 the
-    # weak-partition note below is keyed on a number the header does not show,
-    # which reads as a contradiction unless the number is on the page.
-    if standard != scaled:
-        lines.append(
-            f"  modularity at resolution 1: {standard:.3f}; "
-            "compare this number against 0.3, not the one above"
-        )
-    if report.weak_partition:
-        lines.append("  note: weak partition; use these communities as a hint, not a boundary")
     for index, community in enumerate(report.communities, start=1):
         files = "file" if community.size == 1 else "files"
         lines.append(f"  {index:>3}. {one_line(community.label)}  ({community.size} {files})")
@@ -1538,6 +1529,22 @@ def render_communities(report: CommunityReport) -> str:
     if report.omitted:
         lines.append(_omitted_line(report.omitted, "communities", limit=report.limit))
     return "\n".join(lines) + "\n"
+
+
+def _partition_notes(report: CommunityReport, scaled: float) -> list[str]:
+    notes: list[str] = []
+    standard = _no_negative_zero(round(report.standard_modularity, 3))
+    # Named only when the knob moved it: the weak-partition note is keyed on this number.
+    if standard != scaled:
+        notes.append(
+            f"  modularity at resolution 1: {standard:.3f}; "
+            "compare this number against 0.3, not the one above"
+        )
+    if not report.converged:
+        notes.append(f"  {MESSAGES.communities_not_converged}")
+    if report.weak_partition:
+        notes.append("  note: weak partition; use these communities as a hint, not a boundary")
+    return notes
 
 
 def render_diagram(view: DiagramView) -> str:

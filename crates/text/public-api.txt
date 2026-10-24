@@ -1,0 +1,124 @@
+pub mod text
+pub enum text::ShellWordsError
+pub text::ShellWordsError::NoClosingQuotation
+pub text::ShellWordsError::NoEscapedCharacter
+impl core::clone::Clone for text::ShellWordsError
+pub fn text::ShellWordsError::clone(&self) -> Self
+impl core::cmp::Eq for text::ShellWordsError
+impl core::cmp::PartialEq for text::ShellWordsError
+pub fn text::ShellWordsError::eq(&self, &Self) -> bool
+impl core::error::Error for text::ShellWordsError
+impl core::fmt::Debug for text::ShellWordsError
+pub fn text::ShellWordsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for text::ShellWordsError
+pub fn text::ShellWordsError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for text::ShellWordsError
+impl core::marker::StructuralPartialEq for text::ShellWordsError
+impl core::marker::Freeze for text::ShellWordsError
+impl core::marker::Send for text::ShellWordsError
+impl core::marker::Sync for text::ShellWordsError
+impl core::marker::Unpin for text::ShellWordsError
+impl core::marker::UnsafeUnpin for text::ShellWordsError
+impl core::panic::unwind_safe::RefUnwindSafe for text::ShellWordsError
+impl core::panic::unwind_safe::UnwindSafe for text::ShellWordsError
+pub struct text::CodePointString
+impl text::CodePointString
+pub fn text::CodePointString::as_str(&self) -> core::option::Option<&str>
+pub fn text::CodePointString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + '_
+pub fn text::CodePointString::from_utf8_escaped(&[u8]) -> Self
+pub fn text::CodePointString::push(&mut self, u32)
+pub fn text::CodePointString::push_str(&mut self, &str)
+pub fn text::CodePointString::quoted(&self) -> alloc::string::String
+impl core::clone::Clone for text::CodePointString
+pub fn text::CodePointString::clone(&self) -> Self
+impl core::cmp::Eq for text::CodePointString
+impl core::cmp::Ord for text::CodePointString
+pub fn text::CodePointString::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for text::CodePointString
+pub fn text::CodePointString::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for text::CodePointString
+pub fn text::CodePointString::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::convert::From<&str> for text::CodePointString
+pub fn text::CodePointString::from(&str) -> Self
+impl core::default::Default for text::CodePointString
+pub fn text::CodePointString::default() -> Self
+impl core::fmt::Debug for text::CodePointString
+pub fn text::CodePointString::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for text::CodePointString
+pub fn text::CodePointString::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for text::CodePointString
+impl core::marker::Freeze for text::CodePointString
+impl core::marker::Send for text::CodePointString
+impl core::marker::Sync for text::CodePointString
+impl core::marker::Unpin for text::CodePointString
+impl core::marker::UnsafeUnpin for text::CodePointString
+impl core::panic::unwind_safe::RefUnwindSafe for text::CodePointString
+impl core::panic::unwind_safe::UnwindSafe for text::CodePointString
+pub struct text::IntText<'a>
+pub text::IntText::negative: bool
+impl<'a> text::IntText<'a>
+pub fn text::IntText<'a>::digits(self) -> impl core::iter::traits::iterator::Iterator<Item = u8> + 'a
+impl<'a> core::clone::Clone for text::IntText<'a>
+pub fn text::IntText<'a>::clone(&self) -> Self
+impl<'a> core::cmp::Eq for text::IntText<'a>
+impl<'a> core::cmp::PartialEq for text::IntText<'a>
+pub fn text::IntText<'a>::eq(&self, &Self) -> bool
+impl<'a> core::fmt::Debug for text::IntText<'a>
+pub fn text::IntText<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for text::IntText<'a>
+impl<'a> core::marker::StructuralPartialEq for text::IntText<'a>
+impl<'a> core::marker::Freeze for text::IntText<'a>
+impl<'a> core::marker::Send for text::IntText<'a>
+impl<'a> core::marker::Sync for text::IntText<'a>
+impl<'a> core::marker::Unpin for text::IntText<'a>
+impl<'a> core::marker::UnsafeUnpin for text::IntText<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for text::IntText<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for text::IntText<'a>
+pub struct text::PosixPath<'s>
+impl<'s> text::PosixPath<'s>
+pub fn text::PosixPath<'s>::join(&self, &str) -> alloc::string::String
+pub fn text::PosixPath<'s>::parent(&self) -> text::PosixPath<'s>
+pub fn text::PosixPath<'s>::parse(&'s str) -> text::PosixPath<'s>
+pub fn text::PosixPath<'s>::part_count(&self) -> usize
+pub fn text::PosixPath<'s>::render(&self) -> alloc::string::String
+pub fn text::PosixPath<'s>::without_suffix(&self) -> text::PosixPath<'s>
+impl<'s> core::clone::Clone for text::PosixPath<'s>
+pub fn text::PosixPath<'s>::clone(&self) -> Self
+impl<'s> core::cmp::Eq for text::PosixPath<'s>
+impl<'s> core::cmp::PartialEq for text::PosixPath<'s>
+pub fn text::PosixPath<'s>::eq(&self, &Self) -> bool
+impl<'s> core::fmt::Debug for text::PosixPath<'s>
+pub fn text::PosixPath<'s>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'s> core::marker::StructuralPartialEq for text::PosixPath<'s>
+impl<'s> core::marker::Freeze for text::PosixPath<'s>
+impl<'s> core::marker::Send for text::PosixPath<'s>
+impl<'s> core::marker::Sync for text::PosixPath<'s>
+impl<'s> core::marker::Unpin for text::PosixPath<'s>
+impl<'s> core::marker::UnsafeUnpin for text::PosixPath<'s>
+impl<'s> core::panic::unwind_safe::RefUnwindSafe for text::PosixPath<'s>
+impl<'s> core::panic::unwind_safe::UnwindSafe for text::PosixPath<'s>
+pub fn text::convertible_int(&str) -> core::option::Option<text::IntText<'_>>
+pub fn text::decimal_value(char) -> core::option::Option<u8>
+pub fn text::dedent(&str) -> alloc::string::String
+pub fn text::int_bytes(&[u8]) -> core::option::Option<text::IntText<'_>>
+pub fn text::int_text(&str) -> core::option::Option<text::IntText<'_>>
+pub fn text::is_ascii_space(u8) -> bool
+pub fn text::is_decimal(char) -> bool
+pub fn text::is_identifier(&str) -> bool
+pub fn text::is_posix_part(&[u8]) -> bool
+pub fn text::is_printable(u32) -> bool
+pub fn text::is_space(char) -> bool
+pub fn text::is_word(char) -> bool
+pub fn text::lower(&str) -> alloc::string::String
+pub fn text::matching_blocks(&[&str], &[&str]) -> alloc::vec::Vec<(usize, usize, usize)>
+pub fn text::one_line(&str) -> alloc::borrow::Cow<'_, str>
+pub fn text::posix_anchor(&[u8]) -> &'static str
+pub fn text::posix_name(&str) -> &str
+pub fn text::split_shell_code_points(&text::CodePointString) -> core::result::Result<alloc::vec::Vec<text::CodePointString>, text::ShellWordsError>
+pub fn text::split_shell_words(&str) -> core::result::Result<alloc::vec::Vec<alloc::string::String>, text::ShellWordsError>
+pub fn text::split_suffix(&str) -> (&str, &str)
+pub fn text::split_whitespace(&str) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn text::splitlines(&str, bool) -> alloc::vec::Vec<&str>
+pub fn text::strip(&str) -> &str
+pub fn text::strip_bytes(&[u8]) -> &[u8]
+pub fn text::unified_diff(&[&str], &[&str]) -> alloc::vec::Vec<alloc::string::String>

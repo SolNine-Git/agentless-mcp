@@ -1,0 +1,67 @@
+name = "cpp"
+tier = 1
+extensions = [".cc", ".cpp", ".cxx", ".hpp", ".hxx"]
+probe = "int main(void) { return 0; }\n"
+probe_root = "translation_unit"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_definition"]
+scopes = ["class_specifier", "namespace_definition", "struct_specifier", "union_specifier"]
+bound = []
+name = "cpp_declarator"
+
+[decisions]
+points = [
+    "catch_clause",
+    "conditional_expression",
+    "do_statement",
+    "for_range_loop",
+    "for_statement",
+    "if_statement",
+    "while_statement",
+]
+
+[decisions.conditional]
+"case_statement" = "not_default_case"
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "and", "or", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["function_definition"]
+blocks = [
+    "do_statement",
+    "for_range_loop",
+    "for_statement",
+    "if_statement",
+    "switch_statement",
+    "try_statement",
+    "while_statement",
+]
+identifiers = [
+    "field_identifier",
+    "identifier",
+    "namespace_identifier",
+    "statement_identifier",
+    "type_identifier",
+]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"NONE" = ["null"]
+"NUM" = ["number_literal"]
+"STR" = ["char_literal", "raw_string_literal", "string_literal", "system_lib_string"]
+
+[extraction]
+prefix = "cpp"
+symbols = "c_declarators"
+imports = "include"
+roles = "plain"
+identifiers = ["field_identifier", "identifier", "namespace_identifier", "type_identifier"]
+bodies = ["compound_statement"]
+skeleton_functions = ["function_definition"]

@@ -1,0 +1,261 @@
+name = "python"
+tier = 1
+extensions = [".py"]
+probe = "x = 1\n"
+probe_root = "module"
+comments = ["comment"]
+sloc = "python_tokens"
+statement_parents = ["block", "module"]
+
+[units]
+units = ["function_definition"]
+scopes = ["class_definition"]
+bound = []
+descend = ["block", "class_definition", "decorated_definition"]
+name = "field"
+
+[decisions]
+points = [
+    "assert_statement",
+    "boolean_operator",
+    "conditional_expression",
+    "dictionary_comprehension",
+    "elif_clause",
+    "except_clause",
+    "for_statement",
+    "generator_expression",
+    "if_clause",
+    "if_statement",
+    "list_comprehension",
+    "set_comprehension",
+    "while_statement",
+]
+
+[decisions.conditional]
+
+[decisions.field_operators]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["function_definition"]
+blocks = [
+    "for_statement",
+    "if_statement",
+    "match_statement",
+    "try_statement",
+    "while_statement",
+    "with_statement",
+]
+skip = "type_checking"
+identifiers = ["identifier"]
+indent_blocks = ["block"]
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"FLOAT" = ["float"]
+"INT" = ["integer"]
+"NONE" = ["none"]
+"STR" = ["string", "string_content"]
+
+[extraction]
+prefix = "py"
+symbols = "python"
+imports = "python"
+roles = "python"
+identifiers = ["identifier"]
+bodies = ["block"]
+skeleton_functions = ["function_definition"]
+builtins = [
+    "ArithmeticError",
+    "AssertionError",
+    "AttributeError",
+    "BaseException",
+    "BaseExceptionGroup",
+    "BlockingIOError",
+    "BrokenPipeError",
+    "BufferError",
+    "BytesWarning",
+    "ChildProcessError",
+    "ConnectionAbortedError",
+    "ConnectionError",
+    "ConnectionRefusedError",
+    "ConnectionResetError",
+    "DeprecationWarning",
+    "EOFError",
+    "Ellipsis",
+    "EncodingWarning",
+    "EnvironmentError",
+    "Exception",
+    "ExceptionGroup",
+    "False",
+    "FileExistsError",
+    "FileNotFoundError",
+    "FloatingPointError",
+    "FutureWarning",
+    "GeneratorExit",
+    "IOError",
+    "ImportError",
+    "ImportWarning",
+    "IndentationError",
+    "IndexError",
+    "InterruptedError",
+    "IsADirectoryError",
+    "KeyError",
+    "KeyboardInterrupt",
+    "LookupError",
+    "MemoryError",
+    "ModuleNotFoundError",
+    "NameError",
+    "None",
+    "NotADirectoryError",
+    "NotImplemented",
+    "NotImplementedError",
+    "OSError",
+    "OverflowError",
+    "PendingDeprecationWarning",
+    "PermissionError",
+    "ProcessLookupError",
+    "PythonFinalizationError",
+    "RecursionError",
+    "ReferenceError",
+    "ResourceWarning",
+    "RuntimeError",
+    "RuntimeWarning",
+    "StopAsyncIteration",
+    "StopIteration",
+    "SyntaxError",
+    "SyntaxWarning",
+    "SystemError",
+    "SystemExit",
+    "TabError",
+    "TimeoutError",
+    "True",
+    "TypeError",
+    "UnboundLocalError",
+    "UnicodeDecodeError",
+    "UnicodeEncodeError",
+    "UnicodeError",
+    "UnicodeTranslateError",
+    "UnicodeWarning",
+    "UserWarning",
+    "ValueError",
+    "Warning",
+    "ZeroDivisionError",
+    "_IncompleteInputError",
+    "__build_class__",
+    "__debug__",
+    "__doc__",
+    "__import__",
+    "__loader__",
+    "__name__",
+    "__package__",
+    "__spec__",
+    "abs",
+    "aiter",
+    "all",
+    "and",
+    "anext",
+    "any",
+    "as",
+    "ascii",
+    "assert",
+    "async",
+    "await",
+    "bin",
+    "bool",
+    "break",
+    "breakpoint",
+    "bytearray",
+    "bytes",
+    "callable",
+    "chr",
+    "class",
+    "classmethod",
+    "compile",
+    "complex",
+    "continue",
+    "copyright",
+    "credits",
+    "def",
+    "del",
+    "delattr",
+    "dict",
+    "dir",
+    "divmod",
+    "elif",
+    "else",
+    "enumerate",
+    "eval",
+    "except",
+    "exec",
+    "exit",
+    "filter",
+    "finally",
+    "float",
+    "for",
+    "format",
+    "from",
+    "frozenset",
+    "getattr",
+    "global",
+    "globals",
+    "hasattr",
+    "hash",
+    "help",
+    "hex",
+    "id",
+    "if",
+    "import",
+    "in",
+    "input",
+    "int",
+    "is",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "lambda",
+    "len",
+    "license",
+    "list",
+    "locals",
+    "map",
+    "max",
+    "memoryview",
+    "min",
+    "next",
+    "nonlocal",
+    "not",
+    "object",
+    "oct",
+    "open",
+    "or",
+    "ord",
+    "pass",
+    "pow",
+    "print",
+    "property",
+    "quit",
+    "raise",
+    "range",
+    "repr",
+    "return",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "try",
+    "tuple",
+    "type",
+    "vars",
+    "while",
+    "with",
+    "yield",
+    "zip",
+]

@@ -27,6 +27,7 @@ from agentless_mcp.util.fslimits import (
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_WALK_FILES,
     bounded_walk,
+    file_size,
     file_stays_inside,
 )
 from agentless_mcp.util.textsafe import one_line
@@ -180,7 +181,7 @@ def walk_repo(
             )
             raise WalkBoundExceeded(message)
 
-        size = _size_of(candidate)
+        size = file_size(candidate)
         if size is None:
             # The walk is pointed at live repositories it does not own, and
             # the file was still there when `file_stays_inside` looked. It can
@@ -217,14 +218,6 @@ def _too_many_files(max_files: int, root: Path) -> str:
         f"walk refused: more than {max_files} files under {root}; "
         "point the call at a subdirectory or raise the file bound"
     )
-
-
-def _size_of(path: Path) -> int | None:
-    """Return the file size, or None when it cannot be stat'ed."""
-    try:
-        return path.stat().st_size
-    except OSError:
-        return None
 
 
 def _git_listed_paths(root: Path, *, max_files: int = DEFAULT_MAX_WALK_FILES) -> list[str]:

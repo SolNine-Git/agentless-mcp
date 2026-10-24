@@ -1,6 +1,6 @@
 # Rust Port, Phase 3: The Write Surface
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P2 released | **Branch**: `feat/rust-p3-write` | **Est. Rust lines**: about 3,500
+**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P2 released | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 3,500
 
 ## Goal
 
@@ -39,7 +39,7 @@ Every write into the target repository goes through one transaction that rolls b
 - **`apply(edits, files) -> ApplyResult`**: pure. Writing belongs to the caller through `io::Txn`.
 - **Keys**:
   - `file_key` and `equivalence_key` (`src/agentless_mcp/core/normalize.py:200-232`) hash a unified diff of the normalized token streams.
-  - The diff comes from `similar`, formatted to Python's `unified_diff(lineterm="")` and split with `pycompat::splitlines`.
+  - The diff comes from `similar`, formatted to Python's `unified_diff(lineterm="")` and split with `text::splitlines`.
   - Keys can differ from Python-built keys when a token holds a line break, so a verdict file is never mixed across builds (parity ledger, Diff row).
   - Each key is computed once per file (finding C15).
 - **`rank(candidates, repro_valid) -> VoteReport`** (`src/agentless_mcp/core/vote.py:171-201`):
@@ -99,7 +99,7 @@ Every write into the target repository goes through one transaction that rolls b
   - serde records with `deny_unknown_fields`, because the project owns this format;
   - domain checks after deserialization: record order, unique ids, and unique indexes (Codex V24);
   - one `From<&CandidateVerdict> for VoteCandidate` (finding C2);
-  - the execution fingerprint uses `PyJson` compact form (`validate_service.py:1203-1209`);
+  - the execution fingerprint uses the `json::JsonForm::Compact` form (`validate_service.py:1203-1209`);
   - the Rust build writes `"producer": "agentless-mcp <version> (rust)"` in the `run` record (`validate_service.py:430-442`). The reader refuses a `run` record without a Rust `producer`, with a message to re-run validate. A Python-built file has no `producer` field, so it is refused.
 - **`vote`**: `patch::rank`, rendered by `render`.
 - **Tests**: every operation on fake ports. `validate` uses a fake `Runner` that scripts the test outcomes.

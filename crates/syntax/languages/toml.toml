@@ -1,0 +1,31 @@
+name = "toml"
+tier = 2
+extensions = [".toml"]
+probe = "x = 1\n"
+probe_root = "document"
+comments = ["comment"]
+
+[extraction]
+prefix = "toml"
+symbols = "data_keys"
+imports = "none"
+roles = "plain"
+identifiers = ["bare_key", "quoted_key"]
+bodies = []
+skeleton_functions = []
+
+[extraction.declarations]
+functions = []
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

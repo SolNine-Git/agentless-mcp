@@ -1,0 +1,38 @@
+[package]
+name = "app"
+description = "The operations layer: the read and write operations, the lint pair forms, capabilities, the repository context, the start-up configuration with the clock and token counter ports, the MCP tool surface table, and the agent guide."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+checks = { path = "../checks" }
+facts = { path = "../facts" }
+git = { path = "../git" }
+graph = { path = "../graph" }
+io = { path = "../io" }
+json = { path = "../json" }
+kernel = { path = "../kernel" }
+metrics = { path = "../metrics" }
+patch = { path = "../patch" }
+patchcheck = { path = "../patchcheck" }
+prompts = { path = "../prompts" }
+serde.workspace = true
+sha2.workspace = true
+store = { path = "../store" }
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+thiserror.workspace = true
+tiktoken-rs = "=0.12.1"
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

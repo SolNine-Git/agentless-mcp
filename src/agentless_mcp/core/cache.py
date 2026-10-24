@@ -182,7 +182,7 @@ from agentless_mcp.util.fslimits import DEFAULT_MAX_FILE_BYTES, read_bounded
 #   is unchanged and old rows still read, which is again the trap: a cache
 #   written before the change would keep serving the smaller symbol set for
 #   every unchanged file, and no per-file staleness check can see it.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 ENV_NO_AUTO_INDEX = "AGENTLESS_MCP_NO_AUTO_INDEX"
 ENV_MAX_CACHE_BYTES = "AGENTLESS_MCP_MAX_CACHE_BYTES"
@@ -1005,6 +1005,8 @@ def _open_indexed(
         _discard_unlocked(database, repo_root)
         return OnDemandSource(extractor, _absent_status(database, opened.note))
 
+    current = _generation_or_close(connection, repo_root, tree_oid)
+
     # Stamped here, at the one point that proves the index was both usable and
     # actually used: past the schema, repository and generation checks, and
     # about to be handed to a caller as its source of facts. Stamping on entry
@@ -1018,11 +1020,22 @@ def _open_indexed(
             database=database,
             entries=opened.entries,
             generation=meta.generation,
-            repo_generation=repo_generation(repo_root, tree_oid),
+            repo_generation=current,
             grammar_version=grammars.pack_version(),
             repo_root=repo_root,
         ),
     )
+
+
+def _generation_or_close(
+    connection: sqlite3.Connection, repo_root: Path, tree_oid: str | None
+) -> str:
+    # The manifest walk can hit its bound; the read transaction must not outlive the failure.
+    try:
+        return repo_generation(repo_root, tree_oid)
+    except BaseException:
+        connection.close()
+        raise
 
 
 @dataclass(frozen=True)

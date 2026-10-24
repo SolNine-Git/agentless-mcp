@@ -1,0 +1,327 @@
+pub mod kernel
+pub enum kernel::Error
+pub kernel::Error::CacheLocked(alloc::string::String)
+pub kernel::Error::CallStopped(alloc::string::String)
+pub kernel::Error::InputUnreadable(alloc::string::String)
+pub kernel::Error::LanguageUnavailable(alloc::string::String)
+pub kernel::Error::OperationFailed(alloc::string::String)
+pub kernel::Error::RepoResolution(alloc::string::String)
+pub kernel::Error::RevisionUnresolved(alloc::string::String)
+pub kernel::Error::SecurityRefusal(alloc::string::String)
+pub kernel::Error::UnmeasurableSource(alloc::string::String)
+pub kernel::Error::WalkBoundExceeded(alloc::string::String)
+impl core::clone::Clone for kernel::Error
+pub fn kernel::Error::clone(&self) -> Self
+impl core::cmp::Eq for kernel::Error
+impl core::cmp::PartialEq for kernel::Error
+pub fn kernel::Error::eq(&self, &Self) -> bool
+impl core::error::Error for kernel::Error
+impl core::fmt::Debug for kernel::Error
+pub fn kernel::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for kernel::Error
+pub fn kernel::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for kernel::Error
+impl core::marker::Freeze for kernel::Error
+impl core::marker::Send for kernel::Error
+impl core::marker::Sync for kernel::Error
+impl core::marker::Unpin for kernel::Error
+impl core::marker::UnsafeUnpin for kernel::Error
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::Error
+impl core::panic::unwind_safe::UnwindSafe for kernel::Error
+pub enum kernel::Stopped
+pub kernel::Stopped::Cancelled
+pub kernel::Stopped::Spent
+pub kernel::Stopped::Spent::credited: f64
+pub kernel::Stopped::Spent::elapsed: f64
+pub kernel::Stopped::Spent::grace: f64
+pub kernel::Stopped::Spent::limit: f64
+impl core::clone::Clone for kernel::Stopped
+pub fn kernel::Stopped::clone(&self) -> Self
+impl core::cmp::PartialEq for kernel::Stopped
+pub fn kernel::Stopped::eq(&self, &Self) -> bool
+impl core::fmt::Debug for kernel::Stopped
+pub fn kernel::Stopped::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for kernel::Stopped
+impl core::marker::StructuralPartialEq for kernel::Stopped
+impl core::marker::Freeze for kernel::Stopped
+impl core::marker::Send for kernel::Stopped
+impl core::marker::Sync for kernel::Stopped
+impl core::marker::Unpin for kernel::Stopped
+impl core::marker::UnsafeUnpin for kernel::Stopped
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::Stopped
+impl core::panic::unwind_safe::UnwindSafe for kernel::Stopped
+pub struct kernel::Bounded<T>
+impl<T> kernel::Bounded<T>
+pub fn kernel::Bounded<T>::cut(alloc::vec::Vec<T>, usize) -> Self
+pub const fn kernel::Bounded<T>::limit(&self) -> usize
+pub fn kernel::Bounded<T>::omitted(&self) -> usize
+pub fn kernel::Bounded<T>::rows(&self) -> &[T]
+pub const fn kernel::Bounded<T>::total(&self) -> usize
+pub fn kernel::Bounded<T>::with_total(alloc::vec::Vec<T>, usize, usize) -> Self
+impl<T: core::clone::Clone> core::clone::Clone for kernel::Bounded<T>
+pub fn kernel::Bounded<T>::clone(&self) -> Self
+impl<T: core::cmp::Eq> core::cmp::Eq for kernel::Bounded<T>
+impl<T: core::cmp::PartialEq> core::cmp::PartialEq for kernel::Bounded<T>
+pub fn kernel::Bounded<T>::eq(&self, &Self) -> bool
+impl<T: core::cmp::PartialEq> core::marker::StructuralPartialEq for kernel::Bounded<T>
+impl<T: core::fmt::Debug> core::fmt::Debug for kernel::Bounded<T>
+pub fn kernel::Bounded<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::marker::Freeze for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::Freeze
+impl<T> core::marker::Send for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::Send
+impl<T> core::marker::Sync for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::Sync
+impl<T> core::marker::Unpin for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::Unpin
+impl<T> core::marker::UnsafeUnpin for kernel::Bounded<T> where alloc::vec::Vec<T>: core::marker::UnsafeUnpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for kernel::Bounded<T> where alloc::vec::Vec<T>: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for kernel::Bounded<T> where alloc::vec::Vec<T>: core::panic::unwind_safe::UnwindSafe
+pub struct kernel::Deadline
+impl kernel::Deadline
+pub fn kernel::Deadline::cancel(&self)
+pub fn kernel::Deadline::check(&self) -> core::result::Result<(), kernel::Stopped>
+pub fn kernel::Deadline::credit(&self, f64)
+pub fn kernel::Deadline::credited(&self) -> f64
+pub fn kernel::Deadline::new(f64, f64, alloc::rcs::arc::Arc<dyn kernel::Clock>) -> kernel::Deadline
+pub fn kernel::Deadline::remaining(&self) -> f64
+impl core::fmt::Debug for kernel::Deadline
+pub fn kernel::Deadline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl !core::marker::Freeze for kernel::Deadline
+impl core::marker::Send for kernel::Deadline
+impl core::marker::Sync for kernel::Deadline
+impl core::marker::Unpin for kernel::Deadline
+impl core::marker::UnsafeUnpin for kernel::Deadline
+impl !core::panic::unwind_safe::RefUnwindSafe for kernel::Deadline
+impl !core::panic::unwind_safe::UnwindSafe for kernel::Deadline
+pub struct kernel::FileId(_)
+impl kernel::FileId
+pub const fn kernel::FileId::get(self) -> u32
+pub const fn kernel::FileId::new(u32) -> Self
+impl core::clone::Clone for kernel::FileId
+pub fn kernel::FileId::clone(&self) -> Self
+impl core::cmp::Eq for kernel::FileId
+impl core::cmp::Ord for kernel::FileId
+pub fn kernel::FileId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for kernel::FileId
+pub fn kernel::FileId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for kernel::FileId
+pub fn kernel::FileId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for kernel::FileId
+pub fn kernel::FileId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for kernel::FileId
+pub fn kernel::FileId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for kernel::FileId
+impl core::marker::StructuralPartialEq for kernel::FileId
+impl serde_core::ser::Serialize for kernel::FileId
+pub fn kernel::FileId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for kernel::FileId
+pub fn kernel::FileId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for kernel::FileId
+impl core::marker::Send for kernel::FileId
+impl core::marker::Sync for kernel::FileId
+impl core::marker::Unpin for kernel::FileId
+impl core::marker::UnsafeUnpin for kernel::FileId
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::FileId
+impl core::panic::unwind_safe::UnwindSafe for kernel::FileId
+pub struct kernel::Key(_)
+impl kernel::Key
+pub const fn kernel::Key::bytes(&self) -> &[u8; 32]
+pub const fn kernel::Key::new([u8; 32]) -> Self
+impl core::clone::Clone for kernel::Key
+pub fn kernel::Key::clone(&self) -> Self
+impl core::cmp::Eq for kernel::Key
+impl core::cmp::Ord for kernel::Key
+pub fn kernel::Key::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for kernel::Key
+pub fn kernel::Key::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for kernel::Key
+pub fn kernel::Key::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for kernel::Key
+pub fn kernel::Key::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for kernel::Key
+pub fn kernel::Key::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for kernel::Key
+pub fn kernel::Key::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for kernel::Key
+impl core::marker::StructuralPartialEq for kernel::Key
+impl core::str::traits::FromStr for kernel::Key
+pub type kernel::Key::Err = kernel::KeyParseError
+pub fn kernel::Key::from_str(&str) -> core::result::Result<Self, Self::Err>
+impl serde_core::ser::Serialize for kernel::Key
+pub fn kernel::Key::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
+impl<'de> serde_core::de::Deserialize<'de> for kernel::Key
+pub fn kernel::Key::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl core::marker::Freeze for kernel::Key
+impl core::marker::Send for kernel::Key
+impl core::marker::Sync for kernel::Key
+impl core::marker::Unpin for kernel::Key
+impl core::marker::UnsafeUnpin for kernel::Key
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::Key
+impl core::panic::unwind_safe::UnwindSafe for kernel::Key
+pub struct kernel::KeyParseError
+impl core::clone::Clone for kernel::KeyParseError
+pub fn kernel::KeyParseError::clone(&self) -> Self
+impl core::cmp::Eq for kernel::KeyParseError
+impl core::cmp::PartialEq for kernel::KeyParseError
+pub fn kernel::KeyParseError::eq(&self, &Self) -> bool
+impl core::error::Error for kernel::KeyParseError
+impl core::fmt::Debug for kernel::KeyParseError
+pub fn kernel::KeyParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for kernel::KeyParseError
+pub fn kernel::KeyParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for kernel::KeyParseError
+impl core::marker::Freeze for kernel::KeyParseError
+impl core::marker::Send for kernel::KeyParseError
+impl core::marker::Sync for kernel::KeyParseError
+impl core::marker::Unpin for kernel::KeyParseError
+impl core::marker::UnsafeUnpin for kernel::KeyParseError
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::KeyParseError
+impl core::panic::unwind_safe::UnwindSafe for kernel::KeyParseError
+pub struct kernel::Limit<const MIN: u32, const MAX: u32, const DEF: u32>(_)
+impl<const MIN: u32, const MAX: u32, const DEF: u32> kernel::Limit<MIN, MAX, DEF>
+pub const fn kernel::Limit<MIN, MAX, DEF>::as_usize(self) -> usize
+pub const fn kernel::Limit<MIN, MAX, DEF>::get(self) -> u32
+pub const fn kernel::Limit<MIN, MAX, DEF>::new(u32) -> core::option::Option<Self>
+impl<'de, const MIN: u32, const MAX: u32, const DEF: u32> serde_core::de::Deserialize<'de> for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::clone::Clone for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::clone(&self) -> Self
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::cmp::Eq for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::cmp::Ord for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::cmp(&self, &Self) -> core::cmp::Ordering
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::cmp::PartialEq for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::eq(&self, &Self) -> bool
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::cmp::PartialOrd for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::default::Default for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::default() -> Self
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::fmt::Debug for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::hash::Hash for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::Copy for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::StructuralPartialEq for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> serde_core::ser::Serialize for kernel::Limit<MIN, MAX, DEF>
+pub fn kernel::Limit<MIN, MAX, DEF>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::Freeze for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::Send for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::Sync for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::Unpin for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::marker::UnsafeUnpin for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::panic::unwind_safe::RefUnwindSafe for kernel::Limit<MIN, MAX, DEF>
+impl<const MIN: u32, const MAX: u32, const DEF: u32> core::panic::unwind_safe::UnwindSafe for kernel::Limit<MIN, MAX, DEF>
+pub struct kernel::NameId(_)
+impl kernel::NameId
+pub const fn kernel::NameId::get(self) -> u32
+pub const fn kernel::NameId::new(u32) -> Self
+impl core::clone::Clone for kernel::NameId
+pub fn kernel::NameId::clone(&self) -> Self
+impl core::cmp::Eq for kernel::NameId
+impl core::cmp::Ord for kernel::NameId
+pub fn kernel::NameId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for kernel::NameId
+pub fn kernel::NameId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for kernel::NameId
+pub fn kernel::NameId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for kernel::NameId
+pub fn kernel::NameId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for kernel::NameId
+pub fn kernel::NameId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for kernel::NameId
+impl core::marker::StructuralPartialEq for kernel::NameId
+impl serde_core::ser::Serialize for kernel::NameId
+pub fn kernel::NameId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for kernel::NameId
+pub fn kernel::NameId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for kernel::NameId
+impl core::marker::Send for kernel::NameId
+impl core::marker::Sync for kernel::NameId
+impl core::marker::Unpin for kernel::NameId
+impl core::marker::UnsafeUnpin for kernel::NameId
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::NameId
+impl core::panic::unwind_safe::UnwindSafe for kernel::NameId
+pub struct kernel::NodeId(_)
+impl kernel::NodeId
+pub const fn kernel::NodeId::get(self) -> u32
+pub const fn kernel::NodeId::new(u32) -> Self
+impl core::clone::Clone for kernel::NodeId
+pub fn kernel::NodeId::clone(&self) -> Self
+impl core::cmp::Eq for kernel::NodeId
+impl core::cmp::Ord for kernel::NodeId
+pub fn kernel::NodeId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for kernel::NodeId
+pub fn kernel::NodeId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for kernel::NodeId
+pub fn kernel::NodeId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for kernel::NodeId
+pub fn kernel::NodeId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for kernel::NodeId
+pub fn kernel::NodeId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for kernel::NodeId
+impl core::marker::StructuralPartialEq for kernel::NodeId
+impl serde_core::ser::Serialize for kernel::NodeId
+pub fn kernel::NodeId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for kernel::NodeId
+pub fn kernel::NodeId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for kernel::NodeId
+impl core::marker::Send for kernel::NodeId
+impl core::marker::Sync for kernel::NodeId
+impl core::marker::Unpin for kernel::NodeId
+impl core::marker::UnsafeUnpin for kernel::NodeId
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::NodeId
+impl core::panic::unwind_safe::UnwindSafe for kernel::NodeId
+pub struct kernel::Span
+impl kernel::Span
+pub const fn kernel::Span::end(self) -> u32
+pub const fn kernel::Span::new(u32, u32) -> core::option::Option<Self>
+pub const fn kernel::Span::start(self) -> u32
+impl core::clone::Clone for kernel::Span
+pub fn kernel::Span::clone(&self) -> Self
+impl core::cmp::Eq for kernel::Span
+impl core::cmp::Ord for kernel::Span
+pub fn kernel::Span::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for kernel::Span
+pub fn kernel::Span::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for kernel::Span
+pub fn kernel::Span::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for kernel::Span
+pub fn kernel::Span::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for kernel::Span
+pub fn kernel::Span::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for kernel::Span
+impl core::marker::StructuralPartialEq for kernel::Span
+impl serde_core::ser::Serialize for kernel::Span
+pub fn kernel::Span::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for kernel::Span
+pub fn kernel::Span::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for kernel::Span
+impl core::marker::Send for kernel::Span
+impl core::marker::Sync for kernel::Span
+impl core::marker::Unpin for kernel::Span
+impl core::marker::UnsafeUnpin for kernel::Span
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::Span
+impl core::panic::unwind_safe::UnwindSafe for kernel::Span
+pub struct kernel::SystemClock
+impl core::clone::Clone for kernel::SystemClock
+pub fn kernel::SystemClock::clone(&self) -> Self
+impl core::default::Default for kernel::SystemClock
+pub fn kernel::SystemClock::default() -> Self
+impl core::fmt::Debug for kernel::SystemClock
+pub fn kernel::SystemClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for kernel::SystemClock
+impl kernel::Clock for kernel::SystemClock
+pub fn kernel::SystemClock::now(&self) -> std::time::Instant
+pub fn kernel::SystemClock::wall(&self) -> std::time::SystemTime
+impl core::marker::Freeze for kernel::SystemClock
+impl core::marker::Send for kernel::SystemClock
+impl core::marker::Sync for kernel::SystemClock
+impl core::marker::Unpin for kernel::SystemClock
+impl core::marker::UnsafeUnpin for kernel::SystemClock
+impl core::panic::unwind_safe::RefUnwindSafe for kernel::SystemClock
+impl core::panic::unwind_safe::UnwindSafe for kernel::SystemClock
+pub trait kernel::Clock: core::marker::Send + core::marker::Sync
+pub fn kernel::Clock::now(&self) -> std::time::Instant
+pub fn kernel::Clock::wall(&self) -> std::time::SystemTime
+impl kernel::Clock for kernel::SystemClock
+pub fn kernel::SystemClock::now(&self) -> std::time::Instant
+pub fn kernel::SystemClock::wall(&self) -> std::time::SystemTime
+pub fn kernel::checkpoint(core::option::Option<&kernel::Deadline>) -> core::result::Result<(), kernel::Stopped>
+pub fn kernel::recaching<T>(core::option::Option<&kernel::Deadline>, impl core::ops::function::FnOnce() -> T) -> T
+pub fn kernel::walk_budget(core::time::Duration, core::option::Option<f64>) -> core::time::Duration

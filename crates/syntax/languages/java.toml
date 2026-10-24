@@ -1,0 +1,86 @@
+name = "java"
+tier = 1
+extensions = [".java"]
+probe = "class A {}\n"
+probe_root = "program"
+comments = ["block_comment", "line_comment"]
+sloc = "leaves"
+
+[units]
+units = ["compact_constructor_declaration", "constructor_declaration", "method_declaration"]
+scopes = ["class_declaration", "enum_declaration", "interface_declaration", "record_declaration"]
+bound = []
+name = "field"
+
+[decisions]
+points = [
+    "assert_statement",
+    "catch_clause",
+    "do_statement",
+    "enhanced_for_statement",
+    "for_statement",
+    "guard",
+    "if_statement",
+    "ternary_expression",
+    "while_statement",
+]
+
+[decisions.conditional]
+"switch_label" = "has_named_child"
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["compact_constructor_declaration", "constructor_declaration", "method_declaration"]
+blocks = [
+    "do_statement",
+    "enhanced_for_statement",
+    "for_statement",
+    "if_statement",
+    "switch_expression",
+    "try_statement",
+    "try_with_resources_statement",
+    "while_statement",
+]
+identifiers = ["identifier", "type_identifier"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"FLOAT" = ["decimal_floating_point_literal", "hex_floating_point_literal"]
+"INT" = [
+    "binary_integer_literal",
+    "decimal_integer_literal",
+    "hex_integer_literal",
+    "octal_integer_literal",
+]
+"NONE" = ["null_literal"]
+"STR" = ["character_literal", "string_literal"]
+
+[extraction]
+prefix = "java"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = ["constructor_declaration", "method_declaration"]
+
+[extraction.declarations]
+functions = ["compact_constructor_declaration", "constructor_declaration", "method_declaration"]
+classes = ["class_declaration", "enum_declaration", "interface_declaration", "record_declaration"]
+imports = ["import_declaration"]
+name_field = "name"
+import_path_kind = "scoped_identifier"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "last_segment"
+modifiers = ["modifiers"]
+bindings = []
+function_values = []
+constants = ["field_declaration"]
+constant_keywords = ["final", "static"]

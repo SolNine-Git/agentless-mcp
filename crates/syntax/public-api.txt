@@ -1,0 +1,612 @@
+pub mod syntax
+pub enum syntax::ImportBinding
+pub syntax::ImportBinding::LastSegment
+pub syntax::ImportBinding::ModuleObject
+pub syntax::ImportBinding::Specifiers
+impl core::clone::Clone for syntax::ImportBinding
+pub fn syntax::ImportBinding::clone(&self) -> Self
+impl core::cmp::Eq for syntax::ImportBinding
+impl core::cmp::PartialEq for syntax::ImportBinding
+pub fn syntax::ImportBinding::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::ImportBinding
+pub fn syntax::ImportBinding::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::ImportBinding
+impl core::marker::StructuralPartialEq for syntax::ImportBinding
+impl core::marker::Freeze for syntax::ImportBinding
+impl core::marker::Send for syntax::ImportBinding
+impl core::marker::Sync for syntax::ImportBinding
+impl core::marker::Unpin for syntax::ImportBinding
+impl core::marker::UnsafeUnpin for syntax::ImportBinding
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::ImportBinding
+impl core::panic::unwind_safe::UnwindSafe for syntax::ImportBinding
+pub enum syntax::ImportRule
+pub syntax::ImportRule::Generic
+pub syntax::ImportRule::Include
+pub syntax::ImportRule::None
+pub syntax::ImportRule::Python
+pub syntax::ImportRule::Require
+pub syntax::ImportRule::Rust
+pub syntax::ImportRule::Source
+impl core::clone::Clone for syntax::ImportRule
+pub fn syntax::ImportRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::ImportRule
+impl core::cmp::PartialEq for syntax::ImportRule
+pub fn syntax::ImportRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::ImportRule
+pub fn syntax::ImportRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::ImportRule
+impl core::marker::StructuralPartialEq for syntax::ImportRule
+impl core::marker::Freeze for syntax::ImportRule
+impl core::marker::Send for syntax::ImportRule
+impl core::marker::Sync for syntax::ImportRule
+impl core::marker::Unpin for syntax::ImportRule
+impl core::marker::UnsafeUnpin for syntax::ImportRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::ImportRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::ImportRule
+pub enum syntax::Language
+pub syntax::Language::Bash
+pub syntax::Language::C
+pub syntax::Language::Cpp
+pub syntax::Language::Csharp
+pub syntax::Language::Go
+pub syntax::Language::Hcl
+pub syntax::Language::Java
+pub syntax::Language::Javascript
+pub syntax::Language::Json
+pub syntax::Language::Kotlin
+pub syntax::Language::Lua
+pub syntax::Language::Php
+pub syntax::Language::Python
+pub syntax::Language::Ruby
+pub syntax::Language::Rust
+pub syntax::Language::Scala
+pub syntax::Language::Sql
+pub syntax::Language::Swift
+pub syntax::Language::Toml
+pub syntax::Language::Tsx
+pub syntax::Language::Typescript
+pub syntax::Language::Yaml
+impl syntax::Language
+pub const syntax::Language::ALL: [syntax::Language; 22]
+pub fn syntax::Language::abi_version(self) -> usize
+pub fn syntax::Language::extensions(self) -> &'static [&'static str]
+pub fn syntax::Language::extraction(self) -> &'static syntax::Extraction
+pub fn syntax::Language::field(self, &str) -> core::option::Option<syntax::FieldId>
+pub fn syntax::Language::from_name(&str) -> core::option::Option<syntax::Language>
+pub fn syntax::Language::from_path(&str) -> core::option::Option<syntax::Language>
+pub fn syntax::Language::kinds(self, &[&str]) -> syntax::KindSet
+pub fn syntax::Language::name(self) -> &'static str
+pub fn syntax::Language::probe_sample(self) -> &'static str
+pub fn syntax::Language::spec(self) -> core::option::Option<&'static syntax::Spec>
+pub fn syntax::Language::tier(self) -> syntax::Tier
+impl core::clone::Clone for syntax::Language
+pub fn syntax::Language::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Language
+impl core::cmp::Ord for syntax::Language
+pub fn syntax::Language::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for syntax::Language
+pub fn syntax::Language::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for syntax::Language
+pub fn syntax::Language::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for syntax::Language
+pub fn syntax::Language::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for syntax::Language
+pub fn syntax::Language::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for syntax::Language
+impl core::marker::StructuralPartialEq for syntax::Language
+impl core::marker::Freeze for syntax::Language
+impl core::marker::Send for syntax::Language
+impl core::marker::Sync for syntax::Language
+impl core::marker::Unpin for syntax::Language
+impl core::marker::UnsafeUnpin for syntax::Language
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Language
+impl core::panic::unwind_safe::UnwindSafe for syntax::Language
+pub enum syntax::LiteralClass
+pub syntax::LiteralClass::Bool
+pub syntax::LiteralClass::Float
+pub syntax::LiteralClass::Int
+pub syntax::LiteralClass::Null
+pub syntax::LiteralClass::Num
+pub syntax::LiteralClass::Str
+impl syntax::LiteralClass
+pub fn syntax::LiteralClass::as_str(self) -> &'static str
+impl core::clone::Clone for syntax::LiteralClass
+pub fn syntax::LiteralClass::clone(&self) -> Self
+impl core::cmp::Eq for syntax::LiteralClass
+impl core::cmp::PartialEq for syntax::LiteralClass
+pub fn syntax::LiteralClass::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::LiteralClass
+pub fn syntax::LiteralClass::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::LiteralClass
+impl core::marker::StructuralPartialEq for syntax::LiteralClass
+impl core::marker::Freeze for syntax::LiteralClass
+impl core::marker::Send for syntax::LiteralClass
+impl core::marker::Sync for syntax::LiteralClass
+impl core::marker::Unpin for syntax::LiteralClass
+impl core::marker::UnsafeUnpin for syntax::LiteralClass
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::LiteralClass
+impl core::panic::unwind_safe::UnwindSafe for syntax::LiteralClass
+pub enum syntax::QueryRunError
+pub syntax::QueryRunError::MatchLimit
+pub syntax::QueryRunError::OtherLanguage
+pub syntax::QueryRunError::OtherLanguage::query: syntax::Language
+pub syntax::QueryRunError::OtherLanguage::tree: syntax::Language
+impl core::clone::Clone for syntax::QueryRunError
+pub fn syntax::QueryRunError::clone(&self) -> Self
+impl core::cmp::Eq for syntax::QueryRunError
+impl core::cmp::PartialEq for syntax::QueryRunError
+pub fn syntax::QueryRunError::eq(&self, &Self) -> bool
+impl core::error::Error for syntax::QueryRunError
+impl core::fmt::Debug for syntax::QueryRunError
+pub fn syntax::QueryRunError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for syntax::QueryRunError
+pub fn syntax::QueryRunError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::QueryRunError
+impl core::marker::StructuralPartialEq for syntax::QueryRunError
+impl core::marker::Freeze for syntax::QueryRunError
+impl core::marker::Send for syntax::QueryRunError
+impl core::marker::Sync for syntax::QueryRunError
+impl core::marker::Unpin for syntax::QueryRunError
+impl core::marker::UnsafeUnpin for syntax::QueryRunError
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::QueryRunError
+impl core::panic::unwind_safe::UnwindSafe for syntax::QueryRunError
+pub enum syntax::RoleRule
+pub syntax::RoleRule::Plain
+pub syntax::RoleRule::Python
+impl core::clone::Clone for syntax::RoleRule
+pub fn syntax::RoleRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::RoleRule
+impl core::cmp::PartialEq for syntax::RoleRule
+pub fn syntax::RoleRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::RoleRule
+pub fn syntax::RoleRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::RoleRule
+impl core::marker::StructuralPartialEq for syntax::RoleRule
+impl core::marker::Freeze for syntax::RoleRule
+impl core::marker::Send for syntax::RoleRule
+impl core::marker::Sync for syntax::RoleRule
+impl core::marker::Unpin for syntax::RoleRule
+impl core::marker::UnsafeUnpin for syntax::RoleRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::RoleRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::RoleRule
+pub enum syntax::SlocRule
+pub syntax::SlocRule::Leaves
+pub syntax::SlocRule::PythonTokens
+impl core::clone::Clone for syntax::SlocRule
+pub fn syntax::SlocRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::SlocRule
+impl core::cmp::PartialEq for syntax::SlocRule
+pub fn syntax::SlocRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::SlocRule
+pub fn syntax::SlocRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::SlocRule
+impl core::marker::StructuralPartialEq for syntax::SlocRule
+impl core::marker::Freeze for syntax::SlocRule
+impl core::marker::Send for syntax::SlocRule
+impl core::marker::Sync for syntax::SlocRule
+impl core::marker::Unpin for syntax::SlocRule
+impl core::marker::UnsafeUnpin for syntax::SlocRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::SlocRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::SlocRule
+pub enum syntax::SymbolRule
+pub syntax::SymbolRule::CDeclarators
+pub syntax::SymbolRule::DataKeys
+pub syntax::SymbolRule::Generic
+pub syntax::SymbolRule::Hcl
+pub syntax::SymbolRule::Lua
+pub syntax::SymbolRule::Python
+pub syntax::SymbolRule::Rust
+pub syntax::SymbolRule::Sql
+impl core::clone::Clone for syntax::SymbolRule
+pub fn syntax::SymbolRule::clone(&self) -> Self
+impl core::cmp::Eq for syntax::SymbolRule
+impl core::cmp::PartialEq for syntax::SymbolRule
+pub fn syntax::SymbolRule::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::SymbolRule
+pub fn syntax::SymbolRule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::SymbolRule
+impl core::marker::StructuralPartialEq for syntax::SymbolRule
+impl core::marker::Freeze for syntax::SymbolRule
+impl core::marker::Send for syntax::SymbolRule
+impl core::marker::Sync for syntax::SymbolRule
+impl core::marker::Unpin for syntax::SymbolRule
+impl core::marker::UnsafeUnpin for syntax::SymbolRule
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::SymbolRule
+impl core::panic::unwind_safe::UnwindSafe for syntax::SymbolRule
+pub enum syntax::Tier
+pub syntax::Tier::One
+pub syntax::Tier::Two
+impl syntax::Tier
+pub fn syntax::Tier::number(self) -> u8
+impl core::clone::Clone for syntax::Tier
+pub fn syntax::Tier::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Tier
+impl core::cmp::Ord for syntax::Tier
+pub fn syntax::Tier::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for syntax::Tier
+pub fn syntax::Tier::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for syntax::Tier
+pub fn syntax::Tier::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for syntax::Tier
+pub fn syntax::Tier::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for syntax::Tier
+pub fn syntax::Tier::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for syntax::Tier
+impl core::marker::StructuralPartialEq for syntax::Tier
+impl core::marker::Freeze for syntax::Tier
+impl core::marker::Send for syntax::Tier
+impl core::marker::Sync for syntax::Tier
+impl core::marker::Unpin for syntax::Tier
+impl core::marker::UnsafeUnpin for syntax::Tier
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Tier
+impl core::panic::unwind_safe::UnwindSafe for syntax::Tier
+pub enum syntax::Unparsable
+pub syntax::Unparsable::Abi
+pub syntax::Unparsable::Abi::abi: usize
+pub syntax::Unparsable::Abi::language: syntax::Language
+pub syntax::Unparsable::Boundary
+pub syntax::Unparsable::Boundary::language: syntax::Language
+pub syntax::Unparsable::Boundary::node: u32
+pub syntax::Unparsable::NoTree
+pub syntax::Unparsable::NoTree::language: syntax::Language
+pub syntax::Unparsable::TooLarge
+pub syntax::Unparsable::TooLarge::len: usize
+impl core::clone::Clone for syntax::Unparsable
+pub fn syntax::Unparsable::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Unparsable
+impl core::cmp::PartialEq for syntax::Unparsable
+pub fn syntax::Unparsable::eq(&self, &Self) -> bool
+impl core::error::Error for syntax::Unparsable
+impl core::fmt::Debug for syntax::Unparsable
+pub fn syntax::Unparsable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for syntax::Unparsable
+pub fn syntax::Unparsable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntax::Unparsable
+impl core::marker::Freeze for syntax::Unparsable
+impl core::marker::Send for syntax::Unparsable
+impl core::marker::Sync for syntax::Unparsable
+impl core::marker::Unpin for syntax::Unparsable
+impl core::marker::UnsafeUnpin for syntax::Unparsable
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Unparsable
+impl core::panic::unwind_safe::UnwindSafe for syntax::Unparsable
+pub struct syntax::Capture
+pub syntax::Capture::index: u32
+pub syntax::Capture::node: syntax::NodeId
+impl core::clone::Clone for syntax::Capture
+pub fn syntax::Capture::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Capture
+impl core::cmp::PartialEq for syntax::Capture
+pub fn syntax::Capture::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::Capture
+pub fn syntax::Capture::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::Capture
+impl core::marker::StructuralPartialEq for syntax::Capture
+impl core::marker::Freeze for syntax::Capture
+impl core::marker::Send for syntax::Capture
+impl core::marker::Sync for syntax::Capture
+impl core::marker::Unpin for syntax::Capture
+impl core::marker::UnsafeUnpin for syntax::Capture
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Capture
+impl core::panic::unwind_safe::UnwindSafe for syntax::Capture
+pub struct syntax::CloneRules
+pub syntax::CloneRules::blocks: syntax::KindSet
+pub syntax::CloneRules::functions: syntax::KindSet
+pub syntax::CloneRules::identifiers: syntax::KindSet
+pub syntax::CloneRules::indent_blocks: syntax::KindSet
+impl syntax::CloneRules
+pub fn syntax::CloneRules::literal_class(&self, syntax::KindId) -> core::option::Option<syntax::LiteralClass>
+pub fn syntax::CloneRules::skips(&self, &syntax::Parsed, syntax::NodeId) -> bool
+impl core::marker::Freeze for syntax::CloneRules
+impl core::marker::Send for syntax::CloneRules
+impl core::marker::Sync for syntax::CloneRules
+impl core::marker::Unpin for syntax::CloneRules
+impl core::marker::UnsafeUnpin for syntax::CloneRules
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::CloneRules
+impl core::panic::unwind_safe::UnwindSafe for syntax::CloneRules
+pub struct syntax::DecisionRules
+pub syntax::DecisionRules::points: syntax::KindSet
+impl syntax::DecisionRules
+pub fn syntax::DecisionRules::condition(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<bool>
+pub fn syntax::DecisionRules::operator_field(&self) -> core::option::Option<syntax::FieldId>
+pub fn syntax::DecisionRules::operator_spellings(&self, syntax::KindId) -> core::option::Option<&'static [&'static str]>
+pub fn syntax::DecisionRules::token_operators(&self, syntax::KindId) -> core::option::Option<&syntax::KindSet>
+impl core::marker::Freeze for syntax::DecisionRules
+impl core::marker::Send for syntax::DecisionRules
+impl core::marker::Sync for syntax::DecisionRules
+impl core::marker::Unpin for syntax::DecisionRules
+impl core::marker::UnsafeUnpin for syntax::DecisionRules
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::DecisionRules
+impl core::panic::unwind_safe::UnwindSafe for syntax::DecisionRules
+pub struct syntax::Declarations
+pub syntax::Declarations::bindings: syntax::KindSet
+pub syntax::Declarations::class_bodies: syntax::KindSet
+pub syntax::Declarations::classes: syntax::KindSet
+pub syntax::Declarations::constant_keywords: &'static [&'static str]
+pub syntax::Declarations::constants: syntax::KindSet
+pub syntax::Declarations::function_values: syntax::KindSet
+pub syntax::Declarations::functions: syntax::KindSet
+pub syntax::Declarations::import_binding: syntax::ImportBinding
+pub syntax::Declarations::import_path_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::import_path_kind: syntax::KindSet
+pub syntax::Declarations::imports: syntax::KindSet
+pub syntax::Declarations::keyword_visibility: bool
+pub syntax::Declarations::modifiers: syntax::KindSet
+pub syntax::Declarations::name_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::names: syntax::KindSet
+pub syntax::Declarations::receiver_field: core::option::Option<syntax::FieldId>
+pub syntax::Declarations::signature_from_header: bool
+impl core::marker::Freeze for syntax::Declarations
+impl core::marker::Send for syntax::Declarations
+impl core::marker::Sync for syntax::Declarations
+impl core::marker::Unpin for syntax::Declarations
+impl core::marker::UnsafeUnpin for syntax::Declarations
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Declarations
+impl core::panic::unwind_safe::UnwindSafe for syntax::Declarations
+pub struct syntax::Extraction
+pub syntax::Extraction::bodies: syntax::KindSet
+pub syntax::Extraction::comments: syntax::KindSet
+pub syntax::Extraction::declarations: syntax::Declarations
+pub syntax::Extraction::identifiers: syntax::KindSet
+pub syntax::Extraction::imports: syntax::ImportRule
+pub syntax::Extraction::prefix: &'static str
+pub syntax::Extraction::roles: syntax::RoleRule
+pub syntax::Extraction::skeleton_functions: syntax::KindSet
+pub syntax::Extraction::symbols: syntax::SymbolRule
+impl syntax::Extraction
+pub fn syntax::Extraction::is_builtin(&self, &str) -> bool
+impl core::marker::Freeze for syntax::Extraction
+impl core::marker::Send for syntax::Extraction
+impl core::marker::Sync for syntax::Extraction
+impl core::marker::Unpin for syntax::Extraction
+impl core::marker::UnsafeUnpin for syntax::Extraction
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Extraction
+impl core::panic::unwind_safe::UnwindSafe for syntax::Extraction
+pub struct syntax::FieldCursor<'p>
+impl<'p> syntax::FieldCursor<'p>
+pub fn syntax::FieldCursor<'p>::child_by_field(&mut self, syntax::NodeId, syntax::FieldId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::FieldCursor<'p>::new(&'p syntax::Parsed) -> syntax::FieldCursor<'p>
+pub fn syntax::FieldCursor<'p>::parsed(&self) -> &'p syntax::Parsed
+impl<'p> core::marker::Freeze for syntax::FieldCursor<'p>
+impl<'p> core::marker::Send for syntax::FieldCursor<'p>
+impl<'p> core::marker::Sync for syntax::FieldCursor<'p>
+impl<'p> core::marker::Unpin for syntax::FieldCursor<'p>
+impl<'p> core::marker::UnsafeUnpin for syntax::FieldCursor<'p>
+impl<'p> core::panic::unwind_safe::RefUnwindSafe for syntax::FieldCursor<'p>
+impl<'p> core::panic::unwind_safe::UnwindSafe for syntax::FieldCursor<'p>
+pub struct syntax::FieldId(_)
+impl core::clone::Clone for syntax::FieldId
+pub fn syntax::FieldId::clone(&self) -> Self
+impl core::cmp::Eq for syntax::FieldId
+impl core::cmp::PartialEq for syntax::FieldId
+pub fn syntax::FieldId::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::FieldId
+pub fn syntax::FieldId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for syntax::FieldId
+pub fn syntax::FieldId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for syntax::FieldId
+impl core::marker::StructuralPartialEq for syntax::FieldId
+impl core::marker::Freeze for syntax::FieldId
+impl core::marker::Send for syntax::FieldId
+impl core::marker::Sync for syntax::FieldId
+impl core::marker::Unpin for syntax::FieldId
+impl core::marker::UnsafeUnpin for syntax::FieldId
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::FieldId
+impl core::panic::unwind_safe::UnwindSafe for syntax::FieldId
+pub struct syntax::KindId(_)
+impl core::clone::Clone for syntax::KindId
+pub fn syntax::KindId::clone(&self) -> Self
+impl core::cmp::Eq for syntax::KindId
+impl core::cmp::PartialEq for syntax::KindId
+pub fn syntax::KindId::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::KindId
+pub fn syntax::KindId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for syntax::KindId
+pub fn syntax::KindId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for syntax::KindId
+impl core::marker::StructuralPartialEq for syntax::KindId
+impl core::marker::Freeze for syntax::KindId
+impl core::marker::Send for syntax::KindId
+impl core::marker::Sync for syntax::KindId
+impl core::marker::Unpin for syntax::KindId
+impl core::marker::UnsafeUnpin for syntax::KindId
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::KindId
+impl core::panic::unwind_safe::UnwindSafe for syntax::KindId
+pub struct syntax::KindSet
+impl syntax::KindSet
+pub fn syntax::KindSet::contains(&self, syntax::KindId) -> bool
+pub fn syntax::KindSet::is_empty(&self) -> bool
+impl core::clone::Clone for syntax::KindSet
+pub fn syntax::KindSet::clone(&self) -> Self
+impl core::cmp::Eq for syntax::KindSet
+impl core::cmp::PartialEq for syntax::KindSet
+pub fn syntax::KindSet::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::KindSet
+pub fn syntax::KindSet::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntax::KindSet
+impl core::marker::Freeze for syntax::KindSet
+impl core::marker::Send for syntax::KindSet
+impl core::marker::Sync for syntax::KindSet
+impl core::marker::Unpin for syntax::KindSet
+impl core::marker::UnsafeUnpin for syntax::KindSet
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::KindSet
+impl core::panic::unwind_safe::UnwindSafe for syntax::KindSet
+pub struct syntax::Match
+pub syntax::Match::captures: alloc::vec::Vec<syntax::Capture>
+pub syntax::Match::pattern: u32
+impl core::clone::Clone for syntax::Match
+pub fn syntax::Match::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Match
+impl core::cmp::PartialEq for syntax::Match
+pub fn syntax::Match::eq(&self, &Self) -> bool
+impl core::fmt::Debug for syntax::Match
+pub fn syntax::Match::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntax::Match
+impl core::marker::Freeze for syntax::Match
+impl core::marker::Send for syntax::Match
+impl core::marker::Sync for syntax::Match
+impl core::marker::Unpin for syntax::Match
+impl core::marker::UnsafeUnpin for syntax::Match
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Match
+impl core::panic::unwind_safe::UnwindSafe for syntax::Match
+pub struct syntax::NodeId(_)
+impl syntax::NodeId
+pub fn syntax::NodeId::index(self) -> usize
+impl core::clone::Clone for syntax::NodeId
+pub fn syntax::NodeId::clone(&self) -> Self
+impl core::cmp::Eq for syntax::NodeId
+impl core::cmp::Ord for syntax::NodeId
+pub fn syntax::NodeId::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for syntax::NodeId
+pub fn syntax::NodeId::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for syntax::NodeId
+pub fn syntax::NodeId::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for syntax::NodeId
+pub fn syntax::NodeId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for syntax::NodeId
+pub fn syntax::NodeId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for syntax::NodeId
+impl core::marker::StructuralPartialEq for syntax::NodeId
+impl core::marker::Freeze for syntax::NodeId
+impl core::marker::Send for syntax::NodeId
+impl core::marker::Sync for syntax::NodeId
+impl core::marker::Unpin for syntax::NodeId
+impl core::marker::UnsafeUnpin for syntax::NodeId
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::NodeId
+impl core::panic::unwind_safe::UnwindSafe for syntax::NodeId
+pub struct syntax::Parsed
+impl syntax::Parsed
+pub fn syntax::Parsed::byte_range(&self, syntax::NodeId) -> core::ops::range::Range<usize>
+pub fn syntax::Parsed::child_by_field(&self, syntax::NodeId, syntax::FieldId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::child_count(&self, syntax::NodeId) -> usize
+pub fn syntax::Parsed::children(&self, syntax::NodeId) -> impl core::iter::traits::iterator::Iterator<Item = syntax::NodeId> + '_
+pub fn syntax::Parsed::children_by_field(&self, syntax::NodeId, syntax::FieldId) -> impl core::iter::traits::iterator::Iterator<Item = syntax::NodeId> + '_
+pub fn syntax::Parsed::descendants(&self, syntax::NodeId) -> impl core::iter::traits::iterator::Iterator<Item = syntax::NodeId> + '_
+pub fn syntax::Parsed::end_byte(&self, syntax::NodeId) -> u32
+pub fn syntax::Parsed::end_point(&self, syntax::NodeId) -> syntax::Point
+pub fn syntax::Parsed::field_of(&self, syntax::NodeId) -> core::option::Option<syntax::FieldId>
+pub fn syntax::Parsed::first_error(&self) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::first_of_kind(&self, syntax::NodeId, &syntax::KindSet) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::has_error(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::innermost_error(&self) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::is_error(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::is_leaf(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::is_missing(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::is_named(&self, syntax::NodeId) -> bool
+pub fn syntax::Parsed::kind(&self, syntax::NodeId) -> syntax::KindId
+pub fn syntax::Parsed::kind_name(&self, syntax::NodeId) -> &'static str
+pub fn syntax::Parsed::language(&self) -> syntax::Language
+pub fn syntax::Parsed::named_child_count(&self, syntax::NodeId) -> usize
+pub fn syntax::Parsed::named_children(&self, syntax::NodeId) -> impl core::iter::traits::iterator::Iterator<Item = syntax::NodeId> + '_
+pub fn syntax::Parsed::node_count(&self) -> u32
+pub fn syntax::Parsed::parent(&self, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::Parsed::root(&self) -> syntax::NodeId
+pub fn syntax::Parsed::source(&self) -> &str
+pub fn syntax::Parsed::start_byte(&self, syntax::NodeId) -> u32
+pub fn syntax::Parsed::start_point(&self, syntax::NodeId) -> syntax::Point
+pub fn syntax::Parsed::text(&self, syntax::NodeId) -> &str
+impl syntax::Parsed
+pub fn syntax::Parsed::captures(&self, &syntax::Query) -> core::result::Result<alloc::vec::Vec<syntax::Capture>, syntax::QueryRunError>
+pub fn syntax::Parsed::matches(&self, &syntax::Query) -> core::result::Result<alloc::vec::Vec<syntax::Match>, syntax::QueryRunError>
+impl core::marker::Freeze for syntax::Parsed
+impl core::marker::Send for syntax::Parsed
+impl core::marker::Sync for syntax::Parsed
+impl core::marker::Unpin for syntax::Parsed
+impl core::marker::UnsafeUnpin for syntax::Parsed
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Parsed
+impl core::panic::unwind_safe::UnwindSafe for syntax::Parsed
+pub struct syntax::Point
+pub syntax::Point::column: u32
+pub syntax::Point::row: u32
+impl core::clone::Clone for syntax::Point
+pub fn syntax::Point::clone(&self) -> Self
+impl core::cmp::Eq for syntax::Point
+impl core::cmp::Ord for syntax::Point
+pub fn syntax::Point::cmp(&self, &Self) -> core::cmp::Ordering
+impl core::cmp::PartialEq for syntax::Point
+pub fn syntax::Point::eq(&self, &Self) -> bool
+impl core::cmp::PartialOrd for syntax::Point
+pub fn syntax::Point::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for syntax::Point
+pub fn syntax::Point::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for syntax::Point
+impl core::marker::StructuralPartialEq for syntax::Point
+impl core::marker::Freeze for syntax::Point
+impl core::marker::Send for syntax::Point
+impl core::marker::Sync for syntax::Point
+impl core::marker::Unpin for syntax::Point
+impl core::marker::UnsafeUnpin for syntax::Point
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Point
+impl core::panic::unwind_safe::UnwindSafe for syntax::Point
+pub struct syntax::Query
+impl syntax::Query
+pub fn syntax::Query::capture_names(&self) -> &[&str]
+pub fn syntax::Query::language(&self) -> syntax::Language
+pub fn syntax::Query::new(syntax::Language, &str) -> core::result::Result<syntax::Query, syntax::QueryError>
+pub fn syntax::Query::pattern_count(&self) -> usize
+pub fn syntax::Query::start_byte_for_pattern(&self, usize) -> usize
+impl core::marker::Freeze for syntax::Query
+impl core::marker::Send for syntax::Query
+impl core::marker::Sync for syntax::Query
+impl core::marker::Unpin for syntax::Query
+impl core::marker::UnsafeUnpin for syntax::Query
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Query
+impl core::panic::unwind_safe::UnwindSafe for syntax::Query
+pub struct syntax::QueryError
+pub syntax::QueryError::column: usize
+pub syntax::QueryError::message: alloc::string::String
+pub syntax::QueryError::offset: usize
+pub syntax::QueryError::row: usize
+impl core::clone::Clone for syntax::QueryError
+pub fn syntax::QueryError::clone(&self) -> Self
+impl core::cmp::Eq for syntax::QueryError
+impl core::cmp::PartialEq for syntax::QueryError
+pub fn syntax::QueryError::eq(&self, &Self) -> bool
+impl core::error::Error for syntax::QueryError
+impl core::fmt::Debug for syntax::QueryError
+pub fn syntax::QueryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for syntax::QueryError
+pub fn syntax::QueryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for syntax::QueryError
+impl core::marker::Freeze for syntax::QueryError
+impl core::marker::Send for syntax::QueryError
+impl core::marker::Sync for syntax::QueryError
+impl core::marker::Unpin for syntax::QueryError
+impl core::marker::UnsafeUnpin for syntax::QueryError
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::QueryError
+impl core::panic::unwind_safe::UnwindSafe for syntax::QueryError
+pub struct syntax::Spec
+pub syntax::Spec::clones: syntax::CloneRules
+pub syntax::Spec::comments: syntax::KindSet
+pub syntax::Spec::decisions: syntax::DecisionRules
+pub syntax::Spec::sloc: syntax::SlocRule
+pub syntax::Spec::statement_parents: core::option::Option<syntax::KindSet>
+pub syntax::Spec::units: syntax::UnitRules
+impl core::marker::Freeze for syntax::Spec
+impl core::marker::Send for syntax::Spec
+impl core::marker::Sync for syntax::Spec
+impl core::marker::Unpin for syntax::Spec
+impl core::marker::UnsafeUnpin for syntax::Spec
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::Spec
+impl core::panic::unwind_safe::UnwindSafe for syntax::Spec
+pub struct syntax::UnitRules
+pub syntax::UnitRules::bound: syntax::KindSet
+pub syntax::UnitRules::scopes: syntax::KindSet
+pub syntax::UnitRules::units: syntax::KindSet
+impl syntax::UnitRules
+pub fn syntax::UnitRules::binding_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::UnitRules::descends_into(&self, syntax::KindId) -> bool
+pub fn syntax::UnitRules::name_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::UnitRules::owner_of(&self, &mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+impl core::marker::Freeze for syntax::UnitRules
+impl core::marker::Send for syntax::UnitRules
+impl core::marker::Sync for syntax::UnitRules
+impl core::marker::Unpin for syntax::UnitRules
+impl core::marker::UnsafeUnpin for syntax::UnitRules
+impl core::panic::unwind_safe::RefUnwindSafe for syntax::UnitRules
+impl core::panic::unwind_safe::UnwindSafe for syntax::UnitRules
+pub const syntax::EXTENSIONS: [(&str, syntax::Language); 33]
+pub const syntax::PACK_VERSION: &str
+pub const syntax::TABLES_DIGEST: &str
+pub fn syntax::parse(syntax::Language, alloc::rcs::arc::Arc<str>) -> core::result::Result<syntax::Parsed, syntax::Unparsable>
+pub fn syntax::rust_impl_owner(&mut syntax::FieldCursor<'_>, syntax::NodeId) -> core::option::Option<syntax::NodeId>
+pub fn syntax::tokens(&syntax::Parsed, syntax::NodeId, core::option::Option<syntax::NodeId>) -> alloc::vec::Vec<alloc::borrow::Cow<'_, str>>

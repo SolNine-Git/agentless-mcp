@@ -1,0 +1,36 @@
+//! The git reads the tool makes: a hardened bounded runner, the repository snapshot, the change
+//! listing parsers, the repository walk, the history of a line span, and commit churn.
+
+mod changes;
+mod churn;
+mod history;
+mod run;
+mod snapshot;
+mod toplevel;
+mod walk;
+mod worktree;
+
+#[cfg(test)]
+mod recipe;
+#[cfg(test)]
+mod testing;
+
+pub use changes::{
+    BINARY_PROBE_BYTES, COMPARED_STATUSES, Change, MAX_BLOB_OUTPUT_BYTES, MAX_COMMIT_OUTPUT_BYTES,
+    MAX_LISTING_BYTES, Malformed, Side, looks_binary, parse_changes, parse_commit, parse_untracked,
+};
+pub use churn::{CHURN_WINDOW_DAYS, Churn};
+pub use history::{
+    Commit, CommitId, HistoryFailure, LineRange, MAX_HISTORY_OUTPUT_BYTES, SpanLog, SpanLogError,
+    SpanQuery,
+};
+pub use run::{Failure, Git, GitOutcome, Unfinished};
+pub use snapshot::{SHORT_SHA_LENGTH, Snapshot};
+pub use toplevel::Toplevel;
+pub use walk::{RepoFile, Walk, WalkError, WalkWarning};
+pub use worktree::{
+    CleanupNote, MAX_GIT_OUTPUT_BYTES, NO_REPO_CODE, PinError, RunGitError, WORKTREE_DIR, Worktree,
+    WorktreeError, WorktreeFailure,
+};
+
+use run::Limits;

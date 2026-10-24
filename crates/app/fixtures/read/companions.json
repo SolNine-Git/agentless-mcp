@@ -1,0 +1,14 @@
+{
+ "cases": [
+  ["repo_py_tests", [], 10, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 37, 41, ["inventory.py", "pricing.py", "reports.py"], 1, "0x40231733c8343ae3"], ["tests/test_cli.py", 13, 19, ["cli.py", "pricing.py"], 1, "0x4018e744653c7260"]]}, null],
+  ["repo_py_tests", [], 3, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 16, 18, ["inventory.py", "pricing.py"], 1, "0x4019b46b4f174eac"], ["tests/test_cli.py", 13, 19, ["cli.py", "pricing.py"], 1, "0x4018e744653c7260"]]}, null],
+  ["repo_py_tests", ["pricing.py"], 1, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 16, 18, ["pricing.py"], 1, "0x400a047d164a7732"], ["tests/test_cli.py", 13, 19, ["pricing.py"], 1, "0x4008a0238e66510c"]]}, null],
+  ["repo_py_tests", ["cli.py", "inventory"], 2, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 37, 41, ["inventory.py"], 1, "0x4009645987e42627"], ["tests/test_cli.py", 13, 19, ["cli.py"], 1, "0x40092e653c1293b3"]]}, null],
+  ["repo_py_tests", ["Inventory.add"], 1, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 37, 41, ["inventory.py"], 1, "0x4009645987e42627"], ["tests/test_cli.py", 13, 19, ["cli.py"], 2, "0x40092e653c1293b3"]]}, null],
+  ["repo_py_tests", ["audit.py"], 1, {"total": 1, "limit": 5, "exhausted": false, "rows": [["tests/test_cli.py", 13, 19, ["cli.py"], 2, "0x40092e653c1293b3"]]}, null],
+  ["repo_py_tests", ["warehouse.py"], 1, {"total": 1, "limit": 5, "exhausted": false, "rows": [["tests/test_cli.py", 13, 19, ["cli.py"], 2, "0x40092e653c1293b3"]]}, null],
+  ["repo_py_tests", ["reports.py", "shipping.py", "orders.py"], 3, {"total": 2, "limit": 5, "exhausted": false, "rows": [["tests/test_pricing.py", 37, 41, ["reports.py"], 1, "0x4008f3f882a24e34"], ["tests/test_cli.py", 13, 19, ["cli.py"], 2, "0x40092e653c1293b3"]]}, null],
+  ["repo_py", [], 10, {"total": 0, "limit": 5, "exhausted": false, "rows": []}, null],
+  ["repo_ts", ["types.ts"], 1, {"total": 0, "limit": 5, "exhausted": false, "rows": []}, null]
+ ]
+}

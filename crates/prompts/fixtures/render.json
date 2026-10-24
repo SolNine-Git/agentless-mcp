@@ -1,0 +1,865 @@
+{
+  "envelope": {
+    "ceiling_truncation": {
+      "arguments": {
+        "dropped": 7,
+        "max_tokens": 16000,
+        "total": 900
+      },
+      "text": "... output truncated at the 16000-token ceiling: 7 of 900 lines dropped"
+    },
+    "json_ceiling_oversized_item": {
+      "arguments": {
+        "max_tokens": 16000
+      },
+      "text": "payload exceeds the 16000-token ceiling and the first item alone does not fit; it is returned whole, so this payload is over the ceiling"
+    },
+    "json_ceiling_trimmed": {
+      "arguments": {
+        "max_tokens": 16000
+      },
+      "text": "payload exceeds the 16000-token ceiling; narrow the request or raise the budget"
+    },
+    "json_ceiling_untrimmable": {
+      "arguments": {
+        "max_tokens": 16000
+      },
+      "text": "payload exceeds the 16000-token ceiling and cannot be trimmed; request less data or raise the budget"
+    },
+    "notice": {
+      "arguments": {},
+      "text": "repository data below"
+    },
+    "receipt_config": {
+      "arguments": {
+        "path": "/srv/app/.agentless-mcp.json"
+      },
+      "text": "// config: /srv/app/.agentless-mcp.json"
+    },
+    "receipt_config_warning": {
+      "arguments": {
+        "warning": "map_budget is not an integer"
+      },
+      "text": "// config warning: map_budget is not an integer"
+    },
+    "receipt_header": {
+      "arguments": {},
+      "text": "// agentless-mcp receipt (repository data below)"
+    },
+    "receipt_line": {
+      "arguments": {
+        "cache": "none",
+        "dirty": "3",
+        "head": "1a2b3c4d",
+        "root": "/srv/app"
+      },
+      "text": "// repo: /srv/app   head: 1a2b3c4d   dirty: 3 files   cache: none"
+    },
+    "receipt_note": {
+      "arguments": {
+        "note": "git status timed out"
+      },
+      "text": "// note: git status timed out"
+    },
+    "receipt_summary": {
+      "arguments": {
+        "summary": "12 files, 3 skipped"
+      },
+      "text": "// 12 files, 3 skipped"
+    },
+    "service_truncation": {
+      "arguments": {
+        "shown": 12,
+        "total": 40,
+        "unit": "symbols"
+      },
+      "text": "... 12 of 40 symbols shown (narrow the request or raise the budget for the rest)"
+    }
+  },
+  "messages": {
+    "cache_absent_refreshing": {
+      "arguments": {},
+      "text": "a background refresh is in progress"
+    },
+    "cache_build_hint": {
+      "arguments": {
+        "repo_root": "/srv/app"
+      },
+      "text": "tag cache is empty: parsing is on demand; run agentless-mcp index --repo /srv/app to build it"
+    },
+    "cache_discarded_no_index": {
+      "arguments": {},
+      "text": "cache discarded: no index has been built"
+    },
+    "cache_discarded_old_schema": {
+      "arguments": {
+        "expected": 2,
+        "found": 1
+      },
+      "text": "cache discarded: schema 1 predates 2, rerun agentless-mcp index"
+    },
+    "cache_discarded_other_repo": {
+      "arguments": {
+        "repo_root": "/srv/other"
+      },
+      "text": "cache discarded: it was built for /srv/other"
+    },
+    "cache_stale_refreshing": {
+      "arguments": {},
+      "text": "changed files parse live; a background refresh is in progress"
+    },
+    "cache_stale_remediation": {
+      "arguments": {
+        "repo_root": "/srv/app"
+      },
+      "text": "changed files parse live; run agentless-mcp index --repo /srv/app for performance"
+    },
+    "clone_and_more": {
+      "arguments": {
+        "count": 3,
+        "listed": "a.py:4, b.py:9, c.py:2"
+      },
+      "text": "a.py:4, b.py:9, c.py:2 and 3 more"
+    },
+    "clone_does_not_parse": {
+      "arguments": {
+        "line": 12,
+        "path": "src/app/svc.py"
+      },
+      "text": "src/app/svc.py does not parse: the first syntax error is at line 12. Clone blocks are indexed only in a file that parses. Fix the syntax error, then index the file again."
+    },
+    "clone_index_gaps": {
+      "arguments": {
+        "count": 2,
+        "paths": "a.py, b.py",
+        "total": 40
+      },
+      "text": "not checked: clone_delta did not index 2 of 40 repository files, so it does not see a copy of a block in them: a.py, b.py."
+    },
+    "clone_index_gaps_evidence": {
+      "arguments": {
+        "path": "a.py",
+        "reason": "skipped: over the cap"
+      },
+      "text": "first: a.py: skipped: over the cap"
+    },
+    "clone_index_stopped": {
+      "arguments": {},
+      "text": "stopped: the clone index reached its time budget before this file"
+    },
+    "clone_index_unlisted": {
+      "arguments": {
+        "reason": "walk refused: more than 20000 files"
+      },
+      "text": "not checked: clone_delta could not list the repository files (walk refused: more than 20000 files), so it compared the changed files only with each other."
+    },
+    "clone_language_unsupported": {
+      "arguments": {
+        "language": "markdown",
+        "languages": "bash, python",
+        "path": "notes.md"
+      },
+      "text": "notes.md: clone blocks have no rules for language 'markdown'. They are indexed only in these languages: bash, python."
+    },
+    "clone_new_copy": {
+      "arguments": {
+        "count": 2,
+        "end": 14,
+        "start": 10
+      },
+      "text": "lines 10-14 add a copy of a block, with names and literals ignored, and this repository now holds 2 copies of it. Each copy must be changed with the others. Move the shared code into one named function, and call it from each place."
+    },
+    "clone_new_copy_evidence": {
+      "arguments": {
+        "sites": "src/app/a.py:4"
+      },
+      "text": "also at src/app/a.py:4"
+    },
+    "clone_new_not_indexed": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse"
+      },
+      "text": "not checked: clone_delta did not compare src/app/svc.py, because its text after the change cannot be indexed. src/app/svc.py does not parse"
+    },
+    "clone_no_tag_cache": {
+      "arguments": {},
+      "text": "not checked: in the hook form, clone_delta reads the repository's clone blocks from the tag cache only, and this run has no tag cache. Run agentless-mcp index on the repository to turn the check on."
+    },
+    "clone_no_tag_cache_evidence": {
+      "arguments": {},
+      "text": "no tag cache"
+    },
+    "clone_old_not_indexed": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse"
+      },
+      "text": "not checked: clone_delta did not compare src/app/svc.py, because its text before the change cannot be indexed. src/app/svc.py does not parse"
+    },
+    "clone_tokenizer_rejects": {
+      "arguments": {
+        "detail": "TokenError: EOF",
+        "path": "src/app/svc.py"
+      },
+      "text": "src/app/svc.py: Python's tokenizer rejects this file (TokenError: EOF). Clone blocks are indexed only in a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then index the file again."
+    },
+    "communities_not_converged": {
+      "arguments": {},
+      "text": "note: community detection stopped at its pass limit before the partition settled, so these communities are a partial answer"
+    },
+    "complexity_crossed": {
+      "arguments": {
+        "new_cc": 12,
+        "new_sloc": 36,
+        "old_cc": 10,
+        "old_sloc": 30,
+        "qualname": "Store.find",
+        "threshold": 10
+      },
+      "text": "Store.find: complexity 10 -> 12, 30 -> 36 source lines. This change takes the function over the threshold (10). Put the new branches in a new named function and call it, or refactor this function first in its own change."
+    },
+    "complexity_does_not_parse": {
+      "arguments": {
+        "line": 12,
+        "path": "src/app/svc.py"
+      },
+      "text": "src/app/svc.py does not parse: the first syntax error is at line 12. Complexity is measured only for a file that parses. Fix the syntax error, then measure the file again."
+    },
+    "complexity_evidence": {
+      "arguments": {
+        "new_cc": 17,
+        "new_sloc": 201,
+        "old_cc": 16,
+        "old_sloc": 194,
+        "threshold": 10
+      },
+      "text": "cc 16 -> 17; sloc 194 -> 201; threshold 10"
+    },
+    "complexity_grew": {
+      "arguments": {
+        "new_cc": 17,
+        "new_sloc": 201,
+        "old_cc": 16,
+        "old_sloc": 194,
+        "qualname": "register_search_tools",
+        "threshold": 10
+      },
+      "text": "register_search_tools: complexity 16 -> 17, 194 -> 201 source lines. This function is already above the threshold (10), and this change adds more branching to it. Put the new branches in a new named function and call it, or refactor this function first in its own change."
+    },
+    "complexity_language_unsupported": {
+      "arguments": {
+        "language": "yaml",
+        "languages": "bash, c, python",
+        "path": "config.yaml"
+      },
+      "text": "config.yaml: complexity has no rules for language 'yaml'. It measures only these languages: bash, c, python."
+    },
+    "complexity_new_not_measured": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12."
+      },
+      "text": "not checked: complexity_delta did not compare src/app/svc.py, because its text after the change cannot be measured. src/app/svc.py does not parse: the first syntax error is at line 12."
+    },
+    "complexity_new_unit": {
+      "arguments": {
+        "new_cc": 14,
+        "new_sloc": 40,
+        "qualname": "parse_rows",
+        "threshold": 10
+      },
+      "text": "parse_rows: complexity 14, 40 source lines. This function is new, or moved from another file, and it is above the threshold (10). Split it into smaller named functions. If it moved here unchanged, it was already above the threshold in its old file."
+    },
+    "complexity_new_unit_evidence": {
+      "arguments": {
+        "new_cc": 14,
+        "new_sloc": 40,
+        "threshold": 10
+      },
+      "text": "cc 14; sloc 40; threshold 10"
+    },
+    "complexity_old_not_measured": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "src/app/svc.py does not parse: the first syntax error is at line 12."
+      },
+      "text": "not checked: complexity_delta did not compare src/app/svc.py, because its text before the change cannot be measured. src/app/svc.py does not parse: the first syntax error is at line 12."
+    },
+    "complexity_tokenizer_rejects": {
+      "arguments": {
+        "detail": "IndentationError: unindent does not match any outer indentation level",
+        "path": "src/app/svc.py"
+      },
+      "text": "src/app/svc.py: Python's tokenizer rejects this file (IndentationError: unindent does not match any outer indentation level). Complexity is measured only for a file the tokenizer accepts, the same as scb-check. Fix the line the error names, then measure the file again."
+    },
+    "config_boundary_globs_dropped": {
+      "arguments": {
+        "chars": 256,
+        "config": ".agentless-mcp.json",
+        "count": 2
+      },
+      "text": "boundary_globs in .agentless-mcp.json: 2 entries are not repo-relative globs of at most 256 characters. They are ignored."
+    },
+    "config_boundary_globs_not_list": {
+      "arguments": {
+        "chars": 256,
+        "config": ".agentless-mcp.json",
+        "limit": 64
+      },
+      "text": "boundary_globs in .agentless-mcp.json must be a list of at most 64 repo-relative globs, each at most 256 characters. The key is ignored."
+    },
+    "config_boundary_globs_too_many": {
+      "arguments": {
+        "config": ".agentless-mcp.json",
+        "count": 65,
+        "limit": 64
+      },
+      "text": "boundary_globs in .agentless-mcp.json holds 65 globs, over the 64 cap. The key is ignored."
+    },
+    "config_erosion_gate_mode": {
+      "arguments": {
+        "check": "complexity_delta",
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block"
+      },
+      "text": "erosion_gate.complexity_delta in .agentless-mcp.json must be one of off, advisory, block. The entry is ignored."
+    },
+    "config_erosion_gate_not_object": {
+      "arguments": {
+        "config": ".agentless-mcp.json",
+        "modes": "off, advisory, block"
+      },
+      "text": "erosion_gate in .agentless-mcp.json must be an object that maps a check name to one of off, advisory, block. The key is ignored."
+    },
+    "config_erosion_gate_unknown": {
+      "arguments": {
+        "checks": "complexity_delta, contract_drift, clone_delta",
+        "config": ".agentless-mcp.json",
+        "count": 2
+      },
+      "text": "erosion_gate in .agentless-mcp.json holds 2 entries that name no gated check (complexity_delta, contract_drift, clone_delta). They are ignored."
+    },
+    "contract_evidence": {
+      "arguments": {
+        "capture": "data.get(\"items\", [])",
+        "rule": "get-default-empty",
+        "unit": "parse_items"
+      },
+      "text": "rule get-default-empty; unit parse_items; capture data.get(\"items\", [])"
+    },
+    "contract_new_hit": {
+      "arguments": {
+        "capture": "data.get(\"items\", [])",
+        "rule": "get-default-empty",
+        "unit": "parse_items",
+        "why": "A missing key reads as an empty value."
+      },
+      "text": "parse_items: data.get(\"items\", []) is new in a boundary module (get-default-empty). A missing key reads as an empty value."
+    },
+    "contract_new_not_measured": {
+      "arguments": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse"
+      },
+      "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text after the change cannot be measured. src/adapters/api.py does not parse"
+    },
+    "contract_no_boundary": {
+      "arguments": {
+        "config": ".agentless-mcp.json"
+      },
+      "text": "not checked: contract_drift has no boundary modules to check. Set boundary_globs in .agentless-mcp.json to the globs of the modules that parse foreign data."
+    },
+    "contract_no_boundary_evidence": {
+      "arguments": {},
+      "text": "boundary_globs is empty"
+    },
+    "contract_no_rules": {
+      "arguments": {
+        "language": "bash",
+        "path": "src/adapters/run.sh"
+      },
+      "text": "not checked: contract_drift has no rules for bash, so it did not check src/adapters/run.sh."
+    },
+    "contract_old_not_measured": {
+      "arguments": {
+        "path": "src/adapters/api.py",
+        "reason": "src/adapters/api.py does not parse"
+      },
+      "text": "not checked: contract_drift did not compare src/adapters/api.py, because its text before the change cannot be measured. src/adapters/api.py does not parse"
+    },
+    "expand_batch_shortened": {
+      "arguments": {
+        "budget": 12000,
+        "shortened": 3,
+        "total": 10
+      },
+      "text": "note: 3 of 10 bodies were shortened to fit the 12000-token expansion budget; every requested id still appears, each marked where it was cut. Expand fewer ids per call for whole bodies."
+    },
+    "expand_body_truncated": {
+      "arguments": {
+        "shown": 12,
+        "total": 340
+      },
+      "text": "... 12 of 340 lines shown: the batch did not fit the output ceiling. Expand this id on its own for the whole body."
+    },
+    "expand_no_room": {
+      "arguments": {
+        "requested": 400,
+        "seats": 40
+      },
+      "text": "not expanded: 400 ids exceed the 40 one call can answer; retry with at most that many."
+    },
+    "explain_tie": {
+      "arguments": {
+        "count": 2,
+        "target": "shared"
+      },
+      "text": "ambiguous: 2 definitions match shared equally; this explains the first in path order. Pass a stable id to explain another."
+    },
+    "find_no_matches": {
+      "arguments": {
+        "query": "rotate_age"
+      },
+      "text": "no matching symbols: no declared symbol has 'rotate_age' in its name or qualified name, matched case-insensitively. A parameter, a local variable, an attribute or a string literal is not a declared symbol; grep for the literal to find those."
+    },
+    "find_no_matches_kind": {
+      "arguments": {
+        "kind": "class",
+        "kinds": "function, method",
+        "query": "quote"
+      },
+      "text": "no matching symbols of kind 'class': 'quote' does match symbols of other kinds: function, method. Retry with one of those kinds, or with no kind."
+    },
+    "find_unparsed": {
+      "arguments": {
+        "listed": "core.py:4",
+        "query": "unfinished"
+      },
+      "text": "note: unfinished is spelled where a file did not parse (core.py:4), so a declaration there may be missing from this answer"
+    },
+    "grouped_ids": {
+      "arguments": {
+        "count": 12
+      },
+      "text": "(12 ids)"
+    },
+    "history_body_truncated": {
+      "arguments": {
+        "sha": "a1b2c3d4",
+        "shown": 12,
+        "total": 40
+      },
+      "text": "... 12 of 40 body lines shown for a1b2c3d4; git show -s --format=%B a1b2c3d4 prints the whole message"
+    },
+    "history_dirty_file": {
+      "arguments": {
+        "end": 158,
+        "path": "src/app/svc.py",
+        "start": 120
+      },
+      "text": "note: src/app/svc.py has uncommitted changes; the span was located in the committed copy of the file (lines 120-158 there), so these commits follow the committed definition"
+    },
+    "history_dirty_unknown": {
+      "arguments": {
+        "end": 158,
+        "note": "git diff timed out after 5.0s",
+        "path": "src/app/svc.py",
+        "start": 120
+      },
+      "text": "note: git could not say whether src/app/svc.py has uncommitted changes (git diff timed out after 5.0s); the span was located in the committed copy of the file (lines 120-158 there)"
+    },
+    "history_git_failed": {
+      "arguments": {
+        "note": "git log timed out after 30.0s"
+      },
+      "text": "git could not answer: git log timed out after 30.0s"
+    },
+    "history_git_output_malformed": {
+      "arguments": {
+        "detail": "commit 2 does not open with a full sha"
+      },
+      "text": "git printed log output history cannot read: commit 2 does not open with a full sha. history refuses a partial read rather than answer from one. Check that this git honours --no-patch together with -L, and that no filter rewrites git log output."
+    },
+    "history_more_commits": {
+      "arguments": {
+        "shown": 10
+      },
+      "text": "... 10 newest commits shown; older commits touch this span (raise limit for the rest)"
+    },
+    "history_no_commits": {
+      "arguments": {
+        "end": 158,
+        "path": "src/app/svc.py",
+        "start": 120
+      },
+      "text": "no commit touches lines 120-158 of src/app/svc.py"
+    },
+    "history_no_git": {
+      "arguments": {
+        "note": "/srv/app is not inside a git repository"
+      },
+      "text": "history needs git: /srv/app is not inside a git repository"
+    },
+    "history_output_capped": {
+      "arguments": {
+        "bytes": 2000000,
+        "count": 7
+      },
+      "text": "... git output was cut at 2000000 bytes; the 7 complete commits above are shown"
+    },
+    "history_output_capped_no_commits": {
+      "arguments": {
+        "bytes": 2000000,
+        "end": 158,
+        "path": "src/app/svc.py",
+        "start": 120
+      },
+      "text": "unsatisfiable: git output reached the 2000000 byte cap before the first complete commit. The newest commit on lines 120-158 of src/app/svc.py carries a message larger than the cap; run git log -L120,158:src/app/svc.py to read it."
+    },
+    "history_path_not_in_head": {
+      "arguments": {
+        "path": "src/app/svc.py"
+      },
+      "text": "unsatisfiable: src/app/svc.py is not in HEAD (untracked, ignored, or only staged). Commit it, or ask about a tracked file."
+    },
+    "history_seats_capped": {
+      "arguments": {
+        "end": 158,
+        "path": "src/app/svc.py",
+        "shown": 120,
+        "start": 120
+      },
+      "text": "... 120 commits shown, the most one answer seats; older commits touch this span (ask about a narrower span, or run git log -L120,158:src/app/svc.py for the rest)"
+    },
+    "history_shallow": {
+      "arguments": {},
+      "text": "note: this clone is shallow, so the oldest commit listed may stand in for older history"
+    },
+    "history_shallow_unknown": {
+      "arguments": {
+        "note": "git rev-parse timed out after 30.0s"
+      },
+      "text": "note: git could not say whether this clone is shallow (git rev-parse timed out after 30.0s); in a shallow clone the oldest commit listed may stand in for older history"
+    },
+    "history_signature_changed": {
+      "arguments": {
+        "name": "quote"
+      },
+      "text": "note: quote has a different signature in the committed copy than in the working tree; these commits follow the committed definition"
+    },
+    "history_span_beyond_head": {
+      "arguments": {
+        "end": 158,
+        "path": "src/app/svc.py",
+        "start": 120
+      },
+      "text": "unsatisfiable: lines 120-158 of src/app/svc.py are past the end of HEAD's copy. The working tree grew the file since the last commit; commit, then ask again."
+    },
+    "history_symbol_not_in_head": {
+      "arguments": {
+        "name": "quote",
+        "path": "src/app/svc.py"
+      },
+      "text": "unsatisfiable: quote is not defined in the committed copy of src/app/svc.py: it is new or renamed in the working tree, so no commit has touched it yet"
+    },
+    "history_target_unresolved": {
+      "arguments": {
+        "reason": "core.py no longer defines quote",
+        "target": "quote"
+      },
+      "text": "quote: core.py no longer defines quote. Pass a stable id from a map, overview, find, explain or locate answer; history is span-scoped, so a bare name is refused."
+    },
+    "lint_no_checks": {
+      "arguments": {
+        "checks": "arity, complexity_delta"
+      },
+      "text": "no check selected. Name at least one of these checks: arity, complexity_delta."
+    },
+    "lint_path_needs_after": {
+      "arguments": {},
+      "text": "--path and --after go together: --path names the file in --repo, and --after names a file that holds its proposed new text."
+    },
+    "lint_path_takes_pair_checks": {
+      "arguments": {
+        "checks": "arity",
+        "pair_checks": "complexity_delta"
+      },
+      "text": "--path runs only the pair checks (complexity_delta), because it supplies whole-file text and no patch. Remove arity from --only, or lint a patch with --candidates or --diff."
+    },
+    "lint_revision_binary": {
+      "arguments": {
+        "path": "src/app/blob.py"
+      },
+      "text": "not checked: src/app/blob.py is binary, so no pair check compared this file."
+    },
+    "lint_revision_binary_evidence": {
+      "arguments": {
+        "bytes": 8000
+      },
+      "text": "a NUL byte in the first 8000 bytes"
+    },
+    "lint_revision_listing_capped": {
+      "arguments": {
+        "bytes": 8000000,
+        "command": "diff"
+      },
+      "text": "not checked: git diff printed more than 8000000 bytes, so the list of changed files is not complete and no pair check compared any file. Review a shorter range of commits."
+    },
+    "lint_revision_not_resolved": {
+      "arguments": {
+        "note": "git is not installed, so repository state is unknown",
+        "revision": "HEAD~5"
+      },
+      "text": "not checked: git did not resolve --since HEAD~5 (git is not installed, so repository state is unknown), so no pair check compared any file."
+    },
+    "lint_revision_output_malformed": {
+      "arguments": {
+        "detail": "a diff record ends before its path"
+      },
+      "text": "git printed output that the review cannot read: a diff record ends before its path."
+    },
+    "lint_revision_status": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "status": "U"
+      },
+      "text": "not checked: git reports src/app/svc.py with status U, for example an unresolved merge conflict, so no pair check compared this file."
+    },
+    "lint_revision_status_evidence": {
+      "arguments": {
+        "status": "U"
+      },
+      "text": "status U"
+    },
+    "lint_revision_submodule": {
+      "arguments": {
+        "path": "vendor/lib"
+      },
+      "text": "not checked: vendor/lib is a submodule. The pair checks read only the files of this repository."
+    },
+    "lint_revision_submodule_evidence": {
+      "arguments": {},
+      "text": "submodule (mode 160000)"
+    },
+    "lint_revision_unchanged": {
+      "arguments": {
+        "revision": "HEAD"
+      },
+      "text": "not checked: no file changed since HEAD, so there is nothing to compare."
+    },
+    "lint_revision_unchanged_evidence": {
+      "arguments": {},
+      "text": "0 changed files"
+    },
+    "lint_revision_unlisted": {
+      "arguments": {
+        "command": "diff",
+        "note": "git diff timed out after 30.0s"
+      },
+      "text": "not checked: git diff did not list the changed files (git diff timed out after 30.0s), so no pair check compared any file."
+    },
+    "lint_revision_unresolved": {
+      "arguments": {
+        "note": "git rev-parse exited 128: fatal: Needed a single revision",
+        "revision": "HEAD~5"
+      },
+      "text": "--since HEAD~5 does not name a commit in this repository (git rev-parse exited 128: fatal: Needed a single revision). Name a commit, for example --since \"$(git merge-base HEAD main)\"."
+    },
+    "lint_since_alone": {
+      "arguments": {},
+      "text": "--since takes no --after. --since compares each file changed since REV with its text in the working tree, so it needs no other input."
+    },
+    "lint_since_takes_pair_checks": {
+      "arguments": {
+        "checks": "arity",
+        "pair_checks": "complexity_delta"
+      },
+      "text": "--since runs only the pair checks (complexity_delta), because the other checks compare a patch with the current tree and would see two states mixed. Remove arity from --only."
+    },
+    "lint_unknown_check": {
+      "arguments": {
+        "checks": "arity, complexity_delta",
+        "name": "complexity"
+      },
+      "text": "unknown check 'complexity'. The checks are: arity, complexity_delta."
+    },
+    "lint_unknown_severity": {
+      "arguments": {
+        "name": "error",
+        "severities": "advisory, warning, not_checked"
+      },
+      "text": "unknown severity 'error'. The severities are: advisory, warning, not_checked."
+    },
+    "map_file_unreached": {
+      "arguments": {
+        "count": 9
+      },
+      "text": "... 9 symbols in this file; the focus has no reference path to it, so no budget shows them"
+    },
+    "map_limit_out_of_range": {
+      "arguments": {
+        "limit": 500,
+        "maximum": 200,
+        "minimum": 1
+      },
+      "text": "orient operation 'map' rejects limit=500: the map's file cap runs 1-200, which is the same bound repo_map publishes as max_files. The wider ceiling on this parameter belongs to the communities and cycles listings that share it. Retry with a limit in range."
+    },
+    "map_unresolved_seeds": {
+      "arguments": {
+        "seeds": "rotate_age, shift_age"
+      },
+      "text": "// note: these focus seeds matched no file, no symbol, and no name spelled in five or fewer non-test files of this repository, so the ranking below is not focused on them: rotate_age, shift_age. Check the spelling, or seed with a file path from the tree."
+    },
+    "op_rejects_parameters": {
+      "arguments": {
+        "accepted": "focus, budget, limit, granularity",
+        "operation": "map",
+        "required": "none",
+        "stray": "source, target",
+        "tool": "orient"
+      },
+      "text": "orient operation 'map' does not accept: source, target. This operation accepts: focus, budget, limit, granularity; required: none. Drop the stray parameters, or pick the operation that takes them."
+    },
+    "op_requires_parameters": {
+      "arguments": {
+        "accepted": "source, target, include_unique, include_ambiguous",
+        "missing": "target",
+        "operation": "path",
+        "required": "source, target",
+        "tool": "orient"
+      },
+      "text": "orient operation 'path' is missing: target. This operation accepts: source, target, include_unique, include_ambiguous; required: source, target. Retry naming the missing parameters."
+    },
+    "overview_stable_ids": {
+      "arguments": {
+        "pattern": "py:src/app/svc.py::<QualifiedName>"
+      },
+      "text": "stable ids: py:src/app/svc.py::<QualifiedName> -- nested symbols qualify as Class.method"
+    },
+    "pair_blob_over_cap": {
+      "arguments": {
+        "cap": 1000000
+      },
+      "text": "skipped: the committed text exceeds the per-file cap of 1000000 bytes"
+    },
+    "pair_edits_unapplied": {
+      "arguments": {
+        "failed": 1,
+        "path": "src/app/svc.py"
+      },
+      "text": "not checked: 1 of the edits to src/app/svc.py did not apply, so no pair check compared this file."
+    },
+    "pair_new_unread": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "unreadable: No such file"
+      },
+      "text": "not checked: the proposed text for src/app/svc.py was not read (unreadable: No such file), so no pair check compared this file."
+    },
+    "pair_old_unread": {
+      "arguments": {
+        "path": "src/app/big.py",
+        "reason": "skipped: 1200000 bytes exceeds the per-file cap of 1000000 bytes"
+      },
+      "text": "not checked: the text of src/app/big.py before the change was not read (skipped: 1200000 bytes exceeds the per-file cap of 1000000 bytes), so no pair check compared this file."
+    },
+    "pair_worktree_unread": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "reason": "unreadable: No such file"
+      },
+      "text": "not checked: the working-tree text of src/app/svc.py was not read (unreadable: No such file), so no pair check compared this file."
+    },
+    "path_needs_endpoints": {
+      "arguments": {
+        "tool": "orient"
+      },
+      "text": "orient operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends."
+    },
+    "refs_target_unresolved": {
+      "arguments": {
+        "name": "total",
+        "target": "py:src/app/svc.py::Invoice.total"
+      },
+      "text": "py:src/app/svc.py::Invoice.total resolves to no symbol; these are the references to the name total, wherever it is defined"
+    },
+    "repo_refused_no_roots": {
+      "arguments": {},
+      "text": "repository refused: this server was started with no roots, so it serves no repositories. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line."
+    },
+    "repo_refused_not_allowed": {
+      "arguments": {
+        "roots": "/srv/app, /srv/other"
+      },
+      "text": "repository refused: the requested root is not one of this server's roots. Retry with repo_root set to one of: /srv/app, /srv/other"
+    },
+    "roots_file_hint": {
+      "arguments": {
+        "file": "/srv/agentless-roots.txt"
+      },
+      "text": "To serve another repository, append its absolute path as a line in /srv/agentless-roots.txt; the file is re-read on the next call, no restart needed."
+    },
+    "roots_file_unreadable": {
+      "arguments": {
+        "error": "No such file",
+        "file": "/srv/agentless-roots.txt"
+      },
+      "text": "roots file /srv/agentless-roots.txt cannot be read: No such file. Refusing rather than serving the stale copy; restore the file, or restart the server without --roots-from."
+    },
+    "scan_skipped_files": {
+      "arguments": {
+        "count": 2,
+        "listed": "huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes)"
+      },
+      "text": "// warning: 2 files were skipped and are absent from this answer: huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes). A symbol in a skipped file reads as missing here even though it may exist in the repository."
+    },
+    "server_no_roots": {
+      "arguments": {},
+      "text": "no repositories are served: this server was started with no roots. Roots come from --root DIR flags and from --roots-from FILE, which lists one repository path per line. A root advertised by the client can only select among the roots the server is configured with; it cannot add one."
+    },
+    "server_root_required": {
+      "arguments": {
+        "roots": "/srv/app, /srv/other"
+      },
+      "text": "repo_root is required: this server holds several repositories and will not guess between them. Retry with repo_root set to one of: /srv/app, /srv/other"
+    },
+    "slice_range_beyond_file": {
+      "arguments": {
+        "end": 9050,
+        "path": "src/app/svc.py",
+        "start": 9000,
+        "total": 242
+      },
+      "text": "unsatisfiable: line range 9000-9050 is beyond src/app/svc.py (242 lines)"
+    },
+    "slice_range_not_a_range": {
+      "arguments": {
+        "end": 30,
+        "path": "src/app/svc.py",
+        "start": 60
+      },
+      "text": "unsatisfiable: line range 60-30 is not a range in src/app/svc.py: a start of 1 or more, and an end at or after the start"
+    },
+    "stable_ids_pattern": {
+      "arguments": {
+        "pattern": "py:src/app/svc.py::<QualifiedName>"
+      },
+      "text": "stable ids: py:src/app/svc.py::<QualifiedName>"
+    },
+    "surface_v1_deprecated": {
+      "arguments": {
+        "surface": "v1"
+      },
+      "text": "--surface v1 publishes the v1 tools. They are deprecated and are removed in 0.11.0. Move to the v2 tools: agentless-mcp guide --section the-two-surfaces has the mapping."
+    },
+    "unknown_operation": {
+      "arguments": {
+        "operation": "graph",
+        "operations": "cycles, diagram, path",
+        "tool": "analyze_structure"
+      },
+      "text": "analyze_structure has no operation named 'graph'. Valid operations are: cycles, diagram, path. Retry with one of those."
+    }
+  }
+}

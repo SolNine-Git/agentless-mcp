@@ -71,6 +71,7 @@ from agentless_mcp.core.extractor import (
     COMMENT_NODE_TYPES,
     INDENT_BLOCK_NODE_TYPES,
     error_nodes,
+    string_prefix,
 )
 from agentless_mcp.util.errors import LanguageUnavailable
 
@@ -437,12 +438,6 @@ def clone_key(node: Node, language: str) -> CloneKey:
         exact=hashlib.sha256(_KEY_SEPARATOR.join(exact).encode("utf-8")).hexdigest(),
         tokens=leaves,
     )
-
-
-def string_prefix(literal: str) -> str:
-    """Return the lowercase prefix before a Python string literal's first quote."""
-    end = next((index for index, char in enumerate(literal) if char in "\"'"), len(literal))
-    return literal[:end].lower()
 
 
 def _kept_children(node: Node, statement_drop: Callable[[Node, Node], bool] | None) -> list[Node]:

@@ -1,0 +1,29 @@
+[package]
+name = "cli"
+description = "The command line: the argparse-compatible parser and help, the steps of each command, and the exit codes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app = { path = "../app" }
+facts = { path = "../facts" }
+git = { path = "../git" }
+io = { path = "../io" }
+json = { path = "../json" }
+kernel = { path = "../kernel" }
+patch = { path = "../patch" }
+prompts = { path = "../prompts" }
+render = { path = "../render" }
+serde.workspace = true
+text = { path = "../text" }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde_json.workspace = true

@@ -1,0 +1,42 @@
+{
+ "decode": [
+  [[], ["text", ""]],
+  [[97, 98, 99], ["text", "abc"]],
+  [[195, 169, 116, 195, 169], ["text", "\u00e9t\u00e9"]],
+  [[239, 187, 191, 98, 111, 109], ["text", "\ufeffbom"]],
+  [[240, 159, 152, 128], ["text", "\ud83d\ude00"]],
+  [[255], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[128], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[254], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[97, 192, 128], ["error", 1, "invalid start byte", "not UTF-8 text: byte 1 is invalid start byte"]],
+  [[193, 191], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[224, 128, 128], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[224, 159, 191], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[237, 160, 128], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[237, 191, 191], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[240, 128, 128, 128], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[244, 144, 128, 128], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[245, 128, 128, 128], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[248, 136, 128, 128, 128], ["error", 0, "invalid start byte", "not UTF-8 text: byte 0 is invalid start byte"]],
+  [[226, 130], ["error", 0, "unexpected end of data", "not UTF-8 text: byte 0 is unexpected end of data"]],
+  [[226, 130, 65], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[240, 159, 152], ["error", 0, "unexpected end of data", "not UTF-8 text: byte 0 is unexpected end of data"]],
+  [[240, 159, 152, 128, 240], ["error", 4, "unexpected end of data", "not UTF-8 text: byte 4 is unexpected end of data"]],
+  [[111, 107, 195], ["error", 2, "unexpected end of data", "not UTF-8 text: byte 2 is unexpected end of data"]],
+  [[195], ["error", 0, "unexpected end of data", "not UTF-8 text: byte 0 is unexpected end of data"]],
+  [[109, 105, 100, 32, 233, 32, 100, 108, 101], ["error", 4, "invalid continuation byte", "not UTF-8 text: byte 4 is invalid continuation byte"]],
+  [[48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 128], ["error", 10, "invalid start byte", "not UTF-8 text: byte 10 is invalid start byte"]],
+  [[194, 65], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[225, 128, 65], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[241, 128, 128, 65], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]],
+  [[240, 144, 65], ["error", 0, "invalid continuation byte", "not UTF-8 text: byte 0 is invalid continuation byte"]]
+ ],
+ "bounded": [
+  ["missing", [], "nothing", ["skipped", "unreadable: No such file or directory"]],
+  ["directory", [["dir", "d"]], "d", ["skipped", "unreadable: Is a directory"]],
+  ["empty", [["file", "e", ""]], "e", ["bytes", 0]],
+  ["at_cap", [["padded", "f", "x", 1000000]], "f", ["bytes", 1000000]],
+  ["over_cap", [["padded", "f", "x", 1000001]], "f", ["skipped", "skipped: 1000001 bytes exceeds the per-file cap of 1000000 bytes"]],
+  ["symlink", [["padded", "f", "x", 10], ["link", "l", "f"]], "l", ["bytes", 10]]
+ ]
+}

@@ -1,0 +1,67 @@
+name = "lua"
+tier = 1
+extensions = [".lua"]
+probe = "local x = 1\n"
+probe_root = "chunk"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_declaration"]
+scopes = []
+bound = ["function_definition"]
+name = "field"
+binding = "lua"
+
+[decisions]
+points = [
+    "elseif_statement",
+    "for_statement",
+    "if_statement",
+    "repeat_statement",
+    "while_statement",
+]
+
+[decisions.conditional]
+
+[decisions.field_operators]
+
+[decisions.token_operators]
+"binary_expression" = ["and", "or"]
+
+[clones]
+functions = ["function_declaration", "function_definition"]
+blocks = ["for_statement", "if_statement", "repeat_statement", "while_statement"]
+identifiers = ["identifier"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"NONE" = ["nil"]
+"NUM" = ["number"]
+"STR" = ["string"]
+
+[extraction]
+prefix = "lua"
+symbols = "lua"
+imports = "require"
+roles = "plain"
+identifiers = ["identifier"]
+bodies = ["block"]
+skeleton_functions = ["function_declaration", "function_definition"]
+
+[extraction.declarations]
+functions = ["function_declaration"]
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

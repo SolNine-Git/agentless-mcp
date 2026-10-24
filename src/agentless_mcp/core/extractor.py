@@ -30,7 +30,7 @@ from tree_sitter import Node, Parser, Tree
 
 from agentless_mcp.core import grammars
 from agentless_mcp.core.imports import ImportStatement
-from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, disambiguate
+from agentless_mcp.core.symbols import ASTSymbol, Rationale, SymbolKind, base_name, disambiguate
 from agentless_mcp.util.deadline import recaching
 
 # Handlers normalised for the registry: both take the parsed root, the source
@@ -62,6 +62,10 @@ _MAX_VALUE_CHARS = 80
 _MAX_TYPE_ALIAS_CHARS = 120
 # The shortest string literal that still has a quote at each end.
 _MIN_QUOTED_LITERAL_CHARS = 2
+
+# Base names compared whole: a substring test made `ProtocolError` a protocol.
+_PROTOCOL_BASES = frozenset({"Protocol"})
+_ENUM_BASES = frozenset({"Enum", "IntEnum", "StrEnum"})
 
 # Rationale comments are structural source facts, not generated summaries.
 # Only comment nodes reach these expressions, so a string containing
@@ -401,8 +405,17 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         identifier_node_types=("variable_name", "word"),
     ),
     "java": LanguageConfig(
-        function_node_types=("method_declaration", "constructor_declaration"),
-        class_node_types=("class_declaration", "interface_declaration", "enum_declaration"),
+        function_node_types=(
+            "method_declaration",
+            "constructor_declaration",
+            "compact_constructor_declaration",
+        ),
+        class_node_types=(
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+            "record_declaration",
+        ),
         import_node_types=("import_declaration",),
         name_field="name",
         import_path_node_type="scoped_identifier",
@@ -1422,6 +1435,37 @@ def error_nodes(root: Node) -> Iterator[Node]:
             yield node
             continue
         stack.extend(reversed(node.children))
+
+
+def string_prefix(literal: str) -> str:
+    """Return the lowercase prefix before a Python string literal's first quote."""
+    end = next((index for index, char in enumerate(literal) if char in "\"'"), len(literal))
+    return literal[:end].lower()
+
+
+# A named type first, then a primitive one: `impl<T> Foo<T>` owns `Foo.bar`,
+# and `impl Trait for i32` owns `i32.bar`.
+_RUST_OWNER_NODE_TYPES = ("type_identifier", "primitive_type")
+
+
+def first_of_type(node: Node, wanted: str) -> Node | None:
+    """Return the first node of type ``wanted`` in ``node``'s subtree, in document order."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == wanted:
+            return current
+        stack.extend(reversed(current.children))
+    return None
+
+
+def rust_impl_owner(impl: Node) -> Node | None:
+    """Return the node that names the type a Rust ``impl`` block implements, or None."""
+    implemented = impl.child_by_field_name("type")
+    if implemented is None:
+        return None
+    found = (first_of_type(implemented, wanted) for wanted in _RUST_OWNER_NODE_TYPES)
+    return next((owner for owner in found if owner is not None), None)
 
 
 def collect_refs(source: str, language: str, path: str) -> list[Ref]:
@@ -3599,9 +3643,10 @@ class TreeSitterExtractor:
         dec_names = {d.split("(")[0] for d in decorators}
         if "dataclass" in dec_names or "dataclasses.dataclass" in dec_names:
             return SymbolKind.DATACLASS
-        if any("Protocol" in b for b in bases):
+        names = {base_name(base) for base in bases}
+        if names & _PROTOCOL_BASES:
             return SymbolKind.PROTOCOL
-        if any("Enum" in b or "StrEnum" in b or "IntEnum" in b for b in bases):
+        if names & _ENUM_BASES:
             return SymbolKind.ENUM
         return SymbolKind.CLASS
 
@@ -3809,8 +3854,8 @@ class TreeSitterExtractor:
         symbols: list[ASTSymbol],
     ) -> None:
         """Extract methods from an impl block."""
-        type_node = node.child_by_field_name("type")
-        parent_class = self._node_text(type_node, source) if type_node else ""
+        owner = rust_impl_owner(node)
+        parent_class = "" if owner is None else self._node_text(owner, source)
 
         body = node.child_by_field_name("body")
         if body is None:
@@ -4138,6 +4183,7 @@ class TreeSitterExtractor:
             return ""
 
         text = self._node_text(string_node, source)
+        text = text[len(string_prefix(text)) :]
         for q in ('"""', "'''"):
             if text.startswith(q) and text.endswith(q):
                 text = text[3:-3]

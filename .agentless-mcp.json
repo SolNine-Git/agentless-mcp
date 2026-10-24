@@ -1,0 +1,14 @@
+{
+  "boundary_globs": [
+    "crates/io/**",
+    "crates/git/**",
+    "crates/store/**",
+    "crates/hook/**",
+    "crates/mcp/**"
+  ],
+  "erosion_gate": {
+    "complexity_delta": "block",
+    "contract_drift": "block",
+    "clone_delta": "block"
+  }
+}

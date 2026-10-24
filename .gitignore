@@ -34,3 +34,6 @@ htmlcov/
 
 # CI test log (tee target for the skip-ceiling check)
 pytest-output.txt
+
+# Rust build output
+target/

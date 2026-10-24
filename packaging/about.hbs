@@ -1,0 +1,17 @@
+# Third-party Rust crates
+
+The agentless-mcp binaries link the crates below. Each section gives one license text and the
+crates that use it.
+{{#each licenses}}
+
+## {{name}} ({{id}})
+
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+{{/each}}
+
+```text
+{{{text}}}
+```
+{{/each}}

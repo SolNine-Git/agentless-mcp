@@ -1,6 +1,6 @@
 # Rust Port, Phase 4: The MCP Door and Retirement
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-p4-mcp`, then `chore/retire-python` | **Est. Rust lines**: about 800, plus the gate report
+**Date**: 2026-10-10 | **Status**: items 1-4 built and verified; release candidate `93fa5ed` for 0.11.0rc1; items 5 and 6 next | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P3 released | **Branch**: `feat/rust-port`, then `chore/retire-python` | **Est. Rust lines**: about 800, plus the gate report
 
 ## Goal
 
@@ -78,6 +78,7 @@ Serve the v2 MCP surface from the Rust binary on rmcp. Move the search-gate hook
 - **Targets**: Linux x86_64 and aarch64 (manylinux), and macOS arm64 and x86_64. An sdist is published too, and it builds with a Rust toolchain and the vendored grammar sources (P0 D1).
 - **Notices**: the grammar licenses from the pinned grammar sources (P0 D1), and `cargo about` for the other crates. The wheel and the release archive include them.
 - **CI**: one release job builds every wheel. It then installs each wheel in a clean environment, runs `agentless-mcp --version` and one `map` call, and uploads to PyPI only after all pass.
+- **Lint and tests per shipped build**: before it builds the wheels, the release job runs `cargo clippy -- -D warnings` and the tests for each wheel target and with the release profile (its `panic` and `debug_assertions` settings). The `rust` CI job lints and tests only Linux x86_64 and macOS arm64 in the dev profile, so code under a target or profile cfg that only a wheel turns on is unchecked until this job exists (P1 "Accepted residuals", R-13).
 
 ### 5. Release
 
@@ -110,14 +111,18 @@ The release goes out in two steps (overview decision 10). Each step follows the 
 
 The Python tree stays in the repository, unpackaged, until the release is live and the three deployed surfaces run it. Then one pull request deletes it, in this order:
 
-1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `build.rs` and `include_str!` at the new paths.
+1. Move `src/agentless_mcp/prompts/*.json` into `crates/prompts/data/` and `src/agentless_mcp/docs/agent-guide.md` into `crates/app/data/`. Point `cargo xtask generate` and `include_str!` at the new paths. Name both directories in `DATA_DIRS` (`xtask/src/sources.rs`). If P2 added a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs`, move the guide's entry too (P1 R-48).
 2. Delete:
    - `src/agentless_mcp/`;
    - `tests/unit/` and the Python parts of `tests/characterization/`, including each module's `regenerate()`; `cargo xtask goldens --update` replaces them (overview rule 6);
    - `contrib/hooks/*.py`;
-   - the Python fixture generators `scripts/pycompat_fixtures.py`, `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py`, `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`. Their committed fixtures stay as data;
+   - every Python fixture generator in `scripts/`, and the module they share. Their committed fixtures stay as data. That is:
+     - the P1 generators `scripts/{app,checks,cli,git,hook,io,metrics,prompts,render,stdlib,store,syntax}_fixtures.py` and `scripts/syntax_tables.py`;
+     - the later `scripts/pair_parity_fixtures.py`, `scripts/facts_parity_fixtures.py` and `scripts/patch_parity_fixtures.py`, and `scripts/scb_parity_goldens.py`;
+     - `scripts/fixture_files.py`, which only the generators and `tests/unit/` import;
    - the Python-only CI jobs (`ci.yml` fresh-install, no-extras, wheel data);
-   - the Python lint configuration with no files left to check: the ruff, mypy, import-linter, and deptry hooks in `.pre-commit-config.yaml`, and their sections in `pyproject.toml`. `codespell` stays, because it also checks the docs and the Rust code.
+   - the Python lint configuration that only the deleted package needs: the mypy hook (its `files` is `^src/`), the import-linter and deptry hooks in `.pre-commit-config.yaml`, and their sections in `pyproject.toml`. ruff stays, because `scripts/hook_triggers.py` and `scripts/vendor_grammars.py` remain. `codespell` stays, because it also checks the docs and the Rust code.
+   - `scripts/hook_latency.py` needs an owner decision before this step: it times the Python hook of an archived commit, and its `--rust` arm reads that build's `tags.db`, which the P4 hook no longer reads. Rewrite it for the Rust store, or delete it.
 3. Keep `tests/characterization/fixtures/` and `goldens/`. The Rust tests read them byte for byte.
 4. Rewrite AGENTS.md: the commands (`cargo nextest run`, `cargo xtask layers`, `cargo xtask erosion`), where things live (the crate layer table), and the release steps for maturin. The benchmark methodology stays.
 5. Update the README install and the hook settings (`contrib/hooks/settings-example.json` calls `agentless-mcp hook ...`). Update `docs/skills/agentless-mcp/SKILL.md`.
@@ -126,6 +131,7 @@ The Python tree stays in the repository, unpackaged, until the release is live a
 
 - [ ] The `tools/list` snapshot equals the 0.10.1 v2 surface: names, parameters, descriptions, annotations, and `_meta`. The comparison is generated from both builds, not hand-written.
 - [ ] In-process transport tests pass: every operation, roots (including a roots file edited between calls), deadline, concurrency, refusals, and restart.
+- [ ] The release job's clippy and tests pass for each wheel target and with the release profile.
 - [ ] The installed wheel serves one stdio session and one HTTP session. This runs in a separate CI job, marked as end-to-end, because it binds a port.
 - [ ] The search-gate and gate-report tests pass, and a Python-era gate log reads correctly.
 - [ ] The erosion hook outcome suite passes on the Rust store, and the P1 latency gate holds on it in each cache state.

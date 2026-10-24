@@ -1,0 +1,36 @@
+{
+ "steps": [
+  ["printed_sha", "commit", {"text": "08ec32abb9b149de9d10310c24bd12bd1fe8d874"}],
+  ["printed_junk", "commit", {"error": ["OperationFailed", "git printed output that the review cannot read: rev-parse did not print one full object name."]}],
+  ["capped", "commit", {"error": ["OperationFailed", "git printed output that the review cannot read: rev-parse did not print one full object name."]}],
+  ["failed", "commit", {"error": ["RevisionUnresolved", "--since main~2 does not name a commit in this repository (git rev-parse exited 128: fatal: bad revision 'x'). Name a commit, for example --since \"$(git merge-base HEAD main)\"."]}],
+  ["not_installed", "commit", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git did not resolve --since main~2 (git is not installed, so repository state is unknown), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git is not installed, so repository state is unknown\"}"}],
+  ["timed_out", "commit", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git did not resolve --since main~2 (git rev-parse timed out after 5.0s), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git rev-parse timed out after 5.0s\"}"}],
+  ["not_run", "commit", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git did not resolve --since main~2 (git rev-parse could not be run: Permission denied), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git rev-parse could not be run: Permission denied\"}"}],
+  ["printed_listing", "diff", {"bytes": "a.py\u0000"}],
+  ["capped", "diff", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git diff printed more than 8000000 bytes, so the list of changed files is not complete and no pair check compared any file. Review a shorter range of commits.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"more than 8000000 bytes\"}"}],
+  ["failed", "diff", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git diff did not list the changed files (git diff exited 128: fatal: bad revision 'x'), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git diff exited 128: fatal: bad revision 'x'\"}"}],
+  ["timed_out", "diff", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git diff did not list the changed files (git diff timed out after 30.0s), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git diff timed out after 30.0s\"}"}],
+  ["not_run", "diff", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git diff did not list the changed files (git diff could not be run: Permission denied), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git diff could not be run: Permission denied\"}"}],
+  ["printed_listing", "ls-files", {"bytes": "a.py\u0000"}],
+  ["capped", "ls-files", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git ls-files printed more than 8000000 bytes, so the list of changed files is not complete and no pair check compared any file. Review a shorter range of commits.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"more than 8000000 bytes\"}"}],
+  ["not_installed", "ls-files", {"row": "{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git ls-files did not list the changed files (git is not installed, so repository state is unknown), so no pair check compared any file.\", \"path\": \"\", \"line\": 0, \"location\": \"(repository)\", \"evidence\": \"git is not installed, so repository state is unknown\"}"}],
+  ["printed_listing", "blob", {"bytes": "a.py\u0000"}],
+  ["capped", "blob", {"skipped": "skipped: the committed text exceeds the per-file cap of 1000000 bytes"}],
+  ["failed", "blob", {"skipped": "git cat-file exited 128: fatal: bad revision 'x'"}],
+  ["timed_out", "blob", {"skipped": "git cat-file timed out after 5.0s"}]
+ ],
+ "pair_specs": [
+  [[["U", "conflict.py", "conflict.py", "FILE", "FILE"]], ["{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git reports conflict.py with status U, for example an unresolved merge conflict, so no pair check compared this file.\", \"path\": \"conflict.py\", \"line\": 0, \"location\": \"conflict.py\", \"evidence\": \"status U\"}"], []],
+  [[["X", "odd.py", "odd.py", "FILE", "FILE"]], ["{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git reports odd.py with status X, for example an unresolved merge conflict, so no pair check compared this file.\", \"path\": \"odd.py\", \"line\": 0, \"location\": \"odd.py\", \"evidence\": \"status X\"}"], []],
+  [[["M", "vendor", "vendor", "GITLINK", "GITLINK"]], ["{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: vendor is a submodule. The pair checks read only the files of this repository.\", \"path\": \"vendor\", \"line\": 0, \"location\": \"vendor\", \"evidence\": \"submodule (mode 160000)\"}"], []],
+  [[["A", "lib", "lib", "ABSENT", "GITLINK"]], ["{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: lib is a submodule. The pair checks read only the files of this repository.\", \"path\": \"lib\", \"line\": 0, \"location\": \"lib\", \"evidence\": \"submodule (mode 160000)\"}"], []],
+  [[["R", "b.py", "a.py", "FILE", "FILE"]], [], [["b.py", "a.py", "b.py"]]],
+  [[["R", "a.js", "a.py", "FILE", "FILE"]], [], [["a.js", null, "a.js"], ["a.py", "a.py", null]]],
+  [[["D", "a.py", "a.py", "FILE", "ABSENT"], ["?", "a.py", "a.py", "ABSENT", "FILE"]], [], [["a.py", "a.py", "a.py"]]],
+  [[["T", "l.py", "l.py", "FILE", "LINK"]], [], [["l.py", "l.py", null]]],
+  [[["C", "c.py", "a.py", "ABSENT", "FILE"]], [], [["c.py", null, "c.py"]]],
+  [[["M", "README.md", "README.md", "FILE", "FILE"], ["M", "z.py", "z.py", "FILE", "FILE"]], [], [["z.py", "z.py", "z.py"]]],
+  [[["M", "b.py", "b.py", "FILE", "FILE"], ["U", "a.py", "a.py", "FILE", "FILE"]], ["{\"check\": \"coverage\", \"severity\": \"not_checked\", \"message\": \"not checked: git reports a.py with status U, for example an unresolved merge conflict, so no pair check compared this file.\", \"path\": \"a.py\", \"line\": 0, \"location\": \"a.py\", \"evidence\": \"status U\"}"], [["b.py", "b.py", "b.py"]]]
+ ]
+}

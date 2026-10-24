@@ -1,0 +1,79 @@
+pub mod cli
+pub enum cli::ServerTransport
+pub cli::ServerTransport::Http
+pub cli::ServerTransport::Http::host: core::net::ip_addr::IpAddr
+pub cli::ServerTransport::Http::port: u16
+pub cli::ServerTransport::Stdio
+impl core::clone::Clone for cli::ServerTransport
+pub fn cli::ServerTransport::clone(&self) -> Self
+impl core::cmp::Eq for cli::ServerTransport
+impl core::cmp::PartialEq for cli::ServerTransport
+pub fn cli::ServerTransport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for cli::ServerTransport
+pub fn cli::ServerTransport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for cli::ServerTransport
+impl core::marker::StructuralPartialEq for cli::ServerTransport
+impl core::marker::Freeze for cli::ServerTransport
+impl core::marker::Send for cli::ServerTransport
+impl core::marker::Sync for cli::ServerTransport
+impl core::marker::Unpin for cli::ServerTransport
+impl core::marker::UnsafeUnpin for cli::ServerTransport
+impl core::panic::unwind_safe::RefUnwindSafe for cli::ServerTransport
+impl core::panic::unwind_safe::UnwindSafe for cli::ServerTransport
+pub struct cli::GateReportArgs
+pub cli::GateReportArgs::labels: core::option::Option<alloc::string::String>
+pub cli::GateReportArgs::log: alloc::string::String
+pub cli::GateReportArgs::sample_out: core::option::Option<alloc::string::String>
+pub cli::GateReportArgs::seed: alloc::string::String
+impl core::clone::Clone for cli::GateReportArgs
+pub fn cli::GateReportArgs::clone(&self) -> Self
+impl core::cmp::Eq for cli::GateReportArgs
+impl core::cmp::PartialEq for cli::GateReportArgs
+pub fn cli::GateReportArgs::eq(&self, &Self) -> bool
+impl core::fmt::Debug for cli::GateReportArgs
+pub fn cli::GateReportArgs::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for cli::GateReportArgs
+impl core::marker::Freeze for cli::GateReportArgs
+impl core::marker::Send for cli::GateReportArgs
+impl core::marker::Sync for cli::GateReportArgs
+impl core::marker::Unpin for cli::GateReportArgs
+impl core::marker::UnsafeUnpin for cli::GateReportArgs
+impl core::panic::unwind_safe::RefUnwindSafe for cli::GateReportArgs
+impl core::panic::unwind_safe::UnwindSafe for cli::GateReportArgs
+pub struct cli::ServerArgs<R>
+pub cli::ServerArgs::call_limit: f64
+pub cli::ServerArgs::max_concurrency: usize
+pub cli::ServerArgs::no_auto_index: bool
+pub cli::ServerArgs::no_auto_restart: bool
+pub cli::ServerArgs::recache_grace: f64
+pub cli::ServerArgs::roots: alloc::vec::Vec<std::path::PathBuf>
+pub cli::ServerArgs::roots_from: alloc::vec::Vec<R>
+pub cli::ServerArgs::transport: cli::ServerTransport
+impl<R: core::fmt::Debug> core::fmt::Debug for cli::ServerArgs<R>
+pub fn cli::ServerArgs<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<R> core::marker::Freeze for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::marker::Freeze
+impl<R> core::marker::Send for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::marker::Send
+impl<R> core::marker::Sync for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::marker::Sync
+impl<R> core::marker::Unpin for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::marker::Unpin
+impl<R> core::marker::UnsafeUnpin for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::marker::UnsafeUnpin
+impl<R> core::panic::unwind_safe::RefUnwindSafe for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::panic::unwind_safe::RefUnwindSafe
+impl<R> core::panic::unwind_safe::UnwindSafe for cli::ServerArgs<R> where alloc::vec::Vec<R>: core::panic::unwind_safe::UnwindSafe
+pub struct cli::Streams<'a>
+pub cli::Streams::err: &'a mut dyn core::io::write::Write
+pub cli::Streams::out: &'a mut dyn core::io::write::Write
+impl<'a> core::marker::Freeze for cli::Streams<'a>
+impl<'a> !core::marker::Send for cli::Streams<'a>
+impl<'a> !core::marker::Sync for cli::Streams<'a>
+impl<'a> core::marker::Unpin for cli::Streams<'a>
+impl<'a> core::marker::UnsafeUnpin for cli::Streams<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for cli::Streams<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for cli::Streams<'a>
+pub const cli::EXIT_CLOSED_STDOUT: u8
+pub const cli::EXIT_DOMAIN: u8
+pub fn cli::cwd_failure_line(&core::io::error::Error) -> alloc::string::String
+pub fn cli::gate_report_args(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &mut cli::Streams<'_>) -> core::result::Result<cli::GateReportArgs, u8>
+pub fn cli::internal_error_line(&std::panic::PanicHookInfo<'_>) -> alloc::string::String
+pub fn cli::refuse_hook(&mut cli::Streams<'_>) -> u8
+pub fn cli::run(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &app::env::Services, &mut dyn alloc::io::read::Read, &mut cli::Streams<'_>) -> u8
+pub fn cli::server_args<R>(&[std::ffi::os_str::OsString], &app::env::EnvConfig, &mut cli::Streams<'_>, &mut dyn core::ops::function::FnMut(&str) -> core::result::Result<R, alloc::string::String>) -> core::result::Result<cli::ServerArgs<R>, u8>
+pub fn cli::write_answer(&mut cli::Streams<'_>, &str, &str, u8) -> u8

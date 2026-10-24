@@ -1,0 +1,37 @@
+name = "csharp"
+tier = 2
+extensions = [".cs"]
+probe = "class Probe {}\n"
+probe_root = "compilation_unit"
+comments = ["comment"]
+
+[extraction]
+prefix = "cs"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["identifier"]
+bodies = ["block"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["constructor_declaration", "local_function_statement", "method_declaration"]
+classes = [
+    "class_declaration",
+    "enum_declaration",
+    "interface_declaration",
+    "record_declaration",
+    "struct_declaration",
+]
+imports = ["using_directive"]
+name_field = "name"
+import_path_kind = "identifier"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = ["declaration_list"]
+signature_from_header = true
+import_binding = "last_segment"
+modifiers = ["modifier"]
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

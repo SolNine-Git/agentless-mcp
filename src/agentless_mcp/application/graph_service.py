@@ -377,6 +377,7 @@ class GraphService:
             standard_modularity=partition.standard_modularity,
             resolution=partition.resolution,
             files=len(ranked.graph.nodes),
+            converged=partition.converged,
         )
 
     def diagram(

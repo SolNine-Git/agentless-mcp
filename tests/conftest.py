@@ -9,6 +9,7 @@ If the machine's language-pack cache is cold, this fixture performs one real
 warmup (a single platform bundle download) and every later run is offline.
 """
 
+import argparse
 import os
 import shlex
 import subprocess
@@ -93,6 +94,25 @@ def isolated_cache_home(tmp_path_factory, monkeypatch):
     home = tmp_path_factory.mktemp("xdg-cache")
     monkeypatch.setenv(cachedir.ENV_CACHE_HOME, str(home))
     return home
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--cli-binary",
+        type=_executable_file,
+        default=None,
+        metavar="PATH",
+        help="run the CLI subprocess tests against this executable, not python -m agentless_mcp",
+    )
+
+
+@pytest.fixture(scope="session")
+def cli_command(pytestconfig: pytest.Config) -> tuple[str, ...]:
+    """The argv prefix that starts the CLI: --cli-binary, else python -m agentless_mcp."""
+    binary: Path | None = pytestconfig.getoption("cli_binary")
+    if binary is None:
+        return (sys.executable, "-m", "agentless_mcp")
+    return (str(binary),)
 
 
 @pytest.fixture
@@ -277,3 +297,12 @@ def _git(root, *arguments):
         capture_output=True,
         timeout=30,
     )
+
+
+def _executable_file(value: str) -> Path:
+    # Absolute, because the CLI tests start the child in a test's own cwd.
+    path = Path(value).resolve()
+    if not (path.is_file() and os.access(path, os.X_OK)):
+        message = f"{value} is not an executable file"
+        raise argparse.ArgumentTypeError(message)
+    return path

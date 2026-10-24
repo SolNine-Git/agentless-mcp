@@ -156,8 +156,8 @@ started with `--surface v1` publishes the original twelve per-question tools
 for un-migrated operators. A server started with `--surface both` publishes
 the union, which is fifteen names rather than eighteen because
 `find_referencing_symbols`, `capabilities` and `history` stand alone on both
-surfaces. Both do so for one release. This is the mapping for readers who
-migrate:
+surfaces. Both are deprecated: the server warns on stderr at start-up, and
+0.11.0 removes them. This is the mapping for readers who migrate:
 
 | v1 tool (behind `--surface v1`) | v2 call |
 |---|---|

@@ -75,8 +75,9 @@ See `agentless-mcp guide --section claude-code-specifics` for both.
 
 These are the v2 names, the default surface. A server started with
 `--surface v1` (or `both`) still publishes the previous twelve per-question
-tools (`repo_map`, `expand_symbols`, and the rest) for one release. The
-mapping is in `agentless-mcp guide --section the-two-surfaces`.
+tools (`repo_map`, `expand_symbols`, and the rest). Both are deprecated, and
+0.11.0 removes them. The mapping is in
+`agentless-mcp guide --section the-two-surfaces`.
 
 If the MCP tools are unavailable, use the corresponding CLI commands: `map`,
 `expand`, `slice`, `refs`, `explain`, `history`, and

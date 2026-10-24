@@ -308,7 +308,9 @@ modules = ["agentless_mcp.adapters.cli", "agentless_mcp.adapters.mcp"]
 # modules that do not exist here), so they are data to deptry as well.
 # `scripts` holds development-time generators that run under uvx with their
 # own pinned dependencies (scb-check), outside this package's dependency set.
-extend_exclude = ["docs", "tests/characterization/fixtures", "scripts"]
+# `packaging` is the Rust wheel's own maturin project; its check script runs in
+# the wheel's venv, also outside this package's dependency set.
+extend_exclude =["docs", "tests/characterization/fixtures", "scripts", "packaging"]
 # src-layout: deptry sees the package installed in .venv and would otherwise
 # report agentless_mcp.__main__'s own `from agentless_mcp.bootstrap import ...`
 # as DEP003 (transitive third-party dependency). Naming it first-party is what
@@ -409,7 +411,15 @@ exclude_also = [
 # evidence verbatim, including undecodable byte literals and misspelled enum
 # values that tests supply precisely because they are not real spellings.
 # Spell-checking a transcript means editing what was measured. The
-# pre-commit hook needs its own exclude for this, since it passes filenames
-# explicitly and those override skip patterns.
-skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit"
+# pre-commit hook needs its own exclude for this: it names each file, and
+# codespell matches a named file by its whole path, which `.audit` does not
+# match. A tree walk matches `.audit` against the directory name.
+# The public-api.txt snapshots are generated, and serde's module paths in
+# them read as typos. The leading * matches both ./crates/... (a tree walk)
+# and crates/... (a named file).
+# The crates' fixtures/ files are generated test data, and their escaped inputs read as typos.
+skip = ".git,.venv,venv,*.pyc,__pycache__,*.egg-info,build,dist,target,.mypy_cache,.pytest_cache,.ruff_cache,uv.lock,.audit,*crates/*/public-api.txt,*crates/*/fixtures/*"
 ignore-words-list = "mcp,readonly,crate"
+# serde exports SerializeMap only at serde::ser::SerializeMap, and serde_json exports Formatter
+# only at serde_json::ser::Formatter, so the regex removes both paths.
+ignore-regex = '(?<!\w)serde_json::ser::|(?<!\w)serde::ser::'

@@ -1,0 +1,31 @@
+name = "scala"
+tier = 2
+extensions = [".scala"]
+probe = "object Probe {}\n"
+probe_root = "compilation_unit"
+comments = ["block_comment", "comment"]
+
+[extraction]
+prefix = "scala"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = ["function_declaration", "function_definition"]
+classes = ["class_definition", "enum_definition", "object_definition", "trait_definition"]
+imports = ["import_declaration"]
+name_field = "name"
+import_path_kind = "identifier"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = ["template_body"]
+signature_from_header = true
+import_binding = "last_segment"
+modifiers = ["modifiers"]
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

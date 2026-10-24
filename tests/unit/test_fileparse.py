@@ -23,10 +23,10 @@ FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures"
 
 # The digests of what METRICS_ALGORITHM promises. Change a pin only together with a bump.
 TABLES_PIN = {
-    1: "231908e0a6e8a05df3210fe1dda800a731cec8038c9645b192047068ff618c40",
+    2: "231908e0a6e8a05df3210fe1dda800a731cec8038c9645b192047068ff618c40",
 }
 OUTPUTS_PIN = {
-    (1, "1.14.3"): (
+    (2, "1.14.3"): (
         "a99b1b48fe7d4313659c5524de40326303de46b93b23120f1001c77f6504ffa9",
         "b77ffc9d5ef9b6fd2c0b36d45ba831574486c8c71cefc5e6eaf9e59d31d74f2d",
     ),

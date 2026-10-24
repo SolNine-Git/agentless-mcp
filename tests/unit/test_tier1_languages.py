@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from agentless_mcp.core import grammars
+from agentless_mcp.core import complexity, grammars
 from agentless_mcp.core.symbols import SymbolKind
 
 FIXTURES = Path(__file__).parent.parent / "characterization" / "fixtures" / "tier1"
@@ -105,6 +105,24 @@ class TestRustTopLevelItems:
         assert found["new"].kind is SymbolKind.METHOD
         assert found["new"].parent_class == "Invoice"
         assert found["price"].parent_class == "Invoice"
+
+    @pytest.mark.parametrize(
+        ("header", "owner"),
+        [
+            ("impl Foo", "Foo"),
+            ("impl<T> Foo<T>", "Foo"),
+            ("impl<T> Trait for Foo<T>", "Foo"),
+            ("impl<'a> Foo<'a>", "Foo"),
+            ("impl Trait for i32", "i32"),
+        ],
+    )
+    def test_symbols_and_units_name_one_owner_for_an_impl(self, extractor, header, owner):
+        require_grammar("rust")
+        source = f"{header} {{\n    fn bar(&self) {{}}\n}}\n"
+        (method,) = extractor.extract_from_source(source, "rust", "a.rs")
+        (measured,) = complexity.measure(source, "a.rs", "rust")
+        assert method.parent_class == owner
+        assert measured.qualname == f"{owner}.bar"
 
     def test_visibility_is_read_off_the_modifier_not_the_name(self, extractor):
         # `pub` on every item in the fixture, so a handler that never looks
@@ -408,3 +426,18 @@ class TestJava:
         # `static final double TAX_RATE = 0.2` yielded no symbol and the
         # fixture's only constant was invisible.
         assert named(symbols_for(extractor, "java"))["TAX_RATE"].kind is SymbolKind.CONSTANT
+
+    def test_a_record_is_a_scope_for_its_members(self, extractor):
+        # The owner is the innermost type, as for a nested class: `m` is `R.m`.
+        require_grammar("java")
+        source = "class A {\n  record R(int x) {\n    R {\n    }\n    void m() {}\n  }\n}\n"
+        found = [
+            (s.name, s.kind, s.parent_class)
+            for s in extractor.extract_from_source(source, "java", "A.java")
+        ]
+        assert found == [
+            ("A", SymbolKind.CLASS, ""),
+            ("R", SymbolKind.CLASS, "A"),
+            ("R", SymbolKind.METHOD, "R"),
+            ("m", SymbolKind.METHOD, "R"),
+        ]

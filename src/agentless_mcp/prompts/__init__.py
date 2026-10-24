@@ -85,6 +85,7 @@ class EnvelopeText:
 class MessageText:
     """The refusal and guidance texts an agent is answered with."""
 
+    surface_v1_deprecated: str
     server_no_roots: str
     server_root_required: str
     unknown_operation: str
@@ -111,6 +112,7 @@ class MessageText:
     map_file_unreached: str
     refs_target_unresolved: str
     explain_tie: str
+    communities_not_converged: str
     # Two spellings, because two views need different amounts of it. A
     # grouped view whose rows show `[Class.method]` demonstrates the
     # nesting rule on every line, so it prints the pattern alone. The

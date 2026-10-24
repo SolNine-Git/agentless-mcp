@@ -1,0 +1,23 @@
+[package]
+name = "git"
+description = "The git reads the tool makes: a hardened bounded runner, the repository snapshot, the change listing parsers, the repository walk, the history of a line span, and commit churn."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+io = { path = "../io" }
+kernel = { path = "../kernel" }
+text = { path = "../text" }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

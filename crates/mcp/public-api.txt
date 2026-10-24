@@ -1,0 +1,156 @@
+pub mod mcp
+pub enum mcp::Ended
+pub mcp::Ended::Closed
+pub mcp::Ended::Failed(alloc::string::String)
+pub mcp::Ended::Relaunch
+pub mcp::Ended::Signalled(i32)
+pub mcp::Ended::Unwritable(alloc::string::String)
+impl core::cmp::Eq for mcp::Ended
+impl core::cmp::PartialEq for mcp::Ended
+pub fn mcp::Ended::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Ended
+pub fn mcp::Ended::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for mcp::Ended
+impl core::marker::Freeze for mcp::Ended
+impl core::marker::Send for mcp::Ended
+impl core::marker::Sync for mcp::Ended
+impl core::marker::Unpin for mcp::Ended
+impl core::marker::UnsafeUnpin for mcp::Ended
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Ended
+impl core::panic::unwind_safe::UnwindSafe for mcp::Ended
+pub enum mcp::RootsFileError
+pub mcp::RootsFileError::NotUtf8
+pub mcp::RootsFileError::NotUtf8::error: alloc::string::String
+pub mcp::RootsFileError::NotUtf8::raw: alloc::string::String
+pub mcp::RootsFileError::Unreadable
+pub mcp::RootsFileError::Unreadable::error: alloc::string::String
+pub mcp::RootsFileError::Unreadable::raw: alloc::string::String
+impl core::error::Error for mcp::RootsFileError
+impl core::fmt::Debug for mcp::RootsFileError
+pub fn mcp::RootsFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for mcp::RootsFileError
+pub fn mcp::RootsFileError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for mcp::RootsFileError
+impl core::marker::Send for mcp::RootsFileError
+impl core::marker::Sync for mcp::RootsFileError
+impl core::marker::Unpin for mcp::RootsFileError
+impl core::marker::UnsafeUnpin for mcp::RootsFileError
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::RootsFileError
+impl core::panic::unwind_safe::UnwindSafe for mcp::RootsFileError
+pub enum mcp::Transport
+pub mcp::Transport::Http(core::net::socket_addr::SocketAddr)
+pub mcp::Transport::Stdio
+impl core::clone::Clone for mcp::Transport
+pub fn mcp::Transport::clone(&self) -> Self
+impl core::cmp::Eq for mcp::Transport
+impl core::cmp::PartialEq for mcp::Transport
+pub fn mcp::Transport::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Transport
+pub fn mcp::Transport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for mcp::Transport
+impl core::marker::StructuralPartialEq for mcp::Transport
+impl core::marker::Freeze for mcp::Transport
+impl core::marker::Send for mcp::Transport
+impl core::marker::Sync for mcp::Transport
+impl core::marker::Unpin for mcp::Transport
+impl core::marker::UnsafeUnpin for mcp::Transport
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Transport
+impl core::panic::unwind_safe::UnwindSafe for mcp::Transport
+pub struct mcp::Ports
+pub mcp::Ports::arming: alloc::rcs::arc::Arc<dyn mcp::Arming>
+pub mcp::Ports::log: alloc::rcs::arc::Arc<dyn mcp::Log>
+impl core::marker::Freeze for mcp::Ports
+impl core::marker::Send for mcp::Ports
+impl core::marker::Sync for mcp::Ports
+impl core::marker::Unpin for mcp::Ports
+impl core::marker::UnsafeUnpin for mcp::Ports
+impl !core::panic::unwind_safe::RefUnwindSafe for mcp::Ports
+impl !core::panic::unwind_safe::UnwindSafe for mcp::Ports
+pub struct mcp::Relaunch
+pub mcp::Relaunch::args: alloc::vec::Vec<std::ffi::os_str::OsString>
+pub mcp::Relaunch::argv0: std::ffi::os_str::OsString
+pub mcp::Relaunch::program: std::path::PathBuf
+impl mcp::Relaunch
+pub fn mcp::Relaunch::exec(&self) -> alloc::string::String
+impl core::clone::Clone for mcp::Relaunch
+pub fn mcp::Relaunch::clone(&self) -> Self
+impl core::cmp::Eq for mcp::Relaunch
+impl core::cmp::PartialEq for mcp::Relaunch
+pub fn mcp::Relaunch::eq(&self, &Self) -> bool
+impl core::fmt::Debug for mcp::Relaunch
+pub fn mcp::Relaunch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for mcp::Relaunch
+impl core::marker::Freeze for mcp::Relaunch
+impl core::marker::Send for mcp::Relaunch
+impl core::marker::Sync for mcp::Relaunch
+impl core::marker::Unpin for mcp::Relaunch
+impl core::marker::UnsafeUnpin for mcp::Relaunch
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Relaunch
+impl core::panic::unwind_safe::UnwindSafe for mcp::Relaunch
+pub struct mcp::RootsFile
+impl mcp::RootsFile
+pub fn mcp::RootsFile::path(&self) -> &std::path::Path
+pub fn mcp::RootsFile::read(&str, &app::env::Services) -> core::result::Result<mcp::RootsFile, mcp::RootsFileError>
+impl !core::marker::Freeze for mcp::RootsFile
+impl core::marker::Send for mcp::RootsFile
+impl core::marker::Sync for mcp::RootsFile
+impl core::marker::Unpin for mcp::RootsFile
+impl core::marker::UnsafeUnpin for mcp::RootsFile
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::RootsFile
+impl core::panic::unwind_safe::UnwindSafe for mcp::RootsFile
+pub struct mcp::Server
+impl mcp::Server
+pub fn mcp::Server::new(mcp::ServerConfig, alloc::rcs::arc::Arc<app::env::Services>, mcp::Ports) -> mcp::Server
+impl core::clone::Clone for mcp::Server
+pub fn mcp::Server::clone(&self) -> Self
+impl rmcp::handler::server::ServerHandler for mcp::Server
+pub async fn mcp::Server::call_tool(&self, rmcp::model::CallToolRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::mrtr::CallToolResponse, rmcp::model::ErrorData>
+pub async fn mcp::Server::complete(&self, rmcp::model::CompleteRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::CompleteResult, rmcp::model::ErrorData>
+pub fn mcp::Server::get_info(&self) -> rmcp::model::InitializeResult
+pub async fn mcp::Server::get_prompt(&self, rmcp::model::GetPromptRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::mrtr::GetPromptResponse, rmcp::model::ErrorData>
+pub async fn mcp::Server::list_tools(&self, core::option::Option<rmcp::model::PaginatedRequestParams>, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData>
+pub async fn mcp::Server::on_custom_request(&self, rmcp::model::CustomRequest, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::CustomResult, rmcp::model::ErrorData>
+pub async fn mcp::Server::read_resource(&self, rmcp::model::ReadResourceRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<rmcp::model::mrtr::ReadResourceResponse, rmcp::model::ErrorData>
+pub async fn mcp::Server::subscribe(&self, rmcp::model::SubscribeRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<(), rmcp::model::ErrorData>
+pub fn mcp::Server::supported_protocol_versions(&self) -> alloc::borrow::Cow<'static, [rmcp::model::ProtocolVersion]>
+pub async fn mcp::Server::unsubscribe(&self, rmcp::model::UnsubscribeRequestParams, rmcp::service::RequestContext<rmcp::service::server::RoleServer>) -> core::result::Result<(), rmcp::model::ErrorData>
+impl core::marker::Freeze for mcp::Server
+impl core::marker::Send for mcp::Server
+impl core::marker::Sync for mcp::Server
+impl core::marker::Unpin for mcp::Server
+impl core::marker::UnsafeUnpin for mcp::Server
+impl !core::panic::unwind_safe::RefUnwindSafe for mcp::Server
+impl !core::panic::unwind_safe::UnwindSafe for mcp::Server
+pub struct mcp::ServerConfig
+pub mcp::ServerConfig::call_limit: f64
+pub mcp::ServerConfig::launch_dir: core::option::Option<std::path::PathBuf>
+pub mcp::ServerConfig::max_concurrency: usize
+pub mcp::ServerConfig::recache_grace: f64
+pub mcp::ServerConfig::roots: alloc::vec::Vec<std::path::PathBuf>
+pub mcp::ServerConfig::roots_files: alloc::vec::Vec<mcp::RootsFile>
+impl core::marker::Freeze for mcp::ServerConfig
+impl core::marker::Send for mcp::ServerConfig
+impl core::marker::Sync for mcp::ServerConfig
+impl core::marker::Unpin for mcp::ServerConfig
+impl core::marker::UnsafeUnpin for mcp::ServerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::ServerConfig
+impl core::panic::unwind_safe::UnwindSafe for mcp::ServerConfig
+pub struct mcp::Start
+pub mcp::Start::config: mcp::ServerConfig
+pub mcp::Start::no_auto_index: bool
+pub mcp::Start::no_auto_restart: bool
+pub mcp::Start::relaunch: core::option::Option<mcp::Relaunch>
+pub mcp::Start::transport: mcp::Transport
+impl core::marker::Freeze for mcp::Start
+impl core::marker::Send for mcp::Start
+impl core::marker::Sync for mcp::Start
+impl core::marker::Unpin for mcp::Start
+impl core::marker::UnsafeUnpin for mcp::Start
+impl core::panic::unwind_safe::RefUnwindSafe for mcp::Start
+impl core::panic::unwind_safe::UnwindSafe for mcp::Start
+pub trait mcp::Arming: core::marker::Send + core::marker::Sync
+pub fn mcp::Arming::arm(&self, &app::tags::Session) -> core::result::Result<(), alloc::string::String>
+pub fn mcp::Arming::refreshing(&self, &std::path::Path) -> bool
+pub trait mcp::Log: core::marker::Send + core::marker::Sync
+pub fn mcp::Log::line(&self, &str)
+pub fn mcp::serve(mcp::Start, &app::env::EnvConfig, alloc::rcs::arc::Arc<app::env::Services>) -> mcp::Ended

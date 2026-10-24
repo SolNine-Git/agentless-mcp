@@ -1,6 +1,6 @@
 # Rust Port, Phase 2: The Read Surface
 
-**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P1 released | **Branch**: `feat/rust-p2-read` | **Est. Rust lines**: about 7,300, plus about 2,400 lines of language data and queries
+**Date**: 2026-10-10 | **Status**: not started | **Overview**: [2026-10-10_rust-port-00-overview.md](2026-10-10_rust-port-00-overview.md) | **Depends on**: P1 released | **Branch**: `feat/rust-port` | **Est. Rust lines**: about 7,300, plus about 2,400 lines of language data and queries
 
 ## Goal
 
@@ -16,8 +16,8 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 | Crate | Layer | New dependencies or parts in P2 |
 |---|---|---|
 | `facts` | L2 | syntax, kernel |
-| `git` | L2 | none new; adds `log_span` |
-| `graph` | L3 | facts, pycompat, kernel |
+| `git` | L3 | none new; adds `log_span` |
+| `graph` | L3 | facts, metrics, kernel |
 | `store` | L3 | facts; adds the Rust cache file and its writer |
 | `app` | L5 | facts, graph |
 
@@ -96,10 +96,10 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
   - `shortest_path` keeps first-found BFS with the edge sort key.
   - `import_cycles` uses petgraph's `tarjan_scc`, then a chain BFS from the smallest member over sorted adjacency.
 - **`pagerank`** (`graph.py:492-613`): hand-written. Damping 0.85, backflow 0.5 with no backflow out of a pure source (`graph.py:608`), a strict L1 delta below 1e-6, at most 100 iterations, and the outer loop in sorted node order. Each summation reproduces its own Python site:
-  - `totals` and the convergence `delta` use built-in `sum()` (`graph.py:532`, 558): `pycompat::sum_builtin`.
+  - `totals` and the convergence `delta` use built-in `sum()` (`graph.py:532`, 558): `metrics::compensated_sum`.
   - `dangling` and `incoming` are plain `+=` loops in adjacency order (`graph.py:547-551`): a plain loop in the same order.
   - The update is `(1.0 - damping) * personalization[node] + damping * (incoming[node] + dangling * personalization[node])`, with that grouping (`graph.py:553-556`).
-  - Personalization divides each seed weight by a built-in `sum()`, and falls back to a uniform share `1.0 / len(nodes)` (`graph.py:974-986`).
+  - Personalization divides each seed weight by a built-in `sum()`, and falls back to a uniform share `1.0 / len(nodes)` (`graph.py:974-985`).
   - Then `rank_order` (`graph.py:614-633`): sort by (-rank, path) with exact float comparison, then the seeds first in that order. Then `flood` (`graph.py:660-720`).
 - **`communities`** (`src/agentless_mcp/core/communities.py`): local moving in sorted node order (391). For each node:
   - its degree is subtracted from its community's total before scoring and added to the chosen community after (394, 409);
@@ -133,7 +133,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **orient**:
   - `health` is its own module, out of the graph service (finding B14): orphans, unused exports, hubs, the complexity summary, hotspots, and the walk budget (`src/agentless_mcp/application/graph_service.py:540-836`; `walk_budget` in `src/agentless_mcp/util/deadline.py:93-97`);
   - `cycles`, `communities`, `diagram`, and `path`.
-- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-160`).
+- **guide**: serves `src/agentless_mcp/docs/agent-guide.md` sections through `include_str!` (`src/agentless_mcp/core/guide.py:144-159`). The ground-truth dep-info check refuses an `include_str!` of a file that is not a scanned `.rs` file, so this item needs a decision first: generate the sections into committed Rust with `cargo xtask generate` (P1 work item 2), or add a reviewed list of approved compile-time reads to `xtask/src/ground_truth/dep_info.rs` with a self-test row. No such list exists today (P1 R-48).
 - **capabilities** gains the read operations' limits from the same `Limit` constants (finding E6).
 - **index**: the CLI command over the `store` writer.
 - **Tests**:
@@ -149,8 +149,8 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 - **Communities**: the one-line note when not converged.
 - **Diagrams**:
   - mermaid (`src/agentless_mcp/core/mermaid.py:191-283`, label allow-list, ids `n{i}`, `_distinct` ordinals);
-  - HTML (`src/agentless_mcp/core/htmlgraph.py:64-164`), with the template through `include_str!`, compact sorted ASCII JSON, `<`, `>`, and `&` escaped, and edges sorted lexically by id.
-- **Numbers**: text uses `{:.4f}`, `:g`, and `.3f`. JSON uses `round_half_even(x, 6)`, then `float_repr`, with negative zero shown as zero.
+  - HTML (`src/agentless_mcp/core/htmlgraph.py:64-164`), with the template through `include_str!`, compact sorted ASCII JSON, `<`, `>`, and `&` escaped, and edges sorted lexically by id. The template meets the same dep-info rule as the guide.
+- **Numbers**: text uses `{:.4f}`, `:g`, and `.3f`. JSON uses `json::round_half_even(x, 6)`, then `json::float_text`, with negative zero shown as zero.
 - **Listings**: one `Bounded<T>` serializer replaces 13 listing classes and 36 `as_dict` methods in `render.py` (finding E3).
 - **Token counter**: the default `chars4` counter counts code points, and `--token-counter tiktoken` uses the `cl100k_base` encoding (`src/agentless_mcp/util/tokens.py`; `src/agentless_mcp/bootstrap.py:66`). The Rust port uses `tiktoken-rs` with the same encoding, behind the same flag. The counts must match the Python counts on the fixture corpus, as fixtures generated under 0.10.1 with the `tokens` extra.
 - **Tests**: the 12 map goldens and the graph goldens, compared byte for byte (overview rule 6), and insta snapshots over fixed values.
@@ -164,7 +164,7 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 ## Parity harness
 
 - **Goldens**: the 12 map, 27 graph, and 10 skeleton goldens. The Rust tests build the pinned snapshot with a fake `GitRead` (head `0000000f`), as `tests/characterization/test_map_goldens.py:78-86` pins it for Python.
-- **Black-box Python tests**: the tests that run the CLI as a subprocess take a driver that runs the Rust binary for read subcommands. Receipt line 2 is normalized. Count them when P2 starts. This gate is narrow: most CLI tests call the adapter in process and do not port. The goldens, the facts fixtures, Loc-Bench, and the surface diff carry the parity proof.
+- **Black-box Python tests**: the tests that run the CLI as a subprocess take a driver that runs the Rust binary for read subcommands. Receipt line 2 is normalized. At `1dc4d70` there are 35, all in `tests/unit/test_cli.py`: `TestSubprocess` (8), `TestPatchSubprocess` (21), and `TestValidateAndVoteSubprocess` (6). This gate is narrow: most CLI tests call the adapter in process and do not port. The goldens, the facts fixtures, Loc-Bench, and the surface diff carry the parity proof.
 - **Loc-Bench retrieval tier**: run on a frozen copy of the P2 build, per AGENTS.md and the loc-bench-harness. Byte-diff `ranked_files` against the stored 0.10.1 arm. The harness runs `uv run --project <dir> agentless-mcp` (loc-bench-harness `src/loc_bench_harness/agentless.py:79`), so it cannot run a Rust binary. Before P2 starts, add a binary-path option to the harness, in its own repository.
 - **Surface diff** (`docs/analysis/benchmark-methodology.md`, "The release regression gate"). The tool exists only in a session scratchpad today. Before P2 starts, commit it to `scripts/`.
   - Write the prediction first.
@@ -188,6 +188,6 @@ Port every read operation: map, symbols (find, overview, expand, explain, locate
 | Risk | Response |
 |---|---|
 | A query cannot reproduce a handler's output exactly | Keep that rule as code in its own module. The facts fixtures decide, not the line estimate. |
-| Float and order differences in ranking or communities | The pycompat functions and the stated order rules; the hash-seed property test; byte comparison of the goldens. |
+| Float and order differences in ranking or communities | The `json` float functions, `metrics::compensated_sum`, and the stated order rules; the hash-seed property test; byte comparison of the goldens. |
 | The Loc-Bench byte diff is not zero | Each differing instance is traced to a rule and fixed. Accepting a difference is your decision, with the instance named. |
 | Five functions above complexity 10 move across | Each is split during the port (finding B11). The erosion gate refuses a new one. |

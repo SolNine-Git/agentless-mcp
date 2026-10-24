@@ -1,0 +1,26 @@
+[package]
+name = "checks"
+description = "The erosion pair checks: complexity_delta, contract_drift, and clone_delta."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+io = { path = "../io" }
+kernel = { path = "../kernel" }
+metrics = { path = "../metrics" }
+prompts = { path = "../prompts" }
+serde.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

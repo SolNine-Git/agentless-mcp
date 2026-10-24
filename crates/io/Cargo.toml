@@ -1,0 +1,40 @@
+[package]
+name = "io"
+description = "The tool's file and process operations: a bounded process runner, bounded reads and walks, path containment, the log append, the cache root, and the project config."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unexpected_cfgs = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+allow_attributes = "forbid"
+dbg_macro = "forbid"
+todo = "forbid"
+unimplemented = "forbid"
+undocumented_unsafe_blocks = "deny"
+
+[features]
+# io::testing::Tree and io::testing::cases, for the tests of other crates.
+test-support = ["text/test-support"]
+
+[dependencies]
+json = { path = "../json" }
+kernel = { path = "../kernel" }
+libc.workspace = true
+prompts = { path = "../prompts" }
+rustix.workspace = true
+serde.workspace = true
+signal-hook.workspace = true
+text = { path = "../text" }
+wait-timeout = "0.2.1"
+
+[dev-dependencies]
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

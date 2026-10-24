@@ -13,6 +13,7 @@ import pytest
 
 from agentless_mcp.core import gitinfo, treewalk
 from agentless_mcp.core.treewalk import RepoFile, render_tree, walk_repo
+from agentless_mcp.util import fslimits
 from agentless_mcp.util.errors import RepoResolutionError, WalkBoundExceeded
 
 GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@test"]
@@ -158,6 +159,35 @@ class TestWalkRepo:
         paths = [f.path for f in walk_repo(git_repo)]
         assert "app.py" not in paths
         assert "pkg/mod.py" in paths
+
+
+class TestAFileThatCannotBeStated:
+    def test_both_walks_drop_it_and_name_it(self, git_repo, monkeypatch, caplog):
+        # Removed after the containment check, as a concurrent delete would.
+        check = fslimits.file_stays_inside
+
+        def check_then_remove(candidate, root):
+            inside = check(candidate, root)
+            if candidate.name == "gone.py":
+                candidate.unlink()
+            return inside
+
+        monkeypatch.setattr(fslimits, "file_stays_inside", check_then_remove)
+        monkeypatch.setattr(treewalk, "file_stays_inside", check_then_remove)
+        caplog.set_level(logging.WARNING)
+
+        (git_repo / "gone.py").write_text("g = 1\n", encoding="utf-8")
+        walked = [
+            path.name
+            for path in fslimits.bounded_walk(git_repo, include=lambda path: path.suffix == ".py")
+        ]
+        (git_repo / "gone.py").write_text("g = 1\n", encoding="utf-8")
+        listed = [repo_file.path for repo_file in walk_repo(git_repo)]
+
+        assert walked == ["app.py", "mod.py"]
+        assert listed == [".gitignore", "app.py", "pkg/mod.py"]
+        named = [record for record in caplog.records if "gone.py" in record.getMessage()]
+        assert len(named) == 2
 
 
 class TestADisownedRoot:

@@ -1,0 +1,1154 @@
+"""Write the test fixtures whose results the CPython 3.13 standard library computes.
+
+Development-time only. Run it from the repository root:
+
+    uv run --python 3.13 --no-project python scripts/stdlib_fixtures.py
+
+The script writes fixtures for the text, json, metrics, io and store crates. With --check,
+the script compares its output with the committed fixtures and writes nothing.
+"""
+
+import json
+import math
+import os
+import random
+import re
+import shlex
+import struct
+import sys
+import textwrap
+import tokenize
+import traceback
+from collections.abc import Callable
+from difflib import SequenceMatcher, unified_diff
+from pathlib import Path
+
+from fixture_files import Fixture, render, write_or_check_files
+
+CRATES = Path(__file__).resolve().parents[1] / "crates"
+INF = math.inf
+NAN = math.nan
+WORD = re.compile(r"\w")
+DECIMAL = re.compile(r"\d")
+
+SPLITLINES = [
+    "",
+    "a",
+    "a\n",
+    "\n",
+    "a\r\nb",
+    "\r\n\r\n",
+    "a\rb\n\nc",
+    "x\x1cy\x1dz\x1ew",
+    "x\u2028y\x85z\u2029",
+    "a\x1fb",
+    "a\x0bb\x0cc",
+    "a\n\r",
+]
+SPLIT_WHITESPACE = ["", "   ", " a  b ", "a\x1fb\u3000c", "a\u200bb", "\x85x\xa0y\t", "\u2028a\x1c"]
+STRIP = ["", "  ", " a b ", "\x1fa\x1c", "\u3000a\u2029", "\u200ba\u200b", "\xa0\x85a"]
+# Final sigma depends on the cased and case-ignorable characters around it, and those properties
+# grow with each Unicode version: U+A7CB and U+10D50 are cased in Unicode 16, unassigned in 15.1.
+SIGMA = "\u03a3"
+ALPHA = "\u0391"
+ENDED = ALPHA + SIGMA
+LOWER_STRINGS = [
+    *["", SIGMA, ENDED, ENDED + " \u0392", ENDED + ALPHA, ENDED + ".", ALPHA + "'" + SIGMA],
+    *[ENDED + "'", ENDED + "'" + ALPHA, " " + SIGMA, "1" + SIGMA, SIGMA * 2, ENDED + SIGMA],
+    *[ENDED + "\u0301", ALPHA + "\u0301" + SIGMA, ENDED + "\u0345", ENDED + "\u00ad"],
+    *[ENDED + "\u200d" + ALPHA, ENDED + "\U0001f600", ENDED + "\ua7cb", "\ua7cb" + SIGMA],
+    *[ALPHA + "\ua7cb" + SIGMA, "\U00010d50" + SIGMA, ENDED + "\U00010d50", "\ua7cb\u0264"],
+    *["Stra\u00dfe", "\u0130stanbul", "\u01c5", "\ufb03", ENDED + "\u1c89"],
+    "\U00016ea0x\U00016eb8",
+]
+STRIP_BYTES = [
+    b"",
+    b" \t\n\x0b\x0c\r",
+    b" a b ",
+    b"\x1ca\x1f",
+    b"\x85a\xa0",
+    b"\xc2\xa0a",
+    b"\x00a ",
+]
+# No case holds a digit outside ASCII: the Rust rule refuses those.
+INT_TEXT = [
+    "0",
+    "-0",
+    "+5",
+    "0005",
+    "1_0",
+    "1_000_000",
+    "9223372036854775807",
+    "-9223372036854775808",
+    "99999999999999999999999",
+    " 5 ",
+    "\t-12\n",
+    "\x0b5\x0c",
+    "\r5",
+    "\x855",
+    "\xa05\u3000",
+    "\u20285\u2029",
+    "\x1c5",
+    "5\x1f",
+    "\x1d5",
+    "\x7f5",
+    "\u200b5",
+    "",
+    " ",
+    "+",
+    "-",
+    "+-5",
+    "- 5",
+    "_1",
+    "1_",
+    "1__0",
+    "+_1",
+    "1 2",
+    "1.0",
+    "0x10",
+    "5\x00",
+]
+INT_BYTES = [
+    b"0",
+    b"-12",
+    b"+1_0",
+    b" 5\r\n",
+    b"\x0b5",
+    b"\x1c5",
+    b"5\x1f",
+    b"\x855",
+    b"\xc2\xa05",
+    b"\xa05",
+    b"",
+    b"1__0",
+    b"\xff",
+]
+
+FLOAT_REPR = [
+    0.0,
+    -0.0,
+    1.0,
+    -1.0,
+    0.1,
+    0.5,
+    0.3333333333333333,
+    0.6666666666666666,
+    100.0,
+    123456.789,
+    1000000000000000.0,
+    1e16,
+    9999999999999998.0,
+    1.0000000000000002e16,
+    1e22,
+    1.5e300,
+    5e-324,
+    2.2250738585072014e-308,
+    0.0001,
+    0.0001,
+    0.00012345,
+    1e-05,
+    1.5e-05,
+    0.3,
+    2.675,
+    1.7976931348623157e308,
+    INF,
+    -INF,
+    NAN,
+    12.0,
+    1234567890123456.0,
+    0.30000000000000004,
+    3.14159,
+    -2.5e-10,
+    -352334.4703336753,
+    -698301.6521509961,
+    301868.9460797075,
+    -855127.4266649145,
+    71764.00861337851,
+    -268622.1661748289,
+    -884002.1504505863,
+    14871.466378840501,
+    0.0011717393263120275,
+    3.894531646471093e-10,
+    0.0014173908334978915,
+    242.11663289953958,
+    2.8824890300083344e-11,
+    10332.17500334878,
+    7763.63165660779,
+    3.2504078464356366e-17,
+    # Exact decimal ties: the shortest digits break each one to the even digit.
+    2247601717616233.25,
+    -3906101348481.40625,
+    1761169953.31640625,
+]
+ROUND_VALUES = [
+    2.675,
+    0.125,
+    0.375,
+    2.5,
+    3.5,
+    -2.5,
+    0.5,
+    1.5,
+    -0.5,
+    -0.4,
+    0.0,
+    -0.0,
+    1234.5678,
+    1e300,
+    5e-324,
+    0.285,
+    1.005,
+    0.0005,
+    0.0015,
+    0.0025,
+    5e-07,
+    1.5e-06,
+    2.5e-06,
+    0.1234565,
+    0.1234575,
+    1.0000005,
+    123.4565,
+    -0.0004999,
+    1e16,
+    1.7976931348623157e308,
+    INF,
+    -INF,
+    NAN,
+    -95.24089298036279,
+    119.5447721609919,
+    848.4211680474587,
+    -68.6998598004534,
+    15.682546124542228,
+    174.76965769979392,
+    -630.6793122902468,
+    23.817278083610972,
+    259.76544043360377,
+    585.9537450399052,
+    9.412345622921847e-05,
+    0.0003034012626245255,
+    9.06705374918394e-05,
+    0.0008096445343671776,
+    0.0006934384825412391,
+]
+ROUND_LARGE_VALUES = [0.1, 2.675, 1e-320, 123.456]
+ROUND_HALF_EVEN = [(ROUND_VALUES, (0, 1, 2, 3, 6, 7)), (ROUND_LARGE_VALUES, (17, 323, 324, 400))]
+SUM_BUILTIN = [
+    [],
+    [0.1] * 10,
+    [1e100, 1.0, -1e100],
+    [-0.0],
+    [-0.0, -0.0],
+    [1e308, 1e308],
+    [1e308, 1e308, -1e308],
+    [INF, 1.0],
+    [INF, -INF],
+    [0.1, 0.2, 0.3],
+    [
+        9.525102111858402e-06,
+        0.00011332979587418524,
+        -0.00042078142733664747,
+        813.7177106428495,
+        -38303.63517961313,
+        -6385.4724015212505,
+        0.001424087828235845,
+        -255.20491454853754,
+        4242.215314923073,
+        -0.008807976600675347,
+        -7.171009773016435,
+        -0.14481538866119426,
+        -6.8796268320652,
+        -0.0027683528811086734,
+        0.005887589630449823,
+        -0.08362899784084604,
+        0.050393007622902886,
+        0.045889057887843525,
+        2.179180380728072e-05,
+        -7.638684434900758,
+        -0.6700757927128536,
+        -69.60309306789905,
+        -15660.329104651139,
+        -844.7590356384089,
+        0.14605188055476792,
+        -0.31975527561760897,
+        1887.3975421003686,
+        5.937839516431887e-05,
+        0.06799355610250828,
+        -5180.3325160711065,
+        -0.08700000485678104,
+        29425.770905533755,
+        0.06438495732194298,
+        43325.55887966072,
+        -30.59894886230987,
+        -2890.7178091930796,
+        -7.658084110365362e-06,
+        -0.05635844503606411,
+        -0.007413195559626316,
+        -20.420464290753458,
+        -83.88373975997227,
+        -0.019671148733139177,
+        7.667676528830249,
+        0.07279689393970304,
+        0.4127934189930038,
+        3.654461187749032,
+        0.0009154624079279825,
+        -0.0008340306106773359,
+        -0.005360862663609285,
+        -9758.738803124023,
+    ],
+    [1.0, 1e-16, 1e-16, 1e-16, -1.0],
+]
+
+DUMPS = [
+    "{}",
+    "[]",
+    '{"a": []}',
+    '{"a": {}}',
+    "[[], {}]",
+    '{"a": 1, "b": [1, 2, 3], "c": {"d": null, "e": true, "f": false}}',
+    '{"floats": [0.5, 1.25, 0.1, 1e+16, 1.5e-05, -0.0, 3.0, 123456.789, 1e-07, 2.5e+20]}',
+    '{"ints": [0, -1, 9007199254740993, -9223372036854775808, 18446744073709551615]}',
+    (
+        '{"s": "plain", "t": "quote \\" backslash \\\\ slash /", "u": "\\b\\f\\n\\r\\t", '
+        '"v": "\\u0000\\u0001\\u001f\x7f"}'
+    ),
+    (
+        '{"w": "café \u2028 \u4e2d", "x": "\U0001f600 \U00010000 \U0010ffff", '
+        '"y": "\ud7ff\ue000\uffff"}'
+    ),
+    '{"nested": [{"a": [1, {"b": [[], [2]]}]}, "z"]}',
+    '["only", 1, 2.0, null]',
+    '"top-level string \xe9"',
+    "42",
+    "0.1",
+    "null",
+    "true",
+]
+LOADS = [
+    "null",
+    "true",
+    "false",
+    " \t\n\r 42 \r\n",
+    "0",
+    "-0",
+    "-12",
+    "99999999999999999999",
+    "-99999999999999999999999999",
+    "1.5",
+    "-2.5e-3",
+    "1E5",
+    "1e+2",
+    "1e400",
+    "-1e400",
+    "1e-400",
+    "0.1",
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "[NaN, Infinity, -Infinity]",
+    '""',
+    '"plain"',
+    '"quote \\" backslash \\\\ slash \\/"',
+    '"\\b\\f\\n\\r\\t"',
+    '"\\u0041\\u00e9\\u4E2D"',
+    '"\\ud83d\\ude00"',
+    '"\\ud800"',
+    '"\\udc00"',
+    '"\\ud800\\u0041"',
+    '"\\ud800\\ud800"',
+    '"\\udc00\\ud800"',
+    '"a\\ud800"',
+    '"\\ud800\\udbff\\udc00"',
+    '"\\ud800\\n"',
+    '"\xe9t\xe9 \U00002028 \U00004e2d"',
+    '"\U0001f600"',
+    '"\x7f"',
+    "[]",
+    "{}",
+    "[ ]",
+    "{ }",
+    "[1, [2, [3, []]], {}]",
+    '{"a": 1, "b": 2, "a": 3}',
+    '{"b": 1, "a": {"c": [true, null]}}',
+    '{"\\u00e9": 1, "\xe9": 2}',
+    '{"": 0}',
+    '{ "a" : 1 , "b" : [ 1 , 2 ] }',
+    "",
+    " ",
+    "\n\n",
+    "{",
+    "[",
+    "]",
+    "}",
+    '"abc',
+    '"a\\',
+    '"\\x"',
+    '"\\u12"',
+    '"\\u12',
+    '"\\u123"',
+    '"\\u1234',
+    '"\\uZZZZ"',
+    '"\\ud800\\u12"',
+    '"\\ud800\\uZZZZ"',
+    '"\\ud800\\udc00',
+    '"\\ud800\\',
+    '"\\ud800\\u"',
+    '"a\x01b"',
+    '"a\nb"',
+    '"\x1f"',
+    '{"a" 1}',
+    "{1:2}",
+    '{"a":}',
+    '{"a":1,}',
+    '{"a":1 , }',
+    "[1,]",
+    "[1,  ]",
+    "[1 2]",
+    '{"a":1 "b":2}',
+    "{,}",
+    "[,]",
+    '{"a":1,,}',
+    "[1,,]",
+    "1 2",
+    '{"a":1}x',
+    "-",
+    "-x",
+    "1.",
+    "1e",
+    "1e+",
+    "01",
+    "1.5e",
+    "-Infinityx",
+    "nu",
+    "t",
+    "fa",
+    "nan",
+    "infinity",
+    "+1",
+    ".5",
+    "'a'",
+    "\U0000feff{}",
+    "\U0000feff",
+    '{"a":1\n\n,"b"}',
+    "[\n1,\n2\n3]",
+    '"\xe9" x',
+    '"\U00004e2d\x0a"',
+    '["\xe9", ]',
+    '{"\xe9":1 "x"}',
+    '{\n  "a": 1,\n  "b": \n}',
+    "[[[[",
+    '{"a": [1, {"b": }]}',
+]
+# Integers at and past the integer text limit, as a prefix, a digit, its count and a suffix.
+LONG_INTS: list[tuple[str, str, int, str]] = [
+    ("[", "1", 4300, "]"),
+    ("", "9", 4301, ""),
+    ("-", "1", 4301, ""),
+    ('{"a": [1, ', "3", 5000, "]}"),
+    ("[", "1", 4301, ", x]"),
+    ("[x, ", "1", 4301, "]"),
+    ("[1.", "1", 4301, "]"),
+    ("\n\n[0, ", "7", 4301, "]"),
+]
+REPR = [
+    "",
+    "a",
+    "it's",
+    'say "hi"',
+    "both ' and \"",
+    "back\\slash",
+    "\t\n\r",
+    "\x00\x01\x1f\x7f",
+    " ~",
+    "\x80\x85\x9f\xa0\xad\xe9\xff",
+    "\U00000378\U0000200b\U00002028\U00002029\U00003000\U0000e000\U0000feff\U0000ffff",
+    "\U0001f600\U000e0001\U0010ffff\U00020000",
+    "\U0000d800\U0000dcff\U0000dfff",
+    "\U00004e2d\U00006587",
+    "line\nbreak's",
+]
+SHLEX_QUOTE = [
+    "",
+    "abc",
+    "a b",
+    "it's",
+    "\xe9t\xe9",
+    "a$b",
+    "_@%+=:,./-",
+    "AZaz09",
+    "\t",
+    "a\nb",
+    "-",
+    "x'y'z",
+    '"',
+    "*",
+    "~",
+    "!",
+    "a;b",
+    "''",
+]
+FSDECODE = [
+    b"",
+    b"abc",
+    b"\xff",
+    b"\x80abc",
+    b"\xe2\x82",
+    b"\xe2\x82A",
+    b"\xf0\xe2\x82\xac",
+    b"\xed\xa0\x80",
+    b"\xc0\x80",
+    b"\xc3\xa9t\xc3\xa9",
+    b"\xf4\x90\x80\x80",
+    b" \xa0 ",
+    b"\xc2\xa0x\xc2\x85",
+]
+DEDENT = [
+    *["", "a", "a\n", "\n\n", "  a\n  b", "  a\n    b\n", "\ta\n\tb", "    x", "\n\n  a\n"],
+    # Mixed tabs and spaces share only their common prefix, so "  " and "\t" share no margin.
+    *["  a\n\tb", " \ta\n \tb", " \ta\n  b", "  \ta\n  \t\tb\n   c"],
+    # Whitespace-only lines become empty and set no margin, whatever their length.
+    *["  a\n   \n  b", "  a\n\t\n  b", "  a\n\n  b", "    a\n  \n    b", "   ", "  \n  "],
+    "  a\n  ",
+    # CR, VT, FF, NBSP and U+3000 are text, not margin. Trailing whitespace stays.
+    *["  a\r\n  b\r\n", "  \r\n  a", "  a\n\r\n  b", "\x0ba\n\x0bb", "\x0ca", "\xa0a\n\xa0b"],
+    *["\U00003000a\n\U00003000b", "  a  \n  b\t", "  \xe9\n  \U000065e5\U0000672c"],
+    "    def f():\n        return 1\n",
+]
+SHELL_SPLIT = [
+    *["", "   ", "a", "a b", "  a   b  ", "a\tb\nc\rd", "a\x0bb", "a\x0cb", "a\xa0b"],
+    "a\U00003000b",
+    *["'a b'", '"a b"', "a'b c'd", 'a"b"c', "''", '""', "'' ''", "a ''", '"" a', "'a'\"b\""],
+    *["'\"'", '"\'"', "it's", 'say "hi there"', "x='a b'", '--name="v w"', "'abc", '"abc'],
+    *["a\\ b", "\\'", "\\\\", "a\\", "\\", "'a\\b'", "'a\\'", '"a\\"b"', '"a\\\\b"', '"a\\nb"'],
+    *['"a\\', '"a\\"', "'\\''", "\\\n", "a\\\nb", '"a\\$b"', "\\ ", "\\a"],
+    *["\xe9 \xfc", "\U000065e5\U0000672c \U00008a9e", "a # b", "a;b", "a|b", "(a)", "a&&b"],
+    "pytest -q tests/test_x.py::TestA -k 'not slow'",
+    'python -c "print(1)"',
+]
+IDENTIFIERS = [
+    *["", "a", "_", "_a1", "a_1", "A", "__init__", "if", "None", "x" * 100],
+    *["1a", "a1", "a-b", "a b", "a.b", "a\x00", "\U0000feff", "\U0001f600"],
+    # XID_Start and XID_Continue: letters, a combining mark, digits outside ASCII.
+    *["\xe9", "\xe9t\xe9", "\U000065e5\U0000672c", "\U00000301", "e\U00000301", "\U000001c5"],
+    *["\U00002160", "\U0000ff41", "\U00000660", "a\U00000660", "\xaa", "\xb2", "a\xb2"],
+    *["\U0001d400", "\U00001885"],
+    # Other_ID_Start and Other_ID_Continue, and a mark that NFKC moves out of XID_Start.
+    *["\U00002118", "\U0000212e", "\xb7", "a\xb7", "\U0000309b", "a\U0000309b"],
+    *["a\U0000200d", "a\U000030fb"],
+    # Code points that Unicode 16 assigns and 15.1 does not.
+    *["\U00010d50", "a\U00010d50", "\U00001c89"],
+]
+# The context sizes of the grouped opcodes: none, one, and the 3 that unified_diff uses.
+GROUP_CONTEXTS = (0, 1, 3)
+
+IGNORED_TOKENS = frozenset(
+    {
+        tokenize.COMMENT,
+        tokenize.DEDENT,
+        tokenize.ENDMARKER,
+        tokenize.INDENT,
+        tokenize.NEWLINE,
+        tokenize.NL,
+    }
+)
+
+
+def bits(x: float) -> str:
+    # The hex digits of the IEEE-754 bits keep every float exact, NaN and -0.0 included.
+    (raw,) = struct.unpack("<Q", struct.pack("<d", x))
+    return f"0x{raw:016x}"
+
+
+def text_fixture() -> Fixture:
+    return {
+        "is_space": [code for code in range(sys.maxunicode + 1) if chr(code).isspace()],
+        "splitlines": [
+            [text, keepends, text.splitlines(keepends)]
+            for text in SPLITLINES
+            for keepends in (False, True)
+        ],
+        "split_whitespace": [[text, text.split()] for text in SPLIT_WHITESPACE],
+        "strip": [[text, text.strip()] for text in STRIP],
+        "not_printable": code_ranges(lambda char: not char.isprintable()),
+        "word": code_ranges(lambda char: WORD.fullmatch(char) is not None),
+        "decimal": code_ranges(lambda char: DECIMAL.fullmatch(char) is not None),
+        "repr": [[code_points(text), repr(text)] for text in REPR],
+        "fsdecode": [
+            [list(raw), code_points(raw.decode("utf-8", "surrogateescape"))] for raw in FSDECODE
+        ],
+        **integer_sections(),
+        **lower_sections(),
+        **indent_and_shell_sections(),
+        **identifier_sections(),
+    }
+
+
+def integer_sections() -> Fixture:
+    return {
+        "is_ascii_space": [byte for byte in range(256) if bytes([byte]).isspace()],
+        "strip_bytes": [[list(raw), list(raw.strip())] for raw in STRIP_BYTES],
+        "int_text": [[text, int_value(text)] for text in INT_TEXT],
+        "int_bytes": [[list(raw), int_value(raw)] for raw in INT_BYTES],
+    }
+
+
+def lower_sections() -> Fixture:
+    # Every code point that str.lower() changes, and strings whose final sigma reads its context.
+    changed = (code for code in range(sys.maxunicode + 1) if chr(code).lower() != chr(code))
+    return {
+        "lower": [[code, code_points(chr(code).lower())] for code in changed],
+        "lower_strings": [[code_points(text), code_points(text.lower())] for text in LOWER_STRINGS],
+    }
+
+
+def indent_and_shell_sections() -> Fixture:
+    return {
+        "dedent": [[text, textwrap.dedent(text)] for text in DEDENT],
+        "shell_split": [[text, *shell_split(text)] for text in SHELL_SPLIT],
+    }
+
+
+def identifier_sections() -> Fixture:
+    # A character starts an identifier when it is one. It continues one when "a" and it are one.
+    return {
+        "identifier_start": code_ranges(str.isidentifier),
+        "identifier_continue": code_ranges(lambda char: ("a" + char).isidentifier()),
+        "identifier": [[text, text.isidentifier()] for text in IDENTIFIERS],
+    }
+
+
+def int_value(text: str | bytes) -> str | None:
+    # The decimal text of int(text), or None for a text that int() refuses.
+    try:
+        return str(int(text))
+    except ValueError:
+        return None
+
+
+def shell_split(text: str) -> tuple[list[str] | None, str | None]:
+    # The words of shlex.split(text), or the text of the ValueError it raises.
+    try:
+        return shlex.split(text), None
+    except ValueError as error:
+        return None, str(error)
+
+
+def shell_fixture() -> Fixture:
+    return {
+        "shlex_quote": [[text, shlex.quote(text)] for text in SHLEX_QUOTE],
+    }
+
+
+def os_fixture() -> Fixture:
+    # The messages are the C library's, so the test that reads these runs on Linux only.
+    # The cases stop at 133: newer C libraries name errnos above it that older ones leave unknown.
+    errors = [OSError(code, os.strerror(code)) for code in range(134)]
+    return {
+        "os_error_repr": [[error.errno, repr(error)] for error in errors],
+        "os_error_line": [[error.errno, last_traceback_line(error)] for error in errors],
+    }
+
+
+def last_traceback_line(error: BaseException) -> str:
+    return traceback.format_exception_only(error)[-1].rstrip("\n")
+
+
+def difflib_fixture() -> Fixture:
+    pairs = matching_pairs() + diff_pairs()
+    return {
+        "matching_blocks": [
+            [a, b, [list(block) for block in SequenceMatcher(None, a, b).get_matching_blocks()]]
+            for a, b in matching_pairs()
+        ],
+        "opcodes": [
+            [a, b, [list(code) for code in SequenceMatcher(None, a, b).get_opcodes()]]
+            for a, b in pairs
+        ],
+        "grouped_opcodes": [
+            [a, b, context, grouped_opcodes(a, b, context)]
+            for a, b in pairs
+            for context in GROUP_CONTEXTS
+        ],
+        "unified_diff": [[a, b, list(unified_diff(a, b, lineterm=""))] for a, b in pairs],
+    }
+
+
+def grouped_opcodes(a: list[str], b: list[str], context: int) -> list[list[list[object]]]:
+    groups = SequenceMatcher(None, a, b).get_grouped_opcodes(context)
+    return [[list(code) for code in group] for group in groups]
+
+
+def diff_pairs() -> list[tuple[list[str], list[str]]]:
+    # The edges of the opcodes, their groups and the unified form that matching_pairs leaves out.
+    lines = [f"line {index}" for index in range(20)]
+    # A blank line in every 7 of 230 lines passes the 230 // 100 + 1 limit, so it is popular.
+    blanks = ["" if index % 7 == 0 else f"x = {index}" for index in range(230)]
+    return [
+        (["a", "b"], []),
+        ([], ["a", "b"]),
+        (lines, lines),
+        # A change at the start, at the end, and two changes 6 and 7 equal lines apart.
+        (["new", *lines[1:]], lines),
+        (lines, [*lines[:-1], "new"]),
+        (lines, [*lines[:5], "x", *lines[6:12], "y", *lines[13:]]),
+        (lines, [*lines[:5], "x", *lines[6:13], "y", *lines[14:]]),
+        # Trailing whitespace, blank and whitespace-only lines, and tabs.
+        (["a ", "b\t", "c"], ["a", "b", "c"]),
+        (["", " ", "\t", ""], ["", "", "\t", " "]),
+        (["\tx", "\t\ty", "z"], ["\tx", "        y", "z"]),
+        # The lines of a CRLF text split at LF keep each CR.
+        (["a\r", "b\r", "c\r", ""], ["a\r", "B\r", "c\r", ""]),
+        # Lines that read as diff markers, and text outside ASCII.
+        (["-a", "+b", " c", "@@ -1 +1 @@"], ["+a", "-b", " c", "@@ -1 +1 @@"]),
+        (
+            ["\xe9t\xe9", "\U000065e5\U0000672c", "\U0001f600"],
+            ["ete", "\U000065e5\U0000672c", "\U0001f600!"],
+        ),
+        (blanks, [*blanks[:100], "inserted", *blanks[100:150], *blanks[151:]]),
+    ]
+
+
+def matching_pairs() -> list[tuple[list[str], list[str]]]:
+    lines = [f"line {index}" for index in range(197)]
+    pairs = [
+        ([], []),
+        (["a"], []),
+        ([], ["a"]),
+        (["a", "b", "c"], ["a", "b", "c"]),
+        (["a", "b", "x", "c"], ["a", "c", "b"]),
+        (["x"] * 5, ["x"] * 3),
+        (["a", "b", "a", "b"], ["b", "a", "b", "a"]),
+        (["def f():", "    return 1", ""], ["def f():", "    return 2", ""]),
+        # Four copies of "p" in 200 lines pass the 200 // 100 + 1 limit; in 199 lines nothing is
+        # popular; three copies in 200 lines stay below the limit.
+        (["p", *lines[:5], "p"], ["p"] * 4 + lines[:196]),
+        (["p", *lines[:5], "p"], ["p"] * 4 + lines[:195]),
+        (["p", *lines[:5], "p"], ["p"] * 3 + lines),
+        # A popular line starts no match, so a lone "p" matches only below the limit.
+        (["p"], ["x"] + ["p"] * 4 + lines[:195]),
+        (["p"], ["x"] + ["p"] * 4 + lines[:194]),
+        (["p"], ["x"] + ["p"] * 3 + lines[:196]),
+        (["p"] * 6, ["p"] * 250),
+        (["", "x", "", "y", ""] * 50, ["", "y", "", "x", ""] * 50),
+    ]
+    rng = random.Random(1313)
+    for length, alphabet in [(30, 3), (120, 8), (240, 4), (260, 40), (400, 6)]:
+        a = [f"t{rng.randrange(alphabet)}" for _ in range(length)]
+        b = [f"t{rng.randrange(alphabet)}" for _ in range(length + rng.randrange(-10, 10))]
+        pairs.append((a, b))
+    return pairs
+
+
+def code_ranges(accept: Callable[[str], bool]) -> list[object]:
+    # Ranges keep the fixture small: the 1,114,112 code points fall in a few hundred runs.
+    ranges: list[list[int]] = []
+    for code in range(sys.maxunicode + 1):
+        if not accept(chr(code)):
+            continue
+        if ranges and ranges[-1][1] == code - 1:
+            ranges[-1][1] = code
+        else:
+            ranges.append([code, code])
+    # A fixture section is a list[object], and list[list[int]] is not one: list is invariant.
+    return [*ranges]
+
+
+def code_points(text: str) -> list[int]:
+    # A str can hold a lone surrogate, and JSON text cannot, so the fixtures store code points.
+    return [ord(char) for char in text]
+
+
+def float_fixture() -> Fixture:
+    return {
+        "float_repr": [[bits(x), repr(x)] for x in FLOAT_REPR],
+        "round_half_even": [
+            [bits(x), ndigits, bits(round(x, ndigits))]
+            for values, digits in ROUND_HALF_EVEN
+            for x in values
+            for ndigits in digits
+        ],
+    }
+
+
+def sum_fixture() -> Fixture:
+    return {
+        "sum_builtin": [
+            [[bits(x) for x in values], bits(float(sum(values)))] for values in SUM_BUILTIN
+        ],
+    }
+
+
+def json_fixture() -> Fixture:
+    return {
+        "dumps": [
+            [doc, json.dumps(json.loads(doc), indent=2), json.dumps(json.loads(doc))]
+            for doc in DUMPS
+        ],
+        "loads": [[doc, loaded(doc)] for doc in LOADS],
+        "max_depth": [max_depth()],
+        "long_ints": [[parts, loaded(long_int_doc(*parts))] for parts in LONG_INTS],
+    }
+
+
+def long_int_doc(prefix: str, digit: str, count: int, suffix: str) -> str:
+    return prefix + digit * count + suffix
+
+
+def loaded(doc: str) -> list[object]:
+    try:
+        value = json.loads(doc)
+    except json.JSONDecodeError as error:
+        return ["error", error.msg, error.pos, error.lineno, error.colno]
+    except ValueError as error:
+        return ["value_error", str(error)]
+    return ["ok", tagged(value)]
+
+
+def tagged(value: object) -> list[object]:
+    # Tags keep what JSON fixture text cannot: NaN, big integers, and lone surrogates.
+    if isinstance(value, list):
+        return ["array", [tagged(item) for item in value]]
+    if isinstance(value, dict):
+        return ["object", [[code_points(key), tagged(item)] for key, item in value.items()]]
+    return tagged_scalar(value)
+
+
+def tagged_scalar(value: object) -> list[object]:
+    if value is None:
+        return ["null"]
+    if isinstance(value, bool):
+        return ["bool", value]
+    if isinstance(value, int):
+        return ["int", str(value)]
+    if isinstance(value, float):
+        return ["float", bits(value)]
+    if isinstance(value, str):
+        return ["str", code_points(value)]
+    message = f"json.loads returned a {type(value).__name__}"
+    raise TypeError(message)
+
+
+def max_depth() -> int:
+    # The deepest nesting json.loads reads before RecursionError, the same for arrays and objects.
+    depths = {opener: deepest(opener) for opener in "[{"}
+    if len(set(depths.values())) != 1:
+        message = f"json.loads nests arrays and objects to different depths: {depths}"
+        raise RuntimeError(message)
+    return depths["["]
+
+
+def deepest(opener: str) -> int:
+    low, high = 1, 100_000
+    while low < high:
+        middle = (low + high + 1) // 2
+        if reads_nested(opener, middle):
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def reads_nested(opener: str, depth: int) -> bool:
+    doc = "[" * depth + "]" * depth if opener == "[" else '{"a": ' * depth + "0" + "}" * depth
+    try:
+        json.loads(doc)
+    except RecursionError:
+        return False
+    return True
+
+
+def sloc_fixture() -> Fixture:
+    results = [(source, sloc(source)) for source in sloc_sources()]
+    return {
+        "lines": [[source, result] for source, result in results if isinstance(result, list)],
+        "errors": [[source, *result] for source, result in results if isinstance(result, tuple)],
+    }
+
+
+def sloc(source: str) -> list[int] | tuple[str, str]:
+    readline = iter(source.splitlines(keepends=True)).__next__
+    try:
+        tokens = list(tokenize.generate_tokens(readline))
+    except (tokenize.TokenError, SyntaxError) as error:
+        return type(error).__name__, error.args[0] if error.args else ""
+    return sorted({token.start[0] for token in tokens if token.type not in IGNORED_TOKENS})
+
+
+def sloc_sources() -> list[str]:
+    # Plain code, blank lines, comments and indentation.
+    sources = [
+        "",
+        "\n",
+        "x\n",
+        "x",
+        "  \n\n",
+        "# c\n",
+        "x = 1  # c\n",
+        "x = 1\n\n\ny = 2\n",
+        "if a:\n    b\n\n    c\nd\n",
+        "def f():\n    pass\n  # c\n",
+        "class A:\n    def f(self):\n        return 1\n",
+        "\n\n\nx = 1\n\n",
+        "x=1;y=2\n",
+        "if a:\n    b\n  # dedented comment\n    c\n",
+        "    \n",
+        "if a:\n    b\n   \n",
+    ]
+    # Strings and their prefixes.
+    for p in ["", "r", "b", "u", "R", "B", "U", "rb", "Rb", "bR", "BR", "br"]:
+        sources += [
+            f"x = {p}'a'\n",
+            f'x = {p}"a\\"b"\n',
+            f"x = {p}'''a\nb\n'''\n",
+            f'x = {p}"""a\nb"""\ny\n',
+        ]
+    sources += [
+        'x = "a\\\nb"\n',
+        "x = 'a' 'b'\n",
+        'x = ("a"\n     "b")\n',
+        '"""doc"""\n',
+        '"""\ndoc\n"""\ndef f(): pass\n',
+        "x = '''a\\''''\n",
+        'x = """a\\"""b"""\n',
+        "s = 'it''s'\n",
+        'x = "#not comment"\n',
+        "x = '\\\\'\n",
+    ]
+    # f-strings.
+    for p in ["f", "F", "rf", "fr", "Rf", "fR", "RF"]:
+        sources += [
+            f'x = {p}"a{{b}}c"\n',
+            f'x = {p}"""a\n{{b}}\nc\n"""\n',
+            f"x = {p}'''\n{{b\n}}\n'''\n",
+        ]
+    sources += [
+        'x = f"a{\nb\n}c"\n',
+        'f"{x:{\ny}}"\n',
+        'f"{x!r}"\n',
+        'f"{x=}"\n',
+        'f"{{x}}"\n',
+        'f"{x:>10}"\n',
+        'f"{ f"{y}" }"\n',
+        'f"{\n# comment\nx}"\n',
+        'f"""\n{x\n}\n{y}\n"""\n',
+        'f"{x}\\\ny"\n',
+        'f"a{b}c{d}e"\nz = 1\n',
+        'f"""{a}\n\n{b}"""\n',
+        "f'{a[\"k\"]}'\n",
+        'f"{lambda: 1}"\n',
+        'f"{x:{y}.{z}}"\n',
+        'f""\n',
+        'f"""\n"""\n',
+        'f"{x}"f"{y}"\n',
+    ]
+    # Continuation lines, brackets, form feeds and Unicode line breaks.
+    sources += [
+        "a = 1\\\n+ 2\n",
+        "a = (1,\n     2)\n",
+        "a = [\n]\n",
+        "a = {\n  1: 2,\n}\n",
+        "x = (\n\n  1\n)\n",
+        "a\x0cb = 1\n",
+        "\x0cx = 1\n",
+        "x = 1\u2028y = 2\n",
+        "x = 1\x1cy = 2\n",
+        "x = 1\x85y\n",
+        "x = 1\r\ny = 2\r\n",
+        "x = 1\ry = 2\r",
+        "if a:\\\n  b\n",
+        "x = 1 \\\n\n",
+        "def f(a,\n      b):\n    pass\n",
+        "x = [1,\n# c\n2]\n",
+    ]
+    # Unusual characters and tokens.
+    sources += [
+        "a $ b\n",
+        "a ? b\n",
+        "x = 1 ! 2\n",
+        "a = `b`\n",
+        "x = 0x1F + 0o7 + 0b1 + 1_000 + 1.5e-3j\n",
+        "x = ...\n",
+        "@dec\ndef f(): pass\n",
+        "x := 1\n",
+        "x -> y\n",
+        "café = 1\n",
+        "x = 'café'\n",
+        "\ufeffx = 1\n",
+        "x = 1\t# tab\n",
+        "\tx = 1\n",
+        "if a:\n\tb\n\tc\n",
+        "x = 1\x00\n",
+        "x = \xa0 1\n",
+    ]
+    # Errors.
+    sources += [
+        '"abc\n',
+        "'abc",
+        '"""abc\n',
+        "'''abc",
+        "(1,\n",
+        "[1,\n2\n",
+        "x = (\n",
+        "if x:\n  a\n b\n",
+        "if x:\n\ta\n        b\n",
+        "  x = 1\n",
+        "x = 1\n  y = 2\n",
+        'f"{x\n',
+        'f"{x"\n',
+        'f"abc\n',
+        'f"""abc\n',
+        'f"}"\n',
+        'f"{"\n',
+        'f"{x!}"\n',
+        "x = 1 \\ y\n",
+        "x = 1\\",
+        ")\n",
+        "(]\n",
+        "x = 'a\\\n",
+        "def f():\nreturn 1\n",
+        'x = "\u2028"\n',
+        "x = '\x0c'\n",
+        "if a:\n    b\n   c\n",
+        "x = f'{a!r:{b!r}}'\n",
+    ]
+    # Nesting limits.
+    sources += [
+        "(" * 199 + ")" * 199 + "\n",
+        "(" * 201 + "\n",
+        *(indented(depth) for depth in (99, 100)),
+        "(" * 200 + ")" * 200 + "\n",
+        *(nested_fstring(depth) for depth in (149, 150)),
+        "f'{z:{y:{w}}}'\n",
+        "if a:\n\tb\n    c\n",
+        "if a:\n" + "".join(" " * (i + 1) + f"if a{i}:\n" for i in range(101)),
+    ]
+    return sources + sloc_edge_sources()
+
+
+def indented(depth: int) -> str:
+    # `depth` blocks, each one level deeper, around one statement.
+    return "".join(" " * i + f"if a{i}:\n" for i in range(depth)) + " " * depth + "x\n"
+
+
+def nested_fstring(depth: int) -> str:
+    text = "x"
+    for _ in range(depth):
+        text = "f'{" + text + "}'"
+    return text + "\n"
+
+
+def sloc_edge_sources() -> list[str]:
+    # The byte order mark and break characters other than \n and \r are ordinary characters.
+    sources = [
+        "\ufeff\n",
+        "x\n\ufeff\n",
+        "\ufeff  x\ny\n",
+        "x\n\u2028y\n",
+        "x\n\x85\n",
+        "x\n\x0b\n",
+        "# c\x0b\nx\n",
+        "  \x0b\n",
+    ]
+    # Number literals.
+    sources += [
+        "0x\n",
+        "0x_\n",
+        "0x1__2\n",
+        "0o\n",
+        "0o8\n",
+        "0o17\n",
+        "0b\n",
+        "0b12\n",
+        "0b1_\n",
+        "1__0\n",
+        "1_\n",
+        "0_x\n",
+        "1e+_\n",
+        "1e_\n",
+        ".5_\n",
+        "1abc\n",
+        "0777\n",
+        "1_000.5_5e1_0j\n",
+        "1f'{x}'\n",
+        "0x1f'{x}'\n",
+        "1.f'{x}'\n",
+    ]
+    # String errors: the detection line and the escaped-quote hint.
+    sources += [
+        "x = 'a\\\nb\n",
+        "x = 'a\\'\n",
+        "x = 'a\\\\'\n",
+        "x = '''a\\'''\n",
+        "'abc\n\x00\n",
+        "'''abc\n\x00\n",
+    ]
+    # Null bytes and non-printable characters.
+    sources += [
+        "x = (1\n\x00\n",
+        "x\n# \x00\n",
+        "x = '\x01'\n",
+        "# \x01\n",
+        "x \x7f\n",
+        "f'{x}\x01'\n",
+        "\x01\n",
+    ]
+    # f-string literal runs: {{, }} and \N{...} split a run.
+    sources += [
+        "f'''a\n{{\nb'''\n",
+        "f'''a\n}}\nb'''\n",
+        "f'''a\n\\N{BULLET}b'''\n",
+        "f'''a\n\\N{\nBULLET}b'''\n",
+        "rf'''a\n\\N{\nb}'''\n",
+        "f'{{}}'\n",
+        "f'\\N{x'\n",
+        "f'{x:{y}}}}'\n",
+    ]
+    # f-string format specs and fields.
+    sources += [
+        "f'{x:\n}'\n",
+        "f'''{x:\nabc}'''\n",
+        "f'''{x:\n{y}\nz}'''\n",
+        "f'{x:'\n",
+        "f'{x:{{y}}'\n",
+        "f'{x\n}'\n",
+        "f'''{\n\n}'''\n",
+        "f'''{x\n'''\n",
+        "f\"{x'\n",
+        "f'{x' + 'y'\n",
+        "f'{x}' f'''\n{y}'''\n",
+    ]
+    # f-string nesting and unmatched closers.
+    sources += ["f'{x:{y:{z:{w}}}}'\n", "f'{x:{y:{z}}}'\n", "f'{)}'\n", "f'{))}'\n", "f'{)\n"]
+    # Indentation through backslash continuations.
+    sources += [
+        "if a:\n    b\n  \\\n    c\n",
+        "if a:\n    \\\n  b\n",
+        "  \\\n  x\n",
+        "\\\n    x\n",
+        "x = 'a' \\\n",
+        "x = 'abc' \\\n\n",
+        "if a:\n        b\n\tc\n",
+    ]
+    return sources
+
+
+# Each fixture file, by its path below crates/, with the builder of its sections.
+BUILDERS: dict[str, Callable[[], Fixture]] = {
+    "text/fixtures/text.json": text_fixture,
+    "json/fixtures/json.json": json_fixture,
+    "json/fixtures/float.json": float_fixture,
+    "metrics/fixtures/tokenize.json": sloc_fixture,
+    "metrics/fixtures/sum.json": sum_fixture,
+    "text/fixtures/diff.json": difflib_fixture,
+    "io/fixtures/oserror.json": os_fixture,
+    "store/fixtures/shell.json": shell_fixture,
+}
+
+
+def fixtures() -> dict[Path, bytes]:
+    return {CRATES / path: render(build()) for path, build in BUILDERS.items()}
+
+
+if __name__ == "__main__":
+    # Other generators own the rest of the files in these fixture directories.
+    shared = [CRATES / name / "fixtures" for name in ("io", "metrics", "store")]
+    sys.exit(write_or_check_files(__doc__.splitlines()[0], CRATES, fixtures, shared))

@@ -1,0 +1,12 @@
+# Tighter than clippy's defaults (100 lines, 7 arguments, no nesting limit), so that functions stay small.
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 4
+disallowed-methods = [
+    { path = "rusqlite::Connection::open", reason = "SQLite opens go through the store crate" },
+    { path = "rusqlite::Connection::open_with_flags", reason = "SQLite opens go through the store crate" },
+    { path = "rusqlite::Connection::open_with_flags_and_vfs", reason = "SQLite opens go through the store crate" },
+    { path = "rusqlite::Connection::open_in_memory", reason = "SQLite opens go through the store crate" },
+    { path = "rusqlite::Connection::open_in_memory_with_flags", reason = "SQLite opens go through the store crate" },
+    { path = "rusqlite::Connection::open_in_memory_with_flags_and_vfs", reason = "SQLite opens go through the store crate" },
+]

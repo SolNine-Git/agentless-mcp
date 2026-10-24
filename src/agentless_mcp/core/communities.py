@@ -45,12 +45,14 @@ an ordering decision that would otherwise be taken by dictionary iteration:
 2. *A community's identity is the index of its founding node* in that sorted
    order, so community 0 is always the community of the lexicographically
    first path, whatever it grows into.
-3. *A tie leaves the node where it is.* A move happens only when some other
-   community scores strictly better -- by more than :data:`EPSILON` -- than the
-   node's current one, and among candidates that clear that bar the first one
-   in ascending community-id order wins. Equal-gain moves are therefore never
-   taken, which is what removes both the dictionary-order dependency and the
-   two-node oscillation that an "at least as good" rule permits.
+3. *A tie leaves the node where it is.* The node's current community is the
+   first best. The candidates are then scored in ascending community-id order,
+   and a candidate replaces the best so far only when it scores more than
+   :data:`EPSILON` above it. So the highest score wins, and a candidate within
+   :data:`EPSILON` of the best so far never takes its place. Equal-gain moves are
+   therefore never taken, which is what removes both the dictionary-order
+   dependency and the two-node oscillation that an "at least as good" rule
+   permits.
 
 Identical input produces identical communities, pinned by a test.
 
@@ -65,17 +67,11 @@ untrusted -- see :func:`agentless_mcp.core.mermaid.safe_label`.
 A label is a display name, not an identity. Two communities in one partition
 can share one -- two halves of ``src/core`` split by the detector are both
 labelled ``src/core`` -- and the same group of files can be labelled
-differently after an edit moves one member. So a community also carries
-:func:`community_hash` of its members, which is equal exactly when the member
-set is equal: it is what lets an agent match a community across two runs, tell
-two same-labelled communities apart, and see that a group drifted rather than
-guess it from a label that did not move.
+differently after an edit moves one member.
 """
 
-import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from agentless_mcp.core.graph import RefGraph
 from agentless_mcp.util.deadline import checkpoint
@@ -97,27 +93,10 @@ EPSILON = 1e-12
 # Deliberately free of characters a diagram renderer would have to escape.
 ROOT_LABEL = "repository root"
 
-# What goes into a member hash, versioned. The prefix is not decoration: a
-# later change to the hashed material -- symbol ids instead of paths, a level
-# number once there is more than one level -- must produce digests that cannot
-# be mistaken for digests of the old material by a caller comparing two runs
-# across an upgrade. Bump it with any such change.
-HASH_VERSION = "v1"
-
-# A NUL cannot occur in a repository path, so joining the members on one makes
-# the hashed bytes a faithful encoding of the member set: no two distinct sets
-# can flatten to the same string, which a separator like "/" or "," permits.
-_HASH_SEPARATOR = b"\0"
-
 
 @dataclass(frozen=True)
 class Community:
     """One community: its members, its mechanical label and its weights.
-
-    ``label`` names the community for a reader and ``member_hash`` identifies
-    it for a caller. Neither substitutes for the other: two communities in one
-    partition can carry the same label, and no reader should be asked to quote
-    a digest back.
 
     ``internal_weight`` is the summed weight of edges with both endpoints
     inside the community and ``total_weight`` the summed degree of its
@@ -136,26 +115,6 @@ class Community:
     def size(self) -> int:
         """The number of files in this community."""
         return len(self.members)
-
-    @property
-    def member_hash(self) -> str:
-        """This community's identity: :func:`community_hash` of its members.
-
-        Derived rather than stored, like :attr:`size`, so it cannot disagree
-        with the members it claims to describe.
-        """
-        return community_hash(self.members)
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this community."""
-        return {
-            "label": self.label,
-            "member_hash": self.member_hash,
-            "size": self.size,
-            "members": list(self.members),
-            "internal_weight": self.internal_weight,
-            "total_weight": self.total_weight,
-        }
 
 
 @dataclass(frozen=True)
@@ -184,17 +143,13 @@ class CommunityPartition:
     resolution 1.0 the two are the same number.
 
     ``converged`` says why local moving stopped: no node wanted to move, or
-    ``max_passes`` ran out. A partition that hit the bound is a partial answer,
-    and ``passes`` alone cannot tell the two apart -- a run that converged on
-    its fiftieth pass reports the same number as one that was cut off at
-    fifty.
+    ``max_passes`` ran out. A partition that hit the bound is a partial answer.
     """
 
     communities: tuple[Community, ...]
     modularity: float
     standard_modularity: float
     resolution: float
-    passes: int
     converged: bool
 
     def index_of(self) -> dict[str, int]:
@@ -203,17 +158,6 @@ class CommunityPartition:
             member: position
             for position, community in enumerate(self.communities)
             for member in community.members
-        }
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return the JSON form of this partition."""
-        return {
-            "modularity": self.modularity,
-            "standard_modularity": self.standard_modularity,
-            "resolution": self.resolution,
-            "passes": self.passes,
-            "converged": self.converged,
-            "communities": [community.as_dict() for community in self.communities],
         }
 
 
@@ -258,14 +202,13 @@ def detect_communities(
             modularity=0.0,
             standard_modularity=0.0,
             resolution=resolution,
-            passes=0,
             converged=True,
         )
 
     weighted = _symmetrise(graph, nodes)
     membership = {node: index for index, node in enumerate(nodes)}
     if weighted.two_m <= 0.0:
-        return _partition(membership, weighted, resolution=resolution, passes=0, converged=True)
+        return _partition(membership, weighted, resolution=resolution, converged=True)
 
     total = {index: weighted.degree[node] for index, node in enumerate(nodes)}
     passes = 0
@@ -277,9 +220,7 @@ def detect_communities(
             converged = True
             break
 
-    return _partition(
-        membership, weighted, resolution=resolution, passes=passes, converged=converged
-    )
+    return _partition(membership, weighted, resolution=resolution, converged=converged)
 
 
 def community_label(members: Sequence[str]) -> str:
@@ -313,31 +254,6 @@ def community_label(members: Sequence[str]) -> str:
     if not eligible:
         return ROOT_LABEL
     return min(eligible, key=lambda prefix: (-prefix.count("/"), prefix))
-
-
-def community_hash(members: Sequence[str]) -> str:
-    """Return the identity of a community holding exactly these members.
-
-    A sha256 over :data:`HASH_VERSION` and the sorted members, NUL-separated.
-    Sorted because a community is a set and the order its members were
-    collected in is not part of what it is, so the same group of files hashes
-    the same however the partition was reached.
-
-    Two runs over two commits can therefore be matched member-set to member-
-    set, which is the question "did this group drift" asked in a form that has
-    an answer. The digest is deliberately not shown as the community's name:
-    :func:`community_label` owns that, and an agent quoting 64 hex characters
-    back into a tool call is worse off than one quoting ``src/core``.
-    """
-    digest = hashlib.sha256()
-    digest.update(HASH_VERSION.encode("utf-8"))
-    digest.update(_HASH_SEPARATOR)
-    # Deduplicated as well as sorted, so the digest is a function of the member
-    # *set* the way this docstring promises. Every partition this package builds
-    # already hands over distinct members, so nothing here changes today; the
-    # call is what keeps the promise true for a caller that does not.
-    digest.update(_HASH_SEPARATOR.join(member.encode("utf-8") for member in sorted(set(members))))
-    return digest.hexdigest()
 
 
 def _directory_prefixes(path: str) -> list[str]:
@@ -429,7 +345,6 @@ def _partition(
     weighted: _Weighted,
     *,
     resolution: float,
-    passes: int,
     converged: bool,
 ) -> CommunityPartition:
     """Turn a membership map into the ordered, labelled, scored partition."""
@@ -472,6 +387,5 @@ def _partition(
         modularity=modularity,
         standard_modularity=standard,
         resolution=resolution,
-        passes=passes,
         converged=converged,
     )

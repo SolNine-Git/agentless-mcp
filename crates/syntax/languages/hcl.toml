@@ -1,0 +1,31 @@
+name = "hcl"
+tier = 2
+extensions = [".hcl", ".tf"]
+probe = "resource \"null_resource\" \"probe\" {}\n"
+probe_root = "config_file"
+comments = ["comment"]
+
+[extraction]
+prefix = "hcl"
+symbols = "hcl"
+imports = "none"
+roles = "plain"
+identifiers = ["identifier", "template_literal"]
+bodies = ["block"]
+skeleton_functions = []
+
+[extraction.declarations]
+functions = []
+classes = []
+imports = []
+name_field = "name"
+import_path_kind = "string"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

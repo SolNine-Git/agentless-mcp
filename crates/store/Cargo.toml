@@ -1,0 +1,32 @@
+[package]
+name = "store"
+description = "The cache, agentless.db: its one parse per file, its read source and stored clone blocks, its index writer, and the ceiling sweep."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+facts = { path = "../facts" }
+io = { path = "../io" }
+json = { path = "../json" }
+kernel = { path = "../kernel" }
+libc.workspace = true
+metrics = { path = "../metrics" }
+prompts = { path = "../prompts" }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "cache"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+
+[dev-dependencies]
+io = { path = "../io", features = ["test-support"] }
+kernel = { path = "../kernel", features = ["test-support"] }
+text = { path = "../text", features = ["test-support"] }

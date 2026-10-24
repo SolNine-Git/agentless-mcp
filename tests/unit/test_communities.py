@@ -4,8 +4,6 @@ import pytest
 
 from agentless_mcp.core.communities import (
     ROOT_LABEL,
-    Community,
-    community_hash,
     community_label,
     detect_communities,
 )
@@ -119,14 +117,14 @@ class TestDeterminism:
     def test_two_runs_produce_the_identical_partition(self):
         graph = clustered_graph()
 
-        assert detect_communities(graph).as_dict() == detect_communities(graph).as_dict()
+        assert detect_communities(graph) == detect_communities(graph)
 
     def test_node_order_does_not_change_the_answer(self):
         shuffled = ("src/b/two.py", "src/a/three.py", "src/b/one.py")
         rest = tuple(node for node in (*CLUSTER_A, *CLUSTER_B) if node not in shuffled)
 
-        expected = detect_communities(clustered_graph()).as_dict()
-        actual = detect_communities(clustered_graph(nodes=(*shuffled, *rest))).as_dict()
+        expected = detect_communities(clustered_graph())
+        actual = detect_communities(clustered_graph(nodes=(*shuffled, *rest)))
 
         assert actual == expected
 
@@ -134,10 +132,10 @@ class TestDeterminism:
         forward = clustered_edges()
         reversed_insertion = dict(reversed(list(forward.items())))
 
-        expected = detect_communities(clustered_graph()).as_dict()
+        expected = detect_communities(clustered_graph())
         actual = detect_communities(
             RefGraph(nodes=(*CLUSTER_A, *CLUSTER_B), edges=reversed_insertion)
-        ).as_dict()
+        )
 
         assert actual == expected
 
@@ -149,30 +147,21 @@ class TestConvergence:
         partition = detect_communities(clustered_graph())
 
         assert partition.converged
-        assert partition.passes < 50
 
     def test_a_partition_cut_off_by_the_pass_bound_says_so(self):
-        """``passes`` alone cannot tell this apart from settling on that pass."""
         partition = detect_communities(clustered_graph(), max_passes=1)
 
-        assert partition.passes == 1
         assert not partition.converged
 
     def test_a_graph_with_no_edges_has_nothing_left_to_settle(self):
         partition = detect_communities(RefGraph(nodes=("a.py", "b.py"), edges={}))
 
         assert partition.converged
-        assert partition.passes == 0
 
     def test_an_empty_graph_has_nothing_left_to_settle(self):
         partition = detect_communities(RefGraph(nodes=(), edges={}))
 
         assert partition.converged
-
-    def test_the_json_form_carries_the_convergence_flag(self):
-        document = detect_communities(clustered_graph(), max_passes=1).as_dict()
-
-        assert document["converged"] is False
 
 
 class TestSymmetrising:
@@ -184,7 +173,7 @@ class TestSymmetrising:
         )
         plain = RefGraph(nodes=("a.py", "b.py"), edges={("a.py", "b.py"): 1.0})
 
-        assert detect_communities(looped).as_dict() == detect_communities(plain).as_dict()
+        assert detect_communities(looped) == detect_communities(plain)
 
     def test_a_non_positive_weight_is_dropped_rather_than_scored(self):
         weightless = RefGraph(
@@ -193,7 +182,7 @@ class TestSymmetrising:
         )
         plain = RefGraph(nodes=("a.py", "b.py", "c.py"), edges={("a.py", "b.py"): 1.0})
 
-        assert detect_communities(weightless).as_dict() == detect_communities(plain).as_dict()
+        assert detect_communities(weightless) == detect_communities(plain)
 
 
 class TestResolution:
@@ -246,13 +235,6 @@ class TestResolution:
 
         assert partition.modularity < partition.standard_modularity
 
-    def test_the_standard_score_is_in_the_json_form(self):
-        document = detect_communities(clustered_graph(), resolution=0.5).as_dict()
-
-        assert document["standard_modularity"] == pytest.approx(
-            detect_communities(clustered_graph(), resolution=0.5).standard_modularity
-        )
-
 
 class TestLabels:
     def test_the_deepest_shared_directory_wins(self):
@@ -289,81 +271,3 @@ class TestLabels:
         reach this comparison.
         """
         assert community_label(["src/a/one.py", "src/a/two.py"]) == "src/a"
-
-
-class TestIdentity:
-    """A label names a community for a reader; the hash identifies it.
-
-    Two runs over two commits return communities an agent has to match up,
-    and a label cannot do it: two communities in one partition can share one,
-    and the same group of files can be relabelled by an edit that moves a
-    single member.
-    """
-
-    def test_the_same_members_hash_the_same_whatever_order_they_arrive_in(self):
-        """A community is a set. The order the detector collected it in is
-        not part of what it is, so it must not reach the digest."""
-        assert community_hash(["src/a/two.py", "src/a/one.py"]) == community_hash(
-            ["src/a/one.py", "src/a/two.py"]
-        )
-
-    def test_a_changed_member_moves_the_hash(self):
-        """The drift signal. A group that gained or lost a file is a different
-        group, and the caller comparing two runs has to see that."""
-        before = community_hash(["src/a/one.py", "src/a/two.py"])
-
-        assert community_hash(["src/a/one.py", "src/a/three.py"]) != before
-        assert community_hash(["src/a/one.py", "src/a/two.py", "src/a/three.py"]) != before
-
-    def test_two_communities_sharing_a_label_still_have_two_identities(self):
-        """The failure that motivates the field: the detector may split one
-        directory in two, and both halves are then labelled by it."""
-        first = Community(
-            label="src/a",
-            members=("src/a/one.py", "src/a/two.py"),
-            internal_weight=1.0,
-            total_weight=2.0,
-        )
-        second = Community(
-            label="src/a",
-            members=("src/a/three.py", "src/a/four.py"),
-            internal_weight=1.0,
-            total_weight=2.0,
-        )
-
-        assert first.label == second.label
-        assert first.member_hash != second.member_hash
-
-    def test_the_members_alone_decide_a_community_identity(self):
-        """Identity is over the member set, so a community whose weights or
-        label differ but whose members do not is the same community."""
-        members = ("src/a/one.py", "src/a/two.py")
-        labelled = Community(label="src/a", members=members, internal_weight=1.0, total_weight=2.0)
-        relabelled = Community(
-            label=ROOT_LABEL, members=members, internal_weight=9.0, total_weight=9.0
-        )
-
-        assert labelled.member_hash == relabelled.member_hash == community_hash(members)
-
-    def test_a_member_set_is_not_flattened_into_one_string(self):
-        """Without a separator the members would join into one byte string and
-        two different sets could share a digest."""
-        assert community_hash(["src/a/b", "c"]) != community_hash(["src/a/bc"])
-
-    def test_the_digest_is_pinned_to_the_v1_scheme(self):
-        """The hash travels out of this process, so two runs on two versions
-        of this tool compare digests. A change to what is hashed has to move
-        HASH_VERSION and this pin together, never silently."""
-        assert (
-            community_hash(["src/a/one.py", "src/a/two.py"])
-            == "c22c09a1941c8da50617bcd60bddbb0d9a33f634958c1ada11450ef39808c59a"
-        )
-
-    def test_the_json_form_carries_the_identity_beside_the_label(self):
-        """A caller reading the wire form must not have to recompute the hash
-        to match two runs, and must still get a readable name."""
-        partition = detect_communities(clustered_graph())
-        first = partition.as_dict()["communities"][0]
-
-        assert first["label"] == "src/a"
-        assert first["member_hash"] == community_hash(CLUSTER_A)

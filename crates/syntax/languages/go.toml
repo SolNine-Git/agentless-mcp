@@ -1,0 +1,69 @@
+name = "go"
+tier = 1
+extensions = [".go"]
+probe = "package main\n"
+probe_root = "source_file"
+comments = ["comment"]
+sloc = "leaves"
+
+[units]
+units = ["function_declaration", "method_declaration"]
+scopes = []
+bound = []
+name = "field"
+owner = "go_receiver"
+
+[decisions]
+points = ["communication_case", "expression_case", "for_statement", "if_statement", "type_case"]
+
+[decisions.conditional]
+
+[decisions.field_operators]
+"binary_expression" = ["&&", "||"]
+
+[decisions.token_operators]
+
+[clones]
+functions = ["function_declaration", "method_declaration"]
+blocks = [
+    "expression_switch_statement",
+    "for_statement",
+    "if_statement",
+    "select_statement",
+    "type_switch_statement",
+]
+identifiers = ["field_identifier", "identifier", "label_name", "package_identifier", "type_identifier"]
+indent_blocks = []
+
+[clones.literals]
+"BOOL" = ["false", "true"]
+"FLOAT" = ["float_literal", "imaginary_literal"]
+"INT" = ["int_literal"]
+"NONE" = ["nil"]
+"STR" = ["interpreted_string_literal", "raw_string_literal", "rune_literal"]
+
+[extraction]
+prefix = "go"
+symbols = "generic"
+imports = "generic"
+roles = "plain"
+identifiers = ["field_identifier", "identifier", "package_identifier", "type_identifier"]
+bodies = ["block"]
+skeleton_functions = ["func_literal"]
+
+[extraction.declarations]
+functions = ["function_declaration", "method_declaration"]
+classes = ["type_spec"]
+imports = ["import_spec"]
+name_field = "name"
+import_path_kind = "interpreted_string_literal"
+names = ["identifier", "property_identifier", "type_identifier", "word"]
+class_bodies = []
+signature_from_header = false
+receiver_field = "receiver"
+import_binding = "module_object"
+modifiers = []
+bindings = []
+function_values = []
+constants = []
+constant_keywords = []

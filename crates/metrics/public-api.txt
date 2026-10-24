@@ -1,0 +1,181 @@
+pub mod metrics
+pub enum metrics::TokenizeErrorKind
+pub metrics::TokenizeErrorKind::Indentation
+pub metrics::TokenizeErrorKind::Tab
+pub metrics::TokenizeErrorKind::Token
+impl metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::class_name(self) -> &'static str
+impl core::clone::Clone for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::clone(&self) -> Self
+impl core::cmp::Eq for metrics::TokenizeErrorKind
+impl core::cmp::PartialEq for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::TokenizeErrorKind
+pub fn metrics::TokenizeErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for metrics::TokenizeErrorKind
+impl core::marker::StructuralPartialEq for metrics::TokenizeErrorKind
+impl core::marker::Freeze for metrics::TokenizeErrorKind
+impl core::marker::Send for metrics::TokenizeErrorKind
+impl core::marker::Sync for metrics::TokenizeErrorKind
+impl core::marker::Unpin for metrics::TokenizeErrorKind
+impl core::marker::UnsafeUnpin for metrics::TokenizeErrorKind
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::TokenizeErrorKind
+impl core::panic::unwind_safe::UnwindSafe for metrics::TokenizeErrorKind
+pub enum metrics::Unmeasurable
+pub metrics::Unmeasurable::DoesNotParse
+pub metrics::Unmeasurable::DoesNotParse::line: u32
+pub metrics::Unmeasurable::Tokenizer(metrics::TokenizeError)
+pub metrics::Unmeasurable::Unsupported
+pub metrics::Unmeasurable::Unsupported::language: syntax::language::Language
+impl metrics::Unmeasurable
+pub fn metrics::Unmeasurable::reason(&self, &str, &metrics::Reasons) -> core::option::Option<alloc::string::String>
+impl core::clone::Clone for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Unmeasurable
+impl core::cmp::PartialEq for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::eq(&self, &Self) -> bool
+impl core::error::Error for metrics::Unmeasurable
+impl core::fmt::Debug for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for metrics::Unmeasurable
+pub fn metrics::Unmeasurable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::Unmeasurable
+impl core::marker::Freeze for metrics::Unmeasurable
+impl core::marker::Send for metrics::Unmeasurable
+impl core::marker::Sync for metrics::Unmeasurable
+impl core::marker::Unpin for metrics::Unmeasurable
+impl core::marker::UnsafeUnpin for metrics::Unmeasurable
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Unmeasurable
+impl core::panic::unwind_safe::UnwindSafe for metrics::Unmeasurable
+pub struct metrics::Block
+pub metrics::Block::end_line: u32
+pub metrics::Block::exact: kernel::key::Key
+pub metrics::Block::function: bool
+pub metrics::Block::key: kernel::key::Key
+pub metrics::Block::start_line: u32
+pub metrics::Block::tokens: u32
+impl core::clone::Clone for metrics::Block
+pub fn metrics::Block::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Block
+impl core::cmp::PartialEq for metrics::Block
+pub fn metrics::Block::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::Block
+pub fn metrics::Block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for metrics::Block
+impl core::marker::StructuralPartialEq for metrics::Block
+impl serde_core::ser::Serialize for metrics::Block
+pub fn metrics::Block::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::Block
+pub fn metrics::Block::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for metrics::Block
+impl core::marker::Send for metrics::Block
+impl core::marker::Sync for metrics::Block
+impl core::marker::Unpin for metrics::Block
+impl core::marker::UnsafeUnpin for metrics::Block
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Block
+impl core::panic::unwind_safe::UnwindSafe for metrics::Block
+pub struct metrics::FileMetrics
+pub metrics::FileMetrics::blocks: alloc::vec::Vec<metrics::Block>
+pub metrics::FileMetrics::sloc_lines: alloc::vec::Vec<u32>
+pub metrics::FileMetrics::units: alloc::vec::Vec<metrics::Unit>
+impl core::clone::Clone for metrics::FileMetrics
+pub fn metrics::FileMetrics::clone(&self) -> Self
+impl core::cmp::Eq for metrics::FileMetrics
+impl core::cmp::PartialEq for metrics::FileMetrics
+pub fn metrics::FileMetrics::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::FileMetrics
+pub fn metrics::FileMetrics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::FileMetrics
+impl serde_core::ser::Serialize for metrics::FileMetrics
+pub fn metrics::FileMetrics::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::FileMetrics
+pub fn metrics::FileMetrics::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for metrics::FileMetrics
+impl core::marker::Send for metrics::FileMetrics
+impl core::marker::Sync for metrics::FileMetrics
+impl core::marker::Unpin for metrics::FileMetrics
+impl core::marker::UnsafeUnpin for metrics::FileMetrics
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::FileMetrics
+impl core::panic::unwind_safe::UnwindSafe for metrics::FileMetrics
+pub struct metrics::Measurable
+impl metrics::Measurable
+pub fn metrics::Measurable::blocks(&self) -> alloc::vec::Vec<metrics::Block>
+pub fn metrics::Measurable::new(syntax::parsed::Parsed) -> core::result::Result<metrics::Measurable, metrics::Unmeasurable>
+pub fn metrics::Measurable::parsed(&self) -> &syntax::parsed::Parsed
+pub fn metrics::Measurable::units(&self) -> alloc::vec::Vec<metrics::Unit>
+impl core::marker::Freeze for metrics::Measurable
+impl core::marker::Send for metrics::Measurable
+impl core::marker::Sync for metrics::Measurable
+impl core::marker::Unpin for metrics::Measurable
+impl core::marker::UnsafeUnpin for metrics::Measurable
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Measurable
+impl core::panic::unwind_safe::UnwindSafe for metrics::Measurable
+pub struct metrics::Reasons
+impl core::marker::Freeze for metrics::Reasons
+impl core::marker::Send for metrics::Reasons
+impl core::marker::Sync for metrics::Reasons
+impl core::marker::Unpin for metrics::Reasons
+impl core::marker::UnsafeUnpin for metrics::Reasons
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Reasons
+impl core::panic::unwind_safe::UnwindSafe for metrics::Reasons
+pub struct metrics::TokenizeError
+pub metrics::TokenizeError::kind: metrics::TokenizeErrorKind
+pub metrics::TokenizeError::message: alloc::string::String
+impl core::clone::Clone for metrics::TokenizeError
+pub fn metrics::TokenizeError::clone(&self) -> Self
+impl core::cmp::Eq for metrics::TokenizeError
+impl core::cmp::PartialEq for metrics::TokenizeError
+pub fn metrics::TokenizeError::eq(&self, &Self) -> bool
+impl core::error::Error for metrics::TokenizeError
+impl core::fmt::Debug for metrics::TokenizeError
+pub fn metrics::TokenizeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for metrics::TokenizeError
+pub fn metrics::TokenizeError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::TokenizeError
+impl core::marker::Freeze for metrics::TokenizeError
+impl core::marker::Send for metrics::TokenizeError
+impl core::marker::Sync for metrics::TokenizeError
+impl core::marker::Unpin for metrics::TokenizeError
+impl core::marker::UnsafeUnpin for metrics::TokenizeError
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::TokenizeError
+impl core::panic::unwind_safe::UnwindSafe for metrics::TokenizeError
+pub struct metrics::Unit
+pub metrics::Unit::body_key: kernel::key::Key
+pub metrics::Unit::cc: u32
+pub metrics::Unit::end_byte: u32
+pub metrics::Unit::qualname: alloc::string::String
+pub metrics::Unit::sloc: u32
+pub metrics::Unit::start_byte: u32
+pub metrics::Unit::start_line: u32
+impl metrics::Unit
+pub fn metrics::Unit::mass(&self) -> f64
+impl core::clone::Clone for metrics::Unit
+pub fn metrics::Unit::clone(&self) -> Self
+impl core::cmp::Eq for metrics::Unit
+impl core::cmp::PartialEq for metrics::Unit
+pub fn metrics::Unit::eq(&self, &Self) -> bool
+impl core::fmt::Debug for metrics::Unit
+pub fn metrics::Unit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for metrics::Unit
+impl serde_core::ser::Serialize for metrics::Unit
+pub fn metrics::Unit::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for metrics::Unit
+pub fn metrics::Unit::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for metrics::Unit
+impl core::marker::Send for metrics::Unit
+impl core::marker::Sync for metrics::Unit
+impl core::marker::Unpin for metrics::Unit
+impl core::marker::UnsafeUnpin for metrics::Unit
+impl core::panic::unwind_safe::RefUnwindSafe for metrics::Unit
+impl core::panic::unwind_safe::UnwindSafe for metrics::Unit
+pub const metrics::CLONE_REASONS: metrics::Reasons
+pub const metrics::COMPLEXITY_REASONS: metrics::Reasons
+pub const metrics::DEFAULT_THRESHOLD: u32
+pub const metrics::MIN_INSTANCES: usize
+pub const metrics::MIN_SLOC: usize
+pub fn metrics::clone_lines(&[&metrics::FileMetrics]) -> alloc::vec::Vec<alloc::vec::Vec<u32>>
+pub fn metrics::compensated_sum(&[f64]) -> f64
+pub fn metrics::erosion<'u>(impl core::iter::traits::collect::IntoIterator<Item = &'u metrics::Unit>, u32) -> f64
+pub fn metrics::measure(&syntax::parsed::Parsed) -> core::result::Result<metrics::FileMetrics, metrics::Unmeasurable>
+pub fn metrics::place<'a>(&'a str, &metrics::Block) -> (&'a str, u32, u32)
+pub fn metrics::stamp(syntax::language::Language) -> core::option::Option<&'static str>

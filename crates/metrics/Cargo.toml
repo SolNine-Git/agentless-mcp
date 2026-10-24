@@ -1,0 +1,25 @@
+[package]
+name = "metrics"
+description = "Complexity units, source line counts, and clone blocks with their keys, measured from one parse."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { path = "../kernel" }
+prompts = { path = "../prompts" }
+serde.workspace = true
+sha2.workspace = true
+syntax = { path = "../syntax" }
+text = { path = "../text" }
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+text = { path = "../text", features = ["test-support"] }

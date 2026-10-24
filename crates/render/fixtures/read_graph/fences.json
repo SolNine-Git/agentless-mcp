@@ -1,0 +1,17 @@
+{
+ "fences": [
+  ["flowchart LR\n", "flowchart LR\n"],
+  ["```mermaid\nflowchart LR\n```\n", "flowchart LR\n"],
+  ["\n\n```mermaid\nflowchart LR\n    n0\n```\n\n\n", "flowchart LR\n    n0\n"],
+  ["```mermaid\nflowchart LR\n", "```mermaid\nflowchart LR\n"],
+  ["```\n```\n", "\n"],
+  ["```\n", "```\n"],
+  ["```mermaid\n```", "\n"],
+  ["  ```mermaid\nx\n```\n", "  ```mermaid\nx\n```\n"],
+  ["```mermaid\nx\n  ```  \n", "x\n"],
+  ["```mermaid\nx\n```\ntrailing\n", "```mermaid\nx\n```\ntrailing\n"],
+  ["", ""],
+  ["\n \n", "\n \n"],
+  ["```mermaid\r\nx\r\n```\r\n", "x\r\n"]
+ ]
+}
