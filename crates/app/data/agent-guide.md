@@ -146,10 +146,11 @@ lines.
 | *(no MCP tool)* | | `html` | searchable human graph export to stdout or XDG cache |
 | *(no MCP tool)* | | `index`, `warmup`, `patch`, `lint`, `validate`, `vote` | write side and install time |
 
-`operation` is a plain string on the wire, not an enum. The server answers a
-wrong value with the valid list. The server refuses a parameter foreign to
-the selected operation with one message that names what that operation
-accepts and requires. It never returns a schema validation dump.
+The schema of `operation` lists the valid values as an enum. The server checks
+the value itself and answers a wrong value with the valid list. The server
+refuses a parameter foreign to the selected operation with one message that
+names what that operation accepts and requires. It never returns a schema
+validation dump.
 
 **Previous surface.** These six are the v2 surface, the only one. Before
 0.11.0, a server started with `--surface v1` published the original twelve

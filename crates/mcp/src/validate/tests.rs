@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use app::surface::{Shape, TOOLS};
+use app::surface::{Presence, Shape, TOOLS};
 use json::JsonValue;
-use serde_json::Value as Json;
+use serde_json::{Map, Value as Json};
 use text::CodePointString;
 
 use super::coerce::tag;
@@ -110,4 +110,33 @@ fn each_choice_tags_its_shapes_by_their_reference_names() {
     .map(|(tool, name, tags)| (tool, name, tags.map(String::from).to_vec()))
     .collect();
     assert_eq!(choices, want);
+}
+
+// tools/list offers no null choice, and an explicit null still reads as an absent value.
+#[test]
+fn an_explicit_null_reads_as_absent_for_each_nullable_parameter() {
+    for tool in TOOLS {
+        let required = tool
+            .params
+            .iter()
+            .filter(|param| param.presence == Presence::Required);
+        let call: Map<String, Json> = required
+            .map(|param| (param.name.to_owned(), Json::from("x")))
+            .collect();
+        let absent = validate(tool, &Json::Object(call.clone()));
+        assert!(absent.is_ok(), "{}: {absent:?}", tool.name);
+        let nullable: Vec<&str> = tool
+            .params
+            .iter()
+            .filter(|param| param.presence == Presence::Nullable)
+            .map(|param| param.name)
+            .collect();
+        assert!(!nullable.is_empty(), "{}", tool.name);
+        for name in nullable {
+            let mut given = call.clone();
+            given.insert(name.to_owned(), Json::Null);
+            let found = validate(tool, &Json::Object(given));
+            assert_eq!(found, absent, "{}.{name}", tool.name);
+        }
+    }
 }

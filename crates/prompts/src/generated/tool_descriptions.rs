@@ -54,12 +54,9 @@ pub const ANALYZE_STRUCTURE: &str = "Five whole-repository structure questions b
         operation is rejected by the published enum.";
 
 /// The description of the `capabilities` tool.
-pub const CAPABILITIES: &str = "Why is this answer incomplete? Report the server version, loaded \
-        grammars and their warm state, cache generation, the configured \
-        and client-advertised roots, and the caps in force. An absent \
-        tag cache is reported with the index command that builds it. \
-        Call it when a language seems unsupported, a generation \
-        mismatch persists, or the wrong root was selected.";
+pub const CAPABILITIES: &str = "Why is this answer incomplete? The server version, grammars, \
+        cache state, roots and caps. Call it when a language seems \
+        unsupported or the wrong root was selected.";
 
 /// The description of the `expand_symbols` tool.
 pub const EXPAND_SYMBOLS: &str = "You have located the symbols; now read their bodies. The \
@@ -88,18 +85,12 @@ pub const EXPLAIN_SYMBOL: &str = "What is this symbol and how is it wired in? St
 
 /// The description of the `find_referencing_symbols` tool.
 pub const FIND_REFERENCING_SYMBOLS: &str = "Who calls this symbol, and what breaks if it changes? \
-        Fan-in for blast radius and error-path review: the symbols that \
-        reference a target, grouped by file and evidence tier. Each \
-        occurrence is tiered on its own binding: same-file, \
-        resolved-via-import, unique, or name-only-ambiguous, and a \
-        parameter or local of the same name is name-only. Read the top \
-        two tiers as callers and the bottom two as candidates; a group \
-        marked 'locals not checked' comes from a language with no scope \
-        analysis. 'unique' means only that the repository defines the \
-        name once, not that the two files are connected. Call it when \
-        the answer depends on who the callers are, not as a routine \
-        confirmation. It is the most expensive tool here, and fan-in \
-        across a large repository can take minutes.";
+        Lists the symbols that reference a target, by file and evidence \
+        tier: same-file, resolved-via-import, unique, \
+        name-only-ambiguous. Read the top two tiers as callers and the \
+        bottom two as candidates. Call it when the answer depends on \
+        the callers. It is the most expensive tool here: fan-in over a \
+        large repository can take minutes.";
 
 /// The description of the `find_symbol` tool.
 pub const FIND_SYMBOL: &str = "Does this symbol exist, and where is it defined? Find symbols by \
@@ -117,11 +108,9 @@ pub const GET_SYMBOLS_OVERVIEW: &str = "What does this file declare? Render the 
         few symbols you need rather than re-reading whole files.";
 
 /// The description of the `history` tool.
-pub const HISTORY: &str = "Why does this code exist? Return the commits that changed one symbol's \
-        lines at HEAD, newest first, with full message bodies. Failure \
-        is a refusal, never an empty answer. Call it to learn why, \
-        after another tool tells you where. It does not unlock the \
-        structural-first gate and is not loaded eagerly.";
+pub const HISTORY: &str = "Why does this code exist? The commits that changed one symbol's lines, \
+        newest first, with full message bodies. Call it after another \
+        tool tells you where.";
 
 /// The description of the `list_dir` tool.
 pub const LIST_DIR: &str = "What exists in this repository? List the files as a tree, honouring \
@@ -131,44 +120,27 @@ pub const LIST_DIR: &str = "What exists in this repository? List the files as a 
         than symbols; depth and max_entries are capped.";
 
 /// The description of the `orient` tool.
-pub const ORIENT: &str = "Where does this code live, how is this repository shaped, how are two \
-        things connected? Start here. operation='map' (the structural \
-        entry point) takes focus, budget, limit and granularity: a \
-        token-budgeted skeleton of the highest-ranked files. It ranks \
-        and does not enumerate: limit defaults to 10 files, however \
-        large the repository. budget is counted with the server's \
-        chars/4 estimator: on this id-dense output a real BPE count \
-        runs 10-35% higher. Use grep for a known literal or file, and \
-        the map when the location is unknown or the change surface \
-        spans files. The map ranks symbols, so a file matched only by a \
-        string -- fixtures, config, resources -- does not appear. NOTE, \
-        WHY, HACK and TODO comments and ADR/RFC citations appear as \
-        rationale nodes below their symbol. operation='communities' \
-        (cheap) takes resolution and limit: which files belong \
-        together. Call it first in an unread repository, then map the \
-        group that matters. operation='cycles' (cheap) takes limit: \
-        every module-level import cycle. operation='diagram' takes \
-        focus, max_nodes, max_edges, group_by_communities and \
-        resolution: the module graph as a mermaid flowchart, for a \
-        human to read. operation='path' requires source and target and \
-        takes include_unique and include_ambiguous: the fewest-hop \
-        chain of resolved relationships between two endpoints. \
-        operation='health' takes limit: orphan candidates, unused \
-        exports and hubs, counted on same-file and resolved-via-import \
-        edges alone, plus erosion, clone share and complexity hotspots. \
-        Use it for dead code, architectural anchors and where \
-        complexity sits, not to find a bug. It does not judge design. \
-        Escalation chain: orient locates, symbols gives declarations \
-        and bodies, read gives exact lines.";
+pub const ORIENT: &str = "Rank the files and symbols most relevant to a focus, or show how the \
+        repository is built. map (focus, limit, granularity, budget): a \
+        token-budgeted map of the highest-ranked files. Call it when \
+        the location is unknown or the change spans files. Search text \
+        with Grep: the map ranks symbols, so a file that matches only \
+        by a string does not appear. budget counts chars/4: a real BPE \
+        count runs 10-35% higher. communities (resolution, limit): \
+        which files belong together. cycles (limit): module import \
+        cycles. diagram (focus, max_nodes, max_edges, \
+        group_by_communities, resolution): the module graph as mermaid, \
+        for a human. path (requires source and target; include_unique, \
+        include_ambiguous): the fewest-hop resolved chain between two \
+        endpoints. health (limit): orphan candidates, unused exports, \
+        hubs and complexity hotspots.";
 
 /// The description of the `read` tool.
-pub const READ: &str = "You need file contents rather than symbols: exact lines from one file, or \
-        the directory tree. operation='slice' requires path and takes \
-        lines, context_lines and whole_file: numbered lines for the \
-        requested ranges, with enclosing-scope headers. Prefer symbols \
-        operation 'expand' when a symbol boundary fits. operation='dir' \
-        (cheap) takes path, depth and max_entries: the repository's \
-        files as a gitignore-honouring tree.";
+pub const READ: &str = "Read numbered lines of one file with enclosing-scope headers (slice), or \
+        list the repository tree with gitignore applied (dir). slice \
+        (requires path; lines or whole_file, not both; context_lines). \
+        dir (path, default the root; depth, max_entries). For one whole \
+        symbol, symbols expand fits better.";
 
 /// The description of the `read_slice` tool.
 pub const READ_SLICE: &str = "You need exact lines and no symbol boundary fits: return numbered \
@@ -240,21 +212,15 @@ pub const RESOLVE_LOCATIONS: &str = "Which lines hold this class, function, or l
         dropped silently.";
 
 /// The description of the `symbols` tool.
-pub const SYMBOLS: &str = "You have a name, a file, or a stable id. Get its declaration, body, or \
-        wiring. operation='find' (cheap) requires name and takes kind \
-        and limit: symbols by substring or qualified name, each hit \
-        carrying file:line and a stable id. operation='overview' \
-        (cheap) requires paths and takes docstrings: the named files as \
-        signatures with bodies elided. Read it instead of the file. \
-        operation='expand' requires stable_ids and takes limit: the \
-        line-numbered body of each named symbol. Expand a long id \
-        alone, because an over-budget batch is shortened. \
-        operation='explain' requires target and takes limit: definition \
-        site, signature, rationale comments, fan-out and fan-in by \
-        evidence tier, and the file's imports. Start here with one \
-        suspect symbol. It replaces a find followed by a reference \
-        listing. operation='locate' (cheap) requires path and locations \
-        and takes context_lines: resolve class:, function: and line: \
-        strings to stable ids and merged intervals for one file. For \
-        who-calls-this and blast radius, use find_referencing_symbols. \
-        It is the expensive one.";
+pub const SYMBOLS: &str = "Look up a symbol and read it by symbol. find (requires name; kind, \
+        limit): symbols matching a name, Qualified.name or substring, \
+        with path:line and a stable id. overview (requires paths; \
+        docstrings): signatures with bodies elided; read it instead of \
+        the file. expand (requires stable_ids; limit): line-numbered \
+        bodies; expand a long id alone, because an over-budget batch is \
+        shortened. explain (requires target; limit): one symbol's \
+        definition, signature, fan-out and fan-in by evidence tier, and \
+        imports. locate (requires path and locations; context_lines): \
+        class:, function: and line: selectors as stable ids and line \
+        intervals. For callers and blast radius, use \
+        find_referencing_symbols.";

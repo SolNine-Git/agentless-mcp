@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use json::JsonValue;
+use text::CodePointString;
 use text::testing::cases;
 
 use super::{Calls, Operation, Presence, Shape, TOOLS, Tool, tool_entry};
@@ -156,13 +157,55 @@ fn the_lines_schema_takes_one_pair_or_a_list_of_pairs() {
     let entry = tool_entry(read.expect("the read tool"));
     let lines = member(member(member(&entry, "inputSchema"), "properties"), "lines");
     let pair = r#"{"items": {"minimum": 1, "type": "integer"}, "maxItems": 2, "minItems": 2, "type": "array"}"#;
-    let choices = format!(
-        r#"[{pair}, {{"items": {pair}, "minItems": 1, "type": "array"}}, {{"type": "null"}}]"#
-    );
+    let choices = format!(r#"[{pair}, {{"items": {pair}, "minItems": 1, "type": "array"}}]"#);
     let want = json::parse(&choices).expect("a JSON schema");
     assert!(
         *member(lines, "anyOf") == want,
         "{}",
         json::value_text(lines)
     );
+}
+
+#[test]
+fn each_operation_enum_is_the_operation_table() {
+    for tool in TOOLS.iter().filter(|tool| !operations(tool).is_empty()) {
+        let entry = tool_entry(tool);
+        let operation = member(
+            member(member(&entry, "inputSchema"), "properties"),
+            "operation",
+        );
+        let names = operations(tool)
+            .iter()
+            .map(|operation| JsonValue::Str(CodePointString::from(operation.name)));
+        let want = JsonValue::Array(names.collect());
+        assert!(
+            *member(operation, "enum") == want,
+            "{}: {}",
+            tool.name,
+            json::value_text(operation)
+        );
+    }
+}
+
+// An optional parameter publishes its own shape: no null choice and no null default.
+#[test]
+fn no_parameter_publishes_null() {
+    let null = json::parse(r#"{"type": "null"}"#).expect("a JSON schema");
+    for tool in TOOLS {
+        let entry = tool_entry(tool);
+        let JsonValue::Object(params) = member(member(&entry, "inputSchema"), "properties") else {
+            panic!("{}: the properties are no object", tool.name);
+        };
+        for (name, schema) in params {
+            let JsonValue::Object(keys) = schema else {
+                panic!("{}.{name:?}: the schema is no object", tool.name);
+            };
+            let offers_null = match json::get(keys, "anyOf") {
+                Some(JsonValue::Array(choices)) => choices.contains(&null),
+                _ => false,
+            };
+            let null_default = json::get(keys, "default") == Some(&JsonValue::Null);
+            assert!(!offers_null && !null_default, "{}.{name:?}", tool.name);
+        }
+    }
 }

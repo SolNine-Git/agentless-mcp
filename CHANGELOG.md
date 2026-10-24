@@ -48,6 +48,20 @@
   [[10, 40], [90, 120]]. 1-based and inclusive. Required unless whole_file is
   true." A refused `lines` value now lists the problems against each of the
   two forms, so `[[1]]` gives 2 problems where it gave 1.
+- **The tools/list answer is a third smaller, and `operation` is an enum.**
+  The six served tool descriptions and their parameter descriptions are
+  shorter. The `operation` parameter of `orient`, `symbols` and `read` lists
+  its values as a JSON Schema `enum`, made from the operation table in
+  `crates/app/src/surface.rs`. An optional parameter is published as its own
+  type, without the `anyOf [<type>, {"type": "null"}]` wrapper and without
+  `"default": null`. `focus` and `lines` keep their two forms. The server
+  accepts the same inputs: an explicit null still reads as absent, and an
+  unknown `operation` value still gets the refusal that lists the valid
+  values. Every tool, operation and parameter stays, with the same type,
+  bounds, required list and `_meta`, and the agent guide no longer calls
+  `operation` a plain string. The tools/list answer of the debug
+  `agentless-mcp-server` goes from 15,242 to 10,173 bytes, and the cl100k
+  count of its six tool entries from 3,406 to 2,245.
 
 ## 0.11.0rc1 -- 2026-10-23
 

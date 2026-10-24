@@ -460,7 +460,7 @@ fn input_schema(tool: &Tool) -> JsonValue {
     let properties = tool
         .params
         .iter()
-        .map(|param| (param.name, param_schema(param)))
+        .map(|param| (param.name, param_schema(tool, param)))
         .collect();
     let required: Vec<JsonValue> = tool
         .params
@@ -510,31 +510,31 @@ fn meta(tool: &Tool) -> JsonValue {
     }
 }
 
-fn param_schema(param: &Param) -> JsonValue {
-    let mut entries = match param.presence {
-        Presence::Required => shape_entries(&param.shape),
-        Presence::Nullable => vec![
-            ("anyOf", JsonValue::Array(nullable_choices(&param.shape))),
-            ("default", JsonValue::Null),
-        ],
-        Presence::DefaultFalse => {
-            let mut entries = shape_entries(&param.shape);
-            entries.push(("default", JsonValue::Bool(false)));
-            entries
-        }
-    };
+// A nullable parameter publishes its shape alone: the validation still reads a null as absent.
+fn param_schema(tool: &Tool, param: &Param) -> JsonValue {
+    let mut entries = value_entries(tool, param);
+    // The parameter's description replaces the description of its type.
+    entries.retain(|(key, _)| *key != "description");
+    if param.presence == Presence::DefaultFalse {
+        entries.push(("default", JsonValue::Bool(false)));
+    }
     entries.push(("description", text(param.description)));
     schema(entries)
 }
 
-// A choice among shapes takes null as one more choice, not as a choice around the list.
-fn nullable_choices(shape: &Shape) -> Vec<JsonValue> {
-    let mut choices: Vec<JsonValue> = match shape {
-        Shape::AnyOf(shapes) => shapes.iter().map(shape_schema).collect(),
-        single => vec![shape_schema(single)],
-    };
-    choices.push(schema(vec![("type", text("null"))]));
-    choices
+// The `operation` parameter publishes the operation table's names, in table order, as its enum.
+// Its validation stays a string, so an unknown name gets the refusal that lists the operations.
+fn value_entries(tool: &Tool, param: &Param) -> Vec<(&'static str, JsonValue)> {
+    match tool.calls {
+        Calls::Operations(operations) if param.name == "operation" => {
+            let names = operations.iter().map(|operation| text(operation.name));
+            vec![
+                ("enum", JsonValue::Array(names.collect())),
+                ("type", text("string")),
+            ]
+        }
+        _ => shape_entries(&param.shape),
+    }
 }
 
 fn shape_schema(shape: &Shape) -> JsonValue {
