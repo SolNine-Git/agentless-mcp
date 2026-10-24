@@ -149,8 +149,9 @@ pub const SHARED_CALLERS: &str = "Rank symbols whose callers overlap the target'
         check, and fuzzy retrieval evidence, not binding evidence.";
 
 /// The parameter description keyed `slice_lines`.
-pub const SLICE_LINES: &str = "One or more 1-based inclusive [start, end] line ranges. Required \
-        unless whole_file is true.";
+pub const SLICE_LINES: &str = "One [start, end] range, or a list of them such as [[10, 40], [90, \
+        120]]. 1-based and inclusive. Required unless whole_file is \
+        true.";
 
 /// The parameter description keyed `stable_ids`.
 pub const STABLE_IDS: &str = "Stable symbol identifiers printed by map, overview, find, explain \

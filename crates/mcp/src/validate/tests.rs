@@ -93,15 +93,21 @@ fn each_case_validates_as_the_reference_says() {
 // Each choice of shapes tags its problems with a name the reference gives that shape.
 #[test]
 fn each_choice_tags_its_shapes_by_their_reference_names() {
-    let choices = TOOLS
+    let choices: Vec<(&str, &str, Vec<String>)> = TOOLS
         .iter()
-        .flat_map(|tool| tool.params)
-        .filter_map(|param| match param.shape {
-            Shape::AnyOf(shapes) => Some(shapes),
+        .flat_map(|tool| tool.params.iter().map(|param| (tool.name, param)))
+        .filter_map(|(tool, param)| match param.shape {
+            Shape::AnyOf(shapes) => Some((tool, param.name, shapes.iter().map(tag).collect())),
             _ => None,
-        });
-    for shapes in choices {
-        let tags: Vec<String> = shapes.iter().map(tag).collect();
-        assert_eq!(tags, ["str", "list[str]"]);
-    }
+        })
+        .collect();
+    // Every choice parameter of the surface in tools/list order, and no other parameter.
+    let want: Vec<(&str, &str, Vec<String>)> = [
+        ("orient", "focus", ["str", "list[str]"]),
+        ("read", "lines", ["list[int]", "list[list[int]]"]),
+    ]
+    .into_iter()
+    .map(|(tool, name, tags)| (tool, name, tags.map(String::from).to_vec()))
+    .collect();
+    assert_eq!(choices, want);
 }

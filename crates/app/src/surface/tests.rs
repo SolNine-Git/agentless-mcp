@@ -142,3 +142,27 @@ fn operation_finds_each_row_and_the_tool_names_are_distinct() {
         assert!(tool.operation("no_such_operation").is_none());
     }
 }
+
+fn member<'v>(value: &'v JsonValue, key: &str) -> &'v JsonValue {
+    let JsonValue::Object(entries) = value else {
+        panic!("no object holds {key}");
+    };
+    json::get(entries, key).unwrap_or_else(|| panic!("no key {key}"))
+}
+
+#[test]
+fn the_lines_schema_takes_one_pair_or_a_list_of_pairs() {
+    let read = TOOLS.iter().find(|tool| tool.name == "read");
+    let entry = tool_entry(read.expect("the read tool"));
+    let lines = member(member(member(&entry, "inputSchema"), "properties"), "lines");
+    let pair = r#"{"items": {"minimum": 1, "type": "integer"}, "maxItems": 2, "minItems": 2, "type": "array"}"#;
+    let choices = format!(
+        r#"[{pair}, {{"items": {pair}, "minItems": 1, "type": "array"}}, {{"type": "null"}}]"#
+    );
+    let want = json::parse(&choices).expect("a JSON schema");
+    assert!(
+        *member(lines, "anyOf") == want,
+        "{}",
+        json::value_text(lines)
+    );
+}

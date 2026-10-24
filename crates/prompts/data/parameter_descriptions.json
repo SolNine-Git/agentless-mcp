@@ -13,7 +13,7 @@
   "stable_ids": "Stable symbol identifiers printed by map, overview, find, explain and locate.",
   "expand_limit": "Maximum symbols expanded in this call; additional requested identifiers are reported as omitted. Omit it to use the tool's default.",
   "file_path": "Repository-relative path of the source file, beneath the repository root.",
-  "slice_lines": "One or more 1-based inclusive [start, end] line ranges. Required unless whole_file is true.",
+  "slice_lines": "One [start, end] range, or a list of them such as [[10, 40], [90, 120]]. 1-based and inclusive. Required unless whole_file is true.",
   "context_lines": "Lines added before and after each requested or resolved interval.",
   "whole_file": "Return the whole bounded file. Use it only when lines is omitted.",
   "find_name": "Symbol name, qualified name, or substring to search for.",

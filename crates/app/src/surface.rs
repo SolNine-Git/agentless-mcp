@@ -145,6 +145,9 @@ pub static TOOLS: [&Tool; 6] = [
 const KIND_DESCRIPTION: &str = "Classification of extracted AST symbols.";
 
 const TEXTS: Shape = list(&Shape::Text, None, None);
+// One [start, end] pair, or a list of them: no value fits both, so the order sets only the
+// order of a refusal's problems.
+const LINES: Shape = Shape::AnyOf(&[LINE_RANGE, LINE_RANGES]);
 // One or more [start, end] pairs of 1-based line numbers.
 const LINE_RANGES: Shape = list(&LINE_RANGE, Some(1), None);
 const LINE_RANGE: Shape = list(&LINE_NUMBER, Some(2), Some(2));
@@ -405,7 +408,7 @@ const READ_PARAMS: [Param; 8] = [
     required("operation", parameter::READ_OPERATION),
     REPO_ROOT,
     optional("path", Shape::Text, parameter::READ_PATH),
-    optional("lines", LINE_RANGES, parameter::SLICE_LINES),
+    optional("lines", LINES, parameter::SLICE_LINES),
     optional("context_lines", CONTEXT_LINES, parameter::CONTEXT_LINES),
     optional("whole_file", Shape::Bool, parameter::WHOLE_FILE),
     optional("depth", int(1, MAX_TREE_DEPTH), parameter::TREE_DEPTH),

@@ -50,15 +50,24 @@ fn slice(context: &Context<'_>, arguments: &Arguments) -> Result<String, Failure
 // A slice is bounded by its line ranges or asks for the whole file, never both or neither.
 fn slice_ranges(arguments: &Arguments) -> Result<Vec<(usize, usize)>, Failure> {
     let whole = arguments.flag("whole_file");
-    match arguments.value("lines") {
+    let lines = arguments.value("lines");
+    match lines {
         Value::List(_) if whole => Err(Failure::Refused(format!(
             "{SLICE} accepts lines or whole_file=true, not both"
         ))),
-        Value::List(pairs) => pairs.iter().map(line_range).collect(),
+        Value::List(items) => line_ranges(lines, items),
         _ if whole => Ok(Vec::new()),
         _ => Err(Failure::Refused(format!(
             "{SLICE} requires non-empty lines or explicit whole_file=true"
         ))),
+    }
+}
+
+// The validation gives one pair of line numbers or a list of pairs, and one pair is one range.
+fn line_ranges(lines: &Value, items: &[Value]) -> Result<Vec<(usize, usize)>, Failure> {
+    match items {
+        [Value::Int(_), Value::Int(_)] => Ok(vec![line_range(lines)?]),
+        pairs => pairs.iter().map(line_range).collect(),
     }
 }
 
@@ -98,3 +107,6 @@ fn ordered(start: &IntArg, end: &IntArg) -> bool {
 fn line(number: &IntArg) -> usize {
     number.value().unwrap_or(usize::MAX)
 }
+
+#[cfg(test)]
+mod tests;

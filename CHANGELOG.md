@@ -39,6 +39,15 @@
   check that the `orient` and `repo_map` descriptions publish that band as
   "10-35% higher". They check that the ratio over the `.txt` goldens runs
   below 1.0 on one golden and above 1.15 on another.
+- **`read` accepts one flat `[start, end]` pair for `lines`.** A call can
+  send `lines: [18, 45]`, and the server reads it as `[[18, 45]]`. The list
+  of pairs stays valid, and every other flat list is still refused. The
+  300-instance benchmark motivates the change: the server refused 232 of 705
+  forced-arm `read` calls that sent one flat pair. The `lines` description
+  now reads "One [start, end] range, or a list of them such as
+  [[10, 40], [90, 120]]. 1-based and inclusive. Required unless whole_file is
+  true." A refused `lines` value now lists the problems against each of the
+  two forms, so `[[1]]` gives 2 problems where it gave 1.
 
 ## 0.11.0rc1 -- 2026-10-23
 
