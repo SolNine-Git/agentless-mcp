@@ -1,12 +1,17 @@
-"""Time the erosion hook on one mcp-local Write in each cache state, per frozen build.
+"""Time the erosion hook on one mcp-local Write in each store state, per build.
 
 Development-time only, with the standard library alone. The method is the
 overview's "Baselines" section in docs/plans/2026-10-10_rust-port-00-overview.md.
+The script refreshes the clone's git index before it times, which the 2026-10-10
+baselines (1dc4d70, 0037919) did not do, so it does not reproduce those figures exactly.
 
-    python3 -I scripts/hook_latency.py --mcp-local ../mcp-local --build 1dc4d70 --build HEAD
+    python3 -I scripts/hook_latency.py --mcp-local ../mcp-local \\
+        --binary ~/.local/bin/agentless-mcp --build 8930bd6
 
-With --rust, a built Rust agentless-mcp runs `hook erosion` as one more arm. It reads the tag
-cache of the last --build, so that build must write the cache schema the Rust hook reads.
+Each --binary arm is a Rust agentless-mcp: it indexes the clone with its own `index` into
+its own XDG_CACHE_HOME, and the arm times its `hook erosion`, which reads that agentless.db.
+Each --build arm is a commit of this repository, archived and synced with uv: the arm times
+that commit's Python hook script, which reads the tags.db of that commit's own `index`.
 """
 
 import argparse
@@ -40,12 +45,16 @@ APPENDED = (
 )
 GRAMMAR_CACHE = "tree-sitter-language-pack"
 GRAMMAR_OVERRIDE = "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR"
-TAG_CACHE = "agentless-mcp"
+STORE_ROOT = "agentless-mcp"
+# The Python build's store and the Rust build's store, each under STORE_ROOT/<repo key>/.
+STORES = ("tags.db", "agentless.db")
+CLEAN = "clean"
 # Every tenth source file goes stale after the index, so the stale files spread
 # across the whole tree.
 STALE_STRIDE = 10
 RUNS = 30
 P95 = 0.95
+RACY_WAIT_S = 2.0
 
 # Deadlines in seconds, above each call's measured time and inner bound, so that
 # only a hung call reaches one.
@@ -56,34 +65,32 @@ INDEX_DEADLINE_S = 60.0
 HOOK_DEADLINE_S = 15.0
 
 GATE_OFF = "gate off"
-ABSENT = "no tag cache"
-FRESH = "fresh tag cache"
-STALE = "stale tag cache"
+ABSENT = "no store"
+FRESH = "fresh store"
+STALE = "stale store"
 
 
 @dataclass(frozen=True)
 class Build:
-    """One commit of this repository, archived and synced into its own directory."""
+    """One hook under test: a frozen commit's Python hook script, or a Rust `hook erosion`."""
 
-    rev: str
-    root: Path
-    # The Rust hook's command line; None runs the build's Python hook script.
-    hook: tuple[str, ...] | None = None
-
-    @property
-    def binary(self) -> Path:
-        """Return the build's agentless-mcp executable."""
-        return self.root / ".venv" / "bin" / "agentless-mcp"
+    name: str
+    # Names this build's cache directories and logs under `work`.
+    slug: str
+    work: Path
+    # The agentless-mcp executable that indexes the clone and that the hook runs.
+    binary: Path
+    hook: tuple[str, ...]
 
     def cache(self, state: str) -> Path:
         """Return the XDG_CACHE_HOME this build uses in `state`."""
         kind = "indexed" if state in (FRESH, STALE) else "empty"
-        return self.root.parent / f"xdg-{self.root.name}-{kind}"
+        return self.work / f"xdg-{self.slug}-{kind}"
 
 
 @dataclass(frozen=True)
 class Arm:
-    """One build's hook command in one cache state."""
+    """One build's hook command in one store state."""
 
     build: Build
     command: list[str]
@@ -93,17 +100,16 @@ class Arm:
 
 @dataclass(frozen=True)
 class Session:
-    """What every timed run shares: the payload, the interpreter, the run count, the scratch dir."""
+    """What every timed run shares: the payload, the run count, the scratch dir."""
 
     payload: bytes
-    python: str
     runs: int
     work: Path
 
 
 @dataclass(frozen=True)
 class Row:
-    """The timed runs of one build in one cache state, and the outcomes its log recorded."""
+    """The timed runs of one build in one store state, and the outcomes its log recorded."""
 
     build: str
     state: str
@@ -112,31 +118,22 @@ class Row:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Measure every build in every cache state, print the table, and write the samples."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mcp-local", type=Path, required=True, help="a local mcp-local clone")
-    parser.add_argument("--build", action="append", required=True, help="a commit of this repo")
-    parser.add_argument("--rust", type=Path, help="a built Rust agentless-mcp binary")
-    parser.add_argument("--runs", type=int, default=RUNS)
-    parser.add_argument("--work", type=Path, help="an empty or absent scratch directory")
-    args = parser.parse_args(argv)
-
+    """Measure every build in every store state, print the table, and write the samples."""
+    args = _arguments(argv)
     work = args.work or Path(tempfile.mkdtemp(prefix="hook-latency-"))
     work.mkdir(parents=True, exist_ok=True)
     python = shutil.which("python3")
     if any(work.iterdir()) or python is None:
         print(f"refused: {work} must be empty and python3 must be on PATH", file=sys.stderr)
         return 2
-    grammars = _grammar_cache()
+    grammars = _grammar_cache() if args.build else None
+    binaries = [_rust(path, work) for path in args.binary]
     clone = _clone_mcp_local(args.mcp_local, work)
-    builds = [_freeze(rev, work, grammars) for rev in args.build]
-    if args.rust is not None:
-        rust = str(args.rust.resolve())
-        builds.append(Build(f"rust {rust}", builds[-1].root, (rust, "hook", "erosion")))
-    session = Session(_payload(clone, work), python, args.runs, work)
+    builds = [_freeze(rev, work, grammars, python) for rev in args.build] + binaries
+    session = Session(_payload(clone, work), args.runs, work)
 
     rows = _measure(GATE_OFF, builds, session) + _measure(ABSENT, builds, session)
-    _index_clone([build for build in builds if build.hook is None], clone)
+    _index_clone(builds, clone)
     rows += _measure(FRESH, builds, session)
     stale = _make_stale(clone)
     rows += _measure(STALE, builds, session)
@@ -148,6 +145,30 @@ def main(argv: list[str] | None = None) -> int:
     _print_table(environment, stale, rows)
     print(f"samples: {out}")
     return 0
+
+
+def _arguments(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--mcp-local", type=Path, required=True, help="a local mcp-local clone")
+    parser.add_argument(
+        "--build",
+        action="append",
+        default=[],
+        help="a commit of this repo: times its Python hook on its own tags.db",
+    )
+    parser.add_argument(
+        "--binary",
+        action="append",
+        default=[],
+        type=Path,
+        help="a Rust agentless-mcp: times its `hook erosion` on its own agentless.db",
+    )
+    parser.add_argument("--runs", type=int, default=RUNS)
+    parser.add_argument("--work", type=Path, help="an empty or absent scratch directory")
+    args = parser.parse_args(argv)
+    if not args.build and not args.binary:
+        parser.error("give at least one --build or --binary")
+    return args
 
 
 def _run(
@@ -226,7 +247,7 @@ def _grammar_cache() -> Path | None:
     cache_home = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     grammars = Path(override) if override else cache_home / GRAMMAR_CACHE
     if not grammars.is_dir():
-        message = f"{grammars} is missing: run agentless-mcp index on any repository once"
+        message = f"{grammars} is missing: run the index of a Python build on any repository once"
         raise SystemExit(message)
     # Each build reads the override itself (_env keeps it), so only the XDG layout needs a link.
     return None if override else grammars
@@ -244,22 +265,44 @@ def _clone_mcp_local(source: Path, work: Path) -> Path:
     _run(clone_command, timeout=LOCAL_DEADLINE_S)
     commit = _commit(clone, MCP_LOCAL_COMMIT)
     _run(["git", "-C", str(clone), "switch", "-q", "--detach", commit], timeout=LOCAL_DEADLINE_S)
+    # Git hashes each racily clean file again in every hook run, so the refresh waits until the
+    # checkout's second is over and then leaves no racily clean entry in the index.
+    time.sleep(RACY_WAIT_S)
+    _run(["git", "-C", str(clone), "update-index", "--really-refresh"], timeout=LOCAL_DEADLINE_S)
     return clone
 
 
-def _freeze(rev: str, work: Path, grammars: Path | None) -> Build:
+def _freeze(rev: str, work: Path, grammars: Path | None, python: str) -> Build:
     sha = _commit(REPO, rev)
-    build = Build(rev=f"{rev} ({sha[:7]})", root=work / f"agentless-{sha[:7]}")
+    root = work / f"agentless-{sha[:7]}"
     archive = _run(["git", "-C", str(REPO), "archive", sha], timeout=LOCAL_DEADLINE_S).stdout
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-        tar.extractall(build.root, filter="data")
-    _run(["uv", "sync", "--frozen", "-q"], cwd=build.root, timeout=SYNC_DEADLINE_S)
+        tar.extractall(root, filter="data")
+    _run(["uv", "sync", "--frozen", "-q"], cwd=root, timeout=SYNC_DEADLINE_S)
+    binary = root / ".venv" / "bin" / "agentless-mcp"
+    build = Build(f"{rev} ({sha[:7]})", root.name, work, binary, (python, str(root / HOOK)))
+    _caches(build, grammars)
+    return build
+
+
+def _rust(path: Path, work: Path) -> Build:
+    binary = path.resolve()
+    if not binary.is_file() or not os.access(binary, os.X_OK):
+        message = f"{path} is not an executable file"
+        raise SystemExit(message)
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    name = f"rust {binary} (sha256 {digest[:8]})"
+    build = Build(name, f"rust-{digest[:7]}", work, binary, (str(binary), "hook", "erosion"))
+    _caches(build, None)
+    return build
+
+
+def _caches(build: Build, grammars: Path | None) -> None:
     for state in (ABSENT, FRESH):
         build.cache(state).mkdir()
         if grammars is not None:
             # An isolated cache must still hold the grammars, or the first run downloads them.
             (build.cache(state) / GRAMMAR_CACHE).symlink_to(grammars)
-    return build
 
 
 def _payload(clone: Path, work: Path) -> bytes:
@@ -302,10 +345,8 @@ def _env(build: Build, state: str, *, log: Path | None) -> dict[str, str]:
 
 
 def _arm(build: Build, state: str, session: Session) -> Arm:
-    name = build.root.name if build.hook is None else f"{build.root.name}-rust"
-    log = session.work / f"log-{name}-{state.replace(' ', '-')}.jsonl"
-    command = [session.python, str(build.root / HOOK)] if build.hook is None else list(build.hook)
-    return Arm(build=build, command=command, env=_env(build, state, log=log), log=log)
+    log = session.work / f"log-{build.slug}-{state.replace(' ', '-')}.jsonl"
+    return Arm(build=build, command=list(build.hook), env=_env(build, state, log=log), log=log)
 
 
 def _measure(state: str, builds: list[Build], session: Session) -> list[Row]:
@@ -317,9 +358,9 @@ def _measure(state: str, builds: list[Build], session: Session) -> list[Row]:
     rows = []
     for arm, fingerprint, timings in zip(arms, before, samples, strict=True):
         if _fingerprint(arm.build.cache(state)) != fingerprint:
-            message = f"{arm.build.rev}: the hook changed the tag cache in the {state} runs"
+            message = f"{arm.build.name}: the hook changed the store in the {state} runs"
             raise SystemExit(message)
-        rows.append(Row(arm.build.rev, state, timings, _outcomes(state, arm.log)))
+        rows.append(Row(arm.build.name, state, timings, _outcomes(state, arm.log)))
     return rows
 
 
@@ -334,15 +375,16 @@ def _timed(arms: list[Arm], payload: bytes, runs: int) -> list[list[float]]:
 
 
 def _fingerprint(cache: Path) -> str:
-    # Rows, not file times: closing a WAL connection touches tags.db with no row changed.
+    # Rows, not file times: closing a WAL connection touches a store with no row changed.
     digest = hashlib.sha256()
-    for database in sorted((cache / TAG_CACHE).glob("*/tags.db")):
-        connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
-        try:
-            for statement in sorted(connection.iterdump()):
-                digest.update(statement.encode("utf-8"))
-        finally:
-            connection.close()
+    for store in STORES:
+        for database in sorted((cache / STORE_ROOT).glob(f"*/{store}")):
+            connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+            try:
+                for statement in sorted(connection.iterdump()):
+                    digest.update(statement.encode("utf-8"))
+            finally:
+                connection.close()
     return digest.hexdigest()
 
 
@@ -355,6 +397,9 @@ def _outcomes(state: str, log: Path) -> dict[str, int]:
         if ("clone_delta" in record["off_by_config"]) != expect_off:
             wanted = "off" if expect_off else "on"
             message = f"{log}: clone_delta is not {wanted} in the {state} state"
+            raise SystemExit(message)
+        if record["outcome"] != CLEAN:
+            message = f"{log}: a run gave {record['outcome']}, not {CLEAN}, in the {state} state"
             raise SystemExit(message)
     return dict(Counter(record["outcome"] for record in records))
 
