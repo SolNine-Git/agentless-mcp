@@ -1,5 +1,6 @@
-# The wheel of the Rust binaries. It lives here while the root pyproject.toml builds the Python
-# reference. Run maturin in this directory and never with -m: -m selects the root pyproject.toml.
+# The wheel of the Rust binaries. It lives here because the root pyproject.toml holds the
+# development tools. Run maturin in this directory and never with -m: -m selects the root
+# pyproject.toml.
 [build-system]
 requires = ["maturin>=1.15,<2"]
 build-backend = "maturin"

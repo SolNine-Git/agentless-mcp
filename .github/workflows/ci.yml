@@ -14,233 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
-  quality:
-    name: ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python: ["3.10", "3.13"]
-
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: 0.9.28
-          python-version: ${{ matrix.python }}
-          enable-cache: true
-
-      # Outside the checkout, as in the rust job, whose lint reads every file there that git does not
-      # ignore. The pack writes its bundle and manifest beside the libs directory, so the cache holds both.
-      - name: Grammar cache location
-        run: |
-          echo "GRAMMARS=$RUNNER_TEMP/grammars" >> "$GITHUB_ENV"
-          echo "TREE_SITTER_LANGUAGE_PACK_CACHE_DIR=$RUNNER_TEMP/grammars/libs" >> "$GITHUB_ENV"
-
-      - name: Cache tree-sitter grammars
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ env.GRAMMARS }}
-          key: grammars-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: grammars-${{ runner.os }}-
-
-      # Both extras, deliberately. Until 2026-08-23 this synced only --extra
-      # mcp, so the three tiktoken tests in tests/unit/test_token_counter.py
-      # skipped on every run and the exact-token-count path was never
-      # exercised in CI -- a guarantee whose gate never fired.
-      - name: Sync
-        run: uv sync --extra mcp --extra tokens
-
-      - name: Warm grammars
-        run: uv run agentless-mcp warmup
-
-      # The rust job runs the cargo hooks; skipping them here keeps a Rust build out of
-      # four Python jobs.
-      - name: Pre-commit
-        env:
-          SKIP: cargo-fmt,cargo-clippy,cargo-gates,cargo-deps
-        run: uv run pre-commit run --all-files
-
-      # Under coverage, not bare pytest: the CLI suite spawns the console
-      # script as a subprocess, and COVERAGE_PROCESS_START plus `combine` is
-      # what makes those children report. See [tool.coverage.run] in
-      # pyproject.toml for why the parallel form is the only supported one.
-      # `-rs` reports every skip in this same run, so the skip ceiling below
-      # costs nothing extra. The suite is not run twice.
-      - name: Test
-        # `shell: bash` is load-bearing, not decoration. The default shell for a
-        # `run:` step is `bash -e {0}`, which does NOT set pipefail, so the exit
-        # status of `... | tee` is tee's and a failing pytest scores a green
-        # step. `shell: bash` runs `bash --noprofile --norc -eo pipefail`, which
-        # is the only form in which the pipeline below reports a test failure.
-        shell: bash
-        env:
-          COVERAGE_PROCESS_START: pyproject.toml
-        run: uv run coverage run -m pytest -rs | tee pytest-output.txt
-
-      - name: Coverage
-        run: |
-          uv run coverage combine
-          uv run coverage report
-
-      # The prompt JSON and the agent guide are read through
-      # `importlib.resources`, which in a checkout resolves to `src/`. Every
-      # test of them therefore passes whether or not the files are in the
-      # distribution, so a wheel that shipped without them would fail at the
-      # user's first import and nowhere earlier. `uv_build` includes them
-      # today by its include-everything default and exposes no positive wheel
-      # include to declare that intent in pyproject.toml, which leaves this
-      # step as the only place the guarantee can be stated.
-      - name: Packaged data ships in the wheel
-        run: |
-          rm -rf dist
-          uv build --wheel
-          uv run python - <<'PY'
-          import pathlib
-          import sys
-          import zipfile
-
-          wheels = sorted(pathlib.Path("dist").glob("*.whl"))
-          if len(wheels) != 1:
-              sys.exit(f"expected exactly one wheel in dist/, found {wheels}")
-          required = {
-              "agentless_mcp/prompts/envelope.json",
-              "agentless_mcp/prompts/messages.json",
-              "agentless_mcp/prompts/parameter_descriptions.json",
-              "agentless_mcp/prompts/tool_descriptions.json",
-              "agentless_mcp/docs/agent-guide.md",
-          }
-          members = set(zipfile.ZipFile(wheels[0]).namelist())
-          missing = sorted(required - members)
-          if missing:
-              sys.exit(f"{wheels[0].name} is missing packaged data: {missing}")
-          print(f"{wheels[0].name} carries all {len(required)} packaged data files")
-          PY
-
-      # A skip is invisible in the summary line, which is how three tiktoken
-      # tests sat un-run in CI for several releases. Assert the count instead
-      # of eyeballing it; lower the ceiling whenever a skip is retired.
-      #
-      # Sum the bracketed counts rather than counting lines. `-rs` GROUPS
-      # identical skips onto one row -- `SKIPPED [4] path:312: reason` -- so a
-      # line count measures distinct reasons, not skipped tests: this suite's
-      # 10 skips render as 6 lines. A line-counting ceiling of 10 would not
-      # have caught the regression named above, which added roughly two lines.
-      #
-      # The ceiling is 14 rather than 10 because four of them are conditional.
-      # Three depend on the filesystem: the undecodable-filename tests in
-      # test_fslimits.py and the non-UTF-8 file-name walk in test_treewalk.py
-      # skip where the filesystem enforces UTF-8 names, which APFS does and
-      # ext4 does not. The fourth is the scb-check parity module, which skips
-      # below Python 3.12. Linux runs 10 (11 on 3.10), macOS 13 (14 on 3.10).
-      - name: No unexpected skips
-        shell: bash
-        run: |
-          skips=$(grep -oE '^SKIPPED \[[0-9]+\]' pytest-output.txt \
-                  | grep -oE '[0-9]+' | awk '{s+=$1} END {print s+0}')
-          echo "skipped tests: $skips (ceiling 14)"
-          test "$skips" -le 14
-
-  # `TestWithoutTheExtra` asserts that asking for the tiktoken counter
-  # without the tokens extra refuses with the install command. The quality
-  # matrix syncs both extras, so that class skips on every row above and no
-  # automated run ever executed the refusal path -- the same
-  # guarantee-without-a-gate shape the skip ceiling above exists for. This
-  # job is the one environment without the extra.
-  #
-  # The counts are asserted exactly, not as a ceiling. A skip here is the
-  # job's premise failing -- tiktoken reached the environment and
-  # `TestWithoutTheExtra` silently flipped back to a skip -- and a moved
-  # count is a new test in the file, which must say which side of the extra
-  # it tests by updating this line.
-  no-extras-counter:
-    name: token counter without the tokens extra
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: 0.9.28
-          python-version: "3.13"
-          enable-cache: true
-
-      - name: Sync without the tokens extra
-        run: uv sync --extra mcp
-
-      # `--no-sync` on every run step below: a bare `uv run` re-syncs the
-      # environment to the default extras, which both removes the mcp
-      # dependencies this suite imports and could someday add tiktoken back.
-      - name: The extra is genuinely absent
-        run: |
-          if uv run --no-sync python -c "import tiktoken" 2>/dev/null; then
-            echo "tiktoken resolved without --extra tokens; this job proves nothing" >&2
-            exit 1
-          fi
-
-      - name: The refusal path runs and passes
-        shell: bash
-        run: |
-          uv run --no-sync pytest tests/unit/test_token_counter.py -q -rs \
-            | tee counter-output.txt
-          grep -E '^8 passed, 7 skipped' counter-output.txt
-
-  # `uv.lock` pins a working fastmcp/mcp pair, but `uv tool install` and
-  # `pip install agentless-mcp[mcp]` resolve fresh from PyPI and never read
-  # the lock, so an upstream major (mcp 2.0, fastmcp 4.0) broke every fresh
-  # install while every lock-synced job above stayed green (#48). This job is
-  # the only one that resolves from the pyproject specifiers alone; the next
-  # upstream major fails here instead of in the field.
-  #
-  # The bare-install steps gate #47: the entry point a plain
-  # `uv tool install agentless-mcp` puts on PATH must answer --help and
-  # --version without the mcp extra, and a real invocation must exit 2
-  # naming the extra rather than reading as a server that will not start.
-  fresh-install:
-    name: install from pyproject without the lock
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: 0.9.28
-          python-version: "3.13"
-          enable-cache: true
-
-      - name: The mcp extra resolves from pyproject and the server imports
-        run: |
-          uv venv with-extra
-          uv pip install --python with-extra ".[mcp]"
-          with-extra/bin/python -c "import agentless_mcp.adapters.mcp.server"
-          with-extra/bin/agentless-mcp-server --help
-
-      - name: A bare install's entry point describes itself and names the extra
-        shell: bash
-        run: |
-          uv venv bare
-          uv pip install --python bare .
-          bare/bin/agentless-mcp-server --help
-          bare/bin/agentless-mcp-server --version
-          set +e
-          output=$(bare/bin/agentless-mcp-server 2>&1)
-          status=$?
-          set -e
-          echo "$output"
-          test "$status" -eq 2
-          grep -q "the 'mcp' extra, which is not installed" <<<"$output"
-
   rust:
     name: ${{ matrix.os }} / Rust
     runs-on: ${{ matrix.os }}
@@ -296,6 +69,13 @@ jobs:
           version: 0.9.28
           python-version: "3.13"
 
+      # The file hooks, ruff and codespell, on one platform. The cargo hooks are steps of their own below.
+      - name: Pre-commit
+        if: runner.os == 'Linux'
+        env:
+          SKIP: cargo-fmt,cargo-clippy,cargo-gates,cargo-deps
+        run: uv run --frozen --only-group dev pre-commit run --all-files
+
       # The gate is never the build under test: it is the wheel that .github/gate/requirements.txt
       # pins. Outside the workspace: lint --since reads every file there that git does not ignore.
       - name: Gate binary
@@ -324,7 +104,8 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets -- -D warnings
 
-      # The committed graph fixtures come from Linux. Another platform rewrites them with the reference.
+      # The committed graph fixtures come from Linux. Another platform rewrites them with the Python
+      # reference of tag v0.11.0rc1.
       - name: Graph fixtures from the reference on this platform
         if: runner.os != 'Linux'
         run: scripts/platform_graph_fixtures.sh "$RUNNER_TEMP/reference"

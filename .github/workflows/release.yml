@@ -80,7 +80,8 @@ jobs:
           version: 0.9.28
           python-version: "3.13"
 
-      # The committed graph fixtures come from Linux. Another platform rewrites them with the reference.
+      # The committed graph fixtures come from Linux. Another platform rewrites them with the Python
+      # reference of tag v0.11.0rc1.
       - name: Graph fixtures from the reference on this platform
         if: runner.os != 'Linux'
         run: scripts/platform_graph_fixtures.sh "$RUNNER_TEMP/reference"

@@ -1,4 +1,4 @@
-// The index scenarios of scripts/store_index_fixtures.py, replayed step by step.
+// The recorded reference cases of the index scenarios, replayed step by step.
 
 use serde::Deserialize;
 use serde_json::Value;

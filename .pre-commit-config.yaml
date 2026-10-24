@@ -30,8 +30,7 @@ repos:
       - id: check-case-conflict
       # Check for debugger imports and py37+ breakpoint() calls
       - id: debug-statements
-        # The complexity fixtures are tree-sitter input with syntax newer than
-        # Python 3.10, such as except*, and CI runs these hooks on 3.10.
+        # The complexity fixtures are tree-sitter test data, not code for these hooks.
         exclude: ^tests/characterization/fixtures/complexity_py/
       # Detect accidentally committed private keys
       - id: detect-private-key
@@ -56,29 +55,6 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # Mypy - static type checker, strict mode
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.1
-    hooks:
-      - id: mypy
-        # The hook builds its own isolated env, so the runtime dependencies
-        # whose stubs mypy needs are declared here as well as in pyproject.
-        additional_dependencies:
-          - tree-sitter>=0.25,<0.27
-          - tree-sitter-language-pack==1.14.3
-          - tomli>=2
-          # 2026-08-18, Phase 1b: adapters/mcp imports fastmcp, so the hook's
-          # isolated env needs it or mypy reports a missing stub for a module
-          # that is present in the project env. Bounded to the same majors as
-          # the pyproject mcp extra, and kept in step with it: this env
-          # resolves fresh from PyPI, so an open bound let mcp 2 / fastmcp 4
-          # land here and fail mypy on imports the locked project env serves
-          # fine (#48). mcp is named because server.py imports it directly.
-          - fastmcp>=3.4,<4
-          - mcp>=1.29,<2
-        args: [--config-file=pyproject.toml]
-        files: ^src/
-
   # Codespell - common misspellings in text files
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.3
@@ -100,35 +76,14 @@ repos:
 
   - repo: local
     hooks:
-      - id: lint-imports
-        name: import-linter (dependency contract)
-        entry: uv run lint-imports
-        language: system
-        pass_filenames: false
-        files: \.py$
-      - id: deptry
-        name: deptry (dependency hygiene)
-        entry: uv run deptry .
-        language: system
-        pass_filenames: false
-        files: ^(pyproject\.toml|.*\.py)$
-
-  - repo: local
-    hooks:
       - id: ruff-repo-wide
         name: ruff (repo-wide sweep, pre-push)
         entry: uv run ruff check .
         language: system
         pass_filenames: false
         stages: [pre-push]
-      - id: pytest-unit
-        name: pytest (unit suite, pre-push)
-        entry: bash -c 'uv run pytest tests/unit -q 2>/dev/null || uv run pytest tests -q'
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
 
-  # The Rust workspace (crates/ and xtask/). CI's rust job runs these; the Python jobs skip them.
+  # The Rust workspace (crates/ and xtask/). CI's rust job runs these as steps of their own.
   # Each trigger matches every repository file its tool reads, in any case: macOS ignores case.
   # Every trigger also matches the manifests, the lock, the toolchain file and .cargo/: cargo and rustup
   # read them.
@@ -192,7 +147,6 @@ repos:
       - id: cargo-erosion
         name: cargo xtask erosion with the uv tool agentless-mcp (pre-push)
         # The gate is the uv tool install at the version it holds. This hook does not check the version.
-        # Inside uv run, a PATH lookup finds the build under test, which is never a gate.
         entry: bash -c 'gate="$(uv tool dir --bin)/agentless-mcp" && cargo xtask erosion --lint-bin "$gate" --health-bin "$gate"'
         language: system
         pass_filenames: false
