@@ -1,0 +1,26 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[[package]]
+name = "agentless-bench-server"
+version = "0"
+source = { virtual = "." }
+dependencies = [
+    { name = "agentless-mcp" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "agentless-mcp", specifier = "==0.11.0rc1" }]
+
+[[package]]
+name = "agentless-mcp"
+version = "0.11.0rc1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/99/9f976e8e14b91432bc8263ed155a189b6a4b26b913c58fd7c34115f72baf/agentless_mcp-0.11.0rc1.tar.gz", hash = "sha256:37eb2b90e49b495d2ed6ecfff57ff68c3884033e29b338466d110570deae5824", size = 7351447, upload-time = "2026-10-24T03:38:22.304Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/ca/27f7232b8bf7ea78d1c38aa630be98ad18e152fb0e4b0e58181bf27288c5/agentless_mcp-0.11.0rc1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:0da8c11dc4cafabb2933d0edf040973e31a420175350c5cfb031c9c5b6754b81", size = 12485333, upload-time = "2026-10-24T03:38:20.001Z" },
+    { url = "https://files.pythonhosted.org/packages/97/3f/410a9faa4fc526b168b3472d7144538a97a5a93be0ae179c560eab954882/agentless_mcp-0.11.0rc1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:58770e7e744b36468696e86ad264369d530564ec60eb3cdd0e27e3f9b25f40ca", size = 12526815, upload-time = "2026-10-24T03:38:29.45Z" },
+    { url = "https://files.pythonhosted.org/packages/59/b1/31c88f326a2a005a8ce0cb299408447a93471016437e8191b7709f8a8654/agentless_mcp-0.11.0rc1-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:da970f5afc29481724831b6bca4080a54f459aa78d61bd8d2a3387a64b66bd76", size = 12678306, upload-time = "2026-10-24T03:38:24.319Z" },
+    { url = "https://files.pythonhosted.org/packages/de/7e/2bda19431950c534a01aecfe09a4765a1d332c8aa394156cdfeba4d75eb4/agentless_mcp-0.11.0rc1-py3-none-manylinux_2_34_x86_64.whl", hash = "sha256:48ebba84642adfeda8ad1868bccfd09f3be8f6ece97af5441dc8f84db061a8a1", size = 12899379, upload-time = "2026-10-24T03:38:27.097Z" },
+]
