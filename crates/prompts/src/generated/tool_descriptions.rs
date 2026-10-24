@@ -123,24 +123,25 @@ pub const LIST_DIR: &str = "What exists in this repository? List the files as a 
 pub const ORIENT: &str = "Rank the files and symbols most relevant to a focus, or show how the \
         repository is built. map (focus, limit, granularity, budget): a \
         token-budgeted map of the highest-ranked files. Call it when \
-        the location is unknown or the change spans files. Search text \
-        with Grep: the map ranks symbols, so a file that matches only \
-        by a string does not appear. budget counts chars/4: a real BPE \
-        count runs 10-35% higher. communities (resolution, limit): \
-        which files belong together. cycles (limit): module import \
-        cycles. diagram (focus, max_nodes, max_edges, \
-        group_by_communities, resolution): the module graph as mermaid, \
-        for a human. path (requires source and target; include_unique, \
-        include_ambiguous): the fewest-hop resolved chain between two \
-        endpoints. health (limit): orphan candidates, unused exports, \
-        hubs and complexity hotspots.";
+        the location is unknown or the change spans files. Use grep for \
+        a known literal or file: the map ranks symbols, so a file that \
+        matches only by a string does not appear. budget counts \
+        chars/4: a real BPE count runs 10-35% higher. communities \
+        (resolution, limit): which files belong together. cycles \
+        (limit): module import cycles. diagram (focus, max_nodes, \
+        max_edges, group_by_communities, resolution): the module graph \
+        as mermaid, for a human. path (requires source and target; \
+        include_unique, include_ambiguous): the fewest-hop resolved \
+        chain between two endpoints. health (limit): orphan candidates, \
+        unused exports, hubs and complexity hotspots.";
 
 /// The description of the `read` tool.
-pub const READ: &str = "Read numbered lines of one file with enclosing-scope headers (slice), or \
-        list the repository tree with gitignore applied (dir). slice \
-        (requires path; lines or whole_file, not both; context_lines). \
-        dir (path, default the root; depth, max_entries). For one whole \
-        symbol, symbols expand fits better.";
+pub const READ: &str = "You need file contents rather than symbols: numbered lines of one file \
+        with enclosing-scope headers (slice), or the repository tree \
+        with gitignore applied (dir). slice (requires path; lines or \
+        whole_file, not both; context_lines). dir (path, default the \
+        root; depth, max_entries). Prefer symbols operation 'expand' \
+        when a symbol boundary fits.";
 
 /// The description of the `read_slice` tool.
 pub const READ_SLICE: &str = "You need exact lines and no symbol boundary fits: return numbered \

@@ -132,7 +132,8 @@ pub const SHARED_CALLERS: &str = "Rank symbols whose callers overlap the target'
         does-a-utility-already-exist check.";
 
 /// The parameter description keyed `slice_lines`.
-pub const SLICE_LINES: &str = "One [start, end] range or a list of them, 1-based and inclusive.";
+pub const SLICE_LINES: &str = "One [start, end] range, or a list of them such as [[10, 40], [90, \
+        120]]. 1-based and inclusive.";
 
 /// The parameter description keyed `stable_ids`.
 pub const STABLE_IDS: &str = "Stable ids from map, overview, find, explain or locate.";

@@ -60,8 +60,8 @@
   values. Every tool, operation and parameter stays, with the same type,
   bounds, required list and `_meta`, and the agent guide no longer calls
   `operation` a plain string. The tools/list answer of the debug
-  `agentless-mcp-server` goes from 15,242 to 10,173 bytes, and the cl100k
-  count of its six tool entries from 3,406 to 2,245.
+  `agentless-mcp-server` goes from 15,242 to 10,266 bytes, and the cl100k
+  count of its six tool entries from 3,406 to 2,270.
 
 ## 0.11.0rc1 -- 2026-10-23
 

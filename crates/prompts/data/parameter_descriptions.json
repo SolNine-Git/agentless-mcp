@@ -13,7 +13,7 @@
   "stable_ids": "Stable ids from map, overview, find, explain or locate.",
   "expand_limit": "Maximum symbols expanded in this call; additional requested identifiers are reported as omitted. Omit it to use the tool's default.",
   "file_path": "Repository-relative file.",
-  "slice_lines": "One [start, end] range or a list of them, 1-based and inclusive.",
+  "slice_lines": "One [start, end] range, or a list of them such as [[10, 40], [90, 120]]. 1-based and inclusive.",
   "context_lines": "Lines added around each interval.",
   "whole_file": "The whole file, in place of lines.",
   "find_name": "Name, Qualified.name or substring.",
