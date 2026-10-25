@@ -171,13 +171,8 @@ pub(crate) fn expand_one(
     raw: &str,
     files: &mut ParsedFiles,
 ) -> Noted<Result<SymbolCard, String>> {
-    resolve_symbol_span_in(reading, raw, files).map(|span| {
-        span.map(|span| body_card(&span))
-            .map_err(|missed| match missed {
-                Missed::Reason(reason) => reason,
-                Missed::Refused(refusal) => refusal.to_string(),
-            })
-    })
+    resolve_symbol_span_in(reading, raw, files)
+        .map(|span| span.map(|span| body_card(&span)).map_err(Missed::reason))
 }
 
 // The card with the span's lines, each behind its line number.

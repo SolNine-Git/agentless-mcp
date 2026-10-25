@@ -72,3 +72,23 @@ fn a_data_key_id_says_in_one_sentence_that_a_key_has_no_fan_in() {
         expected
     );
 }
+
+#[test]
+fn a_name_of_several_definitions_counts_them_and_lists_no_declaration() {
+    let expected = "2 references to Invoice, a name that 7 definitions share\n\n\
+                    pricing.lua  (2 references, same-file, locals not checked)\n  \
+                    [lua:pricing.lua::Invoice.price] @12\n  \
+                    (module level) @16\n";
+    assert_eq!(refs_body("tier2", "Invoice"), expected);
+}
+
+#[test]
+fn a_data_file_id_that_names_no_key_gives_the_reason_that_expand_gives() {
+    let expected = "config.json keeps an outline of its keys, and service.nope is not in it: the \
+                    outline stops at depth 2, at list items and at 500 keys. Read the lines with \
+                    read slice, or Grep for the key.\n";
+    assert_eq!(
+        refs_body("tier2", "json:config.json::service.nope"),
+        expected
+    );
+}

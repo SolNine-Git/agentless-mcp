@@ -71,7 +71,7 @@ fn an_expansion_where_no_id_resolves_is_an_error_with_each_row() {
     let ids = ["py:shapes.py::gone", "py:no/such.py::f"];
     let arguments = json!({"operation": "expand", "stable_ids": ids});
     let rows = format!(
-        "unresolved: py:shapes.py::gone -- shapes.py no longer defines gone\n\
+        "unresolved: py:shapes.py::gone -- shapes.py does not define gone\n\
          unresolved: py:no/such.py::f -- {UNREADABLE}"
     );
     assert_eq!(called(&server, &arguments), refused(&rows));
@@ -83,6 +83,6 @@ fn an_expansion_with_one_resolved_id_answers_and_names_the_other_id() {
     let ids = ["py:shapes.py::area", "py:shapes.py::gone"];
     let arguments = json!({"operation": "expand", "stable_ids": ids});
     let expected = "[py:shapes.py::area] @1-2\n  function\n  1| def area():\n  2|     return 0\n\n\
-        unresolved: py:shapes.py::gone -- shapes.py no longer defines gone\n";
+        unresolved: py:shapes.py::gone -- shapes.py does not define gone\n";
     assert_eq!(body(&called(&server, &arguments)), expected);
 }

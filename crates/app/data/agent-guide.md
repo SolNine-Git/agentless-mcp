@@ -644,6 +644,12 @@ A reference that sits outside every symbol -- an import, a module-level call
 -- reads `(module level) @line` and carries no id. There is nothing to expand
 there.
 
+The first line counts the references. When the target resolves to one
+definition, the line names that definition by its stable id. When several
+definitions share the name, the line says how many, because each row can
+reference any one of them. In every language, a line that only declares the
+name is not a reference.
+
 You get callees for free when you read a body. You do not get callers that
 way, and callers are what an error-path review or a blast-radius question
 needs.
@@ -664,7 +670,10 @@ line. When no code symbol matches, `find-symbol` also names the data files
 that spell the query outside their outline. The overview of a data file
 prints its outline and counts the keys it leaves out. A key has no fan-in, a
 code spelling of a key is not a reference to the data file, and a string value
-in a data file references nothing. Use `grep` to find where a key is spelled.
+in a data file references nothing. A key has no edges, so `path` does not
+take a key's id as an endpoint. When an id names a key that its file does not
+hold, `explain`, `refs` and `path` give the reason that `expand` gives. Use
+`grep` to find where a key is spelled.
 
 The tool now **labels every group with the evidence tier behind it**, so the
 over-reporting costs you nothing. These group headers come from

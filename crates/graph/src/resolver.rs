@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use facts::{Ref, Role};
+use facts::{Declared, Ref, Role};
 
 use crate::names::{Definition, NameIndex};
 use crate::scan::FileFacts;
@@ -156,16 +156,10 @@ impl<'a> Resolver<'a> {
         file: &'a FileFacts,
         names: Option<&'r BTreeSet<&str>>,
     ) -> impl Iterator<Item = (&'a Ref, Resolution<'a>)> + 'r {
-        let declarations: BTreeSet<(&str, u32)> = file
-            .facts
-            .symbols
-            .iter()
-            .map(|symbol| (symbol.name.as_str(), symbol.name_line))
-            .collect();
+        let declared = Declared::of(&file.facts.symbols, &file.facts.refs);
         file.facts.refs.iter().filter_map(move |reference| {
             let wanted = names.is_none_or(|names| names.contains(reference.name.as_str()));
-            let declared = declarations.contains(&(reference.name.as_str(), reference.line));
-            if !wanted || !reference.is_resolvable() || declared {
+            if !wanted || !reference.is_resolvable() || declared.declares(reference) {
                 return None;
             }
             self.resolve_site(reference, &file.path)

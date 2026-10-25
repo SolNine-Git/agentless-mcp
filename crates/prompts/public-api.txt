@@ -77,6 +77,7 @@ pub const prompts::messages::DATA_KEY_NO_FAN_IN: prompts::Template<(prompts::Tex
 pub const prompts::messages::EXPAND_BATCH_SHORTENED: prompts::Template<(prompts::Count, prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_BODY_TRUNCATED: prompts::Template<(prompts::Count, prompts::Count)>
 pub const prompts::messages::EXPAND_NO_ROOM: prompts::Template<(prompts::Count, prompts::Count)>
+pub const prompts::messages::EXPLAIN_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::EXPLAIN_TIE: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_DATA_FOLDED: prompts::Template<(prompts::Text, prompts::Count)>
 pub const prompts::messages::FIND_DATA_FOLDED_REST: prompts::Template<(prompts::Text, prompts::Count)>
@@ -154,7 +155,11 @@ pub const prompts::messages::PAIR_EDITS_UNAPPLIED: prompts::Template<(prompts::T
 pub const prompts::messages::PAIR_NEW_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::PAIR_OLD_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::PAIR_WORKTREE_UNREAD: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::PATH_DATA_KEY_NO_EDGES: prompts::Template<(prompts::Text, prompts::Text)>
+pub const prompts::messages::PATH_ENDPOINT_NO_MATCH: prompts::Template<prompts::Text>
 pub const prompts::messages::PATH_NEEDS_ENDPOINTS: prompts::Template<prompts::Text>
+pub const prompts::messages::REFS_HEADER: prompts::Template<(prompts::Text, prompts::Count)>
+pub const prompts::messages::REFS_HEADER_SHARED: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::REFS_TARGET_UNRESOLVED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::REPO_REFUSED_NOT_ALLOWED: prompts::Template<prompts::Text>
 pub const prompts::messages::REPO_REFUSED_NO_ROOTS: &str
@@ -169,6 +174,7 @@ pub const prompts::messages::SLICE_RANGE_BEYOND_FILE: prompts::Template<(prompts
 pub const prompts::messages::SLICE_RANGE_NOT_A_RANGE: prompts::Template<(prompts::Text, prompts::Count, prompts::Count)>
 pub const prompts::messages::SLICE_RANGE_REVERSED: prompts::Template<prompts::Text>
 pub const prompts::messages::SPAN_DATA_KEY_UNLISTED: prompts::Template<(prompts::Text, prompts::Text, prompts::Count)>
+pub const prompts::messages::SPAN_SYMBOL_UNDEFINED: prompts::Template<(prompts::Text, prompts::Text)>
 pub const prompts::messages::STABLE_IDS_PATTERN: prompts::Template<prompts::Text>
 pub const prompts::messages::SURFACE_V1_DEPRECATED: prompts::Template<prompts::Text>
 pub const prompts::messages::TOOL_TAKES: prompts::Template<(prompts::Text, prompts::Text)>

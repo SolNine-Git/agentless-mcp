@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use facts::{OUTLINE_CAP, StableId, Symbol, is_data_language, line_count};
-use prompts::messages::SPAN_DATA_KEY_UNLISTED;
+use prompts::messages::{SPAN_DATA_KEY_UNLISTED, SPAN_SYMBOL_UNDEFINED};
 use store::{FileText, Served};
 use syntax::Language;
 
@@ -35,6 +35,16 @@ pub(crate) enum Missed {
     Refused(io::Refusal),
 }
 
+impl Missed {
+    // The text that an answer gives for the id, as expand gives it.
+    pub(crate) fn reason(self) -> String {
+        match self {
+            Missed::Reason(reason) => reason,
+            Missed::Refused(refusal) => refusal.to_string(),
+        }
+    }
+}
+
 pub(crate) struct ParsedFile {
     language: Language,
     source: Arc<str>,
@@ -53,20 +63,15 @@ pub(crate) fn resolve_symbol_span(
     resolve_symbol_span_in(reading, raw, &mut ParsedFiles::new())
 }
 
-// The key that a data file's stable id names, or `None` when `raw` is no such id or the file
-// does not hold the key. Data keys stay out of the name graph, so only the file resolves them.
-pub(crate) fn data_key_span(reading: &Reading<'_>, raw: &str) -> Option<Noted<SymbolSpan>> {
+// The key that a data file's stable id names, or why it names none; `None` when `raw` is no data
+// file's id. Data keys stay out of the name graph, so only the file resolves them.
+pub(crate) fn data_key_span(
+    reading: &Reading<'_>,
+    raw: &str,
+) -> Option<Noted<Result<SymbolSpan, Missed>>> {
     let parsed: StableId = raw.parse().ok()?;
     let language = Language::from_path(parsed.path())?;
-    if !is_data_language(language) {
-        return None;
-    }
-    let found = resolve_symbol_span(reading, raw);
-    let span = found.value.ok()?;
-    Some(Noted {
-        value: span,
-        diagnostics: found.diagnostics,
-    })
+    is_data_language(language).then(|| resolve_symbol_span(reading, raw))
 }
 
 // As `resolve_symbol_span`, with a path parsed once per `files`. Each id that names the path
@@ -123,12 +128,13 @@ fn span(parsed: &StableId, file: &ParsedFile) -> Result<SymbolSpan, Missed> {
     })
 }
 
-// A data file keeps only an outline of its keys, so a key it still holds can miss.
+// A data file keeps only an outline of its keys, so a key it still holds can miss. An id can be
+// a guess, so the reason claims no earlier state of the file.
 fn undefined(language: Language, path: &str, qualname: &str) -> String {
     if is_data_language(language) {
         return SPAN_DATA_KEY_UNLISTED.render((path, qualname, OUTLINE_CAP));
     }
-    format!("{path} no longer defines {qualname}")
+    SPAN_SYMBOL_UNDEFINED.render((path, qualname))
 }
 
 // The path came from a caller, so a path that resolves outside the root is refused.

@@ -501,6 +501,12 @@
       },
       "text": "not expanded: 400 ids exceed the 40 one call can answer; retry with at most that many."
     },
+    "explain_no_match": {
+      "arguments": {
+        "target": "Invoice.totl"
+      },
+      "text": "no symbol matches Invoice.totl"
+    },
     "explain_tie": {
       "arguments": {
         "count": 2,
@@ -1014,11 +1020,39 @@
       },
       "text": "not checked: the working-tree text of src/app/svc.py was not read (unreadable: No such file), so no pair check compared this file."
     },
+    "path_data_key_no_edges": {
+      "arguments": {
+        "name": "receipt_header",
+        "target": "json:crates/prompts/data/envelope.json::receipt_header"
+      },
+      "text": "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a data key has no edges: Grep finds the spellings of receipt_header."
+    },
+    "path_endpoint_no_match": {
+      "arguments": {
+        "target": "nothing_here"
+      },
+      "text": "no symbol or file matches nothing_here"
+    },
     "path_needs_endpoints": {
       "arguments": {
         "tool": "orient"
       },
       "text": "orient operation 'path' needs both source and target: each is a stable id, a qualified name, or a repository-relative file path. Retry naming both ends."
+    },
+    "refs_header": {
+      "arguments": {
+        "count": 3,
+        "target": "py:pricing.py::PriceBook.quote"
+      },
+      "text": "3 references to py:pricing.py::PriceBook.quote"
+    },
+    "refs_header_shared": {
+      "arguments": {
+        "count": 8,
+        "name": "helper",
+        "total": 2
+      },
+      "text": "8 references to helper, a name that 2 definitions share"
     },
     "refs_target_unresolved": {
       "arguments": {
@@ -1107,6 +1141,13 @@
         "qualname": "cases.generation"
       },
       "text": "fixtures/generation.json keeps an outline of its keys, and cases.generation is not in it: the outline stops at depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep for the key."
+    },
+    "span_symbol_undefined": {
+      "arguments": {
+        "path": "src/app/svc.py",
+        "qualname": "Invoice.totl"
+      },
+      "text": "src/app/svc.py does not define Invoice.totl"
     },
     "stable_ids_pattern": {
       "arguments": {

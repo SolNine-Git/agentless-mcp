@@ -18,6 +18,16 @@ fn a_data_key_outside_the_outline_names_the_outline_and_grep() {
 }
 
 #[test]
+fn an_id_that_names_no_symbol_of_its_file_claims_no_earlier_state() {
+    let scanned = Scanned::new(&LINKED);
+    let missed = resolve_symbol_span(&scanned.reading(), "py:pkg/money.py::gone").value;
+    let Err(missed) = missed else {
+        panic!("a guessed id does not resolve");
+    };
+    assert_eq!(missed.reason(), "pkg/money.py does not define gone");
+}
+
+#[test]
 fn ids_that_share_parsed_files_resolve_as_each_id_alone_does() {
     let scanned = Scanned::new(&LINKED);
     let reading = scanned.reading();

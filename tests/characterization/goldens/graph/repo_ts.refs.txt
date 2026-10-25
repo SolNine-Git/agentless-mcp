@@ -1,5 +1,5 @@
 // agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
-4 references to formatMoney
+4 references to ts:pricing.ts::formatMoney
 
 reports.ts  (4 references, resolved-via-import, locals not checked)
   (module level) @6

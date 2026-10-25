@@ -64,6 +64,23 @@ fn a_data_key_id_explains_its_card_and_says_a_key_has_no_fan_in() {
 }
 
 #[test]
+fn a_data_file_id_that_names_no_key_gives_the_reason_and_not_a_code_symbol() {
+    let files = [
+        ("data.json", "{\n  \"receipt_header\": \"x\"\n}\n"),
+        ("use.py", "def caller():\n    return 1\n"),
+    ];
+    let answer = explained(&files, "json:data.json::caller");
+    assert!(answer.card.is_none());
+    assert!(!answer.data_key);
+    assert_eq!(
+        answer.message,
+        "data.json keeps an outline of its keys, and caller is not in it: the outline stops at \
+         depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep for the \
+         key."
+    );
+}
+
+#[test]
 fn nothing_matching_is_a_message_and_no_card() {
     let answer = explained(&LINKED, "zz_nothing");
     assert!(answer.card.is_none());

@@ -56,7 +56,57 @@ fn a_declaration_is_never_a_reference() {
     let answer = referenced(&CALLED, "as_sql");
     assert!(answer.target_resolved);
     assert_eq!(answer.definition, None);
+    assert_eq!(answer.definitions, 2);
     assert_eq!(listed(&answer), [("b.py", 5)]);
+}
+
+#[test]
+fn a_bare_name_of_one_definition_names_that_definition() {
+    let answer = referenced(&CALLED, "Value");
+    assert!(answer.target_resolved);
+    assert_eq!(answer.definition.as_deref(), Some("py:a.py::Value"));
+    assert_eq!(answer.definitions, 1);
+}
+
+// A class of one name in two languages, its constructors, and a file that uses it.
+const DECLARED: [(&str, &str); 3] = [
+    (
+        "Deco.java",
+        "package x;\n\npublic class Deco {\n    public Deco() {\n    }\n\n    public Deco(int \
+         level) {\n    }\n}\n",
+    ),
+    (
+        "Deco.cs",
+        "namespace X\n{\n    public class Deco\n    {\n    }\n}\n",
+    ),
+    (
+        "Use.java",
+        "package x;\n\nclass Use {\n    Object make() {\n        return new Deco();\n    }\n}\n",
+    ),
+];
+
+#[test]
+fn a_declaring_identifier_is_no_reference_in_any_language() {
+    let answer = referenced(&DECLARED, "Deco");
+    assert_eq!(answer.definitions, 4);
+    assert_eq!(listed(&answer), [("Use.java", 5)]);
+}
+
+#[test]
+fn a_declaring_line_that_spells_the_name_again_stays_a_reference_row() {
+    let files = [
+        (
+            "Other.java",
+            "class Other {\n    static final int CJ = 1;\n}\n",
+        ),
+        (
+            "Holder.java",
+            "class Holder {\n    static final int CJ = Other.CJ;\n}\n",
+        ),
+    ];
+    let answer = referenced(&files, "CJ");
+    assert_eq!(answer.definitions, 2);
+    assert_eq!(listed(&answer), [("Holder.java", 2)]);
 }
 
 #[test]
@@ -71,6 +121,29 @@ fn a_data_key_id_has_no_fan_in() {
     let answer = referenced(&files, "json:data.json::receipt_header");
     assert_eq!(answer.data_key.as_deref(), Some("receipt_header"));
     assert!(answer.groups.rows.is_empty());
+    assert_eq!(answer.groups.total, 0);
+}
+
+#[test]
+fn a_data_file_id_that_names_no_key_gives_the_reason_and_lists_no_code_site() {
+    let files = [
+        ("data.json", "{\n  \"receipt_header\": \"x\"\n}\n"),
+        (
+            "use.py",
+            "def caller():\n    return 1\n\n\ndef other():\n    return caller()\n",
+        ),
+    ];
+    let answer = referenced(&files, "json:data.json::caller");
+    assert_eq!(
+        answer.unresolved.as_deref(),
+        Some(
+            "data.json keeps an outline of its keys, and caller is not in it: the outline stops \
+             at depth 2, at list items and at 500 keys. Read the lines with read slice, or Grep \
+             for the key."
+        )
+    );
+    assert!(!answer.target_resolved);
+    assert_eq!(answer.data_key, None);
     assert_eq!(answer.groups.total, 0);
 }
 

@@ -4,9 +4,9 @@
 mod shared;
 mod sites;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use facts::{Role, StableId};
+use facts::{Declared, Role, StableId};
 use graph::{Definition, Lookup, NameIndex, Resolver, Scopes, Site, references_to};
 use kernel::{Bounded, Deadline};
 
@@ -15,7 +15,7 @@ use crate::detached::answered_over;
 use crate::endpoints::resolve_target;
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::RepoFacts;
-use crate::span::data_key_span;
+use crate::span::{Missed, SymbolSpan, data_key_span};
 use crate::{Error, IntArg, Noted, Reading, Services, Skipped};
 
 /// A refs request: the target, the most sites, and whether to rank the shared callers.
@@ -42,10 +42,14 @@ pub struct RefsResult {
     pub shared_callers: bool,
     /// Whether the target named what it found. When false, the answer is about a name.
     pub target_resolved: bool,
-    /// The stable id of the one definition a qualified name resolved to.
+    /// The stable id of the one definition a name or a qualified name resolved to.
     pub definition: Option<String>,
+    /// How many definitions the target resolved to.
+    pub definitions: usize,
     /// The key's name when the target is a data key, which has no fan-in.
     pub data_key: Option<String>,
+    /// Why a data file's id names no key, or `None`.
+    pub unresolved: Option<String>,
     /// The files the scan passed over.
     pub skipped: Vec<Skipped>,
     /// How many files the scan read.
@@ -158,7 +162,7 @@ pub fn refs(
         Err(error) => return Noted::new(Err(error)),
     };
     if let Some(found) = data_key_span(reading, &request.target) {
-        return found.map(|span| Ok(no_fan_in(request, limit, span.symbol.name)));
+        return found.map(|span| Ok(keyed(request, limit, span)));
     }
     let stoplist = &reading.repo.config.stoplist;
     let loaded = RepoFacts::load(services, reading);
@@ -207,15 +211,32 @@ fn fan_in(
         shared: Bounded::cut(ranked, limit),
         shared_callers: request.shared_callers,
         target_resolved: lookup.scoped,
-        definition: qualified_definition(&request.target, &lookup),
+        definition: single_definition(&request.target, &lookup),
+        definitions: lookup.definitions.len(),
         data_key: None,
+        unresolved: None,
         skipped: facts.skipped.clone(),
         scanned: Some(facts.files.len()),
     })
 }
 
-// A data key stays out of the name graph, so nothing references it.
-fn no_fan_in(request: &RefsRequest, limit: usize, key: String) -> RefsResult {
+// A data key stays out of the name graph, so nothing references it. A key that the file does
+// not hold gets the reason that expand gives.
+fn keyed(request: &RefsRequest, limit: usize, span: Result<SymbolSpan, Missed>) -> RefsResult {
+    match span {
+        Ok(span) => RefsResult {
+            target_resolved: true,
+            data_key: Some(span.symbol.name),
+            ..nothing_listed(request, limit)
+        },
+        Err(missed) => RefsResult {
+            unresolved: Some(missed.reason()),
+            ..nothing_listed(request, limit)
+        },
+    }
+}
+
+fn nothing_listed(request: &RefsRequest, limit: usize) -> RefsResult {
     RefsResult {
         target: request.target.clone(),
         groups: RefListing {
@@ -226,25 +247,27 @@ fn no_fan_in(request: &RefsRequest, limit: usize, key: String) -> RefsResult {
         },
         shared: Bounded::cut(Vec::new(), limit),
         shared_callers: request.shared_callers,
-        target_resolved: true,
+        target_resolved: false,
         definition: None,
-        data_key: Some(key),
+        definitions: 0,
+        data_key: None,
+        unresolved: None,
         skipped: Vec::new(),
         scanned: None,
     }
 }
 
-// The one definition a dotted name, not a stable id, resolved to.
-fn qualified_definition(target: &str, lookup: &Lookup<'_>) -> Option<String> {
-    let qualified = target.contains('.') && target.parse::<StableId>().is_err();
+// The one definition a name or a dotted name, not a stable id, resolved to.
+fn single_definition(target: &str, lookup: &Lookup<'_>) -> Option<String> {
+    let named = target.parse::<StableId>().is_err();
     match lookup.definitions.as_slice() {
-        [only] if qualified && lookup.scoped => Some(only.stable_id().to_string()),
+        [only] if named && lookup.scoped => Some(only.stable_id().to_string()),
         _ => None,
     }
 }
 
-// Every spelling of each definition outside its own span, then the alias spellings. A site
-// that declares a name is no reference to it.
+// Every spelling of each definition outside its own span, then the alias spellings, less the
+// lines that only declare: a declaration is no reference, and a row is a line.
 fn spellings<'a>(
     resolver: &Resolver<'a>,
     definitions: &[Definition<'a>],
@@ -255,10 +278,18 @@ fn spellings<'a>(
         .collect();
     let direct =
         (definitions.iter()).flat_map(|definition| references_to(resolver.index(), definition));
-    let referencing = direct.filter(|site| site.reference.role != Role::Declaration);
-    referencing
-        .chain(alias_sites(resolver, target_ids, &spelled))
+    let mut declared: HashMap<&'a str, Declared<'a>> = HashMap::new();
+    let all = direct.chain(alias_sites(resolver, target_ids, &spelled));
+    all.filter(|site| !only_declares(&mut declared, site))
         .collect()
+}
+
+// Each file's declared names are collected once, on its first site.
+fn only_declares<'a>(declared: &mut HashMap<&'a str, Declared<'a>>, site: &Site<'a>) -> bool {
+    let facts = &site.file.facts;
+    let file =
+        (declared.entry(site.path())).or_insert_with(|| Declared::of(&facts.symbols, &facts.refs));
+    file.only_declares(&site.reference.name, site.reference.line)
 }
 
 // A file that imported the target under another name calls it by that name. Only the import

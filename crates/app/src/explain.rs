@@ -3,13 +3,13 @@
 
 use graph::{Definition, NameIndex, SymbolEdge, SymbolGraph, Tier};
 use kernel::Bounded;
-use prompts::messages::DATA_KEY_NO_FAN_IN;
+use prompts::messages::{DATA_KEY_NO_FAN_IN, EXPLAIN_NO_MATCH};
 
 use crate::bounds::within;
 use crate::endpoints::{best_band, resolve_target};
 use crate::ops::limits::MAX_LIMIT;
 use crate::scan::over_scan;
-use crate::span::{SymbolSpan, data_key_span};
+use crate::span::{Missed, SymbolSpan, data_key_span};
 use crate::symbol_graph::{tier_at, verbs, with_resolved};
 use crate::{
     Error, IntArg, Noted, RationaleNode, Reading, Services, SymbolCard, rationale_nodes,
@@ -108,7 +108,7 @@ pub fn explain(
     };
     let target = request.target.as_str();
     if let Some(found) = data_key_span(reading, target) {
-        return found.map(|span| Ok(data_key(target, &span)));
+        return found.map(|span| Ok(keyed(target, span)));
     }
     over_scan(services, reading, |facts| {
         with_resolved(&facts.files, reading.deadline, |index, graph| {
@@ -125,7 +125,7 @@ fn explanation(
 ) -> Explanation {
     let ordered = resolve_target(index, target).definitions;
     if ordered.is_empty() {
-        return missing(target);
+        return uncarded(target, EXPLAIN_NO_MATCH.render(target));
     }
     let tied = best_band(&ordered, target).len();
     let chosen = &ordered[0];
@@ -168,14 +168,24 @@ fn explanation(
     }
 }
 
-// A data key stays out of the name graph, so its card stands alone.
+// A data key stays out of the name graph, so its card stands alone. A key that the file does not
+// hold gets the reason that expand gives.
+fn keyed(target: &str, span: Result<SymbolSpan, Missed>) -> Explanation {
+    match span {
+        Ok(span) => data_key(target, &span),
+        Err(missed) => uncarded(target, missed.reason()),
+    }
+}
+
 fn data_key(target: &str, span: &SymbolSpan) -> Explanation {
     let card = symbol_card(span.language, &span.path, &span.symbol, String::new());
     Explanation {
         card: Some(card),
-        message: DATA_KEY_NO_FAN_IN.render((target, span.symbol.name.as_str())),
         data_key: true,
-        ..missing(target)
+        ..uncarded(
+            target,
+            DATA_KEY_NO_FAN_IN.render((target, span.symbol.name.as_str())),
+        )
     }
 }
 
@@ -189,11 +199,11 @@ fn card(definition: &Definition<'_>) -> SymbolCard {
     )
 }
 
-fn missing(target: &str) -> Explanation {
+fn uncarded(target: &str, message: String) -> Explanation {
     Explanation {
         target: target.to_owned(),
         card: None,
-        message: format!("no symbol matches {target}"),
+        message,
         alternatives: Bounded::cut(Vec::new(), 0),
         rationales: Vec::new(),
         fan_out: Vec::new(),

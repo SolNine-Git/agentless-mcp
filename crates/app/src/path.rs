@@ -1,11 +1,11 @@
 //! The fewest-hop chain of resolved relationships between two symbols or files.
 
-use graph::{Hop, PathBounds, PathResult, shortest_path};
+use graph::{Hop, PathBounds, PathResult, SymbolGraph, shortest_path};
 
 pub use graph::PathPolicy;
 
 use crate::bounds::at_least;
-use crate::endpoints::{Located, endpoint};
+use crate::endpoints::{Located, data_key_endpoint, endpoint};
 use crate::scan::over_scan;
 use crate::symbol_graph::{verbs, with_resolved};
 use crate::{Error, IntArg, Noted, Reading, Services};
@@ -87,18 +87,56 @@ pub fn path(
         max_visited,
         deadline: reading.deadline,
     };
-    over_scan(services, reading, |facts| {
-        with_resolved(&facts.files, reading.deadline, |index, graph| {
-            let start = endpoint(index, graph, &request.source);
-            let finish = endpoint(index, graph, &request.target);
-            if !start.message.is_empty() || !finish.message.is_empty() {
-                return Ok(unresolved(request, start, finish));
-            }
-            let policy = request.policy;
-            let found = shortest_path(graph, &start.node, &finish.node, policy, bounds)?;
-            Ok(trace(policy, start, finish, &found))
+    let Noted {
+        value: keyed,
+        mut diagnostics,
+    } = data_key_ends(reading, request);
+    let traced = match keyed {
+        [Some(start), Some(finish)] => Noted::new(Ok(unresolved(request, start, finish))),
+        [start, finish] => over_scan(services, reading, |facts| {
+            with_resolved(&facts.files, reading.deadline, |index, graph| {
+                let start = start.unwrap_or_else(|| endpoint(index, graph, &request.source));
+                let finish = finish.unwrap_or_else(|| endpoint(index, graph, &request.target));
+                walked(request, start, finish, graph, bounds)
+            })
+        }),
+    };
+    diagnostics.extend(traced.diagnostics);
+    Noted {
+        value: traced.value,
+        diagnostics,
+    }
+}
+
+// A data key stays out of the graph, so a data file's id is refused before the scan, with the
+// warnings of reading its file.
+fn data_key_ends(reading: &Reading<'_>, request: &PathRequest) -> Noted<[Option<Located>; 2]> {
+    let mut diagnostics = Vec::new();
+    let ends = [&request.source, &request.target].map(|text| {
+        data_key_endpoint(reading, text).map(|found| {
+            diagnostics.extend(found.diagnostics);
+            found.value
         })
-    })
+    });
+    Noted {
+        value: ends,
+        diagnostics,
+    }
+}
+
+fn walked(
+    request: &PathRequest,
+    start: Located,
+    finish: Located,
+    graph: &SymbolGraph<'_>,
+    bounds: PathBounds<'_>,
+) -> Result<PathTrace, Error> {
+    if !start.message.is_empty() || !finish.message.is_empty() {
+        return Ok(unresolved(request, start, finish));
+    }
+    let policy = request.policy;
+    let found = shortest_path(graph, &start.node, &finish.node, policy, bounds)?;
+    Ok(trace(policy, start, finish, &found))
 }
 
 fn trace(policy: PathPolicy, start: Located, finish: Located, found: &PathResult<'_>) -> PathTrace {
@@ -175,11 +213,19 @@ fn unresolved(request: &PathRequest, start: Located, finish: Located) -> PathTra
         target_label: finish.label,
         hops: Vec::new(),
         found: false,
-        message: reasons.join("; "),
+        message: joined(&reasons),
         visited: 0,
         exhausted: false,
         policy: request.policy,
         endpoints_resolved: false,
+    }
+}
+
+// Two reasons join into one sentence, so the first gives up its full stop.
+fn joined(reasons: &[&str]) -> String {
+    match reasons {
+        [first, second] => format!("{}; {second}", first.trim_end_matches('.')),
+        _ => reasons.concat(),
     }
 }
 

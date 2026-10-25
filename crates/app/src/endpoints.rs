@@ -2,6 +2,10 @@
 //! which explain and refs read, and the endpoint that path starts from.
 
 use graph::{Definition, Lookup, NameIndex, SymbolGraph, definitions_for, resolve_definitions};
+use prompts::messages::{PATH_DATA_KEY_NO_EDGES, PATH_ENDPOINT_NO_MATCH};
+
+use crate::span::data_key_span;
+use crate::{Noted, Reading};
 
 // The definitions `target` names, best first. A dotted name that no file path confirms still
 // names the definitions whose qualified name it spells, such as `Class.method`.
@@ -69,7 +73,7 @@ pub(crate) fn endpoint(index: &NameIndex<'_>, graph: &SymbolGraph<'_>, text: &st
     }
     let candidates = definitions_for(index, text);
     if candidates.is_empty() {
-        return refused(text, format!("no symbol or file matches {text}"));
+        return refused(text, PATH_ENDPOINT_NO_MATCH.render(text));
     }
     let ranked = rank_candidates(candidates, text);
     match best_band(&ranked, text) {
@@ -82,6 +86,19 @@ pub(crate) fn endpoint(index: &NameIndex<'_>, graph: &SymbolGraph<'_>, text: &st
             refused(text, format!("{text} is ambiguous: {}", ids.join(", ")))
         }
     }
+}
+
+// A data key stays out of the graph, so a data file's id is no endpoint: the key has no edges, or
+// the file does not hold it and the reason is the one expand gives. `None` for any other text.
+pub(crate) fn data_key_endpoint(reading: &Reading<'_>, text: &str) -> Option<Noted<Located>> {
+    let found = data_key_span(reading, text)?;
+    Some(found.map(|span| {
+        let message = match span {
+            Ok(span) => PATH_DATA_KEY_NO_EDGES.render((text, span.symbol.name.as_str())),
+            Err(missed) => missed.reason(),
+        };
+        refused(text, message)
+    }))
 }
 
 fn located(node: String, label: String) -> Located {

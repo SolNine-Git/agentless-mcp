@@ -575,6 +575,10 @@ pub const EXPAND_NO_ROOM: Template<(Count, Count)> = Template::new(&[
     Piece::Text(" one call can answer; retry with at most that many."),
 ]);
 
+/// A template that takes `target`.
+pub const EXPLAIN_NO_MATCH: Template<Text> =
+    Template::new(&[Piece::Text("no symbol matches "), Piece::Value(0)]);
+
 /// A template that takes (`target`, `count`).
 pub const EXPLAIN_TIE: Template<(Text, Count)> = Template::new(&[
     Piece::Text("ambiguous: "),
@@ -1326,6 +1330,21 @@ pub const PAIR_WORKTREE_UNREAD: Template<(Text, Text)> = Template::new(&[
     Piece::Text("), so no pair check compared this file."),
 ]);
 
+/// A template that takes (`target`, `name`).
+pub const PATH_DATA_KEY_NO_EDGES: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(
+        " is a data key, and a data key has no edges: Grep finds the \
+        spellings of ",
+    ),
+    Piece::Value(1),
+    Piece::Text("."),
+]);
+
+/// A template that takes `target`.
+pub const PATH_ENDPOINT_NO_MATCH: Template<Text> =
+    Template::new(&[Piece::Text("no symbol or file matches "), Piece::Value(0)]);
+
 /// A template that takes `tool`.
 pub const PATH_NEEDS_ENDPOINTS: Template<Text> = Template::new(&[
     Piece::Value(0),
@@ -1334,6 +1353,27 @@ pub const PATH_NEEDS_ENDPOINTS: Template<Text> = Template::new(&[
         stable id, a qualified name, or a repository-relative file \
         path. Retry naming both ends.",
     ),
+]);
+
+/// A template that takes (`target`, `count`).
+pub const REFS_HEADER: Template<(Text, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "reference", "references"),
+    Piece::Text(" to "),
+    Piece::Value(0),
+]);
+
+/// A template that takes (`name`, `count`, `total`).
+pub const REFS_HEADER_SHARED: Template<(Text, Count, Count)> = Template::new(&[
+    Piece::Value(1),
+    Piece::Text(" "),
+    Piece::Choice(1, "reference", "references"),
+    Piece::Text(" to "),
+    Piece::Value(0),
+    Piece::Text(", a name that "),
+    Piece::Value(2),
+    Piece::Text(" definitions share"),
 ]);
 
 /// A template that takes (`target`, `name`).
@@ -1472,6 +1512,13 @@ pub const SPAN_DATA_KEY_UNLISTED: Template<(Text, Text, Count)> = Template::new(
     ),
     Piece::Value(2),
     Piece::Text(" keys. Read the lines with read slice, or Grep for the key."),
+]);
+
+/// A template that takes (`path`, `qualname`).
+pub const SPAN_SYMBOL_UNDEFINED: Template<(Text, Text)> = Template::new(&[
+    Piece::Value(0),
+    Piece::Text(" does not define "),
+    Piece::Value(1),
 ]);
 
 /// A template that takes `pattern`.

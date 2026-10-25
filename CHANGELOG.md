@@ -235,6 +235,58 @@
   its overview, and now it goes. A comment that shares a line with code goes,
   and the code stays. The 3 cases of `crates/facts/fixtures/skeleton_sql.json`
   that hold `/* */` change in all four option sets.
+- **`refs` lists no declaration line in any language.** Only the Python
+  extractor marks a declaration, so `refs` listed the line that declares
+  another definition of the name in every other language. One rule in
+  `crates/facts/src/declared.rs` now decides it for every language: a line is
+  no reference row when it spells the name no more times than the symbols of
+  that name that have their name on that line. A line such as `class
+  Migration(migrations.Migration):` spells the name twice and stays a row. The
+  resolver keeps its rule: it binds no spelling on a symbol's name line.
+  Python answers change for one reason: a module-level constant that two or
+  more files define is a declaration, and its line is no longer a row.
+  Measured with the release binaries of 8d0dbba and of this change on
+  lucene-12022: `refs JavaLoggingInfoStream --limit 10` went from 5
+  references, with the class line @35 and the constructor lines @47, @59 and
+  @70, to 1 reference. On django-15161, `refs DATE_FORMAT --limit 10` went
+  from 78 references, 77 of them the constant's own lines in the locale files,
+  to 1. Over every bare name that a declaring line spells, the rows that the
+  rule drops are 3,187 in this repository (3,022 Rust, 39 Python), 1,051 in
+  django-15161 (1,005 Python, 46 JavaScript), 3,143 in element-web (2,091 TSX,
+  1,048 TypeScript) and 40,162 in lucene-12022 (40,126 Java). The lines that
+  stay rows because they spell the name again are 85, 266, 5 and 282.
+- **A bare name's `refs` header names its definition, or counts them.** A
+  bare name with one definition now gets the header of its qualified name,
+  `N references to <stable id>`, and the JSON adds `definition`. A name of
+  several definitions says how many share it. Measured on django-15161:
+  `refs deconstructible` went from "32 references to deconstructible" to "32
+  references to py:django/utils/deconstruct.py::deconstructible", and `refs
+  as_sql` from "166 references to as_sql" to "166 references to as_sql, a name
+  that 90 definitions share".
+- **A data file's id that names no key gets the reason that `expand` gives.**
+  `explain`, `refs` and `path` took the code path for such an id: "no symbol
+  matches", a code symbol of the same name, or "no symbol or file matches".
+  Now each gives the reason of `expand`, and the `refs` JSON adds
+  `unresolved`. `path` with a data key's id says in one sentence that a data
+  key has no edges. Measured on this repository at 8d0dbba: `explain
+  json:crates/prompts/data/messages.json::refs` went from the card of
+  `rs:crates/app/src/refs.rs::refs`, the first of 4 code definitions named
+  `refs`, to "crates/prompts/data/messages.json keeps an outline of its keys,
+  and refs is not in it: ...", `refs` of that id from 74 references to the
+  code name `refs` to the same reason, and `path
+  json:crates/prompts/data/envelope.json::receipt_header
+  rs:crates/app/src/refs.rs::refs` from "no symbol or file matches ..." to
+  "json:crates/prompts/data/envelope.json::receipt_header is a data key, and a
+  data key has no edges: Grep finds the spellings of receipt_header." Six texts
+  move to rows of `crates/prompts/data/messages.json`: the two `refs` headers,
+  the `path` sentence for a data key, "no symbol matches", "no symbol or file
+  matches" and the reason below.
+- **The reason for an id that names no symbol claims no earlier state.** The
+  reason said "`<path>` no longer defines `<name>`" also for a guessed id. Now
+  it says "`<path>` does not define `<name>`". Measured on this repository:
+  `expand rs:crates/app/src/refs.rs::never_was` went from
+  "crates/app/src/refs.rs no longer defines never_was" to
+  "crates/app/src/refs.rs does not define never_was".
 - **A path row names a file once, and a step with no line prints no line.** A
   file node is its own label, so each file row printed its path twice, and a
   step that reached an imported file printed `@0`. Now a file row prints

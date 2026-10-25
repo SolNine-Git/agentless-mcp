@@ -4,7 +4,7 @@
 use super::{envelope, messages};
 use crate::template::Piece;
 
-pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 172] = [
+pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 178] = [
     (
         "envelope",
         "ceiling_truncation",
@@ -472,6 +472,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 172] = [
     ),
     (
         "messages",
+        "explain_no_match",
+        &["target"],
+        messages::EXPLAIN_NO_MATCH.pieces(),
+    ),
+    (
+        "messages",
         "explain_tie",
         &["target", "count"],
         messages::EXPLAIN_TIE.pieces(),
@@ -934,9 +940,33 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 172] = [
     ),
     (
         "messages",
+        "path_data_key_no_edges",
+        &["target", "name"],
+        messages::PATH_DATA_KEY_NO_EDGES.pieces(),
+    ),
+    (
+        "messages",
+        "path_endpoint_no_match",
+        &["target"],
+        messages::PATH_ENDPOINT_NO_MATCH.pieces(),
+    ),
+    (
+        "messages",
         "path_needs_endpoints",
         &["tool"],
         messages::PATH_NEEDS_ENDPOINTS.pieces(),
+    ),
+    (
+        "messages",
+        "refs_header",
+        &["target", "count"],
+        messages::REFS_HEADER.pieces(),
+    ),
+    (
+        "messages",
+        "refs_header_shared",
+        &["name", "count", "total"],
+        messages::REFS_HEADER_SHARED.pieces(),
     ),
     (
         "messages",
@@ -1021,6 +1051,12 @@ pub(crate) const CATALOG: [(&str, &str, &[&str], &[Piece]); 172] = [
         "span_data_key_unlisted",
         &["path", "qualname", "cap"],
         messages::SPAN_DATA_KEY_UNLISTED.pieces(),
+    ),
+    (
+        "messages",
+        "span_symbol_undefined",
+        &["path", "qualname"],
+        messages::SPAN_SYMBOL_UNDEFINED.pieces(),
     ),
     (
         "messages",

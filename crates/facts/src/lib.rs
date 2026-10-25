@@ -1,6 +1,7 @@
 //! The symbols, imports, identifier occurrences and error spans of one parse, their stable ids,
 //! and the skeleton, slice and location views over them.
 
+mod declared;
 mod extract;
 mod locs;
 mod mentions;
@@ -11,6 +12,7 @@ mod spelling;
 mod stable_id;
 mod values;
 
+pub use declared::Declared;
 pub use extract::{DataOutline, OUTLINE_CAP, OutlineRow, data_outline, extract, is_data_language};
 pub use locs::{
     DEFAULT_CONTEXT_LINES, FileSymbols, LocResolution, LocTarget, UnrecognizedLoc, resolve_locs,

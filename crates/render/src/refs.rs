@@ -7,7 +7,9 @@ use app::{
 };
 use facts::split_ordinal;
 use json::{fixed, round_half_even};
-use prompts::messages::{DATA_KEY_NO_FAN_IN, REFS_TARGET_UNRESOLVED};
+use prompts::messages::{
+    DATA_KEY_NO_FAN_IN, REFS_HEADER, REFS_HEADER_SHARED, REFS_TARGET_UNRESOLVED,
+};
 use serde::Serialize;
 use text::one_line;
 
@@ -30,12 +32,14 @@ fn refs_text(result: &RefsResult) -> String {
     if let Some(key) = &result.data_key {
         return DATA_KEY_NO_FAN_IN.render((&one_line(&result.target), &one_line(key))) + "\n";
     }
+    if let Some(reason) = &result.unresolved {
+        return format!("{}\n", one_line(reason));
+    }
     let complete_over = result.scanned.filter(|_| result.skipped.is_empty());
-    let named = result.definition.as_deref().unwrap_or(&result.target);
     let body = if result.shared_callers {
         shared_text(result)
     } else {
-        groups_text(&result.groups, named, complete_over)
+        groups_text(result, complete_over)
     };
     let pieces: Vec<String> = [notice(result), skipped_line(&result.skipped)]
         .into_iter()
@@ -71,16 +75,26 @@ fn references(count: usize) -> &'static str {
     }
 }
 
-fn groups_text(groups: &RefListing, target: &str, complete_over: Option<usize>) -> String {
+fn groups_text(result: &RefsResult, complete_over: Option<usize>) -> String {
+    let groups = &result.groups;
+    let named = result.definition.as_deref().unwrap_or(&result.target);
     if groups.rows.is_empty() {
-        return absence_line(target, complete_over);
+        return absence_line(named, complete_over);
     }
-    let total = groups.total;
-    let header = format!("{total} {} to {}", references(total), one_line(target));
-    let mut blocks = vec![header];
+    let mut blocks = vec![header(result, &one_line(named))];
     blocks.extend(groups.rows.iter().map(group_block));
     blocks.extend(footer_note(groups));
     blocks.join("\n\n") + "\n"
+}
+
+// One definition is named by its stable id. A name that several definitions share is counted,
+// because its rows reference any one of them.
+fn header(result: &RefsResult, named: &str) -> String {
+    let total = result.groups.total;
+    if result.target_resolved && result.definition.is_none() && result.definitions > 1 {
+        return REFS_HEADER_SHARED.render((named, total, result.definitions));
+    }
+    REFS_HEADER.render((named, total))
 }
 
 fn absence_line(target: &str, complete_over: Option<usize>) -> String {
@@ -199,6 +213,8 @@ struct RefsJson<'a> {
     definition: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     data_key: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unresolved: Option<&'a str>,
     scanned: Option<usize>,
     total: usize,
     limit: usize,
@@ -262,6 +278,7 @@ impl<'a> RefsJson<'a> {
             target_resolved: result.target_resolved,
             definition: result.definition.as_deref(),
             data_key: result.data_key.as_deref(),
+            unresolved: result.unresolved.as_deref(),
             scanned: result.scanned,
             total: groups.total,
             limit: groups.limit,

@@ -142,6 +142,25 @@ impl core::marker::Unpin for facts::DataOutline
 impl core::marker::UnsafeUnpin for facts::DataOutline
 impl core::panic::unwind_safe::RefUnwindSafe for facts::DataOutline
 impl core::panic::unwind_safe::UnwindSafe for facts::DataOutline
+pub struct facts::Declared<'a>
+impl<'a> facts::Declared<'a>
+pub fn facts::Declared<'a>::declares(&self, &facts::Ref) -> bool
+pub fn facts::Declared<'a>::holds(&self, &str, u32) -> bool
+pub fn facts::Declared<'a>::of(&'a [facts::Symbol], &'a [facts::Ref]) -> facts::Declared<'a>
+pub fn facts::Declared<'a>::only_declares(&self, &str, u32) -> bool
+impl<'a> core::clone::Clone for facts::Declared<'a>
+pub fn facts::Declared<'a>::clone(&self) -> Self
+impl<'a> core::default::Default for facts::Declared<'a>
+pub fn facts::Declared<'a>::default() -> Self
+impl<'a> core::fmt::Debug for facts::Declared<'a>
+pub fn facts::Declared<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for facts::Declared<'a>
+impl<'a> core::marker::Send for facts::Declared<'a>
+impl<'a> core::marker::Sync for facts::Declared<'a>
+impl<'a> core::marker::Unpin for facts::Declared<'a>
+impl<'a> core::marker::UnsafeUnpin for facts::Declared<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for facts::Declared<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for facts::Declared<'a>
 pub struct facts::Facts
 pub facts::Facts::errors: alloc::vec::Vec<kernel::span::Span>
 pub facts::Facts::imports: alloc::vec::Vec<facts::Import>

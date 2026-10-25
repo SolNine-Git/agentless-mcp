@@ -1,5 +1,5 @@
 // agentless-mcp receipt (repository data below)   repo: <REPO>   head: 0000000f   dirty: 0 files   cache: none
-8 references to format_amount
+8 references to py:billing/money.py::format_amount
 
 billing/invoice.py  (3 references, resolved-via-import)
   (module level) @7

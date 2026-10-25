@@ -156,6 +156,21 @@
       "one": "1 more key is not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds it.",
       "many": "2 more keys are not listed: the outline stops at depth 2, at list items and at 500 keys. Grep finds them."
     },
+    "refs_header": {
+      "arguments": {
+        "target": "py:pricing.py::PriceBook.quote"
+      },
+      "one": "1 reference to py:pricing.py::PriceBook.quote",
+      "many": "2 references to py:pricing.py::PriceBook.quote"
+    },
+    "refs_header_shared": {
+      "arguments": {
+        "name": "helper",
+        "total": 2
+      },
+      "one": "1 reference to helper, a name that 2 definitions share",
+      "many": "2 references to helper, a name that 2 definitions share"
+    },
     "scan_skipped_files": {
       "arguments": {
         "listed": "huge.py (skipped: 1040000 bytes exceeds the per-file cap of 1000000 bytes)"

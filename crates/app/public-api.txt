@@ -2503,6 +2503,7 @@ impl core::panic::unwind_safe::UnwindSafe for app::RefsRequest
 pub struct app::RefsResult
 pub app::RefsResult::data_key: core::option::Option<alloc::string::String>
 pub app::RefsResult::definition: core::option::Option<alloc::string::String>
+pub app::RefsResult::definitions: usize
 pub app::RefsResult::groups: app::RefListing
 pub app::RefsResult::scanned: core::option::Option<usize>
 pub app::RefsResult::shared: kernel::bounded::Bounded<app::SharedCaller>
@@ -2510,6 +2511,7 @@ pub app::RefsResult::shared_callers: bool
 pub app::RefsResult::skipped: alloc::vec::Vec<app::Skipped>
 pub app::RefsResult::target: alloc::string::String
 pub app::RefsResult::target_resolved: bool
+pub app::RefsResult::unresolved: core::option::Option<alloc::string::String>
 impl core::clone::Clone for app::RefsResult
 pub fn app::RefsResult::clone(&self) -> Self
 impl core::cmp::PartialEq for app::RefsResult

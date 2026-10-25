@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use facts::{Ref, Symbol};
+use facts::{Declared, Ref, Symbol};
 
 const QUOTES: [char; 2] = ['"', '\''];
 const OPENING: [char; 3] = ['(', '[', '{'];
@@ -42,10 +42,7 @@ pub(crate) fn call_sites(text: &[char], refs: &[Ref], introduced: &[Symbol]) -> 
         .filter(|reference| reference.is_reference())
         .map(|reference| (reference.name.as_str(), reference.line))
         .collect();
-    let declared: BTreeSet<(&str, u32)> = introduced
-        .iter()
-        .map(|symbol| (symbol.name.as_str(), symbol.name_line))
-        .collect();
+    let declared = Declared::of(introduced, refs);
     let starts = line_starts(text);
     let mut sites = Vec::new();
     let mut at = 0;
@@ -57,7 +54,7 @@ pub(crate) fn call_sites(text: &[char], refs: &[Ref], introduced: &[Symbol]) -> 
         let name: String = text[at..name_end].iter().collect();
         let line = line_of(&starts, at);
         let key = (name.as_str(), line);
-        if coded.contains(&key) && !declared.contains(&key) {
+        if coded.contains(&key) && !declared.holds(&name, line) {
             sites.push(CallSite {
                 name,
                 line,

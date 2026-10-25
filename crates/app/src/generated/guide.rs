@@ -555,29 +555,38 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         @88\n  [py:src/app/report.py::build_rows] @140\n```\n\nA \
         reference that sits outside every symbol -- an import, a \
         module-level call\n-- reads `(module level) @line` and carries \
-        no id. There is nothing to expand\nthere.\n\nYou get callees \
-        for free when you read a body. You do not get callers \
-        that\nway, and callers are what an error-path review or a \
-        blast-radius question\nneeds.\n\nMatching is by name, so fan-in \
-        is deliberately fuzzy. It over-reports across\nfiles that share \
-        a short name rather than under-reports, because a \
-        missed\ncaller is the expensive error.\n\nKeys in JSON, TOML \
-        and YAML files are not definitions. A data file gives \
-        an\noutline, not every key: the keys to depth 2 (a TOML table \
-        header is one\nlevel), at most 500 per file, each with its \
-        value as the file writes it, cut\nat 40 characters, or its type \
-        and item count. Keys in lists and deeper keys\nare not symbols. \
-        A key's card names its kind as `key`, and a kind filter\nleaves \
-        every key out. `find-symbol` lists at most 5 data entries after \
-        every\ncode match. A key whose name or qualified name equals \
-        the query gets a card\nfirst. A file with more than three other \
-        matching keys folds them into one\nline. When no code symbol \
-        matches, `find-symbol` also names the data files\nthat spell \
-        the query outside their outline. The overview of a data \
-        file\nprints its outline and counts the keys it leaves out. A \
-        key has no fan-in, a\ncode spelling of a key is not a reference \
-        to the data file, and a string value\nin a data file references \
-        nothing. Use `grep` to find where a key is spelled.\n\nThe tool \
+        no id. There is nothing to expand\nthere.\n\nThe first line \
+        counts the references. When the target resolves to \
+        one\ndefinition, the line names that definition by its stable \
+        id. When several\ndefinitions share the name, the line says how \
+        many, because each row can\nreference any one of them. In every \
+        language, a line that only declares the\nname is not a \
+        reference.\n\nYou get callees for free when you read a body. \
+        You do not get callers that\nway, and callers are what an \
+        error-path review or a blast-radius \
+        question\nneeds.\n\nMatching is by name, so fan-in is \
+        deliberately fuzzy. It over-reports across\nfiles that share a \
+        short name rather than under-reports, because a missed\ncaller \
+        is the expensive error.\n\nKeys in JSON, TOML and YAML files \
+        are not definitions. A data file gives an\noutline, not every \
+        key: the keys to depth 2 (a TOML table header is one\nlevel), \
+        at most 500 per file, each with its value as the file writes \
+        it, cut\nat 40 characters, or its type and item count. Keys in \
+        lists and deeper keys\nare not symbols. A key's card names its \
+        kind as `key`, and a kind filter\nleaves every key out. \
+        `find-symbol` lists at most 5 data entries after every\ncode \
+        match. A key whose name or qualified name equals the query gets \
+        a card\nfirst. A file with more than three other matching keys \
+        folds them into one\nline. When no code symbol matches, \
+        `find-symbol` also names the data files\nthat spell the query \
+        outside their outline. The overview of a data file\nprints its \
+        outline and counts the keys it leaves out. A key has no fan-in, \
+        a\ncode spelling of a key is not a reference to the data file, \
+        and a string value\nin a data file references nothing. A key \
+        has no edges, so `path` does not\ntake a key's id as an \
+        endpoint. When an id names a key that its file does not\nhold, \
+        `explain`, `refs` and `path` give the reason that `expand` \
+        gives. Use\n`grep` to find where a key is spelled.\n\nThe tool \
         now **labels every group with the evidence tier behind it**, so \
         the\nover-reporting costs you nothing. These group headers come \
         from\n`refs py:django/db/models/expressions.py::F --limit 10` \
@@ -1715,7 +1724,7 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("the-funnel-and-where-it-stops", 3599, 4432),
     ("stable-ids", 4434, 5752),
     ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 94151),
+    ("per-tool-usage", 11300, 94659),
     ("claude-code-specifics", 13058, 14689),
     ("map", 14691, 24286),
     ("tree", 24288, 24609),
@@ -1723,22 +1732,22 @@ pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
     ("expand", 25978, 27951),
     ("slice", 27953, 28790),
     ("find-symbol", 28792, 31477),
-    ("refs", 31479, 37029),
-    ("history", 37031, 39864),
-    ("explain", 39866, 41811),
-    ("path", 41813, 44548),
-    ("cycles", 44550, 46056),
-    ("communities", 46058, 48584),
-    ("diagram", 48586, 51357),
-    ("health", 51359, 57595),
-    ("html", 57597, 58548),
-    ("resolve-locs", 58550, 59365),
-    ("capabilities", 59367, 60177),
-    ("index", 60179, 62941),
-    ("lint", 62943, 82951),
-    ("validate-vote", 82953, 92550),
-    ("warmup", 92552, 94151),
-    ("project-defaults-agentless-mcp-json", 94153, 98106),
-    ("token-counting", 98108, 98522),
-    ("exit-codes", 98524, 98982),
+    ("refs", 31479, 37537),
+    ("history", 37539, 40372),
+    ("explain", 40374, 42319),
+    ("path", 42321, 45056),
+    ("cycles", 45058, 46564),
+    ("communities", 46566, 49092),
+    ("diagram", 49094, 51865),
+    ("health", 51867, 58103),
+    ("html", 58105, 59056),
+    ("resolve-locs", 59058, 59873),
+    ("capabilities", 59875, 60685),
+    ("index", 60687, 63449),
+    ("lint", 63451, 83459),
+    ("validate-vote", 83461, 93058),
+    ("warmup", 93060, 94659),
+    ("project-defaults-agentless-mcp-json", 94661, 98614),
+    ("token-counting", 98616, 99030),
+    ("exit-codes", 99032, 99490),
 ];
