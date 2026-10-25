@@ -58,17 +58,19 @@ fn a_launch_directory_in_no_root_or_in_two_selects_nothing() {
 // repo_root gets the reference's refusal of a root that is not allowed (QC2 for the launch rule).
 #[test]
 fn a_root_swapped_for_a_symlink_is_refused() {
-    for (name, roots, launch, named) in [
+    for (name, roots, launch, tool, named) in [
         (
             "probe",
             &["repo"][..],
             "repo",
+            "graph",
             json!({"operation": "cycles", "repo_root": "/tmp"}),
         ),
         (
             "several_roots",
             &["one", "two"][..],
             "two/b",
+            "orient",
             json!({"operation": "map", "repo_root": "<SANDBOX>/elsewhere"}),
         ),
     ] {
@@ -76,14 +78,43 @@ fn a_root_swapped_for_a_symlink_is_refused() {
         let sandbox = built(&run);
         sandbox.step(&["write", "elsewhere/x.txt", "x\n"]);
         let server = sandbox.server(roots, &[], Some(launch));
-        let call = json!({"operation": "map"});
-        assert!(!answered(&sandbox, &server, "orient", &call).1, "{name}");
+        let call = json!({"operation": named["operation"].clone()});
+        assert!(!answered(&sandbox, &server, tool, &call).1, "{name}");
         let swapped = roots[roots.len() - 1];
         io::remove_tree(&sandbox.root.join(swapped)).expect("a removed root");
         let target = sandbox.root.join("elsewhere");
         sandbox.tree.symlink(swapped, target).expect("a symlink");
-        let want = (reference(&run, "orient", &named), true);
-        assert_eq!(answered(&sandbox, &server, "orient", &call), want, "{name}");
+        let want = (reference(&run, tool, &named), true);
+        assert_eq!(answered(&sandbox, &server, tool, &call), want, "{name}");
+    }
+}
+
+// tools/list publishes repo_root only when a call can select a root: two distinct roots, or a
+// roots file, whose lines can change after start-up.
+#[test]
+fn the_tool_list_publishes_repo_root_only_when_a_call_can_select_a_root() {
+    let run = run_named("roots_file");
+    let sandbox = built(&run);
+    for (roots, files, published) in [
+        (&[][..], &[][..], false),
+        (&["one"][..], &[][..], false),
+        (&["one", "one"][..], &[][..], false),
+        (&["one", "two"][..], &[][..], true),
+        (&[][..], &["roots.txt"][..], true),
+        (&["one"][..], &["roots.txt"][..], true),
+    ] {
+        let server = sandbox.server(roots, files, None);
+        assert_eq!(server.tools.len(), 7, "{roots:?} {files:?}");
+        for tool in server.tools.iter() {
+            let properties = tool.input_schema.get("properties");
+            let listed = properties.and_then(|properties| properties.get("repo_root"));
+            assert_eq!(
+                listed.is_some(),
+                published,
+                "{roots:?} {files:?} {}",
+                tool.name
+            );
+        }
     }
 }
 

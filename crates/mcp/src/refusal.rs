@@ -33,7 +33,7 @@ pub(crate) fn accepted(tool: &Tool, param: &Param) -> String {
     match tool.calls {
         Calls::Operations(table) if param.name == "operation" => {
             let names: Vec<&str> = table.iter().map(|operation| operation.name).collect();
-            ACCEPTS_CHOICE.render(&listed(&names, &LISTED_OR))
+            choice(&names)
         }
         _ => phrase(&param.shape),
     }
@@ -85,6 +85,14 @@ pub(crate) fn listed(names: &[&str], last: &Template<(Text, Text)>) -> String {
     }
 }
 
+// The form of a choice among `names`: a choice of one is the name alone.
+fn choice(names: &[&str]) -> String {
+    match names {
+        [only] => (*only).to_owned(),
+        _ => ACCEPTS_CHOICE.render(&listed(names, &LISTED_OR)),
+    }
+}
+
 fn phrase(shape: &Shape) -> String {
     match *shape {
         Shape::Text => ACCEPTS_TEXT.to_owned(),
@@ -94,9 +102,7 @@ fn phrase(shape: &Shape) -> String {
             exclusive_minimum,
             maximum,
         } => ACCEPTS_NUMBER.render((exclusive_minimum, &maximum.to_string())),
-        Shape::Literal(names) | Shape::Enum { names, .. } => {
-            ACCEPTS_CHOICE.render(&listed(names, &LISTED_OR))
-        }
+        Shape::Literal(names) | Shape::Enum { names, .. } => choice(names),
         Shape::Array { .. } | Shape::AnyOf(_) => compound(shape),
     }
 }

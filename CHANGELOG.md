@@ -46,6 +46,42 @@
 
 ### Changed
 
+- **The structure views move to the new tool `graph`, and four tools load
+  on request.** This change breaks MCP callers:
+  - `graph` holds `communities`, `cycles`, `health`, `diagram` and `path`.
+    The `operation` enum of `orient` is `["map"]`, and `orient` keeps the
+    parameters of the map only. A call of a moved operation on `orient` is
+    refused with the name of the new tool: "operation is \"cycles\", but must
+    be map. Call the tool graph with operation cycles." A call that gives
+    `orient` a parameter of `graph` is refused as an unknown name, whatever
+    its value. A choice of one name is written as the name alone.
+  - `no_cache` leaves the MCP surface. No schema lists it, and a call that
+    gives it is refused. The CLI keeps `--no-cache`.
+  - The schemas list `repo_root` only when the server has more than one
+    distinct `--root` or a `--roots-from` file. Every tool still accepts it.
+  - `find_referencing_symbols` and `capabilities` lose the
+    `anthropic/alwaysLoad` hint. A client that defers tool schemas now loads
+    them, `history` and `graph` on request. `orient`, `symbols` and `read`
+    keep the hint.
+  - The `graph` description and the guide's `path` section say that the
+    chain ignores edge direction, so it is not a call path.
+  - Measured with the release binaries of edea4a4 and of this change, one
+    `--root`: the tools/list answer line goes from 10,534 to 10,403 bytes.
+    The always-loaded set goes from 5 tools, 9,565 bytes and 1,881 cl100k
+    tokens to 3 tools, 5,516 bytes and 1,106 cl100k tokens. The deferred set
+    goes from 1 tool, 926 bytes and 171 tokens to 4 tools, 4,844 bytes and
+    900 tokens. The bytes are the compact tools/list entries. With several
+    roots, the line is 11,620 bytes and the always-loaded set is 6,038 bytes
+    and 1,220 tokens.
+  - Both builds answered the same 56 calls over this repository at 8d0dbba
+    and the snapshot psf__requests-2931: 30 answers are the same, 12 moved
+    operations give the same body on `graph` as on `orient` at the base, 12
+    calls of a moved operation on `orient` get the refusal above, and 2
+    calls that give `no_cache` are refused.
+  - An MCP client that lists the tools one by one must allow
+    `mcp__agentless__graph`. A prompt that calls `orient` with a moved
+    operation must call `graph`.
+
 - **A `find-symbol` miss with usage files exits 0.** The CLI exit code of a
   query that matches no symbol was 1. When a code file spells the name, the
   answer now lists that file, and the command exits 0. The exit code stays 1

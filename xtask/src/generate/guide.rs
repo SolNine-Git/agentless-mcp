@@ -76,11 +76,26 @@ pub fn module(text: &str) -> Result<String, Vec<String>> {
     );
     for section in &sections {
         let Range { start, end } = section.text;
+        let (start, end) = (grouped(start), grouped(end));
         writeln!(out, "({}, {start}, {end}),", literal(&section.name))
             .expect("writing to a String cannot fail");
     }
     out.push_str("];\n");
     Ok(out)
+}
+
+// The digits of `offset` with `_` between groups of three from the right: clippy refuses a long
+// literal with no separators.
+fn grouped(offset: usize) -> String {
+    let digits = offset.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.char_indices() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            out.push('_');
+        }
+        out.push(digit);
+    }
+    out
 }
 
 // Unicode line splitting also ends a line at these, so a guide's lines would not be its newline

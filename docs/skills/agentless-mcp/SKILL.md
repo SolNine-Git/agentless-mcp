@@ -10,7 +10,7 @@ Route by trigger, at the moment of tool choice:
 - Where does this bug or feature live -> `orient(operation="map", focus=[...])`.
   Take the focus seeds from the ask.
 - Orienting in a repository you have not read yet ->
-  `orient(operation="communities")` first, for the file groups. Then map into
+  `graph(operation="communities")` first, for the file groups. Then map into
   the group that matters. The map returns ten files by default. It localizes.
   It does not enumerate.
 - What does this file declare -> `symbols(operation="overview", paths=[...])`.
@@ -31,7 +31,7 @@ Route by trigger, at the moment of tool choice:
   why-comment or answer a why question, and cite the sha. It answers why,
   not where: it does not unlock the gate and its schema loads on demand.
 - How are these two connected, where are the import knots, what does the
-  module graph look like -> `orient` with `operation="path"`, `"cycles"`, or
+  module graph look like -> `graph` with `operation="path"`, `"cycles"`, or
   `"diagram"`.
 - Exact lines when no symbol boundary fits -> `read(operation="slice",
   path=..., lines=[[start, end]])`. Paths rather than symbols ->
@@ -56,22 +56,23 @@ Treat edge tiers as evidence. `same-file` and `resolved-via-import` are
 stronger than `unique`. A `name-only-ambiguous` edge is a candidate to
 inspect, not a resolved binding.
 
-A skill that consumes this server should carry the six tools --
-`mcp__agentless__orient`, `mcp__agentless__symbols`,
+A skill that consumes this server should carry the seven tools --
+`mcp__agentless__orient`, `mcp__agentless__graph`, `mcp__agentless__symbols`,
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities`, `mcp__agentless__history` -- in its own
 allowed-tools and call them directly. This server has no write, exec or fetch
-tools. Five of the six ask to be loaded eagerly by a client that defers
-schemas, so an agent knows them before it chooses; `history` loads on
-demand. A dispatch prompt should still name them and the order to use them
-in. The structural-first gate enforces that order. Its hook commands are
+tools. Three of the seven (`orient`, `symbols` and `read`) ask to be loaded
+eagerly by a client that defers schemas, so an agent knows them before it
+chooses. `find_referencing_symbols`, `history`, `capabilities` and `graph`
+load on demand. A dispatch prompt should still name them and the order to use
+them in. The structural-first gate enforces that order. Its hook commands are
 `agentless-mcp hook gate-check` and `agentless-mcp hook gate-mark`, and
 `contrib/hooks/settings-example.json` holds their settings. It
-denies broad Grep, Glob and tree-searching Bash commands until `orient(map|path)`,
-`symbols(find|overview|expand|explain)`, `read(slice)` or
+denies broad Grep, Glob and tree-searching Bash commands until `orient(map)`,
+`graph(path)`, `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session. Exact-file Grep remains
-available; diagnostics, `read(dir)` and the shape listings do not unlock broad
-discovery.
+available. Diagnostics, `read(dir)` and the shape listings
+`graph(communities|cycles|diagram|health)` do not unlock broad discovery.
 See `agentless-mcp guide --section claude-code-specifics` for the gate.
 
 These are the v2 names, and v2 is the only surface. 0.11.0 removed the

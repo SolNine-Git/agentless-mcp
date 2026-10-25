@@ -111,6 +111,18 @@ pub const GET_SYMBOLS_OVERVIEW: &str = "What does this file declare? Render the 
         straight off the overview. Escalate to expand_symbols for the \
         few symbols you need rather than re-reading whole files.";
 
+/// The description of the `graph` tool.
+pub const GRAPH: &str = "Show how the repository is built: its modules, their imports and the \
+        links between symbols. communities (resolution, limit): which \
+        files belong together. cycles (limit): module import cycles. \
+        diagram (focus, max_nodes, max_edges, group_by_communities, \
+        resolution): the module graph as mermaid, for a human. path \
+        (requires source and target; include_unique, \
+        include_ambiguous): the fewest-hop resolved chain between two \
+        endpoints. The chain ignores edge direction, so it is not a \
+        call path. health (limit): orphan candidates, unused exports, \
+        hubs and complexity hotspots.";
+
 /// The description of the `history` tool.
 pub const HISTORY: &str = "Why does this code exist? The commits that changed one symbol's lines, \
         newest first, with full message bodies. Call it after another \
@@ -124,20 +136,14 @@ pub const LIST_DIR: &str = "What exists in this repository? List the files as a 
         than symbols; depth and max_entries are capped.";
 
 /// The description of the `orient` tool.
-pub const ORIENT: &str = "Rank the files and symbols most relevant to a focus, or show how the \
-        repository is built. map (focus, limit, granularity, budget): a \
-        token-budgeted map of the highest-ranked files. Call it when \
-        the location is unknown or the change spans files. Use grep for \
-        a known literal or file: the map ranks symbols, so a file that \
-        matches only by a string does not appear. budget counts \
-        chars/4: a real BPE count runs 10-35% higher. communities \
-        (resolution, limit): which files belong together. cycles \
-        (limit): module import cycles. diagram (focus, max_nodes, \
-        max_edges, group_by_communities, resolution): the module graph \
-        as mermaid, for a human. path (requires source and target; \
-        include_unique, include_ambiguous): the fewest-hop resolved \
-        chain between two endpoints. health (limit): orphan candidates, \
-        unused exports, hubs and complexity hotspots.";
+pub const ORIENT: &str = "Rank the files and symbols most relevant to a focus. map (focus, limit, \
+        granularity, budget): a token-budgeted map of the \
+        highest-ranked files. Call it when the location is unknown or \
+        the change spans files. Use grep for a known literal or file: \
+        the map ranks symbols, so a file that matches only by a string \
+        does not appear. budget counts chars/4: a real BPE count runs \
+        10-35% higher. For communities, cycles, the module diagram, the \
+        path between two endpoints and health, use graph.";
 
 /// The description of the `read` tool.
 pub const READ: &str = "You need file contents rather than symbols: numbered lines of one file \

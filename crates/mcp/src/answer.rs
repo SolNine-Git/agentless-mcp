@@ -1,6 +1,7 @@
 //! One call's answer: the allowlist and the selected repository, its session, the background index,
 //! then the operation and the text of its view under the receipt.
 
+mod graph;
 mod orient;
 mod read;
 mod shared;
@@ -84,6 +85,7 @@ pub(crate) fn answer(
         "find_referencing_symbols" => shared::refs(&context, &call.arguments),
         "history" => shared::history(&context, &call.arguments),
         "orient" => orient::answer(&context, call),
+        "graph" => graph::answer(&context, call),
         "symbols" => symbols::answer(&context, call),
         "read" => read::answer(&context, call),
         other => Err(Failure::Unplanned(format!(
@@ -92,8 +94,8 @@ pub(crate) fn answer(
     }
 }
 
-// The session of the selected repository, armed for the background index unless the call bypasses
-// the cache. A refresh thread that the system refuses fails the call, as the reference's does.
+// The session of the selected repository, armed for the background index. A refresh thread that
+// the system refuses fails the call, as the reference's does.
 fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Failure> {
     let services = &*inner.services;
     let hint = inner.allowlist.hint();
@@ -111,18 +113,15 @@ fn opened(inner: &Inner, call: &Call, allowed: &[PathBuf]) -> Result<Session, Fa
     if repo.root != root {
         return Err(unauthorised(&selection));
     }
-    let no_cache = call.arguments.flag("no_cache");
-    let opening = Session::open_facts(services, repo, no_cache);
+    let opening = Session::open_facts(services, repo, false);
     for line in &opening.session.diagnostics {
         inner.ports.log.line(line);
     }
     let session = opening.session.value?;
-    if !no_cache {
-        inner
-            .ports
-            .arming
-            .arm(&session)
-            .map_err(Failure::Unplanned)?;
-    }
+    inner
+        .ports
+        .arming
+        .arm(&session)
+        .map_err(Failure::Unplanned)?;
     Ok(session)
 }

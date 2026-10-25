@@ -232,7 +232,7 @@ mod tests {
         assert!(sources(&read(ENVELOPE), &read(MESSAGES), &text).is_ok());
         let tools = descriptions::parse(TOOLS, &read(TOOLS)).unwrap();
         let parameters = descriptions::parse(PARAMETERS, &read(PARAMETERS)).unwrap();
-        assert_eq!((tools.len(), parameters.len()), (15, 47));
+        assert_eq!((tools.len(), parameters.len()), (16, 49));
     }
 
     #[test]

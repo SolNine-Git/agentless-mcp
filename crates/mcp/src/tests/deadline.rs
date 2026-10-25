@@ -87,7 +87,7 @@ fn an_unknown_tool_is_a_refusal_that_lists_the_tools_and_logs_nothing() {
     let server = sandbox.server_with(&setup, sandbox.services(), ports);
     let got = answered(&sandbox, &server, "repo_map", &json!({}));
     let want = "Error calling tool 'repo_map': No tool has this name. The tools are \
-                find_referencing_symbols, history, capabilities, orient, symbols and read.";
+                find_referencing_symbols, history, capabilities, orient, graph, symbols and read.";
     assert_eq!(got, (want.to_owned(), true));
     assert!(log.lines().is_empty(), "{:?}", log.lines());
 }

@@ -168,8 +168,7 @@ fn a_refusal_decides_the_operation_first() {
         (
             "orient",
             json!({"operation": "find", "name": "x"}),
-            "operation is \"find\", but must be one of map, communities, cycles, health, diagram \
-             or path. Call the tool symbols with operation find.",
+            "operation is \"find\", but must be map. Call the tool symbols with operation find.",
         ),
         (
             "symbols",
@@ -180,8 +179,29 @@ fn a_refusal_decides_the_operation_first() {
         (
             "orient",
             json!({"operation": "bogus", "name": "x"}),
-            "operation is \"bogus\", but must be one of map, communities, cycles, health, diagram \
-             or path.",
+            "operation is \"bogus\", but must be map.",
+        ),
+        (
+            "orient",
+            json!({"operation": "communities"}),
+            "operation is \"communities\", but must be map. Call the tool graph with operation \
+             communities.",
+        ),
+        (
+            "orient",
+            json!({"operation": "path", "source": "a", "target": "b"}),
+            "operation is \"path\", but must be map. Call the tool graph with operation path.",
+        ),
+        (
+            "graph",
+            json!({"operation": "map"}),
+            "operation is \"map\", but must be one of communities, cycles, health, diagram or \
+             path. Call the tool orient with operation map.",
+        ),
+        (
+            "orient",
+            json!({}),
+            "operation is required and must be map.",
         ),
         (
             "symbols",
@@ -231,10 +251,31 @@ fn a_refusal_judges_each_parameter_once_in_declaration_order() {
             "path is 3, but must be a string.",
         ),
         (
-            "orient",
+            "graph",
             json!({"operation": "cycles", "limit": 0, "focus": "x"}),
             "Operation cycles has no parameter focus. limit is 0, but must be an integer from 1 \
              to 500. Operation cycles takes limit.",
         ),
+        // The MCP tools have no no_cache parameter: the CLI keeps --no-cache.
+        (
+            "orient",
+            json!({"operation": "map", "no_cache": true}),
+            "orient has no parameter no_cache. Operation map takes focus, budget, limit and \
+             granularity.",
+        ),
     ]);
+}
+
+// A false, zero or empty value says nothing, so it is no stray for an operation that does not
+// take its parameter. A name that the tool lacks is refused whatever its value.
+#[test]
+fn an_empty_value_is_no_stray_but_an_unknown_name_is_refused() {
+    let call = json!({"operation": "cycles", "include_unique": false, "max_edges": 0, "focus": []});
+    assert!(validate(tool_named("graph"), &call).is_ok(), "{call}");
+    assert_refusals(&[(
+        "orient",
+        json!({"operation": "map", "include_unique": false, "max_edges": 0, "focus": []}),
+        "orient has no parameter include_unique. orient has no parameter max_edges. Operation \
+         map takes focus, budget, limit and granularity.",
+    )]);
 }

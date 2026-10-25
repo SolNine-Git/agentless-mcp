@@ -6,12 +6,12 @@ use json::JsonValue;
 use text::CodePointString;
 use text::testing::cases;
 
-use super::{Calls, Operation, Presence, Shape, TOOLS, Tool, tool_entry};
+use super::{Calls, Operation, Presence, RootCount, Shape, TOOLS, Tool, tool_entry};
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 const FIXTURE: &str = "surface/surface";
 // Every operation of a tool takes these, so no table row lists them.
-const UNIVERSAL: [&str; 3] = ["operation", "repo_root", "no_cache"];
+const UNIVERSAL: [&str; 2] = ["operation", "repo_root"];
 
 // The tools section, read with its key order and its number forms kept.
 fn reference_tools() -> Vec<JsonValue> {
@@ -43,7 +43,7 @@ fn each_tool_entry_is_the_reference_entry() {
     let reference = reference_tools();
     assert_eq!(reference.len(), TOOLS.len());
     for (tool, expected) in TOOLS.iter().zip(&reference) {
-        let entry = tool_entry(tool);
+        let entry = tool_entry(tool, RootCount::One);
         assert!(
             entry == *expected,
             "{}:\n{}\n{}",
@@ -144,6 +144,49 @@ fn operation_finds_each_row_and_the_tool_names_are_distinct() {
     }
 }
 
+// A refusal names the one tool that has an operation, so no two tools share an operation name.
+#[test]
+fn each_operation_name_belongs_to_one_tool() {
+    let names: Vec<&str> = TOOLS
+        .iter()
+        .flat_map(|tool| operations(tool).iter().map(|operation| operation.name))
+        .collect();
+    let distinct: BTreeSet<&str> = names.iter().copied().collect();
+    assert_eq!(distinct.len(), names.len(), "{names:?}");
+}
+
+// With several roots each schema lists `repo_root` after the parameter that a call gives first,
+// or alone, and nothing else in the entry changes.
+#[test]
+fn several_roots_add_repo_root_and_change_nothing_else() {
+    for tool in TOOLS {
+        let one = tool_entry(tool, RootCount::One);
+        let mut several = tool_entry(tool, RootCount::Several);
+        let JsonValue::Object(params) =
+            member_mut(member_mut(&mut several, "inputSchema"), "properties")
+        else {
+            panic!("{}: the properties are no object", tool.name);
+        };
+        let position = params
+            .iter()
+            .position(|(name, _)| name.as_str() == Some("repo_root"));
+        assert_eq!(
+            position,
+            Some(usize::from(params.len() > 1)),
+            "{}",
+            tool.name
+        );
+        params.remove(position.unwrap_or_default());
+        assert!(
+            several == one,
+            "{}:\n{}\n{}",
+            tool.name,
+            json::value_text(&several),
+            json::value_text(&one)
+        );
+    }
+}
+
 fn member<'v>(value: &'v JsonValue, key: &str) -> &'v JsonValue {
     let JsonValue::Object(entries) = value else {
         panic!("no object holds {key}");
@@ -151,10 +194,20 @@ fn member<'v>(value: &'v JsonValue, key: &str) -> &'v JsonValue {
     json::get(entries, key).unwrap_or_else(|| panic!("no key {key}"))
 }
 
+fn member_mut<'v>(value: &'v mut JsonValue, key: &str) -> &'v mut JsonValue {
+    let JsonValue::Object(entries) = value else {
+        panic!("no object holds {key}");
+    };
+    let found = entries
+        .iter_mut()
+        .find(|(name, _)| name.as_str() == Some(key));
+    found.map_or_else(|| panic!("no key {key}"), |(_, value)| value)
+}
+
 #[test]
 fn the_lines_schema_takes_one_pair_or_a_list_of_pairs() {
     let read = TOOLS.iter().find(|tool| tool.name == "read");
-    let entry = tool_entry(read.expect("the read tool"));
+    let entry = tool_entry(read.expect("the read tool"), RootCount::One);
     let lines = member(member(member(&entry, "inputSchema"), "properties"), "lines");
     let pair = r#"{"items": {"minimum": 1, "type": "integer"}, "maxItems": 2, "minItems": 2, "type": "array"}"#;
     let choices = format!(r#"[{pair}, {{"items": {pair}, "minItems": 1, "type": "array"}}]"#);
@@ -169,7 +222,7 @@ fn the_lines_schema_takes_one_pair_or_a_list_of_pairs() {
 #[test]
 fn each_operation_enum_is_the_operation_table() {
     for tool in TOOLS.iter().filter(|tool| !operations(tool).is_empty()) {
-        let entry = tool_entry(tool);
+        let entry = tool_entry(tool, RootCount::One);
         let operation = member(
             member(member(&entry, "inputSchema"), "properties"),
             "operation",
@@ -192,7 +245,7 @@ fn each_operation_enum_is_the_operation_table() {
 fn no_parameter_publishes_null() {
     let null = json::parse(r#"{"type": "null"}"#).expect("a JSON schema");
     for tool in TOOLS {
-        let entry = tool_entry(tool);
+        let entry = tool_entry(tool, RootCount::Several);
         let JsonValue::Object(params) = member(member(&entry, "inputSchema"), "properties") else {
             panic!("{}: the properties are no object", tool.name);
         };

@@ -249,6 +249,9 @@ pub const prompts::parameter_descriptions::EXPLAIN_TARGET: &str
 pub const prompts::parameter_descriptions::FILE_PATH: &str
 pub const prompts::parameter_descriptions::FIND_LIMIT: &str
 pub const prompts::parameter_descriptions::FIND_NAME: &str
+pub const prompts::parameter_descriptions::GRAPH_FOCUS: &str
+pub const prompts::parameter_descriptions::GRAPH_LIMIT: &str
+pub const prompts::parameter_descriptions::GRAPH_OPERATION: &str
 pub const prompts::parameter_descriptions::GROUP_BY_COMMUNITIES: &str
 pub const prompts::parameter_descriptions::HISTORY_BUDGET: &str
 pub const prompts::parameter_descriptions::HISTORY_LIMIT: &str
@@ -260,7 +263,6 @@ pub const prompts::parameter_descriptions::MAP_BUDGET: &str
 pub const prompts::parameter_descriptions::MAP_FOCUS: &str
 pub const prompts::parameter_descriptions::MAP_GRANULARITY: &str
 pub const prompts::parameter_descriptions::MAP_MAX_FILES: &str
-pub const prompts::parameter_descriptions::NO_CACHE: &str
 pub const prompts::parameter_descriptions::ORIENT_FOCUS: &str
 pub const prompts::parameter_descriptions::ORIENT_LIMIT: &str
 pub const prompts::parameter_descriptions::ORIENT_OPERATION: &str
@@ -292,6 +294,7 @@ pub const prompts::tool_descriptions::EXPLAIN_SYMBOL: &str
 pub const prompts::tool_descriptions::FIND_REFERENCING_SYMBOLS: &str
 pub const prompts::tool_descriptions::FIND_SYMBOL: &str
 pub const prompts::tool_descriptions::GET_SYMBOLS_OVERVIEW: &str
+pub const prompts::tool_descriptions::GRAPH: &str
 pub const prompts::tool_descriptions::HISTORY: &str
 pub const prompts::tool_descriptions::LIST_DIR: &str
 pub const prompts::tool_descriptions::ORIENT: &str

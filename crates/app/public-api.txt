@@ -251,6 +251,25 @@ impl core::marker::Unpin for app::surface::Presence
 impl core::marker::UnsafeUnpin for app::surface::Presence
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Presence
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Presence
+pub enum app::surface::RootCount
+pub app::surface::RootCount::One
+pub app::surface::RootCount::Several
+impl core::clone::Clone for app::surface::RootCount
+pub fn app::surface::RootCount::clone(&self) -> Self
+impl core::cmp::Eq for app::surface::RootCount
+impl core::cmp::PartialEq for app::surface::RootCount
+pub fn app::surface::RootCount::eq(&self, &Self) -> bool
+impl core::fmt::Debug for app::surface::RootCount
+pub fn app::surface::RootCount::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for app::surface::RootCount
+impl core::marker::StructuralPartialEq for app::surface::RootCount
+impl core::marker::Freeze for app::surface::RootCount
+impl core::marker::Send for app::surface::RootCount
+impl core::marker::Sync for app::surface::RootCount
+impl core::marker::Unpin for app::surface::RootCount
+impl core::marker::UnsafeUnpin for app::surface::RootCount
+impl core::panic::unwind_safe::RefUnwindSafe for app::surface::RootCount
+impl core::panic::unwind_safe::UnwindSafe for app::surface::RootCount
 pub enum app::surface::Shape
 pub app::surface::Shape::AnyOf(&'static [app::surface::Shape])
 pub app::surface::Shape::Array
@@ -332,8 +351,8 @@ impl core::marker::Unpin for app::surface::Tool
 impl core::marker::UnsafeUnpin for app::surface::Tool
 impl core::panic::unwind_safe::RefUnwindSafe for app::surface::Tool
 impl core::panic::unwind_safe::UnwindSafe for app::surface::Tool
-pub static app::surface::TOOLS: [&app::surface::Tool; 6]
-pub fn app::surface::tool_entry(&app::surface::Tool) -> json::parse::JsonValue
+pub static app::surface::TOOLS: [&app::surface::Tool; 7]
+pub fn app::surface::tool_entry(&app::surface::Tool, app::surface::RootCount) -> json::parse::JsonValue
 pub enum app::After
 pub app::After::File(std::path::PathBuf)
 pub app::After::Text(alloc::string::String)

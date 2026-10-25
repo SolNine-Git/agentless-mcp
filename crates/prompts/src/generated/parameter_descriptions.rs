@@ -44,6 +44,17 @@ pub const FIND_LIMIT: &str = "Maximum matching symbol cards returned by find_sym
 /// The parameter description keyed `find_name`.
 pub const FIND_NAME: &str = "Name, Qualified.name or substring.";
 
+/// The parameter description keyed `graph_focus`.
+pub const GRAPH_FOCUS: &str = "diagram: a path, path suffix, module stem or symbol name at the \
+        centre. A list uses its first entry.";
+
+/// The parameter description keyed `graph_limit`.
+pub const GRAPH_LIMIT: &str = "Maximum rows: communities, cycles, or rows per health section. \
+        Default 20.";
+
+/// The parameter description keyed `graph_operation`.
+pub const GRAPH_OPERATION: &str = "The tool description says what each one takes.";
+
 /// The parameter description keyed `group_by_communities`.
 pub const GROUP_BY_COMMUNITIES: &str = "Group nodes into community subgraphs.";
 
@@ -87,17 +98,13 @@ pub const MAP_GRANULARITY: &str = "function lists symbols, file lists files alon
 pub const MAP_MAX_FILES: &str = "Maximum ranked files admitted to the repository map before \
         symbol packing.";
 
-/// The parameter description keyed `no_cache`.
-pub const NO_CACHE: &str = "Parse every file live, bypassing the cache.";
-
 /// The parameter description keyed `orient_focus`.
 pub const ORIENT_FOCUS: &str = "Paths, path suffixes, module stems or symbol names that seed the \
         ranking. A traceback frame, blob URL or path:line seeds the \
-        file it names. diagram uses the first entry.";
+        file it names.";
 
 /// The parameter description keyed `orient_limit`.
-pub const ORIENT_LIMIT: &str = "Maximum rows: map files (default 10), communities, cycles, or \
-        rows per health section (default 20).";
+pub const ORIENT_LIMIT: &str = "Maximum files in the map. Default 10.";
 
 /// The parameter description keyed `orient_operation`.
 pub const ORIENT_OPERATION: &str = "The tool description says what each one takes.";
@@ -124,8 +131,8 @@ pub const REFERENCE_LIMIT: &str = "Maximum sites, one per file in turn. Default 
 pub const REFERENCE_TARGET: &str = "Stable id, qualified name or name.";
 
 /// The parameter description keyed `repo_root`.
-pub const REPO_ROOT: &str = "Absolute repository path. Omit it with one root; a refusal lists the \
-        roots.";
+pub const REPO_ROOT: &str = "Absolute path of one of the server's roots. Omit it to use the root \
+        that holds the launch directory. A refusal lists the roots.";
 
 /// The parameter description keyed `shared_callers`.
 pub const SHARED_CALLERS: &str = "Rank symbols whose callers overlap the target's instead: the \

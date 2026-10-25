@@ -129,23 +129,25 @@ you can address one of several same-named symbols at all.
 
 ## The two surfaces
 
-The CLI has one subcommand per question. The MCP server publishes **six
-tools**, five of them loaded eagerly. That number is a decision rather
+The CLI has one subcommand per question. The MCP server publishes **seven
+tools**, three of them loaded eagerly. That number is a decision rather
 than an accident. Selection
 accuracy falls as a tool list grows. The questions therefore fold behind an
-`operation` parameter by intent (orientation, symbols, contents) instead of
-being twelve entries to choose between. The folding is adapter-level only:
-same services, same answers, same wording. `find_referencing_symbols` stays
-its own tool deliberately, so the expensive fan-in call keeps its own
-decision point and cost warning. `history` is its own tool for the same
-reason and is the one whose schema a deferring client fetches on demand:
-it answers why rather than where. The escalation chain is `orient` to
-locate, then `symbols` for declarations and bodies, then `read` for exact
-lines.
+`operation` parameter by intent (orientation, structure, symbols, contents)
+instead of being twelve entries to choose between. The folding is
+adapter-level only: same services, same answers, same wording.
+`find_referencing_symbols` stays its own tool deliberately, so the expensive
+fan-in call keeps its own decision point and cost warning. `history` is its
+own tool for the same reason: it answers why rather than where. `orient`,
+`symbols` and `read` ask to be loaded eagerly. A deferring client fetches the
+schemas of `find_referencing_symbols`, `history`, `capabilities` and `graph`
+on demand. The escalation chain is `orient` to locate, then `symbols` for
+declarations and bodies, then `read` for exact lines.
 
 | MCP tool | Operations | CLI | Answers |
 |---|---|---|---|
-| `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | `map` / `communities` / `cycles` / `diagram` / `path` / `health` | where does this live, how is the repository put together |
+| `orient` | `map` | `map` | where does this live |
+| `graph` | `communities`, `cycles`, `diagram`, `path`, `health` | `communities` / `cycles` / `diagram` / `path` / `health` | how is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | `find-symbol` / `skeleton` / `expand` / `explain` / `resolve-locs` | what is this symbol, what does it declare, what does it do |
 | `find_referencing_symbols` | *(none)* | `refs` | who calls it (blast radius) |
 | `history` | *(none)* | `history` | why does this code exist (the commits that touched a span) |
@@ -166,7 +168,7 @@ server also sets `isError` true when a call gives no data for any item that it
 names. When a call gives data for some of its items, `isError` stays false and
 the answer names each item that failed.
 
-**Previous surface.** These six are the v2 surface, the only one. Before
+**Previous surface.** These seven are the v2 surface, the only one. Before
 0.11.0, a server started with `--surface v1` published the original twelve
 per-question tools for un-migrated operators. A server started with
 `--surface both` published the union, which was fifteen names rather than
@@ -183,7 +185,7 @@ value at start-up. This is the mapping for readers who migrate:
 | `read_slice` | `read` operation `slice` |
 | `find_symbol` | `symbols` operation `find` |
 | `explain_symbol` | `symbols` operation `explain` |
-| `analyze_structure` | `orient` operations `path` / `cycles` / `communities` / `diagram` / `health` |
+| `analyze_structure` | `graph` operations `path` / `cycles` / `communities` / `diagram` / `health` |
 | `resolve_locations` | `symbols` operation `locate` |
 
 `find_referencing_symbols` and `capabilities` are the same tools on both
@@ -218,22 +220,21 @@ carried identical text, so the migration is the field name and nothing else.
 ## Per-tool usage
 
 CLI names come first, with the v2 MCP call in parentheses. Every MCP tool
-takes `repo_root`. The CLI defaults it to the git root that encloses the
-current directory, or takes `--repo PATH`. You may omit `repo_root` when the
-server holds one repository, or when the client advertises an MCP workspace
-root that identifies exactly one configured root. The receipt names the
-repository that answered whenever the server holds more than one root. Under stdio, when the client advertises
-several workspace folders, the server keeps the one that contains its launch
-directory. With several candidates still left, the refusal lists the roots to
-choose from.
+takes `repo_root`. The tools/list schemas show it only when the server has
+more than one `--root` or a `--roots-from` file. The CLI defaults it to the
+git root that encloses the current directory, or takes `--repo PATH`. You
+may omit `repo_root` when the server holds one repository. The receipt names
+the repository that answered whenever the server holds more than one root.
+Under stdio, with several roots, the server keeps the one that contains its
+launch directory. With several candidates still left, the refusal lists the
+roots to choose from.
 
-`--root` is the confinement boundary. The client cannot widen it. A root the
-client advertises may only *select* among the directories the server was
-started with. It can never add one. A server started with no `--root` at all
-serves nothing. `--allow-client-roots` restores the additive reading for
-operators who want it. It is a flag rather than the default because the two
-readings differ in who decides what is servable. A permissive default is a
-boundary that stops confining without anyone typing anything.
+`--root` is the confinement boundary. The client cannot widen it. The server
+does not read the roots that a client advertises: only `--root` and
+`--roots-from` name the repositories it may serve. A server started with no
+`--root` and no `--roots-from` serves nothing. `--allow-client-roots` is
+accepted for compatibility and has no effect under stdio. Over HTTP the
+server refuses it at start-up.
 
 `--roots-from FILE` is the same allowlist, written one path per line. It is
 the operator-editable half. The server re-reads the file whenever it changes
@@ -247,24 +248,27 @@ the last copy it managed to load.
 ### Claude Code specifics
 
 Two client-side settings decide whether agents actually reach these tools.
-First, allowlist the six read tools in `~/.claude/settings.json` permissions
-(`mcp__agentless__orient`, `mcp__agentless__symbols`,
+First, allowlist the seven read tools in `~/.claude/settings.json` permissions
+(`mcp__agentless__orient`, `mcp__agentless__graph`, `mcp__agentless__symbols`,
 `mcp__agentless__find_referencing_symbols`, `mcp__agentless__read`,
 `mcp__agentless__capabilities`, `mcp__agentless__history`) so calls run
 without permission prompts.
 Friction at the prompt is what sends a model back to Grep. Second, the client
 may defer tool schemas, in a main session and in a subagent alike, and a
-deferred tool is not callable until its schema loads. Five of the six ask to
-be loaded eagerly for that reason, so an agent knows what they answer before
-it picks its first move; `history` does not, so it costs no context until the
-question is why. Grep is loaded from the first turn either way, so the
+deferred tool is not callable until its schema loads. Three of the seven
+(`orient`, `symbols` and `read`) ask to be loaded eagerly for that reason, so
+an agent knows what they answer before it picks its first move.
+`find_referencing_symbols`, `history`, `capabilities` and `graph` do not, so
+their schemas cost no context until a question needs them. Grep is loaded
+from the first turn either way, so the
 order in which an agent reaches for the two decides which one it uses. Install
 the structural-first gate in `contrib/hooks/`: it denies broad Grep, Glob and
-tree-searching Bash commands until `orient(map|path)`,
+tree-searching Bash commands until `orient(map)`, `graph(path)`,
 `symbols(find|overview|expand|explain)`, `read(slice)` or
 `find_referencing_symbols` has localized the session.
 Exact-file Grep remains available, while diagnostics, `read(dir)`, `history`
-and the shape listings do not unlock broad discovery. Name the
+and the shape listings `graph(communities|cycles|diagram|health)` do not
+unlock broad discovery. Name the
 tools and the order in a dispatch prompt as well. A worker told only to
 navigate the repository defaults to Grep.
 
@@ -852,7 +856,7 @@ signature names and the constants a body reads. It counts one relationship
 per pair, however many times the name appears. For the individual call sites
 with their line numbers, use `refs`.
 
-### `path` (`orient` operation `path`) -- how are these two connected
+### `path` (`graph` operation `path`) -- how are these two connected
 
 ```
 agentless-mcp path reorder_report format_money
@@ -865,8 +869,8 @@ agentless-mcp path py:reports.py::reorder_report py:pricing.py::format_money
 
 The command finds the fewest-hop chain of resolved relationships between two
 symbols, between a symbol and a file, or between two files. Any node in the
-graph is a valid endpoint. It answers "could a change here reach that failure
-there", which no single fan-in or fan-out call does.
+graph is a valid endpoint. The chain ignores edge direction, so it is not a
+call path.
 
 ```
 1 hop from py:reports.py::reorder_report to py:pricing.py::format_money
@@ -909,7 +913,7 @@ dotted name such as `Resolver.resolve` is the qualified name of a definition,
 `explain` and `refs` answer about the exact matches only, and `explain` lists
 only the other exact matches under `also defined at`.
 
-### `cycles` (`orient` operation `cycles`) -- module-level import knots
+### `cycles` (`graph` operation `cycles`) -- module-level import knots
 
 ```
 agentless-mcp cycles --limit 20
@@ -951,7 +955,7 @@ The tool resolves import edges best effort. A module string this tool cannot
 map to a file in the repository contributes no edge. A cycle that runs
 through a dynamic import or an unusual path alias therefore will not appear.
 
-### `communities` (`orient` operation `communities`) -- which files belong together
+### `communities` (`graph` operation `communities`) -- which files belong together
 
 ```
 agentless-mcp communities --resolution 0.5 --limit 20 --members 12
@@ -1001,7 +1005,7 @@ slightly higher, Q 0.341 against one level's 0.329, which is the reason the
 score is not what decides -- a rollup whose largest group is a quarter of the
 repository has stopped answering which files belong together.
 
-### `diagram` (`orient` operation `diagram`) -- the module graph, drawn
+### `diagram` (`graph` operation `diagram`) -- the module graph, drawn
 
 ```
 agentless-mcp diagram --max-nodes 40 > docs/diagrams/modules.mmd
@@ -1054,7 +1058,7 @@ a `.md` file exactly as it stands. That is the never-stale story for committed
 diagrams. Wire it into pre-commit, and a diagram cannot silently describe a
 tree that no longer exists.
 
-### `health` (`orient` operation `health`) -- what is unreferenced, what is central, where complexity sits
+### `health` (`graph` operation `health`) -- what is unreferenced, what is central, where complexity sits
 
 ```
 agentless-mcp health --limit 20
@@ -1214,7 +1218,8 @@ The report holds:
 - grammar versions, support tier and warm state per language
 - the file extensions each language claims
 - the tag-cache generation
-- the configured roots and the roots the client advertised
+- the configured roots, and a `client roots` line that always reads
+  `none advertised`, because the server does not read the roots of a client
 - the project config in force
 - every bound (walk depth, file count, per-file bytes, output tokens)
 - the `lint` checks, each with the input it reads (`patch`, `pairs`, or
@@ -1274,8 +1279,8 @@ warmup` for that language and re-index to include those files.
 
 Only one index run per repository can run at a time. A second concurrent run
 exits immediately and says the lock is held, rather than queue. Any read
-command takes `--no-cache` (`no_cache: true` on the `orient` and `symbols`
-MCP tools) to bypass the index for that call.
+command takes `--no-cache` to bypass the index for that call. The MCP tools
+have no such parameter.
 
 ### `lint` -- deterministic hallucination checks, CLI only
 

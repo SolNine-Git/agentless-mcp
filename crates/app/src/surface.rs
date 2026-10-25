@@ -55,8 +55,7 @@ pub enum Calls {
 pub struct Operation {
     /// The operation name.
     pub name: &'static str,
-    /// The parameters it accepts, in table order, apart from `repo_root`, `operation` and
-    /// `no_cache`.
+    /// The parameters it accepts, in table order, apart from `repo_root` and `operation`.
     pub accepted: &'static [&'static str],
     /// The accepted parameters that a call must give, in table order.
     pub required: &'static [&'static str],
@@ -131,12 +130,22 @@ pub enum Shape {
     AnyOf(&'static [Shape]),
 }
 
+/// How many roots a call can select among, which decides whether tools/list publishes `repo_root`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RootCount {
+    /// One root or none, so a call has nothing to select.
+    One,
+    /// More than one root, or a roots file whose roots can change after start-up.
+    Several,
+}
+
 /// The tools in the order that a tools/list answer gives them.
-pub static TOOLS: [&Tool; 6] = [
+pub static TOOLS: [&Tool; 7] = [
     &FIND_REFERENCING_SYMBOLS,
     &HISTORY,
     &CAPABILITIES,
     &ORIENT,
+    &GRAPH,
     &SYMBOLS,
     &READ,
 ];
@@ -145,6 +154,7 @@ pub static TOOLS: [&Tool; 6] = [
 const KIND_DESCRIPTION: &str = "Classification of extracted AST symbols.";
 
 const TEXTS: Shape = list(&Shape::Text, None, None);
+const FOCUS: Shape = Shape::AnyOf(&[Shape::Text, TEXTS]);
 // One [start, end] pair, or a list of them: no value fits both, so the order sets only the
 // order of a refusal's problems.
 const LINES: Shape = Shape::AnyOf(&[LINE_RANGE, LINE_RANGES]);
@@ -160,7 +170,6 @@ const BUDGET: Shape = int(MIN_BUDGET, MAX_BUDGET);
 const CONTEXT_LINES: Shape = int(0, MAX_CONTEXT_LINES);
 
 const REPO_ROOT: Param = optional("repo_root", Shape::Text, parameter::REPO_ROOT);
-const NO_CACHE: Param = switch("no_cache", parameter::NO_CACHE);
 
 const fn int(minimum: usize, maximum: usize) -> Shape {
     Shape::Int {
@@ -233,7 +242,7 @@ static FIND_REFERENCING_SYMBOLS: Tool = Tool {
     title: "Find referencing symbols",
     description: described::FIND_REFERENCING_SYMBOLS,
     effect: Effect::ReadOnly,
-    always_load: true,
+    always_load: false,
     params: &[
         required("target", parameter::REFERENCE_TARGET),
         REPO_ROOT,
@@ -263,7 +272,7 @@ static CAPABILITIES: Tool = Tool {
     title: "Capabilities",
     description: described::CAPABILITIES,
     effect: Effect::ReadOnly,
-    always_load: true,
+    always_load: false,
     params: &[REPO_ROOT],
     calls: Calls::Single { localizes: false },
 };
@@ -275,8 +284,34 @@ static ORIENT: Tool = Tool {
     effect: Effect::ReadOnly,
     always_load: true,
     params: &ORIENT_PARAMS,
+    calls: Calls::Operations(&[localizing(
+        "map",
+        &["focus", "budget", "limit", "granularity"],
+        &[],
+    )]),
+};
+
+const ORIENT_PARAMS: [Param; 6] = [
+    required("operation", parameter::ORIENT_OPERATION),
+    REPO_ROOT,
+    optional("focus", FOCUS, parameter::ORIENT_FOCUS),
+    optional("budget", BUDGET, parameter::MAP_BUDGET),
+    optional(
+        "granularity",
+        Shape::Literal(&GRANULARITY_NAMES),
+        parameter::MAP_GRANULARITY,
+    ),
+    optional("limit", LIMIT, parameter::ORIENT_LIMIT),
+];
+
+static GRAPH: Tool = Tool {
+    name: "graph",
+    title: "Graph",
+    description: described::GRAPH,
+    effect: Effect::ReadOnly,
+    always_load: false,
+    params: &GRAPH_PARAMS,
     calls: Calls::Operations(&[
-        localizing("map", &["focus", "budget", "limit", "granularity"], &[]),
         operation("communities", &["resolution", "limit"], &[]),
         operation("cycles", &["limit"], &[]),
         operation("health", &["limit"], &[]),
@@ -299,22 +334,12 @@ static ORIENT: Tool = Tool {
     ]),
 };
 
-const ORIENT_PARAMS: [Param; 15] = [
-    required("operation", parameter::ORIENT_OPERATION),
+const GRAPH_PARAMS: [Param; 12] = [
+    required("operation", parameter::GRAPH_OPERATION),
     REPO_ROOT,
-    optional(
-        "focus",
-        Shape::AnyOf(&[Shape::Text, TEXTS]),
-        parameter::ORIENT_FOCUS,
-    ),
-    optional("budget", BUDGET, parameter::MAP_BUDGET),
-    optional(
-        "granularity",
-        Shape::Literal(&GRANULARITY_NAMES),
-        parameter::MAP_GRANULARITY,
-    ),
+    optional("focus", FOCUS, parameter::GRAPH_FOCUS),
     optional("resolution", RESOLUTION, parameter::COMMUNITY_RESOLUTION),
-    optional("limit", LIMIT, parameter::ORIENT_LIMIT),
+    optional("limit", LIMIT, parameter::GRAPH_LIMIT),
     optional("source", Shape::Text, parameter::PATH_SOURCE),
     optional("target", Shape::Text, parameter::PATH_TARGET),
     optional("include_unique", Shape::Bool, parameter::INCLUDE_UNIQUE),
@@ -338,7 +363,6 @@ const ORIENT_PARAMS: [Param; 15] = [
         Shape::Bool,
         parameter::GROUP_BY_COMMUNITIES,
     ),
-    NO_CACHE,
 ];
 
 const RESOLUTION: Shape = Shape::Number {
@@ -366,7 +390,7 @@ static SYMBOLS: Tool = Tool {
     ]),
 };
 
-const SYMBOLS_PARAMS: [Param; 13] = [
+const SYMBOLS_PARAMS: [Param; 12] = [
     required("operation", parameter::SYMBOLS_OPERATION),
     REPO_ROOT,
     optional("name", Shape::Text, parameter::FIND_NAME),
@@ -379,7 +403,6 @@ const SYMBOLS_PARAMS: [Param; 13] = [
     optional("path", Shape::Text, parameter::FILE_PATH),
     optional("locations", TEXTS, parameter::LOCATIONS),
     optional("context_lines", CONTEXT_LINES, parameter::CONTEXT_LINES),
-    NO_CACHE,
 ];
 
 const KIND: Shape = Shape::Enum {
@@ -443,27 +466,27 @@ impl Tool {
     }
 }
 
-/// Returns the entry that a tools/list answer holds for `tool`, with its keys in wire order.
+/// Returns the entry that a tools/list answer of a server with `count` roots holds for `tool`,
+/// with its keys in wire order.
 #[must_use]
-pub fn tool_entry(tool: &Tool) -> JsonValue {
+pub fn tool_entry(tool: &Tool, count: RootCount) -> JsonValue {
     object(vec![
         ("name", text(tool.name)),
         ("title", text(tool.title)),
         ("description", text(tool.description)),
-        ("inputSchema", input_schema(tool)),
+        ("inputSchema", input_schema(tool, count)),
         ("annotations", annotations(tool)),
         ("_meta", meta(tool)),
     ])
 }
 
-fn input_schema(tool: &Tool) -> JsonValue {
-    let properties = tool
-        .params
+fn input_schema(tool: &Tool, count: RootCount) -> JsonValue {
+    let params = published(tool, count);
+    let properties = params
         .iter()
         .map(|param| (param.name, param_schema(tool, param)))
         .collect();
-    let required: Vec<JsonValue> = tool
-        .params
+    let required: Vec<JsonValue> = params
         .iter()
         .filter(|param| param.presence == Presence::Required)
         .map(|param| text(param.name))
@@ -477,6 +500,15 @@ fn input_schema(tool: &Tool) -> JsonValue {
         entries.push(("required", JsonValue::Array(required)));
     }
     schema(entries)
+}
+
+// One root leaves a call nothing to select, so the schema leaves out `repo_root`. The validation
+// still accepts it.
+fn published(tool: &Tool, count: RootCount) -> Vec<&'static Param> {
+    tool.params
+        .iter()
+        .filter(|param| count == RootCount::Several || param.name != REPO_ROOT.name)
+        .collect()
 }
 
 fn annotations(tool: &Tool) -> JsonValue {

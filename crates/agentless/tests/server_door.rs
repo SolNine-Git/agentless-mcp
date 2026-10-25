@@ -185,7 +185,7 @@ fn the_door_serves_one_stdio_session() {
         "{notice}\n{}",
         request(2, "tools/list", &json!({}))
     ));
-    assert_eq!(listed["result"]["tools"].as_array().map(Vec::len), Some(6));
+    assert_eq!(listed["result"]["tools"].as_array().map(Vec::len), Some(7));
     let call = json!({"name": "capabilities", "arguments": {}});
     let called = answer(request(3, "tools/call", &call));
     assert_eq!(called["result"]["isError"], false, "{called}");

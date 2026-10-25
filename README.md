@@ -292,14 +292,17 @@ directory is inside exactly one of its roots, and the call then gets that
 root. A client that launches the server in the project directory therefore
 needs no `repo_root`. Otherwise the refusal lists the roots to choose from.
 Over HTTP the launch directory is the service's own, so a server with
-several roots always needs `repo_root`.
+several roots always needs `repo_root`. The tools/list schemas show
+`repo_root` only when the server has more than one `--root` or a
+`--roots-from` file.
 
-The MCP tools are six intent-shaped surfaces; three of them fold their
+The MCP tools are seven intent-shaped surfaces. Four of them fold their
 questions behind an `operation` parameter:
 
 | Tool | Operations | Purpose |
 | --- | --- | --- |
-| `orient` | `map`, `communities`, `cycles`, `diagram`, `path`, `health` | Where does this live, how is the repository put together |
+| `orient` | `map` | Where does this live |
+| `graph` | `communities`, `cycles`, `diagram`, `path`, `health` | How is the repository put together |
 | `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | Look up, skeleton, expand, or explain symbols; resolve locations |
 | `find_referencing_symbols` | | Find references and callers (blast radius) |
 | `history` | | Why does this code exist: the commits that touched a symbol's lines, bodies included |
@@ -310,6 +313,7 @@ One worked call per surface:
 
 ```
 orient(operation="map", focus=["src/app.py", "quote"])
+graph(operation="path", source="App.run", target="quote")
 symbols(operation="expand", stable_ids=["py:src/app.py::App.run"])
 find_referencing_symbols(target="App.run")
 history(target="py:src/app.py::App.run")
@@ -366,6 +370,7 @@ the repository's `.claude/settings.json` for one:
   "permissions": {
     "allow": [
       "mcp__agentless__orient",
+      "mcp__agentless__graph",
       "mcp__agentless__symbols",
       "mcp__agentless__find_referencing_symbols",
       "mcp__agentless__read",
@@ -388,15 +393,16 @@ The prefix carries the server name you registered. These entries assume the
 ### Eager tool schemas
 
 Claude Code can defer an MCP server's tools: they arrive as bare names, and
-the schema is fetched before the tool can be called. Five of the six tools
-publish an `alwaysLoad` hint that asks a deferring client to hold their
-schemas from the first turn, so the gate below redirects an agent that already
-knows what each tool answers. Measured, the hint costs nothing: the deferred
-and eager arms were indistinguishable on every localization metric, and
-deferral spent a round trip fetching the schemas anyway. The gate is the
-load-bearing part either way. `history` publishes no hint by design: it
-answers why rather than where, so a deferring client fetches its schema only
-when an agent asks.
+the schema is fetched before the tool can be called. Three of the seven tools
+(`orient`, `symbols` and `read`) publish an `alwaysLoad` hint that asks a
+deferring client to hold their schemas from the first turn, so the gate below
+redirects an agent that already knows what each tool answers. Measured, the
+hint costs nothing: the deferred and eager arms were indistinguishable on
+every localization metric, and deferral spent a round trip fetching the
+schemas anyway. The gate is the load-bearing part either way.
+`find_referencing_symbols`, `history`, `capabilities` and `graph` publish no
+hint by design. They answer questions that most sessions do not ask, so a
+deferring client fetches their schemas only when an agent asks.
 
 ### Structural-first gate (recommended hooks)
 
@@ -405,10 +411,10 @@ Prose asks for the structural pass. A hook enforces it. Two hook commands,
 repository-wide or directory-wide `Grep`, every `Glob`, and any `Bash`
 command that parses as a tree search, until the session has made a
 localizing Agentless call.
-`orient(map|path)`, `symbols(find|overview|expand|explain)`, `read(slice)` and
-`find_referencing_symbols` unlock the session; diagnostics, `read(dir)`,
-`symbols(locate)`, `history`, and the shape listings `orient(communities|cycles|diagram|health)`
-do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
+`orient(map)`, `graph(path)`, `symbols(find|overview|expand|explain)`,
+`read(slice)` and `find_referencing_symbols` unlock the session; diagnostics,
+`read(dir)`, `symbols(locate)`, `history`, and the shape listings
+`graph(communities|cycles|diagram|health)` do not. `read(slice)` unlocks on the same rule that allows an exact-file `Grep`:
 naming a file and a line range is the localization. A directory listing is how
 you look for a file, not evidence that you found one. `Grep` scoped to one
 existing file remains available before unlock because the caller has already

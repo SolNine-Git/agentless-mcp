@@ -2,7 +2,7 @@ use app::surface::Shape;
 use prompts::messages::{ACCEPTS_SCHEMA, LISTED_OR};
 use serde_json::json;
 
-use super::{listed, operation_owner, phrase, shown, unknown_tool};
+use super::{choice, listed, operation_owner, phrase, shown, unknown_tool};
 
 #[test]
 fn a_long_value_shows_its_head_and_its_tail_at_character_boundaries() {
@@ -44,6 +44,18 @@ fn an_operation_name_points_to_the_tool_that_has_it() {
         Some("Call the tool symbols with operation find.")
     );
     assert_eq!(operation_owner("find", "symbols"), None);
+    assert_eq!(
+        operation_owner("communities", "orient").as_deref(),
+        Some("Call the tool graph with operation communities.")
+    );
     assert!(unknown_tool("overview").ends_with(" Call the tool symbols with operation overview."));
     assert!(!unknown_tool("repo_map").contains("Call the tool"));
+}
+
+// A choice of one is the name alone; a choice of more is one of a list.
+#[test]
+fn a_choice_of_one_name_is_the_name_alone() {
+    assert_eq!(choice(&["map"]), "map");
+    assert_eq!(choice(&["map", "path"]), "one of map or path");
+    assert_eq!(phrase(&Shape::Literal(&["file"])), "file");
 }

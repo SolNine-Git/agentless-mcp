@@ -12,7 +12,7 @@ use crate::arguments::{Arguments, Value};
 use crate::refusal::{accepted_by_name, operation_owner, shown};
 
 // Every operation takes these, so no table row lists them.
-const UNIVERSAL: [&str; 3] = ["repo_root", "operation", "no_cache"];
+const UNIVERSAL: [&str; 2] = ["repo_root", "operation"];
 
 // The operation of `tool` named `name`, or the refusal that lists the operations `tool` has.
 pub(crate) fn named_operation(tool: &Tool, name: &str) -> Result<&'static Operation, String> {

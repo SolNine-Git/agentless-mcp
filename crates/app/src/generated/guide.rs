@@ -102,39 +102,42 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         else prints the `#2`. It exists so that\nyou can address one of \
         several same-named symbols at all.\n\n---\n\n## The two \
         surfaces\n\nThe CLI has one subcommand per question. The MCP \
-        server publishes **six\ntools**, five of them loaded eagerly. \
-        That number is a decision rather\nthan an accident. \
+        server publishes **seven\ntools**, three of them loaded \
+        eagerly. That number is a decision rather\nthan an accident. \
         Selection\naccuracy falls as a tool list grows. The questions \
         therefore fold behind an\n`operation` parameter by intent \
-        (orientation, symbols, contents) instead of\nbeing twelve \
-        entries to choose between. The folding is adapter-level \
-        only:\nsame services, same answers, same wording. \
-        `find_referencing_symbols` stays\nits own tool deliberately, so \
-        the expensive fan-in call keeps its own\ndecision point and \
-        cost warning. `history` is its own tool for the same\nreason \
-        and is the one whose schema a deferring client fetches on \
-        demand:\nit answers why rather than where. The escalation chain \
-        is `orient` to\nlocate, then `symbols` for declarations and \
-        bodies, then `read` for exact\nlines.\n\n| MCP tool | \
-        Operations | CLI | Answers |\n|---|---|---|---|\n| `orient` | \
-        `map`, `communities`, `cycles`, `diagram`, `path`, `health` | \
-        `map` / `communities` / `cycles` / `diagram` / `path` / \
-        `health` | where does this live, how is the repository put \
-        together |\n| `symbols` | `find`, `overview`, `expand`, \
-        `explain`, `locate` | `find-symbol` / `skeleton` / `expand` / \
-        `explain` / `resolve-locs` | what is this symbol, what does it \
-        declare, what does it do |\n| `find_referencing_symbols` | \
-        *(none)* | `refs` | who calls it (blast radius) |\n| `history` \
-        | *(none)* | `history` | why does this code exist (the commits \
-        that touched a span) |\n| `read` | `slice`, `dir` | `slice` / \
-        `tree` | these exact lines, what exists |\n| `capabilities` | \
-        *(none)* | `capabilities` | what is loaded, what is capped |\n| \
-        *(no MCP tool)* | | `html` | searchable human graph export to \
-        stdout or XDG cache |\n| *(no MCP tool)* | | `index`, `warmup`, \
-        `patch`, `lint`, `validate`, `vote` | write side and install \
-        time |\n\nThe schema of `operation` lists the valid values as \
-        an enum. The server checks\nevery argument before the call \
-        runs. A refusal gives one sentence for each bad\nparameter. The \
+        (orientation, structure, symbols, contents)\ninstead of being \
+        twelve entries to choose between. The folding is\nadapter-level \
+        only: same services, same answers, same \
+        wording.\n`find_referencing_symbols` stays its own tool \
+        deliberately, so the expensive\nfan-in call keeps its own \
+        decision point and cost warning. `history` is its\nown tool for \
+        the same reason: it answers why rather than where. \
+        `orient`,\n`symbols` and `read` ask to be loaded eagerly. A \
+        deferring client fetches the\nschemas of \
+        `find_referencing_symbols`, `history`, `capabilities` and \
+        `graph`\non demand. The escalation chain is `orient` to locate, \
+        then `symbols` for\ndeclarations and bodies, then `read` for \
+        exact lines.\n\n| MCP tool | Operations | CLI | Answers \
+        |\n|---|---|---|---|\n| `orient` | `map` | `map` | where does \
+        this live |\n| `graph` | `communities`, `cycles`, `diagram`, \
+        `path`, `health` | `communities` / `cycles` / `diagram` / \
+        `path` / `health` | how is the repository put together |\n| \
+        `symbols` | `find`, `overview`, `expand`, `explain`, `locate` | \
+        `find-symbol` / `skeleton` / `expand` / `explain` / \
+        `resolve-locs` | what is this symbol, what does it declare, \
+        what does it do |\n| `find_referencing_symbols` | *(none)* | \
+        `refs` | who calls it (blast radius) |\n| `history` | *(none)* \
+        | `history` | why does this code exist (the commits that \
+        touched a span) |\n| `read` | `slice`, `dir` | `slice` / `tree` \
+        | these exact lines, what exists |\n| `capabilities` | *(none)* \
+        | `capabilities` | what is loaded, what is capped |\n| *(no MCP \
+        tool)* | | `html` | searchable human graph export to stdout or \
+        XDG cache |\n| *(no MCP tool)* | | `index`, `warmup`, `patch`, \
+        `lint`, `validate`, `vote` | write side and install time \
+        |\n\nThe schema of `operation` lists the valid values as an \
+        enum. The server checks\nevery argument before the call runs. A \
+        refusal gives one sentence for each bad\nparameter. The \
         sentence names the parameter and the value that the call \
         gave,\nand it gives the form that the parameter accepts. A \
         wrong `operation` value\ngets the list of valid operations, and \
@@ -146,7 +149,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         when a call gives no data for any item that it\nnames. When a \
         call gives data for some of its items, `isError` stays false \
         and\nthe answer names each item that failed.\n\n**Previous \
-        surface.** These six are the v2 surface, the only one. \
+        surface.** These seven are the v2 surface, the only one. \
         Before\n0.11.0, a server started with `--surface v1` published \
         the original twelve\nper-question tools for un-migrated \
         operators. A server started with\n`--surface both` published \
@@ -161,7 +164,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `expand_symbols` | `symbols` operation `expand` |\n| \
         `read_slice` | `read` operation `slice` |\n| `find_symbol` | \
         `symbols` operation `find` |\n| `explain_symbol` | `symbols` \
-        operation `explain` |\n| `analyze_structure` | `orient` \
+        operation `explain` |\n| `analyze_structure` | `graph` \
         operations `path` / `cycles` / `communities` / `diagram` / \
         `health` |\n| `resolve_locations` | `symbols` operation \
         `locate` |\n\n`find_referencing_symbols` and `capabilities` are \
@@ -196,59 +199,61 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         `content[0].text` instead. Both fields\ncarried identical text, \
         so the migration is the field name and nothing else.\n\n## \
         Per-tool usage\n\nCLI names come first, with the v2 MCP call in \
-        parentheses. Every MCP tool\ntakes `repo_root`. The CLI \
-        defaults it to the git root that encloses the\ncurrent \
-        directory, or takes `--repo PATH`. You may omit `repo_root` \
-        when the\nserver holds one repository, or when the client \
-        advertises an MCP workspace\nroot that identifies exactly one \
-        configured root. The receipt names the\nrepository that \
-        answered whenever the server holds more than one root. Under \
-        stdio, when the client advertises\nseveral workspace folders, \
-        the server keeps the one that contains its launch\ndirectory. \
-        With several candidates still left, the refusal lists the roots \
-        to\nchoose from.\n\n`--root` is the confinement boundary. The \
-        client cannot widen it. A root the\nclient advertises may only \
-        *select* among the directories the server was\nstarted with. It \
-        can never add one. A server started with no `--root` at \
-        all\nserves nothing. `--allow-client-roots` restores the \
-        additive reading for\noperators who want it. It is a flag \
-        rather than the default because the two\nreadings differ in who \
-        decides what is servable. A permissive default is a\nboundary \
-        that stops confining without anyone typing \
-        anything.\n\n`--roots-from FILE` is the same allowlist, written \
-        one path per line. It is\nthe operator-editable half. The \
-        server re-reads the file whenever it changes\non disk. An \
-        appended line therefore enrolls a repository on the next \
-        call,\nand a removed line revokes one, without a restart. When \
-        the server refuses a\ncall and a roots file is configured, the \
-        refusal names the file to append to.\nThat message is the \
-        enrollment path, not a dead end. A roots file that stops\nbeing \
-        readable after startup causes a loud refusal. The server does \
-        not serve\nthe last copy it managed to load.\n\n### Claude Code \
-        specifics\n\nTwo client-side settings decide whether agents \
-        actually reach these tools.\nFirst, allowlist the six read \
-        tools in `~/.claude/settings.json` \
+        parentheses. Every MCP tool\ntakes `repo_root`. The tools/list \
+        schemas show it only when the server has\nmore than one \
+        `--root` or a `--roots-from` file. The CLI defaults it to \
+        the\ngit root that encloses the current directory, or takes \
+        `--repo PATH`. You\nmay omit `repo_root` when the server holds \
+        one repository. The receipt names\nthe repository that answered \
+        whenever the server holds more than one root.\nUnder stdio, \
+        with several roots, the server keeps the one that contains \
+        its\nlaunch directory. With several candidates still left, the \
+        refusal lists the\nroots to choose from.\n\n`--root` is the \
+        confinement boundary. The client cannot widen it. The \
+        server\ndoes not read the roots that a client advertises: only \
+        `--root` and\n`--roots-from` name the repositories it may \
+        serve. A server started with no\n`--root` and no `--roots-from` \
+        serves nothing. `--allow-client-roots` is\naccepted for \
+        compatibility and has no effect under stdio. Over HTTP \
+        the\nserver refuses it at start-up.\n\n`--roots-from FILE` is \
+        the same allowlist, written one path per line. It is\nthe \
+        operator-editable half. The server re-reads the file whenever \
+        it changes\non disk. An appended line therefore enrolls a \
+        repository on the next call,\nand a removed line revokes one, \
+        without a restart. When the server refuses a\ncall and a roots \
+        file is configured, the refusal names the file to append \
+        to.\nThat message is the enrollment path, not a dead end. A \
+        roots file that stops\nbeing readable after startup causes a \
+        loud refusal. The server does not serve\nthe last copy it \
+        managed to load.\n\n### Claude Code specifics\n\nTwo \
+        client-side settings decide whether agents actually reach these \
+        tools.\nFirst, allowlist the seven read tools in \
+        `~/.claude/settings.json` \
         permissions\n(`mcp__agentless__orient`, \
+        `mcp__agentless__graph`, \
         `mcp__agentless__symbols`,\n`mcp__agentless__find_referencing_symbols`, \
         `mcp__agentless__read`,\n`mcp__agentless__capabilities`, \
         `mcp__agentless__history`) so calls run\nwithout permission \
         prompts.\nFriction at the prompt is what sends a model back to \
         Grep. Second, the client\nmay defer tool schemas, in a main \
         session and in a subagent alike, and a\ndeferred tool is not \
-        callable until its schema loads. Five of the six ask to\nbe \
-        loaded eagerly for that reason, so an agent knows what they \
-        answer before\nit picks its first move; `history` does not, so \
-        it costs no context until the\nquestion is why. Grep is loaded \
-        from the first turn either way, so the\norder in which an agent \
-        reaches for the two decides which one it uses. Install\nthe \
-        structural-first gate in `contrib/hooks/`: it denies broad \
-        Grep, Glob and\ntree-searching Bash commands until \
-        `orient(map|path)`,\n`symbols(find|overview|expand|explain)`, \
+        callable until its schema loads. Three of the seven\n(`orient`, \
+        `symbols` and `read`) ask to be loaded eagerly for that reason, \
+        so\nan agent knows what they answer before it picks its first \
+        move.\n`find_referencing_symbols`, `history`, `capabilities` \
+        and `graph` do not, so\ntheir schemas cost no context until a \
+        question needs them. Grep is loaded\nfrom the first turn either \
+        way, so the\norder in which an agent reaches for the two \
+        decides which one it uses. Install\nthe structural-first gate \
+        in `contrib/hooks/`: it denies broad Grep, Glob \
+        and\ntree-searching Bash commands until `orient(map)`, \
+        `graph(path)`,\n`symbols(find|overview|expand|explain)`, \
         `read(slice)` or\n`find_referencing_symbols` has localized the \
         session.\nExact-file Grep remains available, while diagnostics, \
-        `read(dir)`, `history`\nand the shape listings do not unlock \
-        broad discovery. Name the\ntools and the order in a dispatch \
-        prompt as well. A worker told only to\nnavigate the repository \
+        `read(dir)`, `history`\nand the shape listings \
+        `graph(communities|cycles|diagram|health)` do not\nunlock broad \
+        discovery. Name the\ntools and the order in a dispatch prompt \
+        as well. A worker told only to\nnavigate the repository \
         defaults to Grep.\n\nCalls on one connection may overlap. Every \
         tool answers on a worker thread\nrather than on the event loop, \
         so a cold map or a 30-second `history` does not\nhold up the \
@@ -737,7 +742,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         classes a\nsignature names and the constants a body reads. It \
         counts one relationship\nper pair, however many times the name \
         appears. For the individual call sites\nwith their line \
-        numbers, use `refs`.\n\n### `path` (`orient` operation `path`) \
+        numbers, use `refs`.\n\n### `path` (`graph` operation `path`) \
         -- how are these two connected\n\n```\nagentless-mcp path \
         reorder_report format_money\nagentless-mcp path \
         py:reports.py::reorder_report \
@@ -746,12 +751,11 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         \"format_money\"}\n```\n\nThe command finds the fewest-hop \
         chain of resolved relationships between two\nsymbols, between a \
         symbol and a file, or between two files. Any node in the\ngraph \
-        is a valid endpoint. It answers \"could a change here reach \
-        that failure\nthere\", which no single fan-in or fan-out call \
-        does.\n\n```\n1 hop from py:reports.py::reorder_report to \
-        py:pricing.py::format_money\n  start  reorder_report    \
-        py:reports.py::reorder_report\n    1. -> references \
-        (resolved-via-import)    format_money    \
+        is a valid endpoint. The chain ignores edge direction, so it is \
+        not a\ncall path.\n\n```\n1 hop from \
+        py:reports.py::reorder_report to py:pricing.py::format_money\n  \
+        start  reorder_report    py:reports.py::reorder_report\n    1. \
+        -> references (resolved-via-import)    format_money    \
         [py:pricing.py::format_money] @78\n```\n\nThe search walks \
         edges in both directions, because the question is \
         about\nrelatedness, not call direction. The output renders each \
@@ -786,7 +790,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         is the qualified name of a definition,\n`explain` and `refs` \
         answer about the exact matches only, and `explain` lists\nonly \
         the other exact matches under `also defined at`.\n\n### \
-        `cycles` (`orient` operation `cycles`) -- module-level import \
+        `cycles` (`graph` operation `cycles`) -- module-level import \
         knots\n\n```\nagentless-mcp cycles --limit \
         20\n```\n\n```json\n{\"operation\": \"cycles\"}\n```\n\nEvery \
         import cycle in the repository, by strongly connected component \
@@ -812,7 +816,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         effort. A module string this tool cannot\nmap to a file in the \
         repository contributes no edge. A cycle that runs\nthrough a \
         dynamic import or an unusual path alias therefore will not \
-        appear.\n\n### `communities` (`orient` operation `communities`) \
+        appear.\n\n### `communities` (`graph` operation `communities`) \
         -- which files belong together\n\n```\nagentless-mcp \
         communities --resolution 0.5 --limit 20 --members \
         12\n```\n\n```json\n{\"operation\": \"communities\", \
@@ -856,11 +860,10 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         against one level's 0.329, which is the reason the\nscore is \
         not what decides -- a rollup whose largest group is a quarter \
         of the\nrepository has stopped answering which files belong \
-        together.\n\n### `diagram` (`orient` operation `diagram`) -- \
-        the module graph, drawn\n\n```\nagentless-mcp diagram \
-        --max-nodes 40 > docs/diagrams/modules.mmd\nagentless-mcp \
-        diagram --focus src/app/svc.py --communities\nagentless-mcp \
-        diagram --check \
+        together.\n\n### `diagram` (`graph` operation `diagram`) -- the \
+        module graph, drawn\n\n```\nagentless-mcp diagram --max-nodes \
+        40 > docs/diagrams/modules.mmd\nagentless-mcp diagram --focus \
+        src/app/svc.py --communities\nagentless-mcp diagram --check \
         docs/diagrams/modules.md\n```\n\n```json\n{\"operation\": \
         \"diagram\", \"focus\": \"src/app/svc.py\", \
         \"group_by_communities\": true}\n```\n\nThe output is Mermaid \
@@ -904,7 +907,7 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         diagram committed into\na `.md` file exactly as it stands. That \
         is the never-stale story for committed\ndiagrams. Wire it into \
         pre-commit, and a diagram cannot silently describe a\ntree that \
-        no longer exists.\n\n### `health` (`orient` operation `health`) \
+        no longer exists.\n\n### `health` (`graph` operation `health`) \
         -- what is unreferenced, what is central, where complexity \
         sits\n\n```\nagentless-mcp health --limit \
         20\n```\n\n```json\n{\"operation\": \"health\"}\n```\n\nThree \
@@ -1046,12 +1049,14 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         loaded, what is capped\n\nThe report holds:\n\n- the server's \
         own version\n- grammar versions, support tier and warm state \
         per language\n- the file extensions each language claims\n- the \
-        tag-cache generation\n- the configured roots and the roots the \
-        client advertised\n- the project config in force\n- every bound \
-        (walk depth, file count, per-file bytes, output tokens)\n- the \
-        `lint` checks, each with the input it reads (`patch`, `pairs`, \
-        or\n  `pairs+clones`)\n\nThe report names an absent tag cache \
-        with the exact\n`agentless-mcp index --repo PATH` command that \
+        tag-cache generation\n- the configured roots, and a `client \
+        roots` line that always reads\n  `none advertised`, because the \
+        server does not read the roots of a client\n- the project \
+        config in force\n- every bound (walk depth, file count, \
+        per-file bytes, output tokens)\n- the `lint` checks, each with \
+        the input it reads (`patch`, `pairs`, or\n  \
+        `pairs+clones`)\n\nThe report names an absent tag cache with \
+        the exact\n`agentless-mcp index --repo PATH` command that \
         builds it. Check the report\nwhen:\n\n- a view stops short and \
         you want to know which bound did it\n- a file was skipped and \
         you want to know whether its grammar is warmed\n- root \
@@ -1102,11 +1107,10 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         include those files.\n\nOnly one index run per repository can \
         run at a time. A second concurrent run\nexits immediately and \
         says the lock is held, rather than queue. Any read\ncommand \
-        takes `--no-cache` (`no_cache: true` on the `orient` and \
-        `symbols`\nMCP tools) to bypass the index for that call.\n\n### \
-        `lint` -- deterministic hallucination checks, CLI \
-        only\n\n```\nagentless-mcp lint --candidates \
-        ./candidates\nagentless-mcp lint --candidates \
+        takes `--no-cache` to bypass the index for that call. The MCP \
+        tools\nhave no such parameter.\n\n### `lint` -- deterministic \
+        hallucination checks, CLI only\n\n```\nagentless-mcp lint \
+        --candidates ./candidates\nagentless-mcp lint --candidates \
         ./candidates/01-plus.txt --json\nagentless-mcp lint --diff \
         change.patch --repo /tmp/base\nagentless-mcp lint --diff \
         change.patch --repo /tmp/base --only \
@@ -1725,34 +1729,34 @@ pub(crate) const GUIDE: &str = "# agentless-mcp: agent usage guide\n\nThis docum
         a shorter answer.\n";
 
 pub(crate) const SECTIONS: [(&str, usize, usize); 30] = [
-    ("the-canonical-recipe", 484, 3597),
-    ("the-funnel-and-where-it-stops", 3599, 4432),
-    ("stable-ids", 4434, 5752),
-    ("the-two-surfaces", 5754, 11298),
-    ("per-tool-usage", 11300, 94971),
-    ("claude-code-specifics", 13058, 14689),
-    ("map", 14691, 24600),
-    ("tree", 24602, 24923),
-    ("skeleton", 24925, 26290),
-    ("expand", 26292, 28265),
-    ("slice", 28267, 29104),
-    ("find-symbol", 29106, 31791),
-    ("refs", 31793, 37851),
-    ("history", 37853, 40686),
-    ("explain", 40688, 42633),
-    ("path", 42635, 45370),
-    ("cycles", 45372, 46878),
-    ("communities", 46880, 49404),
-    ("diagram", 49406, 52177),
-    ("health", 52179, 58415),
-    ("html", 58417, 59368),
-    ("resolve-locs", 59370, 60185),
-    ("capabilities", 60187, 60997),
-    ("index", 60999, 63761),
-    ("lint", 63763, 83771),
-    ("validate-vote", 83773, 93370),
-    ("warmup", 93372, 94971),
-    ("project-defaults-agentless-mcp-json", 94973, 98926),
-    ("token-counting", 98928, 99342),
-    ("exit-codes", 99344, 99802),
+    ("the-canonical-recipe", 484, 3_597),
+    ("the-funnel-and-where-it-stops", 3_599, 4_432),
+    ("stable-ids", 4_434, 5_752),
+    ("the-two-surfaces", 5_754, 11_438),
+    ("per-tool-usage", 11_440, 95_166),
+    ("claude-code-specifics", 13_056, 14_869),
+    ("map", 14_871, 24_780),
+    ("tree", 24_782, 25_103),
+    ("skeleton", 25_105, 26_470),
+    ("expand", 26_472, 28_445),
+    ("slice", 28_447, 29_284),
+    ("find-symbol", 29_286, 31_971),
+    ("refs", 31_973, 38_031),
+    ("history", 38_033, 40_866),
+    ("explain", 40_868, 42_813),
+    ("path", 42_815, 45_505),
+    ("cycles", 45_507, 47_012),
+    ("communities", 47_014, 49_537),
+    ("diagram", 49_539, 52_309),
+    ("health", 52_311, 58_546),
+    ("html", 58_548, 59_499),
+    ("resolve-locs", 59_501, 60_316),
+    ("capabilities", 60_318, 61_213),
+    ("index", 61_215, 63_956),
+    ("lint", 63_958, 83_966),
+    ("validate-vote", 83_968, 93_565),
+    ("warmup", 93_567, 95_166),
+    ("project-defaults-agentless-mcp-json", 95_168, 99_121),
+    ("token-counting", 99_123, 99_537),
+    ("exit-codes", 99_539, 99_997),
 ];
